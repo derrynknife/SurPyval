@@ -5,13 +5,18 @@ from numpy.typing import ArrayLike
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
-from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.recurrent.renewal.renewal_model import (
+    RenewalModel,
+    conditional_gap,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
     validate_renewal_censoring,
+    validate_renewal_times,
+    validate_restoration,
 )
 
 
@@ -98,8 +103,7 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         def sample(ui: float) -> float:
             nonlocal virtual_age
-            u_adj = ui * model.model.sf(virtual_age)
-            xi = model.model.qf(1 - u_adj) - virtual_age
+            xi = conditional_gap(model.model, virtual_age, ui)
             virtual_age = virtual_age_function(virtual_age, xi, q)
             return xi
 
@@ -154,9 +158,12 @@ class GeneralizedRenewal(RenewalFitMixin):
                 ]
             )
         x_new = interarrival + virtual_ages
-        return np.asarray(
-            model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
-        )
+        # H(0) = 0 exactly, but some distributions take log(0) on the way.
+        with np.errstate(divide="ignore"):
+            return np.asarray(
+                model.model.Hf(x_new) - model.model.Hf(virtual_ages),
+                dtype=float,
+            )
 
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
@@ -208,14 +215,14 @@ class GeneralizedRenewal(RenewalFitMixin):
 
             x_new = x_interarrival + virtual_ages
 
-            ll_o = dist.log_df(x_new, *params) - dist.log_sf(
-                virtual_ages, *params
-            )
+            # Every item starts at virtual age 0, where some distributions
+            # take log(0) on the way to the exact S(0) = 1 (a LogNormal's
+            # log(x)); that warned thousands of times per fit.
+            with np.errstate(divide="ignore"):
+                log_sf_v = dist.log_sf(virtual_ages, *params)
+                ll_o = dist.log_df(x_new, *params) - log_sf_v
+                ll_right = dist.log_sf(x_new, *params) - log_sf_v
             ll = np.where(c == 0, ll_o, 0)
-
-            ll_right = dist.log_sf(x_new, *params) - dist.log_sf(
-                virtual_ages, *params
-            )
             ll = np.where(c == 1, ll_right, ll)
 
             return -ll.sum()
@@ -235,7 +242,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
@@ -275,9 +282,14 @@ class GeneralizedRenewal(RenewalFitMixin):
              alpha: 2.399029668688425
               beta: 2.753920042066547
         """
+        # Resolving the Kijima type first gives the clear error for an
+        # unknown one (it used to surface as a NameError from inside the
+        # likelihood, or as a starting-value fit failure).
+        self._resolve_virtual_age_function(kijima)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, kijima=kijima)
         # result is (very!!) sensitive to the initial value of q
@@ -293,13 +305,12 @@ class GeneralizedRenewal(RenewalFitMixin):
             (0.0001, 1.0, 2.0),
             dist_params0,
             init,
+            renewal_restoration=0.0001,
         )
         q, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
-        self._attach_inference(
-            out, neg_ll, [q, *dist_params], len(data.x), res, data
-        )
+        self._attach_inference(out, neg_ll, [q, *dist_params], res, data)
         return out
 
     def fit(
@@ -319,13 +330,17 @@ class GeneralizedRenewal(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
@@ -408,12 +423,14 @@ class GeneralizedRenewal(RenewalFitMixin):
         Generalized Renewal SurPyval Model
         ==================================
         Distribution        : Normal
-        Fitted by           : MLE
+        Fitted by           : given parameters (not fitted)
         Kijima Type         : i
         Restoration Factor  : 0.2
         Parameters          :
                 mu: 10
             sigma: 2
         """
+        self._resolve_virtual_age_function(kijima)
+        validate_restoration(q, "q", (0, None))
         model = dist.from_params(params)
         return self._make_model(model, q, kijima)

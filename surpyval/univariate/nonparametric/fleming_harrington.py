@@ -16,6 +16,29 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 _MAX_TIE_LOOP = 64
 
 
+def _snap(v: float) -> float:
+    """``v`` rounded to the nearest integer when it is one up to round-off.
+
+    The Turnbull EM hands these functions expected counts that are whole
+    numbers plus round-off (``1 + 2e-16``). ``ceil`` of such a count adds a
+    ladder step with a risk set of about ``1e-16``, so the hazard of a
+    single death doubled (and ``d = r = 3`` gave 2.83 instead of 1.83).
+    """
+    nearest = float(np.round(v))
+    if abs(v - nearest) <= 1e-9 * max(1.0, abs(nearest)):
+        return nearest
+    return float(v)
+
+
+def _snap_array(v: npt.ArrayLike) -> npt.NDArray:
+    """``_snap`` applied elementwise, vectorised for use inside the EM."""
+    v = np.asarray(v, dtype=float)
+    nearest = np.round(v)
+    with np.errstate(invalid="ignore"):
+        close = np.abs(v - nearest) <= 1e-9 * np.maximum(1.0, np.abs(nearest))
+    return np.where(close, nearest, v)
+
+
 def _ladder_steps(r_i: float, d_i: float) -> int:
     """Number of whole 1/r terms in the tie ladder, or -1 if the
     ladder exhausts the risk set (the hazard diverges)."""
@@ -33,6 +56,9 @@ def fh_h(r_i: float, d_i: float) -> float:
     # sum(1 / (r - i) for i in 0 ... ceil(d) - 2) + (d - full) / (r - full):
     # each of the d tied events sees a risk set that shrinks by one,
     # with the fractional remainder of d contributing pro rata.
+    r_i, d_i = _snap(r_i), _snap(d_i)
+    if d_i == 0:
+        return 0.0  # no deaths, no hazard (whatever the risk set)
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -50,6 +76,9 @@ def fh_var_h(r_i: float, d_i: float) -> float:
     # Variance increment with the same tie-splitting as fh_h, i.e.
     # each of the d tied events contributes 1/r**2 with a risk set
     # that shrinks by one for each event.
+    r_i, d_i = _snap(r_i), _snap(d_i)
+    if d_i == 0:
+        return 0.0  # no deaths, no hazard (whatever the risk set)
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -96,9 +125,13 @@ class FlemingHarrington_(NonParametricFitter):
 
     .. math::
 
-        R = e^{-\sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}}
+        R(x) = e^{-\sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1}
+            \frac{1}{r_i - j}}
 
-    See 'NonParametric section for detailed estimate of how H is computed.'
+    That is, the ``d_i`` deaths tied at ``x_i`` are counted one after
+    another, each removing one unit from the risk set before the next
+    (a fractional expected count, from the Turnbull EM, contributes its
+    remainder pro rata). With no ties this is the Nelson-Aalen estimate.
 
     The variance of the cumulative hazard used for confidence bounds is
     estimated with the same tie correction as the estimator itself

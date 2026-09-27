@@ -43,7 +43,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.integrate import quad
 from scipy.optimize import brentq, minimize, minimize_scalar
-from scipy.special import gammaincc, gammaln
+from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -176,9 +176,15 @@ def _stress_design(
     return (z_int - z_ref) / scale, z_ref, scale
 
 
-def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
-    """BFGS, falling back to (and polishing with) Nelder-Mead."""
-    best = minimize(fun, x0, method="BFGS")
+def _minimise(
+    fun: Callable, x0: npt.NDArray, jac: "str | None" = None
+) -> npt.NDArray:
+    """BFGS, falling back to (and polishing with) Nelder-Mead.
+
+    ``jac="3-point"`` takes central-difference gradients, for an objective
+    whose round-off noise swamps forward differences (BFGS then stops on
+    "precision loss" and the slow fallback does the work)."""
+    best = minimize(fun, x0, method="BFGS", jac=jac)
     if not (best.success and np.isfinite(best.fun)):
         nm = minimize(
             fun,
@@ -192,10 +198,148 @@ def _minimise(fun: Callable, x0: npt.NDArray) -> npt.NDArray:
             best = nm
     if not np.isfinite(best.fun):
         raise ValueError(
-            "the stress-dependent process fit did not converge to a finite "
-            "likelihood"
+            "the process fit did not converge to a finite likelihood"
         )
     return np.asarray(best.x, dtype=float)
+
+
+def _unit_steps(i: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
+    """
+    For each pooled increment of :func:`_increments`, its unit (numbered
+    ``0, 1, ...`` over the units that have increments) and its position
+    along that unit's path (``0`` for the first increment).
+    """
+    _, counts = np.unique(np.atleast_1d(np.asarray(i)), return_counts=True)
+    counts = counts[counts >= 2] - 1
+    unit = np.repeat(np.arange(len(counts)), counts)
+    step = np.concatenate([np.arange(c) for c in counts])
+    return unit, step
+
+
+def _gauge_cell_probabilities(
+    delta: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+) -> npt.NDArray:
+    """
+    Cell-to-cell step probabilities of the quantised gamma likelihood.
+
+    For each increment (recorded difference ``delta`` between the bins,
+    gamma shape ``k``), the probability that a level uniform over a cell
+    of width ``h`` moves into the cell ``d = delta + r h`` above it, for
+    ``r = -(m - 1), ..., m - 1``: ``(H(d + h) - 2 H(d) + H(d - h)) / h``,
+    with ``H(x)`` the integral from 0 to ``x`` of the ``Gamma(k, beta)``
+    CDF. Returns an array of shape ``(len(delta), 2 m - 1)``.
+
+    ``H`` is used in the lower tail, where it is small. In the upper tail
+    ``H(x)`` is ``x - k / beta`` plus a tiny remainder that its second
+    difference would cancel away, so there the stencil uses that remainder,
+    ``S(x) = E[(W - x)+]``, instead: the two differ by a linear function,
+    which second differences ignore. Each form is evaluated only where a
+    stencil needs it, and ``H(x) = 0`` (``S(x) = k / beta - x``) for
+    ``x <= 0`` without special functions -- half the points of a zero
+    increment.
+    """
+    r = np.arange(-m, m + 1)
+    x = delta[:, None] + r[None, :] * h
+    kk = np.broadcast_to(k[:, None], x.shape)
+    mean = np.broadcast_to((k / beta)[:, None], x.shape)
+    H = np.zeros(x.shape)
+    S = mean - x
+    lo = (x > 0) & (x < mean + h)
+    bx = beta * x[lo]
+    H[lo] = x[lo] * gammainc(kk[lo], bx) - mean[lo] * gammainc(
+        kk[lo] + 1.0, bx
+    )
+    hi = (x > 0) & (x >= mean - h)
+    bx = beta * x[hi]
+    S[hi] = mean[hi] * gammaincc(kk[hi] + 1.0, bx) - x[hi] * gammaincc(
+        kk[hi], bx
+    )
+    d2_H = H[:, 2:] - 2.0 * H[:, 1:-1] + H[:, :-2]
+    d2_S = S[:, 2:] - 2.0 * S[:, 1:-1] + S[:, :-2]
+    # one form per stencil, chosen by its centre
+    upper = x[:, 1:-1] >= mean[:, 1:-1]
+    return np.maximum(np.where(upper, d2_S, d2_H), 0.0) / h
+
+
+def _gauge_point_probabilities(
+    offset: npt.NDArray, k: npt.NDArray, beta: float, h: float, m: int
+) -> npt.NDArray:
+    """
+    The probabilities that a gamma increment of shape ``k`` from a known
+    level lands in each of the ``m`` cells of width ``h`` of a bin whose
+    bottom is ``offset`` above that level. Shape ``(len(offset), m)``.
+    """
+    x = np.maximum(offset[:, None] + np.arange(m + 1)[None, :] * h, 0.0)
+    kk = np.broadcast_to(k[:, None], x.shape)
+    lower = gammainc(kk, beta * x)
+    upper = gammaincc(kk, beta * x)
+    # differences of the CDF below the mean, of the survival function above
+    # it, so neither tail cancels away
+    by_cdf = lower[:, 1:] - lower[:, :-1]
+    by_sf = upper[:, :-1] - upper[:, 1:]
+    below = x[:, 1:] <= (k / beta)[:, None]
+    return np.maximum(np.where(below, by_cdf, by_sf), 0.0)
+
+
+def _quantised_log_likelihood(
+    delta: npt.NDArray,
+    i: npt.ArrayLike,
+    gauge: float,
+    m: int,
+    start: "float | None",
+) -> Callable[[npt.NDArray, float], float]:
+    """
+    The log-likelihood of gauge-rounded gamma-process readings, as a
+    function of the increments' shapes ``k`` (pooled order, as from
+    :func:`_increments`) and the rate ``beta``.
+
+    ``delta`` holds the recorded increments (whole multiples of
+    ``gauge``) and ``i`` the unit labels of the readings. Each bin is split
+    into ``m`` cells, and the probability of the path is carried forward
+    one reading at a time -- all units together -- as a distribution over
+    the cells of the current bin. It starts uniform over the first bin, or,
+    with ``start``, at the point ``start`` above the first bin's bottom.
+    """
+    unit, step = _unit_steps(i)
+    n_units = int(unit.max()) + 1
+    # sort by position along the path, then unit: the recursion advances
+    # every unit one reading at a time, over contiguous blocks of rows
+    order = np.lexsort((unit, step))
+    unit, delta = unit[order], delta[order]
+    bounds = np.searchsorted(step[order], np.arange(step.max() + 2))
+    h = gauge / m
+    # T[a, b], the step from cell a to cell b, is the cell probability at
+    # offset b - a: column b - a + m - 1
+    toeplitz = np.arange(m)[None, :] - np.arange(m)[:, None] + (m - 1)
+    # the first increment of each unit, from a known start, is from a point
+    n_point = int(bounds[1]) if start is not None else 0
+    tiny = np.finfo(float).tiny
+
+    def log_lik(k: npt.NDArray, beta: float) -> float:
+        k = k[order]
+        steps = _gauge_cell_probabilities(
+            delta[n_point:], k[n_point:], beta, h, m
+        )[:, toeplitz]
+        prob = np.full((n_units, m), 1.0 / m)
+        ll = 0.0
+        for lo, hi in zip(bounds[:-1], bounds[1:]):
+            u = unit[lo:hi]
+            if lo < n_point:
+                assert start is not None
+                new = _gauge_point_probabilities(
+                    delta[lo:hi] - start, k[lo:hi], beta, h, m
+                )
+            else:
+                first, last = lo - n_point, hi - n_point
+                new = np.einsum("na,nab->nb", prob[u], steps[first:last])
+            total = new.sum(axis=1)
+            ll += float(np.sum(np.log(np.maximum(total, tiny))))
+            # keep the filtered distribution, normalised so a long path
+            # does not underflow; its scale is already in ``ll``
+            prob[u] = new / np.maximum(total, tiny)[:, None]
+        return ll
+
+    return log_lik
 
 
 class ProcessRUL:
@@ -208,8 +352,10 @@ class ProcessRUL:
     rul_interval : tuple of float
         Equal-tailed ``1 - alpha_ci`` interval for the remaining life.
     prob_already_failed : float
-        Probability the unit has already crossed the threshold (i.e. the
-        current degradation is at or beyond it).
+        ``1.0`` when the current degradation is at or beyond the threshold
+        (the remaining life and its interval are then ``0``), else ``0.0``.
+    alpha_ci : float
+        The tail probability of ``rul_interval``.
     """
 
     def __init__(
@@ -299,6 +445,23 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         raise NotImplementedError
+
+    def _sf_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
+        """Survival over ``distance``; subclasses override it where ``1 - ff``
+        loses the upper tail."""
+        return 1.0 - self._ff_distance(t, distance)
+
+    def _log_sf_distance(
+        self, t: npt.ArrayLike, distance: float
+    ) -> npt.NDArray:
+        """Log survival over ``distance`` (``-inf`` once it underflows)."""
+        with np.errstate(divide="ignore"):
+            return np.log(self._sf_distance(t, distance))
+
+    def _log_df0(self, t: npt.NDArray) -> npt.NDArray:
+        """Log first-passage density at the reference stress."""
+        with np.errstate(divide="ignore"):
+            return np.log(self._df0(t))
 
     def _quantile_hi0(self, distance: float) -> float:
         """Starting upper bracket for the quantile search."""
@@ -413,9 +576,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         """
         Failure (CDF) of the first-passage time to the threshold.
 
-        For a model fitted with stress, ``Z`` is required: one stress row
-        for a constant stress, or a :class:`~surpyval.StepSchedule` for a
-        stress profile. The same applies to every method below.
+        For a model fitted with stress, ``Z`` is required: one stress row for a
+        constant stress, or a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` for
+        a stress profile. The same applies to every method below.
         """
         clock = self._clock(Z)
         scalar = np.isscalar(t)
@@ -432,7 +596,7 @@ class FirstPassageProcessModel(SerialisableMixin):
         tt = np.atleast_1d(t)
         if clock is not None:
             tt = clock.tau(np.asarray(tt, dtype=float))
-        res = 1.0 - self._ff_distance(tt, self.threshold)
+        res = self._sf_distance(tt, self.threshold)
         return float(res[0]) if scalar else res
 
     def df(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
@@ -452,11 +616,37 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     def hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Hazard function of the first-passage time."""
-        return self.df(t, Z) / self.sf(t, Z)
+        clock = self._clock(Z)
+        scalar = np.isscalar(t)
+        tt = np.atleast_1d(np.asarray(t, dtype=float))
+        tau = tt if clock is None else clock.tau(tt)
+        # In log space: far in the upper tail the density and the survival
+        # both underflow to zero, and their plain ratio is 0/0 = nan, while
+        # the hazard itself stays finite.
+        log_df = self._log_df0(tau)
+        log_sf = self._log_sf_distance(tau, self.threshold)
+        # (a zero density with a positive survival -- e.g. before t = 0 --
+        # is a zero hazard; where both have underflowed the ratio is
+        # unknown, nan)
+        with np.errstate(invalid="ignore"):
+            res = np.where(
+                np.isneginf(log_df) & ~np.isneginf(log_sf),
+                0.0,
+                np.exp(log_df - log_sf),
+            )
+        if clock is not None:
+            res = res * clock.rate_at(tt)
+        return float(res[0]) if scalar else res
 
     def Hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Cumulative hazard of the first-passage time."""
-        return -np.log(self.sf(t, Z))
+        clock = self._clock(Z)
+        scalar = np.isscalar(t)
+        tt = np.atleast_1d(np.asarray(t, dtype=float))
+        if clock is not None:
+            tt = clock.tau(tt)
+        res = -self._log_sf_distance(tt, self.threshold)
+        return float(res[0]) if scalar else res
 
     def qf(self, p: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Quantile (inverse CDF) of the first-passage time."""
@@ -478,13 +668,33 @@ class FirstPassageProcessModel(SerialisableMixin):
             return self._mean0()
         if clock.rate is not None:
             return self._mean0() / clock.rate
-        val, _ = quad(
-            lambda t: float(np.ravel(self.sf(t, Z))[0]),
-            0.0,
-            np.inf,
-            limit=200,
+        # As in the gamma process's ``_mean0``: integrate where ``sf``
+        # falls (between its extreme quantiles, split at the interior ones
+        # and at the profile's steps) rather than over (0, inf), which
+        # misses a sharp drop.
+        qs = np.atleast_1d(
+            self.qf(
+                [1e-12, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0 - 1e-10],
+                Z,
+            )
         )
-        return val
+        lo, hi = float(qs[0]), float(qs[-1])
+        if not np.isfinite(hi):
+            return np.inf
+        assert clock.schedule is not None
+        steps = clock.schedule.edges
+        steps = steps[np.isfinite(steps) & (steps > lo) & (steps < hi)]
+        edges = np.unique(np.concatenate([qs, steps]))
+        total = lo
+        for a, b in zip(edges[:-1], edges[1:]):
+            val, _ = quad(
+                lambda t: float(np.ravel(self.sf(t, Z))[0]),
+                float(a),
+                float(b),
+                limit=200,
+            )
+            total += val
+        return float(total)
 
     def random(
         self,
@@ -492,7 +702,20 @@ class FirstPassageProcessModel(SerialisableMixin):
         random_state: "int | None" = None,
         Z: Any = None,
     ) -> npt.NDArray:
-        """Draw first-passage (failure) times from the fitted model."""
+        """
+        Draw first-passage (failure) times from the fitted model.
+
+        Parameters
+        ----------
+        size : int
+            Number of draws.
+        random_state : int, optional
+            Seed for reproducible draws.
+        Z : array like or StepSchedule, optional
+            The stress, for a model fitted with ``Z`` (required then);
+            each reference-stress draw is carried to calendar time along
+            its clock.
+        """
         clock = self._clock(Z)
         rng = np.random.default_rng(random_state)
         draws = self._random0(size, rng)
@@ -533,12 +756,24 @@ class FirstPassageProcessModel(SerialisableMixin):
         current_degradation : float
             The unit's current degradation level.
         alpha_ci : float, optional
-            Tail probability of the returned interval. Default ``0.05``.
+            Tail probability of the returned interval, between 0 and 1.
+            Default ``0.05``.
         Z : array like or StepSchedule, optional
-            For a model fitted with stress: the stress the unit will run
-            at from now on -- one row for a constant stress, or a
-            :class:`~surpyval.StepSchedule` whose time zero is *now*.
+            For a model fitted with stress: the stress the unit will run at
+            from now on -- one row for a constant stress, or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            whose time zero is *now*.
+
+        Returns
+        -------
+        ProcessRUL
+            The median remaining life and its equal-tailed interval.
         """
+        if not 0.0 < float(alpha_ci) < 1.0:
+            # 1.5 used to give an inverted interval
+            raise ValueError(
+                "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
+            )
         clock = self._clock(Z)
         distance = self.threshold - float(current_degradation)
         if distance <= 0:
@@ -597,6 +832,14 @@ class WienerProcessModel(FirstPassageProcessModel):
     ) -> None:
         self.mu = float(mu)
         self.sigma = float(sigma)
+        if not (np.isfinite(self.sigma) and self.sigma > 0):
+            # sigma = 0 is a deterministic path (first passage exactly at
+            # threshold / mu), outside the Inverse-Gaussian family; it used
+            # to surface later as a bare ZeroDivisionError.
+            raise ValueError(
+                "the diffusion sigma must be positive and finite, got "
+                "{!r}".format(sigma)
+            )
         self.threshold = float(threshold)
         self.params = np.array([self.mu, self.sigma])
         self._init_stress(gamma, stress_ref)
@@ -608,30 +851,68 @@ class WienerProcessModel(FirstPassageProcessModel):
         lam = distance**2 / self.sigma**2
         return nu, lam
 
+    def _ig_terms(
+        self, t: npt.NDArray, distance: float
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        The two pieces of the Inverse-Gaussian CDF at ``t > 0``,
+        ``F = Phi(a) + exp(2 lam / nu) Phi(-b)``: returns ``a`` and the log
+        of the second term, ``2 lam / nu + log Phi(-b)``.
+
+        The second term is formed in log space because ``exp(2 lam / nu)``
+        overflows once ``2 D mu / sigma**2`` passes ~709 (a low-noise or
+        high-threshold process), which made ``sf``/``ff`` nan. The log is
+        always at most about ``-log(b)``: ``b**2 / 2 >= 2 lam / nu``.
+        """
+        nu, lam = self._ig(distance)
+        root = np.sqrt(lam / t)
+        a = root * (t / nu - 1.0)
+        b = root * (t / nu + 1.0)
+        return a, 2.0 * lam / nu + log_ndtr(-b)
+
     def _ff_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
         # Inverse-Gaussian first-passage CDF over ``distance``.
         t = np.asarray(t, dtype=float)
-        nu, lam = self._ig(distance)
         out = np.zeros_like(t, dtype=float)
         pos = t > 0
+        a, log_second = self._ig_terms(t[pos], distance)
+        out[pos] = np.minimum(norm.cdf(a) + np.exp(log_second), 1.0)
+        return out
+
+    def _log_sf_distance(
+        self, t: npt.ArrayLike, distance: float
+    ) -> npt.NDArray:
+        # log S = log(Phi(-a) - exp(log_second))
+        #       = log Phi(-a) + log(1 - exp(log_second - log Phi(-a))),
+        # accurate far into the upper tail where both terms underflow and
+        # ``1 - F`` is lost to rounding.
+        t = np.asarray(t, dtype=float)
+        out = np.zeros_like(t, dtype=float)
+        pos = t > 0
+        a, log_second = self._ig_terms(t[pos], distance)
+        log_upper = log_ndtr(-a)
+        ratio = np.minimum(log_second - log_upper, 0.0)
+        with np.errstate(divide="ignore"):
+            out[pos] = log_upper + np.log(-np.expm1(ratio))
+        return out
+
+    def _sf_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
+        return np.exp(self._log_sf_distance(t, distance))
+
+    def _log_df0(self, t: npt.NDArray) -> npt.NDArray:
+        # Log density of the first-passage (Inverse-Gaussian) time.
+        nu, lam = self._ig(self.threshold)
+        out = np.full_like(t, -np.inf, dtype=float)
+        pos = t > 0
         tp = t[pos]
-        root = np.sqrt(lam / tp)
-        cdf = norm.cdf(root * (tp / nu - 1.0)) + np.exp(
-            2.0 * lam / nu
-        ) * norm.cdf(-root * (tp / nu + 1.0))
-        out[pos] = cdf
+        out[pos] = 0.5 * np.log(lam / (2.0 * np.pi * tp**3)) - lam * (
+            tp - nu
+        ) ** 2 / (2.0 * nu**2 * tp)
         return out
 
     def _df0(self, t: npt.NDArray) -> npt.NDArray:
         # Density of the first-passage (Inverse-Gaussian) time.
-        nu, lam = self._ig(self.threshold)
-        out = np.zeros_like(t)
-        pos = t > 0
-        tp = t[pos]
-        out[pos] = np.sqrt(lam / (2.0 * np.pi * tp**3)) * np.exp(
-            -lam * (tp - nu) ** 2 / (2.0 * nu**2 * tp)
-        )
-        return out
+        return np.exp(self._log_df0(t))
 
     def _mean0(self) -> float:
         # Mean time to failure, ``threshold / mu``.
@@ -707,6 +988,32 @@ class WienerProcess:
         Returns
         -------
         WienerProcessModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ``mean``, ...) give the first-passage time to
+            ``threshold``.
+
+        Examples
+        --------
+        Five units whose degradation drifts upwards at 0.5 per unit time
+        with Brownian noise:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import WienerProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)  # 5 units, 11 readings
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.normal(0.5 * 10, 1.0 * np.sqrt(10), size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = WienerProcess.fit(t, y, i, threshold=100)
+        >>> model
+        Wiener Process Degradation Model
+        ================================
+        Drift (mu)          : 0.488591
+        Diffusion (sigma)   : 0.88113
+        Threshold           : 100
+        Mean time to failure: 204.67
+        >>> model.sf([150, 200]).round(4)
+        array([0.9922, 0.548 ])
         """
         if Z is None:
             if stress_ref is not None:
@@ -718,6 +1025,7 @@ class WienerProcess:
             sigma2 = np.mean((dy - mu * dt) ** 2 / dt)
             sigma = np.sqrt(sigma2)
             cls._check_drift(mu)
+            cls._check_noise(sigma2, dy, dt)
             return WienerProcessModel(mu, sigma, threshold)
 
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
@@ -736,6 +1044,7 @@ class WienerProcess:
         g = _minimise(lambda v: profile(v)[0], np.zeros(z_int.shape[1]))
         _, mu, sigma2 = profile(g)
         cls._check_drift(mu)
+        cls._check_noise(sigma2, dy, dt * np.exp(s @ g))
         return WienerProcessModel(
             mu,
             np.sqrt(sigma2),
@@ -743,6 +1052,23 @@ class WienerProcess:
             gamma=g / scale,
             stress_ref=z_ref,
         )
+
+    @staticmethod
+    def _check_noise(
+        sigma2: float, dy: npt.NDArray, dtau: npt.NDArray
+    ) -> None:
+        # Increments exactly proportional to the elapsed time (noise-free
+        # data) give sigma = 0: a deterministic path, not a Wiener process.
+        # Compare against the size of the increments so round-off in the
+        # measurements and in ``dy - mu * dt`` does not count as noise.
+        floor = 1e-20 * float(np.mean(dy**2 / dtau))
+        if not sigma2 > floor:
+            raise ValueError(
+                "the fitted diffusion sigma is 0: every increment is exactly "
+                "proportional to its time step (noise-free data), so the "
+                "degradation is a deterministic line reaching the threshold "
+                "at threshold / mu, not a Wiener process"
+            )
 
     @staticmethod
     def _check_drift(mu: float) -> None:
@@ -824,20 +1150,43 @@ class GammaProcessModel(FirstPassageProcessModel):
         out = np.clip(out, 0.0, None)
         return out
 
-    def _mean0(self) -> float:
-        # Mean time to failure, the integral of the survival function.
-        val, _ = quad(
-            lambda t: self._sf_distance_scalar(t, self.threshold),
-            0.0,
-            np.inf,
-            limit=200,
-        )
-        return val
+    def _sf_distance(self, t: npt.ArrayLike, distance: float) -> npt.NDArray:
+        # P(T > t) = P(W(t) < distance), the regularised lower incomplete
+        # gamma function (exact in its own tail, unlike ``1 - ff``).
+        t = np.asarray(t, dtype=float)
+        out = np.ones_like(t, dtype=float)
+        pos = t > 0
+        out[pos] = gammainc(self.alpha * t[pos], self.beta * distance)
+        return out
 
-    def _sf_distance_scalar(self, t: float, distance: float) -> float:
-        if t <= 0:
-            return 1.0
-        return 1.0 - gammaincc(self.alpha * t, self.beta * distance)
+    def _mean0(self) -> float:
+        # Mean time to failure, the integral of the survival function. A
+        # quadrature over (0, inf) misses the drop of ``sf`` when it is
+        # sharp next to its location (large ``beta * threshold``: the
+        # failure time is then concentrated around ``beta * threshold /
+        # alpha``) and returned garbage (even -1). So integrate where ``sf``
+        # actually falls -- between its extreme quantiles, split at the
+        # interior ones -- and add the stretch before it, where ``sf`` is 1
+        # to within the tail probability.
+        lo = self._quantile(1e-12, self.threshold)
+        hi = self._quantile(1.0 - 1e-10, self.threshold)
+        if not np.isfinite(hi):
+            return np.inf
+        points = [
+            self._quantile(p, self.threshold)
+            for p in (0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99)
+        ]
+        edges = np.unique(np.concatenate([[lo], points, [hi]]))
+        total = float(lo)
+        for a, b in zip(edges[:-1], edges[1:]):
+            val, _ = quad(
+                lambda t: float(self._sf_distance(t, self.threshold)),
+                float(a),
+                float(b),
+                limit=200,
+            )
+            total += val
+        return total
 
     def _quantile_hi0(self, distance: float) -> float:
         # rough starting scale from the mean increment rate
@@ -879,6 +1228,11 @@ class GammaProcess:
         threshold: float,
         Z: npt.ArrayLike | None = None,
         stress_ref: npt.ArrayLike | None = None,
+        resolution: "float | None" = None,
+        gauge: "float | None" = None,
+        rounding: str = "nearest",
+        exact_start: bool = False,
+        gauge_method: str = "exact",
     ) -> "GammaProcessModel":
         """
         Fit a Gamma-process degradation model by maximum likelihood.
@@ -886,6 +1240,39 @@ class GammaProcess:
         The degradation must be monotone increasing (all increments
         non-negative); an increment that decreases raises an error pointing to
         the Wiener model for non-monotone signals.
+
+        A gamma increment is zero with probability zero, so an increment
+        recorded as exactly zero means the change was below the measurement
+        resolution: it enters the likelihood as censored,
+        ``P(increment <= resolution)``. Data without zero increments is
+        fitted by the ordinary likelihood.
+
+        That treats every *non-zero* increment as exact, which is fine when
+        the readings are much finer than the increments. When they come
+        from a coarse gauge -- a step comparable to the increments -- every
+        increment is rounded, and the fit is biased (``alpha`` can come out
+        at double or half its value, see the example below). Pass
+        the gauge step as ``gauge`` to fit the quantised likelihood
+        instead: a reading ``r`` then means the true level lies somewhere
+        in the gauge bin around ``r``, and the likelihood of a unit is the
+        probability that its whole path passes through its recorded bins.
+        The increments of a path are not independent once rounded (two
+        consecutive increments share the rounding error of the reading
+        between them), so ``gauge_method="exact"`` evaluates that path
+        probability by a forward recursion over each unit's readings,
+        carrying the distribution of the true level across its bin (on a
+        grid of cells, integrated exactly within each cell).
+        ``gauge_method="independent"`` is a cheaper approximation that
+        multiplies the exact probabilities of the single recorded increments,
+        ignoring their dependence; it is nearly unbiased too, but less
+        efficient. The true level at a unit's first reading is taken to be
+        uniform over its bin, unless ``exact_start`` says it is known.
+
+        A gauge coarser than the scatter a unit's degradation builds up
+        over the whole test leaves the readings unable to tell a random
+        path from a straight line: ``alpha`` and ``beta`` then run off to
+        large values together, while their ratio (the mean rate) and the
+        mean life stay well estimated.
 
         Parameters
         ----------
@@ -909,24 +1296,122 @@ class GammaProcess:
         stress_ref : array_like, optional
             The reference stress at which the fitted ``alpha`` applies.
             Defaults to the mean stress over the measurement intervals.
+        resolution : float, optional
+            The measurement resolution: an increment recorded as zero is
+            taken to be somewhere in ``[0, resolution]``. Defaults to the
+            smallest positive increment in the data (for readings rounded to
+            a grid, the grid step). Only used when some increment is zero,
+            and not with ``gauge``, which models the zeros itself.
+        gauge : float, optional
+            The step of the gauge the readings were rounded to. Given, the
+            fit uses the quantised likelihood described above; the
+            differences between readings of a unit must then be whole
+            multiples of it. The default, ``None``, keeps the likelihood
+            above (exact non-zero increments, censored zeros).
+        rounding : {"nearest", "floor"}, optional
+            How the gauge rounds, with ``gauge``: ``"nearest"`` (the
+            default) means a reading ``r`` stands for a true level in
+            ``[r - gauge/2, r + gauge/2)``; ``"floor"`` (a gauge that
+            truncates, or a counter that ticks once a whole step is
+            complete) means ``[r, r + gauge)``. Only differences between
+            bins enter the likelihood, so the convention changes the fit
+            only together with ``exact_start``.
+        exact_start : bool, optional
+            With ``gauge``: ``True`` if each unit's first reading is its
+            exact true level (for instance new units at zero wear, not read
+            off the gauge), so that later bins are placed relative to it by
+            ``rounding``. The default, ``False``, treats the first reading
+            as a gauge reading like the rest.
+        gauge_method : {"exact", "independent"}, optional
+            With ``gauge``: ``"exact"`` (the default) for the path
+            likelihood, ``"independent"`` for the cheaper approximation
+            that treats the rounded increments as independent. The exact
+            method costs several times as much: a few hundred increments
+            take a fraction of a second, ten thousand a few seconds.
 
         Returns
         -------
         GammaProcessModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ``mean``, ...) give the first-passage time to
+            ``threshold``.
+
+        Examples
+        --------
+        Five units whose wear accumulates in non-negative gamma-distributed
+        increments (mean 0.5 per unit time):
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import GammaProcess
+        >>> rng = np.random.default_rng(1)
+        >>> t = np.tile(np.arange(0, 110, 10.0), 5)  # 5 units, 11 readings
+        >>> i = np.repeat(np.arange(5), 11)
+        >>> steps = rng.gamma(shape=2.0 * 10, scale=0.25, size=(5, 10))
+        >>> y = np.hstack([np.r_[0.0, np.cumsum(s)] for s in steps])
+        >>> model = GammaProcess.fit(t, y, i, threshold=100)
+        >>> model
+        Gamma Process Degradation Model
+        ===============================
+        Shape rate (alpha)  : 2.61045
+        Rate (beta)         : 5.45561
+        Threshold           : 100
+        Mean time to failure: 209.183
+        >>> model.sf([150, 200]).round(4)
+        array([1.    , 0.8477])
+
+        The same wear read off a gauge with a step of 2. Rounding turns
+        increments of about 5 into 4s and 6s, so fitted as exact increments
+        they look far more variable than they are and ``alpha`` halves;
+        the quantised likelihood puts it back near the 2.61 of the
+        unrounded readings:
+
+        >>> y_gauge = np.round(y / 2.0) * 2.0
+        >>> naive = GammaProcess.fit(t, y_gauge, i, threshold=100)
+        >>> quantised = GammaProcess.fit(t, y_gauge, i, 100, gauge=2.0)
+        >>> print(round(naive.alpha, 2), round(quantised.alpha, 2))
+        1.07 2.16
         """
+        if gauge is not None:
+            return cls._quantised_fit(
+                x,
+                y,
+                i,
+                threshold,
+                Z,
+                stress_ref,
+                resolution,
+                float(gauge),
+                rounding,
+                exact_start,
+                gauge_method,
+            )
+        if rounding != "nearest" or exact_start or gauge_method != "exact":
+            raise ValueError(
+                "rounding, exact_start and gauge_method describe the gauge, "
+                "so they are only meaningful with gauge"
+            )
         if Z is None:
             if stress_ref is not None:
                 raise ValueError("stress_ref is only meaningful with Z")
             dt, dy = _increments(x, y, i)
             cls._check_monotone(dy)
-            alpha, beta = cls._profile_fit(dt, dy)
+            zero, delta = cls._zero_increments(dy, resolution)
+            if zero.any():
+                alpha, beta, _ = cls._censored_fit(dt, dy, zero, delta, None)
+            else:
+                alpha, beta = cls._profile_fit(dt, dy)
             return GammaProcessModel(alpha, beta, threshold)
 
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
         assert z_int is not None
         cls._check_monotone(dy)
+        zero, delta = cls._zero_increments(dy, resolution)
         s, z_ref, scale = _stress_design(z_int, stress_ref)
-        dy = np.where(dy <= 0, 1e-12, dy)
+        if zero.any():
+            alpha, beta, g = cls._censored_fit(dt, dy, zero, delta, s)
+            return GammaProcessModel(
+                alpha, beta, threshold, gamma=g / scale, stress_ref=z_ref
+            )
         sum_dy = dy.sum()
         log_dy = np.log(dy)
 
@@ -953,6 +1438,201 @@ class GammaProcess:
         )
 
     @staticmethod
+    def _zero_increments(
+        dy: npt.NDArray, resolution: "float | None"
+    ) -> tuple[npt.NDArray, float]:
+        """The zero increments (changes below the measurement resolution)
+        and the resolution they are censored at."""
+        positive = dy[dy > 0]
+        if positive.size == 0:
+            raise ValueError(
+                "every increment is zero, so the degradation never moves "
+                "and a gamma process cannot be fitted"
+            )
+        if resolution is None:
+            return dy == 0, float(positive.min())
+        resolution = float(resolution)
+        if not (np.isfinite(resolution) and resolution > 0):
+            raise ValueError(
+                "resolution must be a positive, finite number, got "
+                "{!r}".format(resolution)
+            )
+        return dy == 0, resolution
+
+    @classmethod
+    def _censored_fit(
+        cls,
+        dt: npt.NDArray,
+        dy: npt.NDArray,
+        zero: npt.NDArray,
+        resolution: float,
+        s: "npt.NDArray | None",
+    ) -> tuple[float, float, npt.NDArray]:
+        """
+        Maximum likelihood with the zero increments censored at the
+        resolution: each contributes ``P(increment <= resolution)``, the
+        regularised lower incomplete gamma function, instead of a density.
+
+        An exact zero has no gamma density (its log is ``-inf``); nudging
+        it to a tiny positive value, as this fit used to, lets the arbitrary
+        nudge drive the estimates (a data set rounded to its resolution had
+        its shape cut twenty-fold). Returns ``(alpha, beta, g)`` with ``g``
+        the scaled stress coefficients (empty without stress).
+        """
+        pos = ~zero
+        dy_pos = dy[pos]
+        log_dy = np.log(dy_pos)
+        q = 0 if s is None else s.shape[1]
+        tiny = np.finfo(float).tiny
+
+        def neg_ll(v: npt.NDArray) -> float:
+            alpha, beta = np.exp(v[0]), np.exp(v[1])
+            dtau = dt if s is None else dt * np.exp(s @ v[2:])
+            k = alpha * dtau
+            kp = k[pos]
+            ll = np.sum(
+                kp * np.log(beta)
+                + (kp - 1.0) * log_dy
+                - beta * dy_pos
+                - gammaln(kp)
+            )
+            below = gammainc(k[zero], beta * resolution)
+            ll += np.sum(np.log(np.maximum(below, tiny)))
+            return float(-ll)
+
+        # start from the fit to the positive increments alone
+        alpha0, beta0 = cls._profile_fit(dt[pos], dy_pos)
+        v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], np.zeros(q)])
+        v = _minimise(neg_ll, v0)
+        return float(np.exp(v[0])), float(np.exp(v[1])), v[2:]
+
+    #: Cells each gauge bin is split into by the exact quantised
+    #: likelihood. The discretisation error falls as the square of the cell
+    #: width; sixteen puts the log-likelihood within about 1e-4 per
+    #: increment of the limit (checked against Monte Carlo path
+    #: probabilities), far inside the sampling error of the estimates.
+    _GAUGE_CELLS = 16
+
+    @classmethod
+    def _quantised_fit(
+        cls,
+        x: npt.ArrayLike,
+        y: npt.ArrayLike,
+        i: npt.ArrayLike,
+        threshold: float,
+        Z: Any,
+        stress_ref: Any,
+        resolution: "float | None",
+        gauge: float,
+        rounding: str,
+        exact_start: bool,
+        gauge_method: str,
+    ) -> "GammaProcessModel":
+        """
+        Maximum likelihood for readings rounded to a gauge of step
+        ``gauge``: the probability that each unit's true path passes
+        through the gauge bins of its readings.
+
+        The level at a unit's ``j``-th reading lies in a bin of width
+        ``gauge``, and the bins of consecutive readings are ``Delta_j`` (the
+        recorded increment) apart. Split every bin into ``m`` cells of
+        width ``h``, and carry the probability of each cell forward along
+        the path; within a cell the level is taken as uniform, so the
+        step from cell ``a`` of one bin to cell ``b`` of the next is an
+        increment into a window ``d = Delta_j + (b - a) h`` away, with
+        probability ``(H(d + h) - 2 H(d) + H(d - h)) / h`` where ``H`` is
+        the integral of the gamma CDF (:func:`_gauge_cell_probabilities`).
+        The uniform level within a cell is the only approximation -- the
+        increment's distribution is integrated exactly, even the singular
+        density of a shape below one -- and its error falls as ``h**2``.
+        With one cell per bin (``gauge_method="independent"``) the
+        recursion reduces to the product of the single-increment
+        probabilities.
+        """
+        if resolution is not None:
+            raise ValueError(
+                "resolution and gauge are alternatives: resolution censors "
+                "the zero increments alone, while gauge models every reading "
+                "as rounded (zeros included), so pass only gauge"
+            )
+        if not (np.isfinite(gauge) and gauge > 0):
+            raise ValueError(
+                "gauge must be a positive, finite number, got {!r}".format(
+                    gauge
+                )
+            )
+        if rounding not in ("nearest", "floor"):
+            raise ValueError(
+                'rounding must be "nearest" or "floor", got {!r}'.format(
+                    rounding
+                )
+            )
+        if gauge_method not in ("exact", "independent"):
+            raise ValueError(
+                'gauge_method must be "exact" or "independent", got '
+                "{!r}".format(gauge_method)
+            )
+        s: "npt.NDArray | None" = None
+        if Z is None:
+            if stress_ref is not None:
+                raise ValueError("stress_ref is only meaningful with Z")
+            dt, dy = _increments(x, y, i)
+        else:
+            dt, dy, z_int = _increments_and_stress(x, y, i, Z)
+            assert z_int is not None
+            s, z_ref, scale = _stress_design(z_int, stress_ref)
+
+        # Recorded increments, snapped to whole gauge steps (readings such
+        # as 12.3 - 12.2 carry floating-point noise). A difference that is
+        # not a whole number of steps cannot come from this gauge, which
+        # usually means the wrong step (or units) was given.
+        steps = dy / gauge
+        whole = np.round(steps)
+        if np.any(np.abs(steps - whole) > 1e-6 * np.maximum(1.0, whole)):
+            raise ValueError(
+                "the readings are not on the grid of gauge = {:g}: the "
+                "differences between a unit's readings must be whole "
+                "multiples of the gauge step".format(gauge)
+            )
+        delta = whole * gauge
+        cls._check_monotone(delta)
+        zero, _ = cls._zero_increments(delta, gauge)
+
+        m = cls._GAUGE_CELLS if gauge_method == "exact" else 1
+        # With an exact start the level begins at a point of the first bin:
+        # its middle when rounding to nearest, its bottom when flooring.
+        start = None
+        if exact_start:
+            start = 0.5 * gauge if rounding == "nearest" else 0.0
+        log_lik = _quantised_log_likelihood(delta, i, gauge, m, start)
+
+        def neg_ll(v: npt.NDArray) -> float:
+            # per increment, so the optimiser's absolute gradient tolerance
+            # does not tighten with the size of the data (see below)
+            dtau = dt if s is None else dt * np.exp(s @ v[2:])
+            ll = log_lik(np.exp(v[0]) * dtau, float(np.exp(v[1])))
+            return -ll / len(dt)
+
+        # the censored fit (zeros censored at the gauge step, every other
+        # increment exact) is the starting point
+        alpha0, beta0, g0 = cls._censored_fit(dt, delta, zero, gauge, s)
+        v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], g0])
+        # The recursion sums many second differences, so the log-likelihood
+        # carries round-off noise (around 1e-13 for a few hundred
+        # increments, growing with their number) -- enough to spoil forward
+        # difference gradients, and to stall BFGS short of an absolute
+        # gradient tolerance on a large data set, leaving the slow
+        # Nelder-Mead fallback to finish. Central differences on the
+        # per-increment log-likelihood avoid both.
+        v = _minimise(neg_ll, v0, jac="3-point")
+        alpha, beta = float(np.exp(v[0])), float(np.exp(v[1]))
+        if s is None:
+            return GammaProcessModel(alpha, beta, threshold)
+        return GammaProcessModel(
+            alpha, beta, threshold, gamma=v[2:] / scale, stress_ref=z_ref
+        )
+
+    @staticmethod
     def _check_monotone(dy: npt.NDArray) -> None:
         if np.any(dy < 0):
             raise ValueError(
@@ -963,10 +1643,9 @@ class GammaProcess:
 
     @staticmethod
     def _profile_fit(dt: npt.NDArray, dy: npt.NDArray) -> tuple[float, float]:
-        """The stationary (stress-free) fit: ``(alpha, beta)``."""
-        # Guard against exact-zero increments (log 0) by nudging.
-        dy = np.where(dy <= 0, 1e-12, dy)
-
+        """The stationary (stress-free) fit: ``(alpha, beta)``, for
+        strictly positive increments (zeros go through
+        :meth:`_censored_fit`)."""
         sum_dt = dt.sum()
         sum_dy = dy.sum()
         log_dy = np.log(dy)

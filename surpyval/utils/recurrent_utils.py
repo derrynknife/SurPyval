@@ -22,6 +22,15 @@ def reject_left_truncation(data: RecurrentEventData, model_name: str) -> None:
             "intensity model (HPP, CrowAMSAA, Duane, CoxLewis) for delayed "
             "entry.".format(model_name)
         )
+    # These models measure time from the start of each item's life (the
+    # first gap starts at 0 whatever ``tl`` says), so a negative time --
+    # admitted by ``handle_xicn`` under a negative ``tl`` -- would give a
+    # negative gap.
+    if np.any(np.asarray(data.x, dtype=float) < 0):
+        raise ValueError(
+            "{} measures times from the start of each item's life, so they "
+            "cannot be negative.".format(model_name)
+        )
 
 
 def reject_unsupported_nonparametric(
@@ -30,19 +39,13 @@ def reject_unsupported_nonparametric(
     """
     The nonparametric MCF estimators (``NonParametricCounting`` and
     ``CauseSpecificMCF``) currently only support exact events (``c=0``) and
-    right-censored end-of-observation rows (``c=1``), with at most a left
-    truncation (delayed entry) on the observation window. Right truncation,
-    left censoring and interval censoring are not yet handled correctly by the
-    risk-set construction, so reject them up front rather than silently
-    returning a wrong MCF.
+    right-censored end-of-observation rows (``c=1``), on an observation window
+    that may be left truncated (delayed entry, ``tl``) and right truncated
+    (``tr``, which closes the window like an end-of-observation row). Left
+    and interval censoring are not yet handled correctly by the risk-set
+    construction, so reject them up front rather than silently returning a
+    wrong MCF.
     """
-    if np.any(np.isfinite(np.asarray(data.tr))):
-        raise ValueError(
-            "{} does not support right truncation (finite tr) yet.".format(
-                model_name
-            )
-        )
-
     c = np.asarray(data.c)
     if np.any(c == -1):
         raise ValueError(
@@ -71,6 +74,45 @@ def validate_memory(m: object) -> None:
         )
 
 
+def validate_restoration(
+    value: object,
+    name: str,
+    bounds: "tuple[float | None, float | None]",
+    open_lower: bool = False,
+) -> None:
+    """
+    Check a repair / restoration parameter given to ``fit_from_parameters``
+    against the range its model is defined on (the fitters already search
+    only inside it). Outside it the virtual ages go negative (a Kijima
+    ``q < 0``, an ARA ``rho > 1``) or the G1 scale ``(1 + q) ** j`` stops
+    being a positive scale (``q <= -1``), and the simulation returns
+    meaningless or failing sequences instead of an error.
+    """
+    try:
+        v = float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise ValueError(
+            "{} must be a number; got {!r}".format(name, value)
+        ) from None
+    lower, upper = bounds
+    low_ok = lower is None or (v > lower if open_lower else v >= lower)
+    high_ok = upper is None or v <= upper
+    if not (np.isfinite(v) and low_ok and high_ok):
+        low_txt = "-inf" if lower is None else str(lower)
+        high_txt = "inf" if upper is None else str(upper)
+        interval = "{}{}, {}{}".format(
+            "(" if open_lower or lower is None else "[",
+            low_txt,
+            high_txt,
+            ")" if upper is None else "]",
+        )
+        raise ValueError(
+            "{} must be finite and in {}; got {!r}".format(
+                name, interval, value
+            )
+        )
+
+
 def validate_renewal_censoring(c: npt.ArrayLike, model_name: str) -> None:
     """
     The renewal models only define likelihood contributions for exact events
@@ -85,6 +127,119 @@ def validate_renewal_censoring(c: npt.ArrayLike, model_name: str) -> None:
             "observations; received unsupported censoring code(s) {}. "
             "Interval (c=2) and left (c=-1) censoring are not "
             "supported.".format(model_name, unsupported)
+        )
+
+
+def validate_nhpp_data(data: RecurrentEventData, dist: object) -> None:
+    """
+    Reject data an intensity (NHPP) model cannot be fitted to, rather than
+    return an optimiser's meaningless stopping point as the MLE.
+
+    - No events at all (every row an end-of-observation ``c=1`` row): the
+      likelihood only ever rewards a lower intensity, so there is no
+      maximum.
+    - Times outside the intensity's support. The power-law models
+      (``CrowAMSAA``, ``Duane``) are defined for ``t >= 0`` and their
+      intensity is 0 or infinite at ``t = 0``, so an event there makes the
+      likelihood unbounded and a window reaching below 0 (a negative
+      ``tl``) is outside the model altogether.
+    - A single failure-truncated event for a model with two or more
+      parameters: one time point cannot identify two parameters (the
+      Crow-AMSAA ``beta`` runs off to infinity).
+    """
+    c = np.asarray(data.c)
+    name = getattr(dist, "name", type(dist).__name__)
+    if not np.any(c != 1):
+        raise ValueError(
+            "The data has no events (every row is an end-of-observation "
+            "c=1 row), so the {} intensity cannot be estimated.".format(name)
+        )
+
+    lower, upper = getattr(dist, "support", (-np.inf, np.inf))
+    x = np.asarray(data.x, dtype=float)
+    x_lo = x if x.ndim == 1 else x[:, 0]
+    x_hi = x if x.ndim == 1 else x[:, 1]
+    tl = np.asarray(data.tl, dtype=float)
+    tr = np.asarray(data.tr, dtype=float)
+    # Every time the likelihood integrates over -- event and censoring
+    # rows, and finite window bounds -- must lie in the closed support.
+    times = np.concatenate(
+        [x_lo, x_hi, tl[np.isfinite(tl)], tr[np.isfinite(tr)]]
+    )
+    if np.any(times < lower) or np.any(times > upper):
+        raise ValueError(
+            "The {} intensity is defined on [{}, {}], but the data has "
+            "times (event, censoring or truncation) outside it.".format(
+                name, lower, upper
+            )
+        )
+    # An exact event on the boundary of the support has a zero or infinite
+    # intensity there (the power law's t**(beta - 1) at t = 0).
+    exact = x_lo[c == 0]
+    if np.isfinite(lower) and np.any(exact == lower):
+        raise ValueError(
+            "The data has an event at t = {}, the edge of the {} "
+            "intensity's support, where the intensity is 0 or infinite; "
+            "the likelihood has no maximum. Record events at positive "
+            "times.".format(lower, name)
+        )
+
+    n_params = len(getattr(dist, "param_names", ()))
+    events = float(np.asarray(data.n)[c == 0].sum())
+    window_closed = np.any(c != 0) or np.any(np.isfinite(tr))
+    if n_params >= 2 and events == 1 and not window_closed:
+        raise ValueError(
+            "The data has a single event and no observation beyond it "
+            "(failure truncated), which cannot identify the {} parameters "
+            "of the {} intensity. Add the end of the observation window "
+            "(a c=1 row or tr).".format(n_params, name)
+        )
+
+
+def validate_renewal_times(
+    data: RecurrentEventData,
+    dist: object,
+    model_name: str,
+    every_gap_from_new: bool = False,
+) -> None:
+    """
+    Check the event times a lifetime-distribution renewal model can use.
+
+    (Negative times are rejected by ``reject_left_truncation``.) For a
+    lifetime distribution on ``[0, inf)`` a gap measured from virtual age
+    0 must be positive: its density at 0 is 0 or
+    infinite for most shapes (a Weibull's, for one), so the likelihood has
+    no maximum. The first gap of every item starts at age 0, so an event
+    at time 0 is rejected; with ``every_gap_from_new`` (the G1 process,
+    where each gap is a rescaled fresh lifetime) a zero gap anywhere --
+    a tied event time within an item -- is rejected too. The virtual-age
+    models allow tied events later on, where the virtual age is positive.
+    """
+    x = np.asarray(data.x, dtype=float)
+    support = getattr(dist, "support", (0.0, np.inf))
+    if support[0] < 0:
+        return
+    c = np.asarray(data.c)
+    gaps = data.get_interarrival_times()
+    _, first = np.unique(data.i, return_index=True)
+    is_first = np.zeros(len(x), dtype=bool)
+    is_first[first] = True
+    exact_zero = (gaps == 0) & (c == 0)
+    if np.any(exact_zero & is_first):
+        raise ValueError(
+            "{} has an event at time 0: the gap from a new item's age 0 is "
+            "then zero, where the {} density is 0 or infinite, so the "
+            "likelihood has no maximum. Record events at positive "
+            "times.".format(model_name, getattr(dist, "name", "lifetime"))
+        )
+    if every_gap_from_new and np.any(exact_zero):
+        raise ValueError(
+            "{} has tied event times within an item. Each G1 interarrival "
+            "time is a rescaled fresh lifetime, so a zero gap is impossible "
+            "under a continuous {} lifetime; combine tied events or "
+            "separate them in time.".format(
+                model_name, getattr(dist, "name", "lifetime")
+            )
         )
 
 
@@ -303,6 +458,66 @@ def handle_xicn(
     RecurrentEventData
     | tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]
 ):
+    """
+    Validate recurrent-event data given as arrays and assemble it into a
+    :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`, the
+    object every recurrent fitter's ``fit_from_recurrent_data`` takes.
+
+    Each row is one event (or the right-censored end of observation) of
+    the item named in ``i``, at time ``x`` measured from the start of that
+    item's life.
+
+    Parameters
+    ----------
+    x : array like
+        The event times (a 2-D ``[left, right]`` row for an
+        interval-censored count).
+    i : array like, optional
+        The item each row belongs to. Defaults to one item.
+    c : array like, optional
+        Censoring flags: 0 an observed event, 1 the right-censored end of
+        observation, -1 left-censored and 2 interval-censored counts.
+        Defaults to all observed. Rows are sorted by item and time; an
+        end-of-observation row at the same time as an event goes after
+        it, whatever the input order.
+    n : array like, optional
+        The number of events in each row. Defaults to 1.
+    t : array like, optional
+        (N, 2) truncation bounds per row. Use ``tl`` / ``tr`` for per-item
+        bounds instead.
+    tl, tr : array like or scalar, optional
+        Left-truncation (start of observation) and right-truncation (end
+        of observation) times. An item with both a ``c=1`` row and a
+        finite ``tr`` must have them at the same time.
+    Z : array like or dict, optional
+        Covariates: one row per row of ``x`` (the same on every row of an
+        item: covariates are per item), or a ``{item: covariates}``
+        mapping applied to every row of that item.
+    as_recurrent_data : bool, optional
+        If :code:`True` (the default) return a ``RecurrentEventData``;
+        otherwise return the validated ``(x, i, c, n)`` arrays.
+    windows : dict, optional
+        Gapped observation: ``{item: [(start, end), ...]}``. Every row must
+        then be an observed event; the windows supply the censoring rows.
+        Not combinable with ``t``/``tl``/``tr``, ``Z`` or ``e``.
+    e : array like, optional
+        The event type (mark) of each row, for the cause-specific models;
+        a missing value marks a row with no cause (such as the censoring
+        row).
+
+    Returns
+    -------
+    RecurrentEventData or tuple
+        The assembled data, or ``(x, i, c, n)``.
+
+    Examples
+    --------
+    >>> from surpyval import handle_xicn
+    >>> data = handle_xicn([2, 5, 8, 3, 9], i=[1, 1, 1, 2, 2],
+    ...                    c=[0, 0, 1, 0, 1])
+    >>> data.items
+    [1, 2]
+    """
     x = coerce_xcnt_x(x)
 
     if x.shape[0] == 0:
@@ -386,11 +601,21 @@ def handle_xicn(
     Z_arr: npt.NDArray | None = None
     if Z is not None:
         if isinstance(Z, dict):
-            Z_arr = np.array([Z[ii] for ii in i])
+            missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
+            if missing:
+                raise ValueError(
+                    "Z has no covariates for item(s) {}".format(missing)
+                )
+            # a scalar value is a single covariate (it used to give a 1-D
+            # array and an IndexError further on)
+            Z_arr = np.array(
+                [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
+            )
         else:
-            Z_arr = np.array(Z, ndmin=2)
-    # TODO: Z as a dict where the keys are the item numbers and the arrays
-    # are the covariates for each i at all times (x)
+            Z_arr = np.asarray(Z, dtype=float)
+            if Z_arr.ndim == 1:
+                # one covariate: a value per row, not one row of values
+                Z_arr = Z_arr.reshape(-1, 1)
 
     if x.shape[0] != i.shape[0]:
         raise ValueError("x and i must have the same length")
@@ -413,6 +638,15 @@ def handle_xicn(
 
     if np.issubdtype(i.dtype, np.number) and not np.isfinite(i).all():
         raise ValueError("Item identifiers 'i' must be finite (no NaN or inf)")
+    if i.dtype == object:
+        from surpyval.utils import is_missing_event
+
+        # A missing id cannot say which item a row belongs to, and the sort
+        # below would otherwise fail with a bare "'<' not supported".
+        if any(is_missing_event(v) for v in i):
+            raise ValueError(
+                "Item identifiers 'i' must not be missing (None or NaN)"
+            )
 
     # Censoring codes: -1 left, 0 observed, 1 right, 2 interval. ``np.isin``
     # also flags NaN, which is never a valid code.
@@ -446,12 +680,20 @@ def handle_xicn(
             "Counts greater than 1 must be intervally or left censored"
         )
 
-    # sort by item and x
-    if x.ndim == 2:
-        # Order 2D by the midpoint
-        sort_order = np.lexsort((x.mean(axis=1), i))
-    else:
-        sort_order = np.lexsort((x, i))
+    # Sort by item, then time, then censoring code. An end-of-observation
+    # (c=1) row tied with an event at the same time closes the window after
+    # it, so ties put it last (and a left-censored count, which covers the
+    # time from entry, first); otherwise whether the input was accepted
+    # depended on the order the tied rows happened to be given in.
+    tie_order = np.where(c == 1, 3, c)
+    x_key = x.mean(axis=1) if x.ndim == 2 else x  # 2D by the midpoint
+    try:
+        sort_order = np.lexsort((tie_order, x_key, i))
+    except TypeError:
+        raise ValueError(
+            "Item identifiers 'i' must be of one comparable kind (all "
+            "numbers or all strings)"
+        ) from None
 
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
     tl_arr, tr_arr = tl_arr[sort_order], tr_arr[sort_order]
@@ -501,8 +743,8 @@ def handle_xicn(
     x_upper = x if x.ndim == 1 else x[:, 1]
     xl_by_i = np.split(x_lower, idx)[1:]
     xu_by_i = np.split(x_upper, idx)[1:]
-    for ii, tl_i, tr_i, xl_i, xu_i in zip(
-        unique_i, tl_by_i, tr_by_i, xl_by_i, xu_by_i
+    for ii, tl_i, tr_i, xl_i, xu_i, c_i in zip(
+        unique_i, tl_by_i, tr_by_i, xl_by_i, xu_by_i, censoring_by_i
     ):
         if not (np.all(tl_i == tl_i[0]) and np.all(tr_i == tr_i[0])):
             raise ValueError(
@@ -511,6 +753,18 @@ def handle_xicn(
             )
         if tl_i[0] > tr_i[0]:
             raise ValueError(f"Item {ii} has left truncation beyond right")
+        # An end-of-observation (c=1) row and a finite right truncation both
+        # say where the item's window closes, so they must agree: a tr past
+        # the c=1 row claims the item was watched (with no events) after its
+        # observation ended. Models used to resolve this differently (the
+        # cause-specific NHPP closed at the row, the others at tr).
+        if np.isfinite(tr_i[0]) and c_i[-1] == 1 and xu_i[-1] < tr_i[0]:
+            raise ValueError(
+                f"Item {ii} has an end-of-observation (c=1) row at "
+                f"{xu_i[-1]} before its right truncation time tr="
+                f"{tr_i[0]}; both close the observation window, so they "
+                "must agree (drop the c=1 row or set tr to its time)."
+            )
         # The item's first interval is integrated from its entry time: the
         # left-truncation bound when finite, otherwise the fallback origin 0
         # (see RecurrentEventData.get_previous_x). Events below that origin
@@ -524,6 +778,20 @@ def handle_xicn(
                 f"Item {ii} has events outside its observation window "
                 f"[{lower}, {tr_i[0]}]"
             )
+
+    # Covariates describe the item, not the row: the proportional-intensity
+    # likelihood, its tr window close and its diagnostics would otherwise
+    # disagree about which row's values apply (the close and diagnostics
+    # use the first row), so values that change within an item are
+    # rejected rather than half used.
+    if Z_arr is not None:
+        for ii, Z_i in zip(unique_i, np.split(Z_arr, idx)[1:]):
+            if not np.all(Z_i == Z_i[0]):
+                raise ValueError(
+                    f"Item {ii} has covariates Z that change between its "
+                    "rows; covariates are per item (static) and must be "
+                    "the same on every row of an item."
+                )
 
     if as_recurrent_data:
         data = RecurrentEventData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)

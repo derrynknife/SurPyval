@@ -250,7 +250,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         Instantaneous hazard rate for the Exponential Distribution.
 
         .. math::
-            f(x) = \lambda
+            h(x) = \lambda
 
         The failure rate for the exponential distribution is constant. So this
         function only returns the input failure rate in the same shape as x.
@@ -286,7 +286,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         Cumulative hazard rate for the Exponential Distribution.
 
         .. math::
-            f(x) = \lambda x
+            H(x) = \lambda x
 
         Parameters
         ----------

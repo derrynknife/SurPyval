@@ -25,6 +25,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
+from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -245,9 +246,14 @@ class CauseSpecificNHPP(SerialisableMixin):
         e : array like
             Event type (mark) for each row. ``None``/``NaN`` for censored rows.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item.
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item).
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``. It closes
+            the item's window, as a ``c=1`` row does; an item with both
+            must have them at the same time (a ``c=1`` row before ``tr``
+            raises a ``ValueError``).
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default).
         how : str, optional
@@ -340,7 +346,9 @@ class CauseSpecificNHPP(SerialisableMixin):
         return total
 
     def plot(self, ax: Any = None) -> Any:
-        """Overlay the fitted cause-specific CIFs on a single axis."""
+        """Overlay the fitted cause-specific CIFs on a single axis, over
+        the observed time range of the data they were fitted to."""
+        require_data(self, "plot")
         if ax is None:
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)

@@ -10,7 +10,7 @@ from surpyval import np
 from surpyval.univariate.nonparametric import fleming_harrington, turnbull
 from surpyval.utils import xcnt_to_xrd
 
-from . import fallback_minimize
+from . import fallback_minimize, search_floor
 
 
 def mse_fun(
@@ -69,7 +69,9 @@ def mse(model: "Parametric") -> Any:
     hess = hessian(mse_fun)
 
     args = (dist, x, F, inv_trans, const, offset)
-    res = fallback_minimize(mse_fun, init, args, jac, hess)
+    res = fallback_minimize(
+        mse_fun, init, args, jac, hess, floor=search_floor(model)
+    )
 
     results = {}
     results["res"] = res

@@ -128,9 +128,11 @@ def test_initial_guess_offset_seeds_gamma_below_min():
     )
 
     # Offset distributions carry gamma as the leading parameter; the seed
-    # is one below the smallest observation.
+    # is below the smallest observation by the mean spacing of the data
+    # (a step on the data's scale, not one unit of whatever it is in).
     assert len(init) == Weibull.k + 1
-    assert init[0] == pytest.approx(x.min() - 1.0)
+    spacing = np.ptp(x) / (np.unique(x).size - 1)
+    assert init[0] == pytest.approx(x.min() - spacing)
 
 
 def test_initial_guess_interval_data_uses_midpoint():

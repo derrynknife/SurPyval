@@ -455,9 +455,11 @@ def test_bootstrap_bounds_under_a_profile(model):
     assert np.all(band[:, 0] <= band[:, 1])
     sf = model.sf(t, Z=PROFILE)
     assert np.all((band[:, 0] <= sf + 0.05) & (sf - 0.05 <= band[:, 1]))
+    # a reloaded model recovers the fitter the refits need, so it gives
+    # the same band from the same resamples
     restored = DegradationModel.from_dict(model.to_dict())
-    with pytest.raises(RuntimeError, match="restored from a dict"):
-        restored.cb(t, Z=PROFILE, method="bootstrap", n_boot=5, seed=1)
+    again = restored.cb(t, Z=PROFILE, method="bootstrap", n_boot=20, seed=1)
+    np.testing.assert_allclose(again, band)
 
 
 def test_acceleration_factor_needs_a_clock_model():

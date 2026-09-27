@@ -15,12 +15,19 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 
+# How the model was obtained, as the repr reports it.
+_FITTED_BY = {
+    "MLE": "MLE",
+    "MSE": "MSE (least squares on the MCF)",
+    "from_params": "given parameters (not fitted)",
+}
+
 
 class ParametricRecurrenceModel(
     SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
 ):
     """
-    A class for holding the parameters, data, and usefult methods for a
+    A class for holding the parameters, data, and useful methods for a
     fitted parametric recurrence model. This is the result of the ``fit`` calls
     from the counting distributions.
 
@@ -114,7 +121,8 @@ class ParametricRecurrenceModel(
             "Parametric Recurrence SurPyval Model"
             + "\n=================================="
             + f"\nProcess             : {self.dist.name}"
-            + "\nFitted by           : MLE"
+            + "\nFitted by           : "
+            + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
         )
@@ -187,6 +195,22 @@ class ParametricRecurrenceModel(
         return self.dist.iif(x, *self.params)
 
     def inv_cif(self, x: ArrayLike) -> np.ndarray:
+        """
+        The inverse of the cumulative intensity function: the time by which
+        ``x`` events are expected.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Expected numbers of events.
+
+        Returns
+        -------
+
+        array_like
+            The times at which the cumulative intensity reaches ``x``.
+        """
         x = np.array(x)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
@@ -206,13 +230,25 @@ class ParametricRecurrenceModel(
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival times
             ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled
-            across items), which are iid Exp(1) under the fitted model.
+            across items); see below for how far they are iid Exp(1).
             ``'pit'`` applies the probability integral transform
-            ``1 - exp(-e)`` to those residuals, giving iid U(0, 1) values.
+            ``1 - exp(-e)`` to those residuals (U(0, 1) under the same
+            conditions).
             ``'martingale'`` returns one residual per (sorted-unique) item:
             its observed event count minus the count the model expects over
             its observation window; positive values mean the item saw more
             events than predicted.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------
@@ -298,8 +334,11 @@ class ParametricRecurrenceModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
-        self._check_fitted()
+        # Data first: a restored or from_params model has neither data nor
+        # likelihood, and the missing data is the more useful message; an
+        # MSE fit has data but no likelihood to refit by.
         self._check_has_data("cramer_von_mises")
+        self._check_fitted()
         return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
 
     def cif_cb(
@@ -314,8 +353,8 @@ class ParametricRecurrenceModel(
         The variance of the fitted CIF is propagated from the parameter
         covariance (the inverse observed information) through the CIF's
         gradient, and the bounds are computed on the log scale -- the same
-        construction as the exponential Greenwood bounds on the nonparametric
-        MCF -- so they cannot go negative.
+        construction as the default (``bound_type="exp"``) bounds on the
+        nonparametric MCF -- so they cannot go negative.
 
         Parameters
         ----------
@@ -375,6 +414,7 @@ class ParametricRecurrenceModel(
         matplotlib axes
             An axes object with the plot.
         """
+        self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()

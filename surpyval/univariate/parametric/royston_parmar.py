@@ -50,6 +50,7 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.linalg import numerical_hessian
 
 _SCALES = ("hazard", "odds", "normal")
@@ -156,6 +157,9 @@ class RoystonParmarModel(SerialisableMixin):
         self.n = 0
         self.n_events = 0
         self._neg_ll = 0.0
+        # The sample size of bic() (see ic_sample_size), from the data at
+        # fit time.
+        self._ic_n = 0.0
 
     # -- linear predictor --------------------------------------------------
 
@@ -172,25 +176,39 @@ class RoystonParmarModel(SerialisableMixin):
     # -- distribution functions -------------------------------------------
 
     def sf(self, t: Any) -> np.ndarray:
+        """Survival function at ``t``: 1 at and before time 0 (the spline
+        is in ``log t``, which does not exist there, so this came back nan)
+        and 0 at infinity, as in the likelihood (see ``_sf_at``)."""
+        t = np.asarray(t, dtype=float)
         with np.errstate(all="ignore"):
-            return _sf_from_eta(self._eta(t), self.scale)
+            out = _sf_from_eta(self._eta(t), self.scale)
+        out = np.where(t <= 0.0, 1.0, out)
+        return np.where(np.isposinf(t), 0.0, out)
 
     def ff(self, t: Any) -> np.ndarray:
+        """Failure (CDF) function ``1 - sf(t)``."""
         return 1.0 - self.sf(t)
 
     def Hf(self, t: Any) -> np.ndarray:
-        return -np.log(self.sf(t))
+        """Cumulative hazard ``-log sf(t)``."""
+        # + 0.0 turns the -0.0 of -log(1) at t <= 0 into 0.0
+        return -np.log(self.sf(t)) + 0.0
 
     def hf(self, t: Any) -> np.ndarray:
+        """Hazard rate ``df(t) / sf(t)``."""
         return self.df(t) / self.sf(t)
 
     def df(self, t: Any) -> np.ndarray:
+        """Density at ``t``, from the derivative of the spline."""
         t = np.asarray(t, dtype=float)
         with np.errstate(all="ignore"):
             eta = self._eta(t)
             sp = self._eta_deriv(t)
             _, log_negdS = _scale_terms(eta, self.scale)
-            return np.exp(log_negdS + np.log(sp) - np.log(t))
+            out = np.exp(log_negdS + np.log(sp) - np.log(t))
+        # Nothing fails at or before time 0 (nan there before), nor at
+        # infinity; with sf = 1 there, hf and Hf are 0 too.
+        return np.where((t <= 0.0) | np.isposinf(t), 0.0, out)
 
     def qf(self, q: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(t) = q``."""
@@ -212,6 +230,8 @@ class RoystonParmarModel(SerialisableMixin):
         return out[0] if scalar_in else out
 
     def random(self, size: int) -> np.ndarray:
+        """Draw ``size`` random lifetimes (by inverting ``ff``), using
+        NumPy's global random state."""
         return self.qf(np.random.uniform(0, 1, size))
 
     def mean(self) -> float:
@@ -274,15 +294,27 @@ class RoystonParmarModel(SerialisableMixin):
         return len(self.params)
 
     def neg_ll(self) -> float:
+        """The negative log-likelihood at the fitted coefficients."""
         return self._neg_ll
 
     def aic(self) -> float:
+        """Akaike's information criterion, ``2k + 2 neg_ll``."""
         return 2 * self.k + 2 * self._neg_ll
 
     def bic(self) -> float:
-        return self.k * np.log(self.n) + 2 * self._neg_ll
+        """The Bayesian information criterion, ``k log(d) + 2 neg_ll``.
+
+        ``d`` is the number of observed failures -- exact, left- and
+        interval-censored observations, weighted by their counts -- or the
+        number of observations when there is none: the sample size every
+        SurPyval BIC uses (it was the number of observations here, so a
+        spline fit's BIC was not comparable with the parametric fits').
+        """
+        return self.k * np.log(self._ic_n) + 2 * self._neg_ll
 
     def summary(self) -> str:
+        """A text summary of the fit: link scale, knots, likelihood and
+        coefficients."""
         lines = [
             "Royston-Parmar Flexible Parametric Model",
             "========================================",
@@ -304,6 +336,8 @@ class RoystonParmarModel(SerialisableMixin):
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
+        """Serialise the fitted model to a plain dictionary; restore it
+        with :meth:`from_dict` or ``surpyval.from_dict``."""
         out: dict[str, Any] = {
             "model": "RoystonParmarModel",
             "scale": self.scale,
@@ -312,6 +346,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
+            "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -319,6 +354,7 @@ class RoystonParmarModel(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
+        """Rebuild a model from a :meth:`to_dict` dictionary."""
         require_model_tag(
             model_dict, "RoystonParmarModel", "a Royston-Parmar model"
         )
@@ -329,6 +365,12 @@ class RoystonParmarModel(SerialisableMixin):
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        if "ic_n" in model_dict:
+            out._ic_n = float(model_dict["ic_n"])
+        else:
+            # Written before the sample size was stored: the exact failures
+            # are the only failures the dict records.
+            out._ic_n = ic_sample_size([0], [out.n_events], n_rows=out.n)
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         return out
@@ -534,6 +576,7 @@ class RoystonParmar_:
         )
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
+        model._ic_n = ic_sample_size(data.c, data.n)
         return model
 
 

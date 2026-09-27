@@ -295,9 +295,8 @@ def test_cox_array_form_matches_schedule():
 
 
 def test_cox_constant_reduces_to_sf_above_first_event():
-    # Cox's sf clamps the left tail (via _get_idx) to the first jump, so the
-    # constant reduction holds at/above the first event time, where the
-    # Breslow baseline is well defined.
+    # The constant reduction holds at every time; checked here at the
+    # fitted event times, where the Breslow baseline jumps.
     m = _fit_cox_tvc()
     z = 0.6
     t = m.x[m.x > 0][:5]
@@ -329,7 +328,7 @@ def test_cox_covariate_count_checked():
         m.sf_tvc([2.0], StepSchedule.constant([0.5, 0.5]))
 
 
-def test_cox_stratified_rejects_sf_tvc():
+def test_cox_stratified_sf_tvc_needs_and_uses_the_stratum():
     rng = np.random.default_rng(0)
     n = 120
     Z = rng.normal(0, 1, (n, 1))
@@ -337,5 +336,10 @@ def test_cox_stratified_rejects_sf_tvc():
     c = np.zeros(n)
     strata = (Z[:, 0] > 0).astype(int)
     m = CoxPH.fit(x=x, Z=Z, c=c, strata=strata)
-    with pytest.raises(NotImplementedError, match="stratified"):
+    with pytest.raises(ValueError, match="stratified"):
         m.sf_tvc([2.0], StepSchedule.constant([0.5]))
+    for s in (0, 1):
+        np.testing.assert_allclose(
+            m.sf_tvc([2.0, 6.0], StepSchedule.constant([0.5]), stratum=s),
+            m.sf([2.0, 6.0], [0.5], stratum=s),
+        )

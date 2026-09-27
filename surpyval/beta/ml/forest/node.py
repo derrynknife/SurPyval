@@ -19,7 +19,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Node(ABC):
-    """The common methods between IntermediateNode and LeafNode."""
+    """The common methods between IntermediateNode and TerminalNode."""
 
     @abstractmethod
     def apply_model_function(
@@ -34,6 +34,13 @@ class Node(ABC):
 
 
 class IntermediateNode(Node):
+    """
+    A split in a survival tree: observations whose feature
+    ``split_feature_index`` is at most ``split_feature_value`` go to
+    ``left_child``, the rest to ``right_child``. Building one grows the
+    subtree below it.
+    """
+
     def __init__(
         self,
         data: SurpyvalData,
@@ -119,6 +126,14 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
+    """
+    A leaf of a survival tree. It holds the observations that reach it
+    and fits, on first use, the leaf model given by the tree's ``kind``
+    (``model``): a Weibull or Exponential fit, or a Nelson-Aalen estimate
+    for a non-parametric tree (``NeverOccurs`` for a leaf with no
+    failures).
+    """
+
     def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
         self.data = deepcopy(data)
         self.kind = kind
@@ -150,6 +165,7 @@ class TerminalNode(Node):
 
     @cached_property
     def model(self) -> Any:
+        """The leaf's fitted model, fitted when first used."""
         if self.kind == "non-parametric":
             return self._nonparametric_model()
 

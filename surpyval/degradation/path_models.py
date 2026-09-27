@@ -13,12 +13,16 @@ Each model implements:
 - ``inv_path(y, *params)``: the time at which the path reaches level
   ``y`` (non-finite when the path never does),
 - ``fit(x, y)``: least-squares estimates of the path parameters from
-  one unit's measurements.
+  one unit's measurements,
+- ``jacobian(x, *params)``: the analytic derivatives of the path with
+  respect to its parameters.
 
 Models that are linear in their parameters (``LinearPath``,
-``LogarithmicPath``, ``LloydLipowPath``) are fitted with ordinary least
-squares in closed form; the others (``ExponentialPath``, ``PowerPath``)
-use nonlinear least squares started from the log-linearised fit.
+``QuadraticPath``, ``LogarithmicPath``, ``LloydLipowPath``) are fitted
+with ordinary least squares in closed form; the others
+(``ExponentialPath``, ``OffsetExponentialPath``, ``PowerPath``,
+``GompertzPath``, ``MichaelisMentenPath``) use nonlinear least squares
+started from a linearised fit.
 """
 
 from abc import ABC, abstractmethod
@@ -42,9 +46,10 @@ class PathModel(ABC):
     A path model is a deterministic function of time with a small
     number of parameters that is fitted, per unit, to that unit's
     degradation measurements. Subclass this (implementing ``path``,
-    ``inv_path``, ``fit`` and the ``name``/``param_names`` attributes)
-    to use a custom degradation path with
-    :class:`~surpyval.degradation.DegradationAnalysis`.
+    ``inv_path`` and the ``name``/``param_names`` attributes, and either
+    a ``_initial_guess(x, y)`` starting point for the default
+    least-squares ``fit`` or ``fit`` itself) to use a custom degradation
+    path with ``DegradationAnalysis``.
     """
 
     name: str
@@ -106,6 +111,24 @@ class PathModel(ABC):
         """
         Fit the path parameters to one unit's measurements by
         (nonlinear) least squares.
+
+        Parameters
+        ----------
+        x : array_like
+            The unit's measurement times.
+        y : array_like
+            Its degradation measurements.
+
+        Returns
+        -------
+        numpy array
+            The fitted parameters, in the order of ``param_names``.
+
+        Examples
+        --------
+        >>> from surpyval.degradation import LinearPath
+        >>> LinearPath.fit([1, 2, 3, 4], [10.5, 12.1, 13.4, 15.2]).round(4)
+        array([8.95, 1.54])
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
@@ -325,12 +348,20 @@ class QuadraticPath_(PathModel):
         """First positive time at which the parabola reaches ``y``."""
         a, b, c = params
         y = np.asarray(y, dtype=float)
-        with np.errstate(divide="ignore", invalid="ignore"):
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
             linear_root = (y - a) / b
             disc = b**2 - 4.0 * c * (a - y)
             sqrt_disc = np.sqrt(np.where(disc >= 0, disc, np.nan))
-            root_minus = (-b - sqrt_disc) / (2.0 * c)
-            root_plus = (-b + sqrt_disc) / (2.0 * c)
+            # The textbook (-b +/- sqrt(disc)) / 2c cancels catastrophically
+            # for the root near the linear one when the curvature is tiny
+            # (a quadratic fitted to straight-line data has c ~ 1e-17 and
+            # gave a crossing at 42.75 instead of 16). The conjugate form
+            # adds terms of one sign only, and its second root tends to
+            # the linear root (y - a) / b as c -> 0.
+            sign_b = np.where(np.asarray(b) >= 0, 1.0, -1.0)
+            q = -0.5 * (b + sign_b * sqrt_disc)
+            root_minus = q / c
+            root_plus = (a - y) / q
             root_minus = np.where(
                 np.isfinite(root_minus) & (root_minus > 0),
                 root_minus,
@@ -522,6 +553,29 @@ PATH_MODELS: dict[str, PathModel] = {
     "michaelis-menten": MichaelisMentenPath,
 }
 
+# Display name (``PathModel.name``, lower-cased) -> registry key. The
+# display name is not always the key ("Offset Exponential" vs
+# "offset-exponential"), and serialised models written before the key
+# was stored carry the display name, so both must resolve.
+_KEY_BY_DISPLAY_NAME: dict[str, str] = {
+    model.name.lower(): key for key, model in PATH_MODELS.items()
+}
+
+
+def path_model_key(path_model: PathModel) -> str:
+    """
+    The name under which ``path_model`` can be resolved again.
+
+    For a built-in path model this is its ``PATH_MODELS`` key (so
+    ``get_path_model(path_model_key(m))`` returns the built-in model);
+    a custom :class:`PathModel` is not registered, so its ``name`` is
+    returned as the best available label.
+    """
+    for key, model in PATH_MODELS.items():
+        if type(model) is type(path_model):
+            return key
+    return path_model.name
+
 
 def get_path_model(path: "str | PathModel") -> PathModel:
     """
@@ -531,14 +585,16 @@ def get_path_model(path: "str | PathModel") -> PathModel:
     of the registered names in ``PATH_MODELS`` (case-insensitive):
     ``"linear"``, ``"quadratic"``, ``"exponential"``,
     ``"offset-exponential"``, ``"power"``, ``"logarithmic"``,
-    ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``.
-    (``"best"`` — automatic selection — is handled by
+    ``"lloyd-lipow"``, ``"gompertz"``, ``"michaelis-menten"``. A built-in
+    model's display ``name`` (e.g. ``"Offset Exponential"``) is accepted
+    too. (``"best"`` — automatic selection — is handled by
     ``DegradationAnalysis.fit``, not here.)
     """
     if isinstance(path, PathModel):
         return path
     if isinstance(path, str):
         key = path.lower()
+        key = _KEY_BY_DISPLAY_NAME.get(key, key)
         if key in PATH_MODELS:
             return PATH_MODELS[key]
         raise ValueError(

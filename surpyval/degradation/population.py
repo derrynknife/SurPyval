@@ -295,8 +295,12 @@ def reml_estimate_woodbury(
     cov_init = np.asarray(cov_init, dtype=float) * np.outer(x_scale, x_scale)
 
     def objective(z: npt.NDArray) -> float:
+        # A trial step far from the optimum can overflow ``exp(z)`` or the
+        # Woodbury products; such a point is simply rejected (``_LARGE``),
+        # so the floating-point warnings it raises on the way are noise.
         try:
-            value = _reml_pieces_woodbury(z, summary, p, reml)[0]
+            with np.errstate(all="ignore"):
+                value = _reml_pieces_woodbury(z, summary, p, reml)[0]
         except np.linalg.LinAlgError:
             return _LARGE
         return value if np.isfinite(value) else _LARGE

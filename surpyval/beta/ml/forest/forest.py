@@ -94,6 +94,72 @@ class RandomSurvivalForest(SerialisableMixin):
         bootstrap: bool = True,
         kind: str = "weibull",
     ) -> "RandomSurvivalForest":
+        """
+        Fit a random survival forest.
+
+        Parameters
+        ----------
+        x : array_like, optional
+            Event times (``[left, right]`` rows for interval-censored
+            observations).
+        Z : array_like
+            Covariate (feature) matrix, one row per observation. Required.
+        c : array_like, optional
+            Censoring flags: 0 observed, 1 right, -1 left, 2 interval
+            censored. Defaults to all observed.
+        n : array_like, optional
+            Counts. Defaults to 1.
+        t : array_like, optional
+            (N, 2) truncation bounds.
+        xl, xr : array_like, optional
+            Interval bounds, instead of 2-D ``x``.
+        tl, tr : array_like, optional
+            Left and right truncation, instead of ``t``.
+        max_depth : int, optional
+            Maximum depth of a tree. Defaults to unlimited.
+        min_leaf_samples : int, optional
+            A split is only made if each child keeps at least this many
+            observations. Defaults to 5.
+        min_leaf_failures : int, optional
+            ... and at least this many failures. Defaults to 2.
+        n_features_split : int, float or str, optional
+            The number of features considered at each split: an int, a
+            fraction of the features (float), ``"sqrt"`` (the default),
+            ``"log2"`` or ``"all"``.
+        n_trees : int, optional
+            The number of trees. Defaults to 100.
+        bootstrap : bool, optional
+            Fit each tree to a bootstrap resample of the data (the
+            default); otherwise every tree sees all of it. Resampling uses
+            NumPy's global random state, so seed it with
+            ``np.random.seed`` for a reproducible forest.
+        kind : str, optional
+            The tree type, ``"weibull"`` (the default), ``"exponential"``
+            or ``"non-parametric"``; see
+            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+
+        Returns
+        -------
+        RandomSurvivalForest
+            The fitted forest.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> c = (x > 12).astype(int)
+        >>> x = np.minimum(x, 12)
+        >>> np.random.seed(0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, c=c, n_trees=5, max_depth=1, kind="exponential"
+        ... )
+        >>> forest.sf(5, [[0.2, 0.5], [0.8, 0.5]]).round(3)
+        array([[0.561],
+               [0.396]])
+        """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
         data = SurpyvalData(
@@ -144,26 +210,36 @@ class RandomSurvivalForest(SerialisableMixin):
     def ff(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Failure (CDF) function averaged over the trees, as for
+        :meth:`sf`."""
         return self._apply_model_function_to_trees("ff", x, Z)
 
     def df(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Density averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("df", x, Z)
 
     def hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Hazard rate averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("hf", x, Z)
 
     def Hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Cumulative hazard averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("Hf", x, Z)
 
     def mortality(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> ArrayLike:
+        """
+        The ensemble mortality of each covariate vector: its cumulative
+        hazard summed over the times ``x`` (the risk score used by
+        :meth:`score`).
+        """
         mortality = np.atleast_2d(self.Hf(x, Z)).sum(1)
         return np.clip(mortality, 0, np.finfo(np.float64).max)
 

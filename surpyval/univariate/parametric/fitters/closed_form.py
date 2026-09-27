@@ -84,7 +84,10 @@ def parameter_covariance(
 
 
 def closed_form_results(
-    dist: Any, data: SurpyvalData, params: npt.NDArray
+    dist: Any,
+    data: SurpyvalData,
+    params: npt.NDArray,
+    optimizer: str = "closed-form",
 ) -> Any:
     """Complete a closed-form parameter vector into a full results dict.
 
@@ -122,7 +125,7 @@ def closed_form_results(
         "cov_matrix": cov,
         "hess_inv": cov,
         "res": None,
-        "optimizer": "closed-form",
+        "optimizer": optimizer,
     }
 
 

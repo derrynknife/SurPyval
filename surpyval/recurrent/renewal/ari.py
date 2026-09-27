@@ -15,7 +15,9 @@ from surpyval.utils.recurrent_utils import (
     reject_gapped_observation,
     reject_left_truncation,
     validate_memory,
+    validate_nhpp_data,
     validate_renewal_censoring,
+    validate_restoration,
 )
 
 
@@ -289,7 +291,7 @@ class ARI(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : object, optional
             A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
@@ -303,13 +305,17 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            A fitted ARI object.
+        RenewalModel
+            A fitted renewal model.
         """
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # The baseline is an NHPP intensity, with the same needs: some
+        # events, times inside its support (no event at t = 0 for a power
+        # law) and more than one failure-truncated event.
+        validate_nhpp_data(data, dist)
 
         neg_ll = self.create_negll_func(data, dist, m)
         base_params0 = (
@@ -327,16 +333,7 @@ class ARI(RenewalFitMixin):
         )
         rho, *dist_params = params
         out = self._make_model(dist, dist_params, rho, m)
-        # Only the observed failures (c == 0) contribute an intensity term, so
-        # they are the events that enter the BIC sample size.
-        self._attach_inference(
-            out,
-            neg_ll,
-            [rho, *dist_params],
-            int((data.c == 0).sum()),
-            res,
-            data,
-        )
+        self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
     @staticmethod
@@ -374,13 +371,17 @@ class ARI(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A recurrent baseline intensity model. Default is ``CrowAMSAA``.
         m : int or float, optional
@@ -392,8 +393,21 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            A fitted ARI object.
+        RenewalModel
+            A fitted renewal model.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ARI, CrowAMSAA
+        >>> x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+        >>> i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+        >>> c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+        >>> model = ARI.fit(x, i, c=c, m=1, dist=CrowAMSAA)
+        >>> model.model.params.round(3)
+        array([3.508, 1.3  ])
+        >>> round(float(model.rho), 3)
+        1.0
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
@@ -424,8 +438,9 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            An ARI object built from the supplied parameters.
+        RenewalModel
+            A model built from the supplied parameters, for simulation.
         """
         validate_memory(m)
+        validate_restoration(rho, "rho", (0, 1))
         return self._make_model(dist, dist_params, rho, m)

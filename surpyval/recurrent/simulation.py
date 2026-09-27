@@ -6,11 +6,13 @@ from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 from scipy.stats import uniform
 
+from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 
 STALLED_WARNING = (
     "Some sequences produced a near-zero interarrival time (< tol) before "
-    "reaching T, indicating a possible asymptote; they were terminated early "
+    "reaching T: their events pile up towards a finite time (a possible "
+    "asymptote, such as a G1 process with q < 0), so they were ended early "
     "at their last event."
 )
 MAX_EVENTS_WARNING = (
@@ -56,14 +58,17 @@ class RecurrenceSimulationMixin:
         ).tolist()
 
     def clear_simulation(self) -> None:
-        del self.us
+        self.__dict__.pop("us", None)
 
     def get_uniform_random_number(self) -> float:
-        try:
-            return self.us.pop()
-        except IndexError:
+        # The pool is created on first use, so this also works on a model
+        # that has not simulated yet (a restored or ``from_params`` one);
+        # it used to raise ``AttributeError: 'us'`` there.
+        us = self.__dict__.get("us")
+        if not us:
             self.initialize_simulation()
-            return self.us.pop()
+            us = self.us
+        return us.pop()
 
     def _cif_args(self) -> tuple:
         """
@@ -82,7 +87,7 @@ class RecurrenceSimulationMixin:
         The next event is sampled by inverting the cumulative intensity
         conditional on the time of the previous event: given the CIF value at
         ``x_prev``, a uniform ``ui`` maps to the next event time via
-        ``inv_cif(-log(ui) + cif(x_prev))``. Any per-family arguments (e.g. the
+        ``inv_cif(cif(x_prev) - log(ui))``. Any per-family arguments (e.g. the
         covariate vector) come from :meth:`_cif_args`.
         """
         cif_args = self._cif_args()
@@ -90,8 +95,12 @@ class RecurrenceSimulationMixin:
 
         def sample(ui: float) -> float:
             nonlocal x_prev
-            u_adj = ui * np.exp(-self.cif(x_prev, *cif_args))
-            xi = self.inv_cif(-np.log(u_adj), *cif_args) - x_prev
+            # Added on the cumulative-intensity scale. This used to go
+            # through ui * exp(-cif(x_prev)), which underflows to 0 once
+            # the expected count passes about 745, so every later event
+            # landed at inv_cif(inf).
+            target = self.cif(x_prev, *cif_args) - np.log(ui)
+            xi = float(np.squeeze(self.inv_cif(target, *cif_args))) - x_prev
             x_prev += xi
             return xi
 
@@ -212,7 +221,8 @@ class RecurrenceSimulationMixin:
         ----------
 
         events: int
-            Number of events to simulate per sequence.
+            Each sequence is simulated to its ``events + 1``-th event (see
+            the notes).
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         seed: int or numpy.random.Generator, optional
@@ -298,7 +308,9 @@ class RecurrenceSimulationMixin:
         ----------
 
         events: int
-            Number of events to simulate.
+            Each sequence is simulated to its ``events + 1``-th event, and
+            the returned MCF is kept only where it is below ``events``
+            (beyond that the items are dropping out of observation).
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         seed: int or numpy.random.Generator, optional
@@ -360,9 +372,10 @@ class RecurrenceSimulationMixin:
         Warnings
         --------
 
-        A sequence is terminated early and right-censored at its last event if
-        an interarrival time falls below ``tol`` or it reaches ``max_events``
-        before T. A warning is raised in either case.
+        A sequence is ended early at its last event, which is kept as an
+        observed event (no censoring row at ``T``), if an interarrival time
+        falls below ``tol`` or it reaches ``max_events`` before T. A warning
+        is raised in either case.
         """
         xicn = self._simulate_time_xicn(T, items, tol, max_events, seed)
 
@@ -426,11 +439,7 @@ class RecurrenceSimulationMixin:
         matplotlib axes
             The axes with the plot.
         """
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "plot requires a model fitted from data; fit_from_parameters "
-                "models carry no data to compare against."
-            )
+        require_data(self, "plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
             ax = plt.gcf().gca()

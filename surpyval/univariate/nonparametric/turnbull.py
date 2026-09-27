@@ -1,5 +1,5 @@
 import warnings
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -11,6 +11,56 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 from .fleming_harrington import fleming_harrington as fh
 from .kaplan_meier import kaplan_meier as km
 from .nelson_aalen import nelson_aalen as na
+
+# The estimators that can be applied to the Turnbull ladder. Checked up
+# front: an unknown name used to fall through to Fleming-Harrington in the
+# EM and only fail later, as a bare KeyError, when the variance was looked
+# up by that name.
+TURNBULL_ESTIMATORS: dict[str, Callable[..., npt.NDArray]] = {
+    "Fleming-Harrington": fh,
+    "Nelson-Aalen": na,
+    "Kaplan-Meier": km,
+}
+
+
+def check_turnbull_estimator(estimator: str) -> None:
+    """Raise a ``ValueError`` if ``estimator`` is not a Turnbull option."""
+    if estimator not in TURNBULL_ESTIMATORS:
+        raise ValueError(
+            "'turnbull_estimator' must be one of {}; got {!r}".format(
+                ", ".join(repr(k) for k in TURNBULL_ESTIMATORS), estimator
+            )
+        )
+
+
+def _innermost(
+    lo: npt.NDArray, hi: npt.NDArray, M: int
+) -> npt.NDArray[np.bool_]:
+    """Pieces inside Turnbull's innermost intervals.
+
+    An innermost interval is a run of pieces ``[a, b]`` that starts at
+    some observation's support start (``a`` is a ``lo``) and ends at some
+    support end (``b`` is a ``hi``) with no other start in ``(a, b]`` and
+    no other end in ``[a, b)``. Without truncation every other piece is
+    dominated -- each support containing it also contains an innermost
+    interval -- so the NPMLE puts no mass there (Turnbull 1976).
+    """
+    valid = lo <= hi
+    is_lo = np.zeros(M, dtype=bool)
+    is_lo[lo[valid]] = True
+    is_hi = np.zeros(M, dtype=bool)
+    is_hi[hi[valid]] = True
+    idx = np.arange(M)
+    # The latest start at or before each piece, and the latest end
+    # strictly before it (-1 where there is none).
+    last_lo = np.maximum.accumulate(np.where(is_lo, idx, -1))
+    last_hi = np.maximum.accumulate(np.where(is_hi, idx, -1))
+    prev_hi = np.concatenate([[-1], last_hi[:-1]])
+    ends = is_hi & (last_lo >= 0) & (prev_hi < last_lo)
+    mark = np.zeros(M + 1)
+    np.add.at(mark, last_lo[ends], 1.0)
+    np.add.at(mark, idx[ends] + 1, -1.0)
+    return np.cumsum(mark[:M]) > 0
 
 
 def turnbull(
@@ -36,6 +86,7 @@ def turnbull(
     """
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")
+    check_turnbull_estimator(estimator)
     # Taken as arrays before anything indexes or slices them. The
     # signature accepts array-like because callers pass lists, but the
     # body below is written against arrays throughout.
@@ -191,48 +242,70 @@ def turnbull(
 
     # Intervals where the likelihood can be inflated for free.
     #
-    # An interval that some observation could have failed in, but that lies
-    # outside *another* observation's truncation window, is worth mass to
-    # the first and costs the second nothing: the second's contribution is
-    # conditional on its own entry, so mass it never had the chance to see
-    # divides out of both its numerator and its denominator exactly.
-    #
-    # That is a genuine flat direction of the likelihood, not a defect in
-    # the iteration. It needs a left-censored (or low interval-censored)
-    # row, whose support reaches down below the later entry times, and it
-    # needs two distinct entry times, so that such an interval exists at
-    # all. With one common entry time every window is identical and no
-    # interval qualifies. Where it does exist the maximum sits on the
-    # boundary -- on a six-point example the EM drives 99.995% of the mass
-    # into a single such interval, reaching a log-likelihood of -6.14
-    # against -9.36 for the sensible answer -- so the EM climbs forever
+    # Every contribution is a ratio, P(support) / P(window), so the
+    # likelihood does not change if p is rescaled and each interval's mass
+    # can be raised on its own. Raising it lifts the numerator and the
+    # denominator of every observation whose support contains it -- a
+    # gain wherever the support is smaller than the window -- and only the
+    # denominator of an observation whose window contains it but whose
+    # support does not: that is the only cost. An interval that no
+    # observation pays for in that way, but that some observation gains
+    # from, is a direction in which the likelihood rises without limit,
+    # with its supremum on the boundary where that interval holds all the
+    # mass. The NPMLE is then not attained, the EM climbs towards it
     # without settling and the survival estimate collapses (#308).
     #
-    # Meeting the condition does not mean the fit is spoilt: over 240
-    # simulated samples that all met it, only 8-72% actually degenerated,
-    # rising with the proportion left censored. It is a screen, not a
-    # verdict, so it only sharpens the diagnosis below rather than
-    # rejecting the data.
+    # Typically this is a left-censored (or low interval-censored) row
+    # whose support reaches below the other rows' entry times, where no
+    # one else is observed: an interval below everyone else's entry costs
+    # them nothing, as their contributions are conditional on it. With a
+    # common entry time every window is the same, and any interval inside
+    # it is paid for by the rows that could not have failed there.
+    #
+    # The screen used to flag every interval inside some support and
+    # outside some window. That also caught intervals that other rows do
+    # pay for, so it fired on healthy fits -- right truncation of exact
+    # data (the Lynden-Bell estimator), or staggered entry with only exact
+    # and right-censored data, which the Kaplan-Meier handles -- where the
+    # EM converges to the unique NPMLE.
     exploitable = np.zeros(M, dtype=bool)
     if any_truncated:
-        seen = np.zeros(M + 1)
-        np.add.at(seen, w_lo_all, 1.0)
-        np.add.at(seen, np.minimum(w_hi_all + 1, M), -1.0)
-        in_every_window = np.cumsum(seen[:M]) >= N
-        exploitable = identifiable & ~in_every_window
+
+        def coverage(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+            # How many of the index ranges [a, b] contain each interval.
+            count = np.zeros(M + 1)
+            np.add.at(count, a, 1.0)
+            np.add.at(count, np.minimum(b + 1, M), -1.0)
+            return np.cumsum(count[:M])
+
+        # The supports are already inside the windows, so an interval with
+        # as many windows as supports over it is paid for by no one.
+        unpaid = coverage(w_lo_all, w_hi_all) == coverage(lo, hi)
+        gains = (lo > w_lo_all) | (hi < w_hi_all)
+        exploitable = unpaid & (coverage(lo[gains], hi[gains]) > 0)
 
     d = np.zeros(M)
     if any_truncated and identifiable.any():
         p = identifiable / identifiable.sum()
     else:
-        p = np.ones(M) / M
+        # Without truncation the NPMLE has no mass off the innermost
+        # intervals, but the self-consistency EM only drains the mass it
+        # starts with there sublinearly: a residue of ~1e-8 expected
+        # failures stayed on such pieces, leaving the estimate at 1 - 1e-9
+        # and its log(-log) bounds at [0, 1]. Starting on the innermost
+        # intervals keeps that mass exactly zero (p = 0 stays 0 under the
+        # update) and converges in fewer iterations. Only for the
+        # Kaplan-Meier update, which is the NPMLE: the Nelson-Aalen and
+        # Fleming-Harrington iterations are not likelihood steps and do
+        # settle with real mass on those pieces. Under truncation the
+        # dominance argument fails (moving mass changes each window's
+        # probability), so the identifiable start above is kept.
+        support = _innermost(lo, hi, M)
+        if any_truncated or estimator != "Kaplan-Meier" or not support.any():
+            support = np.ones(M, dtype=bool)
+        p = support / support.sum()
 
-    if estimator == "Kaplan-Meier":
-        func = km
-    elif estimator == "Nelson-Aalen":
-        func = na
-    else:
-        func = fh
+    func = TURNBULL_ESTIMATORS[estimator]
 
     old_err_state = np.seterr(all="ignore")
 
@@ -342,23 +415,18 @@ def turnbull(
         ):
             degenerate = True
 
-    # Mass sitting on the flat direction described at ``exploitable``. A
-    # fit can converge and still rest largely there, so it is worth
-    # reporting on its own; 0.9 is where it stops being a healthy fit's
-    # ordinary share. Over 240 simulated samples, non-convergence alone
-    # caught 90% of degenerate fits for a 2% false-alarm rate, and adding
-    # this test took that to 91% without adding a single false alarm.
-    # Looser cut-offs are not free: 0.7 reaches 95% but false-alarms on
-    # 9%, and 0.5 on 40%.
+    # Mass sitting on the free direction described at ``exploitable``. Such
+    # an interval makes the likelihood's supremum a boundary one, so the EM
+    # either fails to settle or piles the mass there; either is reported as
+    # non-identifiable (raising ``max_iter`` would not help). The old,
+    # looser screen relied on the 0.9 mass cut-off alone, because its flag
+    # was also set on healthy staggered-entry data (and still fired on some
+    # at 91.7%); the exact condition needs no such margin, and a fit that
+    # merely needs more iterations (the #203 case) has no such interval.
     exploited = float(p[exploitable].sum()) if exploitable.any() else 0.0
-    # The mass, not the flag, is the evidence. Ordinary staggered-entry
-    # data has exploitable intervals too and fits perfectly well; over 240
-    # simulated samples the healthy fits reached at most 0.836 there,
-    # while the spoilt ones had a median of 0.994. Firing on the flag plus
-    # non-convergence instead would mis-advise a fit that simply needs
-    # more iterations -- the #203 case is exactly that, structurally
-    # exploitable but convergent once given them.
-    on_flat_direction = exploited > 0.9
+    on_flat_direction = bool(exploitable.any()) and (
+        exploited > 0.9 or not converged
+    )
 
     if degenerate:
         warnings.warn(
@@ -374,23 +442,38 @@ def turnbull(
             "The Turnbull estimate is not identifiable from this data, so "
             "the result is unreliable. {:.1%} of the fitted probability "
             "mass sits in intervals that some observation could have "
-            "failed in but that lie before another observation's entry "
-            "time. Mass placed there raises the first observation's "
-            "likelihood while costing the others nothing -- their "
-            "contributions are conditional on their own entry, so mass "
-            "they never had the chance to see divides out of both the "
-            "numerator and the denominator. The likelihood therefore has "
-            "no interior maximum and the EM climbs towards the boundary "
-            "instead of settling; raising `max_iter` will not help. This "
-            "needs left-censored observations together with two or more "
-            "distinct entry times -- dropping either, or entering every "
-            "unit at a common time, removes it.".format(exploited)
+            "failed in but that no other observation's likelihood pays for: "
+            "every observation whose truncation window covers them could "
+            "also have failed there, and the others' contributions are "
+            "conditional on windows that exclude them. Mass placed there "
+            "raises the likelihood at no cost, so it has no interior maximum "
+            "and the EM climbs towards the boundary instead of settling; "
+            "raising `max_iter` will not help. It typically comes from a "
+            "left- or interval-censored observation (or an early failure) "
+            "below the other observations' entry times; entering every unit "
+            "at a common time removes it.".format(exploited)
         )
     elif not converged:
+        hint = ""
+        if any_truncated:
+            # A common cause under truncation (every non-converged fit of
+            # simulated left-truncated exact and right-censored data had
+            # it): an event at which every item at risk fails, with others
+            # entering only later. The Kaplan-Meier drops to zero there; in
+            # the EM's mass parametrisation the maximum is on the boundary,
+            # approached ever more slowly. Other fits just need more
+            # iterations (the #203 case), hence the conditional wording.
+            hint = (
+                " If a larger `max_iter` does not help, the maximum may be "
+                "on the boundary: e.g. every item at risk at some time fails "
+                "there while others enter only later (the Kaplan-Meier falls "
+                "to zero there), so the survival beyond that time is not "
+                "identified."
+            )
         warnings.warn(
             "The Turnbull EM did not converge to within `tol` ({}) in "
             "`max_iter` ({}) iterations; the estimate may be "
-            "inaccurate.".format(tol, max_iter)
+            "inaccurate.{}".format(tol, max_iter, hint)
         )
 
     if any_truncated:
@@ -462,13 +545,22 @@ def turnbull(
 
     # Heterogeneous by design: arrays, the estimator name, and the
     # convergence flags all go out in the one dictionary.
+    #
+    # Ladder index j is the piece ``(bounds[j], bounds[j+1]]``, so the
+    # survival after it, ``R[j]``, is reported at its *right* end,
+    # ``bounds[j+1]`` -- hence ``x = bounds[1:-1]`` with ``R[:-2]``. The
+    # counts that produce ``R[j]`` must go out on the same index: slicing
+    # them ``[1:-1]`` instead paired each x with the *next* piece's
+    # failures, so the variance had already stepped where the estimate had
+    # not yet dropped, and ``cb()`` on interval-censored data gave bounds
+    # like [0, 1] where the survival estimate was still 1.
     out: dict[str, Any] = {}
     out["x"] = bounds[1:-1]
-    out["r"] = r[1:-1]
-    out["d"] = d[1:-1]
+    out["r"] = r[:-2]
+    out["d"] = d[:-2]
     if any_truncated:
-        out["var_r"] = r_var[1:-1]
-        out["var_d"] = d_var[1:-1]
+        out["var_r"] = r_var[:-2]
+        out["var_d"] = d_var[:-2]
     elif km_reducible:
         # Variance from the observed counts (the Greenwood ladder): the
         # estimation ladder redistributes each right-censored observation
@@ -487,10 +579,12 @@ def turnbull(
         var_r[ok] = rg[pos[ok]]
         # Exact times appear twice on the bounds ladder (the zero-width
         # [x, x] interval trick); credit each event count once so the
-        # cumulative variance steps once per event time.
-        first = np.ones(ladder_x.shape[0], dtype=bool)
-        first[1:] = ladder_x[1:] != ladder_x[:-1]
-        take = ok & first
+        # cumulative variance steps once per event time, and on the
+        # *second* copy -- where the estimate drops -- since the first
+        # carries the survival just before the event.
+        last = np.ones(ladder_x.shape[0], dtype=bool)
+        last[:-1] = ladder_x[:-1] != ladder_x[1:]
+        take = ok & last
         var_d[take] = dg[pos[take]]
         out["var_r"] = var_r
         out["var_d"] = var_d
@@ -506,8 +600,8 @@ def turnbull(
     out["degenerate"] = degenerate
     # How much of the fitted mass landed where the likelihood can be
     # inflated for free (see ``exploitable`` above). Reported so a caller
-    # can judge a fit that converged but sits largely on that flat
-    # direction; a healthy fit leaves it near zero.
+    # can judge a fit that sits largely on that free direction; data
+    # without such pieces report exactly zero.
     out["exploitable_mass"] = (
         float(p[exploitable].sum()) if exploitable.any() else 0.0
     )
@@ -526,6 +620,25 @@ class Turnbull_(NonParametricFitter):
     The EM iterates until the largest change in any interval's probability
     mass falls below ``tol`` or ``max_iter`` iterations have run (with a
     warning in the latter case); both can be passed to :code:`fit()`.
+
+    Besides the attributes every non-parametric model has, a Turnbull
+    model carries:
+
+    - ``bounds``: the endpoints of the Turnbull pieces, including
+      :math:`\pm\infty`; ``x`` is ``bounds[1:-1]``, so an exactly observed
+      time appears twice, and ``d[k]`` is the expected number of failures
+      in the piece ending at ``x[k]``;
+    - ``R_upper`` and ``R_lower``: the survival at the start and end of
+      each piece, the range any curve through it could take;
+    - ``turnbull_estimator``, ``converged`` and ``iters``;
+    - ``degenerate``: True if the estimate collapsed (with a warning);
+    - ``exploitable_mass``: the share of the fitted mass in pieces where
+      mass raises the likelihood at no cost -- some observation could have
+      failed there, and every observation whose truncation window covers
+      the piece could too. Where such pieces exist the likelihood has no
+      interior maximum, and if the EM does not converge or they hold more
+      than 0.9 of the mass a warning says the estimate is not
+      identifiable.
 
     Examples
     --------

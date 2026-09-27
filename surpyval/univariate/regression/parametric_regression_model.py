@@ -6,7 +6,10 @@ import numpy.typing as npt
 from matplotlib import pyplot as plt
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils.linalg import (
     delta_method_se,
     log_transformed_cb,
@@ -51,13 +54,31 @@ _SERIALISABLE_REG_NAMES = {
 
 class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     """
-    Result of ``.fit()`` or ``.from_params()`` method for parametric
-    regression modelling.
+    The fitted model returned by every parametric regression fitter: the
+    proportional hazards (``WeibullPH``, ``PH(dist)``), accelerated failure
+    time (``AFT``), proportional odds (``PO``), parametric additive hazards
+    (``AH``) and accelerated life (``AcceleratedLife``) families.
 
-    Instances of this class are very useful when a user needs the other
-    functions of a distribution for plotting, optimizations, monte carlo
-    analysis and numeric integration.
+    ``params`` holds the distribution parameters followed by the covariate
+    coefficients (``dist_params`` and ``phi_params`` split them). The
+    survival functions take the covariates as a second argument,
+    ``sf(x, Z)``; ``sf_tvc`` / ``Hf_tvc`` evaluate them along a
+    time-varying covariate path. The model also provides parameter
+    standard errors and confidence bounds, information criteria, plotting
+    and serialisation.
 
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import Weibull, WeibullPH
+    >>> np.random.seed(1)
+    >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+    >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    >>> model = WeibullPH.fit(x, Z)
+    >>> model.params.round(3)
+    array([9.629, 1.751, 0.829])
+    >>> model.sf(5, [[0], [1]]).round(4)
+    array([0.728 , 0.4833])
     """
 
     # Covariate metadata populated when the model is fit from a pandas
@@ -70,6 +91,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
     _restored_covariance: "npt.NDArray | None" = None
+    #: True on models rebuilt by :meth:`from_dict`, which carry no data.
+    _restored: bool = False
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
     # Declared here so static type checkers know their types.
@@ -212,6 +235,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
+        # The sample size of bic() and aic_c(), which the restored model,
+        # having no data, could not otherwise compute.
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
         return stamp_schema(out)
 
     @classmethod
@@ -316,11 +344,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.params = params
         out.dist_params = params[:k_dist]
         out.phi_params = params[k_dist:]
-        out.k = int(model_dict["k"])
         out.k_dist = k_dist
         out.fixed = {
             k: float(v) for k, v in model_dict.get("fixed", {}).items()
         }
+        # The number of estimated parameters, recomputed rather than read
+        # from the stored ``k``: dicts written before ``k`` excluded the
+        # fixed parameters (and the accelerated-life placeholder) stored the
+        # full parameter-vector length.
+        out.k = len(params) - len(out.fixed)
+        out._restored = True
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -332,6 +365,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
+        # Dicts written before "ic_n" existed carry no sample size, and
+        # bic() / aic_c() then say they need the data.
+        out._ic_n = cls._restored_ic_n(model_dict)
         return out
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
@@ -413,6 +449,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         fn: Any,
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
+        below_support: float,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -421,13 +458,27 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if isinstance(x, list):
             x = np.array(x)
         Z = self._prepare_Z(Z)
-        return fn(x, Z, *self.params)
+        # Below the support (a negative time for a positive distribution)
+        # nothing has happened yet: survival 1, and 0 for the others. The
+        # distribution functions gave nan there, with a RuntimeWarning, and
+        # warned "divide by zero" at 0 itself for the log-based ones, where
+        # the value is already right.
+        lower = self.distribution.support[0]
+        below = np.asarray(x) < lower
+        if np.any(below):
+            inside = lower + 1.0 if np.isfinite(lower) else 0.0
+            x = np.where(below, inside, x)
+        with np.errstate(divide="ignore"):
+            out = fn(x, Z, *self.params)
+        if np.any(below):
+            out = np.where(below, below_support, out)
+        return out
 
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
         r"""
-        Surival (or Reliability) function for a distribution using the
+        Survival (or Reliability) function for a distribution using the
         parameters found in the ``.params`` attribute.
 
         Parameters
@@ -436,6 +487,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the survival function
             will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -458,7 +515,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        return self._eval(self.model.sf, x, Z)
+        return self._eval(self.model.sf, x, Z, 1.0)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional and additive hazards accumulate a *cumulative
@@ -487,8 +544,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
         """
         Coerce the ``sf_tvc`` covariate argument into a
-        :class:`~...tvc_schedule.StepSchedule` and check its covariate count
-        against the fitted model.
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` and
+        check its covariate count against the fitted model.
         """
         from .tvc_schedule import as_step_schedule
 
@@ -531,8 +588,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Times at which to evaluate the cumulative hazard.
         Z : StepSchedule or array_like
             The covariate path -- either a
-            :class:`~...tvc_schedule.StepSchedule`, or an array of per-segment
-            covariate rows (with ``xl`` giving the segment start times).
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            or an array of per-segment covariate rows (with ``xl`` giving the
+            segment start times).
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
 
@@ -576,12 +634,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         for a, b, z in zip(starts, ends, Zseg):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
             upper = np.clip(xq, a, b)
-            hi = np.asarray(
-                self.model.Hf(upper, zrow, *self.params), dtype=float
-            ).ravel()
-            lo = np.asarray(
-                self.model.Hf(np.array([a]), zrow, *self.params), dtype=float
-            ).ravel()
+            # The first segment starts at 0, where a log-time baseline
+            # (LogNormal, LogLogistic) evaluates log(0) = -inf on its way to
+            # the correct H = 0; that is not worth a warning.
+            with np.errstate(divide="ignore"):
+                hi = np.asarray(
+                    self.model.Hf(upper, zrow, *self.params), dtype=float
+                ).ravel()
+                lo = np.asarray(
+                    self.model.Hf(np.array([a]), zrow, *self.params),
+                    dtype=float,
+                ).ravel()
             H = H + (hi - lo)
         return H
 
@@ -643,10 +706,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Times at which to evaluate survival.
         Z : StepSchedule or array_like
             The covariate path. Either a
-            :class:`~...tvc_schedule.StepSchedule` (built from change-points,
-            intervals, a cyclic pattern, or a step-valued expression) or an
-            array of per-segment covariate rows with ``xl`` giving the segment
-            start times.
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
+            (built from change-points, intervals, a cyclic pattern, or a
+            step-valued expression) or an array of per-segment covariate rows
+            with ``xl`` giving the segment start times.
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional
@@ -688,6 +751,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The values of the random variables at which the failure function
             (CDF) will be calculated
 
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
+
         Returns
         -------
 
@@ -710,7 +779,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        return self._eval(self.model.ff, x, Z)
+        return self._eval(self.model.ff, x, Z, 0.0)
 
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -725,6 +794,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the density function
             will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -748,7 +823,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        return self._eval(self.model.df, x, Z)
+        return self._eval(self.model.df, x, Z, 0.0)
 
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -763,6 +838,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the instantaneous
             hazard function will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -787,7 +868,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        return self._eval(self.model.hf, x, Z)
+        return self._eval(self.model.hf, x, Z, 0.0)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -803,6 +884,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             The values of the random variables at which the cumulative hazard
             function will be calculated
+
+        Z : array like or DataFrame
+            The covariates: one row per value of ``x`` (or a single row,
+            broadcast to every ``x``), in the column order used in the fit. A
+            model fitted with ``fit_from_df`` also accepts a DataFrame with
+            the named (or formula) columns.
 
         Returns
         -------
@@ -827,7 +914,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        return self._eval(self.model.Hf, x, Z)
+        return self._eval(self.model.Hf, x, Z, 0.0)
 
     def random(
         self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
@@ -840,16 +927,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Parameters
         ----------
         size : int
-            The number of random samples to be drawn from the distribution.
+            The number of random samples to draw for each covariate row
+            (for each distinct stress, for an accelerated life model).
 
         Z : scalar or array like
-            The value(s) of the stresses at which the random
+            The covariate row(s) (or stress value(s)) at which to draw: one
+            row per covariate vector, or a scalar / 1-D array of stresses
+            for a single-stress accelerated life model.
 
         Returns
         -------
-        random : numpy array
-            Returns a numpy array of size ``size`` with random values drawn
-            from the distribution.
+        x : numpy array
+            The ``size`` draws for each row, concatenated row by row.
+        Z : numpy array
+            A 2-D array giving the covariate row each draw was made at.
 
 
         Examples
@@ -882,16 +973,40 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             f"random() is not implemented for {self.kind} models."
         )
 
-    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
-    def _ic_counts(self) -> tuple[int, int]:
-        n, c = self.data.n, self.data.c
-        return n[c == 0].sum(), n.sum()
+    def _require_data(self, what: str) -> None:
+        """Refuse, by name, an operation that needs the fitted data.
 
-    def _ic_k_aic_c(self) -> int:
-        # Regression models have historically used the full parameter-
-        # vector length here (which can differ from ``self.k`` when
-        # parameters are fixed); preserved as-is (#298).
-        return len(self.params)
+        A model rebuilt by :meth:`from_dict` keeps its parameters, stored
+        covariance and log-likelihood but not the data it was fitted to,
+        and used to fail with ``AttributeError: no attribute 'data'``.
+        """
+        if getattr(self, "data", None) is None:
+            raise ValueError(
+                "{} needs the data the model was fitted to, which a model "
+                "restored with from_dict / from_json does not carry. Call it "
+                "on the fitted model, or refit.".format(what)
+            )
+
+    # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin.
+    def _ic_sample_size_from_data(self) -> float:
+        self._require_data("bic() / aic_c()")
+        # The observed failures (exact, left- or interval-censored), as for
+        # every model's BIC and AIC_c (ic_sample_size); only exact failures
+        # were counted here, unlike the univariate models. A
+        # time-varying-covariate fit has one row per interval, but only a
+        # subject's last interval can end in a failure, so the count is
+        # unchanged by splitting its time into more intervals; the fallback
+        # for data with no failure counts subjects, not interval rows.
+        return ic_sample_size(
+            self.data.c,
+            self.data.n,
+            n_rows=getattr(self, "_ic_n_total", None),
+        )
+
+    # ``self.k`` is the number of estimated parameters, so the AIC/BIC
+    # penalties and the AIC_c correction all use it (the mixin's defaults).
+    # Fixed parameters -- and the accelerated-life placeholder for the life
+    # parameter -- used to be counted as well.
 
     # -- confidence bounds -------------------------------------------------
 
@@ -900,6 +1015,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # without the original data.
         if getattr(self, "_restored_covariance", None) is not None:
             return
+        if getattr(self, "_restored", False):
+            # Restored without a covariance: to_dict stores one only when
+            # it was finite at fit time, and the data are not stored.
+            raise ValueError(
+                "Confidence bounds are unavailable: this model was restored "
+                "from a dict that carries no parameter covariance (it could "
+                "not be computed when the model was saved), and a restored "
+                "model does not keep the data to recompute it."
+            )
         if not hasattr(self, "data") or getattr(self, "res", None) is None:
             raise ValueError(
                 "Confidence bounds are only available for models fit from "
@@ -945,11 +1069,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             full[free] = free_vals
             return self.model.neg_ll(self.data, *full)
 
-        H = numerical_hessian(neg_ll_free, p_hat[free])
+        step = self._hessian_step(p_hat)[free]
+        H = numerical_hessian(neg_ll_free, p_hat[free], step)
         bad = not np.all(np.isfinite(H))
         if not bad:
+            # Invert in step-scaled coordinates: with a parameter many
+            # orders of magnitude from the others the raw information
+            # matrix is too ill-conditioned to invert directly.
             try:
-                cov_free = np.linalg.inv(H)
+                cov_free = np.linalg.inv(H * np.outer(step, step)) * np.outer(
+                    step, step
+                )
             except np.linalg.LinAlgError:
                 bad = True
         if bad:
@@ -962,6 +1092,42 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
         return cov
+
+    def _parameter_bounds(self) -> list:
+        """``(lower, upper)`` for every entry of ``params``: the
+        distribution's support bounds, then the life model's parameter
+        bounds for an accelerated-life model (the other families'
+        coefficients are unbounded)."""
+        n_phi = len(self.params) - self.k_dist
+        phi_bounds: Any = ((None, None),) * n_phi
+        if self.kind == "Accelerated Life":
+            declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
+            if callable(declared):
+                declared = declared(np.asarray(self.data.Z))
+            phi_bounds = declared
+        return [*self.distribution.bounds, *phi_bounds]
+
+    def _hessian_step(self, p_hat: npt.NDArray) -> npt.NDArray:
+        """Finite-difference step for the covariance Hessian.
+
+        The usual ``eps**(1/3) * max(|p|, 1e-2)``, except that a parameter
+        closer to one of its bounds than a few steps gets a step relative
+        to that distance. The absolute floor is far larger than, say, an
+        accelerated-life coefficient of 5.6e-22 (``InversePower``'s ``a``
+        for lives in the thousands), so the difference stepped outside the
+        support and the covariance came back nan.
+        """
+        h = np.finfo(float).eps ** (1.0 / 3.0)
+        step = h * np.maximum(np.abs(p_hat), 1e-2)
+        for i, (lower, upper) in enumerate(self._parameter_bounds()):
+            gaps = [
+                p_hat[i] - lower if lower is not None else np.inf,
+                upper - p_hat[i] if upper is not None else np.inf,
+            ]
+            gap = min(gaps)
+            if 0 < gap < 10 * step[i]:
+                step[i] = h * gap
+        return step
 
     def standard_errors(self) -> npt.NDArray:
         """
@@ -1036,7 +1202,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x : array like or scalar
             Times at which to evaluate the bound(s).
         Z : array like
-            A single covariate vector.
+            A single covariate vector, used at every ``x`` (one row per
+            ``x`` is paired element-wise, as for :meth:`sf`).
         on : {'sf', 'ff', 'Hf', 'hf', 'df'}, optional
             The function to bound. Default ``'sf'``.
         alpha_ci : float, optional
@@ -1100,8 +1267,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         r"""
 
         A method to plot the survival function of the distribution at the mean
-        covariate vector against the empirical (Kaplan-Meier) survival of the
-        fitted data, with a delta-method confidence band.
+        covariate vector against a non-parametric estimate of the pooled
+        fitted data (the exponentiated Nelson-Aalen estimate, which ignores
+        the covariates), with a delta-method confidence band. It needs the
+        fitted data, so it is not available on a restored model.
 
         Parameters
         ----------
@@ -1114,6 +1283,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             Total tail probability of the band. Default 0.05.
         """
 
+        self._require_data("plot()")
         if ax is None:
             ax = plt.gca()
 

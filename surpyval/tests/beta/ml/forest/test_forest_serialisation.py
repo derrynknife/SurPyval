@@ -19,7 +19,7 @@ from surpyval import Weibull
 from surpyval.beta.ml.forest.forest import RandomSurvivalForest
 from surpyval.beta.ml.forest.node import TerminalNode, node_from_dict
 from surpyval.beta.ml.forest.tree import SurvivalTree
-from surpyval.serialisation import SCHEMA_VERSION
+from surpyval.serialisation import required_schema
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -76,7 +76,7 @@ def test_tree_dict_is_bson_native(kind):
     d = tree.to_dict()
     _assert_bson_native(d)
     assert d["model"] == "SurvivalTree"
-    assert d["schema"] == SCHEMA_VERSION
+    assert d["schema"] == required_schema(d)
 
 
 def test_tree_json_file_round_trip():

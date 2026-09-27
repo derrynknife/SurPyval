@@ -1,6 +1,7 @@
+from typing import Callable
+
 import numpy.typing as npt
 from scipy import integrate
-from scipy.special import xlogy
 
 from surpyval import np
 from surpyval.univariate import parametric as para
@@ -9,6 +10,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -80,12 +82,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             # with a true beta of 2 the seed came back at beta = 23 and
             # the MLE then failed outright, falling back to MPP.
             #
-            # min(x) - 1 rather than a fraction of the range because the
-            # fitter overwrites the returned offset with exactly that
-            # (see ParametricFitter.fit_from_surpyval_data); seeding
+            # ``_offset_start`` because the fitter overwrites the returned
+            # offset with exactly that (see ``_initial_guess``); seeding
             # alpha and beta against a different shift than the one
             # actually installed defeats the point of shifting at all.
-            gamma = np.min(x) - 1.0
+            gamma = _offset_start(x)
             alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
             return np.array([gamma, alpha, beta, 1.0], dtype=float)
         return np.array(
@@ -305,10 +306,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     ) -> Boxable:
         r"""
 
-        Instantaneous hazard rate for the ExpoWeibull Distribution:
+        Quantile function for the ExpoWeibull Distribution:
 
         .. math::
-            q(u) =
+            q(u) = \alpha \left ( -\ln \left ( 1 - u^{1/\mu} \right )
+            \right )^{1/\beta}
 
         Parameters
         ----------
@@ -326,7 +328,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         -------
 
         Q : scalar or numpy array
-            The quantiles for the Weibull distribution at each value u
+            The quantiles for the ExpoWeibull distribution at each value u
 
         Examples
         --------
@@ -378,9 +380,17 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         :math:`\binom{\mu - 1}{i}(-1)^{i}(i + 1)^{-(1 + m/\beta)}` -- but
         it only terminates when :math:`\mu` is a positive integer, and
         for other :math:`\mu` it is alternating and slow to converge,
-        losing significance to cancellation as :math:`\mu` grows. The
-        integral is quadrature either way, so this takes it directly, as
-        ``entropy`` does for the same reason.
+        losing significance to cancellation as :math:`\mu` grows. So the
+        integral is taken by quadrature, as ``entropy`` does for the same
+        reason, on the distribution's own scale: with
+        :math:`t = (x/\alpha)^{\beta}`,
+
+        .. math::
+            E[X^{m}] = \alpha^{m} \int_{0}^{\infty} t^{m/\beta}\,
+            \mu (1 - e^{-t})^{\mu - 1} e^{-t}\, dt ,
+
+        whose integrand does not depend on :math:`\alpha`, so the result
+        is equally accurate at any scale.
 
         Parameters
         ----------
@@ -407,12 +417,53 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         8.598425613605164
         """
 
-        def func(x: float) -> float:
-            return float(x**m * self.df(x, alpha, beta, mu))
+        m_b = float(m) / float(beta)
+        return float(alpha) ** m * self._t_expectation(
+            lambda t: t**m_b, beta, mu
+        )
 
-        return integrate.quad(func, 0, np.inf)[0]
+    @staticmethod
+    def _t_expectation(
+        g: Callable[[float], float], beta: Boxable, mu: Boxable
+    ) -> float:
+        r"""
+        :math:`E[g(T)]` for :math:`T = (X/\alpha)^{\beta}`, whose density
+        :math:`\mu (1 - e^{-t})^{\mu - 1} e^{-t}` is free of
+        :math:`\alpha` (and of :math:`\beta`).
+
+        Integrating over ``x`` directly, the old way, put the mass wherever
+        :math:`\alpha` put it, and ``quad`` over :math:`[0, \infty)`
+        missed it away from unit scale: the mean at
+        :math:`\alpha = 10^{-4}` came back as exactly 0, and at
+        :math:`10^{4}` 0.2% high with an IntegrationWarning. In ``t`` the
+        mass is always near 1; the split there keeps the (integrable)
+        singularity at 0 for :math:`\mu < 1` apart from the tail.
+        """
+        mu_f = float(mu)
+        log_mu = np.log(mu_f)
+
+        def integrand(t: float) -> float:
+            if t <= 0.0:
+                return 0.0
+            log_p = log_mu + (mu_f - 1.0) * np.log(-np.expm1(-t)) - t
+            return float(g(t) * np.exp(log_p))
+
+        with np.errstate(all="ignore"):
+            lower = integrate.quad(integrand, 0.0, 1.0, limit=200)[0]
+            upper = integrate.quad(integrand, 1.0, np.inf, limit=200)[0]
+        return float(lower + upper)
 
     def mean(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
+        r"""
+        The mean of the ExpoWeibull distribution, the first moment (see
+        :meth:`moment`), found by numerical integration.
+
+        Examples
+        --------
+        >>> from surpyval import ExpoWeibull
+        >>> ExpoWeibull.mean(3, 4, 1.2)
+        2.8422622081888997
+        """
         return self.moment(1, alpha, beta, mu)
 
     def entropy(self, alpha: Boxable, beta: Boxable, mu: Boxable) -> Boxable:
@@ -425,6 +476,11 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
 
         .. math::
             S = -\int_{0}^{\infty} f(x) \ln f(x) dx
+
+        taken, like :meth:`moment`, over :math:`t = (x/\alpha)^{\beta}`
+        (so :math:`S = \ln\alpha - E[\ln f_{1}(T^{1/\beta})]`, with
+        :math:`f_{1}` the density at unit scale), which keeps it accurate
+        at any scale.
 
         Parameters
         ----------
@@ -449,11 +505,19 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         1.8227536487527594
         """
 
-        def func(x: float) -> float:
-            f = self.df(x, alpha, beta, mu)
-            return float(xlogy(f, f))
+        b, m = float(beta), float(mu)
 
-        return -integrate.quad(func, 0, np.inf)[0]
+        def log_f1(t: float) -> float:
+            # log density at unit scale, at x = t ** (1 / beta)
+            return float(
+                np.log(b)
+                + np.log(m)
+                + (b - 1.0) / b * np.log(t)
+                + (m - 1.0) * np.log(-np.expm1(-t))
+                - t
+            )
+
+        return float(np.log(float(alpha)) - self._t_expectation(log_f1, b, m))
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)

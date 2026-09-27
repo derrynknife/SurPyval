@@ -19,7 +19,7 @@ def test_g1_renewal():
     # Solution from:
     # Kaminskiy, M. P., and V. V. Krivtsov.
     # "G1-renewal process as repairable system model."
-    # Reliability: Theory & Applications 5.3 (18) (2010): 7-14.
+    # Reliability: Theory & Applications 1(3) (18) (2010). arXiv:1006.3718.
     # Ref:
     # https://arxiv.org/pdf/1006.3718.pdf
 

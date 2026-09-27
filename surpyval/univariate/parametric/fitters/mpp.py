@@ -5,11 +5,12 @@ if TYPE_CHECKING:
     from ..parametric import Parametric
 
 import numpy.typing as npt
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import pearsonr
 
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.parametric.fitters import offset_step
 
 
 def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
@@ -46,6 +47,21 @@ def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
     else:
         intercept = 0.0
     return np.array([1.0, intercept])
+
+
+def _offset_cap(x: npt.NDArray, c: npt.NDArray) -> float:
+    """The value an MPP offset must stay below.
+
+    Every row whose failure has been seen -- exact, left censored, or an
+    interval -- must lie above the offset, or the fitted model gives it no
+    probability (a density or window probability of zero, an infinite
+    negative log-likelihood). A right-censored row may sit below it.
+    """
+    x = np.asarray(x, dtype=float)
+    c = np.asarray(c)
+    upper = x[:, 1] if x.ndim == 2 else x
+    seen = upper[(c != 1) & np.isfinite(upper)]
+    return float(np.min(seen)) if seen.size else np.inf
 
 
 def mpp_from_ecfd(
@@ -108,6 +124,33 @@ def mpp(model: "Parametric") -> dict[str, Any]:
         )
         results["params"] = np.atleast_1d(results["params"])
         results.setdefault("gamma", 0.0)
+        cap = _offset_cap(x, c)
+        if offset and not results["gamma"] < cap:
+            # The regression intercept alone places the offset, and it
+            # can land past the first failure (an Exponential fit to data
+            # starting at 5.001 put it at 5.355), leaving that failure
+            # outside the support. The best line with the offset in the
+            # support has it at the edge, so the offset is set just below
+            # the first failure and the rest refitted with it held there.
+            finite = np.asarray(x, dtype=float)
+            finite = finite[np.isfinite(finite)]
+            spread = float(np.ptp(finite)) if finite.size else 0.0
+            gamma = cap - 1e-6 * (spread if spread > 0 else max(abs(cap), 1))
+            t_shift = None if t is None else np.asarray(t, dtype=float) - gamma
+            refit = dist.mpp(
+                np.asarray(x, dtype=float) - gamma,
+                c,
+                n,
+                t=t_shift,
+                heuristic=heuristic,
+                rr=rr,
+                on_d_is_0=on_d_is_0,
+                offset=False,
+            )
+            results = {
+                "params": np.atleast_1d(refit["params"]),
+                "gamma": gamma,
+            }
         return results
 
     x_, r, d, F = plotting_positions(
@@ -137,15 +180,47 @@ def mpp(model: "Parametric") -> dict[str, Any]:
     y_pp = dist.mpp_y_transform(y_pp)
 
     if offset:
-        x_min = np.min(x_pp)
+        # Below the first plotted failure, and below every other seen
+        # failure too (see ``_offset_cap``).
+        x_min = min(np.min(x_pp), _offset_cap(x, c))
+        # The offset is searched as ``u``, the log of its distance below
+        # ``x_min`` in the data's own unit (see ``offset_step``). It was
+        # the log of the distance in absolute units, so the search always
+        # began one unit below the data: a hair below it for data in the
+        # hundreds of thousands, where the correlation is flat in ``u``
+        # and the search stopped where it began (a Weibull fit put the
+        # offset at -8.4e9 for data starting at 5e5), and a thousand
+        # spreads below it for data in thousandths. Measured in the
+        # data's unit the correlation is the same function of ``u``
+        # whatever the units, so the search is too.
+        step = offset_step(x)
 
-        def fun(gamma: float) -> Any:
-            g = x_min - np.exp(-gamma)
+        def fun(u: npt.NDArray) -> Any:
+            g = x_min - step * np.exp(-u[0])
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out
 
-        res = minimize(fun, 0.0)
-        gamma = x_min - np.exp(-res.x[0])
+        res = minimize(fun, np.zeros(1))
+        u = float(res.x[0])
+        # The correlation is very flat near its peak, and BFGS's stopping
+        # test -- an absolute gradient of 1e-5 -- is met while ``u`` is
+        # still 1e-4 away from it: offsets 5e-5 short, differing between
+        # otherwise identical fits from the last digits of the finite
+        # differences. A bounded Brent search in a unit either side
+        # polishes that to the peak; it is derivative free, so it cannot
+        # stop early on a flat gradient, and the bracket keeps it from
+        # running off to either limit when the peak is at one of them.
+        # The polish is kept only if it improves the correlation.
+        if np.isfinite(u) and np.isfinite(res.fun):
+            polish = minimize_scalar(
+                lambda v: fun(np.array([v])),
+                bounds=(u - 1.0, u + 1.0),
+                method="bounded",
+                options={"xatol": 1e-10},
+            )
+            if np.isfinite(polish.fun) and polish.fun < res.fun:
+                u = float(polish.x)
+        gamma = x_min - step * np.exp(-u)
         x_pp = x_pp - gamma
 
     x_pp = dist.mpp_x_transform(x_pp)

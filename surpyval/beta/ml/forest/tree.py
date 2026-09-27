@@ -102,6 +102,62 @@ class SurvivalTree(SerialisableMixin):
         be given as ``xl``/``xr``, and truncation as ``tl``/``tr``
         instead of the two-column ``t``. ``kind`` selects the tree type
         (see the class docstring).
+
+        Parameters
+        ----------
+        x : array_like, optional
+            Event times (``[left, right]`` rows for interval-censored
+            observations).
+        Z : array_like
+            Covariate (feature) matrix, one row per observation. Required.
+        c : array_like, optional
+            Censoring flags: 0 observed, 1 right, -1 left, 2 interval
+            censored. Defaults to all observed.
+        n : array_like, optional
+            Counts. Defaults to 1.
+        t : array_like, optional
+            (N, 2) truncation bounds.
+        xl, xr : array_like, optional
+            Interval bounds, instead of 2-D ``x``.
+        tl, tr : array_like, optional
+            Left and right truncation, instead of ``t``.
+        max_depth : int, optional
+            Maximum depth of a tree. Defaults to unlimited.
+        min_leaf_samples : int, optional
+            A split is only made if each child keeps at least this many
+            observations. Defaults to 5.
+        min_leaf_failures : int, optional
+            ... and at least this many failures. Defaults to 2.
+        n_features_split : int, float or str, optional
+            The number of features considered at each split: an int, a
+            fraction of the features (float), ``"sqrt"`` (the default),
+            ``"log2"`` or ``"all"``.
+        kind : str, optional
+            ``"weibull"`` (the default), ``"exponential"`` or
+            ``"non-parametric"``; see the class docstring.
+
+        Returns
+        -------
+        SurvivalTree
+            The fitted tree. Its ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
+            ``Hf``) evaluate the model of the leaf that one covariate
+            vector ``Z`` falls in.
+
+        Examples
+        --------
+        Life halves when the first feature exceeds 0.5; a single split
+        finds it:
+
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import SurvivalTree
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> c = (x > 12).astype(int)
+        >>> x = np.minimum(x, 12)
+        >>> tree = SurvivalTree.fit(x, Z, c=c, max_depth=1, n_features_split=2)
+        >>> tree.sf(5, [0.2, 0.5]).round(4), tree.sf(5, [0.8, 0.5]).round(4)
+        (array([0.8831]), array([0.3168]))
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -137,26 +193,46 @@ class SurvivalTree(SerialisableMixin):
     def sf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Survival function at ``x`` of the leaf model for one covariate
+        vector ``Z``.
+        """
         return self.apply_model_function("sf", x, Z)
 
     def ff(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Failure (CDF) function at ``x`` of the leaf model for one covariate
+        vector ``Z``.
+        """
         return self.apply_model_function("ff", x, Z)
 
     def df(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Density at ``x`` of the leaf model for one covariate
+        vector ``Z``.
+        """
         return self.apply_model_function("df", x, Z)
 
     def hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Hazard rate at ``x`` of the leaf model for one covariate
+        vector ``Z``.
+        """
         return self.apply_model_function("hf", x, Z)
 
     def Hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Cumulative hazard at ``x`` of the leaf model for one covariate
+        vector ``Z``.
+        """
         return self.apply_model_function("Hf", x, Z)
 
     def to_dict(self) -> dict:

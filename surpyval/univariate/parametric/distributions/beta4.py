@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
@@ -49,6 +51,15 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         self.supports_mpp = False
         # ``a`` and ``b`` supply the left and right support bounds.
         self.support_param_index = (2, 3)
+
+    def _check_params(self, params: Any) -> None:
+        # Each parameter is unbounded on its own, so from_params used to
+        # accept a > b -- a model whose sf was 0 everywhere.
+        if not params[2] < params[3]:
+            raise ValueError(
+                f"{self.name} needs a < b; got a = {params[2]}, "
+                f"b = {params[3]}"
+            )
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

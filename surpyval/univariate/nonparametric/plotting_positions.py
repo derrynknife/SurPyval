@@ -35,7 +35,9 @@ HEURISTIC_AB = {
     "Midpoint": (0.5, 0.0),
     "Mean": (0.0, 1.0),
     "Weibull": (0.0, 1.0),
-    "Benard": (0.3, 0.2),
+    # Benard's median-rank approximation, (i - 0.3) / (N + 0.4): the same
+    # formula as "Median" (B was 0.2, which is no published heuristic).
+    "Benard": (0.3, 0.4),
     "Beard": (0.31, 0.38),
     "Hazen": (0.5, 0.0),
     "Gringorten": (0.44, 0.12),
@@ -55,58 +57,84 @@ def plotting_positions(
     turnbull_estimator: str = "Fleming-Harrington",
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    This function takes in data in the xcnt format and outputs an approximation
-    of the CDF. This function can be used to produce estimates of F using the
-    Nelson-Aalen, Kaplan-Meier, Fleming-Harrington, and the Turnbull estimates.
-    Additionally, it can be used to create 'plotting heuristics.'
+    Empirical estimates of the CDF, F, at each observation: the points a
+    probability plot draws, and the values the ``MPP`` (probability
+    plotting) fitting method regresses on.
 
-    Plotting heuristics are the values that are used to plot on probability
-    paper and can be used to estiamte the parameters of a distribution. The use
-    of probability plots is one of the traditional ways to estimate the
-    parameters of a distribution.
+    Two kinds of estimate are available. The classical *rank heuristics*
+    place the i-th of N ordered observations at
 
-    If right censored data can be used by the regular plotting positions. If
-    there is right censored data this method adjusts the ranks of the values
-    using the mean order number.
+    .. math::
+        F_i = \\frac{i - A}{N + B}
+
+    with constants ``(A, B)`` that depend on the heuristic (Blom uses
+    ``A = 0.375, B = 0.25``, Median ``A = 0.3, B = 0.4``, and so on).
+    With right-censored data the ranks ``i`` are adjusted by the mean
+    order number (Johnson's method) before the formula is applied. The
+    *estimator* heuristics (``'Nelson-Aalen'``, ``'Kaplan-Meier'``,
+    ``'Fleming-Harrington'``, ``'Turnbull'``) instead return one minus the
+    non-parametric survival estimate, and ``'Filliben'`` uses Filliben's
+    order-statistic medians.
 
     Parameters
     ----------
 
-    x : array like, optional
-        Array of observations of the random variables. If x is :code:`None`,
-        xl and xr must be provided.
+    x : array like
+        Array of observations of the random variables.
     c : array like, optional
         Array of censoring flag. -1 is left censored, 0 is observed, 1 is
         right censored, and 2 is intervally censored. If not provided will
-        assume all values are observed.
+        assume all values are observed. Left- and interval-censored data
+        need ``heuristic='Turnbull'``.
     n : array like, optional
-        Array of counts for each x. If data is proivded as counts, then this
+        Array of counts for each x. If data is provided as counts, then this
         can be provided. If :code:`None` will assume each observation is 1.
     t : 2D-array like, optional
         2D array like of the left and right values at which the respective
         observation was truncated. If not provided it assumes that no
-        truncation occurs.
-    heuristic : ("Blom", "Median", "ECDF", "ECDF_Adj", "Modal", "Midpoint",\
-        "Mean", "Weibull", "Benard", "Beard", "Hazen", "Gringorten", "None",\
-        "Larsen", "Tukey", "DPW"). str, optional
-        Method to use to compute the heuristic of F. See details of each
-        heursitic in the probability plotting section.
-    turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier'), str, optional
-        If using the Turnbull heuristic, you can elect to use the NA or KM
-        method to compute R with the Turnbull estimates of the risk and death
-        sets.
+        truncation occurs. Left truncation needs one of the estimator
+        heuristics; right truncation needs ``'Turnbull'``.
+    heuristic : str, optional
+        The method used to compute F. One of ``'Blom'`` (the default),
+        ``'Median'``, ``'ECDF'``, ``'ECDF_Adj'``, ``'Modal'``,
+        ``'Midpoint'``, ``'Mean'``, ``'Weibull'``, ``'Benard'``,
+        ``'Beard'``, ``'Hazen'``, ``'Gringorten'``, ``'None'``,
+        ``'Larsen'``, ``'Tukey'``, ``'DPW'``, ``'Filliben'``,
+        ``'Nelson-Aalen'``, ``'Kaplan-Meier'``, ``'Fleming-Harrington'``
+        or ``'Turnbull'``.
+    turnbull_estimator : str, optional
+        If using the Turnbull heuristic, the estimator used with the
+        Turnbull estimates of the risk and death sets: one of
+        ``'Fleming-Harrington'`` (the default), ``'Nelson-Aalen'`` or
+        ``'Kaplan-Meier'``.
 
     Returns
     -------
 
     x : numpy array
-        x values for the plotting points
+        x values for the plotting points. The rank heuristics and
+        ``'Filliben'`` return one row per item (a value with ``n = 3``
+        appears three times); the estimator heuristics return the ``x``
+        of the corresponding fitted model (one row per distinct value, or
+        for ``'Turnbull'`` the endpoints of the Turnbull pieces).
     r : numpy array
         risk set at each x
     d : numpy array
-        death set at each x
+        death set at each x (for the rank heuristics, 1 for a failure and
+        0 for a censored item)
     F : numpy array
-        estimate of F to use in plotting positions.
+        estimate of F to use in plotting positions. Only the rows with
+        ``d > 0`` are meant to be plotted: for the rank heuristics and
+        ``'Filliben'`` a censored row carries the previous failure's value
+        (0 before the first failure).
+
+    Raises
+    ------
+
+    ValueError
+        If the heuristic is unknown, the data need an estimator the
+        heuristic is not (left or interval censoring, truncation), or
+        ``'Modal'`` is used with a single item.
 
     Examples
     --------
@@ -181,6 +209,14 @@ def plotting_positions(
         r = np.linspace(N, 1, num=N)
 
         A, B = HEURISTIC_AB[heuristic]
+        # The modal position (i - 1) / (N - 1) is 0 / 0 for one item (a
+        # uniform variable has no mode); it used to come back as NaN with
+        # a numpy RuntimeWarning, then be filled in as F = 0.
+        if N + B == 0:
+            raise ValueError(
+                "The '{}' heuristic, (i - {:g}) / (N - {:g}), needs at "
+                "least two items".format(heuristic, A, -B)
+            )
 
         F = (ranks - A) / (N + B)
         R = 1 - Series(F).ffill().fillna(0).values

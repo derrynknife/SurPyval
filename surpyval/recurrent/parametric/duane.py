@@ -9,9 +9,17 @@ from .nhpp_fitter import NHPPFitter
 @singleton_fitter
 class Duane(NHPPFitter):
     """
-    Represents the Duane Non-Homogeneous Poisson Process model.
-    This class includes methods to evaluate various statistical functions of
-    the model and perform parameter estimation based on input data.
+    The Duane non-homogeneous Poisson process, the power law written as
+
+    .. math::
+        \\Lambda(t) = b\\, t^{\\alpha}, \\qquad
+        \\lambda(t) = \\alpha b\\, t^{\\alpha - 1}.
+
+    It is the Crow-AMSAA process reparameterised: Duane's ``alpha`` is
+    Crow-AMSAA's ``beta`` and ``b`` is ``alpha_CA ** -beta_CA`` (the expected
+    number of events by ``t = 1``), so both fits give the same curve and
+    likelihood. ``Duane`` is an instance of this class; ``fit`` and
+    ``from_params`` return a ``ParametricRecurrenceModel``.
 
     Examples
     --------

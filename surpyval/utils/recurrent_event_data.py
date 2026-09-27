@@ -7,19 +7,14 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class RecurrentEventData:
-    # Optional covariate matrix, attached by ``handle_xicn`` for regression.
-    Z: npt.NDArray | None = None
-    # Gapped (multi-window) observation metadata, attached by ``handle_xicn``
-    # when ``windows`` is supplied: ``window_map`` maps each synthetic
-    # single-window sub-item id to its ``(real_item, (start, end))`` and
-    # ``observation_windows`` keeps the user's original per-item windows. Both
-    # stay ``None`` for ordinary single-window data.
-    window_map: dict | None = None
-    observation_windows: dict | None = None
-
     """
     A class to handle and manipulate recurrent event data. Recurrent events are
     those that can occur more than once for each subject or item.
+
+    The recurrent fitters build one from their ``x``, ``i``, ``c``, ``n``
+    arrays with ``surpyval.handle_xicn``, which validates the input; build
+    one that way to pass to a fitter's ``fit_from_recurrent_data``. The
+    constructor itself does no validation.
 
     Examples
     --------
@@ -42,13 +37,24 @@ class RecurrentEventData:
     )
     >>> data.get_times_to_first_events()
     SurpyvalData(
-    x=[1.],
-    c=[0],
-    n=[2],
-    t=[[-inf  inf]])
+        x=array([1.]),
+        c=array([0]),
+        n=array([2]),
+        t=array([[-inf,  inf]])
+    )
     >>> data.get_interarrival_times()
     array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])
     """
+
+    # Optional covariate matrix, attached by ``handle_xicn`` for regression.
+    Z: npt.NDArray | None = None
+    # Gapped (multi-window) observation metadata, attached by ``handle_xicn``
+    # when ``windows`` is supplied: ``window_map`` maps each synthetic
+    # single-window sub-item id to its ``(real_item, (start, end))`` and
+    # ``observation_windows`` keeps the user's original per-item windows. Both
+    # stay ``None`` for ordinary single-window data.
+    window_map: dict | None = None
+    observation_windows: dict | None = None
 
     def __init__(
         self,
@@ -117,45 +123,78 @@ class RecurrentEventData:
             else:
                 x_out = self.x
 
-            x_unique = np.unique(x_out)
+            entry, exit_ = self.item_observation_windows()
+
+            # A finite right-truncation time closes the item's window just
+            # as an end-of-observation (c=1) row there would, so it joins
+            # the time grid (with no events) exactly as that row would.
+            item_tr = np.array(
+                [self.tr[self.i == item][0] for item in self.items]
+            )
+            truncated_exit = exit_[np.isfinite(item_tr)]
+            x_unique = np.unique(
+                np.concatenate([x_out, truncated_exit])
+                if truncated_exit.size
+                else x_out
+            )
 
             # TODO: consider having the presence of left-censored
             # data use the midpoints instead of the end value of the left
             # censored interval.
 
-            d = np.array(
-                [
-                    self.n[
-                        (x_out == xi)
-                        & ((self.c == 0) | (self.c == 2) | (self.c == -1))
-                    ].sum()
-                    for xi in x_unique
-                ]
-            )
-            # Each item is at risk over its observation window: from its
-            # entry time up to and including its last observed time.
-            #
-            # The exit time is the item's maximum x (its last event or its
-            # right-censoring time). The entry time is the item's left
-            # truncation bound ``tl`` (delayed entry); when no truncation is
-            # supplied ``tl`` defaults to -inf, so the item is at risk from
-            # the start and this reduces to the all-enter-at-origin case. An
-            # item with a delayed entry only joins the risk set once ``x``
-            # reaches its ``tl``, so event times before that entry see a
-            # correspondingly smaller risk set (ignoring ``tl`` here would
-            # inflate the MCF).
-            max_x = np.array(
-                [self.x[self.i == item].max() for item in self.items]
-            )
-            entry = np.array(
-                [self.tl[self.i == item][0] for item in self.items]
-            )
-            r = np.array(
-                [((entry <= xi) & (xi <= max_x)).sum() for xi in x_unique]
-            )
+            # Counted and risk-set sizes by sorted lookup rather than one
+            # pass over the data per time point: that was quadratic, and a
+            # simulated MCF has tens of thousands of distinct times.
+            is_event = (self.c == 0) | (self.c == 2) | (self.c == -1)
+            d = np.bincount(
+                np.searchsorted(x_unique, x_out[is_event]),
+                weights=self.n[is_event],
+                minlength=len(x_unique),
+            ).astype(self.n.dtype)
+            # Each item is at risk over its observation window, from its
+            # entry up to and including its exit (see
+            # ``item_observation_windows``). An item with a delayed entry
+            # only joins the risk set once ``x`` reaches its ``tl``, so event
+            # times before that entry see a correspondingly smaller risk set
+            # (ignoring ``tl`` here would inflate the MCF). The count is
+            # those entered by ``xi`` less those that left before it.
+            r = np.searchsorted(
+                np.sort(entry), x_unique, side="right"
+            ) - np.searchsorted(np.sort(exit_), x_unique, side="left")
 
             self.xrd = x_unique, r, d
         return self.xrd
+
+    def item_observation_windows(
+        self,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        The ``(entry, exit)`` observation window of each item, aligned with
+        :attr:`items`.
+
+        The entry is the item's left-truncation bound ``tl`` (delayed
+        entry); with no truncation it is -inf, so the item is at risk from
+        the start. The exit is the item's last recorded time (its last event
+        or its end-of-observation ``c=1`` row) or, when the item carries a
+        finite right-truncation time ``tr``, that ``tr``: observation of the
+        item ends there, exactly as if it had an end-of-observation row at
+        ``tr``. This is the same window-close the NHPP likelihoods integrate
+        to (see :meth:`get_right_truncation_close`).
+
+        Returns
+        -------
+        tuple of numpy.ndarray
+            ``(entry, exit)``, one value per item.
+        """
+        x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
+        entry, exit_ = [], []
+        for item in self.items:
+            mask = self.i == item
+            entry.append(float(self.tl[mask][0]))
+            last = float(x_upper[mask].max())
+            tr_item = float(self.tr[mask][0])
+            exit_.append(max(last, tr_item) if np.isfinite(tr_item) else last)
+        return np.array(entry, dtype=float), np.array(exit_, dtype=float)
 
     @property
     def event_types(self) -> list:
@@ -313,6 +352,10 @@ class RecurrentEventData:
             "x_right": x_l[mask_right] if mask_right.any() else empty,
             "x_right_prev": prev[mask_right] if mask_right.any() else empty,
             "x_left": x_l[mask_left] if mask_left.any() else empty,
+            # A left-censored count is the item's first row, so its previous
+            # time is the item's entry (``tl``, or the origin 0): the count
+            # covers (entry, x], not (0, x].
+            "x_left_prev": x_prev_l[mask_left] if mask_left.any() else empty,
             "n_left": n[mask_left] if mask_left.any() else empty,
             "x_i_l": x_l[mask_i] if mask_i.any() else empty,
             "x_i_r": (

@@ -18,7 +18,11 @@ import numpy as np
 from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
-from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
+from surpyval.recurrent.nonparametric.mcf import (
+    NonParametricCounting,
+    _lawless_nadeau_var,
+    _observation_origin,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -32,14 +36,23 @@ from surpyval.utils.recurrent_utils import (
 )
 
 
-def _counting_model_from_xrd(
-    x: np.ndarray, r: np.ndarray, d: np.ndarray
-) -> Any:
-    """Single-cause ``NonParametricCounting`` from an ``(x, r, d)``
-    triple; delegates to the one shared estimator."""
+def _cause_model(data: Any, cause: Any) -> Any:
+    """Single-cause ``NonParametricCounting`` for ``cause``: the shared
+    Nelson-Aalen estimator on the cause's counts over the shared risk set,
+    with the Lawless-Nadeau robust variance of those counts (the per-step
+    variance ``from_xrd`` computes ignores each item's covariance across
+    steps, so it understates the variance when items differ in their
+    rates)."""
+    x, r, d = data.to_cause_specific_xrd(cause)
     # ``from_xrd`` is a classmethod, so calling it through the
     # singleton instance binds the class exactly as ``type(...)`` did.
-    return NonParametricCounting.from_xrd(x, r, d)
+    model = NonParametricCounting.from_xrd(x, r, d)
+    # Only this cause's events count; the other causes' events are
+    # non-events for it, while each item stays in the (shared) risk set.
+    is_cause = np.array([ei == cause for ei in data.e], dtype=bool)
+    model.var = _lawless_nadeau_var(data, x, r, d, counted=is_cause)
+    model.origin = _observation_origin(data)
+    return model
 
 
 class CauseSpecificMCF(SerialisableMixin):
@@ -48,8 +61,11 @@ class CauseSpecificMCF(SerialisableMixin):
     competing event types.
 
     The model fits one ``NonParametricCounting`` MCF per event type, sharing
-    the at-risk set across causes. Access the per-cause models through
-    ``self.models[cause]`` or use the convenience methods below.
+    the at-risk set across causes. Each cause's MCF carries the
+    Lawless-Nadeau robust variance of that cause's events (the other
+    causes' events count as non-events for it), as the overall MCF does.
+    Access the per-cause models through ``self.models[cause]`` or use the
+    convenience methods below.
     """
 
     # Populated by the fit classmethods; declared for the type checker.
@@ -120,12 +136,28 @@ class CauseSpecificMCF(SerialisableMixin):
         plot_bounds: bool = True,
         ax: Any = None,
     ) -> Any:
-        """Overlay the MCF of every cause on a single axis."""
+        """Overlay the MCF of every cause on a single axis.
+
+        With ``plot_bounds`` each cause's pointwise ``confidence`` bounds
+        are drawn as dashed steps in the colour of its MCF.
+        """
         if ax is None:
             ax = plt.gcf().gca()
         for cause in self.event_types:
             model = self.models[cause]
-            ax.step(model.x, model.mcf_hat, where="post", label=str(cause))
+            (line,) = ax.step(
+                model.x, model.mcf_hat, where="post", label=str(cause)
+            )
+            if plot_bounds and model.var is not None:
+                cb = model.mcf_cb(model.x, confidence=confidence)
+                ax.step(
+                    model.x,
+                    cb,
+                    where="post",
+                    color=line.get_color(),
+                    linestyle="--",
+                    linewidth=0.8,
+                )
         ax.legend()
         return ax
 
@@ -143,8 +175,7 @@ class CauseSpecificMCF(SerialisableMixin):
         out.x, out.r, _ = data.to_xrd()
         out.models = {}
         for cause in out.event_types:
-            x, r, d = data.to_cause_specific_xrd(cause)
-            out.models[cause] = _counting_model_from_xrd(x, r, d)
+            out.models[cause] = _cause_model(data, cause)
         return out
 
     @classmethod
@@ -174,11 +205,16 @@ class CauseSpecificMCF(SerialisableMixin):
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item. The at-risk set
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item). The at-risk set
             is shared across causes, so a delayed entry shrinks the risk set
             for every cause until the item enters at ``tl``.
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``: the end of
+            its observation
+            window. The item stays in the (shared) at-risk set up to ``tr``,
+            exactly as if it had an end-of-observation (``c=1``) row there.
 
         Returns
         -------

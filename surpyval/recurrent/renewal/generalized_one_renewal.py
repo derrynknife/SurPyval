@@ -13,6 +13,8 @@ from surpyval.utils.recurrent_utils import (
     reject_gapped_observation,
     reject_left_truncation,
     validate_renewal_censoring,
+    validate_renewal_times,
+    validate_restoration,
 )
 
 
@@ -136,29 +138,47 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         dist: Any,
     ) -> Callable:
         def negll_func(params: np.ndarray) -> float:
-            ll = 0
             q = params[0]
             dist_params = params[1:]
+            # Nelder-Mead's box bounds clip trial points onto the closed
+            # bounds, so the optimiser does evaluate q = -1 (every scale
+            # (1 + q) ** j with j > 0 is zero) and distribution parameters
+            # at their limits (a Weibull alpha of 0). The likelihood is zero
+            # there, so say so with inf rather than dividing by zero.
+            if not q > -1 or _outside_open_bounds(dist_params, dist.bounds):
+                return np.inf
+            # log((1 + q) ** j) in log space, so a q near -1 does not
+            # underflow the scale to zero.
+            log1p_q = np.log1p(q)
 
-            for item in set(i):
-                mask_item = i == item
-                x_item = np.atleast_1d(x[mask_item])
-                c_item = np.atleast_1d(c[mask_item])
-                n_item = np.atleast_1d(n[mask_item])
-                for j in range(0, len(x_item)):
-                    # The jth interarrival is the base lifetime scaled by
-                    # cj = (1 + q) ** j. Scaling the random variable by cj is
-                    # equivalent to evaluating the base distribution on a
-                    # rescaled time axis: f_j(x) = f0(x / cj) / cj and
-                    # S_j(x) = S0(x / cj).
-                    cj = (1.0 + q) ** j
-                    xj = x_item[j] / cj
-                    if c_item[j] == 0:
-                        ll += n_item[j] * (
-                            dist.log_df(xj, *dist_params) - np.log(cj)
-                        )
-                    elif c_item[j] == 1:
-                        ll += n_item[j] * dist.log_sf(xj, *dist_params)
+            ll = 0.0
+            # Far from the optimum the rescaled times can still overflow
+            # (x / c_j -> inf) and the densities underflow to zero. That
+            # only happens where the likelihood is negligible, and a
+            # non-finite total is returned as inf below, so the arithmetic
+            # warnings on the way there carry no information.
+            with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
+                for item in set(i):
+                    mask_item = i == item
+                    x_item = np.atleast_1d(x[mask_item])
+                    c_item = np.atleast_1d(c[mask_item])
+                    n_item = np.atleast_1d(n[mask_item])
+                    for j in range(0, len(x_item)):
+                        # The jth interarrival is the base lifetime scaled
+                        # by cj = (1 + q) ** j. Scaling the random variable
+                        # by cj is equivalent to evaluating the base
+                        # distribution on a rescaled time axis:
+                        # f_j(x) = f0(x / cj) / cj and S_j(x) = S0(x / cj).
+                        log_cj = j * log1p_q
+                        xj = x_item[j] * np.exp(-log_cj)
+                        if c_item[j] == 0:
+                            ll += n_item[j] * (
+                                dist.log_df(xj, *dist_params) - log_cj
+                            )
+                        elif c_item[j] == 1:
+                            ll += n_item[j] * dist.log_sf(xj, *dist_params)
+            if not np.isfinite(ll):
+                return np.inf
             return -ll
 
         return negll_func
@@ -191,7 +211,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
@@ -232,6 +252,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        validate_renewal_times(
+            data, dist, type(self).__name__, every_gap_from_new=True
+        )
 
         neg_ll = self.create_negll_func(
             data.interarrival_times, data.i, data.c, data.n, dist
@@ -248,19 +271,31 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                 method="Nelder-Mead",
             )
 
+        def polish(res: Any) -> Any:
+            return fit_once(res.x)
+
         if init is None:
             dist_params = dist.fit(
                 data.interarrival_times, data.c, data.n
             ).params
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
         else:
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            if init.shape != (1 + len(dist.param_names),):
+                raise ValueError(
+                    "init must have {} values ([q, {}]); got {}.".format(
+                        1 + len(dist.param_names),
+                        ", ".join(dist.param_names),
+                        init.size,
+                    )
+                )
             inits = None
-        res = self._multistart(fit_once, inits, init)
+        res = self._multistart(fit_once, inits, init, neg_ll, polish)
 
         underlying_model = dist.from_params(list(res.x[1:]))
         q = res.x[0]
         out = self._make_model(underlying_model, q)
-        self._attach_inference(out, neg_ll, res.x, len(data.x), res, data)
+        self._attach_inference(out, neg_ll, res.x, res, data)
         return out
 
     def fit(
@@ -279,13 +314,17 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         init : list, optional
@@ -358,12 +397,24 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         G1 Renewal SurPyval Model
         =========================
         Distribution        : Weibull
-        Fitted by           : MLE
+        Fitted by           : given parameters (not fitted)
         Restoration Factor  : 0.2
         Parameters          :
              alpha: 10
               beta: 2
         """
         self._check_dist_eligible(dist)
+        validate_restoration(q, "q", (-1, None), open_lower=True)
         model = dist.from_params(params)
         return self._make_model(model, q)
+
+
+def _outside_open_bounds(params: np.ndarray, bounds: Any) -> bool:
+    """Whether any parameter is on or beyond its (open) bound; ``None``
+    marks an unbounded side."""
+    for p, (lower, upper) in zip(params, bounds):
+        if (lower is not None and not p > lower) or (
+            upper is not None and not p < upper
+        ):
+            return True
+    return False

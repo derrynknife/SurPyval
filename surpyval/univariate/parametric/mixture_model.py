@@ -4,6 +4,7 @@ from typing import Any
 import numpy.typing as npt
 from matplotlib import pyplot as plt
 from scipy.optimize import minimize
+from scipy.special import logsumexp
 
 from surpyval import Distribution, np
 from surpyval.serialisation import (
@@ -18,6 +19,12 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+
+# The log-likelihood floor of one observation under one component: far
+# below any log-likelihood an observation the component can explain has,
+# and finite, so the EM objective stays finite (see
+# ``MixtureModel.log_likelihood``).
+LOG_FLOOR = -1e4
 
 
 class MixtureModel(SerialisableMixin, Distribution):
@@ -57,6 +64,8 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.params: Any = None
         self.w: Any = None
         self.p: Any = None
+        #: The observed-data *negative* log-likelihood at the current
+        #: parameters (despite the name), which the EM iteration tracks.
         self.loglike: Any = None
 
     # -- serialisation -----------------------------------------------------
@@ -70,30 +79,36 @@ class MixtureModel(SerialisableMixin, Distribution):
         model reproduces ``sf``/``ff``/``df``/``mean``/``random`` exactly. The
         fitted data and EM responsibilities are not stored.
         """
-        return stamp_schema(
-            {
-                "model": "MixtureModel",
-                "dist": self.dist.name,
-                "m": int(self.m),
-                "params": np.asarray(self.params, dtype=float).tolist(),
-                "w": np.asarray(self.w, dtype=float).tolist(),
-            }
-        )
+        from .parametric import is_custom_distribution
+
+        out = {
+            "model": "MixtureModel",
+            "dist": self.dist.name,
+            "m": int(self.m),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "w": np.asarray(self.w, dtype=float).tolist(),
+        }
+        if is_custom_distribution(self.dist):
+            # Resolved through the CustomDistribution registry on reading
+            out["custom"] = True
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "MixtureModel":
-        """Rebuild a mixture model from a :meth:`to_dict` dictionary."""
-        import surpyval
-        from surpyval.univariate.parametric.parametric_fitter import (
-            ParametricFitter,
-        )
+        """Rebuild a mixture model from a :meth:`to_dict` dictionary.
+
+        The restored model evaluates the mixture (``sf``, ``ff``, ``df``,
+        ``cs``, ``mean``, ``random``) exactly, but holds no data, so
+        :meth:`plot` and :meth:`get_plot_data` raise. A mixture of a
+        ``CustomDistribution`` or a ``Discretize`` distribution is read
+        back as described in ``Parametric.from_dict``.
+        """
+        from .parametric import resolve_distribution
 
         require_model_tag(model_dict, "MixtureModel", "a mixture model")
-        dist = getattr(surpyval, model_dict["dist"], None)
-        if not isinstance(dist, ParametricFitter):
-            raise ValueError(
-                "Unknown distribution {!r}".format(model_dict["dist"])
-            )
+        dist = resolve_distribution(
+            model_dict["dist"], bool(model_dict.get("custom", False))
+        )
         out = cls(dist=dist, m=int(model_dict["m"]))
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
@@ -127,6 +142,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         counts ``n`` enter the log-likelihood as multipliers -- raising the
         per-component likelihood to ``n`` *before* mixing is wrong, since
         ``sum_i w_i f_i^n != (sum_i w_i f_i)^n`` (#254)."""
+        self._require_fit_data("likelihood()")
         data = self.data
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
@@ -140,6 +156,47 @@ class MixtureModel(SerialisableMixin, Distribution):
         like[data.c == -1] = like_l
         like[data.c == 2] = like_i
         return like
+
+    def log_likelihood(self, params: Any) -> Any:
+        """Per-observation log-likelihood of one component, floored at
+        ``LOG_FLOOR``.
+
+        Formed from the distribution's log functions rather than as the
+        log of :meth:`likelihood`: a density or interval probability that
+        underflows to 0 made ``log`` return -inf, a responsibility times
+        -inf made the M-step objective infinite, and the optimiser
+        stopped after one step (a two-Weibull mixture on interval data
+        stalled 250 log-likelihood units short, with no warning). The
+        floor keeps an observation a component cannot explain at a finite,
+        heavily penalised value instead.
+        """
+        self._require_fit_data("log_likelihood()")
+        data = self.data
+        dist = self.dist
+        out = np.zeros(len(data.x))
+        with np.errstate(all="ignore"):
+            if (data.c == 0).any():
+                out[data.c == 0] = dist.log_df(data.x_o, *params)
+            if (data.c == 1).any():
+                out[data.c == 1] = dist.log_sf(data.x_r, *params)
+            if (data.c == -1).any():
+                out[data.c == -1] = dist.log_ff(data.x_l, *params)
+            if (data.c == 2).any():
+                window = dist.ff(data.x_ir, *params) - dist.ff(
+                    data.x_il, *params
+                )
+                out[data.c == 2] = np.log(np.maximum(window, 0.0))
+        out = np.nan_to_num(out, nan=LOG_FLOOR, neginf=LOG_FLOOR)
+        return np.maximum(out, LOG_FLOOR)
+
+    def _log_resp(self, w: npt.NDArray, params: Any) -> Any:
+        """``log w_i + log L_i`` for every component (rows) and
+        observation (columns)."""
+        with np.errstate(divide="ignore"):
+            log_w = np.log(np.asarray(w, dtype=float))
+        return np.array(
+            [log_w[i] + self.log_likelihood(params[i]) for i in range(self.m)]
+        )
 
     def _window_prob(self, params_i: npt.NDArray) -> Any:
         """One component's probability of landing in each observation's
@@ -160,11 +217,11 @@ class MixtureModel(SerialisableMixin, Distribution):
         """Observed negative log-likelihood of the mixture: counts multiply
         in the log domain, and truncated observations are conditioned on
         their window through the mixture probability of the window."""
-        f = np.zeros(len(self.data.x))
-        for i in range(self.m):
-            f += w[i] * self.likelihood(params[i])
+        self._require_fit_data("neg_ll_of()")
+        # log-sum-exp over the components, so the mixture density of an
+        # observation is not lost to underflow in any one of them.
         with np.errstate(all="ignore"):
-            ll = np.sum(self.data.n * np.log(f))
+            ll = np.sum(self.data.n * logsumexp(self._log_resp(w, params), 0))
             if self._truncated:
                 win = np.zeros(len(self.data.x))
                 for i in range(self.m):
@@ -176,35 +233,40 @@ class MixtureModel(SerialisableMixin, Distribution):
         """EM M-step objective: the (negative) expected complete-data
         log-likelihood over the component labels -- counts times
         responsibilities times each component's log-likelihood."""
+        self._require_fit_data("Q()")
         params = params.reshape(self.m, self.dist.k)
         total = 0.0
         for i in range(self.m):
-            like = self.likelihood(params[i])
-            with np.errstate(all="ignore"):
-                loglike = np.log(like)
-            contrib = np.where(
-                self.p[i] > 0,
-                self.data.n * self.p[i] * np.nan_to_num(loglike, nan=-1e300),
-                0.0,
-            )
-            total -= contrib.sum()
+            # Finite by construction (see log_likelihood), so a zero
+            # responsibility contributes exactly 0 and none gives inf.
+            loglike = self.log_likelihood(params[i])
+            total -= np.sum(self.data.n * self.p[i] * loglike)
         return total
 
     def expectation(self) -> Any:
-        for i in range(self.m):
-            like = self.likelihood(self.params[i])
-            like = np.multiply(self.w[i], like)
-            self.p[i] = like
-        self.p = np.divide(self.p, np.sum(self.p, axis=0))
+        """EM E-step: set each observation's responsibilities ``p`` (the
+        probability it belongs to each component, given the current fit)
+        and the count-weighted mixing weights ``w``."""
+        # Normalised in the log domain: dividing likelihoods that had all
+        # underflowed to 0 gave 0/0 responsibilities (and the overflow
+        # and invalid-value warnings of a discrete mixture).
+        log_r = self._log_resp(self.w, self.params)
+        with np.errstate(all="ignore"):
+            self.p = np.exp(log_r - logsumexp(log_r, axis=0))
         # Mixing weights are count-weighted responsibility totals.
         self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
     def maximisation(self) -> Any:
+        """EM M-step: refit every component's parameters by minimising
+        :meth:`Q` with the current responsibilities held fixed."""
         bounds = self.dist.bounds * self.m
         res = minimize(self.Q, self.params.ravel(), bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
     def EM(self) -> Any:
+        """One EM iteration (:meth:`expectation` then
+        :meth:`maximisation`), after which ``loglike`` holds the observed
+        negative log-likelihood."""
         self.expectation()
         self.maximisation()
         # Convergence is tracked on the observed likelihood, not the
@@ -228,6 +290,9 @@ class MixtureModel(SerialisableMixin, Distribution):
             )
 
     def initialise_params(self) -> Any:
+        """The EM starting point: cut the (sorted) data into ``m``
+        consecutive blocks, fit one component to each block, and weight
+        the components equally."""
         splits_x = np.array_split(self.data.x, self.m)
         splits_c = np.array_split(self.data.c, self.m)
         splits_n = np.array_split(self.data.n, self.m)
@@ -252,6 +317,14 @@ class MixtureModel(SerialisableMixin, Distribution):
         xr: npt.ArrayLike | None = None,
     ) -> Any:
         """
+        Fit the mixture to data, in place.
+
+        Unlike the single-distribution fitters, this does not return a new
+        model: it sets the fitted ``params`` (one row per sub-distribution)
+        and mixing weights ``w`` on this object, which is then used as the
+        model. Untruncated data is fitted by the EM algorithm; truncated
+        data by direct maximisation of the truncated likelihood.
+
         Parameters
         ----------
 
@@ -291,6 +364,12 @@ class MixtureModel(SerialisableMixin, Distribution):
             Array like of the right array for 2-dimensional input of x. This
             is useful for data that is all intervally censored. Must be used
             with the :code:`xl` input.
+
+        Returns
+        -------
+
+        None
+            The fit is stored on this object.
 
         Examples
         --------
@@ -369,12 +448,45 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.loglike = float(res.fun)
 
     def mean(self, *args: Any, **kwargs: Any) -> Any:
+        r"""
+        The mean of the fitted mixture, :math:`\sum_{j} w_{j} E[X_{j}]`.
+
+        Returns
+        -------
+        float
+            The weighted sum of the component means.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
+        >>> wmm.fit(x)
+        >>> round(float(wmm.mean()), 4)
+        9.8294
+        """
         mean = 0
         for i in range(self.m):
             mean += self.w[i] * self.dist.mean(*self.params[i])
         return mean
 
     def random(self, size: int, *args: Any, **kwargs: Any) -> Any:
+        """
+        Draw random samples from the fitted mixture.
+
+        The number drawn from each component is multinomial with the
+        mixing weights ``w``, and the draws are shuffled together.
+
+        Parameters
+        ----------
+        size : int
+            The number of samples to draw.
+
+        Returns
+        -------
+        numpy array
+            ``size`` values from the mixture, in random order.
+        """
         sizes = np.random.multinomial(size, self.w)
         rvs = np.zeros(size)
         s_last = 0
@@ -468,9 +580,33 @@ class MixtureModel(SerialisableMixin, Distribution):
         array like
             The conditional survival function evaluated at x given X.
         """
+        # As arrays: ``x + X`` on a list concatenated (or raised) rather
+        # than adding.
+        x = np.asarray(x, dtype=float)
+        X = np.asarray(X, dtype=float)
         return self.sf(x + X) / self.sf(X)
 
+    def _require_fit_data(self, what: str) -> None:
+        # The likelihood pieces also run mid-fit, before ``params`` is
+        # set, so only the data is required; on a restored mixture they
+        # used to fail with ``AttributeError: 'NoneType' ... 'n'``.
+        if self.data is None:
+            self._require_data(what)
+
+    def _require_data(self, what: str) -> None:
+        if self.params is None:
+            raise ValueError(f"{what} needs a fitted mixture")
+        if self.data is None:
+            raise ValueError(
+                f"{what} needs the data the mixture was fitted to, which a "
+                "mixture restored with from_dict does not carry (to_dict "
+                "stores only the parameters and weights)."
+            )
+
     def get_plot_data(self, heuristic: str = "Nelson-Aalen") -> Any:
+        """The plotting positions and fitted curve that :meth:`plot`
+        draws, computed from the fitted data with ``heuristic``."""
+        self._require_data("get_plot_data()")
         return probability_plot_data(
             dist=self.dist,
             ff=self.ff,
@@ -510,6 +646,7 @@ class MixtureModel(SerialisableMixin, Distribution):
 
         if self.params is None:
             raise ValueError("Can't plot model that failed to fit")
+        self._require_data("plot()")
 
         heuristic = adjust_heuristic(self.data.c, self.data.t, heuristic)
 

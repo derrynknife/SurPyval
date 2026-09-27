@@ -5,8 +5,12 @@ Models in which covariates change the survival of an individual unit.
 The families differ in *how* a covariate acts: multiplying the hazard,
 adding to it, scaling time, or shifting the odds.
 
-For a narrative introduction with worked examples, see
-:doc:`Regression Modelling with SurPyval`.
+The univariate regression models are importable directly from
+``surpyval``. For the theory see :doc:`regression analysis`; for a
+narrative introduction with worked examples, see
+:doc:`Regression Modelling with SurPyval`. Tree-based models are under
+:doc:`surpyval.beta`, and regression for recurrent events under
+:doc:`surpyval.counting`.
 
 Semi-Parametric Models
 ----------------------
@@ -26,9 +30,9 @@ Parametric Models
 
 A fitted baseline distribution combined with a covariate function. The
 page below covers the proportional-hazards, accelerated-failure-time,
-proportional-odds and accelerated-life families, together with the
-time-varying covariate schedules the first three can be evaluated
-along.
+proportional-odds, parametric additive-hazards and accelerated-life
+families, the fitted model they all return, and the time-varying
+covariate schedules the PH, AFT and AH families can be evaluated along.
 
 .. toctree::
     :maxdepth: 1

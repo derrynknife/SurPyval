@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import root
 from scipy.special import gammaln
 
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric.counting_process import (
     Boxable,
     CountingProcess,
@@ -16,15 +17,17 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 
 @singleton_fitter
 class HPP(CountingProcess):
     """
-    Represents the Homogeneous Poisson Process (HPP) model.
-    This class includes methods to evaluate various statistical functions of
-    the model and perform parameter estimation based on input data.
+    The homogeneous Poisson process: events at the constant rate
+    ``lambda``, so :math:`\\Lambda(t) = \\lambda t`. Its maximum-likelihood
+    rate is the number of events divided by the total time under
+    observation. ``HPP`` is an instance of this class; ``fit`` and
+    ``from_params`` return a ``ParametricRecurrenceModel``.
 
     Examples
     --------
@@ -57,7 +60,10 @@ class HPP(CountingProcess):
     def __init__(self) -> None:
         self.param_names = ["lambda"]
         self.bounds = ((0, None),)
-        self.support = (0.0, np.inf)
+        # A constant rate is defined at any time, so an item observed from
+        # a negative ``tl`` may have events at negative times (the support
+        # check in the fit only restricts the power-law models).
+        self.support = (-np.inf, np.inf)
         self.name = "Homogeneous Poisson Process"
 
     # The base contract is variadic (*params); HPP's one parameter
@@ -188,7 +194,10 @@ class HPP(CountingProcess):
 
         if has_left_censoring:
             left_mask = c == -1
-            x_left = x_l[left_mask]
+            # A left-censored count covers the item's window from its entry
+            # (its first row, so the previous time is the entry: ``tl``, or
+            # the origin 0), not from time 0 whatever ``tl`` says.
+            x_left = x_l[left_mask] - x_prev_r[left_mask]
             n_left = n[left_mask]
             log_xl = np.log(x_left)
             n_log_x_left = n_left * log_xl
@@ -264,15 +273,22 @@ class HPP(CountingProcess):
         return negll_func
 
     def fit_from_recurrent_data(
-        self, data: RecurrentEventData, init: "ArrayLike | None" = None
+        self,
+        data: RecurrentEventData,
+        how: str = "MLE",
+        init: "ArrayLike | None" = None,
     ) -> Any:
         """
         Fits the HPP model to recurrent data and returns the fitted model.
 
         Parameters
         ----------
-        data : object
-            An object containing the recurrent data.
+        data : RecurrentEventData
+            The recurrent event data, as built by ``surpyval.handle_xicn``.
+            :meth:`fit` builds one from its arrays and calls this.
+        how : str, optional
+            Only ``"MLE"``; accepted so the HPP can stand wherever an NHPP
+            baseline is fitted (for example ``CauseSpecificNHPP``).
         init : array_like, optional
             Initial parameter values for the optimization.
 
@@ -287,8 +303,15 @@ class HPP(CountingProcess):
 
         out.param_names = ["lambda"]
         out.bounds = ((0, None),)
-        out.support = (0.0, np.inf)
+        out.support = (-np.inf, np.inf)
         out.name = "Homogeneous Poisson Process"
+        if how != "MLE":
+            raise ValueError(
+                "The HPP is fitted by maximum likelihood only; how must be "
+                "'MLE', got {!r}".format(how)
+            )
+        out.how = "MLE"
+        validate_nhpp_data(data, self)
 
         neg_ll = self.create_negll_func(data)
         jac = jacobian(neg_ll)
@@ -297,7 +320,17 @@ class HPP(CountingProcess):
         if init is None:
             init = [0.0]
         else:
-            init = np.atleast_1d(np.log(init))
+            init = np.atleast_1d(np.asarray(init, dtype=float))
+            # The search runs on log(rate), so a start of 0 (or below) was
+            # -inf / nan and came back as a rate of 0 with warnings.
+            if init.shape != (1,) or not (
+                np.isfinite(init[0]) and init[0] > 0
+            ):
+                raise ValueError(
+                    "init must be one positive, finite rate, [rate]; got "
+                    "{!r}".format(init.tolist())
+                )
+            init = np.log(init)
 
         res = root(jac, init, jac=hess)
         out.res = res
@@ -308,7 +341,7 @@ class HPP(CountingProcess):
         # machinery sees ``_neg_ll(_mle)`` with ``_mle`` the fitted rate.
         out._neg_ll = lambda params: neg_ll(np.log(np.asarray(params)))
         out._mle = np.asarray(out.params, dtype=float)
-        out._n_obs = len(data.x)
+        out._n_obs = bic_sample_size(data)
 
         return out
 
@@ -330,19 +363,28 @@ class HPP(CountingProcess):
         Parameters
         ----------
         x : array_like
-            The data values.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            identity of the observation for each x.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            Censoring indicators at each x.
+            Censoring indicators: 0 an observed event, 1 the right-censored
+            end of an item's observation (the time it was last seen), -1
+            left-censored and 2 interval-censored counts (with ``n``).
+            Defaults to all observed.
         n : array_like, optional
-            count of the data at each x.
+            Number of events in each row (for left- and interval-censored
+            counts). Defaults to 1.
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
-            Left truncation (delayed entry) time per item.
+            Left truncation (delayed entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item).
         tr : array_like or scalar, optional
-            Right truncation time per item.
+            Right truncation time of each item, given like ``tl``; the
+            observation window closes there, as a ``c=1`` row would close it.
         init : array_like, optional
             Initial parameter estimates for the optimization.
         windows : dict, optional
@@ -354,8 +396,21 @@ class HPP(CountingProcess):
 
         Returns
         -------
-        object
-            An object containing the fitted model and related information.
+        ParametricRecurrenceModel
+            The fitted model.
+
+        Examples
+        --------
+        Two systems, each observed to t = 60 (the ``c=1`` rows), with nine
+        failures between them: the rate is 9 / 120.
+
+        >>> from surpyval.recurrent import HPP
+        >>> x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        >>> model = HPP.fit(x, i=i, c=c)
+        >>> model.params
+        array([0.075])
         """
         data = handle_xicn(
             x,
@@ -369,3 +424,37 @@ class HPP(CountingProcess):
             windows=windows,
         )
         return self.fit_from_recurrent_data(data, init=init)
+
+    def from_params(self, params: ArrayLike) -> ParametricRecurrenceModel:
+        """
+        Create an HPP model from a known rate, without fitting.
+
+        Parameters
+        ----------
+        params : array_like
+            ``[rate]``, the constant event rate.
+
+        Returns
+        -------
+        ParametricRecurrenceModel
+            A model with the given rate, for prediction and simulation.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import HPP
+        >>> model = HPP.from_params([0.1])
+        >>> model.cif([10, 20])
+        array([1., 2.])
+        """
+        params = np.atleast_1d(np.asarray(params, dtype=float))
+        if params.shape != (1,) or not params[0] > 0:
+            raise ValueError("an HPP takes one positive rate, [rate]")
+        model = ParametricRecurrenceModel()
+        model.params = params
+        model.dist = self
+        model.param_names = ["lambda"]
+        model.bounds = ((0, None),)
+        model.support = (-np.inf, np.inf)
+        model.name = "Homogeneous Poisson Process"
+        model.how = "from_params"
+        return model

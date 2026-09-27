@@ -65,16 +65,19 @@ class NonParametricFitter:
     ) -> NonParametric:
         r"""
 
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use a
-        simple :code:`fit()` call, with as many or as few parameters as are
-        needed.
+        Estimate the survival function of the data non-parametrically.
+
+        The estimator is the one this instance was created for
+        (``KaplanMeier``, ``NelsonAalen``, ``FlemingHarrington`` or
+        ``Turnbull``). Pass as many or as few of the arguments as the data
+        needs; only ``x`` (or ``xl`` and ``xr``) is required.
 
         Parameters
         ----------
 
         x : array like, optional
-            Array of observations of the random variables. If x is
+            Array of observations of the random variables, or (Turnbull
+            only) a 2-D array of ``[left, right]`` intervals. If x is
             :code:`None`, xl and xr must be provided.
 
         c : array like, optional
@@ -83,7 +86,7 @@ class NonParametricFitter:
             assume all values are observed.
 
         n : array like, optional
-            Array of counts for each x. If data is proivded as counts, then
+            Array of counts for each x. If data is provided as counts, then
             this can be provided. If :code:`None` will assume each
             observation is 1.
 
@@ -91,17 +94,6 @@ class NonParametricFitter:
             2D array like of the left and right values at which the
             respective observation was truncated. If not provided it assumes
             that no truncation occurs.
-
-        tl : array like or scalar, optional
-            Values of left truncation for observations. If it is a scalar
-            value assumes each observation is left truncated at the value.
-            If an array, it is the respective 'late entry' of the observation.
-
-        tr : array like or scalar, optional
-            Values of right truncation for observations. If it is a scalar
-            value assumes each observation is right truncated at the value.
-            If an array, it is the respective right truncation value for each
-            observation.
 
         xl : array like, optional
             Array like of the left array for 2-dimensional input of x. This is
@@ -113,23 +105,49 @@ class NonParametricFitter:
             useful for data that is all intervally censored. Must be used with
             the :code:`xl` input.
 
-        turnbull_estimator : ('Nelson-Aalen', 'Kaplan-Meier', or
-        'Fleming-Harrington'), str, optional
-            If using the Turnbull heuristic, you can elect to use either the
-            KM, NA, or FH estimator with the Turnbull estimates of r, and d.
-            Defaults to FH.
+        tl : array like or scalar, optional
+            Values of left truncation for observations. If it is a scalar
+            value assumes each observation is left truncated at the value.
+            If an array, it is the respective 'late entry' of the observation.
+            An item is at risk at times in ``(tl, x]``, so each ``tl`` must be
+            strictly less than its value.
+
+        tr : array like or scalar, optional
+            Values of right truncation for observations. If it is a scalar
+            value assumes each observation is right truncated at the value.
+            If an array, it is the respective right truncation value for each
+            observation. Turnbull only.
+
+        turnbull_estimator : str, optional
+            Turnbull only: one of ``'Fleming-Harrington'`` (the default),
+            ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``, the estimator used with
+            the Turnbull estimates of r and d; any other value raises a
+            ``ValueError``. Ignored by the other estimators.
 
             **This default is why a Turnbull fit does not equal a
-            KaplanMeier fit on data both can handle.** The Turnbull EM
-            recovers the same ``r`` and ``d``; the three options then differ
-            in how they turn those into a survival curve, so the difference
-            is the estimator, not the data or the EM. On
-            ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival at 2 is
-            0.750 under KM, 0.765 under FH and 0.779 under NA. Pass
-            ``turnbull_estimator='Kaplan-Meier'`` to compare like with like
-            -- it then agrees with :code:`KaplanMeier` to around 1e-9 on
-            both ``sf`` and ``cb``, on right-censored and left-truncated
-            data alike.
+            KaplanMeier fit on data both can handle.** Where the option
+            acts depends on whether the data are truncated:
+
+            - Without truncation it is used inside the EM as well as at the
+              end: each self-consistency step redistributes the uncertain
+              observations with the chosen estimator's survival curve, so
+              the expected ``r`` and ``d`` the EM converges to depend on
+              the option too. A Turnbull fit with the NA or FH option is
+              therefore *not* the same as ``NelsonAalen`` or
+              ``FlemingHarrington`` on right-censored data: on
+              ``x=[2,3,3,4,5,6], c=[0,1,0,0,1,0]`` the survival at 4 is
+              0.501 with the NA option against 0.497 from ``NelsonAalen``.
+            - With truncation the EM always iterates with the Kaplan-Meier
+              (self-consistency) update, whatever the option, and the
+              chosen estimator is applied only to the converged ``r`` and
+              ``d``. On ``x=[2,3,3,4,5,6], tl=[0,0,1,1,2,2]`` the survival
+              at 2 is 0.750 under KM, 0.765 under FH and 0.779 under NA.
+
+            Pass ``turnbull_estimator='Kaplan-Meier'`` to compare like with
+            like -- it then agrees with :code:`KaplanMeier` to around 1e-9
+            on both ``sf`` and ``cb``, on right-censored and left-truncated
+            data alike. (The agreement is to the EM's tolerance, not to the
+            last digit.)
 
             Only the KM option is the non-parametric MLE. NA and FH are
             ``exp(-H)`` constructions and are not trying to maximise the
@@ -139,40 +157,96 @@ class NonParametricFitter:
             the far tails and on zero-inflated data (see the v0.8.0 notes),
             not because it is the maximum likelihood answer.
 
+        set_lower_limit : float, optional
+            Not used by Turnbull. If given, a point is prepended at this
+            value with no deaths (and the risk set of the first time), so
+            the estimate starts at ``R = 1`` from this value, typically 0,
+            rather than from the first observed time. It must be below
+            the smallest observed value (a ``ValueError`` otherwise).
+
         tol : float, optional
             Turnbull only. The EM stops once the largest change in any
             interval's probability mass falls below this. Defaults to 1e-10.
 
         max_iter : int, optional
             Turnbull only. Cap on EM iterations; a warning is raised if it
-            is reached before ``tol`` is. Defaults to 1000.
+            is reached before ``tol`` is. Defaults to 1000. Both ``tol`` and
+            ``max_iter`` are kept with the model, and ``bootstrap_cb``
+            refits every resample with them.
 
         Returns
         -------
 
         model : NonParametric
-            A parametric model with the fitted parameters and methods for all
-            functions of the distribution using the fitted parameters.
+            The fitted non-parametric model, with the survival, hazard and
+            quantile functions, confidence bounds and plotting. A Turnbull
+            model also carries ``bounds``, ``R_upper``, ``R_lower``,
+            ``turnbull_estimator``, ``converged``, ``iters``, ``degenerate``
+            and ``exploitable_mass`` (see
+            :class:`~surpyval.univariate.nonparametric.turnbull.Turnbull_`).
+
+        Raises
+        ------
+
+        ValueError
+            If the data has left- (``c=-1``) or interval- (``c=2``) censored
+            or right truncated observations and the estimator is not
+            ``Turnbull``, if a ``Turnbull`` fit is given an unknown
+            ``turnbull_estimator``, if an exactly observed value is
+            infinite, or if ``set_lower_limit`` is not below the data.
 
         Examples
         --------
-        >>> from surpyval import NelsonAalen, Weibull, Turnbull
-        >>> import numpy as np
-        >>> x = Weibull.random(100, 10, 4)
-        >>> model = NelsonAalen.fit(x)
-        >>> print(model)
+        >>> from surpyval import KaplanMeier, NelsonAalen, Turnbull
+        >>> model = KaplanMeier.fit([2, 3, 3, 4, 5, 6], c=[0, 1, 0, 0, 1, 0])
+        >>> model.r
+        array([6, 5, 3, 2, 1])
+        >>> model.d
+        array([1, 1, 1, 0, 1])
+        >>> model.R
+        array([0.83333333, 0.66666667, 0.44444444, 0.44444444, 0.        ])
+
+        With delayed entry the risk set can grow:
+
+        >>> model = KaplanMeier.fit([2, 3, 3, 4, 5, 6], tl=[0, 0, 1, 1, 2, 2])
+        >>> model.r
+        array([4, 5, 3, 2, 1])
+        >>> model.sf([2, 4])
+        array([0.75, 0.3 ])
+        >>> print(NelsonAalen.fit([2, 3, 3, 4, 5, 6]))
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
-        >>> Turnbull.fit(x, turnbull_estimator='Kaplan-Meier')
+        >>> Turnbull.fit([2, 3, 3, 4, 5, 6], turnbull_estimator='Kaplan-Meier')
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
         Estimator        : Kaplan-Meier
         """
+        if self.how == "Turnbull":
+            # Imported here as this module is imported by the package
+            # __init__ before ``turnbull`` is.
+            from surpyval.univariate.nonparametric.turnbull import (
+                check_turnbull_estimator,
+            )
+
+            check_turnbull_estimator(turnbull_estimator)
+
         x, c, n, t = xcnt_handler(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
+
+        # An exactly observed failure at infinity is not an observation.
+        # It used to be counted as a failure at x = inf, a ladder step the
+        # curve then dropped to zero at; a unit that never failed is right
+        # censored (c=1).
+        exact_x = x[c == 0] if x.ndim == 1 else x[c == 0].ravel()
+        if not np.isfinite(exact_x).all():
+            raise ValueError(
+                "Exactly observed values (c=0) must be finite; an item that "
+                "had not failed by the end of observation is right censored "
+                "(c=1)."
+            )
 
         data: dict[str, Any] = {}
         data["x"] = x
@@ -182,6 +256,10 @@ class NonParametricFitter:
 
         if self.how == "Turnbull":
             data["estimator"] = turnbull_estimator
+            # Kept with the estimator so that ``bootstrap_cb`` refits every
+            # resample with the settings this fit used, not the defaults.
+            data["tol"] = tol
+            data["max_iter"] = max_iter
             out = NonParametric()
             t_obj = self._fit(x, c, n, t, turnbull_estimator, tol, max_iter)
 
@@ -193,6 +271,12 @@ class NonParametricFitter:
             out.greenwood = self._compute_var(turnbull_estimator, var_r, var_d)
             for k, v in t_obj.items():
                 setattr(out, k, v)
+            # The cumulative hazard, defined as for every other estimator
+            # (and as ``Hf`` evaluates it): -log of the reported survival.
+            # For the NA and FH options that is exactly their summed
+            # hazard, since they report R = exp(-H).
+            with np.errstate(all="ignore"):
+                out.H = -np.log(out.R)
 
             out.data = data
             return out
@@ -202,6 +286,14 @@ class NonParametricFitter:
             estimator = self.how
 
         if set_lower_limit is not None:
+            # The ladder must stay sorted: ``sf`` and ``qf`` search it. A
+            # limit at or above the first value used to be prepended all the
+            # same, giving e.g. ``[2, 1, 2, 3]`` and a wrong curve.
+            if not set_lower_limit < x[0]:
+                raise ValueError(
+                    "'set_lower_limit' must be below the smallest value in "
+                    "the data ({}); got {}.".format(x[0], set_lower_limit)
+                )
             x = np.hstack([[set_lower_limit], x])
             r = np.hstack([[r[0]], r])
             d = np.hstack([[0], d])
@@ -214,24 +306,28 @@ class NonParametricFitter:
         self, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
     ) -> NonParametric:
         r"""
-        The central feature to SurPyval's capability. This function aimed to
-        have an API to mimic the simplicity of the scipy API. That is, to use a
-        simple :code:`fit()` call, with as many or as few parameters as are
-        needed.
+        Build the estimate from data already reduced to risk and death
+        sets, the ``xrd`` format: the distinct times, the number at risk
+        just before each and the number of deaths at each.
+
+        Not available for ``Turnbull``, which needs the full ``xcnt`` data
+        to redistribute censored observations.
 
         Parameters
         ----------
 
-        x : array like, optional
-            Array of observations of the random variables. If x is
-            :code:`None`, xl and xr must be provided.
+        x : array like
+            The distinct event times. Rows given out of order are sorted
+            by ``x``, carrying their ``r`` and ``d`` with them (see
+            :func:`~surpyval.utils.xrd_handler`, which also refuses a
+            repeated time).
 
-        r : array like, optional
+        r : array like
             Array of at risk items. For each value of x the r array is
             the number of at risk items immediately prior to the failures
             at x.
 
-        d : array like, optional
+        d : array like
             Array of counts of deaths/failures at each x. For each value of x
             the d array is the number of deaths at x (can be zero).
 
@@ -239,7 +335,7 @@ class NonParametricFitter:
         -------
 
         model : NonParametric
-            A non-parametric model with the survival curved estimated
+            A non-parametric model with the survival curve estimated
             using the selected method.
 
         Examples
@@ -254,6 +350,9 @@ class NonParametricFitter:
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
+        >>> model.R
+        array([0.81873075, 0.72252735, 0.6116062 , 0.47631939, 0.34129776,
+               0.20700755])
         """
         if self.how == "Turnbull":
             raise ValueError("Can't use from_xrd with Turnbull estimator")

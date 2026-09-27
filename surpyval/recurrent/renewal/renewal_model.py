@@ -1,6 +1,7 @@
 from typing import Any, Callable
 
 import numpy as np
+from scipy.optimize import brentq
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
@@ -10,6 +11,104 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 
+#: Below this cumulative hazard the quantile function is accurate enough to
+#: invert it: ``1 - p = exp(-H)`` then carries a relative error of about
+#: ``eps * exp(H)``, which is 5e-8 at 20 (an error of 3e-9 in ``H``).
+_QF_HAZARD_LIMIT = 20.0
+
+
+def conditional_gap(lifetime: Any, v: float, u: float) -> float:
+    """
+    Draw the time to the next failure of an item whose virtual age is
+    ``v``, from the uniform ``u``, for a virtual-age renewal model with the
+    lifetime distribution ``lifetime``.
+
+    The residual life ``X`` from age ``v`` has ``P(X > x) = S(v + x) /
+    S(v)``, so ``H(v + X) = H(v) - log(u)``: the draw adds an Exp(1) amount
+    to the cumulative hazard ``H`` and inverts it. Working with ``H``
+    rather than the survival function keeps this exact at long horizons.
+    The old draw, ``qf(1 - u * sf(v)) - v``, lost all precision once
+    ``sf(v)`` fell below about 1e-16 (an expected count of about 37), so
+    the next age came back as ``v`` itself and the simulated MCF went flat.
+
+    ``H`` is inverted with the quantile function while that is accurate
+    (see ``_QF_HAZARD_LIMIT``) and by root finding beyond it.
+    """
+    with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+        h_v = float(lifetime.Hf(v))
+        target = h_v - float(np.log(u))
+    if np.isinf(h_v) and h_v > 0:
+        # No survival past age v (the end of a bounded support): the item
+        # fails at once.
+        return 0.0
+    if not np.isfinite(target):
+        # u == 0: an infinitely late event.
+        return np.inf
+    if target <= _QF_HAZARD_LIMIT:
+        x = float(lifetime.qf(-np.expm1(-target)))
+    else:
+        x = _invert_cumulative_hazard(lifetime, v, target)
+    return max(x - v, 0.0)
+
+
+def _cumulative_hazard(lifetime: Any) -> Callable:
+    """``H`` of ``lifetime`` as a scalar function. For a plain model (no
+    offset, cure fraction or zero-inflation -- what the renewal fitters
+    build) the distribution's own ``Hf`` is called directly: the model
+    method's argument handling costs fifty times the arithmetic, and the
+    root finder calls it dozens of times per draw."""
+    if (
+        getattr(lifetime, "p", None) == 1
+        and getattr(lifetime, "f0", None) == 0
+        and not getattr(lifetime, "gamma", 0)
+    ):
+        dist_hf = lifetime.dist.Hf
+        params = [float(p) for p in lifetime.params]
+        lower = lifetime.dist.support[0]
+
+        def hf(x: float) -> float:
+            return 0.0 if x < lower else float(dist_hf(x, *params))
+
+        return hf
+    return lambda x: float(lifetime.Hf(x))
+
+
+def _invert_cumulative_hazard(lifetime: Any, v: float, target: float) -> float:
+    """Solve ``H(x) = target`` for ``x > v`` (where ``H(v) < target``)."""
+    hazard = _cumulative_hazard(lifetime)
+
+    def g(x: float) -> float:
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            return hazard(x) - target
+
+    lo = float(v)
+    step = max(abs(lo), 1.0)
+    hi = lo + step
+    for _ in range(2000):
+        g_hi = g(hi)
+        if not g_hi < 0:
+            break
+        lo, step = hi, 2.0 * step
+        hi = lo + step
+    # Past a bounded support H can be inf or nan; bisect until hi is a
+    # finite point at or above the target so the root is bracketed.
+    for _ in range(200):
+        if np.isfinite(g(hi)):
+            break
+        mid = 0.5 * (lo + hi)
+        if g(mid) < 0:
+            lo = mid
+        else:
+            hi = mid
+    g_hi = g(hi)
+    if not np.isfinite(g_hi):
+        # H jumps to infinity at the end of the support: fail there.
+        return lo
+    if g_hi == 0:
+        return hi
+    xtol = 4 * np.finfo(float).eps * max(abs(lo), abs(hi), 1e-300)
+    return float(brentq(g, lo, hi, xtol=xtol))
+
 
 class RenewalModel(
     SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
@@ -18,11 +117,11 @@ class RenewalModel(
     A fitted renewal / imperfect-repair recurrence model.
 
     This is the model object returned by the renewal-family fitters
-    (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``), in the same
-    way that the intensity fitters (``CrowAMSAA``, ``Duane``, ...) return a
-    ``ParametricRecurrenceModel``. It holds the fitted underlying lifetime
-    distribution and the restoration parameter, and provides the simulation
-    (``mcf``, ``plot``, ``count_terminated_simulation``,
+    (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``), in
+    the same way that the intensity fitters (``CrowAMSAA``, ``Duane``, ...)
+    return a ``ParametricRecurrenceModel``. It holds the fitted underlying
+    lifetime distribution and the restoration parameter, and provides the
+    simulation (``mcf``, ``plot``, ``count_terminated_simulation``,
     ``time_terminated_simulation``) and likelihood-inference
     (``log_likelihood``, ``aic``, ``bic``, ``standard_errors``) behaviour via
     the shared mixins.
@@ -36,7 +135,7 @@ class RenewalModel(
         The fitted underlying lifetime distribution.
     restoration : float
         The fitted restoration / repair parameter (``q`` for the generalized
-        and G1 renewal processes, ``rho`` for ARA).
+        and G1 renewal processes, ``rho`` for ARA and ARI).
     restoration_name : str
         The attribute/label name of the restoration parameter (e.g. ``"q"`` or
         ``"rho"``); it is also exposed as an attribute of that name.
@@ -62,6 +161,9 @@ class RenewalModel(
     kijima_type: Any
     #: Set by the fitter for the ARA/ARI families (memory); absent otherwise.
     m: Any
+    #: How the parameters were obtained: ``"MLE"`` for a fit, otherwise
+    #: given (``fit_from_parameters``). Kept through serialisation.
+    how: str = "from_params"
 
     def __init__(
         self,
@@ -122,6 +224,7 @@ class RenewalModel(
             "dist": self.model.dist.name,
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
+            "how": self.how,
         }
         if getattr(self, "kijima_type", None) is not None:
             out["kijima_type"] = self.kijima_type
@@ -143,7 +246,6 @@ class RenewalModel(
         to_dict, to_json, from_json
         """
         import surpyval.recurrent as recurrent
-        from surpyval.recurrent.serialisation import intensity_dist_by_name
 
         require_model_tag(model_dict, "RenewalModel", "a renewal model")
         family = model_dict["family"]
@@ -155,7 +257,16 @@ class RenewalModel(
         }
         if family not in fitters:
             raise ValueError("Unknown renewal family {!r}".format(family))
-        fitter = fitters[family]
+        out = cls._rebuild(fitters[family], family, model_dict)
+        # A reloaded fit still says it was fitted by MLE (it carries no
+        # likelihood, as a reloaded parametric model does not).
+        out.how = model_dict.get("how", "from_params")
+        return out
+
+    @staticmethod
+    def _rebuild(fitter: Any, family: str, model_dict: dict) -> "RenewalModel":
+        from surpyval.recurrent.serialisation import intensity_dist_by_name
+
         params = model_dict["params"]
         restoration = model_dict["restoration"]
 
@@ -218,12 +329,24 @@ class RenewalModel(
 
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival
-            increments of every observed event (pooled across items), which
-            are iid Exp(1) under the fitted model. ``'pit'`` applies the
-            probability integral transform ``1 - exp(-e)`` to those residuals,
-            giving iid U(0, 1) values. ``'martingale'`` returns one residual
-            per item: its observed event count minus the compensator (the sum
-            of the rescaled increments) accumulated over its observation.
+            increments of every observed event (pooled across items); see
+            below for how far they are iid Exp(1). ``'pit'`` applies the
+            probability integral transform ``1 - exp(-e)`` to those residuals
+            (U(0, 1) under the same conditions). ``'martingale'`` returns
+            one residual per item: its observed event count minus the
+            compensator (the sum of the rescaled increments) accumulated
+            over its observation.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------
@@ -303,10 +426,13 @@ class RenewalModel(
         and the statistic measures their departure from uniformity. Because the
         restoration and lifetime / intensity parameters were estimated from the
         same data, the p-value is a parametric bootstrap: each item is
-        resimulated from the fitted model with its observed number of events,
-        the full model is refitted, and the statistic recomputed. Each
-        replicate is a multi-start optimisation, so this is much slower than
-        the residual diagnostics.
+        resimulated from the fitted model the way it was observed -- an
+        item whose last row is an end-of-observation (``c=1``) row over the
+        same window, with however many events the model gives it there, and
+        a failure-truncated item with its observed number of events -- the
+        full model is refitted, and the statistic recomputed. Each replicate
+        is a multi-start optimisation, so this is much slower than the
+        residual diagnostics.
 
         Parameters
         ----------
@@ -335,7 +461,12 @@ class RenewalModel(
             title,
             "=" * len(title),
             "{:<20}: {}".format(self._dist_label, self.model.dist.name),
-            "Fitted by           : MLE",
+            "Fitted by           : "
+            + (
+                "MLE"
+                if hasattr(self, "_neg_ll") or self.how == "MLE"
+                else "given parameters (not fitted)"
+            ),
         ]
         if getattr(self, "kijima_type", None) is not None:
             lines.append(f"Kijima Type         : {self.kijima_type}")

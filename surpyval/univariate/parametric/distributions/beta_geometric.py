@@ -6,6 +6,7 @@ from scipy.stats import geom
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    eulerian_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -113,6 +114,15 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return out if out.size > 1 else out[0]
 
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
+        r"""Mean number of cycles, :math:`E[T] = (a + b - 1)/(a - 1)`,
+        infinite when :math:`a \leq 1`.
+
+        Examples
+        --------
+        >>> from surpyval import BetaGeometric
+        >>> BetaGeometric.mean(5.0, 3.0)
+        1.75
+        """
         # E[T] = E[1/p] with p ~ Beta(a, b) is (a + b - 1)/(a - 1) for a > 1;
         # the mean diverges for a <= 1 (heavy right tail).
         if a <= 1.0:
@@ -120,6 +130,26 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return (a + b - 1.0) / (a - 1.0)
 
     def moment(self, m: int, a: Boxable, b: Boxable) -> Boxable:
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`.
+
+        Infinite unless :math:`a > m` (the survival decays like
+        :math:`k^{-a}`), and otherwise exact: mixing the Geometric's
+        :math:`E[T^{m} \mid p] = p^{-m} \sum_{i} A(m, i) (1 - p)^{i}`
+        (:math:`A` the Eulerian numbers) over :math:`p \sim
+        \mathrm{Beta}(a, b)` gives
+
+        .. math::
+            E[T^{m}] = \sum_{i=0}^{m-1} A(m, i)\,
+            \frac{B(a - m,\, b + i)}{B(a, b)} .
+
+        Examples
+        --------
+        >>> from surpyval import BetaGeometric
+        >>> BetaGeometric.moment(2, 5.0, 3.0)
+        5.25
+        >>> BetaGeometric.moment(2, 2.0, 3.0)
+        inf
+        """
         # The survival decays as k^-a, so E[T^m] converges only for a > m --
         # the same condition ``mean`` applies at m = 1. Without the test a
         # truncated sum reports a finite value for a moment that does not
@@ -132,14 +162,70 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
             # truncated sum lost 0.17% of a heavy tail even at the 1 - 1e-6
             # quantile.
             return self.mean(a, b)
-        # No closed form for general m; sum out to a far quantile.
-        upper = int(self.qf(1.0 - 1e-6, a, b))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, a, b))
+        if m == 2:
+            # Also exact: E[T^2 | p] = 2/p^2 - 1/p for a Geometric, and
+            # E[1/p^2] = (a + b - 1)(a + b - 2) / ((a - 1)(a - 2)) under the
+            # Beta mixing. The truncated sum below lost the tail here too
+            # (5.2413 against 5.25 at a = 5, b = 3), and the variance and
+            # the method of moments both read this moment.
+            c = a + b - 1.0
+            return 2.0 * c * (c - 1.0) / ((a - 1.0) * (a - 2.0)) - c / (
+                a - 1.0
+            )
+        # The general case of the two above. A sum over the mass function
+        # to the 1 - 1e-6 quantile used to stand in for it, and lost the
+        # heavy tail: 32.28 against 33.25 for m = 3 at a = 5, b = 3.
+        log_norm = self._log_beta(a, b)
+        return float(
+            sum(
+                A * np.exp(self._log_beta(a - m, b + i) - log_norm)
+                for i, A in enumerate(eulerian_numbers(m))
+            )
+        )
+
+    def _mom(self, x: npt.NDArray) -> tuple[float, float]:
+        r"""Method-of-moments estimate, solved in closed form.
+
+        With :math:`m_1` and :math:`m_2` the first two sample moments and
+        :math:`s = (m_1 + m_2) / 2` the matching :math:`E[1/p^2]`, the
+        moment equations :math:`m_1 = (a + b - 1)/(a - 1)` and
+        :math:`s = m_1 (a + b - 2)/(a - 2)` give, with :math:`q = s / m_1`,
+
+        .. math::
+            a = \frac{2q - m_1 - 1}{q - m_1}, \qquad
+            b = (m_1 - 1)(a - 1).
+
+        The generic numerical route cannot do this: it starts at the
+        ``_parameter_initialiser`` point ``a = b = 1``, where neither
+        moment exists, so its objective was nan from the first step and it
+        handed the start back as the fit.
+
+        A solution exists only for a sample more dispersed than a
+        Geometric with the same mean (variance above
+        :math:`m_1 (m_1 - 1)`) -- the Beta mixing can only add
+        dispersion -- and it always has :math:`a > 2`, where both moments
+        are finite. Anything else is refused rather than answered.
+        """
+        m1 = float(np.mean(x))
+        m2 = float(np.mean(np.asarray(x, dtype=float) ** 2))
+        q = (m1 + m2) / (2.0 * m1) if m1 > 0 else np.nan
+        if not (m1 > 1.0 and q > m1):
+            raise ValueError(
+                "Method of moments has no Beta-Geometric solution for this "
+                "sample: it needs a mean above 1 and a variance above that "
+                f"of a Geometric with the same mean (m1 (m1 - 1) = "
+                f"{m1 * (m1 - 1.0):.4g}; the sample's is "
+                f"{m2 - m1**2:.4g}). Use how='MLE', or a Geometric."
+            )
+        a = (2.0 * q - m1 - 1.0) / (q - m1)
+        b = (m1 - 1.0) * (a - 1.0)
+        return a, b
 
     def random(
         self, size: int | tuple[int, ...], a: Boxable, b: Boxable
     ) -> npt.NDArray:
+        """Draw ``size`` cycle counts: a per-unit probability from the
+        Beta(``a``, ``b``) mixing law, then a Geometric count with it."""
         # Draw each unit's failure probability from the Beta mixing law, then
         # a Geometric cycle count with that probability.
         p = beta_rv.rvs(a, b, size=size)

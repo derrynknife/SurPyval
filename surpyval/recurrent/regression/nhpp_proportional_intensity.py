@@ -5,10 +5,12 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent.inference import bic_sample_size
+from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.utils.fitter import singleton_fitter
-from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import ProportionalIntensityModel
 
@@ -16,13 +18,21 @@ from .proportional_intensity import ProportionalIntensityModel
 @singleton_fitter
 class ProportionalIntensityNHPP:
     """
-    A class representing the Proportional Intensity Non-Homogeneous Poisson
-    Process (NHPP).
+    Proportional-intensity regression on a non-homogeneous Poisson
+    process: each item's intensity is a parametric baseline intensity
+    scaled by its covariates,
 
-    The class contains methods to perform various calculations related to the
-    NHPP, such as instantaneous intensity function, cumulative intensity
-    function and its inverse, as well as creating the negative log-likelihood
-    function and fitting the model.
+    .. math::
+        \\lambda(t \\mid Z) = \\lambda_0(t)\\, e^{\\beta' Z},
+
+    with the baseline any NHPP model -- ``Duane`` (the default),
+    ``CrowAMSAA`` or ``CoxLewis`` -- chosen with ``dist``.
+
+    ``ProportionalIntensityNHPP`` is an instance of this class. Its
+    ``fit`` returns a
+    :class:`~surpyval.recurrent.regression.proportional_intensity.ProportionalIntensityModel`,
+    which carries the prediction methods (``cif``, ``iif``, ``inv_cif``,
+    ``mcf``), simulation and inference.
 
     Examples
     --------
@@ -72,6 +82,7 @@ class ProportionalIntensityNHPP:
         x_o, x_o_prev = s["x_o"], s["x_o_prev"]
         x_right, x_right_prev = s["x_right"], s["x_right_prev"]
         x_left, n_left = s["x_left"], s["n_left"]
+        x_left_prev = s["x_left_prev"]
         x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
         x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
@@ -118,8 +129,10 @@ class ProportionalIntensityNHPP:
             )
             ll += (phi_right * delta_cif_right).sum()
 
-            # ll of left censored
-            delta_cif_left = dist.cif(x_left, *dist_params)
+            # ll of left censored: the count over (entry, x]
+            delta_cif_left = dist.cif(x_left, *dist_params) - dist.cif(
+                x_left_prev, *dist_params
+            )
             phi_exponents_left = np.dot(Z_left, beta_coeffs)
             phi_left = np.exp(phi_exponents_left)
             ll += (
@@ -154,17 +167,68 @@ class ProportionalIntensityNHPP:
 
         return negll_func
 
+    @staticmethod
+    def _baseline_start(data: Any, dist: Any) -> np.ndarray:
+        """Default baseline start: the covariate-free fit of ``dist``.
+
+        Starting every baseline parameter at one put Duane's ``b`` -- often
+        1e-3 or smaller -- orders of magnitude from its optimum, and
+        Nelder-Mead stopped short of it while reporting success (AICs
+        5-40 worse than the same model fitted as Crow-AMSAA). The fit that
+        ignores the covariates is the natural start, with coefficients 0;
+        if it fails, the old unit start is used.
+        """
+        fallback = np.ones(len(dist.param_names))
+        try:
+            with np.errstate(all="ignore"):
+                base = dist.fit_from_recurrent_data(data)
+            start = np.asarray(base.params, dtype=float)
+        except Exception:
+            return fallback
+        if start.shape != fallback.shape or not np.all(np.isfinite(start)):
+            return fallback
+        for value, (low, high) in zip(start, dist.bounds):
+            if (low is not None and value <= low) or (
+                high is not None and value >= high
+            ):
+                return fallback
+        return start
+
     def fit_from_recurrent_data(
         self,
         data: Any,
         dist: Any,
         init: "ArrayLike | None" = None,
     ) -> Any:
+        """
+        Fit from a prepared
+        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`
+        (with covariates attached), as built by
+        ``surpyval.handle_xicn``. :meth:`fit` builds one from its arrays and
+        calls this.
+
+        Parameters
+        ----------
+
+        data : RecurrentEventData
+            The recurrent event data, including ``Z``.
+        dist : CountingProcess
+            The baseline intensity model, as for :meth:`fit`.
+        init : array_like, optional
+            Initial parameter estimates, as for :meth:`fit`.
+
+        Returns
+        -------
+
+        ProportionalIntensityModel
+            The fitted model.
+        """
         if not isinstance(dist, CountingProcess):
             raise TypeError(
                 "`dist` must be a CountingProcess instance "
                 "(e.g. Duane, CrowAMSAA, CoxLewis); got {!r}".format(dist)
             )
+        validate_nhpp_data(data, dist)
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
@@ -172,9 +236,8 @@ class ProportionalIntensityNHPP:
         num_covariates = data.Z.shape[1]
         expected = len(dist.param_names) + num_covariates
         if init is None:
-            # Default start: unit baseline parameters, zero coefficients.
             init = np.append(
-                np.ones(len(dist.param_names)), np.zeros(num_covariates)
+                self._baseline_start(data, dist), np.zeros(num_covariates)
             )
         else:
             # User-supplied starting values were previously overwritten
@@ -189,11 +252,33 @@ class ProportionalIntensityNHPP:
 
         neg_ll = self.create_negll_func(data, dist)
 
+        # Search on an unconstrained scale: a baseline parameter bounded
+        # below (Duane's b, Crow-AMSAA's alpha and beta) is optimised as the
+        # log of its distance from the bound. Nelder-Mead on the natural
+        # scale, with parameters differing by orders of magnitude, stopped
+        # well short of the optimum on as few as nine parameters. A
+        # gradient search does the work and Nelder-Mead polishes it.
+        bounds = list(dist.bounds) + [(None, None)] * num_covariates
+        to_natural, to_search = unconstraining_maps(bounds)
+
+        def objective(u: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = neg_ll(to_natural(u))
+            return float(value) if np.isfinite(value) else 1e300
+
+        u0 = to_search(init)
+        res = minimize(objective, u0, method="BFGS")
         res = minimize(
-            neg_ll,
-            init,
+            objective,
+            res.x,
             method="Nelder-Mead",
+            options={
+                "maxfev": 2000 * expected,
+                "xatol": 1e-8,
+                "fatol": 1e-10,
+            },
         )
+        res.x = to_natural(res.x)
         out.res = res
         out.params = res.x[: len(dist.param_names)]
         out.coeffs = res.x[len(dist.param_names) :]
@@ -210,7 +295,7 @@ class ProportionalIntensityNHPP:
         # machinery needs for AIC/BIC/standard errors.
         out._neg_ll = neg_ll
         out._mle = np.asarray(res.x, dtype=float)
-        out._n_obs = len(data.x)
+        out._n_obs = bic_sample_size(data)
 
         return out
 
@@ -234,28 +319,43 @@ class ProportionalIntensityNHPP:
         ----------
 
         x : array_like
-            Input data.
-        Z : array_like
-            Covariate matrix.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``).
+        Z : array_like or dict
+            Covariates: a matrix with one row per row of ``x`` (a 1-D array
+            is a single covariate), or a ``{item: covariates}`` dict. They
+            describe the item (they are static), so they must be the same
+            on every row of an item; values that change within an item
+            raise a ``ValueError``.
         i : array_like, optional
-            identity of the item.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            Censoring indicators.
+            Censoring indicators: 0 an observed event, 1 the right-censored
+            end of an item's observation, -1 left-censored and 2
+            interval-censored counts (with ``n``). Defaults to all observed.
         n : array_like, optional
-            Number of events.
+            Number of events in each row (for left- and interval-censored
+            counts). Defaults to 1.
         t : array_like, optional
             (N, 2) array of [left, right] truncation bounds per observation.
         tl : array_like or scalar, optional
-            Left truncation (delayed entry) time per item; the observation of
-            each item begins here. Scalar broadcasts to all items.
+            Left truncation (delayed entry) time of each item; the
+            observation of each item begins here. A scalar applies to every
+            item; an array has one value per row (the same on every row of
+            an item).
         tr : array_like or scalar, optional
-            Right truncation time per item; the observation window closes here,
+            Right truncation time of each item, given like ``tl``; the
+            observation window closes here,
             so the baseline intensity is integrated out to ``tr`` even without
             an explicit right-censoring (``c=1``) row.
-        dist : surpyval.recurrent.regression.NHPPFitter, optional
-            The parametric model to use for the hazard rate.
+        dist : CountingProcess, optional
+            The baseline intensity model: ``Duane`` (the default),
+            ``CrowAMSAA`` or ``CoxLewis`` from ``surpyval.recurrent``. With
+            ``HPP`` the model is the same as ``ProportionalIntensityHPP``.
         init : array_like, optional
-            Initial parameter estimates.
+            Initial parameter estimates: the baseline parameters followed by
+            the covariate coefficients.
 
         Returns
         -------

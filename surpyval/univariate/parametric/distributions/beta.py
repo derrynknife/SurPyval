@@ -50,8 +50,8 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         Survival (or reliability) function for the Beta Distribution:
 
         .. math::
-            R(x) = 1 - \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^
-            {\beta - 1}dt
+            R(x) = 1 - \frac{1}{B \left ( \alpha, \beta \right )}
+            \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^{\beta - 1}dt
 
         Parameters
         ----------
@@ -59,9 +59,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values at which the function will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            The scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -85,7 +85,8 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         Failure (CDF or unreliability) function for the Beta Distribution:
 
         .. math::
-            F(x) = \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^{\beta -1}dt
+            F(x) = \frac{1}{B \left ( \alpha, \beta \right )}
+            \int_{0}^{x}t^{\alpha-1}\left (1 - t \right )^{\beta -1}dt
 
         Parameters
         ----------
@@ -93,9 +94,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values at which the function will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            The scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -128,9 +129,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values at which the function will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            The scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -162,9 +163,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values at which the function will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            The scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -196,9 +197,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         x : numpy array or scalar
             The values at which the function will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            The scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -211,8 +212,8 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> import numpy as np
         >>> from surpyval import Beta
         >>> x = np.array([.1, .2, .3, .4, .5])
-        >>> Beta.hf(x, 3, 4)
-        array([0.44444444, 1.36363636, 2.48847926, 3.80952381, 5.45454545])
+        >>> Beta.Hf(x, 3, 4)
+        array([0.01597695, 0.10411684, 0.29529766, 0.60821797, 1.06784063])
         """
         return -np.log(self.sf(x, alpha, beta))
 
@@ -227,9 +228,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         u : numpy array or scalar
             The percentiles at which the quantile will be calculated
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -259,9 +260,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         ----------
 
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
-            Another scale parameter for the Beta distribution
+            The second shape parameter for the Beta distribution
 
         Returns
         -------
@@ -292,7 +293,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         m : integer
             The ordinal of the moment to calculate
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
             Another shape parameter for the Beta distribution
 
@@ -328,7 +329,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         ----------
 
         alpha : numpy array or scalar
-            One shape parameter for the Beta distribution
+            The first shape parameter for the Beta distribution
         beta : numpy array or scalar
             Another shape parameter for the Beta distribution
 

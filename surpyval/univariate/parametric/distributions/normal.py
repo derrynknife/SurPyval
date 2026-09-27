@@ -264,7 +264,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         Quantile function for the Normal Distribution:
 
         .. math::
-            q(u) = \Phi^{-1} \left( u \right )
+            q(u) = \mu + \sigma \Phi^{-1} \left( u \right )
 
         Parameters
         ----------
@@ -325,10 +325,8 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
     def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
 
-        m-th (non central) moment of the Normal distribution
-
-        .. math::
-            E = ... complicated.
+        m-th (non central) moment of the Normal distribution, computed
+        with ``scipy.stats.norm.moment``.
 
         Parameters
         ----------

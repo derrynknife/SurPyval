@@ -1,7 +1,8 @@
 """
 The inverse-probability-of-censoring-weighting (IPCW) toolkit: the
-Kaplan-Meier estimate of the *censoring* distribution and the
-right-continuous step lookup used to evaluate it.
+Kaplan-Meier estimate of the *censoring* distribution and the step
+lookups used to evaluate it (right-continuous, ``step_at``, and its left
+limit, ``step_left_limit``).
 
 Three modules -- Gray's test, Fine-Gray regression and the prediction
 metrics -- each carried their own copy of both functions. The copies had
@@ -70,4 +71,35 @@ def step_at(
     cumulative hazard it is 0.
     """
     idx = np.searchsorted(times, query, side="right") - 1
+    return np.where(idx < 0, before, values[np.clip(idx, 0, values.size - 1)])
+
+
+def step_left_limit(
+    times: npt.NDArray,
+    values: npt.NDArray,
+    query: npt.ArrayLike,
+    before: float,
+) -> npt.NDArray:
+    """
+    The left limit ``f(query-)`` of the step function :func:`step_at`
+    evaluates: the value carried by the largest ``times`` entry strictly
+    ``< query``; ``before`` is returned where no time precedes ``query``.
+
+    It differs from :func:`step_at` only where ``query`` is one of
+    ``times``: there it is the value before that step rather than after
+    it. Fine-Gray regression evaluates the censoring survival this way,
+    ``G(t-)``, so that censorings at a time do not yet count against an
+    event at the same time (see
+    :mod:`surpyval.univariate.competing_risks.regression.fine_gray`).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> times, values = np.array([1.0, 2.0]), np.array([0.8, 0.5])
+    >>> step_at(times, values, [1.0, 1.5, 2.0], before=1.0)
+    array([0.8, 0.8, 0.5])
+    >>> step_left_limit(times, values, [1.0, 1.5, 2.0], before=1.0)
+    array([1. , 0.8, 0.8])
+    """
+    idx = np.searchsorted(times, query, side="left") - 1
     return np.where(idx < 0, before, values[np.clip(idx, 0, values.size - 1)])

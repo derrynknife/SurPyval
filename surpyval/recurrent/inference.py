@@ -7,7 +7,42 @@ import numpy as np
 # ``surpyval.utils.linalg`` -- shared with the parametric-regression
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+
+
+def bic_sample_size(data: Any) -> float:
+    """
+    The sample size ``n`` of every recurrent model's BIC: the number of
+    observed events -- exactly observed (``c=0``), left-censored (``c=-1``,
+    events before ``x``) and interval-censored (``c=2``, events within
+    ``[xl, xr]``), each row weighted by the number of events ``n`` it
+    holds -- or, with none, the (weighted) number of rows. End-of-
+    observation (``c=1``) rows are not events. This is the rule of every
+    SurPyval BIC (:func:`surpyval.univariate.information_criteria.
+    ic_sample_size`); the recurrent models used to count exact events only,
+    and returned NaN without one.
+    """
+    return ic_sample_size(data.c, data.n)
+
+
+def require_data(model: Any, what: str) -> None:
+    """
+    Raise an informative ``ValueError`` when ``model`` carries no data.
+
+    Only a model fitted from data keeps it: one built from parameters
+    (``from_params`` / ``fit_from_parameters``) never had any, and one
+    restored with ``from_dict`` / ``from_json`` does not store it. Every
+    method that reads the fitted data (residuals, trend tests, goodness of
+    fit, plots against the data) calls this first, so none of them fails
+    with a bare ``AttributeError``.
+    """
+    if getattr(model, "data", None) is None:
+        raise ValueError(
+            "{} requires a model fitted from data; models built from "
+            "parameters (from_params / fit_from_parameters) or restored "
+            "with from_dict / from_json carry no data.".format(what)
+        )
 
 
 class LikelihoodInferenceMixin:
@@ -16,9 +51,10 @@ class LikelihoodInferenceMixin:
 
     The fitting routine must set ``_neg_ll`` (the negative log-likelihood in
     natural parameter space), ``_mle`` (the fitted parameter vector in that
-    same space) and ``_n_obs`` (the number of events contributing to the
-    likelihood). Models built with ``fit_from_parameters`` (or by a non-
-    likelihood method such as MSE) carry no likelihood and these methods raise.
+    same space) and ``_n_obs`` (BIC's sample size, from
+    :func:`bic_sample_size`). Models built with
+    ``fit_from_parameters`` (or by a non-likelihood method such as MSE) carry
+    no likelihood and these methods raise.
 
     This is shared by every fitted recurrent model that has a likelihood: the
     renewal / imperfect-repair models (``RenewalModel``), the parametric
@@ -40,22 +76,28 @@ class LikelihoodInferenceMixin:
     # here so the checker knows their types on the host class.
     _neg_ll: Callable
     _mle: np.ndarray
-    _n_obs: int
+    _n_obs: float
     _fitter: Any
 
     def _check_fitted(self) -> None:
         if not hasattr(self, "_neg_ll"):
+            if getattr(self, "how", None) == "MSE":
+                reason = (
+                    "a how='MSE' fit minimises squared error on the MCF "
+                    "and has no likelihood; refit with how='MLE'."
+                )
+            else:
+                reason = (
+                    "a model built from parameters (from_params or "
+                    "fit_from_parameters) has no likelihood."
+                )
             raise ValueError(
-                "Inference is only available for models fitted from data; "
-                "fit_from_parameters does not compute a likelihood."
+                "Likelihood inference is only available for models fitted "
+                "from data by maximum likelihood: " + reason
             )
 
     def _check_has_data(self, what: str) -> None:
-        if not hasattr(self, "data"):
-            raise ValueError(
-                "{} requires a model fitted from data; fit_from_parameters "
-                "models carry no data.".format(what)
-            )
+        require_data(self, what)
 
     def _parameter_names(self) -> list:
         """
@@ -67,22 +109,43 @@ class LikelihoodInferenceMixin:
 
     @property
     def parameter_names(self) -> list:
+        """
+        The names of the fitted parameters, in the order used by
+        :meth:`covariance`, :meth:`standard_errors` and :meth:`param_cb`.
+        """
         self._check_fitted()
         return list(self._parameter_names())
 
     @property
     def log_likelihood(self) -> float:
+        """
+        The maximised log-likelihood of the fit. Raises ``ValueError`` for a
+        model with no likelihood (built from parameters, or fitted by MSE).
+        """
         self._check_fitted()
         return -float(self._neg_ll(self._mle))
 
     @property
     def aic(self) -> float:
+        """
+        Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
+        number of fitted parameters. Lower is better.
+        """
         self._check_fitted()
         k = self._mle.size
         return 2.0 * k - 2.0 * self.log_likelihood
 
     @property
     def bic(self) -> float:
+        """
+        The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
+        with ``n`` the number of observed events the model was fitted to:
+        exact, left- and interval-censored, the last two adding the
+        number of events they hold. End-of-observation rows do not add to
+        it, and with no observed event it is the number of rows -- the
+        rule of BIC everywhere in SurPyval (see :func:`bic_sample_size`).
+        Lower is better.
+        """
         self._check_fitted()
         k = self._mle.size
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood

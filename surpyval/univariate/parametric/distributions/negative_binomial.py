@@ -1,3 +1,5 @@
+from math import comb
+
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
 from scipy.stats import nbinom
@@ -5,6 +7,7 @@ from scipy.stats import nbinom
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    stirling2_numbers,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -101,16 +104,60 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         return nbinom.ppf(u, r, p) + 1.0
 
     def mean(self, r: Boxable, p: Boxable) -> Boxable:
+        r"""Mean number of cycles, :math:`E[T] = 1 + r(1 - p)/p`.
+
+        Examples
+        --------
+        >>> from surpyval import NegativeBinomial
+        >>> NegativeBinomial.mean(3.0, 0.4)
+        5.499999999999999
+        """
         return 1.0 + r * (1.0 - p) / p
 
     def moment(self, m: int, r: Boxable, p: Boxable) -> Boxable:
-        upper = int(self.qf(1.0 - 1e-9, r, p))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, r, p))
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`, exactly.
+
+        With :math:`T = 1 + Y`, the factorial moments of :math:`Y` are
+        :math:`E[(Y)_{j}] = r (r + 1) \cdots (r + j - 1)\,((1 - p)/p)^{j}`;
+        the Stirling numbers of the second kind turn them into raw moments
+        of :math:`Y`, and the binomial expansion of :math:`(1 + Y)^{m}`
+        into those of :math:`T`. ``moment(1)`` is ``mean()``.
+
+        Examples
+        --------
+        >>> from surpyval import NegativeBinomial
+        >>> NegativeBinomial.moment(2, 3.0, 0.4)
+        41.5
+        """
+        if m == 0:
+            return 1.0
+        if m == 1:
+            return self.mean(r, p)
+        # A sum over the mass function to the 1 - 1e-9 quantile used to
+        # stand in for this, and lost the eighth digit.
+        odds = (1.0 - p) / p
+        factorial: list = [1.0]
+        for j in range(1, m + 1):
+            factorial.append(factorial[-1] * (r + j - 1.0) * odds)
+        raw_y = [
+            sum(s * factorial[i] for i, s in enumerate(stirling2_numbers(j)))
+            for j in range(m + 1)
+        ]
+        return float(sum(comb(m, j) * raw_y[j] for j in range(m + 1)))
 
     def random(
         self, size: int | tuple[int, ...], r: Boxable, p: Boxable
     ) -> npt.NDArray:
+        """Draw ``size`` cycle counts, ``1 +`` a negative binomial draw.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import NegativeBinomial
+        >>> np.random.seed(1)
+        >>> NegativeBinomial.random(5, 3.0, 0.4)
+        array([ 7.,  4.,  2., 20.,  3.])
+        """
         return nbinom.rvs(r, p, size=size) + 1.0
 
     def log_df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:

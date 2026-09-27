@@ -12,6 +12,7 @@ def fallback_minimize(
     jac: Callable[..., Any] | None,
     hess: Callable[..., Any] | None,
     newton_tol: float | None = None,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """
     Minimise ``fun`` with BFGS and the supplied jacobian, escalating to
@@ -37,10 +38,19 @@ def fallback_minimize(
     zero, and a zero hessian makes Newton-CG stop at the initial guess
     while reporting success, so there is nothing to escalate to and
     Nelder-Mead should take over instead.
+
+    ``floor`` is passed through to ``preconditioned_bfgs``.
     """
     assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
-        res = minimize(fun, init, method="BFGS", jac=jac, args=args)
+        # BFGS through the same rescaling maximum likelihood uses (see
+        # ``preconditioned_bfgs``). Plain BFGS stops on an absolute
+        # gradient threshold, so MPS and MSE were not scale invariant:
+        # a Weibull MPS fit to data in thousands stopped 1% short of the
+        # optimum and reported success.
+        res = preconditioned_bfgs(fun, init, args, jac, floor=floor)
+        # Which rung produced the answer, reported as ``model.optimizer``
+        res.optimizer = "BFGS"
 
         failed = (
             (res.success is False)
@@ -57,13 +67,108 @@ def fallback_minimize(
                 tol=newton_tol,
                 args=args,
             )
-            if newton.success and np.isfinite(newton.fun):
+            # Only an improvement replaces what BFGS found. BFGS often
+            # reports "precision loss" *at* the optimum, and a Newton-CG
+            # run from the cold start can then "succeed" at a worse point,
+            # which used to be taken anyway (a Normal MSE fit to data in
+            # thousandths landed 1% off that way).
+            if (
+                newton.success
+                and np.isfinite(newton.fun)
+                and not (_usable(res) and res.fun <= newton.fun)
+            ):
                 res = newton
+                res.optimizer = "Newton-CG"
 
+        # The last rung is derivative free, as described above. It used to
+        # be scipy's default method, which with no jacobian passed is BFGS
+        # on finite differences: the method that had just failed with an
+        # exact gradient, retried with a worse one -- and no help at all
+        # for the zero-hessian case, whose gradients are the problem. It
+        # runs from the cold start, as it always has, and also from the
+        # best point found so far, which it then polishes rather than
+        # discards (Nelder-Mead never ends worse than its start); the
+        # better answer is kept. Either start alone can end in the worse
+        # of two optima.
         if (res.success is False) or (np.isnan(res.x).any()):
-            res = minimize(fun, init, args=args)
+            starts = [init] + ([res.x] if _usable(res) else [])
+            for x0 in starts:
+                nm = minimize(fun, x0, method="Nelder-Mead", args=args)
+                if not (_usable(res) and res.fun < nm.fun):
+                    res = nm
+                    res.optimizer = "Nelder-Mead"
 
     return res
+
+
+def _usable(res: Any) -> bool:
+    """A result with finite parameters and a finite objective."""
+    return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
+
+
+def search_floor(model: Any) -> npt.NDArray:
+    """Per-component ``floor`` for ``preconditioned_bfgs`` on a fit.
+
+    One entry per free parameter, in the transformed space the search
+    runs in (see ``bounds_convert``):
+
+    - A parameter with a bound is searched, within 1 of the bound, as the
+      log of its distance from it (or as a scaled arctanh between two
+      bounds); further out it is linear and ``|u0|`` sets the scale. The
+      log's natural unit is 1 at every data scale, so the floor is 1, as
+      it always was: at ``u0 = 0`` -- a Weibull shape of exactly 1, say --
+      the scale must not collapse.
+    - An unbounded parameter (a location, a Uniform or Beta4 endpoint,
+      the LogNormal's ``mu``) is searched as itself. Its natural unit is
+      its own magnitude, or the data's spread when it starts near zero
+      -- a Normal fitted to data straddling the origin. The floor is
+      that spread, capped at the old floor of 1 so that nothing changes
+      for data of order 1 and up: in particular the LogNormal's ``mu`` is
+      in log units, where 1 is already the natural unit, and must not
+      get a floor of 1e5 from data in the hundred thousands.
+
+    The spread is the standard deviation of the finite observed values
+    (interval endpoints included), which scales exactly with the data.
+    """
+    bounds = model.bounds
+    fixed_idx = set(model.fitting_info["fixed_idx"])
+    x = np.asarray(model.data["x"], dtype=float)
+    x = x[np.isfinite(x)]
+    spread = float(np.std(x)) if x.size > 1 else 0.0
+    unbounded_floor = min(spread, 1.0) if spread > 0 else 1.0
+    return np.array(
+        [
+            unbounded_floor if (low is None and upp is None) else 1.0
+            for i, (low, upp) in enumerate(bounds)
+            if i not in fixed_idx
+        ]
+    )
+
+
+def offset_step(x: npt.ArrayLike) -> float:
+    """The data's own unit for an offset: the mean spacing of the sorted
+    finite values, their range over ``n - 1``.
+
+    An offset is found as a distance below the smallest value, and how
+    far below is only meaningful relative to the data's scale. The
+    offset searches used to measure it in absolute units -- the fitters
+    started one unit below the data, and the probability plot searched
+    ``exp(-u)`` below it from ``u = 0`` -- so the start, and with it the
+    answer, depended on the units the data were recorded in. The mean
+    spacing scales exactly with the data and is, like the gap between the
+    offset and the first failure, a distance *between* observations
+    rather than their overall size.
+
+    A single value, or a sample whose values are all equal, has no
+    spacing; its own magnitude stands in (and 1 for a sample of zeros).
+    """
+    finite = np.sort(np.asarray(x, dtype=float).ravel())
+    finite = finite[np.isfinite(finite)]
+    lo = float(finite[0])
+    step = (float(finite[-1]) - lo) / max(finite.size - 1, 1)
+    if not step > 0:
+        step = abs(lo) if lo != 0 else 1.0
+    return step
 
 
 def preconditioned_bfgs(
@@ -72,6 +177,8 @@ def preconditioned_bfgs(
     args: tuple[Any, ...] = (),
     jac: Callable[..., Any] | None = None,
     options: dict[str, Any] | None = None,
+    floor: "float | npt.ArrayLike" = 1.0,
+    obj_scale: float | None = None,
 ) -> Any:
     """BFGS on a diagonally rescaled copy of the search vector.
 
@@ -94,7 +201,7 @@ def preconditioned_bfgs(
 
     Rescaling the search fixes the cause instead. With
 
-        s = max(|u0|, 1),   v = u / s,   g(v) = f(s v)
+        s = max(|u0|, floor),   v = u / s,   g(v) = f(s v)
 
     the starting point is order 1 in every component whatever units the
     data is in, and since ``dg/dv = s * df/du`` -- ``s`` growing like the
@@ -102,9 +209,33 @@ def preconditioned_bfgs(
     tests is order 1 too. scipy's own default then means the same thing
     at every scale, so no tolerance is passed at all.
 
+    The floor keeps a component that starts at or near zero from being
+    scaled away to nothing, and its right value depends on the space the
+    search runs in. The univariate fitters search transformed
+    parameters (see ``bounds_convert``): a parameter with a bound is
+    searched as the log of its distance from the bound when that is
+    below 1 (or as an arctanh between two bounds), a coordinate whose
+    natural unit is 1 whatever the data scale -- there ``u0 = 0`` just
+    means "one unit from the bound", and a floor of 1 is right. An
+    unbounded parameter is searched as itself, in the units of the
+    data, and a fixed floor of 1 is right only for data of order 1 or
+    larger. Below that the floor, not ``|u0|``, set the scale: a Beta4
+    endpoint at 1e-3 was searched in steps a thousand times its own
+    size, BFGS lost precision, and the fit ended on TNC, whose
+    tolerances are absolute, 0.1% off. Those callers pass a
+    per-component ``floor`` (see ``search_floor``); the default of 1
+    keeps every other caller as it was.
+
     Dividing through by ``|f(x0)|`` does the same job for the other
     scale: the objective is a sum over observations, so its gradient
-    grows like ``n`` even when the data magnitude is fixed.
+    grows like ``n`` even when the data magnitude is fixed. A caller
+    that knows the count better passes it as ``obj_scale``. Maximum
+    likelihood does: a negative log-likelihood is not itself scale free
+    -- multiplying the data by ``k`` adds ``log k`` per failure to it --
+    so ``|f(x0)|`` was 100 for a Beta4 sample of 100, 1250 for the same
+    sample multiplied by 1e5, and the convergence test loosened
+    twelvefold with it. Dividing by ``n`` gives the gradient per
+    observation, which is the same at every scale.
 
     The mapping is linear, diagonal and fixed before the search begins,
     so it cannot move the optimum; it changes the route taken and the
@@ -113,22 +244,27 @@ def preconditioned_bfgs(
     step, which builds its own hessian at the returned point -- sees
     exactly what it saw before. scipy's own ``res.hess_inv`` would be in
     scaled units, and is not used anywhere.
+
+    With ``jac=None`` scipy differences the scaled objective, so the
+    finite-difference step is relative to each component's scale too.
     """
     x0 = np.asarray(x0, dtype=float)
-    scale = np.maximum(np.abs(x0), 1.0)
+    scale = np.maximum(np.abs(x0), np.asarray(floor, dtype=float))
 
-    f0 = float(fun(x0, *args))
-    obj_scale = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
+    if obj_scale is None:
+        f0 = float(fun(x0, *args))
+        divisor = max(abs(f0), 1.0) if np.isfinite(f0) else 1.0
+    else:
+        divisor = float(obj_scale)
 
     def scaled_fun(v: npt.NDArray, *inner: Any) -> Any:
-        return fun(scale * v, *inner) / obj_scale
-
-    assert jac is not None
+        return fun(scale * v, *inner) / divisor
 
     def scaled_jac(v: npt.NDArray, *inner: Any) -> Any:
+        assert jac is not None
         return (
             scale * np.asarray(jac(scale * v, *inner), dtype=float)
-        ) / obj_scale
+        ) / divisor
 
     opts = dict(options or {})
     opts["gtol"] = 1e-6
@@ -142,7 +278,7 @@ def preconditioned_bfgs(
         options=opts,
     )
     res.x = res.x * scale
-    res.fun = res.fun * obj_scale
+    res.fun = res.fun * divisor
     return res
 
 
@@ -186,7 +322,16 @@ def add_to_funcs(
     i: int,
     funcs: list[Callable[..., Any]],
     inv_f: list[Callable[..., Any]],
+    unit: float = 1.0,
 ) -> None:
+    """Append the map of one parameter to the unbounded search space, and
+    its inverse.
+
+    A parameter with one bound is searched as the log of its distance
+    from the bound where that distance is below ``unit``, and linearly
+    beyond it (``adj_relu``). ``unit`` is 1 except in an offset fit: see
+    ``bounds_convert``.
+    """
     if (low is None) and (upp is None):
         funcs.append(lambda x: x)
         inv_f.append(lambda x: x)
@@ -194,15 +339,20 @@ def add_to_funcs(
         D = 10
         funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
         inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
+    elif (low is not None) and (upp is not None):
+        # Any other finite interval: the same scaled arctanh map on
+        # (x - low) / (upp - low). Previously this fell through to the
+        # identity, so the bound was silently not enforced.
+        D = 10
+        lo, width = float(low), float(upp) - float(low)
+        funcs.append(lambda x: D * np.arctanh((2 * (x - lo) / width) - 1))
+        inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
     elif upp is None:
-        funcs.append(lambda x: (inv_adj_relu(x - np.copy(low))))
-        inv_f.append(lambda x: (adj_relu(x) + np.copy(low)))
+        funcs.append(lambda x: (inv_adj_relu((x - np.copy(low)) / unit)))
+        inv_f.append(lambda x: (unit * adj_relu(x) + np.copy(low)))
     elif low is None:
-        funcs.append(lambda x: inv_rev_adj_relu(x - np.copy(upp)))
-        inv_f.append(lambda x: np.copy(upp) + rev_adj_relu(x))
-    else:
-        funcs.append(lambda x: x)
-        inv_f.append(lambda x: x)
+        funcs.append(lambda x: inv_rev_adj_relu((x - np.copy(upp)) / unit))
+        inv_f.append(lambda x: np.copy(upp) + unit * rev_adj_relu(x))
 
 
 def bounds_convert(
@@ -210,12 +360,24 @@ def bounds_convert(
     bounds: Sequence[tuple[float | None, float | None]],
     fixed: dict[str, float] | None,
     param_map: dict[str, int],
+    units: Sequence[float] | None = None,
 ) -> tuple[Any, ...]:
     """
     This function is used to transform the parameters from the bounded
     parameter space to the unbounded parameter space. This is an improvement
     over using the scipy.optimize.minimize function's bounds parameter as
     it allows us to avoid the use of the constrained optimization methods.
+
+    ``units`` gives, per parameter, the distance from a one-sided bound
+    at which its map switches from logarithmic to linear (1 for all of
+    them by default; see ``add_to_funcs``). With a unit of 1 the switch
+    is at a fixed value, so a parameter measured in the data's units --
+    an offset's distance below the first observation, a scale -- is
+    searched as a log for data in thousandths and linearly for data in
+    thousands: a different search at every scale. An offset fit passes
+    each parameter's own starting distance from its bound instead (see
+    ``_offset_search_units`` in ``parametric_fitter``), which makes its
+    search the same whatever units the data is in.
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
     unbounded_to_bounded_transforms: list[Callable[..., Any]] = []
@@ -227,6 +389,7 @@ def bounds_convert(
             i,
             bounded_to_unbounded_transforms,
             unbounded_to_bounded_transforms,
+            1.0 if units is None else float(units[i]),
         )
 
     def transform_params_to_unbounded(params: npt.NDArray) -> Any:

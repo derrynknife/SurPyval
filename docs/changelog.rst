@@ -4,6 +4,358 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Design changes approved after the third documentation review.**
+
+  - **One sample size for BIC and AIC_c.** Every model that reports a BIC
+    or AIC_c uses the number of observed failures (exact, left- and
+    interval-censored, weighted by their counts), or the number of
+    observations when there is none. Recurrent-event models count
+    observed events; copulas count rows in which at least one series
+    failed. Previously univariate models counted failures for BIC but all
+    units for AIC_c, regression counted exact failures only (``-inf``
+    without one), recurrent models counted exact events (NaN without
+    one), and copula and Royston-Parmar models counted every row.
+    Univariate BIC on exact and right-censored data is unchanged; AIC_c on
+    censored data now uses the failures. Restored models store the sample
+    size (``"ic_n"``), so ``bic()`` and ``aic_c()`` work without the data.
+    ``fit_best(metric="aic_c")`` raises a clear error when no candidate
+    has a finite AIC_c instead of returning ``None``.
+  - **Fine-Gray follows cmprsk on tied times.** The censoring weights are
+    :math:`\hat{G}(t-)/\hat{G}(x_i-)`, with the censoring Kaplan-Meier read
+    just before each time, as in R's ``cmprsk::crr``. Results are
+    unchanged when no censoring time equals an event time.
+  - **Readings from a coarse gauge.** ``GammaProcess.fit(gauge=...)`` (with
+    ``rounding``, ``exact_start`` and ``gauge_method``) maximises the
+    probability that each unit's path passes through its recorded gauge
+    bins. With a gauge step near the mean increment, taking rounded
+    increments at face value more than doubled ``alpha`` and shrank
+    stress coefficients; the gauge likelihood recovers the unrounded
+    estimates. The default fit is unchanged.
+  - **Scale-equivariant parametric fits.** Every continuous distribution
+    and method, with or without an offset, now gives the same answer in
+    any units from 1e-4 to 1e5: the search is scaled per coordinate, MLE
+    normalises its objective per observation, MOM uses the scaled search,
+    MPS no longer evaluates the CDF at the support edge, and offsets start
+    one data spacing (not one unit) below the smallest value, with MPP
+    searching the offset in the data's spacing. At a data scale of 1e-3,
+    Rayleigh MOM had been 1.2% off, Uniform MPS 0.15% and Beta4 MLE 0.1%,
+    and many offset fits never left their start. Fits in their own units
+    move by about 1e-6 relative, towards the optimum.
+  - **Strict-JSON serialisation.** ``to_dict``/``to_json`` no longer emit
+    ``NaN``/``Infinity``: non-finite values are written as ``null`` and
+    listed under ``"non_finite"`` (JSON Pointers by kind), and every reader
+    restores them. Each file is stamped with the oldest schema version that
+    reads it: 2 when it records non-finite values this way, and 1 (the
+    layout SurPyval 0.20 reads, which loads it identically) otherwise;
+    older dictionaries and files still load. ``to_json(path, with_data=True)`` works for ``Parametric``
+    and ``NonParametric``, and every class-level ``from_dict`` applies the
+    package reader's checks.
+  - **Non-parametric copula margins.** Under ``how="IFM"`` a margin can be
+    ``KaplanMeier`` (or any fitted non-parametric model), giving the
+    semi-parametric estimator of Genest, Ghoudi and Rivest (1995); it
+    used to crash.
+  - **Datasets.** ``load_framingham``, ``load_pbc2`` and
+    ``load_support2`` expose bundled data that had no loader; the
+    undocumented ``synthetic_dataset.csv`` is removed. The G1 example data
+    are credited to Kaminskiy and Krivtsov (2010).
+
+- **Bug fixes found in the third documentation review.** This review
+  probed the documented behaviour adversarially (identities, round trips,
+  cross-method agreement, edge cases). Each fix has a regression test
+  that fails on the old code.
+
+  *Wrong results that are now correct.*
+
+  - **Degradation:** the default two-sided analytic ``cb`` band was a 90%
+    band (each side used the full ``alpha_ci``). Units already past the
+    threshold at their first measurement were treated as survivors; they
+    are left-censored there. Wiener ``sf``/``ff`` returned NaN for low
+    noise; ``GammaProcessModel.mean`` could be negative; zero Gamma
+    increments are censored below a ``resolution`` instead of a 1e-12
+    nudge.
+  - **Gray's test** is Gray's (1988) statistic with group-specific
+    censoring; the pooled version rejected a true null up to 89% of the
+    time when groups were censored differently.
+  - **Parametric competing risks:** ``cif`` and ``probability_of_cause``
+    are integrated per query instead of on a fixed grid (they could sum
+    to 0.81, or 0.0005).
+  - **Recurrent events:** GRP/ARA simulation was wrong at long horizons
+    and NHPP simulation failed past ~745 expected events; renewal fits
+    could keep a worse optimum than one they found (boundary optima such
+    as ARA ``rho -> 1``); left-censored counts now cover ``(tl, x]``.
+  - **Regression:** a missing or infinite covariate made PH/AH/frailty
+    return their starting values (rows are now dropped with a warning in
+    every fitter); stratified Cox ``predict_tvc`` used the first
+    stratum's baseline; Lin-Ying predictions depended on covariate
+    centring; counts were treated as clusters in robust standard errors,
+    ``check_ph`` ranks and the Buckley-James bootstrap; some AFT/PO fits
+    stopped short of the maximum (``PO(Weibull)`` by 5.5 nats) and are
+    finished by a gradient-based optimiser.
+  - **Parametric:** ``cs`` ignored ``p``, ``f0`` and the offset;
+    likelihood-ratio bands collapsed onto the estimate when the inner
+    search failed (Geometric coverage 0.65); the mixture EM stalled on a
+    ``log(0)``; ExpoWeibull and ``CustomDistribution`` moments were wrong
+    away from unit scale; MPS and MSE were not scale invariant; raw
+    distribution functions were evaluated outside their support;
+    ``bic()`` was ``-inf`` without exact failures; LogNormal and Gamma
+    hazards overflowed in the far tail.
+  - **Non-parametric:** ``qf``/``median`` had no round-off tolerance (the
+    median of 1..30 was 16); ``band()`` critical values were ~1.5% low;
+    log-rank counted groups never at risk in its degrees of freedom; the
+    Turnbull identifiability warning fired on correct fits.
+  - **Copulas:** Frank overflowed for :math:`\theta \gtrsim 37` and
+    Clayton collapsed at extreme :math:`\theta`; joint MLE dropped
+    pre-fitted margins' options; automatic derivatives summed over
+    broadcast axes.
+  - **Data layer:** NaN truncation bounds were read differently by each
+    fitter; unsorted xrd input gave a wrong estimate.
+
+  *Crashes and unclear errors.* Two-column ``x`` without intervals now
+  works in every fitter; truncation rules are identical for one- and
+  two-column ``x``; bad ``fixed``/``init``/``bound``/``how`` arguments,
+  wrong covariate row counts, degenerate data, out-of-range parameters
+  in ``from_params``/``fit_from_parameters``, non-integer data for
+  discrete distributions and corrupt serialised dictionaries raise clear
+  errors. Models restored without their data explain what needs it.
+
+  *Serialisation.* Discretize, ``CustomDistribution`` (after
+  re-construction), ``NeverOccurs``/``InstantlyOccurs``, destructive
+  degradation models with any distribution, and competing-risks models
+  with mixed or tuple labels round-trip; Cox dictionaries are strict
+  JSON; likelihood-ratio bounds work after a ``with_data`` restore.
+
+  *Behaviour changes to note.* BIC's sample size for univariate models
+  counts every non-right-censored failure; ``aic_c`` is NaN when
+  :math:`N \le k + 1`; recurrent covariates must be constant within an
+  item; Cox ``model.phi`` is a method; stratified ``sf_tvc`` requires
+  ``stratum=``; ``band()``'s ``n_sims``/``random_state`` are deprecated;
+  two-column ``x`` without intervals is stored as one column.
+
+- **Bug fixes found in the second documentation review.** Each was
+  reproduced first and has a regression test that fails on the old code;
+  documentation describing the old behaviour was updated.
+
+  *Non-parametric.*
+
+  - **Turnbull confidence bounds stepped a piece too early.** The variance
+    at each value included the next piece's expected failures, so ``cb()``
+    on interval-censored data gave ``[0, 1]`` where the estimate was 1. The
+    ``r``, ``d`` and variance ladders now line up with ``R``; the
+    Kaplan-Meier option without truncation starts the EM on Turnbull's
+    innermost intervals; MPP fits with ``heuristic='Turnbull'`` pair each
+    failure with the CDF after its drop (their estimates move slightly).
+  - ``smoothed_hf()`` works on Turnbull models; Turnbull ``bootstrap_cb()``
+    refits with the fit's ``tol`` and ``max_iter``; Greenwood's variance no
+    longer blows up (about 1e14) from round-off at the last value.
+  - ``'Benard'`` plotting positions use Benard's (i - 0.3)/(N + 0.4); an
+    unknown ``turnbull_estimator`` raises a ``ValueError`` up front.
+
+  *Parametric.*
+
+  - **Distribution parameters named** ``p`` **clashed with the
+    limited-failure proportion.** ``param_cb('p')`` on a Geometric or
+    NegativeBinomial now bounds the distribution's own ``p``, and
+    ``lfp=True`` works for them (the proportion is named ``lfp_p``).
+  - **Uniform MLE with censoring was not the maximum.** ``(min, max)`` is
+    used only for exact data; censored data gets a bounded search (``b =
+    24.75``, not 10, in the reported example).
+  - **Method of moments could return its start as the fit.**
+    Beta-Geometric MOM has a closed form, non-finite moments at the start
+    raise, and the search backs away from regions without moments. With
+    ``fixed``, MOM matches one moment per free parameter.
+  - ``CustomDistribution`` gains finite moments and ``var()``, a fast MOM,
+    and the standard MPP refusal; ``offset=True`` is refused for discrete
+    distributions; ``param_cb('gamma')`` and unknown names give clear
+    errors; ``var()`` of LFP and zero-inflated models follows ``mean()``'s
+    convention; the MSE/MPS fallback ends on Nelder-Mead as documented.
+  - The gradients of the incomplete gamma/beta helpers had the wrong shape
+    when a scalar argument met an array partner (NegativeBinomial fits
+    that differentiate the CDF crashed).
+
+  *Information criteria.*
+
+  - **AIC, AICc and BIC count only estimated parameters.** Fixed
+    parameters (and the accelerated-life placeholder) no longer add to
+    ``k``, in parametric and regression models; restored models agree.
+    A Weibull with its shape fixed now scores the same as the equivalent
+    Rayleigh, and ``AcceleratedLife(Weibull, Power)`` AICs drop by 2.
+  - Recurrent models use one BIC sample size, the number of exactly
+    observed events (it was every row, or only failures for ARI).
+
+  *Regression.*
+
+  - **The exact Cox tie methods are fast.** ``'kp'`` uses the
+    Gail-Lubin-Rubinstein recursion and ``'exact'`` the DeLong-Guirguis-So
+    integral, with analytic score and information: a 107-way tie that took
+    over nine minutes fits in 0.06 s, and the twelve-tie cap is gone.
+  - **Cox silently fitted left-censored rows as right-censored** and
+    failed on interval rows; both are refused with a clear error.
+    ``CoxPH.fit_from_df`` gains ``tl_col``, and strata labels follow the
+    missing-covariate row mask.
+  - **A parametric regression fit could return its starting values** when
+    the start's log-likelihood was infinite; it now falls back to the
+    default start with a warning, or raises.
+  - ``AH(...).random`` works with several covariate rows; the unreachable
+    accelerated-life ``(low, high)`` stress option is removed and a scalar
+    stress works; additive-hazards fits held at the positivity boundary
+    warn; ``FrailtyModel`` gains ``neg_ll``/``aic``/``bic``/``aic_c`` and
+    is warning-free near :math:`\theta = 0`.
+
+  *Competing risks and copulas.*
+
+  - ``gray_test`` counted a NaN cause as a competing failure (only
+    ``None`` was censored); it uses the shared missing-cause rule.
+  - ``CompetingRisksProportionalHazards`` (Cox and Fine-Gray) can be saved
+    and restored, reproducing every prediction.
+  - Copula fits start strictly inside the family's bounds and take a public
+    ``init``; ``CopulaModel`` reports ``log_likelihood``, ``neg_ll()``,
+    ``aic()`` and ``bic()`` from the full censored and truncated
+    likelihood.
+
+  *Recurrent events.*
+
+  - **The cause-specific MCF's bounds were too narrow**: it used the
+    per-step variance; each cause now gets the Lawless-Nadeau robust
+    variance. The per-step variance itself was wrong with ties.
+  - The non-parametric MCF accepts right truncation (``tr``); models
+    without data raise an informative error; G1, ARI and NHPP fits are
+    warning-free (NHPP searches run on an unconstrained scale, moving
+    fitted values only within the optimiser tolerance); the renewal
+    goodness-of-fit bootstrap resimulates each item as it was observed.
+
+  *Degradation.*
+
+  - Offset-exponential models could not be reloaded; every built-in path
+    now round-trips. ``DestructiveDegradationModel`` gains
+    ``to_json``/``from_json`` and keeps its data, so a reloaded model's
+    ``cb`` matches the original.
+
+- **Bug fixes found while rewriting the documentation.** Each was
+  reproduced first, is covered by a new test, and the documentation that
+  described the old behaviour (or a workaround for it) has been updated.
+
+  *Regression.*
+
+  - **Cox predictions before the first event were wrong.** The baseline
+    lookup index was -1 there, which wrapped to the *last* baseline value,
+    so ``Hf(0.1)`` returned the end-of-data cumulative hazard and ``sf``
+    was near 0 where it should be 1. It is now 0 before the first event.
+  - **Cox predictions paired unsorted times with the wrong covariate
+    rows.** The query times were sorted for the baseline lookup but
+    ``phi(Z)`` was not, so ``Hf([3, 1], Z)`` gave ``[9.69, 0.39]`` instead
+    of ``[1.87, 2.03]``. Times and rows now stay paired, in the order
+    given.
+  - **The gamma-frailty fit broke when there was little frailty.** Its
+    group log-likelihood subtracted terms of size
+    :math:`(1/\theta)\log(1/\theta)` to get a difference of order
+    :math:`\theta`; as :math:`\theta \to 0` round-off swamped it and the
+    fit chased the noise (``neg_ll`` of -1985 against the PH fit's 755) or
+    divided by an underflowed :math:`\theta`. It is now computed in a
+    form that tends to the PH contribution, and the fit coincides with the
+    ordinary PH fit when there is no frailty.
+  - **A 1-D ``Z`` raised ``IndexError``** in the PH, AFT, PO and AH
+    fitters; it is read as one covariate, as the other fitters already
+    did.
+  - **Accelerated life with a Gamma baseline had the life model backwards.**
+    Gamma's ``beta`` is a rate, so the life now enters as ``1 / life`` (as
+    for the Exponential); a longer modelled life had meant a faster rate.
+  - **PH random draws returned ``inf`` for a tiny hazard multiplier**; they
+    now invert through the cumulative hazard.
+  - Docstring: Schoenfeld residuals follow the input order of the event
+    rows, not event-time order.
+
+  *Competing risks.*
+
+  - **``CompetingRisksProportionalHazards`` (``how="Cox"``) incidence could
+    exceed 1.** Its CIF weighted each hazard increment by ``exp(-H)`` (the
+    #278 defect, fixed for the non-parametric CIF but not here): total
+    incidence reached 1.07-1.18 in small samples, and 118 in one. The
+    weight is the product-limit survival, and the CIFs now sum to exactly
+    ``1 - S``.
+  - **``CompetingRisks(method="Kaplan-Meier")`` only changed ``S``;** ``sf``,
+    ``ff`` and ``Hf`` still used ``exp(-H)``. They now follow the method
+    (the default is unchanged; the method is serialised).
+  - The causes of a Cox competing-risks model are sorted, so the row order
+    of ``betas`` no longer depends on the hash seed. Docstrings for
+    ``how``/``tie_method``, FineGray's ``c``, and API entries for
+    ``FineGrayModel`` and ``GrayTestResult``.
+
+  *Parametric.*
+
+  - **Two-sided parameter bounds other than (0, 1) were ignored** (a spline
+    knot bounded to (0, 50) was fitted at 89.7). Every finite interval is
+    now enforced.
+  - **Poor default starts reported success at poor optima.** A
+    ``CustomDistribution`` started each positive parameter at 1, where for
+    data on another scale the likelihood is flat to machine precision; it
+    now starts from the best of a grid of magnitudes, with the old start as
+    a second try. A limited-failure-population fit could settle on the
+    worse of two optima (Meeker's data: ``p = 0.116``, ``neg_ll`` 302.9,
+    instead of ``p = 0.0067``, 293.0); it is also started from the failures
+    alone. An MLE fit without ``init`` keeps the best of these starts.
+  - **Restored models:** ``neg_ll()`` and ``aic()`` work from the stored
+    likelihood; ``bic()``, ``aic_c()`` and ``plot()`` explain that the data
+    were not saved instead of raising ``TypeError``.
+  - Docstrings for ``from_params``' ``p``, zero-inflation in ``qf`` and
+    ``random``, ``tl``/``tr``, ``MixtureModel.loglike`` and the
+    ``CustomDistribution`` example.
+
+  *Non-parametric.*
+
+  - **``Turnbull.fit`` modified its input.** Infinite interval endpoints
+    were rewritten in the caller's array, so refitting the same array gave
+    a different answer.
+  - **Fleming-Harrington could return ``nan``** when the Turnbull EM's risk
+    and death sets carried float noise (``1 + 2e-16``); near-integer sets
+    are treated as integers.
+  - Docstrings for ``turnbull_estimator`` (Fleming-Harrington, the default,
+    was missing), ``hf`` (it returns increments, not a rate), and the
+    Turnbull EM (the estimator option acts inside the EM too).
+
+  *Multivariate (copulas).*
+
+  - **IFM ignored counts and truncation in the margins.** The first stage
+    now fits each margin with the row counts and its own series'
+    truncation window.
+  - **Clayton had a spurious likelihood maximum near** :math:`\theta = 0`.
+    The closed form rounded to ``C = 1`` and density ``1/(uv)`` below
+    :math:`\theta \approx 10^{-16}`, which negatively dependent data drove
+    the fit into; computed through ``log1p``/``expm1`` it tends to the
+    independence copula.
+  - ``MultivariateSurpyvalData``: interval rows without ``xl``/``xr`` are
+    rejected (the check could never fire), a single row of ``D`` censoring
+    codes broadcasts, and no ``RuntimeWarning`` comes from the default
+    infinite truncation bounds.
+
+  *Recurrent events.*
+
+  - **The MCF variance ignored within-item covariance.** It is now the
+    Lawless-Nadeau robust variance; the per-step variance was about eight
+    times too small when items differ in their rates.
+  - **``mcf_cb(bound_type="normal")`` scaled the standard error by the
+    estimate a second time**, giving far too wide, negative bounds; it is
+    now ``M +- z SE``.
+  - **``ProportionalIntensityNHPP`` stopped short of the optimum** (Duane
+    baseline: 15-30 AIC worse than the same model as Crow-AMSAA). It starts
+    from the covariate-free baseline fit and searches on an unconstrained
+    scale; on one-event-per-item data it now reproduces Weibull PH exactly.
+    Crow-AMSAA's ``beta`` is bounded below by 0.
+  - ``CauseSpecificNHPP(dist=HPP)`` works (it raised ``TypeError``) and
+    ``HPP`` has ``from_params``; model summaries say how the model was
+    obtained instead of always "MLE"; a covariate dict of scalars and a
+    1-D ``Z`` are accepted; ``CauseSpecificMCF.plot`` draws confidence
+    bounds and honours ``confidence``/``plot_bounds``.
+  - Docstrings: residuals are not exactly i.i.d. Exp(1) when an item's
+    window closes before an event; the Rossi example passes ``i`` and
+    ``c`` by keyword.
+
+  *Degradation.*
+
+  - **Bootstrap bounds failed on a reloaded model.** ``from_dict`` did not
+    restore the fitter the refits need, so every refit failed; it is now
+    recovered from the restored life model (the distribution, or the
+    regression fitter of an accelerated model).
+
 - **REML population fits are 20-60x faster.** ``population_method="reml"``
   -- the plain and stress-dependent (``links``) populations, linear and
   nonlinear paths -- now evaluates the same REML objective through the
