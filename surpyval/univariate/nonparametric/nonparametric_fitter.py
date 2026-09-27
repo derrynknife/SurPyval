@@ -181,8 +181,8 @@ class NonParametricFitter:
             The fitted non-parametric model, with the survival, hazard and
             quantile functions, confidence bounds and plotting. A Turnbull
             model also carries ``bounds``, ``R_upper``, ``R_lower``,
-            ``turnbull_estimator``, ``converged``, ``iters``, ``degenerate``
-            and ``exploitable_mass`` (see
+            ``turnbull_estimator``, ``converged``, ``iters``, ``degenerate``,
+            ``npmle`` and ``exploitable_mass`` (see
             :class:`~surpyval.univariate.nonparametric.turnbull.Turnbull_`).
 
         Raises

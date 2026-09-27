@@ -140,8 +140,9 @@ class SurvivalTree(SerialisableMixin):
         -------
         SurvivalTree
             The fitted tree. Its ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
-            ``Hf``) evaluate the model of the leaf that one covariate
-            vector ``Z`` falls in.
+            ``Hf``) evaluate the model of the leaf that a covariate vector
+            ``Z`` falls in; a matrix ``Z`` gives one row per covariate
+            vector and one column per time.
 
         Examples
         --------
@@ -158,6 +159,12 @@ class SurvivalTree(SerialisableMixin):
         >>> tree = SurvivalTree.fit(x, Z, c=c, max_depth=1, n_features_split=2)
         >>> tree.sf(5, [0.2, 0.5]).round(4), tree.sf(5, [0.8, 0.5]).round(4)
         (array([0.8831]), array([0.3168]))
+
+        A matrix routes each row to its own leaf:
+
+        >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]]).round(4)
+        array([[0.9897, 0.8831],
+               [0.8062, 0.3168]])
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -184,9 +191,36 @@ class SurvivalTree(SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
     ) -> NDArray:
+        """
+        Evaluate ``function_name`` (``"sf"``, ``"ff"``, ``"df"``, ``"hf"``
+        or ``"Hf"``) of the leaf model that each covariate vector falls in.
+
+        Parameters
+        ----------
+        function_name : str
+            The name of the leaf model's function to evaluate.
+        x : int, float or array_like
+            Times, the same for every covariate vector.
+        Z : array_like
+            One covariate vector (1-D), or a matrix with one covariate
+            vector per row (2-D).
+
+        Returns
+        -------
+        ndarray
+            For a 1-D ``Z``, the values at ``x`` (shaped like ``x``). For a
+            2-D ``Z``, an ``(n_rows, x.size)`` grid whose row ``i`` is the
+            values for ``Z[i]``, as for
+            :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
+        """
         # Prep input - make sure numpy array
         x = np.array(x, ndmin=1)
         Z = np.array(Z, ndmin=1)
+        if Z.ndim > 2:
+            raise ValueError(
+                f"Z must be one covariate vector (1-D) or one per row "
+                f"(2-D), got {Z.ndim} dimensions"
+            )
 
         return self._root.apply_model_function(function_name, x, Z)
 
@@ -194,8 +228,10 @@ class SurvivalTree(SerialisableMixin):
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         """
-        Survival function at ``x`` of the leaf model for one covariate
-        vector ``Z``.
+        Survival function at ``x`` of the leaf model each covariate vector
+        falls in; ``Z`` and the result are as for
+        :meth:`apply_model_function` (a 2-D ``Z`` gives one row per
+        covariate vector).
         """
         return self.apply_model_function("sf", x, Z)
 
@@ -203,8 +239,8 @@ class SurvivalTree(SerialisableMixin):
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         """
-        Failure (CDF) function at ``x`` of the leaf model for one covariate
-        vector ``Z``.
+        Failure (CDF) function at ``x`` of the leaf model each covariate
+        vector falls in, as for :meth:`sf`.
         """
         return self.apply_model_function("ff", x, Z)
 
@@ -212,8 +248,8 @@ class SurvivalTree(SerialisableMixin):
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         """
-        Density at ``x`` of the leaf model for one covariate
-        vector ``Z``.
+        Density at ``x`` of the leaf model each covariate vector falls in,
+        as for :meth:`sf`.
         """
         return self.apply_model_function("df", x, Z)
 
@@ -221,8 +257,8 @@ class SurvivalTree(SerialisableMixin):
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         """
-        Hazard rate at ``x`` of the leaf model for one covariate
-        vector ``Z``.
+        Hazard rate at ``x`` of the leaf model each covariate vector falls
+        in, as for :meth:`sf`.
         """
         return self.apply_model_function("hf", x, Z)
 
@@ -230,8 +266,8 @@ class SurvivalTree(SerialisableMixin):
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
         """
-        Cumulative hazard at ``x`` of the leaf model for one covariate
-        vector ``Z``.
+        Cumulative hazard at ``x`` of the leaf model each covariate vector
+        falls in, as for :meth:`sf`.
         """
         return self.apply_model_function("Hf", x, Z)
 

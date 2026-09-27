@@ -554,8 +554,8 @@ Each row of ``x`` is an interval ``[left, right]`` in which the item failed; an 
 censoring flags are worked out from the intervals, so ``c`` is not needed. (The same data can be
 given as ``TB.fit(xl=low, xr=upp)``.)
 
-``max_iter`` is raised from its default of 1000 here because this data
-needs it (with the default Fleming-Harrington option it takes just over 1,000 iterations). The EM
+``max_iter`` is raised from its default of 1000 here to leave headroom: with the default
+Fleming-Harrington option this data takes nearly 900 iterations. The EM
 stops when no piece's probability mass changes by more than ``tol`` (default ``1e-10``) in an
 iteration; loosening ``tol`` is the other way to stop sooner, at the cost of accuracy. The Turnbull EM converges slowly when many observations are
 right censored to infinity, as more than half of these are, and it warns
@@ -618,7 +618,7 @@ censored items' failures is placed beyond the last value (see the theory page). 
 
 The second piece, (7, 7], is the zero-width piece holding the failures observed at exactly 7. The
 fitted model also records the Turnbull-specific ``turnbull_estimator``, ``converged``,
-``iters``, ``degenerate`` and ``exploitable_mass`` (described below). Like every other model it
+``iters``, ``degenerate``, ``npmle`` and ``exploitable_mass`` (described below). Like every other model it
 carries the cumulative hazard ``H`` (:math:`-\ln R`), so ``Hf()``, ``hf()``, ``df()`` and
 ``smoothed_hf()`` all work as usual.
 
@@ -706,8 +706,7 @@ is well behaved. Here is the mixed-censoring sample again, now with entry times:
 
     model = TB.fit(x=x, c=c, n=n, tl=tl, max_iter=5_000)
     print('converged:', model.converged, ' iterations:', model.iters)
-    print('degenerate:', model.degenerate)
-    print('exploitable mass:', round(model.exploitable_mass, 6))
+    print('degenerate:', model.degenerate, ' npmle:', model.npmle)
     print('sf:', model.sf([5, 7, 9, 12]).round(4))
 
 This small, truncated, mixed-censoring sample needs about 3,300 iterations; with the default
@@ -736,12 +735,14 @@ ones that were cut off.
 When the data cannot identify the curve
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Be aware, though, that the truncated NPMLE is a delicate object: on some data it is
-*non-identifiable* -- the data simply do not pin down a unique curve. SurPyval detects the
-situations it can and raises a warning rather than silently returning a meaningless curve:
+Be aware, though, that the truncated NPMLE is a delicate object: on some data it does not exist
+(the likelihood only approaches its supremum on the boundary) or is not unique -- the data simply
+do not pin down a unique curve. Which applies is a property of the data, and SurPyval decides it
+before the EM runs and warns rather than silently returning a meaningless curve:
 
+- ``npmle`` is ``'exists'``, ``'not unique'`` (with a warning: some probability is left free, so many curves fit equally well), ``'does not exist'`` (with a warning that the estimate is not identifiable) or ``'undetermined'`` (windows truncated on both sides together with censoring, where the structure alone does not decide);
 - ``degenerate`` is set, with a warning, if the survival estimate collapses (for example all probability mass escaping below every entry time);
-- ``exploitable_mass`` is the share of the fitted mass in pieces where mass raises the likelihood at no cost: some item could have failed there, and no item whose truncation window covers the piece is ruled out from failing there. If such pieces exist and the EM does not converge, or they hold more than 0.9 of the mass, surpyval warns that the estimate is not identifiable;
+- ``exploitable_mass`` is the share of the fitted mass in pieces where mass never lowers the likelihood: some item could have failed there, and every item whose truncation window covers the piece could have too. It is a diagnostic; its size depends on how far the EM got, so the warnings follow ``npmle``;
 - ``converged`` is ``False`` if the EM ran out of iterations (with a warning saying so, unless one of the more specific warnings above was raised instead).
 
 The classic trap is left censoring combined with two or more distinct entry times. Here two of
@@ -758,20 +759,23 @@ six items are left censored and every item has a different entry time:
         warnings.simplefilter('always')
         bad = TB.fit(x=x_ni, c=c_ni, tl=np.linspace(0.1, 1.0, 6),
                      turnbull_estimator='Kaplan-Meier')
-    print(caught[0].message.args[0][:78] + '...')
-    print('exploitable mass:', round(bad.exploitable_mass, 3), ' converged:', bad.converged)
+    print(caught[0].message.args[0].split(' (')[0] + ' ...')
+    print('npmle:', bad.npmle, ' converged:', bad.converged)
     print('sf:', bad.sf([2, 4, 6]).round(4))
 
     good = TB.fit(x=x_ni, c=c_ni, tl=0.5, turnbull_estimator='Kaplan-Meier')
     print('common entry time, sf:', good.sf([2, 4, 6]).round(4))
 
-Nearly all of the mass has been pushed into the region before the later entry times, where it
-raises one item's likelihood at no cost to the others, and the survival curve has collapsed. Raising
-``max_iter`` would not help: the likelihood has no interior maximum. With a common entry time the
+The first left censored item could have failed in (0.1, 0.28], before anyone else entered, and
+nobody who had entered by 0.28 is known to have survived it. Pushing the hazard there towards one
+raises that item's likelihood and costs the others nothing (their likelihoods are conditional on
+their own entry), so the likelihood has no maximum: nearly all of the mass has been pushed there and
+the survival curve has collapsed. Raising ``max_iter`` would not help. With a common entry time the
 same data fit without complaint. Treat any Turnbull estimate that came with a warning with suspicion.
 Data that do identify the curve, such as exact failures with right truncation or with staggered
-entry, have no such pieces and fit without the warning; the section *What the data cannot tell
-you* of :doc:`Non-Parametric Estimation` describes the conditions.
+entry (unless everyone at risk at some time fails before the next item enters), fit without the
+warning; the section *What the data cannot tell you* of :doc:`Non-Parametric Estimation` gives the
+conditions and where they come from.
 
 Some Issues with the Turnbull Estimate
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

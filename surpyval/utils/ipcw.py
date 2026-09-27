@@ -12,7 +12,12 @@ module is the single, weighted implementation; passing no ``n`` is the
 unweighted case.
 
 The bodies are transplants from the competing-risks copies, kept
-bit-identical so consolidating changed no fitted numbers.
+bit-identical so consolidating changed no fitted numbers. The callers do
+differ in one convention, how an event and a censoring at the same time
+are ordered, which :func:`censoring_survival` selects with ``ties``:
+Fine-Gray regression uses the default (``cmprsk::crr``'s), the
+prediction metrics use ``"events_first"`` (``prodlim``'s and
+scikit-survival's reverse Kaplan-Meier).
 """
 
 import numpy as np
@@ -23,6 +28,7 @@ def censoring_survival(
     x: npt.NDArray,
     censored: npt.NDArray,
     n: "npt.NDArray | None" = None,
+    ties: str = "censoring_first",
 ) -> tuple[npt.NDArray, npt.NDArray]:
     """
     Kaplan-Meier estimate of the censoring survival ``G(t) = P(C > t)``.
@@ -41,7 +47,41 @@ def censoring_survival(
         True where the observation was right-censored.
     n : ndarray, optional
         Count weight per observation; default 1 each.
+    ties : {"censoring_first", "events_first"}, optional
+        Which risk set a censoring at ``t`` is measured against when an
+        event also falls at ``t``.
+
+        * ``"censoring_first"`` (default): everyone with ``x >= t``,
+          including the events at ``t`` -- they count as still at risk of
+          being censored at ``t``. This is the convention of
+          ``cmprsk::crr``, which Fine-Gray regression reproduces.
+        * ``"events_first"``: everyone with ``x > t`` plus those censored
+          at ``t``. An event at ``t`` is taken to precede a censoring at
+          ``t`` (the convention the data themselves follow: a tie is
+          recorded as an event), so it is no longer at risk of censoring.
+          This is the reverse Kaplan-Meier of ``prodlim`` (``reverse =
+          TRUE``) and scikit-survival, used by the prediction metrics in
+          :mod:`surpyval.metrics.validation`.
+
+        The two agree unless an event and a censoring share a time.
+
+    Examples
+    --------
+    An event and a censoring both at ``t = 2``:
+
+    >>> import numpy as np
+    >>> x = np.array([1.0, 2.0, 2.0, 3.0])
+    >>> censored = np.array([False, False, True, False])
+    >>> censoring_survival(x, censored)[1]  # 1 - 1/3 at t = 2
+    array([1.        , 0.66666667, 0.66666667])
+    >>> censoring_survival(x, censored, ties="events_first")[1]  # 1 - 1/2
+    array([1. , 0.5, 0.5])
     """
+    if ties not in ("censoring_first", "events_first"):
+        raise ValueError(
+            "ties must be 'censoring_first' or 'events_first', "
+            "got {!r}".format(ties)
+        )
     x = np.asarray(x, dtype=float)
     censored = np.asarray(censored, dtype=bool)
     if n is None:
@@ -50,8 +90,11 @@ def censoring_survival(
     G = np.ones(times.size)
     surv = 1.0
     for i, t in enumerate(times):
-        at_risk = n[x >= t].sum()
         cens_here = n[(x == t) & censored].sum()
+        if ties == "events_first":
+            at_risk = n[x > t].sum() + cens_here
+        else:
+            at_risk = n[x >= t].sum()
         if at_risk > 0:
             surv *= 1.0 - cens_here / at_risk
         G[i] = surv

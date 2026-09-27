@@ -76,7 +76,7 @@ below points straight to the section that answers it.
      - `Semi-Parametric — Additive Hazards`_
    * - use covariates that change during follow-up, or forecast along a
        planned covariate path
-     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, AFT)
+     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, PO, AFT)
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
      - ``model.check_ph()``
@@ -248,8 +248,8 @@ and truncation too — and warns with the number of rows dropped. The same
 goes for ``fit_from_df``, with named columns or a ``formula``. (The
 time-varying-covariate fits are the exception: dropping one interval would
 change a subject's history, so they refuse a missing covariate instead.)
-Predicting from a DataFrame row with a missing covariate gives ``nan`` for
-that row, in its place.
+Predicting from a DataFrame row with a missing covariate -- numeric or
+categorical -- gives ``nan`` for that row, in its place.
 
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
@@ -260,7 +260,7 @@ times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
 time per row, which is what you want for scoring a data set but not for drawing
 several curves. To draw curves for several covariate values, call once per
 value. (Buckley-James predictions take a single covariate row only, and the
-random survival forest returns a full grid; both are noted in their sections.)
+survival tree and forest return a full grid; both are noted in their sections.)
 A small simulated data set shows both forms:
 
 .. jupyter-execute::
@@ -551,9 +551,27 @@ encoded exactly as at fit time:
 
 A formula beginning with ``0 +`` asks for the full one-hot coding instead; with
 a baseline distribution in the model that brings back the collinearity above,
-so it is rarely what you want. Data-dependent transforms inside a formula
-(``scale(x)``, ``center(x)``) fit, but such a model cannot be serialised (see
-`Saving and loading a fitted model`_).
+so it is rarely what you want. Wrapped categoricals (``C(site)``, with
+``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
+(``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
+are kept when the model is saved (see `Saving and loading a fitted model`_).
+
+A categorical level the model was not fitted with has no coefficient, so a
+prediction for it is undefined: it raises a ``ValueError`` naming the column
+and the level. Levels declared with ``C(site, levels=[...])`` count as known
+even if the fitted data had none of them -- though with no data their
+coefficient stays at its starting value of zero. A missing value is not a
+level: that row predicts ``nan``, as for a missing numeric covariate. This
+holds for every family that takes a ``formula``, before and after saving:
+
+.. jupyter-execute::
+
+    try:
+        weib_df.sf([40.0], pd.DataFrame({'age': [40], 'site': ['D']}))
+    except ValueError as err:
+        print(str(err).split('. ')[0])
+    print(weib_df.sf(np.full(2, 40.0),
+                     pd.DataFrame({'age': [40, 40], 'site': ['B', None]})))
 
 
 Time-Varying Covariates
@@ -1364,7 +1382,30 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
 A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
 scale), PO is likely a better fit than PH. Proportional odds has no
-time-varying-covariate support and no ``random``.
+``random``.
+
+A fitted PO model can be evaluated along a covariate path that changes over
+time. Its hazard, :math:`h_0(x) / (F_0(x) + e^{\beta' Z} S_0(x))`, depends
+only on the time and the covariate value at that time, so ``sf_tvc`` adds up
+the cumulative-hazard increment of each constant-covariate segment exactly as
+it does for PH, and for the same reason ``fit_tvc`` fits start-stop data (see
+`Time-varying covariates across families`_). Here the
+unit is unexposed until :math:`t = 10` and exposed afterwards:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.regression import StepSchedule
+
+    switch = StepSchedule.from_changepoints([0.0, 10.0], [[0.0], [1.0]])
+    at = np.array([5.0, 10.0, 15.0, 30.0])
+    print('never exposed  :', po.sf(at, [0.0]).round(3))
+    print('exposed from 10:', po.sf_tvc(at, switch).round(3))
+    print('always exposed :', po.sf(at, [1.0]).round(3))
+
+Up to :math:`t = 10` the unit follows the unexposed curve. After the switch
+its hazard becomes the exposed one, but its survival does not jump up to the
+exposed curve: it starts from the survival it has already reached (0.5) and
+falls more slowly from there, ending between the other two curves.
 
 
 Confidence Bounds
@@ -1713,11 +1754,12 @@ Time-varying covariates across families
 ---------------------------------------
 
 The counting-process machinery shown for Cox is not unique to it. Wherever the
-cumulative hazard is *additive over disjoint time intervals*, a
-time-varying-covariate subject factorises exactly into one left-truncated
+hazard at time :math:`t` depends only on :math:`t` and the covariate at
+:math:`t`, the cumulative hazard is *additive over disjoint time intervals* and
+a time-varying-covariate subject factorises exactly into one left-truncated
 observation per constant-covariate interval — so the parametric proportional
-hazards (``PH``) and additive hazards (``AH``) families fit start-stop data
-with the same ``fit_tvc`` / ``fit_tvc_timeline`` (and ``_from_df``) methods and
+hazards (``PH``), additive hazards (``AH``) and proportional odds (``PO``)
+families fit start-stop data with the same ``fit_tvc`` / ``fit_tvc_timeline`` (and ``_from_df``) methods and
 the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox. (Keyword arguments
 such as ``fixed=`` and ``init=`` are passed through to the ordinary ``fit``.)
 Fitting the truncated likelihood takes a few seconds for these 2,000 subjects,
@@ -1739,7 +1781,7 @@ scale 2 and shape 1) and :math:`\beta = 1`, which the fit recovers.
 ``fit_tvc`` interface. AFT rescales the *time axis* rather than the hazard, so a
 subject's likelihood depends on its accumulated *accelerated age*
 :math:`\psi = \sum e^{\beta'z}\,(b - a)` across intervals and cannot be
-reshaped into independent left-truncated rows the way PH/AH can; ``WeibullAFT``
+reshaped into independent left-truncated rows the way PH/AH/PO can; ``WeibullAFT``
 fits it with a dedicated accumulated-age likelihood instead, but the call is
 identical (it accepts ``fixed=`` but not ``init=``):
 
@@ -1773,18 +1815,78 @@ the fit refuses and points to Cox, which handles both exactly:
     except ValueError as err:
         print(err)
 
-Proportional odds is the one family without time-varying-covariate fitting.
+**Proportional odds** fits start-stop data exactly as PH and AH do: its hazard
+:math:`h_0(t) / (F_0(t) + \phi S_0(t))`, with :math:`\phi = e^{\beta' z}`,
+also depends only on the time and the current covariate, so a subject's path
+likelihood is the product of its per-interval, delayed-entry PO likelihoods.
+Here units follow a ``WeibullPO`` model (scale 10, shape 2, and
+:math:`\beta = 1` on the survival odds) whose covariate switches from 0 to 1 at
+a random time. Each failure time is drawn by inverting the path survival: the
+unexposed curve up to the switch, then the exposed hazard from the survival
+already reached.
+
+.. jupyter-execute::
+
+    from surpyval import WeibullPO
+
+    rng = np.random.default_rng(1)
+    n_po = 2000
+    switch = rng.uniform(2, 12, n_po)
+    u = rng.uniform(size=n_po)
+
+    def po_sf(t, z):
+        s0 = np.exp(-(t / 10) ** 2)
+        return np.exp(z) * s0 / (1 - s0 + np.exp(z) * s0)
+
+    def po_time(s, z):
+        # invert po_sf: the baseline survival at which S(t | z) = s
+        s0 = s / (s + np.exp(z) * (1 - s))
+        return 10 * np.sqrt(-np.log(s0))
+
+    T = po_time(u, 0.0)   # the failure time if never exposed ...
+    late = T > switch     # ... unless the unit outlives its switch
+    sw = switch[late]
+    T[late] = po_time(u[late] * po_sf(sw, 1.0) / po_sf(sw, 0.0), 1.0)
+
+    po_df = pd.DataFrame({
+        'id': np.r_[np.arange(n_po), np.flatnonzero(late)],
+        'xl': np.r_[np.zeros(n_po), switch[late]],
+        'xr': np.r_[np.where(late, switch, T), T[late]],
+        'c': np.r_[late.astype(int), np.zeros(late.sum(), dtype=int)],
+        'z': np.r_[np.zeros(n_po), np.ones(late.sum())],
+    })
+    po_tvc = WeibullPO.fit_tvc_from_df(
+        po_df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='z',
+    )
+    po_tvc.params
+
+The fit recovers the scale, shape and coefficient. Its log-likelihood is
+exactly the sum, over units, of ``log sf_tvc`` at the exit time along the unit's
+own path plus ``log hf`` at each failure, so the fitted model and the
+path evaluation below are the same model.
 
 **Evaluating a covariate path.** Every family that has a closed form along a
-step path — Cox, parametric ``PH`` and ``AH``, and accelerated failure time
-(``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus the
-matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
+step path — Cox, parametric ``PH``, ``AH`` and ``PO``, and accelerated failure
+time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
+the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
-Proportional and additive hazards accumulate a cumulative hazard over the
-segments; AFT instead accumulates an *accelerated age*
+Proportional hazards, additive hazards and proportional odds accumulate a
+cumulative hazard over the segments: in each of them the hazard at time
+:math:`t` depends only on :math:`t` and the covariate at :math:`t`, so
+:math:`H(x) = \sum [H(b \mid z) - H(a \mid z)]` over the segments
+:math:`(a, b]`. For proportional odds, with :math:`\phi = e^{\beta' z}`, the
+constant-covariate cumulative hazard is
+:math:`H(t \mid z) = H_0(t) - \ln\phi + \ln(F_0(t) + \phi S_0(t))`. AFT
+instead accumulates an *accelerated age*
 :math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
-:math:`\psi`. Proportional odds has no such closed form yet, and raises.
+:math:`\psi`. A single constant segment gives ``sf(x, Z)`` in every family,
+including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``),
+for which the path's first value is taken to hold before time 0 as well.
+``fit_tvc`` treats a subject observed from time 0 the same way (its first
+interval is not left-truncated), so for PH, AH and PO a constant covariate
+split into intervals reproduces the ordinary ``fit``.
+Accelerated life models raise ``NotImplementedError``.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2172,12 +2274,23 @@ Validating a survival predictor
 Information criteria compare models on the data they were fit to. To judge how
 well a model *predicts*, score it on held-out data. Two right-censored-standard
 metrics live in :mod:`surpyval.metrics.validation` (importable from
-``surpyval.metrics``), and both work for **any** model that exposes
-``sf(x, Z)`` — the parametric families, ``CoxPH``, and the ``surpyval.beta.ml``
-forest (see :doc:`comparison_and_validation`).
+``surpyval.metrics``). They take a matrix of predicted survival probabilities,
+so they work for any model; ``survival_probability`` builds that matrix from
+the parametric families, ``CoxPH``, ``AdditiveHazards`` and the
+``surpyval.beta.ml`` tree and forest (see :doc:`comparison_and_validation`).
+For a model
+whose ``sf`` takes one covariate vector at a time (``BuckleyJames``), stack
+``model.sf(times, Z[i])`` row by row.
 
 Both handle censoring by inverse-probability-of-censoring weighting (IPCW), so
-a subject censored before the horizon does not silently bias the score.
+a subject censored before the horizon does not silently bias the score. The
+censoring distribution is the reverse Kaplan-Meier with an event taken to come
+before a censoring at the same time, and an event at :math:`x_i` is weighted by
+:math:`1/\hat G(x_i-)`, as in R's ``pec``. Without ties between event and
+censoring times the numbers equal scikit-survival's; with such ties they differ
+slightly, because scikit-survival weights the event by :math:`1/\hat G(x_i)`. A
+score that would need :math:`\hat G` where a separate training set's estimate
+has fallen to zero (a horizon past its censoring support) is ``nan``.
 
 - The **Brier score** ``BS(t)`` is the weighted mean squared error between the
   predicted survival ``S(t | Z)`` and the survival indicator; the **integrated
@@ -2312,8 +2425,9 @@ on :math:`z_1` near 0.5 — the interaction, recovered without being specified.
 
 A forest averages many such trees, each grown on a bootstrap sample and
 considering a random subset of ``n_features_split`` covariates at each split.
-Its ``sf(x, Z)`` returns a grid — one row per covariate row, one column per
-time — unlike the element-wise regression models, and its ``score(x, Z, c)``
+Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
+row per covariate row, one column per time — unlike the element-wise
+regression models, and its ``score(x, Z, c)``
 is the concordance of its mortality score. The forest reports its progress
 through joblib on standard error, which we silence here. On held-out data it
 is compared with a Cox model on the same metrics:
@@ -2441,10 +2555,11 @@ serialised:
         print('custom life model:', type(err).__name__)
 
 A model fitted from a DataFrame keeps its covariate names, and a formula model
-keeps its categorical levels, so the restored model still predicts from a
-DataFrame of raw covariates. The exception is a formula with a data-dependent
-transform (``scale()``, ``center()``), whose fitted statistics cannot be
-stored; serialising one raises rather than round-tripping to a wrong encoding.
+keeps everything its formula learned from the data -- the levels of each
+categorical, in order (so the reference level is unchanged), and the fitted
+statistics of transforms such as ``scale()``, ``poly()`` and ``bs()`` -- so the
+restored model still predicts from a DataFrame of raw covariates, exactly as
+the original does.
 
 The **semi-parametric** regression models save and load the same way, each on
 its own result class: Cox proportional hazards

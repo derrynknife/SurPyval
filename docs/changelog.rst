@@ -4,6 +4,154 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Turnbull reaches the maximum-likelihood estimate with interval
+  censoring and right truncation (#368).** Two index searches were one
+  Turnbull piece off: a right-censored observation could not fail in the
+  piece just after its censoring time, and a right-truncated window
+  ``(tl, tr]`` took in the piece just after ``tr``. Exact and right-censored
+  data were unaffected; otherwise the EM converged to a curve that was not
+  the NPMLE (one failure in (1, 2] and one unit censored at 1.5 were fitted
+  at a likelihood of 0.375 instead of 1). On 600 random small data sets the
+  old fits fell up to 1.4 log-likelihood units short without right
+  truncation and 25 to 68 with it; some right-truncated fits had likelihood
+  zero, and a few doubly truncated ones raised ``IndexError``. Every fit
+  whose NPMLE exists now matches an independent maximisation to 2e-9, and
+  the ``npmle`` verdict, now built on the corrected supports, agreed with
+  the EM's behaviour on all 399 of those data sets where it gave a firm
+  verdict. Delayed-entry data in which a unit is censored before a later
+  unit enters is now reported ``"not unique"`` (with a warning), since the
+  mass between them is not determined; the Kaplan-Meier option still
+  returns the delayed-entry Kaplan-Meier. The Nair interval example in the
+  docs rises from -59.52 to -58.06 in log-likelihood.
+- **Formula models refuse a category level they were not fitted with
+  (#371).** Predicting for a level absent from the fitted data coded it
+  silently as the reference level (``WeibullPH`` gave S(5) = 0.5283 for both
+  ``g="a"`` and an unknown ``g="d"``), with only formulaic's
+  ``DataMismatchWarning``. Every family that takes a ``formula``
+  (parametric PH/AFT/PO/AH, ``AcceleratedLife``, ``CoxPH``,
+  ``AdditiveHazards``, Buckley-James, frailty, competing-risks Cox and
+  Fine-Gray) now raises a ``ValueError`` naming the column and the unknown
+  levels, fitted or restored. A fit whose data has a level outside its
+  ``C(g, levels=[...])`` list raises too; declared levels count as known. A
+  missing categorical value still predicts NaN in place, as a missing
+  numeric one does. Buckley-James returned survival 0 for any missing
+  covariate and now returns NaN.
+- **Competing-risks Cox predicts from a DataFrame (#370).**
+  ``CompetingRisksProportionalHazards`` read a DataFrame by column
+  position: with ``Z_cols=["z", "w"]``, passing the columns as ``[w, z]``
+  changed S(5) from 0.655 to 0.914, and a ``formula`` fit could not expand
+  raw covariates at all. ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``cif``,
+  ``phi`` and ``phi_e`` now select and encode the columns recorded by
+  ``fit_from_df``, as ``CoxPH`` does, fitted or restored. Arrays work as
+  before.
+- **Proportional odds fits time-varying covariates (#372).** ``PO(dist)``
+  models could be evaluated along a step covariate path but not fitted to
+  one; the docs said PO lacked the structure. It does not: the PO hazard
+  :math:`h_0 / (F_0 + \phi S_0)` depends only on the time and the current
+  covariate, so splitting a subject into delayed-entry intervals is exact.
+  ``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df`` forms now work
+  for ``WeibullPO`` / ``PO(dist)``. On simulated step-path data (8 x 2,000
+  subjects, truth [10, 2, 1, -0.5]) the mean estimate is
+  [10.03, 1.98, 0.98, -0.50], and the fitted negative log-likelihood equals
+  the path likelihood from ``sf_tvc`` / ``hf`` to about 1e-12.
+- **``fit_tvc`` no longer truncates at time 0.** For PH, AH and PO models with
+  a baseline defined below zero (Normal, Gumbel, Logistic), each subject's
+  first interval was treated as left-truncated at 0, conditioning the fit on
+  surviving to 0, so a constant covariate split into intervals did not
+  reproduce ``fit`` (LogisticPO scale 5.22 against 9.33, NormalPH 5.56
+  against 9.65). A first interval starting at 0 is now untruncated,
+  matching ``fit`` and ``sf_tvc``. Baselines on the positive axis are
+  unchanged.
+- **Survival tree predictions for several subjects (#369).**
+  ``SurvivalTree.sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) routed a
+  covariate matrix by a row, ``Z[split_index]``, instead of a column. With
+  one covariate every subject silently got the first subject's curve
+  (S(5) = 0.8811 for all rows, where row by row gives 0.2955 for half of
+  them); with two or more it raised. ``survival_probability``, and so the
+  Brier score and AUC, were wrong for a single tree. Each row now goes to
+  its own leaf, and a 2-D ``Z`` returns an ``(n_rows, n_times)`` grid equal
+  to stacking the per-row results, as ``RandomSurvivalForest`` does; a 1-D
+  ``Z`` (one subject) is unchanged. The forest, already correct, now
+  evaluates the whole matrix in one call per tree: identical results, about
+  3x faster in ``survival_probability`` and ``score``.
+- **Turnbull decides from the data whether its estimate exists (#327).** A
+  fit warned "not identifiable" when more than 90% of its mass sat on pieces
+  some observation gains from and none pays for, or when the EM did not
+  converge: a cut-off tuned on simulated samples. On samples whose estimate
+  does not exist that share ranged from 0.11 to 0.99 depending on how far
+  the EM had got, so half were caught only because they had not converged;
+  other non-existent estimates (a delayed-entry Kaplan-Meier that drops to
+  zero before a later entry, Lynden-Bell and doubly truncated exact data)
+  were reported only as not converged, and flat likelihoods not at all. The
+  new ``model.npmle`` is ``"exists"``, ``"not unique"``, ``"does not
+  exist"`` or ``"undetermined"``, from a structural criterion checked
+  before the EM runs: Vardi and Wang's graph condition for exact data, and
+  a hazard-scale gap argument for one-sided truncation with any censoring.
+  It takes a few milliseconds on thousands of rows, and the warnings name
+  the case and the time involved. On 240 simulated left-truncated samples,
+  all 63 "does not exist" fits drifted to the boundary and none of the 176
+  "exists" fits did. With censoring and truncation on both sides existence
+  can depend on the counts, and such fits are reported as
+  ``"undetermined"``. The fitted estimate is unchanged, and
+  ``exploitable_mass`` is still reported as a diagnostic.
+- **Every regression formula round-trips through serialisation (#244).** A
+  model fitted with ``fit_from_df(..., formula=...)`` refused ``to_dict``
+  for wrapped categoricals (``C(g)``, ``C(g, levels=...)``,
+  ``C(g, contr.sum)``) and fitted transforms (``scale``, ``center``,
+  ``poly``, ``bs``, ``cs``). It restored integer-level categoricals with
+  string levels, so every row was coded as the reference level (sf off by
+  up to 0.09), and Cox and competing-risks Cox models lost a ``0 +`` from the
+  formula, so a restored model had 3 design columns for 4 coefficients and
+  could not predict. ``to_dict`` now stores each factor's levels, in order
+  and with their types, and each transform's fitted state as strict JSON;
+  ``from_dict`` rebuilds the same design-matrix transformer, and restored
+  models predict identically (rtol 1e-12) across the PH/AFT/PO/AH,
+  accelerated-life, Cox, Lin-Ying, Buckley-James, frailty and
+  competing-risks families. A formula is checked when saving, so anything
+  that cannot be restored raises in ``to_dict``. A formula that SurPyval
+  0.20 cannot rebuild is stamped schema 2, so 0.20 asks for an upgrade
+  instead of failing with a formula error; plain columns and string
+  categoricals stay schema 1. Old files still load, and a Cox file missing
+  its ``0 +`` is repaired. Also fixed: predicting with plain integers for a
+  column fitted as an integer ``Categorical`` treated it as numeric (sf
+  0.372 instead of 0.083).
+- **Brier score and time-dependent AUC with tied event and censoring times
+  (#365, #290).** The censoring survival :math:`\hat G` behind the
+  inverse-probability-of-censoring weights counted an event as still at risk
+  of being censored at its own time, and weighted it by
+  :math:`1/\hat G(x_i)`. The metrics now use the events-first reverse
+  Kaplan-Meier (as ``prodlim`` and scikit-survival) and weight an event by
+  :math:`1/\hat G(x_i-)` (as ``pec``; Gerds and Schumacher 2006). On a data
+  set whose true values are known exactly, the Brier score at t = 2 was
+  0.2330 against a true 0.2250 (now exact) and the AUC 0.6703 against 2/3;
+  in simulation with discrete times the old Brier score was biased by
+  -0.029 and is now unbiased (scikit-survival's :math:`1/\hat G(x_i)`
+  weighting gives +0.011). Without such ties the results are unchanged and
+  equal scikit-survival's. ``censoring_survival`` gains ``ties=``; Fine-Gray
+  keeps its ``cmprsk`` convention. Also: ``integrated_brier_score`` sorts an
+  unsorted grid (0.1908 became 0.1949 on one example); ``c`` must be 0 or 1
+  and match ``x`` in length (a left-censored row was scored as a survivor);
+  ``x_train`` needs ``c_train``; and a horizon that needs the training
+  :math:`\hat G` where it has fallen to 0 scores NaN rather than being
+  biased towards 0 (0.179 against a true 0.25).
+- **Proportional odds along a time-varying covariate path (#236).**
+  ``sf_tvc`` / ``Hf_tvc`` raised ``NotImplementedError`` for ``PO(dist)``
+  models. The PO hazard :math:`h_0 / (F_0 + e^{\beta'z} S_0)` depends only on
+  the time and the current covariate, so the cumulative hazard along a step
+  path is exactly the sum of the constant-covariate increments, as for PH;
+  PO now takes that path. It matches a numerical integral of the hazard to
+  1e-9, and a constant path gives ``sf(x, Z)`` to 1e-13. PO's ``Hf`` is now
+  computed as :math:`H_0 - \ln\phi + \ln(F_0 + \phi S_0)` rather than
+  ``-log(sf)``: before, a change-point where the baseline survival underflows
+  made every ``sf_tvc`` value NaN (``WeibullPO`` with a change at t = 1500:
+  S(5) was NaN, now 0.8387). Time-varying *fitting* is still not available
+  for PO.
+- **``sf_tvc`` for PH and AH with a baseline defined below zero.** For a
+  Normal, Gumbel or Logistic baseline a constant covariate path gave the
+  survival conditional on surviving to time 0, not ``sf(x, Z)`` (at x = 5:
+  PH(Normal) 0.91842 against 0.91551, PH(Gumbel) 0.90613 against 0.87800).
+  The first segment now starts at the bottom of the support, so a constant
+  path reproduces ``sf`` exactly.
 - **Recurrent-event simulations are much faster (#362); seeded results
   change.** ``mcf``, ``plot``, ``time_terminated_simulation``,
   ``count_terminated_simulation`` (and their ``..._data`` versions) and the

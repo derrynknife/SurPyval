@@ -11,6 +11,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -28,6 +29,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression.regression_data import (
+    prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -54,9 +56,12 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
     Call the class method ``CompetingRisksProportionalHazards.fit`` (or
     ``fit_from_df``); it returns a fitted instance. Every prediction takes
-    the covariates ``Z`` and, for one cause, its label ``event``. A fitted
-    model can be saved with ``to_dict``/``to_json`` and restored with
-    ``from_dict``/``from_json`` (or ``surpyval.from_dict``).
+    the covariates ``Z`` and, for one cause, its label ``event``: an array
+    in the fitted column order or, for a model fitted with ``fit_from_df``,
+    a DataFrame of the raw covariate columns (a ``formula`` is applied to
+    it, as for ``CoxPH``). A fitted model can be saved with
+    ``to_dict``/``to_json`` and restored with ``from_dict``/``from_json``
+    (or ``surpyval.from_dict``).
     """
 
     # Populated by ``fit``; declared for the type checker.
@@ -173,10 +178,22 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         # is rebuilt exactly as the fitted one was.
         self.betas = betas
         self.beta = betas.sum(axis=0)
-        self.phi_e = lambda Z, e_i: np.exp(Z @ self.betas[e_i, :])
-        self.phi = lambda Z: np.exp(Z @ self.beta)
+        self.phi_e = lambda Z, e_i: np.exp(
+            self._prepare_Z(Z) @ self.betas[e_i, :]
+        )
+        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ self.beta)
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
+
+    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        """
+        Convert ``Z`` to a numeric design matrix: a DataFrame is read by
+        the covariate names (or expanded by the formula) recorded by
+        ``fit_from_df`` -- it used to be read by column position, and a
+        formula's raw columns were not expanded at all (#370); an array is
+        taken as it is, in the fitted column order.
+        """
+        return prepare_Z(Z, self.feature_names, self._model_spec)
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
@@ -236,6 +253,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 "The Fine-Gray subdistribution hazard has no pointwise "
                 "density from the step baseline; use `cif` or `Hf`."
             )
+        Z = self._prepare_Z(Z)
         return self._f(self.h0_e, x, Z, event=event, interp=interp)
 
     def Hf(
@@ -251,6 +269,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         (``event=None``). For a Fine-Gray model, the cumulative
         subdistribution hazard of ``event``.
         """
+        Z = self._prepare_Z(Z)
         if self.how == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
             return -np.log(self.sf(x, Z, event=event))
@@ -268,6 +287,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         (``event=None``) or one cause's net survival (the other causes
         treated as censoring). For a Fine-Gray model, ``1 - cif``.
         """
+        Z = self._prepare_Z(Z)
         if self.how == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
@@ -283,6 +303,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``1 - sf`` at ``x`` for covariates ``Z``. For a Fine-Gray model,
         the cumulative incidence of ``event``.
         """
+        Z = self._prepare_Z(Z)
         if self.how == "Fine-Gray":
             return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
@@ -303,6 +324,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 "The Fine-Gray subdistribution density has no pointwise form "
                 "from the step baseline; use `cif`."
             )
+        Z = self._prepare_Z(Z)
         return self.hf(x, Z, event=event, interp=interp) * self.sf(
             x, Z, event=event, interp=interp
         )
@@ -320,8 +342,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
         ``Z`` is one covariate vector (a 1-D array or a single row), used
         at every time, or one row per time in ``x`` (row ``i`` with
-        ``x[i]``), as for :meth:`sf` and :meth:`Hf`. ``event`` must be one
-        of the fitted causes.
+        ``x[i]``), as for :meth:`sf` and :meth:`Hf`; a DataFrame of raw
+        covariates for a model fitted with ``fit_from_df``. ``event`` must
+        be one of the fitted causes.
         """
         if event is None or event not in self.event_idx_map:
             causes = list(self.event_idx_map)
@@ -329,6 +352,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 f"`event` must be one of the fitted causes {causes}, got "
                 f"{event!r}."
             )
+        Z = self._prepare_Z(Z)
         if self.how == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
@@ -431,7 +455,43 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         Returns
         -------
         CompetingRisksProportionalHazards
-            The fitted model. Predictions still take a covariate array ``Z``.
+            The fitted model. Its prediction methods take a DataFrame of
+            the raw covariate columns (the ``formula`` is applied to it) or
+            a covariate array in the fitted column order.
+
+        Examples
+        --------
+        A categorical covariate through a formula; the model predicts
+        from a DataFrame of raw covariates, before and after saving:
+
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> import surpyval
+        >>> from surpyval.univariate.competing_risks import (
+        ...     CompetingRisksProportionalHazards,
+        ... )
+        >>> rng = np.random.default_rng(1)
+        >>> g = rng.choice(["a", "b", "c"], 300)
+        >>> rate = 0.1 * np.exp(np.select([g == "b", g == "c"], [0.8, -0.5]))
+        >>> t_a = rng.exponential(1 / rate)
+        >>> t_b = rng.exponential(1 / 0.05, 300)
+        >>> df = pd.DataFrame({
+        ...     "time": np.minimum(t_a, t_b).round(3),
+        ...     "cause": np.where(t_a < t_b, "a", "b"),
+        ...     "g": g,
+        ... })
+        >>> model = CompetingRisksProportionalHazards.fit_from_df(
+        ...     df, "time", "cause", formula="g"
+        ... )
+        >>> model.feature_names
+        ['g[T.b]', 'g[T.c]']
+        >>> new = pd.DataFrame({"g": ["a", "b", "c"]})
+        >>> model.cif(np.full(3, 5.0), new, "a").round(4)
+        array([0.3757, 0.6465, 0.2553])
+        >>> restored = surpyval.from_dict(model.to_dict())
+        >>> bool(np.allclose(restored.cif(np.full(3, 5.0), new, "a"),
+        ...                  model.cif(np.full(3, 5.0), new, "a")))
+        True
         """
         Z, mask, form, feature_names, model_spec = (
             wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)

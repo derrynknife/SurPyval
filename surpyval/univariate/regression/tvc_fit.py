@@ -1,25 +1,30 @@
 """Time-varying-covariate fitting for the parametric regression families.
 
-For a proportional-hazards or additive-hazards model the cumulative hazard is
-*additive over disjoint time intervals*:
+For a proportional-hazards, additive-hazards or proportional-odds model the
+hazard at time ``t`` depends only on ``t`` and the covariate value *at*
+``t``, so the cumulative hazard is *additive over disjoint time intervals*:
+each constant-covariate segment ``(xl, xr]`` contributes the increment
+``H(xr | Z_seg) - H(xl | Z_seg)`` of the constant-covariate model,
 
-- PH: ``H(t) = sum_seg [H0(xr) - H0(xl)] * exp(Z_seg' beta)``
-- AH: ``H(t) = [H0(xr) - H0(xl)] + (Z_seg' beta) * (xr - xl)`` summed over
-  segments,
+- PH: ``[H0(xr) - H0(xl)] * exp(Z_seg' beta)``,
+- AH: ``[H0(xr) - H0(xl)] + (Z_seg' beta) * (xr - xl)``,
+- PO: ``log[S(xl | Z_seg) / S(xr | Z_seg)]``, as the PO hazard
+  ``h0 / (F0 + phi S0)`` with ``phi = exp(Z_seg' beta)`` integrates to
+  ``H(t | z) = -log S(t | z)``.
 
-so a subject observed with a time-varying covariate factorises exactly into
-one *left-truncated* (delayed-entry) observation per constant-covariate
-interval -- entering at ``xl`` and exiting at ``xr``. This is the same
-episode-splitting identity the Cox partial likelihood uses; here it lets the
-ordinary parametric MLE ``fit`` (which already accepts truncation ``t``) fit
-start-stop data with no new likelihood. The mixin therefore just reshapes the
-time-varying-covariate data and calls ``fit``.
+A subject observed with a time-varying covariate therefore factorises
+exactly into one *left-truncated* (delayed-entry) observation per
+constant-covariate interval -- entering at ``xl`` and exiting at ``xr``. This
+is the same episode-splitting identity the Cox partial likelihood uses; here
+it lets the ordinary parametric MLE ``fit`` (which already accepts truncation
+``t``) fit start-stop data with no new likelihood. The mixin therefore just
+reshapes the time-varying-covariate data and calls ``fit``.
 
 It is mixed into the fitters whose cumulative hazard is additive over
-intervals (``ProportionalHazardsFitter``, ``AdditiveHazardsFitter``). It is
-*not* correct for accelerated failure time (which must accumulate an
-"accelerated age" across intervals) or proportional odds (no additive
-structure), so those fitters do not expose it.
+intervals (``ProportionalHazardsFitter``, ``AdditiveHazardsFitter``,
+``ProportionalOddsFitter``). It is *not* correct for accelerated failure time,
+which must accumulate an "accelerated age" across intervals; that family has
+its own likelihood (``aft_tvc_fit``).
 """
 
 from typing import TYPE_CHECKING, Any
@@ -36,8 +41,9 @@ if TYPE_CHECKING:
 class TVCFitMixin:
     """Adds ``fit_tvc`` (start-stop and timeline, array and DataFrame) to a
     parametric regression fitter whose cumulative hazard is additive over time
-    intervals. Requires the host class to provide a ``fit(x, Z, c, n, t, ...)``
-    method that accepts truncation ``t`` as a ``[tl, tr]`` matrix."""
+    intervals (PH, AH, PO). Requires the host class to provide a
+    ``fit(x, Z, c, n, t, ...)`` method that accepts truncation ``t`` as a
+    ``[tl, tr]`` matrix."""
 
     def fit_tvc(
         self,
@@ -57,9 +63,12 @@ class TVCFitMixin:
         ``xr``) only on the interval that ends at the subject's event and ``1``
         (right-censored) otherwise -- surpyval's censoring convention. The
         intervals are validated and mapped to left-truncated observations
-        (``t = [xl, inf]``), then fitted with the ordinary parametric MLE, so
-        the fit is identical to the equivalent non-time-varying data. Extra
-        keyword arguments (``init``, ``fixed``) are passed through to ``fit``.
+        (``t = [xl, inf]``; a subject's first interval starting at ``0`` is
+        not truncated), then fitted with the ordinary parametric MLE, so the
+        fit is identical to the equivalent non-time-varying data and its
+        log-likelihood is that of ``sf_tvc`` / ``hf`` along each subject's
+        covariate path. Extra keyword arguments (``init``, ``fixed``) are
+        passed through to ``fit``.
 
         A subject's rows must not overlap, it may have at most one event,
         and that event must be on its last interval; gaps between its
@@ -124,6 +133,19 @@ class TVCFitMixin:
         from .proportional_hazards.tvc import handle_tvc
 
         x, c_arr, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
+        # handle_tvc returns the rows grouped by subject in entry order.
+        _, first, counts = np.unique(
+            ident, return_index=True, return_counts=True
+        )
+        # A subject observed from time 0 is not left-truncated: its first
+        # row enters with no truncation, as the ordinary fit and sf_tvc
+        # treat it. For a baseline on the positive axis the two are the
+        # same, but for one defined below zero (Normal, Gumbel, Logistic)
+        # truncating at 0 would condition every subject on surviving to 0,
+        # and a constant covariate would no longer reproduce ``fit``.
+        origin = np.zeros(tl.shape[0], dtype=bool)
+        origin[first] = tl[first] == 0.0
+        tl = np.where(origin, -np.inf, tl)
         t = np.column_stack([tl, np.full(tl.shape[0], np.inf)])
         model = self.fit(  # type: ignore[attr-defined]
             x=x, Z=Z_arr, c=c_arr, n=n_arr, t=t, **kwargs
@@ -133,11 +155,7 @@ class TVCFitMixin:
         # to subjects, each weighted by its last interval's count (as the
         # AFT time-varying fit does), not interval rows: splitting a
         # subject's follow-up into more intervals leaves the likelihood
-        # unchanged and must leave the criteria unchanged too. handle_tvc
-        # returns the rows grouped by subject in entry order.
-        _, first, counts = np.unique(
-            ident, return_index=True, return_counts=True
-        )
+        # unchanged and must leave the criteria unchanged too.
         model.n_subjects = int(first.shape[0])
         model._ic_n_total = float(n_arr[first + counts - 1].sum())
         return model

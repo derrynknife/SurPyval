@@ -57,9 +57,10 @@ Some details differ between families:
   bounds, each with a ``ValueError``.
 - These cannot be saved and raise an error from ``to_dict``: a
   stratified Cox model, an accelerated-life model with a user-defined
-  life model, a regression fitted with a formula that uses a
-  data-dependent transform (such as ``scale()``), and a copula of a
-  custom family.
+  life model, and a copula of a custom family. A regression fitted with
+  a formula is saved with its levels and fitted transform statistics
+  (``C(...)``, ``scale()``, ``poly()``, splines); a formula whose state
+  cannot be stored as JSON raises at ``to_dict`` instead.
 - A model of a ``Discretize(...)`` distribution is read back like any
   other. A model of a ``CustomDistribution`` stores the distribution's
   name only (its cumulative hazard is a Python function):
@@ -107,7 +108,11 @@ and degradation models -- has exactly the schema-1 layout and is stamped
 checks this against that release). A file that records non-finite values as
 ``null``, as most non-parametric models and anything saved with
 ``with_data=True`` do, is stamped ``2``; an older SurPyval refuses it with an
-error asking for an upgrade rather than misreading its ``null`` values. ``SurpyvalData.to_json`` uses the same
+error asking for an upgrade rather than misreading its ``null`` values. So is
+a regression model fitted with a formula that SurPyval 0.20 cannot rebuild
+(a wrapped categorical such as ``C(g)``, integer category levels, or a
+fitted transform such as ``scale(z)``); a formula of plain columns and
+string categoricals is stamped ``1``. ``SurpyvalData.to_json`` uses the same
 convention. :func:`~surpyval.serialisation.encode_non_finite` and
 :func:`~surpyval.serialisation.decode_non_finite` apply and undo it on
 any dictionary.

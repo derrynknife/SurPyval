@@ -188,9 +188,10 @@ class RandomSurvivalForest(SerialisableMixin):
         Parameters
         ----------
         x : int | float | ArrayLike
-            Time samples
+            Times, the same for every covariate vector.
         Z : ArrayLike | NDArray
-            Covariant matrix
+            One covariate vector (1-D), or a matrix with one covariate
+            vector per row (2-D).
         ensemble_method : str, optional
             Determines whether to average across terminal nodes the terminal
             node survival functions or cumulative hazard functions.
@@ -200,7 +201,9 @@ class RandomSurvivalForest(SerialisableMixin):
         Returns
         -------
         NDArray
-            Survival function of x as 1D array
+            For a 1-D ``Z``, the survival function at ``x`` as a 1-D
+            array. For a 2-D ``Z``, an ``(n_rows, x.size)`` grid whose
+            row ``i`` is the survival function for ``Z[i]``.
         """
         if ensemble_method == "Hf":
             Hf = self._apply_model_function_to_trees("Hf", x, Z)
@@ -254,13 +257,11 @@ class RandomSurvivalForest(SerialisableMixin):
         single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
 
-        res = np.zeros((Z.shape[0], x.size)).astype(np.float64)
-        for i_covariant_vector in range(Z.shape[0]):
-            for tree in self.trees:
-                values = tree.apply_model_function(
-                    function_name, x, Z[i_covariant_vector, :]
-                )
-                res[i_covariant_vector, :] += values
+        # Each tree routes every row to its own leaf and returns an
+        # (n_rows, x.size) grid
+        res = np.zeros((Z.shape[0], x.size), dtype=np.float64)
+        for tree in self.trees:
+            res += tree.apply_model_function(function_name, x, Z)
         res = res / self.n_trees
         if single_covariant_vector:
             return res[0]

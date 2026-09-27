@@ -145,13 +145,15 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # read it correctly (see :func:`stamp_schema`): a dictionary with no
 # non-finite value has exactly the schema-1 layout, and a SurPyval that
 # reads only schema 1 (v0.20) restores it identically, so it is stamped
-# 1. Only a document carrying a ``"non_finite"`` record -- whose
-# ``null`` values an older reader would take for missing entries -- is
-# stamped 2, which such a reader refuses with a request to upgrade.
+# 1. A document that a schema-1 reader would get wrong is stamped 2,
+# which such a reader refuses with a request to upgrade: one carrying a
+# ``"non_finite"`` record (whose ``null`` values it would take for
+# missing entries), or a formula model whose design-matrix state is
+# stored only in the schema-2 form (see ``_needs_formula_reader``).
 SCHEMA_VERSION = 2
 
-# The oldest version whose readers restore a document that has no
-# ``"non_finite"`` record exactly as this SurPyval does.
+# The oldest version whose readers restore a document with neither of
+# those exactly as this SurPyval does.
 _SCHEMA_WITHOUT_NON_FINITE = 1
 
 # The key under which a serialised dictionary records the meaning of the
@@ -407,8 +409,11 @@ def required_schema(model_dict: dict) -> int:
     2 if the dictionary, or a model dictionary nested in it, records
     non-finite values as ``null`` (a ``"non_finite"`` record, see
     :func:`encode_non_finite`), which a schema-1 reader would take for
-    missing entries; 1 otherwise, the layout SurPyval v0.20 reads. This is
-    the version :func:`stamp_schema` writes.
+    missing entries, or holds a regression formula that only a schema-2
+    reader can rebuild (wrapped categoricals such as ``C(g)``, integer
+    levels, or fitted transforms such as ``scale(z)``); 1 otherwise, the
+    layout SurPyval v0.20 reads. This is the version :func:`stamp_schema`
+    writes.
 
     Examples
     --------
@@ -420,9 +425,25 @@ def required_schema(model_dict: dict) -> int:
     """
     return (
         SCHEMA_VERSION
-        if _carries_non_finite(model_dict)
+        if _carries_non_finite(model_dict) or _needs_formula_reader(model_dict)
         else _SCHEMA_WITHOUT_NON_FINITE
     )
+
+
+def _needs_formula_reader(value: Any) -> bool:
+    """Whether ``value`` or any dictionary nested in it has a
+    ``"formula_meta"`` without the ``"factor_levels"`` pair that the
+    v0.17 - v0.20 readers rebuild a formula from. That pair is written
+    only when those readers rebuild the same design matrix; without it
+    v0.20 fails with a formula error rather than a request to upgrade."""
+    if isinstance(value, dict):
+        meta = value.get("formula_meta")
+        if isinstance(meta, dict) and "factor_levels" not in meta:
+            return True
+        return any(_needs_formula_reader(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_needs_formula_reader(v) for v in value)
+    return False
 
 
 def _carries_non_finite(value: Any) -> bool:

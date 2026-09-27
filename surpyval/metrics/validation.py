@@ -14,9 +14,24 @@ handling censoring by inverse-probability-of-censoring weighting (IPCW):
   perfect).
 
 All three are model-agnostic: they take a matrix of predicted survival
-probabilities. :func:`survival_probability` builds that matrix from any fitted
-model exposing ``sf(x, Z)`` (the parametric regression families, ``CoxPH`` and
-the ``beta.ml`` forest).
+probabilities. :func:`survival_probability` builds that matrix from a fitted
+model whose ``sf(x, Z)`` pairs ``x`` with the rows of ``Z`` (the parametric
+regression families, ``CoxPH``, ``AdditiveHazards`` and the ``beta.ml``
+forest).
+
+The censoring survival ``G`` behind the weights is the reverse Kaplan-Meier
+with the *events-first* convention at ties
+(:func:`surpyval.utils.ipcw.censoring_survival` with
+``ties="events_first"``): an event and a censoring at the same time are
+ordered event first, as the data record them, so the event is not at risk of
+censoring there. An event at ``x_i`` is weighted by ``1 / G(x_i-)``, the
+probability of its being observed, and a subject still event-free at the
+horizon ``t`` by ``1 / G(t)``, as in Gerds and Schumacher (2006) and R's
+``pec``. Without ties between event and censoring times the results agree
+exactly with scikit-survival's ``brier_score``, ``integrated_brier_score``
+and ``cumulative_dynamic_auc``. With such ties scikit-survival weights an
+event by ``1 / G(x_i)``, which also discounts the censorings at ``x_i`` and
+over-weights the event.
 
 References
 ----------
@@ -26,6 +41,10 @@ Statistics in Medicine 18, 2529-2545.
 
 Uno, H., Cai, T., Tian, L. and Wei, L. J. (2007), "Evaluating prediction rules
 for t-year survivors with censored regression models", JASA 102, 527-537.
+
+Gerds, T. A. and Schumacher, M. (2006), "Consistent estimation of the expected
+Brier score in general survival models with right-censored event times",
+Biometrical Journal 48, 1029-1040.
 """
 
 from typing import Any
@@ -34,7 +53,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils import validate_1d as _as_1d
-from surpyval.utils.ipcw import censoring_survival, step_at
+from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 
 __all__ = [
     "survival_probability",
@@ -42,6 +61,57 @@ __all__ = [
     "integrated_brier_score",
     "auc_td",
 ]
+
+
+def _outcomes(
+    x: npt.ArrayLike, c: npt.ArrayLike, xname: str, cname: str
+) -> "tuple[npt.NDArray, npt.NDArray]":
+    """Validate observed times and right-censoring flags of equal length."""
+    x_arr = _as_1d(x, xname)
+    c_arr = _as_1d(c, cname)
+    if c_arr.shape != x_arr.shape:
+        raise ValueError(
+            "'{}' and '{}' must have the same length".format(xname, cname)
+        )
+    if not np.isin(c_arr, (0, 1)).all():
+        # A left-censored row (-1) would otherwise be scored as a known
+        # survivor past its time; only right censoring is supported.
+        raise ValueError(
+            "'{}' must be 0 (event) or 1 (right censored); left and "
+            "interval censoring are not supported".format(cname)
+        )
+    return x_arr, c_arr
+
+
+def _ipcw(
+    x: npt.NDArray,
+    c: npt.NDArray,
+    x_train: "npt.ArrayLike | None",
+    c_train: "npt.ArrayLike | None",
+) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
+    """Events-first censoring survival and the event weights ``1/G(x_i-)``.
+
+    Returns the censoring estimate's times and values (for ``G(t)`` at the
+    horizons) and the weight of each evaluation row (only used for the
+    events; ``nan`` where ``G(x_i-) = 0``).
+    """
+    if x_train is None and c_train is None:
+        xt, ct = x, c
+    elif x_train is not None and c_train is not None:
+        xt, ct = _outcomes(x_train, c_train, "x_train", "c_train")
+    else:
+        raise ValueError("pass both 'x_train' and 'c_train', or neither")
+    uniq, g = censoring_survival(xt, ct == 1, ties="events_first")
+    # An event at x_i is observed when the censoring time is at least x_i,
+    # so its weight is 1/G(x_i-): censorings tied with the event do not count
+    # against it. G(x_i-) is positive for an event of the training data; it
+    # is 0 only for an evaluation row past the training censoring support,
+    # where the weight is not identified: nan, which the callers turn into
+    # a nan score rather than silently dropping the row.
+    g_xi = step_left_limit(uniq, g, x, before=1.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        w = np.where(g_xi > 0, 1.0 / g_xi, np.nan)
+    return uniq, g, w
 
 
 def survival_probability(
@@ -54,7 +124,11 @@ def survival_probability(
     model : object
         Any fitted model exposing ``sf(x, Z)`` where ``x`` is paired
         element-wise with the rows of ``Z`` (the parametric regression
-        families, ``CoxPH``, the ``beta.ml`` forest).
+        families, ``CoxPH``, ``AdditiveHazards``), or returning an
+        ``(n_samples, n_times)`` grid (the ``beta.ml`` ``SurvivalTree`` and
+        ``RandomSurvivalForest``). Models whose ``sf`` takes a single
+        covariate vector (``BuckleyJames``) are not supported: build their
+        matrix row by row with ``model.sf(times, Z[i])``.
     Z : array_like
         Covariate matrix, one row per subject.
     times : array_like
@@ -105,13 +179,14 @@ def brier_score(
 
     .. math::
         BS(t) = \frac1n \sum_i \Big[
-            \frac{S(t\mid Z_i)^2\, I(x_i \le t,\ \delta_i=1)}{\hat G(x_i)}
+            \frac{S(t\mid Z_i)^2\, I(x_i \le t,\ \delta_i=1)}{\hat G(x_i-)}
           + \frac{(1-S(t\mid Z_i))^2\, I(x_i > t)}{\hat G(t)} \Big],
 
     where :math:`\hat G` is the Kaplan-Meier estimate of the censoring
-    survival. Subjects censored before ``t`` contribute nothing (their status
-    at ``t`` is unknown); the IPCW weights correct for that loss. Lower is
-    better.
+    survival with the events-first convention at ties (see the module
+    notes). Subjects censored before ``t`` contribute nothing (their status
+    at ``t`` is unknown), nor do those censored at ``t``; the IPCW weights
+    correct for that loss. Lower is better.
 
     Parameters
     ----------
@@ -125,15 +200,32 @@ def brier_score(
         Horizons at which to score, matching the columns of ``survival``.
     x_train, c_train : array_like, optional
         Data used to estimate the censoring distribution ``G``. Defaults to the
-        evaluation ``x`` / ``c``.
+        evaluation ``x`` / ``c``. ``G`` is held at its last value beyond the
+        largest training time. If it has reached 0 there, a horizon at which
+        an evaluation row needs that zero (an event past the training
+        censoring support, or a survivor at such a horizon) scores ``nan``.
 
     Returns
     -------
     times, bs : ndarray
         The horizons and the Brier score at each.
+
+    Examples
+    --------
+    An event and a censoring tie at ``t = 3``. The censoring survival is
+    ``G = 1`` before 3 and ``1 - 1/2`` from 3 (at risk of censoring at 3:
+    the one censored there and the one still under observation). At the
+    horizon 3.5 the three events are weighted by ``1/G(x_i-) = 1`` and the
+    survivor by ``1/G(3.5) = 2``:
+
+    >>> from surpyval.metrics import brier_score
+    >>> x = [1.0, 2.0, 3.0, 3.0, 4.0]
+    >>> c = [0, 0, 0, 1, 0]
+    >>> S = [[0.8], [0.6], [0.5], [0.5], [0.3]]
+    >>> brier_score(x, c, S, [3.5])[1]  # (.64 + .36 + .25 + 2 * .49) / 5
+    array([0.446])
     """
-    x = _as_1d(x, "x")
-    c = _as_1d(c, "c")
+    x, c = _outcomes(x, c, "x", "c")
     times = _as_1d(times, "times")
     survival = np.asarray(survival, dtype=float)
     if survival.ndim == 1:
@@ -144,25 +236,24 @@ def brier_score(
                 (x.size, times.size)
             )
         )
-    xt = x if x_train is None else _as_1d(x_train, "x_train")
-    ct = c if c_train is None else _as_1d(c_train, "c_train")
-
-    uniq, g = censoring_survival(xt, ct == 1)
-    g_xi = step_at(uniq, g, x, before=1.0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w_case = np.where(g_xi > 0, 1.0 / g_xi, 0.0)
+    uniq, g, w_case = _ipcw(x, c, x_train, c_train)
 
     n = x.size
     bs = np.empty(times.size)
     for k, t in enumerate(times):
         s = survival[:, k]
         g_t = float(step_at(uniq, g, np.array([t]), before=1.0)[0])
-        w_ctrl = 1.0 / g_t if g_t > 0 else 0.0
         died = (x <= t) & (c == 0)
         alive = x > t
+        if (alive.any() and g_t == 0) or np.isnan(w_case[died]).any():
+            # A row that counts needs G where the training censoring
+            # estimate has reached 0: the score is not identified (dropping
+            # the row, as a zero weight did, biased it towards 0).
+            bs[k] = np.nan
+            continue
         term = np.zeros(n)
         term[died] = s[died] ** 2 * w_case[died]
-        term[alive] = (1.0 - s[alive]) ** 2 * w_ctrl
+        term[alive] = (1.0 - s[alive]) ** 2 / g_t
         bs[k] = term.sum() / n
     return times, bs
 
@@ -178,11 +269,18 @@ def integrated_brier_score(
     """Integrated Brier score: the Brier score averaged over ``times``.
 
     The trapezoidal integral of :func:`brier_score` over the time grid divided
-    by its span. A single number summarising a survival predictor's accuracy
-    (lower is better); a model that predicts the true ``S(t | Z)`` scores below
-    the marginal Kaplan-Meier reference.
+    by its span, as scikit-survival's ``integrated_brier_score``. A single
+    number summarising a survival predictor's accuracy (lower is better); a
+    model that predicts the true ``S(t | Z)`` scores below the marginal
+    Kaplan-Meier reference. The grid need not be sorted (the columns of
+    ``survival`` follow ``times``); a single time, or a grid with no span,
+    returns the mean Brier score. Parameters as for :func:`brier_score`.
     """
     times_arr, bs = brier_score(x, c, survival, times, x_train, c_train)
+    # Integrate over the grid in time order: an unsorted grid otherwise gave
+    # negative panel widths and a span of the wrong sign.
+    order = np.argsort(times_arr, kind="stable")
+    times_arr, bs = times_arr[order], bs[order]
     if times_arr.size < 2:
         return float(bs.mean())
     span = times_arr[-1] - times_arr[0]
@@ -234,10 +332,10 @@ def auc_td(
     -------
     times, auc : ndarray
         The horizons and the AUC at each. A horizon with no cases or no
-        controls yields ``nan``.
+        controls, or with a case whose weight is not identified (``G = 0``,
+        see :func:`brier_score`), yields ``nan``.
     """
-    x = _as_1d(x, "x")
-    c = _as_1d(c, "c")
+    x, c = _outcomes(x, c, "x", "c")
     times = _as_1d(times, "times")
     risk = np.asarray(risk, dtype=float)
     if risk.ndim == 1:
@@ -250,13 +348,7 @@ def auc_td(
         raise ValueError(
             "'risk' must have one column per time (or a single column)"
         )
-    xt = x if x_train is None else _as_1d(x_train, "x_train")
-    ct = c if c_train is None else _as_1d(c_train, "c_train")
-
-    uniq, g = censoring_survival(xt, ct == 1)
-    g_xi = step_at(uniq, g, x, before=1.0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        w = np.where(g_xi > 0, 1.0 / g_xi, 0.0)
+    _, _, w = _ipcw(x, c, x_train, c_train)
 
     auc = np.full(times.size, np.nan)
     for k, t in enumerate(times):
@@ -264,6 +356,9 @@ def auc_td(
         cases = (x <= t) & (c == 0)
         controls = x > t
         if not cases.any() or not controls.any():
+            continue
+        if np.isnan(w[cases]).any():
+            # A case past the training censoring support: not identified.
             continue
         rc = r[cases]
         wc = w[cases]
