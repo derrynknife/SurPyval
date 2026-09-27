@@ -125,10 +125,10 @@ def survival_probability(
         Any fitted model exposing ``sf(x, Z)`` where ``x`` is paired
         element-wise with the rows of ``Z`` (the parametric regression
         families, ``CoxPH``, ``AdditiveHazards``), or returning an
-        ``(n_samples, n_times)`` grid (the ``beta.ml`` forest). Models whose
-        ``sf`` takes a single covariate vector (``BuckleyJames``, the
-        ``beta.ml`` ``SurvivalTree``) are not supported: build their matrix
-        row by row with ``model.sf(times, Z[i])``.
+        ``(n_samples, n_times)`` grid (the ``beta.ml`` ``SurvivalTree`` and
+        ``RandomSurvivalForest``). Models whose ``sf`` takes a single
+        covariate vector (``BuckleyJames``) are not supported: build their
+        matrix row by row with ``model.sf(times, Z[i])``.
     Z : array_like
         Covariate matrix, one row per subject.
     times : array_like

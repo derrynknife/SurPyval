@@ -4,6 +4,18 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Survival tree predictions for several subjects (#369).**
+  ``SurvivalTree.sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) routed a
+  covariate matrix by a row, ``Z[split_index]``, instead of a column. With
+  one covariate every subject silently got the first subject's curve
+  (S(5) = 0.8811 for all rows, where row by row gives 0.2955 for half of
+  them); with two or more it raised. ``survival_probability``, and so the
+  Brier score and AUC, were wrong for a single tree. Each row now goes to
+  its own leaf, and a 2-D ``Z`` returns an ``(n_rows, n_times)`` grid equal
+  to stacking the per-row results, as ``RandomSurvivalForest`` does; a 1-D
+  ``Z`` (one subject) is unchanged. The forest, already correct, now
+  evaluates the whole matrix in one call per tree: identical results, about
+  3x faster in ``survival_probability`` and ``score``.
 - **Turnbull decides from the data whether its estimate exists (#327).** A
   fit warned "not identifiable" when more than 90% of its mass sat on pieces
   some observation gains from and none pays for, or when the EM did not
