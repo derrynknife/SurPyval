@@ -4,6 +4,19 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Stored results from R and Python survival software (#379).**
+  ``surpyval/tests/reference`` compares SurPyval with 82 results computed
+  once on shared fixtures (lung, heart, aml, ovarian, PBC, and small sets
+  with ties, left truncation, interval censoring and competing risks) by R
+  survival 3.5-8, cmprsk 2.2-11, timereg 2.0.5, pec, riskRegression, npsurv
+  and fitdistrplus, lifelines 0.30.3 and scikit-survival 0.28, so CI needs
+  neither R nor lifelines; ``scripts/reference/regenerate.sh`` rebuilds
+  them. Kaplan-Meier, Nelson-Aalen, restricted mean, log-rank, MCF,
+  Aalen-Johansen, Lin-Ying, Brier score and AUC agree to rounding; Cox
+  (Breslow, Efron, strata, left truncation, start-stop), survreg AFT fits,
+  Fine-Gray and Turnbull to between 1e-6 and 5e-4. Deliberate differences
+  are asserted and recorded with their reason. Gray's test disagrees with
+  cmprsk in its variance (#380).
 - **Degradation: missing values give NaN, and predictions read a DataFrame by
   name (#375, #374).** Gamma- and Wiener-process models gave sf = 1 and
   ``ff = Hf = hf = df = 0`` at a NaN time and ``qf(nan) = inf``, raised on a

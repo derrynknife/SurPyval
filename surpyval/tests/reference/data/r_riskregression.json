@@ -1,0 +1,36 @@
+{
+  "generator": "scripts/reference/reference_r.R",
+  "R": "R version 4.3.3 (2024-02-29)",
+  "references": {
+    "score_ties": {
+      "fixture": "prediction_ties",
+      "software": "R riskRegression",
+      "version": "2023.12.21",
+      "call": "Score(list(m = 1 - pt_S), formula = Surv(x, status) ~ 1, data = pt_d, times = c(3, 6, 9, 12), metrics = c('auc', 'brier'), cens.model = 'km', null.model = FALSE, conf.int = FALSE)",
+      "settings": {
+        "risk": "1 - predicted survival",
+        "cens.model": "km"
+      },
+      "values": {
+        "times": [3, 6, 9, 12],
+        "auc": [0.571383557188906, 0.555052891644283, 0.731293564894783, 0.704974309610026],
+        "brier": [0.163092227269755, 0.262053568962337, 0.194966862133048, 0.175379396997657]
+      }
+    },
+    "score_continuous": {
+      "fixture": "prediction_continuous",
+      "software": "R riskRegression",
+      "version": "2023.12.21",
+      "call": "Score(list(m = 1 - pc_S), formula = Surv(x, status) ~ 1, data = pc_d, times = c(3, 6, 9, 12), metrics = c('auc', 'brier'), cens.model = 'km', null.model = FALSE, conf.int = FALSE)",
+      "settings": {
+        "risk": "1 - predicted survival",
+        "cens.model": "km"
+      },
+      "values": {
+        "times": [3, 6, 9, 12],
+        "auc": [0.574701212410473, 0.554635670295272, 0.728811044992202, 0.702824357789321],
+        "brier": [0.166340216056431, 0.264053252560803, 0.193978617322432, 0.170642773962318]
+      }
+    }
+  }
+}

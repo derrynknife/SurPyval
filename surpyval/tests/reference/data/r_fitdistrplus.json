@@ -1,0 +1,90 @@
+{
+  "generator": "scripts/reference/reference_r.R",
+  "R": "R version 4.3.3 (2024-02-29)",
+  "references": {
+    "fitdistcens_interval_gamma": {
+      "fixture": "interval",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(iv_cens, 'gamma')",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [3.50260731860609, 0.421022379133977],
+        "loglik": -127.079543581151
+      }
+    },
+    "fitdistcens_lung_gamma": {
+      "fixture": "lung",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(lung_cens, 'gamma', start = list(shape = 1.5, rate = 0.005))",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [1.47888866882549, 0.00376051837090927],
+        "loglik": -1154.73466342924
+      }
+    },
+    "fitdistcens_interval_weibull": {
+      "fixture": "interval",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(iv_cens, 'weibull')",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [2.12916700594976, 9.30776801174907],
+        "loglik": -126.122193016024
+      }
+    },
+    "fitdistcens_interval_lnorm": {
+      "fixture": "interval",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(iv_cens, 'lnorm')",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [1.97988663995013, 0.586708561701334],
+        "loglik": -130.10126353085
+      }
+    },
+    "fitdistcens_interval_norm": {
+      "fixture": "interval",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(iv_cens, 'norm')",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [8.18293401808387, 4.08621067942475],
+        "loglik": -126.380904575768
+      }
+    },
+    "fitdistcens_interval_logis": {
+      "fixture": "interval",
+      "software": "R fitdistrplus",
+      "version": "1.1.11",
+      "call": "fitdistcens(iv_cens, 'logis')",
+      "settings": {
+        "method": "mle",
+        "censdata": "left NA left censored, right NA right censored"
+      },
+      "values": {
+        "estimate": [8.03020270954084, 2.32956013353005],
+        "loglik": -125.756125797173
+      }
+    }
+  }
+}

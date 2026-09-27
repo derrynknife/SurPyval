@@ -1,0 +1,99 @@
+{
+ "generator": "scripts/reference/reference_python.py",
+ "python": "3.11.15",
+ "numpy": "2.4.6",
+ "pandas": "2.3.3",
+ "references": {
+  "metrics_ties": {
+   "fixture": "prediction_ties",
+   "software": "scikit-survival",
+   "version": "0.28.0",
+   "call": "brier_score(y, y, S, times); integrated_brier_score(y, y, S, times); cumulative_dynamic_auc(y, y, 1 - S, times)",
+   "settings": {
+    "train": "the evaluation data (y) estimate G"
+   },
+   "values": {
+    "times": [
+     3.0,
+     6.0,
+     9.0,
+     12.0
+    ],
+    "brier": [
+     0.1715835365310032,
+     0.2748331337930868,
+     0.2025109641418403,
+     0.17985207570597528
+    ],
+    "integrated_brier": 0.21768730135113878,
+    "auc": [
+     0.5718347549757484,
+     0.5559418671141069,
+     0.7306408063974115,
+     0.7045300217086393
+    ]
+   },
+   "note": "events tie with censorings here; scikit-survival weights an event by 1/G(x_i), SurPyval (like pec) by 1/G(x_i-) (#365)"
+  },
+  "metrics_continuous": {
+   "fixture": "prediction_continuous",
+   "software": "scikit-survival",
+   "version": "0.28.0",
+   "call": "brier_score(y, y, S, times); integrated_brier_score(y, y, S, times); cumulative_dynamic_auc(y, y, 1 - S, times)",
+   "settings": {
+    "train": "the evaluation data (y) estimate G"
+   },
+   "values": {
+    "times": [
+     3.0,
+     6.0,
+     9.0,
+     12.0
+    ],
+    "brier": [
+     0.16634021605643126,
+     0.2640532525608032,
+     0.19397861732243188,
+     0.17064277396231836
+    ],
+    "integrated_brier": 0.20884112163086999,
+    "auc": [
+     0.5747012124104725,
+     0.5546356702952725,
+     0.7288110449922023,
+     0.7028243577893212
+    ]
+   }
+  },
+  "cox_ties_breslow": {
+   "fixture": "ties",
+   "software": "scikit-survival",
+   "version": "0.28.0",
+   "call": "CoxPHSurvivalAnalysis(ties='breslow', tol=1e-12, n_iter=200).fit(Z[z1, z2], y)",
+   "settings": {
+    "ties": "breslow"
+   },
+   "values": {
+    "coef": [
+     0.393960617212914,
+     0.7330646796346335
+    ]
+   }
+  },
+  "cox_ties_efron": {
+   "fixture": "ties",
+   "software": "scikit-survival",
+   "version": "0.28.0",
+   "call": "CoxPHSurvivalAnalysis(ties='efron', tol=1e-12, n_iter=200).fit(Z[z1, z2], y)",
+   "settings": {
+    "ties": "efron"
+   },
+   "values": {
+    "coef": [
+     0.40648823269085543,
+     0.7650907863692433
+    ]
+   }
+  }
+ }
+}
