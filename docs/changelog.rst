@@ -44,8 +44,10 @@ v0.21.0 (unreleased)
   - **Strict-JSON serialisation.** ``to_dict``/``to_json`` no longer emit
     ``NaN``/``Infinity``: non-finite values are written as ``null`` and
     listed under ``"non_finite"`` (JSON Pointers by kind), and every reader
-    restores them. The schema version is 2; older dictionaries and files
-    still load. ``to_json(path, with_data=True)`` works for ``Parametric``
+    restores them. Each file is stamped with the oldest schema version that
+    reads it: 2 when it records non-finite values this way, and 1 (the
+    layout SurPyval 0.20 reads, which loads it identically) otherwise;
+    older dictionaries and files still load. ``to_json(path, with_data=True)`` works for ``Parametric``
     and ``NonParametric``, and every class-level ``from_dict`` applies the
     package reader's checks.
   - **Non-parametric copula margins.** Under ``how="IFM"`` a margin can be

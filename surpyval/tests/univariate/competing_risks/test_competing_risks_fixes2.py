@@ -16,7 +16,7 @@ import pytest
 
 import surpyval
 from surpyval import gray_test
-from surpyval.serialisation import SCHEMA_VERSION
+from surpyval.serialisation import required_schema
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
 )
@@ -110,7 +110,7 @@ def test_crph_round_trips_through_json(how):
     model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
     d = model.to_dict()
     assert d["model"] == "CompetingRisksProportionalHazards"
-    assert d["schema"] == SCHEMA_VERSION
+    assert d["schema"] == required_schema(d)
     restored = surpyval.from_dict(json.loads(json.dumps(d)))
     assert type(restored) is CompetingRisksProportionalHazards
     assert restored.how == how

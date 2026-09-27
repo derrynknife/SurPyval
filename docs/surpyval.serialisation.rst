@@ -97,9 +97,17 @@ Every reader restores the original values, so a round trip is exact. A
 consumer in another language sees ``null`` where no number applies, and
 can use the record to recover the values. Dictionaries and files written
 before this convention (``"schema"`` 0 or 1, holding ``Infinity`` or
-``NaN``, which Python's ``json`` reads) still load; an older SurPyval
-refuses a schema-2 file with an error asking for an upgrade rather than
-misreading its ``null`` values. ``SurpyvalData.to_json`` uses the same
+``NaN``, which Python's ``json`` reads) still load.
+
+Each file is stamped with the *oldest* schema version that reads it
+correctly (:func:`~surpyval.serialisation.required_schema`). A file with no
+non-finite value -- most fitted parametric, regression, recurrent, copula
+and degradation models -- has exactly the schema-1 layout and is stamped
+``1``, so SurPyval 0.20, which reads schema 1, still loads it (the test suite
+checks this against that release). A file that records non-finite values as
+``null``, as most non-parametric models and anything saved with
+``with_data=True`` do, is stamped ``2``; an older SurPyval refuses it with an
+error asking for an upgrade rather than misreading its ``null`` values. ``SurpyvalData.to_json`` uses the same
 convention. :func:`~surpyval.serialisation.encode_non_finite` and
 :func:`~surpyval.serialisation.decode_non_finite` apply and undo it on
 any dictionary.
@@ -111,3 +119,5 @@ any dictionary.
 .. autofunction:: surpyval.serialisation.encode_non_finite
 
 .. autofunction:: surpyval.serialisation.decode_non_finite
+
+.. autofunction:: surpyval.serialisation.required_schema

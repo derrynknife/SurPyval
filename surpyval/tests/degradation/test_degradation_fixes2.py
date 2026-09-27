@@ -169,7 +169,8 @@ def test_destructive_json_file_and_package_dispatch(tmp_path):
         assert np.allclose(
             model.cb(t, n_boot=10, seed=0), restored.cb(t, n_boot=10, seed=0)
         )
-    assert model.to_dict()["schema"] == surpyval.serialisation.SCHEMA_VERSION
+    d = model.to_dict()
+    assert d["schema"] == surpyval.serialisation.required_schema(d)
 
 
 def test_destructive_old_dict_without_data_still_loads():

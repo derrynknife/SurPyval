@@ -138,9 +138,21 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # record (see :func:`encode_non_finite`); schema 0 and 1 documents wrote
 # them as the non-standard ``NaN`` / ``Infinity`` / ``-Infinity``
 # literals, which Python's ``json`` (and BSON) read back as floats, so
-# they need no migration. The bump makes an older SurPyval refuse a
-# schema-2 document rather than read its ``null`` values as missing.
+# they need no migration.
+#
+# ``SCHEMA_VERSION`` is the newest layout this SurPyval reads and
+# writes, but a document is stamped with the *oldest* version that can
+# read it correctly (see :func:`stamp_schema`): a dictionary with no
+# non-finite value has exactly the schema-1 layout, and a SurPyval that
+# reads only schema 1 (v0.20) restores it identically, so it is stamped
+# 1. Only a document carrying a ``"non_finite"`` record -- whose
+# ``null`` values an older reader would take for missing entries -- is
+# stamped 2, which such a reader refuses with a request to upgrade.
 SCHEMA_VERSION = 2
+
+# The oldest version whose readers restore a document that has no
+# ``"non_finite"`` record exactly as this SurPyval does.
+_SCHEMA_WITHOUT_NON_FINITE = 1
 
 # The key under which a serialised dictionary records the meaning of the
 # ``null`` values that stand in for its non-finite floats.
@@ -389,12 +401,54 @@ def decode_non_finite(model_dict: dict) -> dict:
     return _decode(model_dict, None, "")
 
 
+def required_schema(model_dict: dict) -> int:
+    """The oldest schema version that reads ``model_dict`` correctly.
+
+    2 if the dictionary, or a model dictionary nested in it, records
+    non-finite values as ``null`` (a ``"non_finite"`` record, see
+    :func:`encode_non_finite`), which a schema-1 reader would take for
+    missing entries; 1 otherwise, the layout SurPyval v0.20 reads. This is
+    the version :func:`stamp_schema` writes.
+
+    Examples
+    --------
+    >>> from surpyval.serialisation import required_schema
+    >>> required_schema({"params": [10.0, 2.0]})
+    1
+    >>> required_schema({"H": [0.1, None], "non_finite": {"inf": ["/H/1"]}})
+    2
+    """
+    return (
+        SCHEMA_VERSION
+        if _carries_non_finite(model_dict)
+        else _SCHEMA_WITHOUT_NON_FINITE
+    )
+
+
+def _carries_non_finite(value: Any) -> bool:
+    """Whether ``value`` or any dictionary nested in it (a copula's
+    margins, a forest's trees) has a ``"non_finite"`` record."""
+    if isinstance(value, dict):
+        return NON_FINITE_KEY in value or any(
+            _carries_non_finite(v) for v in value.values()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_carries_non_finite(v) for v in value)
+    return False
+
+
 def stamp_schema(model_dict: dict) -> dict:
     """Finish a ``to_dict`` output: make it strict JSON (non-finite floats
     as ``null``, see :func:`encode_non_finite`) and stamp the
-    serialisation schema version. Every ``to_dict`` ends with it."""
+    serialisation schema version. Every ``to_dict`` ends with it.
+
+    The version stamped is the oldest that reads the document correctly:
+    2 if it (or a model nested in it) records non-finite values as
+    ``null``, which a schema-1 reader would misread, and 1 otherwise, so
+    that SurPyval releases reading schema 1 can still load it.
+    """
     encode_non_finite(model_dict)
-    model_dict["schema"] = SCHEMA_VERSION
+    model_dict["schema"] = required_schema(model_dict)
     return model_dict
 
 

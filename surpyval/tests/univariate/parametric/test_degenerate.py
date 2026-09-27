@@ -44,7 +44,7 @@ def test_degenerate_serialisation_round_trip():
     for cls in (NeverOccurs, InstantlyOccurs):
         d = cls.to_dict()
         assert d["model"] == cls.name
-        assert d["schema"] == surpyval.serialisation.SCHEMA_VERSION
+        assert d["schema"] == surpyval.serialisation.required_schema(d)
         assert surpyval.from_dict(d) is cls
 
 

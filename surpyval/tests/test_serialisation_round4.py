@@ -51,9 +51,9 @@ from surpyval.serialisation import (
     _PARAMETERIZATIONS,
     _TAGGED_MODELS,
     NON_FINITE_KEY,
-    SCHEMA_VERSION,
     decode_non_finite,
     encode_non_finite,
+    required_schema,
 )
 
 # -- data ---------------------------------------------------------------------
@@ -463,7 +463,7 @@ def test_every_dict_is_strict_json(name, models):
         # used to raise "Out of range float values are not JSON compliant"
         text = json.dumps(d, allow_nan=False)
         _strict_loads(text)
-        assert d["schema"] == SCHEMA_VERSION
+        assert d["schema"] == required_schema(d)
 
 
 def test_non_finite_values_are_null_with_a_record(models):
