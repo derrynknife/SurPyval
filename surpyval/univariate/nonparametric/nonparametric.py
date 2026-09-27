@@ -142,6 +142,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             R = self.R[idx]
             R = np.where(idx < 0, 1, R)
             R = np.where(np.isposinf(x), 0, R)
+            # A missing time sorts past the last step; it has no value.
+            R = np.where(np.isnan(x), np.nan, R)
         else:
             R = interp_function(self.x, self.R, kind=interp)(x)
 
@@ -233,6 +235,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         array([0.25      , 0.25      , 0.33333333])
         """
         x = np.atleast_1d(x)
+        missing = np.isnan(np.asarray(x, dtype=float))
+        if missing.any():
+            # A missing time has no value (NaN). The increments of the
+            # others are the ones they have without it; the forward fill
+            # below would otherwise copy a neighbour's increment into it.
+            out = np.full(x.shape, np.nan)
+            if not missing.all():
+                out[~missing] = self.hf(x[~missing], interp=interp)
+            return out
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
@@ -248,7 +259,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             H_steps = np.atleast_1d(self.Hf(xs, interp=interp))
             dH = np.diff(np.hstack([[0.0], H_steps]))
             pos = np.searchsorted(xs, x[0], side="right") - 1
-            if pos < 0:
+            if pos < 0 or np.isnan(x[0]):
                 return np.array([np.nan])[rev]
             sub = dH[: pos + 1]
             nz = sub[sub > 0]
@@ -614,6 +625,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             else:
                 R_out = R_out[idx]
                 R_out = np.where(idx < 0, 1, R_out)
+            R_out = np.where(np.isnan(x), np.nan, R_out)
 
         else:
             if bound == "two-sided":
@@ -1483,7 +1495,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         out = np.empty((x.size, 2))
         out[:, 0] = np.where(idx < 0, np.nan, lower[idx_c])
         out[:, 1] = np.where(idx < 0, np.nan, upper[idx_c])
-        outside = (x < self.x.min()) | (x > self.x.max())
+        outside = (x < self.x.min()) | (x > self.x.max()) | np.isnan(x)
         out[outside] = np.nan
 
         np.seterr(**old_err_state)

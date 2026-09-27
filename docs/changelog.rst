@@ -53,6 +53,12 @@ v0.21.0 (unreleased)
   - Stratified ``CoxPH`` raised a ``TypeError`` on a missing stratum label;
     such observations are now dropped with one warning, and the array path
     warns once in total rather than once per stratum.
+  - Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull (every
+    function, ``cb`` and ``band``) and non-parametric ``CompetingRisks``
+    returned the value at t = inf for a missing time (a NaN sorts past the
+    last step), and the array ``hf`` / ``df`` copied a neighbour's increment
+    into it; parametric ``sf_tvc`` / ``Hf_tvc`` raised an ``IndexError``.
+    They now give NaN for that time only.
   - Covariates given as a list or object array holding ``None`` raised a
     ``TypeError`` in the parametric PH and AH families, the accelerated-life
     fit and ``AdditiveHazards`` prediction; they are now read as floats,
