@@ -326,7 +326,11 @@ class BuckleyJamesModel(SerialisableMixin):
         positive = x > 0
         with np.errstate(divide="ignore"):
             r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
-        return np.where(positive, self._resid_sf(r), 1.0)
+        # A missing covariate (a DataFrame row with a nan) gives nan, as in
+        # the other families; the residual lookup read it as the last step
+        # (survival 0).
+        out = np.where(positive, self._resid_sf(r), 1.0)
+        return np.where(np.isnan(r), np.nan, out)
 
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)`` for a single covariate

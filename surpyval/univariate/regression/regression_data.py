@@ -9,6 +9,7 @@ time so that a DataFrame can be passed to ``sf``, ``ff``, ``df``, ``hf``,
 ``Hf`` and ``random`` and the correct columns will be selected automatically.
 """
 
+import re
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -186,6 +187,77 @@ def categorical_columns_as_objects(Z: pd.DataFrame, model_spec: Any) -> Any:
         if pd.api.types.is_numeric_dtype(column):
             recast[expr] = column.astype(object)
     return Z.assign(**recast) if recast else Z
+
+
+def unseen_levels_error(
+    model_spec: Any, df: pd.DataFrame, detail: str
+) -> ValueError:
+    """The error for a categorical value outside a formula term's levels.
+
+    ``formulaic`` codes a value that is not one of a categorical term's
+    levels -- a level not seen when the model was fitted, or not in a
+    ``C(g, levels=[...])`` list -- as the reference level (all-zero
+    columns), with only a ``DataMismatchWarning``: a silently wrong design
+    matrix (#371). :func:`surpyval.utils.formula_model_matrix` turns that
+    warning into this error, which names each column and its unknown
+    levels. A term that codes a single column as is (``g``, ``C(g)``,
+    ``C(g, levels=...)``, ``C(g, contr.sum)``, ...) is checked here
+    directly; for any other categorical term (``C(k + 1)``, say), or
+    without a ``model_spec``, ``formulaic``'s own ``detail`` is quoted
+    instead. Missing values are not levels: their rows come back as
+    ``nan``.
+    """
+    found = []
+    unresolved = []
+    encoder_state = {} if model_spec is None else model_spec.encoder_state
+    for expr, (kind, state) in encoder_state.items():
+        if kind is not Factor.Kind.CATEGORICAL:
+            continue
+        column = _factor_column(model_spec, str(expr), df.columns)
+        if column is None:
+            unresolved.append(str(expr))
+            continue
+        values = df[column]
+        levels = list(state.get("categories", []))
+        unseen = set(pd.unique(values[~pd.isna(values)])).difference(levels)
+        if unseen:
+            unseen_list = sorted((_native(v) for v in unseen), key=str)
+            found.append(
+                f"column {column!r} has the level(s) {unseen_list}, which "
+                f"are not among the levels {[_native(v) for v in levels]} "
+                f"of the formula term {str(expr)!r}"
+            )
+    if found:
+        return ValueError(
+            "Unknown categorical level(s): "
+            + "; ".join(found)
+            + ". The model has no coefficient for a level it was not "
+            "fitted with; only the levels in the fitted data, or those "
+            "declared with C(column, levels=[...]), can be used."
+        )
+    terms = f" in the formula term(s) {unresolved}" if unresolved else ""
+    return ValueError(f"Unknown categorical level(s){terms}: {detail}")
+
+
+def _factor_column(model_spec: Any, expr: str, columns: Any) -> str | None:
+    """The DataFrame column a categorical term codes as is -- a bare
+    column ``g`` or a ``C(g, ...)`` wrapper -- or ``None`` for any other
+    term (whose values are computed from the data)."""
+    for factor, variables in model_spec.factor_variables.items():
+        if str(factor) != expr:
+            continue
+        data = [str(v) for v in variables if v.source == "data"]
+        if len(data) != 1 or data[0] not in columns:
+            return None
+        column = data[0]
+        wrapped = re.match(r"C\(\s*" + re.escape(column) + r"\s*[,)]", expr)
+        return column if expr == column or wrapped else None
+    return None
+
+
+def _native(value: Any) -> Any:
+    # ``np.str_('d')`` prints as "np.str_('d')" in a list since numpy 2.
+    return value.item() if isinstance(value, np.generic) else value
 
 
 def formula_to_string(formula: Any) -> str:

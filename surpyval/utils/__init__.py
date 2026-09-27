@@ -1,11 +1,14 @@
 import warnings
+from collections import defaultdict
 from numbers import Number
 from typing import Any, Callable
-from collections import defaultdict
 
 import numpy as np
 import numpy.typing as npt
 from formulaic import Formula
+from formulaic.errors import (  # type: ignore[import-untyped]
+    DataMismatchWarning,
+)
 from pandas import DataFrame, isna
 
 COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
@@ -1697,12 +1700,39 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     level. So the rows are dropped as usual and then put back as all-nan
     rows, which callers either drop (with a warning) when fitting or turn
     into nan predictions in place.
+
+    A categorical value outside a term's levels (a level the fitted spec
+    never saw, or one missing from ``C(g, levels=[...])``) raises a
+    ``ValueError`` naming the column and the levels: ``formulaic`` codes
+    it as the reference level, with only a ``DataMismatchWarning`` (#371).
     """
+    from surpyval.univariate.regression.regression_data import (
+        unseen_levels_error,
+    )
+
     positional = df.reset_index(drop=True)
-    if isinstance(source, str):
-        model_matrix = Formula(source).get_model_matrix(positional, **kwargs)
-    else:
-        model_matrix = source.get_model_matrix(positional, **kwargs)
+
+    def materialise() -> Any:
+        if isinstance(source, str):
+            return Formula(source).get_model_matrix(positional, **kwargs)
+        return source.get_model_matrix(positional, **kwargs)
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", DataMismatchWarning)
+            model_matrix = materialise()
+    except DataMismatchWarning as mismatch:
+        spec = None if isinstance(source, str) else source
+        if spec is None:
+            # A formula's levels (``C(g, levels=[...])``) are known only
+            # once it is materialised: do so again, allowing the mismatch.
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    spec = materialise().model_spec
+            except Exception:
+                pass
+        raise unseen_levels_error(spec, positional, str(mismatch)) from None
     spec = model_matrix.model_spec
     if len(model_matrix) != len(positional):
         model_matrix = model_matrix.reindex(range(len(positional)))

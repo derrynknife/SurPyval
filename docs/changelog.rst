@@ -4,6 +4,27 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Formula models refuse a category level they were not fitted with
+  (#371).** Predicting for a level absent from the fitted data coded it
+  silently as the reference level (``WeibullPH`` gave S(5) = 0.5283 for both
+  ``g="a"`` and an unknown ``g="d"``), with only formulaic's
+  ``DataMismatchWarning``. Every family that takes a ``formula``
+  (parametric PH/AFT/PO/AH, ``AcceleratedLife``, ``CoxPH``,
+  ``AdditiveHazards``, Buckley-James, frailty, competing-risks Cox and
+  Fine-Gray) now raises a ``ValueError`` naming the column and the unknown
+  levels, fitted or restored. A fit whose data has a level outside its
+  ``C(g, levels=[...])`` list raises too; declared levels count as known. A
+  missing categorical value still predicts NaN in place, as a missing
+  numeric one does. Buckley-James returned survival 0 for any missing
+  covariate and now returns NaN.
+- **Competing-risks Cox predicts from a DataFrame (#370).**
+  ``CompetingRisksProportionalHazards`` read a DataFrame by column
+  position: with ``Z_cols=["z", "w"]``, passing the columns as ``[w, z]``
+  changed S(5) from 0.655 to 0.914, and a ``formula`` fit could not expand
+  raw covariates at all. ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``cif``,
+  ``phi`` and ``phi_e`` now select and encode the columns recorded by
+  ``fit_from_df``, as ``CoxPH`` does, fitted or restored. Arrays work as
+  before.
 - **Proportional odds fits time-varying covariates (#372).** ``PO(dist)``
   models could be evaluated along a step covariate path but not fitted to
   one; the docs said PO lacked the structure. It does not: the PO hazard

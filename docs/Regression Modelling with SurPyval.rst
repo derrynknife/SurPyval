@@ -248,8 +248,8 @@ and truncation too — and warns with the number of rows dropped. The same
 goes for ``fit_from_df``, with named columns or a ``formula``. (The
 time-varying-covariate fits are the exception: dropping one interval would
 change a subject's history, so they refuse a missing covariate instead.)
-Predicting from a DataFrame row with a missing covariate gives ``nan`` for
-that row, in its place.
+Predicting from a DataFrame row with a missing covariate -- numeric or
+categorical -- gives ``nan`` for that row, in its place.
 
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
@@ -555,6 +555,23 @@ so it is rarely what you want. Wrapped categoricals (``C(site)``, with
 ``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
 (``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
 are kept when the model is saved (see `Saving and loading a fitted model`_).
+
+A categorical level the model was not fitted with has no coefficient, so a
+prediction for it is undefined: it raises a ``ValueError`` naming the column
+and the level. Levels declared with ``C(site, levels=[...])`` count as known
+even if the fitted data had none of them -- though with no data their
+coefficient stays at its starting value of zero. A missing value is not a
+level: that row predicts ``nan``, as for a missing numeric covariate. This
+holds for every family that takes a ``formula``, before and after saving:
+
+.. jupyter-execute::
+
+    try:
+        weib_df.sf([40.0], pd.DataFrame({'age': [40], 'site': ['D']}))
+    except ValueError as err:
+        print(str(err).split('. ')[0])
+    print(weib_df.sf(np.full(2, 40.0),
+                     pd.DataFrame({'age': [40, 40], 'site': ['B', None]})))
 
 
 Time-Varying Covariates

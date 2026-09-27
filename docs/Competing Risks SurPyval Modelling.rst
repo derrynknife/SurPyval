@@ -854,7 +854,9 @@ either as ``Z_cols`` (a column name or list of names) or as a ``formula``;
 each cause's Cox fit) are optional. A blank/``NaN`` cause marks a censored row,
 and rows with a missing covariate are dropped (as are rows of ``Z`` containing
 ``NaN`` in ``fit``).
-Predictions still take a covariate array ``Z`` in column order:
+The fitted model predicts from a DataFrame of the covariate columns, read by
+name (their order and any other columns do not matter), or still from an
+array ``Z`` in the fitted column order:
 
 .. jupyter-execute::
 
@@ -863,4 +865,30 @@ Predictions still take a covariate array ``Z`` in column order:
         frame, x_col="time", e_col="cause", Z_cols=["z1", "z2"]
     )
     print(csph_df.feature_names)
-    print(np.allclose(csph_df.cif(times, Z=z, event=1), cif1))
+    new = pd.DataFrame({"z2": [z[1]], "z1": [z[0]]})
+    print(np.allclose(csph_df.cif(times, Z=new, event=1), cif1),
+          np.allclose(csph_df.cif(times, Z=z, event=1), cif1))
+
+With a ``formula`` the prediction DataFrame holds the *raw* covariates and the
+fitted formula expands them -- categorical levels coded against the fitted
+reference level, transforms with their fitted statistics -- exactly as
+``CoxPH`` does, before and after ``to_dict`` / ``from_dict``. A categorical
+level the model was not fitted with raises a ``ValueError`` naming the column
+and the level (there is no coefficient for it), and a row with a missing
+covariate predicts ``nan``:
+
+.. jupyter-execute::
+
+    import textwrap
+
+    frame["band"] = np.where(Z[:, 1] > 0, "high", "low")
+    csph_f = CompetingRisksProportionalHazards.fit_from_df(
+        frame, x_col="time", e_col="cause", formula="z1 + band"
+    )
+    print(csph_f.feature_names)
+    rows = pd.DataFrame({"z1": [0.5, 0.5], "band": ["low", "high"]})
+    print(csph_f.cif([2.0, 2.0], rows, event=1).round(4))
+    try:
+        csph_f.cif([2.0], pd.DataFrame({"z1": [0.5], "band": ["mid"]}), 1)
+    except ValueError as err:
+        print(textwrap.fill(str(err), 79))
