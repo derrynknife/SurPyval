@@ -293,6 +293,17 @@ With a hazard ratio of about 2 and a Weibull shape of 2, the exposed median is
 shorter by a factor of about :math:`2^{1/2}` — exactly what the PH/AFT
 equivalence for the Weibull (see `Accelerated Failure Time (AFT)`_) predicts.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _med = [brentq(lambda t, z=z: demo.sf([t], Z=[z])[0] - 0.5, 1e-6, 100.0)
+            for z in (0.0, 1.0)]
+    _shape, _b0 = demo.params[1], demo.params[2]
+    assert round(np.exp(_b0)) == 2 and round(_shape) == 2, demo.params
+    assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-4)
+    assert abs(_med[0] / _med[1] - 2 ** 0.5) < 0.05, _med
+
 
 Semi-Parametric — Cox Proportional Hazards
 ------------------------------------------
@@ -334,6 +345,13 @@ We can immediately check which coefficients are statistically significant:
 
     print(model.p_values)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.flatnonzero(model.p_values > 0.05).tolist() == [0, 3, 5]
+    assert len(x) == 34 and (c == 0).sum() == 11
+
 Several covariates are not significant at the 5% level (the first, fourth and
 sixth). We can re-fit with only the significant ones, which also improves
 numerical stability — there are only 34 tires, 11 of them failures, so every
@@ -350,6 +368,12 @@ extra coefficient is expensive:
 The first three coefficients are negative, meaning higher gauge and peel force
 values *reduce* the hazard rate (improve life); the positive interaction term
 captures a counteracting combined effect.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(model.beta[:3] < 0) and model.beta[3] > 0
 
 A coefficient is a log hazard ratio per unit of its covariate. The fitted model
 keeps the score and information closures of its partial likelihood
@@ -369,6 +393,14 @@ no single coefficient can be changed on its own — raising peel force also
 raises the interaction column — so a hazard ratio is best computed between two
 concrete tires. ``model.phi(Z)`` returns the multiplier :math:`e^{\beta'Z}`, and
 the ratio of two multipliers is their hazard ratio at every time:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy.stats import norm
+    assert np.allclose(model.p_values,
+                       2 * (1 - norm.cdf(np.abs(model.beta / se))))
 
 .. jupyter-execute::
 
@@ -421,8 +453,10 @@ which is the answer rounding took away:
     print('distinct days:', counts.size, '  largest tie:', counts.max())
     print('unrounded times        : beta = %.3f'
           % CoxPH.fit(x=t_true, Z=z_tie).beta[0])
+    tie_beta = {}
     for method in ['breslow', 'efron', 'exact', 'kalbfleisch-prentice']:
         m = CoxPH.fit(x=t_day, Z=z_tie, method=method)
+        tie_beta[method] = m.beta[0]
         print(f'{method:22s} : beta = {m.beta[0]:.3f}')
 
 Breslow's approximation pulls the coefficient towards zero; Efron's recovers
@@ -439,6 +473,19 @@ tie group is a recursion (``'kalbfleisch-prentice'``) or a numerical integral
 (``'exact'``) rather than a closed form — but both grow only polynomially with
 the size of a tie group, so they remain practical on heavily tied data. With
 no ties all four agree.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _unrounded = CoxPH.fit(x=t_true, Z=z_tie).beta[0]
+    assert len(t_true) == 50 and counts.max() == 6
+    assert tie_beta['breslow'] < tie_beta['efron'] < _unrounded, tie_beta
+    _err = {k: abs(tie_beta[k] - _unrounded)
+            for k in ['breslow', 'efron', 'exact']}
+    assert min(_err, key=_err.get) == 'exact', _err
+    assert tie_beta['kalbfleisch-prentice'] > max(tie_beta.values()) - 1e-12
+    assert tie_beta['kalbfleisch-prentice'] > _unrounded
 
 Delayed entry (left truncation)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -470,6 +517,15 @@ came before their entry age were never seen at all, as happens in practice:
         CoxPH.fit(x=x_le, Z=z_le).beta[0],
         CoxPH.fit(x=x_le, Z=z_le, tl=tl_le).beta[0]))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert naive.params[0] > trunc.params[0] and naive.params[1] > trunc.params[1]
+    _shift = np.abs(naive.params / trunc.params - 1)
+    assert _shift[2] < _shift[:2].min(), _shift   # coefficient affected less
+    assert np.all(np.abs(trunc.params / [10, 1.5, 0.8] - 1) < 0.05)
+
 Ignoring the entry ages badly distorts the *baseline* — the fitted life is too
 long and the wear-out too steep, because the sample has been filtered towards
 survivors — while the coefficient is affected less here because entry age is
@@ -487,6 +543,12 @@ rejected, so use a parametric family (``t=[tl, tr]``) for those.
     cox_df = CoxPH.fit_from_df(entry_df, x_col='age', Z_cols='z',
                                tl_col='entry', method='breslow')
     print('Cox with tl_col : %.3f' % cox_df.beta[0])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(cox_df.beta[0], CoxPH.fit(x=x_le, Z=z_le, tl=tl_le).beta[0])
 
 Fitting from a DataFrame: formulas and categorical covariates
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -533,6 +595,14 @@ coefficients non-identified. Here three sites have different risks:
                                formula='age + site')
     for name, b in zip(cox_df.feature_names, cox_df.beta):
         print(f'{name:10s} {b:6.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox_df.feature_names == ['age', 'site[T.B]', 'site[T.C]']
+    assert abs(cox_df.beta[0] - 0.03) < 0.01
+    assert np.all(np.abs(cox_df.beta[1:] - [0.5, -0.5]) < 0.1), cox_df.beta
 
 ``site[T.B]`` and ``site[T.C]`` are the log hazard ratios of sites B and C
 against site A (true values 0.5 and -0.5), and ``age`` the log hazard ratio per
@@ -645,6 +715,12 @@ The fitted coefficient recovers the simulated log-hazard-ratio of the stress
 (:math:`\beta \approx 1`) — a plain Cox fit that ignored the timing of the
 switch could not.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(model.beta[0] - 1) < 0.1, model.beta
+
 Writing intervals by hand is error-prone. A covariate *timeline* — one row per
 covariate change per subject, each value holding until the subject's next row,
 the first row's time being the entry and the last row carrying the exit time
@@ -669,6 +745,12 @@ intervals, so the fit is identical:
     )
     print('same fit:', np.allclose(model_tl.beta, model.beta))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model_tl.beta, model.beta)
+
 Because survival now depends on the *whole* covariate path, evaluate it with
 ``sf_tvc``, describing the path as a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` (or
@@ -688,6 +770,14 @@ constant segment it reduces exactly to ``sf``. Here a unit stressed from
     plt.xlabel('Time')
     plt.ylabel('S(t)')
     plt.show()
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _never, _late = model.sf_tvc(t, never), model.sf_tvc(t, late)
+    assert np.allclose(_late[t <= 1], _never[t <= 1])
+    assert np.all(_late[t > 1.05] < _never[t > 1.05])
 
 The older interval-oriented
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.predict_tvc`
@@ -753,6 +843,14 @@ failures the test has little power, so "no evidence" is not strong evidence of
 proportionality either.) The statistics match R's ``cox.zph`` and lifelines,
 including under Efron ties.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert ph['global']['p_value'] > 0.4
+    assert all(r['p_value'] > 0.4 for r in ph['per_covariate'])
+    assert (tires['Censoring'] == 0).sum() == 11
+
 To see what a violation looks like, simulate a covariate whose effect
 *reverses*: exposed units have three times the baseline hazard before
 :math:`t = 0.5` and a third of it afterwards. The Cox coefficient averages the
@@ -792,6 +890,16 @@ evenly and is the usual choice; ``"rank"``, ``"identity"`` and ``"log"`` are the
 alternatives from ``cox.zph``. A violation like this one calls for
 stratification (below), a time-varying covariate, or a different family.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _early = scaled[event_times < 0.5].mean()
+    _late = scaled[event_times >= 0.5].mean()
+    assert _early > m_rev.beta[0] > _late, (_early, _late)
+    for _tr in ['km', 'rank', 'identity', 'log']:
+        assert m_rev.check_ph(transform=_tr)['global']['p_value'] < 1e-10
+
 The residuals underlying the test (and several others) are available directly
 through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.compute_residuals`,
@@ -818,6 +926,14 @@ show how far each observation moves each coefficient:
 
 Schoenfeld, score and martingale residuals all sum to zero at the maximum of
 the partial likelihood — a useful sanity check that the fit has converged.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _kind in ['schoenfeld', 'score', 'martingale']:
+        _r = model.compute_residuals(_kind)
+        assert np.allclose(_r.sum(axis=0), 0, atol=1e-6), _kind
 
 
 Cluster-robust standard errors
@@ -865,6 +981,15 @@ duplicates as extra ties.)
     print('robust SE, twice, clustered by tire:',
           dup.robust_summary(cluster=tire_id)['se'].round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(once.beta, dup.beta)
+    assert np.allclose(naive_se(once) / naive_se(dup), np.sqrt(2))
+    assert np.allclose(once.robust_summary()['se'],
+                       dup.robust_summary(cluster=tire_id)['se'])
+
 
 Stratified Cox models
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -897,6 +1022,13 @@ badly confounded; the stratified fit recovers the true coefficient:
     print(f"pooled      = {pooled.beta[0]:.3f}   (confounded by site)")
     print(f"stratified  = {stratified.beta[0]:.3f}")
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(stratified.beta[0] - 0.8) < 0.1
+    assert abs(pooled.beta[0] - 0.8) > 0.5
+
 An observation whose stratum label is missing (``None``, ``NaN`` or pandas
 ``NA``) has no baseline to belong to, so it is dropped with a warning giving
 the count, just as a row with a missing covariate is.
@@ -910,6 +1042,12 @@ as a missing covariate does:
 .. jupyter-execute::
 
     stratified.sf(x=1.0, Z=[[0.0]], stratum=0)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert list(stratified.strata_labels) == [0, 1, 2]
 
 The residual diagnostics and robust errors above assume a single baseline, so
 they are not available on a stratified model; the coefficients and their
@@ -958,6 +1096,12 @@ two-point cycle, which surpyval detects and averages, and a fit that has not
 converged within ``max_iter`` iterations (default 100, with step tolerance
 ``tol=1e-5``) warns. The coefficients are ``model.beta`` (also ``model.coef``).
 Only observed and right-censored data with positive times are accepted.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.converged and abs(model.beta[0] - 0.8) < 0.1, model.beta
 
 Buckley-James has no simple closed-form standard error, so uncertainty comes
 from a percentile bootstrap — resampling, refitting, and taking coefficient
@@ -1021,6 +1165,12 @@ shifts the absolute hazard by :math:`\beta` at every time. As in the Cox fit,
 higher gauge and peel-force values reduce the hazard (improving life) while the
 interaction term counteracts — the same story, told on the additive scale.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(model.beta[:3] < 0) and model.beta[3] > 0
+
 The model's ``Hf``, ``sf`` and ``ff`` use the step baseline
 :math:`\hat H_0(t) + t\,\beta'Z`. A hazard *rate* needs a smooth baseline, so
 ``hf`` (and ``df``) kernel-smooth the baseline increments; the ``bandwidth``
@@ -1075,6 +1225,15 @@ errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
 (scale 10, shape 2) is recovered too. The parametric fit is more efficient
 when its baseline is right; Lin-Ying makes no assumption about the baseline.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b, _se = wah.params[2], wah.standard_errors()[2]
+    assert round(_b, 3) == 0.035 and round(ly.beta[0], 3) == 0.046
+    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.se[0]
+    assert np.all(np.abs(wah.params[:2] / [10, 2] - 1) < 0.05)
+
 The positivity caveat above bites differently here. The likelihood needs
 ``log(h)`` at every failure, so the optimiser only accepts parameter values
 that keep :math:`h_0(x) + \beta'Z` positive at every observed failure. When
@@ -1115,6 +1274,13 @@ the Weibull is a reasonable fit to the baseline. The parameters are listed in
 the order ``model.parameter_names()`` gives: the distribution's own parameters
 first, then one ``beta_j`` per covariate column.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cox = CoxPH.fit(x=x, Z=Z, c=c)
+    assert np.all(np.abs(model.params[2:] - _cox.beta) < 1), _cox.beta
+
 If none of the pre-built distributions suit your data, the ``PH`` factory creates
 a parametric PH model for any surpyval distribution:
 
@@ -1147,6 +1313,13 @@ is excluded from the covariance (its standard error is zero):
     print(fixed_shape.params.round(3))
     print(fixed_shape.standard_errors().round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fixed_shape.params[1] == 15
+    assert fixed_shape.standard_errors()[1] == 0
+
 The parametric fitters use surpyval's full likelihood, so every observation
 type can be mixed in one fit: ``c = -1`` (left censored), ``c = 2`` (interval
 censored, with ``x`` given as ``[left, right]`` pairs) and truncation through
@@ -1165,6 +1338,12 @@ recovers the same parameters as the exact times:
     print('exact times         :', demo.params.round(3))
     print('inspection intervals:', interval_fit.params.round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(interval_fit.params, demo.params, rtol=0.05)
+
 ``phi(Z)`` returns the fitted hazard multiplier :math:`e^{\beta'Z}` (for AFT
 it is the acceleration factor, for PO the odds multiplier, for accelerated
 life the modelled life; an additive model has none). ``random(size, Z)``
@@ -1182,6 +1361,13 @@ each *distinct* stress, in sorted order:
     sim_x, sim_Z = demo.random(5, [[0.0], [1.0]])
     print(sim_x.round(2))
     print(sim_Z.ravel())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(demo.phi([[0.0], [1.0]]), [1, np.exp(demo.params[2])])
+    assert sim_Z.ravel().tolist() == [0.0] * 5 + [1.0] * 5
 
 A custom covariate function
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1224,6 +1410,14 @@ The excess relative risk per unit dose, 0.60 (standard error 0.17), is within
 one standard error of the true 0.5. Everything else — predictions, bounds,
 ``fit_from_df`` — works as for the pre-built models, but a custom covariate
 function cannot be rebuilt from a name, so such a model cannot be serialised.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b, _se = rr.params[2], rr.standard_errors()[2]
+    assert round(_b, 2) == 0.60 and round(_se, 2) == 0.17, (_b, _se)
+    assert abs(_b - 0.5) < _se
 
 
 Accelerated Failure Time (AFT)
@@ -1273,6 +1467,13 @@ Checking the Weibull equivalence numerically against the ``WeibullPH`` fit:
     print('PH coefficients         :', ph_fit.params[2:].round(3))
     print('neg log-likelihoods     :', round(model.neg_ll(), 4),
           round(ph_fit.neg_ll(), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(shape * model.params[2:], ph_fit.params[2:], rtol=1e-3)
+    assert np.isclose(model.neg_ll(), ph_fit.neg_ll())
 
 The ``AFT`` factory works with any distribution. Log-Normal AFT is a
 particularly common choice — it corresponds to ordinary linear regression on
@@ -1367,6 +1568,12 @@ conclusions, in the survival-odds convention. The ``PO`` factory accepts any
 distribution:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.sign(model.params[2:]) == -np.sign(ph_fit.params[2:]))
+
+.. jupyter-execute::
 
     from surpyval import Weibull
     from surpyval import PO
@@ -1379,6 +1586,12 @@ coefficient has the opposite sign to the PH fit, as the survival-odds
 convention requires. With 11 failures and four covariates, though, none of
 these fits is well determined, and `Model Selection`_ below shows the data
 cannot separate the PO description from the PH/AFT one.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.sign(model.params[2:]) == -np.sign(ph_fit.params[2:]))
 
 The fading effect is easiest to see on data simulated from a PO model. Below,
 a log-logistic baseline has its survival odds multiplied by :math:`e^{1}` for
@@ -1400,6 +1613,14 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
     times = np.array([1.0, 5.0, 10.0, 20.0, 40.0])
     print('hazard ratio at', times, ':',
           (po.hf(times, [1.0]) / po.hf(times, [0.0])).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _hr = po.hf(times, [1.0]) / po.hf(times, [0.0])
+    assert abs(_hr[0] - np.exp(-1)) < 0.03 and np.all(np.diff(_hr) > 0)
+    assert _hr[-1] > 0.95, _hr
 
 A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
@@ -1428,6 +1649,16 @@ Up to :math:`t = 10` the unit follows the unexposed curve. After the switch
 its hazard becomes the exposed one, but its survival does not jump up to the
 exposed curve: it starts from the survival it has already reached (0.5) and
 falls more slowly from there, ending between the other two curves.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _never, _switch, _always = (po.sf(at, [0.0]), po.sf_tvc(at, switch),
+                                po.sf(at, [1.0]))
+    assert np.allclose(_switch[:2], _never[:2])
+    assert round(_switch[1], 2) == 0.5, _switch
+    assert np.all((_never[2:] < _switch[2:]) & (_switch[2:] < _always[2:]))
 
 
 Confidence Bounds
@@ -1634,6 +1865,17 @@ in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhe
     print('95% CI on a, in eV      :', (model_arr.param_cb('a') * k).round(3))
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert c_al[stress == 358.].sum() > 10          # most of the coolest
+    assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
+    assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
+    assert round(model_arr.params[2] * k, 2) == 0.67
+    _lo, _hi = model_arr.param_cb('a') * k
+    assert _lo < 0.7 < _hi
+
+.. jupyter-execute::
 
     # Power law — a common choice for voltage or load acceleration
     model_power = AcceleratedLife(Weibull, Power).fit(x_al, Z=stress, c=c_al)
@@ -1653,6 +1895,16 @@ should come from the physics rather than from the fit statistics alone:
               f'   characteristic life at 55°C = {m.phi([use])[0]:7.0f} h')
     print('true characteristic life at 55°C = %7.0f h'
           % (1.4e-6 * np.exp(Ea / (k * use))))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _true = 1.4e-6 * np.exp(Ea / (k * use))
+    _arr, _pow = model_arr.phi([use])[0], model_power.phi([use])[0]
+    assert abs(model_arr.aic() - model_power.aic()) < 1
+    assert 0.15 < _arr / _pow - 1 < 0.25, (_arr, _pow)   # "about 20%"
+    assert _pow < _arr < _true
 
 Both models under-predict the true use life. The fitted activation energy,
 0.67 eV against a true 0.70 eV, is well within its confidence interval, but an
@@ -1686,6 +1938,15 @@ about lives of tens of thousands of hours — and it is the band, which here
 contains the true curve, rather than the point estimate that should drive a
 decision.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _true_sf = Weibull.sf(x_pred, 1.4e-6 * np.exp(Ea / (k * use)), 2.5)
+    assert len(x_al) == 60 and x_al.max() <= 6000
+    assert np.all((band[:, 0] <= _true_sf + 1e-9)
+                  & (_true_sf <= band[:, 1] + 1e-9))
+
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~
 
@@ -1715,6 +1976,14 @@ the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
 because the design varies each stress while the other is held fixed. Had voltage been raised only
 together with temperature, the two columns would be collinear and no fit
 could tell their effects apart.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _names = model_2s.parameter_names()
+    _p = dict(zip(_names, model_2s.params))
+    assert round(_p['a'] * k, 2) == 0.67 and round(_p['n'], 2) == -1.44, _p
 
 Creating a custom life model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1769,6 +2038,13 @@ drops well below the true 2.5), and its AIC is far worse:
     print('AIC, Arrhenius       : %.1f' % model_arr.aic())
     print('AIC, InverseSquareRoot: %.1f' % model_custom.aic())
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model_custom.params[1] < 1.5
+    assert model_custom.aic() - model_arr.aic() > 50
+
 
 .. _tvc-parametric:
 
@@ -1799,6 +2075,12 @@ noticeably longer than Cox:
 The data were simulated with an exponential baseline of rate 0.5 (a Weibull with
 scale 2 and shape 1) and :math:`\beta = 1`, which the fit recovers.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(ph.params / [2, 1, 1] - 1) < 0.05), ph.params
+
 **Accelerated failure time** also fits start-stop data through the same
 ``fit_tvc`` interface. AFT rescales the *time axis* rather than the hazard, so a
 subject's likelihood depends on its accumulated *accelerated age*
@@ -1820,6 +2102,12 @@ The true baseline is a Weibull of shape 1, for which accelerated failure time
 and proportional hazards are the same model with
 :math:`\beta_{PH} = \text{shape} \times \beta_{AFT}`, so the AFT coefficient
 is about 1 as well.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(aft.params[2] - 1) < 0.05, aft.params
 
 Because the accelerated age is integrated from time zero, the AFT fit needs each
 subject's whole covariate history: every subject's first interval must start
@@ -1886,6 +2174,12 @@ The fit recovers the scale, shape and coefficient. Its log-likelihood is
 exactly the sum, over units, of ``log sf_tvc`` at the exit time along the unit's
 own path plus ``log hf`` at each failure, so the fitted model and the
 path evaluation below are the same model.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(po_tvc.params / [10, 2, 1] - 1) < 0.05), po_tvc.params
 
 **Evaluating a covariate path.** Every family that has a closed form along a
 step path — Cox, parametric ``PH``, ``AH`` and ``PO``, and accelerated failure
@@ -1989,6 +2283,13 @@ Conditional survival is only meaningful at times at or after ``given``:
     print('same as a ratio  :', (ph.sf_tvc(at, **pulse)
                                  / ph.sf_tvc([1.0], **pulse)).round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ph.sf_tvc(at, **pulse, given=1.0),
+                       ph.sf_tvc(at, **pulse) / ph.sf_tvc([1.0], **pulse))
+
 
 Worked example: forecasting equipment on a duty cycle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2065,6 +2366,14 @@ against a low-load one:
     print('parameters :', np.round(model.params, 3))
     print('load hazard ratio exp(beta) : %.2f' % np.exp(model.params[-1]))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _alpha, _shape, _load = model.params
+    assert abs(_load - 0.9) < 0.1 and abs(_shape - 2) < 0.2, model.params
+    assert abs(_alpha / 30 - 1) < 0.2, model.params
+
 Now the part that motivates the whole exercise. Because the fit is fully
 parametric, ``sf_tvc`` will evaluate the survival curve along *any* step
 schedule you hand it — not just paths the pumps actually ran. That makes it a
@@ -2107,6 +2416,19 @@ covariate plan you supply. A semi-parametric time-varying Cox model has no
 baseline hazard beyond the last observed event time, so it cannot produce a
 survival curve into the future at all — which is why this scenario forecasting
 needs the parametric ``fit_tvc`` / ``sf_tvc`` pair.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _median = {}
+    for _label, _expr in cycles.items():
+        _sf = model.sf_tvc(t, StepSchedule.from_expression(_expr,
+                                                           horizon=horizon_f))
+        _median[_label.split(':')[0]] = t[np.argmax(_sf < 0.5)]
+    _gain = _median['eased'] - _median['current']
+    _loss = _median['current'] - _median['always high load']
+    assert 2 <= _gain <= 5 and 2 <= _loss <= 6, _median
 
 
 Shared-frailty models
@@ -2159,6 +2481,16 @@ observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
 errors of every parameter as a dictionary keyed by name.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _theta, _se = model.theta, model.standard_errors()["theta"]
+    assert round(_theta / _se) == 3, (_theta, _se)        # "about three"
+    _lo, _hi = model.param_cb("theta")
+    assert 0.55 < _hi < 0.6                     # only just misses 0.6
+    assert abs(model.beta[0] - 0.8) < 0.05, model.beta
+
 Prediction comes in two flavours. The default is **marginal** (population
 averaged), the right curve for a *new* unit from an *unknown* group; passing
 ``group=`` conditions on an observed group's posterior frailty, for another unit
@@ -2188,6 +2520,14 @@ frail groups fail first, so the marginal hazard ratio starts at
     print('exp(beta)             :', np.exp(model.beta).round(3))
     print('marginal hazard ratio :',
           (model.hf(times, [1.0]) / model.hf(times, [0.0])).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _hr = model.hf(times, [1.0]) / model.hf(times, [0.0])
+    assert np.isclose(_hr[0], np.exp(model.beta[0]), rtol=0.01)
+    assert np.all(np.diff(_hr) < 0), _hr
 
 ``fit_from_df`` names the columns instead (``group_col`` for the groups, and
 ``Z_cols`` or a ``formula`` for the covariates), and the fitted model then
@@ -2234,6 +2574,15 @@ The likelihoods agree and the frailty model pays 2 AIC units for its unused
 boundary has no meaningful Wald interval (``param_cb('theta')`` is then
 ``[0, inf]``).
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert no_frailty.theta < 1e-6
+    assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
+    assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
+    assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+
 
 Model Selection
 ---------------
@@ -2277,6 +2626,17 @@ choice of family. Differences of a unit or two are not meaningful — with 11
 failures the data cannot separate these descriptions — so compare each family
 at its best baseline before ruling it out, and let the purpose and the
 diagnostics decide between close contenders.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {k: m.aic() for k, m in models.items()}
+    assert np.isclose(_aic['WeibullPH'], _aic['WeibullAFT'])
+    assert np.isclose(models['WeibullPH'].bic(), models['WeibullAFT'].bic())
+    assert 0 < _aic['WeibullPO'] - _aic['WeibullPH'] < 1, _aic
+    assert 0 < _aic['LogisticPO'] - _aic['WeibullPH'] < 1, _aic
+    assert round(_aic['LogNormalAFT'] - _aic['WeibullPH']) == 3, _aic
 
 A note of caution: AIC and BIC compare how well a model fits the *observed
 data*, not whether the model's assumptions are correct. A PH model with a lower
@@ -2363,6 +2723,12 @@ IBS is meaningful, compare it against the marginal Kaplan-Meier — a model that
 ignores the covariates entirely. The Cox model should score lower:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((auc > 0.75) & (auc < 0.85)), auc
+
+.. jupyter-execute::
 
     km = KaplanMeier.fit(x_tr, c_tr)
     S_km = np.tile([km.sf([t])[0] for t in times], (len(x_te), 1))
@@ -2370,6 +2736,12 @@ ignores the covariates entirely. The Cox model should score lower:
         x_te, c_te, S_km, times, x_train=x_tr, c_train=c_tr
     )
     print(f'IBS  Cox = {ibs:.3f}   marginal KM = {ibs_km:.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert ibs < ibs_km
 
 Concordance
 ~~~~~~~~~~~
@@ -2448,6 +2820,15 @@ The root splits on :math:`z_0` near 0.5, and the right-hand branch then splits
 on :math:`z_1` near 0.5 — the interaction, recovered without being specified.
 (The ``_root`` node structure is shown only to make the splits visible.)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert root.split_feature_index == 0
+    assert abs(root.split_feature_value - 0.5) < 0.15
+    assert root.right_child.split_feature_index == 1
+    assert abs(root.right_child.split_feature_value - 0.5) < 0.15
+
 A forest averages many such trees, each grown on a bootstrap sample and
 considering a random subset of ``n_features_split`` covariates at each split.
 Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
@@ -2473,6 +2854,7 @@ is compared with a Cox model on the same metrics:
 
     cox_t = CoxPH.fit(x=xt_tr, Z=Zt_tr, c=ct_tr)
     grid = np.array([3.0, 6.0, 9.0])
+    scores = {}
     for name, m, risk in [('forest', rsf, None),
                           ('Cox', cox_t, Zt_te @ cox_t.beta)]:
         S_m = survival_probability(m, Zt_te, grid)
@@ -2480,6 +2862,7 @@ is compared with a Cox model on the same metrics:
                                        x_train=xt_tr, c_train=ct_tr)
         C = rsf.score(xt_te, Zt_te, ct_te) if risk is None else \
             score(xt_te, ct_te, risk)
+        scores[name] = ibs_m, C
         print(f'{name:6s}  IBS = {ibs_m:.3f}   C = {C:.3f}')
 
 With ten shallow trees the forest already edges out a Cox model that cannot
@@ -2488,6 +2871,13 @@ proportional cost in time. Setting ``kind='weibull'`` (the default) gives
 parametric leaves and handles left and interval censoring and truncation, but
 fits a likelihood at every candidate split and is much slower. Fitted trees and
 forests serialise like every other model (next section).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert scores['forest'][0] < scores['Cox'][0], scores     # IBS
+    assert scores['forest'][1] > scores['Cox'][1], scores     # C
 
 Saving and loading a fitted model
 ---------------------------------

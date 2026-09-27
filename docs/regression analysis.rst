@@ -194,6 +194,12 @@ A tiny example makes the formula concrete. Four units fail in turn at times 1, 2
     print('by hand          :', round(by_hand, 6))
     print('surpyval (-neg_ll):', round(-cox_toy.neg_ll(np.array([b])), 6))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(by_hand, -cox_toy.neg_ll(np.array([b])))
+
 **Tied failure times.** The argument above assumes one failure at each time. With ties (times rounded to days, inspections, genuinely discrete time) there are several conventions, chosen with ``method=``:
 
 - **Breslow** [Breslow1974reg]_ treats the :math:`d_k` tied units as if each failed against the full risk set: the log term becomes :math:`d_k \log \sum_{j \in R_k} n_j e^{\beta' Z_j}`. Simple and fast, but it biases :math:`\hat\beta` towards zero when ties are heavy.
@@ -580,6 +586,12 @@ with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conve
     # comparable pairs: (1,2) (1,3) (1,4) (3,4); (2,*) are not, 2 was censored
     # all four are ranked correctly
     score(x_c, c_c, risk)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert score(x_c, c_c, risk) == 1.0
 
 Survival trees and forests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -59,6 +59,12 @@ function. The shape :math:`\beta \approx 2.1` is greater than one, which says
 the hazard is increasing: these bearings wear out. The full list of functions
 every model shares is in :doc:`Conventions`.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.params[1], 1) == 2.1, model.params
+
 Censored data: one extra argument
 ---------------------------------
 
@@ -90,6 +96,15 @@ sooner and more abruptly than they do. Throwing away information about
 survivors systematically biases a life estimate downwards, which is why getting
 censoring right is the heart of survival analysis. :doc:`Types of Data` explains
 every kind of censoring and truncation SurPyval supports.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert c.sum() == 5                          # "the five bearings"
+    _cens, _naive = censored_model.params, naive_model.params
+    assert np.all(np.abs(_cens / model.params - 1) < 0.1), _cens
+    assert _naive[0] < _cens[0] and _naive[1] > _cens[1], _naive
 
 A tour of the model families
 ----------------------------
@@ -171,6 +186,13 @@ of condition 0. Other families act on the hazard (``WeibullPH``,
 follow an engineering life-stress relationship such as the Arrhenius or
 power law. Theory: :doc:`regression analysis`. How-to:
 :doc:`Regression Modelling with SurPyval`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0.4 < Z.mean() < 0.6, Z.mean()        # "about half"
+    assert round(aft.params[-1], 1) == -0.6, aft.params
 
 Competing risks
 ~~~~~~~~~~~~~~~

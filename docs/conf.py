@@ -45,6 +45,10 @@ extensions = [
 # Code in ``.. jupyter-execute::`` directives runs in a fresh kernel per
 # document at build time; outputs and matplotlib figures are embedded in
 # the built HTML, so they always reflect the installed version of surpyval.
+# Numbers quoted in the prose are checked by hidden cells (``:hide-code:``
+# and ``:hide-output:``) holding ``assert`` statements: a failing one raises
+# an ExtensionError that stops the build (see "Checking the numbers quoted in
+# the text" in Contributing.rst).
 jupyter_execute_default_kernel = "python3"
 
 # copybutton_prompt_text = ">>> "

@@ -45,6 +45,15 @@ When you call ``fit()``, SurPyval validates the arrays, converts them to numpy, 
 
 Notice three things. The two right censored values at 2 have been merged into one row with ``n = 2``. Because one row is an interval, ``x`` is stored as two columns, with the lower and upper values equal for the rows that are not intervals (with no interval row, ``x`` is stored as one column). And the scalar ``tl=0`` has been expanded to a ``[tl, tr]`` row for every observation, with no right truncation (``inf``). Parametric fitters accept a ``SurpyvalData`` object directly through ``fit_from_surpyval_data``, and ``SurpyvalData.to_json`` / ``SurpyvalData.from_json`` save and restore the data itself. ``to_json()`` returns JSON text, or writes a file when given a path; ``from_json`` parses a string as JSON *text*, so to read a file pass a ``pathlib.Path``: ``SurpyvalData.from_json(Path("data.json"))``.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _row = (data.x[:, 0] == 2) & (data.c == 1)
+    assert data.n[_row].tolist() == [2], data.n
+    assert data.x.ndim == 2 and data.x.shape[1] == 2
+    assert np.all(data.t[:, 0] == 0) and np.all(np.isinf(data.t[:, 1]))
+
 The xrd format
 ~~~~~~~~~~~~~~
 
@@ -297,6 +306,16 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
         print(f"{name:16s}", np.round(m.ff([0, 5, 15, 1e6]), 4))
 
 Reading across the rows: the offset model has not started by 5; the LFP model levels off at 0.3; the zero-inflated model starts at 0.1; and the combined model starts at 0.1 and levels off at 0.3, because the 0.1 at zero is part of the 0.3 that ever fails. See :doc:`Parametric SurPyval Modelling` for fitting these models to data, and :doc:`applications` for an LFP model used to design a burn-in test.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _F = {k: m.ff([0, 5, 15, 1e6]) for k, m in variants.items()}
+    assert _F["offset gamma=5"][1] == 0
+    assert np.isclose(_F["lfp p=0.3"][-1], 0.3)
+    assert np.isclose(_F["zi f0=0.1"][0], 0.1)
+    assert np.allclose(_F["lfp + zi"][[0, -1]], [0.1, 0.3])
 
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~

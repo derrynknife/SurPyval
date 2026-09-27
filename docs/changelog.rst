@@ -4,6 +4,16 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Numbers quoted in the documentation are checked (#379).** The prose
+  around executed examples quoted outputs ("a shape of about 2.1", "the
+  lower AIC") that nothing verified, so they went stale when outputs
+  changed. Hidden cells now assert 263 such claims across 16 pages, and the
+  documentation build fails when one no longer holds. The first pass found
+  two stale statements in the offset section of *Parametric SurPyval
+  Modelling*: the starting offset is ``min(x)`` minus the data's mean
+  spacing, not ``min(x) - 1``, and the example's quoted moment-based shape
+  was from a different sample. See "Checking the numbers quoted in the
+  text" in :doc:`Contributing`.
 - **Stored results from R and Python survival software (#379).**
   ``surpyval/tests/reference`` compares SurPyval with 82 results computed
   once on shared fixtures (lung, heart, aml, ovarian, PBC, and small sets

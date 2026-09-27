@@ -55,9 +55,22 @@ demonstration of the data format; the worked example below has enough data to
 learn from.) The same fit with the covariates given per item:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (c == 0).sum() == 3
+
+.. jupyter-execute::
 
     Z_by_item = {1: [0.1], 2: [0.5], 3: [0.9]}
     ProportionalIntensityHPP.fit(x, Z_by_item, i=i, c=c).coeffs
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ProportionalIntensityHPP.fit(x, Z_by_item, i=i, c=c)
+                       .coeffs, model.coeffs)
 
 Predicting at a covariate setting
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -81,6 +94,12 @@ equals :math:`e^{(Z_2 - Z_1)\beta}`:
     ratio = model.cif(10.0, z2) / model.cif(10.0, z1)
     print("count ratio  :", round(float(ratio), 3))
     print("exp((z2-z1)b):", round(float(np.exp((z2 - z1) @ model.coeffs)), 3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(float(ratio), float(np.exp((z2 - z1) @ model.coeffs)))
 
 A worked example with known effects
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -150,6 +169,14 @@ Both intervals contain the true rate ratios (about 2.0 and 2.7). The
 coefficients are estimated reasonably well even by this constant-rate model;
 but, as the next section shows, the HPP is the wrong model for these motors.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _k, _true in enumerate([np.exp(0.7), np.exp(1.0)]):
+        _lo, _hi = np.exp(fleet_hpp.param_cb(f"beta_{_k}"))
+        assert _lo < _true < _hi, (_k, _lo, _hi)
+
 Proportional-Intensity NHPP
 ---------------------------
 
@@ -206,6 +233,15 @@ The Crow-AMSAA baseline recovers the wear-out shape (about 1.5) and scale
 (about 23, against the true 25), and the rate ratios, about 1.9 and 2.3, are
 within the precision that thirty motors allow of the true 2.0 and 2.7.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fleet.aic < fleet_hpp.aic
+    _alpha, _beta = fleet.params          # Crow-AMSAA scale and shape
+    assert round(_beta, 1) == 1.5 and round(_alpha) == 23, fleet.params
+    assert np.exp(fleet.coeffs).round(1).tolist() == [1.9, 2.3]
+
 .. note::
 
     The default ``Duane`` baseline describes the same power-law model in a
@@ -222,6 +258,12 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
 
     print("Duane      AIC:", round(duane.aic, 2))
     print("Crow-AMSAA AIC:", round(fleet.aic, 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(duane.aic, fleet.aic, atol=0.01)
 
 Prediction and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -268,6 +310,14 @@ covariate vector, so a missing (``nan``) value in it raises a ``ValueError``
     sims = fleet.time_terminated_simulation_data(40, z, items=5, seed=2)
     print("failures on five simulated motors:",
           [int((sims.c[sims.i == k] == 0).sum()) for k in range(1, 6)])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _sim = fleet.mcf([20, 40], z, items=500, seed=1)
+    _cif = fleet.cif(np.array([20, 40]), z)
+    assert np.all(np.abs(_sim / _cif - 1) < 0.05), (_sim, _cif)
 
 As for any Poisson process, the actual number of failures in a future period
 is Poisson distributed about the expected number, so a plug-in prediction
@@ -319,6 +369,14 @@ noticeable (see :doc:`Recurrent Event Regression Analysis`). The trend test,
 unsurprisingly, points to an increasing rate:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert fleet.residuals().mean() < 1
+    assert round((c == 0).sum() / len(np.unique(i))) == 6
+    assert fleet.trend_test().trend == "increasing"
+
+.. jupyter-execute::
 
     fleet.trend_test()
 
@@ -340,11 +398,19 @@ tells the two models of the motors apart:
 
 .. jupyter-execute::
 
-    print("PI-HPP  p-value:", round(fleet_hpp.cramer_von_mises(n_boot=30, seed=1).p_value, 3))
-    print("PI-NHPP p-value:", round(fleet.cramer_von_mises(n_boot=30, seed=1).p_value, 3))
+    p_hpp = fleet_hpp.cramer_von_mises(n_boot=30, seed=1).p_value
+    p_nhpp = fleet.cramer_von_mises(n_boot=30, seed=1).p_value
+    print("PI-HPP  p-value:", round(p_hpp, 3))
+    print("PI-NHPP p-value:", round(p_nhpp, 3))
 
 The constant-rate model is rejected at the 5% level, while the power-law model
 is consistent with the data.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert p_hpp < 0.05 < p_nhpp, (p_hpp, p_nhpp)
 
 See :doc:`Recurrent Event Regression Analysis` for the theory and references
 behind these models.

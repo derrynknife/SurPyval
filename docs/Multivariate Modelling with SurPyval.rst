@@ -61,6 +61,19 @@ the margins come back close to Weibull(10, 2) and LogNormal(2.5, 0.5). The
 model's ``repr`` summarises it:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _truth = [2.0, 10.0, 2.0, 2.5, 0.5]
+
+    def _rel_err(m):
+        est = np.r_[m.params, m.margins[0].params, m.margins[1].params]
+        return np.abs(est / _truth - 1)
+
+
+    assert np.all(_rel_err(model) < 0.05), _rel_err(model)
+
+.. jupyter-execute::
 
     print(model)
 
@@ -118,6 +131,14 @@ series' arrays ``(x, c, xl, xr, tl, tr)``:
     print("%d distinct rows; theta %.3f (counts) vs %.3f (rows)" % (
         len(uniq), by_count.params[0], by_row.params[0]))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # the same fit, to the optimiser's tolerance
+    assert abs(by_count.params[0] - by_row.params[0]) < 1e-3
+    assert np.isclose(by_count.log_likelihood, by_row.log_likelihood)
+
 Interval-censored entries need their bounds: a ``c`` of ``2`` without ``xl``
 and ``xr`` raises a ``ValueError``, as does any array of the wrong shape.
 
@@ -150,6 +171,16 @@ searches over every parameter at once:
         print("%s: theta = %.3f, Weibull = %s, LogNormal = %s  (%.2f s)" % (
             how, fit.params[0], np.round(fit.margins[0].params, 3),
             np.round(fit.margins[1].params, 3), time.perf_counter() - start))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # IFM and MLE "agree closely" (`fit` is the MLE fit from the loop)
+    _ifm = Clayton.fit(small, margins=[surv.Weibull, surv.LogNormal])
+    assert abs(_ifm.params[0] - fit.params[0]) < 0.02
+    for _a, _b in zip(_ifm.margins, fit.margins):
+        assert np.allclose(_a.params, _b.params, atol=0.01)
 
 The IFM first stage fits each margin with everything that belongs to it: its
 values and censoring codes, the row counts ``n`` and that series' own
@@ -222,6 +253,18 @@ to ranks in :math:`(0, 1)` (pseudo-observations) removes the margins and shows
 the copula itself; compare the data with samples from two fitted families:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert [m.k for m in fits.values()] == [4, 5, 5, 5, 5]
+    _ll = {k: m.log_likelihood for k, m in fits.items()}
+    _runner_up = max(v for k, v in _ll.items() if k != "Clayton")
+    assert _ll["Clayton"] - _runner_up > 100, _ll
+    _tau = fits["Clayton"].kendall_tau()
+    for _k in ["Gaussian", "Frank"]:
+        assert abs(fits[_k].kendall_tau() - _tau) < 0.03
+
+.. jupyter-execute::
 
     from scipy.stats import rankdata
 
@@ -254,6 +297,12 @@ Here is that failure on purpose, with data simulated from a Frank copula with
 :math:`\theta = -5` (Kendall's :math:`\tau \approx -0.46`):
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(Frank.kendall_tau(-5.0), 2) == -0.46
+
+.. jupyter-execute::
 
     from scipy.stats import kendalltau
 
@@ -267,6 +316,18 @@ Here is that failure on purpose, with data simulated from a Frank copula with
 Clayton and Gumbel collapse onto independence, with exactly its
 log-likelihood; Frank recovers :math:`\theta` and fits far better, with the
 Gaussian copula second.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _neg = {fam.name: fam.fit(neg, margins=[surv.Weibull, surv.LogNormal])
+            for fam in [Independence, Clayton, Gumbel, Frank, Gaussian]}
+    _ll = {k: m.log_likelihood for k, m in _neg.items()}
+    assert np.isclose(_ll["Clayton"], _ll["Independence"])
+    assert np.isclose(_ll["Gumbel"], _ll["Independence"])
+    assert sorted(_ll, key=_ll.get)[-2:] == ["Gaussian", "Frank"], _ll
+    assert abs(_neg["Frank"].params[0] + 5) < 0.25
 
 Censoring and truncation
 ------------------------
@@ -295,6 +356,12 @@ the copula parameter:
     )
     print("censored fraction:", round(c.mean(), 2))
     print("theta (censored) :", model_c.params)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(model_c.params[0] - 2) < 0.1, model_c.params
 
 What does a censored row contribute to the likelihood? The
 :doc:`Multivariate Analysis` page derives the rule: each row is the
@@ -340,6 +407,22 @@ model:
 Each pair agrees. The fit applies exactly these expressions, row by row, and
 the same four building blocks cover all sixteen combinations of codes.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pairs = [
+        (Clayton.pdf(u, v, th) * F1.df(10.0) * F2.df(18.0),
+         model.pdf([[10, 18]])),
+        (F1.df(10.0) * (1 - Clayton.du(u, v, th)),
+         (joint(10 + h) - joint(10 - h)) / (2 * h)),
+        (1 - u - v + Clayton.cdf(u, v, th), model.sf([[10, 18]])),
+        (Clayton.cdf(u, F2.ff(20.0), th) - Clayton.cdf(u, F2.ff(15.0), th),
+         model.cdf([[10, 20]]) - model.cdf([[10, 15]])),
+    ]
+    for _a, _b in _pairs:
+        assert np.isclose(np.ravel(_a)[0], np.ravel(_b)[0], rtol=1e-5)
+
 Interval and left censoring
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -375,6 +458,12 @@ left-censored entries have ``c == -1`` with the bound in ``x``:
 
 Even with every series-2 time reduced to a 5-unit interval, the copula
 parameter and both margins are recovered.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(_rel_err(model_mix) < 0.05), _rel_err(model_mix)
 
 Truncated observation
 ~~~~~~~~~~~~~~~~~~~~~
@@ -421,6 +510,18 @@ for this selection. Use ``how="MLE"`` whenever truncation of one series
 selects the rows of another; with every series truncated, all the margins are
 affected.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ifm = Clayton.fit(field, t=t, margins=[surv.Weibull, surv.LogNormal])
+    _e = _rel_err(_ifm)
+    assert np.all(_e[1:3] < 0.03), _e                  # Weibull close
+    _mu, _sigma = _ifm.margins[1].params
+    assert _mu > 2.55 and _sigma < 0.47, (_mu, _sigma)  # shifted
+    assert _ifm.params[0] < 1.5, _ifm.params            # far too little
+    assert np.all(_rel_err(fit) < 0.03), _rel_err(fit)  # MLE: all right
+
 Censoring that depends on the other series
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -455,6 +556,16 @@ dependence (:math:`\theta` of 1.13 against 2). The joint fit recovers both. When
 disagree like this, look for truncation or censoring of one series that is
 driven by the other; when they agree, the faster IFM fit is fine.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ifm = Clayton.fit(x_dep, c=c_dep, margins=[surv.Weibull, surv.LogNormal])
+    _mu, _sigma = _ifm.margins[1].params
+    assert round(_mu, 2) == 2.70 and _sigma > 0.5, (_mu, _sigma)
+    assert round(_ifm.params[0], 2) == 1.13, _ifm.params
+    assert np.all(_rel_err(fit) < 0.03), _rel_err(fit)
+
 Working with a fitted model
 ---------------------------
 
@@ -481,6 +592,12 @@ Spearman's rho is estimated by simulation for the Clayton and Gumbel copulas
 (closed forms are used for Frank, Gaussian and Independence), so for those
 two treat its third decimal place with caution.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(lower, 2) == 0.71 and upper == 0, (lower, upper)
+
 Conditional probabilities
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -502,6 +619,15 @@ much more likely; a late one makes it less likely. Conditioning on *survival*
 rather than on an exact failure time uses the joint survival function: by the
 definition of conditional probability,
 :math:`P(X_2 > x_2 \mid X_1 > x_1) = S(x_1, x_2) / S_1(x_1)`:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p0 = model.margins[1].ff(x2_query)
+    _p = [model.conditional_cdf([[a, x2_query]], given_dim=0)[0]
+          for a in [2.0, 10.0, 20.0]]
+    assert _p[0] > 1.5 * _p0 and _p[-1] < _p0, (_p0, _p)
 
 .. jupyter-execute::
 
@@ -535,6 +661,13 @@ At short times the redundant pair is many times more likely to have failed
 than the independence assumption suggests, because of Clayton's lower-tail
 dependence: redundancy buys much less protection against common-cause early
 failure than the margins alone would imply.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _ratio = model.cdf(t_grid) / indep.cdf(t_grid)
+    assert _ratio[0] > 5 and np.all(np.diff(_ratio) < 0), _ratio
 
 Plotting and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -646,6 +779,22 @@ probability of joint survival beyond the 95% quantile. When the quantity you car
 redundant units failing early, both components outliving a warranty — the
 choice of family matters as much as the strength of dependence.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _early, _late = {}, {}
+    for _name, _fam in families.items():
+        _m = _fam.from_params(params[_name], margins=margins)
+        _early[_name] = _m.cdf([[q_lo, q_lo]])[0]
+        _late[_name] = _m.sf([[q_hi, q_hi]])[0]
+    assert max(_early, key=_early.get) == "Clayton", _early
+    assert max(_late, key=_late.get) == "Gumbel", _late
+    assert min(_late, key=_late.get) == "Clayton", _late
+    for _name in ["Frank", "Gaussian"]:
+        assert np.isclose(_early[_name], _late[_name], rtol=1e-3)
+    assert _early["Frank"] < _early["Gaussian"]
+
 Defining your own copula family
 -------------------------------
 
@@ -688,6 +837,16 @@ family, whose parameter is hard to pin down with 1,000 rows. The simulated
 tau agrees with the family's closed form,
 :math:`1 - 2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}/(3\theta^2) = 0.145`
 at the fitted :math:`\theta`, to within the simulation error.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _th = amh_fit.params[0]
+    assert round(_th, 2) == 0.55, _th
+    _tau = 1 - 2 * (_th + (1 - _th) ** 2 * np.log(1 - _th)) / (3 * _th**2)
+    assert round(_tau, 3) == 0.145, _tau
+    assert abs(amh_fit.kendall_tau() - _tau) < 0.01
 
 Two notes. Without ``init`` the search starts from a point strictly inside
 the ``bounds``: :math:`\theta = 1` when that is inside them, otherwise the

@@ -175,6 +175,13 @@ This is to say that the method of moments solution for the parameter of the expo
     print("1 / mean(x)  :", 1 / x.mean())
     print("MOM estimate :", surv.Exponential.fit(x, how='MOM').params[0])
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(surv.Exponential.fit(x, how='MOM').params[0],
+                      1 / x.mean())
+
 This is an easy result. When we extend to other distributions with more than one parameter, we need one equation per unknown: a distribution with :math:`k` free parameters is matched on its first :math:`k` moments, and an offset adds one more parameter and so one more moment. Such simple analytical solutions are not always available. A few distributions have them -- the Uniform, Beta and Beta-Geometric solve their moment equations in closed form, and SurPyval uses those solutions directly when there is no offset and nothing is fixed; an offset LogNormal matches its mean, variance and skewness in closed form too -- but in general numeric optimisation is needed. SurPyval uses numeric optimisation to compute the parameters for these distributions.
 
 One closed form is SurPyval's own choice and worth knowing about: for the
@@ -337,6 +344,13 @@ Blom's positions and check that SurPyval does the same thing:
     model = surv.Weibull.fit(x, how='MPP', heuristic='Blom')
     print("how='MPP':", model.params)
     model.plot(heuristic='Blom')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.params, [np.exp(-intercept / slope), slope])
+    assert np.all(np.abs(model.params / [10.0, 2.0] - 1) < 0.15)
 
 The two agree exactly, and with twenty points they land near the
 :math:`\alpha = 10`, :math:`\beta = 2` used to simulate the data. On the plot
@@ -609,6 +623,12 @@ the model reports.
     print("by hand   :", -ll)
     print("neg_ll()  :", model.neg_ll())
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(-ll, model.neg_ll(), rtol=1e-12)
+
 An easy and intuitive way to understand this is to compare these two possibilities. With some randomly generated data with a few values made to be left censored, and a few to be right censored. We get:
 
 .. image:: images/mle-3.png
@@ -733,6 +753,13 @@ always go to the optimiser. A closed-form fit reports ``optimizer`` as
     print("fitted rate     :", model.params[0])
     print("failures / time :", 3 / np.sum(x - np.array(tl)))
     print("optimizer       :", model.optimizer)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(model.params[0], 3 / np.sum(x - np.array(tl)))
+    assert model.optimizer == "closed-form"
 
 .. _numerical-mle:
 
@@ -971,6 +998,14 @@ and it is worth being precise because the continuous intuition misleads here:
     print("H(k)              :", G.Hf(k, p))
     print("cumsum of h(k)    :", np.cumsum(G.hf(k, p)))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(G.hf(k, p), G.df(k, p) / G.sf(k - 1, p))
+    assert np.allclose(G.Hf(k, p), -np.log(G.sf(k, p)))
+    assert not np.allclose(G.Hf(k, p), np.cumsum(G.hf(k, p)))
+
 The likelihood follows directly: an exact failure on cycle :math:`k`
 contributes :math:`\ln P(T = k)`; a unit still working after cycle :math:`k`
 (right censored) contributes :math:`\ln P(T > k)`; a left-censored one
@@ -1059,6 +1094,13 @@ has no ``param_cb``.
     z = 1.959964                      # the 97.5% normal quantile
     print("by hand   :", beta * np.exp(np.array([-z, z]) * se / beta))
     print("param_cb  :", model.param_cb('beta'))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(beta * np.exp(np.array([-z, z]) * se / beta),
+                       model.param_cb('beta'), rtol=1e-6)
 
 **Wald bounds on a function** (``cb``) apply the delta method once more, to a
 function of the parameters: the variance of :math:`\hat{R}(x)` is
@@ -1200,6 +1242,13 @@ Because a geometric mean is largest when its terms are equal, this is maximised 
     D = np.diff(np.concatenate([[0], u, [1]]))
     print("spacings :", D.round(3))
     print("sum      :", D.sum())
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(D.sum(), 1.0)
+    assert D.max() / D.min() > 10                 # "far from equal"
 
 Why bother, when MLE already works so well? The answer is those two *end* spacings, :math:`D_{1} = F(x_{(1)}) - 0` and :math:`D_{n+1} = 1 - F(x_{(n)})`. They let MPS "see" the room beyond the smallest and largest observations — information MLE simply throws away. This matters most when a parameter controls where the distribution's support *starts or ends*: an offset (three-parameter) distribution, or a finitely bounded one such as the Uniform. There the likelihood is badly behaved, because MLE can drive the density to infinity by sliding the support boundary right up against the most extreme data point — a degenerate, unbounded likelihood. MPS cannot be fooled this way: pushing the boundary onto :math:`x_{(1)}` forces the first spacing :math:`D_{1}` to zero, and :math:`\ln 0 = -\infty` is the *worst* possible score, so the estimator is pulled back to a sensible interior solution. This is exactly why, in the :doc:`Parametric SurPyval Modelling` notes, ``how='MPS'`` places the Uniform's end points outside the sample instead of on its extremes, and fits an offset Log-Logistic to ten points on which the MLE fails.
 
