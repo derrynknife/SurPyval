@@ -328,9 +328,10 @@ class BuckleyJamesModel(SerialisableMixin):
             r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
         # A missing covariate (a DataFrame row with a nan) gives nan, as in
         # the other families; the residual lookup read it as the last step
-        # (survival 0).
+        # (survival 0). So does a missing time, which ``positive`` read as
+        # "not after time 0" (survival 1).
         out = np.where(positive, self._resid_sf(r), 1.0)
-        return np.where(np.isnan(r), np.nan, out)
+        return np.where(np.isnan(r) | np.isnan(x), np.nan, out)
 
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)`` for a single covariate
