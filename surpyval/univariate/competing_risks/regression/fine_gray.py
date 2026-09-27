@@ -270,11 +270,14 @@ class FineGrayModel(SerialisableMixin):
         vector (a 1-D array or a single row), used at every time, or one
         row per time in ``x`` (row ``i`` with ``x[i]``). The CIF is flat
         before the first event time and after the last (the baseline is a
-        step function estimated only on the observed range).
+        step function estimated only on the observed range). A missing
+        (``NaN``) time or covariate gives ``nan`` in its place.
         """
         x = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
         rows = paired_covariate_rows(Z, x.size, np.size(self.beta))
         H0 = step_at(self._times, self._cumhaz, x, before=0.0)
+        # step_at reads a nan time as the value after the last jump.
+        H0 = np.where(np.isnan(x), np.nan, H0)
         return 1.0 - np.exp(-H0 * np.exp(rows @ self.beta))
 
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
@@ -334,7 +337,8 @@ class FineGray_:
         x : array_like
             Observed times.
         Z : ndarray
-            Covariate matrix, one row per observation.
+            Covariate matrix, one row per observation. Rows with a missing
+            (``NaN``) or infinite covariate are dropped, with a warning.
         e : array_like
             Event-type (cause) labels; ``None`` for a censored observation.
         c : array_like, optional

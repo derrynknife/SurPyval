@@ -75,8 +75,8 @@ Lower-level helpers in ``surpyval.utils``, used by the handlers above:
 
 ``surpyval.utils`` also holds the input validators the fitters call
 (``check_*`` and ``validate_*`` functions such as ``validate_coxph`` and
-``validate_cr_inputs``, and ``optional_column``, ``wrangle_Z``,
-``validate_1d`` and ``validate_float_array``). They are internal: their
+``validate_cr_inputs``, and ``optional_column``, ``validate_1d`` and
+``validate_float_array``). They are internal: their
 behaviour is covered by the fitters' own documentation, and they may
 change without notice.
 

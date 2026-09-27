@@ -326,8 +326,9 @@ class ParameterSubstitutionFitter(
         # numpy error.
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         # A 1-D stress vector (one stress variable) becomes a single column
-        # so the per-stress masking in the initialiser works (#261).
-        Z_arr = np.asarray(Z)
+        # so the per-stress masking in the initialiser works (#261). As
+        # floats, so a ``None`` is a missing value, dropped with the rest.
+        Z_arr = np.asarray(Z, dtype=float)
         if Z_arr.ndim == 1:
             Z_arr = Z_arr.reshape(-1, 1)
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)

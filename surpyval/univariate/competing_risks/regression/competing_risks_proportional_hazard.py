@@ -34,7 +34,6 @@ from surpyval.univariate.regression.regression_data import (
     serialise_covariate_meta,
 )
 from surpyval.utils import (
-    _get_idx,
     is_missing_event,
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
@@ -214,27 +213,31 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         event: Any = None,
         interp: str = "step",
     ) -> npt.NDArray:
-        idx, rev = _get_idx(self.x, x)
+        # The baseline step at each time, in the order the times were given,
+        # so that one covariate row per time pairs row ``i`` with ``x[i]``
+        # (the steps used to be read at the *sorted* times and multiplied by
+        # the rows in the given order, mismatching them for unsorted ``x``).
+        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+        idx = np.searchsorted(self.x, x_arr, side="right") - 1
+        # Query times before the first event have index -1, which would
+        # otherwise wrap to the last step value; the step functions are all
+        # zero there (#253). A missing (NaN) time is nan: searchsorted puts
+        # it after the last event, the value at t = inf.
+        base = np.where(idx[None, :] < 0, 0.0, arr[:, np.maximum(idx, 0)])
+        base = np.where(np.isnan(x_arr), np.nan, base)
 
         if event is not None:
             if event not in self.event_idx_map:
                 raise ValueError("Unrecognised event type for this model")
             e_i = self.event_idx_map[event]
-            out = (arr[e_i, idx] * self.phi_e(Z, e_i))[rev]
-        else:
-            # All causes combined: each cause contributes with its OWN
-            # coefficients, so the all-cause (cumulative) hazard is the sum
-            # of H0_e(t) * exp(beta_e'Z), not a single summed-coefficient
-            # term.
-            total = sum(
-                arr[e_i, idx] * self.phi_e(Z, e_i)
-                for e_i in self.event_idx_map.values()
-            )
-            out = total[rev]
-        # Query times before the first event have index -1, which would
-        # otherwise wrap to the last step value; the step functions are all
-        # zero there (#253).
-        return np.where(idx[rev] < 0, 0.0, out)
+            return base[e_i] * self.phi_e(Z, e_i)
+        # All causes combined: each cause contributes with its OWN
+        # coefficients, so the all-cause (cumulative) hazard is the sum of
+        # H0_e(t) * exp(beta_e'Z), not a single summed-coefficient term.
+        return sum(
+            base[e_i] * self.phi_e(Z, e_i)
+            for e_i in self.event_idx_map.values()
+        )
 
     def hf(
         self,
@@ -373,7 +376,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             # Times before the first event would wrap to the last value
             # (#253).
             out[at] = np.where(idx < 0, 0.0, cif[np.maximum(idx, 0)])
-        return out
+        # A missing (NaN) time is nan, not the incidence at t = inf.
+        return np.where(np.isnan(x_flat), np.nan, out)
 
     def _product_limit_survival(
         self, Z: npt.ArrayLike
@@ -531,7 +535,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             Failure or censoring times.
 
         Z : ndarray like
-            Covariate matrix, one row per observation.
+            Covariate matrix, one row per observation. Rows with a missing
+            (``NaN``) or infinite covariate are dropped, with a warning.
 
         e : array like
             The cause of each failure; ``None`` (or ``NaN``) for a

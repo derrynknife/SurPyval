@@ -1705,8 +1705,12 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     never saw, or one missing from ``C(g, levels=[...])``) raises a
     ``ValueError`` naming the column and the levels: ``formulaic`` codes
     it as the reference level, with only a ``DataMismatchWarning`` (#371).
+    So does, with a fitted spec, a level that had no rows in the fitted
+    data; fitting a formula with such a level warns and records it (#377).
     """
     from surpyval.univariate.regression.regression_data import (
+        record_empty_levels,
+        refuse_empty_levels,
         unseen_levels_error,
     )
 
@@ -1734,6 +1738,11 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
                 pass
         raise unseen_levels_error(spec, positional, str(mismatch)) from None
     spec = model_matrix.model_spec
+    if isinstance(source, str):
+        # The rows kept (no missing value) are those the model is fitted to.
+        record_empty_levels(spec, positional.loc[model_matrix.index])
+    else:
+        refuse_empty_levels(source, positional)
     if len(model_matrix) != len(positional):
         model_matrix = model_matrix.reindex(range(len(positional)))
     return model_matrix, spec
@@ -1780,21 +1789,6 @@ def wrangle_and_check_form_and_Z_cols(
     # value made Z one row short of x.
     mask = finite_covariate_mask(Z)
     return Z[mask], mask, form, feature_names, model_spec
-
-
-def wrangle_Z(Z: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
-    Z = np.array(Z)
-
-    if Z.ndim == 1:
-        Z = np.atleast_2d(Z).T
-    elif Z.ndim == 2:
-        pass
-    else:
-        raise ValueError("Covariate matrix must be two dimensional")
-
-    mask = ~np.any(np.isnan(Z), axis=1)
-
-    return Z[mask], mask
 
 
 def validate_cr_df_inputs(
@@ -1902,40 +1896,6 @@ def _check_an_ids_tl_and_x(
         raise ValueError(
             "Missing or doubled-up time windows for item {id}".format(id=id)
         )
-
-
-def validate_tv_coxph(
-    id: npt.ArrayLike,
-    tl: npt.ArrayLike,
-    x: npt.ArrayLike,
-    Z: npt.ArrayLike,
-    c: "npt.ArrayLike | None",
-    n: "npt.ArrayLike | None",
-) -> tuple:
-    x_a, c_a, n_a, t_a = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
-
-    if id is None:
-        warnings.warn("No id provided, model fitted by coherence not checked")
-    else:
-        id_arr = np.array(id)
-        tl_arr = np.asarray(tl)
-        for i in id_arr:
-            tl_i = tl_arr[id_arr == i]
-            x_i = x_a[id_arr == i]
-            _check_an_ids_tl_and_x(i, tl_i, x_i)
-
-    # One validation pass is enough: mask the already-validated arrays
-    # (including the truncation bounds — the old second xcnt_handler call
-    # used the unmasked tl and would raise a confusing length error
-    # whenever wrangle_Z actually dropped NaN rows).
-    Z_arr, mask = wrangle_Z(Z)
-    x_a, c_a, n_a, t_a = (arr[mask] for arr in (x_a, c_a, n_a, t_a))
-    x_a, c_a, n_a = (arr.astype(float) for arr in [x_a, c_a, n_a])
-    Z_arr = Z_arr.astype(float)
-
-    check_Z_and_x(Z_arr, x_a)
-
-    return t_a[:, 0], x_a, Z_arr, c_a, n_a
 
 
 def validate_tv_coxph_df_inputs(
@@ -2101,8 +2061,8 @@ def validate_coxph(
         raise ValueError("Covariate matrix must be two dimensional")
     check_covariate_rows(Z_arr, x_a.shape[0])
     # Rows with a NaN / infinite covariate are dropped with a warning, as
-    # every regression fitter does (wrangle_Z dropped NaN silently and let
-    # an infinity through to the partial likelihood).
+    # every regression fitter does (they used to be dropped silently, and
+    # an infinity let through to the partial likelihood).
     mask = finite_covariate_mask(Z_arr)
     x_a, c_a, n_a, tl_a = (arr[mask] for arr in (x_a, c_a, n_a, tl_a))
     Z_arr = Z_arr[mask]
@@ -2123,15 +2083,22 @@ def validate_fine_gray_inputs(
     x_a, c_a, n_a, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
     e_arr = np.array(e)
-    Z_arr, mask = wrangle_Z(Z)
-    # ``mask`` has one entry per covariate row: check the count before it
-    # indexes the data (a mismatch was a bare IndexError from the mask).
-    check_covariate_rows(mask, x_a.shape[0])
+    Z_arr = np.array(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    # Check the row count before the mask indexes the data (a mismatch was
+    # a bare IndexError from the mask).
+    check_covariate_rows(Z_arr, x_a.shape[0])
+    # Rows with a NaN / infinite covariate are dropped with a warning, as
+    # every regression fitter does (they used to be dropped silently here).
+    mask = finite_covariate_mask(Z_arr)
     x_a, c_a, n_a, e_arr = (arr[mask] for arr in (x_a, c_a, n_a, e_arr))
+    Z_arr = Z_arr[mask]
 
     # Set all dtypes to float. Very poor results otherwise.
     x_a, c_a, n_a = (arr.astype(float) for arr in [x_a, c_a, n_a])
-    Z_arr = Z_arr.astype(float)
 
     check_e_and_x(e_arr, x_a)
     check_Z_and_x(Z_arr, x_a)

@@ -19,7 +19,7 @@ import pandas as pd
 from formulaic import Formula, ModelSpec
 from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
-from surpyval.utils import formula_model_matrix
+from surpyval.utils import _caller_stacklevel, formula_model_matrix
 
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
@@ -124,8 +124,8 @@ def prepare_Z(
     If ``Z`` is a pandas DataFrame, the columns are selected using the
     ``feature_names`` and/or ``model_spec`` that were stored when the model was
     fit from a DataFrame, ensuring the same covariates (and encoding) are used
-    for prediction. Any other input is returned unchanged so that the existing
-    array based interface keeps working.
+    for prediction. Any other input is read as an array of floats, in the
+    fitted column order.
 
     Parameters
     ----------
@@ -138,12 +138,15 @@ def prepare_Z(
 
     Returns
     -------
-    Z : numpy.ndarray or array_like
-        A numeric design matrix when ``Z`` was a DataFrame, otherwise ``Z``
-        unchanged.
+    Z : numpy.ndarray
+        The numeric design matrix: from a DataFrame, the recorded columns
+        (or the formula's expansion); otherwise ``Z`` as a float array, with
+        ``None`` read as a missing value (``nan``).
     """
     if not isinstance(Z, pd.DataFrame):
-        return np.asarray(Z)
+        # As floats: a list (or object array) holding ``None`` is then a
+        # missing value, predicted as nan, not a TypeError from ``Z @ beta``.
+        return np.asarray(Z, dtype=float)
 
     if model_spec is not None:
         # A row with a missing value comes back as an all-nan row -- so its
@@ -205,8 +208,90 @@ def unseen_levels_error(
     directly; for any other categorical term (``C(k + 1)``, say), or
     without a ``model_spec``, ``formulaic``'s own ``detail`` is quoted
     instead. Missing values are not levels: their rows come back as
-    ``nan``.
+    ``nan``. A declared level with no rows in the fitted data (see
+    :func:`record_empty_levels`) is not a fitted level either.
     """
+    found, unresolved = _unknown_levels(model_spec, df)
+    if found:
+        return _unknown_levels_error(found)
+    terms = f" in the formula term(s) {unresolved}" if unresolved else ""
+    return ValueError(f"Unknown categorical level(s){terms}: {detail}")
+
+
+# The key under which the fitted state of a categorical formula term lists
+# its levels that had no rows in the fitted data (#377). ``formulaic``
+# reads only the state's "categories", so the key travels with the spec
+# (and, through ``model_spec_to_meta``, with a saved model) unused by it.
+EMPTY_LEVELS_KEY = "empty_levels"
+
+
+def record_empty_levels(model_spec: Any, df: pd.DataFrame) -> None:
+    """Warn about, and record on ``model_spec``, each categorical level
+    with no rows in the fitted data ``df``.
+
+    A level declared with ``C(g, levels=[...])`` (or an unused category of
+    a ``pd.Categorical`` column) gets a column of the design matrix, and
+    so a coefficient, even when no row of the data has it: nothing
+    estimates that coefficient, and a prediction for the level returned a
+    made-up number (#377). The fit goes ahead -- declaring the full list
+    of levels keeps the coding the same across data splits -- with one
+    ``UserWarning`` naming each column and its empty levels, which are
+    stored under ``EMPTY_LEVELS_KEY`` in the term's encoder state, so that
+    predicting for them raises as for a level the model was never fitted
+    with (:func:`refuse_empty_levels`). ``df`` holds the rows the design
+    matrix kept (those with no missing value). Terms that do not code a
+    column as is (``C(k + 1)``, say) are not checked.
+    """
+    found = []
+    for expr, (kind, state) in model_spec.encoder_state.items():
+        if kind is not Factor.Kind.CATEGORICAL:
+            continue
+        column = _factor_column(model_spec, str(expr), df.columns)
+        if column is None:
+            continue
+        values = df[column]
+        present = set(pd.unique(values[~pd.isna(values)]))
+        empty = [lv for lv in state.get("categories", []) if lv not in present]
+        if empty:
+            state[EMPTY_LEVELS_KEY] = empty
+            found.append(
+                f"column {column!r} has no rows at the level(s) "
+                f"{[_native(v) for v in empty]} of the formula term "
+                f"{str(expr)!r}"
+            )
+    if found:
+        warnings.warn(
+            "Categorical level(s) with no rows in the fitted data: "
+            + "; ".join(found)
+            + ". Their coefficients have nothing to be estimated from, so "
+            "predicting for such a level raises a ValueError, as for a "
+            "level the model was not fitted with.",
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+
+
+def refuse_empty_levels(model_spec: Any, df: pd.DataFrame) -> None:
+    """Raise the unknown-level ``ValueError`` if a row of ``df`` has a
+    level that had no rows in the fitted data (see
+    :func:`record_empty_levels`); ``formulaic`` codes it without
+    complaint, since the level was declared."""
+    if not any(
+        EMPTY_LEVELS_KEY in state
+        for _, state in model_spec.encoder_state.values()
+    ):
+        return
+    found, _ = _unknown_levels(model_spec, df)
+    if found:
+        raise _unknown_levels_error(found)
+
+
+def _unknown_levels(
+    model_spec: Any, df: pd.DataFrame
+) -> tuple[list[str], list[str]]:
+    """The description of each column of ``df`` with a value outside the
+    fitted levels of its categorical term, and the categorical terms that
+    cannot be checked by column."""
     found = []
     unresolved = []
     encoder_state = {} if model_spec is None else model_spec.encoder_state
@@ -218,25 +303,33 @@ def unseen_levels_error(
             unresolved.append(str(expr))
             continue
         values = df[column]
-        levels = list(state.get("categories", []))
+        empty = list(state.get(EMPTY_LEVELS_KEY, []))
+        levels = [lv for lv in state.get("categories", []) if lv not in empty]
         unseen = set(pd.unique(values[~pd.isna(values)])).difference(levels)
         if unseen:
             unseen_list = sorted((_native(v) for v in unseen), key=str)
-            found.append(
+            text = (
                 f"column {column!r} has the level(s) {unseen_list}, which "
                 f"are not among the levels {[_native(v) for v in levels]} "
                 f"of the formula term {str(expr)!r}"
             )
-    if found:
-        return ValueError(
-            "Unknown categorical level(s): "
-            + "; ".join(found)
-            + ". The model has no coefficient for a level it was not "
-            "fitted with; only the levels in the fitted data, or those "
-            "declared with C(column, levels=[...]), can be used."
-        )
-    terms = f" in the formula term(s) {unresolved}" if unresolved else ""
-    return ValueError(f"Unknown categorical level(s){terms}: {detail}")
+            declared = [v for v in unseen_list if v in empty]
+            if declared:
+                text += (
+                    f" ({declared} declared, but with no rows in the fitted "
+                    "data)"
+                )
+            found.append(text)
+    return found, unresolved
+
+
+def _unknown_levels_error(found: list[str]) -> ValueError:
+    return ValueError(
+        "Unknown categorical level(s): "
+        + "; ".join(found)
+        + ". The model has no coefficient for a level it was not fitted "
+        "with; only the levels with rows in the fitted data can be used."
+    )
 
 
 def _factor_column(model_spec: Any, expr: str, columns: Any) -> str | None:
@@ -391,16 +484,18 @@ def model_spec_to_meta(model_spec: Any) -> dict:
     - ``encoder_state``: each factor's kind and, for a categorical factor
       -- a bare column or a wrapped term such as ``C(g, levels=...)`` or
       ``C(g, contr.sum)`` -- its levels, in order, with their JSON types
-      (so integer levels stay integers);
+      (so integer levels stay integers), and those with no rows in the
+      fitted data (``"empty_levels"``, see :func:`record_empty_levels`);
     - ``transform_state``: the fitted statistics of the data-dependent
       transforms (``scale``, ``center``, ``poly``, ``bs``, ``cs``, ...);
     - ``data_variables``: the DataFrame columns the formula reads.
 
     The formula re-applies the contrasts and any literal ``levels=``
     itself. When the formula uses only bare categorical columns with
-    string levels and no transform state, the ``factor_levels`` /
-    ``numeric_features`` pair the v0.17 - v0.20 readers expect is written
-    too, so those releases restore it identically; any other formula
+    string levels, none of them empty, and no transform state, the
+    ``factor_levels`` / ``numeric_features`` pair the v0.17 - v0.20
+    readers expect is written too, so those releases restore it
+    identically; any other formula
     leaves the pair out, so an older release fails to rebuild it rather
     than rebuilding a different encoding.
 
@@ -427,8 +522,12 @@ def model_spec_to_meta(model_spec: Any) -> dict:
         }
         if "categories" in state and factor_levels is not None:
             levels = encoder_state[factor]["state"]["categories"]
-            if factor in data_variables and all(
-                isinstance(lv, str) for lv in levels
+            # A v0.20 reader would not know a level with no fitted rows
+            # (#377) and would predict for it, so it gets no pair.
+            if (
+                factor in data_variables
+                and EMPTY_LEVELS_KEY not in state
+                and all(isinstance(lv, str) for lv in levels)
             ):
                 factor_levels[factor] = levels
             else:

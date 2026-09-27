@@ -14,6 +14,7 @@ import numpy as np
 import numpy.ma as ma
 import numpy.typing as npt
 from numpy.linalg import inv, pinv
+from pandas import isna
 from scipy.optimize import minimize, root
 from scipy.stats import norm
 
@@ -29,6 +30,8 @@ from surpyval.univariate.nonparametric import (
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
+    finite_covariate_mask,
+    is_missing_event,
     validate_coxph,
     validate_coxph_df_inputs,
 )
@@ -316,6 +319,28 @@ def _sub(a: "npt.ArrayLike | None", mask: npt.NDArray) -> "npt.NDArray | None":
     if a is None:
         return None
     return np.asarray(a)[mask]
+
+
+def _strata_labels(strata: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
+    """The stratum labels as an array, and a mask of the missing ones.
+
+    A label is missing when it is ``None``, ``NaN`` or pandas ``NA``. A
+    list is read element by element: ``np.asarray(["a", np.nan])`` would
+    turn the ``NaN`` into the string ``"nan"``, a stratum of its own.
+    Missing entries of a list are filled with a present label, so the
+    array keeps the dtype the present labels alone would give; they are
+    dropped by the mask before the labels are used.
+    """
+    if isinstance(strata, (list, tuple)):
+        values = list(strata)
+        missing = np.array([is_missing_event(v) for v in values], dtype=bool)
+        present = [v for v, m in zip(values, missing) if not m]
+        fill = present[0] if present else 0
+        arr = np.asarray([fill if m else v for v, m in zip(values, missing)])
+        return arr, missing
+    arr = np.asarray(strata)
+    missing = np.asarray(isna(arr), dtype=bool).reshape(arr.shape)
+    return arr, missing
 
 
 def _kp_tie_term(
@@ -1132,7 +1157,9 @@ class CoxPH_:
             which is the standard remedy when proportional hazards fails for a
             nuisance covariate that you would rather not model. Prediction
             (``hf``/``Hf``/``sf``/``ff``/``df``) then takes a ``stratum``
-            argument to select that stratum's baseline.
+            argument to select that stratum's baseline. Observations with a
+            missing label (``None``, ``NaN`` or pandas ``NA``) are dropped,
+            with a warning.
 
         Returns
         -------
@@ -1233,26 +1260,52 @@ class CoxPH_:
         A separate Breslow baseline hazard is then estimated within each
         stratum.
         """
-        strata = np.asarray(strata)
-        if len(strata) != len(np.atleast_1d(x)):
+        labels_arr, missing = _strata_labels(strata)
+        if len(labels_arr) != len(np.atleast_1d(x)):
             raise ValueError("'strata' must have a label for each observation")
+        # The per-observation arrays, subset together as rows are dropped.
+        obs: list[Any] = [x, c, n, Z, tl]
         if Z is not None:
             # Checked before the per-stratum split, whose boolean mask
             # would otherwise raise a bare IndexError on a Z of the wrong
             # length.
-            check_covariate_rows(np.asarray(Z), len(strata))
+            check_covariate_rows(np.asarray(Z), len(labels_arr))
+            # Rows with a missing covariate are dropped here, once, rather
+            # than by each stratum's validation (one warning per stratum,
+            # each counting only that stratum's rows).
+            keep = finite_covariate_mask(np.asarray(Z, dtype=float))
+            if not keep.all():
+                obs = [_sub(a, keep) for a in obs]
+                labels_arr, missing = labels_arr[keep], missing[keep]
+        if missing.any():
+            # An observation without a stratum has no baseline to belong
+            # to; it is dropped, as a row with a missing covariate is.
+            if missing.all():
+                raise ValueError(
+                    "Every stratum label is missing; there is nothing to fit."
+                )
+            warnings.warn(
+                "Dropped {} of {} rows with a missing stratum label.".format(
+                    int(missing.sum()), missing.shape[0]
+                ),
+                UserWarning,
+                stacklevel=_caller_stacklevel(),
+            )
+            obs = [_sub(a, ~missing) for a in obs]
+            labels_arr = labels_arr[~missing]
+        x_o, c_o, n_o, Z_o, tl_o = obs
 
-        labels = np.unique(strata)
+        labels = np.unique(labels_arr)
         per_stratum = []
         n_params = None
         for s in labels:
-            mask = strata == s
+            mask = labels_arr == s
             xs, cs, ns_, tls, Zs = validate_coxph(
-                _sub(x, mask),
-                _sub(c, mask),
-                _sub(n, mask),
-                _sub(Z, mask),
-                _sub(tl, mask),
+                _sub(x_o, mask),
+                _sub(c_o, mask),
+                _sub(n_o, mask),
+                _sub(Z_o, mask),
+                _sub(tl_o, mask),
                 method,
             )
             if n_params is None:
@@ -1348,7 +1401,8 @@ class CoxPH_:
         strata_col: str, optional
             The column name of the stratum label. When supplied the model is
             fitted stratified (a separate baseline hazard per stratum, shared
-            coefficients); see :meth:`fit`.
+            coefficients); see :meth:`fit`. Rows with a missing label are
+            dropped, with a warning.
         tl_col: str, optional
             The column name of the left-truncation (delayed-entry) times,
             passed to :meth:`fit` as ``tl``. A subject enters the risk sets

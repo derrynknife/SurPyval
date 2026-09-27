@@ -256,7 +256,9 @@ The model can also simulate items with given covariates. ``mcf(x, Z)`` estimates
 the MCF by simulation (which, for these Poisson models, reproduces ``cif`` up
 to simulation noise), and ``time_terminated_simulation(T, Z, items)``,
 ``count_terminated_simulation(events, Z, items)`` and their ``..._data``
-versions work as for the models without covariates:
+versions work as for the models without covariates. Their ``Z`` is one item's
+covariate vector, so a missing (``nan``) value in it raises a ``ValueError``
+(see :ref:`missing-values`):
 
 .. jupyter-execute::
 

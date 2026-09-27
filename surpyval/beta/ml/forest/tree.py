@@ -12,7 +12,29 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils import check_covariate_rows, finite_covariate_mask
 from surpyval.utils.surpyval_data import SurpyvalData
+
+
+def drop_missing_covariate_rows(
+    data: SurpyvalData, Z: ArrayLike | NDArray
+) -> tuple[SurpyvalData, NDArray]:
+    """Pair ``Z`` with the data and drop the rows with a missing (NaN) or
+    infinite covariate from both, with one warning giving the count.
+
+    A NaN compares false with every split value, so such rows used to be
+    sent down the right-hand branch of every split on their missing feature
+    and kept in the fit without a word.
+    """
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim == 1:
+        # A 1-d Z is a single feature, one value per sample
+        Z = Z.reshape(-1, 1)
+    check_covariate_rows(Z, len(data))
+    mask = finite_covariate_mask(Z)
+    if mask.all():
+        return data, Z
+    return data[mask], Z[mask]
 
 
 class SurvivalTree(SerialisableMixin):
@@ -52,8 +74,7 @@ class SurvivalTree(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
     ) -> None:
-        self.data = data
-        self.Z = Z
+        self.data, self.Z = drop_missing_covariate_rows(data, Z)
 
         n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]
@@ -61,7 +82,7 @@ class SurvivalTree(SerialisableMixin):
 
         self.n_features_split = n_features
 
-        self.kind = parse_kind(kind, data)
+        self.kind = parse_kind(kind, self.data)
 
         self._root = build_tree(
             data=self.data,
@@ -110,6 +131,8 @@ class SurvivalTree(SerialisableMixin):
             observations).
         Z : array_like
             Covariate (feature) matrix, one row per observation. Required.
+            Rows with a missing (NaN) or infinite covariate are dropped,
+            with a warning giving the count.
         c : array_like, optional
             Censoring flags: 0 observed, 1 right, -1 left, 2 interval
             censored. Defaults to all observed.
@@ -142,7 +165,8 @@ class SurvivalTree(SerialisableMixin):
             The fitted tree. Its ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
             ``Hf``) evaluate the model of the leaf that a covariate vector
             ``Z`` falls in; a matrix ``Z`` gives one row per covariate
-            vector and one column per time.
+            vector and one column per time. A covariate vector with a
+            missing (NaN) value gives NaN.
 
         Examples
         --------
@@ -212,17 +236,34 @@ class SurvivalTree(SerialisableMixin):
             2-D ``Z``, an ``(n_rows, x.size)`` grid whose row ``i`` is the
             values for ``Z[i]``, as for
             :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
+            A covariate vector with a missing (NaN) value gives NaN, and
+            leaves the other rows unaffected.
         """
         # Prep input - make sure numpy array
         x = np.array(x, ndmin=1)
-        Z = np.array(Z, ndmin=1)
+        Z = np.array(Z, ndmin=1, dtype=float)
         if Z.ndim > 2:
             raise ValueError(
                 f"Z must be one covariate vector (1-D) or one per row "
                 f"(2-D), got {Z.ndim} dimensions"
             )
 
-        return self._root.apply_model_function(function_name, x, Z)
+        # A NaN compares false with every split value, so it used to be
+        # routed right at every split on its feature and given a number.
+        # A covariate vector with a missing value has no leaf: NaN out.
+        if Z.ndim == 1:
+            if np.isnan(Z).any():
+                return np.full(x.shape, np.nan)
+            return self._root.apply_model_function(function_name, x, Z)
+        missing = np.isnan(Z).any(axis=1)
+        if not missing.any():
+            return self._root.apply_model_function(function_name, x, Z)
+        res = np.full((Z.shape[0], x.size), np.nan)
+        if not missing.all():
+            res[~missing] = self._root.apply_model_function(
+                function_name, x, Z[~missing]
+            )
+        return res
 
     def sf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray

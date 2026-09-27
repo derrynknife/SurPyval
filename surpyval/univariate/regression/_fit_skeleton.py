@@ -255,9 +255,11 @@ def drop_nonfinite_covariates(
     starting values (with ``res.success`` False and no warning); Cox,
     Lin-Ying and Buckley-James already dropped such rows. A ``Z`` with the
     wrong number of rows is refused by name rather than failing as an
-    ``IndexError`` inside the observation-type split.
+    ``IndexError`` inside the observation-type split. ``Z`` is read as
+    floats, so a ``None`` in a list is a missing value too: it was kept as
+    an object array, and the fit failed after the drop with a TypeError.
     """
-    Z_arr = np.asarray(Z)
+    Z_arr = np.asarray(Z, dtype=float)
     check_covariate_rows(Z_arr, len(data))
     mask = finite_covariate_mask(Z_arr)
     if mask.all():

@@ -41,6 +41,7 @@ from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 from scipy.integrate import quad
 from scipy.optimize import brentq, minimize, minimize_scalar
 from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
@@ -53,7 +54,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.rng import as_generator
 
-from ._clock import StressClock, stress_row
+from ._clock import StressClock, covariates_by_name, stress_row
 
 __all__ = [
     "WienerProcess",
@@ -175,6 +176,28 @@ def _stress_design(
         z_ref = stress_row(stress_ref, q)
     scale = z_int.std(axis=0)
     return (z_int - z_ref) / scale, z_ref, scale
+
+
+def _fit_from_df(
+    fitter: Any,
+    df: pd.DataFrame,
+    x: str,
+    y: str,
+    i: str,
+    Z_cols: "str | list[str] | None",
+    fit_kwargs: dict,
+) -> Any:
+    """The shared body of the process fitters' ``fit_from_df``: fit from
+    the columns of ``df`` and record the covariate names on the model."""
+    cols = None
+    if Z_cols is not None:
+        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        fit_kwargs["Z"] = df[cols].to_numpy(dtype=float)
+    model = fitter.fit(
+        df[x].to_numpy(), df[y].to_numpy(), df[i].to_numpy(), **fit_kwargs
+    )
+    model.Z_cols = cols
+    return model
 
 
 def _minimise(
@@ -418,6 +441,10 @@ class FirstPassageProcessModel(SerialisableMixin):
     #: with ``Z``; both ``None`` otherwise.
     gamma: "npt.NDArray | None"
     stress_ref: "npt.NDArray | None"
+    #: The covariate columns of a model fitted with ``fit_from_df``, by
+    #: which a DataFrame ``Z`` is read; ``None`` for a model fitted from
+    #: arrays.
+    Z_cols: "list[str] | None" = None
 
     def __init__(
         self,
@@ -498,16 +525,23 @@ class FirstPassageProcessModel(SerialisableMixin):
 
         Parameters
         ----------
-        Z : array like
-            One stress row.
+        Z : array like or DataFrame
+            One stress row (``nan`` for a missing value gives ``nan``). A
+            model fitted with ``fit_from_df`` also takes a one-row
+            DataFrame, read by column name.
         """
         if self.gamma is None or self.stress_ref is None:
             raise ValueError(
                 "This process model was fitted without stress, so it has no "
                 "acceleration factor"
             )
-        z = stress_row(Z, self.gamma.size)
+        z = stress_row(self._covariates(Z), self.gamma.size, allow_nan=True)
         return float(np.exp(self.gamma @ (z - self.stress_ref)))
+
+    def _covariates(self, Z: Any) -> Any:
+        """``Z`` as an array; a DataFrame is read by the fitted names."""
+        refit = type(self).__name__.replace("Model", "") + ".fit_from_df"
+        return covariates_by_name(Z, self.Z_cols, refit)
 
     def _clock(self, Z: Any) -> "StressClock | None":
         """The clock for stress ``Z``, validating the argument."""
@@ -525,7 +559,20 @@ class FirstPassageProcessModel(SerialisableMixin):
                 "profile."
             )
         assert self.gamma is not None
-        return StressClock(self.acceleration_factor, self.gamma.size, Z)
+        return StressClock(
+            self.acceleration_factor, self.gamma.size, self._covariates(Z)
+        )
+
+    @staticmethod
+    def _missing(res: npt.NDArray, *times: npt.NDArray) -> npt.NDArray:
+        """``res`` with ``nan`` wherever a time is ``nan`` -- the calendar
+        time, or the clock time, which a missing stress makes ``nan``. The
+        first-passage hooks read a ``nan`` time as not yet positive, so
+        without this it gave ``sf = 1`` and ``ff = df = 0``."""
+        missing = np.zeros(np.shape(res), dtype=bool)
+        for t in times:
+            missing |= np.isnan(np.asarray(t, dtype=float))
+        return np.where(missing, np.nan, res)
 
     def _stress_repr(self) -> str:
         if self.gamma is None or self.stress_ref is None:
@@ -554,6 +601,8 @@ class FirstPassageProcessModel(SerialisableMixin):
         if self.gamma is not None and self.stress_ref is not None:
             out["gamma"] = self.gamma.tolist()
             out["stress_ref"] = self.stress_ref.tolist()
+        if self.Z_cols is not None:
+            out["Z_cols"] = list(self.Z_cols)
         return stamp_schema(out)
 
     @classmethod
@@ -564,12 +613,14 @@ class FirstPassageProcessModel(SerialisableMixin):
             cls._model_tag,
             "a {} model".format(cls._human_name),
         )
-        return cls(
+        model = cls(
             *(model_dict[name] for name in cls.param_names),
             model_dict["threshold"],
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
         )
+        model.Z_cols = model_dict.get("Z_cols")
+        return model
 
     # -- the failure-time distribution --------------------------------------
 
@@ -580,24 +631,24 @@ class FirstPassageProcessModel(SerialisableMixin):
         For a model fitted with stress, ``Z`` is required: one stress row for a
         constant stress, or a
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` for
-        a stress profile. The same applies to every method below.
+        a stress profile; a model fitted with ``fit_from_df`` also takes a
+        one-row DataFrame, read by column name. The same applies to every
+        method below. A missing (``nan``) time or stress gives ``nan``.
         """
         clock = self._clock(Z)
         scalar = np.isscalar(t)
-        tt = np.atleast_1d(t)
-        if clock is not None:
-            tt = clock.tau(np.asarray(tt, dtype=float))
-        res = self._ff_distance(tt, self.threshold)
+        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        tt = t_in if clock is None else clock.tau(t_in)
+        res = self._missing(self._ff_distance(tt, self.threshold), t_in, tt)
         return float(res[0]) if scalar else res
 
     def sf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Survival function of the first-passage time."""
         clock = self._clock(Z)
         scalar = np.isscalar(t)
-        tt = np.atleast_1d(t)
-        if clock is not None:
-            tt = clock.tau(np.asarray(tt, dtype=float))
-        res = self._sf_distance(tt, self.threshold)
+        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        tt = t_in if clock is None else clock.tau(t_in)
+        res = self._missing(self._sf_distance(tt, self.threshold), t_in, tt)
         return float(res[0]) if scalar else res
 
     def df(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
@@ -610,9 +661,10 @@ class FirstPassageProcessModel(SerialisableMixin):
         scalar = np.isscalar(t)
         tt = np.atleast_1d(np.asarray(t, dtype=float))
         if clock is None:
-            res = self._df0(tt)
+            res = self._missing(self._df0(tt), tt)
         else:
-            res = self._df0(clock.tau(tt)) * clock.rate_at(tt)
+            tau = clock.tau(tt)
+            res = self._missing(self._df0(tau) * clock.rate_at(tt), tt, tau)
         return float(res[0]) if scalar else res
 
     def hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
@@ -637,20 +689,23 @@ class FirstPassageProcessModel(SerialisableMixin):
             )
         if clock is not None:
             res = res * clock.rate_at(tt)
+        res = self._missing(res, tt, tau)
         return float(res[0]) if scalar else res
 
     def Hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
         """Cumulative hazard of the first-passage time."""
         clock = self._clock(Z)
         scalar = np.isscalar(t)
-        tt = np.atleast_1d(np.asarray(t, dtype=float))
-        if clock is not None:
-            tt = clock.tau(tt)
-        res = -self._log_sf_distance(tt, self.threshold)
+        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        tt = t_in if clock is None else clock.tau(t_in)
+        res = self._missing(
+            -self._log_sf_distance(tt, self.threshold), t_in, tt
+        )
         return float(res[0]) if scalar else res
 
     def qf(self, p: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
-        """Quantile (inverse CDF) of the first-passage time."""
+        """Quantile (inverse CDF) of the first-passage time (``nan`` for a
+        missing probability or stress)."""
         clock = self._clock(Z)
         p = np.atleast_1d(np.asarray(p, dtype=float))
         out = np.array([self._quantile(pi, self.threshold) for pi in p])
@@ -724,15 +779,26 @@ class FirstPassageProcessModel(SerialisableMixin):
         return draws if clock is None else clock.inverse(draws)
 
     def _quantile(self, p: float, distance: float) -> float:
+        if np.isnan(p):
+            # a missing probability used to fall through to ``inf``
+            return np.nan
         if not (0.0 < p < 1.0):
             return 0.0 if p <= 0.0 else np.inf
-        # bracket from the subclass's starting scale and expand until it
-        # contains the quantile
+        # Bracket from the subclass's starting scale and expand until it
+        # contains the quantile. The expansion is bounded whatever the
+        # start: a nan start (from a nan distance) doubled forever, as
+        # ``nan > 1e12`` is never true, and hung predict_rul.
         hi = self._quantile_hi0(distance)
-        while self._ff_distance(np.array([hi]), distance)[0] < p:
+        if not hi > 0:
+            hi = 1.0
+        for _ in range(2000):
+            if self._ff_distance(np.array([hi]), distance)[0] >= p:
+                break
             hi *= 2.0
-            if hi > 1e12:
+            if not hi <= 1e12:
                 return np.inf
+        else:
+            return np.inf
         return brentq(
             lambda t: self._ff_distance(np.array([t]), distance)[0] - p,
             1e-12,
@@ -756,7 +822,7 @@ class FirstPassageProcessModel(SerialisableMixin):
         Parameters
         ----------
         current_degradation : float
-            The unit's current degradation level.
+            The unit's current degradation level (not ``nan``).
         alpha_ci : float, optional
             Tail probability of the returned interval, between 0 and 1.
             Default ``0.05``.
@@ -764,7 +830,9 @@ class FirstPassageProcessModel(SerialisableMixin):
             For a model fitted with stress: the stress the unit will run at
             from now on -- one row for a constant stress, or a
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
-            whose time zero is *now*.
+            whose time zero is *now* (or, for a model fitted with
+            ``fit_from_df``, a one-row DataFrame). It describes this one
+            unit, so a missing value is refused.
 
         Returns
         -------
@@ -776,8 +844,22 @@ class FirstPassageProcessModel(SerialisableMixin):
             raise ValueError(
                 "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
             )
+        current = float(current_degradation)
+        if np.isnan(current):
+            # it used to hang the quantile search
+            raise ValueError(
+                "current_degradation must be a number, got nan: the "
+                "remaining life of a unit needs its current degradation"
+            )
         clock = self._clock(Z)
-        distance = self.threshold - float(current_degradation)
+        if clock is not None and clock.rate is not None:
+            if np.isnan(clock.rate):
+                raise ValueError(
+                    "Z must contain only finite values: predict_rul needs "
+                    "the stress this unit will run at, and it has a "
+                    "missing (nan) value"
+                )
+        distance = self.threshold - current
         if distance <= 0:
             return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
         med = self._quantile(0.5, distance)
@@ -1054,6 +1136,42 @@ class WienerProcess:
             gamma=g / scale,
             stress_ref=z_ref,
         )
+
+    @classmethod
+    def fit_from_df(
+        cls,
+        df: pd.DataFrame,
+        x: str = "x",
+        y: str = "y",
+        i: str = "i",
+        Z_cols: "str | list[str] | None" = None,
+        **fit_kwargs: Any,
+    ) -> "WienerProcessModel":
+        """
+        Fit a Wiener-process degradation model from the columns of a DataFrame.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The degradation data, one row per measurement.
+        x, y, i : str, optional
+            The columns of the measurement times, the measurements and the
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``.
+        Z_cols : str or list of str, optional
+            The stress column(s), passed to :meth:`fit` as ``Z``. Their
+            names are recorded on the model (as ``Z_cols``, kept by
+            ``to_dict``), so its methods also take the stress as a one-row
+            DataFrame and select these columns by name.
+        **fit_kwargs
+            The remaining arguments of :meth:`fit`: ``threshold``
+            (required), and optionally ``stress_ref`` and the others.
+
+        Returns
+        -------
+        WienerProcessModel
+            The fitted model.
+        """
+        return _fit_from_df(cls, df, x, y, i, Z_cols, fit_kwargs)
 
     @staticmethod
     def _check_noise(
@@ -1438,6 +1556,42 @@ class GammaProcess:
         return GammaProcessModel(
             alpha, beta, threshold, gamma=g / scale, stress_ref=z_ref
         )
+
+    @classmethod
+    def fit_from_df(
+        cls,
+        df: pd.DataFrame,
+        x: str = "x",
+        y: str = "y",
+        i: str = "i",
+        Z_cols: "str | list[str] | None" = None,
+        **fit_kwargs: Any,
+    ) -> "GammaProcessModel":
+        """
+        Fit a Gamma-process degradation model from the columns of a DataFrame.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The degradation data, one row per measurement.
+        x, y, i : str, optional
+            The columns of the measurement times, the measurements and the
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``.
+        Z_cols : str or list of str, optional
+            The stress column(s), passed to :meth:`fit` as ``Z``. Their
+            names are recorded on the model (as ``Z_cols``, kept by
+            ``to_dict``), so its methods also take the stress as a one-row
+            DataFrame and select these columns by name.
+        **fit_kwargs
+            The remaining arguments of :meth:`fit`: ``threshold``
+            (required), and optionally ``stress_ref`` and the others.
+
+        Returns
+        -------
+        GammaProcessModel
+            The fitted model.
+        """
+        return _fit_from_df(cls, df, x, y, i, Z_cols, fit_kwargs)
 
     @staticmethod
     def _zero_increments(

@@ -629,14 +629,22 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         schedule = self._to_schedule(Z, xl)
-        t_max = float(np.max(xq))
+        # A missing query time has no value (NaN); the others are
+        # evaluated as usual.
+        missing = np.isnan(xq)
+        if missing.all():
+            return np.full(xq.shape, np.nan)
+        t_max = float(np.max(xq[~missing]))
         if t_max <= 0:
             raise ValueError("x must contain a positive time")
         starts, ends, Zseg = self._tvc_segments(schedule, t_max)
+        xq_eval = np.where(missing, t_max, xq)
 
         if self.kind in self._TVC_ADDITIVE_KINDS:
-            return self._tvc_hf_additive(xq, starts, ends, Zseg)
-        return self._tvc_hf_aft(xq, starts, ends, Zseg)
+            H = self._tvc_hf_additive(xq_eval, starts, ends, Zseg)
+        else:
+            H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg)
+        return np.where(missing, np.nan, H)
 
     def _tvc_hf_additive(
         self,

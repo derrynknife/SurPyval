@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
+import pandas as pd
 
 from surpyval.univariate.regression.tvc_schedule import (
     StepSchedule,
@@ -19,8 +20,40 @@ from surpyval.univariate.regression.tvc_schedule import (
 )
 
 
-def stress_row(Z: Any, q: int) -> npt.NDArray:
-    """Validate one constant stress row with ``q`` covariates."""
+def covariates_by_name(Z: Any, Z_cols: "list[str] | None", refit: str) -> Any:
+    """
+    The covariates of ``Z`` as an array, reading a DataFrame by name.
+
+    A DataFrame's columns are selected by the names ``Z_cols`` recorded
+    by ``fit_from_df``, in that order; anything else (an array, a
+    ``StepSchedule``, ``None``) is returned unchanged. A model fitted from
+    arrays has no names to select by, so it refuses a DataFrame; ``refit``
+    names the ``fit_from_df`` that records them.
+    """
+    if not isinstance(Z, pd.DataFrame):
+        return Z
+    if Z_cols is None:
+        raise ValueError(
+            "A pandas DataFrame was passed as Z, but this model was fitted "
+            "without covariate names (Z was not given by column name), so "
+            "there are none to select its columns by. Pass Z as an array, "
+            "with the covariates in the order of the fit, or fit with "
+            "{}(..., Z_cols=...) to predict from a DataFrame.".format(refit)
+        )
+    missing = [c for c in Z_cols if c not in Z.columns]
+    if missing:
+        raise ValueError("{} not in dataframe columns".format(missing))
+    return Z[list(Z_cols)].to_numpy(dtype=float)
+
+
+def stress_row(Z: Any, q: int, allow_nan: bool = False) -> npt.NDArray:
+    """
+    Validate one constant stress row with ``q`` covariates.
+
+    With ``allow_nan`` a missing (``nan``) covariate is let through, for
+    the predictions that return ``nan`` for it; an infinite one is
+    refused either way.
+    """
     z = np.asarray(Z, dtype=float)
     if z.ndim == 2 and z.shape[0] == 1:
         z = z[0]
@@ -32,7 +65,7 @@ def stress_row(Z: Any, q: int) -> npt.NDArray:
                 q, z.shape
             )
         )
-    if not np.isfinite(z).all():
+    if not np.isfinite(z[~np.isnan(z)] if allow_nan else z).all():
         raise ValueError("Z must contain only finite values")
     return z
 

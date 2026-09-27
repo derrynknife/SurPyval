@@ -558,11 +558,15 @@ are kept when the model is saved (see `Saving and loading a fitted model`_).
 
 A categorical level the model was not fitted with has no coefficient, so a
 prediction for it is undefined: it raises a ``ValueError`` naming the column
-and the level. Levels declared with ``C(site, levels=[...])`` count as known
-even if the fitted data had none of them -- though with no data their
-coefficient stays at its starting value of zero. A missing value is not a
-level: that row predicts ``nan``, as for a missing numeric covariate. This
-holds for every family that takes a ``formula``, before and after saving:
+and the level. So does a level declared with ``C(site, levels=[...])`` (or
+an unused category of a ``pd.Categorical`` column) that the fitted data has
+no rows of: declaring the full list keeps the columns the same across data
+splits, but nothing estimates that level's coefficient, so the fit warns,
+naming the level, and a prediction for it raises. (``AdditiveHazards`` and
+``BuckleyJames`` refuse such a fit, as the level's column is constant.) A
+missing value is not a level: that row predicts ``nan``, as for a missing
+numeric covariate. This holds for every family that takes a ``formula``,
+before and after saving:
 
 .. jupyter-execute::
 
@@ -572,6 +576,19 @@ holds for every family that takes a ``formula``, before and after saving:
         print(str(err).split('. ')[0])
     print(weib_df.sf(np.full(2, 40.0),
                      pd.DataFrame({'age': [40, 40], 'site': ['B', None]})))
+
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        declared = WeibullPH.fit_from_df(
+            patients, x_col='time', c_col='censored',
+            formula="age + C(site, levels=['A', 'B', 'C', 'D'])")
+    print([str(w.message).split('. ')[0] for w in caught
+           if 'no rows' in str(w.message)])
+    try:
+        declared.sf([40.0], pd.DataFrame({'age': [40], 'site': ['D']}))
+    except ValueError as err:
+        print(str(err).split('. ')[0])
 
 
 Time-Varying Covariates
@@ -880,10 +897,15 @@ badly confounded; the stratified fit recovers the true coefficient:
     print(f"pooled      = {pooled.beta[0]:.3f}   (confounded by site)")
     print(f"stratified  = {stratified.beta[0]:.3f}")
 
+An observation whose stratum label is missing (``None``, ``NaN`` or pandas
+``NA``) has no baseline to belong to, so it is dropped with a warning giving
+the count, just as a row with a missing covariate is.
+
 Prediction on a stratified model needs a ``stratum`` argument to pick the right
 baseline — one of ``stratified.strata_labels``, here the site codes 0, 1 and
 2; ``sf``, ``Hf``, ``hf``, ``ff`` and ``df`` all accept it, and refuse to
-guess if it is left out:
+guess if it is left out. A missing label (``NaN`` or ``NA``) predicts ``nan``,
+as a missing covariate does:
 
 .. jupyter-execute::
 
@@ -2280,7 +2302,10 @@ the parametric families, ``CoxPH``, ``AdditiveHazards`` and the
 ``surpyval.beta.ml`` tree and forest (see :doc:`comparison_and_validation`).
 For a model
 whose ``sf`` takes one covariate vector at a time (``BuckleyJames``), stack
-``model.sf(times, Z[i])`` row by row.
+``model.sf(times, Z[i])`` row by row. A DataFrame of covariates is passed to
+the model's ``sf`` as it is, so a model fitted with ``fit_from_df`` (named
+columns or a ``formula``, string levels included) is scored from one; a row
+with a missing covariate scores ``nan`` (see :ref:`missing-values`).
 
 Both handle censoring by inverse-probability-of-censoring weighting (IPCW), so
 a subject censored before the horizon does not silently bias the score. The
@@ -2428,7 +2453,10 @@ considering a random subset of ``n_features_split`` covariates at each split.
 Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
 row per covariate row, one column per time — unlike the element-wise
 regression models, and its ``score(x, Z, c)``
-is the concordance of its mortality score. The forest reports its progress
+is the concordance of its mortality score. Trees and forests follow the
+package's :ref:`missing-value rule <missing-values>`: a row with a missing covariate is
+dropped at fit time, with one warning giving the count, and predicts ``nan``
+(it is not sent down either branch of a split). The forest reports its progress
 through joblib on standard error, which we silence here. On held-out data it
 is compared with a Cox model on the same metrics:
 

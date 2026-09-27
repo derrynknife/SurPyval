@@ -439,6 +439,41 @@ class ProportionalIntensityModel(
         dist_bounds = getattr(self, "bounds", None) or self.dist.bounds
         return [*dist_bounds, *[(None, None)] * len(self.coeffs)]
 
+    def _unit_covariates(self, Z: ArrayLike) -> np.ndarray:
+        """
+        Validate ``Z`` as the covariate vector of one unit, for the
+        simulation entry points and :meth:`mcf`.
+
+        ``Z`` describes one unit's covariate history, so a missing value
+        raises (the package's missing-value rule, in the Conventions page)
+        rather than being simulated: a NaN intensity ran every sequence to
+        ``max_events`` and then failed on the NaN event times.
+        """
+        try:
+            Z_arr = np.atleast_1d(np.asarray(Z, dtype=float))
+        except (TypeError, ValueError):
+            raise ValueError(
+                "Z must be one unit's covariate vector of numbers; got "
+                "{!r}".format(Z)
+            ) from None
+        n_coeffs = np.size(self.coeffs)
+        # One row (1, p) is the same unit's vector as (p,).
+        if Z_arr.ndim > 1 and Z_arr.shape[0] == 1:
+            Z_arr = Z_arr.reshape(-1)
+        if Z_arr.ndim > 1 or Z_arr.size != n_coeffs:
+            raise ValueError(
+                "Z must be one unit's covariate vector with {} value(s), "
+                "one per coefficient; got shape {}".format(
+                    n_coeffs, np.shape(Z_arr)
+                )
+            )
+        if np.isnan(Z_arr).any():
+            raise ValueError(
+                "Z has a missing (NaN) value; it is one unit's covariate "
+                "vector, so every value is needed to simulate its events."
+            )
+        return Z_arr
+
     def _cif_args(self) -> tuple:
         # The shared inverse-CIF sampler threads these into cif/inv_cif; the
         # covariate vector for the run is stashed on ``_sim_Z`` by the public
@@ -465,7 +500,8 @@ class ProportionalIntensityModel(
             Each sequence is simulated to its ``events + 1``-th event, and
             the returned MCF is kept only where it is below ``events``.
         Z: array_like
-            Covariate vector applied to every simulated sequence.
+            Covariate vector applied to every simulated sequence. A missing
+            (NaN) value raises a ``ValueError``.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         seed: int or numpy.random.Generator, optional
@@ -477,7 +513,7 @@ class ProportionalIntensityModel(
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
         """
-        self._sim_Z = np.asarray(Z, dtype=float)
+        self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation(
             events, items=items, seed=seed
         )
@@ -502,7 +538,8 @@ class ProportionalIntensityModel(
         T: float
             Time termination value.
         Z: array_like
-            Covariate vector applied to every simulated sequence.
+            Covariate vector applied to every simulated sequence. A missing
+            (NaN) value raises a ``ValueError``.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
         tol: float, optional
@@ -528,7 +565,7 @@ class ProportionalIntensityModel(
         falls below ``tol`` or it reaches ``max_events`` before T. A warning
         is raised in either case.
         """
-        self._sim_Z = np.asarray(Z, dtype=float)
+        self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation(
             T, items=items, tol=tol, max_events=max_events, seed=seed
         )
@@ -547,7 +584,7 @@ class ProportionalIntensityModel(
         Like :meth:`count_terminated_simulation` but yields the simulated
         ``RecurrentEventData`` rather than the fitted MCF.
         """
-        self._sim_Z = np.asarray(Z, dtype=float)
+        self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation_data(
             events, items=items, seed=seed
         )
@@ -568,7 +605,7 @@ class ProportionalIntensityModel(
         Like :meth:`time_terminated_simulation` but yields the simulated
         ``RecurrentEventData`` rather than the fitted MCF.
         """
-        self._sim_Z = np.asarray(Z, dtype=float)
+        self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation_data(
             T, items=items, tol=tol, max_events=max_events, seed=seed
         )
@@ -585,8 +622,12 @@ class ProportionalIntensityModel(
         """
         Estimate the mean cumulative function at ``x`` for covariates ``Z`` by
         simulating ``items`` time-terminated sequences out to ``max(x)``.
+
+        ``Z`` is one unit's covariate vector, so a missing (NaN) value in it
+        raises a ``ValueError``, as it does for the simulation methods,
+        instead of simulating every sequence to ``max_events``.
         """
-        self._sim_Z = np.asarray(Z, dtype=float)
+        self._sim_Z = self._unit_covariates(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         np_model = self.time_terminated_simulation(
             float(x.max()), Z, items=items, seed=seed

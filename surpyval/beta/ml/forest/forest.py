@@ -2,7 +2,10 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.tree import SurvivalTree
+from surpyval.beta.ml.forest.tree import (
+    SurvivalTree,
+    drop_missing_covariate_rows,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
@@ -38,12 +41,11 @@ class RandomSurvivalForest(SerialisableMixin):
         bootstrap: bool = True,
         kind: str = "weibull",
     ) -> None:
-        self.data: SurpyvalData = data
-        Z = np.asarray(Z)
-        if Z.ndim == 1:
-            # A 1-d Z is a single feature, one value per sample
-            Z = Z.reshape(-1, 1)
-        self.Z: NDArray = Z
+        # Rows with a missing covariate are dropped once, here, with the
+        # standard warning, so no bootstrap sample can draw one.
+        self.data: SurpyvalData
+        self.Z: NDArray
+        self.data, self.Z = drop_missing_covariate_rows(data, Z)
         self.n_trees = n_trees
         self.bootstrap = bootstrap
         self.kind = kind
@@ -104,6 +106,8 @@ class RandomSurvivalForest(SerialisableMixin):
             observations).
         Z : array_like
             Covariate (feature) matrix, one row per observation. Required.
+            Rows with a missing (NaN) or infinite covariate are dropped,
+            with a warning giving the count.
         c : array_like, optional
             Censoring flags: 0 observed, 1 right, -1 left, 2 interval
             censored. Defaults to all observed.
@@ -203,7 +207,9 @@ class RandomSurvivalForest(SerialisableMixin):
         NDArray
             For a 1-D ``Z``, the survival function at ``x`` as a 1-D
             array. For a 2-D ``Z``, an ``(n_rows, x.size)`` grid whose
-            row ``i`` is the survival function for ``Z[i]``.
+            row ``i`` is the survival function for ``Z[i]``. A covariate
+            vector with a missing (NaN) value gives NaN, and leaves the
+            other rows unaffected.
         """
         if ensemble_method == "Hf":
             Hf = self._apply_model_function_to_trees("Hf", x, Z)
@@ -274,8 +280,15 @@ class RandomSurvivalForest(SerialisableMixin):
         c: ArrayLike,
         tie_tol: float = 1e-8,
     ) -> float:
-        """Harrell's concordance index of the forest's mortality scores."""
+        """Harrell's concordance index of the forest's mortality scores.
+
+        A missing (NaN) covariate or time leaves a subject's score, and so
+        the index, undefined: the index is NaN, not a number computed by
+        comparing the NaN score as though it were one.
+        """
         scores: ArrayLike = self.mortality(x, Z)
+        if np.isnan(scores).any():
+            return float("nan")
         return score(x, c, scores, tie_tol)
 
     def to_dict(self) -> dict:

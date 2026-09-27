@@ -170,7 +170,10 @@ class CompetingRisks(SerialisableMixin):
         # would otherwise wrap to the *last* step value; every step function
         # here (hazard, cumulative hazard, IIF, CIF) is zero before the
         # first event time.
-        return np.where(idx[rev] < 0, 0.0, out).reshape(shape)
+        out = np.where(idx[rev] < 0, 0.0, out)
+        # A missing time sorts past the last step; it has no value.
+        out = np.where(np.isnan(np.ravel(x).astype(float)), np.nan, out)
+        return out.reshape(shape)
 
     def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
@@ -201,7 +204,8 @@ class CompetingRisks(SerialisableMixin):
         S = np.cumprod(1.0 - increments)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         idx = np.searchsorted(self.x, x, side="right") - 1
-        return np.where(idx >= 0, S[np.maximum(idx, 0)], 1.0)
+        out = np.where(idx >= 0, S[np.maximum(idx, 0)], 1.0)
+        return np.where(np.isnan(x), np.nan, out)
 
     def sf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """

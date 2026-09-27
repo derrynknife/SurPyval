@@ -8,6 +8,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils import is_missing_event
 
 from .regression_data import (
     prepare_Z,
@@ -213,11 +214,28 @@ class SemiParametricRegressionModel(SerialisableMixin):
         restore_covariate_meta(out, model_dict)
         return out
 
+    def _missing_stratum(self, stratum: Any) -> bool:
+        """Whether ``stratum`` is a missing label (``NaN`` or pandas
+        ``NA``) for a stratified fit. ``None`` is not: it is the default
+        and means no stratum was given."""
+        return (
+            self.is_stratified
+            and stratum is not None
+            and is_missing_event(stratum)
+        )
+
     def _baseline_arrays(
         self, stratum: Any
     ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray]":
         """Baseline ``(x, h0, H0)`` arrays, selecting a stratum if needed."""
         if self.is_stratified:
+            if self._missing_stratum(stratum):
+                # A missing stratum label predicts nan, as a missing
+                # covariate does; the first stratum's times only give the
+                # output its shape.
+                b = self.strata_baselines[self.strata_labels[0]]
+                nan = np.full(np.shape(b["h0"]), np.nan)
+                return b["x"], nan, nan
             if stratum is None:
                 raise ValueError(
                     "this is a stratified Cox model; pass stratum=... to "
@@ -245,11 +263,16 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         The baseline step function ``values`` (jumping at the event times
         ``bx``) evaluated at ``x``, in the order ``x`` was given. Before the
-        first event time nothing has happened yet, so the value is 0.
+        first event time nothing has happened yet, so the value is 0 (nan
+        where ``values`` is all nan, for a missing stratum). A missing
+        (``NaN``) time gives nan: ``searchsorted`` places it after every
+        event time, which read it as the value at ``t = inf``.
         """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         idx = np.searchsorted(bx, x, side="right") - 1
-        return np.where(idx >= 0, values[np.maximum(idx, 0)], 0.0)
+        before = 0.0 * values[0] if values.size else 0.0
+        out = np.where(idx >= 0, values[np.maximum(idx, 0)], before)
+        return np.where(np.isnan(x), np.nan, out)
 
     def hf(
         self,
@@ -292,7 +315,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         Survival :math:`e^{-H_0(x) e^{\\beta' Z}}` at ``x`` for covariates
         ``Z`` (one row, or one row per ``x``); ``stratum`` selects the
-        baseline of a stratified fit.
+        baseline of a stratified fit. A missing (``NaN``) time, covariate
+        or stratum label gives ``nan`` in its place.
         """
         return np.exp(-self.Hf(x, Z, stratum))
 
@@ -423,6 +447,16 @@ class SemiParametricRegressionModel(SerialisableMixin):
             Z_a = Z_a.reshape(-1, 1)
         if not (xl_a.shape[0] == xr_a.shape[0] == Z_a.shape[0]):
             raise ValueError("xl, xr and Z must have the same number of rows")
+        # The intervals and covariates describe one subject's history, so a
+        # missing value in them is refused rather than predicted around: a
+        # nan interval end was ignored and a nan covariate made every time
+        # nan, including those before it applied.
+        for name, arr in (("xl", xl_a), ("xr", xr_a), ("Z", Z_a)):
+            if np.isnan(arr).any():
+                raise ValueError(
+                    "'{}' has a missing (NaN) value; the covariate path "
+                    "of one subject must be complete.".format(name)
+                )
         if np.any(xl_a >= xr_a):
             raise ValueError("every interval must have xl < xr")
 
@@ -475,7 +509,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
         H_cum = np.cumsum(base_h0 * phi)
         idx = np.searchsorted(base_t, query, side="right") - 1
         last = H_cum.shape[0] - 1
-        return np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
+        out = np.where(idx >= 0, H_cum[np.clip(idx, 0, last)], 0.0)
+        # A missing query time is nan, not the value after the last jump.
+        return np.where(np.isnan(query), np.nan, out)
 
     def Hf_tvc(
         self,
@@ -522,7 +558,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 "{}".format(schedule.p, n_cov)
             )
         xq = np.atleast_1d(np.asarray(x, dtype=float))
-        t_max = float(np.max(xq))
+        if np.isnan(xq).all():
+            # Nothing to evaluate: a missing time is nan (the schedule
+            # cannot be materialised to a nan horizon).
+            return np.full(xq.shape, np.nan)
+        t_max = float(np.nanmax(xq))
         if t_max <= 0:
             raise ValueError("x must contain a positive time")
         starts, _, Zseg = segments_from_origin(schedule, t_max)
@@ -575,6 +615,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
         H = self.Hf_tvc(x, Z, xl, stratum=stratum)
         if given is not None:
             given = float(given)
-            if given > 0:
+            if np.isnan(given):
+                # A missing conditioning age: nothing is known.
+                H = np.full(np.shape(H), np.nan)
+            elif given > 0:
                 H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)[0]
         return np.exp(-H)

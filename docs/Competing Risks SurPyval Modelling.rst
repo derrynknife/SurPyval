@@ -852,8 +852,9 @@ Fitting from a DataFrame
 either as ``Z_cols`` (a column name or list of names) or as a ``formula``;
 ``c_col``, ``n_col``, ``how`` and ``tie_method`` (default ``"efron"``, passed to
 each cause's Cox fit) are optional. A blank/``NaN`` cause marks a censored row,
-and rows with a missing covariate are dropped (as are rows of ``Z`` containing
-``NaN`` in ``fit``).
+and rows with a missing (or infinite) covariate are dropped, with a warning
+giving the count -- as are rows of ``Z`` containing ``NaN`` in ``fit``, for
+both the ``Cox`` and ``Fine-Gray`` fits and for ``FineGray.fit``.
 The fitted model predicts from a DataFrame of the covariate columns, read by
 name (their order and any other columns do not matter), or still from an
 array ``Z`` in the fitted column order:
@@ -875,7 +876,8 @@ reference level, transforms with their fitted statistics -- exactly as
 ``CoxPH`` does, before and after ``to_dict`` / ``from_dict``. A categorical
 level the model was not fitted with raises a ``ValueError`` naming the column
 and the level (there is no coefficient for it), and a row with a missing
-covariate predicts ``nan``:
+covariate -- or a missing (``NaN``) time -- predicts ``nan``, leaving the
+other rows as they are:
 
 .. jupyter-execute::
 
