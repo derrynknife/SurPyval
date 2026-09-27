@@ -203,6 +203,37 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))
     print("median          :", model.qf(0.5))
 
+.. _missing-values:
+
+Missing values
+~~~~~~~~~~~~~~
+
+A missing value (``nan``) is handled by one rule across the package:
+
+- **Prediction: NaN in, NaN out, element by element.** A missing covariate, time or probability makes exactly the outputs that depend on it NaN. Other rows are unaffected, and no method returns a number or hangs. The exception is a method whose input describes one unit's history (``predict_rul``, ``induced_life``, ``sf_tvc``, ``mcf``): it raises a ``ValueError`` naming the input.
+- **Fitting: drop with one warning where each row is an independent observation; raise where a row is only part of one** (a time-varying interval, a recurrent-event row, a degradation measurement). The warning is a single ``UserWarning`` giving the count, "Dropped k of n rows ...". A missing grouping label (stratum, frailty group) drops the observation, with a warning. A missing time or response always raises.
+
+An infinite covariate is not missing: it is dropped at fit time along with the missing ones (the warning says "missing (NaN) or infinite"), and at prediction gives the model's limiting value rather than NaN.
+
+.. jupyter-execute::
+
+    import warnings
+
+    rng = np.random.default_rng(0)
+    Z = rng.normal(size=(100, 2))
+    x = 10 * rng.weibull(1.5, 100) * np.exp(-0.5 * Z[:, 0])
+    ph = surv.WeibullPH.fit(x, Z)
+
+    # The second row's first covariate is missing: only its prediction is NaN
+    print(ph.sf([5, 5, 5], [[0.5, 1.0], [np.nan, 1.0], [-0.5, 0.2]]))
+
+    # Fitting drops the row with a missing covariate, and says so once
+    Z[3, 1] = np.nan
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        refit = surv.WeibullPH.fit(x, Z)
+    print([str(w.message) for w in caught if "Dropped" in str(w.message)])
+
 Random draws and seeds
 ~~~~~~~~~~~~~~~~~~~~~~
 

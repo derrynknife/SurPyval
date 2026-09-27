@@ -4,6 +4,27 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **One rule for missing values (#375).** Prediction: a missing covariate,
+  time or probability gives NaN for exactly the outputs that depend on it,
+  and a method whose input is one unit's history (``predict_rul``,
+  ``induced_life``, ``sf_tvc``, ``mcf``) raises instead. Fitting: rows with
+  a missing covariate are dropped with one warning where rows are
+  independent observations, and refused where a row is only part of one; a
+  missing time or response always raises. See :doc:`Conventions`. Fixed to
+  follow it:
+
+  - Survival trees and forests sent a missing covariate right at every
+    split, so it predicted like +inf (tree sf 0.6974 for both), and kept
+    such rows in the fit without a warning. They are now dropped with a
+    warning, predict NaN, and ``RandomSurvivalForest.score`` is NaN when a
+    score is missing.
+  - Proportional-intensity ``mcf`` with a missing covariate ran every
+    sequence to ``max_events`` and then reported a missing *time*; it and
+    the simulation entry points now refuse a missing or mis-shaped ``Z`` by
+    name before simulating.
+  - ``survival_probability`` cast ``Z`` to float, so a formula fit with
+    string levels could not be scored; a DataFrame is now passed to
+    ``model.sf`` as it is.
 - **Turnbull reaches the maximum-likelihood estimate with interval
   censoring and right truncation (#368).** Two index searches were one
   Turnbull piece off: a right-censored observation could not fail in the

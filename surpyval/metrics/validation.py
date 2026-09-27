@@ -51,6 +51,7 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
+from pandas import DataFrame
 
 from surpyval.utils import validate_1d as _as_1d
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
@@ -129,8 +130,12 @@ def survival_probability(
         ``RandomSurvivalForest``). Models whose ``sf`` takes a single
         covariate vector (``BuckleyJames``) are not supported: build their
         matrix row by row with ``model.sf(times, Z[i])``.
-    Z : array_like
-        Covariate matrix, one row per subject.
+    Z : array_like or pandas.DataFrame
+        Covariate matrix, one row per subject. A DataFrame is passed to
+        ``model.sf`` as it is, so a model fitted with ``fit_from_df``
+        (``Z_cols`` or a ``formula``, string levels included) reads it by
+        column name; an array is taken as numbers, one column per
+        covariate.
     times : array_like
         Evaluation times.
 
@@ -138,16 +143,42 @@ def survival_probability(
     -------
     survival : ndarray, shape ``(n_samples, n_times)``
         ``survival[i, k]`` is the predicted survival of subject ``i`` at
-        ``times[k]``.
+        ``times[k]``. A subject with a missing covariate, or a missing
+        time, gets ``nan`` where the model's ``sf`` gives it.
+
+    Examples
+    --------
+    A formula fit with a string-valued factor is scored from a DataFrame:
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from surpyval import WeibullPH
+    >>> from surpyval.metrics import survival_probability
+    >>> rng = np.random.default_rng(1)
+    >>> g = rng.choice(["a", "b"], 60)
+    >>> x = rng.weibull(1.5, 60) * np.where(g == "b", 5.0, 10.0)
+    >>> df = pd.DataFrame({"x": x, "g": g})
+    >>> model = WeibullPH.fit_from_df(df, x_col="x", formula="g")
+    >>> new = pd.DataFrame({"g": ["a", "b"]})
+    >>> survival_probability(model, new, [2.0, 5.0]).shape
+    (2, 2)
     """
-    Z_arr = np.asarray(Z, dtype=float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    n = Z_arr.shape[0]
+    if isinstance(Z, DataFrame):
+        # A DataFrame is the model's to read: formula fits look their
+        # columns up by name and code string levels themselves, which a
+        # cast to float made impossible.
+        Z_in: Any = Z
+        n = len(Z)
+    else:
+        Z_arr = np.asarray(Z, dtype=float)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(-1, 1)
+        Z_in = Z_arr
+        n = Z_arr.shape[0]
     times = _as_1d(times, "times")
     cols = []
     for t in times:
-        out = np.asarray(model.sf(np.full(n, float(t)), Z_arr), dtype=float)
+        out = np.asarray(model.sf(np.full(n, float(t)), Z_in), dtype=float)
         # ``sf`` conventions differ across model families: the regression
         # models pair ``x`` with the rows of ``Z`` and return a 1-D vector,
         # while the ``beta.ml`` forest returns an ``(n_samples, n_times)``
