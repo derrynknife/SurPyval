@@ -517,15 +517,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return self._eval(self.model.sf, x, Z, 1.0)
 
     # Families whose survival along a step-valued covariate path has an exact
-    # closed form. Proportional and additive hazards accumulate a *cumulative
-    # hazard* additively over the segments; accelerated failure time instead
+    # closed form. Proportional hazards, additive hazards and proportional
+    # odds have a hazard that depends only on the time and the *current*
+    # covariate, so the cumulative hazard is a sum of per-segment increments
+    # of the constant-covariate ``Hf``; accelerated failure time instead
     # accumulates an *accelerated age* over the segments and then evaluates the
-    # baseline once. Proportional odds has neither structure (its time-varying
-    # odds form is not yet implemented) and is refused below.
-    _TVC_ADDITIVE_KINDS = ("Proportional Hazard", "Additive Hazard")
+    # baseline once. Accelerated life is refused below.
+    _TVC_ADDITIVE_KINDS = (
+        "Proportional Hazard",
+        "Additive Hazard",
+        "Proportional Odds",
+    )
     _TVC_EVALUABLE_KINDS = (
         "Proportional Hazard",
         "Additive Hazard",
+        "Proportional Odds",
         "Accelerated Failure Time",
     )
 
@@ -566,13 +572,29 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         r"""
         Cumulative hazard for a covariate following a step schedule ``Z(t)``.
 
-        For the proportional- and additive-hazards families the cumulative
-        hazard is additive over disjoint intervals, so along a piecewise
-        constant path it is exactly the sum of the per-segment increments
+        For the proportional-hazards, additive-hazards and proportional-odds
+        families the hazard at time :math:`t` depends only on :math:`t` and
+        the covariate value *at* :math:`t`, so along a piecewise constant path
+        the cumulative hazard is exactly the sum of the per-segment increments
+        of the constant-covariate cumulative hazard
 
         .. math::
             H\bigl(x \mid Z(\cdot)\bigr)
             = \sum_{\text{seg } (a, b]} \bigl[\,H(b, z) - H(a, z)\,\bigr] .
+
+        For proportional odds, with :math:`\phi = e^{\beta' z}` multiplying the
+        survival odds, the hazard is
+        :math:`h(t \mid z) = h_0(t) / (F_0(t) + \phi S_0(t))` and its integral
+        at constant :math:`z` is
+        :math:`H(t, z) = H_0(t) - \ln\phi + \ln(F_0(t) + \phi S_0(t))
+        = -\ln S(t \mid z)`, so each segment contributes
+        :math:`\ln[S(a \mid z) / S(b \mid z)]`. On entering a segment the
+        hazard switches to the new covariate's PO hazard; the survival does
+        not jump to the new covariate's PO curve. The first segment is held
+        back to the bottom of the baseline's support (for a baseline defined
+        below zero, such as ``Logistic``, the path's first value is taken to
+        apply before time zero too), so the result is the unconditional
+        survival.
 
         For accelerated failure time the covariate rescales time, so the path
         accumulates an *accelerated age*
@@ -601,10 +623,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if self.kind not in self._TVC_EVALUABLE_KINDS:
             raise NotImplementedError(
                 "time-varying-covariate evaluation is defined for the "
-                "proportional-hazards, additive-hazards and "
-                "accelerated-failure-time families (this model is '{}'). The "
-                "proportional-odds time-varying form is not yet "
-                "implemented.".format(self.kind)
+                "proportional-hazards, additive-hazards, proportional-odds "
+                "and accelerated-failure-time families (this model is "
+                "'{}').".format(self.kind)
             )
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         schedule = self._to_schedule(Z, xl)
@@ -625,25 +646,36 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Zseg: npt.NDArray,
     ) -> npt.NDArray:
         """
-        Cumulative hazard along a step path for the additive-cumulative-hazard
-        families (PH, AH): telescoping sum of the model's ``Hf`` increment on
-        each segment, the last clipped at the query time.
+        Cumulative hazard along a step path for the families whose hazard
+        depends only on the time and the current covariate (PH, AH, PO):
+        telescoping sum of the model's ``Hf`` increment on each segment, the
+        last clipped at the query time.
         """
         H = np.zeros(xq.shape[0], dtype=float)
-        for a, b, z in zip(starts, ends, Zseg):
+        support_lo = float(self.distribution.support[0])
+        for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
-            upper = np.clip(xq, a, b)
-            # The first segment starts at 0, where a log-time baseline
-            # (LogNormal, LogLogistic) evaluates log(0) = -inf on its way to
-            # the correct H = 0; that is not worth a warning.
+            # Query times before 0 fall in the first segment when the
+            # baseline is defined there.
+            upper = np.clip(xq, min(a, support_lo) if i == 0 else a, b)
+            # A query time of 0 makes a log-time baseline (LogNormal,
+            # LogLogistic) evaluate log(0) = -inf on its way to the correct
+            # H = 0; that is not worth a warning.
             with np.errstate(divide="ignore"):
                 hi = np.asarray(
                     self.model.Hf(upper, zrow, *self.params), dtype=float
                 ).ravel()
-                lo = np.asarray(
-                    self.model.Hf(np.array([a]), zrow, *self.params),
-                    dtype=float,
-                ).ravel()
+                # The first segment runs from the bottom of the support,
+                # where H = 0. Subtracting H(0, z) instead would, for a
+                # baseline defined below zero (Normal, Gumbel, Logistic),
+                # give the survival conditional on reaching 0, not sf(x, Z).
+                if i == 0:
+                    lo = np.zeros(1)
+                else:
+                    lo = np.asarray(
+                        self.model.Hf(np.array([a]), zrow, *self.params),
+                        dtype=float,
+                    ).ravel()
             H = H + (hi - lo)
         return H
 
@@ -692,11 +724,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         With a time-varying covariate the survival depends on the whole
         covariate path, not one fixed vector. This is exact along a step path
-        for the proportional-hazards, additive-hazards and
+        for the proportional-hazards, additive-hazards, proportional-odds and
         accelerated-failure-time families: ``S(x) = exp(-H(x))`` with ``H`` the
         per-segment accumulation in :meth:`Hf_tvc` (a cumulative-hazard sum for
-        PH/AH, an accelerated-age sum fed through the baseline for AFT). Only
-        proportional odds does not yet compose this way and raises
+        PH/AH/PO, an accelerated-age sum fed through the baseline for AFT).
+        A constant path gives ``sf(x, Z)``. Accelerated life models raise
         ``NotImplementedError``.
 
         Parameters
@@ -723,11 +755,22 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         Examples
         --------
-        >>> from surpyval import WeibullPH
+        A proportional-odds model whose covariate switches from 0 to 1 at
+        ``t = 6``: before the switch the survival is that of ``Z = 0``, after
+        it the hazard is that of ``Z = 1``.
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPO
         >>> from surpyval.univariate.regression import StepSchedule
-        >>> # ... model = WeibullPH.fit(...)
-        >>> sched = StepSchedule.from_changepoints([0, 500], [[0.0], [1.0]])
-        >>> model.sf_tvc([250, 750], sched)          # doctest: +SKIP
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(0.5 * Z[:, 0])
+        >>> model = WeibullPO.fit(x, Z)
+        >>> sched = StepSchedule.from_changepoints([0, 6], [[0.0], [1.0]])
+        >>> model.sf_tvc([4, 8, 12], sched).round(4)
+        array([0.7721, 0.5698, 0.4292])
+        >>> model.sf([4, 8, 12], [[0]]).round(4)
+        array([0.7721, 0.4937, 0.2809])
         """
         H = self.Hf_tvc(x, Z, xl)
         if given is not None:

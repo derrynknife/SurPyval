@@ -4,6 +4,24 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Proportional odds along a time-varying covariate path (#236).**
+  ``sf_tvc`` / ``Hf_tvc`` raised ``NotImplementedError`` for ``PO(dist)``
+  models. The PO hazard :math:`h_0 / (F_0 + e^{\beta'z} S_0)` depends only on
+  the time and the current covariate, so the cumulative hazard along a step
+  path is exactly the sum of the constant-covariate increments, as for PH;
+  PO now takes that path. It matches a numerical integral of the hazard to
+  1e-9, and a constant path gives ``sf(x, Z)`` to 1e-13. PO's ``Hf`` is now
+  computed as :math:`H_0 - \ln\phi + \ln(F_0 + \phi S_0)` rather than
+  ``-log(sf)``: before, a change-point where the baseline survival underflows
+  made every ``sf_tvc`` value NaN (``WeibullPO`` with a change at t = 1500:
+  S(5) was NaN, now 0.8387). Time-varying *fitting* is still not available
+  for PO.
+- **``sf_tvc`` for PH and AH with a baseline defined below zero.** For a
+  Normal, Gumbel or Logistic baseline a constant covariate path gave the
+  survival conditional on surviving to time 0, not ``sf(x, Z)`` (at x = 5:
+  PH(Normal) 0.91842 against 0.91551, PH(Gumbel) 0.90613 against 0.87800).
+  The first segment now starts at the bottom of the support, so a constant
+  path reproduces ``sf`` exactly.
 - **Recurrent-event simulations are much faster (#362); seeded results
   change.** ``mcf``, ``plot``, ``time_terminated_simulation``,
   ``count_terminated_simulation`` (and their ``..._data`` versions) and the

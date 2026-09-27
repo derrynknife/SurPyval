@@ -11,17 +11,22 @@ proved statically before it is evaluated.
 The evaluation is exact for these families because the cumulative hazard is
 additive over disjoint segments, so along a step path it is the sum of the
 per-segment increments -- and therefore collapses to the ordinary ``sf`` when
-the covariate is constant.
+the covariate is constant. Proportional odds joined in #236; its dedicated
+checks are in ``test_po_tvc_fixes5.py``.
 """
 
 import numpy as np
 import pytest
 
-from surpyval import WeibullAFT, WeibullAH, WeibullPH, WeibullPO
+from surpyval import Weibull, WeibullAFT, WeibullAH, WeibullPH, WeibullPO
 from surpyval.univariate.regression import (
     CoxPH,
     StepSchedule,
     StepValuedError,
+)
+from surpyval.univariate.regression.accelerated_life import (
+    AcceleratedLife,
+    Power,
 )
 
 # -- StepSchedule (structural) --------------------------------------------
@@ -143,7 +148,7 @@ def _fit(F, seed=0, n=300):
     return F.fit(x=x, Z=Z, c=c)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT, WeibullPO])
 def test_constant_schedule_reduces_to_sf(F):
     m = _fit(F)
     z = 0.7
@@ -153,7 +158,7 @@ def test_constant_schedule_reduces_to_sf(F):
     assert np.allclose(a, b)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT, WeibullPO])
 def test_array_form_matches_schedule(F):
     m = _fit(F)
     xl = np.array([0.0, 4.0])
@@ -163,7 +168,7 @@ def test_array_form_matches_schedule(F):
     assert np.allclose(a, b)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullPO])
 def test_hf_tvc_equals_manual_telescoping(F):
     m = _fit(F)
     xl = np.array([0.0, 4.0])
@@ -179,7 +184,7 @@ def test_hf_tvc_equals_manual_telescoping(F):
     assert np.isclose(got, manual)
 
 
-@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT])
+@pytest.mark.parametrize("F", [WeibullPH, WeibullAH, WeibullAFT, WeibullPO])
 def test_conditional_survival(F):
     m = _fit(F)
     sched = StepSchedule.from_changepoints([0.0, 4.0], [[0.2], [0.9]])
@@ -215,9 +220,14 @@ def test_sf_tvc_survival_decreasing_and_bounded():
     assert np.all(np.diff(s) <= 1e-12)  # monotone non-increasing
 
 
-def test_po_rejects_tvc_evaluation():
-    m = _fit(WeibullPO)
-    with pytest.raises(NotImplementedError, match="proportional-odds"):
+def test_accelerated_life_rejects_tvc_evaluation():
+    # Proportional odds is evaluable along a step path (#236); accelerated
+    # life, whose covariate substitutes into a distribution parameter, is not.
+    rng = np.random.default_rng(0)
+    Z = np.abs(rng.normal(0, 1, (200, 1))) + 1
+    x = rng.weibull(1.6, 200) * 10 / Z[:, 0] + 0.5
+    m = AcceleratedLife(Weibull, Power).fit(x=x, Z=Z)
+    with pytest.raises(NotImplementedError, match="Accelerated Life"):
         m.sf_tvc([2.0], StepSchedule.constant([0.5]))
 
 

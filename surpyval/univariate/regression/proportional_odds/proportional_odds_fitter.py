@@ -40,6 +40,11 @@ class ProportionalOddsFitter(
     sign to the PH and AFT fitters, where a positive coefficient shortens
     life; negate the coefficients to compare them.
 
+    The hazard depends only on the time and the current covariate, so a
+    fitted model is evaluated exactly along a step covariate path by
+    ``sf_tvc`` / ``Hf_tvc`` (a sum of per-segment cumulative-hazard
+    increments). There is no time-varying-covariate *fit* for this family.
+
     Use the pre-built instances (``LogisticPO``, ``WeibullPO``, ...) or the
     ``PO`` factory.
     """
@@ -103,8 +108,21 @@ class ProportionalOddsFitter(
         """
         Cumulative hazard :math:`-\\ln S(x \\mid Z)` at ``x`` for covariates
         ``Z``; ``params`` as for :meth:`sf`.
+
+        Evaluated as :math:`H_0(x) - \\ln\\phi + \\ln(F_0 + \\phi S_0)`,
+        which stays finite where :math:`S_0` underflows to zero (there
+        ``-log(sf)`` is ``inf``, and a difference of two such values along
+        a time-varying path would be ``nan``).
         """
-        return -np.log(self.sf(x, Z, *params))
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        Z = np.atleast_2d(np.asarray(Z, dtype=float))
+        dist_params = params[: self.k_dist]
+        phi_params = params[self.k_dist :]
+        phi = self._phi(Z, *phi_params)
+        H0 = self.Hf_dist(x, *dist_params)
+        S0 = self.sf_dist(x, *dist_params)
+        F0 = self.ff_dist(x, *dist_params)
+        return H0 - np.log(phi) + np.log(F0 + phi * S0)
 
     def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """

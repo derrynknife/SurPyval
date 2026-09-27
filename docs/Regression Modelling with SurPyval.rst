@@ -76,7 +76,7 @@ below points straight to the section that answers it.
      - `Semi-Parametric — Additive Hazards`_
    * - use covariates that change during follow-up, or forecast along a
        planned covariate path
-     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, AFT)
+     - ``fit_tvc`` (Cox, PH, AH, AFT) / ``sf_tvc`` (also PO)
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
      - ``model.check_ph()``
@@ -1364,7 +1364,29 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
 A practical rule of thumb: if the Kaplan-Meier curves for different covariate
 groups converge at long times (rather than remaining parallel on the log-hazard
 scale), PO is likely a better fit than PH. Proportional odds has no
-time-varying-covariate support and no ``random``.
+time-varying-covariate *fitting* and no ``random``.
+
+A fitted PO model can still be evaluated along a covariate path that changes
+over time. Its hazard, :math:`h_0(x) / (F_0(x) + e^{\beta' Z} S_0(x))`, depends
+only on the time and the covariate value at that time, so ``sf_tvc`` adds up
+the cumulative-hazard increment of each constant-covariate segment exactly as
+it does for PH (see `Time-varying covariates across families`_). Here the
+unit is unexposed until :math:`t = 10` and exposed afterwards:
+
+.. jupyter-execute::
+
+    from surpyval.univariate.regression import StepSchedule
+
+    switch = StepSchedule.from_changepoints([0.0, 10.0], [[0.0], [1.0]])
+    at = np.array([5.0, 10.0, 15.0, 30.0])
+    print('never exposed  :', po.sf(at, [0.0]).round(3))
+    print('exposed from 10:', po.sf_tvc(at, switch).round(3))
+    print('always exposed :', po.sf(at, [1.0]).round(3))
+
+Up to :math:`t = 10` the unit follows the unexposed curve. After the switch
+its hazard becomes the exposed one, but its survival does not jump up to the
+exposed curve: it starts from the survival it has already reached (0.5) and
+falls more slowly from there, ending between the other two curves.
 
 
 Confidence Bounds
@@ -1776,15 +1798,24 @@ the fit refuses and points to Cox, which handles both exactly:
 Proportional odds is the one family without time-varying-covariate fitting.
 
 **Evaluating a covariate path.** Every family that has a closed form along a
-step path — Cox, parametric ``PH`` and ``AH``, and accelerated failure time
-(``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus the
-matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
+step path — Cox, parametric ``PH``, ``AH`` and ``PO``, and accelerated failure
+time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
+the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
-Proportional and additive hazards accumulate a cumulative hazard over the
-segments; AFT instead accumulates an *accelerated age*
+Proportional hazards, additive hazards and proportional odds accumulate a
+cumulative hazard over the segments: in each of them the hazard at time
+:math:`t` depends only on :math:`t` and the covariate at :math:`t`, so
+:math:`H(x) = \sum [H(b \mid z) - H(a \mid z)]` over the segments
+:math:`(a, b]`. For proportional odds, with :math:`\phi = e^{\beta' z}`, the
+constant-covariate cumulative hazard is
+:math:`H(t \mid z) = H_0(t) - \ln\phi + \ln(F_0(t) + \phi S_0(t))`. AFT
+instead accumulates an *accelerated age*
 :math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
-:math:`\psi`. Proportional odds has no such closed form yet, and raises.
+:math:`\psi`. A single constant segment gives ``sf(x, Z)`` in every family,
+including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``),
+for which the path's first value is taken to hold before time 0 as well.
+Accelerated life models raise ``NotImplementedError``.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2172,12 +2203,22 @@ Validating a survival predictor
 Information criteria compare models on the data they were fit to. To judge how
 well a model *predicts*, score it on held-out data. Two right-censored-standard
 metrics live in :mod:`surpyval.metrics.validation` (importable from
-``surpyval.metrics``), and both work for **any** model that exposes
-``sf(x, Z)`` — the parametric families, ``CoxPH``, and the ``surpyval.beta.ml``
-forest (see :doc:`comparison_and_validation`).
+``surpyval.metrics``). They take a matrix of predicted survival probabilities,
+so they work for any model; ``survival_probability`` builds that matrix from
+the parametric families, ``CoxPH``, ``AdditiveHazards`` and the
+``surpyval.beta.ml`` forest (see :doc:`comparison_and_validation`). For a model
+whose ``sf`` takes one covariate vector at a time (``BuckleyJames``), stack
+``model.sf(times, Z[i])`` row by row.
 
 Both handle censoring by inverse-probability-of-censoring weighting (IPCW), so
-a subject censored before the horizon does not silently bias the score.
+a subject censored before the horizon does not silently bias the score. The
+censoring distribution is the reverse Kaplan-Meier with an event taken to come
+before a censoring at the same time, and an event at :math:`x_i` is weighted by
+:math:`1/\hat G(x_i-)`, as in R's ``pec``. Without ties between event and
+censoring times the numbers equal scikit-survival's; with such ties they differ
+slightly, because scikit-survival weights the event by :math:`1/\hat G(x_i)`. A
+score that would need :math:`\hat G` where a separate training set's estimate
+has fallen to zero (a horizon past its censoring support) is ``nan``.
 
 - The **Brier score** ``BS(t)`` is the weighted mean squared error between the
   predicted survival ``S(t | Z)`` and the survival indicator; the **integrated

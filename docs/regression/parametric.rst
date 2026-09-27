@@ -37,8 +37,9 @@ families (``WeibullPH`` / ``PH(dist)`` and ``WeibullAH`` / ``AH(dist)``)
 also *fit* start-stop time-varying-covariate data with ``fit_tvc`` /
 ``fit_tvc_timeline``, reusing the ordinary maximum-likelihood fit; the
 AFT family fits it with its own accumulated-age likelihood. A fitted PH,
-AH or AFT model can then be *evaluated* along a piecewise-constant
-covariate path with ``sf_tvc`` / ``Hf_tvc``, describing the path as a
+AH, AFT or PO model can then be *evaluated* along a piecewise-constant
+covariate path with ``sf_tvc`` / ``Hf_tvc`` (PO has no time-varying fit,
+but its evaluation is exact), describing the path as a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`. See
 :ref:`tvc-parametric` in the how-to guide.
 
