@@ -41,6 +41,7 @@ from surpyval.univariate.regression import AFT
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
+from surpyval.univariate.regression.tvc_schedule import StepSchedule
 from surpyval.utils.linalg import (
     psd_precision,
     psd_project,
@@ -54,7 +55,12 @@ from ._bounds import (
     bootstrap_cb,
     life_parameter_covariance,
 )
-from ._clock import HistoryClock, StressClock, stress_row
+from ._clock import (
+    HistoryClock,
+    StressClock,
+    covariates_by_name,
+    stress_row,
+)
 from .path_models import (
     PATH_MODELS,
     PathModel,
@@ -340,10 +346,13 @@ class InducedFailureDistribution(SerialisableMixin):
         )
 
     def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
-        """Failure probability ``P(T <= x)`` from the Monte-Carlo draws."""
+        """Failure probability ``P(T <= x)`` from the Monte-Carlo draws
+        (``nan`` at a missing time)."""
         scalar = np.isscalar(x)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         out = (self.samples[None, :] <= x[:, None]).mean(axis=1)
+        # no draw is <= nan, so a missing time read as ff = 0 (sf = 1)
+        out = np.where(np.isnan(x), np.nan, out)
         return float(out[0]) if scalar else out
 
     def sf(self, x: npt.ArrayLike) -> "float | npt.NDArray":
@@ -354,12 +363,14 @@ class InducedFailureDistribution(SerialisableMixin):
 
     def qf(self, p: npt.ArrayLike) -> "float | npt.NDArray":
         """Quantile of the induced distribution (``inf`` in the never-fails
-        mass)."""
+        mass, ``nan`` for a missing probability)."""
         scalar = np.isscalar(p)
         p = np.atleast_1d(np.asarray(p, dtype=float))
         if np.any((p < 0) | (p > 1)):
             raise ValueError("qf probabilities must lie in [0, 1]")
-        out = np.quantile(self.samples, p, method="lower")
+        missing = np.isnan(p)
+        out = np.full(p.shape, np.nan)
+        out[~missing] = np.quantile(self.samples, p[~missing], method="lower")
         return float(out[0]) if scalar else out
 
     def mean(self) -> float:
@@ -502,6 +513,12 @@ class DegradationModel(SerialisableMixin):
         reference stress.
     stress_ref : ndarray or None
         The reference stress of the clock.
+    Z_cols : list of str or None
+        The covariate columns of a model fitted with
+        :meth:`DegradationAnalysis.fit_from_df`: every method that takes
+        ``Z`` then also takes a DataFrame and selects these columns by
+        name. ``None`` for a model fitted from arrays, which refuses a
+        DataFrame.
     """
 
     x: npt.NDArray
@@ -532,6 +549,7 @@ class DegradationModel(SerialisableMixin):
     acceleration: "str | None"
     gamma: "npt.NDArray | None"
     stress_ref: "npt.NDArray | None"
+    Z_cols: "list[str] | None"
     # Recorded after construction so the bootstrap bounds can rerun the fit.
     _distribution: Any
     _how: str
@@ -562,6 +580,7 @@ class DegradationModel(SerialisableMixin):
         acceleration: "str | None" = None,
         gamma: "npt.ArrayLike | None" = None,
         stress_ref: "npt.ArrayLike | None" = None,
+        Z_cols: "list[str] | None" = None,
     ) -> None:
         self.x = x
         self.y = y
@@ -591,6 +610,7 @@ class DegradationModel(SerialisableMixin):
         self.stress_ref = _optional_array(
             None if stress_ref is None else np.atleast_1d(stress_ref).tolist()
         )
+        self.Z_cols = None if Z_cols is None else list(Z_cols)
         self._unit_index = {unit: idx for idx, unit in enumerate(units)}
 
     # -- serialisation -----------------------------------------------------
@@ -674,6 +694,9 @@ class DegradationModel(SerialisableMixin):
                     self.path_param_link_cov
                 ),
                 **self._clock_dict(),
+                # only for a model fitted with named covariates, so other
+                # dicts are unchanged (an older reader ignores the key)
+                **({} if self.Z_cols is None else {"Z_cols": self.Z_cols}),
             }
         )
 
@@ -741,6 +764,7 @@ class DegradationModel(SerialisableMixin):
             acceleration=model_dict.get("acceleration"),
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
+            Z_cols=model_dict.get("Z_cols"),
         )
         # Recorded so bootstrap bounds can rerun the pipeline. The fitter is
         # not serialised as such, but the restored life model carries it:
@@ -818,8 +842,9 @@ class DegradationModel(SerialisableMixin):
 
         Parameters
         ----------
-        Z : array like
-            One stress row.
+        Z : array like or DataFrame
+            One stress row (``nan`` for a missing value gives ``nan``); a
+            one-row DataFrame for a model fitted with ``fit_from_df``.
         """
         if not self._is_clock or self.gamma is None:
             raise ValueError(
@@ -827,8 +852,15 @@ class DegradationModel(SerialisableMixin):
                 "acceleration='clock'"
             )
         assert self.stress_ref is not None
-        z = stress_row(Z, self.gamma.size)
+        z = stress_row(self._covariates(Z), self.gamma.size, allow_nan=True)
         return float(np.exp(self.gamma @ (z - self.stress_ref)))
+
+    def _covariates(self, Z: Any) -> Any:
+        """``Z`` as an array: a DataFrame is read by the covariate names
+        recorded by ``fit_from_df`` (and refused without them)."""
+        return covariates_by_name(
+            Z, self.Z_cols, "DegradationAnalysis.fit_from_df"
+        )
 
     def _clock(self, Z: Any) -> StressClock:
         """The clock for stress ``Z`` (a row or a StepSchedule)."""
@@ -839,7 +871,9 @@ class DegradationModel(SerialisableMixin):
                 "stress, or a StepSchedule for a stress profile."
             )
         assert self.gamma is not None
-        return StressClock(self.acceleration_factor, self.gamma.size, Z)
+        return StressClock(
+            self.acceleration_factor, self.gamma.size, self._covariates(Z)
+        )
 
     def _unit_clock(self, unit: Any, t: npt.NDArray) -> npt.NDArray:
         """
@@ -898,7 +932,7 @@ class DegradationModel(SerialisableMixin):
             )
         assert self.gamma is not None
         q = self.gamma.size
-        Z_arr = np.asarray(Z, dtype=float)
+        Z_arr = np.asarray(self._covariates(Z), dtype=float)
         if Z_arr.size == q:
             Z_arr = np.tile(Z_arr.reshape(1, q), (len(x), 1))
         elif Z_arr.ndim == 1 and q == 1:
@@ -912,6 +946,11 @@ class DegradationModel(SerialisableMixin):
             )
         if not np.isfinite(Z_arr).all():
             raise ValueError("Z must contain only finite values")
+        Z_future = self._covariates(Z_future)
+        if Z_future is not None and not isinstance(Z_future, StepSchedule):
+            # the stress this one unit will run at: a missing value is
+            # refused, not carried through as nan
+            stress_row(Z_future, q)
         if (x < 0).any():
             raise ValueError(
                 "With a step-stress model the measurement times must be "
@@ -935,7 +974,7 @@ class DegradationModel(SerialisableMixin):
                     "pass the covariate vector Z (the stress conditions) to "
                     "predict life."
                 )
-            return Z
+            return self._covariates(Z)
         if Z is not None:
             raise ValueError(
                 "This degradation model has no covariates; do not pass Z."
@@ -963,8 +1002,9 @@ class DegradationModel(SerialisableMixin):
 
     # -- the stress-conditional path population (``links``) ----------------
 
-    def _stress_row(self, Z: Any) -> npt.NDArray:
-        """Validate one stress row for the stress-conditional population."""
+    def _stress_row(self, Z: Any, allow_nan: bool = False) -> npt.NDArray:
+        """Validate one stress row for the stress-conditional population;
+        ``allow_nan`` lets a missing value through (to give ``nan``)."""
         if (
             self.links is None
             or self.path_param_fixed is None
@@ -981,7 +1021,7 @@ class DegradationModel(SerialisableMixin):
                 "This model's path parameters depend on stress; pass the "
                 "stress vector Z at which to predict."
             )
-        z = np.asarray(Z, dtype=float)
+        z = np.asarray(self._covariates(Z), dtype=float)
         if z.ndim == 2 and z.shape[0] == 1:
             z = z[0]
         z = np.atleast_1d(z)
@@ -993,16 +1033,16 @@ class DegradationModel(SerialisableMixin):
                     n_cov, z.shape
                 )
             )
-        if not np.isfinite(z).all():
+        if not np.isfinite(z[~np.isnan(z)] if allow_nan else z).all():
             raise ValueError("Z must contain only finite values")
         return z
 
     def _stress_prior(
-        self, Z: Any
+        self, Z: Any, allow_nan: bool = False
     ) -> tuple[LinkedPathModel, npt.NDArray, npt.NDArray]:
         """The link-scale path population at stress ``Z``: the linked path
         model, the mean ``D(z) gamma`` and the covariance ``Sigma``."""
-        z = self._stress_row(Z)
+        z = self._stress_row(Z, allow_nan)
         assert self.links is not None and self.path_param_fixed is not None
         design = stress_design(z, self.links, self.path_model.param_names)
         mean = design @ np.asarray(self.path_param_fixed, dtype=float)
@@ -1023,16 +1063,18 @@ class DegradationModel(SerialisableMixin):
 
         Parameters
         ----------
-        Z : array like
+        Z : array like or DataFrame
             One stress row, with as many covariates as the model was
-            fitted with.
+            fitted with (a one-row DataFrame for a model fitted with
+            ``fit_from_df``). A missing (``nan``) covariate makes the
+            parameters that depend on it ``nan``.
 
         Returns
         -------
         ndarray
             The link-scale mean path parameters at ``Z``.
         """
-        return self._stress_prior(Z)[1]
+        return self._stress_prior(Z, allow_nan=True)[1]
 
     def path_param_median(self, Z: Any) -> npt.NDArray:
         r"""
@@ -1048,16 +1090,18 @@ class DegradationModel(SerialisableMixin):
 
         Parameters
         ----------
-        Z : array like
+        Z : array like or DataFrame
             One stress row, with as many covariates as the model was
-            fitted with.
+            fitted with (a one-row DataFrame for a model fitted with
+            ``fit_from_df``). A missing (``nan``) covariate makes the
+            parameters that depend on it ``nan``.
 
         Returns
         -------
         ndarray
             The median path parameters at ``Z``, in path order.
         """
-        linked, mean, _ = self._stress_prior(Z)
+        linked, mean, _ = self._stress_prior(Z, allow_nan=True)
         return linked.to_natural(mean)
 
     def predict_failure_time(
@@ -1517,9 +1561,12 @@ class DegradationModel(SerialisableMixin):
 
         Plain life models expose their own ``qf``; accelerated regression
         models do not, so the quantile at stress ``Z`` is obtained by
-        numerically inverting the survival function. For a step-stress
-        model it is the calendar time at which the clock of ``Z`` reaches
-        the reference-stress quantile, :math:`\\tau^{-1}(F_0^{-1}(p))`.
+        numerically inverting the survival function, pairing each ``p``
+        with a row of ``Z`` as :meth:`sf` pairs each ``x`` (a single row,
+        or a single ``p``, is broadcast). For a step-stress model it is the
+        calendar time at which the clock of ``Z`` reaches the
+        reference-stress quantile, :math:`\\tau^{-1}(F_0^{-1}(p))`. A
+        missing (``nan``) probability or covariate gives ``nan``.
         """
         if self._is_clock:
             clock = self._clock(Z)
@@ -1742,17 +1789,19 @@ class DegradationModel(SerialisableMixin):
         reference-stress failure times from the population of path
         parameters, read along the stress's clock."""
         clock = self._clock(Z)
+        assert self.gamma is not None
+        # the stress row this population is induced at; a missing value is
+        # refused, as for the other methods that describe one unit
+        stress = (
+            None
+            if clock.schedule is not None
+            else stress_row(self._covariates(Z), self.gamma.size).tolist()
+        )
         mean = np.asarray(self.path_param_mean, dtype=float)
         rng = as_generator(random_state)
         root = psd_root(np.asarray(self.path_param_cov, dtype=float))
         theta = mean + rng.standard_normal((n_samples, mean.size)) @ root.T
         tau = self._induced_times(theta)
-        assert self.gamma is not None
-        stress = (
-            None
-            if clock.schedule is not None
-            else stress_row(Z, self.gamma.size).tolist()
-        )
         return InducedFailureDistribution(
             clock.inverse(tau),
             self.threshold,
@@ -1772,15 +1821,34 @@ class DegradationModel(SerialisableMixin):
         p_arr = np.atleast_1d(np.asarray(p, dtype=float))
         if np.any((p_arr < 0) | (p_arr > 1)):
             raise ValueError("qf probabilities must lie in [0, 1]")
+        # one covariate row per probability, as ``sf`` pairs them with
+        # ``x``; only the first row was used, whatever the others held
+        Z_rows = np.asarray(Z, dtype=float)
+        if Z_rows.ndim < 2:
+            Z_rows = Z_rows.reshape(1, -1)
+        try:
+            p_arr, rows = np.broadcast_arrays(p_arr, np.arange(len(Z_rows)))
+        except ValueError:
+            raise ValueError(
+                "qf pairs each probability with a row of Z: pass as many "
+                "probabilities as rows, or one of either; got {} and "
+                "{}".format(len(p_arr), len(Z_rows))
+            ) from None
         scale = float(np.median(self.pseudo_failure_times))
         if not (np.isfinite(scale) and scale > 0):
             scale = 1.0
 
         def target_sf(t: float) -> float:
-            return float(self._reg.sf(np.array([t]), Z).ravel()[0])
+            return float(self._reg.sf(np.array([t]), z).ravel()[0])
 
-        out = np.empty_like(p_arr)
+        out = np.empty(p_arr.shape)
         for k, pk in enumerate(p_arr):
+            z = Z_rows[rows[k]]
+            if np.isnan(pk) or np.isnan(z).any():
+                # a missing probability or covariate: the bracket search
+                # never met its target and returned inf
+                out[k] = np.nan
+                continue
             if pk <= 0.0:
                 out[k] = 0.0
                 continue
@@ -1814,8 +1882,11 @@ class DegradationModel(SerialisableMixin):
         Mean life of an accelerated model at stress ``Z``.
 
         ``E[T] = \\int_0^\\infty S(t | Z) dt`` by numerical integration over a
-        grid that extends to a high survival quantile.
+        grid that extends to a high survival quantile. ``nan`` for a
+        missing covariate.
         """
+        if np.isnan(np.asarray(Z, dtype=float)).any():
+            return np.nan
         upper = float(np.ravel(self._reg_qf(0.999, Z))[0])
         if not np.isfinite(upper):
             upper = float(np.max(self.pseudo_failure_times)) * 100.0
@@ -1924,6 +1995,7 @@ class DegradationModel(SerialisableMixin):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
         if self._is_clock:
             self._clock(Z)  # validates the stress
+            Z = self._covariates(Z)
             if method == "analytic":
                 raise NotImplementedError(
                     "The two-stage analytic correction is not derived for a "
@@ -3002,7 +3074,10 @@ class DegradationAnalysis_:
         Z_cols : str or list of str, optional
             Column(s) of the stress covariates for accelerated degradation
             testing. When given, the selected columns are passed as ``Z`` to
-            :meth:`fit`, fitting a covariate (ADT) life model.
+            :meth:`fit`, fitting a covariate (ADT) life model. Their names
+            are recorded on the model as ``Z_cols`` (and kept by
+            ``to_dict``), so every method that takes ``Z`` also takes a
+            DataFrame and selects these columns by name.
         **fit_kwargs
             Remaining arguments passed to :meth:`fit`: ``threshold``
             (required), and optionally ``path``, ``distribution``,
@@ -3014,12 +3089,22 @@ class DegradationAnalysis_:
         DegradationModel
             The fitted degradation model.
         """
+        cols = None
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
             fit_kwargs["Z"] = df[cols].to_numpy()
-        return self.fit(
+        model = self.fit(
             df[x].to_numpy(), df[y].to_numpy(), df[i].to_numpy(), **fit_kwargs
         )
+        # The names were not kept, so the model refused a DataFrame Z and
+        # told the user to fit with fit_from_df -- which they had done.
+        model.Z_cols = cols
+        if cols is not None and isinstance(
+            model.life_model, ParametricRegressionModel
+        ):
+            # so ``model.life_model`` reads a DataFrame by name too
+            model.life_model.feature_names = cols
+        return model
 
     @staticmethod
     def _handle_Z(

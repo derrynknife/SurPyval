@@ -581,7 +581,9 @@ def test_stress_prediction_errors(linked_model, stage1_model):
     with pytest.raises(ValueError, match="single stress row"):
         linked_model.induced_life(n_samples=100, Z=[[0.0], [1.0]])
     with pytest.raises(ValueError, match="finite"):
-        linked_model.path_param_link_mean([np.nan])
+        linked_model.path_param_link_mean([np.inf])
+    # a missing stress is a missing prediction (#375), for what depends on it
+    assert np.isnan(linked_model.path_param_link_mean([np.nan])).any()
     # a model without links has no stress-conditional population
     with pytest.raises(ValueError, match="not modelled against stress"):
         stage1_model.predict_rul([5.0], [12.5], Z=[0.0])

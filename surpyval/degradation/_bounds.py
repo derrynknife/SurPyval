@@ -278,6 +278,15 @@ def bootstrap_cb(
     x = np.atleast_1d(np.asarray(x, dtype=float))
     rng = as_generator(seed)
     method_name = _on_method(on)
+    # A missing time or stress makes the model's own curve nan there: the
+    # bound is nan at those points, and only the others must be finite
+    # for a refit to count (every refit used to be dropped, and the bound
+    # raised).
+    own = getattr(model, method_name)
+    missing = np.isnan(np.asarray(own(x) if Z is None else own(x, Z)))
+    if missing.all():
+        shape = missing.shape + ((2,) if bound == "two-sided" else ())
+        return np.full(shape, np.nan)
     n_units = len(model.units)
     curves = []
     # A step-stress (clock) model refits its clock on every resample: each
@@ -326,8 +335,8 @@ def bootstrap_cb(
                 curve = np.asarray(
                     curve_fn(x) if Z is None else curve_fn(x, Z), dtype=float
                 )
-                if np.isfinite(curve).all():
-                    curves.append(curve)
+                if np.isfinite(curve[~missing]).all():
+                    curves.append(np.where(missing, np.nan, curve))
             except Exception:
                 continue
     if len(curves) < 2:

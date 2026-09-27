@@ -4,6 +4,23 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Degradation: missing values give NaN, and predictions read a DataFrame by
+  name (#375, #374).** Gamma- and Wiener-process models gave sf = 1 and
+  ``ff = Hf = hf = df = 0`` at a NaN time and ``qf(nan) = inf``, raised on a
+  NaN stress, and ``predict_rul(current_degradation=nan)`` never returned.
+  ``DegradationModel.qf`` returned inf for a NaN covariate or p and used only
+  the first row of ``Z``; ``InducedFailureDistribution`` gave
+  ``ff(nan) = 0``; the bootstrap ``cb`` raised on a NaN stress. A missing
+  time, stress or probability now gives NaN for that element only, and
+  ``qf`` pairs each p with its row of ``Z``. ``predict_rul``,
+  ``predict_failure_time`` and ``induced_life`` still raise for a missing
+  value (they describe one unit), and the process quantile search can no
+  longer loop forever. ``DegradationAnalysis.fit_from_df`` and the new
+  ``WienerProcess.fit_from_df`` / ``GammaProcess.fit_from_df`` record the
+  stress columns as ``Z_cols`` (kept through ``to_dict``), so every method
+  that takes ``Z`` accepts a DataFrame and selects those columns by name; a
+  model fitted from arrays refuses one with an accurate message (it used to
+  say "fit the model with ``fit_from_df``" to a model fitted that way).
 - **One rule for missing values (#375).** Prediction: a missing covariate,
   time or probability gives NaN for exactly the outputs that depend on it,
   and a method whose input is one unit's history (``predict_rul``,

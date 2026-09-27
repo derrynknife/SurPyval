@@ -765,6 +765,22 @@ it — so life at use conditions is one call:
 ``qf`` and ``mean`` invert / integrate the regression survival function, and
 ``random`` draws from it.
 
+Fitted with ``fit_from_df(..., Z_cols=...)``, the model records the stress
+column names (as ``model.Z_cols``, kept by ``to_dict``), and every method that
+takes ``Z`` also takes a DataFrame and selects those columns by name; a model
+fitted from arrays refuses a DataFrame rather than guess at its column order.
+A missing (``nan``) stress, time or probability gives ``nan`` in its own row
+and leaves the others alone; the methods that describe a single unit
+(``predict_rul``, ``induced_life``) refuse it instead:
+
+.. jupyter-execute::
+
+    adt = DegradationAnalysis.fit_from_df(
+        pd.DataFrame({"t": xd, "y": yd, "unit": idd, "stress": Zd}),
+        x="t", y="y", i="unit", Z_cols="stress", threshold=100.0)
+    use = pd.DataFrame({"stress": [0.0, 0.5, np.nan]})
+    adt.qf(0.5, use)             # median life per row; nan where it is missing
+
 Two-stage confidence bounds at a stress are available by bootstrap: units
 are resampled (each carrying its stress), the whole accelerated pipeline is
 rerun, and the reliability at ``Z`` is read off each refit, so the first-stage
@@ -1641,6 +1657,12 @@ A few practical points:
 * A model fitted without ``Z`` is unchanged and refuses a ``Z`` argument. A
   model fitted with ``Z`` refuses to predict without one, because its life
   depends on the stress.
+* ``WienerProcess.fit_from_df`` and ``GammaProcess.fit_from_df`` fit from the
+  columns of a DataFrame and record the stress columns (``Z_cols``), so the
+  model then also takes the stress as a one-row DataFrame, read by name.
+* A missing (``nan``) time, probability or stress gives ``nan``;
+  ``predict_rul`` refuses a missing current degradation or stress, as it
+  describes one unit.
 
 Destructive degradation
 -----------------------
