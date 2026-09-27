@@ -551,9 +551,10 @@ encoded exactly as at fit time:
 
 A formula beginning with ``0 +`` asks for the full one-hot coding instead; with
 a baseline distribution in the model that brings back the collinearity above,
-so it is rarely what you want. Data-dependent transforms inside a formula
-(``scale(x)``, ``center(x)``) fit, but such a model cannot be serialised (see
-`Saving and loading a fitted model`_).
+so it is rarely what you want. Wrapped categoricals (``C(site)``, with
+``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
+(``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
+are kept when the model is saved (see `Saving and loading a fitted model`_).
 
 
 Time-Varying Covariates
@@ -2482,10 +2483,11 @@ serialised:
         print('custom life model:', type(err).__name__)
 
 A model fitted from a DataFrame keeps its covariate names, and a formula model
-keeps its categorical levels, so the restored model still predicts from a
-DataFrame of raw covariates. The exception is a formula with a data-dependent
-transform (``scale()``, ``center()``), whose fitted statistics cannot be
-stored; serialising one raises rather than round-tripping to a wrong encoding.
+keeps everything its formula learned from the data -- the levels of each
+categorical, in order (so the reference level is unchanged), and the fitted
+statistics of transforms such as ``scale()``, ``poly()`` and ``bs()`` -- so the
+restored model still predicts from a DataFrame of raw covariates, exactly as
+the original does.
 
 The **semi-parametric** regression models save and load the same way, each on
 its own result class: Cox proportional hazards

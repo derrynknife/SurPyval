@@ -4,6 +4,27 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Every regression formula round-trips through serialisation (#244).** A
+  model fitted with ``fit_from_df(..., formula=...)`` refused ``to_dict``
+  for wrapped categoricals (``C(g)``, ``C(g, levels=...)``,
+  ``C(g, contr.sum)``) and fitted transforms (``scale``, ``center``,
+  ``poly``, ``bs``, ``cs``). It restored integer-level categoricals with
+  string levels, so every row was coded as the reference level (sf off by
+  up to 0.09), and Cox and competing-risks Cox models lost a ``0 +`` from the
+  formula, so a restored model had 3 design columns for 4 coefficients and
+  could not predict. ``to_dict`` now stores each factor's levels, in order
+  and with their types, and each transform's fitted state as strict JSON;
+  ``from_dict`` rebuilds the same design-matrix transformer, and restored
+  models predict identically (rtol 1e-12) across the PH/AFT/PO/AH,
+  accelerated-life, Cox, Lin-Ying, Buckley-James, frailty and
+  competing-risks families. A formula is checked when saving, so anything
+  that cannot be restored raises in ``to_dict``. A formula that SurPyval
+  0.20 cannot rebuild is stamped schema 2, so 0.20 asks for an upgrade
+  instead of failing with a formula error; plain columns and string
+  categoricals stay schema 1. Old files still load, and a Cox file missing
+  its ``0 +`` is repaired. Also fixed: predicting with plain integers for a
+  column fitted as an integer ``Categorical`` treated it as numeric (sf
+  0.372 instead of 0.083).
 - **Brier score and time-dependent AUC with tied event and censoring times
   (#365, #290).** The censoring survival :math:`\hat G` behind the
   inverse-probability-of-censoring weights counted an event as still at risk

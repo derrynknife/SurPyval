@@ -9,12 +9,14 @@ time so that a DataFrame can be passed to ``sf``, ``ff``, ``df``, ``hf``,
 ``Hf`` and ``random`` and the correct columns will be selected automatically.
 """
 
+import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-from formulaic import Formula
+from formulaic import Formula, ModelSpec
+from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import formula_model_matrix
 
@@ -146,6 +148,7 @@ def prepare_Z(
         # A row with a missing value comes back as an all-nan row -- so its
         # prediction is nan, in place -- rather than being dropped, which
         # shifted every later prediction onto the wrong ``x``.
+        Z = categorical_columns_as_objects(Z, model_spec)
         model_matrix, _ = formula_model_matrix(model_spec, Z)
         return np.asarray(drop_intercept(model_matrix), dtype=float)
 
@@ -162,6 +165,47 @@ def prepare_Z(
     )
 
 
+def categorical_columns_as_objects(Z: pd.DataFrame, model_spec: Any) -> Any:
+    """Recast the numeric columns of ``Z`` that the formula codes as
+    categorical, so they are coded against the fitted levels.
+
+    A column entered bare as a categorical factor -- a ``pd.Categorical``
+    of integers at fit time, say -- but passed for prediction with a plain
+    numeric (or boolean) dtype is read by ``formulaic`` as a *numerical*
+    factor, and the fitted structure then broadcasts its raw value into
+    every level's column (``k[T.2]`` and ``k[T.3]`` both equal to ``k``):
+    a silently wrong design matrix. As ``object`` it is categorical again.
+    """
+    recast = {}
+    for expr, (kind, _state) in model_spec.encoder_state.items():
+        if kind is not Factor.Kind.CATEGORICAL or expr not in Z.columns:
+            continue
+        column = Z[expr]
+        if isinstance(column.dtype, pd.CategoricalDtype):
+            continue
+        if pd.api.types.is_numeric_dtype(column):
+            recast[expr] = column.astype(object)
+    return Z.assign(**recast) if recast else Z
+
+
+def formula_to_string(formula: Any) -> str:
+    """The text of a formula, in a form that parses back to the same terms.
+
+    A formula given as text is returned unchanged. ``str`` of a parsed
+    ``formulaic.Formula`` (which the Cox and competing-risks fitters keep)
+    lists the intercept when there is one but says nothing when there is
+    not, so ``"0 + z + g"`` came back as ``"z + g"`` -- which parses *with*
+    an intercept, giving a different design matrix. The ``"0 + "`` is put
+    back here.
+    """
+    if isinstance(formula, str):
+        return formula
+    text = str(formula)
+    if all(str(term) != "1" for term in formula):
+        text = "0 + " + text
+    return text
+
+
 def serialise_covariate_meta(model: Any, out: dict) -> None:
     """Store a fitted model's covariate metadata into its ``to_dict``.
 
@@ -174,7 +218,7 @@ def serialise_covariate_meta(model: Any, out: dict) -> None:
     if model.feature_names is not None:
         out["feature_names"] = list(model.feature_names)
     if model.formula is not None:
-        out["formula"] = str(model.formula)
+        out["formula"] = formula_to_string(model.formula)
         if getattr(model, "_model_spec", None) is not None:
             out["formula_meta"] = model_spec_to_meta(model._model_spec)
 
@@ -187,7 +231,79 @@ def restore_covariate_meta(model: Any, model_dict: dict) -> None:
     model.formula = model_dict.get("formula")
     formula_meta = model_dict.get("formula_meta")
     if model.formula is not None and formula_meta is not None:
-        model._model_spec = rebuild_model_spec(model.formula, formula_meta)
+        model._model_spec, model.formula = _rebuild_model_spec(
+            model.formula, formula_meta, model.feature_names
+        )
+
+
+# Keys that mark an encoded value in a stored formula state (see
+# ``_state_to_json``); a dictionary using one as a key is stored as items.
+_STATE_TAGS = ("__ndarray__", "__tuple__", "__items__")
+
+
+def _state_to_json(value: Any, expr: str) -> Any:
+    """``value`` (a ``formulaic`` encoder or transform state) as strict
+    JSON that :func:`_state_from_json` reads back to an equal value.
+
+    Numbers, strings, booleans, ``None`` and lists are kept as they are;
+    a numeric array, a tuple and a dictionary with a non-string key (e.g.
+    ``poly``'s ``{0: ..., 1: ...}``) are tagged so they come back as the
+    same type. Anything else cannot be stored faithfully and raises.
+    """
+    if isinstance(value, np.ndarray):
+        if value.dtype.kind not in "biuf":
+            raise _unserialisable_state(expr, value)
+        return {"__ndarray__": value.tolist(), "dtype": value.dtype.name}
+    if isinstance(value, np.generic):
+        value = value.item()
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [_state_to_json(v, expr) for v in value]
+    if isinstance(value, tuple):
+        return {"__tuple__": [_state_to_json(v, expr) for v in value]}
+    if isinstance(value, dict):
+        if all(isinstance(k, str) and k not in _STATE_TAGS for k in value):
+            return {k: _state_to_json(v, expr) for k, v in value.items()}
+        return {
+            "__items__": [
+                [_state_to_json(k, expr), _state_to_json(v, expr)]
+                for k, v in value.items()
+            ]
+        }
+    raise _unserialisable_state(expr, value)
+
+
+def _state_from_json(value: Any) -> Any:
+    """The inverse of :func:`_state_to_json`."""
+    if isinstance(value, list):
+        return [_state_from_json(v) for v in value]
+    if not isinstance(value, dict):
+        return value
+    if "__ndarray__" in value:
+        return np.asarray(value["__ndarray__"], dtype=value["dtype"])
+    if "__tuple__" in value:
+        return tuple(_state_from_json(v) for v in value["__tuple__"])
+    if "__items__" in value:
+        return {
+            _hashable(_state_from_json(k)): _state_from_json(v)
+            for k, v in value["__items__"]
+        }
+    return {k: _state_from_json(v) for k, v in value.items()}
+
+
+def _hashable(key: Any) -> Any:
+    # A tuple key was stored as a tagged list; lists cannot be dict keys.
+    return tuple(key) if isinstance(key, list) else key
+
+
+def _unserialisable_state(expr: str, value: Any) -> NotImplementedError:
+    return NotImplementedError(
+        f"Serialising the formula term '{expr}' is not supported: its "
+        f"fitted state holds a {type(value).__name__}, which cannot be "
+        "stored as JSON. Refit with the covariate entered directly or "
+        "with a covariate list instead of a formula."
+    )
 
 
 def model_spec_to_meta(model_spec: Any) -> dict:
@@ -195,87 +311,203 @@ def model_spec_to_meta(model_spec: Any) -> dict:
     Capture the JSON-safe state needed to rebuild a ``formulaic`` model spec.
 
     A model fit with a ``formula`` carries a ``formulaic`` ``ModelSpec`` that
-    knows how to expand raw covariates into the fitted design matrix -- in
-    particular the levels of any categorical factor (``sex`` -> ``sex[F]``,
-    ``sex[M]``). That spec is not itself JSON-serialisable, so this extracts
-    the minimum needed to regenerate an equivalent one on load: the categorical
-    factor levels and the names of the numeric covariate columns. The formula
-    string is stored separately by the caller.
+    knows how to expand raw covariates into the fitted design matrix. That
+    spec is not itself JSON-serialisable, so this extracts what the encoding
+    depends on besides the formula string (stored separately by the
+    caller):
 
-    Data-dependent (stateful) transforms such as ``scale(x)`` or ``center(x)``
-    keep fitted statistics in the spec's ``transform_state`` that cannot be
-    recovered from levels alone; a formula using one raises
-    ``NotImplementedError`` rather than round-tripping to a silently wrong
-    encoding.
+    - ``encoder_state``: each factor's kind and, for a categorical factor
+      -- a bare column or a wrapped term such as ``C(g, levels=...)`` or
+      ``C(g, contr.sum)`` -- its levels, in order, with their JSON types
+      (so integer levels stay integers);
+    - ``transform_state``: the fitted statistics of the data-dependent
+      transforms (``scale``, ``center``, ``poly``, ``bs``, ``cs``, ...);
+    - ``data_variables``: the DataFrame columns the formula reads.
+
+    The formula re-applies the contrasts and any literal ``levels=``
+    itself. When the formula uses only bare categorical columns with
+    string levels and no transform state, the ``factor_levels`` /
+    ``numeric_features`` pair the v0.17 - v0.20 readers expect is written
+    too, so those releases restore it identically; any other formula
+    leaves the pair out, so an older release fails to rebuild it rather
+    than rebuilding a different encoding.
+
+    The metadata is rebuilt (:func:`rebuild_model_spec`) before it is
+    returned, so a formula that could not be restored -- a term whose state
+    is not JSON-representable, or one that reads a name from outside the
+    DataFrame and ``formulaic``'s transforms -- raises
+    ``NotImplementedError`` here, at save time, rather than on load.
     """
-    if getattr(model_spec, "transform_state", None):
-        raise NotImplementedError(
-            "Serialising a formula that uses a data-dependent transform "
-            "(e.g. scale() or center()) is not supported: its fitted "
-            "statistics cannot be restored. Refit with the covariate entered "
-            "directly (the baseline distribution absorbs location and scale), "
-            "or with a covariate list instead of a formula."
-        )
+    data_variables = sorted(
+        str(v) for v in model_spec.variables if v.source == "data"
+    )
 
-    value_vars = {
-        str(v)
-        for v in model_spec.variables
-        if any(str(r).endswith("VALUE") for r in v.roles)
-    }
-
-    factor_levels: dict[str, list] = {}
-    for factor, (_kind, state) in model_spec.encoder_state.items():
-        if "categories" not in state:
-            continue
+    encoder_state = {}
+    factor_levels: dict[str, list] | None = {}
+    for factor, (kind, state) in model_spec.encoder_state.items():
         factor = str(factor)
-        if factor not in value_vars:
-            # A wrapped categorical such as ``C(sex)`` does not name a bare
-            # column, so the template below cannot type it. These are rare;
-            # fall back to Wald-free refitting rather than guess.
-            raise NotImplementedError(
-                "Serialising a wrapped categorical term "
-                f"('{factor}') is not yet supported; enter the column "
-                "directly (surpyval treats string / object columns as "
-                "categorical automatically)."
-            )
-        factor_levels[factor] = [str(c) for c in state["categories"]]
+        # ``contrasts`` is kept for introspection only; the formula
+        # re-evaluates the contrasts from its own text.
+        state = {k: v for k, v in state.items() if k != "contrasts"}
+        encoder_state[factor] = {
+            "kind": kind.value,
+            "state": _state_to_json(state, factor),
+        }
+        if "categories" in state and factor_levels is not None:
+            levels = encoder_state[factor]["state"]["categories"]
+            if factor in data_variables and all(
+                isinstance(lv, str) for lv in levels
+            ):
+                factor_levels[factor] = levels
+            else:
+                factor_levels = None
 
-    numeric_features = sorted(value_vars - set(factor_levels))
-    return {
-        "factor_levels": factor_levels,
-        "numeric_features": numeric_features,
+    transform_state = {
+        str(expr): _state_to_json(state, str(expr))
+        for expr, state in model_spec.transform_state.items()
     }
 
+    meta: dict[str, Any] = {
+        "data_variables": data_variables,
+        "encoder_state": encoder_state,
+        "transform_state": transform_state,
+    }
+    # Rebuild it now, so a formula that cannot be restored fails here, at
+    # save time, rather than when the file is loaded.
+    formula = formula_to_string(model_spec.formula)
+    try:
+        rebuilt = rebuild_model_spec(formula, meta)
+    except Exception as err:
+        raise NotImplementedError(
+            f"Serialising the formula '{formula}' is not supported: its "
+            f"design-matrix transformer cannot be rebuilt ({err})."
+        ) from err
+    if list(rebuilt.column_names) != list(model_spec.column_names):
+        raise NotImplementedError(
+            f"Serialising the formula '{formula}' is not supported: it "
+            "rebuilds the columns {} instead of {}.".format(
+                list(rebuilt.column_names), list(model_spec.column_names)
+            )
+        )
+    if factor_levels is not None and not transform_state:
+        meta["factor_levels"] = factor_levels
+        meta["numeric_features"] = sorted(
+            set(data_variables) - set(factor_levels)
+        )
+    return meta
 
-def rebuild_model_spec(formula: str, meta: dict) -> Any:
+
+def rebuild_model_spec(
+    formula: str, meta: dict, feature_names: list[str] | None = None
+) -> Any:
     """
     Reconstruct a ``formulaic`` model spec from a formula and stored metadata.
 
-    A small template DataFrame is built with each categorical column typed to
-    the stored levels and each numeric column a placeholder, then the same
-    formula (with its implicit intercept, matching fit time — #252) is
-    re-materialised against it. ``formulaic`` derives an encoder state
-    identical to fit time (the encoding depends on the formula and the factor
-    levels, not the row values), so the returned spec expands raw covariates
-    exactly as the original did.
+    The stored encoder and transform states (see :func:`model_spec_to_meta`)
+    are attached to a fresh spec of the same formula, which is materialised
+    once against a one-row template of missing values -- each categorical
+    column typed to its stored levels -- so ``formulaic`` also derives the
+    column structure (with the implicit intercept, matching fit time --
+    #252). The states fix the levels, their order and every fitted
+    transform statistic, so the returned spec expands raw covariates
+    exactly as the original did. Metadata written by v0.17 - v0.20
+    (``factor_levels`` / ``numeric_features`` only) is read too.
+
+    With ``feature_names`` given, the rebuilt columns are checked against
+    it, and a ``ValueError`` raised if they differ.
     """
+    return _rebuild_model_spec(formula, meta, feature_names)[0]
+
+
+def _rebuild_model_spec(
+    formula: str, meta: dict, feature_names: list[str] | None
+) -> tuple[Any, str]:
+    """:func:`rebuild_model_spec`, also returning the formula text used
+    (which differs only for a repaired v0.17 - v0.20 Cox formula)."""
     formula = str(formula)
-    factor_levels = meta.get("factor_levels", {})
-    numeric_features = meta.get("numeric_features", [])
-
-    height = max((len(lv) for lv in factor_levels.values()), default=1)
-    template: dict[str, Any] = {}
-    for col, levels in factor_levels.items():
-        reps = (height + len(levels) - 1) // len(levels)
-        template[col] = pd.Categorical(
-            (list(levels) * reps)[:height], categories=list(levels)
+    if "encoder_state" in meta:
+        encoder_state = {
+            expr: (
+                Factor.Kind(entry["kind"]),
+                _state_from_json(entry.get("state", {})),
+            )
+            for expr, entry in meta["encoder_state"].items()
+        }
+        transform_state = {
+            expr: _state_from_json(state)
+            for expr, state in meta.get("transform_state", {}).items()
+        }
+        data_variables = list(meta.get("data_variables", []))
+    else:
+        # The v0.17 - v0.20 layout: bare categorical columns (levels stored
+        # as strings) and numeric columns only.
+        factor_levels = meta.get("factor_levels", {})
+        encoder_state = {
+            col: (Factor.Kind.CATEGORICAL, {"categories": list(levels)})
+            for col, levels in factor_levels.items()
+        }
+        transform_state = {}
+        data_variables = sorted(
+            set(factor_levels) | set(meta.get("numeric_features", []))
         )
-    for col in numeric_features:
-        # 1.0 (not 0.0) keeps log / reciprocal terms finite while the spec is
-        # derived; only the encoder structure is kept, not these values.
-        template[col] = np.ones(height)
 
-    model_matrix = Formula(formula).get_model_matrix(pd.DataFrame(template))
+    def rebuild(text: str) -> Any:
+        return _materialise_spec(
+            text, encoder_state, transform_state, data_variables
+        )
+
+    spec = rebuild(formula)
+    if feature_names is None or _spec_columns(spec) == list(feature_names):
+        return spec, formula
+    if "encoder_state" not in meta and not formula.startswith("0 +"):
+        # v0.17 - v0.20 Cox and competing-risks models stored ``str`` of
+        # their parsed formula, which drops a "0 +" (see
+        # ``formula_to_string``); the stored names tell the two apart.
+        repaired = "0 + " + formula
+        spec = rebuild(repaired)
+        if _spec_columns(spec) == list(feature_names):
+            return spec, repaired
+    raise ValueError(
+        "The stored formula {!r} rebuilds the design-matrix columns {} but "
+        "the model was fit with {}; the serialised model is inconsistent."
+        "".format(formula, _spec_columns(spec), list(feature_names))
+    )
+
+
+def _spec_columns(spec: Any) -> list[str]:
+    return [c for c in spec.column_names if c != "Intercept"]
+
+
+def _materialise_spec(
+    formula: str,
+    encoder_state: dict,
+    transform_state: dict,
+    data_variables: list[str],
+) -> Any:
+    """A spec of ``formula`` with the given states, materialised once so it
+    also carries the column structure.
+
+    The template has one row, all missing: ``formulaic`` evaluates every
+    factor on it (so each gets its kind, and the structure follows) and
+    then drops the row. Missing values keep bounded transforms (``bs``,
+    ``log``, ...) from rejecting a placeholder, and no transform refits
+    its state from them, as the stored state is used. A bare categorical
+    column is typed with its levels so it is read as categorical.
+    """
+    template: dict[str, Any] = {v: [np.nan] for v in data_variables}
+    for expr, (kind, state) in encoder_state.items():
+        if expr in template and kind is Factor.Kind.CATEGORICAL:
+            template[expr] = pd.Categorical(
+                [np.nan], categories=list(state.get("categories", []))
+            )
+    spec = ModelSpec(
+        formula=Formula(formula),
+        encoder_state=encoder_state,
+        transform_state=transform_state,
+    )
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        model_matrix = spec.get_model_matrix(pd.DataFrame(template))
     return model_matrix.model_spec
 
 
