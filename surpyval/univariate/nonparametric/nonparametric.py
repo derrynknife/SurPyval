@@ -240,10 +240,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             # A missing time has no value (NaN). The increments of the
             # others are the ones they have without it; the forward fill
             # below would otherwise copy a neighbour's increment into it.
-            out = np.full(x.shape, np.nan)
+            filled = np.full(x.shape, np.nan)
             if not missing.all():
-                out[~missing] = self.hf(x[~missing], interp=interp)
-            return out
+                filled[~missing] = self.hf(x[~missing], interp=interp)
+            return filled
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
