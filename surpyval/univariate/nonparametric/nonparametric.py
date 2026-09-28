@@ -66,6 +66,25 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     methods in this class can be called with a model created
     from the ``NelsonAalen``, ``KaplanMeier``,
     ``FlemingHarrington``, or ``Turnbull`` estimators.
+
+    Examples
+    --------
+    Ten items, two of them censored (``c=1``):
+
+    >>> import numpy as np
+    >>> from surpyval import KaplanMeier
+    >>> x = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
+    >>> c = np.array([0, 0, 1, 0, 0, 0, 1, 0, 0, 0])
+    >>> model = KaplanMeier.fit(x, c)
+    >>> model
+    Non-Parametric SurPyval Model
+    =============================
+    Model            : Kaplan-Meier
+    >>> model.sf([2.5, 6]).round(4)
+    array([0.8   , 0.4571])
+    >>> model.cb([2.5, 6]).round(4)
+    array([[0.4087, 0.9459],
+           [0.143 , 0.7298]])
     """
 
     # Attributes populated by the fitter (``NonParametricFitter.fit`` /

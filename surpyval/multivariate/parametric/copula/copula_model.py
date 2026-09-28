@@ -28,6 +28,29 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         of every margin the fit estimated (all of them for ``how="MLE"``;
         under ``how="IFM"`` those passed as distributions, not a margin
         passed already fitted). ``None`` for ``from_params``.
+
+    Examples
+    --------
+    ``Copula.fit`` and ``Copula.from_params`` return one:
+
+    >>> from surpyval import Weibull
+    >>> from surpyval.multivariate import Clayton
+    >>> margins = [
+    ...     Weibull.from_params([10, 2]),
+    ...     Weibull.from_params([20, 3]),
+    ... ]
+    >>> model = Clayton.from_params([2.0], margins)
+    >>> model
+    Copula SurPyval Model
+    =====================
+    Copula    : Clayton
+    Parameters: theta=2
+    Margins   : Weibull, Weibull
+    Fitted by : given
+    >>> model.sf([[5, 15], [10, 20]]).round(4)
+    array([0.624 , 0.2354])
+    >>> round(float(model.kendall_tau()), 3)
+    0.5
     """
 
     def __init__(

@@ -75,6 +75,30 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     parametric regression models, so a frailty fit can be compared directly
     with the proportional-hazards fit (``WeibullPH`` for ``WeibullFrailty``)
     of the same data -- the model it reduces to at ``theta = 0``.
+
+    Examples
+    --------
+    Thirty groups of six units, each group sharing a gamma frailty:
+
+    >>> import numpy as np
+    >>> from surpyval import WeibullFrailty
+    >>> rng = np.random.default_rng(4)
+    >>> groups = np.repeat(np.arange(30), 6)
+    >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+    >>> Z = rng.binomial(1, 0.5, (180, 1))
+    >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+    >>> x = 10 * H**0.5  # Weibull baseline, alpha 10 and beta 2
+    >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
+    >>> round(model.theta, 3)
+    0.432
+
+    The population curve, and the curve for group 0 given its posterior
+    frailty:
+
+    >>> model.sf([5, 10], [1]).round(4)
+    array([0.721 , 0.3411])
+    >>> model.sf([5, 10], [1], group=0).round(4)
+    array([0.7226, 0.2821])
     """
 
     def __init__(self) -> None:

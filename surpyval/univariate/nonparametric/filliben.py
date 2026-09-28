@@ -13,10 +13,28 @@ def filliben(
     t: npt.ArrayLike | None,
 ) -> dict:
     """
+    Filliben's estimate of the median of each uniform order statistic,
+    used as a plotting position (``heuristic="Filliben"`` in a parametric
+    fit or a probability plot). Right censored items take the adjusted
+    (mean order number) ranks of :code:`rank_adjust`, and carry the
+    previous failure's position.
+
     Method From:
     Filliben, J. J. (February 1975),
     "The Probability Plot Correlation Coefficient Test for Normality",
     Technometrics, American Society for Quality, 17 (1): 111-117
+
+    Examples
+    --------
+    Five items, the second censored; ``R`` is the survival assigned at
+    each ``x``:
+
+    >>> from surpyval.univariate.nonparametric import filliben
+    >>> out = filliben([1, 2, 3, 4, 5], [0, 1, 0, 0, 0], None, None)
+    >>> out["x"]
+    array([1., 2., 3., 4., 5.])
+    >>> out["R"].round(4)
+    array([0.8706, 0.8706, 0.6398, 0.4068, 0.1738])
     """
     x, c, n, t = xcnt_handler(x, c, n, t)
 

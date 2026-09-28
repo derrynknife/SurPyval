@@ -90,6 +90,26 @@ def turnbull(
     (prefix sums), and the per-interval expected event counts are sums of
     per-observation weights over ranges (difference arrays). Each
     iteration is O(N + M) in both time and memory.
+
+    This is the low-level function behind :code:`Turnbull.fit()`: it
+    takes data already put in the ``x``, ``c``, ``n``, ``t`` form by
+    :code:`surpyval.xcnt_handler` and returns a dictionary with the
+    Turnbull ladder (``x``, ``r``, ``d``), the survival estimate ``R``
+    and the EM diagnostics (``converged``, ``iters``, ``npmle``...).
+    Use :code:`Turnbull.fit()` unless you need those raw pieces.
+
+    Examples
+    --------
+    >>> from surpyval import xcnt_handler
+    >>> from surpyval.univariate.nonparametric import turnbull
+    >>> x, c, n, t = xcnt_handler(xl=[1, 2, 3, 1, 9], xr=[5, 3, 6, 8, 10])
+    >>> out = turnbull(x, c, n, t)
+    >>> out["x"]
+    array([ 1.,  2.,  3.,  5.,  6.,  8.,  9., 10.])
+    >>> out["R"].round(4)
+    array([1.    , 1.    , 0.6347, 0.2948, 0.2631, 0.2631, 0.2631, 0.0968])
+    >>> out["converged"]
+    True
     """
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")

@@ -30,6 +30,23 @@ from ._single_probability import SingleProbabilityMixin
 
 
 class FixedEventProbability_(SingleProbabilityMixin, DiscreteParametricFitter):
+    """``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
+    rest never do, with nothing said about *when* (see the module
+    docstring). It is fitted from 0/1 event indicators, 1 for a unit that
+    failed.
+
+    Examples
+    --------
+    Two of ten units failed:
+
+    >>> from surpyval import FixedEventProbability
+    >>> model = FixedEventProbability.fit([1, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+    >>> model.params
+    array([0.2])
+    >>> model.ff([10, 100])
+    array([0.2, 0.2])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

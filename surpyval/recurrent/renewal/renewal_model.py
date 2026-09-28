@@ -312,6 +312,32 @@ class RenewalModel(
         Natural-space ``(lower, upper)`` bounds of the restoration parameter
         (e.g. ``(0, 1)`` for ARA/ARI's ``rho``), used by ``param_cb`` to pick
         a transform that keeps its confidence bounds inside the support.
+
+    Examples
+    --------
+    ``ARA.fit`` returns one. Two systems, repaired at each failure and
+    observed to time 60:
+
+    >>> import numpy as np
+    >>> from surpyval.recurrent import ARA
+    >>> x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+    >>> i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+    >>> c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+    >>> model = ARA.fit(x, i, c=c, m=2)
+
+    The repair efficiency ``rho`` is 1 (as good as new), and the Weibull
+    is that of the times between failures:
+
+    >>> round(float(model.rho), 3)
+    1.0
+    >>> model.model.params.round(3)
+    array([13.779,  1.917])
+
+    The expected number of failures per system by times 20 and 60, by
+    simulation:
+
+    >>> model.mcf(np.array([20.0, 60.0]), items=1000, seed=0).round(3)
+    array([1.296, 4.56 ])
     """
 
     # Set by the GeneralizedRenewal fitter for its Kijima sampler.

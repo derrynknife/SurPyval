@@ -100,6 +100,26 @@ class DestructiveDegradationModel(SerialisableMixin):
     (``sf`` / ``ff`` / ``Hf`` / ``df``) plus the fitted *degradation*
     distribution over time (``degradation_quantile``). The fitted parameters
     are the location intercept and slope ``beta`` and the scale ``sigma``.
+
+    Examples
+    --------
+    Six units destroyed in a strength test at each of four ages; a unit
+    has failed once its strength is below 20:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import DestructiveDegradation
+    >>> rng = np.random.default_rng(1)
+    >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+
+    The median strength at ages 10 and 50, and the probability a unit is
+    still above the threshold at 50 and 80:
+
+    >>> model.degradation_quantile(0.5, [10, 50]).round(3)
+    array([45.674, 19.987])
+    >>> model.sf([50, 80]).round(4)
+    array([0.4956, 0.    ])
     """
 
     def __init__(

@@ -151,6 +151,24 @@ class AdditiveHazardsModel(SerialisableMixin):
     The covariate effect is additive on the hazard, so the prediction
     methods use ``h(t | Z) = h0(t) + beta'Z`` and the cumulative
     ``H(t | Z) = H0(t) + t * beta'Z``.
+
+    Examples
+    --------
+    On the Rossi recidivism data each coefficient is an excess hazard of
+    arrest per week, per unit of the covariate:
+
+    >>> from surpyval import AdditiveHazards
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = AdditiveHazards.fit(x, Z, c=c)
+    >>> model.beta.round(4)
+    array([-0.002 , -0.0003,  0.0007])
+    >>> model.p_values.round(4)
+    array([0.0725, 0.0004, 0.0083])
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9269, 0.7725])
     """
 
     # Populated by ``fit`` / ``fit_from_df``.

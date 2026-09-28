@@ -98,6 +98,22 @@ class LinkedPathModel(PathModel):
         ``{parameter name: "identity" | "log"}`` for the parameters
         whose link is not the identity (a parameter left out gets the
         identity link).
+
+    Examples
+    --------
+    The linear path ``a + b t`` with its slope on a log link, so that
+    ``b`` stays positive:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import LinkedPathModel, get_path_model
+    >>> linked = LinkedPathModel(get_path_model("linear"), {"b": "log"})
+    >>> linked.param_names
+    ['a', 'log(b)']
+    >>> eta = linked.to_link([10.0, 0.3])
+    >>> eta.round(4)
+    array([10.   , -1.204])
+    >>> linked.path(np.array([0.0, 10.0]), *eta)
+    array([10., 13.])
     """
 
     def __init__(self, base: PathModel, links: dict[str, str]) -> None:

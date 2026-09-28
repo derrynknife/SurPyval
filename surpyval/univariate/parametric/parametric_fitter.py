@@ -317,6 +317,25 @@ class ParametricFitter:
     ``autograd.numpy``: maximum likelihood estimation differentiates
     through these functions, and plain numpy silently breaks the
     gradients.
+
+    Examples
+    --------
+    Every continuous distribution (``Weibull``, ``Gamma``, ``LogNormal``
+    ...) is an instance of it. Its functions take the parameters
+    explicitly; ``fit`` and ``from_params`` return a ``Parametric``
+    model that holds them:
+
+    >>> import numpy as np
+    >>> from surpyval import Weibull
+    >>> from surpyval.univariate.parametric import ParametricFitter
+    >>> isinstance(Weibull, ParametricFitter)
+    True
+    >>> Weibull.sf(np.array([5, 10]), 10, 2).round(4)
+    array([0.7788, 0.3679])
+    >>> x = np.array([3.1, 4.7, 5.2, 6.8, 7.4, 8.9, 10.2, 12.5])
+    >>> model = Weibull.fit(x)
+    >>> model.params.round(4)
+    array([8.2823, 2.779 ])
     """
 
     # Whether the distribution's mass sits on integers rather than a

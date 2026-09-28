@@ -35,6 +35,17 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
     :math:`R(k) = P(X > k)`; this one uses :math:`P(X \geq x)`, so the
     two are offset by one: ``Bernoulli.sf(x, p) == Binomial.sf(x - 1,
     1, p)``.
+
+    Examples
+    --------
+    Ten demands on a one-shot device, which worked (1) on eight:
+
+    >>> from surpyval import Bernoulli
+    >>> model = Bernoulli.fit([1, 1, 0, 1, 1, 1, 0, 1, 1, 1])
+    >>> model.params
+    array([0.8])
+    >>> model.sf([0, 1])
+    array([1. , 0.8])
     """
 
     @staticmethod

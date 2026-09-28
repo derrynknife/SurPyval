@@ -73,6 +73,22 @@ class StepValuedError(ValueError):
     The message points at the sub-expression through which ``t`` reaches the
     output continuously (e.g. a bare ``t`` or ``sin(t)``), so the offending
     term can be quantized (``floor(t / dt)``) or replaced.
+
+    Examples
+    --------
+    >>> from surpyval import StepSchedule, StepValuedError
+    >>> try:
+    ...     StepSchedule.from_expression("2 * t", 10)
+    ... except StepValuedError as error:
+    ...     print(error)
+    expression '2 * t' is not step-valued: t reaches the value
+    continuously. Quantize it (e.g. floor(t / dt)) or use a comparison so
+    the covariate stays piecewise-constant.
+
+    Quantized, the same growth is accepted:
+
+    >>> StepSchedule.from_expression("2 * floor(t / 5)", 20)
+    StepSchedule(step, 5 segment(s), p=1)
     """
 
 
@@ -272,6 +288,29 @@ class StepSchedule:
     * :meth:`from_expression` -- a step-valued expression string in ``t``.
 
     All the family math needs is :meth:`segments`.
+
+    Examples
+    --------
+    A covariate that switches from 0 to 1 at time 50, used to predict
+    survival from a fitted proportional hazards model:
+
+    >>> import numpy as np
+    >>> from surpyval import StepSchedule, WeibullPH
+    >>> schedule = StepSchedule.from_changepoints([0, 50], [0.0, 1.0])
+    >>> schedule.edges
+    array([ 0., 50., inf])
+    >>> rng = np.random.default_rng(0)
+    >>> Z = rng.binomial(1, 0.5, (100, 1)).astype(float)
+    >>> x = 100 * rng.weibull(2, 100) * np.exp(-0.25 * Z[:, 0])
+    >>> model = WeibullPH.fit(x, Z)
+    >>> model.sf_tvc([40, 80, 120], schedule).round(4)
+    array([0.9015, 0.4598, 0.1128])
+
+    Before time 50 that is the survival at ``Z = 0``; after it, the
+    hazard of ``Z = 1`` applies:
+
+    >>> model.sf(np.array([40, 80, 120]), [0.0]).round(4)
+    array([0.9015, 0.6008, 0.2746])
     """
 
     def __init__(

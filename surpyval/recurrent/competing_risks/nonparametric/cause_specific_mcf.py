@@ -65,6 +65,25 @@ class CauseSpecificMCF(SerialisableMixin):
     causes' events count as non-events for it), as the overall MCF does.
     Access the per-cause models through ``self.models[cause]`` or use the
     convenience methods below.
+
+    Examples
+    --------
+    Two pumps, each repaired for seal or motor failures and observed to
+    times 10 and 12 (the ``c=1`` rows, which have no event type):
+
+    >>> from surpyval.recurrent import CauseSpecificMCF
+    >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+    >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+    >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+    >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+    >>> model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
+    >>> model
+    Cause-specific MCF with causes: ['motor', 'seal']
+
+    The mean number of seal repairs per pump by times 4 and 10:
+
+    >>> model.mcf([4, 10], "seal")
+    array([1.5, 2. ])
     """
 
     # Populated by the fit classmethods; declared for the type checker.

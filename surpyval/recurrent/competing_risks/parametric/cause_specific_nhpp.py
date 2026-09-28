@@ -51,6 +51,28 @@ class CauseSpecificNHPP(SerialisableMixin):
     ``self.models[cause]`` -- each is an ordinary
     :class:`ParametricRecurrenceModel` with its full ``cif``/``iif``/inference/
     diagnostic behaviour -- or use the convenience methods below.
+
+    Examples
+    --------
+    Two pumps, each repaired for seal or motor failures and observed to
+    times 10 and 12 (the ``c=1`` rows, which have no event type):
+
+    >>> from surpyval.recurrent import CauseSpecificNHPP
+    >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+    >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+    >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+    >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+    >>> model = CauseSpecificNHPP.fit(x, i=i, c=c, e=e)
+    >>> model
+    Cause-specific Crow-AMSAA with causes: ['motor', 'seal']
+
+    The expected number of seal repairs per pump by time 10, and of
+    repairs of either kind:
+
+    >>> model.cif([10], "seal").round(4)
+    array([1.8376])
+    >>> model.total_cif([10]).round(4)
+    array([2.6773])
     """
 
     # Populated by the fit classmethods; declared for the type checker.

@@ -16,6 +16,18 @@ def greenwood_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
     Where d == r (i.e. the survival function reaches zero) the variance
     is undefined and NaN is returned at, and after, that point.
+
+    Examples
+    --------
+    Ten items at risk, two failing at the first time, one at the second
+    and three of the last five at the third:
+
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import greenwood_variance
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> greenwood_variance(r, d).round(4)
+    array([0.025 , 0.0429, 0.3429])
     """
     r = np.asarray(r, dtype=float)
     d = np.asarray(d, dtype=float)
@@ -36,6 +48,45 @@ def greenwood_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 
 def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    r"""
+    Kaplan-Meier (product-limit) estimate of the survival function from
+    the number at risk and the number of events at each time:
+
+    .. math::
+        R(x_i) = \prod_{j \leq i} \left ( 1 - \frac{d_{j}}{r_{j}}
+            \right )
+
+    This is the low-level function behind :code:`KaplanMeier.fit()`,
+    which builds ``r`` and ``d`` from the data (see
+    :code:`surpyval.xcnt_to_xrd`) and wraps the result in a
+    ``NonParametric`` model; use that unless you already have the
+    counts.
+
+    Parameters
+    ----------
+    r : ndarray
+        Number of items at risk just before each distinct event time,
+        in time order.
+    d : ndarray
+        Number of events at each of those times. May be fractional (the
+        Turnbull EM passes expected counts).
+
+    Returns
+    -------
+    R : ndarray
+        The survival estimate just after each time, the same length as
+        ``r``. A step with ``d`` equal to ``r`` takes it to zero; one
+        with ``r`` zero (0 / 0) is taken as zero too.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import kaplan_meier
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> kaplan_meier(r, d).round(4)
+    array([0.8 , 0.7 , 0.28])
+    """
     # d cannot exceed r, so a negative factor is round-off in the Turnbull
     # EM's expected counts (d = r + 4e-15 at the last value); left in, it
     # made the survival there -2e-16 rather than 0.

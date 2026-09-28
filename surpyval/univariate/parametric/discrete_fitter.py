@@ -72,6 +72,23 @@ class DiscreteParametricFitter(ParametricFitter):
     MLE, MSE (least squares against the nonparametric estimate, which is
     a step function anyway) and MOM (via each distribution's ``moment``)
     remain available.
+
+    Examples
+    --------
+    The discrete distributions (``Poisson``, ``Geometric``, ``Binomial``
+    ...) are instances of it:
+
+    >>> import numpy as np
+    >>> from surpyval import Poisson
+    >>> from surpyval.univariate.parametric import DiscreteParametricFitter
+    >>> isinstance(Poisson, DiscreteParametricFitter)
+    True
+    >>> x = np.array([0, 1, 1, 2, 2, 2, 3, 3, 4, 6])
+    >>> model = Poisson.fit(x)
+    >>> model.params.round(4)
+    array([2.4])
+    >>> model.sf([2]).round(4)
+    array([0.4303])
     """
 
     discrete = True

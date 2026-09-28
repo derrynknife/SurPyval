@@ -21,7 +21,28 @@ from surpyval.utils.rng import as_generator
 
 
 class IndependenceCopula(Copula):
-    """The independence copula ``C(u, v) = u v`` (no parameter)."""
+    """The independence copula ``C(u, v) = u v`` (no parameter).
+
+    Fitting it fits the two margins separately; the joint survival is then
+    the product of theirs. It is the baseline a dependent copula is
+    compared against.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import Weibull
+    >>> from surpyval.multivariate import Independence
+    >>> rng = np.random.default_rng(0)
+    >>> x1 = 10 * rng.weibull(2, 100)
+    >>> x2 = 20 * rng.weibull(3, 100)
+    >>> model = Independence.fit([x1, x2], margins=[Weibull, Weibull])
+    >>> [m.params.round(3) for m in model.margins]
+    [array([10.763,  1.91 ]), array([20.847,  3.463])]
+    >>> model.kendall_tau()
+    0.0
+    >>> model.sf([[5, 15]]).round(4)
+    array([0.5762])
+    """
 
     name = "Independence"
     bounds = ()

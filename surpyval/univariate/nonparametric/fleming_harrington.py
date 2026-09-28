@@ -102,6 +102,17 @@ def fleming_harrington_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     This is the variance used by R's ``survfit`` with ``ctype=2`` and
     reduces to the Nelson-Aalen (Aalen/Poisson) variance, sum(d / r**2),
     when there are no tied events.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import (
+    ...     fleming_harrington_variance,
+    ... )
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> fleming_harrington_variance(r, d).round(4)
+    array([0.0223, 0.038 , 0.2516])
     """
     with np.errstate(all="ignore"):
         var = np.array([fh_var_h(r_i, d_i) for r_i, d_i in zip(r, d)])
@@ -110,6 +121,52 @@ def fleming_harrington_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 
 def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    r"""
+    Fleming-Harrington estimate of the survival function from the number
+    at risk and the number of events at each time. It is the Nelson-Aalen
+    estimate with ties counted one after another, each of the ``d``
+    events at a time removing one item from the risk set before the next:
+
+    .. math::
+        R(x_i) = e^{-\sum_{j \leq i} \sum_{k=0}^{d_j-1}
+            \frac{1}{r_j - k}}
+
+    A fractional count (from the Turnbull EM) contributes its remainder
+    pro rata. With no ties this is the Nelson-Aalen estimate.
+
+    This is the low-level function behind :code:`FlemingHarrington.fit()`,
+    which builds ``r`` and ``d`` from the data (see
+    :code:`surpyval.xcnt_to_xrd`) and wraps the result in a
+    ``NonParametric`` model; use that unless you already have the
+    counts.
+
+    Parameters
+    ----------
+    r : array_like
+        Number of items at risk just before each distinct event time,
+        in time order.
+    d : array_like
+        Number of events at each of those times. May be fractional.
+
+    Returns
+    -------
+    R : ndarray
+        The survival estimate just after each time, the same length as
+        ``r``. Like the Nelson-Aalen estimate it stays above zero, even
+        when all the items at risk fail at once.
+
+    Examples
+    --------
+    The ties at the first and last times make the estimate lower than
+    the Nelson-Aalen one (0.8187, 0.7225, 0.3965):
+
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import fleming_harrington
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> fleming_harrington(r, d).round(4)
+    array([0.8097, 0.7145, 0.3265])
+    """
     Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
     H = Y.cumsum()
     H[np.isnan(H)] = np.inf
