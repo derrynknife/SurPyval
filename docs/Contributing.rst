@@ -42,6 +42,11 @@ changing a likelihood, an initial guess or an optimiser.
 interval coverage, test size and power, estimator bias; about 15 minutes on
 four cores), which also run nightly against ``develop`` from
 ``.github/workflows/nightly.yml``.
+The property-based tests in ``surpyval/tests/properties`` run a short
+derandomized search by default (under a minute);
+``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the nightly
+run does. When one finds a failure, it prints a minimal example: pin it in
+``surpyval/tests/properties/test_known_failures.py`` with the issue number.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
 unreleased version at the top.

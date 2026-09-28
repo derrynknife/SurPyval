@@ -4,6 +4,20 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Property-based tests (#379).** Hypothesis generates data with mixed
+  censoring, ties, counts, truncation and tiny samples, and checks the
+  non-parametric estimators, parametric fits, regression, competing-risks,
+  recurrent-event and serialisation paths against general properties
+  (valid curves, local optimality against an independent likelihood,
+  invariance to row order, units and counts, ``ValueError`` on invalid
+  input), shrinking any failure to a minimal case. The default run takes
+  under a minute; ``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` searches
+  thoroughly in the nightly workflow. ``hypothesis`` is a new test-only
+  dependency. It found four bugs, pinned as strict expected failures:
+  Turnbull dropping its last piece under right truncation (#391), silent
+  degenerate fits where the likelihood has no maximum (#392), unit-dependent
+  fits to truncated data (#393), and ``CoxPH`` accepting an infinite event
+  time (#394).
 - **Statistical calibration suite and nightly run (#379).** Simulation
   studies in ``surpyval/tests/calibration`` (opt in with
   ``--run-calibration``) check that results are statistically right, not

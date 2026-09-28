@@ -124,3 +124,37 @@ jobs:
         run:
           python -m pytest -n auto -rP --durations=0 --run-calibration
           surpyval/tests/calibration
+
+  # The property-based tests (surpyval/tests/properties) run a small,
+  # derandomized search on every full test run -- about 40 seconds on one
+  # core. Here they search thoroughly: hundreds of generated data sets per
+  # property, every parametric family, larger samples, and the slow known
+  # failures. Hypothesis shrinks any counterexample to a minimal case,
+  # which then belongs in test_known_failures.py and an issue.
+  #
+  # The thorough profile has not yet been timed end to end, hence the
+  # limit: if it is hit, lower max_examples for the slow files in
+  # surpyval/tests/properties/conftest.py rather than raising the limit.
+  properties:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: property-based tests (thorough)
+        env:
+          SURPYVAL_HYPOTHESIS_PROFILE: nightly
+        run:
+          python -m pytest -n auto --durations=20 surpyval/tests/properties

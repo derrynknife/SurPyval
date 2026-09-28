@@ -38,6 +38,8 @@ tests = [
     # BSON round-trip tests for the serialised-model dictionaries
     # (MongoDB compatibility); pymongo provides the bson package.
     "pymongo>=4",
+    # Property-based tests (surpyval/tests/properties).
+    "hypothesis>=6",
 ]
 docs = [
     # The documentation build toolchain, used by Read the Docs and by a
