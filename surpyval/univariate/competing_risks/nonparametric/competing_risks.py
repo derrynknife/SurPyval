@@ -8,6 +8,7 @@ Copyright 2022 Cartiga LLC
 """
 
 import textwrap
+import warnings
 from typing import Any
 
 import numpy as np
@@ -41,6 +42,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.shapes import keeps_query_shape
 
 
@@ -87,7 +89,7 @@ class CompetingRisks(SerialisableMixin):
     CIF: np.ndarray
     #: The survival estimator ``sf``/``ff``/``Hf`` report:
     #: ``"Nelson-Aalen"`` (``exp(-H)``) or ``"Kaplan-Meier"`` (product limit).
-    method: str = "Nelson-Aalen"
+    how: str = "Nelson-Aalen"
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
     support: "tuple[float, float] | None" = None
@@ -123,7 +125,9 @@ class CompetingRisks(SerialisableMixin):
                 [to_native(k), int(v)] for k, v in self.event_idx_map.items()
             ],
             "n_event_types": int(self.n_event_types),
-            "method": self.method,
+            # Stored under "method", the argument's old name, so files
+            # written before the rename still load.
+            "method": self.how,
         }
         for name in self._SERIALISED_ARRAYS:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
@@ -145,7 +149,7 @@ class CompetingRisks(SerialisableMixin):
         }
         out.n_event_types = int(model_dict["n_event_types"])
         # dicts written before the method was stored reported exp(-H)
-        out.method = model_dict.get("method", "Nelson-Aalen")
+        out.how = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
         support = _support_from_dict(model_dict)
@@ -276,7 +280,7 @@ class CompetingRisks(SerialisableMixin):
         """
 
         def H(q: npt.ArrayLike) -> npt.NDArray:
-            if self.method == "Kaplan-Meier":
+            if self.how == "Kaplan-Meier":
                 with np.errstate(divide="ignore"):
                     return -np.log(self._product_limit(q, event))
             return self._f("H", q, event)
@@ -307,7 +311,7 @@ class CompetingRisks(SerialisableMixin):
         is *not* the probability of escaping that cause in the presence of
         the others -- use :meth:`cif` for that.
         """
-        if self.method == "Kaplan-Meier":
+        if self.how == "Kaplan-Meier":
             return self._within_support(
                 x, lambda q: self._product_limit(q, event), 1.0
             )
@@ -351,7 +355,25 @@ class CompetingRisks(SerialisableMixin):
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
 
+    @property
+    def method(self) -> str:
+        """Deprecated: ``how``, the all-cause survival estimator, under its
+        old name."""
+        warnings.warn(
+            "CompetingRisks.method is deprecated and will be removed in "
+            "v{}; use .how.".format(REMOVED_IN),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.how
+
+    def __dir__(self) -> list[str]:
+        # The deprecated alias is left out of listings (tab completion,
+        # anything that walks ``dir``), which would otherwise warn.
+        return [name for name in super().__dir__() if name != "method"]
+
     @classmethod
+    @renamed_arguments(method="how")
     def fit_from_df(
         cls,
         df: Any,
@@ -359,7 +381,7 @@ class CompetingRisks(SerialisableMixin):
         e_col: str,
         c_col: "str | None" = None,
         n_col: "str | None" = None,
-        method: str = "Nelson-Aalen",
+        how: str = "Nelson-Aalen",
     ) -> "CompetingRisks":
         """
         Fit from the columns of a :class:`pandas.DataFrame`.
@@ -377,7 +399,7 @@ class CompetingRisks(SerialisableMixin):
             given.
         n_col : str, optional
             The column of counts.
-        method : str, optional
+        how : str, optional
             As for :meth:`fit`.
 
         Returns
@@ -386,20 +408,21 @@ class CompetingRisks(SerialisableMixin):
             The fitted model; the frame is kept as ``source_df``.
         """
         x, c, n, e = validate_cr_df_inputs(df, x_col, e_col, c_col, n_col)
-        model = cls.fit(x, e, c, n, method)
+        model = cls.fit(x, e, c, n, how)
         # Keep the source frame without shadowing the ``df`` (density)
         # method (#253).
         model.source_df = df
         return model
 
     @classmethod
+    @renamed_arguments(method="how")
     def fit(
         cls,
         x: npt.ArrayLike,
         e: npt.ArrayLike,
         c: "npt.ArrayLike | None" = None,
         n: "npt.ArrayLike | None" = None,
-        method: str = "Nelson-Aalen",
+        how: str = "Nelson-Aalen",
     ) -> "CompetingRisks":
         """
         Fit the non-parametric competing-risks model.
@@ -420,7 +443,7 @@ class CompetingRisks(SerialisableMixin):
             given. Left and interval censoring are not supported.
         n : array_like, optional
             Counts. Defaults to 1.
-        method : str, optional
+        how : str, optional
             The all-cause survival estimator that ``sf``, ``ff`` and ``Hf``
             report: ``"Nelson-Aalen"`` (the default, ``exp(-H)``) or
             ``"Kaplan-Meier"``. The cumulative incidence always uses the
@@ -443,7 +466,7 @@ class CompetingRisks(SerialisableMixin):
         >>> model.cif([5, 10], 'b').round(4)
         array([0.1   , 0.3917])
         """
-        x, c, n, e = validate_cr_inputs(x, c, n, e, method)
+        x, c, n, e = validate_cr_inputs(x, c, n, e, how)
 
         # The causes in a fixed order (censored rows have no cause), the
         # same for every competing-risks class; labels of different types
@@ -465,14 +488,14 @@ class CompetingRisks(SerialisableMixin):
             j = event_idx_map[e[i]]
             d_e[j, np.where(unique_x == x_i)] += n[i]
 
-        if method == "Nelson-Aalen":
+        if how == "Nelson-Aalen":
             S = na(r, d)
-        elif method == "Kaplan-Meier":
+        elif how == "Kaplan-Meier":
             S = km(r, d)
 
         # Useful object to return to user
         model = cls()
-        model.method = method
+        model.how = how
         model.n_event_types = n_event_types
         model.event_idx_map = event_idx_map
 
@@ -491,7 +514,7 @@ class CompetingRisks(SerialisableMixin):
         # the telescoping identity sum_j S(t-)·d_j/r = 1 - S(t), so
         # pairing the discrete hazard increment with exp(-H) inflates
         # the CIF and can push the total incidence past 1 (#278).
-        S_km = S if method == "Kaplan-Meier" else km(r, d)
+        S_km = S if how == "Kaplan-Meier" else km(r, d)
         model.IIF = aalen_johansen_iif(S_km, model.h0_e)
         model.CIF = model.IIF.cumsum(axis=1)
         return model

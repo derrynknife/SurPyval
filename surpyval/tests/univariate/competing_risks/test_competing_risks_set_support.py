@@ -33,7 +33,7 @@ def _f(model, fname, x, event):
 
 @pytest.fixture(params=METHODS)
 def model(request):
-    return CompetingRisks.fit(X, E, method=request.param)
+    return CompetingRisks.fit(X, E, how=request.param)
 
 
 def test_set_support_chains_and_a_fit_has_none(model):

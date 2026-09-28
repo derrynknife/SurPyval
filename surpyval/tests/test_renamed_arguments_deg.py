@@ -219,3 +219,40 @@ def test_random_takes_Z_second(kind):
     )
     with pytest.raises(TypeError, match="multiple values"):
         model.random(6, 5, [1.0], Z=[1.0])
+
+
+# ``induced_life`` and both ``predict_rul`` took ``Z`` after the seed and
+# the level; ``Z`` now comes straight after the query and the rest is
+# keyword-only, so any positional argument after the query is the old
+# order, read with its old meaning and a warning.
+
+
+def test_induced_life_old_positional_order():
+    model = _model("DegradationAnalysis[linear]")
+    old = _deprecated(lambda: model.induced_life(200, 3), "old order")
+    new = _quiet(lambda: model.induced_life(200, random_state=3))
+    np.testing.assert_array_equal(old.samples, new.samples)
+
+
+def test_path_predict_rul_old_positional_order():
+    model = _model("DegradationAnalysis[linear]")
+    x, y = [1.0, 2.0, 3.0], [1.0, 1.5, 2.0]
+    old = _deprecated(
+        lambda: model.predict_rul(x, y, 0.1, 500, 4), "old order"
+    )
+    new = _quiet(
+        lambda: model.predict_rul(
+            x, y, alpha_ci=0.1, n_samples=500, random_state=4
+        )
+    )
+    assert old.rul == new.rul
+    np.testing.assert_array_equal(old.rul_interval, new.rul_interval)
+
+
+@pytest.mark.parametrize("case", ["WienerProcess", "GammaProcess"])
+def test_process_predict_rul_old_positional_order(case):
+    model = _model(case)
+    old = _deprecated(lambda: model.predict_rul(1.0, 0.1), "old order")
+    new = _quiet(lambda: model.predict_rul(1.0, alpha_ci=0.1))
+    assert old.rul == new.rul
+    assert old.rul_interval == new.rul_interval

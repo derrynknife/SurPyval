@@ -1,9 +1,10 @@
 """
 Calls in an argument order that has changed.
 
-``DegradationModel.cb`` and the process models' ``random`` took the
-stress ``Z`` last; it now comes straight after the query, as everywhere
-else (Design Principles, principle 21). :func:`old_order` keeps a call
+``DegradationModel.cb``, ``induced_life`` and ``predict_rul`` and the
+process models' ``random`` and ``predict_rul`` took the stress ``Z`` last;
+it now comes straight after the query, as everywhere else (Design
+Principles, principle 21). :func:`old_order` keeps a call
 written in the old order working until
 :data:`~surpyval.utils.deprecation.REMOVED_IN`, with a
 ``DeprecationWarning`` saying to pass the arguments by keyword.
@@ -26,6 +27,7 @@ def old_order(
     names: tuple[str, ...],
     is_old: Callable[[Any, tuple, dict], bool],
     stacklevel: int = 2,
+    leading: int = 1,
 ) -> Callable[[F], F]:
     """
     Decorate a method so that a call in its old argument order still works.
@@ -33,49 +35,54 @@ def old_order(
     Parameters
     ----------
     names : tuple of str
-        The (current) names of the arguments after the first one, in the
-        order they used to be taken by position.
+        The (current) names of the arguments after the query, in the order
+        they used to be taken by position.
     is_old : callable
         ``is_old(self, rest, kwargs)`` says whether a call whose positional
-        arguments after the first are ``rest`` (never empty) was written in
-        the old order.
+        arguments after the query are ``rest`` (never empty) was written in
+        the old order. :func:`always_old` for a method whose arguments after
+        the query are now keyword-only, so any positional one is old.
     stacklevel : int, optional
         As for ``warnings.warn``: 2 when this is the outermost decorator,
         3 directly under
         :func:`~surpyval.utils.deprecation.renamed_arguments`, so that the
         warning points at the caller's line.
+    leading : int, optional
+        The number of positional arguments that make up the query (1, or
+        2 for ``predict_rul(x, y, ...)``).
 
     Returns
     -------
     callable
         A decorator. An old-order call has its positional arguments after
-        the first passed by name instead, with a ``DeprecationWarning``.
+        the query passed by name instead, with a ``DeprecationWarning``.
     """
 
     def decorate(func: F) -> F:
         name = func.__qualname__
         new = list(inspect.signature(func).parameters)[1:]
+        query = new[:leading]
         message = (
             "{}: the argument order is now ({}); calls by position in the "
             "old order ({}) are deprecated and will stop working in v{}. "
             "Pass the arguments after {} by keyword.".format(
                 name,
                 ", ".join(new),
-                ", ".join(new[:1] + list(names)),
+                ", ".join(query + list(names)),
                 REMOVED_IN,
-                new[0],
+                query[-1],
             )
         )
 
         @functools.wraps(func)
         def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
-            rest = args[1:]
+            rest = args[leading:]
             if not rest or not is_old(self, rest, kwargs):
                 return func(self, *args, **kwargs)
             if len(rest) > len(names):
                 raise TypeError(
                     "{}() takes at most {} positional arguments ({} given)"
-                    "".format(name, len(names) + 1, len(args))
+                    "".format(name, len(names) + leading, len(args))
                 )
             for key, value in zip(names, rest):
                 if key in kwargs:
@@ -86,11 +93,17 @@ def old_order(
                     )
                 kwargs[key] = value
             warnings.warn(message, DeprecationWarning, stacklevel=stacklevel)
-            return func(self, args[0], **kwargs)
+            return func(self, *args[:leading], **kwargs)
 
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+def always_old(model: Any, rest: tuple, kwargs: dict) -> bool:
+    """Any positional argument after the query is in the old order: the
+    method now takes those arguments by keyword only."""
+    return True
 
 
 def cb_is_old(model: Any, rest: tuple, kwargs: dict) -> bool:

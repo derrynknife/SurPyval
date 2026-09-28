@@ -50,7 +50,7 @@ def _cr_case(method, d):
 
 
 def _cr_fit(method, d):
-    return quietly(cr.CompetingRisks.fit, **d, method=method)
+    return quietly(cr.CompetingRisks.fit, **d, how=method)
 
 
 @pytest.mark.parametrize("method", METHODS)

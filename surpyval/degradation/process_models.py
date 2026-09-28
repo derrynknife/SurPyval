@@ -56,7 +56,7 @@ from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
-from ._argument_order import old_order, random_is_old
+from ._argument_order import always_old, old_order, random_is_old
 from ._clock import StressClock, covariates_by_name, stress_row
 
 __all__ = [
@@ -839,11 +839,13 @@ class FirstPassageProcessModel(SerialisableMixin):
             hi,
         )
 
+    @old_order(("alpha_ci", "Z"), always_old)
     def predict_rul(
         self,
         current_degradation: float,
-        alpha_ci: float = 0.05,
+        *,
         Z: Any = None,
+        alpha_ci: float = 0.05,
     ) -> ProcessRUL:
         """
         Remaining useful life given the current degradation level.
@@ -857,9 +859,6 @@ class FirstPassageProcessModel(SerialisableMixin):
         ----------
         current_degradation : float
             The unit's current degradation level (not ``nan``).
-        alpha_ci : float, optional
-            Tail probability of the returned interval, between 0 and 1.
-            Default ``0.05``.
         Z : array like or StepSchedule, optional
             For a model fitted with stress: the stress the unit will run at
             from now on -- one row for a constant stress, or a
@@ -867,6 +866,9 @@ class FirstPassageProcessModel(SerialisableMixin):
             whose time zero is *now* (or, for a model fitted with
             ``fit_from_df``, a one-row DataFrame). It describes this one
             unit, so a missing value is refused.
+        alpha_ci : float, optional
+            Tail probability of the returned interval, between 0 and 1.
+            Default ``0.05``.
 
         Returns
         -------
