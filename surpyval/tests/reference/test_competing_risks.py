@@ -75,8 +75,8 @@ def test_pooled_cumulative_incidence_matches_cuminc():
 # resolved.
 GRAY_XFAIL = pytest.mark.xfail(
     strict=True,
-    reason="#380: gray_test's variance differs from cmprsk::cuminc's (the rho=0 "
-    "score agrees): statistic 6.741 vs 7.015 (cause 1) and 3.981 vs "
+    reason="#380: gray_test's variance differs from cmprsk::cuminc's (the "
+    "rho=0 score agrees): statistic 6.741 vs 7.015 (cause 1) and 3.981 vs "
     "4.843 (cause 2) on the tied fixture, 0.9452 vs 0.9433 on PBC",
 )
 
