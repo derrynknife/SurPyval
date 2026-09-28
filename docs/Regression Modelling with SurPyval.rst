@@ -434,7 +434,7 @@ Tied event times
 
 When failure times are recorded coarsely — to the day, the shift, the
 inspection — several units share a time and the partial likelihood needs a tie
-convention, chosen with ``method=``: ``'breslow'``, ``'efron'``, ``'exact'`` or
+convention, chosen with ``tie_method=``: ``'breslow'``, ``'efron'``, ``'exact'`` or
 ``'kalbfleisch-prentice'`` (``'kp'``). Every ``CoxPH`` fit defaults to Efron,
 as R and lifelines do, and an Efron fit's baseline hazard takes the same tie
 correction (the covariate-weighted Fleming-Harrington estimator). Below, fifty units have
@@ -455,7 +455,7 @@ which is the answer rounding took away:
           % CoxPH.fit(x=t_true, Z=z_tie).beta[0])
     tie_beta = {}
     for method in ['breslow', 'efron', 'exact', 'kalbfleisch-prentice']:
-        m = CoxPH.fit(x=t_day, Z=z_tie, method=method)
+        m = CoxPH.fit(x=t_day, Z=z_tie, tie_method=method)
         tie_beta[method] = m.beta[0]
         print(f'{method:22s} : beta = {m.beta[0]:.3f}')
 
@@ -541,7 +541,7 @@ rejected, so use a parametric family (``t=[tl, tr]``) for those.
 
     entry_df = pd.DataFrame({'age': x_le, 'z': z_le[:, 0], 'entry': tl_le})
     cox_df = CoxPH.fit_from_df(entry_df, x_col='age', Z_cols='z',
-                               tl_col='entry', method='breslow')
+                               tl_col='entry', tie_method='breslow')
     print('Cox with tl_col : %.3f' % cox_df.beta[0])
 
 .. jupyter-execute::
@@ -561,7 +561,7 @@ formula such as ``"age + site"`` or ``"age * site"``). The fitted model
 remembers its ``feature_names`` — and the formula's encoding — so it can
 predict directly from a DataFrame of raw covariates. Beyond those, the
 parametric families take ``tl_col`` / ``tr_col`` (truncation) and ``init`` /
-``fixed``; ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry), ``method``
+``fixed``; ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry), ``tie_method``
 and ``strata_col``; and the
 frailty fitter requires a ``group_col``. There is a single time column, so
 interval-censored data (two time columns) go through ``fit``.
@@ -707,7 +707,7 @@ contribute a single interval, those that survive it contribute two:
     df = pd.DataFrame(rows, columns=['id', 'xl', 'xr', 'c', 'stress'])
 
     model = CoxPH.fit_tvc_from_df(
-        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+        df, i_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
     )
     model
 
@@ -741,7 +741,7 @@ intervals, so the fit is identical:
     print(tl_df.head(5))
 
     model_tl = CoxPH.fit_tvc_timeline_from_df(
-        tl_df, id_col='id', time_col='time', Z_cols='stress', c_col='c',
+        tl_df, i_col='id', time_col='time', Z_cols='stress', c_col='c',
     )
     print('same fit:', np.allclose(model_tl.beta, model.beta))
 
@@ -971,9 +971,9 @@ duplicates as extra ties.)
     twice = pd.concat([tires, tires], ignore_index=True)
     tire_id = np.tile(np.arange(len(tires)), 2)
     once = CoxPH.fit_from_df(tires, x_col='Survival', Z_cols=cols,
-                             c_col='Censoring', method='breslow')
+                             c_col='Censoring', tie_method='breslow')
     dup = CoxPH.fit_from_df(twice, x_col='Survival', Z_cols=cols,
-                            c_col='Censoring', method='breslow')
+                            c_col='Censoring', tie_method='breslow')
 
     naive_se = lambda m: np.sqrt(np.diag(np.linalg.inv(m.jac(m.beta)[1])))
     print('naive SE, once / twice :', (naive_se(once) / naive_se(dup)).round(3))
@@ -1109,7 +1109,7 @@ percentiles:
 
 .. jupyter-execute::
 
-    model.bootstrap_ci(n_boot=200, seed=1)
+    model.bootstrap_ci(n_boot=200, random_state=1)
 
 Predictions use the fitted residual distribution directly,
 :math:`S(t \mid Z) = S_\varepsilon(\log t + \beta' Z)`, so the survival curves
@@ -1352,13 +1352,14 @@ checking a fit against its own simulated data. It exists for the PH, parametric
 AH and accelerated-life families (not AFT or PO). A PH or parametric AH model
 returns ``size`` draws for each covariate row, in the order given, together
 with the matching covariate rows; an accelerated life model does the same for
-each *distinct* stress, in sorted order:
+each *distinct* stress, in sorted order. As everywhere in SurPyval,
+``random_state`` seeds the draw (``None``, the default, draws from numpy's
+global generator, so ``np.random.seed`` reproduces it):
 
 .. jupyter-execute::
 
     print('hazard multipliers at Z = 0, 1:', demo.phi([[0.0], [1.0]]).round(3))
-    np.random.seed(0)
-    sim_x, sim_Z = demo.random(5, [[0.0], [1.0]])
+    sim_x, sim_Z = demo.random(5, [[0.0], [1.0]], random_state=0)
     print(sim_x.round(2))
     print(sim_Z.ravel())
 
@@ -2068,7 +2069,7 @@ noticeably longer than Cox:
     from surpyval import WeibullPH
 
     ph = WeibullPH.fit_tvc_from_df(
-        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+        df, i_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
     )
     ph.params
 
@@ -2094,7 +2095,7 @@ identical (it accepts ``fixed=`` but not ``init=``):
     from surpyval import WeibullAFT
 
     aft = WeibullAFT.fit_tvc_from_df(
-        df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
+        df, i_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='stress',
     )
     aft.params
 
@@ -2120,7 +2121,7 @@ the fit refuses and points to Cox, which handles both exactly:
     late_entry = df.copy()
     late_entry.loc[late_entry.index[0], 'xl'] = 0.1   # subject 0 enters at 0.1
     try:
-        WeibullAFT.fit_tvc_from_df(late_entry, id_col='id', xl_col='xl',
+        WeibullAFT.fit_tvc_from_df(late_entry, i_col='id', xl_col='xl',
                                    xr_col='xr', c_col='c', Z_cols='stress')
     except ValueError as err:
         print(err)
@@ -2166,7 +2167,7 @@ already reached.
         'z': np.r_[np.zeros(n_po), np.ones(late.sum())],
     })
     po_tvc = WeibullPO.fit_tvc_from_df(
-        po_df, id_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='z',
+        po_df, i_col='id', xl_col='xl', xr_col='xr', c_col='c', Z_cols='z',
     )
     po_tvc.params
 
@@ -2370,7 +2371,7 @@ against a low-load one:
     from surpyval import WeibullPH
 
     model = WeibullPH.fit_tvc_from_df(
-        pumps, id_col='pump', xl_col='xl', xr_col='xr', c_col='c', Z_cols='load',
+        pumps, i_col='pump', xl_col='xl', xr_col='xr', c_col='c', Z_cols='load',
     )
     print('parameters :', np.round(model.params, 3))
     print('load hazard ratio exp(beta) : %.2f' % np.exp(model.params[-1]))

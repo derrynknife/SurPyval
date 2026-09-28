@@ -58,7 +58,7 @@ def _lung(drop_missing=True):
 @pytest.mark.parametrize("ties", ["breslow", "efron"])
 def test_cox_lung(ties):
     x, Z, c = _lung()
-    model = sp.CoxPH.fit(x, Z, c=c, method=ties)
+    model = sp.CoxPH.fit(x, Z, c=c, tie_method=ties)
     _check(model, values("r_survival", "cox_lung_" + ties), 3)
 
 
@@ -67,7 +67,7 @@ def test_cox_lung_missing_covariate_row_is_dropped_like_na_omit():
     # drops it with a warning, and the fit must be the same.
     x, Z, c = _lung(drop_missing=False)
     with pytest.warns(UserWarning):
-        model = sp.CoxPH.fit(x, Z, c=c, method="efron")
+        model = sp.CoxPH.fit(x, Z, c=c, tie_method="efron")
     _check(model, values("r_survival", "cox_lung_efron"), 3)
 
 
@@ -85,7 +85,7 @@ def test_cox_lung_missing_covariate_row_is_dropped_like_na_omit():
 def test_cox_ties(ties, method):
     d = fixture("ties")
     Z = np.column_stack([d["z1"], d["z2"]])
-    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], method=method)
+    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], tie_method=method)
     _check(model, values("r_survival", "cox_ties_" + ties), 2)
 
 
@@ -93,7 +93,7 @@ def test_cox_ties(ties, method):
 def test_cox_ties_matches_scikit_survival(ties):
     d = fixture("ties")
     Z = np.column_stack([d["z1"], d["z2"]])
-    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], method=ties)
+    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], tie_method=ties)
     ref = values("py_sksurv", "cox_ties_" + ties)
     assert_allclose(model.params, ref["coef"], **COEF)
 
@@ -104,7 +104,7 @@ def test_cox_exact_ties_differ_from_discrete_likelihood():
     # average-over-orderings likelihood gives (0.4253, 0.8075).
     d = fixture("ties")
     Z = np.column_stack([d["z1"], d["z2"]])
-    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], method="exact")
+    model = sp.CoxPH.fit(d["x"], Z, c=d["c"], tie_method="exact")
     ref = values("r_survival", "cox_ties_exact")
     assert np.max(np.abs(model.params - ref["coef"])) > 1e-2
 
@@ -113,7 +113,7 @@ def test_cox_exact_ties_differ_from_discrete_likelihood():
 def test_cox_left_truncation(ties):
     d = fixture("left_truncation")
     model = sp.CoxPH.fit(
-        d["x"], d["z"][:, None], c=d["c"], tl=d["tl"], method=ties
+        d["x"], d["z"][:, None], c=d["c"], tl=d["tl"], tie_method=ties
     )
     _check(model, values("r_survival", "cox_left_truncation_" + ties), 1)
 
@@ -123,7 +123,9 @@ def test_cox_start_stop_heart(ties):
     # Start-stop rows are left-truncated rows to the partial likelihood.
     d = fixture("heart")
     Z = np.column_stack([d["age"], d["year"], d["surgery"], d["transplant"]])
-    model = sp.CoxPH.fit(d["stop"], Z, c=d["c"], tl=d["start"], method=ties)
+    model = sp.CoxPH.fit(
+        d["stop"], Z, c=d["c"], tl=d["start"], tie_method=ties
+    )
     _check(model, values("r_survival", "cox_heart_" + ties), 4)
 
 
@@ -138,7 +140,7 @@ def test_cox_stratified(ties):
             d["time"][keep],
             Z,
             c=d["c"][keep],
-            method=ties,
+            tie_method=ties,
             strata=d["sex"][keep],
         )
     ref = values("r_survival", "cox_lung_strata_" + ties)

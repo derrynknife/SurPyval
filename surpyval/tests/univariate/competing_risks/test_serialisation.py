@@ -86,7 +86,7 @@ def test_mixture_model_guards():
 
 def test_fine_gray_round_trip():
     x, Z, e, c = _cr_data()
-    model = FineGray.fit(x, Z, e, c=c, cause=1)
+    model = FineGray.fit(x, Z, e, c=c, event=1)
     restored = FineGrayModel.from_dict(_rt(model.to_dict()))
     t = np.array([2.0, 5.0, 10.0])
     Zq = np.array([0.3, -0.2])
@@ -98,7 +98,7 @@ def test_fine_gray_round_trip():
 
 def test_fine_gray_json_file(tmp_path):
     x, Z, e, c = _cr_data(seed=2)
-    model = FineGray.fit(x, Z, e, c=c, cause=1)
+    model = FineGray.fit(x, Z, e, c=c, event=1)
     fp = tmp_path / "fg.json"
     model.to_json(fp)
     restored = FineGrayModel.from_json(fp)

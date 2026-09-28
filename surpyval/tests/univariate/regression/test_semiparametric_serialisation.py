@@ -45,7 +45,7 @@ def test_cox_round_trip_predictions():
     rossi = load_rossi_static()
     Zc = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
     model = CoxPH.fit_from_df(
-        rossi, x_col="week", c_col="arrest", Z_cols=Zc, method="efron"
+        rossi, x_col="week", c_col="arrest", Z_cols=Zc, tie_method="efron"
     )
     restored = SemiParametricRegressionModel.from_dict(
         json.loads(json.dumps(model.to_dict()))
@@ -178,8 +178,8 @@ def test_buckley_james_bootstrap_ci_survives_round_trip():
     x, Z, c = _semipar_data(seed=5)
     model = BuckleyJames.fit(x, Z, c=c)
     restored = BuckleyJamesModel.from_dict(model.to_dict())
-    ci1 = model.bootstrap_ci(n_boot=50, seed=1)
-    ci2 = restored.bootstrap_ci(n_boot=50, seed=1)
+    ci1 = model.bootstrap_ci(n_boot=50, random_state=1)
+    ci2 = restored.bootstrap_ci(n_boot=50, random_state=1)
     assert np.allclose(ci1, ci2)
 
 

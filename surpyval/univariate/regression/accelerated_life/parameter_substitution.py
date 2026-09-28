@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable
+from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -20,6 +21,7 @@ from .._fit_skeleton import (
     finite_start,
     make_objective,
     require_finite_fit,
+    uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -182,7 +184,11 @@ class ParameterSubstitutionFitter(
         return y
 
     def random(
-        self, size: int, Z: Numeric, *params: Boxable
+        self,
+        size: int,
+        Z: Numeric,
+        *params: Boxable,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         Draw ``size`` samples at each distinct stress in ``Z``.
@@ -190,6 +196,9 @@ class ParameterSubstitutionFitter(
         ``Z`` is a scalar stress, a 1-D array of stresses (one stress
         variable), or one row per stress for a multi-stress life model.
         Returns the draws and the stress row each was drawn at.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
         """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -202,6 +211,9 @@ class ParameterSubstitutionFitter(
         # model, whose ``random`` converts ``Z`` to an array first, and
         # returned ``size`` draws per random stress -- ``size**2`` in all.)
         Z_arr = self._stress_matrix(Z)
+        # One stream for every stress (an int seed would otherwise restart
+        # and give every stress the same uniforms).
+        rng = None if random_state is None else as_generator(random_state)
 
         for stress in np.unique(Z_arr, axis=0):
             life_param_mask = (
@@ -214,7 +226,7 @@ class ParameterSubstitutionFitter(
                 dist_params,
             )
 
-            U = np.random.uniform(0, 1, size)
+            U = uniform_draws(size, rng)
             x.append(self.dist.qf(U, *dist_params_i))
             if np.isscalar(stress):
                 cols = 1

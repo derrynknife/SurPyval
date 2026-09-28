@@ -74,7 +74,7 @@ def _fit(family, formula, df, **extra):
         return surpyval.WeibullFrailty.fit_from_df(df, group_col="unit", **kw)
     if family.startswith("CR-"):
         return CR.fit_from_df(
-            df, "t", "cause", c_col="c", formula=formula, how=family[3:]
+            df, "t", "cause", c_col="c", formula=formula, model=family[3:]
         )
     return getattr(surpyval, family).fit_from_df(df, **kw)
 

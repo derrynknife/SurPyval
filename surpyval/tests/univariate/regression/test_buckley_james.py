@@ -107,7 +107,7 @@ def test_single_covariate():
 def test_bootstrap_ci_brackets_estimate():
     x, Z, c, beta = _aft_data(2000, 7)
     m = BuckleyJames.fit(x, Z, c=c)
-    ci = m.bootstrap_ci(n_boot=120, seed=0)
+    ci = m.bootstrap_ci(n_boot=120, random_state=0)
     assert ci.shape == (2, 2)
     assert np.all(ci[:, 0] <= m.beta) and np.all(m.beta <= ci[:, 1])
     assert np.all(ci[:, 0] <= ci[:, 1])

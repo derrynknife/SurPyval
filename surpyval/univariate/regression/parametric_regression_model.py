@@ -992,7 +992,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return self._eval(self.model.Hf, x, Z, 0.0)
 
     def random(
-        self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        size: int,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -1009,6 +1012,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariate row(s) (or stress value(s)) at which to draw: one
             row per covariate vector, or a scalar / 1-D array of stresses
             for a single-stress accelerated life model.
+
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the draw. ``None`` (the default) draws from numpy's
+            global generator, so ``np.random.seed`` reproduces it; an int
+            or a ``Generator`` gives a stream of its own, which neither
+            depends on nor advances the global one.
 
         Returns
         -------
@@ -1030,6 +1039,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> x_rand, Z_rand = model.random(5, Z[:1])
         >>> x_rand.round(3)
         array([ 8.919,  5.095, 33.929, 10.666, 13.97 ])
+        >>> model.random(3, Z[:1], random_state=0)[0].round(3)
+        array([ 6.111, 11.235, 18.691])
         >>> Z_rand
         array([[0.],
                [0.],
@@ -1043,7 +1054,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # on every path.
         Z = self._prepare_Z(Z)
         if hasattr(self.model, "random"):
-            return self.model.random(size, Z, *self.params)
+            return self.model.random(
+                size, Z, *self.params, random_state=random_state
+            )
         raise NotImplementedError(
             f"random() is not implemented for {self.kind} models."
         )

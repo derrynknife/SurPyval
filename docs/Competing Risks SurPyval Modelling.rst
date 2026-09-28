@@ -27,8 +27,8 @@ SurPyval's competing-risks tools, and the question each one answers:
    * - ``FineGray``
      - How do covariates change the cumulative incidence of one cause?
    * - ``CompetingRisksProportionalHazards``
-     - How do covariates change each cause-specific hazard (``how="Cox"``),
-       or the incidence of every cause (``how="Fine-Gray"``)?
+     - How do covariates change each cause-specific hazard (``model="Cox"``),
+       or the incidence of every cause (``model="Fine-Gray"``)?
 
 The classes live in ``surpyval.univariate.competing_risks``; ``gray_test`` is
 also available at the top level as ``surpyval.gray_test``. All of them accept
@@ -596,7 +596,7 @@ Here two groups have genuinely different cause-1 incidence:
     e = np.concatenate([e_a, e_b])
     group = np.array([0] * 300 + [1] * 300)
 
-    result = gray_test(x, e, group, cause=1)
+    result = gray_test(x, e, group, event=1)
     print('statistic = %.2f   df = %d   p = %.3g'
           % (result.statistic, result.df, result.p_value))
 
@@ -643,7 +643,7 @@ censored very differently, exponentially with means 2 and 50:
             x1, e1 = simulate_cr(n, 0.1, 0.2, cens_mean_1)
             res = gray_test(np.concatenate([x0, x1]),
                             np.concatenate([e0, e1]),
-                            np.repeat([0, 1], n), cause=1)
+                            np.repeat([0, 1], n), event=1)
             p_values.append(res.p_value)
         return np.mean(np.array(p_values) < 0.05)
 
@@ -684,7 +684,7 @@ difference:
     group = np.repeat(["A", "B"], 300)
 
     cs = logrank(x, group, c=np.where(e == 1, 0, 1))
-    gray = gray_test(x, e, group, cause=1)
+    gray = gray_test(x, e, group, event=1)
     print("cause-specific log-rank p = %.3f" % cs.p_value)
     print("Gray's test             p = %.2g" % gray.p_value)
 
@@ -713,7 +713,7 @@ differences in *early* incidence:
 
 .. jupyter-execute::
 
-    print("rho = 1: p = %.2g" % gray_test(x, e, group, cause=1, rho=1.0).p_value)
+    print("rho = 1: p = %.2g" % gray_test(x, e, group, event=1, rho=1.0).p_value)
 
 
 Fine-Gray Sub-distribution Hazards
@@ -757,7 +757,7 @@ with :math:`p = 0.5`.)
     x = np.minimum(x, cens)
     e[c == 1] = None
 
-    model = FineGray.fit(x, Z, e, c=c, cause=1)
+    model = FineGray.fit(x, Z, e, c=c, event=1)
     model
 
 The IPCW correction is what lets the coefficients come back near their true
@@ -818,7 +818,7 @@ Things to watch:
 - ``cause`` must be given when the data contain more than one cause, and it
   must be one that is observed; with a single cause it may be omitted.
 - The Fine-Gray model is fitted for one cause at a time. To model every cause,
-  use ``CompetingRisksProportionalHazards`` with ``how="Fine-Gray"`` (below);
+  use ``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` (below);
   the separate fits are not constrained to be mutually consistent.
 - Censoring times tied with event times (common when times are recorded in
   whole days or months) follow R's ``cmprsk::crr``: the event is taken to
@@ -844,8 +844,8 @@ Cause-Specific Proportional Hazards
 -----------------------------------
 
 ``CompetingRisksProportionalHazards`` fits a proportional-hazards model per
-cause. With ``how="Cox"`` (the default) each cause is a Cox model with the
-other causes treated as censored; ``how="Fine-Gray"`` fits the subdistribution
+cause. With ``model="Cox"`` (the default) each cause is a Cox model with the
+other causes treated as censored; ``model="Fine-Gray"`` fits the subdistribution
 model above for every cause. It reuses the simulated data from the previous
 section:
 
@@ -855,7 +855,7 @@ section:
         CompetingRisksProportionalHazards,
     )
 
-    csph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Cox")
+    csph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, model="Cox")
     # cumulative incidence of cause 1 at a covariate vector
     csph.cif(np.array([0.5, 1.0, 2.0]), Z=[0.5, -0.5], event=1)
 
@@ -937,7 +937,7 @@ method is fast, even with ties this heavy.
     assert np.all(np.abs(tied["breslow"]) < np.abs(tied["exact"]))
     assert np.all(np.abs(tied["kp"]) > np.abs(tied["exact"]))
 
-With ``how="Cox"`` the model has the usual functions, each taking the times,
+With ``model="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:
 
 - ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``,
@@ -975,14 +975,14 @@ higher, so ``1 - sf`` sits just below the sum.
     _gap = (cif1 + cif2) - (1 - csph.sf(times, Z=z))
     assert np.all((_gap > 0) & (_gap < 0.002)), _gap
 
-With ``how="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
+With ``model="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
 an ``event`` and come from each cause's Fine-Gray model; ``hf`` and ``df``
 raise a ``ValueError`` because the step baseline has no pointwise density.
 Comparing the two fits on the same data:
 
 .. jupyter-execute::
 
-    fg_all = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
+    fg_all = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, model="Fine-Gray")
     for cause, row in fg_all.event_idx_map.items():
         print("cause", cause, "Fine-Gray coefficients:",
               np.round(fg_all.betas[row], 3))
@@ -1004,14 +1004,14 @@ necessarily lowers the incidence of the other.
 
 Both kinds of fit can be saved and restored like the other competing-risks
 models. The dictionary holds the per-cause coefficients and baselines (and,
-for ``how="Fine-Gray"``, each cause's Fine-Gray model); the optimiser results
+for ``model="Fine-Gray"``, each cause's Fine-Gray model); the optimiser results
 in ``results`` are not stored, so a restored model has ``results = None``:
 
 .. jupyter-execute::
 
     for fitted in [csph, fg_all]:
         reloaded = surv.from_dict(json.loads(json.dumps(fitted.to_dict())))
-        print(fitted.how, type(reloaded).__name__,
+        print(fitted.model, type(reloaded).__name__,
               np.array_equal(reloaded.cif(times, Z=z, event=1),
                              fitted.cif(times, Z=z, event=1)))
 
@@ -1020,7 +1020,7 @@ Fitting from a DataFrame
 
 ``fit_from_df`` takes the time and cause column names, and the covariates
 either as ``Z_cols`` (a column name or list of names) or as a ``formula``;
-``c_col``, ``n_col``, ``how`` and ``tie_method`` (default ``"efron"``, passed to
+``c_col``, ``n_col``, ``model`` and ``tie_method`` (default ``"efron"``, passed to
 each cause's Cox fit) are optional. A blank/``NaN`` cause marks a censored row,
 and rows with a missing (or infinite) covariate are dropped, with a warning
 giving the count -- as are rows of ``Z`` containing ``NaN`` in ``fit``, for

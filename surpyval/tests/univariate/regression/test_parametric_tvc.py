@@ -154,7 +154,7 @@ def test_fit_tvc_from_df_matches_arrays():
     )
     from_df = WeibullPH.fit_tvc_from_df(
         df,
-        id_col="subj",
+        i_col="subj",
         xl_col="start",
         xr_col="stop",
         c_col="status",
@@ -364,7 +364,7 @@ def test_po_tvc_timeline_and_df_match_start_stop():
     )
     m_df = WeibullPO.fit_tvc_from_df(
         df,
-        id_col="subj",
+        i_col="subj",
         xl_col="start",
         xr_col="stop",
         c_col="status",

@@ -44,6 +44,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -54,6 +55,7 @@ from .._fit_skeleton import (
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
+    uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -140,7 +142,11 @@ class AdditiveHazardsFitter(
         return regression_neg_ll(self, data, *params)
 
     def random(
-        self, size: int, Z: npt.ArrayLike, *params: float
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         Draw ``size`` samples for each covariate row of ``Z`` by numerically
@@ -151,7 +157,10 @@ class AdditiveHazardsFitter(
 
         Returns the draws and a 2-D array of the covariate row each was
         drawn at, row by row -- the same contract as the proportional
-        hazards ``random``.
+        hazards ``random``. ``random_state`` seeds the draw: ``None`` (the
+        default) draws from numpy's global generator, so
+        ``np.random.seed`` reproduces it; an int or a
+        ``numpy.random.Generator`` gives a stream of its own.
 
         Examples
         --------
@@ -173,23 +182,26 @@ class AdditiveHazardsFitter(
         # ravel ``Z`` into a single vector, so several rows failed with a
         # shape mismatch and one row came back as a 1-D ``Z``.
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        # One stream for every row (an int seed would otherwise restart
+        # and give every row the same uniforms).
+        rng = None if random_state is None else as_generator(random_state)
         x = []
         Z_out = []
         for row in Z_arr:
-            x.append(
-                self._invert_cumulative_hazard(size, row, dist_params, beta)
-            )
+            U = uniform_draws(size, rng)
+            x.append(self._invert_cumulative_hazard(U, row, dist_params, beta))
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
 
     def _invert_cumulative_hazard(
         self,
-        size: int,
+        U: npt.NDArray,
         row: npt.NDArray,
         dist_params: npt.NDArray,
         beta: npt.NDArray,
     ) -> npt.NDArray:
-        """``size`` draws at one covariate row: the times at which
+        """The draws at one covariate row from the uniforms ``U``: the
+        times at which
         ``H_0(x) + x beta'Z`` reaches ``-log U``, found by bracketing and
         bisection.
 
@@ -203,7 +215,7 @@ class AdditiveHazardsFitter(
         those draws are searched above 0 instead.
         """
         bz = float(np.dot(row, beta))
-        target = -np.log(np.random.uniform(0, 1, size))
+        target = -np.log(U)
 
         def cum_haz(xv: npt.NDArray) -> npt.NDArray:
             return self.Hf_dist(xv, *dist_params) + xv * bz

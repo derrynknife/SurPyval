@@ -4,8 +4,8 @@
   missing-cause rule as every other competing-risks class (it used to count
   such a row as a failure from a competing cause).
 - ``CompetingRisksProportionalHazards`` serialises (``to_dict``/``from_dict``,
-  JSON files, ``surpyval.from_dict``) for both ``how="Cox"`` and
-  ``how="Fine-Gray"``, and the reloaded model predicts identically.
+  JSON files, ``surpyval.from_dict``) for both ``model="Cox"`` and
+  ``model="Fine-Gray"``, and the reloaded model predicts identically.
 """
 
 import json
@@ -28,8 +28,8 @@ G8 = [0, 0, 0, 0, 1, 1, 1, 1]
 
 
 def test_gray_test_nan_cause_is_censored():
-    with_none = gray_test(X8, [1, 2, None, 1, 2, 1, None, 2], G8, cause=1)
-    with_nan = gray_test(X8, [1, 2, np.nan, 1, 2, 1, np.nan, 2], G8, cause=1)
+    with_none = gray_test(X8, [1, 2, None, 1, 2, 1, None, 2], G8, event=1)
+    with_nan = gray_test(X8, [1, 2, np.nan, 1, 2, 1, np.nan, 2], G8, event=1)
     assert with_nan.statistic == pytest.approx(with_none.statistic)
     assert with_nan.p_value == pytest.approx(with_none.p_value)
     # and both match the explicit censoring flags
@@ -43,8 +43,8 @@ def test_gray_test_pandas_missing_cause_is_censored():
         {"x": X8, "e": [1, 2, None, 1, 2, 1, None, 2], "g": G8}
     )
     assert frame["e"].isna().sum() == 2  # stored as NaN by pandas
-    res = gray_test(frame["x"], frame["e"], frame["g"], cause=1)
-    ref = gray_test(X8, [1, 2, None, 1, 2, 1, None, 2], G8, cause=1)
+    res = gray_test(frame["x"], frame["e"], frame["g"], event=1)
+    ref = gray_test(X8, [1, 2, None, 1, 2, 1, None, 2], G8, event=1)
     assert res.statistic == pytest.approx(ref.statistic)
 
 
@@ -56,7 +56,7 @@ def test_gray_test_c_must_agree_with_missing_causes():
             X8,
             [1, 2, np.nan, 1, 2, 1, np.nan, 2],
             G8,
-            cause=1,
+            event=1,
             c=np.zeros(8),
         )
 
@@ -88,13 +88,13 @@ def _assert_same_predictions(model, restored):
                 np.testing.assert_array_equal(
                     getattr(model, f)(T, z, ev), getattr(restored, f)(T, z, ev)
                 )
-            if model.how == "Cox":
+            if model.model == "Cox":
                 for f in ["hf", "df"]:
                     np.testing.assert_array_equal(
                         getattr(model, f)(T, z, ev),
                         getattr(restored, f)(T, z, ev),
                     )
-        if model.how == "Cox":
+        if model.model == "Cox":
             for f in ["sf", "Hf", "hf"]:
                 np.testing.assert_array_equal(
                     getattr(model, f)(T, z), getattr(restored, f)(T, z)
@@ -107,13 +107,13 @@ def _assert_same_predictions(model, restored):
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
 def test_crph_round_trips_through_json(how):
     x, Z, e = _cr_data()
-    model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
     d = model.to_dict()
     assert d["model"] == "CompetingRisksProportionalHazards"
     assert d["schema"] == required_schema(d)
     restored = surpyval.from_dict(json.loads(json.dumps(d)))
     assert type(restored) is CompetingRisksProportionalHazards
-    assert restored.how == how
+    assert restored.model == how
     assert restored.results is None
     _assert_same_predictions(model, restored)
     # class-level reader too
@@ -124,7 +124,7 @@ def test_crph_round_trips_through_json(how):
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
 def test_crph_to_json_file(tmp_path, how):
     x, Z, e = _cr_data(seed=1)
-    model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
     path = tmp_path / "crph.json"
     model.to_json(path)
     _assert_same_predictions(model, surpyval.from_json(path))
@@ -142,7 +142,7 @@ def test_crph_numpy_integer_causes_round_trip():
         dtype=object,
     )
     for how in ["Cox", "Fine-Gray"]:
-        model = CompetingRisksProportionalHazards.fit(x, Z, codes, how=how)
+        model = CompetingRisksProportionalHazards.fit(x, Z, codes, model=how)
         restored = surpyval.from_dict(json.loads(json.dumps(model.to_dict())))
         for ev in [1, 2]:
             np.testing.assert_array_equal(
@@ -164,7 +164,7 @@ def test_crph_formula_metadata_round_trips():
 
 def test_crph_from_dict_rejects_other_models():
     x, Z, e = _cr_data()
-    fg = surpyval.univariate.competing_risks.FineGray.fit(x, Z, e, cause="a")
+    fg = surpyval.univariate.competing_risks.FineGray.fit(x, Z, e, event="a")
     with pytest.raises(ValueError, match="CompetingRisksProportionalHazards"):
         CompetingRisksProportionalHazards.from_dict(fg.to_dict())
 
@@ -174,6 +174,6 @@ def test_crph_dict_is_bson_native(how):
     # MongoDB's encoder rejects numpy scalars that json.dumps tolerates
     bson = pytest.importorskip("bson")
     x, Z, e = _cr_data(seed=4)
-    model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
     doc = bson.decode(bson.encode(model.to_dict()))
     _assert_same_predictions(model, surpyval.from_dict(doc))

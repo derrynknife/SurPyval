@@ -80,7 +80,7 @@ def test_step_left_limit_is_the_value_before_each_step():
 
 
 def test_tied_fit_matches_hand_weighted_partial_likelihood():
-    model = FineGray.fit(X, Z[:, None], E, cause="a")
+    model = FineGray.fit(X, Z[:, None], E, event="a")
     d = model.to_dict()
 
     # The fitted objective is the hand likelihood at the fitted beta.
@@ -113,7 +113,7 @@ def test_tied_fit_differs_from_right_continuous_weights():
         denom = W_old @ np.exp(Z * beta)
         return -float(np.sum(Z[EVENT_ROWS] * beta - np.log(denom)))
 
-    model = FineGray.fit(X, Z[:, None], E, cause="a")
+    model = FineGray.fit(X, Z[:, None], E, event="a")
     old = minimize_scalar(
         old_neg_ll, bracket=(-1.0, 1.0), method="brent", tol=1e-12
     )
@@ -185,7 +185,7 @@ def test_tied_fit_matches_crr_transcription(seed):
     # The data really does tie censorings with events.
     assert np.intersect1d(x[status == 0], x[status > 0]).size > 0
 
-    model = FineGray.fit(x, Zm, e, cause="a")
+    model = FineGray.fit(x, Zm, e, event="a")
     crr = _crr_neg_ll(x, status, Zm)
     assert model.to_dict()["neg_ll"] == pytest.approx(
         crr(model.beta), rel=1e-12
@@ -224,7 +224,7 @@ def test_untied_fit_equals_right_continuous_weights():
     def neg_ll(b):
         return -float(np.sum(Zm[ev] @ b - np.log(W @ np.exp(Zm @ b))))
 
-    model = FineGray.fit(x, Zm, e, cause="a")
+    model = FineGray.fit(x, Zm, e, event="a")
     assert model.to_dict()["neg_ll"] == pytest.approx(
         neg_ll(model.beta), rel=1e-12
     )
@@ -234,9 +234,9 @@ def test_tied_counts_equal_repeated_rows():
     # The weights are count-weighted: n copies of a row is one row with n.
     n = np.array([2, 1, 3, 1, 2, 1, 1, 2, 1, 1, 1])
     expanded = FineGray.fit(
-        np.repeat(X, n), np.repeat(Z, n)[:, None], np.repeat(E, n), cause="a"
+        np.repeat(X, n), np.repeat(Z, n)[:, None], np.repeat(E, n), event="a"
     )
-    counted = FineGray.fit(X, Z[:, None], E, n=n, cause="a")
+    counted = FineGray.fit(X, Z[:, None], E, n=n, event="a")
     np.testing.assert_allclose(counted.beta, expanded.beta, atol=1e-6)
     np.testing.assert_allclose(
         counted.to_dict()["baseline_cumhaz"],
@@ -250,16 +250,16 @@ def test_censoring_survival_reaching_zero_needs_no_guard():
     # G just before an observed time, which stays positive, and the fit is
     # finite without warnings.
     with np.errstate(divide="raise", invalid="raise"):
-        model = FineGray.fit(X, Z[:, None], E, cause="a")
+        model = FineGray.fit(X, Z[:, None], E, event="a")
     assert np.all(np.isfinite(model.beta))
     assert np.all(np.isfinite(model.to_dict()["baseline_cumhaz"]))
 
 
 def test_crph_fine_gray_uses_the_same_tied_weights():
     crph = CompetingRisksProportionalHazards.fit(
-        X, Z[:, None], E, how="Fine-Gray"
+        X, Z[:, None], E, model="Fine-Gray"
     )
-    standalone = FineGray.fit(X, Z[:, None], E, cause="a")
+    standalone = FineGray.fit(X, Z[:, None], E, event="a")
     np.testing.assert_allclose(
         crph.betas[crph.event_idx_map["a"]], standalone.beta
     )

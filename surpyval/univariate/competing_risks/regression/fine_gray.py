@@ -59,6 +59,7 @@ from surpyval.univariate.competing_risks.labels import (
     ordered_labels,
 )
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
@@ -323,6 +324,7 @@ class FineGray_:
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
 
+    @renamed_arguments(cause="event")
     def fit(
         self,
         x: npt.ArrayLike,
@@ -330,7 +332,7 @@ class FineGray_:
         e: npt.ArrayLike,
         c: "npt.ArrayLike | None" = None,
         n: "npt.ArrayLike | None" = None,
-        cause: Any = None,
+        event: Any = None,
     ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
@@ -351,9 +353,10 @@ class FineGray_:
             not supported.
         n : array_like, optional
             Counts per observation. Defaults to 1.
-        cause : optional
-            The cause of interest. May be omitted only when the data contains a
-            single event type.
+        event : optional
+            The cause of interest (a label in ``e``). May be omitted only
+            when the data contains a single event type. The fitted model
+            keeps it as ``cause``.
 
         Returns
         -------
@@ -372,7 +375,7 @@ class FineGray_:
         >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
         >>> first = np.where(t_a < t_b, "a", "b")
         >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
-        >>> model = FineGray.fit(x, Z, e, cause="a")
+        >>> model = FineGray.fit(x, Z, e, event="a")
         >>> model.beta.round(3)
         array([0.908])
         >>> model.cif([5, 10], [[1]]).round(4)
@@ -381,19 +384,19 @@ class FineGray_:
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
         causes = ordered_labels(e)
-        if cause is None:
+        if event is None:
             if len(causes) != 1:
                 raise ValueError(
                     "Data has multiple event types "
-                    f"({causes}); specify `cause`."
+                    f"({causes}); specify `event`."
                 )
-            cause = causes[0]
-        elif cause not in causes:
+            event = causes[0]
+        elif event not in causes:
             raise ValueError(
-                f"Cause {cause!r} not observed; causes are {causes}."
+                f"Cause {event!r} not observed; causes are {causes}."
             )
 
-        return FineGrayModel(_fit_cause(x, Z, e, c, n, cause))
+        return FineGrayModel(_fit_cause(x, Z, e, c, n, event))
 
 
 FineGray = FineGray_()
