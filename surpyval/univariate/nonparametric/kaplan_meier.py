@@ -89,17 +89,16 @@ def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     """
     # d cannot exceed r, so a negative factor is round-off in the Turnbull
     # EM's expected counts (d = r + 4e-15 at the last value); left in, it
-    # made the survival there -2e-16 rather than 0.
-    factor = np.maximum(1 - (d / r), 0.0)
-    R = factor.copy()
-    R[np.isnan(R)] = 0
-    with np.errstate(under="raise"):
-        try:
-            R = np.cumprod(R)
-        except FloatingPointError:
-            R = np.cumsum(np.log(factor))
-            R = np.exp(R)
-    return R
+    # made the survival there -2e-16 rather than 0. No one at risk (0 / 0)
+    # is documented to take the estimate to zero, without a raw warning.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        factor = np.maximum(1 - (d / r), 0.0)
+    factor[np.isnan(factor)] = 0
+    # A product below the smallest float is zero, the right value: it used
+    # to raise under errstate(under="raise") and fall back to
+    # exp(cumsum(log)), which raised in turn (#450).
+    with np.errstate(under="ignore"):
+        return np.cumprod(factor)
 
 
 class KaplanMeier_(NonParametricFitter):

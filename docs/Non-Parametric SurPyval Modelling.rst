@@ -166,7 +166,7 @@ The survival function ``sf``, failure function ``ff`` and cumulative hazard ``Hf
 
 ``interp='linear'`` (or ``'cubic'``, a shape-preserving interpolant) joins the estimates at the observed values instead; it is ``nan`` outside the observed range because there is nothing to interpolate between. Interpolation can make a plot easier to read but is not part of the estimate: the data say nothing about the shape of the curve between observations.
 
-Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` follow the same rule. The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
+Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` and ``bootstrap_cb`` follow the same rule (without a support they are ``nan`` outside the data). The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
 
 .. jupyter-execute::
 
@@ -391,7 +391,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     assert np.allclose(with_data.bootstrap_cb([3], B=50, random_state=0),
                        model.bootstrap_cb([3], B=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -505,7 +505,8 @@ to the pointwise one here, a sign that the asymptotic formula is adequate for th
 and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value, that of the
 limiting Brownian bridge over the range the band covers, is computed numerically rather than
 simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``B`` (200 resamples), ``random_state``, ``alpha_ci`` and a
-one-sided ``bound``; it always bounds the survival function.
+one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
+outside the range of the data unless the model has a support (``set_support``).
 
 .. jupyter-execute::
     :hide-code:
