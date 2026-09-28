@@ -595,8 +595,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         hazard switches to the new covariate's PO hazard; the survival does
         not jump to the new covariate's PO curve. The first segment is held
         back to the bottom of the baseline's support (for a baseline defined
-        below zero, such as ``Logistic``, the path's first value is taken to
-        apply before time zero too), so the result is the unconditional
+        below zero, such as ``Logistic``, the value in force at time zero is
+        taken to apply before it too), so the result is the unconditional
         survival.
 
         For accelerated failure time the covariate rescales time, so the path
@@ -605,6 +605,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         cumulative hazard is the baseline evaluated there,
         :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
         segment reduces exactly to ``Hf(x, Z)``.
+
+        The path is measured from time zero: a schedule starting after zero
+        has its first value held back to zero, and the part of a schedule
+        before zero is ignored (the value in force at zero applies from
+        there). Any time is a valid query, zero and below included: a
+        constant path gives ``Hf(x, Z)`` there too.
 
         Parameters
         ----------
@@ -637,9 +643,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         missing = np.isnan(xq)
         if missing.all():
             return np.full(xq.shape, np.nan)
+        # A horizon at or below 0 materialises the one segment in force at
+        # 0: H is then 0, or the baseline's value for a time below 0.
         t_max = float(np.max(xq[~missing]))
-        if t_max <= 0:
-            raise ValueError("x must contain a positive time")
         starts, ends, Zseg = self._tvc_segments(schedule, t_max)
         xq_eval = np.where(missing, t_max, xq)
 
@@ -709,18 +715,24 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         dist_params = self.params[: self.k_dist]
         phi_params = self.params[self.k_dist :]
         psi = np.zeros(xq.shape[0], dtype=float)
-        for a, b, z in zip(starts, ends, Zseg):
+        support_lo = float(self.distribution.support[0])
+        for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
             phi_seg = float(
                 np.asarray(
                     self.model._phi(zrow, *phi_params), dtype=float
                 ).ravel()[0]
             )
-            width = np.clip(xq, a, b) - a
+            # Query times before 0 fall in the first segment when the
+            # baseline is defined there (a negative age, as sf(x, Z)).
+            width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a
             psi = psi + phi_seg * width
-        return np.asarray(
-            self.model.Hf_dist(psi, *dist_params), dtype=float
-        ).ravel()
+        # An age of 0 makes a log-time baseline (LogNormal) evaluate
+        # log(0) = -inf on its way to the correct H = 0.
+        with np.errstate(divide="ignore"):
+            return np.asarray(
+                self.model.Hf_dist(psi, *dist_params), dtype=float
+            ).ravel()
 
     @keeps_query_shape
     def sf_tvc(
@@ -790,7 +802,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             if np.isnan(given):
                 # A missing conditioning age: nothing is known (as Cox).
                 H = np.full(np.shape(H), np.nan)
-            elif given > 0:
+            else:
+                # H(given) is 0 at or below 0, unless the baseline has
+                # mass below 0 (then it is -log of the survival to given).
                 H = H - self.Hf_tvc(given, Z, xl)
         return np.exp(-H)
 

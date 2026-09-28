@@ -170,8 +170,8 @@ def test_po_errors_match_the_other_families():
         m.sf_tvc([2.0], ZS)
     with pytest.raises(ValueError, match="xl must not be given"):
         m.sf_tvc([2.0], StepSchedule.constant([0.5]), xl=[0.0])
-    with pytest.raises(ValueError, match="positive time"):
-        m.sf_tvc([0.0], StepSchedule.constant([0.5]))
+    # Time 0 is a valid query (#435 item 4): sf(0, Z) = 1 for a Weibull.
+    assert m.sf_tvc([0.0], StepSchedule.constant([0.5])) == 1.0
 
 
 def test_po_generic_factory_supports_tvc():

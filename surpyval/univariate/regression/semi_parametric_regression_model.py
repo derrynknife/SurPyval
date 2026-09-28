@@ -561,7 +561,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
         an array of per-segment covariate rows with ``xl`` giving the segment
         start times. The cumulative hazard sums the fitted baseline-hazard
         jumps weighted by the covariate active at each jump (see
-        :meth:`_tvc_cumhaz`).
+        :meth:`_tvc_cumhaz`). The path is measured from time zero (a
+        schedule starting after zero has its first value held back to zero;
+        the part before zero is ignored), and any time is a valid query:
+        ``H`` is ``0`` up to the first baseline jump.
 
         Parameters
         ----------
@@ -593,9 +596,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
             # Nothing to evaluate: a missing time is nan (the schedule
             # cannot be materialised to a nan horizon).
             return np.full(xq.shape, np.nan)
+        # A horizon at or below 0 materialises the segment in force at 0
+        # (H is 0 there, before the first baseline jump).
         t_max = float(np.nanmax(xq))
-        if t_max <= 0:
-            raise ValueError("x must contain a positive time")
         starts, _, Zseg = segments_from_origin(schedule, t_max)
         return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
 
@@ -650,6 +653,6 @@ class SemiParametricRegressionModel(SerialisableMixin):
             if np.isnan(given):
                 # A missing conditioning age: nothing is known.
                 H = np.full(np.shape(H), np.nan)
-            elif given > 0:
+            else:
                 H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)
         return np.exp(-H)

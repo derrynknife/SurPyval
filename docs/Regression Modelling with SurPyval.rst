@@ -2187,6 +2187,10 @@ time (``AFT``) — exposes the same ``sf_tvc(x, Z, xl=None, given=None)`` (plus
 the matching ``Hf_tvc``). Pass either ``(xl, Z)`` arrays or a
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`, and
 ``given=`` for conditional survival :math:`S(x \mid \text{survived to } g)`.
+The path is measured from time 0: a schedule that starts later has its first
+value held back to 0, and the part of a schedule before 0 is ignored (the value
+in force at 0 applies from there), so a constant path gives ``sf(x, Z)``
+wherever it starts. Any time is a valid query, 0 and below included.
 Proportional hazards, additive hazards and proportional odds accumulate a
 cumulative hazard over the segments: in each of them the hazard at time
 :math:`t` depends only on :math:`t` and the covariate at :math:`t`, so
@@ -2198,7 +2202,7 @@ instead accumulates an *accelerated age*
 :math:`\psi(x) = \sum e^{\beta'z}\,(b - a)` and evaluates the baseline once at
 :math:`\psi`. A single constant segment gives ``sf(x, Z)`` in every family,
 including baselines defined below zero (``Normal``, ``Gumbel``, ``Logistic``),
-for which the path's first value is taken to hold before time 0 as well.
+for which the value in force at time 0 is taken to hold before it as well.
 ``fit_tvc`` treats a subject observed from time 0 the same way (its first
 interval is not left-truncated), so for PH, AH and PO a constant covariate
 split into intervals reproduces the ordinary ``fit``.
@@ -2242,10 +2246,15 @@ spacing ``resolution`` (default 1) up to ``horizon``, so the resolution must be
 no coarser than the narrowest step; beyond the horizon the last value is held.
 For several covariates pass a list of expressions, one per covariate
 (``StepSchedule.from_expression(["...", "..."], horizon=...)``), and ``t0``
-starts the path somewhere other than 0. The expressions may use ``t``, numbers,
-arithmetic, comparisons, ``a if cond else b``, the constants ``pi``, ``e``,
+starts the path somewhere other than 0 (a model still evaluates it from 0, as
+above). The expressions may use ``t``, numbers, arithmetic, comparisons,
+``and`` / ``or`` / ``not``, ``a if cond else b``, the constants ``pi``, ``e``,
 ``tau`` and ``inf``, and the functions ``floor``, ``ceil``, ``round``,
-``trunc``, ``abs``, ``min`` and ``max``; anything else is refused.
+``trunc``, ``abs``, ``min`` and ``max``, with their keyword arguments
+(``round(t / 10, ndigits=1)``); each means what it does in Python (``and`` and
+``or`` return an operand, so ``(t > 50) and 2.0 or 1.0`` is 2 after
+``t = 50``). Anything else is refused, and so is a keyword a function cannot
+take.
 
 .. jupyter-execute::
 

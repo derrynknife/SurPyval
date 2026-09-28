@@ -108,9 +108,17 @@ def _varies_continuously(node: ast.AST) -> bool:
         # ``t`` reaching here unquantized is the continuous case; named
         # constants (pi, e, ...) are fine.
         return node.id == "t"
-    if isinstance(node, (ast.Compare, ast.BoolOp)):
+    if isinstance(node, ast.Compare):
         # A boolean is two-valued -> stepped, regardless of its operands.
         return False
+    if isinstance(node, ast.BoolOp):
+        # ``and`` / ``or`` return an operand, as in Python. ``and`` returns
+        # an operand before the last only when it is falsy (0), so only its
+        # last operand can carry ``t`` through; ``or`` returns any truthy
+        # operand as it is.
+        if isinstance(node.op, ast.And):
+            return _varies_continuously(node.values[-1])
+        return any(_varies_continuously(v) for v in node.values)
     if isinstance(node, ast.IfExp):
         # test only selects a branch (it is a comparison/boolean); the value
         # is continuous iff a selectable branch is.
@@ -133,10 +141,19 @@ def _varies_continuously(node: ast.AST) -> bool:
             return False
         # Non-quantizing call (e.g. abs, min, max, or -- once rejected -- a
         # trig function): continuous iff any argument is.
-        return any(_varies_continuously(a) for a in node.args)
+        return any(_varies_continuously(a) for a in node.args) or any(
+            _varies_continuously(k.value) for k in node.keywords
+        )
     # Anything unrecognised (attribute access, comprehensions, ...) is treated
     # as continuous; it is rejected here and would also fail the safe eval.
     return True
+
+
+def _whole(value: "float | bool") -> "float | int":
+    """``value`` as an ``int`` when it is a whole number, else unchanged."""
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return value
 
 
 def _safe_eval(node: ast.AST, t: float) -> "float | bool":
@@ -195,10 +212,15 @@ def _safe_eval(node: ast.AST, t: float) -> "float | bool":
             return left**right
         raise StepValuedError("unsupported binary operator in expression")
     if isinstance(node, ast.BoolOp):
-        vals = [_safe_eval(v, t) for v in node.values]
-        if isinstance(node.op, ast.And):
-            return all(vals)
-        return any(vals)
+        # As Python: ``and`` returns the first falsy operand, ``or`` the
+        # first truthy one, else either returns the last; the operands
+        # after the one returned are not evaluated.
+        stop_on = isinstance(node.op, ast.Or)
+        for operand in node.values[:-1]:
+            val = _safe_eval(operand, t)
+            if bool(val) == stop_on:
+                return val
+        return _safe_eval(node.values[-1], t)
     if isinstance(node, ast.Compare):
         left = _safe_eval(node.left, t)
         result = True
@@ -235,7 +257,37 @@ def _safe_eval(node: ast.AST, t: float) -> "float | bool":
                 "{})".format(fname, ", ".join(sorted(_FUNCTIONS)))
             )
         args = [_safe_eval(a, t) for a in node.args]
-        return float(_FUNCTIONS[fname](*args))
+        kwargs = {}
+        for keyword in node.keywords:
+            if keyword.arg is None:
+                raise ValueError(
+                    "'**' arguments are not supported in a schedule "
+                    "expression (in the call to {})".format(fname)
+                )
+            kwargs[keyword.arg] = _safe_eval(keyword.value, t)
+        if fname == "round":
+            # Every constant is read as a float, but round's ndigits must
+            # be an int: pass a whole number as one.
+            if len(args) > 1:
+                args[1] = _whole(args[1])
+            if "ndigits" in kwargs:
+                kwargs["ndigits"] = _whole(kwargs["ndigits"])
+        try:
+            return float(_FUNCTIONS[fname](*args, **kwargs))
+        except TypeError as exc:
+            raise ValueError(
+                "cannot evaluate {}() in the schedule expression with "
+                "{} positional argument(s){}: {}".format(
+                    fname,
+                    len(args),
+                    (
+                        " and keyword(s) " + ", ".join(sorted(kwargs))
+                        if kwargs
+                        else ""
+                    ),
+                    exc,
+                )
+            ) from exc
     raise StepValuedError(
         "unsupported syntax in schedule expression: {}".format(
             type(node).__name__
@@ -381,7 +433,9 @@ class StepSchedule:
         ``values[i]`` is the covariate row in effect from ``times[i]`` until
         the next change-point; the last value is held to the horizon.
         ``times`` must be strictly increasing; ``times[0]`` is the path's
-        start (usually ``0``).
+        start (usually ``0``). A model evaluates the path from time ``0``:
+        a path starting later has its first value held back to ``0``, and
+        the part of a path before ``0`` is ignored.
 
         Parameters
         ----------
@@ -496,7 +550,10 @@ class StepSchedule:
         ever evaluated: ``t`` may reach the value only through a quantizer
         (``floor``, ``ceil``, ``//``) or a comparison. A continuously-varying
         expression (``0.3 + 1e-4 * t``, ``sin(t)``) raises
-        :class:`StepValuedError`.
+        :class:`StepValuedError`. The allowed syntax means what it does in
+        Python: ``and`` / ``or`` return an operand, and keyword arguments
+        (``round(t / 10, ndigits=1)``) are passed on; one a function cannot
+        take raises ``ValueError``.
 
         The (guaranteed stepped) expression is then materialised by sampling on
         a grid of spacing ``resolution`` over ``[t0, horizon]`` and coalescing
@@ -665,12 +722,28 @@ def segments_from_origin(
     schedule: StepSchedule, t_max: float
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """
-    Materialise ``schedule`` to ``t_max``, holding the first segment back to
-    the time origin so cumulative hazard is measured from ``0`` (unconditional
-    survival). Returns ``(starts, ends, Z)``.
+    Materialise ``schedule`` on ``[0, t_max]``, the time origin being where
+    cumulative hazard (or accelerated age) is measured from, so the result
+    is the unconditional survival. Returns ``(starts, ends, Z)`` with
+    ``starts[0] == 0``.
+
+    The path is clipped to start at ``0``: a schedule starting after ``0``
+    has its first value held back to ``0``, and the part of a schedule
+    before ``0`` is dropped, the segment in force at ``0`` then starting
+    there. For ``t_max <= 0`` the result is that one segment, ``[0, 0]``.
     """
-    starts, ends, Z = schedule.segments(t_max)
-    if starts[0] > 0:
-        starts = starts.copy()
-        starts[0] = 0.0
+    t_max = float(t_max)
+    end = max(t_max, 0.0)
+    if schedule.edges[0] >= end:
+        # The path starts at or after the horizon: only its first value
+        # (held back to 0) is ever in force.
+        return np.array([0.0]), np.array([end]), schedule.Z[:1].copy()
+    # Any positive horizon shows the value in force at 0.
+    starts, ends, Z = schedule.segments(end if end > 0 else 1.0)
+    # Drop what ends at or before 0 and start the rest at 0.
+    keep = ends > 0
+    starts, ends, Z = starts[keep].copy(), ends[keep], Z[keep]
+    starts[0] = 0.0
+    if end == 0:
+        return starts[:1], np.array([0.0]), Z[:1]
     return starts, ends, Z

@@ -2,14 +2,15 @@
 
 Each test pins a bug found by reading the module and its consumers
 (``sf_tvc``/``Hf_tvc`` and the degradation stress clock) adversarially. They
-are strict expected failures until the bug is fixed.
+were strict expected failures until the bug was fixed; #433, #434 and
+#435 are fixed and run as ordinary regression tests.
 """
 
 import numpy as np
 import pytest
 
 import surpyval as surv
-from surpyval import StepSchedule
+from surpyval import StepSchedule, StepValuedError
 from surpyval.degradation import DegradationAnalysis
 
 
@@ -20,12 +21,9 @@ def _ph_data():
     return x, Z
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#433: AFT sf_tvc counts a schedule's time before 0 as age; a "
-    "constant path from -10 gives sf(20) = 0.8626, not sf(20, Z) = 0.9362",
-)
 def test_aft_sf_tvc_ignores_the_path_before_time_zero():
+    # #433: a constant path from -10 gave sf(20) = 0.8626, not
+    # sf(20, Z) = 0.9362 (ten units of age before 0 were counted).
     x, Z = _ph_data()
     model = surv.WeibullAFT.fit(x, Z)
     q = np.array([20.0, 50.0, 100.0])
@@ -62,13 +60,9 @@ def _step_stress_model():
     return model, z_levels[2]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#433: the degradation stress clock starts at the schedule's "
-    "first edge, not 0; a constant path from -10 gives F(100) = 0.662, "
-    "not F(100, Z) = 0.489",
-)
 def test_stress_clock_ignores_the_path_before_time_zero():
+    # #433: the clock started at the schedule's first edge; a constant path
+    # from -10 gave F(100) = 0.662, not F(100, Z) = 0.489.
     model, z = _step_stress_model()
     t = np.array([50.0, 100.0, 150.0])
     early = StepSchedule.from_changepoints([-10.0], [z])
@@ -77,13 +71,8 @@ def test_stress_clock_ignores_the_path_before_time_zero():
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#434: from_expression evaluates 'a and b' / 'a or b' to a bool, "
-    "not an operand: '(t > 50) and 2.0 or 1.0' is 1.0 everywhere, "
-    "Python gives 2.0 after t = 50",
-)
 def test_expression_boolean_operators_return_an_operand():
+    # #434: 'a and b' / 'a or b' gave a bool, so this was 1.0 everywhere.
     expr = "(t > 50) and 2.0 or 1.0"
     schedule = StepSchedule.from_expression(expr, 100)
     starts, _, Z = schedule.segments(100.0)
@@ -91,21 +80,41 @@ def test_expression_boolean_operators_return_an_operand():
     np.testing.assert_array_equal(got, [1.0, 2.0])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#434: from_expression drops keyword arguments silently: "
-    "'round(t / 10, ndigits=1)' is evaluated as round(t / 10), so Z at "
-    "t = 1, 2 is 0, not 0.1, 0.2",
+@pytest.mark.parametrize(
+    "expr", ["round(t / 10, ndigits=1)", "round(t / 10, 1)"], ids=str
 )
-def test_expression_keyword_arguments_are_used_or_refused():
-    expr = "round(t / 10, ndigits=1)"
-    try:
-        schedule = StepSchedule.from_expression(expr, 30)
-    except ValueError:
-        return  # refusing the keyword is an acceptable fix
+def test_expression_keyword_arguments_are_used(expr):
+    # #434: the keyword was dropped (Z = 0 at t = 1, 2); the positional
+    # form raised a TypeError (every constant is read as a float).
+    schedule = StepSchedule.from_expression(expr, 30)
     starts, _, Z = schedule.segments(30.0)
     got = Z[np.searchsorted(starts, [0.0, 1.0, 2.0], side="right") - 1, 0]
     np.testing.assert_allclose(got, [0.0, 0.1, 0.2])
+
+
+@pytest.mark.parametrize(
+    "expr, name",
+    [
+        ("floor(t, digits=1)", "digits"),
+        ("max(1, floor(t), default=3)", "default"),
+        ("round(t / 10, ndigits=0.5)", "ndigits"),
+    ],
+    ids=str,
+)
+def test_expression_keyword_it_cannot_honour_is_refused(expr, name):
+    # #434: an unusable keyword was dropped silently.
+    with pytest.raises(ValueError, match=name):
+        StepSchedule.from_expression(expr, 10)
+
+
+def test_expression_operand_returned_by_or_must_be_stepped():
+    # #434: with 'or' returning its operand, '(t > 5) or t' is t itself
+    # after the first second, so it is not step-valued.
+    with pytest.raises(StepValuedError):
+        StepSchedule.from_expression("(t > 5) or t", 10)
+    # 'and' returns an earlier operand only when it is 0.
+    schedule = StepSchedule.from_expression("t and 1", 10)
+    np.testing.assert_array_equal(schedule.Z[:, 0], [0.0, 1.0])
 
 
 def test_parametric_sf_tvc_missing_given_is_nan():
@@ -141,14 +150,36 @@ def test_sf_tvc_scalar_query_gives_a_scalar():
     assert np.shape(model.sf_tvc(20.0, schedule)) == ()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#435: sf_tvc(0) raises 'x must contain a positive time' "
-    "(PH and Cox) where sf(0, Z) = 1",
-)
 @pytest.mark.parametrize("fitter", ["WeibullPH", "CoxPH"], ids=str)
 def test_sf_tvc_at_time_zero_is_one(fitter):
+    # #435 item 4: 'x must contain a positive time' where sf(0, Z) = 1.
     x, Z = _ph_data()
     model = getattr(surv, fitter).fit(x, Z)
     schedule = StepSchedule.constant([1.0])
     np.testing.assert_allclose(model.sf_tvc([0.0], schedule), [1.0])
+    assert model.sf_tvc(0.0, schedule) == 1.0
+    np.testing.assert_allclose(model.sf_tvc([-5.0, 0.0], schedule), 1.0)
+
+
+def test_aft_sf_tvc_before_zero_is_sf_for_a_baseline_below_zero():
+    # #435 item 4: with a Normal baseline, sf_tvc(-5) was the survival at
+    # 0 (0.9725), not sf(-5, Z) = 0.9801.
+    x, Z = _ph_data()
+    model = surv.NormalAFT.fit(x, Z)
+    schedule = StepSchedule.constant([1.0])
+    q = np.array([-5.0, 0.0, 20.0])
+    np.testing.assert_allclose(
+        model.sf_tvc(q, schedule), model.sf(q, [1.0]), rtol=1e-12
+    )
+
+
+def test_stress_clock_starts_at_zero():
+    # #433: the clock is 0 at time 0 whatever the schedule's first edge.
+    from surpyval.degradation._clock import StressClock
+
+    for first in (-10.0, 0.0, 5.0):
+        schedule = StepSchedule.from_changepoints([first, 20.0], [1.0, 2.0])
+        clock = StressClock(lambda z: float(z[0]), 1, schedule)
+        np.testing.assert_allclose(
+            clock.tau(np.array([0.0, 10.0, 30.0])), [0.0, 10.0, 40.0]
+        )
