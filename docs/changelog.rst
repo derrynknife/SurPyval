@@ -4,6 +4,69 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Property-based tests (#379).** Hypothesis generates data with mixed
+  censoring, ties, counts, truncation and tiny samples, and checks the
+  non-parametric estimators, parametric fits, regression, competing-risks,
+  recurrent-event and serialisation paths against general properties
+  (valid curves, local optimality against an independent likelihood,
+  invariance to row order, units and counts, ``ValueError`` on invalid
+  input), shrinking any failure to a minimal case. The default run takes
+  under a minute; ``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` searches
+  thoroughly in the nightly workflow. ``hypothesis`` is a new test-only
+  dependency. It found four bugs, pinned as strict expected failures:
+  Turnbull dropping its last piece under right truncation (#391), silent
+  degenerate fits where the likelihood has no maximum (#392), unit-dependent
+  fits to truncated data (#393), and ``CoxPH`` accepting an infinite event
+  time (#394).
+- **Statistical calibration suite and nightly run (#379).** Simulation
+  studies in ``surpyval/tests/calibration`` (opt in with
+  ``--run-calibration``) check that results are statistically right, not
+  only consistent: confidence-interval coverage for parametric,
+  non-parametric, Cox and parametric regression, degradation and recurrent
+  bounds; parameter recovery with truncation, interval censoring, limited
+  failure, frailty and renewal models; size and power of the log-rank,
+  stratified log-rank, Gray, Laplace, MIL-HDBK-189C and Cramer-von Mises
+  tests; and Brier/AUC bias with tied times. Each passes within 3 Monte
+  Carlo standard errors plus a stated slack, with fixed seeds, and would
+  have caught the old Gray's test (size 0.20 against 0.05) and the #365
+  Brier bias. The scheduled ``nightly.yml`` runs the full suite on three
+  Pythons, the docs build and the calibration suite against ``develop``
+  daily, once it is on ``master``. Found: the equal-precision (``nair``)
+  Kaplan-Meier band covers about 0.89 for a nominal 0.95 (#390).
+- **A conformance suite checks every model against the same properties
+  (#379).** Bugs kept reappearing as old kinds of failure in new models
+  (unsorted input, units, row routing, missing values, serialisation),
+  because each fix tested only its own case. ``surpyval/tests/conformance``
+  registers every public model (128 cases) and runs each through the
+  identities between its functions; scalar, 2-D and empty queries; query
+  and row order; units, data-row order and counts; valid values; the
+  missing-value rule; seeds; the strict-JSON round trip; and agreement of
+  its fit paths. A test fails when a public model is left unregistered. The
+  fast set runs on every pull request (about 40 s). The 58 failures it
+  found are strict expected failures, each naming its issue (#381-#388).
+- **Numbers quoted in the documentation are checked (#379).** The prose
+  around executed examples quoted outputs ("a shape of about 2.1", "the
+  lower AIC") that nothing verified, so they went stale when outputs
+  changed. Hidden cells now assert 263 such claims across 16 pages, and the
+  documentation build fails when one no longer holds. The first pass found
+  two stale statements in the offset section of *Parametric SurPyval
+  Modelling*: the starting offset is ``min(x)`` minus the data's mean
+  spacing, not ``min(x) - 1``, and the example's quoted moment-based shape
+  was from a different sample. See "Checking the numbers quoted in the
+  text" in :doc:`Contributing`.
+- **Stored results from R and Python survival software (#379).**
+  ``surpyval/tests/reference`` compares SurPyval with 82 results computed
+  once on shared fixtures (lung, heart, aml, ovarian, PBC, and small sets
+  with ties, left truncation, interval censoring and competing risks) by R
+  survival 3.5-8, cmprsk 2.2-11, timereg 2.0.5, pec, riskRegression, npsurv
+  and fitdistrplus, lifelines 0.30.3 and scikit-survival 0.28, so CI needs
+  neither R nor lifelines; ``scripts/reference/regenerate.sh`` rebuilds
+  them. Kaplan-Meier, Nelson-Aalen, restricted mean, log-rank, MCF,
+  Aalen-Johansen, Lin-Ying, Brier score and AUC agree to rounding; Cox
+  (Breslow, Efron, strata, left truncation, start-stop), survreg AFT fits,
+  Fine-Gray and Turnbull to between 1e-6 and 5e-4. Deliberate differences
+  are asserted and recorded with their reason. Gray's test disagrees with
+  cmprsk in its variance (#380).
 - **Degradation: missing values give NaN, and predictions read a DataFrame by
   name (#375, #374).** Gamma- and Wiener-process models gave sf = 1 and
   ``ff = Hf = hf = df = 0`` at a NaN time and ``qf(nan) = inf``, raised on a

@@ -95,6 +95,18 @@ total "probability" of 1.6:
         naive = surv.KaplanMeier.fit(x, c=c_k)
         print(k, "naive 1 - KM at t=6:", naive.ff(6))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    naive_ff = [
+        surv.KaplanMeier.fit(x, c=[0 if ei == k else 1 for ei in e]).ff(6)
+        for k in ["A", "B"]
+    ]
+    assert np.allclose(np.ravel(naive_ff), [1.0, 0.6]), naive_ff
+    assert np.isclose(small.cif(6, "A"), 7 / 12)
+    assert np.isclose(small.cif(6, "B"), 5 / 12)
+
 When each row stands for several identical units, give the counts in ``n``
 rather than repeating rows. Doubling every row of the six-unit data gives the
 same CIFs, because the estimator only uses the proportions
@@ -108,6 +120,13 @@ theory page:
     doubled = CompetingRisks.fit(x, e, n=[2] * 6)
     print("CIF of A at t=3, 6     :", doubled.cif([3, 6], "A"))
     print("increments at t=1, 3, 6:", doubled.iif([1, 3, 6], "A"))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(doubled.cif([3, 6], "A"), small.cif([3, 6], "A"))
+    assert np.allclose(doubled.iif([1, 3, 6], "A"), [1 / 6, 1 / 6, 1 / 4])
 
 Non-parametric cumulative incidence
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -160,6 +179,12 @@ data with every cause treated as a failure -- exactly, not approximately:
     print("sum of CIFs   :", np.round(total, 4))
     print("1 - KM (all)  :", np.round(all_cause_km.ff(t), 4))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(total, all_cause_km.ff(t), rtol=0, atol=1e-12)
+
 Now compare the CIF of wear-out with the naive "1 - Kaplan-Meier with shocks
 censored" curve, and with the truth. For this simulation the true CIF of wear
 is :math:`\int_0^t f_{\text{wear}}(u)\, S_{\text{shock}}(u)\, du`:
@@ -188,6 +213,15 @@ The naive curve climbs towards one because it pretends that a component
 destroyed by a shock could still have worn out later. The Aalen-Johansen
 estimate tracks the true incidence, which levels off at the probability that
 wear-out, rather than a shock, is what ends a component's life.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # naive curve well above the truth, Aalen-Johansen close to it
+    assert naive_wear.ff(200.0) > 0.95, naive_wear.ff(200.0)
+    _err = [model.cif(ti, "wear") - true_cif_wear(ti) for ti in t]
+    assert np.max(np.abs(_err)) < 0.08, _err
 
 What the fitted model returns
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -293,6 +327,17 @@ of them below 100, so the Weibull scale carries the most sampling error).
 The smooth parametric CIFs sit on top of the non-parametric steps:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    n_wear = int(np.sum(e == "wear"))
+    assert n_wear == 83, n_wear
+    assert np.mean(x[e == "wear"] < 100) > 0.5
+    _rel = np.abs(np.r_[pmodel.models["wear"].params / [100, 3],
+                        pmodel.models["shock"].params * 150] - 1)
+    assert np.argmax(_rel) == 0, _rel      # the Weibull scale
+
+.. jupyter-execute::
 
     for k, colour in [("wear", "C0"), ("shock", "C1")]:
         plt.step(t_plot, model.cif(t_plot, k), where="post", color=colour,
@@ -312,6 +357,13 @@ has a cure fraction):
 
     for k in pmodel.causes:
         print(k, "eventual probability: %.3f" % pmodel.probability_of_cause(k))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(sum(pmodel.probability_of_cause(k)
+                          for k in pmodel.causes), 1.0)
 
 The other methods follow the same conventions as ``CompetingRisks``:
 ``hf``/``Hf`` take an optional ``event`` (cause-specific) and otherwise sum over
@@ -343,6 +395,13 @@ the Weibull + Exponential model has the lower AIC: the extra shape parameter is
 not worth its cost. ``ParametricCompetingRisks`` also has
 a ``fit_from_df(df, x_col, e_col, c_col=None, n_col=None, dist=Weibull,
 how="MLE")``; ``how`` is passed to each cause's distribution fit.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(all_weibull.models["shock"].params[1] - 1) < 0.05
+    assert pmodel.aic() < all_weibull.aic()
 
 Assembling a model from separately fitted causes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -395,6 +454,16 @@ cause too):
 Early failures -- which are disproportionately shocks -- were never observed,
 so the naive fit underestimates the shock rate and overstates the share of
 wear-out. The truncation-aware fit recovers both.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _rate, _pw = 1 / 150, truth.probability_of_cause("wear")
+    assert naive.models["shock"].params[0] < 0.8 * _rate
+    assert naive.probability_of_cause("wear") > _pw + 0.05
+    assert abs(adjusted.models["shock"].params[0] / _rate - 1) < 0.05
+    assert abs(adjusted.probability_of_cause("wear") - _pw) < 0.02
 
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -506,6 +575,13 @@ test. The statistic is Gray's (1988): an observed-minus-expected count of
 cause-1 failures on the subdistribution risk sets, with Gray's asymptotic
 variance (the :doc:`Competing Risks Analysis` page gives the formulas).
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert result.p_value < 1e-6, result.p_value
+    assert result.df == 1
+
 Calibration
 ~~~~~~~~~~~
 
@@ -539,13 +615,19 @@ censored very differently, exponentially with means 2 and 50:
             p_values.append(res.p_value)
         return np.mean(np.array(p_values) < 0.05)
 
-    print("same censoring:      rejection rate at 5%%: %.3f"
-          % rejection_rate(10.0, 10.0))
-    print("different censoring: rejection rate at 5%%: %.3f"
-          % rejection_rate(2.0, 50.0))
+    same = rejection_rate(10.0, 10.0)
+    different = rejection_rate(2.0, 50.0)
+    print("same censoring:      rejection rate at 5%%: %.3f" % same)
+    print("different censoring: rejection rate at 5%%: %.3f" % different)
 
 Both rejection rates are close to the nominal 5%, as they should be when the
 null hypothesis is true.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(same - 0.05) < 0.03 and abs(different - 0.05) < 0.03
 
 Gray's test versus a cause-specific log-rank
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -585,6 +667,12 @@ difference:
 Neither answer is wrong. If the question is whether the groups differ in the
 mechanism behind cause 1, the log-rank is the relevant test; if it is whether
 they differ in how many units end up failing from cause 1, it is Gray's.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cs.p_value > 0.1 and gray.p_value < 1e-4
 
 The ``rho`` argument weights each event time by
 :math:`\{1 - \hat{F}^0(t^-)\}^{\rho}`, where :math:`\hat{F}^0` is Gray's
@@ -646,6 +734,13 @@ biased. The fitted model stores the estimates as arrays, one entry per column
 of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # "come back near their true values": within two standard errors
+    assert np.all(np.abs(model.beta - beta) < 2 * model.se), model.beta
+
+.. jupyter-execute::
 
     print("beta     :", np.round(model.beta, 3))     # also model.coefficients
     print("se       :", np.round(model.se, 3))
@@ -676,6 +771,15 @@ curve sits above ``Z1 = -1``. The fitted CIF is a step function built on the
 observed cause-1 event times, so it is flat after the last of them (about
 :math:`t = 5.6` in this sample) rather than extrapolating. ``sf(x, Z)`` returns
 ``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(model.cif(t[1:], Z=np.array([1.0, 0.0]))
+                  > model.cif(t[1:], Z=np.array([-1.0, 0.0])))
+    _last = np.max(x[(e == 1) & (c == 0)])
+    assert round(_last, 1) == 5.6, _last
 
 Things to watch:
 
@@ -745,6 +849,13 @@ coefficient is +0.7), and it does so by raising the cause-1 hazard and
 lowering the cause-2 hazard: the two sets of cause-specific coefficients
 together produce the incidence effect.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = {k: csph.betas[r] for k, r in csph.event_idx_map.items()}
+    assert _b[1][0] > 0 and _b[2][0] < 0, _b
+
 The causes are sorted, so the row order of ``betas`` is reproducible.
 ``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`, and
 ``results`` holds each cause's optimiser result. The model also has ``beta``
@@ -769,10 +880,12 @@ single time):
 .. jupyter-execute::
 
     x_tied = np.ceil(x * 4) / 4
+    tied = {}
     for tm in ["breslow", "efron", "exact", "kp"]:
         fit_t = CompetingRisksProportionalHazards.fit(x_tied, Z, e, c=c,
                                                       tie_method=tm)
-        print("%-8s cause 1: %s" % (tm, np.round(fit_t.betas[row], 3)))
+        tied[tm] = fit_t.betas[row]
+        print("%-8s cause 1: %s" % (tm, np.round(tied[tm], 3)))
 
 ``"exact"`` averages the partial likelihood over every order in which the
 tied failures could have happened, which is the right treatment when the ties
@@ -781,6 +894,17 @@ close to it; Breslow's pulls the coefficients towards zero. ``"kp"`` fits a
 different model, one in which time is genuinely discrete, so its coefficients
 are log *odds* ratios rather than log hazard ratios and come out larger. Every
 method is fast, even with ties this heavy.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _t = x_tied[(e == 1) & (c == 0)]
+    _largest = np.max(np.unique(_t, return_counts=True)[1])
+    assert _largest == 107, _largest
+    assert np.all(np.abs(tied["efron"] - tied["exact"]) < 0.01)
+    assert np.all(np.abs(tied["breslow"]) < np.abs(tied["exact"]))
+    assert np.all(np.abs(tied["kp"]) > np.abs(tied["exact"]))
 
 With ``how="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:
@@ -813,6 +937,13 @@ the product-limit survival the CIFs are built on (so their total never exceeds
 one); ``sf`` reports the Cox survival :math:`e^{-H}`, which is very slightly
 higher, so ``1 - sf`` sits just below the sum.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gap = (cif1 + cif2) - (1 - csph.sf(times, Z=z))
+    assert np.all((_gap > 0) & (_gap < 0.002)), _gap
+
 With ``how="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
 an ``event`` and come from each cause's Fine-Gray model; ``hf`` and ``df``
 raise a ``ValueError`` because the step baseline has no pointwise density.
@@ -831,6 +962,14 @@ The Fine-Gray coefficients for cause 1 match ``FineGray.fit`` above. For cause
 2 they have the opposite sign to cause 1, even though the covariates were only
 built into the cause-1 incidence: whatever raises the incidence of one cause
 necessarily lowers the incidence of the other.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _fg = {k: fg_all.betas[r] for k, r in fg_all.event_idx_map.items()}
+    assert np.allclose(_fg[1], model.beta)
+    assert np.all(np.sign(_fg[2]) == -np.sign(_fg[1])), _fg
 
 Both kinds of fit can be saved and restored like the other competing-risks
 models. The dictionary holds the per-cause coefficients and baselines (and,

@@ -76,6 +76,15 @@ wearing out (``beta`` about 1.4); knowing about the quiet final 12 hours,
 is the most common mistake in recurrent-event analysis; it makes a system
 look worse than it is.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(failure_truncated.params[1], 1) == 1.4
+    assert round(time_truncated.params[1], 1) == 1.0
+    # "a lower intensity with much less of a trend"
+    assert time_truncated.iif(40) < failure_truncated.iif(40)
+
 Two further arguments describe the observation window. ``tl`` gives a
 left-truncation (delayed entry) time — the item was already in service when
 observation began — and ``tr`` a right-truncation time at which observation
@@ -113,6 +122,12 @@ level and ``ax`` draws on an existing axes), but with a single item there is
 no item-to-item variation to measure: the variance estimate is zero and the
 bounds lie on top of the MCF.
 One system tells you about that system, not about the population.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(model.var == 0)
 
 The result of this is a Non-Parametric Counting model that can be used just like
 all other models in surpyval. It is important to note that the ``fit`` function
@@ -201,6 +216,12 @@ items are at risk:
     print("d   :", model.d)
     print("MCF :", model.mcf_hat.round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.r[model.x == 7][0] == 3 and model.r[model.x == 8][0] == 2
+
 Let's say this data was for the time, in years,
 between repairs on home air conditioners of a specific model. We can then use
 this model to estimate the number of repairs we would need on a newly installed
@@ -215,6 +236,12 @@ If however, we wanted to know how many repairs were needed after 10 years, we
 could not do so since the data only goes up to 9 years: the model returns
 ``nan`` rather than guess. To address this we would instead need to use a
 parametric model.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.x.max() == 9 and np.isnan(model.mcf([10])[0])
 
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
 bounds, returned as ``[lower, upper]`` columns and computed on the log scale
@@ -266,6 +293,12 @@ even though its own last event was at 3:
     print("x :", model.x)
     print("r :", model.r)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.r[model.x == 4][0] == 2
+
 Counts of events (``c=2`` or ``c=-1`` rows) are not yet supported by the
 non-parametric risk-set construction; SurPyval raises an error for these
 rather than return a wrong MCF. For such data use a parametric intensity
@@ -302,6 +335,13 @@ MIL-HDBK-189C test). Its ``trend`` attribute is only the *direction* of the
 statistic; look at ``p_value`` to judge whether the trend is real:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert laplace(x, T=85).p_value < 0.01
+    assert mil_hdbk_189c(x, T=85, alternative="increasing").p_value < 0.01
+
+.. jupyter-execute::
 
     result = laplace([3, 11, 14, 22, 30, 35], T=40)
     print(result.trend, "- p-value", round(result.p_value, 3))
@@ -309,6 +349,12 @@ statistic; look at ``p_value`` to judge whether the trend is real:
 Here the statistic leans (slightly) towards a decreasing rate, but the
 p-value is far from small: with six events there is no evidence of any
 trend.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert result.trend == "decreasing" and result.p_value > 0.5
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -352,6 +398,14 @@ this model is in): the fitted rate is 12 events in 25 item-time units of
 observation, 0.48 per unit. Let's see a different example:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(float(model.cif(15)), 1) == 7.2
+    assert c.count(0) == 12 and 7 + 9 + 9 == 25
+    assert np.isclose(model.params[0], 12 / 25)
+
+.. jupyter-execute::
 
     x = [1, 5, 8, 10, 12, 13, 13, 14]
     HPP.fit(x).plot()
@@ -381,6 +435,12 @@ and ``b`` the scale:
 
 An exponent above one confirms what the plot shows — events are arriving
 faster as time goes on.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.params[0] > 1, model.params
 
 Every fitted intensity model has the same prediction methods: ``cif`` (the
 expected number of events by :math:`t`), ``iif`` (the instantaneous event
@@ -424,6 +484,20 @@ are attributes; lower is better):
     for name, fit in fits.items():
         print(f"{name:28s} AIC {fit.aic:7.2f}   params {fit.params.round(3)}")
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {k: f.aic for k, f in fits.items()}
+    assert max(_aic, key=_aic.get) == "Homogeneous Poisson Process"
+    assert np.isclose(_aic["Crow-AMSAA"], _aic["Duane"])
+    assert _aic["Crow-AMSAA"] < _aic["Cox-Lewis"] < _aic["Crow-AMSAA"] + 2
+    _a, _b = fits["Crow-AMSAA"].params
+    assert round(_a, 1) == 8.4 and round(_b, 1) == 1.6, (_a, _b)
+    _alpha_d, _b_d = fits["Duane"].params
+    assert np.isclose(_alpha_d, _b, rtol=1e-4)
+    assert np.isclose(_b_d, _a ** -_b, rtol=1e-3)
+
 Several lessons are in this small table:
 
 - The HPP is clearly worst: the data has a trend.
@@ -447,6 +521,13 @@ Both models agree at 50 hours, where there is data, and differ by a large
 margin at 100 hours. Extrapolation is only as good as the assumed shape, so
 check any long-range forecast against more than one plausible model.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(ca.cif(50.0) - cl.cif(50.0)) < 0.5
+    assert cl.cif(100.0) > 1.5 * ca.cif(100.0)
+
 Delayed entry and right truncation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -469,6 +550,15 @@ entry time goes in ``tl``, one value per row:
     print("tl ignored      :", CrowAMSAA.fit(x_d, i_d, c_d).params.round(3))
     print("all failures    :", CrowAMSAA.fit(full.x, full.i, full.c).params.round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _with = CrowAMSAA.fit(x_d, i_d, c_d, tl=tl_d).params
+    _all = CrowAMSAA.fit(full.x, full.i, full.c).params
+    assert np.all(np.abs(_with / _all - 1) < 0.05), (_with, _all)
+    assert round(CrowAMSAA.fit(x_d, i_d, c_d).params[1], 1) == 2.3
+
 With ``tl`` the likelihood only integrates each system's intensity from its
 entry time, and the estimates are close to those from the complete record
 (the true values are 8 and 1.6). Ignoring the delayed entry treats the
@@ -483,6 +573,15 @@ delayed entry through its risk set in the same way:
     print("tl ignored  :", NonParametricCounting.fit(x_d, i_d, c_d).mcf(t).round(2))
     print("true model  :", true_model.cif(t).round(2))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _truth = true_model.cif(t)
+    _with = NonParametricCounting.fit(x_d, i_d, c_d, tl=tl_d).mcf(t)
+    _without = NonParametricCounting.fit(x_d, i_d, c_d).mcf(t)
+    assert np.all(np.abs(_with - _truth) < np.abs(_without - _truth))
+
 At the other end of the window, ``tr`` closes observation without a
 censoring row: fitting the events with ``tr=52`` gives exactly the
 time-truncated fit from the start of this page, which used a ``c=1`` row at
@@ -491,6 +590,13 @@ time-truncated fit from the start of this page, which used a ``c=1`` row at
 .. jupyter-execute::
 
     print(CrowAMSAA.fit(events, tr=52.0).params.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(CrowAMSAA.fit(events, tr=52.0).params,
+                       time_truncated.params)
 
 Interval-counted (grouped) data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -521,6 +627,13 @@ alone or mixed with exact events (when mixing, write an exact event at
 The HPP rate is the total count divided by the total observed time
 (32 events in 80 system-hours). The residual diagnostics shown below need exact
 event times, so they are not available for grouped data.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert sum(n) == 32
+    assert np.isclose(HPP.fit(x, i=i, c=c, n=n).params[0], 32 / 80)
 
 Least squares, and models from parameters
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -592,6 +705,12 @@ the shape parameter:
 A single system gives only a rough idea of the shape; the four-system fleet
 above did much better.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert max(betas) - min(betas) > 1, betas
+
 Expected counts and prediction intervals
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -618,6 +737,13 @@ failures should one system in our fleet expect in its next 10 hours, from 50 to
 Because counts are whole numbers the interval covers *at least* 90%. This
 plug-in interval treats the fitted parameters as exact, so with little data
 it is somewhat too narrow.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _cover = poisson.cdf(upper, expected) - poisson.cdf(lower - 1, expected)
+    assert _cover >= 0.9, _cover
 
 Inference and model checking
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -651,6 +777,13 @@ With only eight events the interval on the exponent ``alpha`` is wide and
 includes 1: this single system does not, on its own, prove the rate is
 increasing.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo, _hi = model.param_cb("alpha")
+    assert _lo < 1 < _hi
+
 That parameter uncertainty propagates to the fitted curve. ``plot()`` draws a
 delta-method confidence band around the cumulative intensity function (set
 ``plot_bounds=False`` to hide it, or ``confidence`` to change its level), and
@@ -681,6 +814,12 @@ the second, and ``alternative`` works as for the standalone functions):
 The direction is increasing, but with a p-value of about 0.2 the evidence is
 weak — consistent with the wide interval on ``alpha`` above.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert result.trend == "increasing" and round(result.p_value, 1) == 0.2
+
 Second, **residuals**. Via the time-rescaling theorem, the fitted model turns
 the event times into what should be a unit-rate Poisson process, so the
 cumulative-hazard residuals are (under the model) an i.i.d. Exp(1) sample with
@@ -698,6 +837,12 @@ spot items that fail more (positive) or less (negative) often than the model
 expects. On the fleet:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.flatnonzero(model.residuals() == 0).tolist() == [6]
+
+.. jupyter-execute::
 
     print("martingale residuals:", ca.residuals(kind="martingale").round(2))
     print("mean of the Exp(1) residuals:", ca.residuals().mean().round(3))
@@ -710,6 +855,18 @@ several times larger would point to a system that is genuinely different.
 system's final, censored gap — from its last failure to 50 hours — is not
 part of the residuals; see the caution on the :doc:`Recurrent Event Analysis`
 page.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _mart = ca.residuals(kind="martingale")
+    assert np.round(_mart).tolist() == [-2, -3, 0, 5], _mart
+    _counts = np.array([(data.c[data.i == k] == 0).sum()
+                        for k in (1, 2, 3, 4)])
+    assert np.all((_counts >= 15) & (_counts <= 25))        # around twenty
+    assert np.all((np.sqrt(_counts) > 3.8) & (np.sqrt(_counts) < 5))
+    assert 0.9 < ca.residuals().mean() < 1
 
 Third, a **goodness-of-fit test**. ``cramer_von_mises`` measures how far the
 transformed event times fall from uniformity and calibrates the statistic with
@@ -727,6 +884,12 @@ A p-value of about 0.7 gives no reason to doubt the power law for this
 system. The result object also records ``n_boot`` (the replicates actually
 used; any failed refits are reported in a warning), ``n_events`` and
 ``n_systems``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(gof.p_value, 1) == 0.7, gof.p_value
 
 The same inference and diagnostic methods are available on the
 proportional-intensity regression models and the renewal models below.
@@ -776,6 +939,12 @@ search from your own values instead of the built-in starts, and
 ``GeneralizedRenewal.fit_from_parameters(params, q, kijima=..., dist=...)``
 builds a model from known values for simulation; ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` have the same method.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.q, 2) == 0.16, model.q
 
 We cannot write down the cumulative intensity function of the model since it
 does not have a closed form solution. We can however estimate it with a monte
@@ -842,6 +1011,12 @@ repairs damage done since the last event. We could then use this model, via the
 non-parametric simulations of it, to estimate the number of events up to a
 given time.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model_ii.aic > model.aic and model_ii.q < 1e-3
+
 G1 Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -869,6 +1044,14 @@ the life of the system, and the positive restoration factor says each repair
 leaves the system better than new: the expected time to the next failure grows
 by about 23% with every repair.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.q, 3) == 0.232, model.q
+    assert round(model.model.params[0], 4) == 0.2092, model.model.params
+    _g1_exponential_q = model.q
+
 Surpyval allows you to use any non-negative lifetime distribution in SurPyval as
 the underlying distribution. Let's use the same data with a Weibull G1 Renewal
 Process.
@@ -890,6 +1073,13 @@ This indicates that the underlying distribution is not exponential. Since the
 G1 Renewal Process does not have a closed form solution for the cif we can
 create a non-parametric model from a monte carlo simulation. Let's do this and
 compare it to the data MCF.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(model.q - _g1_exponential_q) < 0.03, model.q
+    assert model.model.params[1] > 1
 
 .. jupyter-execute::
 
@@ -948,6 +1138,14 @@ as-bad-as-old. The estimates are reasonably close to the values we simulated
 from (:math:`\rho = 0.5`, :math:`\alpha = 10`, :math:`\beta = 3`), given
 about 80 failures.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _est = np.r_[model.rho, model.model.params]
+    assert np.all(np.abs(_est / [0.5, 10, 3] - 1) < 0.15), _est
+    assert 75 <= (c == 0).sum() <= 85                   # about 80 failures
+
 The memory ``m`` is not estimated: it is a choice. A practical way to make it
 is to fit several values and compare their AIC. ``m=1`` is the Kijima-I model
 (with :math:`q = 1 - \rho`) and ``m=np.inf`` the Kijima-II model, so this also
@@ -955,11 +1153,19 @@ compares the two Kijima types:
 
 .. jupyter-execute::
 
+    ara_aic = {}
     for m in (1, 2, np.inf):
         fit = ARA.fit(x, i, c, m=m)
+        ara_aic[m] = fit.aic
         print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic:.2f}")
 
 The true memory, ``m=2``, has the lowest AIC.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert min(ara_aic, key=ara_aic.get) == 2, ara_aic
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
@@ -981,6 +1187,13 @@ The baseline parameters are recovered well (we simulated from
 to 0.6, is estimated less precisely; the standard errors in the next section
 quantify how precisely.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(ari.model.params / [10, 2.5] - 1) < 0.1)
+    assert abs(ari.rho - 0.6) > abs(ari.model.params[1] / 2.5 - 1)
+
 Checking a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -996,6 +1209,13 @@ on ``rho`` is computed on the logit scale so it stays inside (0, 1):
     print("rho 95% CI :", ari.param_cb("rho").round(3))
 
 The interval on ``rho`` is wide but contains the true 0.6.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo, _hi = ari.param_cb("rho")
+    assert _lo < 0.6 < _hi and _hi - _lo > 0.5
 
 The renewal and virtual-age models also carry the same diagnostics as the
 intensity models. Because they have no marginal cumulative intensity, the
@@ -1033,6 +1253,15 @@ the cumulative hazards of the gaps to sum to their number. Their *pattern*
 With a p-value of about 0.1 the goodness-of-fit test gives no strong evidence
 against the model (the trend test's "decreasing" is only the sign of an
 unconvincing statistic).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.q < 1e-9 and np.isclose(model.residuals().mean(), 1)
+    assert np.isclose(gof.p_value * 21, round(gof.p_value * 21))
+    assert round(gof.p_value, 1) == 0.1, gof.p_value
+    assert model.trend_test().trend == "decreasing"
 
 Predicting with a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1111,11 +1340,23 @@ returns one value per window, and ``trend_test`` refuses gapped data, since
 the trend tests need every system watched from time zero:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert mcf.r[mcf.x == 14][0] == 1
+
+.. jupyter-execute::
 
     gapped = CrowAMSAA.fit([3, 7, 10, 25, 33, 38], [1] * 6,
                            windows={1: [(0, 12), (20, 40)]})
     print("martingale residuals, one per window:",
           gapped.residuals(kind="martingale").round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(gapped.residuals(kind="martingale")) == 2
 
 Competing risks: marked recurrent events
 -----------------------------------------
@@ -1152,6 +1393,13 @@ an event row whose mark is missing counts towards no cause:
     print("MCF of A at 4.5 :", model.mcf(4.5, "A"))
     print("MCF of B at 4.5 :", model.mcf(4.5, "B"))
     print("overall at 4.5  :", NonParametricCounting.fit(x, i, c).mcf(4.5))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.mcf(4.5, "A") + model.mcf(4.5, "B"),
+                       NonParametricCounting.fit(x, i, c).mcf(4.5))
 
 For a parametric picture, ``CauseSpecificNHPP`` fits one intensity model per
 cause (``CrowAMSAA`` by default; ``HPP``, ``Duane`` and ``CoxLewis`` can be
@@ -1203,6 +1451,13 @@ The per-cause shapes tell the maintenance story: seal failures show no trend
 cause-specific MCF of the same data is the non-parametric check:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(pumps.models["seal"].params[1], 1) == 1.0
+    assert pumps.models["bearing"].params[1] > 2
+
+.. jupyter-execute::
 
     pump_mcf = CauseSpecificMCF.fit(x, i, c, e=e)
     ax = pump_mcf.plot()
@@ -1228,6 +1483,12 @@ shape of the bearing failures:
 
 The whole interval lies well above 1, so the bearings' wear-out is not a
 fluke of this sample.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert bearing_fit.param_cb("beta")[0] > 1.5
 
 Both classes also have a ``fit_from_df`` method that reads the columns of a
 ``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
@@ -1270,6 +1531,13 @@ seed gives the same simulated MCF:
 
     restored_ara = surpyval.from_dict(ara.to_dict())
     print(restored_ara.mcf([20, 40], seed=1).round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(restored_ara.mcf([20, 40], seed=1),
+                       ara.mcf([20, 40], seed=1))
 
 Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded

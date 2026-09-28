@@ -264,6 +264,12 @@ failure population and ``f0`` for zero inflation (each explained below).
 Nothing can fail before the offset, so the survival of the shifted model is
 exactly one up to ``gamma = 5``.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(shifted.sf([4., 5.]) == 1)
+
 Some distributions exist *only* in this form. The ``Hypoexponential`` is the
 lifetime of something that must pass through several independent,
 memoryless stages in turn: a load-sharing group whose failure rate changes as
@@ -281,6 +287,13 @@ you construct it from rates you know (see :doc:`univariate/hypoexponential`).
     print(standby)
     print("mean:", standby.mean())
     print("R at 1, 2 and 5:", standby.sf([1., 2., 5.]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(standby.mean(), 1 / 0.5 + 1 / 1.5 + 1 / 3)
+    assert np.isclose(standby.mean(), 3)
 
 The mean is the sum of the stage means, :math:`1/0.5 + 1/1.5 + 1/3 = 3`, as
 it should be. The rates must be distinct: as two rates approach each other the
@@ -394,6 +407,13 @@ The plot for this can be seen to be:
 
 The results from this model are very close to the data we input, and with only 50 samples.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(model.params / [30, 2] - 1) < 0.15), model.params
+    _right_censored = model.params          # compared after left censoring
+
 Left Censored
 ^^^^^^^^^^^^^
 
@@ -418,6 +438,12 @@ That is, we set the start of the observations at 10 and flag that all the values
     model.plot(heuristic="Turnbull")
 
 The values did not substantially change, although the plot does look different as there are no values below 10. Note the ``heuristic="Turnbull"``: left-censored units have no rank, so the plotting positions have to come from the Turnbull estimator.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.params, _right_censored, rtol=0.05), model.params
 
 
 Intervally Censored
@@ -452,6 +478,12 @@ plot also looks to be a great fit! The data at the tails are a little bit
 off, but the data are binned into only six intervals and the core of the model matches the data
 quite well.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(model.params / [30, 10] - 1) < 0.1), model.params
+
 The same intervals can be given as two separate arrays, ``xl`` for the left
 ends and ``xr`` for the right ends, which is often how inspection data arrive.
 It is the same data, so it is the same fit:
@@ -459,6 +491,13 @@ It is the same data, so it is the same fit:
 .. jupyter-execute::
 
     surv.Weibull.fit(xl=xx[:-1], xr=xx[1:], n=n).params
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(surv.Weibull.fit(xl=xx[:-1], xr=xx[1:], n=n).params,
+                       model.params)
 
 A row with ``xl == xr`` is treated as an exact observation, a row with
 ``xr = np.inf`` as right censored and a row with ``xl = -np.inf`` as left
@@ -512,6 +551,12 @@ With a plot that looks like:
 
 Looking at the parameters of the distribution, you can see that the beta value is greater than 1. Although only slightly, this implies that this distribution has an increasing hazard rate. If you were the operator of the washing machines (e.g. a hotel or a laundromat) and any downtime had a cost, you would conclude from this that replacing the machines after a fixed time would be a good policy.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 1 < model.params[1] < 1.1, model.params     # "only slightly"
+
 But if you take the truncation into account:
 
 .. jupyter-execute::
@@ -526,6 +571,12 @@ With the plot:
     model.plot(heuristic="Turnbull")
 
 You can see now that the model fits the data much better, but also that the beta parameter is actually below 1. This shows that ignoring the left-truncated data in parametric estimation can lead to errors in prediction.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.params[1] < 1, model.params
 
 Right truncated
 ^^^^^^^^^^^^^^^
@@ -557,6 +608,14 @@ When plotted we get:
     model.plot(heuristic="Turnbull")
 
 From the output above, the number of data points we have has been reduced from the simulated 100, down to 87. Both fits find the centre, but the naive fit badly underestimates the spread: the truncation removed the tails, so the recorded values look less variable than the population really is. Accounting for the truncation moves the estimate of :math:`\sigma` back towards the true value of 10. It cannot recover it completely -- the tails that carry most of the information about the spread were never recorded -- which is a useful reminder that truncation costs information even when it is modelled correctly.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(x) == 87
+    assert abs(naive.params[0] - 100) < 1 and abs(model.params[0] - 100) < 1
+    assert naive.params[1] < model.params[1] < 10, (naive.params, model.params)
 
 In the cases above we used a scalar value for the truncation values. But some data has individual values for left truncation. This is seen in trials where someone may join the trial as a late entry. Therefore each data point as an entry time. For example:
 
@@ -600,6 +659,14 @@ In the above example we used both the tl and tr. However, surpyval has a flexibl
     print(model.params)
 
 Which, obviously, gives the same result. This shows the flexibility of the surpyval API, you can use scalar, array, or matrix values for the truncations using the t, tl, and tr keywords with the fit method and surpyval does the rest.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _tl_tr = surv.Weibull.fit(x, tl=[0, 0, 0, 0, 5, 2],
+                              tr=[10, 9, 8, 10, 15, 15])
+    assert np.allclose(model.params, _tl_tr.params)
 
 Truncation needs a method that models it. Maximum likelihood handles any
 truncation; MPS handles a single window shared by every observation (scalar
@@ -709,10 +776,19 @@ In practice that sensitivity is the estimator's problem to solve, not yours. Shi
     x = surv.Gamma.random(10_000, 3.0, 2.0) + 10.0
 
     print('Truth : gamma=10.000, alpha=3.000, beta=2.000')
+    offset_fits = {}
     for how in ['MOM', 'MSE', 'MPS', 'MLE']:
-        m = surv.Gamma.fit(x, offset=True, how=how)
+        m = offset_fits[how] = surv.Gamma.fit(x, offset=True, how=how)
         print('{:6s}: gamma={:.3f}, alpha={:.3f}, beta={:.3f}'.format(
             how, m.gamma, *m.params))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _how, _m in offset_fits.items():
+        _est = np.r_[_m.gamma, _m.params]
+        assert np.all(np.abs(_est / [10, 3, 2] - 1) < 0.1), (_how, _est)
 
 ``MPP`` is absent from that list because the Gamma does not offer it. A
 probability plot needs a straight-line y-axis that can be drawn *before*
@@ -724,7 +800,14 @@ gamma — which needs the shape. To draw the axis you need the answer.
 the axis with; ``Gamma.plot()`` is unaffected, since by then the fitted
 parameters are in hand.
 
-What makes this work is the starting point. Every optimised offset fit (all but MPP, which needs no start) begins with ``gamma`` just below the data, at ``min(x) - 1``, and the initialisers read the remaining parameters off ``x - gamma``. Moments taken from the *unshifted* data would be dominated by the offset, and a shape read from them explodes (a Gamma shape of 649 for a true shape of 3); from such a start the optimiser can stop on an absurd tuple that is nonetheless an acceptable *distribution*, precisely because of the flat trade-off described above.
+What makes this work is the starting point. Every optimised offset fit (all but MPP, which needs no start) begins with ``gamma`` just below the data, by the data's mean spacing (their range over :math:`n - 1`), and the initialisers read the remaining parameters off ``x - gamma``. Moments taken from the *unshifted* data would be dominated by the offset, and a shape read from them explodes (the method-of-moments shape, the squared mean over the variance, is about 176 on the sample above, for a true shape of 3); from such a start the optimiser can stop on an absurd tuple that is nonetheless an acceptable *distribution*, precisely because of the flat trade-off described above.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _shape = np.mean(x) ** 2 / np.var(x)      # from the unshifted data
+    assert round(_shape) == 176, _shape
 
 The underlying caution still stands, though, and it is worth keeping in mind for your own data:
 
@@ -756,6 +839,12 @@ Another useful feature of surpyval is the ability to easily fix parameters. For 
 You can see that the mu parameter has been fixed at 10. This can work for distributions with many more parameters, including the offset.
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.params[0] == 10
+
+.. jupyter-execute::
 
     import surpyval as surv
     import numpy as np
@@ -770,6 +859,13 @@ You can see that the mu parameter has been fixed at 10. This can work for distri
     model.plot()
 
 We have fit only one of the four parameters of an offset exponentiated-Weibull distribution, holding the other three at known values!
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.gamma == 10 and model.params[0] == 10
+    assert model.params[2] == 4
 
 Parameters are fixed by name, using the names in the distribution's
 ``param_names`` plus ``gamma`` for the offset. Fixing works with ``MLE``,
@@ -862,6 +958,14 @@ the heuristic:
     print(surv.Weibull.fit_from_non_parametric(km).params)
     print(surv.Weibull.fit(x, how='MPP', heuristic='Kaplan-Meier').params)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(
+        surv.Weibull.fit_from_non_parametric(km).params,
+        surv.Weibull.fit(x, how='MPP', heuristic='Kaplan-Meier').params)
+
 A model made this way has all the distribution functions, but it holds no
 data, so it has no likelihood, information criteria or confidence bounds.
 Only distributions with a probability plot (``how='MPP'``) can be fitted
@@ -892,11 +996,24 @@ The default parametric method for surpyval is the maximum likelihood estimation 
 You can see that the results are the same. This is because the maximum likelihood estimate of the parameters of a uniform distribution are just the smallest and largest values in the sample. If however we use the 'Maximum Product Spacing' method we get:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(mle_model.params, [x.min(), x.max()])
+
+.. jupyter-execute::
 
     mps_model = surv.Uniform.fit(x, how='MPS')
     print(*mps_model.params)
 
 You can see that using the MPS method we have parameters that are closer to the real values. This is because the MPS method can 'look outside' the existing values to estimate where the real value lies. See the details of this method in the :doc:`Parametric Estimation` section. But the MPS method is useful when you need to estimate the point at which a distribution's support starts or for any distribution that has unknown support. Concretely, this includes any offset distribution or a distribution with a finite upper and lower support (such as the Uniform).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(mps_model.params - [5, 10])
+                  < np.abs(mle_model.params - [5, 10])), mps_model.params
 
 When an estimation method fails
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -919,6 +1036,12 @@ The other important use case is when, for some reason, an alternate estimation m
     model.plot()
 
 This shows, that the Maximum Likelihood Estimation has failed for this data: SurPyval warns and hands back the optimiser's starting point instead. For many distributions that starting point is a probability-plot fit; for an offset LogLogistic it is only a rough guess, which is why the fitted curve misses the points. The warning is captured and printed above; in your own code it simply appears as a ``UserWarning``. However, because we have access to other methods, we can use an alternate estimation method:
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert str(caught[0].message).startswith("MLE Failed")
 
 .. jupyter-execute::
 
@@ -1000,6 +1123,15 @@ optimising something else — MPS the spacings, MSE the distance to the
 non-parametric estimate, MPP the straightness of the probability plot, MOM the
 moments.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _nll = {h: surv.Weibull.fit(x, how=h).neg_ll()
+            for h in ["MLE", "MPS", "MSE", "MOM", "MPP"]}
+    assert min(_nll, key=_nll.get) == "MLE", _nll
+    assert max(_nll.values()) < 1.01 * _nll["MLE"], _nll   # close behind
+
 Comparing distributions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1033,6 +1165,14 @@ just as well with one parameter fewer, and the criterion rewards the simpler
 model. Information criteria choose the most economical adequate model, not the
 "true" one; always look at the fit as well.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert best.dist.name == "Rayleigh"
+    _gap = surv.Weibull.fit(x).aic() - surv.Rayleigh.fit(x).aic()
+    assert 0 < _gap < 2, _gap         # as good a fit, one parameter fewer
+
 A warning about truncated data and probability plotting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -1061,6 +1201,12 @@ will now show what happens. First, some example data:
 
     mpp_model.plot(heuristic="Turnbull")
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert mpp_model.ff(90) < 0.05 and mpp_model.ff(110) > 0.95
+
 You can see that there is a strange match between the Turnbull estimate of the CDF and the parametric
 model. Also, you can see that the CDF at 90 is near 0% and the CDF at 110 is near 100%. This shows
 that it has not taken into account the truncation. Instead, if we use MLE we get:
@@ -1080,6 +1226,12 @@ have been adjusted in accordance with the truncation that the MLE model has esti
 This is because it is known to be truncated and needs to be adjusted. This is not possible with the MPP
 method because the Turnbull estimator cannot adjust the truncation at the first and last value as it
 can make no assumptions about the truncation at those points.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(model.params[1] - 10) < abs(mpp_model.params[1] - 10) / 2
 
 This is just a word of warning for when using Truncation and the MPP method, make sure not all values
 are truncated by the same value, otherwise it will give a poor fit.
@@ -1150,6 +1302,14 @@ It was that simple to create a gaussian mixture model using ``m=3`` and the ``di
 
 The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9), and the component means sit close to -10, 10 and 30.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _order = np.argsort(gmm.params[:, 0])
+    assert np.allclose(gmm.w[_order], [2 / 9, 3 / 9, 4 / 9], atol=0.02)
+    assert np.allclose(gmm.params[_order, 0], [-10, 10, 30], atol=0.5)
+
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit.
 
 A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and ``loglike``, which despite its name is the *negative* log-likelihood of the fit. It has no ``hf``, ``qf``, confidence bounds or information criteria, but an AIC is easily formed by hand: a mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one). Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
@@ -1173,6 +1333,15 @@ A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, 
     print(restored.sf([5, 10]), wmm.sf([5, 10]))
 
 The mixture's AIC is lower by about 42, decisive evidence for two populations, and its weights are close to the 60/40 split that was simulated.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gap = surv.Weibull.fit(x, c).aic() - (2 * k_mix + 2 * wmm.loglike)
+    assert round(_gap) == 42, _gap
+    assert np.allclose(np.sort(wmm.w), [0.4, 0.6], atol=0.02), wmm.w
+    assert np.allclose(restored.sf([5, 10]), wmm.sf([5, 10]))
 
 This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts by sorting the data, cutting its distinct values into :math:`m` consecutive blocks and fitting one component to each, with equal weights; with poorly separated components, check that the answer makes sense.
 
@@ -1222,6 +1391,13 @@ population never fails:
     print("R(1000) =", lfp_model.sf(1000.))
     print("time by which 70% have failed:", lfp_model.qf(0.7))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.p)
+    assert lfp_model.p < 0.7 and np.isinf(lfp_model.qf(0.7))
+
 ``mean()`` of an LFP model is the *defective* mean, ``p`` times the mean of
 the base Weibull, because a unit that never fails contributes nothing to it;
 the mean life of the units that do fail is the base mean,
@@ -1229,6 +1405,15 @@ the mean life of the units that do fail is the base mean,
 same convention -- the units that never fail are scored as 0, so ``var()`` is
 ``moment(2) - mean()**2`` -- and the same holds for the zero-inflated mass
 ``f0`` below, which sits at 0 anyway.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _base = surv.Weibull.mean(*lfp_model.params)
+    assert np.isclose(lfp_model.mean(), lfp_model.p * _base)
+    assert np.isclose(lfp_model.var(),
+                      lfp_model.moment(2) - lfp_model.mean() ** 2)
 
 LFP models can only be fitted with ``MLE``; the other methods raise. And ``p``
 is only well determined when the data follow the units long enough to see the
@@ -1259,6 +1444,18 @@ off, which is exactly the flat ridge described in
 ``p * alpha**(-beta)`` matters. A start far out on that ridge stays there:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert df['n'].sum() == 4156 and df['n'][df['c'] == 0].sum() == 28
+    assert df['x'].max() == 1370
+    assert round(100 * ic_lfp.p, 1) == 0.7 and ic_lfp.beta < 1
+    assert round(ic_lfp.alpha) == 28, ic_lfp.alpha
+    assert round(ic_plain.beta, 1) == 0.2, ic_plain.params
+    assert round(np.log10(ic_plain.alpha)) == 14, ic_plain.params
+    assert round(ic_plain.aic() - ic_lfp.aic()) == 18
+
+.. jupyter-execute::
 
     stuck = surv.Weibull.fit(df['x'], df['c'], df['n'], lfp=True,
                              init=[1e6, 0.3, 0.1])
@@ -1273,6 +1470,13 @@ alone (a Weibull fitted to the 28 failures, with ``p`` at 28/4156), and the
 start with the best likelihood wins, which here is almost ten log-likelihood
 units better. If you do pass ``init`` to an LFP fit, compare ``neg_ll()`` with
 the default fit.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(stuck.alpha / 1e6 - 1) < 1e-6          # barely moves
+    assert 9 < stuck.neg_ll() - ic_lfp.neg_ll() < 10  # "almost ten"
 
 Distributions that call one of their own parameters ``p`` -- the
 ``Geometric`` and the ``NegativeBinomial`` -- keep that name, and their
@@ -1322,6 +1526,13 @@ parameters, shows it:
     print("true   R(t):", model.sf(t))
     print("fitted R(t):", fitted_model.sf(t))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.sum(x == 0) == 18 and np.isclose(fitted_model.f0, 0.18)
+    assert np.all(np.abs(fitted_model.sf(t) - model.sf(t)) < 0.03)
+
 To showcase the SurPyval API again, and to demonstrate the flexibility, it is trivial to have Defective Subpopulation Zero Inflated (DSZI) model / Limited Failure Population and Zero Inflated model.
 
 .. jupyter-execute::
@@ -1343,6 +1554,13 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
     fitted_model.plot(plot_bounds=False)
 
 Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 4% fail at once and about 58% more fail over time. Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(fitted_model.f0, 2) == 0.04, fitted_model.f0
+    assert round(fitted_model.p - fitted_model.f0, 2) == 0.58
 
 Flexible parametric (Royston-Parmar)
 ------------------------------------
@@ -1367,9 +1585,17 @@ whose hazard a single Weibull cannot capture, and pick ``df`` by AIC:
     np.random.seed(2)
     x = np.concatenate([Weibull.random(400, 3, 5), Weibull.random(400, 30, 1.2)])
 
+    rp_aic = {}
     for df in (1, 2, 3, 4):
-        m = RoystonParmar.fit(x, df=df)
-        print(f"df={df}  AIC={m.aic():8.1f}")
+        rp_aic[df] = RoystonParmar.fit(x, df=df).aic()
+        print(f"df={df}  AIC={rp_aic[df]:8.1f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert rp_aic[2] < rp_aic[1] and rp_aic[3] < rp_aic[2]   # improving
+    assert rp_aic[4] > rp_aic[3]                             # then stops
 
 The AIC keeps improving past ``df=1`` (the Weibull), then stops — the usual way
 to choose the number of knots. Take the best and look at the fitted survival
@@ -1412,6 +1638,15 @@ and the same AIC comparison picks it; here the data are right censored at 40:
     for scale in ("hazard", "odds", "normal"):
         m = RoystonParmar.fit(xc, c=c, df=3, scale=scale)
         print(f"{scale:<7} AIC={m.aic():8.1f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _w = Weibull.fit(x)
+    assert np.isclose(m1.neg_ll(), _w.neg_ll())
+    assert np.allclose([np.exp(-m1.params[0] / m1.params[1]), m1.params[1]],
+                       _w.params, rtol=1e-4)
 
 The fitted model has ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``,
 ``mean`` and ``random``, ``neg_ll()``, ``aic()`` and ``bic()``, and a
@@ -1476,6 +1711,12 @@ per-cycle probability of a ``Geometric``, and the ``p`` of a
     print("per-cycle probability:", geom.params[0])
     print("geom.p               :", geom.p, "(the limited-failure proportion)")
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert geom.p == 1
+
 Parameter *names*, though, always mean the distribution's own parameter
 first: ``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
 fixes it, and a limited failure population fitted to these two distributions
@@ -1504,6 +1745,12 @@ Because ``beta > 1`` here, the discrete hazard rises with each cycle -- the chan
 
     model.hf([1, 5, 10, 15])
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.diff(model.hf([1, 5, 10, 15])) > 0)
+
 The ``NegativeBinomial`` distribution models the number of cycles until an item accumulates enough shocks to fail: with ``T = 1 + Y`` where ``Y`` is the number of failures before the ``r``-th success. It is overdispersed relative to a Poisson count and reduces to the ``Geometric`` when ``r = 1``.
 
 .. jupyter-execute::
@@ -1529,6 +1776,12 @@ early-life-failure data:
     model = surv.BetaGeometric.fit(x)
     print(model.params)
     print("hazard at cycles 1, 2, 5 and 10:", model.hf([1, 2, 5, 10]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.diff(model.hf([1, 2, 5, 10])) < 0)
 
 ``Discretize`` turns any continuous distribution on :math:`[0, \infty)` into a
 discrete one by counting the cycle in which the continuous failure happens,
@@ -1559,6 +1812,12 @@ includes zero:
 The maximum likelihood estimate of ``mu`` is the sample mean, as the output
 shows.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(surv.Poisson.fit(counts).params[0], counts.mean())
+
 The full ``fit()`` API carries over. Censored and truncated discrete data are handled exactly as for the continuous distributions -- here every item still running after 10 cycles is right censored:
 
 .. jupyter-execute::
@@ -1582,6 +1841,12 @@ Because the support is :math:`\{1, 2, 3, \dots\}`, the value ``0`` is left free 
     surv.Geometric.fit(x, zi=True)
 
 The fraction of zeros is 40 of 240, or 0.167, exactly the fitted ``f0``. (The ``Poisson`` already has mass at zero, so it cannot be zero inflated.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(surv.Geometric.fit(x, zi=True).f0, 40 / 240)
 
 A note on estimation: probability plotting (MPP) is not defined for these discrete lifetimes, since their step-shaped CDFs cannot be drawn as a straight line, and neither is MPS, since tied integer values make the spacings degenerate; both raise a ``ValueError``. Maximum likelihood (the default), MSE and MOM all work (MOM for the ``BetaGeometric`` needs a sample more dispersed than a Geometric's, see :doc:`Parametric Estimation`). Calling ``plot()`` on a discrete model raises for the same reason as MPP, and ``offset=True`` raises a ``ValueError``: shifting a distribution on the integers by a continuous offset is not a member of the family. All the other model methods -- ``sf``, ``ff``, ``hf``, ``Hf``, ``df``, ``qf``, ``mean``, ``moment``, ``random`` and the confidence bounds ``cb`` -- work as usual (there is no ``entropy`` for these distributions).
 
@@ -1638,6 +1903,16 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
 
     from surpyval import NeverOccurs
     print("NeverOccurs R:", NeverOccurs.sf(np.array([1., 100.])))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(surv.Bernoulli.fit([0, 1], n=[3, 17]).params[0], 0.85)
+    assert np.allclose(switch.sf([0, 1]), [1, 0.85])
+    assert np.isclose(
+        surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params[0], 0.6)
+    assert np.isclose(event.params[0], (3 + 4) / 2)
 
 See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
 :doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
@@ -1731,8 +2006,10 @@ use a **likelihood-ratio** (profile) interval instead, via ``method='lr'``:
     model = Weibull.fit(x)
 
     print("beta :", model.params[1])
-    print("Wald :", model.param_cb('beta', method='wald'))
-    print("LR   :", model.param_cb('beta', method='lr'))
+    wald_cb = model.param_cb('beta', method='wald')
+    lr_cb = model.param_cb('beta', method='lr')
+    print("Wald :", wald_cb)
+    print("LR   :", lr_cb)
 
 The likelihood-ratio interval is the set of shape values whose profile deviance
 stays within the :math:`\chi^2_1` critical value, with the scale re-optimised at
@@ -1749,6 +2026,14 @@ so it is only available on a model fit in-process (not one restored from
 / zero-inflated models; for those use ``method='wald'``. ``param_cb`` also takes
 ``alpha_ci`` and ``bound``, like ``cb``. How both kinds of bound are computed is
 explained in :doc:`Parametric Estimation`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = model.params[1]
+    for _lo, _hi in [wald_cb, lr_cb]:
+        assert _hi - _b > _b - _lo, (_lo, _hi)
 
 
 Creating a custom Distribution
@@ -1826,6 +2111,15 @@ would respect it and settle on the edge, compensating with a larger
         'GompertzCapped', Hf, param_names, ((0, None), (0, 1.2)), support)
     print(GompertzCapped.fit(x).params)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _free = Gompertz.fit(x).params
+    assert np.all(np.abs(_free / [0.2, 1.5] - 1) < 0.25), _free
+    _capped = GompertzCapped.fit(x).params
+    assert np.isclose(_capped[1], 1.2) and _capped[0] > _free[0], _capped
+
 If we transform the data slightly, we can show that this can be used with censored and truncated data
 as well.
 
@@ -1889,6 +2183,16 @@ it:
     for t in [0.5, 1.0, 1.5, 2.0]:
         lower, upper = model.cb(t, on='sf')[0]
         print(f"R({t}) = {model.sf(t):.3f}   95% CI [{lower:.3f}, {upper:.3f}]")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0.2 < c.mean() < 0.25, c.mean()        # "almost a quarter"
+    _t = np.array([0.5, 1.0, 1.5, 2.0])
+    _cb = model.cb(_t, on='sf')
+    _rel_width = (_cb[:, 1] - _cb[:, 0]) / model.sf(_t)
+    assert np.all(np.diff(_rel_width) > 0), _rel_width
 
 This shows the importance of inference when working with truncated and censored data, the uncertainty can be quite wide!
 

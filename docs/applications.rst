@@ -101,6 +101,13 @@ Much better! The knot sits at about half the cap, near $25,000, which is where t
 
 It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model could not be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 0.45 < model.params[0] < 0.55, model.params   # knot_frac
+    assert round(100 * model.p, 1) == 97.1, model.p
+
 
 Applied Reliability Engineering
 -------------------------------
@@ -127,6 +134,14 @@ In the test, 4,156 integrated circuits were run for 1,370 hours, and 28 of them 
 
 LFP likelihoods can be awkward to optimise: the proportion :math:`p` and the shape of the failure distribution trade off against each other, and the likelihood can have more than one optimum. So an LFP fit with no ``init`` starts the optimiser twice -- from the distribution's usual starting point and from a fit to the failures alone (under an LFP the failed units *are* the susceptible subpopulation, and :math:`p` starts at the observed failure fraction) -- and keeps the better likelihood. You can still pass ``init`` (the Weibull :math:`\alpha` and :math:`\beta`, then :math:`p`), and it is always worth sanity-checking the answer. Here the fitted :math:`p` is essentially the observed failure fraction of :math:`28/4156 \approx 0.67\%`, as it should be, since the fitted Weibull says nearly all the susceptible units have failed long before 1,370 hours. A fit that reported a :math:`p` far above the observed fraction, with a worse (higher) negative log-likelihood, would be one to distrust.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(f) == 28 and len(f) + len(s) == 4156
+    assert round(100 * model.p, 2) == round(100 * 28 / 4156, 2) == 0.67
+    assert model.ff(1370) / model.p > 0.99
+
 We can see from these results that at maximum we will have approximately 0.67% fail. If the company accepts a 0.1% probability of their products failing in the field then we can calculate the interval at which the difference between the total population and the proportion failed in the test is 0.1%. That is, we need the burn-in duration :math:`T` with :math:`p - F(T) = 0.001`, or :math:`T = F^{-1}(p - 0.001)`, which is the quantile function of the model:
 
 .. jupyter-execute::
@@ -137,6 +152,13 @@ We can see from these results that at maximum we will have approximately 0.67% f
     print("defectives left after it   :", model.p - model.ff(burn_in))
 
 Therefore we should do a burn in test up to approximately 104.4 to make sure we minimize the number of items shipped that are defective while also minimizing the duration of the test. We can simply change the value of ``field_risk`` in the above code to any value we may wish to use. (Strictly, the proportion of *shipped* units that are defective is :math:`(p - F(T)) / (1 - F(T))`, since the units that failed in burn-in are not shipped; with only about 0.6% removed by the burn-in the difference is negligible here.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(burn_in, 1) == 104.4, burn_in
+    assert round(100 * model.ff(burn_in), 1) == 0.6, model.ff(burn_in)
 
 Demographics / Actuarial
 ------------------------
@@ -202,6 +224,14 @@ One practical point: a ``CustomDistribution`` knows nothing about its parameters
 
 The fitted parameters are close to the ones used to simulate the data (:math:`\lambda = 6.8 \times 10^{-4}`, :math:`\alpha = 2.87 \times 10^{-5}`, :math:`\beta = 0.1023`). :math:`\alpha` is the least precisely determined of the three, because a smaller :math:`\alpha` with a larger :math:`\beta` produces a very similar mortality curve over the ages where most deaths occur.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert 9_900 < len(x) < 10_000, len(x)                # "almost 10,000"
+    _rel = np.abs(np.array(model.params) / params - 1)
+    assert np.all(_rel < 0.3) and np.argmax(_rel) == 1, _rel
+
 You can see that the model is a good fit to the data. Using the model we can determine the probability of death in a given term for a random individual from the population. This is useful to price the premium of a life insurance policy. For example, if a 60 year old was to take out a two year policy, what premium should we charge them for the policy. First, we need to determine the probability of death.
 
 Care is needed here. :math:`F(62) - F(60)` is the probability, *at birth*, of dying between 60 and 62. Our applicant has already survived to 60, so what we need is the conditional probability
@@ -222,6 +252,17 @@ which is one minus the conditional survival, ``cs(2, 60)``: the probability of s
     print(f"ignoring survival to 60 would give P = {model.ff(62) - model.ff(60):.4f}")
 
 From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.33. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(p_death, 3) == 0.030, p_death
+    assert f"{expected_loss:,.2f}" == "3,019.39", expected_loss
+    assert f"{1.1 * expected_loss:,.2f}" == "3,321.33"
+    assert f"{1.1 * expected_loss / 24:,.2f}" == "138.39"
+    _under = 1 - (model.ff(62) - model.ff(60)) / p_death
+    assert round(_under, 2) == 0.15, _under
 
 Although this is a basic example, as insurance companies would have much more sophisticated models, it shows the basics of how demographic and actuarial data can be used. This shows the application of surpyval to actuarial and demographic studies.
 
@@ -252,6 +293,15 @@ We can use the above value of beta with the new data:
     surv.Weibull.fit(x_new, c_new, n_new, fixed={'beta' : 1.3776}, init=[100.])
 
 The characteristic life of the new bearing is over 10 times higher! Quite an improved new design. This new model can be used as part of the sales of the new product (10x more life!) and to provide recommendations for maintenance.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(old.params[1], 4) == 1.3776, old.params    # beta reused
+    _new = surv.Weibull.fit(x_new, c_new, n_new, fixed={'beta': 1.3776},
+                            init=[100.])
+    assert _new.params[0] > 10 * old.params[0], _new.params
 
 Social Science / Criminology
 ----------------------------
@@ -362,6 +412,13 @@ You can see from the above the data is a good fit to the model! Great. So now wh
 
 First, note the ``offset=True``. This fits a three parameter Weibull, with a location :math:`\gamma` below which no value can occur: here :math:`\gamma` is about 304 days, so the model says an expansion has never lasted, and will not last, less than about ten months. That is consistent with the data (the shortest expansion in it is 306 days) and has a plausible economic reading, but an offset is a strong claim about the tail, so it deserves the same scrutiny as any other modelling choice.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.gamma) == 304, model.gamma
+    assert x.min() == 306
+
 We can communicate what the expected time between recessions is:
 
 .. jupyter-execute::
@@ -369,6 +426,14 @@ We can communicate what the expected time between recessions is:
     model.mean()
 
 Therefore the average growth period is 1,178 days, or about 3.2 years between recessions (the plain average of the 33 observed expansions is 1,179 days, so the model and the data agree).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.mean()) == 1178, model.mean()
+    assert round(model.mean() / 365.25, 1) == 3.2
+    assert len(x) == 33 and round(x.mean()) == 1179, x.mean()
 
 References
 ----------

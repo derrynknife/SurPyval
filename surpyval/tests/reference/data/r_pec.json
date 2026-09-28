@@ -1,0 +1,34 @@
+{
+  "generator": "scripts/reference/reference_r.R",
+  "R": "R version 4.3.3 (2024-02-29)",
+  "references": {
+    "brier_ties": {
+      "fixture": "prediction_ties",
+      "software": "R pec",
+      "version": "2023.4.12",
+      "call": "pec(list(m = pt_S), formula = Surv(x, status) ~ 1, data = pt_d, times = c(3, 6, 9, 12), start = NULL, exact = FALSE, cens.model = 'marginal', reference = FALSE, verbose = FALSE)",
+      "settings": {
+        "cens.model": "marginal (reverse Kaplan-Meier)",
+        "weights": "events 1/G(x_i-), survivors 1/G(t)"
+      },
+      "values": {
+        "times": [3, 6, 9, 12],
+        "brier": [0.163092227269755, 0.262053568962337, 0.194966862133048, 0.175379396997657]
+      }
+    },
+    "brier_continuous": {
+      "fixture": "prediction_continuous",
+      "software": "R pec",
+      "version": "2023.4.12",
+      "call": "pec(list(m = pc_S), formula = Surv(x, status) ~ 1, data = pc_d, times = c(3, 6, 9, 12), start = NULL, exact = FALSE, cens.model = 'marginal', reference = FALSE, verbose = FALSE)",
+      "settings": {
+        "cens.model": "marginal (reverse Kaplan-Meier)",
+        "weights": "events 1/G(x_i-), survivors 1/G(t)"
+      },
+      "values": {
+        "times": [3, 6, 9, 12],
+        "brier": [0.166340216056431, 0.264053252560803, 0.193978617322432, 0.170642773962318]
+      }
+    }
+  }
+}

@@ -274,6 +274,13 @@ takes into account, and a warning says which unit it was:
     print(caught[0].message)
     print("censored flags:", with_flat.c)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert "[99]" in str(caught[0].message) and with_flat.c[-1] == 1
+    assert np.all(with_flat.c[:-1] == 0)
+
 The opposite case is a unit that is **already past the threshold** at its first
 measurement — its fitted path crossed 450 at or before time zero. It has
 failed, only we do not know when, so it is left censored at its first
@@ -293,6 +300,12 @@ good side, still never reaches it:
         with_early = DegradationAnalysis.fit(x_early, y_early, i_early, threshold=450.0)
     print(caught[0].message)
     print("censored flags:", with_early.c)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert "[98]" in str(caught[0].message) and with_early.c[-1] == -1
 
 **Decreasing degradation.** Nothing changes when the measurement falls toward
 the threshold instead of rising to it. Here eight LEDs lose light output
@@ -323,6 +336,15 @@ its initial output (the "L70" life). The exponential path is
 The test ran for 6000 hours and no lamp got near 70 %, yet every lamp has an
 L70 estimate — around 14 000 hours, well beyond the data, which is exactly why
 the choice of path shape matters so much.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert x_led.max() == 6000 and y_led.min() > 80
+    assert np.all(np.isfinite(led.pseudo_failure_times))
+    assert np.all(led.pseudo_failure_times > 6000)
+    assert round(float(led.qf(0.5)), -3) == 14000
 
 **Other inputs and options.** Data can come straight from a DataFrame with
 ``fit_from_df``, naming the columns (``Z_cols`` names the stress column(s) for
@@ -403,11 +425,13 @@ extrapolation (which needs at least two points):
 
 .. jupyter-execute::
 
+    forecasts = {}
     for k in (1, 2, 3):
         p = model.predict_rul(x_new[:k], y_new[:k], random_state=0)
         lo, hi = p.failure_time_interval
         plain = (model.predict_failure_time(x_new[:k], y_new[:k])
                  if k >= 2 else float("nan"))
+        forecasts[k] = p.failure_time, lo, hi, plain
         print(f"{k} measurement(s): Bayesian {p.failure_time:6.0f} "
               f"({lo:5.0f} to {hi:5.0f})   least squares {plain:6.0f}")
 
@@ -423,6 +447,17 @@ iterated-linearisation (Laplace) approximation for the others. It requires a
 positive ``measurement_var``: if every training unit's path fitted its
 measurements exactly there is no noise model to blend with, and
 ``predict_rul`` says so.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _width = {k: f[2] - f[1] for k, f in forecasts.items()}
+    assert _width[1] > _width[2] > _width[3], _width
+    _b1, _b2, _b3 = (forecasts[k][0] for k in (1, 2, 3))
+    _ls2, _ls3 = forecasts[2][3], forecasts[3][3]
+    assert _b1 < _b2 < _ls2                  # part of the way to the LS line
+    assert (_b3 - _b1) / (_ls3 - _b1) > 0.5  # most of the way to the trend
 
 The population path-parameter distribution
 ------------------------------------------
@@ -449,6 +484,17 @@ per-unit estimation noise (:math:`\mathrm{Cov}(\hat{\theta}_i) = \Sigma + V_i`).
 variance is pooled from the per-unit residuals, each unit's estimation
 covariance :math:`V_i = \sigma^2 (J_i^T J_i)^{-1}` is computed from the path
 Jacobian, and the average is subtracted from the sample covariance.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(model.path_param_mean / [10, 0.3] - 1) < 0.1)
+    _sd = np.sqrt(np.diag(model.path_param_cov))
+    assert np.all(np.abs(_sd / [3, 0.06] - 1) < 0.2), _sd
+    assert abs(np.sqrt(model.measurement_var) / 3 - 1) < 0.2
+    _raw = np.sqrt(np.diag(model.path_param_sample_cov))
+    assert _raw[0] > _sd[0]
 
 The result is projected onto the positive semi-definite cone. If material
 clipping was needed — the estimation noise is comparable to the between-unit
@@ -503,6 +549,14 @@ sensible answer (the truth is 3):
     print("moments between-unit sd:", np.sqrt(np.diag(moments.path_param_cov)).round(3))
     print("REML between-unit sd   :", np.sqrt(np.diag(reml.path_param_cov)).round(3))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(caught) > 0
+    assert np.sqrt(moments.path_param_cov[0, 0]) < 1e-3     # clipped
+    assert 2 < np.sqrt(reml.path_param_cov[0, 0]) < 5
+
 The estimates land in the same attributes (``path_param_mean``,
 ``path_param_cov``, ``measurement_var``), so ``predict_rul`` and everything else
 work unchanged. :math:`\Sigma` is parameterised by its Cholesky factor, so it is
@@ -524,6 +578,15 @@ agree to every printed digit:
 They differ on unbalanced data and when the unit count is small, where REML is
 preferable. The method used is recorded as ``population_method`` on the fitted
 model. REML requires a positive measurement variance.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _sd = lambda m: np.sqrt(np.diag(m.path_param_cov)).round(4)
+    assert np.array_equal(_sd(model), _sd(reml12))
+    assert (round(float(np.sqrt(model.measurement_var)), 4)
+            == round(float(np.sqrt(reml12.measurement_var)), 4))
 
 For path models that are **linear in their parameters** (linear,
 quadratic, logarithmic, Lloyd-Lipow) the design matrix :math:`X_i` is
@@ -632,6 +695,20 @@ closely than the Weibull, and has the lower AIC:
     print("AIC Weibull, LogNormal:", round(model.life_model.aic(), 1),
           round(lognormal_fit.life_model.aic(), 1))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _pseudo, _induced = float(model.qf(0.5)), induced.median()
+    assert round(_pseudo, 1) == 30.3 and round(_induced, 1) == 28.7
+    assert round(100 * (1 - _induced / _pseudo)) == 5       # "about 5 %"
+    _q_w, _q_i = model.qf(p), induced.qf(p)
+    assert _q_i[0] > _q_w[0] and _q_i[-1] > _q_w[-1]  # later start, longer tail
+    assert round(model.life_model.params[1]) == 5          # shape near 5
+    _q_ln = lognormal_fit.qf(p)
+    assert np.abs(_q_ln - _q_i).sum() < np.abs(_q_w - _q_i).sum()
+    assert lognormal_fit.life_model.aic() < model.life_model.aic()
+
 A subtlety the induced distribution surfaces honestly: some draws of
 :math:`\theta` describe paths that **never reach the threshold** (a
 non-increasing slope, say). Those contribute an ``inf`` failure time — a
@@ -681,6 +758,16 @@ generated-regressor correction:
     plt.legend()
     plt.xlabel('Time')
     plt.ylabel('S(t)')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.diag(model.life_parameter_covariance())
+                  > np.diag(model.life_model.hess_inv))
+    _plain = model.life_model.cb(t, on='sf')
+    assert np.all(band[:, 0] <= _plain[:, 0])
+    assert np.all(band[:, 1] >= _plain[:, 1])
 
 The correction adds a positive term to the life-model information inverse, so
 the two-stage parameter covariance (``model.life_parameter_covariance()``) is
@@ -762,6 +849,14 @@ it — so life at use conditions is one call:
     plt.xlabel('Time')
     plt.ylabel('Reliability at stress')
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.life_model.params[-1] > 0
+    _means = [model.mean(Z=[s]) for s in (0.0, 0.5, 1.0)]
+    assert np.all(np.diff(_means) < 0), _means
+
 ``qf`` and ``mean`` invert / integrate the regression survival function, and
 ``random`` draws from it.
 
@@ -780,6 +875,13 @@ and leaves the others alone; the methods that describe a single unit
         x="t", y="y", i="unit", Z_cols="stress", threshold=100.0)
     use = pd.DataFrame({"stress": [0.0, 0.5, np.nan]})
     adt.qf(0.5, use)             # median life per row; nan where it is missing
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _q = np.ravel(adt.qf(0.5, use))
+    assert np.all(np.isfinite(_q[:2])) and np.isnan(_q[2])
 
 Two-stage confidence bounds at a stress are available by bootstrap: units
 are resampled (each carrying its stress), the whole accelerated pipeline is
@@ -830,6 +932,14 @@ route as the plain population. The life model is still the covariate
 regression on the pseudo failure times, so ``sf``, ``qf``, ``mean`` and the
 bootstrap bounds all work exactly as above.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _fixed = dict(zip(mech.path_param_fixed_names, mech.path_param_fixed))
+    assert abs(_fixed['log(b)'] - np.log(0.5)) < 0.05, _fixed
+    assert abs(_fixed['log(b):Z0'] - 0.8) < 0.05, _fixed
+
 What the mechanism adds is a population of paths *at each stress*: on the link
 scale, :math:`\eta \sim N(D(z)\gamma, \Sigma)`. ``path_param_link_mean(Z)``
 is its mean :math:`D(z)\gamma` (here ``a`` and ``log(b)``), and
@@ -854,13 +964,22 @@ pseudo failure times that carries the extrapolation:
 
 .. jupyter-execute::
 
+    links_median = {}
     for stress in [-0.5, 0.0, 1.0]:
         rate = mech.path_param_median([stress])[1]
         induced = mech.induced_life(Z=[stress], random_state=0)
         regression = float(np.ravel(model.qf(0.5, Z=[stress]))[0])
+        links_median[stress] = induced.median(), regression
         print(f'stress {stress:+.1f}: median rate {rate:.3f}, '
               f'median life induced {induced.median():6.1f} '
               f'/ regression {regression:6.1f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    for _s, (_ind, _reg) in links_median.items():
+        assert abs(_ind / _reg - 1) < 0.05, (_s, _ind, _reg)
 
 Remaining useful life becomes stress-aware in the same way.
 ``predict_rul(x, y, Z=...)`` updates a new unit's trajectory against the
@@ -873,11 +992,19 @@ own trend whatever the stress:
 .. jupyter-execute::
 
     new_x, new_y = [5.0, 10.0], [13.0, 16.0]
+    rul_at = {}
     for stress in [0.0, 1.5]:
         pred = mech.predict_rul(new_x, new_y, Z=[stress], random_state=0)
         lower, upper = pred.rul_interval
+        rul_at[stress] = pred.rul
         print(f'stress {stress}: RUL {pred.rul:5.1f}  '
               f'(95% interval {lower:5.1f} to {upper:5.1f})')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert rul_at[0.0] > 1.5 * rul_at[1.5], rul_at
 
 A model fitted with ``Z`` alone (no ``links``) refuses ``Z`` in
 ``predict_rul`` and ``induced_life``, since it has no stress-conditional
@@ -942,6 +1069,13 @@ path parameters, their population (``path_param_mean``, ``path_param_cov``) and
 the pseudo failure times are all on the 50 °C clock, so the life distribution
 listed is the life *at the reference stress*.
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(step.gamma[0] + 5000) < 100, step.gamma
+    assert round(5000 * 8.617e-5, 2) == 0.43
+
 It is worth looking at how the stress rows line up with the measurements around
 the first step. The chamber goes from 50 °C to 75 °C just after the 100-hour
 inspection, so the row for the 100-hour measurement still says 50 °C (that
@@ -962,6 +1096,14 @@ model sees instead of calendar time:
         "AF over interval": [round(af_rows([zz]), 2) for zz in Zs_[unit0][rows]],
         "clock (50 C hours)": tau0[rows].round(1),
     })
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _celsius = (1 / Zs_[unit0] - 273.0).round(0)
+    _t = xs_[unit0]
+    assert _celsius[_t == 100][0] == 50 and _celsius[_t == 110][0] == 75
 
 ``model.path(t, unit)`` evaluates
 a unit's fitted path in calendar time, along its own stress history (holding
@@ -1025,6 +1167,12 @@ here). On this stepped test the two agree:
                                         population_method='reml')
     print('gamma, moments:', step.gamma.round(0), '  REML:', step_reml.gamma.round(0))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(step.gamma[0] - step_reml.gamma[0]) < 5
+
 ``reml`` is also how a clock is fitted to a classic **constant-stress** test,
 where ``moments`` refuses. Here it is on the four-level test from the start of
 this section, next to the two earlier treatments of the same data. The life
@@ -1054,6 +1202,18 @@ check to make; a clear disagreement would mean the stress acts on the paths in
 a way one of the models cannot represent. For the linear path the clock and
 ``links={'b': 'log'}`` are nearly the same model (the theory page explains
 why), so their closeness is expected.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(model.life_model.params[-1], 3) == 0.851
+    assert round(mech.path_param_fixed[-1], 3) == 0.827
+    assert round(clock_adt.gamma[0], 3) == 0.824
+    _reg = float(np.ravel(model.qf(0.5, Z=[-0.5]))[0])
+    _clock = float(np.ravel(clock_adt.qf(0.5, Z=[-0.5]))[0])
+    assert (round(_reg), round(_clock), round(links_median[-0.5][0])) == (
+        283, 273, 271)
 
 **Remaining life on a stress plan.** For a unit you are watching, the stress
 matters twice: its *history* sets how far along its reference-stress clock it
@@ -1282,6 +1442,14 @@ below are jagged and occasionally dip downward; that non-monotone wobble is the
 Wiener process's defining feature.
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(np.r_[model.mu, model.sigma] / [0.5, 0.4] - 1) < 0.05)
+    assert np.isclose(model.mean(), threshold / model.mu)
+    assert abs(model.mean() - 20) < 1.5
+
+.. jupyter-execute::
 
     for unit in range(8):
         m = i == unit
@@ -1412,6 +1580,14 @@ mean time to failure is about ``threshold / (alpha/beta) = 30 / 2 = 15``. The
 paths this time only ever climb — no downward wobble is possible:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(np.r_[model.alpha, model.beta] / [3, 1.5] - 1) < 0.05)
+    assert abs(model.mean() - 15) < 0.5
+    _unrounded = model
+
+.. jupyter-execute::
 
     for unit in range(8):
         m = i == unit
@@ -1468,6 +1644,16 @@ the likelihood of a unit is the probability that its path passes through all of
 its bins:
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _censored = GammaProcess.fit(x, y_gauge, i, threshold=threshold)
+    assert dy.size == 960
+    assert round(_censored.mean(), 1) == 14.7
+    assert round(_unrounded.mean(), 1) == 15.3
+    assert round(_censored.alpha, 1) == 4.2 and round(_unrounded.alpha, 1) == 3.0
+
+.. jupyter-execute::
 
     GammaProcess.fit(x, y_gauge, i, threshold=threshold, gauge=0.5)
 
@@ -1480,10 +1666,25 @@ while the quantised fit barely moves:
 .. jupyter-execute::
 
     y_coarse = np.round(y / 1.0) * 1.0
+    coarse = {}
     for label, kwargs in [("zeros censored", {}), ("gauge=1.0", {"gauge": 1.0})]:
-        fit = GammaProcess.fit(x, y_coarse, i, threshold=threshold, **kwargs)
+        fit = coarse[label] = GammaProcess.fit(x, y_coarse, i, threshold=threshold,
+                                               **kwargs)
         print(f"{label:15s} alpha {fit.alpha:.2f}  beta {fit.beta:.2f}  "
               f"mean life {fit.mean():.2f}")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _gauge = GammaProcess.fit(x, y_gauge, i, threshold=threshold, gauge=0.5)
+    assert round(_gauge.alpha, 2) == 3.08 and round(_unrounded.alpha, 2) == 2.97
+    assert round(_gauge.mean(), 2) == 15.37
+    assert round(_unrounded.mean(), 2) == 15.35
+    _cens, _quant = coarse["zeros censored"], coarse["gauge=1.0"]
+    assert _cens.alpha > 2 * _unrounded.alpha
+    assert round(_cens.mean(), 1) == 12.6
+    assert abs(_quant.mean() / _unrounded.mean() - 1) < 0.01
 
 A few details of the option:
 
@@ -1601,6 +1802,13 @@ life at the reference stress. Every life method now needs a stress, passed as
 ``Z``: a single row for a constant stress,
 
 .. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(np.abs(np.r_[model.mu, model.sigma] / [0.05, 0.12] - 1) < 0.05)
+    assert abs(model.gamma[0] + 5000) < 100, model.gamma
+
+.. jupyter-execute::
 
     print("acceleration factor at 100 C :", round(model.acceleration_factor([z_levels[2]]), 1))
     print("mean life at 50 C            :", round(model.mean(Z=[z_use]), 1))
@@ -1716,6 +1924,12 @@ The fitted location is ``model.beta`` (intercept and slope on
 the direction used (``"auto"``, the default, inferred ``"decreasing"`` here
 from the downward trend; pass ``direction=`` to set it).
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert model.direction == "decreasing"
+
 The response distribution is ``LogNormal`` by default (a positive-valued
 measurement, whose scatter grows with its level); use ``Normal`` when the
 response can be negative. The time transform :math:`\varphi` is ``"linear"`` by
@@ -1754,6 +1968,17 @@ The linear transform wins, as simulated; the location recovers
 median life, where the median strength falls to 50, is at about
 :math:`\ln 2 / 0.02 \approx 35`. ``median_degradation(t)`` is the
 ``degradation_quantile(0.5, t)`` of the fitted measurement distribution.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy.optimize import brentq
+    assert best.transform == "linear"
+    assert abs(best.beta[0] - np.log(100)) < 0.05
+    assert abs(best.beta[1] + 0.02) < 0.002
+    _median_life = brentq(lambda t: best.sf([t])[0] - 0.5, 20, 60)
+    assert abs(_median_life - np.log(2) / 0.02) < 1, _median_life
 
 Saving and loading a fitted model
 ---------------------------------
@@ -1796,8 +2021,16 @@ seed the reloaded model reproduces the original's band exactly:
 
 .. jupyter-execute::
 
-    print(saveable.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
-    print(reloaded.cb(grid, method="bootstrap", n_boot=50, seed=1).round(3))
+    band_saved = saveable.cb(grid, method="bootstrap", n_boot=50, seed=1)
+    band_reloaded = reloaded.cb(grid, method="bootstrap", n_boot=50, seed=1)
+    print(band_saved.round(3))
+    print(band_reloaded.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(band_saved, band_reloaded)
 
 Every one of these models also has ``to_json(path)`` and ``from_json(path)``
 for writing a file directly (``surpyval.from_json`` reads any of them). The

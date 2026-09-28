@@ -101,6 +101,13 @@ A few rules make the flags unambiguous:
 
 The rows come back sorted, which is how SurPyval stores data internally: the first two rows are the converted one-sided intervals (left censored, ``-1``, and right censored, ``1``, both at 1000), followed by the exact observation at 1200 (``0``) and the interval (``2``).
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert c.tolist() == [-1, 1, 0, 2], c
+    assert x[:, 0].tolist() == [1000, 1000, 1200, 1300], x
+
 The same data can be given as two separate arrays with ``xl`` and ``xr`` in place of ``x``, which is often more natural when every row is an interval.
 
 If, after the one-sided rows are converted, no row is an interval, the two columns carry nothing extra and SurPyval stores ``x`` as a single column. Two-column data with no real intervals, such as a DataFrame with separate left and right columns that are always equal, is therefore accepted by every fitter, including those that cannot use intervals (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington, and the MPP, MPS, MSE and MOM methods). Real intervals need a fitter that handles them, such as maximum likelihood or Turnbull.
@@ -126,6 +133,14 @@ This example shows the flexibility surpyval offers. It allows users to analyse d
     model = surpyval.Weibull.fit(x=x, c=c, n=n)
 
 The first step of the fit method actually wrangles the input data into the densest form possible. So internally, the example without the n value, will be condensed to be the second example without you seeing it. But it shows the capability of how data can be input to surpyval if you have different formats. Counts must be positive integers: ``n`` is a number of items, not a weight.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _long = surpyval.Weibull.fit(x=[3, 3, 3, 4, 4, [4, 6], [6, 8], 8],
+                                 c=[-1, -1, -1, 0, 0, 2, 2, 1])
+    assert np.allclose(_long.params, model.params)
 
 Pitfalls with censored data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -186,6 +201,15 @@ To see why truncation matters, simulate bulbs whose true life is Weibull with :m
     print("with tl=500         :", surpyval.Weibull.fit(shipped, tl=500).params)
 
 Ignoring the truncation, the fit only ever sees bulbs that were strong enough to pass burn-in, so it overestimates the characteristic life and makes the failures look more tightly bunched (a larger :math:`\beta`) than they really are. Telling SurPyval about the burn-in with ``tl=500`` recovers estimates close to the true values.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _naive = surpyval.Weibull.fit(shipped).params
+    _tl = surpyval.Weibull.fit(shipped, tl=500).params
+    assert _naive[0] > _tl[0] and _naive[1] > _tl[1], (_naive, _tl)
+    assert np.all(np.abs(_tl / [1500, 2.0] - 1) < 0.1), _tl
 
 Rules and conventions for truncation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

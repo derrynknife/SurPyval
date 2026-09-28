@@ -156,6 +156,12 @@ form — the fitted parameters agree exactly:
     print("from lists :", from_lists.params)
     print("hand xcnt  :", hand.params)
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(from_lists.params, hand.params, rtol=1e-12)
+
 
 Truncation, four ways
 ---------------------
@@ -217,6 +223,16 @@ Field data often arrives as a table of dates: when each unit was installed, when
     surv.Weibull.fit_from_df(log, x="x", c="c")
 
 A common mistake is to count the preventive replacement of unit E as a failure. It was not one, and counting it as one makes the item look less reliable than it is. Another is to leave units B and D out because they "have no failure date": they are the survivors, and they carry most of the information about how long the units last.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _right = surv.Weibull.fit_from_df(log, x="x", c="c")
+    _e_failed = np.where(log["removed"].isna(), 1, 0)     # E as a failure
+    _wrong = surv.Weibull.fit(log["x"], _e_failed)
+    assert _wrong.params[0] < _right.params[0], _wrong.params
+    assert _wrong.mean() < _right.mean()
 
 If units only came under observation some time after they were installed (for example, records only start at the date a database was set up), each unit's age on that date is its left truncation value, ``tl``.
 
@@ -348,6 +364,13 @@ deaths, ``r[j] - d[j] - r[j + 1]``, and it is placed at that time:
     print("x:", x_back)
     print("c:", c_back)
     print("n:", n_back)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.array_equal(x_back, x) and np.array_equal(c_back, c)
+    assert np.array_equal(n_back, n)
 
 If the risk set ever grows from one time to the next, some items entered
 late (left truncation). ``xrd`` has no record of when each item entered,

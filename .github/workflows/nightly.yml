@@ -1,0 +1,160 @@
+name: nightly
+
+run-name: SurPyval nightly (develop)
+
+# A scheduled run against `develop` of everything the pull requests into it
+# skip: the full test suite, the documentation build and the statistical
+# calibration suite (#379).
+#
+# Pull requests into `develop` run lint only, by a documented decision (see
+# actions.yml): the suite and the docs build wait for the release pull
+# request into `master`. That leaves a release's worth of commits between
+# a break and its discovery. This workflow closes most of that gap without
+# slowing the pull requests: a break on `develop` shows up the next
+# morning, with a day's commits to search.
+#
+# GitHub runs scheduled workflows only from the workflow file on the
+# repository's *default* branch (`master`). This file therefore takes
+# effect once it reaches `master`, with the next release; until then it
+# can be run by hand from the Actions tab (workflow_dispatch) on any
+# branch that has it. Every job checks out `develop` explicitly, because a
+# scheduled run's default checkout is the default branch, which would
+# test the last release rather than the work in progress.
+on:
+  schedule:
+    # 03:17 UTC daily; off the hour, when scheduled runs queue longest.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # The surpyval_ci job of actions.yml, on every interpreter it tests. The
+  # matrix is what the release run would find out, and finding a failure
+  # that appears on one interpreter only is the main thing the per-PR runs
+  # gave up (see the surpyval_ci comment in actions.yml). Coverage is not
+  # collected: nothing reads it here.
+  suite:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set-up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: pytest
+        run:
+          python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
+
+      - name: doctests
+        run:
+          python -m pytest --doctest-modules surpyval
+          --ignore=surpyval/tests --ignore=surpyval/alpha
+
+      - name: doctests (numeric comparison forced)
+        run:
+          python -m pytest --doctest-modules surpyval
+          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --doctest-force-numeric
+
+  # The docs job of actions.yml: the hosted (Read the Docs) build, Python
+  # 3.12 with the package's own ``docs`` extra, warnings as errors. The
+  # documentation executes its code cells, so a change that touches no
+  # documentation file can still break it.
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ".[docs]"
+
+      - name: sphinx build
+        run: python -m sphinx -b html -W --keep-going docs docs/_build/html
+
+  # The simulation studies in surpyval/tests/calibration: confidence
+  # interval coverage, test size and power, estimator bias. They are
+  # skipped unless --run-calibration is given (see conftest.py). About ten
+  # to twenty minutes on four cores; each study has a fixed seed, so a
+  # failure is a change in behaviour, not noise. ``-rP`` prints every
+  # study's numbers (achieved against nominal, and the tolerance) for the
+  # passing tests too, so the log records how close each one is.
+  calibration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: calibration studies
+        run:
+          python -m pytest -n auto -rP --durations=0 --run-calibration
+          surpyval/tests/calibration
+
+  # The property-based tests (surpyval/tests/properties) run a small,
+  # derandomized search on every full test run -- about 40 seconds on one
+  # core. Here they search thoroughly: hundreds of generated data sets per
+  # property, every parametric family, larger samples, and the slow known
+  # failures. Hypothesis shrinks any counterexample to a minimal case,
+  # which then belongs in test_known_failures.py and an issue.
+  #
+  # The thorough profile has not yet been timed end to end, hence the
+  # limit: if it is hit, lower max_examples for the slow files in
+  # surpyval/tests/properties/conftest.py rather than raising the limit.
+  properties:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: property-based tests (thorough)
+        env:
+          SURPYVAL_HYPOTHESIS_PROFILE: nightly
+        run:
+          python -m pytest -n auto --durations=20 surpyval/tests/properties

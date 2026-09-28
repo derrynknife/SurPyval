@@ -67,6 +67,13 @@ Every fitted univariate distribution and non-parametric estimate in SurPyval has
     print("h(t)             :", model.hf(t))
     print("f(t) / R(t)      :", model.df(t) / model.sf(t))
 
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.sf(t), np.exp(-model.Hf(t)))
+    assert np.allclose(model.hf(t), model.df(t) / model.sf(t))
+
 Two more quantities follow from these and come up constantly in reliability work:
 
 - **B-lives, or quantiles.** The :math:`B_q` life is the time by which a fraction :math:`q` has failed, :math:`F^{-1}(q)`, given by ``qf(q)``. The B10 life is ``qf(0.1)``, the median is ``qf(0.5)``.
@@ -76,6 +83,13 @@ Two more quantities follow from these and come up constantly in reliability work
 
     print("B10 life                        :", model.qf(0.1))
     print("P(survive 5 more | alive at 10) :", model.cs(5, 10))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(model.ff(model.qf(0.1)), 0.1)
+    assert np.isclose(model.cs(5, 10), model.sf(15) / model.sf(10))
 
 AFT, AL, or PH?
 ---------------
@@ -119,6 +133,13 @@ multiplies the cumulative hazard, and so the hazard, by :math:`\phi^{\beta}`. Wi
     print("PH coefficient             :", ph.phi_params)
 
 The two fits are the same model, parameterised differently. For any other distribution, AFT and PH are genuinely different assumptions, and choosing between them is a modelling decision.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(shape * aft.phi_params, ph.phi_params, rtol=1e-4)
+    assert np.isclose(aft.neg_ll(), ph.neg_ll())
 
 
 How an AFT and PH Model Relate to a regular distribution

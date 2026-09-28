@@ -1,0 +1,183 @@
+{
+ "generator": "scripts/reference/reference_python.py",
+ "python": "3.11.15",
+ "numpy": "2.4.6",
+ "pandas": "2.3.3",
+ "references": {
+  "weibull_left_truncation": {
+   "fixture": "left_truncation",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "WeibullFitter().fit(x, event_observed=1 - c, entry=tl)",
+   "settings": {
+    "parameterisation": "S(t) = exp(-(t / lambda_) ** rho_)"
+   },
+   "values": {
+    "params": [
+     3.9947049322004746,
+     1.6162390466960233
+    ],
+    "names": [
+     "lambda_",
+     "rho_"
+    ],
+    "loglik": -101.12767632174905
+   }
+  },
+  "weibull_interval": {
+   "fixture": "interval",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "WeibullFitter().fit_interval_censoring(left, right)",
+   "settings": {
+    "parameterisation": "S(t) = exp(-(t / lambda_) ** rho_)",
+    "intervals": "left == right exact, right = inf right censored, left = 0 left censored"
+   },
+   "values": {
+    "params": [
+     9.307143313806154,
+     2.129029343545878
+    ],
+    "names": [
+     "lambda_",
+     "rho_"
+    ],
+    "loglik": -126.12219237259039
+   }
+  },
+  "lognormal_left_truncation": {
+   "fixture": "left_truncation",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "LogNormalFitter().fit(x, event_observed=1 - c, entry=tl)",
+   "settings": {
+    "parameterisation": "S(t) = 1 - Phi((log t - mu_) / sigma_)"
+   },
+   "values": {
+    "params": [
+     1.1667496627049758,
+     0.6197942695244806
+    ],
+    "names": [
+     "mu_",
+     "sigma_"
+    ],
+    "loglik": -100.76943966745434
+   }
+  },
+  "lognormal_interval": {
+   "fixture": "interval",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "LogNormalFitter().fit_interval_censoring(left, right)",
+   "settings": {
+    "parameterisation": "S(t) = 1 - Phi((log t - mu_) / sigma_)",
+    "intervals": "left == right exact, right = inf right censored, left = 0 left censored"
+   },
+   "values": {
+    "params": [
+     1.9799329284298814,
+     0.586728474052693
+    ],
+    "names": [
+     "mu_",
+     "sigma_"
+    ],
+    "loglik": -130.101263288202
+   }
+  },
+  "loglogistic_left_truncation": {
+   "fixture": "left_truncation",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "LogLogisticFitter().fit(x, event_observed=1 - c, entry=tl)",
+   "settings": {
+    "parameterisation": "S(t) = 1 / (1 + (t / alpha_) ** beta_)"
+   },
+   "values": {
+    "params": [
+     3.3093489028817475,
+     2.813580561732087
+    ],
+    "names": [
+     "alpha_",
+     "beta_"
+    ],
+    "loglik": -100.44120483037779
+   }
+  },
+  "loglogistic_interval": {
+   "fixture": "interval",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "LogLogisticFitter().fit_interval_censoring(left, right)",
+   "settings": {
+    "parameterisation": "S(t) = 1 / (1 + (t / alpha_) ** beta_)",
+    "intervals": "left == right exact, right = inf right censored, left = 0 left censored"
+   },
+   "values": {
+    "params": [
+     7.57181311289899,
+     3.106357269568528
+    ],
+    "names": [
+     "alpha_",
+     "beta_"
+    ],
+    "loglik": -128.19672620430742
+   }
+  },
+  "exponential_left_truncation": {
+   "fixture": "left_truncation",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "ExponentialFitter().fit(x, event_observed=1 - c, entry=tl)",
+   "settings": {
+    "parameterisation": "S(t) = exp(-t / lambda_)"
+   },
+   "values": {
+    "params": [
+     2.957599999819193
+    ],
+    "names": [
+     "lambda_"
+    ],
+    "loglik": -104.21890643201425
+   }
+  },
+  "exponential_interval": {
+   "fixture": "interval",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "ExponentialFitter().fit_interval_censoring(left, right)",
+   "settings": {
+    "parameterisation": "S(t) = exp(-t / lambda_)",
+    "intervals": "left == right exact, right = inf right censored, left = 0 left censored"
+   },
+   "values": {
+    "params": [
+     8.535506470480165
+    ],
+    "names": [
+     "lambda_"
+    ],
+    "loglik": -142.79778526153058
+   }
+  },
+  "weibull_aft_left_truncation": {
+   "fixture": "left_truncation",
+   "software": "lifelines",
+   "version": "0.30.3",
+   "call": "WeibullAFTFitter().fit(df[x, event, tl, z], 'x', event_col='event', entry_col='tl')",
+   "settings": {
+    "parameterisation": "S(t | z) = exp(-(t / lambda) ** rho), log lambda = lambda_intercept + lambda_z * z, log rho = rho_intercept"
+   },
+   "values": {
+    "lambda_intercept": 1.6228348935851762,
+    "lambda_z": -0.41847425013961637,
+    "rho_intercept": 0.5865542002192594,
+    "loglik": -97.85386265058416
+   }
+  }
+ }
+}

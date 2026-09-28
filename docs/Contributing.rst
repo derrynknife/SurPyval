@@ -38,9 +38,67 @@ docstrings and checks their printed output, so a docstring example is a
 tested promise like any other. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
+``--run-calibration`` runs the statistical calibration studies (confidence
+interval coverage, test size and power, estimator bias; about 15 minutes on
+four cores), which also run nightly against ``develop`` from
+``.github/workflows/nightly.yml``.
+The property-based tests in ``surpyval/tests/properties`` run a short
+derandomized search by default (under a minute);
+``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the nightly
+run does. When one finds a failure, it prints a minimal example: pin it in
+``surpyval/tests/properties/test_known_failures.py`` with the issue number.
 
 Describe any change a user would notice in ``docs/changelog.rst``, under the
 unreleased version at the top.
+
+The conformance suite
+---------------------
+
+``surpyval/tests/conformance`` checks every public model against the same
+battery of general properties. The models are listed once, in
+``registry.py``; the property modules beside it run each registered model
+through each property that applies to it:
+
+- identities between its functions: ``sf + ff = 1``, ``Hf = -log sf``,
+  ``df = hf sf`` (and the discrete analogue), ``qf(ff(x)) = x``, and the
+  cumulative incidences of the causes summing to the all-cause ``ff``;
+- vectorisation: a scalar, a 2-D and an empty query, a permuted query, and
+  covariate rows evaluated together or one at a time;
+- invariances of the fit: a change of time unit, a permutation of the data
+  rows, and counts ``n`` against the same rows repeated;
+- valid values: probabilities in [0, 1] and monotone in time, no NaN at a
+  valid time;
+- the missing-value rule (see :doc:`Conventions`), seed reproducibility of
+  the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
+  that keeps every prediction;
+- that the alternate ways of fitting a model (``fit_from_df``, a formula,
+  ``from_params``, ``fit_tvc`` ...) agree with ``fit``.
+
+``test_completeness.py`` walks the public namespaces and fails for any public
+class or fitter that is neither registered nor listed in ``OUT_OF_SCOPE``
+with a reason. So **a new model is registered**: add a ``Case`` to
+``registry.py`` (the family helpers there -- ``continuous``, ``regression``
+and the rest -- do most of it), giving a small deterministic fixture, the fit,
+how its functions are called, and its alternate fit paths. If a property
+cannot hold for it, exclude it in ``exclude`` with the reason (a step
+function has no density, a point mass no quantile inverse). If it should hold
+and does not, that is a bug: list it in ``KNOWN_FAILURES`` with a one-line
+description, which makes it a strict xfail -- the suite stays green, and
+turns red the day the bug is fixed, as the reminder to remove the entry.
+
+Continuous integration runs the suite on every pull request, without the
+refits marked ``slow`` (the less common variants of families whose main
+member runs); the full suite includes those:
+
+.. code-block:: bash
+
+    python -m pytest surpyval/tests/conformance -m "not slow"   # ~40 s
+    python -m pytest surpyval/tests/conformance                 # everything
+
+**When a bug is found, add the property, not only the test.** Each fix gets a
+regression test for its own case; ask as well which general property the bug
+broke, and if the battery does not check it yet, add it to the property
+modules, so every registered model is checked for it from then on.
 
 Branching and releases
 ----------------------
@@ -67,13 +125,13 @@ than on every push to every branch. Not every job runs on every event:
    * - Event
      - Jobs
    * - Pull request into ``develop``
-     - lint only (about a minute)
+     - lint and the conformance suite (about a minute each)
    * - Pull request into ``master`` (the release)
-     - lint, the test suite across three interpreters, and the
-       documentation build (about ten minutes)
+     - lint, the conformance suite, the test suite across three
+       interpreters, and the documentation build (about ten minutes)
    * - Push to ``master``
-     - lint and the test suite; Read the Docs rebuilds the hosted
-       documentation
+     - lint, the conformance suite and the test suite; Read the Docs
+       rebuilds the hosted documentation
    * - Push of a ``v*`` tag
      - ``.github/workflows/publish.yml`` checks that the tag matches the
        version in ``pyproject.toml``, builds the package and publishes it
@@ -149,3 +207,41 @@ than hide a warning. Only when the warning is itself the point being taught,
 add the ``:stderr:`` option so it is rendered in the page. Seed any
 randomness, so the numbers quoted in the text are the numbers the build
 prints.
+
+Checking the numbers quoted in the text
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A cell's output is regenerated on every build, but a number quoted in the
+prose around it ("a shape of about 2.1", "83 wear-out failures", "the lower
+AIC") is not, and it goes stale silently when the output changes. So every
+such claim is checked by a hidden cell after the paragraph that makes it:
+
+.. code-block:: rst
+
+    The shape :math:`\beta \approx 2.1` is greater than one, ...
+
+    .. jupyter-execute::
+        :hide-code:
+        :hide-output:
+
+        assert round(model.params[1], 1) == 2.1, model.params
+
+The cell runs in the page's kernel like any other and renders nothing; a
+failing ``assert`` stops the build with its traceback. Some conventions:
+
+- Check the claim at the precision the text states it: ``round(x, 1) == 2.1``
+  for "about 2.1", a comparison for "lower", "wider" or "inside the interval".
+- Give the value as the assertion message, so a failure shows what the output
+  now is.
+- Prefix names used only by a check with ``_``, and never change a variable a
+  later cell uses. If a claim needs a value that a visible cell computed but
+  did not keep (inside a loop, say), keep it in that cell (``aic[df] = ...``)
+  rather than repeating an expensive computation in the check.
+- Inputs (the parameters a simulation was drawn from), definitions and
+  literature values need no check.
+- When a check fails because an output changed, correct the text to the new
+  output rather than loosening the check.
+
+To iterate on a page, rerun the build command above: Sphinx keeps its doctree
+cache in ``docs/_build/html/.doctrees``, so after the first full build a
+rebuild re-reads, and so re-executes, only the pages that changed.
