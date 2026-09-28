@@ -1269,8 +1269,8 @@ increasing, constant, or decreasing hazard rates.
     model = WeibullPH.fit(x=x, Z=Z, c=c)
     model
 
-Notice the coefficients are very close to the Cox model — this is expected when
-the Weibull is a reasonable fit to the baseline. The parameters are listed in
+Notice the coefficients are close to the Cox model's, each within 10% of it —
+this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
 the order ``model.parameter_names()`` gives: the distribution's own parameters
 first, then one ``beta_j`` per covariate column.
 
@@ -1279,7 +1279,7 @@ first, then one ``beta_j`` per covariate column.
     :hide-output:
 
     _cox = CoxPH.fit(x=x, Z=Z, c=c)
-    assert np.all(np.abs(model.params[2:] - _cox.beta) < 1), _cox.beta
+    assert np.all(np.abs(model.params[2:] / _cox.beta - 1) < 0.1), _cox.beta
 
 If none of the pre-built distributions suit your data, the ``PH`` factory creates
 a parametric PH model for any surpyval distribution:
