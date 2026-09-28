@@ -589,6 +589,18 @@ def get_path_model(path: "str | PathModel") -> PathModel:
     model's display ``name`` (e.g. ``"Offset Exponential"``) is accepted
     too. (``"best"`` — automatic selection — is handled by
     ``DegradationAnalysis.fit``, not here.)
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.degradation import get_path_model
+    >>> power = get_path_model("power")
+    >>> power.name, power.param_names
+    ('Power', ['a', 'b'])
+    >>> power.path(np.array([1.0, 4.0]), 2.0, 0.5)
+    array([2., 4.])
+    >>> get_path_model("Offset Exponential").name
+    'Offset Exponential'
     """
     if isinstance(path, PathModel):
         return path

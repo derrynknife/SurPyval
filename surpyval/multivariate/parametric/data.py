@@ -37,6 +37,24 @@ class MultivariateSurpyvalData:
         ``(-inf, inf)`` (no truncation).
     xl, xr : array-like, shape (N, D), optional
         Interval-censoring bounds, required where ``c == 2``.
+
+    Examples
+    --------
+    A list is read as one sequence per series. Here three rows of two
+    series, the second series right censored in every row:
+
+    >>> from surpyval.multivariate import MultivariateSurpyvalData
+    >>> data = MultivariateSurpyvalData(
+    ...     [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], c=[0, 1]
+    ... )
+    >>> data.N, data.D
+    (3, 2)
+    >>> data.c
+    array([[0, 1],
+           [0, 1],
+           [0, 1]])
+    >>> data.dimension(1)[:2]
+    (array([4., 5., 6.]), array([1, 1, 1]))
     """
 
     def __init__(

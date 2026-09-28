@@ -380,6 +380,20 @@ class ProcessRUL:
         (the remaining life and its interval are then ``0``), else ``0.0``.
     alpha_ci : float
         The tail probability of ``rul_interval``.
+
+    Examples
+    --------
+    ``predict_rul`` of a process model returns one. A unit that has
+    degraded to 60 of a failure threshold of 100, drifting at 0.5 per
+    unit time:
+
+    >>> from surpyval.degradation import WienerProcessModel
+    >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+    >>> rul = model.predict_rul(60.0)
+    >>> rul
+    ProcessRUL(rul=78.06, interval=(50.7, 120.3), prob_already_failed=0)
+    >>> round(rul.rul, 2)
+    78.06
     """
 
     def __init__(
@@ -900,6 +914,23 @@ class WienerProcessModel(FirstPassageProcessModel):
         the reference stress at which ``mu`` and ``sigma`` apply. At stress
         ``z`` the process clock runs ``exp(gamma' (z - stress_ref))`` times
         faster, scaling both the drift and the variance per unit time.
+
+    Examples
+    --------
+    ``WienerProcess.fit`` returns one; it can also be built from known
+    parameters:
+
+    >>> from surpyval.degradation import WienerProcessModel
+    >>> model = WienerProcessModel(mu=0.5, sigma=1.0, threshold=100)
+    >>> model
+    Wiener Process Degradation Model
+    ================================
+    Drift (mu)          : 0.5
+    Diffusion (sigma)   : 1
+    Threshold           : 100
+    Mean time to failure: 200
+    >>> model.sf([150, 200, 250]).round(4)
+    array([0.9759, 0.4719, 0.0489])
     """
 
     _model_tag = "WienerProcessModel"
@@ -1229,6 +1260,19 @@ class GammaProcessModel(FirstPassageProcessModel):
         For a model fitted with stress ``Z``: the stress coefficients and
         the reference stress at which ``alpha`` applies. At stress ``z``
         the shape accrues at ``alpha * exp(gamma' (z - stress_ref))``.
+
+    Examples
+    --------
+    ``GammaProcess.fit`` returns one; it can also be built from known
+    parameters. Wear accruing at a mean ``alpha / beta = 0.5`` per unit
+    time, with failure at 100:
+
+    >>> from surpyval.degradation import GammaProcessModel
+    >>> model = GammaProcessModel(alpha=2.0, beta=4.0, threshold=100)
+    >>> model.sf([150, 200, 250]).round(4)
+    array([1.    , 0.5066, 0.    ])
+    >>> round(model.mean(), 2)
+    200.25
     """
 
     _model_tag = "GammaProcessModel"

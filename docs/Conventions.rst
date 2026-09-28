@@ -285,11 +285,13 @@ With :math:`F_0` and :math:`R_0` the base distribution, the full model is
 and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back the base distribution. The conventions to remember are:
 
 - :math:`p` is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
-- The zero-inflation mass sits at :math:`x = 0`, even when there is an offset.
-- Below the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
+- The zero-inflation mass sits at :math:`x = 0`, even when there is an offset. Before 0 nothing has failed: :math:`F(x) = 0` and :math:`R(x) = 1` for :math:`x < 0`.
+- Between 0 and the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
+- ``df(0)`` of a zero-inflated model is the point mass :math:`f_0` itself (a probability, as the likelihood uses it), not a density. ``df(x, continuous=True)`` is the continuous part alone, :math:`p - f_0` times the base density at :math:`x - \gamma`, which integrates to :math:`p - f_0`: use it to integrate the density numerically.
 - ``qf(q)`` is infinite for :math:`q \ge p` (that fraction of the population never fails), and 0 for :math:`q \le f_0`.
-- ``mean()`` of an LFP or zero-inflated model is :math:`(p - f_0)\,E[\gamma + X_0]`, the mean over the whole population counting non-failures and zeros as contributing nothing. It is *not* the mean life of the units that fail.
-- ``random()`` of an LFP or zero-inflated model returns xcnt data, ``(x, c, n, t)``, rather than a plain array, because the units that never fail come back as right censored observations.
+- ``mean()`` is the mean lifetime :math:`E[T]`, which is infinite for an LFP model (:math:`p < 1`), since some units never fail; ``moment(n)`` (:math:`n \ge 1`) and ``var()`` are infinite too. ``mean(defective=True)`` is the *defective* mean :math:`(p - f_0)\,E[\gamma + X_0]`, the integral of :math:`t\,dF(t)` over the units that fail (and ``moment`` and ``var`` take the same keyword). For a zero-inflated model without LFP the two agree: the zeros contribute nothing. Neither is the mean life of the units that fail, :math:`\gamma + E[X_0]`.
+- ``random()`` draws lifetimes, ``qf(u)`` for one uniform ``u`` per draw, for every model: ``inf`` for a unit that never fails and 0 for one dead on arrival. ``random_data()`` draws the same units as xcnt survival data, ``(x, c, n, t)``, with the units that never fail right-censored after the last failure, ready to refit.
+- ``model.extras`` holds the ``gamma``, ``p`` and ``f0`` the model has, as keywords of ``from_params()``, and ``model.with_params(params)`` is the same model with other distribution parameters (``from_params(model.params)`` alone drops them).
 - LFP and zero-inflated models can only be fitted by maximum likelihood (``how="MLE"``).
 
 .. jupyter-execute::
@@ -316,6 +318,30 @@ Reading across the rows: the offset model has not started by 5; the LFP model le
     assert np.isclose(_F["lfp p=0.3"][-1], 0.3)
     assert np.isclose(_F["zi f0=0.1"][0], 0.1)
     assert np.allclose(_F["lfp + zi"][[0, -1]], [0.1, 0.3])
+
+The combined model shows the other conventions. Its mean lifetime is infinite, since 70% of the units never fail; its lifetimes come out as ``inf`` for those units and 0 for the ones dead on arrival; and ``with_params`` keeps its ``p`` and ``f0``:
+
+.. jupyter-execute::
+
+    m = variants["lfp + zi"]
+    print("mean:", m.mean(), "  defective mean:", m.mean(defective=True))
+    np.random.seed(1)
+    print("lifetimes:", m.random(6))
+    print("extras:", m.extras)
+    print("F(15) with alpha = 20:", m.with_params([20, 2]).ff(15))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isinf(m.mean())
+    assert np.isclose(m.mean(defective=True), 0.2 * surv.Weibull.mean(10, 2))
+    np.random.seed(1)
+    _draws = m.random(6)
+    assert np.isinf(_draws).any() and (_draws == 0).any()
+    assert m.extras == {"p": 0.3, "f0": 0.1}
+    _expected = surv.Weibull.from_params([20, 2], p=0.3, f0=0.1).ff(15)
+    assert m.with_params([20, 2]).ff(15) == _expected
 
 Saving and Loading Models
 ~~~~~~~~~~~~~~~~~~~~~~~~~

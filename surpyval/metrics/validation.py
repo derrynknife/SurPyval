@@ -306,6 +306,30 @@ def integrated_brier_score(
     Kaplan-Meier reference. The grid need not be sorted (the columns of
     ``survival`` follow ``times``); a single time, or a grid with no span,
     returns the mean Brier score. Parameters as for :func:`brier_score`.
+
+    Examples
+    --------
+    A Cox model of the Rossi recidivism data scored over the first 39
+    weeks, against the Kaplan-Meier curve that ignores the covariates:
+
+    >>> import numpy as np
+    >>> from surpyval import CoxPH, KaplanMeier
+    >>> from surpyval.datasets import load_rossi_static
+    >>> from surpyval.metrics import (
+    ...     integrated_brier_score,
+    ...     survival_probability,
+    ... )
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> times = [13, 26, 39]
+    >>> cox = CoxPH.fit(x, Z, c=c)
+    >>> S_cox = survival_probability(cox, Z, times)
+    >>> round(integrated_brier_score(x, c, S_cox, times), 4)
+    0.0998
+    >>> S_km = np.tile(KaplanMeier.fit(x, c).sf(times), (len(x), 1))
+    >>> round(integrated_brier_score(x, c, S_km, times), 4)
+    0.1038
     """
     times_arr, bs = brier_score(x, c, survival, times, x_train, c_train)
     # Integrate over the grid in time order: an unsorted grid otherwise gave
@@ -365,6 +389,19 @@ def auc_td(
         The horizons and the AUC at each. A horizon with no cases or no
         controls, or with a case whose weight is not identified (``G = 0``,
         see :func:`brier_score`), yields ``nan``.
+
+    Examples
+    --------
+    At ``t = 1.5`` the one case (risk 0.9) outranks all four controls. At
+    ``t = 2.5`` the second case (risk 0.4) outranks only one of the three
+    controls (risks 0.7, 0.5, 0.2), so the AUC is ``(3 + 1) / 6``:
+
+    >>> from surpyval.metrics import auc_td
+    >>> x = [1.0, 2.0, 3.0, 3.0, 4.0]
+    >>> c = [0, 0, 0, 1, 0]
+    >>> risk = [0.9, 0.4, 0.7, 0.5, 0.2]
+    >>> auc_td(x, c, risk, [1.5, 2.5])[1].round(4)
+    array([1.    , 0.6667])
     """
     x, c = _outcomes(x, c, "x", "c")
     times = _as_1d(times, "times")

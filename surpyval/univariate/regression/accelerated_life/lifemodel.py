@@ -17,6 +17,19 @@ class LifeModel(ABC):
     ``InverseEyring``, ``ExponentialLifeModel``, ``InverseExponential``,
     ``Linear``, ``DualExponential``, ``DualPower`` and
     ``PowerExponential``.
+
+    Examples
+    --------
+    ``Power`` is one, with :math:`L(Z) = a Z^n`:
+
+    >>> import numpy as np
+    >>> from surpyval import LifeModel, Power
+    >>> isinstance(Power, LifeModel)
+    True
+    >>> Power.phi_param_map
+    {'a': 0, 'n': 1}
+    >>> Power.phi(np.array([1.0, 2.0, 4.0]), 1000.0, -2.0)
+    array([1000.  ,  250.  ,   62.5])
     """
 
     #: The number of stress columns ``Z`` has (``None`` when it depends on

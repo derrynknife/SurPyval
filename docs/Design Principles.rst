@@ -97,12 +97,13 @@ Outputs
     model is defined everywhere by its formula. An estimate with no formula
     for its shape -- a step estimate, a semi-parametric baseline -- starts
     at its initial value before the first time (survival 1, everything
-    cumulative 0), and after the last time either holds its last value
+    cumulative 0; at time 0 for the additive hazards model, whose
+    covariate effect acts from time 0), and after the last time either
+    holds its last value
     (the single-event estimates) or is ``nan`` (the recurrent mean
     cumulative functions), the same for all of a model's functions.
 
-    *Checked* by ``conformance/test_outside_data.py``; known gap #400
-    (additive hazards extrapolates).
+    *Checked* by ``conformance/test_outside_data.py``.
 
 Estimation
 ----------
@@ -121,8 +122,15 @@ Estimation
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
 
-    *Partly checked*, by tests of individual fitters; there is no property
-    across every model yet (#401).
+    *Checked* by ``conformance/test_convergence.py``: every iterative fit
+    is starved (an iteration limit of 1, a start a million times the
+    answer, or data with no maximum) and must warn, raise, or still reach
+    the maximum; a closed-form or exact estimator is excluded, with the
+    reason. Known gaps: the univariate (#427), accelerated-life (#428)
+    and recurrent (#429) fits stop far from a distant start silently, and
+    the regression, Fine-Gray, copula, mixture and degradation fits
+    return a finite answer silently where the likelihood has no maximum
+    (#392).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.
@@ -200,10 +208,9 @@ Behaviour and API
 
     *Checked* for what exists: the documentation build runs every example
     and the hidden checks of the quoted numbers (see :doc:`Contributing`),
-    and the docstring examples run as tests. *Partly checked* for
-    completeness by ``conformance/test_documentation.py``, which fails for
-    a new public item without a docstring and example; the items that
-    still lack one are listed there against #402.
+    and the docstring examples run as tests. *Checked* for completeness
+    by ``conformance/test_documentation.py``: every public item has a
+    docstring with an example, and a new one without fails.
 
 Adding to the list
 ------------------

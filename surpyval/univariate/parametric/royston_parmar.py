@@ -146,6 +146,25 @@ class RoystonParmarModel(SerialisableMixin):
     covariance for confidence bounds. Exposes the usual distribution surface:
     :meth:`sf`, :meth:`ff`, :meth:`hf`, :meth:`Hf`, :meth:`df`, :meth:`qf`,
     :meth:`random`, :meth:`mean`, and :meth:`cb`.
+
+    Examples
+    --------
+    ``RoystonParmar.fit`` returns one. Here with one internal knot
+    (``df=2``) on the Rossi recidivism data, where ``arrest`` is already
+    the censoring flag:
+
+    >>> from surpyval import RoystonParmar
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> model = RoystonParmar.fit(x, c=c, df=2)
+    >>> model.params.round(4)
+    array([-6.9934,  1.5755,  0.0377])
+    >>> model.sf([20, 52]).round(4)
+    array([0.9182, 0.7365])
+    >>> model.cb([20, 52]).round(4)
+    array([[0.8915, 0.9386],
+           [0.6923, 0.7754]])
     """
 
     def __init__(self) -> None:
@@ -379,6 +398,21 @@ class RoystonParmarModel(SerialisableMixin):
 class RoystonParmar_:
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
+
+    The Royston-Parmar model is a restricted cubic spline in log time on
+    the log cumulative hazard (``scale="hazard"``), log cumulative odds
+    or probit scale: a smooth parametric survival curve whose flexibility
+    is set by ``df``. ``df=1`` is a Weibull (on the hazard scale).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import RoystonParmar
+    >>> rng = np.random.default_rng(0)
+    >>> x = 10 * rng.weibull(2, 50)
+    >>> model = RoystonParmar.fit(x, df=3)
+    >>> model.sf([5, 10]).round(4)
+    array([0.8029, 0.4131])
     """
 
     def fit(

@@ -18,67 +18,9 @@ import pytest
 from surpyval.tests.conformance.test_completeness import NAMESPACES, _public
 
 # Public items with a docstring but no example yet (#402).
-MISSING_EXAMPLE = frozenset(
-    {
-        "surpyval.AdditiveHazardsModel",
-        "surpyval.Bernoulli",
-        "surpyval.BuckleyJamesModel",
-        "surpyval.Distribution",
-        "surpyval.FixedEventProbability",
-        "surpyval.FrailtyModel",
-        "surpyval.Hypoexponential",
-        "surpyval.InstantlyOccurs",
-        "surpyval.LifeModel",
-        "surpyval.LogRankResult",
-        "surpyval.MultivariateDistribution",
-        "surpyval.NeverOccurs",
-        "surpyval.NonParametric",
-        "surpyval.NonParametricDistribution",
-        "surpyval.Parametric",
-        "surpyval.ParametricDistribution",
-        "surpyval.RoystonParmar",
-        "surpyval.RoystonParmarModel",
-        "surpyval.SemiParametricRegressionModel",
-        "surpyval.StepSchedule",
-        "surpyval.StepValuedError",
-        "surpyval.auc_td",
-        "surpyval.integrated_brier_score",
-        "surpyval.univariate.parametric.DiscreteParametricFitter",
-        "surpyval.univariate.parametric.ParametricFitter",
-        "surpyval.univariate.nonparametric.filliben",
-        "surpyval.univariate.nonparametric.fleming_harrington_variance",
-        "surpyval.univariate.nonparametric.greenwood_variance",
-        "surpyval.univariate.nonparametric.nelson_aalen_variance",
-        "surpyval.univariate.nonparametric.rank_adjust",
-        "surpyval.univariate.nonparametric.turnbull",
-        "surpyval.recurrent.CauseSpecificMCF",
-        "surpyval.recurrent.CauseSpecificNHPP",
-        "surpyval.recurrent.CountingProcess",
-        "surpyval.recurrent.GoodnessOfFitResult",
-        "surpyval.recurrent.RenewalModel",
-        "surpyval.recurrent.TrendTestResult",
-        "surpyval.degradation.DegradationModel",
-        "surpyval.degradation.DestructiveDegradationModel",
-        "surpyval.degradation.GammaProcessModel",
-        "surpyval.degradation.InducedFailureDistribution",
-        "surpyval.degradation.LinkedPathModel",
-        "surpyval.degradation.ProcessRUL",
-        "surpyval.degradation.RULPrediction",
-        "surpyval.degradation.WienerProcessModel",
-        "surpyval.degradation.get_path_model",
-        "surpyval.multivariate.CopulaModel",
-        "surpyval.multivariate.MultivariateSurpyvalData",
-        "surpyval.multivariate.Independence",
-    }
-)
+MISSING_EXAMPLE: frozenset[str] = frozenset()
 # Public items with no docstring at all yet (#402).
-MISSING_DOCSTRING = frozenset(
-    {
-        "surpyval.univariate.nonparametric.fleming_harrington",
-        "surpyval.univariate.nonparametric.kaplan_meier",
-        "surpyval.univariate.nonparametric.nelson_aalen",
-    }
-)
+MISSING_DOCSTRING: frozenset[str] = frozenset()
 
 
 def _items():

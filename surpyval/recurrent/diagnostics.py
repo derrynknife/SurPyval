@@ -164,6 +164,21 @@ class GoodnessOfFitResult:
         The number of (transformed) event times in the statistic.
     n_systems : int
         The number of systems (items) in the data.
+
+    Examples
+    --------
+    Is a constant failure rate (``HPP``) consistent with these failure
+    times of one system? The p-value comes from a parametric bootstrap:
+
+    >>> from surpyval.recurrent import HPP
+    >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    >>> result = HPP.fit(x).cramer_von_mises(n_boot=99, seed=0)
+    >>> round(result.statistic, 4)
+    0.1872
+    >>> result.n_events, result.n_systems
+    (8, 1)
+    >>> bool(result.p_value > 0.05)
+    True
     """
 
     def __init__(

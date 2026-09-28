@@ -22,6 +22,15 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     Klein, J. P. (1991), "Small sample moments of some estimators of
     the variance of the Kaplan-Meier and Nelson-Aalen estimators",
     Scandinavian Journal of Statistics, 18(4), 333-340.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import nelson_aalen_variance
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> nelson_aalen_variance(r, d).round(4)
+    array([0.02  , 0.0356, 0.1556])
     """
     r = np.asarray(r, dtype=float)
     d = np.asarray(d, dtype=float)
@@ -37,6 +46,45 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 
 def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    r"""
+    Nelson-Aalen estimate of the survival function from the number at
+    risk and the number of events at each time:
+
+    .. math::
+        R(x_i) = e^{-\sum_{j \leq i} \frac{d_{j}}{r_{j}}}
+
+    This is the low-level function behind :code:`NelsonAalen.fit()`,
+    which builds ``r`` and ``d`` from the data (see
+    :code:`surpyval.xcnt_to_xrd`) and wraps the result in a
+    ``NonParametric`` model; use that unless you already have the
+    counts.
+
+    Parameters
+    ----------
+    r : ndarray
+        Number of items at risk just before each distinct event time,
+        in time order.
+    d : ndarray
+        Number of events at each of those times. May be fractional (the
+        Turnbull EM passes expected counts).
+
+    Returns
+    -------
+    R : ndarray
+        The survival estimate just after each time, the same length as
+        ``r``. Unlike the Kaplan-Meier estimate it stays above zero when
+        the last items at risk all fail; a step with no one at risk and
+        no events (0 / 0) takes it to zero.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import nelson_aalen
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> nelson_aalen(r, d).round(4)
+    array([0.8187, 0.7225, 0.3965])
+    """
     # The Turnbull EM hands over expected counts carrying round-off. Past
     # the last event the risk set is 0 in exact arithmetic but came out as
     # 9e-16 on alternate iterations: 0 / 9e-16 = 0 kept the survival up

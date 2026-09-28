@@ -72,7 +72,20 @@ def _degenerate_from_json(
 
 
 class NeverOccurs(Distribution):
-    """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf)."""
+    """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf).
+
+    Stateless: the class itself is the model, with nothing to fit.
+
+    Examples
+    --------
+    >>> from surpyval import NeverOccurs
+    >>> NeverOccurs.sf([1, 10, 100])
+    array([1., 1., 1.])
+    >>> NeverOccurs.qf([0.5])
+    array([inf])
+    >>> NeverOccurs.mean()
+    inf
+    """
 
     name = "NeverOccurs"
 
@@ -130,7 +143,20 @@ class NeverOccurs(Distribution):
 
 
 class InstantlyOccurs(Distribution):
-    """The event has already occurred: ``F(x) = 1`` everywhere (mass at 0)."""
+    """The event has already occurred: ``F(x) = 1`` everywhere (mass at 0).
+
+    Stateless: the class itself is the model, with nothing to fit.
+
+    Examples
+    --------
+    >>> from surpyval import InstantlyOccurs
+    >>> InstantlyOccurs.ff([0, 1, 10])
+    array([1., 1., 1.])
+    >>> InstantlyOccurs.sf([0, 1, 10])
+    array([0., 0., 0.])
+    >>> InstantlyOccurs.mean()
+    0.0
+    """
 
     name = "InstantlyOccurs"
 

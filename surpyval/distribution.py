@@ -22,6 +22,20 @@ class Distribution(ABC):
     of this minimal contract; the ``ParametricDistribution`` and
     ``NonParametricDistribution`` subclasses add the ones appropriate to
     their model family.
+
+    Examples
+    --------
+    It is abstract; every fitted model is one, whatever its family:
+
+    >>> import numpy as np
+    >>> from surpyval import KaplanMeier, Weibull
+    >>> from surpyval.distribution import Distribution
+    >>> x = np.array([1, 2, 3, 4, 5])
+    >>> models = [Weibull.fit(x), KaplanMeier.fit(x)]
+    >>> all(isinstance(m, Distribution) for m in models)
+    True
+    >>> [m.sf([2.5]).round(4) for m in models]
+    [array([0.609]), array([0.6])]
     """
 
     @abstractmethod
@@ -44,6 +58,20 @@ class ParametricDistribution(Distribution):
     A fully specified parametric model. In addition to the survival
     interface it supports random sampling and the standard statistical
     summaries (moments, entropy) and can be serialised with ``to_dict``.
+
+    Examples
+    --------
+    It is abstract; a model from a parametric fitter is one:
+
+    >>> from surpyval import Weibull
+    >>> from surpyval.distribution import ParametricDistribution
+    >>> model = Weibull.from_params([10, 2])
+    >>> isinstance(model, ParametricDistribution)
+    True
+    >>> model.sf([5, 10]).round(4)
+    array([0.7788, 0.3679])
+    >>> round(float(model.moment(1)), 4)
+    8.8623
     """
 
     @abstractmethod
@@ -70,6 +98,19 @@ class NonParametricDistribution(Distribution):
     An empirical model produced by a nonparametric estimator
     (Kaplan-Meier, Nelson-Aalen, Fleming-Harrington or Turnbull). Adds
     random sampling from the fitted estimate to the survival interface.
+
+    Examples
+    --------
+    It is abstract; a model from a non-parametric fitter is one:
+
+    >>> import numpy as np
+    >>> from surpyval import KaplanMeier
+    >>> from surpyval.distribution import NonParametricDistribution
+    >>> model = KaplanMeier.fit(np.array([1, 2, 3, 4, 5]))
+    >>> isinstance(model, NonParametricDistribution)
+    True
+    >>> model.sf([2.5, 4]).round(4)
+    array([0.6, 0.2])
     """
 
     @abstractmethod
@@ -92,6 +133,23 @@ class MultivariateDistribution(ABC):
     - ``sf()``  the joint survival ``P(X_1>x_1, ...)``
     - ``pdf()`` the joint density
     - ``random()`` draw correlated samples (one row per realisation)
+
+    Examples
+    --------
+    It is abstract; a copula model is one:
+
+    >>> from surpyval import Weibull
+    >>> from surpyval.distribution import MultivariateDistribution
+    >>> from surpyval.multivariate import Clayton
+    >>> margins = [
+    ...     Weibull.from_params([10, 2]),
+    ...     Weibull.from_params([20, 3]),
+    ... ]
+    >>> model = Clayton.from_params([2.0], margins)
+    >>> isinstance(model, MultivariateDistribution)
+    True
+    >>> model.sf([[5, 15], [10, 20]]).round(4)
+    array([0.624 , 0.2354])
     """
 
     @abstractmethod

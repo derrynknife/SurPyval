@@ -72,7 +72,13 @@ through each property that applies to it:
   the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
   that keeps every prediction;
 - that the alternate ways of fitting a model (``fit_from_df``, a formula,
-  ``from_params``, ``fit_tvc`` ...) agree with ``fit``.
+  ``from_params``, ``fit_tvc`` ...) agree with ``fit``;
+- every option of every confidence bound, ``interp=`` value and estimation
+  option (``test_options.py``), behaviour outside the data
+  (``test_outside_data.py``), and that a fit which cannot converge says
+  so (``test_convergence.py``);
+- that no raw numpy, scipy or autograd warning escapes the package, and
+  each deliberate warning appears once (``test_warnings.py``).
 
 ``test_completeness.py`` walks the public namespaces and fails for any public
 class or fitter that is neither registered nor listed in ``OUT_OF_SCOPE``
@@ -85,6 +91,9 @@ function has no density, a point mass no quantile inverse). If it should hold
 and does not, that is a bug: list it in ``KNOWN_FAILURES`` with a one-line
 description, which makes it a strict xfail -- the suite stays green, and
 turns red the day the bug is fixed, as the reminder to remove the entry.
+Only a failure whose outcome depends on the numpy / scipy build (an
+optimiser started far from the maximum) is listed in ``NON_STRICT`` as
+well, so that either outcome passes.
 
 Continuous integration runs the suite on every pull request, without the
 refits marked ``slow`` (the less common variants of families whose main

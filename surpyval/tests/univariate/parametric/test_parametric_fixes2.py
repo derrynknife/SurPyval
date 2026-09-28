@@ -330,7 +330,12 @@ def test_restored_model_keeps_the_estimated_parameter_count():
 
 def test_var_follows_the_defective_convention_of_mean():
     lfp = surv.Weibull.from_params([10.0, 2.0], p=0.7)
-    assert lfp.var() == pytest.approx(lfp.moment(2) - lfp.mean() ** 2)
+    # The lifetime's variance is infinite with a cure fraction (#404); the
+    # defective one scores the cured units at 0.
+    assert np.isinf(lfp.var())
+    assert lfp.var(defective=True) == pytest.approx(
+        lfp.moment(2, defective=True) - lfp.mean(defective=True) ** 2
+    )
     zi = surv.Weibull.from_params([10.0, 2.0], f0=0.2)
     assert zi.var() == pytest.approx(zi.moment(2) - zi.mean() ** 2)
     # the zero-inflated variance is the mixture's, checked by simulation

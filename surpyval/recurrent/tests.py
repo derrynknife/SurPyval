@@ -78,6 +78,20 @@ class TrendTestResult:
         The number of events contributing to the statistic.
     n_systems : int
         The number of systems (items) in the data.
+
+    Examples
+    --------
+    :func:`laplace` returns one. The gaps between these failures shrink,
+    so the statistic points to an increasing rate, though with nine
+    events it is not significant:
+
+    >>> from surpyval.recurrent.tests import laplace
+    >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    >>> result = laplace(x, T=60)
+    >>> result.trend
+    'increasing'
+    >>> round(result.statistic, 4), round(result.p_value, 4)
+    (1.1547, 0.2482)
     """
 
     def __init__(

@@ -206,6 +206,25 @@ class BuckleyJamesModel(SerialisableMixin):
     beta'Z)``. ``coef`` are the covariate coefficients in surpyval's
     accelerated-failure convention: a positive coefficient accelerates failure
     (shortens life), matching ``WeibullAFT`` and the PH models.
+
+    Examples
+    --------
+    On the Rossi recidivism data, where ``arrest`` is already the
+    censoring flag, prior convictions (``prio``) shorten the time to
+    arrest and financial aid (``fin``) lengthens it:
+
+    >>> from surpyval import BuckleyJames
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = BuckleyJames.fit(x, Z, c=c)
+    >>> model.beta.round(4)
+    array([-0.2663, -0.0253,  0.0588])
+    >>> model.converged
+    True
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9444, 0.8113])
     """
 
     feature_names = None

@@ -35,6 +35,29 @@ class SemiParametricRegressionModel(SerialisableMixin):
     covariate path. The model also provides residuals, the
     proportional-hazards test (``check_ph``), cluster-robust standard
     errors and serialisation.
+
+    Examples
+    --------
+    Fitted to the Rossi recidivism data, where ``arrest`` is already the
+    censoring flag; ``exp(params)`` are the hazard ratios:
+
+    >>> import numpy as np
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = CoxPH.fit(x, Z, c=c)
+    >>> np.exp(model.params).round(4)
+    array([0.7068, 0.9351, 1.1017])
+
+    The chance of no arrest in the first year, without and with
+    financial aid, for a 25-year-old with three prior convictions:
+
+    >>> model.sf([52], [0, 25, 3]).round(4)
+    array([0.7246])
+    >>> model.sf([52], [1, 25, 3]).round(4)
+    array([0.7963])
     """
 
     # Covariate metadata populated when the model is fit from a pandas

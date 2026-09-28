@@ -1361,8 +1361,9 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
 
     lfp_weibull = surv.Weibull.from_params([10, 2], p=0.6)
     np.random.seed(10)
-    # LFP Model outputs x, c, and n from `random()`
-    x, c, n, _ = lfp_weibull.random(100)
+    # random_data() gives survival data to fit, x, c, n and t, with the
+    # units that never fail right-censored
+    x, c, n, _ = lfp_weibull.random_data(100)
 
     # Fit regular Weibull
     model = surv.Weibull.fit(x=x, c=c, n=n)
@@ -1398,22 +1399,55 @@ population never fails:
     assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.p)
     assert lfp_model.p < 0.7 and np.isinf(lfp_model.qf(0.7))
 
-``mean()`` of an LFP model is the *defective* mean, ``p`` times the mean of
-the base Weibull, because a unit that never fails contributes nothing to it;
-the mean life of the units that do fail is the base mean,
-``surv.Weibull.mean(*lfp_model.params)``. ``var()`` and ``moment()`` follow the
-same convention -- the units that never fail are scored as 0, so ``var()`` is
-``moment(2) - mean()**2`` -- and the same holds for the zero-inflated mass
-``f0`` below, which sits at 0 anyway.
+For the same reason the mean lifetime of an LFP model, ``mean()``, is
+infinite, and so are ``var()`` and ``moment(n)``. The mean life of the units
+that do fail is the base mean, ``surv.Weibull.mean(*lfp_model.params)``.
+``mean(defective=True)`` is the *defective* mean, ``p`` times the base mean,
+in which a unit that never fails contributes nothing; ``var()`` and
+``moment()`` take the same keyword, scoring the units that never fail as 0,
+so ``var(defective=True)`` is ``moment(2, defective=True) -
+mean(defective=True)**2``.
+
+.. jupyter-execute::
+
+    print("mean lifetime        :", lfp_model.mean())
+    print("mean of the failures :", surv.Weibull.mean(*lfp_model.params))
+    print("defective mean       :", lfp_model.mean(defective=True))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     _base = surv.Weibull.mean(*lfp_model.params)
-    assert np.isclose(lfp_model.mean(), lfp_model.p * _base)
-    assert np.isclose(lfp_model.var(),
-                      lfp_model.moment(2) - lfp_model.mean() ** 2)
+    assert np.isinf(lfp_model.mean()) and np.isinf(lfp_model.var())
+    assert np.isclose(lfp_model.mean(defective=True), lfp_model.p * _base)
+    assert np.isclose(lfp_model.var(defective=True),
+                      lfp_model.moment(2, defective=True)
+                      - lfp_model.mean(defective=True) ** 2)
+
+To simulate lifetimes rather than a data set, as a system simulator does,
+use ``random()``: it draws ``qf(u)`` for one uniform ``u`` per unit, so a unit
+that never fails comes out as ``inf`` (and, with zero inflation below, one
+dead on arrival as 0). ``random_data()`` draws the same units, so after the
+same seed its failures are the finite lifetimes:
+
+.. jupyter-execute::
+
+    np.random.seed(3)
+    print(lfp_weibull.random(8))
+    np.random.seed(3)
+    print(lfp_weibull.random_data(8)[:3])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    np.random.seed(3)
+    _life = lfp_weibull.random(8)
+    np.random.seed(3)
+    _x, _c, _n, _ = lfp_weibull.random_data(8)
+    assert np.allclose(np.sort(_life[np.isfinite(_life)]), _x[_c == 0])
+    assert _n[_c == 1].sum() == np.isinf(_life).sum() > 0
 
 LFP models can only be fitted with ``MLE``; the other methods raise. And ``p``
 is only well determined when the data follow the units long enough to see the
@@ -1500,7 +1534,7 @@ In survival analysis you might have the scenario where many failure times are 0,
     x = model.random(100)
     model
 
-Random values from a zero-inflated model come back as a plain array, in which the dead-on-arrival units are exact zeros. Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).
+Random values from a zero-inflated model come back as a plain array of lifetimes, in which the dead-on-arrival units are exact zeros. Using this random data, we can make a fitted model (with the added convenience not offered in the real world of knowing exactly what parameters we are aiming toward).
 
 .. jupyter-execute::
 
@@ -1511,14 +1545,14 @@ Random values from a zero-inflated model come back as a plain array, in which th
 
     fitted_model.plot()
 
-We can see that we have made a good fit. The fitted ``f0`` of 0.18 is simply
-the fraction of zeros in the sample -- 18 of the 100 draws happened to be
+We can see that we have made a good fit. The fitted ``f0`` of 0.14 is simply
+the fraction of zeros in the sample -- 14 of the 100 draws happened to be
 dead on arrival, against the 15% expected -- because a zero can only have come
-from the zero-inflation mass. The three ExpoWeibull parameters look further
-from the truth than they are: its two shape parameters trade off against each
-other, so different triples draw nearly the same curve (the offset caution
+from the zero-inflation mass. The three ExpoWeibull parameters are close to the
+truth here, but they need not be: its two shape parameters trade off against
+each other, so different triples draw nearly the same curve (the offset caution
 above applies here too). Comparing the survival functions, rather than the
-parameters, shows it:
+parameters, is the better check:
 
 .. jupyter-execute::
 
@@ -1530,7 +1564,8 @@ parameters, shows it:
     :hide-code:
     :hide-output:
 
-    assert np.sum(x == 0) == 18 and np.isclose(fitted_model.f0, 0.18)
+    assert np.sum(x == 0) == 14 and np.isclose(fitted_model.f0, 0.14)
+    assert np.allclose(fitted_model.params, [10.2, 2., 1.3], rtol=0.07)
     assert np.all(np.abs(fitted_model.sf(t) - model.sf(t)) < 0.03)
 
 To showcase the SurPyval API again, and to demonstrate the flexibility, it is trivial to have Defective Subpopulation Zero Inflated (DSZI) model / Limited Failure Population and Zero Inflated model.
@@ -1543,8 +1578,8 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
     dist = surv.LogNormal
     model = dist.from_params([2.2, .2], f0=0.05, p=0.6)
     np.random.seed(10)
-    # Random values from LFP models come in xcnt format
-    x, c, n, _ = model.random(100)
+    # Survival data to fit, with the units that never fail censored
+    x, c, n, _ = model.random_data(100)
 
     fitted_model = dist.fit(x, c, n, zi=True, lfp=True)
     print(fitted_model)
@@ -1553,14 +1588,14 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
     fitted_model.plot(plot_bounds=False)
 
-Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 4% fail at once and about 58% more fail over time. Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
+Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 7% fail at once and about 57% more fail over time (against 5% and 55% in the model the data were drawn from). Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert round(fitted_model.f0, 2) == 0.04, fitted_model.f0
-    assert round(fitted_model.p - fitted_model.f0, 2) == 0.58
+    assert round(fitted_model.f0, 2) == 0.07, fitted_model.f0
+    assert round(fitted_model.p - fitted_model.f0, 2) == 0.57
 
 Flexible parametric (Royston-Parmar)
 ------------------------------------

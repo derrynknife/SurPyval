@@ -4,6 +4,65 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Silent non-convergence is checked for every model (#401).** A new
+  conformance property, ``test_convergence.py``, forces each iterative fit
+  to fail -- an iteration limit of 1, a start a million times the answer,
+  or data whose likelihood has no maximum -- and requires a warning, a
+  ``ValueError``, or the true maximum. It found 62 fits that return a
+  wrong model without a word, pinned as known failures: for example
+  ``Weibull.fit`` from ``init=[1.03e7, 2.32]`` returns alpha 1.03e7, beta
+  0.099 (log-likelihood -78.2 against -37.9; #427), and every parametric
+  PH/AFT/PO model gives a group with no events a finite coefficient
+  (-16.3 for WeibullPH) where ``CoxPH`` warns (#392); also #428 and #429.
+- **Fixed: ``init`` with an offset is checked in the right order.** The
+  check read ``[gamma, *params]`` as ``[*params, gamma]``, so it refused
+  valid starts (``Exponential.fit(..., offset=True, init=[6, 10])``:
+  "gamma = 10.0 lies outside its bounds") and let an offset beyond the
+  first observation through to fail later as "MLE Failed".
+- **Changed: ``random()`` of a limited-failure or zero-inflated model draws
+  lifetimes (#403).** It returned ``(x, c, n, t)`` survival data when
+  ``p < 1`` and an array otherwise, and drew zero-inflated samples by a
+  binomial count and a shuffle, so a seed did not give ``qf(u)``. It now
+  returns an array for every model, ``qf(u)`` from one uniform per draw:
+  ``inf`` for a unit that never fails, 0 for one dead on arrival, and the
+  same numbers as ``qf(np.random.random_sample(size))`` after the same
+  seed. The survival-data draw is the new ``random_data()``, which censors
+  the never-failing units after the last failure, ready to refit.
+- **Changed: ``mean()``, ``moment(n)`` and ``var()`` of a limited-failure
+  model are infinite (#404).** They returned the defective values (79.76
+  for ``Weibull.from_params([100, 2], p=0.9)``), which code reading
+  ``mean()`` as the mean life took at face value. A fraction ``1 - p``
+  never fails, so they are now ``inf``; ``defective=True`` gives the old
+  values. Models with ``p = 1`` are unchanged.
+- **Added: ``df(x, continuous=True)`` (#405).** A zero-inflated model's
+  ``df(0)`` is the point mass ``f0``, so integrating ``df`` on a grid from 0
+  counted a spurious ``f0 * dx / 2`` (0.95 instead of 0.90 for
+  ``f0 = 0.1``). ``continuous=True`` returns the continuous part alone,
+  ``(p - f0)`` times the base density; the docstring says what ``df(0)``
+  is. A zero-inflated ``df`` at a scalar now returns a scalar.
+- **Added: ``model.with_params(params)`` and ``model.extras`` (#406).**
+  ``from_params(model.params)`` silently dropped the offset, ``p`` and
+  ``f0`` (``sf(50)`` 0.7788 instead of 0.7533). ``extras`` is the dict of
+  those the model has (``{"gamma": 5.0, "p": 0.9, "f0": 0.1}``, empty for
+  a plain model), and ``with_params`` rebuilds the same model with other
+  parameters, validated as ``from_params`` validates them.
+- **Fixed: loose ends of the zero-inflation mass at 0 (#407).** ``Hf``
+  before time 0 was ``-0.0``; it is ``0.0``. The entropy docstring and
+  error message still put the mass at the offset; they now say 0.
+- **Every public item has a runnable example (#402).** 49 public classes,
+  functions and fitters had a docstring but no example, and the low-level
+  ``kaplan_meier``, ``nelson_aalen`` and ``fleming_harrington`` had no
+  docstring. Each now has a short, seeded example that runs as a doctest
+  in CI, and the conformance check allows no public item without one.
+- **Changed: the additive hazards model holds its estimate past the last
+  observed time (#400).** ``AdditiveHazardsModel.Hf`` kept changing after
+  the last observed time, at the last interval's rate
+  :math:`\beta'(Z - \bar Z)`, where there is no risk set to estimate
+  anything from: on one fit, ``Hf`` was 3.52 at the last time and 23.0 at
+  100 times it. It now holds its value there, as every other
+  semi-parametric estimate does, so ``sf`` and ``ff`` hold and ``hf`` and
+  ``df`` are 0. ``hf`` at a NaN time is now NaN rather than
+  :math:`\beta' Z`.
 - **Design principles (#379).** A new page, :doc:`Design Principles`, lists
   the rules every model keeps -- one data format, ``nan`` in and out, order,
   units and counts not mattering, consistent shapes and identities,

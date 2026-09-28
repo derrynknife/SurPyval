@@ -238,6 +238,28 @@ class RULPrediction:
         The Monte Carlo failure-time samples (``inf`` where the
         sampled path never reaches the threshold, ``0`` where it is
         already past the threshold at the first measurement).
+
+    Examples
+    --------
+    A new unit, measured three times, of a population of eight fitted
+    units:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import DegradationAnalysis
+    >>> rng = np.random.default_rng(1)
+    >>> x = np.tile(np.arange(100.0, 1100.0, 100.0), 8)
+    >>> i = np.repeat(np.arange(8), 10)
+    >>> a = np.repeat(rng.normal(10.0, 3.0, 8), 10)
+    >>> b = np.repeat(rng.normal(0.3, 0.05, 8), 10)
+    >>> y = a + b * x + rng.normal(0, 3.0, x.size)
+    >>> model = DegradationAnalysis.fit(x, y, i, threshold=450)
+    >>> pred = model.predict_rul(
+    ...     [100.0, 200.0, 300.0], [42.0, 71.0, 99.0], random_state=0
+    ... )
+    >>> round(pred.rul), [round(v) for v in pred.rul_interval]
+    (1173, [1095, 1262])
+    >>> pred.prob_failed
+    0.0
     """
 
     failure_time: float
@@ -290,6 +312,29 @@ class InducedFailureDistribution(SerialisableMixin):
         The stress row the distribution was induced at, for a model whose
         path parameters depend on stress; ``None`` for the plain
         population.
+
+    Examples
+    --------
+    The induced life of a fitted population of eight units, next to the
+    Weibull fitted to their pseudo failure times:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import DegradationAnalysis
+    >>> rng = np.random.default_rng(1)
+    >>> x = np.tile(np.arange(100.0, 1100.0, 100.0), 8)
+    >>> i = np.repeat(np.arange(8), 10)
+    >>> a = np.repeat(rng.normal(10.0, 3.0, 8), 10)
+    >>> b = np.repeat(rng.normal(0.3, 0.05, 8), 10)
+    >>> y = a + b * x + rng.normal(0, 3.0, x.size)
+    >>> model = DegradationAnalysis.fit(x, y, i, threshold=450)
+    >>> induced = model.induced_life(random_state=0)
+    >>> induced
+    InducedFailureDistribution(Linear path, threshold=450, median=1451.95,
+    prob_never_fails=0)
+    >>> induced.sf([1200, 1500]).round(4)
+    array([0.9949, 0.3489])
+    >>> model.sf([1200, 1500]).round(4)
+    array([0.9505, 0.4147])
     """
 
     def __init__(
@@ -519,6 +564,30 @@ class DegradationModel(SerialisableMixin):
         ``Z`` then also takes a DataFrame and selects these columns by
         name. ``None`` for a model fitted from arrays, which refuses a
         DataFrame.
+
+    Examples
+    --------
+    Eight units, each degrading linearly at its own rate and measured
+    ten times, fail when the measurement reaches 450:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import DegradationAnalysis
+    >>> rng = np.random.default_rng(1)
+    >>> x = np.tile(np.arange(100.0, 1100.0, 100.0), 8)
+    >>> i = np.repeat(np.arange(8), 10)
+    >>> a = np.repeat(rng.normal(10.0, 3.0, 8), 10)
+    >>> b = np.repeat(rng.normal(0.3, 0.05, 8), 10)
+    >>> y = a + b * x + rng.normal(0, 3.0, x.size)
+    >>> model = DegradationAnalysis.fit(x, y, i, threshold=450)
+    >>> model.pseudo_failure_times.round(1)
+    array([1393.1, 1377.5, 1455.4, 1358.9, 1673.9, 1495.6, 1592.4, 1334. ])
+
+    A Weibull is fitted to those, and the lifetime functions use it:
+
+    >>> model.life_model.params.round(3)
+    array([1515.035,   12.785])
+    >>> model.sf([1200, 1500]).round(4)
+    array([0.9505, 0.4147])
     """
 
     x: npt.NDArray

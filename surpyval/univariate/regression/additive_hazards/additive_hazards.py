@@ -151,6 +151,24 @@ class AdditiveHazardsModel(SerialisableMixin):
     The covariate effect is additive on the hazard, so the prediction
     methods use ``h(t | Z) = h0(t) + beta'Z`` and the cumulative
     ``H(t | Z) = H0(t) + t * beta'Z``.
+
+    Examples
+    --------
+    On the Rossi recidivism data each coefficient is an excess hazard of
+    arrest per week, per unit of the covariate:
+
+    >>> from surpyval import AdditiveHazards
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = AdditiveHazards.fit(x, Z, c=c)
+    >>> model.beta.round(4)
+    array([-0.002 , -0.0003,  0.0007])
+    >>> model.p_values.round(4)
+    array([0.0725, 0.0004, 0.0083])
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9269, 0.7725])
     """
 
     # Populated by ``fit`` / ``fit_from_df``.
@@ -304,11 +322,15 @@ class AdditiveHazardsModel(SerialisableMixin):
         rate requires smoothing (Epanechnikov kernel over the increments;
         ``bandwidth`` defaults to a normal-reference rule on the event
         times). Estimates near the boundaries of the observed time range
-        are attenuated by kernel truncation.
+        are attenuated by kernel truncation. Past the last observed time
+        the estimate holds (see :meth:`Hf`), so the hazard there is 0.
         """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        return self._h0_rate(x, bandwidth) + (Z @ self.beta)
+        rate = self._h0_rate(x, bandwidth) + (Z @ self.beta)
+        # A NaN time is 0 in no kernel, so the rate would be beta'Z there.
+        rate = np.where(np.isnan(x), np.nan, rate)
+        return np.where(x > self.x[-1], 0.0, rate)
 
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
@@ -321,9 +343,14 @@ class AdditiveHazardsModel(SerialisableMixin):
         ``beta' Zbar(t)`` (so ``H0`` is not 0 before the first event
         unless the covariates are centred there). The prediction
         ``H(x | Z)`` is the same however the covariates are centred.
+
+        Past the last observed time there is no risk set to estimate
+        anything from, so ``Hf`` holds its value there, as the other
+        semi-parametric estimates do (#400).
         """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
+        x = np.where(x > self.x[-1], self.x[-1], x)
         idx = self._h0_at(x)
         last = self.x.size - 1
         H0 = np.where(idx < 0, 0.0, self.H0[np.clip(idx, 0, last)])

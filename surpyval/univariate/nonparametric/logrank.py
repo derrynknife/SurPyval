@@ -30,6 +30,25 @@ class LogRankResult:
     strata : int or None
         The number of strata of a stratified test; None for an
         unstratified one.
+
+    Examples
+    --------
+    :code:`logrank` returns one; here comparing two groups of five:
+
+    >>> import numpy as np
+    >>> from surpyval import logrank
+    >>> x = np.array([3, 5, 7, 8, 10, 2, 3, 4, 4, 6])
+    >>> Z = np.array([0, 0, 0, 0, 0, 1, 1, 1, 1, 1])
+    >>> result = logrank(x, Z)
+    >>> result
+    Log-Rank Test
+    =============
+    Weighting        : log-rank
+    Statistic        : 3.69204
+    DoF              : 1
+    p-value          : 0.0546728
+    >>> round(result.p_value, 4)
+    0.0547
     """
 
     def __init__(
