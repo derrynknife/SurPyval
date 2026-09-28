@@ -200,12 +200,15 @@ class RecurrentEventData:
     def event_types(self) -> list:
         """
         The distinct event types (marks) present in the data, excluding the
-        ``None`` mark used for censored / end-of-observation rows. Returns an
-        empty list when the data carries no marks.
+        ``None`` mark used for censored / end-of-observation rows, in the
+        order of ``ordered_labels`` (mixed ``str`` and ``int`` marks are
+        ordered too). Returns an empty list when the data carries no marks.
         """
+        from surpyval.univariate.competing_risks.labels import ordered_labels
+
         if self.e is None:
             return []
-        return sorted({e for e in self.e if e is not None})
+        return ordered_labels(self.e)
 
     def to_cause_specific_xrd(
         self, cause: Any
@@ -228,6 +231,8 @@ class RecurrentEventData:
             A tuple ``(x_unique, r, d_cause)`` where ``d_cause`` counts only
             events of the requested cause and ``r`` is the shared at-risk set.
         """
+        from surpyval.univariate.competing_risks.labels import label_mask
+
         if self.e is None:
             raise ValueError(
                 "Data has no event-type marks; pass `e` to compute "
@@ -249,7 +254,7 @@ class RecurrentEventData:
             x_out = self.x
 
         observed = (self.c == 0) | (self.c == 2) | (self.c == -1)
-        is_cause = np.array([ei == cause for ei in self.e])
+        is_cause = label_mask(self.e, cause)
         d_cause = np.array(
             [
                 self.n[(x_out == xi) & observed & is_cause].sum()

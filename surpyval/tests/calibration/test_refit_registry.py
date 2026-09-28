@@ -463,7 +463,8 @@ def _own_draws(truth, size, row, positive):
     return t
 
 
-# Below this a draw of an additive-hazards model is the bisection's floor.
+# A draw of an additive-hazards model at or below this is redrawn when the
+# draws are conditioned on a positive time.
 TINY = 1e-9
 
 
@@ -1236,28 +1237,15 @@ def test_refit(name):
     check_curve(np.array(curves), true_curve, name, plan.curve_slack)
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        pytest.param(
-            f"{base}AH",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="#441: an additive-hazards model on a baseline over "
-                "the whole real line puts ff(0) of its mass below t = 0 "
-                "(GumbelAH fixture: 0.036 at Z = (0, -0.8)), but random() "
-                "returns 2.7e-20, the floor of its bisection, for those "
-                "draws; refitted as failures at ~0 they bias GumbelAH's "
-                "sigma by -4.5 sd (n = 300, 40 refits)",
-            ),
-        )
-        for base in _REAL_LINE
-    ],
-)
+@pytest.mark.parametrize("name", [f"{base}AH" for base in _REAL_LINE])
 def test_additive_hazards_random_below_zero(name):
     """``random`` of an additive-hazards model agrees with its own ``ff``
-    at 0: the proportional-hazards sampler does (NormalPH: 0.0109 of the
-    draws below 0 against ff(0) = 0.0116); the additive one has none."""
+    at 0, as the proportional-hazards sampler does (NormalPH: 0.0109 of
+    the draws below 0 against ff(0) = 0.0116). #441: on a baseline over
+    the whole real line it drew none below 0 (GumbelAH fixture: ff(0) =
+    0.036 at Z = (0, -0.8)), returning 2.7e-20, the floor of its
+    bisection, for those draws; refitted as failures at ~0 they biased
+    GumbelAH's sigma by -4.5 sd (n = 300, 40 refits)."""
     case = CASE_BY_NAME[name]
     model = reg.fitted(case)
     row = np.array([0.0, -0.8])

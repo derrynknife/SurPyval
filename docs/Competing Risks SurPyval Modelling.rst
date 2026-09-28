@@ -403,20 +403,25 @@ scalar time:
     print("hazard of shock    :", pmodel.hf(100.0, event="shock"))
 
 Because the joint likelihood is the product of the per-cause likelihoods,
-``neg_ll``, ``aic`` and ``bic`` are sums over causes and can be used to compare
-candidate distributions -- for example, whether the shock mode needs a Weibull
-rather than an exponential:
+``neg_ll`` and ``aic`` are sums over causes. ``bic`` is the joint criterion
+``2 neg_ll + K ln(n)``, with ``K`` the parameters of every cause and ``n`` the
+observed failures of any cause (here 189: 83 wear and 106 shock), not the sum
+of the causes' own BICs. Either can be used to compare candidate
+distributions -- for example, whether the shock mode needs a Weibull rather
+than an exponential:
 
 .. jupyter-execute::
 
     all_weibull = ParametricCompetingRisks.fit(x, e)   # Weibull for both causes
-    print("Weibull + Exponential AIC: %.1f" % pmodel.aic())
-    print("Weibull + Weibull     AIC: %.1f" % all_weibull.aic())
+    print("Weibull + Exponential AIC: %.1f, BIC: %.1f"
+          % (pmodel.aic(), pmodel.bic()))
+    print("Weibull + Weibull     AIC: %.1f, BIC: %.1f"
+          % (all_weibull.aic(), all_weibull.bic()))
     print("fitted shock shape:", all_weibull.models["shock"].params[1])
 
 The shock mode's fitted Weibull shape is close to one (an exponential), and
-the Weibull + Exponential model has the lower AIC: the extra shape parameter is
-not worth its cost. ``ParametricCompetingRisks`` also has
+the Weibull + Exponential model has the lower AIC and BIC: the extra shape
+parameter is not worth its cost. ``ParametricCompetingRisks`` also has
 a ``fit_from_df(df, x_col, e_col, c_col=None, n_col=None, dist=Weibull,
 how="MLE")``; ``how`` is passed to each cause's distribution fit.
 
@@ -426,6 +431,9 @@ how="MLE")``; ``how`` is passed to each cause's distribution fit.
 
     assert abs(all_weibull.models["shock"].params[1] - 1) < 0.05
     assert pmodel.aic() < all_weibull.aic()
+    assert pmodel.bic() < all_weibull.bic()
+    assert sum(e == "wear") == 83 and sum(e == "shock") == 106
+    assert np.isclose(pmodel.bic(), 2 * pmodel.neg_ll() + 3 * np.log(189))
 
 Assembling a model from separately fitted causes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

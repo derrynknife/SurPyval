@@ -29,6 +29,10 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+)
 from surpyval.univariate.nonparametric.nonparametric import (
     _check_support,
     _support_from_dict,
@@ -53,8 +57,9 @@ def _cause_model(data: Any, cause: Any) -> Any:
     model = NonParametricCounting.from_xrd(x, r, d)
     # Only this cause's events count; the other causes' events are
     # non-events for it, while each item stays in the (shared) risk set.
-    is_cause = np.array([ei == cause for ei in data.e], dtype=bool)
-    model.var = _lawless_nadeau_var(data, x, r, d, counted=is_cause)
+    model.var = _lawless_nadeau_var(
+        data, x, r, d, counted=label_mask(data.e, cause)
+    )
     model.origin = _observation_origin(data)
     return model
 
@@ -141,7 +146,10 @@ class CauseSpecificMCF(SerialisableMixin):
             model_dict, "CauseSpecificMCF", "a cause-specific MCF"
         )
         out = cls()
-        out.event_types = list(model_dict["event_types"])
+        # JSON writes a tuple label as a list; turn it back into a tuple.
+        out.event_types = [
+            label_from_native(v) for v in model_dict["event_types"]
+        ]
         out.models = {
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
@@ -297,6 +305,8 @@ class CauseSpecificMCF(SerialisableMixin):
             Count of events at each row. Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
+            A mark may be any hashable label: an integer, a string, a
+            tuple, or a mix of these.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
             every item, or one value per row (the same on every row of an

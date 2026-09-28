@@ -1385,9 +1385,13 @@ Competing risks: marked recurrent events
 -----------------------------------------
 
 When events come in several mutually exclusive types, attach a **mark** ``e`` to
-each event (use ``None`` for censoring rows). The non-parametric
-``CauseSpecificMCF`` gives one mean cumulative function per cause, sharing the
-at-risk set across causes:
+each event (use ``None`` for censoring rows). As for the univariate
+competing-risks models, a mark may be any hashable value -- a string, an
+integer, a tuple such as ``("pump", 2)``, or a mix of these -- and the causes
+are listed in a fixed order (a mix of strings and integers by type name, then
+by text).
+The non-parametric ``CauseSpecificMCF`` gives one mean cumulative function per
+cause, sharing the at-risk set across causes:
 
 .. jupyter-execute::
 
