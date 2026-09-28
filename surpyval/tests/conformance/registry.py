@@ -149,11 +149,24 @@ PROPERTIES: dict[str, str] = {
     "estimators_agree": (
         "the estimation options agree on a large sample from the model"
     ),
+    # test_convergence.py, over each case's ``starve``.
+    "convergence": (
+        "a fit that cannot converge warns or raises ValueError, never "
+        "returns silently; a fit does not return its initial guess"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(
-    {"units", "row_order", "counts", "missing_fit", "fit_paths", "warn_once"}
+    {
+        "units",
+        "row_order",
+        "counts",
+        "missing_fit",
+        "fit_paths",
+        "warn_once",
+        "convergence",
+    }
 )
 
 # Which interfaces each property applies to. A property also needs the
@@ -231,6 +244,11 @@ class Case:
     # draw(model, seed) -> numbers; ``explicit_seed`` when it takes a seed.
     draw: Callable[[Any, Any], Any] | None = None
     explicit_seed: bool = False
+    # A refit of the fixture that cannot converge (test_convergence.py):
+    # an iteration limit too small, a start far from the maximum, or data
+    # whose likelihood has no maximum. ``None`` for a fit with nothing to
+    # starve, which then excludes "convergence" with the reason.
+    starve: Callable[[dict], Any] | None = None
     # Relative tolerance of the refit comparisons (an optimiser's answer
     # moves with its starting point; exact estimators get 1e-9).
     rtol: float = 1e-4
@@ -267,6 +285,8 @@ class Case:
         if prop.startswith("estimators") and not self.estimators:
             return False
         if prop == "estimators_agree" and self.large is None:
+            return False
+        if prop == "convergence" and self.starve is None:
             return False
         return self.interface in _APPLICABLE[prop] and prop not in (
             self.exclude
@@ -2357,6 +2377,175 @@ def _with_options(case):
 
 CASES = [_with_options(c) for c in CASES]
 
+
+# ---------------------------------------------------------------------------
+# Convergence (test_convergence.py): how each case's fit is starved, or why
+# it cannot be
+# ---------------------------------------------------------------------------
+# A starved start is the fitted value times FAR (a millionth of the way
+# into a bounded range): far enough that a search stopping where the
+# gradient first looks flat stops short of the maximum.
+FAR = 1e6
+
+
+def _far(value, bound):
+    lo, hi = bound
+    return value * FAR if hi is None else lo + (hi - lo) / FAR
+
+
+def _parametric_start(model):
+    """The fitted parameters with the first one unbounded above (else the
+    first) moved :data:`FAR` away, in ``init``'s order."""
+    bounds = model.dist.bounds
+    k = next((i for i, b in enumerate(bounds) if b[1] is None), 0)
+    params = np.array(model.params, dtype=float)
+    params[k] = _far(params[k], bounds[k])
+    start = ([model.gamma] if model.offset else []) + list(params)
+    start += [model.p] if model.lfp else []
+    return start + ([model.f0] if model.zi else [])
+
+
+def _scaled_start(params, k=0):
+    start = np.array(params, dtype=float)
+    start[k] *= FAR
+    return start
+
+
+def _far_start(case, start):
+    """Refit ``case`` from ``init=start(model)``, ``model`` its fit to the
+    fixture."""
+    return lambda d: case.fit({**d, "init": start(_fitted(case.name))})
+
+
+def _no_event_level(d):
+    """The first covariate is 1 on exactly the censored rows: a group with
+    no events, whose coefficient the likelihood drives to infinity."""
+    out = dict(d)
+    Z = np.array(d["Z"], dtype=float)
+    if "e" in d:
+        Z[:, 0] = [e is None for e in d["e"]]
+    else:
+        Z[:, 0] = np.asarray(d["c"]) == 1
+    out["Z"] = Z
+    return out
+
+
+def _comonotone(d):
+    """The second coordinate half the first: dependence at its limit."""
+    x = np.array(d["x"], dtype=float)
+    x[:, 1] = x[:, 0] / 2
+    return {**d, "x": x}
+
+
+def _noise_free(y):
+    """Degradation readings exactly on a path: no noise to estimate."""
+    return lambda d: {**d, "y": y(np.asarray(d["x"], dtype=float))}
+
+
+def _starve(case):
+    """How ``case``'s fit is starved (see ``Case.starve``), or ``None``."""
+    name, fit = case.name, case.fit
+    cls = case.model_class.rsplit(".", 1)[-1]
+    if name in ("Turnbull", "BuckleyJames"):
+        return lambda d: fit({**d, "max_iter": 1})
+    if name.startswith("WeibullAL"):
+        # The life model's first parameter (the first is a fixed
+        # placeholder, the second the Weibull shape).
+        return _far_start(case, lambda m: _scaled_start(m.params, 2))
+    if cls in ("ParametricRegressionModel", "FrailtyModel"):
+        return lambda d: fit(_no_event_level(d))
+    if cls in ("SemiParametricRegressionModel", "FineGrayModel"):
+        return lambda d: fit(_no_event_level(d))
+    if cls == "CompetingRisksProportionalHazards":
+        return lambda d: fit(_no_event_level(d))
+    if cls == "Parametric":
+        return _far_start(case, _parametric_start)
+    if cls == "MixtureModel":
+        # One component's data a point mass: its shape runs to infinity.
+        return lambda d: fit({**d, "x": np.r_[np.full(10, 3.0), d["x"][10:]]})
+    if cls == "ParametricCompetingRisks":
+        # Every cause-b failure at one time: no maximum for its Weibull.
+        return lambda d: fit({**d, "x": np.where(d["e"] == "b", 5.0, d["x"])})
+    if cls == "ParametricRecurrenceModel":
+        return _far_start(case, lambda m: _scaled_start(m.params))
+    if cls == "ProportionalIntensityModel":
+        return _far_start(
+            case, lambda m: _scaled_start(np.r_[m.params, m.coeffs])
+        )
+    if cls == "CauseSpecificNHPP":
+        return _far_start(case, lambda m: _scaled_start(m.models["a"].params))
+    if cls == "RenewalModel":
+        # [restoration, *distribution parameters]: the scale moved.
+        return _far_start(
+            case,
+            lambda m: _scaled_start(np.r_[m.restoration, m.model.params], 1),
+        )
+    if cls == "CopulaModel" and name != "IndependenceCopula":
+        return lambda d: fit(_comonotone(d))
+    if cls == "DegradationModel":
+        return lambda d: fit(_noise_free(lambda x: 10.0 + 0.35 * x)(d))
+    if cls in ("WienerProcessModel", "GammaProcessModel"):
+        return lambda d: fit(_noise_free(lambda x: 0.5 * x)(d))
+    if cls == "DestructiveDegradationModel":
+        return lambda d: fit(_noise_free(lambda x: np.exp(4.0 - 0.02 * x))(d))
+    return None
+
+
+# The fits with nothing to starve.
+_CLOSED_FORM = "a closed-form estimate: no iteration to fail"
+_EXACT = "an exact (product-limit or Nelson-Aalen type) estimator"
+_NO_STARVE: dict[str, str] = {
+    "Exponential": _CLOSED_FORM + " (failures / total time; init is unused)",
+    "Uniform": _CLOSED_FORM + " (the sample extremes; init is unused)",
+    "Binomial": _CLOSED_FORM,
+    "Bernoulli": _CLOSED_FORM,
+    "FixedEventProbability": _CLOSED_FORM,
+    "ExactEventTime": _CLOSED_FORM,
+    "AdditiveHazards": _CLOSED_FORM + " (Lin-Ying: a linear system)",
+    "KaplanMeier": _EXACT,
+    "NelsonAalen": _EXACT,
+    "FlemingHarrington": _EXACT,
+    "CompetingRisks[Nelson-Aalen]": _EXACT,
+    "CompetingRisks[Kaplan-Meier]": _EXACT,
+    "NonParametricCounting": _EXACT,
+    "CauseSpecificMCF": _EXACT,
+    "IndependenceCopula": "no dependence parameter: the margins are "
+    "univariate fits, starved in their own cases",
+    "InducedFailureDistribution": "a Monte Carlo of the DegradationAnalysis "
+    "fit, which is starved in its own case",
+    "RoystonParmar": "no public iteration limit or starting point, and no "
+    "data found whose fit fails (its Nelder-Mead result is not checked "
+    "for convergence, only for a finite likelihood)",
+}
+for _kind in ("weibull", "exponential", "non-parametric"):
+    _NO_STARVE[f"SurvivalTree[{_kind}]"] = (
+        "no public iteration limit or starting point: the splits are "
+        "bounded searches, and a leaf is fitted when first used"
+    )
+_NO_STARVE["RandomSurvivalForest"] = _NO_STARVE["SurvivalTree[weibull]"]
+
+
+# Fits whose initial guess is already the maximum, so returning it is right.
+_START_IS_MAXIMUM = (
+    "the initial guess is the maximum: the Normal MLE of log x (and the "
+    "share of zeros for f0)"
+)
+
+
+def _with_convergence(case):
+    if "convergence" in case.exclude:  # not fitted to data
+        return case
+    if case.name in _NO_STARVE:
+        reason = _NO_STARVE[case.name]
+        return replace(case, exclude={**case.exclude, "convergence": reason})
+    exclude = case.exclude
+    if case.name in ("LogNormal", "LogNormal[zi]"):
+        exclude = {**exclude, "convergence[initial guess]": _START_IS_MAXIMUM}
+    return replace(case, starve=_starve(case), exclude=exclude)
+
+
+CASES = [_with_convergence(c) for c in CASES]
+
 # ---------------------------------------------------------------------------
 # Known failures: case -> property -> what goes wrong. Each becomes a
 # strict xfail, so the suite stays green and fails (XPASS) the day the
@@ -2726,6 +2915,240 @@ for _name, _failures in _OPTION_FAILURES.items():
         for key, reason in _failures.items()
     }
     KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
+
+# -- convergence (test_convergence.py) --------------------------------------
+# Each starved fit returns silently -- no warning, no error -- a model that
+# is not the maximum (a lower log-likelihood, "ll", than the fixture's
+# fit) or, where the data have no maximum, a finite answer as if there
+# were one. Grouped by the fault; the group's issue leads each reason.
+_CONVERGENCE_ISSUES = {
+    # univariate MLE: the ladder takes the first optimiser that reports
+    # success, which BFGS does where the gradient first looks flat
+    "start": "#427",
+    # regression, Fine-Gray, copula, mixture and degradation fits of data
+    # whose likelihood has no maximum (the #392 class, outside univariate)
+    "no maximum": "#392",
+    # accelerated life (parameter substitution): stops short, silently
+    "al": "#428",
+    # recurrent NHPP and renewal fits: the optimiser's result is unchecked
+    "recurrent": "#429",
+}
+_FAR = "from init with its first parameter x1e6: "
+_FAR_AL = "from init with the life model's first parameter x1e6: "
+_FAR_SCALE = "from init with the scale x1e6: "
+_NO_EVENTS = (
+    "a covariate that is 1 on exactly the censored rows (a group with no "
+    "events, so no finite coefficient; CoxPH warns 'Monotone partial "
+    "likelihood' on such data) gets a coefficient of "
+)
+_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
+    "Weibull": (
+        "start",
+        _FAR + "alpha, beta 1.03e7, 0.099 (ll -78.2), not 10.31, 2.32 "
+        "(ll -37.9); sf(25) 0.757, not 0.0004",
+    ),
+    "Weibull[xcnt]": (
+        "start",
+        _FAR + "alpha, beta 0.034, 0.072 (ll -41.1), not 7.51, 1.35 "
+        "(ll -24.3)",
+    ),
+    "Weibull[offset]": (
+        "start",
+        "from init with alpha x1e6: gamma, alpha, beta -5.37e6, 5.37e6, "
+        "1.32e6 (ll -39.8), not 6.56, 8.53, 1.79 (ll -37.7)",
+    ),
+    "Weibull[lfp]": (
+        "start",
+        _FAR + "alpha, beta, p 9.82e6, 0.113, 1.0 (ll -80.3), not 9.82, "
+        "2.31, 0.596 (ll -50.7)",
+    ),
+    "Weibull[zi]": (
+        "start",
+        _FAR + "alpha, beta 1.03e7, 0.099 (ll -84.3), not 10.31, 2.32 "
+        "(ll -44.0)",
+    ),
+    "Gamma[lfp]": (
+        "start",
+        _FAR + "alpha, beta, p 3.66, 0.411, 0.644 (ll -50.97), not 4.16, "
+        "0.478, 0.595 (ll -50.80); sf(25) 0.360, not 0.407",
+    ),
+    "LogNormal[offset]": (
+        "start",
+        "from init with mu x1e6: mu, sigma 2.77, 0.636 (ll -43.7), not "
+        "2.73, 0.274 (ll -38.1)",
+    ),
+    "LogNormal[lfp]": (
+        "start",
+        _FAR + "mu, sigma 2.73, 2.66 (ll -62.8), not 2.04, 0.533 (ll -51.2)",
+    ),
+    "LogNormal[zi]": (
+        "start",
+        _FAR + "mu, sigma 2.33, 2.66 (ll -58.7), not 2.10, 0.550 (ll -44.6)",
+    ),
+    "LogLogistic": (
+        "start",
+        _FAR + "alpha, beta 8.42e6, 0.0 (ll -569.2), not 8.42, 3.15 "
+        "(ll -38.6)",
+    ),
+    "ExpoWeibull": (
+        "start",
+        _FAR + "alpha, beta, mu 1.03e7, 1.16, 0.066 (ll -74.5), not 10.27, "
+        "2.30, 1.01 (ll -37.9)",
+    ),
+    "Normal": (
+        "start",
+        _FAR + "mu, sigma 9.68, 9.62 (ll -44.0), not 9.08, 4.15 (ll -38.4)",
+    ),
+    "Gumbel": (
+        "start",
+        _FAR + "mu, sigma 1.12e7, 5.11e5 (ll -454.9), not 11.17, 4.06 "
+        "(ll -39.8)",
+    ),
+    "Beta4": (
+        "start",
+        _FAR + "alpha stays at its start, 1.0e6 (ll -2.2e7), not 1.00 "
+        "(ll 3.98); sf is 1 everywhere",
+    ),
+    "ConformanceGompertz": (
+        "start",
+        _FAR + "nu, b 1.39e5, 0.0 (ll -42.9), not 0.139, 0.194 (ll -38.5)",
+    ),
+    "NegativeBinomial": (
+        "start",
+        _FAR + "r, p 4.13e6, 1.0 (ll -30.4), not 4.13, 0.557 (ll -29.3)",
+    ),
+    "BetaGeometric": (
+        "start",
+        _FAR + "a stays at its start, 1.04e11 (ll -582.9), not 1.04e5 "
+        "(ll -31.2)",
+    ),
+    "WeibullAL[InversePower]": (
+        "al",
+        _FAR_AL + "beta, a, n 1.22, 0.0115, 2.56 (ll -104.5), not 2.43, "
+        "0.0298, 1.21 (ll -89.8)",
+    ),
+    "WeibullAL[Linear]": (
+        "al",
+        _FAR_AL + "beta, a, b 2.27, 40.19, -10.53 (ll -93.04), not 2.13, "
+        "38.47, -9.94 (ll -92.91)",
+    ),
+    "WeibullAL[DualPower]": (
+        "al",
+        _FAR_AL + "n -0.138, not -0.130 (ll -89.6856, "
+        "not -89.6850): sf off by up to 2.6% (relative) in the tail",
+    ),
+    "WeibullAL[PowerExponential]": (
+        "al",
+        _FAR_AL + "beta, c, a, n 2.46, 6.65, 1.98, -0.717 (ll -92.1), not "
+        "2.50, 5.32, 1.93, -0.163 (ll -89.3)",
+    ),
+    "Duane": (
+        "recurrent",
+        _FAR + "alpha stays at its start, 7.76e5 (cif(5) inf, ll nan), not "
+        "0.776 (ll -46.7): nhpp_fitter.py never checks res.success",
+    ),
+    "ProportionalIntensityNHPP": (
+        "recurrent",
+        _FAR + "the Duane alpha stays at its start, 7.76e5 (cif(5) inf, ll "
+        "nan), not 0.776 (ll -46.7)",
+    ),
+    "CoxLewis": (
+        "recurrent",
+        _FAR + "alpha, beta -2.011, -0.0232 (ll -46.341), not -2.062, "
+        "-0.0211 (ll -46.333); cif(25) 2.54, not 2.47",
+    ),
+    "GeneralizedOneRenewal": (
+        "recurrent",
+        _FAR_SCALE + "q, alpha, beta 1.08, 3.40, 2.13 (ll -37.9), not "
+        "0.485, 5.72, 3.84 (ll -31.8); mcf(12) 1.93, not 1.23",
+    ),
+    "ARI": (
+        "recurrent",
+        _FAR_SCALE + "alpha stays at its start, 4.19e6 (ll -264.1), not "
+        "4.19 (ll -37.4); mcf(55) 0, not 4.8",
+    ),
+    "FineGray": (
+        "no maximum",
+        _NO_EVENTS + "-12.87 (BFGS reports success); sf(30) 1.0",
+    ),
+    "CompetingRisksProportionalHazards[Fine-Gray]": (
+        "no maximum",
+        _NO_EVENTS + "-12.87 and -12.12 (causes a and b)",
+    ),
+    "LogNormalAH": (
+        "no maximum",
+        _NO_EVENTS + "-6.2e8, with mu, sigma 4.9e8, 3.0e8, and sf(2) is "
+        "inf (the other AH baselines warn that the fit ended on the "
+        "positivity boundary)",
+    ),
+    "MixtureModel": (
+        "no maximum",
+        "with 10 of the 20 rows at 3.0 (a point mass, so no maximum) the "
+        "first component comes back as alpha, beta 3.0, 8955",
+    ),
+    "GammaProcess": (
+        "no maximum",
+        "noise-free readings (y = t / 2: every increment 5) have no "
+        "maximum; the fit returns alpha, beta 1.0e6, 2.0e6 where "
+        "WienerProcess raises ValueError ('the fitted diffusion sigma is 0')",
+    ),
+    "DestructiveDegradation": (
+        "no maximum",
+        "noise-free readings (y = exp(4 - 0.02 x) exactly) have no maximum; "
+        "the fit returns sigma = 9.9e-16",
+    ),
+    "ClaytonCopula": (
+        "no maximum",
+        "comonotone data (x2 = x1 / 2: no finite theta) give theta 3.16e6",
+    ),
+    "GumbelCopula": (
+        "no maximum",
+        "comonotone data (x2 = x1 / 2: no finite theta) give theta 105.5, "
+        "with a log-likelihood of inf",
+    ),
+    "FrankCopula": (
+        "no maximum",
+        "comonotone data (x2 = x1 / 2: no finite theta) give theta 1.24e7",
+    ),
+    "GaussianCopula": (
+        "no maximum",
+        "comonotone data (x2 = x1 / 2: rho -> 1) give rho 0.9999",
+    ),
+}
+_REGRESSION_NO_EVENTS = {
+    "WeibullPH": -16.31,
+    "LogNormalPH": -19.38,
+    "ExponentialPH": -18.55,
+    "GammaPH": -18.47,
+    "NormalPH": -20.41,
+    "GumbelPH": -19.96,
+    "LogisticPH": -18.28,
+    "WeibullAFT": -16.77,
+    "LogNormalAFT": -4.75,
+    "ExponentialAFT": -31.58,
+    "GammaAFT": -10.61,
+    "NormalAFT": -31.27,
+    "GumbelAFT": -31.57,
+    "LogisticAFT": -29.60,
+    "WeibullPO": 33.63,
+    "LogNormalPO": 34.71,
+    "ExponentialPO": 33.60,
+    "GammaPO": 33.33,
+    "NormalPO": 33.77,
+    "GumbelPO": 32.01,
+    "LogisticPO": 33.48,
+    "WeibullFrailty": -9.22,
+    "ExponentialFrailty": -33.62,
+    "GammaFrailty": -32.60,
+    "LogNormalFrailty": -31.46,
+}
+for _name, _coef in _REGRESSION_NO_EVENTS.items():
+    _CONVERGENCE_FAILURES[_name] = ("no maximum", _NO_EVENTS + f"{_coef}")
+for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
+    KNOWN_FAILURES[_name] = {
+        **KNOWN_FAILURES.get(_name, {}),
+        "convergence": f"{_CONVERGENCE_ISSUES[_group]}: {_reason}",
+    }
 
 
 # The issue that tracks each kind of known failure; its number leads the

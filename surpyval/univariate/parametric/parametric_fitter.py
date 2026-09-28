@@ -2173,7 +2173,7 @@ turnbull_estimator
         "non-finite parameters" error, and a wrongly sized or
         out-of-bounds ``init`` failed in ``zip`` or with an IndexError.
         """
-        names = list(model.param_map)
+        names = sorted(model.param_map, key=model.param_map.__getitem__)
 
         def outside(name: str, value: Any) -> str | None:
             lo, hi = model.bounds[model.param_map[name]]

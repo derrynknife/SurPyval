@@ -4,6 +4,21 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Silent non-convergence is checked for every model (#401).** A new
+  conformance property, ``test_convergence.py``, forces each iterative fit
+  to fail -- an iteration limit of 1, a start a million times the answer,
+  or data whose likelihood has no maximum -- and requires a warning, a
+  ``ValueError``, or the true maximum. It found 61 fits that return a
+  wrong model without a word, pinned as known failures: for example
+  ``Weibull.fit`` from ``init=[1.03e7, 2.32]`` returns alpha 1.03e7, beta
+  0.099 (log-likelihood -78.2 against -37.9; #427), and every parametric
+  PH/AFT/PO model gives a group with no events a finite coefficient
+  (-16.3 for WeibullPH) where ``CoxPH`` warns (#392); also #428 and #429.
+- **Fixed: ``init`` with an offset is checked in the right order.** The
+  check read ``[gamma, *params]`` as ``[*params, gamma]``, so it refused
+  valid starts (``Exponential.fit(..., offset=True, init=[6, 10])``:
+  "gamma = 10.0 lies outside its bounds") and let an offset beyond the
+  first observation through to fail later as "MLE Failed".
 - **Changed: ``random()`` of a limited-failure or zero-inflated model draws
   lifetimes (#403).** It returned ``(x, c, n, t)`` survival data when
   ``p < 1`` and an array otherwise, and drew zero-inflated samples by a

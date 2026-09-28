@@ -122,8 +122,15 @@ Estimation
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
 
-    *Partly checked*, by tests of individual fitters; there is no property
-    across every model yet (#401).
+    *Checked* by ``conformance/test_convergence.py``: every iterative fit
+    is starved (an iteration limit of 1, a start a million times the
+    answer, or data with no maximum) and must warn, raise, or still reach
+    the maximum; a closed-form or exact estimator is excluded, with the
+    reason. Known gaps: the univariate (#427), accelerated-life (#428)
+    and recurrent (#429) fits stop far from a distant start silently, and
+    the regression, Fine-Gray, copula, mixture and degradation fits
+    return a finite answer silently where the likelihood has no maximum
+    (#392).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.
