@@ -265,8 +265,10 @@ def test_restored_turnbull_model_plots():
 
 
 def test_random_on_an_all_censored_model():
-    with pytest.raises(ValueError, match="no failures"):
-        sp.KaplanMeier.fit([1, 2], c=[1, 1]).random(3)
+    # No failure within the data: the estimate stays at 1, so every
+    # lifetime drawn from it lies beyond the data (inf).
+    draws = sp.KaplanMeier.fit([1, 2], c=[1, 1]).random(3)
+    assert np.all(np.isposinf(draws))
 
 
 def test_success_run_needs_a_positive_run():

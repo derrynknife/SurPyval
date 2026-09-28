@@ -222,9 +222,11 @@ pin a median down.
     _q = model.quantile_cb([0.5])[0]
     assert _q[0] == 1 and np.isnan(_q[1]), _q
 
-``random(size, random_state=None)`` draws samples from the fitted estimate: each observed value is
-drawn with the probability mass the estimate puts on it (if the curve does not reach zero, the mass
-is rescaled to sum to one, so the draws are conditional on failing at an observed value):
+``random(size, random_state=None)`` draws lifetimes from the fitted estimate: each draw is
+``qf(u)`` for one uniform ``u``, so each step time is drawn with the probability the estimate puts
+on it and the draws follow the model's own ``sf``. If the curve does not reach zero, the probability
+it leaves beyond its last time is drawn as ``inf`` -- a lifetime not observed to end within the
+data, as a parametric model's never-failing units are:
 
 .. jupyter-execute::
 

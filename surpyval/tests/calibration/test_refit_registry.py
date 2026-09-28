@@ -238,9 +238,14 @@ def _xcnt(sample, truth, n, rng):
     while (t <= entry).any():
         redo = t <= entry
         t[redo] = sample(int(redo.sum()), rng)
-    cens = entry + np.maximum(sample(n, rng), sample(n, rng))
+    raw = np.maximum(sample(n, rng), sample(n, rng))
+    # A lifetime a step estimate leaves beyond its last time is drawn as
+    # inf: it is always censored, and a censoring time at infinity is
+    # moved to the largest finite draw (as in :func:`_censor`).
+    finite = np.r_[raw[np.isfinite(raw)], t[np.isfinite(t)]]
+    cens = entry + np.where(np.isfinite(raw), raw, finite.max())
     exact = rng.uniform(size=n) < 0.5
-    out = t > cens
+    out = (t > cens) | ~np.isfinite(t)
     # (lo, hi] holds t even when t is on an inspection (a discrete model)
     lo = (np.ceil(t / step) - 1) * step
     hi = np.minimum(lo + step, cens)
@@ -285,14 +290,14 @@ def _xcnt_turnbull(case, truth, n):
 
 
 def _np_law(truth):
-    """The law a step estimate's ``random`` draws from: its jumps at the
-    distinct observed values, renormalised to sum to one when the
-    estimate stops short of 0 (documented in ``NonParametric.random``)."""
+    """The law a step estimate's ``random`` draws from: its own jumps at
+    the distinct observed values, and the rest (where the estimate stops
+    short of 0) at ``inf`` -- which :func:`_censor` censors."""
     with np.errstate(all="ignore"):
         p = -np.diff(np.r_[1.0, truth.R])
     p = np.where(np.isfinite(p), p, 0.0)
     x, where = np.unique(truth.x, return_inverse=True)
-    mass = np.bincount(where.ravel(), weights=p / p.sum())
+    mass = np.bincount(where.ravel(), weights=p)
     return x, mass
 
 
@@ -948,9 +953,9 @@ PLANS["Weibull[xcnt]"] = Plan(
     _xcnt_parametric, 300, 100, params=_parametric_params
 )
 _RENORMALISED = (
-    "random() draws from the estimate renormalised over the observed "
-    "values when it stops short of 0 (documented), so the true curve is "
-    "that law's"
+    "random() draws the estimate's own law, with the mass it leaves "
+    "beyond its last time at inf (censored here), so the true curve is "
+    "the estimate's sf"
 )
 for _name in ("KaplanMeier", "NelsonAalen", "FlemingHarrington"):
     PLANS[_name] = Plan(

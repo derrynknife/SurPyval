@@ -148,15 +148,18 @@ def test_kaplan_meier_draw_reproducible_like_a_parametric_one() -> None:
 
 
 def test_explicit_seed_streams_are_unchanged() -> None:
-    """An explicit seed still means ``np.random.default_rng(seed)``, so
-    seeded results from earlier releases are unchanged."""
+    """An explicit seed still means ``np.random.default_rng(seed)``. A
+    non-parametric draw is ``qf(u)`` for one uniform per draw from it, with
+    ``inf`` where the estimate never reaches ``u``."""
     km = _km()
-    p = -np.diff(np.hstack([[1.0], km.R]))
-    expected = np.random.default_rng(5).choice(km.x, size=8, p=p / p.sum())
-    assert np.array_equal(km.random(8, random_state=5), expected)
+
+    def expected(rng):
+        q = np.ravel(km.qf(1.0 - rng.random(8)))
+        return np.where(np.isnan(q), np.inf, q)
+
+    assert np.array_equal(
+        km.random(8, random_state=5), expected(np.random.default_rng(5))
+    )
     gen = np.random.default_rng(3)
     same = np.random.default_rng(3)
-    assert np.array_equal(
-        km.random(8, random_state=gen),
-        same.choice(km.x, size=8, p=p / p.sum()),
-    )
+    assert np.array_equal(km.random(8, random_state=gen), expected(same))

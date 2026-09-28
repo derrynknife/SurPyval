@@ -929,18 +929,24 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
         r"""
-        Draws random samples from the fitted distribution. Each observed
-        value x is drawn with the probability mass the estimated survival
-        function assigns to it. If the estimate does not reach zero (e.g.
-        due to right censoring) the remaining mass is distributed over the
-        observed values, i.e. sampling is conditional on an event occurring
-        at one of the observed values.
+        Draws lifetimes from the fitted estimate. Each draw is
+        ``qf(u)`` for one uniform ``u`` in (0, 1]: the first step time at
+        which the estimated CDF reaches ``u``. So each step time is drawn
+        with the probability the estimate puts there (the drop in ``sf``),
+        and the draws follow the model's own ``sf`` exactly.
+
+        Where the estimate does not reach zero (the last observation
+        censored, say), the probability it leaves beyond its last time,
+        ``sf`` there, is not placed anywhere in the data: those draws are
+        ``inf``, a lifetime not observed to end within the data. This is
+        the convention of a parametric model with a limited failure
+        population, whose never-failing units also draw ``inf``.
 
         Parameters
         ----------
 
-        size : int
-            The number of random samples to draw.
+        size : int or tuple of ints
+            The number (or shape) of random samples to draw.
         random_state : int or numpy.random.Generator, optional
             Seed or generator for reproducible sampling. ``None`` (the default)
             seeds from numpy's global RNG, so ``np.random.seed`` controls it.
@@ -951,38 +957,27 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
 
         random : numpy array
-            The random samples drawn from the observed values.
-
-        Raises
-        ------
-
-        ValueError
-            If the estimate has no failures (e.g. all data censored), so
-            there is no probability mass to sample from.
+            The drawn lifetimes: step times of the estimate, or ``inf``.
 
         Examples
         --------
         >>> from surpyval import KaplanMeier
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
-        >>> model.random(5, random_state=0)
-        array([6., 3., 1., 1., 7.])
+        >>> round(model.sf(8).item(), 4)
+        0.1944
+        >>> draws = model.random(10_000, random_state=0)
+        >>> float(np.isinf(draws).mean())  # the share left beyond 8
+        0.1988
         """
-        with np.errstate(all="ignore"):
-            p = -np.diff(np.hstack([[1.0], self.R]))
-        p = np.where(np.isfinite(p), p, 0)
-        # With no failure (all censored) the estimate never leaves 1, so
-        # there is no mass to sample; normalising by zero used to surface
-        # as numpy's "Probabilities contain NaN".
-        if not p.sum() > 0:
-            raise ValueError(
-                "The estimate has no failures (the survival function never "
-                "drops below 1), so there is no probability mass to sample "
-                "from."
-            )
-        p = p / p.sum()
         rng = as_generator(random_state)
-        return rng.choice(self.x, size=size, p=p)
+        # One uniform per draw, in (0, 1] as qf requires; qf(u) is NaN
+        # where the estimated CDF never reaches u, the mass the estimate
+        # leaves beyond its last time, which is drawn as inf.
+        u = 1.0 - rng.random(size)
+        draws = np.asarray(self.qf(np.ravel(u)), dtype=float)
+        draws = np.where(np.isnan(draws), np.inf, draws)
+        return draws.reshape(np.shape(u))
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""

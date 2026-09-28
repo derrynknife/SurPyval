@@ -4,6 +4,14 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Changed: ``random()`` of a non-parametric estimate draws from the
+  estimate itself.** It drew each observed value with the estimate's
+  probability there, but where the estimate does not reach zero it
+  spread the remaining probability over the observed values, so the
+  draws disagreed with the model's own ``sf`` (by 0.12 for one Turnbull
+  fit) and an all-censored fit raised. Each draw is now ``qf(u)`` for one
+  uniform ``u``, and the probability left beyond the last time is drawn
+  as ``inf``, as for a parametric model's never-failing units (#403).
 - **Every model is refitted to data drawn from itself (#397).** A new
   nightly study, ``calibration/test_refit_registry.py``, takes each model
   in the conformance registry that can simulate (120 of 128; the rest are
