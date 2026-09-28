@@ -91,6 +91,9 @@ function has no density, a point mass no quantile inverse). If it should hold
 and does not, that is a bug: list it in ``KNOWN_FAILURES`` with a one-line
 description, which makes it a strict xfail -- the suite stays green, and
 turns red the day the bug is fixed, as the reminder to remove the entry.
+Only a failure whose outcome depends on the numpy / scipy build (an
+optimiser started far from the maximum) is listed in ``NON_STRICT`` as
+well, so that either outcome passes.
 
 Continuous integration runs the suite on every pull request, without the
 refits marked ``slow`` (the less common variants of families whose main
