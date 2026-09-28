@@ -138,7 +138,8 @@ def interp_function(
         # shape-preserving piecewise-cubic Hermite interpolant, so it stays
         # monotone wherever the data are monotone.
         pchip = PchipInterpolator(x, y, extrapolate=False)
-        lo, hi = np.min(y), np.max(y)
+        y_arr = np.asarray(y, dtype=float)
+        lo, hi = float(np.min(y_arr)), float(np.max(y_arr))
         if not (np.isfinite(lo) and np.isfinite(hi)):
             return lambda q: pchip(np.asarray(q, dtype=float))
         # PCHIP never leaves the range of its knots, but its round-off
