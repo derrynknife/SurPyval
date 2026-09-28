@@ -234,6 +234,6 @@ def test_a_reloaded_model_gives_the_same_bootstrap_bounds(distribution):
     )
     restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
     t = np.array([5.0, 8.0])
-    band = model.cb(t, method="bootstrap", n_boot=25, seed=1, **at)
-    again = restored.cb(t, method="bootstrap", n_boot=25, seed=1, **at)
+    band = model.cb(t, method="bootstrap", n_boot=25, random_state=1, **at)
+    again = restored.cb(t, method="bootstrap", n_boot=25, random_state=1, **at)
     np.testing.assert_allclose(again, band)

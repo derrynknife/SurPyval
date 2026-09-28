@@ -150,7 +150,8 @@ def test_destructive_round_trip_keeps_data_and_bounds():
         assert np.array_equal(model.data[k], restored.data[k])
     # same data and seed: the bootstrap band is reproduced exactly
     assert np.allclose(
-        model.cb(t, n_boot=20, seed=3), restored.cb(t, n_boot=20, seed=3)
+        model.cb(t, n_boot=20, random_state=3),
+        restored.cb(t, n_boot=20, random_state=3),
     )
 
 
@@ -167,7 +168,8 @@ def test_destructive_json_file_and_package_dispatch(tmp_path):
         t = np.array([30.0, 50.0])
         assert np.allclose(model.sf(t), restored.sf(t))
         assert np.allclose(
-            model.cb(t, n_boot=10, seed=0), restored.cb(t, n_boot=10, seed=0)
+            model.cb(t, n_boot=10, random_state=0),
+            restored.cb(t, n_boot=10, random_state=0),
         )
     d = model.to_dict()
     assert d["schema"] == surpyval.serialisation.required_schema(d)

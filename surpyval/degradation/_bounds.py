@@ -251,7 +251,7 @@ def bootstrap_cb(
     alpha_ci: float,
     bound: str,
     n_boot: int,
-    seed: "int | None",
+    random_state: "int | None",
     Z: "npt.ArrayLike | None" = None,
 ) -> npt.NDArray:
     """
@@ -276,7 +276,7 @@ def bootstrap_cb(
     from .degradation_analysis import DegradationAnalysis
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
-    rng = as_generator(seed)
+    rng = as_generator(random_state)
     method_name = _on_method(on)
     # A missing time or stress makes the model's own curve nan there: the
     # bound is nan at those points, and only the others must be finite

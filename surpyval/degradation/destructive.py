@@ -54,6 +54,7 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -153,35 +154,38 @@ class DestructiveDegradationModel(SerialisableMixin):
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
+    @renamed_arguments(q="p", t="x")
     def degradation_quantile(
-        self, q: npt.ArrayLike, t: npt.ArrayLike
+        self, p: npt.ArrayLike, x: npt.ArrayLike
     ) -> npt.NDArray:
         """
-        The ``q``-quantile of the destructive measurement at time ``t`` (the
-        fitted degradation distribution ``dist(loc(t), sigma)``).
+        The ``p``-quantile of the destructive measurement at time ``x`` (the
+        fitted degradation distribution ``dist(loc(x), sigma)``).
 
         Parameters
         ----------
-        q : float or array_like
+        p : float or array_like
             Probability (or probabilities) in ``(0, 1)``.
-        t : float or array_like
+        x : float or array_like
             Time(s) at which to read the degradation distribution; a
-            scalar ``t`` gives a scalar result.
+            scalar ``x`` gives a scalar result.
         """
-        loc = self._loc(t)
-        out = np.asarray(self.distribution.qf(q, loc, self.sigma), dtype=float)
-        return out[0] if np.ndim(t) == 0 else out
+        loc = self._loc(x)
+        out = np.asarray(self.distribution.qf(p, loc, self.sigma), dtype=float)
+        return out[0] if np.ndim(x) == 0 else out
 
-    def median_degradation(self, t: npt.ArrayLike) -> npt.NDArray:
-        """Median destructive measurement at time ``t``."""
-        return self.degradation_quantile(0.5, t)
+    @renamed_arguments(t="x")
+    def median_degradation(self, x: npt.ArrayLike) -> npt.NDArray:
+        """Median destructive measurement at time ``x``."""
+        return self.degradation_quantile(0.5, x)
 
     # -- induced lifetime distribution at the threshold -------------------
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def ff(self, t: npt.ArrayLike) -> npt.NDArray:
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
-        loc = self._loc(t)
+        loc = self._loc(x)
         thr = self.threshold
         if self.direction == "increasing":
             # failed once degradation exceeds the threshold
@@ -194,37 +198,41 @@ class DestructiveDegradationModel(SerialisableMixin):
             )
         return out
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def sf(self, t: npt.ArrayLike) -> npt.NDArray:
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
-        return 1.0 - self.ff(t)
+        return 1.0 - self.ff(x)
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def Hf(self, t: npt.ArrayLike) -> npt.NDArray:
+    def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
-        return -np.log(np.maximum(self.sf(t), np.finfo(float).tiny))
+        return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def df(self, t: npt.ArrayLike) -> npt.NDArray:
+    def df(self, x: npt.ArrayLike) -> npt.NDArray:
         """
         Density of the induced lifetime distribution (finite-difference of the
         CDF; the closed form depends on the time transform).
         """
-        t = np.asarray(t, dtype=float)
-        h = np.maximum(np.abs(t), 1.0) * 1e-6
-        return (self.ff(t + h) - self.ff(t - h)) / (2.0 * h)
+        x = np.asarray(x, dtype=float)
+        h = np.maximum(np.abs(x), 1.0) * 1e-6
+        return (self.ff(x + h) - self.ff(x - h)) / (2.0 * h)
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
+    @renamed_arguments(t="x", seed="random_state")
     @keeps_query_shape
     def cb(
         self,
-        t: npt.ArrayLike,
+        x: npt.ArrayLike,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         n_boot: int = 200,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> npt.NDArray:
         """
         Bootstrap confidence bounds on the induced lifetime function ``on``.
@@ -235,7 +243,7 @@ class DestructiveDegradationModel(SerialisableMixin):
 
         Parameters
         ----------
-        t : array_like
+        x : array_like
             Times at which to evaluate the bound(s).
         on : {'sf', 'ff', 'Hf'}, optional
             The lifetime function to bound. Default ``'sf'``.
@@ -246,7 +254,7 @@ class DestructiveDegradationModel(SerialisableMixin):
             ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
         n_boot : int, optional
             Number of bootstrap resamples. Default 200.
-        seed : int or numpy.random.Generator, optional
+        random_state : int or numpy.random.Generator, optional
             Seed or generator for the resampling. ``None`` (the default) seeds
             from numpy's global RNG, so ``np.random.seed`` controls it.
         """
@@ -254,8 +262,8 @@ class DestructiveDegradationModel(SerialisableMixin):
             raise ValueError("`on` must be one of 'sf', 'ff', 'Hf'")
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
-        t = np.atleast_1d(np.asarray(t, dtype=float))
-        rng = as_generator(seed)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        rng = as_generator(random_state)
         if self.data is None:
             raise ValueError(
                 "Bootstrap bounds need the fit data, which this model "
@@ -263,25 +271,25 @@ class DestructiveDegradationModel(SerialisableMixin):
                 "written before the data was stored); refit it to get "
                 "bounds."
             )
-        x, y, c = self.data["x"], self.data["y"], self.data["c"]
-        n = x.shape[0]
+        xd, yd, cd = self.data["x"], self.data["y"], self.data["c"]
+        n = xd.shape[0]
 
         draws = []
         for _ in range(n_boot):
             idx = rng.integers(0, n, size=n)
             try:
                 m = DestructiveDegradation.fit(
-                    x[idx],
-                    y[idx],
+                    xd[idx],
+                    yd[idx],
                     threshold=self.threshold,
-                    c=c[idx],
+                    c=cd[idx],
                     distribution=self.distribution,
                     transform=self.transform,
                     direction=self.direction,
                 )
             except Exception:
                 continue
-            draws.append(getattr(m, on)(t))
+            draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
         draws_arr = np.vstack(draws)
@@ -303,7 +311,7 @@ class DestructiveDegradationModel(SerialisableMixin):
         The fit data ``(x, y, c)`` is stored along with the fitted
         parameters -- as ``DegradationModel`` stores its raw data -- so
         the restored model reproduces the original's predictions *and*
-        its bootstrap :meth:`cb` (with the same seed, exactly).
+        its bootstrap :meth:`cb` (with the same ``random_state``, exactly).
 
         See Also
         --------
