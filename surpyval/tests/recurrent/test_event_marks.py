@@ -116,8 +116,12 @@ def test_cause_specific_mcf_from_df():
 def _simulate_two_cause_marks(paramsA, paramsB, T, items, seed):
     truthA = CrowAMSAA.from_params(paramsA)
     truthB = CrowAMSAA.from_params(paramsB)
-    dA = truthA.time_terminated_simulation_data(T, items=items, seed=seed)
-    dB = truthB.time_terminated_simulation_data(T, items=items, seed=seed + 1)
+    dA = truthA.time_terminated_simulation_data(
+        T, items=items, random_state=seed
+    )
+    dB = truthB.time_terminated_simulation_data(
+        T, items=items, random_state=seed + 1
+    )
     xs, ii, cc, ee = [], [], [], []
     for item in range(items):
         for xv in dA.x[(dA.i == item) & (dA.c == 0)]:

@@ -288,7 +288,7 @@ the *average* of the covariate rows (an average over rows, so items with more
 events weigh more), over the non-parametric MCF of all the data (which ignores
 the covariates). It is a rough visual check only: the curve at the average
 covariates is not the average of the items' curves. ``plot_bounds`` and
-``confidence`` work as for the other models:
+``alpha_ci`` work as for the other models:
 
 .. jupyter-execute::
 
@@ -304,10 +304,10 @@ covariate vector, so a missing (``nan``) value in it raises a ``ValueError``
 
 .. jupyter-execute::
 
-    print("simulated MCF   :", fleet.mcf([20, 40], z, items=500, seed=1))
+    print("simulated MCF   :", fleet.mcf([20, 40], z, items=500, random_state=1))
     print("closed-form cif :", fleet.cif(np.array([20, 40]), z).round(3))
 
-    sims = fleet.time_terminated_simulation_data(40, z, items=5, seed=2)
+    sims = fleet.time_terminated_simulation_data(40, z, items=5, random_state=2)
     print("failures on five simulated motors:",
           [int((sims.c[sims.i == k] == 0).sum()) for k in range(1, 6)])
 
@@ -315,7 +315,7 @@ covariate vector, so a missing (``nan``) value in it raises a ``ValueError``
     :hide-code:
     :hide-output:
 
-    _sim = fleet.mcf([20, 40], z, items=500, seed=1)
+    _sim = fleet.mcf([20, 40], z, items=500, random_state=1)
     _cif = fleet.cif(np.array([20, 40]), z)
     assert np.all(np.abs(_sim / _cif - 1) < 0.05), (_sim, _cif)
 
@@ -398,8 +398,8 @@ tells the two models of the motors apart:
 
 .. jupyter-execute::
 
-    p_hpp = fleet_hpp.cramer_von_mises(n_boot=30, seed=1).p_value
-    p_nhpp = fleet.cramer_von_mises(n_boot=30, seed=1).p_value
+    p_hpp = fleet_hpp.cramer_von_mises(n_boot=30, random_state=1).p_value
+    p_nhpp = fleet.cramer_von_mises(n_boot=30, random_state=1).p_value
     print("PI-HPP  p-value:", round(p_hpp, 3))
     print("PI-NHPP p-value:", round(p_nhpp, 3))
 

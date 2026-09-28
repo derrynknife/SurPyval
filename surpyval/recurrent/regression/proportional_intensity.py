@@ -12,6 +12,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -284,8 +285,9 @@ class ProportionalIntensityModel(
             self.data, test=test, alternative=alternative
         )
 
+    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
-        self, n_boot: int = 200, seed: "int | None" = None
+        self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted proportional-
@@ -306,7 +308,7 @@ class ProportionalIntensityModel(
 
         n_boot: int, optional
             Number of bootstrap replicates for the p-value. Default is 200.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible p-value.
 
         Returns
@@ -317,7 +319,7 @@ class ProportionalIntensityModel(
         """
         self._check_has_data("cramer_von_mises")
         return diagnostics.cramer_von_mises_regression(
-            self, n_boot=n_boot, seed=seed
+            self, n_boot=n_boot, random_state=random_state
         )
 
     @keeps_query_shape
@@ -371,11 +373,13 @@ class ProportionalIntensityModel(
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
     # Extends the mixin plot with covariates -- same known divergence.
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,
         plot_bounds: bool = True,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         PLots the CIF of the model against the data used to fit it.
@@ -395,8 +399,10 @@ class ProportionalIntensityModel(
         plot_bounds : bool, optional
             Whether to draw the confidence band around the fitted CIF.
             Default is True.
-        confidence : float, optional
-            The confidence level of the band. Default is 0.95.
+        alpha_ci : float, optional
+            The total tail probability of the band: a
+            ``1 - alpha_ci`` confidence band. Default is 0.05. Keyword
+            only.
 
         Returns
         -------
@@ -417,14 +423,14 @@ class ProportionalIntensityModel(
         ax.step(x, (d / r).cumsum(), color="r", where="post")
         ax.plot(x_plot, self.cif(x_plot, Z_0), color="b")
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, Z_0, alpha_ci=1.0 - confidence)
+            cb = self.cif_cb(x_plot, Z_0, alpha_ci=alpha_ci)
             ax.fill_between(
                 x_plot,
                 cb[:, 0],
                 cb[:, 1],
                 color="b",
                 alpha=0.2,
-                label=f"{confidence * 100}% Confidence Band",
+                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
         return ax
 
@@ -487,12 +493,13 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @renamed_arguments(seed="random_state")
     def count_terminated_simulation(  # type: ignore[override]
         self,
         events: int,
         Z: ArrayLike,
         items: int = 1,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> Any:
         """
         Simulate count-terminated recurrence data based on the fitted model.
@@ -508,7 +515,7 @@ class ProportionalIntensityModel(
             (NaN) value raises a ``ValueError``.
         items: int, optional
             Number of items (or sequences) to simulate. Default is 1.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible simulation.
 
         Returns
@@ -519,11 +526,12 @@ class ProportionalIntensityModel(
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation(
-            events, items=items, seed=seed
+            events, items=items, random_state=random_state
         )
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @renamed_arguments(seed="random_state")
     def time_terminated_simulation(  # type: ignore[override]
         self,
         T: float,
@@ -531,7 +539,7 @@ class ProportionalIntensityModel(
         items: int = 1,
         tol: float = 1e-8,
         max_events: int = 10_000,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> Any:
         """
         Simulate time-terminated recurrence data based on the fitted model.
@@ -552,7 +560,7 @@ class ProportionalIntensityModel(
         max_events: int, optional
             Hard per-sequence event cap that guarantees termination.
             Default is 10000.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible simulation.
 
         Returns
@@ -571,17 +579,22 @@ class ProportionalIntensityModel(
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation(
-            T, items=items, tol=tol, max_events=max_events, seed=seed
+            T,
+            items=items,
+            tol=tol,
+            max_events=max_events,
+            random_state=random_state,
         )
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @renamed_arguments(seed="random_state")
     def count_terminated_simulation_data(  # type: ignore[override]
         self,
         events: int,
         Z: ArrayLike,
         items: int = 1,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> Any:
         """
         Simulate count-terminated recurrence data and return the raw events.
@@ -590,11 +603,12 @@ class ProportionalIntensityModel(
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().count_terminated_simulation_data(
-            events, items=items, seed=seed
+            events, items=items, random_state=random_state
         )
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @renamed_arguments(seed="random_state")
     def time_terminated_simulation_data(  # type: ignore[override]
         self,
         T: float,
@@ -602,7 +616,7 @@ class ProportionalIntensityModel(
         items: int = 1,
         tol: float = 1e-8,
         max_events: int = 10_000,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> Any:
         """
         Simulate time-terminated recurrence data and return the raw events.
@@ -611,18 +625,23 @@ class ProportionalIntensityModel(
         """
         self._sim_Z = self._unit_covariates(Z)
         return super().time_terminated_simulation_data(
-            T, items=items, tol=tol, max_events=max_events, seed=seed
+            T,
+            items=items,
+            tol=tol,
+            max_events=max_events,
+            random_state=random_state,
         )
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @renamed_arguments(seed="random_state")
     @keeps_query_shape
     def mcf(  # type: ignore[override]
         self,
         x: ArrayLike,
         Z: ArrayLike,
         items: int = 1000,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> Any:
         """
         Estimate the mean cumulative function at ``x`` for covariates ``Z`` by
@@ -638,6 +657,6 @@ class ProportionalIntensityModel(
             # Nothing to simulate to (the horizon is the largest time).
             return np.empty(0)
         np_model = self.time_terminated_simulation(
-            float(x.max()), Z, items=items, seed=seed
+            float(x.max()), Z, items=items, random_state=random_state
         )
         return np_model.mcf(x)

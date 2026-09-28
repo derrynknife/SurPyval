@@ -164,7 +164,7 @@ def test_count_terminated_simulation_via_mixin():
     # t=1 is about 0.006, at t=6 about 0.04).
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
     model = GeneralizedOneRenewal.fit(x, dist=Weibull)
-    np_model = model.count_terminated_simulation(len(x), 5000, seed=0)
+    np_model = model.count_terminated_simulation(len(x), 5000, random_state=0)
     expected = np.array([0.1696, 1.181, 2.287, 3.6694, 5.58237925, 8.54474531])
     got = np_model.mcf(np.array([1, 2, 3, 4, 5, 6]))
     assert np.allclose(got, expected, rtol=0.02, atol=0.025)
@@ -178,7 +178,7 @@ def test_count_terminated_simulation_data_is_recurrent_data():
     model = GeneralizedOneRenewal.fit_from_parameters(
         [5.0, 1.5], q=0.2, dist=Weibull
     )
-    data = model.count_terminated_simulation_data(8, items=20, seed=0)
+    data = model.count_terminated_simulation_data(8, items=20, random_state=0)
     assert isinstance(data, RecurrentEventData)
     assert len(data.x) == 20 * (8 + 1)
     assert len(set(data.i.tolist())) == 20
@@ -189,7 +189,9 @@ def test_simulated_data_round_trips_through_fit():
     # Simulating from a known model and refitting recovers it in the right
     # neighbourhood (this is now possible because the simulator yields events).
     truth = ARA.fit_from_parameters([10.0, 2.0], rho=0.5, m=2, dist=Weibull)
-    data = truth.count_terminated_simulation_data(events=8, items=400, seed=0)
+    data = truth.count_terminated_simulation_data(
+        events=8, items=400, random_state=0
+    )
     refit = ARA.fit(data.x, data.i, c=data.c, m=2)
     assert 0.0 < refit.rho < 1.0
     assert np.all(refit.model.params > 0)
@@ -201,7 +203,9 @@ def test_time_terminated_simulation_data_is_censored_at_T():
     model = GeneralizedOneRenewal.fit_from_parameters(
         [5.0, 1.5], q=0.2, dist=Weibull
     )
-    data = model.time_terminated_simulation_data(T=60, items=20, seed=2)
+    data = model.time_terminated_simulation_data(
+        T=60, items=20, random_state=2
+    )
     assert isinstance(data, RecurrentEventData)
     # Each reaching sequence ends in a right-censored row at T.
     assert (data.c == 1).any()
@@ -215,7 +219,7 @@ def test_parametric_recurrence_model_has_data_simulators():
 
     x = Exponential.random(20, 1.0).cumsum()
     hpp = HPP.fit(x)
-    data = hpp.count_terminated_simulation_data(10, items=15, seed=0)
+    data = hpp.count_terminated_simulation_data(10, items=15, random_state=0)
     assert isinstance(data, RecurrentEventData)
     assert len(data.x) == 15 * (10 + 1)
 
@@ -268,9 +272,9 @@ def test_simulation_seed_is_reproducible():
         [5.0, 1.5], q=0.2, dist=Weibull
     )
     xs = np.array([1, 2, 3, 4, 5])
-    a = model.count_terminated_simulation(9, 500, seed=42).mcf(xs)
-    b = model.count_terminated_simulation(9, 500, seed=42).mcf(xs)
-    c = model.count_terminated_simulation(9, 500, seed=7).mcf(xs)
+    a = model.count_terminated_simulation(9, 500, random_state=42).mcf(xs)
+    b = model.count_terminated_simulation(9, 500, random_state=42).mcf(xs)
+    c = model.count_terminated_simulation(9, 500, random_state=7).mcf(xs)
     assert np.allclose(a, b)
     assert not np.allclose(a, c)
 
@@ -296,7 +300,7 @@ def test_renewal_mcf_convenience(model_cls):
     # mcf(x) estimates a sensible, non-decreasing MCF by simulation.
     model = model_cls.fit_from_parameters([5.0, 1.5], 0.2, dist=Weibull)
     xs = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
-    mcf = model.mcf(xs, items=2000, seed=1)
+    mcf = model.mcf(xs, items=2000, random_state=1)
     assert mcf.shape == xs.shape
     assert np.all(np.diff(mcf) >= -1e-9)
     assert np.all(mcf >= 0)
@@ -315,7 +319,7 @@ def test_plot_returns_axes_when_fitted():
     model = GeneralizedRenewal.fit(
         np.array([1, 3, 6, 9, 10]), c=np.array([0, 0, 0, 0, 1])
     )
-    ax = model.plot(items=300, seed=2)
+    ax = model.plot(items=300, random_state=2)
     assert ax is not None
 
 

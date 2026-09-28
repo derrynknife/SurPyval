@@ -117,7 +117,7 @@ pass it to the ``fit`` call of the ``NonParametricCounting`` class.
 This shows the expected number of events at any time. The model is a step
 function since it is non-parametric and we have made no assumptions about the
 count between observed events. The plot also draws pointwise 95% confidence
-bounds in red (``plot_bounds=False`` hides them, ``confidence`` changes their
+bounds in red (``plot_bounds=False`` hides them, ``alpha_ci`` changes their
 level and ``ax`` draws on an existing axes), but with a single item there is
 no item-to-item variation to measure: the variance estimate is zero and the
 bounds lie on top of the MCF.
@@ -270,7 +270,8 @@ Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
 bounds, returned as ``[lower, upper]`` columns and computed on the log scale
 so they cannot go negative (``bound_type="normal"`` gives the symmetric
 estimate :math:`\pm` *z* standard errors instead); ``bound="lower"`` or
-``"upper"`` gives a one-sided bound and ``confidence`` sets the level. The
+``"upper"`` gives a one-sided bound and ``alpha_ci`` sets the level
+(the default 0.05 gives 95% bounds). The
 variance behind them is the Lawless-Nadeau robust variance, which allows for
 items differing in their rates (see :doc:`Recurrent Event Analysis`). ``mcf`` and ``mcf_cb`` also accept
 ``interp="linear"`` to join the steps with straight lines instead (the
@@ -279,7 +280,7 @@ estimate and its bounds both rising from 0 at time 0 to the first event):
 .. jupyter-execute::
 
     print("95% bounds at 6.5  :", model.mcf_cb(6.5).round(2))
-    print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", confidence=0.9).round(2))
+    print("90% upper at 6.5   :", model.mcf_cb(6.5, bound="upper", alpha_ci=0.1).round(2))
     print("normal bounds, 6.5 :", model.mcf_cb(6.5, bound_type="normal").round(2))
     print("linear MCF at 6.5  :", model.mcf(6.5, interp="linear").round(3))
 
@@ -494,7 +495,7 @@ Here four systems follow a Crow-AMSAA process with :math:`\alpha = 8` and
     import numpy as np
 
     true_model = CrowAMSAA.from_params([8.0, 1.6])
-    data = true_model.time_terminated_simulation_data(50, items=4, seed=49)
+    data = true_model.time_terminated_simulation_data(50, items=4, random_state=49)
     x, i, c = data.x, data.i, data.c
     print("events per system:", [int((c[i == k] == 0).sum()) for k in (1, 2, 3, 4)])
 
@@ -562,7 +563,7 @@ entry time goes in ``tl``, one value per row:
 
 .. jupyter-execute::
 
-    full = true_model.time_terminated_simulation_data(50, items=6, seed=48)
+    full = true_model.time_terminated_simulation_data(50, items=6, random_state=48)
     entry = {1: 0.0, 2: 0.0, 3: 20.0, 4: 20.0, 5: 30.0, 6: 30.0}
     seen = np.array([t >= entry[k] for t, k in zip(full.x, full.i)])
     x_d, i_d, c_d = full.x[seen], full.i[seen], full.c[seen]
@@ -709,7 +710,7 @@ refitted; the others return the non-parametric MCF of the simulated items:
   MCF version keeps only the part of the curve below ``events``, where it is
   not yet distorted by the items dropping out.
 
-Pass ``seed`` for a reproducible result. The time-terminated versions also
+Pass ``random_state`` for a reproducible result. The time-terminated versions also
 take ``tol`` and ``max_events``: a sequence whose gaps shrink below ``tol``
 (a process heading for an asymptote) or that reaches ``max_events`` events
 before ``T`` is stopped at its last event, with a warning. Simulation is a good way to check
@@ -721,7 +722,7 @@ the shape parameter:
 
     betas = []
     for seed in range(20):
-        sim = true_model.time_terminated_simulation_data(50, items=1, seed=seed)
+        sim = true_model.time_terminated_simulation_data(50, items=1, random_state=seed)
         betas.append(CrowAMSAA.fit(sim.x, sim.i, sim.c).params[1])
     print("beta estimates from one system: %.2f to %.2f" % (min(betas), max(betas)))
 
@@ -809,9 +810,9 @@ increasing.
 
 That parameter uncertainty propagates to the fitted curve. ``plot()`` draws a
 delta-method confidence band around the cumulative intensity function (set
-``plot_bounds=False`` to hide it, or ``confidence`` to change its level), and
-``cif_cb`` returns the band directly, as ``[lower, upper]`` columns. Note that
-``cif_cb`` and ``param_cb`` take the total tail probability ``alpha_ci``
+``plot_bounds=False`` to hide it, or ``alpha_ci`` to change its level), and
+``cif_cb`` returns the band directly, as ``[lower, upper]`` columns. Like
+every interval in SurPyval, they take the total tail probability ``alpha_ci``
 (default 0.05, i.e. 95% bounds) rather than a confidence level, and
 ``bound="lower"`` or ``"upper"`` gives a one-sided bound:
 
@@ -900,7 +901,7 @@ while exploring (the default is 200):
 
 .. jupyter-execute::
 
-    gof = model.cramer_von_mises(n_boot=100, seed=2)
+    gof = model.cramer_von_mises(n_boot=100, random_state=2)
     print("statistic", round(gof.statistic, 3), " p-value", round(gof.p_value, 3))
 
 A p-value of about 0.7 gives no reason to doubt the power law for this
@@ -976,7 +977,7 @@ non-parametric description of the MCF:
 
 .. jupyter-execute::
 
-    np_model = model.count_terminated_simulation(len(x), 1000, seed=1)
+    np_model = model.count_terminated_simulation(len(x), 1000, random_state=1)
     ax = np_model.plot()
     NonParametricCounting.fit(x).plot(ax=ax)
 
@@ -987,7 +988,7 @@ second is the number of simulations to run. The more simulations you run the
 more accurate the model will be. The method returns a ``NonParametricCounting``
 model that can be used to plot the results. (``model.plot()`` and
 ``model.mcf(t)`` do the same simulation for you, time-terminated at the times
-of interest; pass ``items`` and ``seed`` to control them.)
+of interest; pass ``items`` and ``random_state`` to control them.)
 
 You can see that the cumulative intensity function of the model is a very good
 fit to the data. You can also see that it is "wavy." This is because the
@@ -1014,7 +1015,7 @@ Kijima Type ii and see what happens.
 
     model_ii = GeneralizedRenewal.fit(x, dist=Weibull, kijima="ii")
 
-    np_model = model_ii.count_terminated_simulation(len(x), 1000, seed=1)
+    np_model = model_ii.count_terminated_simulation(len(x), 1000, random_state=1)
     ax = np_model.plot()
     NonParametricCounting.fit(x).plot(ax=ax)
 
@@ -1106,7 +1107,7 @@ compare it to the data MCF.
 
 .. jupyter-execute::
 
-    np_model = model.time_terminated_simulation(250, 1000, seed=1)
+    np_model = model.time_terminated_simulation(250, 1000, random_state=1)
     np_model.plot()
     NonParametricCounting.fit(x).plot()
 
@@ -1148,7 +1149,7 @@ watched for 40 hours:
     import numpy as np
 
     ara_true = ARA.fit_from_parameters([10.0, 3.0], 0.5, m=2, dist=Weibull)
-    sim = ara_true.time_terminated_simulation_data(40, items=8, seed=3)
+    sim = ara_true.time_terminated_simulation_data(40, items=8, random_state=3)
     x, i, c = sim.x, sim.i, sim.c
     print("simulated failures:", int((c == 0).sum()))
 
@@ -1200,7 +1201,7 @@ power-law baseline (:math:`\beta = 2.5`) and fit it back:
     from surpyval.recurrent import ARI, CrowAMSAA
 
     ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, dist=CrowAMSAA)
-    sim_ari = ari_true.time_terminated_simulation_data(40, items=10, seed=7)
+    sim_ari = ari_true.time_terminated_simulation_data(40, items=10, random_state=7)
 
     ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, dist=CrowAMSAA, m=1)
     ari
@@ -1260,7 +1261,7 @@ well-specified model they are still an i.i.d. Exp(1) sample:
     print("martingale    :", model.residuals(kind="martingale").round(3))
     print("trend         :", model.trend_test().trend)
 
-    gof = model.cramer_von_mises(n_boot=20, seed=1)
+    gof = model.cramer_von_mises(n_boot=20, random_state=1)
     print("CvM p-value   :", round(gof.p_value, 3))
 
 The Cramér–von Mises bootstrap refits the (multi-start) imperfect-repair model
@@ -1291,7 +1292,7 @@ Predicting with a renewal model
 
 For a renewal model, ``mcf`` gives the expected number of events for a new
 item by simulation (``items`` controls the number of simulated items, default
-1000, and ``seed`` makes it reproducible). Because the future depends on the
+1000, and ``random_state`` makes it reproducible). Because the future depends on the
 item's history, a prediction interval for the count also comes from
 simulation: simulate many new items and read off the spread of their counts.
 Using the ARA model fitted above:
@@ -1300,9 +1301,9 @@ Using the ARA model fitted above:
 
     ara = ARA.fit(sim.x, sim.i, sim.c, m=2)
 
-    print("expected failures by t=20, 40:", ara.mcf([20, 40], seed=1).round(2))
+    print("expected failures by t=20, 40:", ara.mcf([20, 40], random_state=1).round(2))
 
-    runs = ara.time_terminated_simulation_data(40, items=2000, seed=2)
+    runs = ara.time_terminated_simulation_data(40, items=2000, random_state=2)
     counts = np.bincount(runs.i[runs.c == 0].astype(int), minlength=2001)[1:]
     print("90% of new systems have between", np.percentile(counts, 5),
           "and", np.percentile(counts, 95), "failures by t=40")
@@ -1406,8 +1407,8 @@ cause, sharing the at-risk set across causes:
     ax = model.plot()
 
 Each cause's curve is an ordinary ``NonParametricCounting`` estimate, available
-as ``model.models[cause]``; ``mcf`` and ``mcf_cb`` take the cause as an
-argument (``mcf_cb`` passes any other keyword, such as ``confidence`` or
+as ``model.models[cause]``; ``mcf`` and ``mcf_cb`` take the cause as their
+``event`` argument (``mcf_cb`` passes any other keyword, such as ``alpha_ci`` or
 ``bound``, on to that estimate). The data may carry delayed entry (``tl``),
 which shrinks the shared risk set, and right truncation (``tr``), which keeps
 an item in it up to ``tr``, but, as for the overall MCF, not counts of events.
@@ -1452,10 +1453,10 @@ one censoring row per pump at 40:
 
     T = 40.0
     seal = CrowAMSAA.from_params([6.0, 1.0]).time_terminated_simulation_data(
-        T, items=5, seed=15
+        T, items=5, random_state=15
     )
     bearing = CrowAMSAA.from_params([15.0, 2.5]).time_terminated_simulation_data(
-        T, items=5, seed=115
+        T, items=5, random_state=115
     )
     s_obs, b_obs = seal.c == 0, bearing.c == 0
 
@@ -1490,15 +1491,15 @@ cause-specific MCF of the same data is the non-parametric check:
     ax = pump_mcf.plot()
 
 The dashed steps are each cause's pointwise confidence bounds
-(``confidence`` sets the level, ``plot_bounds=False`` hides them). They use
+(``alpha_ci`` sets the level, ``plot_bounds=False`` hides them). They use
 the same Lawless-Nadeau robust variance as ``NonParametricCounting.fit`` (see
 :doc:`Recurrent Event Analysis`), computed from that cause's events, so they
 allow for pumps differing in how often they suffer a cause.
 
 Each ``pumps.models[cause]`` is an ordinary fitted recurrence model, so it
 carries the full ``cif`` / ``iif``, inference and diagnostic behaviour shown
-above; ``pumps.cif(x, cause)``, ``pumps.iif(x, cause)`` and
-``pumps.mcf(x, cause)`` are shortcuts, ``total_cif`` sums the causes for the
+above; ``pumps.cif(x, event)``, ``pumps.iif(x, event)`` and
+``pumps.mcf(x, event)`` are shortcuts, ``total_cif`` sums the causes for the
 overall expected count, and ``pumps.plot()`` draws every cause's fitted
 cumulative intensity on one axes. For example, a confidence interval on the
 shape of the bearing failures:
@@ -1557,14 +1558,14 @@ seed gives the same simulated MCF:
 .. jupyter-execute::
 
     restored_ara = surpyval.from_dict(ara.to_dict())
-    print(restored_ara.mcf([20, 40], seed=1).round(2))
+    print(restored_ara.mcf([20, 40], random_state=1).round(2))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(restored_ara.mcf([20, 40], seed=1),
-                       ara.mcf([20, 40], seed=1))
+    assert np.allclose(restored_ara.mcf([20, 40], random_state=1),
+                       ara.mcf([20, 40], random_state=1))
 
 Use ``to_json`` / ``from_json`` for a file directly. The likelihood-inference
 state (the fitted data and the log-likelihood) is not serialised, so a reloaded

@@ -128,8 +128,8 @@ def test_cramer_von_mises_reproducible_and_calibrated():
     # A correctly-specified HPP should not be rejected, and the same seed
     # must reproduce the same p-value.
     model = HPP.fit(_events())
-    gof = model.cramer_von_mises(n_boot=50, seed=1)
-    gof2 = model.cramer_von_mises(n_boot=50, seed=1)
+    gof = model.cramer_von_mises(n_boot=50, random_state=1)
+    gof2 = model.cramer_von_mises(n_boot=50, random_state=1)
     assert gof.p_value == gof2.p_value
     assert 0 < gof.p_value <= 1
     assert gof.p_value > 0.05
@@ -144,14 +144,14 @@ def test_cramer_von_mises_rejects_misspecified_model():
     t = np.linspace(1, 40, 40)
     x = (t / 40) ** (1.0 / 3.0) * 4000.0
     model = HPP.fit(x)
-    gof = model.cramer_von_mises(n_boot=50, seed=1)
+    gof = model.cramer_von_mises(n_boot=50, random_state=1)
     assert gof.p_value <= 0.02
 
 
 def test_cramer_von_mises_multi_item_and_cox_lewis():
     x, i, c = _multi_item_data()
     model = CrowAMSAA.fit(x, i=i, c=c)
-    gof = model.cramer_von_mises(n_boot=30, seed=0)
+    gof = model.cramer_von_mises(n_boot=30, random_state=0)
     # Failure-truncated items drop their final event from the statistic.
     assert gof.n_events == 11
     assert gof.n_systems == 3
@@ -163,7 +163,7 @@ def test_cramer_von_mises_multi_item_and_cox_lewis():
     cand = np.sort(rng.uniform(0, T, rng.poisson(lam_max * T)))
     keep = rng.uniform(0, 1, cand.size) < np.exp(0.3 * cand) / lam_max
     cox = CoxLewis.fit(cand[keep], tl=0.0, tr=T)
-    gof = cox.cramer_von_mises(n_boot=30, seed=1)
+    gof = cox.cramer_von_mises(n_boot=30, random_state=1)
     assert gof.p_value > 0.05
 
 

@@ -60,8 +60,8 @@ def test_renewal_round_trip(name):
     # the seeded simulated MCF reproduces exactly (the sampler was rebuilt)
     t = np.array([10.0, 50.0, 100.0])
     assert np.allclose(
-        model.mcf(t, items=300, seed=7),
-        restored.mcf(t, items=300, seed=7),
+        model.mcf(t, items=300, random_state=7),
+        restored.mcf(t, items=300, random_state=7),
     )
 
 
@@ -87,8 +87,8 @@ def test_renewal_json_file(tmp_path):
     restored = RenewalModel.from_json(fp)
     t = np.array([20.0, 80.0])
     assert np.allclose(
-        model.mcf(t, items=200, seed=3),
-        restored.mcf(t, items=200, seed=3),
+        model.mcf(t, items=200, random_state=3),
+        restored.mcf(t, items=200, random_state=3),
     )
 
 

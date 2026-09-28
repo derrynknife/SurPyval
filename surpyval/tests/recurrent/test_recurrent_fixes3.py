@@ -52,7 +52,7 @@ def test_grp_simulated_mcf_is_right_at_long_horizons():
     model = GeneralizedRenewal.fit_from_parameters([10, 3], 1.0)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        mcf = model.mcf([20, 40], items=200, seed=1)
+        mcf = model.mcf([20, 40], items=200, random_state=1)
     assert np.allclose(mcf, [8, 64], rtol=0.1)
 
 
@@ -62,7 +62,7 @@ def test_grp_partial_repair_matches_exact_sampling():
     model = GeneralizedRenewal.fit_from_parameters([10, 3], 0.5)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        mcf = model.mcf(t, items=200, seed=2)
+        mcf = model.mcf(t, items=200, random_state=2)
     # the old sampler gave 77.5 at 70 (exact about 89.6), and stayed
     # there: its curve was flat from 70 on
     assert np.allclose(mcf, truth, rtol=0.05)
@@ -72,7 +72,7 @@ def test_ara_simulated_mcf_is_right_at_long_horizons():
     model = ARA.fit_from_parameters([10, 3], 0.0, m=1)
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        mcf = model.mcf([20, 40], items=200, seed=1)
+        mcf = model.mcf([20, 40], items=200, random_state=1)
     assert np.allclose(mcf, [8, 64], rtol=0.1)
 
 
@@ -81,7 +81,7 @@ def test_nhpp_simulation_does_not_underflow():
     model = CrowAMSAA.from_params([10, 3])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        sim = model.time_terminated_simulation(100, items=200, seed=1)
+        sim = model.time_terminated_simulation(100, items=200, random_state=1)
     assert np.isclose(sim.mcf(100), 1000, rtol=0.05)
 
 
@@ -441,7 +441,7 @@ def test_mcf_is_defined_at_negative_times_inside_a_negative_tl():
 
 def test_simulated_mcf_round_trip_has_no_variance():
     sim = CrowAMSAA.from_params([10, 2]).time_terminated_simulation(
-        20, items=50, seed=1
+        20, items=50, random_state=1
     )
     as_dict = sim.to_dict()
     assert as_dict["var"] is None

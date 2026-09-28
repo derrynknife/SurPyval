@@ -14,6 +14,7 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _on_support,
     _support_from_dict,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
@@ -277,13 +278,15 @@ class NonParametricCounting(SerialisableMixin):
             )
         return np.asarray(self.x, dtype=float), values
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     @keeps_query_shape
     def mcf_cb(
         self,
         x: npt.ArrayLike,
         bound: str = "two-sided",
         interp: str = "step",
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         bound_type: str = "exp",
         dist: str = "z",
     ) -> npt.NDArray:
@@ -308,8 +311,11 @@ class NonParametricCounting(SerialisableMixin):
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         interp : str, optional
             ``"step"`` (the default) or ``"linear"``, as for :meth:`mcf`.
-        confidence : float, optional
-            The confidence level. Defaults to 0.95.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s): a two-sided
+            ``1 - alpha_ci`` interval, or a one-sided bound exceeded with
+            probability ``alpha_ci``. Defaults to 0.05. Keyword only, as
+            are the arguments after it.
         bound_type : str, optional
             ``"exp"`` (the default) for bounds on the log scale,
             :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
@@ -332,7 +338,7 @@ class NonParametricCounting(SerialisableMixin):
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
-                q, bound, interp, confidence, bound_type, dist
+                q, bound, interp, alpha_ci, bound_type, dist
             ),
         )
 
@@ -341,7 +347,7 @@ class NonParametricCounting(SerialisableMixin):
         x: npt.ArrayLike,
         bound: str,
         interp: str,
-        confidence: float,
+        alpha_ci: float,
         bound_type: str,
         dist: str,
     ) -> npt.NDArray:
@@ -362,11 +368,11 @@ class NonParametricCounting(SerialisableMixin):
             )
         x = np.atleast_1d(x)
         if bound in ["upper", "lower"]:
-            stat = norm.ppf(1 - confidence, 0, 1)
+            stat = norm.ppf(alpha_ci, 0, 1)
             if bound == "upper":
                 stat = -stat
         elif bound == "two-sided":
-            stat = norm.ppf((1 - confidence) / 2, 0, 1)
+            stat = norm.ppf(alpha_ci / 2, 0, 1)
             # Row 0 carries the negative multiplier (lower bound), row 1
             # the positive one, so two-sided output is [lower, upper] —
             # it used to be [upper, lower], inconsistent with the
@@ -429,20 +435,24 @@ class NonParametricCounting(SerialisableMixin):
             mcf_cb[invalid] = np.nan
         return mcf_cb
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         plot_bounds: bool = True,
         ax: "Axes | None" = None,
         start: float = 0.0,
     ) -> "Axes":
         """
         Plot the MCF as a step function, with its confidence bounds.
+        The arguments are keyword only.
 
         Parameters
         ----------
-        confidence : float, optional
-            The confidence level of the bounds. Defaults to 0.95.
+        alpha_ci : float, optional
+            The total tail probability of the two-sided bounds: a
+            ``1 - alpha_ci`` interval. Defaults to 0.05.
         plot_bounds : bool, optional
             Whether to draw the bounds (skipped if the model has no
             variance). Defaults to :code:`True`.
@@ -473,16 +483,14 @@ class NonParametricCounting(SerialisableMixin):
         ax.step(x, mcf_hat, where="post", label="MCF")
         if plot_bounds:
             if self.var is not None:
-                cb = self.mcf_cb(
-                    self.x, bound="two-sided", confidence=confidence
-                )
+                cb = self.mcf_cb(self.x, bound="two-sided", alpha_ci=alpha_ci)
                 if start is not None and start < self.x.min():
                     cb = np.vstack([[0.0, 0.0], cb])
                 ax.step(
                     x,
                     cb,
                     where="post",
-                    label=f"{confidence * 100}% Confidence Bounds",
+                    label=f"{(1 - alpha_ci) * 100:g}% Confidence Bounds",
                     color="red",
                 )
         return ax

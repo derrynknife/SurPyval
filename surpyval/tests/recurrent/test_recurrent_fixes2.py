@@ -261,7 +261,7 @@ def test_renewal_cvm_resimulates_time_truncated_items_to_their_window(
         return original_refit(fitted, data)
 
     monkeypatch.setattr(fitter, "_refit", spy)
-    model.cramer_von_mises(n_boot=5, seed=3)
+    model.cramer_von_mises(n_boot=5, random_state=3)
 
     assert simulated
     for data in simulated:

@@ -9,6 +9,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 
 #: Below this cumulative hazard the quantile function is accurate enough to
 #: invert it: ``1 - p = exp(-H)`` then carries a relative error of about
@@ -336,7 +337,7 @@ class RenewalModel(
     The expected number of failures per system by times 20 and 60, by
     simulation:
 
-    >>> model.mcf(np.array([20.0, 60.0]), items=1000, seed=0).round(3)
+    >>> model.mcf(np.array([20.0, 60.0]), items=1000, random_state=0).round(3)
     array([1.296, 4.56 ])
     """
 
@@ -598,8 +599,9 @@ class RenewalModel(
             self.data, test=test, alternative=alternative
         )
 
+    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
-        self, n_boot: int = 200, seed: "int | None" = None
+        self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted imperfect-repair
@@ -626,7 +628,7 @@ class RenewalModel(
 
         n_boot: int, optional
             Number of bootstrap replicates for the p-value. Default is 200.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible p-value.
 
         Returns
@@ -639,7 +641,7 @@ class RenewalModel(
         from surpyval.recurrent import diagnostics
 
         return diagnostics.cramer_von_mises_renewal(
-            self, n_boot=n_boot, seed=seed
+            self, n_boot=n_boot, random_state=random_state
         )
 
     def __repr__(self) -> str:

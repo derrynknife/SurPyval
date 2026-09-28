@@ -38,6 +38,7 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -217,28 +218,35 @@ class CauseSpecificMCF(SerialisableMixin):
         self.support = support
         return self
 
+    @renamed_arguments(cause="event")
     def mcf(
-        self, x: ArrayLike, cause: Any, interp: str = "step"
+        self, x: ArrayLike, event: Any, interp: str = "step"
     ) -> np.ndarray:
-        """Cause-specific MCF evaluated at ``x`` for the given ``cause``
-        (see ``NonParametricCounting.mcf``, and :meth:`set_support` for its
-        values outside the data)."""
-        return self.models[cause].mcf(x, interp=interp)
+        """Cause-specific MCF evaluated at ``x`` for the event type
+        ``event`` (see ``NonParametricCounting.mcf``, and
+        :meth:`set_support` for its values outside the data)."""
+        return self.models[event].mcf(x, interp=interp)
 
-    def mcf_cb(self, x: ArrayLike, cause: Any, **kwargs: Any) -> Any:
-        """Confidence bounds on the cause-specific MCF for ``cause``."""
-        return self.models[cause].mcf_cb(x, **kwargs)
+    @renamed_arguments(cause="event", confidence=("alpha_ci", lambda c: 1 - c))
+    def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
+        """Confidence bounds on the cause-specific MCF for the event type
+        ``event``; ``kwargs`` are those of
+        ``NonParametricCounting.mcf_cb``."""
+        return self.models[event].mcf_cb(x, **kwargs)
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         plot_bounds: bool = True,
         ax: Any = None,
     ) -> Any:
         """Overlay the MCF of every cause on a single axis.
 
-        With ``plot_bounds`` each cause's pointwise ``confidence`` bounds
-        are drawn as dashed steps in the colour of its MCF.
+        With ``plot_bounds`` each cause's pointwise two-sided
+        ``1 - alpha_ci`` bounds are drawn as dashed steps in the colour of
+        its MCF. The arguments are keyword only.
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -250,7 +258,7 @@ class CauseSpecificMCF(SerialisableMixin):
                 model.x, model.mcf_hat, where="post", label=str(cause)
             )
             if plot_bounds and model.var is not None:
-                cb = model.mcf_cb(model.x, confidence=confidence)
+                cb = model.mcf_cb(model.x, alpha_ci=alpha_ci)
                 ax.step(
                     model.x,
                     cb,

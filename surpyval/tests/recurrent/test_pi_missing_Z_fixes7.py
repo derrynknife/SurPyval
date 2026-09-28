@@ -42,20 +42,24 @@ def model(request):
 
 
 CALLS = {
-    "mcf": lambda m, Z: m.mcf([5.0, 10.0], Z, items=20, seed=1),
+    "mcf": lambda m, Z: m.mcf([5.0, 10.0], Z, items=20, random_state=1),
     "time_terminated_simulation": lambda m, Z: m.time_terminated_simulation(
-        10.0, Z, items=5, seed=1
+        10.0, Z, items=5, random_state=1
     ),
     "time_terminated_simulation_data": (
         lambda m, Z: m.time_terminated_simulation_data(
-            10.0, Z, items=5, seed=1
+            10.0, Z, items=5, random_state=1
         )
     ),
     "count_terminated_simulation": (
-        lambda m, Z: m.count_terminated_simulation(3, Z, items=5, seed=1)
+        lambda m, Z: m.count_terminated_simulation(
+            3, Z, items=5, random_state=1
+        )
     ),
     "count_terminated_simulation_data": (
-        lambda m, Z: m.count_terminated_simulation_data(3, Z, items=5, seed=1)
+        lambda m, Z: m.count_terminated_simulation_data(
+            3, Z, items=5, random_state=1
+        )
     ),
 }
 
@@ -77,12 +81,12 @@ def test_missing_Z_raises_naming_Z(model, call, Z):
 @pytest.mark.parametrize("Z", [[0.1, 0.5, 3.0], [[0.1, 0.5], [0.2, 0.3]]])
 def test_Z_of_the_wrong_shape_raises_naming_Z(model, Z):
     with pytest.raises(ValueError, match="one unit's covariate vector"):
-        model.mcf([5.0, 10.0], Z, items=20, seed=1)
+        model.mcf([5.0, 10.0], Z, items=20, random_state=1)
 
 
 def test_complete_Z_still_simulates(model):
-    flat = model.mcf([5.0, 10.0], [0.1, 0.5], items=200, seed=1)
-    row = model.mcf([5.0, 10.0], [[0.1, 0.5]], items=200, seed=1)
+    flat = model.mcf([5.0, 10.0], [0.1, 0.5], items=200, random_state=1)
+    row = model.mcf([5.0, 10.0], [[0.1, 0.5]], items=200, random_state=1)
     np.testing.assert_array_equal(flat, row)
     # The simulated MCF tracks the closed-form cif
     cif = model.cif(np.array([5.0, 10.0]), np.array([0.1, 0.5]))
