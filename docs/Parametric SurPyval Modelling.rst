@@ -941,9 +941,10 @@ Sometimes there are no unit-level data at all, only a curve: a failure
 curve read off a supplier's report, say. ``fit_from_ecdf(x, F)`` fits the
 distribution to the points of such a curve by probability plotting -- the
 same straight line ``how='MPP'`` draws, but through the CDF values you
-give. ``fit_from_non_parametric`` does the same with a fitted
-non-parametric model, so it matches ``how='MPP'`` with that estimator as
-the heuristic:
+give (each ``F`` must lie in [0, 1], one per ``x``, or it raises a
+``ValueError``). ``fit_from_non_parametric`` does the same with a fitted
+non-parametric model, through its failure times only, so it matches
+``how='MPP'`` with that estimator as the heuristic, on censored data too:
 
 .. jupyter-execute::
 
@@ -954,9 +955,11 @@ the heuristic:
 
     np.random.seed(1)
     x = surv.Weibull.random(60, 10., 2.)
-    km = surv.KaplanMeier.fit(x)
+    c = (x > 15).astype(int)   # right censor at 15
+    x = np.minimum(x, 15.)
+    km = surv.KaplanMeier.fit(x, c)
     print(surv.Weibull.fit_from_non_parametric(km).params)
-    print(surv.Weibull.fit(x, how='MPP', heuristic='Kaplan-Meier').params)
+    print(surv.Weibull.fit(x, c, how='MPP', heuristic='Kaplan-Meier').params)
 
 .. jupyter-execute::
     :hide-code:
@@ -964,7 +967,7 @@ the heuristic:
 
     assert np.allclose(
         surv.Weibull.fit_from_non_parametric(km).params,
-        surv.Weibull.fit(x, how='MPP', heuristic='Kaplan-Meier').params)
+        surv.Weibull.fit(x, c, how='MPP', heuristic='Kaplan-Meier').params)
 
 A model made this way has all the distribution functions, but it holds no
 data, so it has no likelihood, information criteria or confidence bounds.
@@ -2114,10 +2117,17 @@ the names of the parameters, the bounds of the parameters, and the distribution 
     support = (0, np.inf)
     Gompertz = surv.CustomDistribution(name, Hf, param_names, bounds, support)
 
-The cumulative hazard function must have the signature ``(x, *params)``, and
-the names ``gamma`` and ``f0`` are reserved for the offset and zero-inflation
-parameters (a parameter may be called ``p``: the limited-failure proportion of
-such a model is then ``lfp_p``, as for the Geometric). Everything else is derived:
+The cumulative hazard function takes the time and then the parameters, either
+as a star-argument, ``(x, *params)`` (of any name), or one named argument per
+parameter, ``(x, nu, b)``. The names ``gamma`` and ``f0`` are reserved for the
+offset and zero-inflation parameters, and a fitted model exposes each parameter
+as an attribute (``model.nu``), so a name that is already an attribute of a
+model -- ``k``, ``dist``, ``data``, ``method``, ``sf`` and so on -- is refused
+with a ``ValueError`` that lists them all (a parameter may be called ``p``: the
+limited-failure proportion of such a model is then ``lfp_p``, as for the
+Geometric). The name of the distribution is how a saved model finds it again
+(see below), so constructing a second one under a name already used in the
+session warns that it replaces the first. Everything else is derived:
 the hazard and the density are obtained by automatically differentiating the
 cumulative hazard, and the survival function is :math:`e^{-H(x)}` (see
 :doc:`CustomDistribution API <univariate/custom>`).
