@@ -39,9 +39,12 @@ tested promise like any other. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-calibration`` runs the statistical calibration studies (confidence
-interval coverage, test size and power, estimator bias; about 15 minutes on
+interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which also run nightly against ``develop`` from
-``.github/workflows/nightly.yml``.
+``.github/workflows/nightly.yml``. They include ``test_refit_registry.py``,
+which draws data from every model in the conformance registry that can
+simulate from itself and checks that the refits recover it (#397); a newly
+registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
 derandomized search by default (under a minute);
 ``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the nightly

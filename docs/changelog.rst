@@ -4,6 +4,17 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Every model is refitted to data drawn from itself (#397).** A new
+  nightly study, ``calibration/test_refit_registry.py``, takes each model
+  in the conformance registry that can simulate (120 of 128; the rest are
+  excluded with a reason), draws a few hundred units from its fitted
+  fixture 20-100 times, refits, and requires the mean estimate within
+  ``3/sqrt(reps) + 0.2`` standard deviations of the truth and the mean
+  curve within 3 Monte Carlo standard errors + 0.02. A likelihood that
+  ignored delayed entry shows as a 1.44 sd bias against a tolerance of
+  0.5. It found that ``random()`` of an additive-hazards model on a
+  Normal, Gumbel or Logistic baseline never draws below 0, putting that
+  mass (3.6% for one fixture) at 2.7e-20 instead (#441).
 - **Added: ``set_support`` for the non-parametric estimates.** Outside the
   data a non-parametric estimate only had a convention: the step curves
   started at 1 and held their last value however far away, while the

@@ -96,7 +96,10 @@ jobs:
         run: python -m sphinx -b html -W --keep-going docs docs/_build/html
 
   # The simulation studies in surpyval/tests/calibration: confidence
-  # interval coverage, test size and power, estimator bias. They are
+  # interval coverage, test size and power, estimator bias, and the
+  # registry-wide simulate-and-refit study (test_refit_registry.py, #397:
+  # every model that can simulate recovers its own parameters and curve).
+  # They are
   # skipped unless --run-calibration is given (see conftest.py). About ten
   # to twenty minutes on four cores; each study has a fixed seed, so a
   # failure is a change in behaviour, not noise. ``-rP`` prints every

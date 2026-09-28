@@ -123,7 +123,8 @@ Estimation
     optima of a likelihood the test computes itself from the fitted
     model's functions (``properties/test_parametric.py``), and the
     reference tests compare fits with R, lifelines and scikit-survival;
-    other families rely on the reference tests; known gap #392.
+    ``calibration/test_refit_registry.py`` refits every registered model
+    to data drawn from itself (nightly); known gap #392.
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
