@@ -741,7 +741,7 @@ intervals, so the fit is identical:
     print(tl_df.head(5))
 
     model_tl = CoxPH.fit_tvc_timeline_from_df(
-        tl_df, i_col='id', time_col='time', Z_cols='stress', c_col='c',
+        tl_df, i_col='id', x_col='time', Z_cols='stress', c_col='c',
     )
     print('same fit:', np.allclose(model_tl.beta, model.beta))
 

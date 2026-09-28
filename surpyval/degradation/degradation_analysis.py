@@ -52,7 +52,7 @@ from surpyval.utils.linalg import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
-from ._argument_order import cb_is_old, old_order
+from ._argument_order import always_old, cb_is_old, old_order
 from ._bounds import (
     analytic_cb,
     bootstrap_cb,
@@ -1278,15 +1278,21 @@ class DegradationModel(SerialisableMixin):
             x_arr, y_arr, Z=Z, Z_future=Z_future
         ) - float(x_arr.max())
 
+    @old_order(
+        ("alpha_ci", "n_samples", "random_state", "Z", "Z_future"),
+        always_old,
+        leading=2,
+    )
     def predict_rul(
         self,
         x: npt.ArrayLike,
         y: npt.ArrayLike,
+        *,
+        Z: Any = None,
+        Z_future: Any = None,
         alpha_ci: float = 0.05,
         n_samples: int = 10_000,
         random_state: "int | None" = None,
-        Z: Any = None,
-        Z_future: Any = None,
     ) -> RULPrediction:
         """
         Bayesian remaining-useful-life prediction for a new unit.
@@ -1315,16 +1321,6 @@ class DegradationModel(SerialisableMixin):
             One or more measurements are required.
         y : array like
             The new unit's degradation measurements.
-        alpha_ci : float, optional
-            Significance level for the equal-tailed credible
-            intervals, between 0 and 1. Defaults to 0.05 (95%
-            intervals).
-        n_samples : int, optional
-            Number of Monte Carlo posterior samples (at least one).
-            Defaults to 10,000.
-        random_state : int or numpy.random.Generator, optional
-            Seed or generator for reproducible sampling. ``None`` (the default)
-            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like, optional
             The stress the new unit runs at. Required for a model whose
             path parameters were modelled against stress (fitted with
@@ -1348,6 +1344,16 @@ class DegradationModel(SerialisableMixin):
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
             whose time zero is the last measurement. Defaults to holding the
             last stress. Refused for other models.
+        alpha_ci : float, optional
+            Significance level for the equal-tailed credible
+            intervals, between 0 and 1. Defaults to 0.05 (95%
+            intervals).
+        n_samples : int, optional
+            Number of Monte Carlo posterior samples (at least one).
+            Defaults to 10,000.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible sampling. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
 
         Returns
         -------
@@ -1739,11 +1745,13 @@ class DegradationModel(SerialisableMixin):
         u = rng.uniform(size=size)
         return np.asarray(self.life_model.qf(u), dtype=float)
 
+    @old_order(("random_state", "Z"), always_old)
     def induced_life(
         self,
         n_samples: int = 10_000,
-        random_state: "int | None" = None,
+        *,
         Z: Any = None,
+        random_state: "int | None" = None,
     ) -> InducedFailureDistribution:
         """
         The population failure-time distribution induced by the path model
@@ -1762,9 +1770,6 @@ class DegradationModel(SerialisableMixin):
         ----------
         n_samples : int, optional
             Number of Monte-Carlo path-parameter draws. Default 10000.
-        random_state : int or numpy.random.Generator, optional
-            Seed or generator for a reproducible result. ``None`` (the default)
-            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like, optional
             The stress to induce the life at. Required for a model whose
             path parameters were modelled against stress (fitted with
@@ -1778,6 +1783,9 @@ class DegradationModel(SerialisableMixin):
             reference-stress failure time is read along that stress's
             clock. The returned distribution records a constant stress
             row as its ``stress``; under a profile it records none.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible result. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
 
         Returns
         -------

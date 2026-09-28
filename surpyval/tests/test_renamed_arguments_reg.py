@@ -27,6 +27,7 @@ import pytest
 import surpyval as sp
 from surpyval import AcceleratedLife, Power, Weibull
 from surpyval.univariate.competing_risks import (
+    CompetingRisks,
     CompetingRisksProportionalHazards,
     FineGray,
 )
@@ -128,9 +129,18 @@ def _tvc_df(fitter, **kw):
 
 def _timeline_df(fitter, **kw):
     _, tl = _tvc()
+    if "time_col" not in kw:
+        kw["x_col"] = "time"
+    if "id_col" not in kw:
+        kw.setdefault("i_col", "id")
     return fitter.fit_tvc_timeline_from_df(
-        tl, time_col="time", Z_cols="z", c_col="c", **kw
+        tl, Z_cols="z", c_col="c", **kw
     ).params
+
+
+def _cr_np(**kw):
+    x, _, e = _cr()
+    return CompetingRisks.fit(x, e, **kw).sf(np.arange(1.0, 8.0))
 
 
 def _crph(**kw):
@@ -223,6 +233,24 @@ RENAMES = [
         _crph_df,
         {"how": "Fine-Gray"},
         {"model": "Fine-Gray"},
+    ),
+    (
+        "CoxPH.fit_tvc_timeline_from_df(time_col=)",
+        lambda **kw: _timeline_df(sp.CoxPH, **kw),
+        {"time_col": "time"},
+        {"x_col": "time"},
+    ),
+    (
+        "WeibullPH.fit_tvc_timeline_from_df(time_col=)",
+        lambda **kw: _timeline_df(sp.WeibullPH, **kw),
+        {"time_col": "time"},
+        {"x_col": "time"},
+    ),
+    (
+        "CompetingRisks.fit",
+        _cr_np,
+        {"method": "Kaplan-Meier"},
+        {"how": "Kaplan-Meier"},
     ),
     ("FineGray.fit", _fine_gray, {"cause": "b"}, {"event": "b"}),
     ("gray_test", _gray, {"cause": "b"}, {"event": "b"}),
@@ -403,3 +431,15 @@ def test_fitter_random_takes_random_state():
     a = sp.WeibullPH.random(4, [[1.0]], *model.params, random_state=5)
     b = model.random(4, [[1.0]], random_state=5)
     np.testing.assert_array_equal(a[0], b[0])
+
+
+def test_competing_risks_how_attribute_and_deprecated_method():
+    x, _, e = _cr()
+    model = CompetingRisks.fit(x, e, how="Kaplan-Meier")
+    assert model.how == "Kaplan-Meier"
+    assert "method" not in dir(model)
+    with pytest.warns(DeprecationWarning, match="use .how"):
+        assert model.method == "Kaplan-Meier"
+    # Saved under its old key, so older files still load.
+    assert model.to_dict()["method"] == "Kaplan-Meier"
+    assert CompetingRisks.from_dict(model.to_dict()).how == "Kaplan-Meier"

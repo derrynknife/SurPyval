@@ -22,7 +22,7 @@ def test_single_cause_km_cif_reaches_one():
     # is 1 - KM, which reaches exactly 1 at the last event time.
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     e = np.array(["a"] * 5)
-    cr = CompetingRisks.fit(x=x, e=e, method="Kaplan-Meier")
+    cr = CompetingRisks.fit(x=x, e=e, how="Kaplan-Meier")
     assert cr.cif(np.array([5.0]), "a")[0] == pytest.approx(1.0, abs=1e-12)
 
 
@@ -39,7 +39,7 @@ def test_two_cause_cifs_sum_to_one_minus_km():
     e = np.array(
         [ev[i] if not cens[i] else None for i in range(n)], dtype=object
     )
-    cr = CompetingRisks.fit(x=tt, e=e, c=c, method="Kaplan-Meier")
+    cr = CompetingRisks.fit(x=tt, e=e, c=c, how="Kaplan-Meier")
 
     q = np.array([2.0, 5.0, 10.0, 14.0])
     total = cr.cif(q, "a") + cr.cif(q, "b")
@@ -86,7 +86,7 @@ def test_the_requested_survival_estimator_is_reported():
     e = np.where(t1 < t2, 1, 2)
     q = np.array([0.5, 1.0, 2.0])
 
-    km = CompetingRisks.fit(x, e, method="Kaplan-Meier")
+    km = CompetingRisks.fit(x, e, how="Kaplan-Meier")
     na = CompetingRisks.fit(x, e)
     assert np.allclose(km.sf(q), KaplanMeier.fit(x).sf(q))
     assert np.allclose(na.sf(q), NelsonAalen.fit(x).sf(q))
@@ -98,5 +98,5 @@ def test_the_requested_survival_estimator_is_reported():
     assert np.allclose(km.sf(km.x, 1), net)
 
     restored = CompetingRisks.from_dict(json.loads(json.dumps(km.to_dict())))
-    assert restored.method == "Kaplan-Meier"
+    assert restored.how == "Kaplan-Meier"
     assert np.allclose(restored.sf(q, 2), km.sf(q, 2))

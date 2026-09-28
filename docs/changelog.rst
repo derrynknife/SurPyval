@@ -20,12 +20,16 @@ v0.21.0 (28 September 2026)
   - Regression and competing risks: ``CoxPH.fit``, ``fit_from_df`` and
     ``fit_tvc*`` take ``tie_method`` (was ``method``; ``CoxPH.baseline`` and
     the competing-risks Cox already did); the ``fit_tvc*_from_df`` methods
-    take ``i_col`` (was ``id_col``: the data argument is ``i``);
+    take ``i_col`` (was ``id_col``: the data argument is ``i``) and
+    ``fit_tvc_timeline_from_df`` takes ``x_col`` (was ``time_col``);
     ``BuckleyJamesModel.bootstrap_ci`` takes ``random_state`` (was
     ``seed``); ``CompetingRisksProportionalHazards.fit`` / ``fit_from_df``
     take ``model="Cox"`` or ``"Fine-Gray"`` (was ``how``, the estimation
     method everywhere else; the fitted ``.how`` is ``.model``); and
-    ``FineGray.fit`` and ``gray_test`` take ``event`` (was ``cause``).
+    ``FineGray.fit`` and ``gray_test`` take ``event`` (was ``cause``). The
+    non-parametric ``CompetingRisks.fit`` / ``fit_from_df`` choose their
+    survival estimator with ``how`` (was ``method``; the fitted
+    ``.method`` is ``.how``).
   - Recurrent events: ``NonParametricCounting.mcf_cb`` and ``.plot``,
     ``CauseSpecificMCF.mcf_cb`` and ``.plot``, and the parametric and
     proportional-intensity ``plot`` take ``alpha_ci=0.05`` (was
@@ -42,7 +46,13 @@ v0.21.0 (28 September 2026)
     ``median_degradation``, ``degradation_quantile``, whose probability is
     ``p``, not ``q``). ``Z`` comes straight after the query:
     ``DegradationModel.cb(x, Z, on, ...)`` and the process models'
-    ``random(size, Z, random_state)``, as ``DegradationModel.random``. A
+    ``random(size, Z, random_state)``, as ``DegradationModel.random``;
+    ``DegradationModel.induced_life(n_samples, *, Z, random_state)``,
+    ``DegradationModel.predict_rul(x, y, *, Z, Z_future, alpha_ci,
+    n_samples, random_state)`` and the process models'
+    ``predict_rul(current_degradation, *, Z, alpha_ci)`` take ``Z`` first
+    and the rest by keyword, so any argument they are given by position
+    after the query is read in the old order, with a warning. A
     call in the old positional order (a string second argument to ``cb``,
     or two positional arguments after ``size`` in ``random``, read as
     ``(random_state, Z)``) still works with a warning; ``random(size, v)``

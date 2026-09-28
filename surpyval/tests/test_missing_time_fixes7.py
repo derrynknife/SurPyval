@@ -65,7 +65,7 @@ def test_nonparametric_band_at_a_missing_time():
 
 @pytest.mark.parametrize("method", ["Nelson-Aalen", "Kaplan-Meier"])
 def test_competing_risks_at_a_missing_time(method):
-    model = CompetingRisks.fit(X, E, C, method=method)
+    model = CompetingRisks.fit(X, E, C, how=method)
     _check(model.cif(T, event=1), model.cif(T[1:], event=1))
     _check(model.sf(T, event=1), model.sf(T[1:], event=1))
     _check(model.sf(T), model.sf(T[1:]))

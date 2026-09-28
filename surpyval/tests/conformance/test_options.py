@@ -864,14 +864,17 @@ def _covariates_second(sigs):
 def _how(sigs):
     # how= is the estimation method, defaulting to maximum likelihood. A
     # copula's default is the two-stage inference-functions-for-margins
-    # estimate (documented; MLE is the joint alternative).
+    # estimate (documented; MLE is the joint alternative), and the
+    # non-parametric competing risks' is its Nelson-Aalen survival (it
+    # has no likelihood).
+    own = {"Copula": "IFM", "CompetingRisks": "Nelson-Aalen"}
     return [
         f"{o}.{m}(how={p.default!r})"
         for o, m, ps in sigs
         for p in ps
         if p.name == "how"
         and p.default != "MLE"
-        and not (o.endswith("Copula") and p.default == "IFM")
+        and not any(o.endswith(k) and p.default == v for k, v in own.items())
     ]
 
 
@@ -908,7 +911,11 @@ CONVENTIONS = {
         _spelled("event", "cause"),
     ),
     "Z": ("covariates are Z, the second argument", _covariates_second),
-    "how": ("how= is the estimation method, default 'MLE'", _how),
+    "how": (
+        "how= is the estimation method, default 'MLE' where there is a "
+        "likelihood",
+        _how,
+    ),
     "id column": (
         "the item-id column of a data frame has one spelling",
         _spelled("i_col", "id_col"),

@@ -282,7 +282,7 @@ CIFs sum to the all-cause failure probability.
 
 .. jupyter-execute::
 
-    km_model = CompetingRisks.fit(x, e, method="Kaplan-Meier")
+    km_model = CompetingRisks.fit(x, e, how="Kaplan-Meier")
     print("same CIFs          :", np.allclose(km_model.cif(t, "wear"), model.cif(t, "wear")))
     print("sf (Kaplan-Meier)  :", np.round(km_model.sf(t), 4))
     print("sf (Nelson-Aalen)  :", np.round(model.sf(t), 4))

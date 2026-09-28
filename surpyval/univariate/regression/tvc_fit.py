@@ -244,12 +244,12 @@ class TVCFitMixin:
         model.feature_names = cols
         return model
 
-    @renamed_arguments(id_col="i_col")
+    @renamed_arguments(id_col="i_col", time_col="x_col")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",
         i_col: str,
-        time_col: str,
+        x_col: str,
         Z_cols: str | list[str],
         c_col: str,
         n_col: str | None = None,
@@ -257,7 +257,7 @@ class TVCFitMixin:
     ) -> "ParametricRegressionModel":
         """Fit a covariate timeline from a DataFrame.
 
-        ``i_col``, ``time_col``, ``c_col`` and ``n_col`` name the columns
+        ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns
         passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``;
         ``Z_cols`` is a column name or a list of them, recorded on the model
         as ``feature_names``. Other keyword arguments go to ``fit``
@@ -267,7 +267,7 @@ class TVCFitMixin:
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc_timeline(
             df[i_col].to_numpy(),
-            df[time_col].to_numpy(),
+            df[x_col].to_numpy(),
             df[cols].to_numpy(),
             df[c_col].to_numpy(),
             None if n_col is None else df[n_col].to_numpy(),

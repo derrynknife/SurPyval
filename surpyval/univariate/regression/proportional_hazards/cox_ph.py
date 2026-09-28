@@ -1656,12 +1656,12 @@ class CoxPH_:
             tol=tol,
         )
 
-    @renamed_arguments(id_col="i_col", method="tie_method")
+    @renamed_arguments(id_col="i_col", time_col="x_col", method="tie_method")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",
         i_col: str,
-        time_col: str,
+        x_col: str,
         Z_cols: str | list[str],
         c_col: str,
         n_col: str | None = None,
@@ -1670,14 +1670,14 @@ class CoxPH_:
         """
         Fit a timeline TVC Cox model from a DataFrame.
 
-        See :meth:`fit_tvc_timeline`; ``time_col`` names the change-point time
-        column, ``Z_cols`` the covariate column(s) and ``c_col`` the terminal
-        event / censoring column (``0`` event, ``1`` censored).
+        See :meth:`fit_tvc_timeline`; ``x_col`` names the change-point time
+        column (``x``), ``Z_cols`` the covariate column(s) and ``c_col`` the
+        terminal event / censoring column (``0`` event, ``1`` censored).
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc_timeline(
             i=df[i_col].to_numpy(),
-            x=df[time_col].to_numpy(),
+            x=df[x_col].to_numpy(),
             Z=df[cols].to_numpy(),
             c=df[c_col].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),

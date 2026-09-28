@@ -1495,7 +1495,7 @@ def _competing_risks():
             model_class="surpyval.univariate.competing_risks.CompetingRisks",
             interface=CAUSES,
             data=cr_data,
-            fit=_fit(cr.CompetingRisks, method=method),
+            fit=_fit(cr.CompetingRisks, how=method),
             functions=("sf", "ff", "Hf"),
             event_functions=("cif",),
             events=("a", "b"),
@@ -2330,7 +2330,7 @@ def _estimators(case):
     if name == "CompetingRisks[Nelson-Aalen]":
         methods = ("Nelson-Aalen", "Kaplan-Meier")
         return (
-            {"method": methods},
+            {"how": methods},
             {},
             functools.partial(_cr_sample, with_Z=False),
         )
