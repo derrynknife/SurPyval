@@ -166,12 +166,12 @@ The survival function ``sf``, failure function ``ff`` and cumulative hazard ``Hf
 
 ``interp='linear'`` (or ``'cubic'``, a shape-preserving interpolant) joins the estimates at the observed values instead; it is ``nan`` outside the observed range because there is nothing to interpolate between. Interpolation can make a plot easier to read but is not part of the estimate: the data say nothing about the shape of the curve between observations.
 
-Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_bounds(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` follow the same rule. The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_bounds`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
+Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` follow the same rule. The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
 
 .. jupyter-execute::
 
     bounded = surv.KaplanMeier.fit([1, 2, 2, 3, 5, 6], c=[0, 0, 0, 0, 0, 1])
-    bounded = bounded.set_bounds(0, 10)
+    bounded = bounded.set_support(0, 10)
     t = [-1, 0, 0.5, 4, 8, 10, 11]
     print('support:  ', bounded.support)
     print('sf:       ', bounded.sf(t).round(4))
@@ -257,7 +257,7 @@ The options are:
     print('outside data: ', model.cb([0.5, 9]))
 
 The bounds on ``ff`` are one minus those on ``sf`` (swapped so the lower is still first), and those
-on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Outside the range of the data the bounds are ``nan`` (unless the model has bounds from ``set_bounds``, above). The formulas are in the section *From a variance to confidence bounds* of :doc:`Non-Parametric Estimation`. (``cb()`` also takes ``dist``, but only its default ``'z'`` is accepted; for small samples use ``bootstrap_cb()``, below.)
+on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below zero, which is impossible for a probability and the reason ``'exp'`` is the default. At 8, the last value, the survival estimate is 0 and Greenwood's variance is undefined, so the lower bound is set to 0 and the upper bound to the last finite one (the upper bound at 5). Outside the range of the data the bounds are ``nan`` (unless the model has bounds from ``set_support``, above). The formulas are in the section *From a variance to confidence bounds* of :doc:`Non-Parametric Estimation`. (``cb()`` also takes ``dist``, but only its default ``'z'`` is accepted; for small samples use ``bootstrap_cb()``, below.)
 
 .. jupyter-execute::
     :hide-code:

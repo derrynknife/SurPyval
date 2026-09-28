@@ -292,15 +292,15 @@ CIFs sum to the all-cause failure probability.
 Like the single-cause step estimates, every function starts at its initial
 value before the first observed time (``sf`` 1, the others 0) and holds its
 last value after the last one, however far from the data. To give the
-estimate an explicit range instead, call ``set_bounds(lower, upper)``: the
+estimate an explicit range instead, call ``set_support(lower, upper)``: the
 functions keep that convention only within ``[lower, upper]`` and are ``nan``
 outside it. The bounds must contain the observed times; ``lower`` may be
-negative and either bound infinite. ``set_bounds`` returns the model, and
+negative and either bound infinite. ``set_support`` returns the model, and
 ``to_dict`` saves the bounds with it.
 
 .. jupyter-execute::
 
-    bounded = CompetingRisks.fit(x, e).set_bounds(0, 2 * x.max())
+    bounded = CompetingRisks.fit(x, e).set_support(0, 2 * x.max())
     q = [-1, 0, 1.5 * x.max(), 3 * x.max()]
     print("bounded CIF wear :", np.round(bounded.cif(q, "wear"), 4))
     print("CIF wear         :", np.round(model.cif(q, "wear"), 4))

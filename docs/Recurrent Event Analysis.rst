@@ -182,7 +182,7 @@ is because when doing non-parametric analysis we make no assumptions about the
 shape of the curve and cannot therefore extrapolate beyond the last observed event.
 SurPyval returns ``nan`` for times beyond the last observed time (the latest
 event, end-of-observation row or right-truncation time of any item), unless
-you give the estimate an explicit support with ``set_bounds(lower, upper)``,
+you give the estimate an explicit support with ``set_support(lower, upper)``,
 which holds the last value up to ``upper`` -- your assumption, not the data's
 (see :doc:`Recurrent Event Modelling with SurPyval`). Two further
 assumptions are worth stating:

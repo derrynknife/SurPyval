@@ -1,4 +1,4 @@
-"""``CompetingRisks.set_bounds``: an explicit support for the
+"""``CompetingRisks.set_support``: an explicit support for the
 non-parametric competing-risks estimate (principle 11)."""
 
 import copy
@@ -36,15 +36,15 @@ def model(request):
     return CompetingRisks.fit(X, E, method=request.param)
 
 
-def test_set_bounds_chains_and_a_fit_has_none(model):
+def test_set_support_chains_and_a_fit_has_none(model):
     assert model.support is None
-    assert model.set_bounds(0, 20) is model
+    assert model.set_support(0, 20) is model
     assert model.support == (0.0, 20.0)
 
 
 @pytest.mark.parametrize("fname, event", _calls())
 def test_every_region(model, fname, event):
-    bounded = copy.deepcopy(model).set_bounds(-5.0, 20.0)
+    bounded = copy.deepcopy(model).set_support(-5.0, 20.0)
     inside = np.linspace(1.0, 10.0, 19)
     np.testing.assert_array_equal(
         _f(bounded, fname, inside, event), _f(model, fname, inside, event)
@@ -59,7 +59,7 @@ def test_every_region(model, fname, event):
 
 
 def test_infinite_bounds(model):
-    bounded = copy.deepcopy(model).set_bounds(-np.inf, np.inf)
+    bounded = copy.deepcopy(model).set_support(-np.inf, np.inf)
     np.testing.assert_array_equal(
         bounded.sf([-np.inf, np.inf]), [1.0, model.sf(10.0)[0]]
     )
@@ -69,13 +69,13 @@ def test_infinite_bounds(model):
 
 
 def test_unbounded_holds_its_value_forever(model):
-    # What set_bounds changes: without it the estimate holds everywhere.
+    # What set_support changes: without it the estimate holds everywhere.
     assert model.cif(1e9, "a")[0] == model.cif(10.0, "a")[0]
     assert model.sf(-1e9)[0] == 1.0
 
 
 def test_no_raw_numpy_warning(model):
-    bounded = copy.deepcopy(model).set_bounds(-np.inf, 30)
+    bounded = copy.deepcopy(model).set_support(-np.inf, 30)
     q = np.array([-np.inf, -1.0, 1.0, 5.5, 10.0, 30.0, 31.0, np.inf, np.nan])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
@@ -86,14 +86,14 @@ def test_no_raw_numpy_warning(model):
 def test_negative_times():
     x = np.array([-5.0, -3.0, -1.0, 0.0, 2.0])
     model = CompetingRisks.fit(x, ["a", "b", None, "a", "b"])
-    bounded = copy.deepcopy(model).set_bounds(-10, 5)
+    bounded = copy.deepcopy(model).set_support(-10, 5)
     np.testing.assert_array_equal(
         bounded.cif([-11, -10, -6, 3, 5, 6], "a"),
         [np.nan, 0.0, 0.0, model.cif(2.0, "a")[0], model.cif(2.0, "a")[0]]
         + [np.nan],
     )
     with pytest.raises(ValueError, match="first time"):
-        model.set_bounds(-4, 5)
+        model.set_support(-4, 5)
 
 
 @pytest.mark.parametrize(
@@ -108,13 +108,13 @@ def test_negative_times():
 def test_invalid_bounds_are_refused(lower, upper, match):
     model = CompetingRisks.fit(X, E)
     with pytest.raises(ValueError, match=match):
-        model.set_bounds(lower, upper)
+        model.set_support(lower, upper)
     assert model.support is None
 
 
 @pytest.mark.parametrize("support", [(0.0, 20.0), (-np.inf, np.inf)])
 def test_serialisation_round_trip(model, support):
-    bounded = copy.deepcopy(model).set_bounds(*support)
+    bounded = copy.deepcopy(model).set_support(*support)
     d = bounded.to_dict()
     assert d["schema"] == 2
     text = json.dumps(d, allow_nan=False)

@@ -4,20 +4,27 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
-- **Added: ``set_bounds`` for the non-parametric estimates.** Outside the
+- **Added: ``set_support`` for the non-parametric estimates.** Outside the
   data a non-parametric estimate only had a convention: the step curves
   started at 1 and held their last value however far away, while the
   interpolated forms, the confidence bounds and the mean cumulative
   functions were NaN. ``KaplanMeier``, ``NelsonAalen``,
   ``FlemingHarrington`` and ``Turnbull`` models, ``CompetingRisks`` (both
   methods), ``NonParametricCounting`` and ``CauseSpecificMCF`` now take
-  ``model.set_bounds(lower, upper)``: every function, every ``interp`` and
+  ``model.set_support(lower, upper)``: every function, every ``interp`` and
   the pointwise bounds are then at their start value (``sf`` 1, the rest
   0) from ``lower`` to the first observed value, hold the last value up to
   ``upper``, and are NaN outside. Negative and infinite bounds are allowed
   (the variable need not be time). The bounds are the model's ``support``,
   as for the parametric models, and are saved by ``to_dict`` (schema 2).
   Without the call nothing changes.
+- **Fixed: a failing non-parametric call no longer silences numpy for the
+  whole process.** ``cb``, ``R_cb``, ``band`` and the Turnbull fit turned
+  numpy's floating-point warnings off with ``np.seterr`` and back on
+  afterwards; a call that raised in between -- ``cb(bound_type="bogus")``,
+  an unknown ``interp``, ``band(alpha_ci=2.0)`` -- left them off for every
+  later computation in the session. They now use ``np.errstate``, which
+  restores the state however the call ends.
 - **Fixed: cubic non-parametric curves no longer dip below 0 (#417).** At
   the last time of a Kaplan-Meier estimate that falls to 0,
   ``sf(x, interp="cubic")`` was -2.3e-17, so ``Hf`` there was NaN with a

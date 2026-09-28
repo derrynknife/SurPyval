@@ -245,17 +245,17 @@ parametric model.
 
 If you do know that no more repairs happen after the last observed time up to
 some horizon (or simply want the curve held flat there), say so with
-``set_bounds(lower, upper)``. The MCF, and its bounds from ``mcf_cb``, are
+``set_support(lower, upper)``. The MCF, and its bounds from ``mcf_cb``, are
 then 0 from ``lower`` to the origin (time 0 here), hold the value at the last
 observed time up to ``upper``, and are ``nan`` outside ``[lower, upper]``,
 for either ``interp``. The bounds must contain the origin and the last
-observed time; either may be infinite. ``set_bounds`` returns the model, and
+observed time; either may be infinite. ``set_support`` returns the model, and
 ``to_dict`` saves the bounds with it. The same method on a
 ``CauseSpecificMCF`` bounds every cause's MCF.
 
 .. jupyter-execute::
 
-    held = NonParametricCounting.fit(x, i=i, c=c).set_bounds(-5, 12)
+    held = NonParametricCounting.fit(x, i=i, c=c).set_support(-5, 12)
     held.mcf([-6, -1, 8, 10, 12, 13])
 
 .. jupyter-execute::

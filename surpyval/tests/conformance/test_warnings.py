@@ -30,7 +30,6 @@ from surpyval.tests.conformance.registry import (
     call,
     calls,
     cases_for,
-    fitted,
     query,
 )
 
@@ -196,7 +195,13 @@ def test_logistic_sf_far_below_the_location():
 def test_wald_bound_at_a_boundary_estimate():
     # Either a bound or a deliberate warning saying why there is none
     # ends the leak; the NaN alone is not pinned.
-    model = fitted(CASE_BY_NAME["GeneralizedRenewal"])
+    # A fresh fit, not the shared cached one: another test's param_cb on
+    # that object can leave its covariance computed, and the leak would
+    # then not recur here.
+    case = CASE_BY_NAME["GeneralizedRenewal"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = case.fit(case.data())
     for name in ("alpha", "q"):
         _no_leak(model.param_cb, name)
 

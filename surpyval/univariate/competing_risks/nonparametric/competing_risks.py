@@ -88,7 +88,7 @@ class CompetingRisks(SerialisableMixin):
     #: ``"Nelson-Aalen"`` (``exp(-H)``) or ``"Kaplan-Meier"`` (product limit).
     method: str = "Nelson-Aalen"
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
-    #: :meth:`set_bounds`; ``None`` (the default) when it has not been set.
+    #: :meth:`set_support`; ``None`` (the default) when it has not been set.
     support: "tuple[float, float] | None" = None
 
     # -- serialisation -----------------------------------------------------
@@ -149,7 +149,7 @@ class CompetingRisks(SerialisableMixin):
             setattr(out, name, np.array(model_dict[name], dtype=float))
         support = _support_from_dict(model_dict)
         if support is not None:
-            out.set_bounds(*support)
+            out.set_support(*support)
         return out
 
     def __repr__(self) -> str:
@@ -159,13 +159,13 @@ class CompetingRisks(SerialisableMixin):
         """.format(events=list(self.event_idx_map.keys()))
         return textwrap.dedent(out)
 
-    def set_bounds(self, lower: float, upper: float) -> "CompetingRisks":
+    def set_support(self, lower: float, upper: float) -> "CompetingRisks":
         """
         Give the estimate an explicit support, ``[lower, upper]``.
 
         Without one, every function starts at its initial value before the
         first time and holds its last value after the last, however far
-        from the data. With bounds set, they do so only within them:
+        from the data. With a support set, they do so only within them:
 
         - in ``[lower, x[0])``: ``sf`` 1, and ``ff``, ``Hf``, ``hf``,
           ``df``, ``iif`` and ``cif`` 0;
@@ -203,7 +203,7 @@ class CompetingRisks(SerialisableMixin):
         >>> from surpyval.univariate.competing_risks import CompetingRisks
         >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
-        >>> model = CompetingRisks.fit(x, e).set_bounds(0, 20)
+        >>> model = CompetingRisks.fit(x, e).set_support(0, 20)
         >>> model.cif([-1, 0.5, 5, 15, 25], 'a').round(4)
         array([   nan, 0.    , 0.3167, 0.6083,    nan])
         """
@@ -220,7 +220,7 @@ class CompetingRisks(SerialisableMixin):
         self, x: npt.ArrayLike, f: Any, start: float
     ) -> npt.NDArray:
         """``f(x)``, restricted to the support when one is set (see
-        :meth:`set_bounds`)."""
+        :meth:`set_support`)."""
         if self.support is None:
             return f(x)
         return _on_support(
@@ -271,6 +271,7 @@ class CompetingRisks(SerialisableMixin):
         ``d / r``; with Kaplan-Meier it is ``-log`` of the product-limit
         survival, so that ``sf == exp(-Hf)`` either way.
         """
+
         def H(q: npt.ArrayLike) -> npt.NDArray:
             if self.method == "Kaplan-Meier":
                 with np.errstate(divide="ignore"):

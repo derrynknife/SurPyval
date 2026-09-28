@@ -20,11 +20,11 @@ or NaN, from the last time on -- but is not listed fails
 skipped silently.
 
 A non-parametric estimate can also be given an explicit support with
-``set_bounds(lower, upper)``: every function is then at its start from
+``set_support(lower, upper)``: every function is then at its start from
 ``lower`` to its first time, carries its value at the last time to
 ``upper``, and is NaN outside ``[lower, upper]``, and so are its
 confidence bounds. Every case in ``RULES`` has it, except the
-semi-parametric ones in ``WITHOUT_SET_BOUNDS``.
+semi-parametric ones in ``WITHOUT_SET_SUPPORT``.
 """
 
 import copy
@@ -67,10 +67,10 @@ START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
 # before the first observed time it is already the fitted model, and it
 # starts at time 0.
 STARTS_AT_ZERO = frozenset({"AdditiveHazards"})
-# The data-bounded cases without ``set_bounds``, each with the reason.
+# The data-bounded cases without ``set_support``, each with the reason.
 _SEMI = "semi-parametric: the explicit support is for the non-parametric "
 _SEMI += "estimates only"
-WITHOUT_SET_BOUNDS = {
+WITHOUT_SET_SUPPORT = {
     "CoxPH": _SEMI,
     "CoxPH[strata]": _SEMI,
     "AdditiveHazards": _SEMI,
@@ -79,7 +79,7 @@ WITHOUT_SET_BOUNDS = {
     "CompetingRisksProportionalHazards[Fine-Gray]": _SEMI,
     "FineGray": _SEMI,
     "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
-    "(surpyval.beta), not a single estimate; not given set_bounds yet",
+    "(surpyval.beta), not a single estimate; not given set_support yet",
 }
 
 
@@ -180,10 +180,10 @@ def test_data_bounded_cases_are_listed():
 
 
 # ---------------------------------------------------------------------------
-# set_bounds: an explicit support
+# set_support: an explicit support
 # ---------------------------------------------------------------------------
 def _with_bounds(case):
-    return case.name in RULES and case.name not in WITHOUT_SET_BOUNDS
+    return case.name in RULES and case.name not in WITHOUT_SET_SUPPORT
 
 
 def _support(case):
@@ -232,13 +232,13 @@ def _bound(model, method, x, event, kw):
 
 
 @pytest.mark.parametrize("case", cases_for("outside_data", where=_with_bounds))
-def test_set_bounds(case):
+def test_set_support(case):
     fit = fitted(case)
     lower, upper, last = _support(case)
     # A copy: the fitted model is cached and shared by every test.
     model = copy.deepcopy(fit)
-    assert model.set_bounds(lower, upper) is model
-    assert fit.support is None, "set_bounds changed the cached model"
+    assert model.set_support(lower, upper) is model
+    assert fit.support is None, "set_support changed the cached model"
     x = np.array([lower - 1.0, lower, last, upper, upper + 1.0])
     x = np.append(x, [-np.inf, np.inf, np.nan])
     interps = case.interp or ("step",)
@@ -267,7 +267,7 @@ def test_set_bounds(case):
         assert np.isnan(model.band(x[[0, 1, 3, 4]])).all()
 
     # Infinite bounds take infinite queries.
-    model.set_bounds(-np.inf, np.inf)
+    model.set_support(-np.inf, np.inf)
     for fname, event in calls(case):
         if fname in START:
             v = _plain(case, model, fname, [-np.inf, last, np.inf], event)
@@ -276,21 +276,21 @@ def test_set_bounds(case):
             assert same, f"{fname} at inf: {v}"
 
 
-def test_non_parametric_estimates_have_set_bounds():
+def test_non_parametric_estimates_have_set_support():
     """So a new non-parametric estimator gets an explicit support too."""
     missing = [
         name
         for name in RULES
-        if name not in WITHOUT_SET_BOUNDS
-        and not hasattr(fitted(_case(name)), "set_bounds")
+        if name not in WITHOUT_SET_SUPPORT
+        and not hasattr(fitted(_case(name)), "set_support")
     ]
-    assert not missing, f"no set_bounds (principle 11): {missing}"
+    assert not missing, f"no set_support (principle 11): {missing}"
     stale = [
         name
-        for name in WITHOUT_SET_BOUNDS
-        if name not in RULES or hasattr(fitted(_case(name)), "set_bounds")
+        for name in WITHOUT_SET_SUPPORT
+        if name not in RULES or hasattr(fitted(_case(name)), "set_support")
     ]
-    assert not stale, f"remove from WITHOUT_SET_BOUNDS: {stale}"
+    assert not stale, f"remove from WITHOUT_SET_SUPPORT: {stale}"
 
 
 def _case(name):

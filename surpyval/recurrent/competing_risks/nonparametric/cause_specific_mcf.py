@@ -99,7 +99,7 @@ class CauseSpecificMCF(SerialisableMixin):
     x: "np.ndarray"
     r: "np.ndarray"
     #: The ``(lower, upper)`` interval the MCFs are defined on, set by
-    #: :meth:`set_bounds`; ``None`` (the default) when it has not been set.
+    #: :meth:`set_support`; ``None`` (the default) when it has not been set.
     support: "tuple[float, float] | None" = None
 
     def __repr__(self) -> str:
@@ -148,10 +148,10 @@ class CauseSpecificMCF(SerialisableMixin):
         }
         support = _support_from_dict(model_dict)
         if support is not None:
-            out.set_bounds(*support)
+            out.set_support(*support)
         return out
 
-    def set_bounds(self, lower: float, upper: float) -> "CauseSpecificMCF":
+    def set_support(self, lower: float, upper: float) -> "CauseSpecificMCF":
         """
         Give every cause's MCF the explicit support ``[lower, upper]``.
 
@@ -159,7 +159,7 @@ class CauseSpecificMCF(SerialisableMixin):
         ``lower`` to the origin (where observation begins), the value at
         the last observed time from there to ``upper``, and NaN outside
         them, instead of NaN before the origin and after the last observed
-        time; see ``NonParametricCounting.set_bounds``. The bounds are
+        time; see ``NonParametricCounting.set_support``. The bounds are
         kept by ``to_dict``.
 
         Parameters
@@ -191,7 +191,7 @@ class CauseSpecificMCF(SerialisableMixin):
         >>> model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
         >>> model.mcf([-1, 4, 15], "seal")
         array([nan, 1.5, nan])
-        >>> model.set_bounds(-5, 20).mcf([-10, -1, 4, 15, 25], "seal")
+        >>> model.set_support(-5, 20).mcf([-10, -1, 4, 15, 25], "seal")
         array([nan, 0. , 1.5, 2. , nan])
         """
         # The causes share the risk set, so their grids and origins agree;
@@ -213,7 +213,7 @@ class CauseSpecificMCF(SerialisableMixin):
         self, x: ArrayLike, cause: Any, interp: str = "step"
     ) -> np.ndarray:
         """Cause-specific MCF evaluated at ``x`` for the given ``cause``
-        (see ``NonParametricCounting.mcf``, and :meth:`set_bounds` for its
+        (see ``NonParametricCounting.mcf``, and :meth:`set_support` for its
         values outside the data)."""
         return self.models[cause].mcf(x, interp=interp)
 

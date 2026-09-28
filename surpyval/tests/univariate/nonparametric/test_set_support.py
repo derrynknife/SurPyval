@@ -1,4 +1,4 @@
-"""``NonParametric.set_bounds``: an explicit support for the estimate.
+"""``NonParametric.set_support``: an explicit support for the estimate.
 
 Without it (``support is None``, what a fit gives) nothing changes. With
 it, every function and every ``interp`` is at its start value in
@@ -37,7 +37,7 @@ def _fit(name, x=X, c=C):
 
 
 def _bounded(model, lower, upper):
-    return copy.deepcopy(model).set_bounds(lower, upper)
+    return copy.deepcopy(model).set_support(lower, upper)
 
 
 def _is_clean_zero(v):
@@ -56,13 +56,13 @@ def test_a_fit_has_no_support(model):
     assert ecdf.support is None
 
 
-def test_set_bounds_returns_the_model_and_stores_floats(model):
-    out = model.set_bounds(0, 20)
+def test_set_support_returns_the_model_and_stores_floats(model):
+    out = model.set_support(0, 20)
     assert out is model
     assert model.support == (0.0, 20.0)
     assert all(type(v) is float for v in model.support)
     # Setting again replaces the bounds.
-    assert model.set_bounds(-np.inf, np.inf).support == (-np.inf, np.inf)
+    assert model.set_support(-np.inf, np.inf).support == (-np.inf, np.inf)
 
 
 @pytest.mark.parametrize("interp", INTERPS)
@@ -137,7 +137,7 @@ def test_a_query_mixing_every_region_keeps_its_order(model):
 
 
 def test_the_interpolated_forms_are_nan_outside_the_data_without_bounds():
-    # What set_bounds changes (the step forms already hold their values).
+    # What set_support changes (the step forms already hold their values).
     model = _fit("KaplanMeier")
     q = [X[0] - 1, X[-1] + 1]
     for interp in INTERPS[1:]:
@@ -295,7 +295,7 @@ def test_set_lower_limit_is_the_first_value():
 def test_invalid_bounds_are_refused(lower, upper, match):
     model = _fit("KaplanMeier")
     with pytest.raises(ValueError, match=match):
-        model.set_bounds(lower, upper)
+        model.set_support(lower, upper)
     # A refused call leaves the model as it was.
     assert model.support is None
 
@@ -355,7 +355,7 @@ def test_a_corrupt_support_is_refused():
 def test_cubic_sf_at_the_last_knot_is_not_below_zero():
     # PCHIP round-off at the last knot of a Kaplan-Meier that ends at 0
     # gave sf = -2.3e-17, and so Hf = NaN with a raw "invalid value in
-    # log" warning (found by the set_bounds conformance check, which
+    # log" warning (found by the set_support conformance check, which
     # queries the last time).
     x = [2.411, 3.84, 4.956, 5.953, 6.903, 7.846, 8.816, 9.85, 10.997]
     x = np.array(x + [12.347, 14.096, 16.954])
@@ -372,3 +372,24 @@ def test_cubic_sf_at_the_last_knot_is_not_below_zero():
     assert np.all((sf >= 0) & (sf <= 1))
     assert sf[-1] == 0.0 and not np.signbit(sf[-1])
     assert H[0] == np.inf
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda m: m.cb([1.5, 2.5], bound_type="bogus"),
+        lambda m: m.cb([1.5, 2.5], interp="bogus"),
+        lambda m: m.R_cb([1.5, 2.5], interp="bogus"),
+        lambda m: m.band(alpha_ci=2.0),
+    ],
+)
+def test_a_failing_call_leaves_numpy_error_state_alone(call):
+    # cb, R_cb, band and the Turnbull EM silenced numpy with np.seterr and
+    # restored it after; a call that raised in between left every numpy
+    # warning in the process silenced.
+    model = KaplanMeier.fit([1.0, 2.0, 3.0, 4.0], c=[0, 1, 0, 0])
+    with np.errstate(all="warn"):
+        before = np.geterr()
+        with pytest.raises((ValueError, NotImplementedError)):
+            call(model)
+        assert np.geterr() == before

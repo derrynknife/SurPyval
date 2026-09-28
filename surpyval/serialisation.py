@@ -150,7 +150,7 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # ``"non_finite"`` record (whose ``null`` values it would take for
 # missing entries), a formula model whose design-matrix state is
 # stored only in the schema-2 form (see ``_needs_formula_reader``), or a
-# non-parametric estimate with the ``"support"`` its ``set_bounds`` gave
+# non-parametric estimate with the ``"support"`` its ``set_support`` gave
 # it (new in schema 2; a schema-1 reader would silently drop it, and
 # with it the estimate's values outside the data).
 SCHEMA_VERSION = 2
@@ -415,7 +415,7 @@ def required_schema(model_dict: dict) -> int:
     missing entries, holds a regression formula that only a schema-2
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
-    ``"support"`` of a non-parametric estimate's ``set_bounds``, which a
+    ``"support"`` of a non-parametric estimate's ``set_support``, which a
     schema-1 reader would silently ignore; 1 otherwise, the layout
     SurPyval v0.20 reads. This is the version :func:`stamp_schema`
     writes.
@@ -442,7 +442,7 @@ def required_schema(model_dict: dict) -> int:
 def _carries_support(value: Any) -> bool:
     """Whether ``value`` or any dictionary nested in it (a cause-specific
     MCF's per-cause estimates) has a ``"support"``, which only the
-    non-parametric estimates' ``set_bounds`` writes."""
+    non-parametric estimates' ``set_support`` writes."""
     if isinstance(value, dict):
         return value.get("support") is not None or any(
             _carries_support(v) for v in value.values()
