@@ -2458,6 +2458,11 @@ def _starve(case):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":
         return lambda d: fit(_no_event_level(d))
+    if name == "Logistic":
+        # The scale, not the location: from a far location the fit
+        # recovers with scipy 1.17 but stops short with 1.18, so only a
+        # far scale fails the same way everywhere.
+        return _far_start(case, lambda m: _scaled_start(m.params, 1))
     if cls == "Parametric":
         return _far_start(case, _parametric_start)
     if cls == "MixtureModel":
@@ -2994,6 +2999,11 @@ _CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
         "start",
         _FAR + "alpha, beta, mu 1.03e7, 1.16, 0.066 (ll -74.5), not 10.27, "
         "2.30, 1.01 (ll -37.9)",
+    ),
+    "Logistic": (
+        "start",
+        _FAR_SCALE + "mu, sigma 1.79e5, 1.18e5 (ll -177.1), not 8.93, "
+        "2.44 (ll -38.8)",
     ),
     "Normal": (
         "start",

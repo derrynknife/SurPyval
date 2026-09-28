@@ -8,7 +8,7 @@ v0.21.0 (unreleased)
   conformance property, ``test_convergence.py``, forces each iterative fit
   to fail -- an iteration limit of 1, a start a million times the answer,
   or data whose likelihood has no maximum -- and requires a warning, a
-  ``ValueError``, or the true maximum. It found 61 fits that return a
+  ``ValueError``, or the true maximum. It found 62 fits that return a
   wrong model without a word, pinned as known failures: for example
   ``Weibull.fit`` from ``init=[1.03e7, 2.32]`` returns alpha 1.03e7, beta
   0.099 (log-likelihood -78.2 against -37.9; #427), and every parametric
