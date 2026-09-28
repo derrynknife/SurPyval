@@ -29,6 +29,11 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
+from surpyval.univariate.nonparametric.nonparametric import (
+    _check_support,
+    _on_support,
+    _support_from_dict,
+)
 from surpyval.utils import (
     _get_idx,
     validate_cif_event,
@@ -82,6 +87,9 @@ class CompetingRisks(SerialisableMixin):
     #: The survival estimator ``sf``/``ff``/``Hf`` report:
     #: ``"Nelson-Aalen"`` (``exp(-H)``) or ``"Kaplan-Meier"`` (product limit).
     method: str = "Nelson-Aalen"
+    #: The ``(lower, upper)`` interval the estimate is defined on, set by
+    #: :meth:`set_bounds`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -118,6 +126,9 @@ class CompetingRisks(SerialisableMixin):
         }
         for name in self._SERIALISED_ARRAYS:
             out[name] = np.asarray(getattr(self, name), dtype=float).tolist()
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
         return stamp_schema(out)
 
     @classmethod
@@ -136,6 +147,9 @@ class CompetingRisks(SerialisableMixin):
         out.method = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_bounds(*support)
         return out
 
     def __repr__(self) -> str:
@@ -144,6 +158,74 @@ class CompetingRisks(SerialisableMixin):
         {events}
         """.format(events=list(self.event_idx_map.keys()))
         return textwrap.dedent(out)
+
+    def set_bounds(self, lower: float, upper: float) -> "CompetingRisks":
+        """
+        Give the estimate an explicit support, ``[lower, upper]``.
+
+        Without one, every function starts at its initial value before the
+        first time and holds its last value after the last, however far
+        from the data. With bounds set, they do so only within them:
+
+        - in ``[lower, x[0])``: ``sf`` 1, and ``ff``, ``Hf``, ``hf``,
+          ``df``, ``iif`` and ``cif`` 0;
+        - in ``(x[-1], upper]``: the value at the last time, carried
+          (for ``hf``, ``df`` and ``iif``, as without bounds, that of the
+          step containing the last time);
+        - outside ``[lower, upper]``: NaN.
+
+        ``x[0]`` and ``x[-1]`` are the first and last observed times,
+        failures or censorings. The variable need not be time: ``lower``
+        may be negative, and either bound infinite. The bounds are kept
+        by ``to_dict``.
+
+        Parameters
+        ----------
+        lower : float
+            The lower end of the support; at most the first time, ``x[0]``.
+        upper : float
+            The upper end; at least the last time, ``x[-1]``, and above
+            ``lower``.
+
+        Returns
+        -------
+        CompetingRisks
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain the observed times.
+
+        Examples
+        --------
+        >>> from surpyval.univariate.competing_risks import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = CompetingRisks.fit(x, e).set_bounds(0, 20)
+        >>> model.cif([-1, 0.5, 5, 15, 25], 'a').round(4)
+        array([   nan, 0.    , 0.3167, 0.6083,    nan])
+        """
+        self.support = _check_support(
+            lower,
+            upper,
+            float(self.x[0]),
+            float(self.x[-1]),
+            ("the first time", "the last time"),
+        )
+        return self
+
+    def _within_support(
+        self, x: npt.ArrayLike, f: Any, start: float
+    ) -> npt.NDArray:
+        """``f(x)``, restricted to the support when one is set (see
+        :meth:`set_bounds`)."""
+        if self.support is None:
+            return f(x)
+        return _on_support(
+            self.support, float(self.x[0]), float(self.x[-1]), x, f, start
+        )
 
     def _f(self, f: str, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         validate_event(self.event_idx_map, event)
@@ -180,7 +262,7 @@ class CompetingRisks(SerialisableMixin):
         Hazard (the Nelson-Aalen increment ``d / r`` at each event time, 0
         between them), all causes (``event=None``) or one cause.
         """
-        return self._f("h", x, event)
+        return self._within_support(x, lambda q: self._f("h", q, event), 0.0)
 
     def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
@@ -189,10 +271,14 @@ class CompetingRisks(SerialisableMixin):
         ``d / r``; with Kaplan-Meier it is ``-log`` of the product-limit
         survival, so that ``sf == exp(-Hf)`` either way.
         """
-        if self.method == "Kaplan-Meier":
-            with np.errstate(divide="ignore"):
-                return -np.log(self.sf(x, event=event))
-        return self._f("H", x, event)
+        def H(q: npt.ArrayLike) -> npt.NDArray:
+            if self.method == "Kaplan-Meier":
+                with np.errstate(divide="ignore"):
+                    return -np.log(self._product_limit(q, event))
+            return self._f("H", q, event)
+
+        # 0.0 before the first time, not -log(1) = -0.0.
+        return self._within_support(x, H, 0.0)
 
     def _product_limit(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """The product-limit survival, all causes or one cause's (net)."""
@@ -217,8 +303,10 @@ class CompetingRisks(SerialisableMixin):
         the others -- use :meth:`cif` for that.
         """
         if self.method == "Kaplan-Meier":
-            return self._product_limit(x, event)
-        return np.exp(-self._f("H", x, event))
+            return self._within_support(
+                x, lambda q: self._product_limit(q, event), 1.0
+            )
+        return np.exp(-self.Hf(x, event=event))
 
     def ff(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
@@ -243,7 +331,7 @@ class CompetingRisks(SerialisableMixin):
         :math:`S(t_{i-1}) d_{ij} / r_i` (0 between event times).
         """
         validate_cif_event(event)
-        return self._f("IIF", x, event)
+        return self._within_support(x, lambda q: self._f("IIF", q, event), 0.0)
 
     def cif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
@@ -252,8 +340,7 @@ class CompetingRisks(SerialisableMixin):
         acting. ``event`` is required.
         """
         validate_cif_event(event)
-
-        return self._f("CIF", x, event)
+        return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
 
     @classmethod
     def fit_from_df(

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -9,6 +9,11 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.nonparametric.nonparametric import (
+    _check_support,
+    _on_support,
+    _support_from_dict,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
@@ -18,6 +23,13 @@ from surpyval.utils.recurrent_utils import (
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
+
+
+# How ``set_bounds`` names the range an MCF's bounds must contain.
+_MCF_RANGE = (
+    "the origin of the MCF, where observation begins",
+    "the last observed time",
+)
 
 
 @singleton_fitter
@@ -55,6 +67,9 @@ class NonParametricCounting(SerialisableMixin):
     #: and undefined (NaN) before it. That is time 0 unless an item enters
     #: earlier (a negative ``tl``), which makes negative times observed.
     origin: float = 0.0
+    #: The ``(lower, upper)`` interval the MCF is defined on, set by
+    #: :meth:`set_bounds`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -73,23 +88,25 @@ class NonParametricCounting(SerialisableMixin):
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "NonParametricCounting",
-                "x": np.asarray(self.x, dtype=float).tolist(),
-                "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
-                # A simulated MCF has no variance; ``None`` (JSON null)
-                # keeps it that way on reload. ``asarray(None)`` stored a
-                # NaN, and the restored ``mcf_cb`` returned NaN bounds
-                # instead of saying there are none.
-                "var": (
-                    None
-                    if self.var is None
-                    else np.asarray(self.var, dtype=float).tolist()
-                ),
-                "origin": float(self.origin),
-            }
-        )
+        out = {
+            "model": "NonParametricCounting",
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
+            # A simulated MCF has no variance; ``None`` (JSON null) keeps
+            # it that way on reload. ``asarray(None)`` stored a NaN, and
+            # the restored ``mcf_cb`` returned NaN bounds instead of saying
+            # there are none.
+            "var": (
+                None
+                if self.var is None
+                else np.asarray(self.var, dtype=float).tolist()
+            ),
+            "origin": float(self.origin),
+        }
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "NonParametricCounting":
@@ -114,7 +131,85 @@ class NonParametricCounting(SerialisableMixin):
             var_arr = None
         out.var = var_arr
         out.origin = float(model_dict.get("origin", 0.0))
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_bounds(*support)
         return out
+
+    def set_bounds(
+        self, lower: float, upper: float
+    ) -> "NonParametricCounting":
+        """
+        Give the MCF an explicit support, ``[lower, upper]``.
+
+        Without one, the MCF is 0 from the origin (where observation
+        begins: time 0, or the earliest entry) to the first event, and NaN
+        before the origin and after the last observed time, since nothing
+        is known there. With bounds set, :meth:`mcf` and :meth:`mcf_cb`
+        (for every ``interp``) are
+
+        - 0 in ``[lower, origin)``;
+        - the value at the last observed time, carried, in
+          ``(last, upper]``;
+        - NaN outside ``[lower, upper]``.
+
+        Carrying the last value says that no events happen after the last
+        observed time, which is the analyst's claim to make, not the
+        data's. The variable need not be time: ``lower`` may be negative,
+        and either bound infinite. The bounds are kept by ``to_dict``.
+
+        Parameters
+        ----------
+        lower : float
+            The lower end of the support; at most the origin.
+        upper : float
+            The upper end; at least the last observed time, and above
+            ``lower``.
+
+        Returns
+        -------
+        NonParametricCounting
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain ``[origin, last]``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> x = [3, 9, 20, 35, 56, 60, 11, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 1]
+        >>> model = NonParametricCounting.fit(x, i=i, c=c)
+        >>> model.mcf([-5, 30, 80])
+        array([nan, 2. , nan])
+        >>> model.set_bounds(-10, 100).mcf([-20, -5, 30, 80, 120])
+        array([nan, 0. , 2. , 3.5, nan])
+        """
+        self.support = _check_support(
+            lower,
+            upper,
+            self._origin(),
+            float(self.x.max()),
+            _MCF_RANGE,
+        )
+        return self
+
+    def _within_support(
+        self,
+        x: npt.ArrayLike,
+        f: Callable[[npt.ArrayLike], npt.NDArray],
+    ) -> npt.NDArray:
+        """``f(x)``, restricted to the support when one is set (see
+        :meth:`set_bounds`); the MCF and its bounds start at 0."""
+        if self.support is None:
+            return f(x)
+        return _on_support(
+            self.support, self._origin(), float(self.x.max()), x, f, 0.0
+        )
 
     def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         """
@@ -136,8 +231,15 @@ class NonParametricCounting(SerialisableMixin):
             ``"linear"``, rising from 0 at the origin to the first event),
             and NaN beyond the last observed time and before the origin.
             The origin is time 0, or the earliest entry when an item enters
-            before it (a negative ``tl``).
+            before it (a negative ``tl``). With bounds set (see
+            :meth:`set_bounds`) it is 0 from ``lower`` to the origin, the
+            value at the last observed time from there to ``upper``, and
+            NaN outside them.
         """
+        return self._within_support(x, lambda q: self._mcf(q, interp))
+
+    def _mcf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
+        # ``mcf`` without the bounds (see ``set_bounds``).
         x = np.atleast_1d(np.asarray(x, dtype=float))
         grid, values = self._curve_from_origin(self.mcf_hat)
         # Let's not assume we can predict above the highest measurement
@@ -190,7 +292,10 @@ class NonParametricCounting(SerialisableMixin):
         bounds return a 1-D array. Queries before the first event return 0
         (for ``interp="linear"``, bounds rising from 0 at the origin, as
         the MCF does); queries after the last observed time or before the
-        origin return NaN, mirroring :meth:`mcf`.
+        origin return NaN, mirroring :meth:`mcf`. With bounds set (see
+        :meth:`set_bounds`) they are 0 from ``lower`` to the origin, the
+        bounds at the last observed time from there to ``upper``, and NaN
+        outside them.
 
         Parameters
         ----------
@@ -221,6 +326,23 @@ class NonParametricCounting(SerialisableMixin):
             If the model carries no variance (an MCF built from simulated
             data).
         """
+        return self._within_support(
+            x,
+            lambda q: self._mcf_cb(
+                q, bound, interp, confidence, bound_type, dist
+            ),
+        )
+
+    def _mcf_cb(
+        self,
+        x: npt.ArrayLike,
+        bound: str,
+        interp: str,
+        confidence: float,
+        bound_type: str,
+        dist: str,
+    ) -> npt.NDArray:
+        # ``mcf_cb`` without the bounds (see ``set_bounds``).
         # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
         # per-step one for ``from_xrd``) with a normal (z) critical value.
         if bound_type not in ["exp", "normal"]:

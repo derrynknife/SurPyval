@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent.nonparametric.mcf import (
+    _MCF_RANGE,
     NonParametricCounting,
     _lawless_nadeau_var,
     _observation_origin,
@@ -27,6 +28,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
     to_native,
+)
+from surpyval.univariate.nonparametric.nonparametric import (
+    _check_support,
+    _support_from_dict,
 )
 from surpyval.utils import optional_column
 from surpyval.utils.recurrent_utils import (
@@ -93,6 +98,9 @@ class CauseSpecificMCF(SerialisableMixin):
     models: dict
     x: "np.ndarray"
     r: "np.ndarray"
+    #: The ``(lower, upper)`` interval the MCFs are defined on, set by
+    #: :meth:`set_bounds`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     def __repr__(self) -> str:
         return "Cause-specific MCF with causes: {}".format(self.event_types)
@@ -108,15 +116,17 @@ class CauseSpecificMCF(SerialisableMixin):
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "CauseSpecificMCF",
-                "event_types": to_native(list(self.event_types)),
-                "models": [
-                    self.models[cause].to_dict() for cause in self.event_types
-                ],
-            }
-        )
+        out = {
+            "model": "CauseSpecificMCF",
+            "event_types": to_native(list(self.event_types)),
+            "models": [
+                self.models[cause].to_dict() for cause in self.event_types
+            ],
+        }
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CauseSpecificMCF":
@@ -136,12 +146,75 @@ class CauseSpecificMCF(SerialisableMixin):
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_bounds(*support)
         return out
+
+    def set_bounds(self, lower: float, upper: float) -> "CauseSpecificMCF":
+        """
+        Give every cause's MCF the explicit support ``[lower, upper]``.
+
+        Each cause's :meth:`mcf` and :meth:`mcf_cb` are then 0 from
+        ``lower`` to the origin (where observation begins), the value at
+        the last observed time from there to ``upper``, and NaN outside
+        them, instead of NaN before the origin and after the last observed
+        time; see ``NonParametricCounting.set_bounds``. The bounds are
+        kept by ``to_dict``.
+
+        Parameters
+        ----------
+        lower : float
+            The lower end of the support; at most the origin.
+        upper : float
+            The upper end; at least the last observed time, and above
+            ``lower``.
+
+        Returns
+        -------
+        CauseSpecificMCF
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain ``[origin, last]``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CauseSpecificMCF
+        >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+        >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+        >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+        >>> model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
+        >>> model.mcf([-1, 4, 15], "seal")
+        array([nan, 1.5, nan])
+        >>> model.set_bounds(-5, 20).mcf([-10, -1, 4, 15, 25], "seal")
+        array([nan, 0. , 1.5, 2. , nan])
+        """
+        # The causes share the risk set, so their grids and origins agree;
+        # checked against their union all the same.
+        models = [self.models[cause] for cause in self.event_types]
+        support = _check_support(
+            lower,
+            upper,
+            min(m._origin() for m in models),
+            max(float(m.x.max()) for m in models),
+            _MCF_RANGE,
+        )
+        for model in models:
+            model.support = support
+        self.support = support
+        return self
 
     def mcf(
         self, x: ArrayLike, cause: Any, interp: str = "step"
     ) -> np.ndarray:
-        """Cause-specific MCF evaluated at ``x`` for the given ``cause``."""
+        """Cause-specific MCF evaluated at ``x`` for the given ``cause``
+        (see ``NonParametricCounting.mcf``, and :meth:`set_bounds` for its
+        values outside the data)."""
         return self.models[cause].mcf(x, interp=interp)
 
     def mcf_cb(self, x: ArrayLike, cause: Any, **kwargs: Any) -> Any:

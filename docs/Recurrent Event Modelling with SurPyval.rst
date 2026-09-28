@@ -243,6 +243,29 @@ parametric model.
 
     assert model.x.max() == 9 and np.isnan(model.mcf([10])[0])
 
+If you do know that no more repairs happen after the last observed time up to
+some horizon (or simply want the curve held flat there), say so with
+``set_bounds(lower, upper)``. The MCF, and its bounds from ``mcf_cb``, are
+then 0 from ``lower`` to the origin (time 0 here), hold the value at the last
+observed time up to ``upper``, and are ``nan`` outside ``[lower, upper]``,
+for either ``interp``. The bounds must contain the origin and the last
+observed time; either may be infinite. ``set_bounds`` returns the model, and
+``to_dict`` saves the bounds with it. The same method on a
+``CauseSpecificMCF`` bounds every cause's MCF.
+
+.. jupyter-execute::
+
+    held = NonParametricCounting.fit(x, i=i, c=c).set_bounds(-5, 12)
+    held.mcf([-6, -1, 8, 10, 12, 13])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _m = held.mcf([-6, -1, 8, 10, 12, 13])
+    assert np.isnan(_m[[0, -1]]).all() and _m[1] == 0
+    assert (_m[3:5] == model.mcf([9])[0]).all()
+
 Confidence bounds come from ``mcf_cb``. By default they are two-sided 95%
 bounds, returned as ``[lower, upper]`` columns and computed on the log scale
 so they cannot go negative (``bound_type="normal"`` gives the symmetric

@@ -18,9 +18,18 @@ as data-bounded -- its curve changes within the data but is exactly flat,
 or NaN, from the last time on -- but is not listed fails
 ``test_data_bounded_cases_are_listed``, so a new step estimator is not
 skipped silently.
+
+A non-parametric estimate can also be given an explicit support with
+``set_bounds(lower, upper)``: every function is then at its start from
+``lower`` to its first time, carries its value at the last time to
+``upper``, and is NaN outside ``[lower, upper]``, and so are its
+confidence bounds. Every case in ``RULES`` has it, except the
+semi-parametric ones in ``WITHOUT_SET_BOUNDS``.
 """
 
+import copy
 import warnings
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -58,6 +67,20 @@ START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
 # before the first observed time it is already the fitted model, and it
 # starts at time 0.
 STARTS_AT_ZERO = frozenset({"AdditiveHazards"})
+# The data-bounded cases without ``set_bounds``, each with the reason.
+_SEMI = "semi-parametric: the explicit support is for the non-parametric "
+_SEMI += "estimates only"
+WITHOUT_SET_BOUNDS = {
+    "CoxPH": _SEMI,
+    "CoxPH[strata]": _SEMI,
+    "AdditiveHazards": _SEMI,
+    "BuckleyJames": _SEMI,
+    "CompetingRisksProportionalHazards[Cox]": _SEMI,
+    "CompetingRisksProportionalHazards[Fine-Gray]": _SEMI,
+    "FineGray": _SEMI,
+    "SurvivalTree[non-parametric]": "a tree of Kaplan-Meier leaves "
+    "(surpyval.beta), not a single estimate; not given set_bounds yet",
+}
 
 
 def _span(case, data):
@@ -154,3 +177,121 @@ def test_data_bounded_cases_are_listed():
         "these behave as data-bounded estimates: give each its rule in "
         f"RULES: {unlisted}"
     )
+
+
+# ---------------------------------------------------------------------------
+# set_bounds: an explicit support
+# ---------------------------------------------------------------------------
+def _with_bounds(case):
+    return case.name in RULES and case.name not in WITHOUT_SET_BOUNDS
+
+
+def _support(case):
+    """Bounds a little outside the fixture (and its time 0, where a
+    recurrent MCF's observation begins)."""
+    first, last = _span(case, case.data())
+    margin = 0.1 * (last - first)
+    return min(first, 0.0) - margin, last + margin, last
+
+
+def _plain(case, model, fname, x, event, **kw):
+    """``fname`` at ``x`` with keyword arguments, no warning silenced (the
+    leak check applies)."""
+    c = replace(case, call_kwargs={**case.call_kwargs, **kw})
+    return np.asarray(call(c, model, fname, x, event=event), float)
+
+
+def _bound_calls(case):
+    """(label, method, kwargs, function, cause) for each confidence bound
+    of the case evaluated at query times. A band is left out: it is
+    defined only between the first and last events, and is NaN outside
+    them with or without bounds (it is checked for that below)."""
+    out = []
+    for spec in case.bounds:
+        if spec.kind != "function" or spec.point == "qf" or spec.slow:
+            continue
+        if spec.method == "band":
+            continue
+        names = spec.on or (spec.point,)
+        causes = case.events if spec.per_cause else (None,)
+        for fname in names:
+            for event in causes:
+                kw = dict(spec.kwargs)
+                if spec.on:
+                    kw["on"] = fname
+                label = f"{spec.name}[{fname}]"
+                if event is not None:
+                    label += f"[{event}]"
+                out.append((label, spec.method, kw, fname, event))
+    return out
+
+
+def _bound(model, method, x, event, kw):
+    args = [x] if event is None else [x, event]
+    return np.asarray(getattr(model, method)(*args, **kw), float)
+
+
+@pytest.mark.parametrize("case", cases_for("outside_data", where=_with_bounds))
+def test_set_bounds(case):
+    fit = fitted(case)
+    lower, upper, last = _support(case)
+    # A copy: the fitted model is cached and shared by every test.
+    model = copy.deepcopy(fit)
+    assert model.set_bounds(lower, upper) is model
+    assert fit.support is None, "set_bounds changed the cached model"
+    x = np.array([lower - 1.0, lower, last, upper, upper + 1.0])
+    x = np.append(x, [-np.inf, np.inf, np.nan])
+    interps = case.interp or ("step",)
+    for fname, event in calls(case):
+        if fname == "qf":
+            continue
+        label = fname if event is None else f"{fname}[{event}]"
+        for interp in interps:
+            kw = {} if interp == "step" else {"interp": interp}
+            where = f"{label}(interp={interp!r})"
+            v = _plain(case, model, fname, x, event, **kw)
+            assert np.isnan(v[[0, 4, 5, 6, 7]]).all(), f"{where}: {v}"
+            start = START.get(fname, 0.0)
+            assert v[1] == start and not np.signbit(v[1]), f"{where}: {v}"
+            same = np.array_equal(v[3], v[2], equal_nan=True)
+            assert same, f"{where} after the last time: {v}"
+    for label, method, kw, fname, event in _bound_calls(case):
+        b = _bound(model, method, x, event, kw)
+        assert np.isnan(b[[0, 4, 5, 6, 7]]).all(), f"{label}: {b}"
+        start = START.get(fname, 0.0)
+        assert np.all(b[1] == start), f"{label} at the start: {b}"
+        # (A plain normal bound on Hf can be NaN at the last time.)
+        same = np.array_equal(b[3], b[2], equal_nan=True)
+        assert same, f"{label} after the last time: {b}"
+    if hasattr(model, "band"):
+        assert np.isnan(model.band(x[[0, 1, 3, 4]])).all()
+
+    # Infinite bounds take infinite queries.
+    model.set_bounds(-np.inf, np.inf)
+    for fname, event in calls(case):
+        if fname in START:
+            v = _plain(case, model, fname, [-np.inf, last, np.inf], event)
+            assert v[0] == START[fname], f"{fname} at -inf: {v}"
+            same = np.array_equal(v[2], v[1], equal_nan=True)
+            assert same, f"{fname} at inf: {v}"
+
+
+def test_non_parametric_estimates_have_set_bounds():
+    """So a new non-parametric estimator gets an explicit support too."""
+    missing = [
+        name
+        for name in RULES
+        if name not in WITHOUT_SET_BOUNDS
+        and not hasattr(fitted(_case(name)), "set_bounds")
+    ]
+    assert not missing, f"no set_bounds (principle 11): {missing}"
+    stale = [
+        name
+        for name in WITHOUT_SET_BOUNDS
+        if name not in RULES or hasattr(fitted(_case(name)), "set_bounds")
+    ]
+    assert not stale, f"remove from WITHOUT_SET_BOUNDS: {stale}"
+
+
+def _case(name):
+    return next(case for case in CASES if case.name == name)

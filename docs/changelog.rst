@@ -4,6 +4,25 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Added: ``set_bounds`` for the non-parametric estimates.** Outside the
+  data a non-parametric estimate only had a convention: the step curves
+  started at 1 and held their last value however far away, while the
+  interpolated forms, the confidence bounds and the mean cumulative
+  functions were NaN. ``KaplanMeier``, ``NelsonAalen``,
+  ``FlemingHarrington`` and ``Turnbull`` models, ``CompetingRisks`` (both
+  methods), ``NonParametricCounting`` and ``CauseSpecificMCF`` now take
+  ``model.set_bounds(lower, upper)``: every function, every ``interp`` and
+  the pointwise bounds are then at their start value (``sf`` 1, the rest
+  0) from ``lower`` to the first observed value, hold the last value up to
+  ``upper``, and are NaN outside. Negative and infinite bounds are allowed
+  (the variable need not be time). The bounds are the model's ``support``,
+  as for the parametric models, and are saved by ``to_dict`` (schema 2).
+  Without the call nothing changes.
+- **Fixed: cubic non-parametric curves no longer dip below 0 (#417).** At
+  the last time of a Kaplan-Meier estimate that falls to 0,
+  ``sf(x, interp="cubic")`` was -2.3e-17, so ``Hf`` there was NaN with a
+  raw warning instead of inf. The PCHIP curve is now clipped to the range
+  of its knots.
 - **Silent non-convergence is checked for every model (#401).** A new
   conformance property, ``test_convergence.py``, forces each iterative fit
   to fail -- an iteration limit of 1, a start a million times the answer,

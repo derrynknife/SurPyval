@@ -2811,8 +2811,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
     # F. Kaplan-Meier cubic interpolation
     "KaplanMeier": {
         "interp_refused": _SCIPY_INTERP,
-        "interp[cubic]": "at the last time (sf = 0) the PCHIP sf is "
-        "-2.3e-17, so Hf(16.954, interp='cubic') is NaN, not inf",
         "cb_centre[cb[exp,cubic]]": _KM_CUBIC,
         "cb_centre[cb[normal,cubic]]": _KM_CUBIC,
     },
@@ -2899,7 +2897,6 @@ _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
     "DestructiveDegradation": "#416",
     "KaplanMeier": {
         "interp_refused": "#416",
-        "interp[cubic]": "#417",
         "cb_centre[cb[exp,cubic]]": "#417",
         "cb_centre[cb[normal,cubic]]": "#417",
     },

@@ -181,8 +181,11 @@ extrapolate an estimate of the MCF function beyond the last observed event. This
 is because when doing non-parametric analysis we make no assumptions about the
 shape of the curve and cannot therefore extrapolate beyond the last observed event.
 SurPyval returns ``nan`` for times beyond the last observed time (the latest
-event, end-of-observation row or right-truncation time of any item). Two
-further assumptions are worth stating:
+event, end-of-observation row or right-truncation time of any item), unless
+you give the estimate an explicit support with ``set_bounds(lower, upper)``,
+which holds the last value up to ``upper`` -- your assumption, not the data's
+(see :doc:`Recurrent Event Modelling with SurPyval`). Two further
+assumptions are worth stating:
 
 - **Independent end of observation.** Items must not leave observation *because*
   they were about to have an event (or because they had many). If units with a

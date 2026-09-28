@@ -102,8 +102,14 @@ Outputs
     holds its last value
     (the single-event estimates) or is ``nan`` (the recurrent mean
     cumulative functions), the same for all of a model's functions.
+    ``set_bounds(lower, upper)`` gives a non-parametric estimate an explicit
+    support: its start value from ``lower`` to the first time, its last
+    value held up to ``upper``, and ``nan`` outside, for every function,
+    ``interp`` and confidence bound.
 
-    *Checked* by ``conformance/test_outside_data.py``.
+    *Checked* by ``conformance/test_outside_data.py``, which also sets
+    bounds on every non-parametric estimate and requires each to have
+    ``set_bounds``.
 
 Estimation
 ----------
