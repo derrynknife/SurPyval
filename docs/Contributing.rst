@@ -114,6 +114,52 @@ model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
 
+Reviewing a module by bug class
+-------------------------------
+
+Tests find what someone thought to check; a review looks for what nobody
+did. Review a module against the kinds of bug this package has actually
+had, choosing modules by lowest branch coverage and by how often they have
+been fixed (``git log --follow -p <file>``). Run
+
+.. code-block:: bash
+
+    python -m pytest --cov=<package path> --cov-branch \
+        --cov-report=term-missing <its tests>
+
+and read the uncovered branches first. Then, for each public function and
+each entry point that reaches it, try:
+
+1. **Ties**: an event and a censoring at the same time; events tied among
+   themselves; an interval endpoint equal to an exact time.
+2. **Order**: unsorted rows; unsorted or duplicated queries.
+3. **Endpoints**: the first and last piece, a query exactly on a boundary,
+   a start before or at 0, x = 0.
+4. **Degenerate values**: NaN, inf and empty input, in the data and in the
+   queries; probabilities outside [0, 1].
+5. **Tails and scale**: 1e-6 and 1e6 times the natural scale; ``log_*``
+   functions against the logs of the plain ones; a special case (e.g. an
+   exponentiated Weibull with mu = 1) against its parent distribution.
+6. **Shapes**: scalar, 1-D, 2-D and empty queries; array parameters where a
+   docstring allows them.
+7. **Counts**: ``n = k`` against k repeated rows.
+8. **Truncation**: ``tl`` / ``tr`` at, just inside and outside an
+   observation.
+9. **Reference software**: R ``survival``, ``cmprsk``, lifelines and
+   scikit-survival, minding each one's reporting convention.
+10. **Entry points**: ``fit``, ``fit_from_df``, ``from_dict`` / JSON and the
+    ``fit_from_*`` helpers.
+11. **User-supplied names and labels**: collisions with attribute names;
+    tuple and mixed labels.
+12. **Messages**: every error names the argument (principle 2), and no raw
+    numpy warning escapes (principle 22).
+
+A suspected bug counts only with a numerical reproduction. Pin it as a
+strict xfail whose reason starts with its issue number in
+``surpyval/tests/review/test_<module>_review.py``, and where it breaks a
+general property, add that property to the conformance suite so every
+model is checked for it.
+
 Branching and releases
 ----------------------
 
