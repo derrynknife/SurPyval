@@ -1,8 +1,8 @@
 Changelog
 =========
 
-v0.21.0 (unreleased)
---------------------
+v0.21.0 (28 September 2026)
+---------------------------
 
 - **Changed: one name per option (#422, principle 21).** The same option
   had different names in different parts of the package; each now has one,
