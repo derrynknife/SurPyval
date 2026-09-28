@@ -80,9 +80,12 @@ PROPERTIES: dict[str, str] = {
     ),
     "qf_ff": "qf(ff(x)) == x inside the support",
     "cif_sum": "the causes' cumulative incidences sum to 1 - sf",
-    "scalar": "a scalar query agrees with the same query as a 1-D array",
+    "scalar": (
+        "a scalar query gives a scalar that agrees with the same query as "
+        "a 1-D array"
+    ),
     "array2d": "a 2-D query keeps its shape and agrees element-wise",
-    "empty": "an empty query returns an empty result",
+    "empty": "an empty query returns an empty result of its shape",
     "query_order": "permuting the query permutes the result",
     "row_independence": (
         "covariate rows evaluated together == one at a time; one row "
@@ -134,7 +137,7 @@ PROPERTIES: dict[str, str] = {
     ),
     "cb_shape": (
         "(n, 2) [lower, upper] two-sided, (n,) one-sided; a scalar query "
-        "is a one-element query"
+        "gives (2,) two-sided and a scalar one-sided"
     ),
     "cb_api": (
         "an unknown bound= raises ValueError; on='R' and on='F' are "
@@ -191,8 +194,6 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "df_hf_sf": frozenset({UNIVARIATE, REGRESSION}),
     "qf_ff": frozenset({UNIVARIATE}),
     "cif_sum": frozenset({CAUSES, CAUSES_REGRESSION}),
-    "scalar": _EVERY - {BIVARIATE},
-    "array2d": frozenset({UNIVARIATE, CAUSES, COUNTING, COUNTING_CAUSES}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
     "outside_data": _EVERY - {BIVARIATE},
@@ -2559,51 +2560,10 @@ CASES = [_with_convergence(c) for c in CASES]
 # failure is fixed -- then delete the entry. Numbers are on the case's
 # fixture; see the report for #379 for minimal reproductions.
 # ---------------------------------------------------------------------------
-_NP_SHAPES = {
-    "array2d": "a (2, 2) query gives sf/ff/Hf of shape (2, 2, 2, 2) and "
-    "hf/df raise ValueError (np.concatenate dimensions)",
-    "empty": "hf and df of an empty query raise IndexError "
-    "(nonparametric.py indexes element 0)",
-}
 _CONSTANT_HAZARD = (
     "hf ignores x, so hf(nan) is the constant rate instead of NaN"
 )
 KNOWN_FAILURES: dict[str, dict[str, str]] = {
-    # -- shapes ---------------------------------------------------------
-    "KaplanMeier": _NP_SHAPES,
-    "NelsonAalen": _NP_SHAPES,
-    "FlemingHarrington": _NP_SHAPES,
-    "Turnbull": _NP_SHAPES,
-    "BetaGeometric": {
-        "array2d": "qf of a (2, 2) query raises ValueError (truth value "
-        "of an array, beta_geometric.py)",
-        "empty": "qf of an empty query raises IndexError",
-        "missing_query": "qf(nan) is 1, not NaN",
-    },
-    "RoystonParmar": {
-        "array2d": "every function of a (2, 2) query raises ValueError "
-        "(matmul with the spline basis, royston_parmar.py)",
-        "missing_query": "qf(nan) raises ValueError from the root finder "
-        "('function value ... is NaN')",
-    },
-    "WienerProcess": {
-        "array2d": "qf of a (2, 2) query raises ValueError (truth value "
-        "of an array, process_models.py)",
-    },
-    "GammaProcess": {
-        "array2d": "qf of a (2, 2) query raises ValueError (truth value "
-        "of an array, process_models.py)",
-    },
-    "InducedFailureDistribution": {
-        "array2d": "sf/ff of a (2, 2) query raise ValueError (broadcast "
-        "against the samples, degradation_analysis.py)",
-    },
-    "GaussianCopula": {
-        "empty": "sf/cdf of an empty (0, 2) query raise ValueError "
-        "(scipy's multivariate normal cdf is handed zero rows)",
-        "missing_query": "cdf and sf of a point with a NaN coordinate are "
-        "numbers (cdf 0), not NaN",
-    },
     # -- identities -----------------------------------------------------
     "Discretize(Weibull)": {
         "qf_ff": "qf(ff(k)) is k + 1 at some atoms (k = 5: 6): qf is "
@@ -2615,6 +2575,15 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         "1 - sf is 0.975",
     },
     # -- missing values -------------------------------------------------
+    "BetaGeometric": {"missing_query": "qf(nan) is 1, not NaN"},
+    "RoystonParmar": {
+        "missing_query": "qf(nan) raises ValueError from the root finder "
+        "('function value ... is NaN')",
+    },
+    "GaussianCopula": {
+        "missing_query": "cdf and sf of a point with a NaN coordinate are "
+        "numbers (cdf 0), not NaN",
+    },
     "Exponential": {"missing_query": _CONSTANT_HAZARD},
     "Exponential[offset]": {"missing_query": _CONSTANT_HAZARD},
     "ExponentialPH": {"missing_query": _CONSTANT_HAZARD},
@@ -2689,8 +2658,6 @@ for _name in (
     "ARI",
 ):
     KNOWN_FAILURES[_name] = {
-        "empty": "mcf([]) raises ValueError (max of an empty array, "
-        "simulation.py)",
         "missing_query": "mcf with a NaN time raises ValueError ('x' "
         "cannot be empty) instead of giving NaN there",
     }
@@ -3198,8 +3165,6 @@ for _case in CASES:
 # The issue that tracks each kind of known failure; its number leads the
 # xfail reason, so a test report says where the fix is being worked on.
 KNOWN_FAILURE_ISSUES: dict[str, str] = {
-    "array2d": "#381",
-    "empty": "#381",
     "missing_query": "#382",
     "qf_ff": "#383",
     "cif_sum": "#384",

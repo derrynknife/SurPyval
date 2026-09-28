@@ -369,9 +369,9 @@ def test_depth_two_tree_recovers_two_feature_interaction():
         max_depth=2,
     )
     t = 4.0
-    s_00 = float(tree.sf(t, np.array([0.0, 0.0]))[0])
-    s_01 = float(tree.sf(t, np.array([0.0, 1.0]))[0])
-    s_10 = float(tree.sf(t, np.array([1.0, 0.0]))[0])
-    s_11 = float(tree.sf(t, np.array([1.0, 1.0]))[0])
+    s_00 = float(tree.sf(t, np.array([0.0, 0.0])))
+    s_01 = float(tree.sf(t, np.array([0.0, 1.0])))
+    s_10 = float(tree.sf(t, np.array([1.0, 0.0])))
+    s_11 = float(tree.sf(t, np.array([1.0, 1.0])))
     assert s_11 < min(s_01, s_10)
     assert max(s_01, s_10) < s_00

@@ -82,13 +82,14 @@ def test_forest_sf_scalar_x(
     # Make a sf() call for x=1 || 100, and Z = [0.5, 0.5]
     # Should be pretty     low || high
     sf_1 = forest.sf(x=1, Z=[0.5, 0.5])
-    assert isinstance(sf_1, np.ndarray)
-    assert pytest.approx(sf_1, abs=0.05) == np.array([0.97])
+    # A scalar time gives a scalar (principle 7).
+    assert isinstance(sf_1, np.float64)
+    assert pytest.approx(sf_1, abs=0.05) == 0.97
     # (Veeery approximate)     ^^^^^^^^
 
     sf_100 = forest.sf(x=100, Z=[0.5, 0.5])
-    assert isinstance(sf_100, np.ndarray)
-    assert pytest.approx(sf_100, abs=0.15) == np.array([0.1])
+    assert isinstance(sf_100, np.float64)
+    assert pytest.approx(sf_100, abs=0.15) == 0.1
     # (Veeery approximate)       ^^^^^^^
 
 
@@ -118,16 +119,16 @@ def test_forest_all_functions(
 
     # Make a sf(), ff(), df(), hf(), and Hf() call for x=1 and Z = [0.5, 0.5]
     sf = forest.sf(x=1, Z=[0.5, 0.5])
-    assert len(sf) == 1 and isinstance(sf[0], float)
+    assert np.shape(sf) == () and isinstance(sf, float)
 
     ff = forest.ff(x=1, Z=[0.5, 0.5])
-    assert len(ff) == 1 and isinstance(ff[0], float)
+    assert np.shape(ff) == () and isinstance(ff, float)
 
     df = forest.df(x=1, Z=[0.5, 0.5])
-    assert len(df) == 1 and isinstance(df[0], float)
+    assert np.shape(df) == () and isinstance(df, float)
 
     hf = forest.hf(x=1, Z=[0.5, 0.5])
-    assert len(hf) == 1 and isinstance(hf[0], float)
+    assert np.shape(hf) == () and isinstance(hf, float)
 
     Hf = forest.Hf(x=1, Z=[0.5, 0.5])
-    assert len(Hf) == 1 and isinstance(Hf[0], float)
+    assert np.shape(Hf) == () and isinstance(Hf, float)

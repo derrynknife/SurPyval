@@ -4,6 +4,25 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Changed: shape in, shape out, for every model (#381, #435).** A function
+  evaluated at query points -- ``sf``, ``ff``, ``Hf``, ``hf``, ``df``,
+  ``qf``, the per-cause and recurrent ``cif``, ``iif``, ``mcf``,
+  ``sf_tvc``, ``Hf_tvc``, ``smoothed_hf`` and every confidence bound --
+  returns the query's shape: a scalar gives a numpy scalar, 1-D and 2-D
+  queries keep their shape, an empty query gives an empty array, and a
+  two-sided bound adds a trailing ``[lower, upper]`` axis. The
+  non-parametric estimates, Royston-Parmar, the AFT, PO and AL
+  regressions, Cox, the competing-risks and recurrent models, the
+  degradation models and every ``cb`` returned ``(1,)`` for a scalar
+  (``(1, 2)`` for a bound); several raised on a 2-D or empty query; and
+  some gave a right-looking shape with wrong values -- a Kaplan-Meier
+  ``cb`` of a (2, 2) query had its axes transposed (lower 0.724 above
+  upper 0.063), and a copula's (2, 2, 2) query mixed its coordinates.
+  Of 18,342 surveyed calls, 5,506 changed shape and no 1-D value changed.
+  Survival trees and forests keep their row-by-time grid, now
+  ``(n_rows,) + x.shape``. Code that indexed a scalar query's result
+  (``km.sf(5)[0]``) now uses the result directly. Parametric
+  ``sf_tvc(..., given=nan)`` is now NaN.
 - **Tail accuracy is checked against 50-digit references (#398).**
   ``reference/test_tails.py`` compares ``sf``, ``ff``, ``df``, ``hf``,
   ``Hf``, ``qf`` and the log forms of 17 distributions with mpmath values

@@ -99,7 +99,7 @@ def test_every_region(model, fname, interp):
     if fname in ("sf", "ff", "Hf"):
         np.testing.assert_array_equal(at_last, f(model, [last])[0])
         # Also as scalars.
-        assert f(bounded, upper)[0] == f(model, last)[0]
+        assert f(bounded, upper) == f(model, last)
 
 
 @pytest.mark.parametrize("interp", INTERPS)
@@ -109,16 +109,16 @@ def test_infinite_bounds_take_infinite_queries(model, interp):
     np.testing.assert_array_equal(
         bounded.sf(q, interp=interp), [1.0, model.R[-1]]
     )
-    assert bounded.sf(np.inf, interp=interp)[0] == model.R[-1]
-    assert bounded.sf(-np.inf, interp=interp)[0] == 1.0
+    assert bounded.sf(np.inf, interp=interp) == model.R[-1]
+    assert bounded.sf(-np.inf, interp=interp) == 1.0
     assert _is_clean_zero(bounded.Hf([-np.inf], interp=interp))
     assert bounded.Hf([np.inf], interp=interp)[0] == -np.log(model.R[-1])
     # Without bounds a step sf is 0 at inf, and the interpolated ones NaN:
     # unchanged.
     if interp == "step":
-        assert model.sf(np.inf)[0] == 0.0
+        assert model.sf(np.inf) == 0.0
     else:
-        assert np.isnan(model.sf(np.inf, interp=interp)[0])
+        assert np.isnan(model.sf(np.inf, interp=interp))
 
 
 def test_a_query_mixing_every_region_keeps_its_order(model):
@@ -129,7 +129,7 @@ def test_a_query_mixing_every_region_keeps_its_order(model):
     assert v[0] == model.R[-1]
     assert np.isnan(v[1]) and np.isnan(v[3])
     assert v[2] == 1.0
-    assert v[4] == model.sf((first + last) / 2, interp="linear")[0]
+    assert v[4] == model.sf((first + last) / 2, interp="linear")
     # A 2-D query keeps its shape.
     assert bounded.sf(q.reshape(5, 1)).shape == (5, 1)
     # An empty query gives an empty result.
@@ -263,7 +263,7 @@ def test_negative_values(name):
     sf = bounded.sf(q, interp="linear")
     assert np.isnan(sf[[0, -1]]).all()
     np.testing.assert_array_equal(sf[1:3], 1.0)
-    assert sf[3] == model.sf(-4.0, interp="linear")[0]
+    assert sf[3] == model.sf(-4.0, interp="linear")
     np.testing.assert_array_equal(sf[4:7], model.R[-1])
     assert _is_clean_zero(bounded.ff([-10.0, -8.0]))
     with pytest.raises(ValueError, match="-7.5"):
@@ -371,7 +371,7 @@ def test_cubic_sf_at_the_last_knot_is_not_below_zero():
         H = model.Hf(model.x[-1], interp="cubic")
     assert np.all((sf >= 0) & (sf <= 1))
     assert sf[-1] == 0.0 and not np.signbit(sf[-1])
-    assert H[0] == np.inf
+    assert H == np.inf
 
 
 @pytest.mark.parametrize(

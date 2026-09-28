@@ -49,6 +49,7 @@ from surpyval.utils.linalg import (
     safe_inv,
 )
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 from ._bounds import (
     analytic_cb,
@@ -390,33 +391,31 @@ class InducedFailureDistribution(SerialisableMixin):
             stress=model_dict.get("stress"),
         )
 
-    def ff(self, x: npt.ArrayLike) -> "float | npt.NDArray":
+    @keeps_query_shape
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure probability ``P(T <= x)`` from the Monte-Carlo draws
         (``nan`` at a missing time)."""
-        scalar = np.isscalar(x)
-        x = np.atleast_1d(np.asarray(x, dtype=float))
+        x = np.asarray(x, dtype=float)
         out = (self.samples[None, :] <= x[:, None]).mean(axis=1)
         # no draw is <= nan, so a missing time read as ff = 0 (sf = 1)
-        out = np.where(np.isnan(x), np.nan, out)
-        return float(out[0]) if scalar else out
+        return np.where(np.isnan(x), np.nan, out)
 
-    def sf(self, x: npt.ArrayLike) -> "float | npt.NDArray":
+    @keeps_query_shape
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Survival function ``P(T > x)``."""
-        scalar = np.isscalar(x)
-        res = 1.0 - np.atleast_1d(self.ff(np.atleast_1d(x)))
-        return float(res[0]) if scalar else res
+        return 1.0 - self.ff(x)
 
-    def qf(self, p: npt.ArrayLike) -> "float | npt.NDArray":
+    @keeps_query_shape
+    def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         """Quantile of the induced distribution (``inf`` in the never-fails
         mass, ``nan`` for a missing probability)."""
-        scalar = np.isscalar(p)
-        p = np.atleast_1d(np.asarray(p, dtype=float))
+        p = np.asarray(p, dtype=float)
         if np.any((p < 0) | (p > 1)):
             raise ValueError("qf probabilities must lie in [0, 1]")
         missing = np.isnan(p)
         out = np.full(p.shape, np.nan)
         out[~missing] = np.quantile(self.samples, p[~missing], method="lower")
-        return float(out[0]) if scalar else out
+        return out
 
     def mean(self) -> float:
         """Mean failure time (``inf`` if any draw never fails)."""
@@ -1594,6 +1593,7 @@ class DegradationModel(SerialisableMixin):
             out = out * clock.rate_at(t)
         return out
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Survival function of the fitted life model.
@@ -1608,22 +1608,27 @@ class DegradationModel(SerialisableMixin):
         """
         return self._life_fn("sf", x, Z)
 
+    @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """CDF of the fitted life model (pass ``Z`` for accelerated models)."""
         return self._life_fn("ff", x, Z)
 
+    @keeps_query_shape
     def df(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Density of the fitted life model (``Z`` for accelerated models)."""
         return self._life_fn("df", x, Z)
 
+    @keeps_query_shape
     def hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Hazard rate of the fitted life model (``Z`` for accelerated)."""
         return self._life_fn("hf", x, Z)
 
+    @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Cumulative hazard of the life model (``Z`` for accelerated)."""
         return self._life_fn("Hf", x, Z)
 
+    @keeps_query_shape
     def qf(self, p: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Quantile function of the fitted life model.
@@ -1992,6 +1997,7 @@ class DegradationModel(SerialisableMixin):
             )
         return life_parameter_covariance(self, method=method)
 
+    @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,

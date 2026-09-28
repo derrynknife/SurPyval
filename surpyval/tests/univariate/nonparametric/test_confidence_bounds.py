@@ -231,8 +231,9 @@ def test_scalar_input_to_hf_and_df():
     model = surpyval.NelsonAalen.fit(x)
     # Must not raise; with a single point there is no neighbouring step
     # so the rate is undefined.
-    assert model.hf(2).shape == (1,)
-    assert model.df(2).shape == (1,)
+    # A scalar query gives a scalar (principle 7).
+    assert np.shape(model.hf(2)) == ()
+    assert np.shape(model.df(2)) == ()
     # Array input remains well defined
     assert np.isfinite(model.hf([1.5, 2.5, 3.5])).all()
 

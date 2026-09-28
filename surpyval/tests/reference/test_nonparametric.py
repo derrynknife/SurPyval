@@ -83,7 +83,7 @@ def test_kaplan_meier_median_and_interval_match_survfit(name):
         np.nan if v is None else v
         for v in (ref["median_lower"], ref["median_upper"])
     ]
-    assert_allclose(model.quantile_cb(0.5)[0], expected, **EXACT)
+    assert_allclose(model.quantile_cb(0.5), expected, **EXACT)
 
 
 @pytest.mark.parametrize("name", ["lung", "ties", "left_truncation"])

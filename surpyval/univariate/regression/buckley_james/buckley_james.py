@@ -51,6 +51,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
     restore_covariate_meta,
@@ -332,6 +333,7 @@ class BuckleyJamesModel(SerialisableMixin):
         restore_covariate_meta(out, model_dict)
         return out
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single
         covariate vector ``Z``."""
@@ -352,11 +354,13 @@ class BuckleyJamesModel(SerialisableMixin):
         out = np.where(positive, self._resid_sf(r), 1.0)
         return np.where(np.isnan(r) | np.isnan(x), np.nan, out)
 
+    @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)`` for a single covariate
         vector ``Z``."""
         return 1.0 - self.sf(x, Z)
 
+    @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard ``-log sf(x, Z)`` for a single covariate
         vector ``Z``."""

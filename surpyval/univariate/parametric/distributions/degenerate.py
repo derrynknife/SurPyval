@@ -28,6 +28,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.shapes import keeps_query_shape
 
 # The serialisation of the two classes. They are the model themselves
 # (every method is a classmethod), so the instance-method ``to_json`` of
@@ -90,26 +91,32 @@ class NeverOccurs(Distribution):
     name = "NeverOccurs"
 
     @classmethod
+    @keeps_query_shape
     def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.ones_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(np.asarray(u, dtype=float), np.inf)
 
@@ -161,28 +168,34 @@ class InstantlyOccurs(Distribution):
     name = "InstantlyOccurs"
 
     @classmethod
+    @keeps_query_shape
     def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.ones_like(x).astype(float)
 
     @classmethod
+    @keeps_query_shape
     def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         # Point mass at zero: the "density" is the degenerate spike there.
         x = np.asarray(x, dtype=float)
         return np.where(x == 0, np.inf, 0.0)
 
     @classmethod
+    @keeps_query_shape
     def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(np.asarray(x, dtype=float), np.inf)
 
     @classmethod
+    @keeps_query_shape
     def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.full_like(x, np.inf, dtype=float)
 
     @classmethod
+    @keeps_query_shape
     def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return np.zeros_like(np.asarray(u, dtype=float))
 

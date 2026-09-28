@@ -127,7 +127,7 @@ the final value so their bounds are defined all the way to the last observation.
 
     assert 0.76 < lower.item() < 0.77, lower
     _two = bofors_steel_na.cb(34, interp='linear', alpha_ci=0.05)
-    assert lower.item() > _two[0, 0]
+    assert lower.item() > _two[0]
 
 What a fitted model holds
 ^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -266,10 +266,10 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
     :hide-output:
 
     _sf = model.cb(3)
-    assert np.allclose(model.cb(3, on='ff'), 1 - _sf[:, ::-1])
-    assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[:, ::-1]))
-    assert model.cb(6, bound_type='normal')[0, 0] < 0
-    assert np.allclose(model.cb(8), [[0, model.cb(5)[0, 1]]])
+    assert np.allclose(model.cb(3, on='ff'), 1 - _sf[::-1])
+    assert np.allclose(model.cb(3, on='Hf'), -np.log(_sf[::-1]))
+    assert model.cb(6, bound_type='normal')[0] < 0
+    assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(np.isnan(model.cb([0.5, 9])))
 
 ``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``:
@@ -470,11 +470,11 @@ fails at a time, the Fleming-Harrington drops by the same factor as the Nelson-A
     assert sum(n) == 18 and n[0] == 6
     _m = [e.fit(x, c=c, n=n) for e in
           [surv.KaplanMeier, surv.FlemingHarrington, surv.NelsonAalen]]
-    _km, _fh, _na = (m.sf(1)[0] for m in _m)
+    _km, _fh, _na = (m.sf(1) for m in _m)
     assert np.isclose(_km, 1 - 6 / 18) and np.isclose(_na, np.exp(-6 / 18))
     assert _fh - _km < _na - _fh, (_km, _fh, _na)
-    assert np.isclose(_m[1].sf(6)[0] / _m[1].sf(5)[0],
-                      _m[2].sf(6)[0] / _m[2].sf(5)[0])
+    assert np.isclose(_m[1].sf(6) / _m[1].sf(5),
+                      _m[2].sf(6) / _m[2].sf(5))
 
 Pointwise bounds, simultaneous bands and the bootstrap
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -928,8 +928,8 @@ have dropped.
     :hide-code:
     :hide-output:
 
-    assert model.sf(5.5)[0] == 1 and np.all(model.cb(5.5) == 1)
-    assert model.sf(6)[0] < 1 and np.all(model.cb(6) < 1)
+    assert model.sf(5.5) == 1 and np.all(model.cb(5.5) == 1)
+    assert model.sf(6) < 1 and np.all(model.cb(6) < 1)
 
 Truncation with the Turnbull estimator
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1038,7 +1038,7 @@ conditions and where they come from.
     :hide-output:
 
     assert np.isclose(np.linspace(0.1, 1.0, 6)[1], 0.28)
-    assert bad.npmle == 'does not exist' and bad.sf(2)[0] < 0.01
+    assert bad.npmle == 'does not exist' and bad.sf(2) < 0.01
     with warnings.catch_warnings():
         warnings.simplefilter('error')
         TB.fit(x=x_ni, c=c_ni, tl=0.5, turnbull_estimator='Kaplan-Meier')

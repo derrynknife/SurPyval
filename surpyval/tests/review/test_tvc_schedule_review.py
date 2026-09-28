@@ -108,27 +108,19 @@ def test_expression_keyword_arguments_are_used_or_refused():
     np.testing.assert_allclose(got, [0.0, 0.1, 0.2])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#435: parametric sf_tvc ignores given=nan and returns the "
-    "unconditional survival (0.936 at 20); CoxPH.sf_tvc returns nan",
-)
 def test_parametric_sf_tvc_missing_given_is_nan():
+    # #435 item 1: it returned the unconditional survival (0.936 at 20).
     x, Z = _ph_data()
     model = surv.WeibullPH.fit(x, Z)
     schedule = StepSchedule.constant([1.0])
     assert np.isnan(model.sf_tvc([20.0, 50.0], schedule, given=np.nan)).all()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#435: sf_tvc of PH/AH/AFT raises a broadcasting ValueError for a "
-    "2-D query (CoxPH returns the right shape)",
-)
 @pytest.mark.parametrize(
     "fitter", ["WeibullPH", "WeibullAH", "WeibullAFT"], ids=str
 )
 def test_sf_tvc_2d_query_keeps_its_shape(fitter):
+    # #435 item 2: a broadcasting ValueError for a 2-D query.
     x, Z = _ph_data()
     model = getattr(surv, fitter).fit(x, Z)
     schedule = StepSchedule.constant([1.0])
@@ -140,12 +132,8 @@ def test_sf_tvc_2d_query_keeps_its_shape(fitter):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#435: sf_tvc of a scalar time returns shape (1,) where "
-    "WeibullPH.sf(20.0, Z) returns a scalar (principle 7)",
-)
 def test_sf_tvc_scalar_query_gives_a_scalar():
+    # #435 item 3: shape (1,) where WeibullPH.sf(20.0, Z) is a scalar.
     x, Z = _ph_data()
     model = surv.WeibullPH.fit(x, Z)
     schedule = StepSchedule.constant([1.0])

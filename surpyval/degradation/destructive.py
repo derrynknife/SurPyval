@@ -55,6 +55,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
@@ -177,6 +178,7 @@ class DestructiveDegradationModel(SerialisableMixin):
 
     # -- induced lifetime distribution at the threshold -------------------
 
+    @keeps_query_shape
     def ff(self, t: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
         loc = self._loc(t)
@@ -190,29 +192,31 @@ class DestructiveDegradationModel(SerialisableMixin):
             out = np.asarray(
                 self.distribution.ff(thr, loc, self.sigma), dtype=float
             )
-        return out[0] if np.ndim(t) == 0 else out
+        return out
 
+    @keeps_query_shape
     def sf(self, t: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
         return 1.0 - self.ff(t)
 
+    @keeps_query_shape
     def Hf(self, t: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
         return -np.log(np.maximum(self.sf(t), np.finfo(float).tiny))
 
+    @keeps_query_shape
     def df(self, t: npt.ArrayLike) -> npt.NDArray:
         """
         Density of the induced lifetime distribution (finite-difference of the
         CDF; the closed form depends on the time transform).
         """
-        scalar = np.ndim(t) == 0
-        ta = np.atleast_1d(np.asarray(t, dtype=float))
-        h = np.maximum(np.abs(ta), 1.0) * 1e-6
-        out = (self.ff(ta + h) - self.ff(ta - h)) / (2.0 * h)
-        return out[0] if scalar else out
+        t = np.asarray(t, dtype=float)
+        h = np.maximum(np.abs(t), 1.0) * 1e-6
+        return (self.ff(t + h) - self.ff(t - h)) / (2.0 * h)
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
+    @keeps_query_shape
     def cb(
         self,
         t: npt.ArrayLike,

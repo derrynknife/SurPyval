@@ -33,8 +33,8 @@ class ExactEventTime_(ParametricFitter):
         >>> ExactEventTime.sf([4., 5., 6.], 5.)
         array([1., 0., 0.])
         """
-        x_arr = np.atleast_1d(x)
-        return (x_arr < T).astype(float)
+        out = (np.asarray(x) < T).astype(float)
+        return out[()] if out.ndim == 0 else out
 
     def ff(self, x: Numeric, T: Boxable) -> npt.NDArray:
         r"""CDF: 0 before ``T`` and 1 from ``T`` on.
@@ -45,8 +45,8 @@ class ExactEventTime_(ParametricFitter):
         >>> ExactEventTime.ff([4., 5., 6.], 5.)
         array([0., 1., 1.])
         """
-        x_arr = np.atleast_1d(x)
-        return (x_arr >= T).astype(float)
+        out = (np.asarray(x) >= T).astype(float)
+        return out[()] if out.ndim == 0 else out
 
     # ``df`` and ``hf`` do not exist for a point mass, and used to be
     # answered with ``inf``.
@@ -97,10 +97,9 @@ class ExactEventTime_(ParametricFitter):
         # -log R(x): zero while the item survives, infinite once the
         # event has certainly happened. Previously this returned hf,
         # which happened to be the same two values.
-        x_arr = np.atleast_1d(x)
-        Hf = np.zeros_like(x_arr).astype(float)
-        Hf[x_arr >= T] = np.inf
-        return Hf
+        x_arr = np.asarray(x)
+        Hf = np.where(x_arr >= T, np.inf, 0.0)
+        return Hf[()] if Hf.ndim == 0 else Hf
 
     def qf(self, u: Numeric, T: Boxable) -> Boxable:
         r"""Quantile function: :math:`T` for every :math:`u \in (0, 1)`.
@@ -116,7 +115,7 @@ class ExactEventTime_(ParametricFitter):
         >>> ExactEventTime.qf([0.1, 0.5, 0.9], 5.0)
         array([5., 5., 5.])
         """
-        return np.ones_like(np.atleast_1d(np.asarray(u, dtype=float))) * T
+        return np.ones_like(np.asarray(u, dtype=float)) * T
 
     def mean(self, T: Boxable) -> Boxable:
         r"""Mean of the distribution: :math:`E[X] = T`.

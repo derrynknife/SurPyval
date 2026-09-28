@@ -9,6 +9,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import is_missing_event
+from surpyval.utils.shapes import keeps_query_shape
 
 from .regression_data import (
     prepare_Z,
@@ -298,6 +299,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out = np.where(idx >= 0, values[np.maximum(idx, 0)], before)
         return np.where(np.isnan(x), np.nan, out)
 
+    @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
@@ -315,6 +317,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         bx, bh0, _ = self._baseline_arrays(stratum)
         return self._baseline_step(bx, bh0, x) * self.phi(Z)
 
+    @keeps_query_shape
     def Hf(
         self,
         x: npt.ArrayLike,
@@ -330,6 +333,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         bx, _, bH0 = self._baseline_arrays(stratum)
         return self._baseline_step(bx, bH0, x) * self.phi(Z)
 
+    @keeps_query_shape
     def sf(
         self,
         x: npt.ArrayLike,
@@ -344,6 +348,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         return np.exp(-self.Hf(x, Z, stratum))
 
+    @keeps_query_shape
     def ff(
         self,
         x: npt.ArrayLike,
@@ -356,6 +361,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         return -np.expm1(-self.Hf(x, Z, stratum))
 
+    @keeps_query_shape
     def df(
         self,
         x: npt.ArrayLike,
@@ -537,6 +543,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         # A missing query time is nan, not the value after the last jump.
         return np.where(np.isnan(query), np.nan, out)
 
+    @keeps_query_shape
     def Hf_tvc(
         self,
         x: npt.ArrayLike,
@@ -592,6 +599,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         starts, _, Zseg = segments_from_origin(schedule, t_max)
         return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
 
+    @keeps_query_shape
     def sf_tvc(
         self,
         x: npt.ArrayLike,
@@ -643,5 +651,5 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 # A missing conditioning age: nothing is known.
                 H = np.full(np.shape(H), np.nan)
             elif given > 0:
-                H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)[0]
+                H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)
         return np.exp(-H)

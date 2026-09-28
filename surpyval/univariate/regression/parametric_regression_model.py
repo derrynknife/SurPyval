@@ -15,6 +15,7 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
+from surpyval.utils.shapes import keeps_query_shape
 
 from ._bounds import logit_sf_bound
 from .regression_data import (
@@ -473,6 +474,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             out = np.where(below, below_support, out)
         return out
 
+    @keeps_query_shape
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -563,6 +565,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         return schedule
 
+    @keeps_query_shape
     def Hf_tvc(
         self,
         x: npt.ArrayLike,
@@ -719,6 +722,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             self.model.Hf_dist(psi, *dist_params), dtype=float
         ).ravel()
 
+    @keeps_query_shape
     def sf_tvc(
         self,
         x: npt.ArrayLike,
@@ -783,10 +787,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         H = self.Hf_tvc(x, Z, xl)
         if given is not None:
             given = float(given)
-            if given > 0:
-                H = H - self.Hf_tvc(given, Z, xl)[0]
+            if np.isnan(given):
+                # A missing conditioning age: nothing is known (as Cox).
+                H = np.full(np.shape(H), np.nan)
+            elif given > 0:
+                H = H - self.Hf_tvc(given, Z, xl)
         return np.exp(-H)
 
+    @keeps_query_shape
     def ff(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -831,6 +839,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return self._eval(self.model.ff, x, Z, 0.0)
 
+    @keeps_query_shape
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -875,6 +884,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return self._eval(self.model.df, x, Z, 0.0)
 
+    @keeps_query_shape
     def hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -920,6 +930,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return self._eval(self.model.hf, x, Z, 0.0)
 
+    @keeps_query_shape
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -1230,6 +1241,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         lower, upper = all_bounds[idx]
         return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
 
+    @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,

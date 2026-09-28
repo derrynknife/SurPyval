@@ -70,10 +70,16 @@ Inputs
 Outputs
 -------
 
-7. **Shapes.** A scalar, 1-D or 2-D query gives a result of the same shape,
-   and an empty query an empty result.
+7. **Shape in, shape out.** A scalar query gives a numpy scalar, a 1-D or
+   2-D query a result of its shape, and an empty query an empty result of
+   its shape; a two-sided confidence bound adds a last ``[lower, upper]``
+   axis. With covariates the shape is that of the times. The documented
+   exception is the survival tree and forest's row-by-time grid,
+   ``(n_rows,) + x.shape``. ``surpyval.utils.shapes`` applies the rule at
+   every model's public methods.
 
-   *Checked* by ``conformance/test_vectorisation.py``; known gap #381.
+   *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
+   ``conformance/test_options.py``, for every registered model.
 
 8. **The functions of a model agree with each other.**
    :math:`S + F = 1`, :math:`H = -\log S`, :math:`f = h S`, ``qf`` inverts

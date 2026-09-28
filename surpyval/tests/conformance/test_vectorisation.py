@@ -1,10 +1,15 @@
 """Shapes and vectorisation (#379).
 
-A model's functions are elementwise in the query:
+A model's functions are elementwise in the query, and keep its shape
+(principle 7, "shape in -> shape out"):
 
-- a scalar query gives one value, the same as the one-element array;
-- a 2-D query keeps its shape and agrees with the flattened query;
-- an empty query gives an empty result (not an error);
+- a scalar query gives a scalar (shape ``()``), the same value as the
+  one-element array;
+- a 2-D query keeps its shape and agrees with the flattened query, for
+  every interface (with covariates, one row used at every time; for a
+  copula, whose points are ``(x1, x2)`` pairs, a ``(2, 2, 2)`` query of
+  four points gives ``(2, 2)``);
+- an empty query gives an empty result of its shape (not an error);
 - permuting the query permutes the result (the input-order class of bugs:
   unsorted times broke competing-risks Cox, Cox predictions and the
   integrated Brier score);
@@ -41,7 +46,7 @@ def test_scalar_query(case):
         else:
             got = call_native(case, model, fname, x[k], event=event)
             ref = call_native(case, model, fname, x[k : k + 1], event=event)
-        assert np.size(got) == 1, (fname, np.shape(got))
+        assert np.shape(got) == (), (fname, np.shape(got))
         np.testing.assert_allclose(
             np.ravel(np.asarray(got, float)),
             np.ravel(np.asarray(ref, float)),
@@ -53,12 +58,19 @@ def test_scalar_query(case):
 @pytest.mark.parametrize("case", cases_for("array2d"))
 def test_2d_query_keeps_its_shape(case):
     model = fitted(case)
+    # With covariates, one row for every time: the query's shape is x's.
+    Z = None if case.Z is None else case.Z[1]
     for fname, event in calls(case):
         x = query(case, fname)[:4]
-        grid = x.reshape(2, -1)
-        got = np.asarray(call(case, model, fname, grid, event=event), float)
-        flat = np.asarray(call(case, model, fname, x, event=event), float)
-        assert got.shape == grid.shape, (fname, got.shape)
+        if case.interface == "bivariate" and fname != "qf":
+            grid, shape = x.reshape(2, 2, 2), (2, 2)
+        else:
+            grid = x.reshape(2, -1)
+            shape = grid.shape
+        z = None if fname == "qf" else Z
+        got = np.asarray(call(case, model, fname, grid, z, event), float)
+        flat = np.asarray(call(case, model, fname, x, z, event), float)
+        assert got.shape == shape, (fname, got.shape)
         np.testing.assert_array_equal(got.ravel(), flat)
 
 
@@ -69,14 +81,15 @@ def test_empty_query(case):
         x = np.array([], dtype=float)
         if case.interface in WITH_COVARIATES:
             Z = np.empty((0, case.Z.shape[1]))
-            if case.z_style == "single":
+            if case.z_style != "paired":
+                # One vector (a tree's rows would add a grid axis).
                 Z = case.Z[0]
             got = call_native(case, model, fname, x, Z, event)
         else:
             if case.interface == "bivariate" and fname != "qf":
                 x = np.empty((0, 2))
             got = call_native(case, model, fname, x, event=event)
-        assert np.size(got) == 0, (fname, np.shape(got))
+        assert np.shape(got) == (0,), (fname, np.shape(got))
 
 
 @pytest.mark.parametrize("case", cases_for("query_order"))

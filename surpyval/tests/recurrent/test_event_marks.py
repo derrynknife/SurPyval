@@ -71,8 +71,8 @@ def test_cause_specific_mcf_counts_by_cause():
     model = CauseSpecificMCF.fit(x, i, c, e=e)
     assert model.event_types == ["A", "B"]
     # three A events over two items -> MCF reaches 1.5; one B event -> 0.5
-    assert np.isclose(model.mcf(6, "A")[0], 1.5)
-    assert np.isclose(model.mcf(6, "B")[0], 0.5)
+    assert np.isclose(model.mcf(6, "A"), 1.5)
+    assert np.isclose(model.mcf(6, "B"), 0.5)
 
 
 def test_cause_specific_mcf_requires_marks():
@@ -106,7 +106,7 @@ def test_cause_specific_mcf_from_df():
         df, "t", "mark", i_col="item", c_col="cens"
     )
     assert model.event_types == ["A", "B"]
-    assert np.isclose(model.mcf(6, "A")[0], 1.5)
+    assert np.isclose(model.mcf(6, "A"), 1.5)
     assert model.df is df
 
 

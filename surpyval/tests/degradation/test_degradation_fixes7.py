@@ -270,13 +270,13 @@ def test_adt_qf_nan_covariate_or_p_is_nan(adt_models):
     assert np.isnan(model.qf([0.1, 0.5], Z=[np.nan])).all()
     out = model.qf([np.nan, 0.5], Z=[0.5])
     assert np.isnan(out[0])
-    assert out[1] == pytest.approx(model.qf(0.5, Z=[0.5])[0])
+    assert out[1] == pytest.approx(model.qf(0.5, Z=[0.5]))
     # each p is paired with its row of Z, as sf pairs x; only row 0 was
     # used
     rows = model.qf(0.5, Z=np.array([[np.nan], [0.5], [1.0]]))
     assert np.isnan(rows[0])
     assert rows[1:] == pytest.approx(
-        [model.qf(0.5, Z=[0.5])[0], model.qf(0.5, Z=[1.0])[0]]
+        [model.qf(0.5, Z=[0.5]), model.qf(0.5, Z=[1.0])]
     )
     assert rows[1] > rows[2]
     with pytest.raises(ValueError, match="pairs each probability"):

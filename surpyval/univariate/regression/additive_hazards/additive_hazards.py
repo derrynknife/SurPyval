@@ -58,6 +58,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
     design_matrix_from_df,
@@ -309,6 +310,7 @@ class AdditiveHazardsModel(SerialisableMixin):
         kern = np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
         return (kern * dH0[None, :]).sum(axis=1) / bandwidth
 
+    @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
@@ -332,6 +334,7 @@ class AdditiveHazardsModel(SerialisableMixin):
         rate = np.where(np.isnan(x), np.nan, rate)
         return np.where(x > self.x[-1], 0.0, rate)
 
+    @keeps_query_shape
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
@@ -363,18 +366,21 @@ class AdditiveHazardsModel(SerialisableMixin):
         # H(t | Z) = H0(t) + integral_0^t beta'Z ds = H0(t) + t * beta'Z.
         return H0 + x * (Z @ self.beta)
 
+    @keeps_query_shape
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
         """Survival ``exp(-Hf(x, Z))``."""
         return np.exp(-self.Hf(x, Z))
 
+    @keeps_query_shape
     def ff(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
         """Failure probability ``1 - sf(x, Z)``."""
         return -np.expm1(-self.Hf(x, Z))
 
+    @keeps_query_shape
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:

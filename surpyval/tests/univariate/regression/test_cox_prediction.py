@@ -22,20 +22,20 @@ def test_nothing_has_happened_before_the_first_event(model):
     assert np.all(model.sf(before, [[0.3]]) == 1.0)
     assert np.all(model.ff(before, [[0.3]]) == 0.0)
     # and at the first event the baseline has made its first jump
-    assert model.Hf(model.x[0], [[0.0]])[0] == pytest.approx(model.H0[0])
+    assert model.Hf(model.x[0], [[0.0]]) == pytest.approx(model.H0[0])
 
 
 def test_times_pair_with_their_own_covariate_row(model):
     x = np.array([3.0, 1.0, 2.0])
     Z = np.array([[0.0], [2.0], [-1.0]])
     paired = model.Hf(x, Z)
-    one_by_one = [model.Hf(t, [z])[0] for t, z in zip(x, Z)]
+    one_by_one = [model.Hf(t, [z]) for t, z in zip(x, Z)]
     assert np.allclose(paired, one_by_one)
     assert np.allclose(
-        model.sf(x, Z), [model.sf(t, [z])[0] for t, z in zip(x, Z)]
+        model.sf(x, Z), [model.sf(t, [z]) for t, z in zip(x, Z)]
     )
     assert np.allclose(
-        model.hf(x, Z), [model.hf(t, [z])[0] for t, z in zip(x, Z)]
+        model.hf(x, Z), [model.hf(t, [z]) for t, z in zip(x, Z)]
     )
 
 
@@ -44,7 +44,7 @@ def test_one_covariate_row_is_used_for_every_time_in_the_order_given(
 ):
     x = np.array([3.0, 1.0, 0.1, 2.0])
     out = model.Hf(x, [[0.5]])
-    assert np.allclose(out, [model.Hf(t, [[0.5]])[0] for t in x])
+    assert np.allclose(out, [model.Hf(t, [[0.5]]) for t in x])
     assert out[2] == 0.0
     # a step function: non-decreasing in time
     order = np.argsort(x)

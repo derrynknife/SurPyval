@@ -18,6 +18,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt
+from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -1673,6 +1674,7 @@ class Parametric(
             "failure)."
         )
 
+    @keeps_query_shape
     def cb(
         self,
         t: npt.ArrayLike,
@@ -1746,6 +1748,9 @@ class Parametric(
                 "bound must be 'two-sided', 'lower' or 'upper'; got "
                 f"{bound!r}"
             )
+        if np.size(t) == 0 and on in ("sf", "R", "ff", "F", "Hf", "hf", "df"):
+            # Nothing to bound (the Jacobian of no values fails).
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
 
         if method.lower() in (
             "lr",

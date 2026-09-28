@@ -11,6 +11,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -496,6 +497,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         np.random.shuffle(rvs)
         return rvs
 
+    @keeps_query_shape
     def df(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The probability density function of the fitted model.
@@ -519,6 +521,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             df += self.w[i] * self.dist.df(x, *self.params[i])
         return df
 
+    @keeps_query_shape
     def ff(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The cumulative density function of the fitted model.
@@ -541,6 +544,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             F = F + self.w[i] * self.dist.ff(x, *self.params[i])
         return F
 
+    @keeps_query_shape
     def sf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The survival function of the fitted model.

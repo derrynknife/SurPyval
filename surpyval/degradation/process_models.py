@@ -53,6 +53,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 from ._clock import StressClock, covariates_by_name, stress_row
 
@@ -638,7 +639,8 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     # -- the failure-time distribution --------------------------------------
 
-    def ff(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def ff(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Failure (CDF) of the first-passage time to the threshold.
 
@@ -650,42 +652,41 @@ class FirstPassageProcessModel(SerialisableMixin):
         method below. A missing (``nan``) time or stress gives ``nan``.
         """
         clock = self._clock(Z)
-        scalar = np.isscalar(t)
-        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        t_in = np.asarray(t, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(self._ff_distance(tt, self.threshold), t_in, tt)
-        return float(res[0]) if scalar else res
+        return res
 
-    def sf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def sf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Survival function of the first-passage time."""
         clock = self._clock(Z)
-        scalar = np.isscalar(t)
-        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        t_in = np.asarray(t, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(self._sf_distance(tt, self.threshold), t_in, tt)
-        return float(res[0]) if scalar else res
+        return res
 
-    def df(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def df(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Density of the first-passage time. Under a stress path it is the
         reference-stress density at the clock time ``tau(t)`` times the
         clock's rate, ``AF`` of the stress in force at ``t``.
         """
         clock = self._clock(Z)
-        scalar = np.isscalar(t)
-        tt = np.atleast_1d(np.asarray(t, dtype=float))
+        tt = np.asarray(t, dtype=float)
         if clock is None:
             res = self._missing(self._df0(tt), tt)
         else:
             tau = clock.tau(tt)
             res = self._missing(self._df0(tau) * clock.rate_at(tt), tt, tau)
-        return float(res[0]) if scalar else res
+        return res
 
-    def hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def hf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Hazard function of the first-passage time."""
         clock = self._clock(Z)
-        scalar = np.isscalar(t)
-        tt = np.atleast_1d(np.asarray(t, dtype=float))
+        tt = np.asarray(t, dtype=float)
         tau = tt if clock is None else clock.tau(tt)
         # In log space: far in the upper tail the density and the survival
         # both underflow to zero, and their plain ratio is 0/0 = nan, while
@@ -704,28 +705,29 @@ class FirstPassageProcessModel(SerialisableMixin):
         if clock is not None:
             res = res * clock.rate_at(tt)
         res = self._missing(res, tt, tau)
-        return float(res[0]) if scalar else res
+        return res
 
-    def Hf(self, t: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def Hf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Cumulative hazard of the first-passage time."""
         clock = self._clock(Z)
-        scalar = np.isscalar(t)
-        t_in = np.atleast_1d(np.asarray(t, dtype=float))
+        t_in = np.asarray(t, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(
             -self._log_sf_distance(tt, self.threshold), t_in, tt
         )
-        return float(res[0]) if scalar else res
+        return res
 
-    def qf(self, p: npt.ArrayLike, Z: Any = None) -> "npt.NDArray | float":
+    @keeps_query_shape
+    def qf(self, p: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Quantile (inverse CDF) of the first-passage time (``nan`` for a
         missing probability or stress)."""
         clock = self._clock(Z)
-        p = np.atleast_1d(np.asarray(p, dtype=float))
+        p = np.asarray(p, dtype=float)
         out = np.array([self._quantile(pi, self.threshold) for pi in p])
         if clock is not None:
             out = clock.inverse(out)
-        return float(out[0]) if out.shape == (1,) else out
+        return out
 
     def mean(self, Z: Any = None) -> float:
         """

@@ -20,6 +20,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.shapes import keeps_query_shape
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -211,6 +212,7 @@ class NonParametricCounting(SerialisableMixin):
             self.support, self._origin(), float(self.x.max()), x, f, 0.0
         )
 
+    @keeps_query_shape
     def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         """
         The estimated mean cumulative function at ``x``.
@@ -275,6 +277,7 @@ class NonParametricCounting(SerialisableMixin):
             )
         return np.asarray(self.x, dtype=float), values
 
+    @keeps_query_shape
     def mcf_cb(
         self,
         x: npt.ArrayLike,

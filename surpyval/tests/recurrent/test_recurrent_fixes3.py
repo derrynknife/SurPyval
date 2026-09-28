@@ -82,7 +82,7 @@ def test_nhpp_simulation_does_not_underflow():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         sim = model.time_terminated_simulation(100, items=200, seed=1)
-    assert np.isclose(sim.mcf(100)[0], 1000, rtol=0.05)
+    assert np.isclose(sim.mcf(100), 1000, rtol=0.05)
 
 
 # --- renewal fitting ----------------------------------------------------

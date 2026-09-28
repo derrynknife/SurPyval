@@ -177,7 +177,7 @@ def test_life_under_the_profile_matches_the_population(model):
         200.0 + (tau_star - knots_tau[-1]) / af(Z_LEVELS[2]),
     )
     assert model.mean(Z=PROFILE) == pytest.approx(life.mean(), rel=0.03)
-    assert float(model.qf(0.5, Z=PROFILE)[0]) == pytest.approx(
+    assert float(model.qf(0.5, Z=PROFILE)) == pytest.approx(
         np.median(life), rel=0.03
     )
 
@@ -213,7 +213,7 @@ def test_life_under_a_profile_is_consistent(model):
     )
     assert np.allclose(model.Hf(t, Z=PROFILE), -np.log(model.sf(t, Z=PROFILE)))
     mean = quad(
-        lambda s: float(model.sf(s, Z=PROFILE)[0]),
+        lambda s: float(model.sf(s, Z=PROFILE)),
         0,
         np.inf,
         points=None,
@@ -222,7 +222,7 @@ def test_life_under_a_profile_is_consistent(model):
     assert model.mean(Z=PROFILE) == pytest.approx(mean, rel=1e-4)
     draws = model.random(20_000, Z=PROFILE, random_state=3)
     assert np.median(draws) == pytest.approx(
-        float(model.qf(0.5, Z=PROFILE)[0]), rel=0.01
+        float(model.qf(0.5, Z=PROFILE)), rel=0.01
     )
 
 
@@ -444,7 +444,7 @@ def test_induced_life_under_a_stress(model):
     induced = model.induced_life(Z=PROFILE, random_state=0)
     assert induced.stress is None
     assert induced.median() == pytest.approx(
-        float(model.qf(0.5, Z=PROFILE)[0]), rel=0.03
+        float(model.qf(0.5, Z=PROFILE)), rel=0.03
     )
 
 

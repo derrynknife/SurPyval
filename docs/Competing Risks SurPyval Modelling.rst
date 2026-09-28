@@ -311,7 +311,7 @@ negative and either bound infinite. ``set_support`` returns the model, and
 
     _b = bounded.cif(q, "wear")
     assert np.isnan(_b[[0, 3]]).all() and _b[1] == 0
-    assert _b[2] == model.cif(x.max(), "wear")[0]
+    assert _b[2] == model.cif(x.max(), "wear")
 
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is

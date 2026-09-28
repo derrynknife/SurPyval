@@ -13,6 +13,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.shapes import keeps_query_shape
 
 
 class ProportionalIntensityModel(
@@ -146,6 +147,7 @@ class ProportionalIntensityModel(
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
         return out
 
+    @keeps_query_shape
     def cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         """
         Compute the cumulative incidence function of the model with the
@@ -163,6 +165,7 @@ class ProportionalIntensityModel(
         """
         return self.dist.cif(x, *self.params) * np.exp(Z @ self.coeffs)
 
+    @keeps_query_shape
     def iif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         """
         Compute the instantaneous incidence function of the model with the
@@ -317,6 +320,7 @@ class ProportionalIntensityModel(
             self, n_boot=n_boot, seed=seed
         )
 
+    @keeps_query_shape
     def cif_cb(
         self,
         x: ArrayLike,
@@ -612,6 +616,7 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
+    @keeps_query_shape
     def mcf(  # type: ignore[override]
         self,
         x: ArrayLike,
@@ -629,6 +634,9 @@ class ProportionalIntensityModel(
         """
         self._sim_Z = self._unit_covariates(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
+        if x.size == 0:
+            # Nothing to simulate to (the horizon is the largest time).
+            return np.empty(0)
         np_model = self.time_terminated_simulation(
             float(x.max()), Z, items=items, seed=seed
         )

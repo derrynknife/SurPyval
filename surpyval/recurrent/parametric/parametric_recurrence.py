@@ -13,6 +13,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.shapes import keeps_query_shape
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -130,6 +131,7 @@ class ParametricRecurrenceModel(
     # CoxLewis post-processing from RecurrenceSimulationMixin; this model is
     # unconditional, so it needs no extra cif args (_cif_args defaults to ()).
 
+    @keeps_query_shape
     def cif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the cumulative incidence function (CIF) based on the fitted
@@ -173,6 +175,7 @@ class ParametricRecurrenceModel(
         """
         return self.cif(x)
 
+    @keeps_query_shape
     def iif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the intensity function based on the fitted model. No need to
@@ -340,6 +343,7 @@ class ParametricRecurrenceModel(
         self._check_fitted()
         return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
 
+    @keeps_query_shape
     def cif_cb(
         self,
         x: ArrayLike,

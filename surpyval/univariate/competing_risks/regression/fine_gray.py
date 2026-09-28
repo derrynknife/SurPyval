@@ -61,6 +61,7 @@ from surpyval.univariate.competing_risks.labels import (
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.shapes import keeps_query_shape
 
 
 def _fit_cause(
@@ -263,6 +264,7 @@ class FineGrayModel(SerialisableMixin):
         value per row of ``Z`` (a scalar for a single covariate vector)."""
         return np.exp(np.asarray(Z, dtype=float) @ self.beta)
 
+    @keeps_query_shape
     def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """
         Cumulative incidence of the cause of interest at times ``x``:
@@ -280,6 +282,7 @@ class FineGrayModel(SerialisableMixin):
         H0 = np.where(np.isnan(x), np.nan, H0)
         return 1.0 - np.exp(-H0 * np.exp(rows @ self.beta))
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """One minus the cumulative incidence (the cause-of-interest-free
         probability under the subdistribution)."""

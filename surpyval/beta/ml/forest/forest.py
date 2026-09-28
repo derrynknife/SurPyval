@@ -12,6 +12,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.score import score
+from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -161,8 +162,7 @@ class RandomSurvivalForest(SerialisableMixin):
         ...     x, Z, c=c, n_trees=5, max_depth=1, kind="exponential"
         ... )
         >>> forest.sf(5, [[0.2, 0.5], [0.8, 0.5]]).round(3)
-        array([[0.561],
-               [0.396]])
+        array([0.561, 0.396])
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -205,9 +205,10 @@ class RandomSurvivalForest(SerialisableMixin):
         Returns
         -------
         NDArray
-            For a 1-D ``Z``, the survival function at ``x`` as a 1-D
-            array. For a 2-D ``Z``, an ``(n_rows, x.size)`` grid whose
-            row ``i`` is the survival function for ``Z[i]``. A covariate
+            For a 1-D ``Z``, the survival function at ``x``, shaped like
+            ``x`` (a scalar for a scalar ``x``). For a 2-D ``Z``, a grid of
+            shape ``(n_rows,) + x.shape`` whose row ``i`` is the survival
+            function for ``Z[i]`` (every row at every time). A covariate
             vector with a missing (NaN) value gives NaN, and leaves the
             other rows unaffected.
         """
@@ -258,8 +259,9 @@ class RandomSurvivalForest(SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
     ) -> NDArray:
-        # Prep input - make sure numpy array
-        x = np.array(x, ndmin=1)
+        # The times flat; the result gets their shape back (on its last
+        # axis for a grid), so a scalar time gives a scalar.
+        x, restore = flatten_query(x)
         single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
 
@@ -270,8 +272,8 @@ class RandomSurvivalForest(SerialisableMixin):
             res += tree.apply_model_function(function_name, x, Z)
         res = res / self.n_trees
         if single_covariant_vector:
-            return res[0]
-        return res
+            return restore(res[0])
+        return restore(res, axis=-1)
 
     def score(
         self,

@@ -55,23 +55,23 @@ def test_every_region(model, fname, event):
     np.testing.assert_array_equal(start, START[fname])
     assert not np.signbit(start).any()
     after = _f(bounded, fname, [10.5, 20.0], event)
-    np.testing.assert_array_equal(after, _f(model, fname, 10.0, event)[0])
+    np.testing.assert_array_equal(after, _f(model, fname, 10.0, event))
 
 
 def test_infinite_bounds(model):
     bounded = copy.deepcopy(model).set_support(-np.inf, np.inf)
     np.testing.assert_array_equal(
-        bounded.sf([-np.inf, np.inf]), [1.0, model.sf(10.0)[0]]
+        bounded.sf([-np.inf, np.inf]), [1.0, model.sf(10.0)]
     )
     np.testing.assert_array_equal(
-        bounded.cif([-np.inf, np.inf], "a"), [0.0, model.cif(10.0, "a")[0]]
+        bounded.cif([-np.inf, np.inf], "a"), [0.0, model.cif(10.0, "a")]
     )
 
 
 def test_unbounded_holds_its_value_forever(model):
     # What set_support changes: without it the estimate holds everywhere.
-    assert model.cif(1e9, "a")[0] == model.cif(10.0, "a")[0]
-    assert model.sf(-1e9)[0] == 1.0
+    assert model.cif(1e9, "a") == model.cif(10.0, "a")
+    assert model.sf(-1e9) == 1.0
 
 
 def test_no_raw_numpy_warning(model):
@@ -89,7 +89,7 @@ def test_negative_times():
     bounded = copy.deepcopy(model).set_support(-10, 5)
     np.testing.assert_array_equal(
         bounded.cif([-11, -10, -6, 3, 5, 6], "a"),
-        [np.nan, 0.0, 0.0, model.cif(2.0, "a")[0], model.cif(2.0, "a")[0]]
+        [np.nan, 0.0, 0.0, model.cif(2.0, "a"), model.cif(2.0, "a")]
         + [np.nan],
     )
     with pytest.raises(ValueError, match="first time"):

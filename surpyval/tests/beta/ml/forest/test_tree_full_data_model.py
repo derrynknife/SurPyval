@@ -68,8 +68,8 @@ def _fit_all_features(**kwargs):
 
 def _assert_signal_recovered(tree, mid_time=5.0):
     assert tree._root.split_feature_index == 0
-    s_fast = float(tree.sf(mid_time, np.array([1.0, 0.0]))[0])
-    s_slow = float(tree.sf(mid_time, np.array([0.0, 0.0]))[0])
+    s_fast = float(tree.sf(mid_time, np.array([1.0, 0.0])))
+    s_slow = float(tree.sf(mid_time, np.array([0.0, 0.0])))
     assert s_fast < s_slow
 
 
@@ -326,8 +326,8 @@ def test_non_parametric_kind_on_classic_data():
     Z, x, c = _signal_data()
     tree = _fit_all_features(x=x, Z=Z, c=c, kind="non-parametric")
     assert tree.kind == "non-parametric"
-    s_fast = float(tree.sf(5.0, np.array([1.0, 0.0]))[0])
-    s_slow = float(tree.sf(5.0, np.array([0.0, 0.0]))[0])
+    s_fast = float(tree.sf(5.0, np.array([1.0, 0.0])))
+    s_slow = float(tree.sf(5.0, np.array([0.0, 0.0])))
     assert s_fast < s_slow
 
 

@@ -2216,7 +2216,7 @@ it:
 .. jupyter-execute::
 
     for t in [0.5, 1.0, 1.5, 2.0]:
-        lower, upper = model.cb(t, on='sf')[0]
+        lower, upper = model.cb(t, on='sf')
         print(f"R({t}) = {model.sf(t):.3f}   95% CI [{lower:.3f}, {upper:.3f}]")
 
 .. jupyter-execute::
