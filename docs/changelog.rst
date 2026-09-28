@@ -4,6 +4,93 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Time-varying covariate paths start at 0 (#433).** A schedule starting
+  before 0 was counted as age in the AFT ``sf_tvc`` and the degradation
+  stress clock: a constant ``WeibullAFT`` path from -10 gave
+  ``sf_tvc(20) = 0.8626`` against ``sf(20, Z) = 0.9362``, and the clock gave
+  F(100) = 0.662 against 0.489. A schedule starting after a query time
+  raised. Every schedule is now clipped to start at 0 -- the part before 0
+  is ignored, a later start holds its first value back to 0 -- for every
+  family and ``StressClock`` (whose ``tau(0)`` is now 0).
+- **``StepSchedule.from_expression`` means what Python means (#434).**
+  ``and`` / ``or`` returned a bool, so ``"(t > 50) and 2.0 or 1.0"`` was 1.0
+  everywhere; they return an operand now (2.0 after t = 50). Keyword
+  arguments were dropped (``round(t/10, ndigits=1)`` gave 0 at t = 1, 2)
+  and ``round(t/10, 1)`` raised a ``TypeError``; both give 0.1, 0.2 now,
+  and a keyword a function cannot take raises a ``ValueError`` naming it.
+- **``sf_tvc`` / ``Hf_tvc`` accept any time (#435).** Time 0 raised "x must
+  contain a positive time"; it gives sf 1 (or the baseline's value at 0)
+  now, and negative times match ``sf`` (``NormalAFT`` gave 0.9725 at -5,
+  not 0.9801). ``given`` at or below 0 now conditions as documented (a
+  Logistic baseline: sf(20 | 0) = 0.9378, not the unconditional 0.8831).
+  The new ``conformance/test_tvc.py`` checks every model with ``sf_tvc``
+  against ``sf`` for constant paths.
+- **Kaplan-Meier no longer fails when the estimate underflows (#450).**
+  Once the product fell below the smallest float -- 1100 staggered entries
+  with two at risk at each failure, R = 0.5^k -- ``KaplanMeier.fit``
+  raised ``FloatingPointError`` from its log-space fallback and leaked
+  "divide by zero in log". It gives 0 there now, quietly, and matches
+  scikit-survival 0.28 exactly at all 1100 times. A step with no one at
+  risk no longer leaks "invalid value" either.
+- **``bootstrap_cb`` is NaN outside the data, like ``cb`` (#452).** Without
+  a support it carried its step convention past the data: Kaplan-Meier of
+  1..10 (last censored) gave ``bootstrap_cb([0.5, 11]) = [[1, 1], [0,
+  0.548]]`` where ``cb`` is NaN, and a missing time got the last bounds.
+  ``cb``, ``R_cb`` and ``bootstrap_cb`` now share one rule: NaN outside the
+  data and at a missing time, or the support's values under
+  ``set_support``.
+- **A left-truncated estimate's band survives saving without its data
+  (#451).** A restored model took ``band``'s N from the largest risk set:
+  37 instead of 60 in one example, moving the band at the 20% time from
+  [0.4900, 0.8917] to [0.4535, 0.9018] (a truncated Turnbull fit went the
+  other way, 8 instead of 4). ``to_dict`` stores it as ``"band_n"`` where
+  it differs, stamped schema 2; older dictionaries keep the old fallback
+  and untruncated models are still schema 1.
+- **Recurrent cause labels (#440).** ``CauseSpecificNHPP`` and
+  ``CauseSpecificMCF`` handle cause labels with the same code as the
+  univariate competing-risks models. A tuple label did not load back
+  (``from_dict`` raised "unhashable type: 'list'"), mixed labels such as
+  ``'s'`` and ``2`` raised a bare ``TypeError`` from sorting, and a tuple
+  mark on every row was split into a column so the fit raised. All three
+  fit, predict per cause and round-trip now. The new conformance property
+  ``test_labels.py`` checks tuple and mixed labels for every model fitted
+  with ``e=``.
+- **Additive-hazards draws below 0 (#441).** ``random()`` of an additive
+  hazards model on a Normal, Gumbel or Logistic baseline searches the
+  whole support, so the share ``ff(0)`` of its mass below 0 is drawn there
+  (GumbelAH: 0.0347 of the draws against ``ff(0)`` = 0.0361); it returned
+  2.7e-20 for all of them.
+- **Changed: ``ParametricCompetingRisks.bic()`` is the joint criterion,**
+  ``2 neg_ll + K ln(n)`` with K the parameters of all causes and n the
+  failures of any cause, as every other SurPyval BIC counts n. It was the
+  sum of the causes' BICs, which charged each cause only ``ln`` of its own
+  failures: the competing-risks guide's example goes from 2220.8 to 2223.1
+  (Weibull + Exponential). ``aic()`` was already the joint AIC.
+- **ExpoWeibull is accurate in both tails (#436).** ``1 - exp(-t)`` rounded
+  to 0 below t = 1e-16 and ``x / alpha`` overflowed:
+  ``log_df(1e-4, 10, 4, 0.5)`` was +inf (true -13.12),
+  ``ff(1e-3, 10, 4, 2)`` 23% high, and at mu = 1 ``hf``, ``Hf`` and
+  ``log_sf`` at x = 100 were NaN, inf and -inf (the Weibull's 30, 1000 and
+  -1000). Every function is now computed on the log scale with exact
+  branches for each regime and exact values at 0, ``moment`` and ``mean``
+  take array parameters, and a fit that failed on data with a value at
+  1e-4 (returning its start, neg_ll 124.97) now reaches 90.97.
+- **``CustomDistribution`` checks its inputs (#437).** A parameter named
+  after a model attribute (``k``, ``dist``, ``data``, ``method``, ...)
+  overwrote it silently -- ``k`` moved the AIC from 289.50 to 290.08 -- and
+  is now refused with a ``ValueError`` listing the reserved names. ``qf``
+  outside [0, 1] is NaN (it was the support's lower bound), any
+  ``(x, *args)`` signature is accepted, and reusing a name warns that it
+  replaces the registry entry used to restore saved models.
+- **``fit_from_non_parametric`` matches ``fit(how='MPP')`` (#438).** It
+  plotted the censored times too (alpha 10.711 instead of 10.597 on
+  censored data); it plots the failure times only now. ``fit_from_ecdf``
+  raises a ``ValueError`` for an F outside [0, 1] or NaN (dropped silently
+  before) and for unequal lengths (an ``IndexError`` before).
+- **Probability plots with a tick at 0 (#439).** ``round_sig`` took
+  ``log10(0)``, so ``Normal.fit([-1, 0.5, 2, 3, 5]).plot()`` raised
+  ``OverflowError``. Zero, negative and non-finite ticks work, and
+  ``round_sig(0)`` is 0.
 - **Mutation testing pilot (#396).** ``scripts/mutation/run.sh`` runs
   mutmut on a module in a copy of the repository, and ``recheck.py``
   checks new tests against its survivors. On the non-parametric estimators
