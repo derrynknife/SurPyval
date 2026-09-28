@@ -40,7 +40,6 @@ from the case alone.
 """
 
 import functools
-import warnings
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
@@ -53,6 +52,7 @@ from surpyval import degradation as dg
 from surpyval import multivariate as mv
 from surpyval import recurrent as rc
 from surpyval.beta import ml
+from surpyval.tests.conformance.leaks import quiet
 from surpyval.univariate import competing_risks as cr
 
 # ---------------------------------------------------------------------------
@@ -102,11 +102,58 @@ PROPERTIES: dict[str, str] = {
     ),
     "serialise": "strict-JSON to_dict / from_dict keeps every prediction",
     "fit_paths": "the alternate fit paths give the same model",
+    "warn_once": (
+        "a fit or a prediction gives each of its deliberate warnings at "
+        "most once"
+    ),
+    "outside_data": (
+        "a data-bounded estimate starts at its initial value before the "
+        "first time and holds (or is NaN) after the last, for every "
+        "function alike"
+    ),
+    # The option sweeps of test_options.py, over each case's ``bounds``
+    # (see :class:`Bound`), ``interp`` and ``estimators``.
+    "cb_declared": (
+        "every uncertainty method of the model (one taking alpha_ci, "
+        "confidence or bound) is swept, or excluded with a reason"
+    ),
+    "cb_contains": "the bounds contain the estimate of the same function",
+    "cb_range": (
+        "lower <= upper, inside the function's range or the parameter's "
+        "support"
+    ),
+    "cb_sides": (
+        "a one-sided bound at alpha is that end of the two-sided bound at "
+        "2 alpha"
+    ),
+    "cb_nested": "a smaller alpha_ci gives a wider interval around the other",
+    "cb_centre": "as alpha_ci -> 1 the interval closes onto the estimate",
+    "cb_transform": (
+        "bounds on ff are 1 - those on sf and bounds on Hf -log of them, "
+        "the ends swapped"
+    ),
+    "cb_shape": (
+        "(n, 2) [lower, upper] two-sided, (n,) one-sided; a scalar query "
+        "is a one-element query"
+    ),
+    "cb_api": (
+        "an unknown bound= raises ValueError; on='R' and on='F' are "
+        "on='sf' and on='ff'"
+    ),
+    "interp": (
+        "each interp value gives a valid curve that agrees with the "
+        "step estimate at its step times"
+    ),
+    "interp_refused": "an unknown interp value raises ValueError",
+    "estimators": "each estimation option gives a valid model",
+    "estimators_agree": (
+        "the estimation options agree on a large sample from the model"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(
-    {"units", "row_order", "counts", "missing_fit", "fit_paths"}
+    {"units", "row_order", "counts", "missing_fit", "fit_paths", "warn_once"}
 )
 
 # Which interfaces each property applies to. A property also needs the
@@ -135,6 +182,7 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "array2d": frozenset({UNIVARIATE, CAUSES, COUNTING, COUNTING_CAUSES}),
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
+    "outside_data": _EVERY - {BIVARIATE},
 }
 for _prop in PROPERTIES:
     _APPLICABLE.setdefault(_prop, _EVERY)
@@ -192,6 +240,17 @@ class Case:
     # Properties marked ``slow`` for this case (``"*"`` for all of them),
     # which the pull-request conformance job skips.
     slow: frozenset[str] = frozenset()
+    # The option sweeps (test_options.py), filled in by ``_OPTIONS`` below:
+    # the uncertainty methods, the values ``interp=`` takes, and the
+    # estimation options of the fit (keyword -> values), with a function
+    # of the fitted model giving a large sample for them to agree on.
+    bounds: tuple["Bound", ...] = ()
+    interp: tuple[str, ...] = ()
+    estimators: dict[str, tuple] = field(default_factory=dict)
+    estimators_large: dict[str, tuple] = field(default_factory=dict)
+    large: Callable[[Any], dict] | None = None
+    # How far (absolute) the estimators' predictions may differ on it.
+    estimators_atol: float = 0.02
 
     def applies(self, prop: str) -> bool:
         if prop in ("seed_global", "seed_explicit") and self.draw is None:
@@ -199,6 +258,15 @@ class Case:
         if prop == "seed_explicit" and not self.explicit_seed:
             return False
         if prop == "fit_paths" and not self.paths:
+            return False
+        if prop.startswith("cb_") and prop != "cb_declared":
+            if not self.bounds:
+                return False
+        if prop.startswith("interp") and not self.interp:
+            return False
+        if prop.startswith("estimators") and not self.estimators:
+            return False
+        if prop == "estimators_agree" and self.large is None:
             return False
         return self.interface in _APPLICABLE[prop] and prop not in (
             self.exclude
@@ -325,8 +393,7 @@ def predictions(case, model, x=None, Z=None):
 @functools.lru_cache(maxsize=None)
 def _fitted(name):
     case = CASE_BY_NAME[name]
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    with quiet():
         return case.fit(case.data())
 
 
@@ -339,9 +406,12 @@ def fitted(case):
 
 
 def refit(case, data):
-    """Fit the case to ``data``, silencing the optimisers' warnings."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    """Fit the case to ``data``, silencing the optimisers' warnings.
+
+    A raw numerical warning leaking from the package is not silenced
+    (see ``leaks.py``).
+    """
+    with quiet():
         return case.fit(data)
 
 
@@ -648,7 +718,9 @@ UNI_FUNCTIONS = ("sf", "ff", "df", "hf", "Hf")
 
 
 def _fit(fitter, **fixed):
-    return lambda d: fitter.fit(**d, **fixed)
+    # An entry of the data dict overrides a fixed option, so the option
+    # sweeps can refit with another value (``{**data, "how": "MPS"}``).
+    return lambda d: fitter.fit(**{**fixed, **d})
 
 
 def _parametric_paths(fitter, **fixed):
@@ -1811,6 +1883,477 @@ _LOOSE += ("CauseSpecificNHPP", "GammaProcess")
 _LOOSE += ("LogNormalAFT",)
 CASES = [replace(c, rtol=1e-3) if c.name in _LOOSE else c for c in CASES]
 
+
+# ---------------------------------------------------------------------------
+# Options (test_options.py): the uncertainty methods of each case, the
+# values its interp= takes and the estimation options of its fit
+# ---------------------------------------------------------------------------
+# The significance levels every bound is swept over.
+ALPHAS = (0.01, 0.05, 0.2)
+
+
+@dataclass(frozen=True)
+class Bound:
+    """One uncertainty method of a case, swept by ``test_options.py``.
+
+    ``kind`` is what it bounds:
+
+    - ``"function"``: a function of time at the case's query, named by
+      ``on=`` when the method takes it (every value in ``on`` is swept)
+      and by ``point`` otherwise;
+    - ``"param"``: ``param_cb``, each fitted parameter in turn;
+    - ``"coef"``: every coefficient at once, with no ``bound=``;
+    - ``"rul"``: the interval of ``predict_rul`` on the remaining life,
+      called with each argument tuple in ``query``;
+    - ``"summary"``: one number's interval (``mean_cb``, ``rmst``).
+
+    ``bound=`` (when ``sides``) and the levels in :data:`ALPHAS` are
+    swept; ``kwargs`` fixes the rest -- the variant (``method=``,
+    ``bound_type=``, ``interp=``) or a bootstrap's size and seed.
+    """
+
+    method: str
+    kind: str = "function"
+    on: tuple[str, ...] = ()
+    point: str = "sf"
+    kwargs: dict = field(default_factory=dict)
+    # Takes bound= ("two-sided", "lower", "upper").
+    sides: bool = True
+    # The level argument; "confidence" takes 1 - alpha.
+    level: str = "alpha_ci"
+    # A transformed Wald (delta-method) bound, which closes onto the
+    # estimate as alpha_ci -> 1; a percentile bootstrap or a
+    # likelihood-ratio search is not one.
+    wald: bool = True
+    # Documented to stay inside the function's range (a plain normal
+    # interval is not).
+    in_range: bool = True
+    # Documented to give NaN in places: outside the range of the data, or
+    # where a likelihood-ratio search fails (with a warning).
+    nan_ok: bool = False
+    # Called once per cause of the case.
+    per_cause: bool = False
+    # "function": times replacing the case's query (for a slow search);
+    # "rul" / "summary": the argument tuples of the calls.
+    query: tuple = ()
+    # Relative tolerance of the equalities (a search's own tolerance).
+    rtol: float = 1e-8
+    slow: bool = False
+    label: str = ""
+
+    @property
+    def name(self) -> str:
+        return self.label or self.method
+
+
+_ON_ALL = ("sf", "ff", "Hf", "hf", "df")
+_ON_SURVIVAL = ("sf", "ff", "Hf")
+
+# Parametric fits with no covariance to bound with: cb and param_cb
+# raise ValueError, as documented ("Only MLE has confidence bounds"; a
+# closed-form estimate or a model built from its parameters carries none).
+_NO_COVARIANCE = (
+    "Binomial",
+    "Bernoulli",
+    "FixedEventProbability",
+    "ExactEventTime",
+    "Hypoexponential",
+)
+# The likelihood-ratio search runs pointwise, so it is swept at three
+# times, and only in the full suite.
+_LR_X = {"Weibull": np.array([4.0, 8.0, 13.0])}
+
+
+def _parametric_bounds(case):
+    on = tuple(f for f in _ON_ALL if f in case.functions)
+    out = [
+        Bound("cb", on=on, kwargs={"method": "wald"}, label="cb[wald]"),
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "wald"},
+            label="param_cb[wald]",
+        ),
+    ]
+    # The likelihood-ratio search is swept on Weibull only: it takes
+    # minutes a distribution (ExpoWeibull's param_cb sweep took 420 s).
+    # (Documented: it is not available for offset, limited-failure or
+    # zero-inflated models.)
+    if case.name not in _LR_X:
+        return tuple(out)
+    x = _LR_X[case.name]
+    lr = dict(wald=False, nan_ok=True, rtol=1e-3, slow=True)
+    out.append(
+        Bound(
+            "cb",
+            on=on,
+            kwargs={"method": "lr"},
+            query=tuple(x),
+            label="cb[lr]",
+            **lr,
+        )
+    )
+    out.append(
+        Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "lr"},
+            label="param_cb[lr]",
+            **lr,
+        )
+    )
+    return tuple(out)
+
+
+def _nonparametric_bounds(case):
+    out = []
+    for bound_type in ("exp", "normal"):
+        for interp in ("step", "linear", "cubic"):
+            out.append(
+                Bound(
+                    "cb",
+                    on=_ON_SURVIVAL,
+                    kwargs={"bound_type": bound_type, "interp": interp},
+                    in_range=bound_type == "exp",
+                    nan_ok=True,
+                    label=f"cb[{bound_type},{interp}]",
+                )
+            )
+        for method in ("hall-wellner", "nair"):
+            out.append(
+                Bound(
+                    "band",
+                    kwargs={"method": method, "bound_type": bound_type},
+                    sides=False,
+                    # Not swept to alpha_ci -> 1: the critical-value search
+                    # grows without bound there (13 s at alpha_ci = 0.9; at
+                    # 1 - 1e-6 it asks for a 158 TiB grid): #420.
+                    wald=False,
+                    in_range=bound_type == "exp",
+                    nan_ok=True,
+                    label=f"band[{method},{bound_type}]",
+                )
+            )
+        out.append(
+            Bound(
+                "quantile_cb",
+                point="qf",
+                kwargs={"bound_type": bound_type},
+                sides=False,
+                # Documented: the upper end is NaN where the interval is
+                # open to the right.
+                nan_ok=True,
+                label=f"quantile_cb[{bound_type}]",
+            )
+        )
+    out.append(
+        Bound(
+            "bootstrap_cb",
+            kwargs={"B": 40, "random_state": 1},
+            wald=False,
+            nan_ok=True,
+            # Each resample reruns the Turnbull EM.
+            slow=case.name == "Turnbull",
+        )
+    )
+    out.append(Bound("mean_cb", kind="summary", sides=False, query=((),)))
+    out.append(
+        Bound("rmst", kind="summary", sides=False, query=((6.0,), (12.0,)))
+    )
+    return tuple(out)
+
+
+def _mcf_bounds(per_cause=False):
+    return tuple(
+        Bound(
+            "mcf_cb",
+            point="mcf",
+            kwargs={"bound_type": bound_type, "interp": interp},
+            level="confidence",
+            in_range=bound_type == "exp",
+            nan_ok=True,
+            per_cause=per_cause,
+            label=f"mcf_cb[{bound_type},{interp}]",
+        )
+        for bound_type in ("exp", "normal")
+        for interp in ("step", "linear")
+    )
+
+
+_PARAM_CB = Bound("param_cb", kind="param")
+_BOOT = {"n_boot": 20, "seed": 1}
+
+
+def _bounds(case):
+    """The uncertainty methods of ``case``'s model (see :class:`Bound`)."""
+    cls = case.model_class.rsplit(".", 1)[-1]
+    if cls == "Parametric":
+        if case.name in _NO_COVARIANCE:
+            return ()
+        return _parametric_bounds(case)
+    if cls == "NonParametric":
+        return _nonparametric_bounds(case)
+    if cls == "RoystonParmarModel":
+        return (Bound("cb", on=_ON_SURVIVAL),)
+    if cls == "ParametricRegressionModel":
+        return (Bound("cb", on=_ON_ALL), _PARAM_CB)
+    if cls == "FrailtyModel":
+        return (_PARAM_CB,)
+    if cls == "BuckleyJamesModel":
+        return (
+            Bound(
+                "bootstrap_ci",
+                kind="coef",
+                kwargs=_BOOT,
+                sides=False,
+                wald=False,
+            ),
+        )
+    if cls in ("ParametricRecurrenceModel", "ProportionalIntensityModel"):
+        return (Bound("cif_cb", point="cif"), _PARAM_CB)
+    if cls == "RenewalModel":
+        return (_PARAM_CB,)
+    if cls == "NonParametricCounting":
+        return _mcf_bounds()
+    if cls == "CauseSpecificMCF":
+        return _mcf_bounds(per_cause=True)
+    if cls == "DegradationModel":
+        # A new unit's first three readings, still below the threshold.
+        d = path_data()
+        unit = (d["x"][:3], d["y"][:3])
+        return (
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"method": "analytic"},
+                label="cb[analytic]",
+            ),
+            Bound(
+                "cb",
+                on=_ON_SURVIVAL,
+                kwargs={"method": "bootstrap", "n_boot": 10, "seed": 1},
+                wald=False,
+                slow=True,
+                label="cb[bootstrap]",
+            ),
+            Bound(
+                "predict_rul",
+                kind="rul",
+                kwargs={"n_samples": 4000, "random_state": 1},
+                sides=False,
+                # Documented: a remaining life is negative once the unit
+                # has most likely crossed the threshold.
+                in_range=False,
+                query=(unit,),
+                rtol=1e-2,
+            ),
+        )
+    if cls == "DestructiveDegradationModel":
+        # Every call refits the model n_boot times.
+        return (
+            Bound(
+                "cb",
+                on=("sf", "ff"),
+                kwargs={"n_boot": 10, "seed": 1},
+                wald=False,
+                slow=True,
+            ),
+        )
+    if cls in ("WienerProcessModel", "GammaProcessModel"):
+        return (
+            Bound(
+                "predict_rul",
+                kind="rul",
+                sides=False,
+                query=((0.0,), (40.0,), (80.0,)),
+                rtol=1e-6,
+            ),
+        )
+    return ()
+
+
+# interp= values: the documented ones, and the other scipy interp1d
+# kinds the non-parametric functions are documented to accept.
+_NP_INTERP: tuple[str, ...] = ("step", "linear", "cubic")
+_NP_INTERP += ("nearest", "zero", "slinear", "quadratic", "previous", "next")
+_INTERP = {
+    "KaplanMeier": _NP_INTERP,
+    "NelsonAalen": _NP_INTERP,
+    "FlemingHarrington": _NP_INTERP,
+    "Turnbull": _NP_INTERP,
+    "NonParametricCounting": ("step", "linear"),
+    "CauseSpecificMCF": ("step", "linear"),
+    # Its functions take interp= (undocumented; "step" is the default).
+    "CompetingRisksProportionalHazards[Cox]": ("step", "linear"),
+}
+
+# Estimation options. ``estimators`` are swept on the case's fixture;
+# the agreement sweep adds the values in ``_LARGE_ONLY`` (the method of
+# moments needs uncensored data, so it is refused on the fixtures) and
+# refits the large sample of ``large`` (a function of the fitted model).
+N_LARGE = 1000
+_U_LARGE = (np.arange(1, N_LARGE + 1) - 0.5) / N_LARGE
+
+
+def _quantile_sample(model):
+    """A deterministic 'sample' of the model: its quantiles."""
+    return {"x": np.asarray(model.qf(_U_LARGE), float)}
+
+
+def _parametric_estimators(case):
+    fitter = getattr(sp, case.name)
+    how = ["MLE", "MPS", "MSE", "MPP"]
+    if fitter.discrete:
+        how.remove("MPS")  # documented: MPS needs a continuous CDF
+    if not fitter.supports_mpp:
+        how.remove("MPP")  # documented: not fitted by probability plotting
+    return {"how": tuple(how)}
+
+
+def _censored_sample(model):
+    # Weibull(10, 2) quantiles, every fifth one right censored.
+    x = quantiles(N_LARGE)
+    return {"x": x, "c": (np.arange(N_LARGE) % 5 == 4).astype(int)}
+
+
+def _cox_sample(model):
+    size = 400
+    z0 = np.tile([0.0, 1.0], size // 2)
+    z1 = np.round(np.linspace(-1.0, 1.0, size), 3)
+    life = quantiles(size, 1.0, 2.0)[scramble(size)]
+    # Rounded to one decimal, so there are ties for the methods to handle.
+    x = np.round(10.0 * np.exp(-0.5 * z0 + 0.3 * z1) * life, 1)
+    c = (np.arange(size) % 7 == 0).astype(int)
+    return {"x": x, "Z": np.column_stack([z0, z1]), "c": c}
+
+
+def _cr_sample(model, with_Z=True):
+    size = 480
+    x = np.round(quantiles(size, 10.0, 1.5), 1)
+    e = np.array(["a", "b", "a", None] * (size // 4), dtype=object)
+    d = {"x": x, "e": e[scramble(size)]}
+    if with_Z:
+        Z = np.tile([0.0, 1.0, 1.0], size // 3)[:, None]
+        d["Z"] = Z[scramble(size)]
+    return d
+
+
+def _recurrent_sample(model):
+    data = model.time_terminated_simulation_data(60.0, items=40, seed=1)
+    return {"x": data.x, "i": data.i, "c": data.c, "n": data.n}
+
+
+def _copula_sample(model):
+    return {"x": model.random(800, random_state=1)}
+
+
+_PLAIN_CONTINUOUS: tuple[str, ...] = (
+    "Weibull",
+    "Exponential",
+    "Gamma",
+    "LogNormal",
+)
+_PLAIN_CONTINUOUS += ("LogLogistic", "ExpoWeibull", "Rayleigh", "Normal")
+_PLAIN_CONTINUOUS += ("Gumbel", "GumbelLEV", "Logistic", "Uniform")
+_PLAIN_DISCRETE: tuple[str, ...] = ("Poisson", "Geometric", "NegativeBinomial")
+_PLAIN_DISCRETE += ("DiscreteWeibull",)
+# The agreement sweeps run on a pull request for these; the rest are slow.
+_FAST_ESTIMATORS: tuple[str, ...] = (
+    "Weibull",
+    "LogNormal",
+    "Poisson",
+    "Turnbull",
+    "CoxPH",
+)
+_FAST_ESTIMATORS += ("GumbelCopula", "CrowAMSAA")
+
+
+def _estimators(case):
+    """(estimators, large-only values, large sample) of ``case``."""
+    name = case.name
+    if name in _PLAIN_CONTINUOUS + _PLAIN_DISCRETE:
+        return (
+            _parametric_estimators(case),
+            {"how": ("MOM",)},
+            _quantile_sample,
+        )
+    if name == "Turnbull":
+        est = ("Kaplan-Meier", "Nelson-Aalen", "Fleming-Harrington")
+        return {"turnbull_estimator": est}, {}, _censored_sample
+    if name == "CoxPH":
+        methods = ("breslow", "efron", "exact", "kalbfleisch-prentice")
+        return {"method": methods}, {}, _cox_sample
+    if name == "CompetingRisksProportionalHazards[Cox]":
+        return {"tie_method": ("efron", "breslow")}, {}, _cr_sample
+    if name == "CompetingRisks[Nelson-Aalen]":
+        methods = ("Nelson-Aalen", "Kaplan-Meier")
+        return (
+            {"method": methods},
+            {},
+            functools.partial(_cr_sample, with_Z=False),
+        )
+    if name == "ParametricCompetingRisks":
+        return {"how": ("MLE", "MPS", "MSE", "MPP")}, {}, None
+    if name in ("CrowAMSAA", "Duane", "CoxLewis"):
+        return {"how": ("MLE", "MSE")}, {}, _recurrent_sample
+    if name == "CauseSpecificNHPP":
+        return {"how": ("MLE", "MSE")}, {}, None
+    if case.model_class == "surpyval.multivariate.CopulaModel":
+        return {"how": ("IFM", "MLE")}, {}, _copula_sample
+    if name == "DegradationAnalysis[linear]":
+        est = {
+            "how": ("MLE", "MPS", "MSE", "MPP"),
+            "population_method": ("moments", "reml"),
+        }
+        return est, {}, None
+    return {}, {}, None
+
+
+# The bound sweeps run on a pull request for one or two cases of each
+# family (each regression bound recomputes a numerical Hessian); the rest
+# are slow.
+_FAST_BOUNDS: tuple[str, ...] = (
+    "Weibull",
+    "Poisson",
+    "Weibull[lfp]",
+    "KaplanMeier",
+)
+_FAST_BOUNDS += ("Turnbull", "RoystonParmar", "WeibullPH", "WeibullFrailty")
+_FAST_BOUNDS += ("HPP", "CrowAMSAA", "ProportionalIntensityHPP")
+_FAST_BOUNDS += ("GeneralizedRenewal", "NonParametricCounting")
+_FAST_BOUNDS += ("CauseSpecificMCF", "DegradationAnalysis[linear]")
+_FAST_BOUNDS += ("WienerProcess",)
+
+
+def _with_options(case):
+    estimators, large_only, large = _estimators(case)
+    bounds = _bounds(case)
+    if case.name not in _FAST_BOUNDS:
+        bounds = tuple(replace(b, slow=True) for b in bounds)
+    slow = case.slow
+    if large is not None and case.name not in _FAST_ESTIMATORS:
+        slow = slow | {"estimators_agree"}
+    exclude = case.exclude
+    if case.name in _NO_COVARIANCE:
+        exclude = {
+            **exclude,
+            "cb_declared": "no covariance: cb and param_cb raise "
+            "ValueError, as documented",
+        }
+    return replace(
+        case,
+        exclude=exclude,
+        bounds=bounds,
+        interp=_INTERP.get(case.name, ()),
+        estimators=estimators,
+        estimators_large=large_only,
+        large=large,
+        slow=frozenset(slow),
+    )
+
+
+CASES = [_with_options(c) for c in CASES]
+
 # ---------------------------------------------------------------------------
 # Known failures: case -> property -> what goes wrong. Each becomes a
 # strict xfail, so the suite stays green and fails (XPASS) the day the
@@ -1825,11 +2368,6 @@ _NP_SHAPES = {
 }
 _CONSTANT_HAZARD = (
     "hf ignores x, so hf(nan) is the constant rate instead of NaN"
-)
-_COX_TIES = (
-    "the tie-method defaults differ: CoxPH.fit uses breslow, fit_from_df "
-    "and fit_tvc use efron, so on the same tied data sf(2, [1, -0.5]) is "
-    "0.8852 by fit and 0.8837 by the others (equal when method is given)"
 )
 KNOWN_FAILURES: dict[str, dict[str, str]] = {
     # -- shapes ---------------------------------------------------------
@@ -1933,10 +2471,6 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         "intensity falls (b = -0.021, cif(inf) = 6.04), so a sequence can "
         "stop short of its 4th event, and seed 7 draws one",
     },
-    "CoxPH": {
-        "fit_paths[fit_from_df]": _COX_TIES,
-        "fit_paths[fit_tvc]": _COX_TIES,
-    },
     **{
         f"{base}Frailty": {
             "missing_fit[groups]": "a NaN group label is kept, silently, as "
@@ -1965,6 +2499,243 @@ for _name in (
         "cannot be empty) instead of giving NaN there",
     }
 
+
+# -- option sweeps (test_options.py) ------------------------------------
+# Keyed "<property>[<bound name>]" (or "interp[<value>]",
+# "estimators_agree[<option>]"); grouped as in the report for #379.
+def _each(props, name, reason):
+    return {f"{p}[{name}]": reason for p in props}
+
+
+_RATE_AT_ZERO = (
+    "hf/df bounds are NaN where the rate is 0 (the log-scale bound of "
+    "0): Uniform hf(1) = 0 gives cb [nan, nan]"
+)
+_DISCRETE_HF = (
+    "cb(on='hf') is centred on df(k)/sf(k), not the model's hf(k) = "
+    "df(k)/sf(k-1)"
+)
+_LOGIT_CLIP = (
+    "sf is clipped to 1e-15 on the logit scale, so the Hf bounds stop at "
+    "-log(1e-15) = 34.54"
+)
+_NEGATIVE_VARIANCE = (
+    "a parameter on the edge of its support has a non-positive variance "
+    "(covariance diagonal"
+)
+_RP_SIDES = (
+    "one-sided cb on ff and Hf returns the other side: ff(10) = 0.436, "
+    "two-sided (alpha 0.1) [0.291, 0.615], bound='lower' (0.05) 0.615"
+)
+_MCF_BOTH = (
+    "mcf_cb(bound='both') raises UnboundLocalError ('stat'), not ValueError"
+)
+_SCIPY_INTERP = (
+    "interp='bogus' raises scipy's NotImplementedError, not ValueError"
+)
+_KM_CUBIC = (
+    "with interp='cubic' the bound at x = 13 does not close onto sf as "
+    "alpha_ci -> 1 (0.1873 vs 0.1948): the fill of the undefined last "
+    "variance (lower 0, last finite upper) enters the PCHIP between the "
+    "last knots"
+)
+_BOUND_PROPS: tuple[str, ...] = ("cb_contains", "cb_range", "cb_sides")
+_BOUND_PROPS += ("cb_nested", "cb_centre")
+_OPTION_FAILURES: dict[str, dict[str, str]] = {
+    # A. rate bounds at a zero rate
+    "Uniform": _each(
+        ("cb_contains",),
+        "cb[wald]",
+        _RATE_AT_ZERO + "; and df bounds are NaN everywhere (df(5) = "
+        "0.0688, cb [nan, nan])",
+    ),
+    "Weibull[offset]": _each(
+        ("cb_contains",),
+        "cb[wald]",
+        _RATE_AT_ZERO + "; here hf(5.5) = 0 below gamma = 6.56",
+    ),
+    "Exponential[offset]": _each(
+        ("cb_contains",), "cb[wald]", _RATE_AT_ZERO + "; here below gamma"
+    ),
+    # B. discrete hazard bounds (and A at k = 0)
+    "Poisson": _each(
+        ("cb_contains", "cb_centre"),
+        "cb[wald]",
+        _DISCRETE_HF + ": hf(10) = 0.728, cb [1.744, 4.096], df/sf(10) "
+        "= 2.673",
+    ),
+    "Geometric": _each(
+        ("cb_contains", "cb_centre"),
+        "cb[wald]",
+        _DISCRETE_HF + ": hf = p = 0.220, the bounds centre on p/(1-p) = "
+        "0.283; and hf(0) = 0 has bounds [nan, nan]",
+    ),
+    "NegativeBinomial": _each(
+        ("cb_contains", "cb_centre"),
+        "cb[wald]",
+        _DISCRETE_HF + ": hf(10) = 0.432, df/sf(10) = 0.760; and hf(0) "
+        "= 0 has bounds [nan, nan]",
+    ),
+    "DiscreteWeibull": _each(
+        ("cb_contains", "cb_centre"),
+        "cb[wald]",
+        _DISCRETE_HF + ": hf(10) = 0.474, cb [0.211, 3.842], df/sf(10) "
+        "= 0.900; and hf(0) = 0 has bounds [nan, nan]",
+    ),
+    "Discretize(Weibull)": _each(
+        ("cb_contains", "cb_centre"),
+        "cb[wald]",
+        _DISCRETE_HF + " (as DiscreteWeibull: hf(10) = 0.474, df/sf(10) "
+        "= 0.900); and hf(0) = 0 has bounds [nan, nan]",
+    ),
+    # C. Royston-Parmar
+    "RoystonParmar": {
+        **_each(("cb_contains", "cb_sides", "cb_transform"), "cb", _RP_SIDES),
+        "cb_api[cb]": "an unknown bound is not refused: cb(10, "
+        "bound='both') returns 0.709, as 'upper'",
+    },
+    # D. recurrent MCF bounds
+    **{
+        name: {
+            f"cb_api[mcf_cb[{t},{i}]]": _MCF_BOTH
+            for t in ("exp", "normal")
+            for i in ("step", "linear")
+        }
+        for name in ("NonParametricCounting", "CauseSpecificMCF")
+    },
+    # E. unknown interp
+    **{
+        name: {"interp_refused": _SCIPY_INTERP}
+        for name in ("NelsonAalen", "FlemingHarrington", "Turnbull")
+    },
+    "CompetingRisksProportionalHazards[Cox]": {
+        "interp_refused": "sf, ff, Hf, hf and df accept any interp "
+        "(even 'bogus') and ignore it: interp='linear' is the step curve",
+    },
+    # F. Kaplan-Meier cubic interpolation
+    "KaplanMeier": {
+        "interp_refused": _SCIPY_INTERP,
+        "interp[cubic]": "at the last time (sf = 0) the PCHIP sf is "
+        "-2.3e-17, so Hf(16.954, interp='cubic') is NaN, not inf",
+        "cb_centre[cb[exp,cubic]]": _KM_CUBIC,
+        "cb_centre[cb[normal,cubic]]": _KM_CUBIC,
+    },
+    # G. logit clip of the regression survival bound
+    "GumbelPH": _each(
+        ("cb_contains", "cb_centre"),
+        "cb",
+        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 110.6, bounds [34.54, 34.54]",
+    ),
+    "GumbelAFT": _each(
+        ("cb_contains", "cb_centre"),
+        "cb",
+        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 1376.8, bounds [34.54, " "34.54]",
+    ),
+    "NormalPH": _each(
+        ("cb_centre",),
+        "cb",
+        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 36.18, and the interval at "
+        "alpha_ci -> 1 is 34.54",
+    ),
+    # H. boundary estimates with a non-positive variance
+    "GeneralizedRenewal": _each(
+        ("cb_contains",),
+        "param_cb",
+        _NEGATIVE_VARIANCE + " -0.031 for q = 2.7e-16 and -10.6 for "
+        "alpha), and param_cb gives [nan, nan] for both, silently",
+    ),
+    "ARA": _each(
+        ("cb_contains",),
+        "param_cb",
+        _NEGATIVE_VARIANCE + " -0.026 for rho = 1 - 3e-16 and -8.09 for "
+        "alpha), and param_cb gives [nan, nan] for both, silently",
+    ),
+    "ARI": _each(
+        _BOUND_PROPS,
+        "param_cb",
+        "rho = 1.0 exactly, the upper end of its (0, 1) support: "
+        "param_cb('rho') raises ZeroDivisionError (the logit of 1); its "
+        "variance is -0.0021",
+    ),
+    "Beta4": _each(
+        ("cb_contains",),
+        "param_cb[wald]",
+        _NEGATIVE_VARIANCE + " -8.4e-5 for alpha = 1.00008, whose fit "
+        "runs to the edge): param_cb('alpha') is [nan, nan], silently",
+    ),
+    # I. BetaGeometric's degenerate fit
+    "BetaGeometric": {
+        f"cb_contains[{name}]": "the fit runs to alpha, beta = 1.0e5, "
+        "3.3e5 (the geometric limit) and every bound is NaN, silently"
+        for name in ("cb[wald]", "param_cb[wald]")
+    },
+    # K. estimation options
+    "CoxLewis": {
+        "estimators_agree[how]": "how='MSE' misses on a simulated sample "
+        "of the fitted model (40 items to t = 60): cif(55) is 113.4 by "
+        "MSE, 4.40 by MLE, 4.14 true (params 0.98, -0.0099 vs -2.08, "
+        "-0.0175)",
+    },
+    # L. on= aliases
+    "DestructiveDegradation": {
+        "cb_api[cb]": "cb(on='R') raises ValueError; the other cb "
+        "methods accept 'R' and 'F' for 'sf' and 'ff'",
+    },
+}
+# The issue tracking each case's option failures (by key where a case
+# has failures of more than one kind); it leads each reason.
+_OPTION_ISSUES: dict[str, str | dict[str, str]] = {
+    "Uniform": "#413",
+    "Weibull[offset]": "#413",
+    "Exponential[offset]": "#413",
+    "Poisson": "#414",
+    "Geometric": "#414",
+    "NegativeBinomial": "#414",
+    "DiscreteWeibull": "#414",
+    "Discretize(Weibull)": "#414",
+    "RoystonParmar": "#415",
+    "NonParametricCounting": "#416",
+    "CauseSpecificMCF": "#416",
+    "NelsonAalen": "#416",
+    "FlemingHarrington": "#416",
+    "Turnbull": "#416",
+    "CompetingRisksProportionalHazards[Cox]": "#416",
+    "DestructiveDegradation": "#416",
+    "KaplanMeier": {
+        "interp_refused": "#416",
+        "interp[cubic]": "#417",
+        "cb_centre[cb[exp,cubic]]": "#417",
+        "cb_centre[cb[normal,cubic]]": "#417",
+    },
+    "GumbelPH": "#418",
+    "GumbelAFT": "#418",
+    "NormalPH": "#418",
+    "GeneralizedRenewal": "#411",
+    "ARA": "#411",
+    "ARI": "#411",
+    "Beta4": "#411",
+    "BetaGeometric": "#392",
+    "CoxLewis": "#419",
+}
+for _name, _failures in _OPTION_FAILURES.items():
+    _issue = _OPTION_ISSUES[_name]
+    _failures = {
+        key: "{}: {}".format(
+            _issue if isinstance(_issue, str) else _issue[key], reason
+        )
+        for key, reason in _failures.items()
+    }
+    KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
+
+# -- behaviour outside the data (test_outside_data.py) ----------------------
+KNOWN_FAILURES["AdditiveHazards"] = {
+    **KNOWN_FAILURES.get("AdditiveHazards", {}),
+    "outside_data": "#400: Hf keeps changing past the last time, at the "
+    "last interval's drift rate beta'(Z - Zbar): Hf(Z[0]) is 3.516 at the "
+    "last time 16.98 and 23.01 at 100 times it, where every other "
+    "semi-parametric estimate holds",
+}
+
 # The issue that tracks each kind of known failure; its number leads the
 # xfail reason, so a test report says where the fix is being worked on.
 KNOWN_FAILURE_ISSUES: dict[str, str] = {
@@ -1975,9 +2746,51 @@ KNOWN_FAILURE_ISSUES: dict[str, str] = {
     "cif_sum": "#384",
     "units": "#385",
     "seed_explicit": "#386",
-    "fit_paths[fit_from_df]": "#387",
-    "fit_paths[fit_tvc]": "#387",
     "missing_fit[groups]": "#388",
+}
+# The option-sweep and outside-data failures name their issue in the
+# reason itself (see _OPTION_ISSUES), as one key can fail for different
+# reasons in different cases.
+
+
+# Option conventions (test_options.py, CONVENTIONS) the package breaks:
+# convention -> the inconsistency. Each is a strict xfail; the test's
+# message lists every method concerned.
+KNOWN_INCONSISTENCIES: dict[str, str] = {
+    "alpha_ci": "NonParametricCounting.mcf_cb and the recurrent-event "
+    "plots (NonParametricCounting, CauseSpecificMCF, "
+    "ParametricRecurrenceModel, ProportionalIntensityModel) take "
+    "confidence=0.95 where every other interval takes alpha_ci=0.05",
+    "seed": "the random-number argument is random_state in random, "
+    "band, bootstrap_cb, induced_life and DegradationModel.predict_rul, "
+    "but seed in the recurrent simulations, BuckleyJames.bootstrap_ci, "
+    "cramer_von_mises and the degradation cb",
+    "resamples": "the bootstrap size is B in NonParametric.bootstrap_cb "
+    "and n_boot everywhere else",
+    "ties": "Cox's tie handling is method= in CoxPH.fit / fit_from_df / "
+    "fit_tvc* but tie_method= in CoxPH.baseline and "
+    "CompetingRisksProportionalHazards.fit / fit_from_df",
+    "time": "the times are t, not x, in Parametric.cb, RoystonParmarModel "
+    "(sf, ff, df, hf, Hf, cb), DestructiveDegradationModel (sf, ff, df, "
+    "Hf, cb) and the Wiener / Gamma process models (sf, ff, df, hf, Hf)",
+    "quantile": "qf takes u (NeverOccurs, InstantlyOccurs) or q "
+    "(RoystonParmarModel), not p",
+    "cause": "the per-cause argument is cause= in CauseSpecificMCF and "
+    "CauseSpecificNHPP, event= in the competing-risks models",
+    "Z": "DegradationModel.cb takes Z as its last keyword (x, on, "
+    "alpha_ci, ..., Z), and WienerProcessModel / GammaProcessModel.random "
+    "take (size, random_state, Z) where DegradationModel.random takes "
+    "(size, Z, random_state)",
+    "how": "CompetingRisksProportionalHazards.fit(how='Cox') chooses the "
+    "model (Cox or Fine-Gray), where how= is the estimation method "
+    "everywhere else",
+    "id column": "the item-id column is i_col in CauseSpecificMCF / "
+    "CauseSpecificNHPP.fit_from_df but id_col in the fit_tvc*_from_df "
+    "methods",
+}
+# All tracked by one issue (principle 21).
+KNOWN_INCONSISTENCIES = {
+    key: "#422: " + reason for key, reason in KNOWN_INCONSISTENCIES.items()
 }
 
 

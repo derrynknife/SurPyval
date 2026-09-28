@@ -22,6 +22,13 @@ and keep no example database, so a run is reproducible: a failure seen
 in CI is seen again locally with the same command, and nothing a
 previous run found changes what the next one tries. A counterexample
 worth keeping is written into the test as an explicit ``@example``.
+
+As in the conformance suite, a test fails if a raw numerical warning
+leaks out of the package while it runs (see
+``surpyval/tests/conformance/leaks.py``). The fits here stay silenced
+(``common.quietly``: generated data are meant to be awkward), so it is
+the predictions, the model's answers, that are checked. A leak fails the
+test as a whole, after its examples: it is not shrunk to a minimal one.
 """
 
 import os
@@ -30,6 +37,8 @@ from typing import Any
 import numpy as np
 import pytest
 from hypothesis import HealthCheck, settings
+
+from surpyval.tests.conformance import leaks
 
 _COMMON: dict[str, Any] = dict(
     derandomize=True,
@@ -52,3 +61,11 @@ def _restore_global_rng():
     state = np.random.get_state()
     yield
     np.random.set_state(state)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item):
+    with leaks.watch() as found:
+        result = yield
+    leaks.fail_on_new(found)
+    return result

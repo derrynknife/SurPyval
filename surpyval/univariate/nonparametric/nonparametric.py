@@ -265,11 +265,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             nz = sub[sub > 0]
             out = nz[-1] if nz.size else np.nan
             return np.array([out])[rev]
-        hf = np.diff(
-            np.hstack(
-                [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
-            )
+        H = np.hstack(
+            [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
         )
+        # Once a Kaplan-Meier estimate reaches zero, H is inf at every
+        # later time and inf - inf is NaN: no new increment, which the
+        # forward fill below treats like a zero one (the hazard of the
+        # step containing x, here the infinite jump to zero).
+        with np.errstate(invalid="ignore"):
+            hf = np.diff(H)
         if hf.size > 1:
             hf[0] = hf[1]
         hf = pd.Series(hf)
@@ -366,7 +370,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.Hf([1., 1.5, 2., 2.5])
         array([0.2 , 0.2 , 0.45, 0.45])
         """
-        return -np.log(self.sf(x, interp=interp))
+        sf = self.sf(x, interp=interp)
+        # -log(0) = inf is the documented value once sf reaches zero.
+        with np.errstate(divide="ignore"):
+            return -np.log(sf)
 
     def cb(
         self,

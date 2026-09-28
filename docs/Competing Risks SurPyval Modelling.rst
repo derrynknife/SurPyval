@@ -870,8 +870,7 @@ prediction uses it. Read the coefficients from ``betas``.
           np.round(csph.phi_e(np.array([0.5, -0.5]), row), 3))
 
 ``tie_method`` chooses how the Cox fits handle tied failure times (see
-:doc:`regression/cox_ph`): ``"efron"`` (the default here, although ``CoxPH``
-itself defaults to ``"breslow"``), ``"breslow"``, ``"exact"`` or
+:doc:`regression/cox_ph`): ``"efron"`` (the default, as for ``CoxPH``), ``"breslow"``, ``"exact"`` or
 ``"kalbfleisch-prentice"`` (``"kp"``). The simulated times are continuous, so
 there are no ties and every method gives the same fit. Rounding the times up
 to the next 0.25 creates heavy ties (the largest is 107 cause-1 failures at a

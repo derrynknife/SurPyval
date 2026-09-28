@@ -99,6 +99,18 @@ model.plot();
 
 SurPyval is well documented, and improving, at the main [documentation](https://surpyval.readthedocs.io/en/latest/).
 
+# Design Principles
+
+Every model in SurPyval keeps the same rules, so what you learn about one holds for the others:
+
+- **Inputs.** One data format everywhere (`x`, `c`, `n`, `t`, `tl`, `tr`). Invalid input raises a `ValueError` that says how to fix it. Missing values go `nan` in, `nan` out. Row order, time units and counts-versus-repeated-rows never change an answer.
+- **Outputs.** Results keep the shape of the query. The functions of a model agree with each other (`sf + ff = 1`, `Hf = -log(sf)`, ...). Probabilities stay in [0, 1] and are monotone in time. Behaviour outside the data is defined and documented.
+- **Estimation.** A fit returns the optimum it claims, or says it could not. Every way of fitting a model (`fit`, `fit_from_df`, formulas) gives the same answer. Defaults are the statistically best standard choice and the same everywhere. Conventions follow R's `survival` and the other established references.
+- **Uncertainty.** Intervals achieve their stated coverage and behave consistently across confidence levels and one- or two-sided bounds.
+- **Behaviour.** One seed rule. Every model round-trips through JSON. Names and defaults are consistent across families. Warnings are useful and never raw numpy noise. Every public item has a runnable example.
+
+Each principle is enforced by tests, most as properties checked against every registered model. The [Design Principles](https://surpyval.readthedocs.io/en/latest/Design%20Principles.html) page lists them in full, with the tests that check each one and the open issues where a model does not yet comply.
+
 # Development
 ## Dependencies
 ```pip install -r requirements_dev.txt```

@@ -100,6 +100,11 @@ regression test for its own case; ask as well which general property the bug
 broke, and if the battery does not check it yet, add it to the property
 modules, so every registered model is checked for it from then on.
 
+The properties enforce the package's :doc:`Design Principles`: the rules every
+model keeps, each listed with the tests that check it. Review a change against
+that list, and when a bug breaks a principle its check missed, extend the
+check.
+
 Branching and releases
 ----------------------
 

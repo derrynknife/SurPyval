@@ -114,8 +114,11 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.sf(x, 3, 4)
         array([0.77337265, 0.71793339, 0.68273014, 0.65668272, 0.63594491])
         """
-        # norm.sf, not 1 - cdf: the difference is 0 past survival ~1e-16
-        return norm.sf(np.log(x), mu, sigma)
+        # norm.sf, not 1 - cdf: the difference is 0 past survival ~1e-16.
+        # log(0) = -inf gives sf(0) = 1, which is right.
+        with np.errstate(divide="ignore"):
+            log_x = np.log(x)
+        return norm.sf(log_x, mu, sigma)
 
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

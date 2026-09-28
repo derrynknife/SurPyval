@@ -4,6 +4,64 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Design principles (#379).** A new page, :doc:`Design Principles`, lists
+  the rules every model keeps -- one data format, ``nan`` in and out, order,
+  units and counts not mattering, consistent shapes and identities,
+  behaviour outside the data, entry points agreeing, the same defaults and
+  names everywhere, calibrated and consistent intervals, one seed rule,
+  useful warnings, documented examples -- each with the tests that enforce
+  it and the issues where a model does not yet comply. The README
+  summarises them. Three new conformance checks fill the gaps: behaviour
+  outside the data (``test_outside_data.py``: a step or semi-parametric
+  estimate starts at its initial value and, past the last time, holds or is
+  ``nan`` for every function alike; found #400, additive hazards
+  extrapolating), the same defaults across a fitter's entry points
+  (``test_defaults.py``), documentation (``test_documentation.py``: every
+  public item has a docstring with an example; 49 are listed against #402
+  and the list can only shrink).
+- **Option sweeps in the conformance suite (#379).** The other checks call
+  each model with its default options, where many past bugs lived in the
+  others. ``test_options.py`` sweeps every confidence-bound method of every
+  registered model over ``on=``, ``bound=``, ``alpha_ci`` and their
+  variants, every ``interp=`` value and every estimation option. It checks
+  that the bounds contain the estimate and stay in range, that one-sided
+  and two-sided bounds agree, that intervals nest and close onto the
+  estimate as ``alpha_ci`` approaches 1, the ``sf``/``ff``/``Hf``
+  transforms and the output shapes, and that shared options have one name
+  and default across models. It found bound failures now tracked as #411
+  and #413-#419 (for example discrete ``cb(on="hf")`` centred on
+  ``df/sf(k)`` instead of ``hf``, Royston-Parmar one-sided ``ff``/``Hf``
+  bounds on the wrong side, and ``Hf`` bounds capped at 34.54) and ten
+  naming inconsistencies (#422), each a strict expected failure.
+- **Raw numerical warnings no longer leak from Kaplan-Meier, Binomial,
+  Weibull and LogNormal functions.** ``KaplanMeier.Hf``/``hf`` past the
+  time the estimate reaches zero, ``Binomial.Hf`` from ``x = n`` on,
+  ``Weibull.df``/``hf`` at 0 with a shape below 1, and ``LogNormal.sf`` at
+  0 gave numpy "divide by zero" or "invalid value" warnings; their values
+  (``inf``, or 1 for ``sf(0)``) were already right and are now returned
+  without a warning. The conformance and property suites now fail on any
+  raw numpy, scipy or autograd warning that escapes the package, and check
+  that a fit or prediction gives each deliberate warning at most once
+  (#379). The check found five wrong results hidden behind warnings,
+  tracked as #408-#412.
+- **Changed: ``CoxPH.fit`` defaults to Efron ties, with the matching Efron
+  baseline (#387).** ``fit`` defaulted to Breslow while ``fit_from_df``, the
+  time-varying-covariate fits and the competing-risks Cox model defaulted to
+  Efron, so the same tied data gave different models by different routes.
+  Every route is now Efron. Efron is chosen on merit: with ties from
+  rounding a continuous time, Breslow biases the coefficients towards zero
+  (in a simulation with true :math:`\beta = 0.7`, by -0.06 to -0.21 as the
+  ties grow, against -0.006 to -0.06 for Efron), at no saving worth having.
+  An Efron fit's baseline hazard now takes the same tie correction as its
+  likelihood: the :math:`d` deaths tied at a time leave the risk set a
+  fraction at a time, and the step is
+  :math:`\sum_{l<d} 1 / (R - \tfrac{l}{d} R_D)` instead of Breslow's
+  :math:`d / R` -- the covariate-weighted Fleming-Harrington estimator, as
+  Breslow's is the covariate-weighted Nelson-Aalen. It matches R's
+  ``survfit.coxph`` after an Efron fit (checked against it in the reference
+  tests) and the Efron residuals, which already used it. **Results change
+  on tied data**: pass ``method="breslow"`` for the old fit. Without ties
+  every method gives the same model as before.
 - **Property-based tests (#379).** Hypothesis generates data with mixed
   censoring, ties, counts, truncation and tiny samples, and checks the
   non-parametric estimators, parametric fits, regression, competing-risks,

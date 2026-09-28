@@ -140,11 +140,11 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         >>> Weibull.df(x, 3, 4)
         array([0.0487768 , 0.32424881, 0.49050592, 0.13402009, 0.00275073])
         """
-        return (
-            (beta / alpha)
-            * (x / alpha) ** (beta - 1)
-            * np.exp(-((x / alpha) ** beta))
-        )
+        # At x = 0 with beta < 1, 0 ** (beta - 1) is inf: the density
+        # really is unbounded there.
+        with np.errstate(divide="ignore"):
+            power = (x / alpha) ** (beta - 1)
+        return (beta / alpha) * power * np.exp(-((x / alpha) ** beta))
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -179,7 +179,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         >>> Weibull.hf(x, 3, 4)
         array([0.04938272, 0.39506173, 1.33333333, 3.16049383, 6.17283951])
         """
-        return (beta / alpha) * (x / alpha) ** (beta - 1)
+        # At x = 0 with beta < 1, 0 ** (beta - 1) is inf: the hazard
+        # really is unbounded there.
+        with np.errstate(divide="ignore"):
+            return (beta / alpha) * (x / alpha) ** (beta - 1)
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

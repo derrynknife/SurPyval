@@ -47,6 +47,12 @@ nonparametric_dists = {
 }
 
 
+def _baseline_method(tie_method: str) -> str:
+    """The baseline-hazard estimator that goes with a tie method: Efron's
+    tie correction for an Efron fit, Breslow's otherwise."""
+    return "efron" if str(tie_method).lower() == "efron" else "breslow"
+
+
 class _GroupBy:
     """Pure-NumPy grouped aggregation, replacing numpy_indexed.group_by.
 
@@ -671,7 +677,8 @@ class CoxPH_:
         h(x \\mid Z) = h_0(x)\\, e^{\\beta' Z}.
 
     The coefficients are estimated from the partial likelihood (with a
-    choice of tie handling) and the baseline by the Breslow estimator.
+    choice of tie handling, Efron's by default) and the baseline by the
+    Breslow estimator, with Efron's tie correction after an Efron fit.
     Supports right censoring, left truncation (delayed entry),
     stratification and time-varying covariates in start-stop form; left-
     and interval-censored data are refused, as the partial likelihood has
@@ -692,8 +699,19 @@ class CoxPH_:
         n: npt.NDArray,
         Z: npt.NDArray,
         tl: "npt.NDArray | None" = None,
-    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-        # Breslow baseline hazard. The risk set at each event time ``tau_i``
+        tie_method: str = "breslow",
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        # Baseline hazard increments at each distinct time, returned with
+        # the risk weight ``r`` and the deaths ``d``. Breslow's increment is
+        # ``d / r``. With Efron ties (``tie_method="efron"``) the ``m`` tied
+        # deaths at a time see the risk set step down, ``r - (l / m) * r_D``
+        # for ``l = 0 .. m-1`` with ``r_D`` the tied deaths' own weight, and
+        # the increment is ``sum_l 1 / (r - (l / m) * r_D)``: the
+        # covariate-weighted Fleming-Harrington estimator, and the baseline
+        # that matches the Efron partial likelihood (R's ``survfit.coxph``
+        # does the same). Without ties the two are identical.
+        #
+        # The risk set at each event time ``tau_i``
         # follows ``cox_at_risk_mask`` (entered ``tl < tau_i``, not yet
         # exited ``x >= tau_i``), each row weighted by its count ``n`` and
         # hazard multiplier ``exp(Z'beta)``. Respecting ``tl`` is what makes
@@ -725,8 +743,18 @@ class CoxPH_:
         r_pre = np.zeros_like(unique_x)
         np.add.at(r_pre, k[entered_late], w[entered_late])
         r_pre = r_pre[::-1].cumsum()[::-1]
+        r = r_exit - r_pre
 
-        return unique_x, r_exit - r_pre, d
+        with np.errstate(divide="ignore", invalid="ignore"):
+            h0 = d / r
+        if str(tie_method).lower() == "efron":
+            r_tied = np.zeros_like(unique_x)
+            np.add.at(r_tied, np.searchsorted(unique_x, x[event]), w[event])
+            for t in np.flatnonzero(d > 1):
+                m = int(round(float(d[t])))
+                steps = r[t] - (np.arange(m) / m) * r_tied[t]
+                h0[t] = np.sum(1.0 / steps)
+        return unique_x, r, d, h0
 
     def create_efron_ll_jac_hess(
         self,
@@ -1112,7 +1140,7 @@ class CoxPH_:
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
-        method: str = "breslow",
+        method: str = "efron",
         tol: float = 1e-10,
         strata: npt.ArrayLike | None = None,
     ) -> SemiParametricRegressionModel:
@@ -1138,15 +1166,17 @@ class CoxPH_:
         tl: array-like, optional
             The left-truncation times of the observations.
         method: str, optional
-            The method to use for tie handling. One of ``'breslow'``
-            (default), ``'efron'``, ``'exact'`` (the average-over-orderings
+            The method to use for tie handling. One of ``'efron'``
+            (default), ``'breslow'``, ``'exact'`` (the average-over-orderings
             exact partial likelihood, for ties from coarse rounding of
             continuous time) or ``'kalbfleisch-prentice'`` (alias ``'kp'`` --
             the exact discrete/conditional-logistic likelihood, for genuinely
-            discrete time). Breslow and Efron match what R's ``survival`` and
-            lifelines use by default; the two exact methods are only
-            meaningfully different under heavy ties and are correspondingly
-            more expensive.
+            discrete time). Without ties they all agree. With ties Efron is
+            far closer to the exact likelihood than Breslow, which biases
+            coefficients towards zero, at almost no extra cost; the baseline
+            hazard then uses the matching Efron (Fleming-Harrington style)
+            increments. ``'exact'`` removes the remaining bias under heavy
+            ties at several times the cost.
         tol: float, optional
             The tolerance for the root finding algorithm.
         strata: array-like, optional
@@ -1185,11 +1215,11 @@ class CoxPH_:
         >>> Z = df[["fin", "age", "prio"]].values
         >>> model = CoxPH.fit(x, Z, c=c)
         >>> model.params.round(4)
-        array([-0.3464, -0.0669,  0.0965])
+        array([-0.347 , -0.0671,  0.0969])
         >>> model.p_values.round(4)
-        array([0.0686, 0.0013, 0.0004])
+        array([0.0682, 0.0013, 0.0004])
         >>> model.sf([20, 52], [1, 25, 3]).round(4)
-        array([0.9327, 0.7968])
+        array([0.9326, 0.7963])
         """
         func_generator = self._resolve_func_generator(method)
 
@@ -1213,7 +1243,7 @@ class CoxPH_:
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = method
-        model.baseline_method = "breslow"
+        model.baseline_method = _baseline_method(method)
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
@@ -1230,12 +1260,12 @@ class CoxPH_:
             "tl": np.asarray(tl, dtype=float),
         }
 
-        x, r, d = self.baseline(model.beta, x, c, n, Z, tl)
+        x, r, d, h0 = self.baseline(model.beta, x, c, n, Z, tl, method)
         model.x = x
         model.r = r
         model.d = d
         model.tl = tl
-        model.h0 = d / r
+        model.h0 = h0
         model.H0 = model.h0.cumsum()
 
         return model
@@ -1257,8 +1287,7 @@ class CoxPH_:
         Each stratum is validated and turned into its own partial-likelihood
         generator; the generators are summed (see :func:`_combine_generators`)
         so the score equations are solved once for the shared coefficients.
-        A separate Breslow baseline hazard is then estimated within each
-        stratum.
+        A separate baseline hazard is then estimated within each stratum.
         """
         labels_arr, missing = _strata_labels(strata)
         if len(labels_arr) != len(np.atleast_1d(x)):
@@ -1327,19 +1356,20 @@ class CoxPH_:
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = method
-        model.baseline_method = "breslow"
+        model.baseline_method = _baseline_method(method)
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
         model.is_stratified = True
         model.strata_labels = list(labels)
 
-        # A separate Breslow baseline per stratum. Prediction selects the
-        # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``/...
+        # A separate baseline per stratum. Prediction selects the stratum's
+        # baseline via the ``stratum`` argument to ``hf``/``Hf``/...
         baselines: dict[Any, dict[str, npt.NDArray]] = {}
         for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
-            bx, br, bd = self.baseline(model.beta, xs, cs, ns_, Zs, tls)
-            bh0 = bd / br
+            bx, br, bd, bh0 = self.baseline(
+                model.beta, xs, cs, ns_, Zs, tls, method
+            )
             baselines[s] = {
                 "x": bx,
                 "r": br,
@@ -1396,8 +1426,9 @@ class CoxPH_:
             reference-level coding. Rows with a missing covariate (in
             ``Z_cols`` or a formula column) are dropped, with a warning.
         method: str, optional
-            The tie-handling method: ``'breslow'``, ``'efron'``, ``'exact'``
-            or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See :meth:`fit`.
+            The tie-handling method: ``'efron'`` (default), ``'breslow'``,
+            ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See
+            :meth:`fit`.
         strata_col: str, optional
             The column name of the stratum label. When supplied the model is
             fitted stratified (a separate baseline hazard per stratum, shared
