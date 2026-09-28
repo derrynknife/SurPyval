@@ -4,6 +4,43 @@ Changelog
 v0.21.0 (28 September 2026)
 ---------------------------
 
+**Upgrading to 0.21.** Most code runs unchanged, but these changes can alter
+results or break code without a warning:
+
+- **Shapes.** A scalar query now returns a numpy scalar, not a ``(1,)``
+  array, and a two-sided bound ends in a ``[lower, upper]`` axis: code
+  that indexed a scalar result (``km.sf(5)[0]``) raises ``IndexError`` and
+  uses the result directly instead.
+- **Cox ties.** ``CoxPH.fit`` defaults to Efron's tie handling (it was
+  Breslow's), so fits to tied data change; pass ``tie_method="breslow"``
+  for the old model.
+- **Draws.** ``random()`` of a non-parametric estimate draws from the
+  estimate, with ``inf`` for the probability beyond the last time; of a
+  limited-failure or zero-inflated model it returns lifetimes (``inf`` for
+  a unit that never fails), and the old survival-data draw is
+  ``random_data()``. Seeded draws of those models give different numbers.
+- **Limited-failure summaries.** ``mean()``, ``moment()`` and ``var()`` of a
+  model with ``p < 1`` are ``inf``; ``defective=True`` gives the old values.
+- **Criteria and extrapolation.** ``ParametricCompetingRisks.bic()`` is the
+  joint criterion (larger than before), and the additive hazards model
+  holds its estimate after the last observed time instead of extending it.
+- **Missing values.** A missing time, covariate or probability gives NaN at
+  prediction, and fitting drops rows with a missing covariate with one
+  warning (or refuses them where a row is part of one unit).
+- **Recurrent interval levels** are ``alpha_ci=0.05``, by keyword only: an
+  old positional ``confidence`` level in ``mcf_cb`` or the recurrent
+  ``plot`` methods raises ``TypeError``.
+
+Renamed arguments keep working, with a ``DeprecationWarning`` naming the new
+name, until v0.22.0, which removes them together with the
+``surpyval.experimental`` alias (use ``surpyval.beta.ml``) and ``band``'s
+unused ``n_sims`` and ``random_state``. To find the calls to update, run your
+code or tests with ``python -W error::DeprecationWarning``. Saved models from
+earlier versions still load; a model saved by 0.21 with a feature older
+versions cannot read (a ``set_support`` support, a truncated band's sample
+size, some formula terms) is stamped schema 2 and refused by them with a
+request to upgrade.
+
 - **Changed: one name per option (#422, principle 21).** The same option
   had different names in different parts of the package; each now has one,
   and the old name keeps working until v0.22.0 with a
@@ -362,7 +399,7 @@ v0.21.0 (28 September 2026)
   Breslow's is the covariate-weighted Nelson-Aalen. It matches R's
   ``survfit.coxph`` after an Efron fit (checked against it in the reference
   tests) and the Efron residuals, which already used it. **Results change
-  on tied data**: pass ``method="breslow"`` for the old fit. Without ties
+  on tied data**: pass ``tie_method="breslow"`` for the old fit. Without ties
   every method gives the same model as before.
 - **Property-based tests (#379).** Hypothesis generates data with mixed
   censoring, ties, counts, truncation and tiny samples, and checks the
