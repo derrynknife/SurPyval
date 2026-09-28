@@ -70,6 +70,11 @@ def _innermost(
     return np.cumsum(mark[:M]) > 0
 
 
+# The EM divides by empty risk sets and takes logs of zero mass on purpose.
+# As a decorator, errstate restores numpy's error state however the
+# function exits; the np.seterr / restore pair it replaces left the state
+# silenced for the whole process when anything in between raised.
+@np.errstate(all="ignore")
 def turnbull(
     x: npt.ArrayLike,
     c: npt.ArrayLike,
@@ -370,8 +375,6 @@ def turnbull(
         p = support / support.sum()
 
     func = TURNBULL_ESTIMATORS[estimator]
-
-    old_err_state = np.seterr(all="ignore")
 
     converged = False
     degenerate = False
@@ -710,8 +713,6 @@ def turnbull(
         float(p[exploitable].sum()) if exploitable.any() else 0.0
     )
     out["npmle"] = npmle
-
-    np.seterr(**old_err_state)
 
     return out
 

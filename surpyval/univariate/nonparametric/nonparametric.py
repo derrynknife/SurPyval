@@ -33,6 +33,89 @@ def _check_bound(bound: str) -> None:
         )
 
 
+def _check_support(
+    lower: Any, upper: Any, first: float, last: float, what: tuple[str, str]
+) -> tuple[float, float]:
+    """The ``(lower, upper)`` of ``set_support`` as floats, refused unless
+    it is an interval containing the estimate's own range ``[first,
+    last]``; ``what`` names that range in the messages."""
+    bounds = {}
+    for name, value in (("lower", lower), ("upper", upper)):
+        try:
+            bounds[name] = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "'{}' must be a number; got {!r}.".format(name, value)
+            ) from None
+        if np.isnan(bounds[name]):
+            raise ValueError(
+                "'{}' must be a number, not NaN; pass -inf or inf for "
+                "no bound on that side.".format(name)
+            )
+    lo, hi = bounds["lower"], bounds["upper"]
+    if not lo < hi:
+        raise ValueError(
+            "'lower' must be below 'upper'; got lower={} and "
+            "upper={}.".format(lo, hi)
+        )
+    if lo > first:
+        raise ValueError(
+            "'lower' ({}) is above {} ({}); the bounds must contain it, so "
+            "pass a 'lower' of at most {}.".format(lo, what[0], first, first)
+        )
+    if hi < last:
+        raise ValueError(
+            "'upper' ({}) is below {} ({}); the bounds must contain it, so "
+            "pass an 'upper' of at least {}.".format(hi, what[1], last, last)
+        )
+    return lo, hi
+
+
+def _support_from_dict(model_dict: dict) -> "tuple[Any, Any] | None":
+    """The ``"support"`` a ``to_dict`` wrote (see ``set_support``), as a
+    ``(lower, upper)`` pair for the model's ``set_support`` to check, or
+    ``None`` when it has none."""
+    value = model_dict.get("support")
+    if value is None:
+        return None
+    if not isinstance(value, (list, tuple)) or len(value) != 2:
+        raise ValueError(
+            "The serialised 'support' must be a [lower, upper] pair; "
+            "got {!r}.".format(value)
+        )
+    return value[0], value[1]
+
+
+def _on_support(
+    support: tuple[float, float],
+    first: float,
+    last: float,
+    x: npt.ArrayLike,
+    f: Callable[[npt.NDArray], npt.ArrayLike],
+    start: float,
+) -> npt.NDArray:
+    """``f`` evaluated with an explicit support (``set_support``).
+
+    ``f`` is the estimate's function as it is without one, and is only
+    ever evaluated within ``[first, last]``, the estimate's own range: a
+    query in ``[lower, first)`` gets ``start`` (the value before the first
+    time), one in ``(last, upper]`` the value at ``last``, carried, and
+    one outside ``[lower, upper]`` (or missing) NaN. A result with a
+    column per query (a two-sided bound) keeps its columns.
+    """
+    xf = np.atleast_1d(np.asarray(x, dtype=float))
+    lower, upper = support
+    inside = (xf >= lower) & (xf <= upper)
+    q = np.clip(xf[inside], first, last)
+    # Evaluated at one point when nothing is inside, so that the result
+    # has the right trailing shape and ``f`` still checks its arguments.
+    values = np.asarray(f(q if q.size else np.array([first])), dtype=float)
+    out = np.full(xf.shape + values.shape[1:], np.nan)
+    out[inside] = values[: q.size]
+    out[inside & (xf < first)] = start
+    return out
+
+
 def interp_function(
     x: npt.ArrayLike, y: npt.ArrayLike, kind: str
 ) -> Callable[[npt.ArrayLike], npt.NDArray]:
@@ -55,7 +138,15 @@ def interp_function(
         # shape-preserving piecewise-cubic Hermite interpolant, so it stays
         # monotone wherever the data are monotone.
         pchip = PchipInterpolator(x, y, extrapolate=False)
-        return lambda q: pchip(np.asarray(q, dtype=float))
+        y_arr = np.asarray(y, dtype=float)
+        lo, hi = float(np.min(y_arr)), float(np.max(y_arr))
+        if not (np.isfinite(lo) and np.isfinite(hi)):
+            return lambda q: pchip(np.asarray(q, dtype=float))
+        # PCHIP never leaves the range of its knots, but its round-off
+        # can: evaluated at the last knot of a Kaplan-Meier that ends at
+        # 0 it gave sf = -2.3e-17, and so Hf = NaN with a raw "invalid
+        # value in log" warning, instead of 0 and inf.
+        return lambda q: np.clip(pchip(np.asarray(q, dtype=float)), lo, hi)
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
 
 
@@ -99,6 +190,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     model: str
     greenwood: npt.NDArray
     data: dict[str, Any]
+    #: The ``(lower, upper)`` interval the estimate is defined on, set by
+    #: :meth:`set_support`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -114,6 +208,92 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 )
 
         return out
+
+    def set_support(self, lower: float, upper: float) -> "NonParametric":
+        r"""
+        Give the estimate an explicit support, ``[lower, upper]``.
+
+        Without one, the estimate says nothing outside the observed
+        values, and what its functions give there is a convention: the
+        step functions start at their initial value and hold their last
+        one, while the interpolated forms (``interp="linear"`` and so on)
+        and the confidence bounds are NaN. With a support set, every
+        function and every ``interp`` gives
+
+        - in ``[lower, x[0])``, the value before the first observed value:
+          ``sf`` 1, and ``ff``, ``Hf``, ``hf`` and ``df`` 0;
+        - in ``(x[-1], upper]``, the value at the last observed value,
+          carried (``hf`` and ``df`` keep their convention of the step
+          containing x, the last one);
+        - outside ``[lower, upper]``, NaN.
+
+        ``cb`` (and ``R_cb`` and ``bootstrap_cb``) follow the same rule,
+        collapsing onto the estimate's initial value before the first
+        observed value and carrying the bounds at the last one. ``band``
+        is unchanged: it is defined only between the first and last
+        observed events. The bounds are kept by ``to_dict``.
+
+        The variable need not be time: ``lower`` may be negative, and
+        either bound may be infinite (``-np.inf`` or ``np.inf`` for no
+        bound on that side).
+
+        Parameters
+        ----------
+
+        lower : float
+            The lower end of the support; at most the first observed
+            value, ``x[0]``.
+        upper : float
+            The upper end of the support; at least the last observed
+            value, ``x[-1]``, and above ``lower``.
+
+        Returns
+        -------
+
+        model : NonParametric
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain the observed values.
+
+        Examples
+        --------
+        >>> from surpyval import KaplanMeier
+        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5], c=[0, 0, 1, 0, 1])
+        >>> model.sf([0.5, 3, 8], interp="linear")
+        array([nan, 0.6, nan])
+        >>> model = model.set_support(0, 10)
+        >>> model.support
+        (0.0, 10.0)
+        >>> model.sf([-1, 0.5, 3, 8, 11], interp="linear")
+        array([nan, 1. , 0.6, 0.3, nan])
+        """
+        self.support = _check_support(
+            lower,
+            upper,
+            float(self.x[0]),
+            float(self.x[-1]),
+            ("the first value of the estimate", "its last value"),
+        )
+        return self
+
+    def _within_support(
+        self,
+        x: npt.ArrayLike,
+        f: Callable[[npt.ArrayLike], npt.ArrayLike],
+        start: float,
+    ) -> npt.NDArray:
+        """``f(x)``, restricted to the support when one is set (see
+        :meth:`set_support` and :func:`_on_support`)."""
+        if self.support is None:
+            return np.asarray(f(x))
+        return _on_support(
+            self.support, float(self.x[0]), float(self.x[-1]), x, f, start
+        )
 
     def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
@@ -133,7 +313,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (the default, the right-continuous step function), ``"linear"``,
             ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
             accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data.
+            forms return NaN outside the range of the data, unless the
+            model has bounds (see ``set_support``).
 
         Returns
         -------
@@ -152,6 +333,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
         """
+        return self._within_support(x, lambda q: self._sf(q, interp), 1.0)
+
+    def _sf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
+        # ``sf`` without the support (see ``set_support``).
         x = np.atleast_1d(x)
         idx = np.argsort(x)
         rev = np.argsort(idx)
@@ -187,7 +372,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (the default, the right-continuous step function), ``"linear"``,
             ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
             accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data.
+            forms return NaN outside the range of the data, unless the
+            model has bounds (see ``set_support``).
 
         Returns
         -------
@@ -222,7 +408,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         it to difference from and repeats the second point's value, and a
         zero increment (a gap in ``x`` with no failure) is replaced by the
         previous non-zero one. Where there is no previous non-zero
-        increment, e.g. before the first failure, the result is NaN.
+        increment, e.g. before the first failure, the result is NaN. With
+        bounds set (see ``set_support``) it is 0 from ``lower`` to the first
+        value and NaN outside the bounds, and the points outside take no
+        part in the differences.
 
         Parameters
         ----------
@@ -236,7 +425,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (the default, the right-continuous step function), ``"linear"``,
             ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
             accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data.
+            forms return NaN outside the range of the data, unless the
+            model has bounds (see ``set_support``).
 
         Returns
         -------
@@ -254,6 +444,22 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         array([0.25      , 0.25      , 0.33333333])
         """
         x = np.atleast_1d(x)
+        if self.support is None:
+            return self._hf(x, interp)
+        # Only the points within the bounds are differenced (``Hf`` is 0
+        # from ``lower`` and carried to ``upper``), and the increment is 0
+        # before the first value.
+        xf = np.asarray(x, dtype=float)
+        lower, upper = self.support
+        inside = (xf >= lower) & (xf <= upper)
+        out = np.full(xf.shape, np.nan)
+        if inside.any():
+            out[inside] = self._hf(xf[inside], interp)
+        out[inside & (xf < self.x[0])] = 0.0
+        return out
+
+    def _hf(self, x: npt.NDArray, interp: str) -> npt.NDArray:
+        # ``hf`` without the bounds (see ``set_support``).
         missing = np.isnan(np.asarray(x, dtype=float))
         if missing.any():
             # A missing time has no value (NaN). The increments of the
@@ -261,7 +467,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             # below would otherwise copy a neighbour's increment into it.
             filled = np.full(x.shape, np.nan)
             if not missing.all():
-                filled[~missing] = self.hf(x[~missing], interp=interp)
+                filled[~missing] = self._hf(x[~missing], interp)
             return filled
         idx = np.argsort(x)
         rev = np.argsort(idx)
@@ -327,7 +533,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (the default, the right-continuous step function), ``"linear"``,
             ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
             accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data.
+            forms return NaN outside the range of the data, unless the
+            model has bounds (see ``set_support``).
 
         Returns
         -------
@@ -371,7 +578,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (the default, the right-continuous step function), ``"linear"``,
             ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
             accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data.
+            forms return NaN outside the range of the data, unless the
+            model has bounds (see ``set_support``).
 
         Returns
         -------
@@ -389,7 +597,12 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.Hf([1., 1.5, 2., 2.5])
         array([0.2 , 0.2 , 0.45, 0.45])
         """
-        sf = self.sf(x, interp=interp)
+        # Bounded separately so that it starts at 0.0, not -log(1) = -0.0.
+        return self._within_support(x, lambda q: self._Hf(q, interp), 0.0)
+
+    def _Hf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
+        # ``Hf`` without the bounds (see ``set_support``).
+        sf = self._sf(x, interp)
         # -log(0) = inf is the documented value once sf reaches zero.
         with np.errstate(divide="ignore"):
             return -np.log(sf)
@@ -495,7 +708,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         Where the variance is zero (before the first failure) the bounds
         are the estimate, 1. Below the first and above the last observed
-        value the bounds are NaN.
+        value the bounds are NaN, unless the model has bounds (see
+        ``set_support``): then they are the estimate's initial value from
+        ``lower`` to the first value, the bounds at the last value carried
+        from there to ``upper``, and NaN outside ``[lower, upper]``.
 
         Examples
         --------
@@ -529,35 +745,53 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "('df', 'hf').".format(_CB_ON, on)
             )
         _check_bound(bound)
-
-        old_err_state = np.seterr(all="ignore")
-
-        # Reverse for ff and F
-        if on in ["ff", "F", "Hf"] and bound == "lower":
-            bound = "upper"
-        elif on in ["ff", "F", "Hf"] and bound == "upper":
-            bound = "lower"
-
-        cb = self.R_cb(
+        # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
+        # 0.0, not at -log(1) = -0.0.
+        return self._within_support(
             x,
-            bound=bound,
-            interp=interp,
-            alpha_ci=alpha_ci,
-            bound_type=bound_type,
-            dist=dist,
+            lambda q: self._cb(
+                q, on, bound, interp, alpha_ci, bound_type, dist
+            ),
+            1.0 if on in ("sf", "R") else 0.0,
         )
 
-        if (on == "ff") or (on == "F"):
-            cb = 1.0 - cb
+    def _cb(
+        self,
+        x: npt.ArrayLike,
+        on: str,
+        bound: str,
+        interp: str,
+        alpha_ci: float,
+        bound_type: str,
+        dist: str,
+    ) -> npt.NDArray:
+        # ``cb`` without the bounds (see ``set_support``).
+        with np.errstate(all="ignore"):
 
-        elif on == "Hf":
-            cb = -np.log(cb)
+            # Reverse for ff and F
+            if on in ["ff", "F", "Hf"] and bound == "lower":
+                bound = "upper"
+            elif on in ["ff", "F", "Hf"] and bound == "upper":
+                bound = "lower"
 
-        elif (on == "sf") or (on == "R"):
-            if bound == "two-sided":
-                cb = np.fliplr(cb)
+            cb = self.R_cb(
+                x,
+                bound=bound,
+                interp=interp,
+                alpha_ci=alpha_ci,
+                bound_type=bound_type,
+                dist=dist,
+            )
 
-        np.seterr(**old_err_state)
+            if (on == "ff") or (on == "F"):
+                cb = 1.0 - cb
+
+            elif on == "Hf":
+                cb = -np.log(cb)
+
+            elif (on == "sf") or (on == "R"):
+                if bound == "two-sided":
+                    cb = np.fliplr(cb)
 
         return cb
 
@@ -575,8 +809,26 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         ``plot``. Takes the same arguments as ``cb`` (without ``on``), but
         a two-sided result has the columns in ``[upper, lower]`` order;
         ``cb(x, on='sf')`` returns them as ``[lower, upper]`` and is the
-        method to call.
+        method to call. With a support set (see ``set_support``) they are 1
+        from ``lower`` to the first value, the bounds at the last value
+        from there to ``upper``, and NaN outside.
         """
+        return self._within_support(
+            x,
+            lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
+            1.0,
+        )
+
+    def _R_cb(
+        self,
+        x: npt.ArrayLike,
+        bound: str,
+        interp: str,
+        alpha_ci: float,
+        bound_type: str,
+        dist: str,
+    ) -> npt.NDArray:
+        # ``R_cb`` without the bounds (see ``set_support``).
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         _check_bound(bound)
@@ -599,77 +851,77 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         confidence = 1.0 - alpha_ci
 
-        old_err_state = np.seterr(all="ignore")
+        with np.errstate(all="ignore"):
 
-        x = np.atleast_1d(x)
-        if bound in ["upper", "lower"]:
-            stat = norm.ppf(1 - confidence, 0, 1)
+            x = np.atleast_1d(x)
+            if bound in ["upper", "lower"]:
+                stat = norm.ppf(1 - confidence, 0, 1)
+                if bound == "upper":
+                    stat = -stat
+            elif bound == "two-sided":
+                stat = norm.ppf((1 - confidence) / 2, 0, 1)
+                stat = np.array([-1, 1]).reshape(2, 1) * stat
+
+            if bound_type == "exp":
+                # Exponential Greenwood confidence
+                R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
+                R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
+                R_out = np.exp(-np.exp(R_out))
+                # No variance, no interval: the bounds collapse onto the
+                # estimate. (That is 1 before the first event; it is the
+                # estimate itself, not 1, where float-noise counts in a
+                # Turnbull ladder were snapped to zero events.)
+                R_out = np.where(self.greenwood == 0, self.R, R_out)
+            else:
+                # Normal Greenwood confidence
+                R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
+
+            # Allows for confidence bound to be estimated up to the last value.
+            # only used in event that there is no right censoring. When *no*
+            # point on the curve has a finite bound (e.g. a single
+            # observation), fall back to the point estimate rather than
+            # propagating an all-NaN nanmin (#282).
+            def _fill_upper(row: npt.NDArray) -> npt.NDArray:
+                finite = np.isfinite(row)
+                if finite.any():
+                    return np.where(finite, row, row[finite].min())
+                return np.asarray(self.R, dtype=float).copy()
+
             if bound == "upper":
-                stat = -stat
-        elif bound == "two-sided":
-            stat = norm.ppf((1 - confidence) / 2, 0, 1)
-            stat = np.array([-1, 1]).reshape(2, 1) * stat
-
-        if bound_type == "exp":
-            # Exponential Greenwood confidence
-            R_out = self.greenwood * 1.0 / (np.log(self.R) ** 2)
-            R_out = np.log(-np.log(self.R)) - stat * np.sqrt(R_out)
-            R_out = np.exp(-np.exp(R_out))
-            # No variance, no interval: the bounds collapse onto the
-            # estimate. (That is 1 before the first event; it is the
-            # estimate itself, not 1, where float-noise counts in a
-            # Turnbull ladder were snapped to zero events.)
-            R_out = np.where(self.greenwood == 0, self.R, R_out)
-        else:
-            # Normal Greenwood confidence
-            R_out = self.R + np.sqrt(self.greenwood * self.R**2) * stat
-
-        # Allows for confidence bound to be estimated up to the last value.
-        # only used in event that there is no right censoring. When *no*
-        # point on the curve has a finite bound (e.g. a single
-        # observation), fall back to the point estimate rather than
-        # propagating an all-NaN nanmin (#282).
-        def _fill_upper(row: npt.NDArray) -> npt.NDArray:
-            finite = np.isfinite(row)
-            if finite.any():
-                return np.where(finite, row, row[finite].min())
-            return np.asarray(self.R, dtype=float).copy()
-
-        if bound == "upper":
-            R_out = _fill_upper(R_out)
-        elif bound == "lower":
-            R_out = np.where(np.isfinite(R_out), R_out, 0)
-        else:
-            R_out[0, :] = _fill_upper(R_out[0, :])
-            R_out[1, :] = np.where(np.isfinite(R_out[1, :]), R_out[1, :], 0)
-
-        if interp == "step":
-            idx = np.searchsorted(self.x, x, side="right") - 1
-            if bound == "two-sided":
-                R_out = R_out[:, idx]
-                R_out = np.where(idx < 0, 1, R_out)
+                R_out = _fill_upper(R_out)
+            elif bound == "lower":
+                R_out = np.where(np.isfinite(R_out), R_out, 0)
             else:
-                R_out = R_out[idx]
-                R_out = np.where(idx < 0, 1, R_out)
-            R_out = np.where(np.isnan(x), np.nan, R_out)
+                R_out[0, :] = _fill_upper(R_out[0, :])
+                R_out[1, :] = np.where(
+                    np.isfinite(R_out[1, :]), R_out[1, :], 0
+                )
 
-        else:
-            if bound == "two-sided":
-                R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
-                R2 = interp_function(self.x, R_out[1, :], kind=interp)(x)
-                R_out = np.vstack([R1, R2])
+            if interp == "step":
+                idx = np.searchsorted(self.x, x, side="right") - 1
+                if bound == "two-sided":
+                    R_out = R_out[:, idx]
+                    R_out = np.where(idx < 0, 1, R_out)
+                else:
+                    R_out = R_out[idx]
+                    R_out = np.where(idx < 0, 1, R_out)
+                R_out = np.where(np.isnan(x), np.nan, R_out)
+
             else:
-                R_out = interp_function(self.x, R_out, kind=interp)(x)
+                if bound == "two-sided":
+                    R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
+                    R2 = interp_function(self.x, R_out[1, :], kind=interp)(x)
+                    R_out = np.vstack([R1, R2])
+                else:
+                    R_out = interp_function(self.x, R_out, kind=interp)(x)
 
-        # The question remains. Should bounds above and below observed values
-        # be calculable?...
-        mask = (x < self.x.min()) | (x > self.x.max())
-        R_out = np.where(mask, np.nan, R_out)
+            # The question remains. Should bounds above and below observed
+            # values be calculable?...
+            mask = (x < self.x.min()) | (x > self.x.max())
+            R_out = np.where(mask, np.nan, R_out)
 
-        if bound == "two-sided":
-            R_out = R_out.T
-
-        np.seterr(**old_err_state)
+            if bound == "two-sided":
+                R_out = R_out.T
 
         return R_out
 
@@ -1121,7 +1373,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         cb : numpy array
             For two-sided bounds an array of shape (len(x), 2) with
             ``[lower, upper]`` columns; otherwise an array of the
-            requested bound at each x.
+            requested bound at each x. With a support set (see
+            ``set_support``) it is 1 from ``lower`` to the first value,
+            the bounds at the last value from there to ``upper``, and NaN
+            outside them.
 
         Raises
         ------
@@ -1165,7 +1420,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         from surpyval.univariate import nonparametric as nonp
         from surpyval.utils import xcnt_to_xrd
 
-        x_eval = np.atleast_1d(x).astype(float)
         x_data = self.data["x"]
         c_data = self.data["c"]
         n_data = self.data["n"]
@@ -1184,38 +1438,45 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         N = int(n_data.sum())
         probs = n_data / n_data.sum()
 
-        old_err_state = np.seterr(all="ignore")
-        R_boot = np.empty((B, x_eval.size))
-        for b in range(B):
-            n_b = rng.multinomial(N, probs)
-            keep = n_b > 0
-            if self.model == "Turnbull":
-                fitted = nonp.turnbull(
-                    x_data[keep],
-                    c_data[keep],
-                    n_b[keep],
-                    t_data[keep],
-                    **tb_kwargs,
-                )
-                x_b, R_b = fitted["x"], fitted["R"]
-            else:
-                x_b, r_b, d_b = xcnt_to_xrd(
-                    x_data[keep], c_data[keep], n_b[keep], t_data[keep]
-                )
-                R_b = nonp.FIT_FUNCS[self.model](r_b, d_b)
-            idx = np.searchsorted(x_b, x_eval, side="right") - 1
-            R_boot[b, :] = np.where(
-                idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]
-            )
-        np.seterr(**old_err_state)
+        def resampled(x: npt.ArrayLike) -> npt.NDArray:
+            x_eval = np.atleast_1d(x).astype(float)
+            with np.errstate(all="ignore"):
+                R_boot = np.empty((B, x_eval.size))
+                for b in range(B):
+                    n_b = rng.multinomial(N, probs)
+                    keep = n_b > 0
+                    if self.model == "Turnbull":
+                        fitted = nonp.turnbull(
+                            x_data[keep],
+                            c_data[keep],
+                            n_b[keep],
+                            t_data[keep],
+                            **tb_kwargs,
+                        )
+                        x_b, R_b = fitted["x"], fitted["R"]
+                    else:
+                        x_b, r_b, d_b = xcnt_to_xrd(
+                            x_data[keep], c_data[keep], n_b[keep], t_data[keep]
+                        )
+                        R_b = nonp.FIT_FUNCS[self.model](r_b, d_b)
+                    idx = np.searchsorted(x_b, x_eval, side="right") - 1
+                    R_boot[b, :] = np.where(
+                        idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]
+                    )
 
-        if bound == "two-sided":
-            qs = np.quantile(R_boot, [alpha_ci / 2, 1 - alpha_ci / 2], axis=0)
-            return qs.T
-        elif bound == "lower":
-            return np.quantile(R_boot, alpha_ci, axis=0)
-        else:
-            return np.quantile(R_boot, 1 - alpha_ci, axis=0)
+            if bound == "two-sided":
+                qs = np.quantile(
+                    R_boot, [alpha_ci / 2, 1 - alpha_ci / 2], axis=0
+                )
+                return qs.T
+            elif bound == "lower":
+                return np.quantile(R_boot, alpha_ci, axis=0)
+            else:
+                return np.quantile(R_boot, 1 - alpha_ci, axis=0)
+
+        # With a support set, 1 before the first value and the bounds at the
+        # last value carried to ``upper``, as ``cb`` gives.
+        return self._within_support(x, resampled, 1.0)
 
     @staticmethod
     def _band_critical_value(
@@ -1387,7 +1648,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         The band is only defined between the first and last observed
         events (where the variance estimate is positive and finite);
-        NaN is returned outside that range. The asymptotic theory for
+        NaN is returned outside that range, whether or not the model has
+        bounds (``set_support``). The asymptotic theory for
         these bands is for right censored data; for Turnbull models
         with interval censoring prefer ``bootstrap_cb()``.
 
@@ -1472,59 +1734,59 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         else:
             N = float(np.max(self.r))
 
-        old_err_state = np.seterr(all="ignore")
+        with np.errstate(all="ignore"):
 
-        sigma2 = self.greenwood
-        valid = (
-            np.isfinite(sigma2) & (sigma2 > 0) & (self.R > 0) & (self.R < 1)
-        )
-
-        if not valid.any():
-            np.seterr(**old_err_state)
-            raise ValueError(
-                "Band is undefined: no observations with a positive, "
-                + "finite variance estimate"
+            sigma2 = self.greenwood
+            valid = (
+                np.isfinite(sigma2)
+                & (sigma2 > 0)
+                & (self.R > 0)
+                & (self.R < 1)
             )
 
-        a = N * sigma2 / (1 + N * sigma2)
-        a_l = a[valid].min()
-        a_u = a[valid].max()
+            if not valid.any():
+                raise ValueError(
+                    "Band is undefined: no observations with a positive, "
+                    + "finite variance estimate"
+                )
 
-        crit = self._band_critical_value(
-            a_l, a_u, alpha_ci, standardized=(method == "nair")
-        )
+            a = N * sigma2 / (1 + N * sigma2)
+            a_l = a[valid].min()
+            a_u = a[valid].max()
 
-        if method == "nair":
-            half_width = crit * np.sqrt(sigma2)
-        else:
-            half_width = crit * (1 + N * sigma2) / np.sqrt(N)
+            crit = self._band_critical_value(
+                a_l, a_u, alpha_ci, standardized=(method == "nair")
+            )
 
-        if bound_type == "exp":
-            # Band applied on the log(-log) scale, mirroring the
-            # pointwise exponential Greenwood bounds.
-            theta = np.log(-np.log(self.R))
-            se = half_width / np.abs(np.log(self.R))
-            lower = np.exp(-np.exp(theta + se))
-            upper = np.exp(-np.exp(theta - se))
-        else:
-            lower = self.R - half_width * self.R
-            upper = self.R + half_width * self.R
+            if method == "nair":
+                half_width = crit * np.sqrt(sigma2)
+            else:
+                half_width = crit * (1 + N * sigma2) / np.sqrt(N)
 
-        lower = np.where(valid, lower, np.nan)
-        upper = np.where(valid, upper, np.nan)
+            if bound_type == "exp":
+                # Band applied on the log(-log) scale, mirroring the
+                # pointwise exponential Greenwood bounds.
+                theta = np.log(-np.log(self.R))
+                se = half_width / np.abs(np.log(self.R))
+                lower = np.exp(-np.exp(theta + se))
+                upper = np.exp(-np.exp(theta - se))
+            else:
+                lower = self.R - half_width * self.R
+                upper = self.R + half_width * self.R
 
-        if x is None:
-            x = self.x
-        x = np.atleast_1d(x).astype(float)
-        idx = np.searchsorted(self.x, x, side="right") - 1
-        idx_c = np.clip(idx, 0, len(self.x) - 1)
-        out = np.empty((x.size, 2))
-        out[:, 0] = np.where(idx < 0, np.nan, lower[idx_c])
-        out[:, 1] = np.where(idx < 0, np.nan, upper[idx_c])
-        outside = (x < self.x.min()) | (x > self.x.max()) | np.isnan(x)
-        out[outside] = np.nan
+            lower = np.where(valid, lower, np.nan)
+            upper = np.where(valid, upper, np.nan)
 
-        np.seterr(**old_err_state)
+            if x is None:
+                x = self.x
+            x = np.atleast_1d(x).astype(float)
+            idx = np.searchsorted(self.x, x, side="right") - 1
+            idx_c = np.clip(idx, 0, len(self.x) - 1)
+            out = np.empty((x.size, 2))
+            out[:, 0] = np.where(idx < 0, np.nan, lower[idx_c])
+            out[:, 1] = np.where(idx < 0, np.nan, upper[idx_c])
+            outside = (x < self.x.min()) | (x > self.x.max()) | np.isnan(x)
+            out[outside] = np.nan
 
         return out
 
@@ -1565,7 +1827,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         hf : numpy array
             The estimated hazard rate at each x. NaN outside the
-            observed range. An infinite jump (a Kaplan-Meier falling to
+            observed range, whether or not the model has bounds
+            (``set_support``). An infinite jump (a Kaplan-Meier falling to
             zero at the last failure) is left out of the sum.
 
         Examples
@@ -1888,7 +2151,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The serialized model. The Turnbull fitting diagnostics
             (``converged``, ``iters``, ``degenerate``, ``npmle``,
             ``exploitable_mass``) and the ``bounds``, ``R_upper`` and
-            ``R_lower`` arrays are not stored. It is strict JSON: the
+            ``R_lower`` arrays are not stored; the ``support`` set by
+            :meth:`set_support` is, when set. It is strict JSON: the
             non-finite values (``H`` after the last death, an undefined
             Greenwood term, untruncated bounds in the data) are ``None``,
             recorded under ``"non_finite"`` and restored by
@@ -1914,6 +2178,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         for key in ("estimator", "tol", "max_iter"):
             if key in getattr(self, "data", {}):
                 out[key] = self.data[key]
+
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
 
         if with_data and getattr(self, "data", None) is not None:
             data_dict: dict[str, Any] = {}
@@ -1983,6 +2251,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 if key in model_dict:
                     data[key] = model_dict[key]
             out.data = data
+
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_support(*support)
 
         return out
 

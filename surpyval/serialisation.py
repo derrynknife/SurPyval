@@ -148,8 +148,11 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # 1. A document that a schema-1 reader would get wrong is stamped 2,
 # which such a reader refuses with a request to upgrade: one carrying a
 # ``"non_finite"`` record (whose ``null`` values it would take for
-# missing entries), or a formula model whose design-matrix state is
-# stored only in the schema-2 form (see ``_needs_formula_reader``).
+# missing entries), a formula model whose design-matrix state is
+# stored only in the schema-2 form (see ``_needs_formula_reader``), or a
+# non-parametric estimate with the ``"support"`` its ``set_support`` gave
+# it (new in schema 2; a schema-1 reader would silently drop it, and
+# with it the estimate's values outside the data).
 SCHEMA_VERSION = 2
 
 # The oldest version whose readers restore a document with neither of
@@ -409,10 +412,12 @@ def required_schema(model_dict: dict) -> int:
     2 if the dictionary, or a model dictionary nested in it, records
     non-finite values as ``null`` (a ``"non_finite"`` record, see
     :func:`encode_non_finite`), which a schema-1 reader would take for
-    missing entries, or holds a regression formula that only a schema-2
+    missing entries, holds a regression formula that only a schema-2
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
-    levels, or fitted transforms such as ``scale(z)``); 1 otherwise, the
-    layout SurPyval v0.20 reads. This is the version :func:`stamp_schema`
+    levels, or fitted transforms such as ``scale(z)``), or holds the
+    ``"support"`` of a non-parametric estimate's ``set_support``, which a
+    schema-1 reader would silently ignore; 1 otherwise, the layout
+    SurPyval v0.20 reads. This is the version :func:`stamp_schema`
     writes.
 
     Examples
@@ -422,12 +427,29 @@ def required_schema(model_dict: dict) -> int:
     1
     >>> required_schema({"H": [0.1, None], "non_finite": {"inf": ["/H/1"]}})
     2
+    >>> required_schema({"x": [1.0, 2.0], "support": [0.0, 5.0]})
+    2
     """
     return (
         SCHEMA_VERSION
-        if _carries_non_finite(model_dict) or _needs_formula_reader(model_dict)
+        if _carries_non_finite(model_dict)
+        or _needs_formula_reader(model_dict)
+        or _carries_support(model_dict)
         else _SCHEMA_WITHOUT_NON_FINITE
     )
+
+
+def _carries_support(value: Any) -> bool:
+    """Whether ``value`` or any dictionary nested in it (a cause-specific
+    MCF's per-cause estimates) has a ``"support"``, which only the
+    non-parametric estimates' ``set_support`` writes."""
+    if isinstance(value, dict):
+        return value.get("support") is not None or any(
+            _carries_support(v) for v in value.values()
+        )
+    if isinstance(value, (list, tuple)):
+        return any(_carries_support(v) for v in value)
+    return False
 
 
 def _needs_formula_reader(value: Any) -> bool:
@@ -463,10 +485,12 @@ def stamp_schema(model_dict: dict) -> dict:
     as ``null``, see :func:`encode_non_finite`) and stamp the
     serialisation schema version. Every ``to_dict`` ends with it.
 
-    The version stamped is the oldest that reads the document correctly:
-    2 if it (or a model nested in it) records non-finite values as
-    ``null``, which a schema-1 reader would misread, and 1 otherwise, so
-    that SurPyval releases reading schema 1 can still load it.
+    The version stamped is the oldest that reads the document correctly
+    (see :func:`required_schema`): 2 if it (or a model nested in it)
+    records non-finite values as ``null``, which a schema-1 reader would
+    misread, or carries something only a schema-2 reader restores, and 1
+    otherwise, so that SurPyval releases reading schema 1 can still load
+    it.
     """
     encode_non_finite(model_dict)
     model_dict["schema"] = required_schema(model_dict)

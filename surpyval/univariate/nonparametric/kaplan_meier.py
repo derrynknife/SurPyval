@@ -93,15 +93,12 @@ def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     factor = np.maximum(1 - (d / r), 0.0)
     R = factor.copy()
     R[np.isnan(R)] = 0
-    old_err_state = np.seterr(under="raise")
-
-    try:
-        R = np.cumprod(R)
-    except FloatingPointError:
-        R = np.cumsum(np.log(factor))
-        R = np.exp(R)
-
-    np.seterr(**old_err_state)
+    with np.errstate(under="raise"):
+        try:
+            R = np.cumprod(R)
+        except FloatingPointError:
+            R = np.cumsum(np.log(factor))
+            R = np.exp(R)
     return R
 
 

@@ -289,6 +289,30 @@ CIFs sum to the all-cause failure probability.
     print("CIFs sum to 1 - KM :", np.allclose(
         km_model.cif(t, "wear") + km_model.cif(t, "shock"), km_model.ff(t)))
 
+Like the single-cause step estimates, every function starts at its initial
+value before the first observed time (``sf`` 1, the others 0) and holds its
+last value after the last one, however far from the data. To give the
+estimate an explicit range instead, call ``set_support(lower, upper)``: the
+functions keep that convention only within ``[lower, upper]`` and are ``nan``
+outside it. The bounds must contain the observed times; ``lower`` may be
+negative and either bound infinite. ``set_support`` returns the model, and
+``to_dict`` saves the bounds with it.
+
+.. jupyter-execute::
+
+    bounded = CompetingRisks.fit(x, e).set_support(0, 2 * x.max())
+    q = [-1, 0, 1.5 * x.max(), 3 * x.max()]
+    print("bounded CIF wear :", np.round(bounded.cif(q, "wear"), 4))
+    print("CIF wear         :", np.round(model.cif(q, "wear"), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b = bounded.cif(q, "wear")
+    assert np.isnan(_b[[0, 3]]).all() and _b[1] == 0
+    assert _b[2] == model.cif(x.max(), "wear")[0]
+
 Data held in a pandas DataFrame can be passed with ``fit_from_df``, naming the
 time and cause columns (and optionally ``c_col`` and ``n_col``). The frame is
 kept on the model as ``source_df``:
