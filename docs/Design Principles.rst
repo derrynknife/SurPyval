@@ -199,11 +199,13 @@ Uncertainty
 Behaviour and API
 -----------------
 
-19. **One seed rule.** ``seed=None`` (or ``random_state=None``) draws from
-    numpy's global generator, so ``np.random.seed`` reproduces it; an
-    explicit seed gets its own stream and leaves the global one alone.
+19. **One seed rule.** Every method that draws takes ``random_state``.
+    ``None`` draws from numpy's global generator, so ``np.random.seed``
+    reproduces it; an explicit seed gets its own stream and leaves the
+    global one alone.
 
-    *Checked* by ``conformance/test_seeds.py``; known gap #389.
+    *Checked* by ``conformance/test_seeds.py``, for every registered model
+    that draws.
 
 20. **Saving and loading.** Every model round-trips through strict JSON with
     identical predictions, stamped with the oldest schema version that can
@@ -215,7 +217,10 @@ Behaviour and API
 
 21. **Consistent names.** The same option has the same name, meaning and
     default everywhere (``alpha_ci``, ``bound``, ``on``, ``interp``,
-    ``Z``, ``seed``).
+    ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
+    ``x`` for the times and ``p`` for a quantile's probability). When a name
+    changes, the old one keeps working for one release with a
+    ``DeprecationWarning`` naming the new one.
 
     *Checked* by ``conformance/test_options.py``.
 

@@ -297,7 +297,7 @@ def test_every_uncertainty_method_is_swept(case):
 
 
 def _percentile(spec):
-    return "n_boot" in spec.kwargs or "B" in spec.kwargs
+    return "n_boot" in spec.kwargs
 
 
 # A percentile bootstrap interval need not contain the estimate (its ends

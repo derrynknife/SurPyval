@@ -785,7 +785,8 @@ def continuous(name, fitter=None, data=uni_data, x=X_UNI, **kw):
         functions=UNI_FUNCTIONS + ("qf",),
         x=x,
         paths=kw.pop("paths", _parametric_paths(fitter, **fixed)),
-        draw=kw.pop("draw", lambda m, s: m.random(15)),
+        draw=kw.pop("draw", lambda m, s: m.random(15, random_state=s)),
+        explicit_seed=kw.pop("explicit_seed", True),
         **kw,
     )
 
@@ -803,7 +804,8 @@ def discrete(name, fitter=None, start=0, **kw):
         x=X_DISC,
         continuous=False,
         paths=kw.pop("paths", _parametric_paths(fitter)),
-        draw=lambda m, s: m.random(15),
+        draw=lambda m, s: m.random(15, random_state=s),
+        explicit_seed=True,
         exclude={
             "units": "support is the integers; rescaling leaves the lattice",
             **kw.pop("exclude", {}),
@@ -1233,9 +1235,11 @@ def _univariate():
                     slow=(
                         frozenset() if name == "Weibull" else REFIT_PROPERTIES
                     ),
-                    # the lifetimes (inf for a unit that never fails)
-                    # and the survival data to refit (#403)
-                    draw=lambda m, s: (m.random(15), m.random_data(15)),
+                    # the survival data to refit (#403), drawn from the
+                    # lifetimes random draws (inf for a unit that never
+                    # fails); one call, so a Generator seed is used once
+                    draw=lambda m, s: m.random_data(15, random_state=s),
+                    explicit_seed=True,
                 )
             )
     out.append(
@@ -1297,7 +1301,8 @@ def _univariate():
                     sp.Binomial.fit(**d, n_trials=5).params
                 )
             },
-            draw=lambda m, s: m.random(15),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
             exclude={
                 "units": "counts of successes out of n_trials",
                 "counts": "Binomial.fit takes no counts",
@@ -1328,7 +1333,8 @@ def _univariate():
                         f.fit(**d).params
                     )
                 },
-                draw=lambda m, s: m.random(15),
+                draw=lambda m, s: m.random(15, random_state=s),
+                explicit_seed=True,
                 exclude={
                     "units": "the outcomes are 0 and 1, not times",
                     "df_hf_sf": "only sf, ff and Hf are part of its model",
@@ -1350,7 +1356,8 @@ def _univariate():
                     sp.ExactEventTime.fit(**d).params
                 )
             },
-            draw=lambda m, s: m.random(15),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
             exclude={
                 "df_hf_sf": "a point mass: no density or hazard rate",
                 "qf_ff": "a point mass: ff takes only the values 0 and 1",
@@ -1371,7 +1378,8 @@ def _univariate():
             functions=UNI_FUNCTIONS + ("qf",),
             x=np.array([0.1, 0.5, 1.0, 2.0, 4.0, 8.0]),
             rows=(),
-            draw=lambda m, s: m.random(15),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
             exclude={p: no_data for p in REFIT_PROPERTIES},
         )
     )
@@ -1388,7 +1396,8 @@ def _univariate():
                 functions=UNI_FUNCTIONS + ("qf",),
                 x=np.array([0.0, 1.0, 5.0, 100.0]),
                 rows=(),
-                draw=lambda m, s: m.random(5),
+                draw=lambda m, s: m.random(5, random_state=s),
+                explicit_seed=True,
                 exclude={
                     **{p: no_data for p in REFIT_PROPERTIES},
                     "df_hf_sf": "a point mass at 0 or infinity",
@@ -1420,7 +1429,8 @@ def _univariate():
             fit=lambda d: _fit_mixture(d),
             functions=("sf", "ff", "df", "Hf"),
             x=np.array([1.0, 3.0, 5.0, 10.0, 22.0, 30.0, 45.0]),
-            draw=lambda m, s: m.random(15),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
             exclude={
                 "df_hf_sf": "MixtureModel has no hf (Conventions)",
                 "qf_ff": "MixtureModel has no qf (Conventions)",
@@ -1437,7 +1447,8 @@ def _univariate():
             fit=_fit(sp.RoystonParmar),
             functions=UNI_FUNCTIONS + ("qf",),
             x=X_UNI,
-            draw=lambda m, s: m.random(15),
+            draw=lambda m, s: m.random(15, random_state=s),
+            explicit_seed=True,
         )
     )
     return out
@@ -1470,7 +1481,7 @@ def _competing_risks():
             {"x": d["x"], "e": d["e"], "n": d["n"], "z0": d["Z"][:, 0]}
         )
         return cr.CompetingRisksProportionalHazards.fit_from_df(
-            df, x_col="x", e_col="e", Z_cols=["z0"], n_col="n", how=how
+            df, x_col="x", e_col="e", Z_cols=["z0"], n_col="n", model=how
         )
 
     out = [
@@ -1547,7 +1558,7 @@ def _competing_risks():
                 ),
                 interface=CAUSES_REGRESSION,
                 data=functools.partial(cr_data, True),
-                fit=_fit(cr.CompetingRisksProportionalHazards, how=how),
+                fit=_fit(cr.CompetingRisksProportionalHazards, model=how),
                 # The Fine-Gray form has no all-cause survival; its sf is a
                 # cause's 1 - cif, reached through cif below.
                 functions=("sf", "ff") if how == "Cox" else (),
@@ -1582,7 +1593,7 @@ def _competing_risks():
             ),
             interface=CAUSES_REGRESSION,
             data=functools.partial(cr_data, True),
-            fit=_fit(cr.FineGray, cause="a"),
+            fit=_fit(cr.FineGray, event="a"),
             functions=("sf", "cif"),
             x=X_CR,
             Z=Z_CR,
@@ -1610,7 +1621,7 @@ def _recurrent_data_path(fitter, **fixed):
 
 
 def _counting_draw(m, s):
-    return m.count_terminated_simulation(3, items=2, seed=s)
+    return m.count_terminated_simulation(3, items=2, random_state=s)
 
 
 def _recurrent():
@@ -1679,7 +1690,7 @@ def _recurrent():
                 covariates="Z",
                 drops_missing_covariate=False,
                 draw=lambda m, s: m.count_terminated_simulation(
-                    3, items=2, seed=s, Z=[0.5]
+                    3, items=2, random_state=s, Z=[0.5]
                 ),
                 explicit_seed=True,
             )
@@ -1706,7 +1717,7 @@ def _recurrent():
                 fit=_fit(fitter, **kw),
                 # The MCF is simulated; a fixed seed makes it a function.
                 functions=("mcf",),
-                call_kwargs={"items": 30, "seed": 1},
+                call_kwargs={"items": 30, "random_state": 1},
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths={
@@ -1714,7 +1725,7 @@ def _recurrent():
                         fitter, **kw
                     )
                 },
-                draw=lambda m, s: m.mcf(X_REC, items=5, seed=s),
+                draw=lambda m, s: m.mcf(X_REC, items=5, random_state=s),
                 explicit_seed=True,
                 slow=REFIT_PROPERTIES,
             )
@@ -2075,7 +2086,7 @@ def _nonparametric_bounds(case):
     out.append(
         Bound(
             "bootstrap_cb",
-            kwargs={"B": 40, "random_state": 1},
+            kwargs={"n_boot": 40, "random_state": 1},
             wald=False,
             nan_ok=True,
             # Each resample reruns the Turnbull EM.
@@ -2095,7 +2106,6 @@ def _mcf_bounds(per_cause=False):
             "mcf_cb",
             point="mcf",
             kwargs={"bound_type": bound_type, "interp": interp},
-            level="confidence",
             in_range=bound_type == "exp",
             nan_ok=True,
             per_cause=per_cause,
@@ -2107,7 +2117,7 @@ def _mcf_bounds(per_cause=False):
 
 
 _PARAM_CB = Bound("param_cb", kind="param")
-_BOOT = {"n_boot": 20, "seed": 1}
+_BOOT = {"n_boot": 20, "random_state": 1}
 
 
 def _bounds(case):
@@ -2157,7 +2167,11 @@ def _bounds(case):
             Bound(
                 "cb",
                 on=_ON_SURVIVAL,
-                kwargs={"method": "bootstrap", "n_boot": 10, "seed": 1},
+                kwargs={
+                    "method": "bootstrap",
+                    "n_boot": 10,
+                    "random_state": 1,
+                },
                 wald=False,
                 slow=True,
                 label="cb[bootstrap]",
@@ -2180,7 +2194,7 @@ def _bounds(case):
             Bound(
                 "cb",
                 on=("sf", "ff"),
-                kwargs={"n_boot": 10, "seed": 1},
+                kwargs={"n_boot": 10, "random_state": 1},
                 wald=False,
                 slow=True,
             ),
@@ -2265,7 +2279,9 @@ def _cr_sample(model, with_Z=True):
 
 
 def _recurrent_sample(model):
-    data = model.time_terminated_simulation_data(60.0, items=40, seed=1)
+    data = model.time_terminated_simulation_data(
+        60.0, items=40, random_state=1
+    )
     return {"x": data.x, "i": data.i, "c": data.c, "n": data.n}
 
 
@@ -2308,7 +2324,7 @@ def _estimators(case):
         return {"turnbull_estimator": est}, {}, _censored_sample
     if name == "CoxPH":
         methods = ("breslow", "efron", "exact", "kalbfleisch-prentice")
-        return {"method": methods}, {}, _cox_sample
+        return {"tie_method": methods}, {}, _cox_sample
     if name == "CompetingRisksProportionalHazards[Cox]":
         return {"tie_method": ("efron", "breslow")}, {}, _cr_sample
     if name == "CompetingRisks[Nelson-Aalen]":
@@ -2631,7 +2647,8 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         "missing_query": "mcf(nan) is the last value (4.33), not NaN",
     },
     "CoxLewis": {
-        "seed_explicit": "count_terminated_simulation(3, items=2, seed=7) "
+        "seed_explicit": "count_terminated_simulation(3, items=2, "
+        "random_state=7) "
         "raises ValueError ('Event times x must be finite'): the fitted "
         "intensity falls (b = -0.021, cif(inf) = 6.04), so a sequence can "
         "stop short of its 4th event, and seed 7 draws one",
@@ -2646,7 +2663,7 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         for base in ("Weibull", "Exponential", "Gamma", "LogNormal")
     },
     "CauseSpecificMCF": {
-        "missing_query": "mcf(nan, cause) is the last value (2.67), not "
+        "missing_query": "mcf(nan, event) is the last value (2.67), not "
         "NaN",
     },
 }
@@ -3180,42 +3197,9 @@ KNOWN_FAILURE_ISSUES: dict[str, str] = {
 # Option conventions (test_options.py, CONVENTIONS) the package breaks:
 # convention -> the inconsistency. Each is a strict xfail; the test's
 # message lists every method concerned.
-KNOWN_INCONSISTENCIES: dict[str, str] = {
-    "alpha_ci": "NonParametricCounting.mcf_cb and the recurrent-event "
-    "plots (NonParametricCounting, CauseSpecificMCF, "
-    "ParametricRecurrenceModel, ProportionalIntensityModel) take "
-    "confidence=0.95 where every other interval takes alpha_ci=0.05",
-    "seed": "the random-number argument is random_state in random, "
-    "band, bootstrap_cb, induced_life and DegradationModel.predict_rul, "
-    "but seed in the recurrent simulations, BuckleyJames.bootstrap_ci, "
-    "cramer_von_mises and the degradation cb",
-    "resamples": "the bootstrap size is B in NonParametric.bootstrap_cb "
-    "and n_boot everywhere else",
-    "ties": "Cox's tie handling is method= in CoxPH.fit / fit_from_df / "
-    "fit_tvc* but tie_method= in CoxPH.baseline and "
-    "CompetingRisksProportionalHazards.fit / fit_from_df",
-    "time": "the times are t, not x, in Parametric.cb, RoystonParmarModel "
-    "(sf, ff, df, hf, Hf, cb), DestructiveDegradationModel (sf, ff, df, "
-    "Hf, cb) and the Wiener / Gamma process models (sf, ff, df, hf, Hf)",
-    "quantile": "qf takes u (NeverOccurs, InstantlyOccurs) or q "
-    "(RoystonParmarModel), not p",
-    "cause": "the per-cause argument is cause= in CauseSpecificMCF and "
-    "CauseSpecificNHPP, event= in the competing-risks models",
-    "Z": "DegradationModel.cb takes Z as its last keyword (x, on, "
-    "alpha_ci, ..., Z), and WienerProcessModel / GammaProcessModel.random "
-    "take (size, random_state, Z) where DegradationModel.random takes "
-    "(size, Z, random_state)",
-    "how": "CompetingRisksProportionalHazards.fit(how='Cox') chooses the "
-    "model (Cox or Fine-Gray), where how= is the estimation method "
-    "everywhere else",
-    "id column": "the item-id column is i_col in CauseSpecificMCF / "
-    "CauseSpecificNHPP.fit_from_df but id_col in the fit_tvc*_from_df "
-    "methods",
-}
-# All tracked by one issue (principle 21).
-KNOWN_INCONSISTENCIES = {
-    key: "#422: " + reason for key, reason in KNOWN_INCONSISTENCIES.items()
-}
+# Options named differently somewhere, keyed by the convention they break,
+# each reason starting "#NNN: " (principle 21). None since #422.
+KNOWN_INCONSISTENCIES: dict[str, str] = {}
 
 
 def _with_issue(prop: str, reason: str) -> str:

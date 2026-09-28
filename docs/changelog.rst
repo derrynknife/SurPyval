@@ -4,6 +4,62 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Changed: one name per option (#422, principle 21).** The same option
+  had different names in different parts of the package; each now has one,
+  and the old name keeps working until v0.22.0 with a
+  ``DeprecationWarning`` naming the new one (``surpyval.utils.deprecation``
+  does this for every rename):
+
+  - Interval level: ``alpha_ci=0.05`` everywhere (the recurrent ``mcf_cb``
+    and plots took ``confidence=0.95``). Seeds: ``random_state`` everywhere
+    (some recurrent, Buckley-James and degradation methods took ``seed``).
+    Bootstrap size: ``n_boot`` (``B`` in ``NonParametric.bootstrap_cb``).
+  - Times are ``x`` and a quantile's probability ``p`` everywhere
+    (``Parametric.cb``, Royston-Parmar and the degradation models took
+    ``t``; ``qf`` took ``u`` or ``q`` in a few models).
+  - Regression and competing risks: ``CoxPH.fit``, ``fit_from_df`` and
+    ``fit_tvc*`` take ``tie_method`` (was ``method``; ``CoxPH.baseline`` and
+    the competing-risks Cox already did); the ``fit_tvc*_from_df`` methods
+    take ``i_col`` (was ``id_col``: the data argument is ``i``);
+    ``BuckleyJamesModel.bootstrap_ci`` takes ``random_state`` (was
+    ``seed``); ``CompetingRisksProportionalHazards.fit`` / ``fit_from_df``
+    take ``model="Cox"`` or ``"Fine-Gray"`` (was ``how``, the estimation
+    method everywhere else; the fitted ``.how`` is ``.model``); and
+    ``FineGray.fit`` and ``gray_test`` take ``event`` (was ``cause``).
+  - Recurrent events: ``NonParametricCounting.mcf_cb`` and ``.plot``,
+    ``CauseSpecificMCF.mcf_cb`` and ``.plot``, and the parametric and
+    proportional-intensity ``plot`` take ``alpha_ci=0.05`` (was
+    ``confidence=0.95``; ``confidence=0.9`` is read as ``alpha_ci=0.1``),
+    keyword-only, so an old level passed by position raises rather than
+    silently meaning its complement. The simulations, the simulated
+    ``mcf`` and ``plot`` and every ``cramer_von_mises`` take
+    ``random_state`` (was ``seed``), and ``CauseSpecificMCF`` /
+    ``CauseSpecificNHPP`` take ``event`` (was ``cause``). Plot labels read
+    "95%", not "95.0%".
+  - Degradation: times are ``x``, not ``t``, in the Wiener and Gamma process
+    models (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) and
+    ``DestructiveDegradationModel`` (``sf``, ``ff``, ``df``, ``Hf``, ``cb``,
+    ``median_degradation``, ``degradation_quantile``, whose probability is
+    ``p``, not ``q``). ``Z`` comes straight after the query:
+    ``DegradationModel.cb(x, Z, on, ...)`` and the process models'
+    ``random(size, Z, random_state)``, as ``DegradationModel.random``. A
+    call in the old positional order (a string second argument to ``cb``,
+    or two positional arguments after ``size`` in ``random``, read as
+    ``(random_state, Z)``) still works with a warning; ``random(size, v)``
+    on a model fitted with stress, which raised for the missing ``Z``,
+    now draws at stress ``v``.
+- **Every ``random`` takes ``random_state`` (#389).** The univariate
+  distributions and models (``random``, ``random_data``), mixture models
+  (which accepted and ignored it), Royston-Parmar and the PH, AH and
+  accelerated-life regressions now take a keyword-only ``random_state``:
+  ``None`` draws from numpy's global stream exactly as before, and a seed
+  gives a stream of its own (``numpy.random.default_rng(seed)``) that
+  leaves the global one alone. ``conformance/test_seeds.py`` checks this
+  for every registered model that draws.
+- **``Binomial.random`` accepts a fitted model's parameters.** A fitted
+  ``n`` is a float (5.0), and ``random`` raised ``TypeError: Cannot cast
+  scalar from dtype('float64') to dtype('int64')``; a whole-number float is
+  accepted now, and a fractional ``n`` raises a ``ValueError``.
 - **Time-varying covariate paths start at 0 (#433).** A schedule starting
   before 0 was counted as age in the AFT ``sf_tvc`` and the degradation
   stress clock: a constant ``WeibullAFT`` path from -10 gave
