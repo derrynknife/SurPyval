@@ -78,7 +78,10 @@ class ParametricDistribution(Distribution):
     def random(
         self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
     ) -> ArrayLike:
-        """Draw random samples from the model."""
+        """Draw random samples from the model. ``random_state`` (an int or
+        a ``numpy.random.Generator``) gives a draw of its own; ``None``
+        draws from numpy's global stream, so ``np.random.seed``
+        reproduces it (Conventions, "Random draws and seeds")."""
 
     @abstractmethod
     def moment(self, n: int, *args: Any, **kwargs: Any) -> ArrayLike:
@@ -115,7 +118,8 @@ class NonParametricDistribution(Distribution):
 
     @abstractmethod
     def random(self, size: int, *args: Any, **kwargs: Any) -> ArrayLike:
-        """Draw random samples from the fitted estimate."""
+        """Draw random samples from the fitted estimate, with
+        ``random_state`` as for :meth:`ParametricDistribution.random`."""
 
 
 class MultivariateDistribution(ABC):
@@ -168,4 +172,5 @@ class MultivariateDistribution(ABC):
     def random(
         self, size: int | tuple[int, ...], *args: Any, **kwargs: Any
     ) -> ArrayLike:
-        """Draw correlated samples, one row per realisation."""
+        """Draw correlated samples, one row per realisation, with
+        ``random_state`` as for :meth:`ParametricDistribution.random`."""

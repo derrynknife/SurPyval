@@ -96,7 +96,7 @@ class TestEfronDiagnostics:
         # same tie handling as the fitted likelihood.
         x, c, Z = self._tied_fit()
         for method in ("efron", "breslow"):
-            m = CoxPH.fit(x=x, Z=Z, c=c, method=method)
+            m = CoxPH.fit(x=x, Z=Z, c=c, tie_method=method)
             assert compute_residuals(m, "martingale").sum() == pytest.approx(
                 0.0, abs=1e-8
             )
@@ -109,7 +109,7 @@ class TestEfronDiagnostics:
         # (km transform; identity and log also agree — lifelines is not
         # a CI dependency, so the values are pinned).
         x, c, Z = self._tied_fit()
-        m = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+        m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
         res = check_ph(m, transform="km")
         stats = [e["statistic"] for e in res["per_covariate"]]
         assert stats[0] == pytest.approx(1.3936, abs=2e-3)
@@ -117,7 +117,7 @@ class TestEfronDiagnostics:
 
     def test_dfbeta_tracks_exact_leave_one_out(self):
         x, c, Z = self._tied_fit()
-        m = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+        m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
         dfb = compute_residuals(m, "dfbeta")
         # Spot-check 15 rows of exact leave-one-out influence.
         rows = np.arange(0, 120, 8)
@@ -125,7 +125,7 @@ class TestEfronDiagnostics:
         for r, i in enumerate(rows):
             keep = np.ones(120, dtype=bool)
             keep[i] = False
-            mi = CoxPH.fit(x=x[keep], Z=Z[keep], c=c[keep], method="efron")
+            mi = CoxPH.fit(x=x[keep], Z=Z[keep], c=c[keep], tie_method="efron")
             loo[r] = m.beta - mi.beta
         corr = np.corrcoef(dfb[rows, 0], loo[:, 0])[0, 1]
         assert corr > 0.99

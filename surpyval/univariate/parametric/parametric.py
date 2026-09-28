@@ -18,6 +18,8 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -36,6 +38,26 @@ if TYPE_CHECKING:
 # always travel together, so they are bundled to keep the bound helpers'
 # signatures small.
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
+
+
+def draw_state(random_state: Any = None) -> Any:
+    """The ``random_state`` to give a numpy or scipy draw.
+
+    ``None`` stays ``None``, numpy's global stream, so ``np.random.seed``
+    reproduces a draw exactly as it did before ``random_state`` was an
+    argument. Anything else is ``as_generator(random_state)``: a stream
+    of its own, with an int seed meaning ``np.random.default_rng(seed)``
+    (scipy's ``rvs`` would otherwise read an int as a legacy
+    ``RandomState`` seed).
+    """
+    return None if random_state is None else as_generator(random_state)
+
+
+def uniform_draws(
+    size: int | tuple[int, ...], random_state: Any = None
+) -> npt.NDArray:
+    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    return uniform.rvs(size=size, random_state=draw_state(random_state))
 
 
 def is_custom_distribution(dist: Any) -> bool:
@@ -1309,15 +1331,18 @@ class Parametric(
         size: int | tuple[int, ...],
         a: float | None = None,
         b: float | None = None,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
         A method to draw random lifetimes from the distribution using the
         parameters found in the ``.params`` attribute.
 
-        Each draw is ``qf(u)`` for one uniform ``u`` from numpy's global
-        random generator, for every model: so ``np.random.seed`` makes the
-        draws reproducible, and ``random(size)`` gives the same values as
+        Each draw is ``qf(u)`` for one uniform ``u``, for every model. With
+        no ``random_state`` the uniforms come from numpy's global random
+        generator: so ``np.random.seed`` makes the draws reproducible, and
+        ``random(size)`` gives the same values as
         ``qf(np.random.random_sample(size))`` after the same seed. A unit
         of a limited-failure population that never fails (``p < 1``) is
         ``inf``, and one dead on arrival (``f0``) is exactly 0. To simulate
@@ -1336,6 +1361,11 @@ class Parametric(
             The right truncated value if sampling from a truncated
             distribution. Truncated sampling is not available for offset,
             limited-failure or zero-inflated models.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw of its own, which
+            neither depends on nor advances numpy's global stream (an int
+            is ``np.random.default_rng(seed)``). ``None`` (the default)
+            draws from the global stream, as above.
 
         Returns
         -------
@@ -1356,6 +1386,9 @@ class Parametric(
         >>> np.random.seed(6)
         >>> lfp.random(5)
         array([       inf, 7.38380246,        inf, 0.        , 2.22387058])
+        >>> bool(np.array_equal(model.random(3, random_state=1),
+        ...                     model.random(3, random_state=1)))
+        True
         """
         if ((a is not None) or (b is not None)) and (
             (self.p != 1) or (self.f0 != 0)
@@ -1372,11 +1405,15 @@ class Parametric(
             if (a is None) and (b is None):
                 if hasattr(self.dist, "qf"):
                     return (
-                        self.dist.qf(uniform.rvs(size=size), *self.params)
+                        self.dist.qf(
+                            uniform_draws(size, random_state), *self.params
+                        )
                         + self.gamma
                     )
                 else:
-                    return self.dist.random(size, *self.params)
+                    return self.dist.random(
+                        size, *self.params, random_state=random_state
+                    )
 
             else:
                 # Truncated sampling
@@ -1389,7 +1426,7 @@ class Parametric(
                     Fb = 1
                 else:
                     Fb = self.dist.ff(b, *self.params)
-                u = uniform.rvs(size=size)
+                u = uniform_draws(size, random_state)
                 return self.dist.qf((u * (Fb - Fa) + Fa), *self.params)
 
         # One uniform per draw through the model's quantile function: inf
@@ -1397,13 +1434,15 @@ class Parametric(
         # This used to return (x, c, n, t) survival data for an LFP model
         # (now random_data), and to draw a zero-inflated sample by a
         # binomial count and a shuffle, which qf(u) could not reproduce.
-        return np.reshape(self.qf(uniform.rvs(size=size)), size)
+        return np.reshape(self.qf(uniform_draws(size, random_state)), size)
 
     def random_data(
         self,
         size: int,
         a: float | None = None,
         b: float | None = None,
+        *,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         r"""
 
@@ -1427,6 +1466,9 @@ class Parametric(
         b: float or None
             The right truncation value if sampling from a truncated
             distribution; it is recorded as every row's right truncation.
+        random_state : int or numpy.random.Generator, optional
+            As for :meth:`random`: ``None`` (the default) draws from
+            numpy's global stream, anything else from a stream of its own.
 
         Returns
         -------
@@ -1445,7 +1487,9 @@ class Parametric(
         >>> c, n
         (array([0, 0, 0, 1]), array([1, 1, 1, 5]))
         """
-        x = np.ravel(self.random(size, a, b)).astype(float)
+        x = np.ravel(
+            self.random(size, a, b, random_state=random_state)
+        ).astype(float)
         finite = np.isfinite(x)
         f = x[finite]
         s = np.full(int(np.sum(~finite)), self._censor_time(f))
@@ -1674,10 +1718,11 @@ class Parametric(
             "failure)."
         )
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,
-        t: npt.ArrayLike,
+        x: npt.ArrayLike,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -1691,7 +1736,7 @@ class Parametric(
         Parameters
         ----------
 
-        t : array like or scalar
+        x : array like or scalar
             The values of the random variables at which the confidence bounds
             will be calculated
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
@@ -1704,7 +1749,7 @@ class Parametric(
         method : ('wald', 'lr'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
             the ``on`` function by the delta method. ``"lr"`` gives a
-            profile-likelihood (likelihood-ratio) band: at each ``t`` the bound
+            profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
             confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
             The likelihood-ratio band is transformation-invariant and does not
@@ -1721,8 +1766,8 @@ class Parametric(
 
         cb : scalar or numpy array
             The value(s) of the upper, lower, or both confidence bound(s) of
-            the selected function at t. A two-sided bound has one row per
-            ``t`` holding the ``[lower, upper]`` pair.
+            the selected function at x. A two-sided bound has one row per
+            ``x`` holding the ``[lower, upper]`` pair.
 
         Examples
         --------
@@ -1737,7 +1782,7 @@ class Parametric(
         >>> model.cb([5, 10], on="sf", bound="lower")
         array([0.68394304, 0.18735771])
         """
-        t = np.atleast_1d(t)
+        t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
         # Checked up front, as param_cb does: an unrecognised value (say

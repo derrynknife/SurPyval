@@ -53,7 +53,7 @@ def test_cox_coefficient_coverage(tied):
             x = np.ceil(x)  # unit grid: about 20 distinct times
         ties += (1 - np.unique(x).size / N) / reps
         method = "efron" if tied else "breslow"
-        model = sp.CoxPH.fit(x=x, Z=Z, c=c, method=method)
+        model = sp.CoxPH.fit(x=x, Z=Z, c=c, tie_method=method)
         b = np.asarray(model.params)
         se = np.sqrt(np.diag(np.linalg.inv(model.jac(b)[1])))
         rse = np.sqrt(np.diag(model.robust_covariance()))

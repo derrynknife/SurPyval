@@ -1,4 +1,5 @@
 from math import comb
+from typing import Any
 
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
@@ -9,6 +10,7 @@ from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     stirling2_numbers,
 )
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -145,10 +147,16 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         ]
         return float(sum(comb(m, j) * raw_y[j] for j in range(m + 1)))
 
-    def random(
-        self, size: int | tuple[int, ...], r: Boxable, p: Boxable
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        r: Boxable,
+        p: Boxable,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
-        """Draw ``size`` cycle counts, ``1 +`` a negative binomial draw.
+        """Draw ``size`` cycle counts, ``1 +`` a negative binomial draw;
+        ``random_state`` is as for :meth:`ParametricFitter.random`.
 
         Examples
         --------
@@ -158,7 +166,8 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> NegativeBinomial.random(5, 3.0, 0.4)
         array([ 7.,  4.,  2., 20.,  3.])
         """
-        return nbinom.rvs(r, p, size=size) + 1.0
+        state = draw_state(random_state)
+        return nbinom.rvs(r, p, size=size, random_state=state) + 1.0
 
     def log_df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         safe_x = np.where(x < 1.0, 1.0, x)

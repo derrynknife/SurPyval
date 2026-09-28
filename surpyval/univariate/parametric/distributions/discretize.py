@@ -107,9 +107,14 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
         return float(np.sum(k**m * self.df(k, *params)))
 
     def random(
-        self, size: int | tuple[int, ...], *params: Boxable
+        self,
+        size: int | tuple[int, ...],
+        *params: Boxable,
+        random_state: Any = None,
     ) -> npt.NDArray:
-        return np.ceil(self.dist.random(size, *params))
+        return np.ceil(
+            self.dist.random(size, *params, random_state=random_state)
+        )
 
     def log_df(self, x: Numeric, *params: Boxable) -> Boxable:
         return np.log(self.df(x, *params))

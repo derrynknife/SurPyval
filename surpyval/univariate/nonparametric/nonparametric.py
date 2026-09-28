@@ -11,6 +11,7 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -1353,13 +1354,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "tau": float(tau),
         }
 
+    @renamed_arguments(B="n_boot")
     @keeps_query_shape
     def bootstrap_cb(
         self,
         x: npt.ArrayLike,
         bound: str = "two-sided",
         alpha_ci: float = 0.05,
-        B: int = 200,
+        n_boot: int = 200,
         random_state: int | None = None,
     ) -> npt.NDArray:
         r"""
@@ -1394,7 +1396,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         alpha_ci : scalar, optional
             The level of significance at which the bound will be
             computed. Defaults to 0.05.
-        B : int, optional
+        n_boot : int, optional
             The number of bootstrap resamples. Defaults to 200. Larger
             values give smoother bounds at a linear cost in runtime;
             note that refitting the Turnbull estimator is relatively
@@ -1424,14 +1426,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             If the model does not hold the data it was fitted with: a
             model from ``from_xrd`` or ``fit_from_ecdf``, or one restored
             from a dictionary written without ``with_data=True``. Also if
-            ``bound`` is unknown or ``B`` is not a positive integer.
+            ``bound`` is unknown or ``n_boot`` is not a positive integer.
 
         Examples
         --------
         >>> from surpyval import KaplanMeier
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
-        >>> model.bootstrap_cb([2, 4, 6], B=100, random_state=1)
+        >>> model.bootstrap_cb([2, 4, 6], n_boot=100, random_state=1)
         array([[0.625     , 1.        ],
                [0.19739583, 0.875     ],
                [0.        , 0.75      ]])
@@ -1445,15 +1447,18 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 + "it: to_dict(with_data=True)."
             )
         _check_bound(bound)
-        # Checked up front: B = 0 used to fail as an IndexError from the
-        # empty quantile, and a fractional B as a TypeError from range().
-        if isinstance(B, bool) or not isinstance(B, (int, np.integer)):
+        # Checked up front: n_boot = 0 used to fail as an IndexError from
+        # the empty quantile, and a fractional one as a TypeError from
+        # range().
+        if isinstance(n_boot, bool) or not isinstance(
+            n_boot, (int, np.integer)
+        ):
             raise ValueError(
-                "'B' must be a positive integer; got {!r}".format(B)
+                "'n_boot' must be a positive integer; got {!r}".format(n_boot)
             )
-        if B < 1:
+        if n_boot < 1:
             raise ValueError(
-                "'B' must be a positive integer; got {}".format(B)
+                "'n_boot' must be a positive integer; got {}".format(n_boot)
             )
         # Imported here as the package imports this module on init.
         from surpyval.univariate import nonparametric as nonp
@@ -1480,8 +1485,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         def resampled(x: npt.ArrayLike) -> npt.NDArray:
             x_eval = np.atleast_1d(x).astype(float)
             with np.errstate(all="ignore"):
-                R_boot = np.empty((B, x_eval.size))
-                for b in range(B):
+                R_boot = np.empty((n_boot, x_eval.size))
+                for b in range(n_boot):
                     n_b = rng.multinomial(N, probs)
                     keep = n_b > 0
                     if self.model == "Turnbull":

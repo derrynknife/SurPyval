@@ -385,7 +385,7 @@ def test_bootstrap_is_centred_on_the_estimate_with_truncation():
     x, c, tl = _truncated_sample()
     model = sp.KaplanMeier.fit(x, c=c, tl=tl)
     q = np.quantile(x, [0.1, 0.3, 0.5, 0.7, 0.9])
-    median = model.bootstrap_cb(q, alpha_ci=0.98, B=300, random_state=0)
+    median = model.bootstrap_cb(q, alpha_ci=0.98, n_boot=300, random_state=0)
     assert_allclose(median, np.c_[model.sf(q), model.sf(q)], atol=0.03)
 
 
@@ -394,8 +394,8 @@ def test_bootstrap_bounds_are_right_continuous():
     # time (up to the last, past which they are NaN). Kills
     # nonparametric.py:1457 (side='right' dropped).
     model = sp.KaplanMeier.fit(X)
-    at = model.bootstrap_cb(X[:-1], B=50, random_state=0)
-    after = model.bootstrap_cb(X[:-1] + 1e-9, B=50, random_state=0)
+    at = model.bootstrap_cb(X[:-1], n_boot=50, random_state=0)
+    after = model.bootstrap_cb(X[:-1] + 1e-9, n_boot=50, random_state=0)
     assert_allclose(at, after)
 
 
@@ -406,10 +406,10 @@ def test_bootstrap_at_the_first_and_last_times():
     # are 0. Kills nonparametric.py:1459 (idx < 0 -> None, <= 0, < 1; the
     # 1.0 -> 2.0; the last index len - 1 -> len - 2).
     model = sp.KaplanMeier.fit(X)
-    lower, upper = _flat(model.bootstrap_cb(1.0, B=200, random_state=0))
+    lower, upper = _flat(model.bootstrap_cb(1.0, n_boot=200, random_state=0))
     assert upper == 1.0
     assert lower < 1.0
-    assert_allclose(model.bootstrap_cb(10.0, B=100, random_state=0), 0.0)
+    assert_allclose(model.bootstrap_cb(10.0, n_boot=100, random_state=0), 0.0)
 
 
 def test_bootstrap_default_and_smallest_B():
@@ -419,9 +419,9 @@ def test_bootstrap_default_and_smallest_B():
     model = _fit()
     assert_allclose(
         model.bootstrap_cb([3, 6], random_state=4),
-        model.bootstrap_cb([3, 6], B=200, random_state=4),
+        model.bootstrap_cb([3, 6], n_boot=200, random_state=4),
     )
-    one = model.bootstrap_cb([3, 6], B=1, random_state=4)
+    one = model.bootstrap_cb([3, 6], n_boot=1, random_state=4)
     assert_allclose(one[:, 0], one[:, 1])
 
 
@@ -434,8 +434,8 @@ def test_turnbull_bootstrap_equals_kaplan_meier_on_right_censored_data():
     tb = sp.Turnbull.fit(X, c=C, turnbull_estimator="Kaplan-Meier")
     q = [1.5, 3, 5, 8]
     assert_allclose(
-        tb.bootstrap_cb(q, B=100, random_state=3),
-        km.bootstrap_cb(q, B=100, random_state=3),
+        tb.bootstrap_cb(q, n_boot=100, random_state=3),
+        km.bootstrap_cb(q, n_boot=100, random_state=3),
         atol=1e-8,
     )
 
@@ -449,7 +449,7 @@ def test_bootstrap_cb_is_nan_outside_the_data_like_cb(bound):
     # model's bounds; principle 3: missing in, missing out).
     model = _fit(c=np.r_[C[:-1], 1])
     q = [0.5, 11, np.nan, 5]
-    kw = dict(bound=bound, B=50, random_state=0)
+    kw = dict(bound=bound, n_boot=50, random_state=0)
     assert np.isnan(model.cb(q, bound=bound)[:3]).all()
     got = model.bootstrap_cb(q, **kw)
     assert np.isnan(got[:3]).all() and np.isfinite(got[3]).all()
@@ -463,7 +463,7 @@ def test_bootstrap_cb_follows_cb_with_a_support():
     # where cb gives them.
     model = _fit(c=np.r_[C[:-1], 1]).set_support(0, 20)
     q = [-1, 0.5, 10, 15, 21, np.nan]
-    got = model.bootstrap_cb(q, B=50, random_state=0)
+    got = model.bootstrap_cb(q, n_boot=50, random_state=0)
     ref = model.cb(q)
     assert_allclose(np.isnan(got), np.isnan(ref))
     assert_allclose(got[1], [1.0, 1.0])
@@ -481,8 +481,8 @@ def test_restored_model_bootstraps_as_the_original():
     model = _fit()
     restored = sp.from_dict(model.to_dict(with_data=True))
     assert_allclose(
-        restored.bootstrap_cb([2, 5, 8], B=50, random_state=2),
-        model.bootstrap_cb([2, 5, 8], B=50, random_state=2),
+        restored.bootstrap_cb([2, 5, 8], n_boot=50, random_state=2),
+        model.bootstrap_cb([2, 5, 8], n_boot=50, random_state=2),
     )
 
 
@@ -505,8 +505,8 @@ def test_turnbull_saved_before_tol_was_recorded_bootstraps_as_fitted():
     del old["tol"], old["max_iter"]
     restored = sp.from_dict(old)
     assert_allclose(
-        restored.bootstrap_cb([2, 5, 8], B=20, random_state=2),
-        model.bootstrap_cb([2, 5, 8], B=20, random_state=2),
+        restored.bootstrap_cb([2, 5, 8], n_boot=20, random_state=2),
+        model.bootstrap_cb([2, 5, 8], n_boot=20, random_state=2),
     )
 
 

@@ -153,19 +153,19 @@ def test_cb_and_friends_reject_unknown_bound():
     with pytest.raises(ValueError, match="'bound'"):
         model.plot(bound="both")
     with pytest.raises(ValueError, match="'bound'"):
-        model.bootstrap_cb(2, bound="both", B=5)
+        model.bootstrap_cb(2, bound="both", n_boot=5)
 
 
-@pytest.mark.parametrize("B", [0, -3, 2.5])
-def test_bootstrap_cb_rejects_bad_B(B):
-    with pytest.raises(ValueError, match="'B'"):
-        _km().bootstrap_cb(2, B=B)
+@pytest.mark.parametrize("n_boot", [0, -3, 2.5])
+def test_bootstrap_cb_rejects_bad_n_boot(n_boot):
+    with pytest.raises(ValueError, match="'n_boot'"):
+        _km().bootstrap_cb(2, n_boot=n_boot)
 
 
 def test_bootstrap_cb_error_names_with_data():
     restored = sp.from_dict(_km().to_dict())
     with pytest.raises(ValueError, match="with_data=True"):
-        restored.bootstrap_cb(2, B=5)
+        restored.bootstrap_cb(2, n_boot=5)
 
 
 # -- Filliben with censoring --------------------------------------------------

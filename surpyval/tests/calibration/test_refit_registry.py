@@ -596,7 +596,9 @@ def _recurrent_own(case, truth, n):
     # The model's own time-terminated simulation; ``n`` is the items.
     def draw(rng):
         return _xicn(
-            truth.time_terminated_simulation_data(T_REC, items=n, seed=rng)
+            truth.time_terminated_simulation_data(
+                T_REC, items=n, random_state=rng
+            )
         )
 
     return draw
@@ -610,7 +612,7 @@ def _pi_own(case, truth, n):
         parts = []
         for k, z in enumerate(levels):
             d = truth.time_terminated_simulation_data(
-                T_REC, Z=[z], items=n // len(levels), seed=rng
+                T_REC, Z=[z], items=n // len(levels), random_state=rng
             )
             parts.append((d.x, d.i + 1000 * k, d.c, d.n, np.full(d.x.size, z)))
         x, i, c, counts, Z = (np.concatenate(p) for p in zip(*parts))
@@ -705,7 +707,9 @@ def _renewal_params(boundary: bool):
 def _mcf_curve(items):
     # A renewal model's MCF is simulated: many items, a fixed seed.
     def curve(case, model, grid):
-        return np.asarray(model.mcf(grid, items=items, seed=1), dtype=float)
+        return np.asarray(
+            model.mcf(grid, items=items, random_state=1), dtype=float
+        )
 
     return curve
 

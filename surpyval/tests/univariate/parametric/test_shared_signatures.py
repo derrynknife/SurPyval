@@ -44,11 +44,19 @@ CANONICAL_FIRST_ARG = {
 }
 
 
+# ``degenerate`` holds InstantlyOccurs and NeverOccurs, which inherit
+# ``Distribution`` rather than ``ParametricFitter``. Their signatures are
+# dictated by that supertype, so they are not part of these conventions:
+# the class is the model, so its qf takes the model's p (#422), not the
+# fitter layer's u.
+_NOT_PARAMETRIC_FITTERS = {"degenerate"}
+
+
 def _signatures(method):
     """{module stem: [parameter names]} for every implementation."""
     out = {}
     for path in sorted(DIST_DIR.glob("*.py")):
-        if path.stem == "__init__":
+        if path.stem in _NOT_PARAMETRIC_FITTERS or path.stem == "__init__":
             continue
         tree = ast.parse(path.read_text())
         for cls in [n for n in tree.body if isinstance(n, ast.ClassDef)]:
@@ -181,7 +189,7 @@ def test_no_shared_method_diverges_in_its_data_argument():
     params_by_mod = _param_names_by_module()
     leading = defaultdict(dict)
     for path in sorted(DIST_DIR.glob("*.py")):
-        if path.stem == "__init__":
+        if path.stem in _NOT_PARAMETRIC_FITTERS or path.stem == "__init__":
             continue
         own = params_by_mod.get(path.stem, set())
         tree = ast.parse(path.read_text())
@@ -218,11 +226,6 @@ def test_no_shared_method_diverges_in_its_data_argument():
 # ---------------------------------------------------------------------------
 # Type conventions, now that every distribution is annotated
 # ---------------------------------------------------------------------------
-
-# ``degenerate`` holds InstantlyOccurs and NeverOccurs, which inherit
-# ``Distribution`` rather than ``ParametricFitter``. Their signatures are
-# dictated by that supertype, so they are not part of these conventions.
-_NOT_PARAMETRIC_FITTERS = {"degenerate"}
 
 
 def _annotations(method):

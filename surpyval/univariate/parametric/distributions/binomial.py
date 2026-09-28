@@ -7,6 +7,7 @@ from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -313,8 +314,13 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.entropy(n, p)
 
-    def random(
-        self, size: int | tuple[int, ...], n: Boxable, p: Boxable
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        n: Boxable,
+        p: Boxable,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -329,6 +335,10 @@ class Binomial_(DiscreteParametricFitter):
             The number of trials
         p : float
             The per-trial probability of an event
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own; ``None`` (the
+            default) draws from numpy's global stream (see
+            :meth:`ParametricFitter.random`).
 
         Returns
         -------
@@ -336,7 +346,18 @@ class Binomial_(DiscreteParametricFitter):
         random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
         """
-        return binom.rvs(n, p, size=size)
+        # A fitted model holds n as a float (5.0), which numpy's binomial
+        # draw refused: "Cannot cast scalar from dtype('float64') to
+        # dtype('int64')".
+        trials = np.asarray(n, dtype=float)
+        if np.any(trials != np.round(trials)):
+            raise ValueError(f"n must be a whole number of trials; got {n}")
+        return binom.rvs(
+            trials.astype(int),
+            p,
+            size=size,
+            random_state=draw_state(random_state),
+        )
 
     def fit(
         self,

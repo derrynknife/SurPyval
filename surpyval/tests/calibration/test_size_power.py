@@ -242,6 +242,8 @@ def test_cramer_von_mises_size():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = CrowAMSAA.fit(x, i, c=c)
-            p_values[r] = model.cramer_von_mises(n_boot=39, seed=r).p_value
+            p_values[r] = model.cramer_von_mises(
+                n_boot=39, random_state=r
+            ).p_value
     check_rate((p_values <= 0.05).sum(), reps, 0.05, "CvM size at 0.05")
     check_rate((p_values <= 0.25).sum(), reps, 0.25, "CvM size at 0.25")

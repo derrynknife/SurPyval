@@ -51,7 +51,9 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
 _SCALES = ("hazard", "odds", "normal")
@@ -195,52 +197,58 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- distribution functions -------------------------------------------
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def sf(self, t: Any) -> np.ndarray:
-        """Survival function at ``t``: 1 at and before time 0 (the spline
-        is in ``log t``, which does not exist there, so this came back nan)
+    def sf(self, x: Any) -> np.ndarray:
+        """Survival function at ``x``: 1 at and before time 0 (the spline
+        is in ``log x``, which does not exist there, so this came back nan)
         and 0 at infinity, as in the likelihood (see ``_sf_at``)."""
-        t = np.asarray(t, dtype=float)
+        x = np.asarray(x, dtype=float)
         with np.errstate(all="ignore"):
-            out = _sf_from_eta(self._eta(t), self.scale)
-        out = np.where(t <= 0.0, 1.0, out)
-        return np.where(np.isposinf(t), 0.0, out)
+            out = _sf_from_eta(self._eta(x), self.scale)
+        out = np.where(x <= 0.0, 1.0, out)
+        return np.where(np.isposinf(x), 0.0, out)
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def ff(self, t: Any) -> np.ndarray:
-        """Failure (CDF) function ``1 - sf(t)``."""
-        return 1.0 - self.sf(t)
+    def ff(self, x: Any) -> np.ndarray:
+        """Failure (CDF) function ``1 - sf(x)``."""
+        return 1.0 - self.sf(x)
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def Hf(self, t: Any) -> np.ndarray:
-        """Cumulative hazard ``-log sf(t)``."""
-        # + 0.0 turns the -0.0 of -log(1) at t <= 0 into 0.0
-        return -np.log(self.sf(t)) + 0.0
+    def Hf(self, x: Any) -> np.ndarray:
+        """Cumulative hazard ``-log sf(x)``."""
+        # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
+        return -np.log(self.sf(x)) + 0.0
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def hf(self, t: Any) -> np.ndarray:
-        """Hazard rate ``df(t) / sf(t)``."""
-        return self.df(t) / self.sf(t)
+    def hf(self, x: Any) -> np.ndarray:
+        """Hazard rate ``df(x) / sf(x)``."""
+        return self.df(x) / self.sf(x)
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def df(self, t: Any) -> np.ndarray:
-        """Density at ``t``, from the derivative of the spline."""
-        t = np.asarray(t, dtype=float)
+    def df(self, x: Any) -> np.ndarray:
+        """Density at ``x``, from the derivative of the spline."""
+        x = np.asarray(x, dtype=float)
         with np.errstate(all="ignore"):
-            eta = self._eta(t)
-            sp = self._eta_deriv(t)
+            eta = self._eta(x)
+            sp = self._eta_deriv(x)
             _, log_negdS = _scale_terms(eta, self.scale)
-            out = np.exp(log_negdS + np.log(sp) - np.log(t))
+            out = np.exp(log_negdS + np.log(sp) - np.log(x))
         # Nothing fails at or before time 0 (nan there before), nor at
         # infinity; with sf = 1 there, hf and Hf are 0 too.
-        return np.where((t <= 0.0) | np.isposinf(t), 0.0, out)
+        return np.where((x <= 0.0) | np.isposinf(x), 0.0, out)
 
+    @renamed_arguments(q="p")
     @keeps_query_shape
-    def qf(self, q: Any) -> np.ndarray:
-        """Quantile function: the time at which ``ff(t) = q``."""
-        out = np.empty_like(q)
-        for i, qi in enumerate(q):
-            target = 1.0 - qi  # sf(t) = 1 - q
+    def qf(self, p: Any) -> np.ndarray:
+        """Quantile function: the time at which ``ff(x) = p``."""
+        out = np.empty_like(p)
+        for i, pi in enumerate(p):
+            target = 1.0 - pi  # sf(x) = 1 - p
             lo = self.knots[0] - 20.0
             hi = self.knots[-1] + 20.0
             out[i] = np.exp(
@@ -253,10 +261,18 @@ class RoystonParmarModel(SerialisableMixin):
             )
         return out
 
-    def random(self, size: int) -> np.ndarray:
-        """Draw ``size`` random lifetimes (by inverting ``ff``), using
-        NumPy's global random state."""
-        return self.qf(np.random.uniform(0, 1, size))
+    def random(self, size: int, *, random_state: Any = None) -> np.ndarray:
+        """Draw ``size`` random lifetimes (by inverting ``ff``).
+
+        ``random_state`` (an int or a ``numpy.random.Generator``) gives a
+        draw of its own, which neither depends on nor advances numpy's
+        global stream; ``None`` (the default) draws from the global
+        stream, so ``np.random.seed`` reproduces it."""
+        if random_state is None:
+            u = np.random.uniform(0, 1, size)
+        else:
+            u = as_generator(random_state).uniform(0, 1, size)
+        return self.qf(u)
 
     def mean(self) -> float:
         """Mean life, by integrating the survival function."""
@@ -269,10 +285,11 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- confidence bounds -------------------------------------------------
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,
-        t: Any,
+        x: Any,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -286,8 +303,8 @@ class RoystonParmarModel(SerialisableMixin):
         """
         if self.covariance is None:
             raise ValueError("Confidence bounds need a covariance (MLE fit).")
-        t = np.atleast_1d(np.asarray(t, dtype=float))
-        B = _rcs_basis(np.log(t), self.knots)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
         var = np.einsum("ij,jk,ik->i", B, self.covariance, B)
         se = np.sqrt(np.maximum(var, 0.0))

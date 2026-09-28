@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 
 import surpyval
@@ -142,8 +144,16 @@ class ExactEventTime_(ParametricFitter):
         """
         return T**m
 
-    def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
-        """Every draw is ``T``: an array of shape ``size`` filled with it."""
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        T: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Every draw is ``T``: an array of shape ``size`` filled with it
+        (``random_state`` is taken for a common signature; nothing is
+        random)."""
         return np.ones(size) * T
 
     # Narrower than OptimisedFitMixin.fit by design, and no longer a

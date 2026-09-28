@@ -7,7 +7,6 @@ import numpy.typing as npt
 import pandas as pd
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
-from scipy.stats import uniform
 
 import surpyval
 from surpyval import np
@@ -22,7 +21,7 @@ from .fitters.mom import mom
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
-from .parametric import Parametric
+from .parametric import Parametric, uniform_draws
 
 # The two types a distribution function deals in. They are separate
 # because only one of them can be an autograd box.
@@ -424,7 +423,12 @@ class ParametricFitter:
         # behaviour used by ``Uniform``.
         self.support_param_index = (0, 1)
 
-    def random(self, size: int | tuple[int, ...], *params: Any) -> Any:
+    def random(
+        self,
+        size: int | tuple[int, ...],
+        *params: Any,
+        random_state: Any = None,
+    ) -> Any:
         r"""
 
         Draws random samples from the distribution in shape `size`, using
@@ -438,6 +442,12 @@ class ParametricFitter:
             Shape or size of the random draw
         params : numpy array or scalar
             The parameters of the distribution
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw of its own, which
+            neither depends on nor advances numpy's global stream (an int
+            is ``np.random.default_rng(seed)``). ``None`` (the default)
+            draws from numpy's global stream, so ``np.random.seed``
+            reproduces it.
 
         Returns
         -------
@@ -452,8 +462,10 @@ class ParametricFitter:
         >>> np.random.seed(1)
         >>> Weibull.random(5, 3, 4)
         array([2.57122697, 3.18730986, 0.31024877, 2.32381059, 1.89352939])
+        >>> Weibull.random(3, 3, 4, random_state=1).round(4)
+        array([2.7607, 3.9499, 1.8844])
         """
-        U = uniform.rvs(size=size)
+        U = uniform_draws(size, random_state)
         return self.qf(U, *params)
 
     def log_df(self, x: npt.NDArray, *params: Any) -> Any:

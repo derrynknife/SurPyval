@@ -11,6 +11,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -470,7 +471,13 @@ class MixtureModel(SerialisableMixin, Distribution):
             mean += self.w[i] * self.dist.mean(*self.params[i])
         return mean
 
-    def random(self, size: int, *args: Any, **kwargs: Any) -> Any:
+    def random(
+        self,
+        size: int,
+        *args: Any,
+        random_state: Any = None,
+        **kwargs: Any,
+    ) -> Any:
         """
         Draw random samples from the fitted mixture.
 
@@ -481,20 +488,31 @@ class MixtureModel(SerialisableMixin, Distribution):
         ----------
         size : int
             The number of samples to draw.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own, which neither depends
+            on nor advances numpy's global stream (an int is
+            ``np.random.default_rng(seed)``). ``None`` (the default)
+            draws from numpy's global stream, so ``np.random.seed``
+            reproduces it.
 
         Returns
         -------
         numpy array
             ``size`` values from the mixture, in random order.
         """
-        sizes = np.random.multinomial(size, self.w)
+        # numpy's global stream (None), or one generator for every step.
+        rng = None if random_state is None else as_generator(random_state)
+        draw: Any = np.random if rng is None else rng
+        sizes = draw.multinomial(size, self.w)
         rvs = np.zeros(size)
         s_last = 0
         for i, s in enumerate(sizes):
-            rvs[s_last : s + s_last] = self.dist.random(s, *self.params[i, :])
+            rvs[s_last : s + s_last] = self.dist.random(
+                s, *self.params[i, :], random_state=rng
+            )
             s_last += s
         # Shuffles the data (inplace) so that the data is random
-        np.random.shuffle(rvs)
+        draw.shuffle(rvs)
         return rvs
 
     @keeps_query_shape

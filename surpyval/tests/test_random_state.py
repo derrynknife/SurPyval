@@ -75,7 +75,7 @@ def _wiener() -> Any:
 DRAWS: dict[str, Callable[[Any], Any]] = {
     "KaplanMeier.random": lambda rs: _km().random(8, random_state=rs),
     "KaplanMeier.bootstrap_cb": lambda rs: _km().bootstrap_cb(
-        np.array([15.0, 35.0]), B=20, random_state=rs
+        np.array([15.0, 35.0]), n_boot=20, random_state=rs
     ),
     "ParametricCompetingRisks.random": lambda rs: _competing_risks().random(
         6, random_state=rs
