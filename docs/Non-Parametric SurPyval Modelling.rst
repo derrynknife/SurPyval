@@ -812,7 +812,7 @@ censored items' failures is placed beyond the last value (see the theory page). 
 
 .. jupyter-execute::
 
-    print('r[0]:', model.r[0], ' sum of d:', model.d.sum().round(3))
+    print('r[0]:', model.r[0].round(3), ' sum of d:', model.d.sum().round(3))
     for k in [4, 6]:
         print(f'piece ({model.x[k]:g}, {model.x[k + 1]:g}]: survival between '
               f'{model.R_lower[k]:.3f} and {model.R_upper[k]:.3f}')
@@ -821,7 +821,9 @@ censored items' failures is placed beyond the last value (see the theory page). 
     :hide-code:
     :hide-output:
 
-    assert model.r[0] == 17 and round(model.d.sum(), 2) == 16.95
+    # r[0] is a sum of the EM's fractional expected counts, so it is 17
+    # only to rounding (the summation order depends on the CPU).
+    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 16.95
     _k = np.flatnonzero(model.x == 6)[0]
     assert round(model.d[_k], 2) == 1.57, model.d
     assert model.x[6] == model.x[7] == 7          # the (7, 7] piece
