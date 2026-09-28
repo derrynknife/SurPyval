@@ -166,7 +166,7 @@ def test_estimate_holds_past_the_last_time():
     assert np.all(model.hf(t[1:], Z0) == 0.0)
     assert np.all(model.df(t[1:], Z0) == 0.0)
     # Inside the data nothing changed: the hazard still moves.
-    assert model.Hf(0.5 * last, Z0)[0] < H[0]
+    assert model.Hf(0.5 * last, Z0) < H[0]
 
 
 def test_hf_is_nan_at_a_nan_time():

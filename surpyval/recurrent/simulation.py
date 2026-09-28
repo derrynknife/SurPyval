@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 STALLED_WARNING = (
     "Some sequences produced a near-zero interarrival time (< tol) before "
@@ -462,6 +463,7 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
+    @keeps_query_shape
     def mcf(
         self, x: ArrayLike, items: int = 1000, seed: "int | None" = None
     ) -> Any:
@@ -490,6 +492,9 @@ class RecurrenceSimulationMixin:
             The estimated MCF at each value of ``x``.
         """
         x = np.atleast_1d(np.asarray(x, dtype=float))
+        if x.size == 0:
+            # Nothing to simulate to (the horizon is the largest time).
+            return np.empty(0)
         np_model = self.time_terminated_simulation(
             float(x.max()), items=items, seed=seed
         )

@@ -86,7 +86,8 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
-        u_arr = np.atleast_1d(np.asarray(u, dtype=float))
+        u_in = np.asarray(u, dtype=float)
+        u_arr = u_in.ravel()
         out = np.ones_like(u_arr)
         # The survival is monotone decreasing in k; find the smallest integer
         # k with sf(k) <= 1 - u by geometric bracketing then bisection.
@@ -111,7 +112,9 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
                 else:
                     hi = mid
             out[idx] = float(max(hi, 1))
-        return out if out.size > 1 else out[0]
+        # The shape of ``u``: a scalar for a scalar, empty for empty.
+        out = out.reshape(u_in.shape)
+        return out[()] if out.ndim == 0 else out
 
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
         r"""Mean number of cycles, :math:`E[T] = (a + b - 1)/(a - 1)`,

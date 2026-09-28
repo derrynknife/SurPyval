@@ -39,6 +39,7 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.ipcw import step_at as _step
+from surpyval.utils.shapes import keeps_query_shape
 
 from .fine_gray import FineGray, FineGrayModel, paired_covariate_rows
 
@@ -239,6 +240,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             for e_i in self.event_idx_map.values()
         )
 
+    @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
@@ -259,6 +261,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         Z = self._prepare_Z(Z)
         return self._f(self.h0_e, x, Z, event=event, interp=interp)
 
+    @keeps_query_shape
     def Hf(
         self,
         x: npt.ArrayLike,
@@ -278,6 +281,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             return -np.log(self.sf(x, Z, event=event))
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
 
+    @keeps_query_shape
     def sf(
         self,
         x: npt.ArrayLike,
@@ -295,6 +299,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
 
+    @keeps_query_shape
     def ff(
         self,
         x: npt.ArrayLike,
@@ -311,6 +316,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
 
+    @keeps_query_shape
     def df(
         self,
         x: npt.ArrayLike,
@@ -332,6 +338,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             x, Z, event=event, interp=interp
         )
 
+    @keeps_query_shape
     def cif(
         self, x: npt.ArrayLike, Z: npt.ArrayLike, event: Any
     ) -> npt.NDArray:

@@ -52,13 +52,13 @@ class TestVarianceAlignment:
             xr=[2, 3, 4, 5],
             turnbull_estimator="Kaplan-Meier",
         )
-        assert model.sf(1)[0] == 1.0
-        np.testing.assert_allclose(model.cb(1), [[1.0, 1.0]])
+        assert model.sf(1) == 1.0
+        np.testing.assert_allclose(model.cb(1), [1.0, 1.0])
 
     def test_mixed_example_bounds_where_estimate_is_one(self):
         model = _fit(**MIXED, turnbull_estimator="Kaplan-Meier")
-        assert model.sf(5.5)[0] == 1.0
-        np.testing.assert_allclose(model.cb(5.5), [[1.0, 1.0]])
+        assert model.sf(5.5) == 1.0
+        np.testing.assert_allclose(model.cb(5.5), [1.0, 1.0])
 
     @pytest.mark.parametrize(
         "estimator", ["Kaplan-Meier", "Nelson-Aalen", "Fleming-Harrington"]
@@ -236,11 +236,11 @@ class TestGreenwoodRoundOff:
         assert np.isnan(model.greenwood[-1])
         assert np.nanmax(np.abs(model.greenwood)) < 1e3
         # Undefined at the last value: lower 0, upper the last finite one.
-        lower, upper = model.cb(12)[0]
+        lower, upper = model.cb(12)
         assert lower == 0.0
-        assert upper == pytest.approx(model.cb(11)[0, 1])
+        assert upper == pytest.approx(model.cb(11)[1])
         # The estimate there is 0, not round-off below it.
-        assert model.sf(12)[0] == 0.0
+        assert model.sf(12) == 0.0
 
     def test_integer_counts_unchanged(self):
         r = np.array([10.0, 8.0, 5.0, 2.0])
@@ -281,8 +281,8 @@ class TestTurnbullEstimatorOption:
         na = _fit(**kw, turnbull_estimator="Nelson-Aalen")
         np.testing.assert_allclose(km.r, na.r)
         np.testing.assert_allclose(km.d, na.d)
-        assert km.sf(2)[0] == pytest.approx(0.75)
-        assert na.sf(2)[0] == pytest.approx(0.779, abs=5e-4)
+        assert km.sf(2) == pytest.approx(0.75)
+        assert na.sf(2) == pytest.approx(0.779, abs=5e-4)
 
     @pytest.mark.parametrize("call", ["fit", "function", "plotting"])
     def test_unknown_estimator_raises(self, call):

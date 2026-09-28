@@ -87,13 +87,13 @@ def test_tree_matrix_equals_stacked_rows(tree, n_features, fn):
 
 def test_tree_matrix_x_conventions(tree, n_features):
     Zq = _query(n_features)
-    # Scalar x: one column
+    # Scalar x: one value per row, (n_rows,) + x.shape (principle 7)
     got = tree.sf(5.0, Zq)
-    assert got.shape == (len(Zq), 1)
-    np.testing.assert_array_equal(got, _stack(tree, "sf", 5.0, Zq))
+    assert got.shape == (len(Zq),)
+    np.testing.assert_array_equal(got, _stack(tree, "sf", 5.0, Zq)[:, 0])
     # One subject (1-D Z) is unchanged: values shaped like x
     assert tree.sf(XS, Zq[0]).shape == XS.shape
-    assert tree.sf(5.0, Zq[0]).shape == (1,)
+    assert tree.sf(5.0, Zq[0]).shape == ()
     # A matrix with a single row is a one-row grid
     np.testing.assert_array_equal(
         tree.sf(XS, Zq[:1]), tree.sf(XS, Zq[0])[None, :]
@@ -143,7 +143,7 @@ def test_forest_other_methods_row_by_row(forest, n_features):
         np.concatenate([forest.mortality(XS, z) for z in Zq]),
         rtol=1e-14,
     )
-    assert forest.sf(5.0, Zq).shape == (len(Zq), 1)
+    assert forest.sf(5.0, Zq).shape == (len(Zq),)
     assert forest.sf(XS, Zq[0]).shape == XS.shape
 
 

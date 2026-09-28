@@ -41,6 +41,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
+from surpyval.utils.shapes import keeps_query_shape
 
 
 class CompetingRisks(SerialisableMixin):
@@ -257,6 +258,7 @@ class CompetingRisks(SerialisableMixin):
         out = np.where(np.isnan(np.ravel(x).astype(float)), np.nan, out)
         return out.reshape(shape)
 
+    @keeps_query_shape
     def hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         Hazard (the Nelson-Aalen increment ``d / r`` at each event time, 0
@@ -264,6 +266,7 @@ class CompetingRisks(SerialisableMixin):
         """
         return self._within_support(x, lambda q: self._f("h", q, event), 0.0)
 
+    @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         Cumulative hazard, all causes (``event=None``) or one cause. With the
@@ -294,6 +297,7 @@ class CompetingRisks(SerialisableMixin):
         out = np.where(idx >= 0, S[np.maximum(idx, 0)], 1.0)
         return np.where(np.isnan(x), np.nan, out)
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         Survival, all causes (``event=None``) or the net survival from one
@@ -309,6 +313,7 @@ class CompetingRisks(SerialisableMixin):
             )
         return np.exp(-self.Hf(x, event=event))
 
+    @keeps_query_shape
     def ff(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         ``1 - sf``: all causes, or the net failure probability from one
@@ -318,6 +323,7 @@ class CompetingRisks(SerialisableMixin):
         """
         return 1 - self.sf(x, event=event)
 
+    @keeps_query_shape
     def df(self, x: npt.ArrayLike, event: Any = None) -> npt.NDArray:
         """
         ``hf * sf``: the probability mass at each event time, all causes
@@ -325,6 +331,7 @@ class CompetingRisks(SerialisableMixin):
         """
         return self.hf(x, event=event) * self.sf(x, event=event)
 
+    @keeps_query_shape
     def iif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
         Instantaneous incidence of cause ``event``: the step of the
@@ -334,6 +341,7 @@ class CompetingRisks(SerialisableMixin):
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("IIF", q, event), 0.0)
 
+    @keeps_query_shape
     def cif(self, x: npt.ArrayLike, event: Any) -> npt.NDArray:
         """
         Cumulative incidence of cause ``event`` at ``x``: the probability of

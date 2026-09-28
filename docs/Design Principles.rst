@@ -70,10 +70,16 @@ Inputs
 Outputs
 -------
 
-7. **Shapes.** A scalar, 1-D or 2-D query gives a result of the same shape,
-   and an empty query an empty result.
+7. **Shape in, shape out.** A scalar query gives a numpy scalar, a 1-D or
+   2-D query a result of its shape, and an empty query an empty result of
+   its shape; a two-sided confidence bound adds a last ``[lower, upper]``
+   axis. With covariates the shape is that of the times. The documented
+   exception is the survival tree and forest's row-by-time grid,
+   ``(n_rows,) + x.shape``. ``surpyval.utils.shapes`` applies the rule at
+   every model's public methods.
 
-   *Checked* by ``conformance/test_vectorisation.py``; known gap #381.
+   *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
+   ``conformance/test_options.py``, for every registered model.
 
 8. **The functions of a model agree with each other.**
    :math:`S + F = 1`, :math:`H = -\log S`, :math:`f = h S`, ``qf`` inverts
@@ -82,11 +88,17 @@ Outputs
    *Checked* by ``conformance/test_identities.py``; known gaps #383 and
    #384.
 
-9. **Valid values.** Survival stays in :math:`[0, 1]` and never increases;
-   cumulative quantities never decrease. The documented exception is the
-   additive hazards model, whose estimate need not be monotone (#376).
+9. **Valid and accurate values.** Survival stays in :math:`[0, 1]` and
+   never increases; cumulative quantities never decrease. The documented
+   exception is the additive hazards model, whose estimate need not be
+   monotone (#376). A distribution's functions are accurate to double
+   precision wherever the value is representable, in the tails and at
+   extreme parameters too.
 
-   *Checked* by ``conformance/test_bounds.py``.
+   *Checked* by ``conformance/test_bounds.py``, and for accuracy by
+   ``reference/test_tails.py`` against 50-digit mpmath values; known gaps
+   #410, #436, #442-#447 and #449, and four distributions not generated
+   yet (#448).
 
 10. **Covariate rows are independent.** Evaluating rows together gives the
     same as evaluating them one at a time.
@@ -123,7 +135,8 @@ Estimation
     optima of a likelihood the test computes itself from the fitted
     model's functions (``properties/test_parametric.py``), and the
     reference tests compare fits with R, lifelines and scikit-survival;
-    other families rely on the reference tests; known gap #392.
+    ``calibration/test_refit_registry.py`` refits every registered model
+    to data drawn from itself (nightly); known gap #392.
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.

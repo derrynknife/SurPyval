@@ -135,11 +135,11 @@ def test_mcf_matches_hand_computed_risk_set():
     assert np.array_equal(model.r, [2, 2, 2, 2, 1])
     assert np.allclose(model.mcf_hat, [0.5, 1.0, 1.5, 1.5, 1.5])
     # step interpolation reads the last increment at or below x
-    assert np.isclose(model.mcf(1.5)[0], 0.5)
-    assert np.isclose(model.mcf(3.0)[0], 1.5)
-    assert np.isclose(model.mcf(4.9)[0], 1.5)
+    assert np.isclose(model.mcf(1.5), 0.5)
+    assert np.isclose(model.mcf(3.0), 1.5)
+    assert np.isclose(model.mcf(4.9), 1.5)
     # linear interpolation rises between event times
-    assert 0.5 < model.mcf(2.5, interp="linear")[0] < 1.5
+    assert 0.5 < model.mcf(2.5, interp="linear") < 1.5
 
 
 def test_mcf_is_non_decreasing():

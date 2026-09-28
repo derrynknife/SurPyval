@@ -32,7 +32,7 @@ def test_median_of_1_to_30_is_15():
 
 
 def test_qf_inverts_ff_at_the_steps():
-    assert sp.KaplanMeier.fit([1, 2, 3, 4, 5]).qf(0.2)[0] == 1.0
+    assert sp.KaplanMeier.fit([1, 2, 3, 4, 5]).qf(0.2) == 1.0
     for N in range(2, 60):
         model = sp.KaplanMeier.fit(np.arange(1, N + 1))
         x = model.x[:-1]
@@ -52,7 +52,7 @@ def test_qf_tiny_p_does_not_match_a_zero_cdf():
     # make a p below it match there.
     tb = sp.Turnbull.fit([2, 3, 4], turnbull_estimator="Kaplan-Meier")
     assert tb.F[0] == 0
-    assert tb.qf(1e-12)[0] == tb.x[np.argmax(tb.F > 0)]
+    assert tb.qf(1e-12) == tb.x[np.argmax(tb.F > 0)]
 
 
 # -- set_lower_limit and fit_from_ecdf validation -----------------------------
@@ -265,8 +265,10 @@ def test_restored_turnbull_model_plots():
 
 
 def test_random_on_an_all_censored_model():
-    with pytest.raises(ValueError, match="no failures"):
-        sp.KaplanMeier.fit([1, 2], c=[1, 1]).random(3)
+    # No failure within the data: the estimate stays at 1, so every
+    # lifetime drawn from it lies beyond the data (inf).
+    draws = sp.KaplanMeier.fit([1, 2], c=[1, 1]).random(3)
+    assert np.all(np.isposinf(draws))
 
 
 def test_success_run_needs_a_positive_run():

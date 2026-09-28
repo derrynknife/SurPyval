@@ -153,7 +153,7 @@ def _parameters(model):
 
 def _raw(case, spec, model, side, alpha, fname=None, event=None, k=None):
     """One call of the method, as a (rows,) or (rows, 2) array; ``k``
-    queries the ``k``-th time alone, as a scalar."""
+    queries the ``k``-th time alone, as a scalar (a () or (2,) result)."""
     with _silenced():
         return _call(case, spec, model, side, alpha, fname, event, k)
 
@@ -504,15 +504,15 @@ def test_bound_shapes(case, spec):
             b = bounds(case, spec, side, 0.05, fname, event)
             want = (x.size, 2) if side == "two-sided" else (x.size,)
             assert b.shape == want, (label, side, b.shape)
-            # A scalar query is a one-element query (the atleast_1d
-            # convention every bound method shares).
+            # A scalar query keeps its shape (principle 7): the pair
+            # [lower, upper] two-sided, one number one-sided.
             k = x.size // 2
             one = _raw(case, spec, model, side, 0.05, fname, event, k)
-            assert one.shape == (1,) + want[1:], (label, side, one.shape)
+            assert one.shape == want[1:], (label, side, one.shape)
             # (A search warm-starts from the previous time, so it agrees
             # to its own tolerance.)
             np.testing.assert_allclose(
-                one[0],
+                one,
                 b[k],
                 rtol=max(spec.rtol, 1e-10),
                 atol=1e-12,

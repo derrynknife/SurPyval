@@ -11,6 +11,7 @@ from scipy.stats import norm
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
@@ -295,6 +296,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             self.support, float(self.x[0]), float(self.x[-1]), x, f, start
         )
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
@@ -329,7 +331,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
         >>> model.sf(2)
-        array([0.63762815])
+        np.float64(0.6376281516217733)
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
         """
@@ -354,6 +356,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         R = R[rev]
         return R
 
+    @keeps_query_shape
     def ff(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
@@ -388,12 +391,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
         >>> model.ff(2)
-        array([0.36237185])
+        np.float64(0.36237184837822667)
         >>> model.ff([1., 1.5, 2., 2.5])
         array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
         """
         return 1 - self.sf(x, interp=interp)
 
+    @keeps_query_shape
     def hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
@@ -460,6 +464,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
     def _hf(self, x: npt.NDArray, interp: str) -> npt.NDArray:
         # ``hf`` without the bounds (see ``set_support``).
+        if x.size == 0:
+            # Nothing to difference (the first point below needs one).
+            return np.empty(0)
         missing = np.isnan(np.asarray(x, dtype=float))
         if missing.any():
             # A missing time has no value (NaN). The increments of the
@@ -506,6 +513,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         hf = hf.ffill().values
         return hf[rev]
 
+    @keeps_query_shape
     def df(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
@@ -553,6 +561,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         """
         return self.hf(x, interp=interp) * np.exp(-self.Hf(x, interp=interp))
 
+    @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
@@ -593,7 +602,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
         >>> model.Hf(2)
-        array([0.45])
+        np.float64(0.44999999999999996)
         >>> model.Hf([1., 1.5, 2., 2.5])
         array([0.2 , 0.2 , 0.45, 0.45])
         """
@@ -607,6 +616,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         with np.errstate(divide="ignore"):
             return -np.log(sf)
 
+    @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
@@ -795,6 +805,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         return cb
 
+    @keeps_query_shape
     def R_cb(
         self,
         x: npt.ArrayLike,
@@ -929,18 +940,24 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         self, size: int, random_state: int | None = None
     ) -> npt.NDArray:
         r"""
-        Draws random samples from the fitted distribution. Each observed
-        value x is drawn with the probability mass the estimated survival
-        function assigns to it. If the estimate does not reach zero (e.g.
-        due to right censoring) the remaining mass is distributed over the
-        observed values, i.e. sampling is conditional on an event occurring
-        at one of the observed values.
+        Draws lifetimes from the fitted estimate. Each draw is
+        ``qf(u)`` for one uniform ``u`` in (0, 1]: the first step time at
+        which the estimated CDF reaches ``u``. So each step time is drawn
+        with the probability the estimate puts there (the drop in ``sf``),
+        and the draws follow the model's own ``sf`` exactly.
+
+        Where the estimate does not reach zero (the last observation
+        censored, say), the probability it leaves beyond its last time,
+        ``sf`` there, is not placed anywhere in the data: those draws are
+        ``inf``, a lifetime not observed to end within the data. This is
+        the convention of a parametric model with a limited failure
+        population, whose never-failing units also draw ``inf``.
 
         Parameters
         ----------
 
-        size : int
-            The number of random samples to draw.
+        size : int or tuple of ints
+            The number (or shape) of random samples to draw.
         random_state : int or numpy.random.Generator, optional
             Seed or generator for reproducible sampling. ``None`` (the default)
             seeds from numpy's global RNG, so ``np.random.seed`` controls it.
@@ -951,39 +968,29 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
 
         random : numpy array
-            The random samples drawn from the observed values.
-
-        Raises
-        ------
-
-        ValueError
-            If the estimate has no failures (e.g. all data censored), so
-            there is no probability mass to sample from.
+            The drawn lifetimes: step times of the estimate, or ``inf``.
 
         Examples
         --------
         >>> from surpyval import KaplanMeier
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
-        >>> model.random(5, random_state=0)
-        array([6., 3., 1., 1., 7.])
+        >>> round(model.sf(8).item(), 4)
+        0.1944
+        >>> draws = model.random(10_000, random_state=0)
+        >>> float(np.isinf(draws).mean())  # the share left beyond 8
+        0.1988
         """
-        with np.errstate(all="ignore"):
-            p = -np.diff(np.hstack([[1.0], self.R]))
-        p = np.where(np.isfinite(p), p, 0)
-        # With no failure (all censored) the estimate never leaves 1, so
-        # there is no mass to sample; normalising by zero used to surface
-        # as numpy's "Probabilities contain NaN".
-        if not p.sum() > 0:
-            raise ValueError(
-                "The estimate has no failures (the survival function never "
-                "drops below 1), so there is no probability mass to sample "
-                "from."
-            )
-        p = p / p.sum()
         rng = as_generator(random_state)
-        return rng.choice(self.x, size=size, p=p)
+        # One uniform per draw, in (0, 1] as qf requires; qf(u) is NaN
+        # where the estimated CDF never reaches u, the mass the estimate
+        # leaves beyond its last time, which is drawn as inf.
+        u = 1.0 - rng.random(size)
+        draws = np.asarray(self.qf(np.ravel(u)), dtype=float)
+        draws = np.where(np.isnan(draws), np.inf, draws)
+        return draws.reshape(np.shape(u))
 
+    @keeps_query_shape
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
         Quantile function of the non-parametric estimate. Returns the
@@ -1012,7 +1019,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = KaplanMeier.fit(x)
         >>> model.qf(0.5)
-        array([3.])
+        np.float64(3.0)
         >>> model.qf([0.1, 0.5, 0.9])
         array([1., 3., 5.])
         """
@@ -1048,8 +1055,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> KaplanMeier.fit(np.arange(1, 31)).median
         np.float64(15.0)
         """
-        return self.qf(0.5)[0]
+        return self.qf(0.5)
 
+    @keeps_query_shape
     def quantile_cb(
         self,
         p: npt.ArrayLike,
@@ -1316,6 +1324,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "tau": float(tau),
         }
 
+    @keeps_query_shape
     def bootstrap_cb(
         self,
         x: npt.ArrayLike,
@@ -1608,6 +1617,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             lo, hi = hi, 1.5 * hi
         return float(brentq(lambda c: inside(c) - target, lo, hi, xtol=1e-8))
 
+    @keeps_query_shape
     def band(
         self,
         x: npt.ArrayLike | None = None,
@@ -1719,7 +1729,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "'n_sims' and 'random_state' are no longer used by band(): "
                 "the critical value is computed numerically, not simulated.",
                 DeprecationWarning,
-                stacklevel=2,
+                # band -> the query-shape wrapper -> the caller
+                stacklevel=3,
             )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
@@ -1790,6 +1801,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         return out
 
+    @keeps_query_shape
     def smoothed_hf(
         self, x: npt.ArrayLike, bandwidth: float | None = None
     ) -> npt.NDArray:
@@ -2085,7 +2097,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.sf([1.5, 2.5])
         array([0.8, 0.5])
         >>> model.qf(0.5)
-        array([2.])
+        np.float64(2.0)
         """
         # ``sf`` and ``qf`` search these arrays, so a curve given out of
         # order, or rising, silently gave wrong survival and quantiles.

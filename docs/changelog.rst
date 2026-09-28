@@ -4,6 +4,70 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Mutation testing pilot (#396).** ``scripts/mutation/run.sh`` runs
+  mutmut on a module in a copy of the repository, and ``recheck.py``
+  checks new tests against its survivors. On the non-parametric estimators
+  593 of 2,702 mutants survived the test suite (score 78.1%); 273 were
+  real gaps, now covered by ``surpyval/tests/mutation``, which raises the
+  score to 88.6% (93.2% without the equivalent and dead-code mutants).
+  Among the gaps no test checked: the Hall-Wellner band's width off by a
+  factor of N, ``df`` ignoring ``interp``, and ``rmst_diff``'s interval
+  and ratio. It found #450-#452, pinned as strict expected failures, and
+  that a warning raised inside a shape-wrapped method pointed at the
+  wrapper instead of the caller (fixed).
+- **Changed: shape in, shape out, for every model (#381, #435).** A function
+  evaluated at query points -- ``sf``, ``ff``, ``Hf``, ``hf``, ``df``,
+  ``qf``, the per-cause and recurrent ``cif``, ``iif``, ``mcf``,
+  ``sf_tvc``, ``Hf_tvc``, ``smoothed_hf`` and every confidence bound --
+  returns the query's shape: a scalar gives a numpy scalar, 1-D and 2-D
+  queries keep their shape, an empty query gives an empty array, and a
+  two-sided bound adds a trailing ``[lower, upper]`` axis. The
+  non-parametric estimates, Royston-Parmar, the AFT, PO and AL
+  regressions, Cox, the competing-risks and recurrent models, the
+  degradation models and every ``cb`` returned ``(1,)`` for a scalar
+  (``(1, 2)`` for a bound); several raised on a 2-D or empty query; and
+  some gave a right-looking shape with wrong values -- a Kaplan-Meier
+  ``cb`` of a (2, 2) query had its axes transposed (lower 0.724 above
+  upper 0.063), and a copula's (2, 2, 2) query mixed its coordinates.
+  Of 18,342 surveyed calls, 5,506 changed shape and no 1-D value changed.
+  Survival trees and forests keep their row-by-time grid, now
+  ``(n_rows,) + x.shape``. Code that indexed a scalar query's result
+  (``km.sf(5)[0]``) now uses the result directly. Parametric
+  ``sf_tvc(..., given=nan)`` is now NaN.
+- **Tail accuracy is checked against 50-digit references (#398).**
+  ``reference/test_tails.py`` compares ``sf``, ``ff``, ``df``, ``hf``,
+  ``Hf``, ``qf`` and the log forms of 17 distributions with mpmath values
+  (stored in ``tails_mpmath.json``, written by
+  ``scripts/reference/tails_mpmath.py``, so CI needs no mpmath) on a grid
+  of extreme parameters and times, from survival 1e-300 to 1e-300 of
+  failure. It needs relative accuracy 1e-8 where the value is a normal
+  double, or 64 ulps of the inputs' own sensitivity where the function is
+  ill-conditioned. 212 groups of values fail, pinned by cause:
+  cancellation near probability 1 (#442), log-scale functions that
+  under- or overflow (#443), NaN at valid arguments (#444), overflow
+  errors at extreme shapes (#445), Geometric at small p (#446), ``qf`` at
+  tiny probabilities (#447), BetaGeometric (#449), and the ExpoWeibull
+  (#436) and Logistic (#410) forms. Beta, NegativeBinomial,
+  DiscreteWeibull and Binomial await their references (#448).
+- **Changed: ``random()`` of a non-parametric estimate draws from the
+  estimate itself.** It drew each observed value with the estimate's
+  probability there, but where the estimate does not reach zero it
+  spread the remaining probability over the observed values, so the
+  draws disagreed with the model's own ``sf`` (by 0.12 for one Turnbull
+  fit) and an all-censored fit raised. Each draw is now ``qf(u)`` for one
+  uniform ``u``, and the probability left beyond the last time is drawn
+  as ``inf``, as for a parametric model's never-failing units (#403).
+- **Every model is refitted to data drawn from itself (#397).** A new
+  nightly study, ``calibration/test_refit_registry.py``, takes each model
+  in the conformance registry that can simulate (120 of 128; the rest are
+  excluded with a reason), draws a few hundred units from its fitted
+  fixture 20-100 times, refits, and requires the mean estimate within
+  ``3/sqrt(reps) + 0.2`` standard deviations of the truth and the mean
+  curve within 3 Monte Carlo standard errors + 0.02. A likelihood that
+  ignored delayed entry shows as a 1.44 sd bias against a tolerance of
+  0.5. It found that ``random()`` of an additive-hazards model on a
+  Normal, Gumbel or Logistic baseline never draws below 0, putting that
+  mass (3.6% for one fixture) at 2.7e-20 instead (#441).
 - **Added: ``set_support`` for the non-parametric estimates.** Outside the
   data a non-parametric estimate only had a convention: the step curves
   started at 1 and held their last value however far away, while the

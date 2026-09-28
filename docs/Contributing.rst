@@ -39,9 +39,12 @@ tested promise like any other. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
 ``--run-calibration`` runs the statistical calibration studies (confidence
-interval coverage, test size and power, estimator bias; about 15 minutes on
+interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which also run nightly against ``develop`` from
-``.github/workflows/nightly.yml``.
+``.github/workflows/nightly.yml``. They include ``test_refit_registry.py``,
+which draws data from every model in the conformance registry that can
+simulate from itself and checks that the refits recover it (#397); a newly
+registered model must be added to its ``PLANS`` or ``EXCLUDED``.
 The property-based tests in ``surpyval/tests/properties`` run a short
 derandomized search by default (under a minute);
 ``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` makes it thorough, as the nightly
@@ -113,6 +116,75 @@ The properties enforce the package's :doc:`Design Principles`: the rules every
 model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
+
+Mutation testing
+----------------
+
+Coverage shows that a line ran, not that a test would notice if it were
+wrong. ``scripts/mutation/run.sh <module>`` (mutmut; see
+``scripts/mutation/README.md``) changes a module one small edit at a time --
+``<`` to ``<=``, a dropped argument, ``side="right"`` removed -- in a copy of
+the repository, and reruns the tests that reach the changed function; an
+edit no test notices is a *surviving mutant*. It takes hours (2.5 to 3.5 for
+the non-parametric module on two workers), so run it after a large change to
+a module or before a release, not on a pull request, and record the score in
+the README.
+
+Triage every survivor: a plausible bug no test would notice gets a test --
+preferably a conformance property that covers every model, else one in
+``surpyval/tests/mutation/test_<module>_kills.py``; a change with no
+observable effect is *equivalent*; code whose mutants can never be observed
+is a simplification candidate; a survivor that shows a bug is pinned as a
+strict xfail with its issue number. ``scripts/mutation/recheck.py`` checks
+new tests against the survivors in minutes. A fixture that caches results
+across tests hides mutants from mutmut: the plugin clears the conformance
+caches, and a new cache needs the same.
+
+Reviewing a module by bug class
+-------------------------------
+
+Tests find what someone thought to check; a review looks for what nobody
+did. Review a module against the kinds of bug this package has actually
+had, choosing modules by lowest branch coverage and by how often they have
+been fixed (``git log --follow -p <file>``). Run
+
+.. code-block:: bash
+
+    python -m pytest --cov=<package path> --cov-branch \
+        --cov-report=term-missing <its tests>
+
+and read the uncovered branches first. Then, for each public function and
+each entry point that reaches it, try:
+
+1. **Ties**: an event and a censoring at the same time; events tied among
+   themselves; an interval endpoint equal to an exact time.
+2. **Order**: unsorted rows; unsorted or duplicated queries.
+3. **Endpoints**: the first and last piece, a query exactly on a boundary,
+   a start before or at 0, x = 0.
+4. **Degenerate values**: NaN, inf and empty input, in the data and in the
+   queries; probabilities outside [0, 1].
+5. **Tails and scale**: 1e-6 and 1e6 times the natural scale; ``log_*``
+   functions against the logs of the plain ones; a special case (e.g. an
+   exponentiated Weibull with mu = 1) against its parent distribution.
+6. **Shapes**: scalar, 1-D, 2-D and empty queries; array parameters where a
+   docstring allows them.
+7. **Counts**: ``n = k`` against k repeated rows.
+8. **Truncation**: ``tl`` / ``tr`` at, just inside and outside an
+   observation.
+9. **Reference software**: R ``survival``, ``cmprsk``, lifelines and
+   scikit-survival, minding each one's reporting convention.
+10. **Entry points**: ``fit``, ``fit_from_df``, ``from_dict`` / JSON and the
+    ``fit_from_*`` helpers.
+11. **User-supplied names and labels**: collisions with attribute names;
+    tuple and mixed labels.
+12. **Messages**: every error names the argument (principle 2), and no raw
+    numpy warning escapes (principle 22).
+
+A suspected bug counts only with a numerical reproduction. Pin it as a
+strict xfail whose reason starts with its issue number in
+``surpyval/tests/review/test_<module>_review.py``, and where it breaks a
+general property, add that property to the conformance suite so every
+model is checked for it.
 
 Branching and releases
 ----------------------

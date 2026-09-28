@@ -52,6 +52,7 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.shapes import keeps_query_shape
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -194,6 +195,7 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- distribution functions -------------------------------------------
 
+    @keeps_query_shape
     def sf(self, t: Any) -> np.ndarray:
         """Survival function at ``t``: 1 at and before time 0 (the spline
         is in ``log t``, which does not exist there, so this came back nan)
@@ -204,19 +206,23 @@ class RoystonParmarModel(SerialisableMixin):
         out = np.where(t <= 0.0, 1.0, out)
         return np.where(np.isposinf(t), 0.0, out)
 
+    @keeps_query_shape
     def ff(self, t: Any) -> np.ndarray:
         """Failure (CDF) function ``1 - sf(t)``."""
         return 1.0 - self.sf(t)
 
+    @keeps_query_shape
     def Hf(self, t: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(t)``."""
         # + 0.0 turns the -0.0 of -log(1) at t <= 0 into 0.0
         return -np.log(self.sf(t)) + 0.0
 
+    @keeps_query_shape
     def hf(self, t: Any) -> np.ndarray:
         """Hazard rate ``df(t) / sf(t)``."""
         return self.df(t) / self.sf(t)
 
+    @keeps_query_shape
     def df(self, t: Any) -> np.ndarray:
         """Density at ``t``, from the derivative of the spline."""
         t = np.asarray(t, dtype=float)
@@ -229,10 +235,9 @@ class RoystonParmarModel(SerialisableMixin):
         # infinity; with sf = 1 there, hf and Hf are 0 too.
         return np.where((t <= 0.0) | np.isposinf(t), 0.0, out)
 
+    @keeps_query_shape
     def qf(self, q: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(t) = q``."""
-        scalar_in = np.ndim(q) == 0
-        q = np.atleast_1d(np.asarray(q, dtype=float))
         out = np.empty_like(q)
         for i, qi in enumerate(q):
             target = 1.0 - qi  # sf(t) = 1 - q
@@ -246,7 +251,7 @@ class RoystonParmarModel(SerialisableMixin):
                     hi,
                 )
             )
-        return out[0] if scalar_in else out
+        return out
 
     def random(self, size: int) -> np.ndarray:
         """Draw ``size`` random lifetimes (by inverting ``ff``), using
@@ -264,6 +269,7 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- confidence bounds -------------------------------------------------
 
+    @keeps_query_shape
     def cb(
         self,
         t: Any,

@@ -48,11 +48,11 @@ def test_quantile_cb_brookmeyer_crowley_inversion():
     else:
         expected_upper = np.nan
     cb = model.quantile_cb(p)
-    assert cb.shape == (1, 2)
-    assert cb[0, 0] == expected_lower
-    assert np.isnan(cb[0, 1]) == np.isnan(expected_upper)
+    assert cb.shape == (2,)
+    assert cb[0] == expected_lower
+    assert np.isnan(cb[1]) == np.isnan(expected_upper)
     # The interval contains the point estimate when the median is reached
-    assert cb[0, 0] <= model.median
+    assert cb[0] <= model.median
 
 
 def test_quantile_cb_brackets_estimate_large_sample():
@@ -60,10 +60,10 @@ def test_quantile_cb_brackets_estimate_large_sample():
     x = rng.exponential(1.0, 200)
     model = surpyval.KaplanMeier.fit(x)
     cb = model.quantile_cb(0.5)
-    assert cb[0, 0] <= model.median <= cb[0, 1]
+    assert cb[0] <= model.median <= cb[1]
     # With n=200 the median CI should be reasonably tight around ln(2)
-    assert cb[0, 0] > 0.4
-    assert cb[0, 1] < 1.1
+    assert cb[0] > 0.4
+    assert cb[1] < 1.1
 
 
 def test_mean_uncensored_equals_sample_mean():

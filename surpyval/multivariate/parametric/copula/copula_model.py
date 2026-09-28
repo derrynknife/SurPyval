@@ -8,6 +8,7 @@ import numpy.typing as npt
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.shapes import keeps_query_shape
 
 _EPS = 1e-10
 
@@ -85,18 +86,26 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         v = onp.clip(self.margins[1].ff(x[:, 1]), _EPS, 1 - _EPS)
         return x, u, v
 
+    def _copula_cdf(self, u: npt.NDArray, v: npt.NDArray) -> npt.NDArray:
+        if u.size == 0:
+            # No points (scipy's multivariate normal refuses zero rows).
+            return onp.empty(0)
+        return onp.asarray(self.copula.cdf(u, v, *self.params))
+
     # -- joint survival interface ----------------------------------------
+    @keeps_query_shape(point_ndim=1)
     def cdf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint CDF ``P(X_1 <= x_1, X_2 <= x_2)``."""
         _, u, v = self._uv(x)
-        return onp.asarray(self.copula.cdf(u, v, *self.params))
+        return self._copula_cdf(u, v)
 
+    @keeps_query_shape(point_ndim=1)
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint survival ``P(X_1 > x_1, X_2 > x_2)``."""
         _, u, v = self._uv(x)
-        c = onp.asarray(self.copula.cdf(u, v, *self.params))
-        return 1.0 - u - v + c
+        return 1.0 - u - v + self._copula_cdf(u, v)
 
+    @keeps_query_shape(point_ndim=1)
     def pdf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Joint density ``c(F_1, F_2) f_1 f_2``."""
         x, u, v = self._uv(x)
@@ -105,10 +114,12 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         f2 = onp.asarray(self.margins[1].df(x[:, 1]))
         return c * f1 * f2
 
+    @keeps_query_shape(point_ndim=1)
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Alias of :meth:`cdf` for consistency with surpyval naming."""
         return self.cdf(x)
 
+    @keeps_query_shape(point_ndim=1)
     def conditional_cdf(
         self, x: npt.ArrayLike, given_dim: int = 0
     ) -> npt.NDArray:

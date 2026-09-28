@@ -63,7 +63,7 @@ def test_cox_nan_time_before_first_event_is_nan_not_zero():
     x, Z, c, _ = _data()
     model = sp.CoxPH.fit(x, Z, c)
     assert np.isnan(model.Hf(np.nan, [0.0, 0.0])).all()
-    assert model.Hf(0.0, [0.0, 0.0])[0] == 0.0
+    assert model.Hf(0.0, [0.0, 0.0]) == 0.0
 
 
 @pytest.mark.parametrize("stratum", [np.nan, pd.NA])

@@ -66,7 +66,7 @@ class ProportionalIntensityHPP:
        beta_6  :  0.08565920858626697
     <BLANKLINE>
     >>> model.cif(52, Z[:1])
-    array([0.32584698])
+    np.float64(0.32584697690680187)
     """
 
     # Display name of the (constant) baseline hazard rate model, used by

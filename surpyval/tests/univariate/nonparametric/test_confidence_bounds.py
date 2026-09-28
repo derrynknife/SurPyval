@@ -208,13 +208,22 @@ def test_random_samples_with_estimated_probabilities():
 
 
 def test_random_with_right_censoring():
-    # With right censoring the survival estimate does not reach zero;
-    # sampling renormalises over the observed event masses.
+    # With right censoring the survival estimate does not reach zero: the
+    # mass it leaves beyond its last time is drawn as inf, so the draws
+    # follow the estimate's own sf.
     x = np.array([1.0, 2.0, 3.0, 4.0])
     c = np.array([0, 0, 0, 1])
     model = surpyval.KaplanMeier.fit(x, c=c)
-    samples = model.random(1000)
-    assert np.isin(samples, model.x).all()
+    samples = model.random(40_000, random_state=0)
+    finite = samples[np.isfinite(samples)]
+    assert np.isin(finite, model.x).all()
+    assert np.all(np.isposinf(samples[~np.isfinite(samples)]))
+    left = float(np.ravel(model.sf(np.array([4.0])))[0])
+    assert np.isinf(samples).mean() == pytest.approx(left, abs=0.01)
+    for t in (1.0, 2.0, 3.0):
+        share = (samples <= t).mean()
+        want = float(np.ravel(model.ff(np.array([t])))[0])
+        assert share == pytest.approx(want, abs=0.01)
 
 
 def test_scalar_input_to_hf_and_df():
@@ -222,8 +231,9 @@ def test_scalar_input_to_hf_and_df():
     model = surpyval.NelsonAalen.fit(x)
     # Must not raise; with a single point there is no neighbouring step
     # so the rate is undefined.
-    assert model.hf(2).shape == (1,)
-    assert model.df(2).shape == (1,)
+    # A scalar query gives a scalar (principle 7).
+    assert np.shape(model.hf(2)) == ()
+    assert np.shape(model.df(2)) == ()
     # Array input remains well defined
     assert np.isfinite(model.hf([1.5, 2.5, 3.5])).all()
 

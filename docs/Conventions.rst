@@ -212,6 +212,42 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))
     print("median          :", model.qf(0.5))
 
+.. _query-shapes:
+
+Query shapes
+~~~~~~~~~~~~
+
+Shape in, shape out. Every function evaluated at query points -- times ``x``, or probabilities for ``qf`` -- returns a result of the query's shape, whatever the model:
+
+- a scalar query (a Python number or a 0-d array) gives a numpy scalar (``np.float64``);
+- a 1-D query (a list, tuple or array) gives a 1-D array of its length, and a 2-D query an array of its 2-D shape, with the values the flattened query would give;
+- an empty query gives an empty array of its shape.
+
+This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions. A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
+
+With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row. The survival tree and forest are the one documented exception: with a matrix of covariates they evaluate every row at every time, a grid of shape ``(n_rows,) + x.shape`` (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
+
+A step estimate's ``hf`` and ``df`` are the jumps between the points asked for (see above), so a point asked for alone can differ from the same point inside an array; the shapes follow the rule all the same.
+
+.. jupyter-execute::
+
+    km = surv.KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8], c=[0, 1, 0, 0, 1, 0, 0, 1])
+    print(repr(km.sf(4)))                       # a scalar
+    print(km.sf([[2, 4], [6, 7]]))              # a 2-D query keeps its shape
+    print(km.cb(4))                             # [lower, upper] at one time
+    print(km.cb([[2, 4], [6, 7]]).shape)        # query shape + (2,)
+    print(km.sf([]).shape)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert isinstance(km.sf(4), np.float64) and km.cb(4).shape == (2,)
+    assert km.sf([[2, 4], [6, 7]]).shape == (2, 2)
+    np.testing.assert_array_equal(
+        km.cb([[2, 4], [6, 7]]).reshape(-1, 2), km.cb([2, 4, 6, 7])
+    )
+
 .. _missing-values:
 
 Missing values

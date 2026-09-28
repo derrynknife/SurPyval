@@ -13,6 +13,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import check_covariate_rows, finite_covariate_mask
+from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -182,7 +183,7 @@ class SurvivalTree(SerialisableMixin):
         >>> x = np.minimum(x, 12)
         >>> tree = SurvivalTree.fit(x, Z, c=c, max_depth=1, n_features_split=2)
         >>> tree.sf(5, [0.2, 0.5]).round(4), tree.sf(5, [0.8, 0.5]).round(4)
-        (array([0.8831]), array([0.3168]))
+        (np.float64(0.8831), np.float64(0.3168))
 
         A matrix routes each row to its own leaf:
 
@@ -232,15 +233,24 @@ class SurvivalTree(SerialisableMixin):
         Returns
         -------
         ndarray
-            For a 1-D ``Z``, the values at ``x`` (shaped like ``x``). For a
-            2-D ``Z``, an ``(n_rows, x.size)`` grid whose row ``i`` is the
-            values for ``Z[i]``, as for
+            For a 1-D ``Z``, the values at ``x``, shaped like ``x`` (a
+            scalar for a scalar ``x``). For a 2-D ``Z``, a grid of shape
+            ``(n_rows,) + x.shape`` whose row ``i`` is the values for
+            ``Z[i]`` -- every row at every time, the one documented
+            exception to pairing rows with times -- as for
             :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
             A covariate vector with a missing (NaN) value gives NaN, and
             leaves the other rows unaffected.
         """
-        # Prep input - make sure numpy array
-        x = np.array(x, ndmin=1)
+        # The times flat; the result gets their shape back (on its last
+        # axis for a grid), so a scalar time gives a scalar.
+        x, restore = flatten_query(x)
+        return restore(self._apply_flat(function_name, x, Z), axis=-1)
+
+    def _apply_flat(
+        self, function_name: str, x: NDArray, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        # ``apply_model_function`` at a 1-D array of times.
         Z = np.array(Z, ndmin=1, dtype=float)
         if Z.ndim > 2:
             raise ValueError(
