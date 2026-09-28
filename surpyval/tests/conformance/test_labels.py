@@ -68,7 +68,7 @@ def _relabelled(name, labels):
     data = {**data, "e": e}
     if not case.events:
         # One cause of interest (Fine-Gray), "a" in the fixture.
-        data["cause"] = mapping["a"]
+        data["event"] = mapping["a"]
     events = tuple(mapping[v] for v in case.events)
     return replace(case, events=events), data
 
