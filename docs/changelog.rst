@@ -4,6 +4,21 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Tail accuracy is checked against 50-digit references (#398).**
+  ``reference/test_tails.py`` compares ``sf``, ``ff``, ``df``, ``hf``,
+  ``Hf``, ``qf`` and the log forms of 17 distributions with mpmath values
+  (stored in ``tails_mpmath.json``, written by
+  ``scripts/reference/tails_mpmath.py``, so CI needs no mpmath) on a grid
+  of extreme parameters and times, from survival 1e-300 to 1e-300 of
+  failure. It needs relative accuracy 1e-8 where the value is a normal
+  double, or 64 ulps of the inputs' own sensitivity where the function is
+  ill-conditioned. 212 groups of values fail, pinned by cause:
+  cancellation near probability 1 (#442), log-scale functions that
+  under- or overflow (#443), NaN at valid arguments (#444), overflow
+  errors at extreme shapes (#445), Geometric at small p (#446), ``qf`` at
+  tiny probabilities (#447), BetaGeometric (#449), and the ExpoWeibull
+  (#436) and Logistic (#410) forms. Beta, NegativeBinomial,
+  DiscreteWeibull and Binomial await their references (#448).
 - **Changed: ``random()`` of a non-parametric estimate draws from the
   estimate itself.** It drew each observed value with the estimate's
   probability there, but where the estimate does not reach zero it

@@ -82,11 +82,17 @@ Outputs
    *Checked* by ``conformance/test_identities.py``; known gaps #383 and
    #384.
 
-9. **Valid values.** Survival stays in :math:`[0, 1]` and never increases;
-   cumulative quantities never decrease. The documented exception is the
-   additive hazards model, whose estimate need not be monotone (#376).
+9. **Valid and accurate values.** Survival stays in :math:`[0, 1]` and
+   never increases; cumulative quantities never decrease. The documented
+   exception is the additive hazards model, whose estimate need not be
+   monotone (#376). A distribution's functions are accurate to double
+   precision wherever the value is representable, in the tails and at
+   extreme parameters too.
 
-   *Checked* by ``conformance/test_bounds.py``.
+   *Checked* by ``conformance/test_bounds.py``, and for accuracy by
+   ``reference/test_tails.py`` against 50-digit mpmath values; known gaps
+   #410, #436, #442-#447 and #449, and four distributions not generated
+   yet (#448).
 
 10. **Covariate rows are independent.** Evaluating rows together gives the
     same as evaluating them one at a time.
