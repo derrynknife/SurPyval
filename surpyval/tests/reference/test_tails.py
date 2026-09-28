@@ -252,15 +252,6 @@ _BY_ISSUE: dict[str, tuple[str, list[tuple[str, str, str]]]] = {
             ("Logistic", "sf", "beyond left"),
         ],
     ),
-    "#436": (
-        "1 - exp(-t) cancellation and tail under/overflow",
-        [
-            # The reference data are wrong here, not the package: at
-            # mu = 1 the file has qf(1e-300) = 0 where the generator
-            # itself (and alpha * 1e-300 by hand) gives 1e-306.
-            ("ExpoWeibull", "qf", "p tiny"),
-        ],
-    ),
     "#449": (
         "inaccurate at large k and extreme shapes; qf(1) finite",
         [

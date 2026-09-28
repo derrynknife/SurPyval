@@ -467,20 +467,27 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         >>> ExpoWeibull.qf(u, 3, 4, 1.2)
         array([1.89361341, 2.2261045 , 2.46627621, 2.66992747, 2.85807988])
         """
-        # -ln(1 - v) with v = u^(1/mu), exact on both sides of v = 1/2:
-        # at u = 1 - 1e-16 and mu = 500 v rounds to 1 and the direct form
-        # is inf (#436). Outside [0, 1] it is NaN, without a warning.
-        with np.errstate(divide="ignore", invalid="ignore"):
+        # t = -ln(1 - v) with v = u^(1/mu), exact on both sides of
+        # v = 1/2: at u = 1 - 1e-16 and mu = 500 v rounds to 1 and the
+        # direct form is inf (#436). It is carried as log(t), since v
+        # underflows long before the quantile does (u = 1e-30, mu = 0.01:
+        # v = 1e-3000, but with beta = 1000 the quantile is alpha * 1e-3);
+        # for small v, log(t) = log(v) + log(t / v) with t / v -> 1.
+        # Outside [0, 1] it is NaN, without a warning.
+        with np.errstate(divide="ignore", invalid="ignore", under="ignore"):
             log_v = np.log(u) / mu
             v = np.exp(log_v)
             low = v < 0.5
-            v_low = np.where(low, v, 0.25)
+            v_low = np.where(low & (v > 0), v, 0.25)
             log_v_high = np.where(low, -1.0, log_v)
-            neg_log_1mv = np.where(
-                low, -np.log1p(-v_low), -np.log(-np.expm1(log_v_high))
+            log_t = np.where(
+                low,
+                log_v + np.log(-np.log1p(-v_low) / v_low),
+                np.log(-np.log(-np.expm1(log_v_high))),
             )
-        with np.errstate(over="ignore"):
-            return alpha * neg_log_1mv ** (1 / beta)
+            log_t = np.where(low & ~(v > 0), log_v, log_t)
+        with np.errstate(over="ignore", under="ignore"):
+            return alpha * np.exp(log_t / beta)
 
     def log_df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
