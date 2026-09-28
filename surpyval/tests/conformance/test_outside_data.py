@@ -6,7 +6,9 @@ has nothing to say outside the observed times, so what it gives there is a
 convention, documented and the same for all of the model's functions:
 
 - before the first time it is at its start: ``sf`` 1, and ``ff``, ``Hf``,
-  a cumulative incidence ``cif`` and a mean cumulative function ``mcf`` 0;
+  a cumulative incidence ``cif`` and a mean cumulative function ``mcf`` 0
+  (at time 0 for an estimate whose hazard acts from time 0,
+  ``STARTS_AT_ZERO``);
 - after the last time it either holds its value at the last time (the
   single-event estimates, ``"hold"``) or is NaN (the recurrent mean
   cumulative functions, ``"nan"``; see "Recurrent Event Analysis").
@@ -51,6 +53,11 @@ RULES = {
     "CauseSpecificMCF": "nan",
 }
 START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "cif": 0.0, "mcf": 0.0}
+# Estimates whose hazard acts from time 0, not only at the event times: an
+# additive hazards model's covariate effect is a constant added hazard, so
+# before the first observed time it is already the fitted model, and it
+# starts at time 0.
+STARTS_AT_ZERO = frozenset({"AdditiveHazards"})
 
 
 def _span(case, data):
@@ -84,6 +91,8 @@ def test_outside_the_data(case):
     model = fitted(case)
     first, last = _span(case, case.data())
     before = np.array([first / 10 if first > 0 else first - 1.0])
+    if case.name in STARTS_AT_ZERO:
+        before = np.zeros(1)
     after = last * np.array([1.0, 2.0, 10.0, 100.0])
     if not case.continuous:
         before, after = np.floor(before), np.ceil(after)

@@ -2727,14 +2727,6 @@ for _name, _failures in _OPTION_FAILURES.items():
     }
     KNOWN_FAILURES[_name] = {**KNOWN_FAILURES.get(_name, {}), **_failures}
 
-# -- behaviour outside the data (test_outside_data.py) ----------------------
-KNOWN_FAILURES["AdditiveHazards"] = {
-    **KNOWN_FAILURES.get("AdditiveHazards", {}),
-    "outside_data": "#400: Hf keeps changing past the last time, at the "
-    "last interval's drift rate beta'(Z - Zbar): Hf(Z[0]) is 3.516 at the "
-    "last time 16.98 and 23.01 at 100 times it, where every other "
-    "semi-parametric estimate holds",
-}
 
 # The issue that tracks each kind of known failure; its number leads the
 # xfail reason, so a test report says where the fix is being worked on.

@@ -97,12 +97,13 @@ Outputs
     model is defined everywhere by its formula. An estimate with no formula
     for its shape -- a step estimate, a semi-parametric baseline -- starts
     at its initial value before the first time (survival 1, everything
-    cumulative 0), and after the last time either holds its last value
+    cumulative 0; at time 0 for the additive hazards model, whose
+    covariate effect acts from time 0), and after the last time either
+    holds its last value
     (the single-event estimates) or is ``nan`` (the recurrent mean
     cumulative functions), the same for all of a model's functions.
 
-    *Checked* by ``conformance/test_outside_data.py``; known gap #400
-    (additive hazards extrapolates).
+    *Checked* by ``conformance/test_outside_data.py``.
 
 Estimation
 ----------

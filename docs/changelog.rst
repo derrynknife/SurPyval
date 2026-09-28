@@ -4,6 +4,15 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Changed: the additive hazards model holds its estimate past the last
+  observed time (#400).** ``AdditiveHazardsModel.Hf`` kept changing after
+  the last observed time, at the last interval's rate
+  :math:`\beta'(Z - \bar Z)`, where there is no risk set to estimate
+  anything from: on one fit, ``Hf`` was 3.52 at the last time and 23.0 at
+  100 times it. It now holds its value there, as every other
+  semi-parametric estimate does, so ``sf`` and ``ff`` hold and ``hf`` and
+  ``df`` are 0. ``hf`` at a NaN time is now NaN rather than
+  :math:`\beta' Z`.
 - **Design principles (#379).** A new page, :doc:`Design Principles`, lists
   the rules every model keeps -- one data format, ``nan`` in and out, order,
   units and counts not mattering, consistent shapes and identities,
