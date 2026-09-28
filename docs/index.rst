@@ -257,6 +257,7 @@ Contents:
    Quickstart
    Types of Data
    Conventions
+   Design Principles
    Handy References - Aide-mémoire
    Data Wrangler Examples
 
