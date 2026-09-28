@@ -4,9 +4,12 @@ Two profiles, chosen with the ``SURPYVAL_HYPOTHESIS_PROFILE`` environment
 variable:
 
 ``fast`` (the default)
-    A few examples per property, small data sets, the slower properties
-    on fewer models, and a per-example deadline: under a minute for the
-    directory on one core, so the full suite can afford it.
+    A few examples per property, small data sets and the slower
+    properties on fewer models: under a minute for the directory on one
+    core, so the full suite can afford it. No per-example deadline: the
+    CI suite runs under coverage, which made one Weibull example take 14 s
+    against a 10 s deadline, and a slow machine is not a failure. The
+    fixed number of examples is what bounds the run time.
 ``nightly``
     Many more examples and no deadline (a slow machine is not a
     failure), for the scheduled run::
@@ -22,7 +25,6 @@ worth keeping is written into the test as an explicit ``@example``.
 """
 
 import os
-from datetime import timedelta
 from typing import Any
 
 import numpy as np
@@ -37,9 +39,7 @@ _COMMON: dict[str, Any] = dict(
     # generation, are what should be slow.
     suppress_health_check=[HealthCheck.too_slow],
 )
-settings.register_profile(
-    "fast", max_examples=5, deadline=timedelta(seconds=10), **_COMMON
-)
+settings.register_profile("fast", max_examples=5, deadline=None, **_COMMON)
 settings.register_profile(
     "nightly", max_examples=400, deadline=None, **_COMMON
 )
