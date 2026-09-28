@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
 from scipy.stats import beta as beta_rv
@@ -8,6 +10,7 @@ from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     eulerian_numbers,
 )
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -224,16 +227,23 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         b = (m1 - 1.0) * (a - 1.0)
         return a, b
 
-    def random(
-        self, size: int | tuple[int, ...], a: Boxable, b: Boxable
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        a: Boxable,
+        b: Boxable,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """Draw ``size`` cycle counts: a per-unit probability from the
-        Beta(``a``, ``b``) mixing law, then a Geometric count with it."""
+        Beta(``a``, ``b``) mixing law, then a Geometric count with it;
+        ``random_state`` is as for :meth:`ParametricFitter.random`."""
         # Draw each unit's failure probability from the Beta mixing law, then
         # a Geometric cycle count with that probability.
-        p = beta_rv.rvs(a, b, size=size)
+        state = draw_state(random_state)
+        p = beta_rv.rvs(a, b, size=size, random_state=state)
         p = np.clip(p, 1e-12, 1.0)
-        return geom.rvs(p).astype(float)
+        return geom.rvs(p, random_state=state).astype(float)
 
     def log_sf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         # R(k) = 1 for every k below the first mass point. The Beta-ratio

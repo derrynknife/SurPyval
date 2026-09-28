@@ -29,6 +29,7 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 
 
@@ -172,7 +173,7 @@ class GoodnessOfFitResult:
 
     >>> from surpyval.recurrent import HPP
     >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
-    >>> result = HPP.fit(x).cramer_von_mises(n_boot=99, seed=0)
+    >>> result = HPP.fit(x).cramer_von_mises(n_boot=99, random_state=0)
     >>> round(result.statistic, 4)
     0.1872
     >>> result.n_events, result.n_systems
@@ -336,7 +337,7 @@ def _cvm_pvalue(
     payload: Any,
     simulate_refit: Callable,
     n_boot: int,
-    seed: "int | None",
+    random_state: "int | None",
     uniforms: Callable = _conditional_uniforms,
 ) -> "GoodnessOfFitResult":
     """
@@ -354,7 +355,7 @@ def _cvm_pvalue(
     u, n_systems = uniforms(data, payload)
     observed = cvm_statistic(u)
 
-    rng = as_generator(seed)
+    rng = as_generator(random_state)
     statistics: list = []
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:
@@ -413,8 +414,9 @@ def _simulate_window(
     return times, close
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted parametric recurrent
@@ -462,11 +464,12 @@ def cramer_von_mises(
         refit = model.dist.fit_from_recurrent_data(sim_data)
         return sim_data, refit.cif
 
-    return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, seed)
+    return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, random_state)
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises_regression(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted proportional-intensity
@@ -534,11 +537,12 @@ def cramer_von_mises_regression(
         }
         return sim_data, refit_cif
 
-    return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
+    return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, random_state)
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises_renewal(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted renewal / virtual-age
@@ -622,6 +626,6 @@ def cramer_von_mises_renewal(
         increments,
         simulate_refit,
         n_boot,
-        seed,
+        random_state,
         uniforms=_renewal_conditional_uniforms,
     )

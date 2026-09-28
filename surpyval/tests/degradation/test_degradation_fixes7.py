@@ -289,11 +289,15 @@ def test_adt_nan_covariate_mean_random_and_cb(adt_models):
     assert np.isnan(model.random(3, Z=[np.nan], random_state=0)).all()
     # the bootstrap dropped every refit and raised
     band = model.cb(
-        [50.0, 100.0], method="bootstrap", n_boot=20, seed=0, Z=[np.nan]
+        [50.0, 100.0],
+        method="bootstrap",
+        n_boot=20,
+        random_state=0,
+        Z=[np.nan],
     )
     assert band.shape == (2, 2) and np.isnan(band).all()
     band = model.cb(
-        [np.nan, 100.0], method="bootstrap", n_boot=20, seed=0, Z=[0.5]
+        [np.nan, 100.0], method="bootstrap", n_boot=20, random_state=0, Z=[0.5]
     )
     assert np.isnan(band[0]).all() and np.isfinite(band[1]).all()
 
@@ -374,8 +378,8 @@ def test_process_fit_from_df_matches_arrays(process_models):
     assert named.acceleration_factor(_row(1.0)) == pytest.approx(
         arrays.acceleration_factor([1.0])
     )
-    assert named.random(3, 0, Z=_row(0.5)) == pytest.approx(
-        arrays.random(3, 0, Z=[0.5])
+    assert named.random(3, _row(0.5), random_state=0) == pytest.approx(
+        arrays.random(3, [0.5], random_state=0)
     )
     rul = named.predict_rul(20.0, Z=_row(0.5))
     assert rul.rul == pytest.approx(arrays.predict_rul(20.0, Z=[0.5]).rul)
@@ -428,10 +432,12 @@ def test_adt_fit_from_df_reads_a_dataframe_by_name(adt_models):
         arrays.random(4, [0.5], random_state=0)
     )
     band = named.cb(
-        [50.0], method="bootstrap", n_boot=10, seed=0, Z=Z.iloc[:1]
+        [50.0], method="bootstrap", n_boot=10, random_state=0, Z=Z.iloc[:1]
     )
     assert band == pytest.approx(
-        arrays.cb([50.0], method="bootstrap", n_boot=10, seed=0, Z=[0.5])
+        arrays.cb(
+            [50.0], method="bootstrap", n_boot=10, random_state=0, Z=[0.5]
+        )
     )
     # the life model reads it by name too
     assert named.life_model.sf(t, Z) == pytest.approx(
@@ -525,9 +531,9 @@ def test_clock_model_reads_histories_by_name(clock_models):
     assert pred.failure_time == pytest.approx(ref.failure_time)
     induced = named.induced_life(n_samples=200, random_state=0, Z=future)
     assert induced.stress == [1.0]
-    band = named.cb(t, method="bootstrap", n_boot=5, seed=0, Z=future)
+    band = named.cb(t, method="bootstrap", n_boot=5, random_state=0, Z=future)
     assert band == pytest.approx(
-        arrays.cb(t, method="bootstrap", n_boot=5, seed=0, Z=[1.0])
+        arrays.cb(t, method="bootstrap", n_boot=5, random_state=0, Z=[1.0])
     )
     restored = DegradationModel.from_dict(named.to_dict())
     assert restored.sf(t, Z=future) == pytest.approx(arrays.sf(t, Z=[1.0]))

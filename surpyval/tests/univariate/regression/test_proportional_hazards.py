@@ -177,8 +177,8 @@ def test_efron_breslow_differ_on_ties():
     c = np.array([0, 0, 0, 0, 0, 1, 0])
     Z = np.array([[0.5], [1.2], [0.3], [0.8], [1.5], [0.2], [1.1]])
 
-    m_breslow = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
-    m_efron = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+    m_breslow = CoxPH.fit(x=x, Z=Z, c=c, tie_method="breslow")
+    m_efron = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
 
     assert not np.allclose(m_breslow.beta, m_efron.beta)
 
@@ -193,9 +193,11 @@ def test_count_weights_equivalent_to_repeated():
         x=np.repeat(x, 2),
         Z=np.repeat(Z, 2, axis=0),
         c=np.repeat(c, 2),
-        method="breslow",
+        tie_method="breslow",
     )
-    m_cnt = CoxPH.fit(x=x, Z=Z, c=c, n=np.array([2, 2, 2]), method="breslow")
+    m_cnt = CoxPH.fit(
+        x=x, Z=Z, c=c, n=np.array([2, 2, 2]), tie_method="breslow"
+    )
 
     assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-6)
 
@@ -207,7 +209,7 @@ def test_efron_returns_p_values():
     Z = [[0.1], [0.5], [0.3], [0.8], [0.2]]
     c = [0, 0, 0, 0, 0]
 
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
 
     assert model.p_values is not None
     assert model.p_values.shape == (1,)
@@ -256,8 +258,8 @@ def test_efron_and_breslow_p_values_agree_without_ties():
     x = -np.log(rng.uniform(size=N)) / np.exp(Z @ [0.7, -0.5])
     c = (rng.uniform(size=N) < 0.2).astype(int)
 
-    m_ef = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
-    m_br = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
+    m_ef = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
+    m_br = CoxPH.fit(x=x, Z=Z, c=c, tie_method="breslow")
 
     assert np.allclose(m_ef.beta, m_br.beta, atol=1e-3)
     assert np.allclose(m_ef.p_values, m_br.p_values, atol=1e-2)
@@ -311,7 +313,7 @@ def test_baseline_hazard_properties():
     Z = np.random.normal(0, 1, (n, 2))
     c = np.zeros(n, dtype=int)
 
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="breslow")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="breslow")
 
     assert np.all(model.h0 >= 0)
     assert np.all(np.diff(model.H0) >= 0)
@@ -333,7 +335,7 @@ def test_tie_methods_agree_without_ties():
     c = np.zeros(n, dtype=int)
 
     betas = {
-        m: CoxPH.fit(x=x, Z=Z, c=c, method=m).beta[0]
+        m: CoxPH.fit(x=x, Z=Z, c=c, tie_method=m).beta[0]
         for m in ["breslow", "efron", "exact", "kalbfleisch-prentice"]
     }
     assert max(betas.values()) - min(betas.values()) < 1e-8
@@ -411,7 +413,7 @@ def test_exact_and_kp_differ_on_ties():
     c = (rng.uniform(size=n) < 0.2).astype(int)
 
     betas = {
-        m: CoxPH.fit(x=x, Z=Z, c=c, method=m).beta
+        m: CoxPH.fit(x=x, Z=Z, c=c, tie_method=m).beta
         for m in ["breslow", "efron", "exact", "kp"]
     }
     assert not np.allclose(betas["exact"], betas["efron"])
@@ -427,7 +429,7 @@ def test_exact_kp_return_finite_p_values_and_pd_hessian(method):
     x = rng.integers(1, 7, size=n).astype(float)
     c = (rng.uniform(size=n) < 0.2).astype(int)
 
-    model = CoxPH.fit(x=x, Z=Z, c=c, method=method)
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method=method)
     assert model.p_values is not None
     assert np.all(np.isfinite(model.p_values))
     assert np.all((model.p_values >= 0) & (model.p_values <= 1))
@@ -488,9 +490,9 @@ def test_kp_count_weights_equivalent_to_repeated_rows():
         x=np.repeat(x, 2),
         Z=np.repeat(Z, 2, axis=0),
         c=np.repeat(c, 2),
-        method="kp",
+        tie_method="kp",
     )
-    m_cnt = CoxPH.fit(x=x, Z=Z, c=c, n=np.full(n, 2), method="kp")
+    m_cnt = CoxPH.fit(x=x, Z=Z, c=c, n=np.full(n, 2), tie_method="kp")
     assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-5)
 
 
@@ -504,7 +506,7 @@ def test_exact_handles_large_tie_sets():
     Z = rng.normal(size=(n, 1))
     x = np.ones(n)  # every observation ties at the same time
     c = np.zeros(n, dtype=int)
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="exact")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
     assert model.neg_ll(np.array([0.7])) == pytest.approx(0.0, abs=1e-12)
 
 
@@ -517,7 +519,7 @@ def test_kp_handles_heavy_ties():
     x = rng.integers(1, 4, size=n).astype(float)
     c = (rng.uniform(size=n) < 0.2).astype(int)
 
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="kp")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="kp")
     assert np.all(np.isfinite(model.beta))
     assert np.all(np.isfinite(model.p_values))
 
@@ -728,13 +730,13 @@ def test_cox_fit_is_unaffected_by_the_order_of_the_rows():
 
     shuffle = rng.permutation(len(x))
     for method in ("efron", "breslow"):
-        a = CoxPH.fit(x=x, Z=Z, c=c, tl=tl, method=method)
+        a = CoxPH.fit(x=x, Z=Z, c=c, tl=tl, tie_method=method)
         b = CoxPH.fit(
             x=x[shuffle],
             Z=Z[shuffle],
             c=c[shuffle],
             tl=tl[shuffle],
-            method=method,
+            tie_method=method,
         )
         np.testing.assert_allclose(a.beta, b.beta, rtol=1e-10, atol=1e-12)
         np.testing.assert_allclose(

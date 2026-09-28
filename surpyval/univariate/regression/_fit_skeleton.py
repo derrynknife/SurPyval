@@ -28,6 +28,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .parametric_regression_model import ParametricRegressionModel
@@ -170,6 +171,21 @@ class HazardIdentitiesMixin:
 
     def log_df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
+
+
+def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
+    """``size`` uniform draws on ``(0, 1)`` for the inverse-transform
+    samplers (``random``) of the regression fitters.
+
+    ``random_state=None`` draws from numpy's global generator, as these
+    samplers always have, so ``np.random.seed`` reproduces a draw (and
+    gives the same draws as before ``random_state`` existed). Anything
+    else is a stream of its own (:func:`surpyval.utils.rng.as_generator`)
+    that neither depends on nor advances the global one.
+    """
+    if random_state is None:
+        return np.random.uniform(0, 1, size)
+    return as_generator(random_state).uniform(0, 1, size)
 
 
 def prepare_regression_fit(

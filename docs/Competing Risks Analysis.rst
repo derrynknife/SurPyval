@@ -528,7 +528,7 @@ rows are censored. :math:`e^{\beta_{k,p}}` is a cause-specific hazard ratio:
 the multiplicative change in the *rate* of cause :math:`k` among units still
 event-free, per unit increase of covariate :math:`p`.
 
-``CompetingRisksProportionalHazards`` with ``how="Cox"`` fits one ``CoxPH``
+``CompetingRisksProportionalHazards`` with ``model="Cox"`` fits one ``CoxPH``
 model per cause (see :doc:`regression/cox_ph`) and keeps each cause's
 baseline cumulative hazard :math:`\hat{\Lambda}_{k,0}`. Its ``tie_method``
 argument is passed on as the Cox tie-handling ``method``, ``"efron"`` by
@@ -674,7 +674,7 @@ the model is fitted one cause at a time, and separate Fine-Gray fits for
 different causes are not constrained to be mutually consistent (their CIFs can
 sum to more than one); and the sub-distribution hazard itself has no direct
 physical meaning, so interpret the model through its CIFs. In SurPyval,
-``CompetingRisksProportionalHazards`` with ``how="Fine-Gray"`` fits the
+``CompetingRisksProportionalHazards`` with ``model="Fine-Gray"`` fits the
 Fine-Gray model for every cause at once.
 
 Comparing incidence across groups: Gray's test

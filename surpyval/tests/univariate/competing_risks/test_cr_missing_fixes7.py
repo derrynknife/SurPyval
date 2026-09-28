@@ -41,7 +41,7 @@ def cox_model():
 @pytest.fixture(scope="module")
 def fg_model():
     x, Z, e = _data()
-    return FineGray.fit(x, Z, e, cause=1)
+    return FineGray.fit(x, Z, e, event=1)
 
 
 # -- A missing time at prediction ----------------------------------------
@@ -110,7 +110,7 @@ def test_fine_gray_nan_time_predicts_nan(fg_model, method):
 
 def test_cr_fine_gray_nan_time_predicts_nan():
     x, Z, e = _data()
-    model = CR.fit(x, Z, e, how="Fine-Gray")
+    model = CR.fit(x, Z, e, model="Fine-Gray")
     t = np.array([np.nan, 5.0])
     for method in ["cif", "sf", "ff", "Hf"]:
         if method == "cif":
@@ -142,9 +142,9 @@ def test_fine_gray_fit_warns_when_dropping_missing_covariates():
     x, Z, Zn, e, keep = _nan_rows()
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        model = FineGray.fit(x, Zn, e, cause=1)
+        model = FineGray.fit(x, Zn, e, event=1)
     assert _dropped_warnings(record) == [MESSAGE]
-    ref = FineGray.fit(x[keep], Z[keep], e[keep], cause=1)
+    ref = FineGray.fit(x[keep], Z[keep], e[keep], event=1)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-10)
 
 
@@ -153,9 +153,9 @@ def test_cr_fit_warns_once_when_dropping_missing_covariates(how):
     x, Z, Zn, e, keep = _nan_rows()
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
-        model = CR.fit(x, Zn, e, how=how)
+        model = CR.fit(x, Zn, e, model=how)
     assert _dropped_warnings(record) == [MESSAGE]
-    ref = CR.fit(x[keep], Z[keep], e[keep], how=how)
+    ref = CR.fit(x[keep], Z[keep], e[keep], model=how)
     np.testing.assert_allclose(model.betas, ref.betas, rtol=1e-10)
 
 
@@ -169,12 +169,12 @@ def test_fine_gray_fit_drops_infinite_and_none_covariates():
     keep = np.ones(len(x), bool)
     keep[[3, 4]] = False
     with pytest.warns(UserWarning, match="Dropped 2 of 150 rows"):
-        model = FineGray.fit(x, Zo, e, cause=1)
-    ref = FineGray.fit(x[keep], Z[keep], e[keep], cause=1)
+        model = FineGray.fit(x, Zo, e, event=1)
+    ref = FineGray.fit(x[keep], Z[keep], e[keep], event=1)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-10)
 
 
 def test_fine_gray_fit_covariate_row_count_checked():
     x, Z, e = _data()
     with pytest.raises(ValueError, match="Z has 149 row"):
-        FineGray.fit(x, Z[:-1], e, cause=1)
+        FineGray.fit(x, Z[:-1], e, event=1)

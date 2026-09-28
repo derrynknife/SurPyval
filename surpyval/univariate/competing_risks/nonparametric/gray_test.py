@@ -40,6 +40,7 @@ from surpyval.utils import (
     is_missing_event,
     resolve_cr_censoring,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import safe_quadform
 
 
@@ -51,11 +52,12 @@ class GrayTestResult(NamedTuple):
     groups: list
 
 
+@renamed_arguments(cause="event")
 def gray_test(
     x: npt.ArrayLike,
     e: npt.ArrayLike,
     group: npt.ArrayLike,
-    cause: Any,
+    event: Any,
     c: "npt.ArrayLike | None" = None,
     n: "npt.ArrayLike | None" = None,
     rho: float = 0.0,
@@ -76,8 +78,9 @@ def gray_test(
         Group label per observation (two or more groups, no missing
         labels). Labels of different types (``0`` and ``"a"``) may be
         mixed.
-    cause : scalar
-        The cause whose cumulative incidence is compared across groups.
+    event : scalar
+        The cause (a label in ``e``) whose cumulative incidence is compared
+        across groups. The result keeps it as ``cause``.
     c : array_like, optional
         Censoring flag (``0`` event, ``1`` right-censored; left and interval
         censoring are not supported). If omitted it is derived from ``e``
@@ -88,7 +91,7 @@ def gray_test(
         Count weight per observation (default 1), each positive.
     rho : float, optional
         Weight-family parameter: the per-time weight is ``(1 - F(t-))**rho``
-        with ``F`` the pooled cumulative incidence of ``cause``. ``0``
+        with ``F`` the pooled cumulative incidence of ``event``. ``0``
         (the default) is the standard Gray test.
 
     Returns
@@ -140,14 +143,14 @@ def gray_test(
     >>> x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
     >>> first = np.where(t_a < t_b, "a", "b")
     >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
-    >>> res = gray_test(x, e, group, cause="a")
+    >>> res = gray_test(x, e, group, event="a")
     >>> round(res.statistic, 3), res.df
     (19.962, 1)
     >>> bool(res.p_value < 0.001)
     True
     """
     x_arr, n_arr, gi, groups, is_cause, is_competing, rho = _validate(
-        x, e, group, cause, c, n, rho
+        x, e, group, event, c, n, rho
     )
     K = len(groups)
 
@@ -242,7 +245,7 @@ def gray_test(
         statistic=stat,
         df=df,
         p_value=float(chi2.sf(stat, df=df)),
-        cause=cause,
+        cause=event,
         groups=groups,
     )
 

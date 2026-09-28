@@ -12,7 +12,9 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from ._single_probability import SingleProbabilityMixin
 
 
-class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
+class Bernoulli_(  # type: ignore[misc]
+    SingleProbabilityMixin, DiscreteParametricFitter
+):
     r"""A single weighted coin flip: ``X`` is 0 or 1 with ``P(X = 1) = p``.
 
     ``x`` is the outcome, not a time, so 0 and 1 are the only values any

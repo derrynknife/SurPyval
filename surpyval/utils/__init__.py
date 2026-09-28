@@ -23,11 +23,14 @@ def optional_column(df: DataFrame, name: "str | None") -> "npt.NDArray | None":
 
 
 def _round_vals(x: npt.NDArray) -> npt.NDArray:
+    """The ticks ``x`` to the fewest significant figures that keep them
+    apart (at most 17, a double's full precision, so ticks that are equal
+    to begin with do not loop forever)."""
     not_different = True
     i = 1
     while not_different:
         x_ticks = np.array(round_sig(x, i))
-        not_different = (np.diff(x_ticks) == 0).any()
+        not_different = (np.diff(x_ticks) == 0).any() and i < 17
         i += 1
     return x_ticks
 
@@ -39,29 +42,38 @@ def round_sig(points: npt.NDArray, sig: int = 2) -> list:
 
     Parameters
     ----------
-    points : array
-        The (non-zero) values to round.
+    points : array or scalar
+        The values to round. 0 (which has no leading digit) and the
+        non-finite values are returned as they are.
     sig : int, optional
         The number of significant figures. Defaults to 2.
 
     Returns
     -------
-    list
-        The rounded values.
+    list or scalar
+        The rounded values: a list for an array, a scalar for a scalar.
 
     Examples
     --------
     >>> import numpy as np
     >>> from surpyval import round_sig
-    >>> round_sig(np.array([1234.5, 0.012345]), 2)
-    [np.float64(1200.0), np.float64(0.012)]
+    >>> round_sig(np.array([1234.5, 0.012345, -0.5678, 0.0]), 2)
+    [np.float64(1200.0), np.float64(0.012), np.float64(-0.57), np.float64(0.0)]
+    >>> round_sig(0)
+    np.int64(0)
     """
-    # Used to round to sig significant figures.
-    places = sig - np.floor(np.log10(np.abs(points))) - 1
-    output = []
-    for p, i in zip(points, places):
-        output.append(np.round(p, int(i)))
-    return output
+    values = np.asarray(points)
+    # The decimal place of the leading digit. log10(0) is -inf, and its
+    # int() raised an OverflowError, so a probability plot with a tick at
+    # exactly 0 failed (#439); 0 and inf / nan keep 0 decimal places,
+    # which leaves them unchanged.
+    with np.errstate(divide="ignore", invalid="ignore"):
+        leading = np.floor(np.log10(np.abs(values.astype(float))))
+    places = np.where(np.isfinite(leading), sig - leading - 1, 0)
+    output = [
+        np.round(p, int(i)) for p, i in zip(values.ravel(), places.ravel())
+    ]
+    return output[0] if values.ndim == 0 else output
 
 
 def _check_x_not_empty(func: Callable) -> Callable:

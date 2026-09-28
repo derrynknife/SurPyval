@@ -251,7 +251,8 @@ def test_buckley_james_bootstrap_equals_expanded_data():
         np.repeat(x, n), np.repeat(Z, n, axis=0), c=np.repeat(c, n)
     )
     np.testing.assert_allclose(
-        a.bootstrap_ci(seed=3, n_boot=50), b.bootstrap_ci(seed=3, n_boot=50)
+        a.bootstrap_ci(random_state=3, n_boot=50),
+        b.bootstrap_ci(random_state=3, n_boot=50),
     )
 
 

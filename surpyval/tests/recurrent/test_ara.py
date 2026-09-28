@@ -51,7 +51,7 @@ def test_ara_general_memory_fits_and_simulates():
     assert model.m == 2
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.aic) and np.isfinite(model.bic)
-    mcf = model.mcf(np.array([1.0, 2.0, 3.0, 4.0]), items=1000, seed=0)
+    mcf = model.mcf(np.array([1.0, 2.0, 3.0, 4.0]), items=1000, random_state=0)
     assert np.all(np.diff(mcf) >= -1e-9)
     assert "ARA" in repr(model)
 

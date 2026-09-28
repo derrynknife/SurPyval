@@ -544,17 +544,16 @@ def handle_xicn(
     # so string, integer or ``None`` marks all round-trip unchanged.
     e_arr: npt.NDArray | None = None
     if e is not None:
-        from surpyval.utils import is_missing_event
+        from surpyval.utils import resolve_cr_censoring
 
-        e_arr = np.array(e, dtype=object)
+        # One mark per row (a tuple mark is not split into a column), and
+        # every "no attributed cause" marker (None, NaN, pandas NA) turned
+        # into Python ``None`` so downstream cause bookkeeping
+        # (``event_types``, cause-specific counts) sees a single missing
+        # sentinel. The derived censoring flag is not used: ``c`` is set.
+        e_arr, _ = resolve_cr_censoring(e, c)
         if e_arr.shape[0] != x.shape[0]:
             raise ValueError("x and e must have the same length")
-        # Normalise every "no attributed cause" marker (None, NaN, pandas NA)
-        # to Python ``None`` so downstream cause bookkeeping (``event_types``,
-        # cause-specific counts) sees a single missing sentinel.
-        e_arr = np.array(
-            [None if is_missing_event(v) else v for v in e_arr], dtype=object
-        )
 
     # Gapped (multi-window) observation: each item is observed over several
     # disjoint windows with unobserved gaps between them. Expand each window

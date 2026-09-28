@@ -57,10 +57,12 @@ def test_cox_rejects_left_censoring_every_entry_point(method):
     x, Z = _cox_data()
     c = [0, 0, -1, 0, 0, 1]
     with pytest.raises(ValueError, match="parametric regression"):
-        CoxPH.fit(x, Z, c=c, method=method, strata=[0, 0, 0, 1, 1, 1])
+        CoxPH.fit(x, Z, c=c, tie_method=method, strata=[0, 0, 0, 1, 1, 1])
     df = pd.DataFrame({"x": x, "z": Z[:, 0], "c": c})
     with pytest.raises(ValueError, match="parametric regression"):
-        CoxPH.fit_from_df(df, x_col="x", Z_cols="z", c_col="c", method=method)
+        CoxPH.fit_from_df(
+            df, x_col="x", Z_cols="z", c_col="c", tie_method=method
+        )
 
 
 def test_cox_accepts_two_column_exact_times():
@@ -86,12 +88,17 @@ def test_cox_fit_from_df_tl_col_matches_fit():
 
     for method in ("breslow", "efron"):
         from_df = CoxPH.fit_from_df(
-            df, x_col="x", Z_cols="z", c_col="c", tl_col="entry", method=method
+            df,
+            x_col="x",
+            Z_cols="z",
+            c_col="c",
+            tl_col="entry",
+            tie_method=method,
         )
-        direct = CoxPH.fit(x, z.reshape(-1, 1), c=c, tl=tl, method=method)
+        direct = CoxPH.fit(x, z.reshape(-1, 1), c=c, tl=tl, tie_method=method)
         assert np.allclose(from_df.params, direct.params)
         # ... and the entry ages change the answer.
-        ignored = CoxPH.fit(x, z.reshape(-1, 1), c=c, method=method)
+        ignored = CoxPH.fit(x, z.reshape(-1, 1), c=c, tie_method=method)
         assert not np.allclose(from_df.params, ignored.params)
 
 
@@ -113,7 +120,7 @@ def test_cox_fit_from_df_masks_tl_and_strata_with_missing_covariates():
         kept[["z"]].values,
         tl=kept.tl.values,
         strata=kept.s.values,
-        method="efron",
+        tie_method="efron",
     )
     assert np.allclose(m.params, direct.params)
 
@@ -217,7 +224,7 @@ def _heavy_ties(seed=0):
 def test_heavy_ties_fit_quickly(method):
     x, Z, c = _heavy_ties()
     start = time.perf_counter()
-    model = CoxPH.fit(x, Z, c=c, method=method)
+    model = CoxPH.fit(x, Z, c=c, tie_method=method)
     elapsed = time.perf_counter() - start
     assert elapsed < 5.0
     assert np.all(np.isfinite(model.beta))
@@ -228,7 +235,7 @@ def test_heavy_ties_fit_quickly(method):
 def test_heavy_tie_fit_is_the_likelihood_maximum(method):
     # Score zero and a positive-definite information at the fitted beta.
     x, Z, c = _heavy_ties(1)
-    model = CoxPH.fit(x, Z, c=c, method=method)
+    model = CoxPH.fit(x, Z, c=c, tie_method=method)
     score, hess = model.jac(model.beta)
     assert np.allclose(score, 0.0, atol=1e-6)
     assert np.all(np.linalg.eigvalsh(hess) > 0)
@@ -243,7 +250,7 @@ def test_exact_every_unit_tied():
     c = np.zeros(80, dtype=int)
     c[:5] = 1  # five survivors keep the risk set larger than the tie set
     start = time.perf_counter()
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="exact")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
     assert time.perf_counter() - start < 5.0
     assert np.isfinite(model.beta[0])
 

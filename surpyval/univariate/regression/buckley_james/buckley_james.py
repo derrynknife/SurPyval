@@ -50,6 +50,7 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     xcnt_handler,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -367,11 +368,12 @@ class BuckleyJamesModel(SerialisableMixin):
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
+    @renamed_arguments(seed="random_state")
     def bootstrap_ci(
         self,
         alpha_ci: float = 0.05,
         n_boot: int = 200,
-        seed: "int | None" = None,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Percentile bootstrap confidence intervals for the coefficients.
@@ -381,8 +383,22 @@ class BuckleyJamesModel(SerialisableMixin):
         taking percentiles of the coefficient distribution. Counts ``n`` are
         frequency weights, so the observations resampled are the rows
         expanded by their counts: the bounds are those of the data written
-        out one row per observation. Returns an ``(n_coef, 2)`` array of
-        ``[lower, upper]`` bounds.
+        out one row per observation.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            One minus the confidence level of the intervals. Default 0.05.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the resampling. ``None`` (the default) draws from
+            numpy's global generator, so ``np.random.seed`` reproduces it.
+
+        Returns
+        -------
+        numpy.ndarray
+            An ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
         """
         if self._data is None:
             raise ValueError(
@@ -390,7 +406,7 @@ class BuckleyJamesModel(SerialisableMixin):
                 "carry"
             )
         Y, delta, Z, w = self._data
-        rng = as_generator(seed)
+        rng = as_generator(random_state)
         # The counts ``w`` are frequency weights: a row with count 3 is
         # three observations, as the fit itself treats it. The bootstrap
         # therefore resamples the *observations* -- the rows expanded by
@@ -507,7 +523,7 @@ class BuckleyJames_:
         >>> model = BuckleyJames.fit(x, Z, c=c)
         >>> model.beta.round(3)
         array([0.435])
-        >>> model.bootstrap_ci(seed=1).round(3)
+        >>> model.bootstrap_ci(random_state=1).round(3)
         array([[0.33 , 0.541]])
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])

@@ -44,6 +44,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -54,6 +55,7 @@ from .._fit_skeleton import (
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
+    uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -140,16 +142,39 @@ class AdditiveHazardsFitter(
         return regression_neg_ll(self, data, *params)
 
     def random(
-        self, size: int, Z: npt.ArrayLike, *params: float
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         """
         Draw ``size`` samples for each covariate row of ``Z`` by numerically
-        inverting the (monotone) cumulative hazard. Requires the additive
-        hazard to stay positive over the sampled range.
+        inverting the (monotone) cumulative hazard over the baseline's
+        whole support: on a baseline over the whole real line a share
+        ``ff(0)`` of the draws is below 0. Requires the additive hazard to
+        stay positive over the sampled range.
 
         Returns the draws and a 2-D array of the covariate row each was
         drawn at, row by row -- the same contract as the proportional
-        hazards ``random``.
+        hazards ``random``. ``random_state`` seeds the draw: ``None`` (the
+        default) draws from numpy's global generator, so
+        ``np.random.seed`` reproduces it; an int or a
+        ``numpy.random.Generator`` gives a stream of its own.
+
+        Examples
+        --------
+        A Normal baseline puts ``ff(0)`` of the mass below 0, and the same
+        share of the draws falls there:
+
+        >>> import numpy as np
+        >>> from surpyval import NormalAH
+        >>> np.random.seed(0)
+        >>> x, _ = NormalAH.random(100000, [[1.0]], 10.0, 4.0, 0.05)
+        >>> round(float(np.mean(x < 0)), 4)
+        0.0062
+        >>> NormalAH.ff(np.array([0.0]), np.array([[1.0]]), 10.0, 4.0, 0.05)
+        array([0.00620967])
         """
         dist_params = np.array(params[: self.k_dist])
         beta = np.array(params[self.k_dist :])
@@ -157,35 +182,63 @@ class AdditiveHazardsFitter(
         # ravel ``Z`` into a single vector, so several rows failed with a
         # shape mismatch and one row came back as a 1-D ``Z``.
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        # One stream for every row (an int seed would otherwise restart
+        # and give every row the same uniforms).
+        rng = None if random_state is None else as_generator(random_state)
         x = []
         Z_out = []
         for row in Z_arr:
-            x.append(
-                self._invert_cumulative_hazard(size, row, dist_params, beta)
-            )
+            U = uniform_draws(size, rng)
+            x.append(self._invert_cumulative_hazard(U, row, dist_params, beta))
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
 
     def _invert_cumulative_hazard(
         self,
-        size: int,
+        U: npt.NDArray,
         row: npt.NDArray,
         dist_params: npt.NDArray,
         beta: npt.NDArray,
     ) -> npt.NDArray:
-        """``size`` draws at one covariate row: the times at which
+        """The draws at one covariate row from the uniforms ``U``: the
+        times at which
         ``H_0(x) + x beta'Z`` reaches ``-log U``, found by bracketing and
-        bisection."""
+        bisection.
+
+        The search covers the baseline's whole support, as the
+        proportional hazards sampler's quantile function does: on a
+        baseline over the whole real line (Normal, Gumbel, Logistic)
+        ``H(0 | Z) = H_0(0)`` is positive, and the draws with ``-log U``
+        below it -- a share ``ff(0)`` of them -- are negative times. The
+        search below 0 stops where the hazard ``h_0(x) + beta'Z`` turns
+        negative (``beta'Z < 0``), where the model is not a distribution;
+        those draws are searched above 0 instead.
+        """
         bz = float(np.dot(row, beta))
-        target = -np.log(np.random.uniform(0, 1, size))
+        target = -np.log(U)
 
         def cum_haz(xv: npt.NDArray) -> npt.NDArray:
             return self.Hf_dist(xv, *dist_params) + xv * bz
 
-        lo = np.zeros(size)
-        hi = np.ones(size)
+        # H(0 | Z) = H_0(0), which is 0 for a baseline on [0, inf) (whose
+        # log-density may divide by zero there, which is harmless).
+        with np.errstate(all="ignore"):
+            down = target < float(cum_haz(np.zeros(1))[0])
+        lo = np.where(down, -1.0, 0.0)
+        hi = np.where(down, 0.0, 1.0)
+        for _ in range(200 if down.any() else 0):
+            above = down & (cum_haz(lo) >= target)
+            if not np.any(above):
+                break
+            negative = above & (self.hf_dist(lo, *dist_params) + bz < 0)
+            down &= ~negative
+            lo = np.where(negative, 0.0, lo)
+            hi = np.where(negative, 1.0, hi)
+            above &= ~negative
+            hi = np.where(above, lo, hi)
+            lo = np.where(above, lo * 2.0, lo)
         for _ in range(200):
-            below = cum_haz(hi) < target
+            below = ~down & (cum_haz(hi) < target)
             if not np.any(below):
                 break
             hi = np.where(below, hi * 2.0, hi)

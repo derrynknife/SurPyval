@@ -59,7 +59,7 @@ def _simulate_fine_gray(N, seed, beta=(0.7, -0.4), p=0.5, cens_scale=3.0):
 
 def test_recovers_parameters_under_censoring():
     x, Z, e, c = _simulate_fine_gray(8000, 0)
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     assert np.allclose(m.beta, [0.7, -0.4], atol=0.07)
     # Roughly a quarter of observations are censored in this design.
     assert 0.15 < c.mean() < 0.35
@@ -68,7 +68,7 @@ def test_recovers_parameters_under_censoring():
 def test_baseline_cif_matches_theory_at_Z_zero():
     # At Z = 0 the model reduces to the baseline CIF p(1 - e^{-t}).
     x, Z, e, c = _simulate_fine_gray(8000, 1)
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     t = np.array([0.5, 1.0, 2.0])
     expected = 0.5 * (1 - np.exp(-t))
     assert np.allclose(m.cif(t, [0.0, 0.0]), expected, atol=0.03)
@@ -76,7 +76,7 @@ def test_baseline_cif_matches_theory_at_Z_zero():
 
 def test_cif_is_monotone_and_bounded():
     x, Z, e, c = _simulate_fine_gray(4000, 2)
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     t = np.linspace(0.0, 5.0, 50)
     cif = m.cif(t, [0.3, -0.2])
     assert np.all(cif >= 0) and np.all(cif <= 1)
@@ -85,7 +85,7 @@ def test_cif_is_monotone_and_bounded():
 
 def test_sf_and_hf_identities():
     x, Z, e, c = _simulate_fine_gray(4000, 3)
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     t = np.array([0.5, 1.0, 2.0])
     Z0 = [0.1, -0.1]
     assert np.allclose(m.sf(t, Z0), 1 - m.cif(t, Z0))
@@ -95,7 +95,7 @@ def test_positive_coefficient_is_significant():
     # The strong cause-1 covariate should be clearly significant; all p-values
     # are well-defined probabilities.
     x, Z, e, c = _simulate_fine_gray(6000, 4)
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     assert np.all(np.isfinite(m.p_values))
     assert np.all((m.p_values >= 0) & (m.p_values <= 1))
     assert m.p_values[0] < 0.01  # beta_0 = 0.7
@@ -108,9 +108,9 @@ def test_counts_equivalent_to_repeated_rows():
         np.repeat(Z, 2, axis=0),
         np.repeat(e, 2),
         c=np.repeat(c, 2),
-        cause=1,
+        event=1,
     )
-    m_cnt = FineGray.fit(x, Z, e, c=c, n=np.full(x.size, 2), cause=1)
+    m_cnt = FineGray.fit(x, Z, e, c=c, n=np.full(x.size, 2), event=1)
     assert np.allclose(m_rep.beta, m_cnt.beta, atol=1e-4)
 
 
@@ -119,7 +119,7 @@ def test_ipcw_matters_versus_naive_no_censoring():
     # subdistribution model and still recovers the truth.
     x, Z, e, c = _simulate_fine_gray(8000, 6, cens_scale=1e6)
     assert c.mean() == 0.0
-    m = FineGray.fit(x, Z, e, c=c, cause=1)
+    m = FineGray.fit(x, Z, e, c=c, event=1)
     assert np.allclose(m.beta, [0.7, -0.4], atol=0.07)
 
 
@@ -128,14 +128,14 @@ def test_ipcw_matters_versus_naive_no_censoring():
 
 def test_cause_required_when_multiple_event_types():
     x, Z, e, c = _simulate_fine_gray(500, 7)
-    with pytest.raises(ValueError, match="specify `cause`"):
+    with pytest.raises(ValueError, match="specify `event`"):
         FineGray.fit(x, Z, e, c=c)
 
 
 def test_unknown_cause_rejected():
     x, Z, e, c = _simulate_fine_gray(500, 8)
     with pytest.raises(ValueError, match="not observed"):
-        FineGray.fit(x, Z, e, c=c, cause=99)
+        FineGray.fit(x, Z, e, c=c, event=99)
 
 
 # --- CompetingRisksProportionalHazards integration -----------------------
@@ -143,8 +143,10 @@ def test_unknown_cause_rejected():
 
 def test_crph_fine_gray_matches_standalone():
     x, Z, e, c = _simulate_fine_gray(5000, 9)
-    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
-    standalone = FineGray.fit(x, Z, e, c=c, cause=1)
+    crph = CompetingRisksProportionalHazards.fit(
+        x, Z, e, c=c, model="Fine-Gray"
+    )
+    standalone = FineGray.fit(x, Z, e, c=c, event=1)
     i1 = crph.event_idx_map[1]
     assert np.allclose(crph.betas[i1], standalone.beta, atol=1e-6)
     t = np.array([0.5, 1.0, 2.0])
@@ -155,7 +157,9 @@ def test_crph_fine_gray_matches_standalone():
 
 def test_crph_fine_gray_cif_identities():
     x, Z, e, c = _simulate_fine_gray(4000, 10)
-    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(
+        x, Z, e, c=c, model="Fine-Gray"
+    )
     t = np.array([0.5, 1.0, 2.0])
     Z0 = [0.1, 0.1]
     assert np.allclose(crph.sf(t, Z0, 1) + crph.cif(t, Z0, 1), 1.0)
@@ -164,7 +168,9 @@ def test_crph_fine_gray_cif_identities():
 
 def test_crph_fine_gray_hf_df_raise():
     x, Z, e, c = _simulate_fine_gray(2000, 11)
-    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(
+        x, Z, e, c=c, model="Fine-Gray"
+    )
     with pytest.raises(ValueError, match="no pointwise"):
         crph.hf([1.0], [0.0, 0.0], 1)
     with pytest.raises(ValueError, match="no pointwise"):
@@ -173,7 +179,9 @@ def test_crph_fine_gray_hf_df_raise():
 
 def test_crph_fine_gray_requires_event():
     x, Z, e, c = _simulate_fine_gray(2000, 12)
-    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Fine-Gray")
+    crph = CompetingRisksProportionalHazards.fit(
+        x, Z, e, c=c, model="Fine-Gray"
+    )
     with pytest.raises(ValueError, match="pass `event`"):
         crph.sf([1.0], [0.0, 0.0])
 
@@ -182,6 +190,6 @@ def test_crph_cox_path_still_runs():
     # Regression guard: the cause-specific Cox path (a sibling of the same
     # public entry point) fits and predicts.
     x, Z, e, c = _simulate_fine_gray(3000, 13)
-    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, how="Cox")
+    crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, model="Cox")
     cif = crph.cif(np.array([0.5, 1.0, 2.0]), [0.1, -0.1], 1)
     assert np.all(np.isfinite(cif))

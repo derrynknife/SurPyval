@@ -166,7 +166,7 @@ The survival function ``sf``, failure function ``ff`` and cumulative hazard ``Hf
 
 ``interp='linear'`` (or ``'cubic'``, a shape-preserving interpolant) joins the estimates at the observed values instead; it is ``nan`` outside the observed range because there is nothing to interpolate between. Interpolation can make a plot easier to read but is not part of the estimate: the data say nothing about the shape of the curve between observations.
 
-Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` follow the same rule. The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
+Outside the data, then, what the estimate gives is a convention, and the step function's (1 before the first value, the last value held however far beyond it) is not always right. When you know the range the variable can take -- nothing can have failed before ``lower``, and the curve is to be held flat up to ``upper`` -- give the model that range with ``set_support(lower, upper)``. For every function and every ``interp``, the estimate is then at its start (``sf`` 1; ``ff``, ``Hf``, ``hf`` and ``df`` 0) from ``lower`` to the first observed value, holds its value at the last observed value up to ``upper``, and is ``nan`` outside ``[lower, upper]``; the confidence bounds from ``cb`` and ``bootstrap_cb`` follow the same rule (without a support they are ``nan`` outside the data). The bounds must contain the data. ``lower`` may be negative (the variable need not be time) and either bound may be infinite. ``set_support`` returns the model, so it can follow ``fit``, and ``to_dict`` saves the bounds with the model. Without it (``model.support`` is ``None``) nothing changes.
 
 .. jupyter-execute::
 
@@ -380,18 +380,18 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
 
     # Keep the data too, so the restored model can bootstrap
     with_data = surv.from_dict(json.loads(json.dumps(model.to_dict(with_data=True))))
-    print(with_data.bootstrap_cb([3], B=50, random_state=0),
-          model.bootstrap_cb([3], B=50, random_state=0))
+    print(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
+          model.bootstrap_cb([3], n_boot=50, random_state=0))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert np.array_equal(restored.sf([1.5, 3]), model.sf([1.5, 3]))
-    assert np.allclose(with_data.bootstrap_cb([3], B=50, random_state=0),
-                       model.bootstrap_cb([3], B=50, random_state=0))
+    assert np.allclose(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
+                       model.bootstrap_cb([3], n_boot=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -497,15 +497,16 @@ to resampled data. Here is a simulated sample of 60 items with random right cens
     t = [5, 10, 15]
     print('pointwise:\n', km.cb(t).round(3))
     print('Hall-Wellner band:\n', km.band(t).round(3))
-    print('bootstrap:\n', km.bootstrap_cb(t, B=200, random_state=1).round(3))
+    print('bootstrap:\n', km.bootstrap_cb(t, n_boot=200, random_state=1).round(3))
 
 The band is wider than the pointwise bounds, as it must be, and the bootstrap interval is close
 to the pointwise one here, a sign that the asymptotic formula is adequate for this sample. ``band()`` takes
 ``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
 and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value, that of the
 limiting Brownian bridge over the range the band covers, is computed numerically rather than
-simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``B`` (200 resamples), ``random_state``, ``alpha_ci`` and a
-one-sided ``bound``; it always bounds the survival function.
+simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
+outside the range of the data unless the model has a support (``set_support``).
 
 .. jupyter-execute::
     :hide-code:
@@ -513,14 +514,14 @@ one-sided ``bound``; it always bounds the survival function.
 
     _pw, _hw = km.cb(t), km.band(t)
     assert np.all(_hw[:, 0] < _pw[:, 0]) and np.all(_hw[:, 1] > _pw[:, 1])
-    _bs = km.bootstrap_cb(t, B=200, random_state=1)
+    _bs = km.bootstrap_cb(t, n_boot=200, random_state=1)
     assert np.max(np.abs(_bs - _pw)) < 0.05, _bs - _pw
 
 .. jupyter-execute::
 
     print('Nair band:\n', km.band(t, method='nair').round(3))
     print('Hall-Wellner, normal type:\n', km.band(t, bound_type='normal').round(3))
-    print('bootstrap 95% lower:', km.bootstrap_cb(t, bound='lower', B=200, random_state=1).round(3))
+    print('bootstrap 95% lower:', km.bootstrap_cb(t, bound='lower', n_boot=200, random_state=1).round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -898,18 +899,18 @@ way to put bounds on such an estimate:
     model = TB.fit(x=x, c=c, n=n, turnbull_estimator='Kaplan-Meier')
     t = [6, 8, 9]
     print('from cb():\n', model.cb(t).round(3))
-    print('bootstrap:\n', model.bootstrap_cb(t, B=100, random_state=1).round(3))
+    print('bootstrap:\n', model.bootstrap_cb(t, n_boot=100, random_state=1).round(3))
 
 The bootstrap interval at 8 is much wider than the one from ``cb()``: six of the 17 items were
 interval or left censored, and the formula-based bound does not know how uncertain their failure times
 are. Each bootstrap resample refits the Turnbull EM, with the same ``turnbull_estimator``, ``tol``
-and ``max_iter`` as the original fit, so keep ``B`` modest for large data sets.
+and ``max_iter`` as the original fit, so keep ``n_boot`` modest for large data sets.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _cb, _bs = model.cb(t), model.bootstrap_cb(t, B=100, random_state=1)
+    _cb, _bs = model.cb(t), model.bootstrap_cb(t, n_boot=100, random_state=1)
     assert _bs[1, 1] - _bs[1, 0] > 1.4 * (_cb[1, 1] - _cb[1, 0])
     _n = np.array(n)
     assert _n[np.isin(c, [-1, 2])].sum() == 6 and _n.sum() == 17

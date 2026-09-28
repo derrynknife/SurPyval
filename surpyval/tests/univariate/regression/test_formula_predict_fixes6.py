@@ -82,7 +82,7 @@ def _fit(family, formula, df):
     if family.startswith("CR-"):
         how = family[3:]
         return CR.fit_from_df(
-            df, "t", "cause", c_col="c", formula=formula, how=how
+            df, "t", "cause", c_col="c", formula=formula, model=how
         )
     return getattr(surpyval, family).fit_from_df(df, **kw)
 
@@ -286,7 +286,7 @@ def test_competing_risks_formula_predicts_from_dataframe(
     how, formula, restored
 ):
     model = CR.fit_from_df(
-        _df(), "t", "cause", c_col="c", formula=formula, how=how
+        _df(), "t", "cause", c_col="c", formula=formula, model=how
     )
     if restored:
         model = _rt(model)
@@ -317,7 +317,7 @@ def test_competing_risks_formula_predicts_from_dataframe(
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
 def test_competing_risks_dataframe_is_read_by_column_name(how):
     model = CR.fit_from_df(
-        _df(), "t", "cause", c_col="c", Z_cols=["z", "w"], how=how
+        _df(), "t", "cause", c_col="c", Z_cols=["z", "w"], model=how
     )
     arr = NEW[["z", "w"]].to_numpy()
     expected = model.cif(T, arr, "u")

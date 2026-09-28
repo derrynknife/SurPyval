@@ -450,7 +450,9 @@ def test_induced_life_under_a_stress(model):
 
 def test_bootstrap_bounds_under_a_profile(model):
     t = np.array([200.0, 240.0])
-    band = model.cb(t, Z=PROFILE, method="bootstrap", n_boot=20, seed=1)
+    band = model.cb(
+        t, Z=PROFILE, method="bootstrap", n_boot=20, random_state=1
+    )
     assert band.shape == (2, 2)
     assert np.all(band[:, 0] <= band[:, 1])
     sf = model.sf(t, Z=PROFILE)
@@ -458,7 +460,9 @@ def test_bootstrap_bounds_under_a_profile(model):
     # a reloaded model recovers the fitter the refits need, so it gives
     # the same band from the same resamples
     restored = DegradationModel.from_dict(model.to_dict())
-    again = restored.cb(t, Z=PROFILE, method="bootstrap", n_boot=20, seed=1)
+    again = restored.cb(
+        t, Z=PROFILE, method="bootstrap", n_boot=20, random_state=1
+    )
     np.testing.assert_allclose(again, band)
 
 

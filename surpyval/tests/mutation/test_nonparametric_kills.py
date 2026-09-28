@@ -15,6 +15,7 @@ scalar query returns a scalar or a length-one array.
 """
 
 import importlib
+import json
 import warnings
 
 import matplotlib
@@ -130,11 +131,11 @@ def test_fit_from_ecdf_accepts_its_documented_edges(x, R):
 
 
 def test_kaplan_meier_step_with_no_one_at_risk_is_zero():
-    # Documented: a step with r zero (0 / 0) takes the estimate to zero.
-    # Kills kaplan_meier.py:95 (NaN set to 1). The 0 / 0 itself leaks a
-    # raw "invalid value" RuntimeWarning (principle 22), not pinned here.
+    # Documented: a step with r zero (0 / 0) takes the estimate to zero,
+    # without a raw numpy warning (principle 22; it leaked "invalid value"
+    # until #450). Kills kaplan_meier.py:95 (NaN set to 1).
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
+        warnings.simplefilter("error")
         R = nonp.kaplan_meier(np.array([2.0, 1, 0]), np.array([1.0, 0, 0]))
     assert_allclose(R, [0.5, 0.5, 0.0])
 
@@ -162,23 +163,25 @@ def test_snap_is_relative_and_one_in_a_billion():
     assert_allclose([fh._snap(u) for u in v], expected, rtol=0, atol=0)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#450: KaplanMeier.fit raises FloatingPointError ('underflow "
-    "encountered in exp', kaplan_meier.py:101) once the estimate falls "
-    "below 1e-308: 1100 staggered entries with a risk set of 2 at each "
-    "failure (R = 0.5**1099); the log-space fallback runs under the same "
-    "errstate(under='raise') and also leaks 'divide by zero in log'",
-)
 def test_kaplan_meier_survives_underflow():
+    # #450: 1100 staggered entries with a risk set of 2 at each failure
+    # (R = 0.5**k): once the product fell below 1e-308 the fit raised
+    # FloatingPointError ('underflow encountered in exp') from a log-space
+    # fallback run under errstate(under='raise'), and leaked 'divide by
+    # zero in log'. An estimate below the smallest float is 0, quietly.
     # Found from kaplan_meier.py:100-101: the fallback for an underflowing
     # product never ran in the suite (its five mutants survived).
     x = np.arange(1, 1101) + 0.5
     tl = np.r_[0, x[:-1] - 0.75]
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)
+        warnings.simplefilter("error")
         model = sp.KaplanMeier.fit(x, tl=tl)
+        bounds = model.cb([5.0, 1060.5, 1100.5])
     assert np.all(np.diff(model.R) <= 0) and model.R[-1] == 0.0
+    # Exact while the product is a normal float: 0.5**1020 is 8.9e-308.
+    assert model.R[1020] == 0.5**1021 and model.R[1080] == 0.0
+    assert_allclose(model.sf(5.0), 0.5**4)
+    assert np.isfinite(bounds).all()
 
 
 # --- hf, the discrete hazard -------------------------------------------------
@@ -382,16 +385,17 @@ def test_bootstrap_is_centred_on_the_estimate_with_truncation():
     x, c, tl = _truncated_sample()
     model = sp.KaplanMeier.fit(x, c=c, tl=tl)
     q = np.quantile(x, [0.1, 0.3, 0.5, 0.7, 0.9])
-    median = model.bootstrap_cb(q, alpha_ci=0.98, B=300, random_state=0)
+    median = model.bootstrap_cb(q, alpha_ci=0.98, n_boot=300, random_state=0)
     assert_allclose(median, np.c_[model.sf(q), model.sf(q)], atol=0.03)
 
 
 def test_bootstrap_bounds_are_right_continuous():
     # Like the estimate, the bounds take the value of the step at a step
-    # time. Kills nonparametric.py:1457 (side='right' dropped).
+    # time (up to the last, past which they are NaN). Kills
+    # nonparametric.py:1457 (side='right' dropped).
     model = sp.KaplanMeier.fit(X)
-    at = model.bootstrap_cb(X, B=50, random_state=0)
-    after = model.bootstrap_cb(X + 1e-9, B=50, random_state=0)
+    at = model.bootstrap_cb(X[:-1], n_boot=50, random_state=0)
+    after = model.bootstrap_cb(X[:-1] + 1e-9, n_boot=50, random_state=0)
     assert_allclose(at, after)
 
 
@@ -402,10 +406,10 @@ def test_bootstrap_at_the_first_and_last_times():
     # are 0. Kills nonparametric.py:1459 (idx < 0 -> None, <= 0, < 1; the
     # 1.0 -> 2.0; the last index len - 1 -> len - 2).
     model = sp.KaplanMeier.fit(X)
-    lower, upper = _flat(model.bootstrap_cb(1.0, B=200, random_state=0))
+    lower, upper = _flat(model.bootstrap_cb(1.0, n_boot=200, random_state=0))
     assert upper == 1.0
     assert lower < 1.0
-    assert_allclose(model.bootstrap_cb(10.0, B=100, random_state=0), 0.0)
+    assert_allclose(model.bootstrap_cb(10.0, n_boot=100, random_state=0), 0.0)
 
 
 def test_bootstrap_default_and_smallest_B():
@@ -415,9 +419,9 @@ def test_bootstrap_default_and_smallest_B():
     model = _fit()
     assert_allclose(
         model.bootstrap_cb([3, 6], random_state=4),
-        model.bootstrap_cb([3, 6], B=200, random_state=4),
+        model.bootstrap_cb([3, 6], n_boot=200, random_state=4),
     )
-    one = model.bootstrap_cb([3, 6], B=1, random_state=4)
+    one = model.bootstrap_cb([3, 6], n_boot=1, random_state=4)
     assert_allclose(one[:, 0], one[:, 1])
 
 
@@ -430,26 +434,40 @@ def test_turnbull_bootstrap_equals_kaplan_meier_on_right_censored_data():
     tb = sp.Turnbull.fit(X, c=C, turnbull_estimator="Kaplan-Meier")
     q = [1.5, 3, 5, 8]
     assert_allclose(
-        tb.bootstrap_cb(q, B=100, random_state=3),
-        km.bootstrap_cb(q, B=100, random_state=3),
+        tb.bootstrap_cb(q, n_boot=100, random_state=3),
+        km.bootstrap_cb(q, n_boot=100, random_state=3),
         atol=1e-8,
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#452: without a support bootstrap_cb is not NaN outside the "
-    "data, unlike cb: Kaplan-Meier of 1..10 (last censored) gives "
-    "bootstrap_cb([0.5, 11]) = [[1, 1], [0, 0.548]] and cb [[nan, nan], "
-    "[nan, nan]]; set_support says the bounds are NaN there",
-)
-def test_bootstrap_cb_is_nan_outside_the_data_like_cb():
-    # Found while triaging the bootstrap mutants (principle 11: behaviour
-    # outside the data is the same for all of a model's bounds).
+@pytest.mark.parametrize("bound", ["two-sided", "lower", "upper"])
+def test_bootstrap_cb_is_nan_outside_the_data_like_cb(bound):
+    # #452: Kaplan-Meier of 1..10 (last censored) gave bootstrap_cb([0.5,
+    # 11]) = [[1, 1], [0, 0.548]] where cb is NaN; and a missing time sorted
+    # past the last step. Found while triaging the bootstrap mutants
+    # (principle 11: behaviour outside the data is the same for all of a
+    # model's bounds; principle 3: missing in, missing out).
     model = _fit(c=np.r_[C[:-1], 1])
-    q = [0.5, 11]
-    assert np.isnan(model.cb(q)).all()
-    assert np.isnan(model.bootstrap_cb(q, B=50, random_state=0)).all()
+    q = [0.5, 11, np.nan, 5]
+    kw = dict(bound=bound, n_boot=50, random_state=0)
+    assert np.isnan(model.cb(q, bound=bound)[:3]).all()
+    got = model.bootstrap_cb(q, **kw)
+    assert np.isnan(got[:3]).all() and np.isfinite(got[3]).all()
+    # Inside the data, the same bounds as before.
+    assert_allclose(got[3:], model.bootstrap_cb([5], **kw))
+
+
+def test_bootstrap_cb_follows_cb_with_a_support():
+    # With a support: the start value (1) from lower to the first time,
+    # the bounds at the last time carried to upper, NaN outside, exactly
+    # where cb gives them.
+    model = _fit(c=np.r_[C[:-1], 1]).set_support(0, 20)
+    q = [-1, 0.5, 10, 15, 21, np.nan]
+    got = model.bootstrap_cb(q, n_boot=50, random_state=0)
+    ref = model.cb(q)
+    assert_allclose(np.isnan(got), np.isnan(ref))
+    assert_allclose(got[1], [1.0, 1.0])
+    assert_allclose(got[3], got[2])
 
 
 # --- serialisation (principle 20) --------------------------------------------
@@ -463,8 +481,8 @@ def test_restored_model_bootstraps_as_the_original():
     model = _fit()
     restored = sp.from_dict(model.to_dict(with_data=True))
     assert_allclose(
-        restored.bootstrap_cb([2, 5, 8], B=50, random_state=2),
-        model.bootstrap_cb([2, 5, 8], B=50, random_state=2),
+        restored.bootstrap_cb([2, 5, 8], n_boot=50, random_state=2),
+        model.bootstrap_cb([2, 5, 8], n_boot=50, random_state=2),
     )
 
 
@@ -487,8 +505,8 @@ def test_turnbull_saved_before_tol_was_recorded_bootstraps_as_fitted():
     del old["tol"], old["max_iter"]
     restored = sp.from_dict(old)
     assert_allclose(
-        restored.bootstrap_cb([2, 5, 8], B=20, random_state=2),
-        model.bootstrap_cb([2, 5, 8], B=20, random_state=2),
+        restored.bootstrap_cb([2, 5, 8], n_boot=20, random_state=2),
+        model.bootstrap_cb([2, 5, 8], n_boot=20, random_state=2),
     )
 
 
@@ -525,21 +543,45 @@ def test_band_round_trips_without_its_data():
     assert_allclose(restored.band([3, 6]), model.band([3, 6]), rtol=1e-12)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#451: band of a left truncated Kaplan-Meier changes after "
-    "to_dict()/from_dict() without data: N = n.sum() = 60 becomes "
-    "max(r) = 37, and the band at the 20% time goes from [0.4900, "
-    "0.8917] to [0.4535, 0.9018]",
-)
-def test_band_round_trips_with_truncation():
-    # Principle 20 (identical predictions after a round trip); found
-    # triaging the band mutants that choose N (nonparametric.py:1727).
+@pytest.mark.parametrize("name", ["KaplanMeier", "Turnbull"])
+def test_band_round_trips_with_truncation(name):
+    # #451: without its data a restored model took the band's N from the
+    # risk set: for this Kaplan-Meier N = n.sum() = 60 became max(r) = 37,
+    # and the band at the 20% time went from [0.4900, 0.8917] to [0.4535,
+    # 0.9018]. Principle 20 (identical predictions after a round trip);
+    # found triaging the band mutants that choose N (nonparametric.py:1727).
     x, c, tl = _truncated_sample()
-    model = sp.KaplanMeier.fit(x, c=c, tl=tl)
+    model = getattr(sp, name).fit(x, c=c, tl=tl)
     q = np.quantile(x, [0.2, 0.5, 0.8])
-    restored = sp.from_dict(model.to_dict())
+    d = model.to_dict()
+    assert d["band_n"] == 60.0 and d["schema"] == 2
+    restored = sp.from_dict(json.loads(json.dumps(d)))
     assert_allclose(restored.band(q), model.band(q), rtol=1e-12)
+    if name == "KaplanMeier":
+        assert_allclose(
+            restored.band(q)[0], [0.4900, 0.8917], atol=5e-5, rtol=0
+        )
+
+
+def test_band_n_is_stored_only_where_the_risk_set_differs():
+    # Untruncated, the fallback N = max(r) is the number of items (up to
+    # the Turnbull EM's round-off), so nothing is added and the dictionary
+    # stays schema 1, readable by v0.20; a dictionary written before
+    # "band_n" was stored keeps the fallback.
+    x, c, tl = _truncated_sample()
+    for model in (sp.KaplanMeier.fit(x, c=c), sp.Turnbull.fit(x, c=c)):
+        d = model.to_dict()
+        assert "band_n" not in d and d["schema"] == 1
+    model = sp.KaplanMeier.fit(x, c=c, tl=tl)
+    old = model.to_dict()
+    del old["band_n"]
+    q = np.quantile(x, [0.2])
+    assert_allclose(
+        sp.from_dict(old).band(q), [[0.4535, 0.9018]], atol=5e-5, rtol=0
+    )
+    old["band_n"] = "60"
+    with pytest.raises(ValueError, match="'band_n' must be a number"):
+        sp.from_dict(old)
 
 
 def test_band_warns_only_for_its_retired_arguments():

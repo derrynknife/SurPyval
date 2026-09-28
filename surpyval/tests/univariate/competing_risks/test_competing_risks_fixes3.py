@@ -54,7 +54,7 @@ def test_gray_calibrated_under_unequal_censoring(cause):
             np.concatenate([x0, x1]),
             np.concatenate([e0, e1]),
             np.repeat([0, 1], 400),
-            cause=cause,
+            event=cause,
         )
         stats.append(res.statistic)
     stats = np.array(stats)
@@ -73,7 +73,7 @@ def test_gray_equal_censoring_close_to_pooled_version():
     x = np.minimum(np.minimum(t_a, t_b), t_c).round(3)
     first = np.where(t_a < t_b, "a", "b")
     e = np.where(t_c < np.minimum(t_a, t_b), None, first)
-    res = gray_test(x, e, group, cause="a")
+    res = gray_test(x, e, group, event="a")
     assert res.statistic == pytest.approx(19.962, abs=1e-3)
 
 
@@ -82,11 +82,11 @@ def test_gray_invariances_hold():
     x, e = _sim_cr(rng, 240, 0.1, 0.2, 10.0)
     g = np.repeat([0, 1, 2], 80)
     n = rng.integers(1, 4, 240)
-    base = gray_test(x, e, g, cause=1, n=n)
+    base = gray_test(x, e, g, event=1, n=n)
     expanded = gray_test(
-        np.repeat(x, n), np.repeat(e, n), np.repeat(g, n), cause=1
+        np.repeat(x, n), np.repeat(e, n), np.repeat(g, n), event=1
     )
-    relabelled = gray_test(x, e, np.array(["b", "c", "a"])[g], cause=1, n=n)
+    relabelled = gray_test(x, e, np.array(["b", "c", "a"])[g], event=1, n=n)
     assert expanded.statistic == pytest.approx(base.statistic)
     assert relabelled.statistic == pytest.approx(base.statistic)
 
@@ -109,35 +109,35 @@ G6 = [0, 0, 0, 1, 1, 1]
 )
 def test_gray_rejects_invalid_arguments(kwargs, match):
     with pytest.raises(ValueError, match=match):
-        gray_test(X6, E6, G6, cause=1, **kwargs)
+        gray_test(X6, E6, G6, event=1, **kwargs)
 
 
 @pytest.mark.parametrize("bad", [np.nan, np.inf])
 def test_gray_rejects_non_finite_times(bad):
     with pytest.raises(ValueError, match="finite"):
-        gray_test([bad, 2, 3, 4, 5, 6], E6, G6, cause=1)
+        gray_test([bad, 2, 3, 4, 5, 6], E6, G6, event=1)
 
 
 @pytest.mark.parametrize("missing", [None, np.nan])
 def test_gray_rejects_missing_group_labels(missing):
     with pytest.raises(ValueError, match="missing label"):
-        gray_test(X6, E6, [missing, 0, 0, 1, 1, 1], cause=1)
+        gray_test(X6, E6, [missing, 0, 0, 1, 1, 1], event=1)
 
 
 def test_gray_rejects_length_mismatches():
     with pytest.raises(ValueError, match="one label per time"):
-        gray_test(X6, E6, G6[:-1], cause=1)
+        gray_test(X6, E6, G6[:-1], event=1)
     with pytest.raises(ValueError, match="one cause per time"):
-        gray_test(X6, E6[:-1], G6, cause=1)
+        gray_test(X6, E6[:-1], G6, event=1)
     with pytest.raises(ValueError, match="empty"):
-        gray_test([], [], [], cause=1)
+        gray_test([], [], [], event=1)
 
 
 def test_gray_mixed_and_tuple_labels():
-    res = gray_test(X6, E6, [0, "a", 0, "a", 0, "a"], cause=1)
+    res = gray_test(X6, E6, [0, "a", 0, "a", 0, "a"], event=1)
     assert res.groups == [0, "a"]
     causes = [("a", 1), ("b", 2)] * 3
-    tup = gray_test(X6, causes, G6, cause=("a", 1))
+    tup = gray_test(X6, causes, G6, event=("a", 1))
     assert tup.statistic == pytest.approx(gray_test(X6, E6, G6, 1).statistic)
 
 
@@ -278,7 +278,7 @@ def test_parametric_labels(name):
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
 def test_crph_labels(name, how):
     e = LABELS[name]
-    model = CompetingRisksProportionalHazards.fit(X8, Z8, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(X8, Z8, e, model=how)
     restored = _round_trip(model)
     for k in model.event_idx_map:
         np.testing.assert_allclose(
@@ -288,7 +288,7 @@ def test_crph_labels(name, how):
 
 def test_fine_gray_tuple_cause_round_trips():
     e = LABELS["tuple"]
-    model = FineGray.fit(X8, Z8, e, cause=("a", 1))
+    model = FineGray.fit(X8, Z8, e, event=("a", 1))
     restored = _round_trip(model)
     assert restored.cause == ("a", 1)
     np.testing.assert_allclose(restored.cif(X8, [1]), model.cif(X8, [1]))
@@ -312,7 +312,7 @@ def _crph_data(seed=1, n=120):
 @pytest.mark.parametrize("event", [3, None])
 def test_crph_cif_unknown_event_is_a_clear_error(how, event):
     x, Z, e = _crph_data()
-    model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
     with pytest.raises(ValueError, match="one of the fitted causes"):
         model.cif([1.0], [0, 0], event)
 
@@ -320,7 +320,7 @@ def test_crph_cif_unknown_event_is_a_clear_error(how, event):
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
 def test_crph_cif_pairs_covariate_rows_with_times(how):
     x, Z, e = _crph_data()
-    model = CompetingRisksProportionalHazards.fit(x, Z, e, how=how)
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
     paired = model.cif([1.0, 2.0], [[0, 0], [1, 1]], 1)
     single = [
         model.cif([1.0], [0, 0], 1)[0],
@@ -333,7 +333,7 @@ def test_crph_cif_pairs_covariate_rows_with_times(how):
 
 def test_fine_gray_cif_pairs_covariate_rows():
     x, Z, e = _crph_data()
-    fg = FineGray.fit(x, Z, e, cause=1)
+    fg = FineGray.fit(x, Z, e, event=1)
     paired = fg.cif([1.0, 2.0], [[0, 0], [1, 1]])
     np.testing.assert_allclose(
         paired, [fg.cif([1.0], [0, 0])[0], fg.cif([2.0], [1, 1])[0]]
@@ -345,7 +345,7 @@ def test_wrong_number_of_covariate_rows_is_a_clear_error():
     with pytest.raises(ValueError, match="row"):
         CompetingRisksProportionalHazards.fit(x, Z[:-1], e)
     with pytest.raises(ValueError, match="row"):
-        FineGray.fit(x, Z[:-1], e, cause=1)
+        FineGray.fit(x, Z[:-1], e, event=1)
 
 
 def test_nonparametric_sf_keeps_the_query_shape():

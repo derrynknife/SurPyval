@@ -1,5 +1,7 @@
 import inspect
 import itertools
+import types
+import warnings
 from typing import Callable
 
 import numpy as onp
@@ -37,6 +39,80 @@ def registered_custom(name: str) -> "CustomDistribution | None":
     return _REGISTRY.get(name)
 
 
+def _model_attribute_names() -> frozenset[str]:
+    """
+    Every attribute name a fitted ``Parametric`` model can carry.
+
+    A fit exposes each parameter as an attribute of the model
+    (``model.alpha``), so a parameter named after one of the model's own
+    attributes overwrote it: a parameter called ``k`` became the model's
+    parameter count (AIC 290.08 for 289.50), and ``dist``, ``data``,
+    ``lfp``, ``zi`` or ``method`` broke ``sf``, ``bic`` and ``cb``
+    (#437). The names are read off the class -- its methods and
+    properties, the attributes it declares for the fitters to fill in, and
+    what its constructor sets for every combination of offset,
+    limited-failure and zero-inflation -- so a new attribute is covered
+    without a list to keep in step. ``res`` and ``log_likelihood`` are the
+    two a fitter sets that the class does not declare.
+
+    ``p`` is not among them: a distribution may have its own ``p`` (the
+    limited-failure proportion is then named ``lfp_p``, see
+    ``Parametric.__init__``), and the fit leaves the attribute alone.
+    """
+    from surpyval.univariate.parametric.parametric import Parametric
+
+    names = set(dir(Parametric))
+    for klass in Parametric.__mro__:
+        names.update(getattr(klass, "__annotations__", {}))
+    stub = types.SimpleNamespace(k=0, bounds=(), param_map={})
+    for flags in itertools.product((False, True), repeat=3):
+        names.update(vars(Parametric(stub, "MLE", None, *flags)))
+    names.update({"res", "log_likelihood"})
+    names.discard("p")
+    return frozenset(names)
+
+
+def _check_signature(fun: Callable[..., Boxable], k: int) -> None:
+    """
+    ``fun`` must take the time first and then the parameters, either as a
+    star-argument of any name, ``(x, *params)``, or as ``k`` named
+    positional arguments, ``(x, lam, shape)``.
+    """
+    try:
+        signature = inspect.signature(fun)
+    except (TypeError, ValueError) as e:
+        raise ValueError(
+            "The cumulative hazard function's signature cannot be read"
+        ) from e
+    kinds = inspect.Parameter
+    positional = [
+        p
+        for p in signature.parameters.values()
+        if p.kind in (kinds.POSITIONAL_ONLY, kinds.POSITIONAL_OR_KEYWORD)
+    ]
+    star = any(
+        p.kind == kinds.VAR_POSITIONAL for p in signature.parameters.values()
+    )
+    required_keyword = [
+        p.name
+        for p in signature.parameters.values()
+        if p.kind == kinds.KEYWORD_ONLY and p.default is p.empty
+    ]
+    if star:
+        ok = len(positional) == 1
+    else:
+        required = [p for p in positional if p.default is p.empty]
+        ok = len(required) <= 1 + k <= len(positional)
+    if not ok or required_keyword:
+        raise ValueError(
+            "The cumulative hazard function must take the time and then "
+            "the parameters, either as '(x, *params)' or as one named "
+            f"argument per parameter ({k} here, e.g. '(x, "
+            + ", ".join(f"p{i}" for i in range(k))
+            + f")'); got '{signature}'"
+        )
+
+
 class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     """
     Used to create a custom distribution using only the cumulative hazard
@@ -49,13 +125,22 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     ----------
 
     name: str
-        Name of the distribution
+        Name of the distribution. It is also the key under which a saved
+        model finds the distribution again (see below), so a second
+        ``CustomDistribution`` under a name already used in the session
+        replaces the first there, with a ``UserWarning``.
 
     fun: callable
-        Function that returns the cumulative hazard function
+        Function that returns the cumulative hazard function. It takes the
+        time and then the parameters, either as a star-argument of any
+        name, ``fun(x, *params)``, or as one named argument per parameter,
+        ``fun(x, nu, b)``; anything else raises a ``ValueError``.
 
     param_names: list
-        List of parameter names
+        List of parameter names. A fitted model exposes each parameter as
+        an attribute, so ``gamma``, ``f0`` and the names of the model's
+        own attributes (``k``, ``dist``, ``data``, ``method``, ``sf``, ...)
+        are refused with a ``ValueError`` that lists them.
 
     bounds: list
         List of tuples containing the lower and upper bounds of the
@@ -110,9 +195,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         bounds: tuple[tuple[int | float | None, int | float | None], ...],
         support: tuple[int | float, int | float],
     ) -> None:
-        if str(inspect.signature(fun)) != "(x, *params)":
-            detail = "Function must have the signature '(x, *params)'"
-            raise ValueError(detail)
+        _check_signature(fun, len(param_names))
 
         if len(param_names) != len(bounds):
             raise ValueError("param_names and bounds must have same length")
@@ -135,6 +218,18 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
             if hasattr(self, p_name):
                 detail = "Can't name a parameter after a function"
                 raise ValueError(detail)
+
+        reserved = _model_attribute_names()
+        clashes = [p_name for p_name in param_names if p_name in reserved]
+        if clashes:
+            public = sorted(r for r in reserved if not r.startswith("_"))
+            raise ValueError(
+                f"Parameter name(s) {clashes} are attributes of a fitted "
+                "model, which exposes each parameter by name; choose "
+                "another name. Reserved: " + ", ".join(public) + " (and "
+                "every name starting with an underscore that the model "
+                "uses)."
+            )
 
         super().__init__(
             name=name,
@@ -161,6 +256,22 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         # to an ``unpack_rr`` that does not exist, and it died with an
         # AttributeError instead of the usual refusal.
         self.supports_mpp = False
+        previous = _REGISTRY.get(name)
+        if previous is not None and not (
+            previous._fun is fun
+            and list(previous.param_names) == list(param_names)
+            and tuple(previous.bounds) == tuple(bounds)
+            and tuple(previous.support) == tuple(support)
+        ):
+            warnings.warn(
+                f"A CustomDistribution named '{name}' already exists in this "
+                "session; this one replaces it in the registry that "
+                "from_dict and from_json use to restore saved models, so a "
+                f"model saved from the earlier '{name}' is now restored "
+                "with this distribution's cumulative hazard.",
+                UserWarning,
+                stacklevel=2,
+            )
         _REGISTRY[name] = self
 
     def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
@@ -215,7 +326,8 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         cumulative hazard (which is increasing on the support).
 
         It makes ``random`` available (inverse-transform sampling), and
-        gives :meth:`moment` the distribution's own scale.
+        gives :meth:`moment` the distribution's own scale. Outside
+        :math:`[0, 1]` it is NaN, as for the built-in distributions.
         """
         theta = [float(p) for p in params]
         H = self._scalar_fn(self.Hf, theta)
@@ -224,6 +336,11 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         out = onp.empty(u_arr.shape)
         with onp.errstate(all="ignore"):
             for i, u_i in onp.ndenumerate(u_arr):
+                if not 0.0 <= u_i <= 1.0:
+                    # below 0 the target -log1p(-u) is negative, which the
+                    # inversion read as the support's lower edge
+                    out[i] = onp.nan
+                    continue
                 out[i] = self._invert_Hf(H, -onp.log1p(-u_i), lo, hi)
         return out[()]
 

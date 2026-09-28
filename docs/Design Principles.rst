@@ -79,7 +79,8 @@ Outputs
    every model's public methods.
 
    *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
-   ``conformance/test_options.py``, for every registered model.
+   ``conformance/test_options.py``, for every registered model, and for
+   the time-varying ``sf_tvc`` by ``conformance/test_tvc.py``.
 
 8. **The functions of a model agree with each other.**
    :math:`S + F = 1`, :math:`H = -\log S`, :math:`f = h S`, ``qf`` inverts
@@ -97,8 +98,8 @@ Outputs
 
    *Checked* by ``conformance/test_bounds.py``, and for accuracy by
    ``reference/test_tails.py`` against 50-digit mpmath values; known gaps
-   #410, #436, #442-#447 and #449, and four distributions not generated
-   yet (#448).
+   #410, #442-#447 and #449, and four distributions not generated yet
+   (#448).
 
 10. **Covariate rows are independent.** Evaluating rows together gives the
     same as evaluating them one at a time.
@@ -120,8 +121,11 @@ Outputs
     ``interp`` and confidence bound.
 
     *Checked* by ``conformance/test_outside_data.py``, which also sets
-    bounds on every non-parametric estimate and requires each to have
-    ``set_support``.
+    bounds on every non-parametric estimate, requires each to have
+    ``set_support``, and requires every bound to be ``nan`` outside the
+    data when none is set; and for time-varying covariates by
+    ``conformance/test_tvc.py``, for a path that starts before 0, at 0 or
+    later, and for queries at 0 and below.
 
 Estimation
 ----------
@@ -195,22 +199,28 @@ Uncertainty
 Behaviour and API
 -----------------
 
-19. **One seed rule.** ``seed=None`` (or ``random_state=None``) draws from
-    numpy's global generator, so ``np.random.seed`` reproduces it; an
-    explicit seed gets its own stream and leaves the global one alone.
+19. **One seed rule.** Every method that draws takes ``random_state``.
+    ``None`` draws from numpy's global generator, so ``np.random.seed``
+    reproduces it; an explicit seed gets its own stream and leaves the
+    global one alone.
 
-    *Checked* by ``conformance/test_seeds.py``; known gap #389.
+    *Checked* by ``conformance/test_seeds.py``, for every registered model
+    that draws.
 
 20. **Saving and loading.** Every model round-trips through strict JSON with
     identical predictions, stamped with the oldest schema version that can
     read it.
 
     *Checked* by ``conformance/test_serialisation.py`` and
-    ``properties/test_serialisation.py``.
+    ``properties/test_serialisation.py``, and for tuple and mixed
+    ``str`` / ``int`` cause labels by ``conformance/test_labels.py``.
 
 21. **Consistent names.** The same option has the same name, meaning and
     default everywhere (``alpha_ci``, ``bound``, ``on``, ``interp``,
-    ``Z``, ``seed``).
+    ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
+    ``x`` for the times and ``p`` for a quantile's probability). When a name
+    changes, the old one keeps working for one release with a
+    ``DeprecationWarning`` naming the new one.
 
     *Checked* by ``conformance/test_options.py``.
 

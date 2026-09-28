@@ -38,6 +38,7 @@ from scipy import integrate
 from scipy.special import factorial, xlogy
 
 from surpyval import np
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -575,7 +576,10 @@ class Hypoexponential_(ParametricFitter):
         return -integrate.quad(func, 0, np.inf)[0]
 
     def random(
-        self, size: int | tuple[int, ...], *rates: Boxable
+        self,
+        size: int | tuple[int, ...],
+        *rates: Boxable,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -591,6 +595,10 @@ class Hypoexponential_(ParametricFitter):
             Shape or size of the random draw
         rates : numpy array or scalars
             The stage rates ``lambda_1, ..., lambda_m``
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own; ``None`` (the
+            default) draws from numpy's global stream (see
+            :meth:`ParametricFitter.random`).
 
         Returns
         -------
@@ -608,7 +616,9 @@ class Hypoexponential_(ParametricFitter):
         """
         r = _validate_rates(rates)
         shape = (size,) if isinstance(size, int) else tuple(size)
-        stages = np.random.exponential(1.0 / r, size=shape + (len(r),))
+        state = draw_state(random_state)
+        source = np.random if state is None else state
+        stages = source.exponential(1.0 / r, size=shape + (len(r),))
         return np.sum(stages, axis=-1)
 
 

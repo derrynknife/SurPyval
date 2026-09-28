@@ -30,7 +30,7 @@ with a ``ValueError``. The readers belong to the *model* classes, not to
 the fitters: ``Weibull.from_dict`` and ``CoxPH.from_dict`` do not exist.
 
 ``CompetingRisksProportionalHazards`` serialises the same way, for both
-``how="Cox"`` and ``how="Fine-Gray"``; its per-cause optimiser results
+``model="Cox"`` and ``model="Fine-Gray"``; its per-cause optimiser results
 (``results``) are not stored.
 
 Some details differ between families:

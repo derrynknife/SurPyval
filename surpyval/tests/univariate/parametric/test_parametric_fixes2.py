@@ -178,7 +178,7 @@ def test_custom_distribution_moments_on_other_supports():
         return ((x - 2) / params[0]) ** params[1]
 
     W = surv.CustomDistribution(
-        "W2", H_shifted, ["a", "k"], ((0, None), (0, None)), (2, np.inf)
+        "W2", H_shifted, ["a", "shape"], ((0, None), (0, None)), (2, np.inf)
     )
     assert W.moment(1, 3.0, 2.0) == pytest.approx(
         2 + surv.Weibull.mean(3.0, 2.0)

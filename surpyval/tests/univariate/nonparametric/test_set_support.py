@@ -210,13 +210,15 @@ def test_R_cb_and_bootstrap_cb_follow_the_bounds():
     np.testing.assert_array_equal(r[2:5], model.R_cb(q[2:5]))
     np.testing.assert_array_equal(r[5], model.R_cb([14.0])[0])
 
-    boot = bounded.bootstrap_cb(q, B=30, random_state=2)
-    unbounded = model.bootstrap_cb(q[2:5], B=30, random_state=2)
+    boot = bounded.bootstrap_cb(q, n_boot=30, random_state=2)
+    unbounded = model.bootstrap_cb(q[2:5], n_boot=30, random_state=2)
     assert np.isnan(boot[[0, -2, -1]]).all()
     np.testing.assert_array_equal(boot[1], [1.0, 1.0])
     np.testing.assert_array_equal(boot[2:5], unbounded)
     np.testing.assert_array_equal(boot[5], boot[4])
-    one_sided = bounded.bootstrap_cb(q, bound="lower", B=30, random_state=2)
+    one_sided = bounded.bootstrap_cb(
+        q, bound="lower", n_boot=30, random_state=2
+    )
     assert one_sided.shape == (q.size,)
     assert np.isnan(one_sided[[0, -2, -1]]).all()
 
@@ -248,7 +250,7 @@ def test_no_raw_numpy_warning(model):
                 getattr(bounded, fname)(q[5], interp=interp)
             for on in ("sf", "ff", "Hf"):
                 bounded.cb(q, on=on, interp=interp)
-        bounded.bootstrap_cb(q, B=5, random_state=1)
+        bounded.bootstrap_cb(q, n_boot=5, random_state=1)
 
 
 @pytest.mark.parametrize("name", list(ESTIMATORS))

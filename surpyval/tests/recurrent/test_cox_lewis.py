@@ -57,7 +57,9 @@ def test_time_terminated_simulation_with_improving_system():
     # times instead of spinning out NaNs.
     model = CoxLewis.fit(np.array([0.5, 1.0, 2.0, 4.0]), tl=0, tr=10)
     model.params = np.array([0.0, -0.5])
-    data = model.time_terminated_simulation_data(T=100.0, items=5, seed=1)
+    data = model.time_terminated_simulation_data(
+        T=100.0, items=5, random_state=1
+    )
     assert np.isfinite(data.x).all()
     assert (data.x >= 0).all()
     assert (data.x <= 100.0).all()

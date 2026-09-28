@@ -42,6 +42,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     psd_precision,
     psd_project,
@@ -51,6 +52,7 @@ from surpyval.utils.linalg import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
+from ._argument_order import cb_is_old, old_order
 from ._bounds import (
     analytic_cb,
     bootstrap_cb,
@@ -1997,17 +1999,31 @@ class DegradationModel(SerialisableMixin):
             )
         return life_parameter_covariance(self, method=method)
 
+    @renamed_arguments(seed="random_state")
+    @old_order(
+        (
+            "on",
+            "alpha_ci",
+            "bound",
+            "method",
+            "n_boot",
+            "random_state",
+            "Z",
+        ),
+        cb_is_old,
+        stacklevel=3,  # under renamed_arguments
+    )
     @keeps_query_shape
     def cb(
         self,
         x: npt.ArrayLike,
+        Z: Any = None,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "analytic",
         n_boot: int = 200,
-        seed: "int | None" = None,
-        Z: Any = None,
+        random_state: "int | None" = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the reliability of the fitted life model that
@@ -2029,6 +2045,15 @@ class DegradationModel(SerialisableMixin):
         ----------
         x : array like
             Times at which to evaluate the bound(s).
+        Z : array like, optional
+            Stress vector at which to evaluate the bound; required for an
+            accelerated model, rejected for a plain one. For a step-stress
+            (``acceleration="clock"``) model it is one stress row or a
+            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            and only ``method='bootstrap'`` is available: units are resampled
+            with their stress histories and the clock is re-estimated on each
+            resample (with the model's ``population_method``, so a ``"reml"``
+            model's bootstrap takes correspondingly longer).
         on : {'sf', 'ff', 'Hf'}, optional
             The function to bound (``'R'`` and ``'F'`` are accepted as
             aliases of ``'sf'`` and ``'ff'``). Default ``'sf'``.
@@ -2044,24 +2069,21 @@ class DegradationModel(SerialisableMixin):
             models support ``'bootstrap'`` only.
         n_boot : int, optional
             Bootstrap resamples (``method='bootstrap'`` only). Default 200.
-        seed : int or numpy.random.Generator, optional
+        random_state : int or numpy.random.Generator, optional
             Seed or generator for the bootstrap resampling. ``None`` (the
             default) seeds from numpy's global RNG, so ``np.random.seed``
             controls it.
-        Z : array like, optional
-            Stress vector at which to evaluate the bound; required for an
-            accelerated model, rejected for a plain one. For a step-stress
-            (``acceleration="clock"``) model it is one stress row or a
-            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
-            and only ``method='bootstrap'`` is available: units are resampled
-            with their stress histories and the clock is re-estimated on each
-            resample (with the model's ``population_method``, so a ``"reml"``
-            model's bootstrap takes correspondingly longer).
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
+
+        Notes
+        -----
+        ``Z`` used to come last. Until v0.22.0 a call by position in the old
+        order (``cb(x, 'sf', ...)``, told by the string second argument)
+        still works, with a ``DeprecationWarning``.
         """
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:
@@ -2081,7 +2103,7 @@ class DegradationModel(SerialisableMixin):
                 )
             if method == "bootstrap":
                 return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, seed, Z=Z
+                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
             raise ValueError("`method` must be 'analytic' or 'bootstrap'")
         Z = self._predict_Z(Z)
@@ -2097,13 +2119,15 @@ class DegradationModel(SerialisableMixin):
                 )
             if method == "bootstrap":
                 return bootstrap_cb(
-                    self, x, on, alpha_ci, bound, n_boot, seed, Z=Z
+                    self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
             raise ValueError("`method` must be 'analytic' or 'bootstrap'")
         if method == "analytic":
             return analytic_cb(self, x, on, alpha_ci, bound)
         elif method == "bootstrap":
-            return bootstrap_cb(self, x, on, alpha_ci, bound, n_boot, seed)
+            return bootstrap_cb(
+                self, x, on, alpha_ci, bound, n_boot, random_state
+            )
         raise ValueError("`method` must be 'analytic' or 'bootstrap'")
 
     def plot(self, ax: Any = None) -> Any:

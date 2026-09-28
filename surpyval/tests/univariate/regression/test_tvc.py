@@ -102,7 +102,7 @@ def test_fit_tvc_from_df_matches_arrays():
     )
     from_df = CoxPH.fit_tvc_from_df(
         df,
-        id_col="id",
+        i_col="id",
         xl_col="t0",
         xr_col="t1",
         c_col="cc",
@@ -316,7 +316,7 @@ def test_fit_tvc_timeline_from_df_matches_arrays():
         }
     )
     m_df = CoxPH.fit_tvc_timeline_from_df(
-        df, id_col="subj", time_col="t", Z_cols="z", c_col="cc"
+        df, i_col="subj", time_col="t", Z_cols="z", c_col="cc"
     )
     m_arr = CoxPH.fit_tvc_timeline(
         i=tl["i"], x=tl["x"], Z=np.array(tl["Z"]), c=tl["c"]

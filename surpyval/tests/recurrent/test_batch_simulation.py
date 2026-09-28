@@ -263,5 +263,6 @@ def test_a_restored_renewal_model_simulates():
     restored = RenewalModel.from_dict(model.to_dict())
     grid = np.array([5.0, 20.0])
     assert np.array_equal(
-        restored.mcf(grid, items=50, seed=4), model.mcf(grid, items=50, seed=4)
+        restored.mcf(grid, items=50, random_state=4),
+        model.mcf(grid, items=50, random_state=4),
     )

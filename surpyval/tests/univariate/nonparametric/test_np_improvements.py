@@ -130,7 +130,7 @@ def test_serialized_turnbull_keeps_estimator_and_bootstrap():
     restored = surpyval.NonParametric.from_dict(model.to_dict(with_data=True))
     assert restored.data["estimator"] == "Kaplan-Meier"
     # The stored data lets the restored model still bootstrap.
-    cb = restored.bootstrap_cb([2.0, 4.0, 6.0], B=20, random_state=0)
+    cb = restored.bootstrap_cb([2.0, 4.0, 6.0], n_boot=20, random_state=0)
     assert cb.shape == (3, 2)
 
 

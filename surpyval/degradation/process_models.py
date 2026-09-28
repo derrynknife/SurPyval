@@ -52,9 +52,11 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
+from ._argument_order import old_order, random_is_old
 from ._clock import StressClock, covariates_by_name, stress_row
 
 __all__ = [
@@ -639,8 +641,9 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     # -- the failure-time distribution --------------------------------------
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def ff(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
+    def ff(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Failure (CDF) of the first-passage time to the threshold.
 
@@ -652,29 +655,31 @@ class FirstPassageProcessModel(SerialisableMixin):
         method below. A missing (``nan``) time or stress gives ``nan``.
         """
         clock = self._clock(Z)
-        t_in = np.asarray(t, dtype=float)
+        t_in = np.asarray(x, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(self._ff_distance(tt, self.threshold), t_in, tt)
         return res
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def sf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
+    def sf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Survival function of the first-passage time."""
         clock = self._clock(Z)
-        t_in = np.asarray(t, dtype=float)
+        t_in = np.asarray(x, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(self._sf_distance(tt, self.threshold), t_in, tt)
         return res
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def df(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
+    def df(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
         Density of the first-passage time. Under a stress path it is the
-        reference-stress density at the clock time ``tau(t)`` times the
-        clock's rate, ``AF`` of the stress in force at ``t``.
+        reference-stress density at the clock time ``tau(x)`` times the
+        clock's rate, ``AF`` of the stress in force at ``x``.
         """
         clock = self._clock(Z)
-        tt = np.asarray(t, dtype=float)
+        tt = np.asarray(x, dtype=float)
         if clock is None:
             res = self._missing(self._df0(tt), tt)
         else:
@@ -682,11 +687,12 @@ class FirstPassageProcessModel(SerialisableMixin):
             res = self._missing(self._df0(tau) * clock.rate_at(tt), tt, tau)
         return res
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def hf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
+    def hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Hazard function of the first-passage time."""
         clock = self._clock(Z)
-        tt = np.asarray(t, dtype=float)
+        tt = np.asarray(x, dtype=float)
         tau = tt if clock is None else clock.tau(tt)
         # In log space: far in the upper tail the density and the survival
         # both underflow to zero, and their plain ratio is 0/0 = nan, while
@@ -707,11 +713,12 @@ class FirstPassageProcessModel(SerialisableMixin):
         res = self._missing(res, tt, tau)
         return res
 
+    @renamed_arguments(t="x")
     @keeps_query_shape
-    def Hf(self, t: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
+    def Hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Cumulative hazard of the first-passage time."""
         clock = self._clock(Z)
-        t_in = np.asarray(t, dtype=float)
+        t_in = np.asarray(x, dtype=float)
         tt = t_in if clock is None else clock.tau(t_in)
         res = self._missing(
             -self._log_sf_distance(tt, self.threshold), t_in, tt
@@ -768,11 +775,12 @@ class FirstPassageProcessModel(SerialisableMixin):
             total += val
         return float(total)
 
+    @old_order(("random_state", "Z"), random_is_old)
     def random(
         self,
         size: int,
-        random_state: "int | None" = None,
         Z: Any = None,
+        random_state: "int | None" = None,
     ) -> npt.NDArray:
         """
         Draw first-passage (failure) times from the fitted model.
@@ -781,13 +789,23 @@ class FirstPassageProcessModel(SerialisableMixin):
         ----------
         size : int
             Number of draws.
-        random_state : int or numpy.random.Generator, optional
-            Seed or generator for reproducible draws. ``None`` (the default)
-            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
         Z : array like or StepSchedule, optional
             The stress, for a model fitted with ``Z`` (required then);
             each reference-stress draw is carried to calendar time along
             its clock.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for reproducible draws. ``None`` (the default)
+            seeds from numpy's global RNG, so ``np.random.seed`` controls it.
+
+        Notes
+        -----
+        The order used to be ``random(size, random_state, Z)``. Until
+        v0.22.0 a call by position in that order still works, with a
+        ``DeprecationWarning``: two positional arguments after ``size``
+        are read as ``(random_state, Z)``, and so is a lone one that can
+        only be a seed (a numpy ``Generator``; an int, for a model fitted
+        without stress; anything, when ``Z`` is passed by name). Pass
+        ``random_state`` by name.
         """
         clock = self._clock(Z)
         rng = as_generator(random_state)

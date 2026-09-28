@@ -29,7 +29,9 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from ._single_probability import SingleProbabilityMixin
 
 
-class FixedEventProbability_(SingleProbabilityMixin, DiscreteParametricFitter):
+class FixedEventProbability_(  # type: ignore[misc]
+    SingleProbabilityMixin, DiscreteParametricFitter
+):
     """``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
     rest never do, with nothing said about *when* (see the module
     docstring). It is fitted from 0/1 event indicators, 1 for a unit that

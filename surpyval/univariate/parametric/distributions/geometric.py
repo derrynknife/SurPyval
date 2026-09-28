@@ -1,11 +1,13 @@
+from typing import Any
+
 import numpy.typing as npt
-from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     eulerian_numbers,
 )
+from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -135,8 +137,15 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         q = 1.0 - p
         return sum(a * q**i for i, a in enumerate(eulerian_numbers(m))) / p**m
 
-    def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
-        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``).
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        p: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``);
+        ``random_state`` is as for :meth:`ParametricFitter.random`.
 
         Examples
         --------
@@ -146,7 +155,7 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> Geometric.random(5, 0.3)
         array([2., 4., 1., 2., 1.])
         """
-        U = uniform.rvs(size=size)
+        U = uniform_draws(size, random_state)
         # qf is declared Boxable because a fit differentiates it;
         # sampling never does, so this is always a real array.
         return np.asarray(self.qf(U, p))

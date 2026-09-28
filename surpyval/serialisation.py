@@ -415,10 +415,10 @@ def required_schema(model_dict: dict) -> int:
     missing entries, holds a regression formula that only a schema-2
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
-    ``"support"`` of a non-parametric estimate's ``set_support``, which a
-    schema-1 reader would silently ignore; 1 otherwise, the layout
-    SurPyval v0.20 reads. This is the version :func:`stamp_schema`
-    writes.
+    ``"support"`` of a non-parametric estimate's ``set_support`` or the
+    ``"band_n"`` of its ``band``, which a schema-1 reader would silently
+    ignore; 1 otherwise, the layout SurPyval v0.20 reads. This is the
+    version :func:`stamp_schema` writes.
 
     Examples
     --------
@@ -441,12 +441,13 @@ def required_schema(model_dict: dict) -> int:
 
 def _carries_support(value: Any) -> bool:
     """Whether ``value`` or any dictionary nested in it (a cause-specific
-    MCF's per-cause estimates) has a ``"support"``, which only the
-    non-parametric estimates' ``set_support`` writes."""
+    MCF's per-cause estimates) has a ``"support"`` or a ``"band_n"``,
+    which only the non-parametric estimates' ``to_dict`` writes (from
+    ``set_support``, and for ``band`` on left truncated data)."""
     if isinstance(value, dict):
-        return value.get("support") is not None or any(
-            _carries_support(v) for v in value.values()
-        )
+        return any(
+            value.get(key) is not None for key in ("support", "band_n")
+        ) or any(_carries_support(v) for v in value.values())
     if isinstance(value, (list, tuple)):
         return any(_carries_support(v) for v in value)
     return False

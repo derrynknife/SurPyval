@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 from autograd.scipy.special import gammainc, gammaincc, gammaln
 from scipy.stats import poisson
@@ -7,6 +9,7 @@ from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     stirling2_numbers,
 )
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -125,8 +128,15 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
             sum(s * mu**j for j, s in enumerate(stirling2_numbers(m)))
         )
 
-    def random(self, size: int | tuple[int, ...], mu: Boxable) -> npt.NDArray:
-        """Draw ``size`` Poisson counts (as floats).
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        mu: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Draw ``size`` Poisson counts (as floats); ``random_state`` is as
+        for :meth:`ParametricFitter.random`.
 
         Examples
         --------
@@ -136,7 +146,8 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> Poisson.random(5, 3.0)
         array([2., 1., 1., 3., 3.])
         """
-        return poisson.rvs(mu, size=size).astype(float)
+        state = draw_state(random_state)
+        return poisson.rvs(mu, size=size, random_state=state).astype(float)
 
     def log_df(self, x: Numeric, mu: Boxable) -> Boxable:
         return np.where(

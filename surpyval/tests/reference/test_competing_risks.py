@@ -96,7 +96,7 @@ def test_gray_test_matches_cuminc(ref_id, rho):
     e = _causes(d["cause"])
     ref = values("r_cmprsk", ref_id)
     for k, cause in enumerate(ref["gray_cause"]):
-        res = sp.gray_test(d[time], e, d[group], cause=int(cause), rho=rho)
+        res = sp.gray_test(d[time], e, d[group], event=int(cause), rho=rho)
         assert res.df == ref["gray_df"][k]
         assert_allclose(res.statistic, ref["gray_stat"][k], rtol=1e-6)
 
@@ -109,7 +109,7 @@ def test_gray_test_is_close_to_cuminc_on_pbc():
     e = _causes(d["cause"])
     ref = values("r_cmprsk", "cuminc_pbc")
     for k, cause in enumerate(ref["gray_cause"]):
-        res = sp.gray_test(d["years"], e, d["drug"], cause=int(cause))
+        res = sp.gray_test(d["years"], e, d["drug"], event=int(cause))
         assert_allclose(res.statistic, ref["gray_stat"][k], rtol=5e-3)
 
 
@@ -131,7 +131,7 @@ def test_fine_gray_matches_crr(ref_id):
     d = fixture(name)
     Z = np.column_stack([d[k] for k in covariates])
     ref = values("r_cmprsk", ref_id)
-    model = FineGray.fit(d[time], Z, _causes(d["cause"]), cause=cause)
+    model = FineGray.fit(d[time], Z, _causes(d["cause"]), event=cause)
     assert_allclose(model.beta, ref["coef"], **FIT)
     # The stored optimum of the weighted partial likelihood.
     assert_allclose(-model._neg_ll, ref["loglik"], rtol=0, atol=1e-6)

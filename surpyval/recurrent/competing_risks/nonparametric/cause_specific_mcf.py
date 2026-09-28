@@ -29,11 +29,16 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+)
 from surpyval.univariate.nonparametric.nonparametric import (
     _check_support,
     _support_from_dict,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -53,8 +58,9 @@ def _cause_model(data: Any, cause: Any) -> Any:
     model = NonParametricCounting.from_xrd(x, r, d)
     # Only this cause's events count; the other causes' events are
     # non-events for it, while each item stays in the (shared) risk set.
-    is_cause = np.array([ei == cause for ei in data.e], dtype=bool)
-    model.var = _lawless_nadeau_var(data, x, r, d, counted=is_cause)
+    model.var = _lawless_nadeau_var(
+        data, x, r, d, counted=label_mask(data.e, cause)
+    )
     model.origin = _observation_origin(data)
     return model
 
@@ -141,7 +147,10 @@ class CauseSpecificMCF(SerialisableMixin):
             model_dict, "CauseSpecificMCF", "a cause-specific MCF"
         )
         out = cls()
-        out.event_types = list(model_dict["event_types"])
+        # JSON writes a tuple label as a list; turn it back into a tuple.
+        out.event_types = [
+            label_from_native(v) for v in model_dict["event_types"]
+        ]
         out.models = {
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
@@ -209,28 +218,35 @@ class CauseSpecificMCF(SerialisableMixin):
         self.support = support
         return self
 
+    @renamed_arguments(cause="event")
     def mcf(
-        self, x: ArrayLike, cause: Any, interp: str = "step"
+        self, x: ArrayLike, event: Any, interp: str = "step"
     ) -> np.ndarray:
-        """Cause-specific MCF evaluated at ``x`` for the given ``cause``
-        (see ``NonParametricCounting.mcf``, and :meth:`set_support` for its
-        values outside the data)."""
-        return self.models[cause].mcf(x, interp=interp)
+        """Cause-specific MCF evaluated at ``x`` for the event type
+        ``event`` (see ``NonParametricCounting.mcf``, and
+        :meth:`set_support` for its values outside the data)."""
+        return self.models[event].mcf(x, interp=interp)
 
-    def mcf_cb(self, x: ArrayLike, cause: Any, **kwargs: Any) -> Any:
-        """Confidence bounds on the cause-specific MCF for ``cause``."""
-        return self.models[cause].mcf_cb(x, **kwargs)
+    @renamed_arguments(cause="event", confidence=("alpha_ci", lambda c: 1 - c))
+    def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
+        """Confidence bounds on the cause-specific MCF for the event type
+        ``event``; ``kwargs`` are those of
+        ``NonParametricCounting.mcf_cb``."""
+        return self.models[event].mcf_cb(x, **kwargs)
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         plot_bounds: bool = True,
         ax: Any = None,
     ) -> Any:
         """Overlay the MCF of every cause on a single axis.
 
-        With ``plot_bounds`` each cause's pointwise ``confidence`` bounds
-        are drawn as dashed steps in the colour of its MCF.
+        With ``plot_bounds`` each cause's pointwise two-sided
+        ``1 - alpha_ci`` bounds are drawn as dashed steps in the colour of
+        its MCF. The arguments are keyword only.
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -242,7 +258,7 @@ class CauseSpecificMCF(SerialisableMixin):
                 model.x, model.mcf_hat, where="post", label=str(cause)
             )
             if plot_bounds and model.var is not None:
-                cb = model.mcf_cb(model.x, confidence=confidence)
+                cb = model.mcf_cb(model.x, alpha_ci=alpha_ci)
                 ax.step(
                     model.x,
                     cb,
@@ -297,6 +313,8 @@ class CauseSpecificMCF(SerialisableMixin):
             Count of events at each row. Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
+            A mark may be any hashable label: an integer, a string, a
+            tuple, or a mix of these.
         tl : array like or scalar, optional
             Left-truncation (delayed-entry) time of each item: a scalar for
             every item, or one value per row (the same on every row of an

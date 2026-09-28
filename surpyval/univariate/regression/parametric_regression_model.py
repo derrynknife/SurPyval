@@ -595,8 +595,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         hazard switches to the new covariate's PO hazard; the survival does
         not jump to the new covariate's PO curve. The first segment is held
         back to the bottom of the baseline's support (for a baseline defined
-        below zero, such as ``Logistic``, the path's first value is taken to
-        apply before time zero too), so the result is the unconditional
+        below zero, such as ``Logistic``, the value in force at time zero is
+        taken to apply before it too), so the result is the unconditional
         survival.
 
         For accelerated failure time the covariate rescales time, so the path
@@ -605,6 +605,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         cumulative hazard is the baseline evaluated there,
         :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
         segment reduces exactly to ``Hf(x, Z)``.
+
+        The path is measured from time zero: a schedule starting after zero
+        has its first value held back to zero, and the part of a schedule
+        before zero is ignored (the value in force at zero applies from
+        there). Any time is a valid query, zero and below included: a
+        constant path gives ``Hf(x, Z)`` there too.
 
         Parameters
         ----------
@@ -637,9 +643,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         missing = np.isnan(xq)
         if missing.all():
             return np.full(xq.shape, np.nan)
+        # A horizon at or below 0 materialises the one segment in force at
+        # 0: H is then 0, or the baseline's value for a time below 0.
         t_max = float(np.max(xq[~missing]))
-        if t_max <= 0:
-            raise ValueError("x must contain a positive time")
         starts, ends, Zseg = self._tvc_segments(schedule, t_max)
         xq_eval = np.where(missing, t_max, xq)
 
@@ -709,18 +715,24 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         dist_params = self.params[: self.k_dist]
         phi_params = self.params[self.k_dist :]
         psi = np.zeros(xq.shape[0], dtype=float)
-        for a, b, z in zip(starts, ends, Zseg):
+        support_lo = float(self.distribution.support[0])
+        for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
             zrow = np.asarray(z, dtype=float).reshape(1, -1)
             phi_seg = float(
                 np.asarray(
                     self.model._phi(zrow, *phi_params), dtype=float
                 ).ravel()[0]
             )
-            width = np.clip(xq, a, b) - a
+            # Query times before 0 fall in the first segment when the
+            # baseline is defined there (a negative age, as sf(x, Z)).
+            width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a
             psi = psi + phi_seg * width
-        return np.asarray(
-            self.model.Hf_dist(psi, *dist_params), dtype=float
-        ).ravel()
+        # An age of 0 makes a log-time baseline (LogNormal) evaluate
+        # log(0) = -inf on its way to the correct H = 0.
+        with np.errstate(divide="ignore"):
+            return np.asarray(
+                self.model.Hf_dist(psi, *dist_params), dtype=float
+            ).ravel()
 
     @keeps_query_shape
     def sf_tvc(
@@ -790,7 +802,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             if np.isnan(given):
                 # A missing conditioning age: nothing is known (as Cox).
                 H = np.full(np.shape(H), np.nan)
-            elif given > 0:
+            else:
+                # H(given) is 0 at or below 0, unless the baseline has
+                # mass below 0 (then it is -log of the survival to given).
                 H = H - self.Hf_tvc(given, Z, xl)
         return np.exp(-H)
 
@@ -978,7 +992,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return self._eval(self.model.Hf, x, Z, 0.0)
 
     def random(
-        self, size: int, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        size: int,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -995,6 +1012,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariate row(s) (or stress value(s)) at which to draw: one
             row per covariate vector, or a scalar / 1-D array of stresses
             for a single-stress accelerated life model.
+
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the draw. ``None`` (the default) draws from numpy's
+            global generator, so ``np.random.seed`` reproduces it; an int
+            or a ``Generator`` gives a stream of its own, which neither
+            depends on nor advances the global one.
 
         Returns
         -------
@@ -1016,6 +1039,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> x_rand, Z_rand = model.random(5, Z[:1])
         >>> x_rand.round(3)
         array([ 8.919,  5.095, 33.929, 10.666, 13.97 ])
+        >>> model.random(3, Z[:1], random_state=0)[0].round(3)
+        array([ 6.111, 11.235, 18.691])
         >>> Z_rand
         array([[0.],
                [0.],
@@ -1029,7 +1054,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # on every path.
         Z = self._prepare_Z(Z)
         if hasattr(self.model, "random"):
-            return self.model.random(size, Z, *self.params)
+            return self.model.random(
+                size, Z, *self.params, random_state=random_state
+            )
         raise NotImplementedError(
             f"random() is not implemented for {self.kind} models."
         )

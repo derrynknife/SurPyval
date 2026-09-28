@@ -334,12 +334,50 @@ class ParametricCompetingRisks(SerialisableMixin):
         return float(sum(self.models[k].neg_ll() for k in self.causes))
 
     def aic(self) -> float:
-        """Akaike information criterion of the joint model."""
+        """Akaike information criterion of the joint model,
+        ``2 K + 2 neg_ll`` with ``K`` the number of parameters estimated
+        over all causes: the sum of the causes' AICs, since both terms
+        add over causes."""
         return float(sum(self.models[k].aic() for k in self.causes))
 
     def bic(self) -> float:
-        """Bayesian information criterion of the joint model."""
-        return float(sum(self.models[k].bic() for k in self.causes))
+        """Bayesian information criterion of the joint model.
+
+        ``2 neg_ll + K ln(n)``, with ``K`` the number of parameters
+        estimated over all causes and ``n`` the sample size every SurPyval
+        BIC uses, counted on the whole data: the observed failures of any
+        cause, weighted by their counts (right-censored units add
+        nothing). That is the sum of the causes' own sample sizes, since
+        each counts the failures of its cause; for a model assembled with
+        :meth:`from_fitted` it is that sum, which is the whole data's count
+        when each model was fitted to the cause-specific view of the same
+        data.
+
+        It is not the sum of the causes' BICs, which charged each cause's
+        parameters ``ln`` of its own cause's failures (and was what this
+        method returned before v0.21), a smaller penalty.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> round(model.bic(), 4)
+        61.5902
+        >>> round(float(2 * model.neg_ll() + 2 * np.log(8)), 4)
+        61.5902
+        """
+        k_total, n_total = 0, 0.0
+        for k in self.causes:
+            k_cause, n_cause = _ic_terms(self.models[k])
+            k_total += k_cause
+            n_total += n_cause
+        return float(2 * self.neg_ll() + k_total * np.log(n_total))
 
     # -- helpers ----------------------------------------------------------
 
@@ -538,6 +576,16 @@ class ParametricCompetingRisks(SerialisableMixin):
         n = None if n_col is None else df[n_col].to_numpy()
         model = cls.fit(x, e, c=c, n=n, dist=dist, how=how)
         return model
+
+
+def _ic_terms(model: Any) -> tuple[int, float]:
+    """``(k, n)`` of one cause's model: the parameters it estimated and
+    the sample size of its BIC (its observed failures). A parametric
+    model counts only the parameters it estimated (``_ic_k``); a
+    Royston-Parmar model carries both as attributes."""
+    if hasattr(model, "_ic_k"):
+        return int(model._ic_k()), float(model._ic_sample_size())
+    return int(model.k), float(model._ic_n)
 
 
 def _ff_limit(model: Any) -> float:

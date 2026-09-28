@@ -10,6 +10,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -21,6 +22,7 @@ from .._fit_skeleton import (
     mirror_distribution,
     optimise_ph,
     prepare_regression_fit,
+    uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -175,16 +177,32 @@ class ProportionalHazardsFitter(
         return y
 
     def random(
-        self, size: int, Z: npt.ArrayLike, *params: float
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples for each covariate row of ``Z``.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row. ``random_state`` seeds the draw: ``None``
+        (the default) draws from numpy's global generator, so
+        ``np.random.seed`` reproduces it; an int or a
+        ``numpy.random.Generator`` gives a stream of its own.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        # One stream for every row: a seed given as an int would otherwise
+        # restart, and give every row the same uniforms.
+        rng = None if random_state is None else as_generator(random_state)
         x = []
         Z_out = []
         for row in Z_arr:
             phi = self.phi(row, *phi_params)
-            U = np.random.uniform(0, 1, size)
+            U = uniform_draws(size, rng)
             x.append(
                 self._invert_cumulative_hazard(-np.log(U) / phi, dist_params)
             )

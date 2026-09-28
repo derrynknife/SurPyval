@@ -1,11 +1,10 @@
 """Targeted review of
 ``recurrent/competing_risks/parametric/cause_specific_nhpp.py`` (#399).
 
-Each test pins a bug found by reading the module adversarially. They are
-strict expected failures until the bug is fixed. The univariate
-competing-risks models handle both label cases through
-``univariate/competing_risks/labels.py`` (``ordered_labels``,
-``label_from_native``); the recurrent ones do not use it.
+Each test pins a bug found by reading the module adversarially (#440,
+fixed): the recurrent cause-specific models now handle cause labels
+through ``univariate/competing_risks/labels.py`` (``ordered_labels``,
+``label_mask``, ``label_from_native``), as the univariate ones do.
 """
 
 import json
@@ -32,14 +31,10 @@ def _cif(model, x, cause):
     return model.mcf(x, cause)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#440: a recurrent cause-specific model (NHPP or MCF) with tuple "
-    "cause labels cannot be read back: from_dict raises TypeError "
-    "'unhashable type: list' (the univariate models restore the tuple)",
-)
 @pytest.mark.parametrize("kind", ["NHPP", "MCF"])
 def test_tuple_cause_labels_round_trip(kind):
+    # #440: from_dict raised TypeError "unhashable type: 'list'" (JSON
+    # writes the tuple as a list).
     seal, motor = ("s", 1), ("m", 2)
     e = [seal, motor, seal, None, seal, seal, motor, None]
     model = _fit(kind, e)
@@ -49,14 +44,23 @@ def test_tuple_cause_labels_round_trip(kind):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#440: a recurrent cause-specific fit (NHPP or MCF) with mixed "
-    "cause labels ('s' and 2) raises a bare TypeError from sorting them "
-    "(the univariate models order them with ordered_labels)",
-)
 @pytest.mark.parametrize("kind", ["NHPP", "MCF"])
 def test_mixed_cause_labels_fit(kind):
+    # #440: the fit raised a bare TypeError from sorting 's' and 2.
     e = ["s", 2, "s", None, "s", "s", 2, None]
     model = _fit(kind, e)
     assert set(model.event_types) == {"s", 2}
+
+
+@pytest.mark.parametrize("kind", ["NHPP", "MCF"])
+def test_tuple_cause_labels_on_every_row(kind):
+    # #440: with a tuple mark on every row (no None row to stop it),
+    # np.array split the marks into a (rows, 2) array and the fit raised
+    # TypeError "unhashable type: 'numpy.ndarray'".
+    seal, motor = ("s", 1), ("m", 2)
+    e = [seal, motor, seal, seal, seal, seal, motor, motor]
+    model = _fit(kind, e)
+    assert model.event_types == [motor, seal]
+    # The same fit as with string marks.
+    plain = _fit(kind, ["s" if v == seal else "m" for v in e])
+    assert _cif(model, [10.0], seal) == pytest.approx(_cif(plain, [10.0], "s"))

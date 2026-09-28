@@ -139,6 +139,37 @@ def test_goodness_of_fit_sums_over_causes():
     assert np.isfinite(model.bic())
 
 
+def test_bic_is_the_joint_criterion():
+    # 2 neg_ll + K ln(n): K the parameters of every cause (Weibull 2 +
+    # Exponential 1), n the observed failures of any cause, weighted by
+    # their counts. It was the sum of the causes' BICs, each charged ln of
+    # its own cause's failures (here 1.9 below the joint value).
+    import json
+
+    import surpyval
+
+    x, e, c = _simulate(400, 12)
+    n = np.where(np.arange(x.size) % 5 == 0, 2, 1)
+    model = ParametricCompetingRisks.fit(
+        x, e, c=c, n=n, dist={1: Weibull, 2: Exponential}
+    )
+    neg_ll = model.models[1].neg_ll() + model.models[2].neg_ll()
+    failures = n[c == 0].sum()
+    expected = 2 * neg_ll + 3 * np.log(failures)
+    assert model.bic() == pytest.approx(expected, rel=1e-12)
+    assert model.aic() == pytest.approx(2 * neg_ll + 2 * 3, rel=1e-12)
+    old = model.models[1].bic() + model.models[2].bic()
+    assert model.bic() - old > 1.0
+
+    # The same from the separately fitted causes, and after a strict-JSON
+    # round trip without the data.
+    assembled = ParametricCompetingRisks.from_fitted(model.models)
+    assert assembled.bic() == pytest.approx(expected, rel=1e-12)
+    text = json.dumps(model.to_dict(), allow_nan=False)
+    restored = surpyval.from_dict(json.loads(text))
+    assert restored.bic() == pytest.approx(expected, rel=1e-12)
+
+
 def test_fit_from_df():
     x, e, c = _simulate(2000, 11)
     df = pd.DataFrame({"time": x, "cause": e, "cens": c})

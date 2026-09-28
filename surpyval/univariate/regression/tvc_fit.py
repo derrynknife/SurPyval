@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.deprecation import renamed_arguments
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -208,10 +210,11 @@ class TVCFitMixin:
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
         return self.fit_tvc(i_ss, xl, xr, c_ss, Z_ss, n_ss, **kwargs)
 
+    @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
-        id_col: str,
+        i_col: str,
         xl_col: str,
         xr_col: str,
         c_col: str,
@@ -221,7 +224,7 @@ class TVCFitMixin:
     ) -> "ParametricRegressionModel":
         """Fit start-stop time-varying-covariate data from a DataFrame.
 
-        ``id_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
+        ``i_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
         columns passed to :meth:`fit_tvc` as ``i``, ``xl``, ``xr``, ``c`` and
         ``n``; ``Z_cols`` is a column name or a list of them, recorded on the
         model as ``feature_names`` so it predicts from a DataFrame. Other
@@ -230,7 +233,7 @@ class TVCFitMixin:
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc(
-            df[id_col].to_numpy(),
+            df[i_col].to_numpy(),
             df[xl_col].to_numpy(),
             df[xr_col].to_numpy(),
             df[c_col].to_numpy(),
@@ -241,10 +244,11 @@ class TVCFitMixin:
         model.feature_names = cols
         return model
 
+    @renamed_arguments(id_col="i_col")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",
-        id_col: str,
+        i_col: str,
         time_col: str,
         Z_cols: str | list[str],
         c_col: str,
@@ -253,7 +257,7 @@ class TVCFitMixin:
     ) -> "ParametricRegressionModel":
         """Fit a covariate timeline from a DataFrame.
 
-        ``id_col``, ``time_col``, ``c_col`` and ``n_col`` name the columns
+        ``i_col``, ``time_col``, ``c_col`` and ``n_col`` name the columns
         passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``;
         ``Z_cols`` is a column name or a list of them, recorded on the model
         as ``feature_names``. Other keyword arguments go to ``fit``
@@ -262,7 +266,7 @@ class TVCFitMixin:
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc_timeline(
-            df[id_col].to_numpy(),
+            df[i_col].to_numpy(),
             df[time_col].to_numpy(),
             df[cols].to_numpy(),
             df[c_col].to_numpy(),

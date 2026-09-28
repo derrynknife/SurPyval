@@ -12,6 +12,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -303,8 +304,9 @@ class ParametricRecurrenceModel(
             self.data, test=test, alternative=alternative
         )
 
+    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
-        self, n_boot: int = 200, seed: "int | None" = None
+        self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted intensity.
@@ -327,7 +329,7 @@ class ParametricRecurrenceModel(
 
         n_boot: int, optional
             Number of bootstrap replicates for the p-value. Default is 200.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible p-value.
 
         Returns
@@ -341,7 +343,9 @@ class ParametricRecurrenceModel(
         # MSE fit has data but no likelihood to refit by.
         self._check_has_data("cramer_von_mises")
         self._check_fitted()
-        return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
+        return diagnostics.cramer_von_mises(
+            self, n_boot=n_boot, random_state=random_state
+        )
 
     @keeps_query_shape
     def cif_cb(
@@ -387,11 +391,13 @@ class ParametricRecurrenceModel(
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
     # Narrows the mixin plot (bounds options) -- same known divergence.
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,
         plot_bounds: bool = True,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Plot the fitted CIF over the nonparametric MCF of the data used to
@@ -408,8 +414,10 @@ class ParametricRecurrenceModel(
             Whether to draw the confidence band around the fitted CIF.
             Ignored for models with no likelihood (``how="MSE"`` fits and
             ``from_params`` models). Default is True.
-        confidence: float, optional
-            The confidence level of the band. Default is 0.95.
+        alpha_ci: float, optional
+            The total tail probability of the band: a
+            ``1 - alpha_ci`` confidence band. Default is 0.05. Keyword
+            only.
 
         Returns
         -------
@@ -429,13 +437,13 @@ class ParametricRecurrenceModel(
         ax.step(x, (d / r).cumsum(), color="r", where="post")
         ax.plot(x_plot, self.cif(x_plot), color="b")
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, alpha_ci=1.0 - confidence)
+            cb = self.cif_cb(x_plot, alpha_ci=alpha_ci)
             ax.fill_between(
                 x_plot,
                 cb[:, 0],
                 cb[:, 1],
                 color="b",
                 alpha=0.2,
-                label=f"{confidence * 100}% Confidence Band",
+                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
         return ax

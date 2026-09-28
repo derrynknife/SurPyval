@@ -7,7 +7,6 @@ import numpy.typing as npt
 import pandas as pd
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
-from scipy.stats import uniform
 
 import surpyval
 from surpyval import np
@@ -22,7 +21,7 @@ from .fitters.mom import mom
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
-from .parametric import Parametric
+from .parametric import Parametric, uniform_draws
 
 # The two types a distribution function deals in. They are separate
 # because only one of them can be an autograd box.
@@ -424,7 +423,12 @@ class ParametricFitter:
         # behaviour used by ``Uniform``.
         self.support_param_index = (0, 1)
 
-    def random(self, size: int | tuple[int, ...], *params: Any) -> Any:
+    def random(
+        self,
+        size: int | tuple[int, ...],
+        *params: Any,
+        random_state: Any = None,
+    ) -> Any:
         r"""
 
         Draws random samples from the distribution in shape `size`, using
@@ -438,6 +442,12 @@ class ParametricFitter:
             Shape or size of the random draw
         params : numpy array or scalar
             The parameters of the distribution
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw of its own, which
+            neither depends on nor advances numpy's global stream (an int
+            is ``np.random.default_rng(seed)``). ``None`` (the default)
+            draws from numpy's global stream, so ``np.random.seed``
+            reproduces it.
 
         Returns
         -------
@@ -452,8 +462,10 @@ class ParametricFitter:
         >>> np.random.seed(1)
         >>> Weibull.random(5, 3, 4)
         array([2.57122697, 3.18730986, 0.31024877, 2.32381059, 1.89352939])
+        >>> Weibull.random(3, 3, 4, random_state=1).round(4)
+        array([2.7607, 3.9499, 1.8844])
         """
-        U = uniform.rvs(size=size)
+        U = uniform_draws(size, random_state)
         return self.qf(U, *params)
 
     def log_df(self, x: npt.NDArray, *params: Any) -> Any:
@@ -1669,7 +1681,8 @@ class OptimisedFitMixin:
         x : array like
             The values at which the CDF is known.
         F : array like
-            The CDF at each ``x``, between 0 and 1.
+            The CDF at each ``x``, between 0 and 1, of the same length as
+            ``x``.
 
         Returns
         -------
@@ -1677,6 +1690,12 @@ class OptimisedFitMixin:
             A model whose ``method`` is ``'given ecdf'``. It holds no
             data, so it has no likelihood, information criteria or
             confidence bounds.
+
+        Raises
+        ------
+        ValueError
+            If ``x`` and ``F`` differ in length, or an ``F`` is NaN or
+            outside [0, 1].
 
         Examples
         --------
@@ -1695,8 +1714,24 @@ class OptimisedFitMixin:
                 "straight-line probability plot to regress the points on. "
                 "Fit it to the data instead (how='MLE')."
             )
+        # A value outside [0, 1] or NaN was dropped by the transform's
+        # NaN without a word (F = [0.1, 0.3, 1.2, 0.9] fitted alpha 2.886
+        # to the other three), and unequal lengths died in an IndexError.
+        x_arr = np.asarray(x, dtype=float).ravel()
+        F_arr = np.asarray(F, dtype=float).ravel()
+        if x_arr.size != F_arr.size:
+            raise ValueError(
+                f"x and F must have the same length: x has {x_arr.size} "
+                f"values and F has {F_arr.size}."
+            )
+        bad = ~((F_arr >= 0) & (F_arr <= 1))
+        if bad.any():
+            raise ValueError(
+                "F must lie in [0, 1]: got "
+                f"{F_arr[bad].tolist()} at x = {x_arr[bad].tolist()}."
+            )
         model = Parametric(self, "given ecdf", None, False, False, False)
-        res = mpp_from_ecfd(self, x, F)
+        res = mpp_from_ecfd(self, x_arr, F_arr)
         model.params = np.array(res["params"])
         model.support = self.support
 
@@ -1708,9 +1743,10 @@ class OptimisedFitMixin:
         probability plotting.
 
         Equivalent to :meth:`fit_from_ecdf` with ``x`` the model's
-        distinct times and ``F = 1 - R`` its estimate there, so a
-        Kaplan-Meier model gives the same parameters as
-        ``fit(x, how='MPP', heuristic='Kaplan-Meier')`` on its data.
+        failure times (those with a death, ``d > 0``) and ``F = 1 - R``
+        its estimate there, so a Kaplan-Meier model gives the same
+        parameters as ``fit(x, c, n, t, how='MPP',
+        heuristic='Kaplan-Meier')`` on its data, censored or not.
 
         Parameters
         ----------
@@ -1731,8 +1767,14 @@ class OptimisedFitMixin:
         >>> Weibull.fit_from_non_parametric(km).params
         array([5.9544901 , 1.35505406])
         """
-        x, F = non_parametric_model.x, 1 - non_parametric_model.R
-        return self.fit_from_ecdf(x, F)
+        # Only the times with a failure are plotted, as ``how='MPP'``
+        # does by default (``on_d_is_0=False``): the censored times kept
+        # the step of R before them and pulled the line (alpha 10.711
+        # where the documented equivalent gives 10.597, #438).
+        x = np.asarray(non_parametric_model.x, dtype=float)
+        F = 1 - np.asarray(non_parametric_model.R, dtype=float)
+        keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
+        return self.fit_from_ecdf(x[keep], F[keep])
 
     def _clamp_truncation_to_support(self, t: Any) -> Any:
         """Clamp the truncation bounds to the distribution's support.

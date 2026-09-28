@@ -296,7 +296,7 @@ def _build(name):
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
         ),
         "fine_gray": lambda: FineGray.fit(
-            *_cr_data()[:3], c=_cr_data()[3], cause=1
+            *_cr_data()[:3], c=_cr_data()[3], event=1
         ),
         "cr_proportional_hazards": lambda: (
             CompetingRisksProportionalHazards.fit(
@@ -714,8 +714,8 @@ def test_to_json_with_data(name, models, tmp_path):
     assert "data" in on_disk
     restored = surpyval.from_json(fp)
     if name == "kaplan_meier":
-        expected = model.bootstrap_cb(_T, B=20, random_state=1)
-        got = restored.bootstrap_cb(_T, B=20, random_state=1)
+        expected = model.bootstrap_cb(_T, n_boot=20, random_state=1)
+        got = restored.bootstrap_cb(_T, n_boot=20, random_state=1)
         np.testing.assert_allclose(expected, got)
     else:
         assert restored.bic() == pytest.approx(model.bic())

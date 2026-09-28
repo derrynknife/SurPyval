@@ -7,6 +7,7 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+import warnings
 from typing import Any
 
 import numpy as np
@@ -38,6 +39,7 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
 )
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -48,10 +50,10 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     """
     Competing-risks proportional-hazards regression.
 
-    Fits either a cause-specific proportional-hazards model (``how="Cox"``,
+    Fits either a cause-specific proportional-hazards model (``model="Cox"``,
     one Cox model per cause with the other causes treated as censored) or a
-    Fine-Gray subdistribution-hazards model (``how="Fine-Gray"``). The naming
-    follows the package convention (compare ``CompetingRisks`` and
+    Fine-Gray subdistribution-hazards model (``model="Fine-Gray"``). The
+    naming follows the package convention (compare ``CompetingRisks`` and
     ``ProportionalHazards``).
 
     Call the class method ``CompetingRisksProportionalHazards.fit`` (or
@@ -64,8 +66,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     (or ``surpyval.from_dict``).
     """
 
-    # Populated by ``fit``; declared for the type checker.
-    how: str
+    # Populated by ``fit``; declared for the type checker. ``model`` is
+    # ``"Cox"`` or ``"Fine-Gray"``, the ``model`` argument of ``fit``.
+    model: str
     x: "npt.NDArray"
     #: Each cause's optimiser result, in ``event_idx_map`` order (``None``
     #: for a model restored from a dict: the optimiser objects are not
@@ -85,6 +88,23 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     formula: Any = None
     _model_spec: Any = None
 
+    @property
+    def how(self) -> str:
+        """Deprecated: ``model``, the model fitted (``"Cox"`` or
+        ``"Fine-Gray"``), under its old name."""
+        warnings.warn(
+            "CompetingRisksProportionalHazards.how is deprecated and will "
+            "be removed in v{}; use .model.".format(REMOVED_IN),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.model
+
+    def __dir__(self) -> list[str]:
+        # The deprecated alias is left out of listings (tab completion,
+        # anything that walks ``dir``), which would otherwise warn.
+        return [name for name in super().__dir__() if name != "how"]
+
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
@@ -93,7 +113,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
         Stores the causes (``event_idx_map``), the per-cause coefficients
         ``betas`` and the per-cause baseline step arrays on the shared time
-        grid ``x``; for ``how="Fine-Gray"`` also each cause's
+        grid ``x``; for ``model="Fine-Gray"`` also each cause's
         :class:`FineGrayModel` (its own ``to_dict``), from which the
         Fine-Gray predictions come. The reloaded model reproduces every
         prediction (``cif``, ``sf``, ``ff``, ``Hf``, ``hf``, ``df``) for any
@@ -117,7 +137,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         """
         out: dict = {
             "model": "CompetingRisksProportionalHazards",
-            "how": self.how,
+            # Stored under "how", the argument's old name, so files written
+            # before the rename still load.
+            "how": self.model,
             # list of [event, index] pairs to preserve the event key types
             "event_idx_map": [
                 [to_native(k), int(v)] for k, v in self.event_idx_map.items()
@@ -127,7 +149,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
         }
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             # The Fine-Gray predictions come from the per-cause models (the
             # shared grid only mirrors their baselines), so store them whole,
             # in ``event_idx_map`` order.
@@ -150,14 +172,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             "a competing-risks proportional-hazards model",
         )
         model = cls()
-        model.how = model_dict["how"]
+        model.model = model_dict["how"]
         model.event_idx_map = {
             label_from_native(k): int(v)
             for k, v in model_dict["event_idx_map"]
         }
         model.n_event_types = int(model_dict["n_event_types"])
         model.x = np.array(model_dict["x"], dtype=float)
-        if model.how == "Fine-Gray":
+        if model.model == "Fine-Gray":
             model._fg_models = {
                 event: FineGrayModel.from_dict(fg)
                 for event, fg in zip(
@@ -253,7 +275,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         cause's (``event``) or the sum over causes (``event=None``). Not
         available for a Fine-Gray model.
         """
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution hazard has no pointwise "
                 "density from the step baseline; use `cif` or `Hf`."
@@ -276,7 +298,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         subdistribution hazard of ``event``.
         """
         Z = self._prepare_Z(Z)
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
             return -np.log(self.sf(x, Z, event=event))
         return self._f(self.H0_e, x, Z, event=event, interp=interp)
@@ -295,7 +317,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         treated as censoring). For a Fine-Gray model, ``1 - cif``.
         """
         Z = self._prepare_Z(Z)
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
         return np.exp(-self.Hf(x, Z, event=event, interp=interp))
 
@@ -312,7 +334,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         the cumulative incidence of ``event``.
         """
         Z = self._prepare_Z(Z)
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             return self.cif(x, Z, event)
         return 1 - self.sf(x, Z, event=event, interp=interp)
 
@@ -328,7 +350,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``hf * sf`` at ``x`` for covariates ``Z``. Not available for a
         Fine-Gray model.
         """
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution density has no pointwise form "
                 "from the step baseline; use `cif`."
@@ -345,7 +367,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         """
         Cumulative incidence of cause ``event`` at ``x`` for covariates
         ``Z``: the probability of failing from that cause by ``x`` with the
-        other causes acting. The cause-specific (``how="Cox"``) model
+        other causes acting. The cause-specific (``model="Cox"``) model
         integrates the cause's hazard against the all-cause product-limit
         survival; the Fine-Gray model evaluates the subdistribution
         directly.
@@ -363,7 +385,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 f"{event!r}."
             )
         Z = self._prepare_Z(Z)
-        if self.how == "Fine-Gray":
+        if self.model == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
 
@@ -421,6 +443,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return np.clip(S, 0.0, 1.0), shares
 
     @classmethod
+    @renamed_arguments(how="model")
     def fit_from_df(
         cls,
         df: Any,
@@ -430,7 +453,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c_col: "str | None" = None,
         n_col: "str | None" = None,
         formula: "str | None" = None,
-        how: str = "Cox",
+        model: str = "Cox",
         tie_method: str = "efron",
     ) -> "CompetingRisksProportionalHazards":
         """
@@ -455,11 +478,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         formula : str, optional
             A patsy/formulaic formula for the covariates, as an alternative to
             ``Z_cols``.
-        how : {'Cox', 'Fine-Gray'}, optional
+        model : {'Cox', 'Fine-Gray'}, optional
             Cause-specific proportional hazards or Fine-Gray subdistribution
             hazards. Default 'Cox'.
         tie_method : str, optional
-            Tie handling for the ``how='Cox'`` path, passed to
+            Tie handling for the ``model='Cox'`` path, passed to
             :meth:`CoxPH.fit`: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``).
 
@@ -515,13 +538,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        model = cls.fit(x, Z, e, c=c, n=n, how=how, tie_method=tie_method)
-        model.formula = form
-        model.feature_names = feature_names
-        model._model_spec = model_spec
-        return model
+        fitted = cls.fit(x, Z, e, c=c, n=n, model=model, tie_method=tie_method)
+        fitted.formula = form
+        fitted.feature_names = feature_names
+        fitted._model_spec = model_spec
+        return fitted
 
     @classmethod
+    @renamed_arguments(how="model")
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -529,7 +553,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         e: npt.ArrayLike,
         c: "npt.ArrayLike | None" = None,
         n: "npt.ArrayLike | None" = None,
-        how: str = "Cox",
+        model: str = "Cox",
         tie_method: str = "efron",
     ) -> "CompetingRisksProportionalHazards":
         r"""
@@ -559,14 +583,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             this can be provided. If :code:`None` will assume each
             observation is 1.
 
-        how : {'Cox', 'Fine-Gray'}, optional
+        model : {'Cox', 'Fine-Gray'}, optional
             ``'Cox'`` (default) fits cause-specific proportional hazards --
             one Cox model per cause, the other causes treated as censored;
             ``'Fine-Gray'`` fits one subdistribution-hazards model per cause.
 
         tie_method : str, optional
             Tie handling for the ``'Cox'`` path, passed to
-            :meth:`CoxPH.fit` as its ``method``. Default ``'efron'``.
+            :meth:`CoxPH.fit`. Default ``'efron'``.
 
         Returns
         -------
@@ -623,18 +647,18 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
 
-        model = cls()
-        model.n_event_types = n_event_types
-        model.event_idx_map = event_idx_map
-        model.how = how
+        out = cls()
+        out.n_event_types = n_event_types
+        out.event_idx_map = event_idx_map
+        out.model = model
 
-        if how == "Cox":
+        if model == "Cox":
             # Cause-specific proportional hazards: one Cox model per cause,
             # treating every other cause (and censoring) as right-censored.
             results = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                cox_model = CoxPH.fit(x, Z, c_e, n, method=tie_method)
+                cox_model = CoxPH.fit(x, Z, c_e, n, tie_method=tie_method)
 
                 results.append(cox_model.res)
                 betas[i, :] = cox_model.res.x
@@ -647,7 +671,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
 
-        elif how == "Fine-Gray":
+        elif model == "Fine-Gray":
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
             # per cause. The authoritative predictions come from these models
             # (see ``_fg_models`` and the ``cif``/``sf`` branches below); the
@@ -656,7 +680,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             fg_models = {}
             results = []
             for i, event in enumerate(causes):
-                fg = FineGray.fit(x, Z, e, c=c, n=n, cause=event)
+                fg = FineGray.fit(x, Z, e, c=c, n=n, event=event)
                 fg_models[event] = fg
                 results.append(fg.res)
                 betas[i, :] = fg.beta
@@ -664,11 +688,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 # equals this cause's cumulative subdistribution hazard.
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
-            model._fg_models = fg_models
+            out._fg_models = fg_models
         else:
-            raise ValueError("`how` must be either 'Cox' or 'Fine-Gray")
+            raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
 
-        model.results = results
-        model._finish(betas, baselines)
-        model.x = unique_x
-        return model
+        out.results = results
+        out._finish(betas, baselines)
+        out.x = unique_x
+        return out

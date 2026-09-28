@@ -295,3 +295,19 @@ def test_non_parametric_estimates_have_set_support():
 
 def _case(name):
     return next(case for case in CASES if case.name == name)
+
+
+@pytest.mark.parametrize("case", cases_for("outside_data", where=_with_bounds))
+def test_bounds_are_nan_outside_the_data_without_a_support(case):
+    """Without a support every confidence bound of the case -- the
+    pointwise ones and the bootstrap alike -- is NaN below the first and
+    above the last time, where the estimate says nothing (principle 11).
+    ``bootstrap_cb`` used to carry its step convention there instead (1,
+    and the last bounds; #452). (A missing time is ``test_missing``'s.)"""
+    model = fitted(case)
+    assert model.support is None
+    lower, upper, _ = _support(case)
+    x = np.array([lower, upper])
+    for label, method, kw, _, event in _bound_calls(case):
+        b = _bound(model, method, x, event, kw)
+        assert np.isnan(b).all(), f"{label}: {b}"

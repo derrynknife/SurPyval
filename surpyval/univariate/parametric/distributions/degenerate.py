@@ -28,6 +28,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.shapes import keeps_query_shape
 
 # The serialisation of the two classes. They are the model themselves
@@ -116,16 +117,24 @@ class NeverOccurs(Distribution):
         return np.zeros_like(x).astype(float)
 
     @classmethod
+    @renamed_arguments(u="p")
     @keeps_query_shape
-    def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.full_like(np.asarray(u, dtype=float), np.inf)
+    def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
+        return np.full_like(np.asarray(p, dtype=float), np.inf)
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:
         return np.inf
 
     @classmethod
-    def random(cls, size: int, *args: Any, **kwargs: Any) -> npt.NDArray:
+    def random(
+        cls,
+        size: int,
+        *args: Any,
+        random_state: Any = None,
+        **kwargs: Any,
+    ) -> npt.NDArray:
+        # A point mass: random_state is taken for the common signature.
         return np.ones(size) * np.inf
 
     @classmethod
@@ -195,16 +204,24 @@ class InstantlyOccurs(Distribution):
         return np.full_like(x, np.inf, dtype=float)
 
     @classmethod
+    @renamed_arguments(u="p")
     @keeps_query_shape
-    def qf(cls, u: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(np.asarray(u, dtype=float))
+    def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
+        return np.zeros_like(np.asarray(p, dtype=float))
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:
         return 0.0
 
     @classmethod
-    def random(cls, size: int, *args: Any, **kwargs: Any) -> npt.NDArray:
+    def random(
+        cls,
+        size: int,
+        *args: Any,
+        random_state: Any = None,
+        **kwargs: Any,
+    ) -> npt.NDArray:
+        # A point mass: random_state is taken for the common signature.
         return np.zeros(size)
 
     @classmethod

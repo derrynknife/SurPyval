@@ -164,9 +164,9 @@ def test_cause_specific_mcf_plot_draws_bounds_on_request():
     model.plot(ax=ax, plot_bounds=False)
     assert len(ax.lines) == 2
     _, ax = plt.subplots()
-    model.plot(ax=ax, confidence=0.8)
+    model.plot(ax=ax, alpha_ci=0.2)
     # an MCF plus a [lower, upper] pair per cause
     assert len(ax.lines) == 6
-    upper = model.models["a"].mcf_cb(model.models["a"].x, confidence=0.8)
+    upper = model.models["a"].mcf_cb(model.models["a"].x, alpha_ci=0.2)
     np.testing.assert_allclose(ax.lines[2].get_ydata(), upper[:, 1])
     plt.close("all")

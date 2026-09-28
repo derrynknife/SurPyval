@@ -83,9 +83,9 @@ def _default(func, arg):
 def test_cox_tie_method_default_is_the_same_everywhere():
     cr_ph = sp.univariate.competing_risks.CompetingRisksProportionalHazards
     found = {
-        "CoxPH.fit": _default(sp.CoxPH.fit, "method"),
-        "CoxPH.fit_from_df": _default(sp.CoxPH.fit_from_df, "method"),
-        "CoxPH.fit_tvc": _default(sp.CoxPH.fit_tvc, "method"),
+        "CoxPH.fit": _default(sp.CoxPH.fit, "tie_method"),
+        "CoxPH.fit_from_df": _default(sp.CoxPH.fit_from_df, "tie_method"),
+        "CoxPH.fit_tvc": _default(sp.CoxPH.fit_tvc, "tie_method"),
         "CompetingRisksProportionalHazards.fit": _default(
             cr_ph.fit, "tie_method"
         ),

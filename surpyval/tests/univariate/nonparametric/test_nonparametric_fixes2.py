@@ -191,7 +191,7 @@ class TestBootstrapSettings:
         calls = self._record(monkeypatch)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            model.bootstrap_cb([6.0], B=3, random_state=1)
+            model.bootstrap_cb([6.0], n_boot=3, random_state=1)
         assert len(calls) == 3
         for kwargs in calls:
             assert kwargs["estimator"] == "Nelson-Aalen"
@@ -206,7 +206,7 @@ class TestBootstrapSettings:
         calls = self._record(monkeypatch)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
-            restored.bootstrap_cb([6.0], B=2, random_state=1)
+            restored.bootstrap_cb([6.0], n_boot=2, random_state=1)
         assert all(k["tol"] == 1e-8 and k["max_iter"] == 50 for k in calls)
 
 

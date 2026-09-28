@@ -1,3 +1,4 @@
+import numbers
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -10,6 +11,7 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -194,6 +196,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     #: The ``(lower, upper)`` interval the estimate is defined on, set by
     #: :meth:`set_support`; ``None`` (the default) when it has not been set.
     support: "tuple[float, float] | None" = None
+    # The sample size of ``band`` as ``to_dict`` stored it ("band_n"), for
+    # a model restored without its data; see ``_band_sample_size``.
+    _band_n: "float | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -295,6 +300,34 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return _on_support(
             self.support, float(self.x[0]), float(self.x[-1]), x, f, start
         )
+
+    def _bounds_within_support(
+        self,
+        x: npt.ArrayLike,
+        f: Callable[[npt.ArrayLike], npt.ArrayLike],
+        start: float,
+    ) -> npt.NDArray:
+        """The confidence bounds ``f(x)``, as :meth:`_within_support`
+        gives them with a support set, and without one NaN outside the
+        observed values (and at a missing x). ``cb``, ``R_cb`` and
+        ``bootstrap_cb`` all go through here so that they agree outside
+        the data: ``bootstrap_cb`` used to carry its step convention there
+        (1 before the first value, the last bounds after it; #452)."""
+        first, last = float(self.x[0]), float(self.x[-1])
+        support = (first, last) if self.support is None else self.support
+        return _on_support(support, first, last, x, f, start)
+
+    def _band_sample_size(self) -> float:
+        """The sample size N of ``band``: the number of items fitted,
+        from the data or, restored without them, as ``to_dict`` stored it.
+        A model with neither (``from_xrd``, or a dictionary written before
+        it was stored) takes the largest risk set, the same number unless
+        the data were left truncated (#451)."""
+        if getattr(self, "data", None) is not None and "n" in self.data:
+            return float(self.data["n"].sum())
+        if self._band_n is not None:
+            return self._band_n
+        return float(np.max(self.r))
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
@@ -757,7 +790,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         _check_bound(bound)
         # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
         # 0.0, not at -log(1) = -0.0.
-        return self._within_support(
+        return self._bounds_within_support(
             x,
             lambda q: self._cb(
                 q, on, bound, interp, alpha_ci, bound_type, dist
@@ -824,7 +857,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
-        return self._within_support(
+        return self._bounds_within_support(
             x,
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
             1.0,
@@ -916,7 +949,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 else:
                     R_out = R_out[idx]
                     R_out = np.where(idx < 0, 1, R_out)
-                R_out = np.where(np.isnan(x), np.nan, R_out)
 
             else:
                 if bound == "two-sided":
@@ -926,11 +958,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 else:
                     R_out = interp_function(self.x, R_out, kind=interp)(x)
 
-            # The question remains. Should bounds above and below observed
-            # values be calculable?...
-            mask = (x < self.x.min()) | (x > self.x.max())
-            R_out = np.where(mask, np.nan, R_out)
-
+            # A missing x, or one outside the observed values, is NaN (or
+            # set by the support): ``R_cb`` only asks within them (see
+            # ``_bounds_within_support``).
             if bound == "two-sided":
                 R_out = R_out.T
 
@@ -1324,13 +1354,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "tau": float(tau),
         }
 
+    @renamed_arguments(B="n_boot")
     @keeps_query_shape
     def bootstrap_cb(
         self,
         x: npt.ArrayLike,
         bound: str = "two-sided",
         alpha_ci: float = 0.05,
-        B: int = 200,
+        n_boot: int = 200,
         random_state: int | None = None,
     ) -> npt.NDArray:
         r"""
@@ -1365,7 +1396,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         alpha_ci : scalar, optional
             The level of significance at which the bound will be
             computed. Defaults to 0.05.
-        B : int, optional
+        n_boot : int, optional
             The number of bootstrap resamples. Defaults to 200. Larger
             values give smoother bounds at a linear cost in runtime;
             note that refitting the Turnbull estimator is relatively
@@ -1382,10 +1413,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         cb : numpy array
             For two-sided bounds an array of shape (len(x), 2) with
             ``[lower, upper]`` columns; otherwise an array of the
-            requested bound at each x. With a support set (see
-            ``set_support``) it is 1 from ``lower`` to the first value,
-            the bounds at the last value from there to ``upper``, and NaN
-            outside them.
+            requested bound at each x. As for ``cb``, the bounds are NaN
+            below the first and above the last observed value, and at a
+            missing x; with a support set (see ``set_support``) they are 1
+            from ``lower`` to the first value, the bounds at the last
+            value from there to ``upper``, and NaN outside them.
 
         Raises
         ------
@@ -1394,14 +1426,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             If the model does not hold the data it was fitted with: a
             model from ``from_xrd`` or ``fit_from_ecdf``, or one restored
             from a dictionary written without ``with_data=True``. Also if
-            ``bound`` is unknown or ``B`` is not a positive integer.
+            ``bound`` is unknown or ``n_boot`` is not a positive integer.
 
         Examples
         --------
         >>> from surpyval import KaplanMeier
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
-        >>> model.bootstrap_cb([2, 4, 6], B=100, random_state=1)
+        >>> model.bootstrap_cb([2, 4, 6], n_boot=100, random_state=1)
         array([[0.625     , 1.        ],
                [0.19739583, 0.875     ],
                [0.        , 0.75      ]])
@@ -1415,15 +1447,18 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 + "it: to_dict(with_data=True)."
             )
         _check_bound(bound)
-        # Checked up front: B = 0 used to fail as an IndexError from the
-        # empty quantile, and a fractional B as a TypeError from range().
-        if isinstance(B, bool) or not isinstance(B, (int, np.integer)):
+        # Checked up front: n_boot = 0 used to fail as an IndexError from
+        # the empty quantile, and a fractional one as a TypeError from
+        # range().
+        if isinstance(n_boot, bool) or not isinstance(
+            n_boot, (int, np.integer)
+        ):
             raise ValueError(
-                "'B' must be a positive integer; got {!r}".format(B)
+                "'n_boot' must be a positive integer; got {!r}".format(n_boot)
             )
-        if B < 1:
+        if n_boot < 1:
             raise ValueError(
-                "'B' must be a positive integer; got {}".format(B)
+                "'n_boot' must be a positive integer; got {}".format(n_boot)
             )
         # Imported here as the package imports this module on init.
         from surpyval.univariate import nonparametric as nonp
@@ -1450,8 +1485,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         def resampled(x: npt.ArrayLike) -> npt.NDArray:
             x_eval = np.atleast_1d(x).astype(float)
             with np.errstate(all="ignore"):
-                R_boot = np.empty((B, x_eval.size))
-                for b in range(B):
+                R_boot = np.empty((n_boot, x_eval.size))
+                for b in range(n_boot):
                     n_b = rng.multinomial(N, probs)
                     keep = n_b > 0
                     if self.model == "Turnbull":
@@ -1483,9 +1518,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             else:
                 return np.quantile(R_boot, 1 - alpha_ci, axis=0)
 
-        # With a support set, 1 before the first value and the bounds at the
-        # last value carried to ``upper``, as ``cb`` gives.
-        return self._within_support(x, resampled, 1.0)
+        # NaN outside the data or, with a support set, 1 before the first
+        # value and the bounds at the last value carried to ``upper``, as
+        # ``cb`` gives.
+        return self._bounds_within_support(x, resampled, 1.0)
 
     @staticmethod
     def _band_critical_value(
@@ -1740,10 +1776,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 + "counts are unknown."
             )
 
-        if getattr(self, "data", None) is not None and "n" in self.data:
-            N = float(self.data["n"].sum())
-        else:
-            N = float(np.max(self.r))
+        N = self._band_sample_size()
 
         with np.errstate(all="ignore"):
 
@@ -2164,7 +2197,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             (``converged``, ``iters``, ``degenerate``, ``npmle``,
             ``exploitable_mass``) and the ``bounds``, ``R_upper`` and
             ``R_lower`` arrays are not stored; the ``support`` set by
-            :meth:`set_support` is, when set. It is strict JSON: the
+            :meth:`set_support` is, when set, and so is the sample size of
+            :meth:`band` (``"band_n"``, the number of items fitted) where
+            it is not the largest risk set, as with left truncated data.
+            Either makes the dictionary schema 2. It is strict JSON: the
             non-finite values (``H`` after the last death, an undefined
             Greenwood term, untruncated bounds in the data) are ``None``,
             recorded under ``"non_finite"`` and restored by
@@ -2194,6 +2230,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         # Only when set: without it the dictionary is readable by v0.20.
         if self.support is not None:
             out["support"] = [float(v) for v in self.support]
+
+        # The sample size of ``band``, only where a reader without it would
+        # take a different one (the largest risk set, e.g. 37 for 60 items
+        # half of which entered late; #451), as for the support. Up to
+        # round-off: a Turnbull EM's largest risk set is N +- 3e-14.
+        if getattr(self, "r", None) is not None:
+            band_n = self._band_sample_size()
+            if not np.isclose(band_n, np.max(self.r), rtol=1e-9, atol=0):
+                out["band_n"] = band_n
 
         if with_data and getattr(self, "data", None) is not None:
             data_dict: dict[str, Any] = {}
@@ -2263,6 +2308,17 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 if key in model_dict:
                     data[key] = model_dict[key]
             out.data = data
+
+        band_n = model_dict.get("band_n")
+        if band_n is not None:
+            if isinstance(band_n, bool) or not isinstance(
+                band_n, numbers.Real
+            ):
+                raise ValueError(
+                    "The serialised 'band_n' must be a number; got "
+                    "{!r}.".format(band_n)
+                )
+            out._band_n = float(band_n)
 
         support = _support_from_dict(model_dict)
         if support is not None:

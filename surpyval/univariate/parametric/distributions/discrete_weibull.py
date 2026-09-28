@@ -1,10 +1,12 @@
+from typing import Any
+
 import numpy.typing as npt
-from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
+from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -148,10 +150,16 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         k = np.arange(1, upper + 1, dtype=float)
         return np.sum(k**m * self.df(k, q, beta))
 
-    def random(
-        self, size: int | tuple[int, ...], q: Boxable, beta: Boxable
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        q: Boxable,
+        beta: Boxable,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
-        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``).
+        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``);
+        ``random_state`` is as for :meth:`ParametricFitter.random`.
 
         Examples
         --------
@@ -161,7 +169,7 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> DiscreteWeibull.random(5, 0.9, 1.5)
         array([3., 6., 1., 3., 2.])
         """
-        U = uniform.rvs(size=size)
+        U = uniform_draws(size, random_state)
         # qf is declared Boxable because a fit differentiates it;
         # sampling never does, so this is always a real array.
         return np.asarray(self.qf(U, q, beta))

@@ -214,8 +214,8 @@ def test_regression_and_competing_risks_accept_two_column_points():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         np.testing.assert_allclose(
-            FineGray.fit(x2, Z, e, c1, cause="a").beta,
-            FineGray.fit(x1, Z, e, c1, cause="a").beta,
+            FineGray.fit(x2, Z, e, c1, event="a").beta,
+            FineGray.fit(x1, Z, e, c1, event="a").beta,
         )
         CompetingRisksProportionalHazards.fit(x2, Z, e, c1)
         ParametricCompetingRisks.fit(x2, e, c1)

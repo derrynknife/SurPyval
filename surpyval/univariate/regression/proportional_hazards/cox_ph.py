@@ -35,6 +35,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.deprecation import renamed_arguments
 
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc, handle_tvc_timeline
@@ -1116,8 +1117,8 @@ class CoxPH_:
 
         return self._tie_term_ll_jac_hess(len(event_times), term)
 
-    def _resolve_func_generator(self, method: str) -> Callable[..., Any]:
-        """Map a tie-handling ``method`` name to its likelihood generator."""
+    def _resolve_func_generator(self, tie_method: str) -> Callable[..., Any]:
+        """Map a ``tie_method`` name to its likelihood generator."""
         generators: dict[str, Callable[..., Any]] = {
             "efron": self.create_efron_ll_jac_hess,
             "breslow": self.create_breslow_ll_jac_hess,
@@ -1127,12 +1128,13 @@ class CoxPH_:
             ),
             "kp": self.create_kalbfleisch_prentice_ll_jac_hess,
         }
-        if method not in generators:
+        if tie_method not in generators:
             raise ValueError(
-                "method must be one of {}".format(sorted(generators))
+                "tie_method must be one of {}".format(sorted(generators))
             )
-        return generators[method]
+        return generators[tie_method]
 
+    @renamed_arguments(method="tie_method")
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1140,7 +1142,7 @@ class CoxPH_:
         c: npt.ArrayLike | None = None,
         n: npt.ArrayLike | None = None,
         tl: npt.ArrayLike | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
         tol: float = 1e-10,
         strata: npt.ArrayLike | None = None,
     ) -> SemiParametricRegressionModel:
@@ -1165,7 +1167,7 @@ class CoxPH_:
             The number of observations at each time point.
         tl: array-like, optional
             The left-truncation times of the observations.
-        method: str, optional
+        tie_method: str, optional
             The method to use for tie handling. One of ``'efron'``
             (default), ``'breslow'``, ``'exact'`` (the average-over-orderings
             exact partial likelihood, for ties from coarse rounding of
@@ -1221,14 +1223,14 @@ class CoxPH_:
         >>> model.sf([20, 52], [1, 25, 3]).round(4)
         array([0.9326, 0.7963])
         """
-        func_generator = self._resolve_func_generator(method)
+        func_generator = self._resolve_func_generator(tie_method)
 
         if strata is not None:
             return self._fit_stratified(
-                x, Z, c, n, tl, method, tol, strata, func_generator
+                x, Z, c, n, tl, tie_method, tol, strata, func_generator
             )
 
-        x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, method)
+        x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
@@ -1242,8 +1244,8 @@ class CoxPH_:
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.tie_method = method
-        model.baseline_method = _baseline_method(method)
+        model.tie_method = tie_method
+        model.baseline_method = _baseline_method(tie_method)
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
@@ -1260,7 +1262,7 @@ class CoxPH_:
             "tl": np.asarray(tl, dtype=float),
         }
 
-        x, r, d, h0 = self.baseline(model.beta, x, c, n, Z, tl, method)
+        x, r, d, h0 = self.baseline(model.beta, x, c, n, Z, tl, tie_method)
         model.x = x
         model.r = r
         model.d = d
@@ -1277,7 +1279,7 @@ class CoxPH_:
         c: "npt.ArrayLike | None",
         n: "npt.ArrayLike | None",
         tl: "npt.ArrayLike | None",
-        method: str,
+        tie_method: str,
         tol: float,
         strata: npt.ArrayLike,
         func_generator: Callable,
@@ -1335,7 +1337,7 @@ class CoxPH_:
                 _sub(n_o, mask),
                 _sub(Z_o, mask),
                 _sub(tl_o, mask),
-                method,
+                tie_method,
             )
             if n_params is None:
                 n_params = Zs.shape[1]
@@ -1355,8 +1357,8 @@ class CoxPH_:
         model.p_values = p_values
         model.neg_ll = neg_ll
         model.jac = jac
-        model.tie_method = method
-        model.baseline_method = _baseline_method(method)
+        model.tie_method = tie_method
+        model.baseline_method = _baseline_method(tie_method)
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
@@ -1368,7 +1370,7 @@ class CoxPH_:
         baselines: dict[Any, dict[str, npt.NDArray]] = {}
         for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
             bx, br, bd, bh0 = self.baseline(
-                model.beta, xs, cs, ns_, Zs, tls, method
+                model.beta, xs, cs, ns_, Zs, tls, tie_method
             )
             baselines[s] = {
                 "x": bx,
@@ -1392,6 +1394,7 @@ class CoxPH_:
 
         return model
 
+    @renamed_arguments(method="tie_method")
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -1400,7 +1403,7 @@ class CoxPH_:
         c_col: str | None = None,
         n_col: str | None = None,
         formula: str | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
         strata_col: str | None = None,
         tl_col: str | None = None,
     ) -> SemiParametricRegressionModel:
@@ -1425,7 +1428,7 @@ class CoxPH_:
             ``"age + site"``), instead of ``Z_cols``; categorical columns get
             reference-level coding. Rows with a missing covariate (in
             ``Z_cols`` or a formula column) are dropped, with a warning.
-        method: str, optional
+        tie_method: str, optional
             The tie-handling method: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``). See
             :meth:`fit`.
@@ -1458,13 +1461,16 @@ class CoxPH_:
             )
         )
 
-        model = self.fit(x, Z, c, n, tl=tl, method=method, strata=strata)
+        model = self.fit(
+            x, Z, c, n, tl=tl, tie_method=tie_method, strata=strata
+        )
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec
 
         return model
 
+    @renamed_arguments(method="tie_method")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -1473,7 +1479,7 @@ class CoxPH_:
         c: npt.ArrayLike,
         Z: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
         tol: float = 1e-10,
     ) -> SemiParametricRegressionModel:
         """
@@ -1496,7 +1502,7 @@ class CoxPH_:
             per-interval covariates.
         n : array_like, optional
             Count weight per interval row.
-        method : str, optional
+        tie_method : str, optional
             Tie-handling method: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
@@ -1536,7 +1542,13 @@ class CoxPH_:
         """
         x, c, n_arr, tl, Z_arr, ident = handle_tvc(i, xl, xr, c, Z, n)
         model = self.fit(
-            x=x, Z=Z_arr, c=c, n=n_arr, tl=tl, method=method, tol=tol
+            x=x,
+            Z=Z_arr,
+            c=c,
+            n=n_arr,
+            tl=tl,
+            tie_method=tie_method,
+            tol=tol,
         )
         model.is_tvc = True
         # Subject ids per *internal* (sorted) row, and the permutation from
@@ -1549,16 +1561,17 @@ class CoxPH_:
         )
         return model
 
+    @renamed_arguments(id_col="i_col", method="tie_method")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
-        id_col: str,
+        i_col: str,
         xl_col: str,
         xr_col: str,
         c_col: str,
         Z_cols: str | list[str],
         n_col: str | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
@@ -1568,17 +1581,18 @@ class CoxPH_:
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc(
-            i=df[id_col].to_numpy(),
+            i=df[i_col].to_numpy(),
             xl=df[xl_col].to_numpy(),
             xr=df[xr_col].to_numpy(),
             c=df[c_col].to_numpy(),
             Z=df[cols].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
-            method=method,
+            tie_method=tie_method,
         )
         model.feature_names = cols
         return model
 
+    @renamed_arguments(method="tie_method")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -1586,7 +1600,7 @@ class CoxPH_:
         Z: npt.ArrayLike,
         c: npt.ArrayLike,
         n: npt.ArrayLike | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
         tol: float = 1e-10,
     ) -> SemiParametricRegressionModel:
         """
@@ -1618,7 +1632,7 @@ class CoxPH_:
             event, ``1`` right-censored).
         n : array_like, optional
             Per-subject count weight (read from the terminal row).
-        method : str, optional
+        tie_method : str, optional
             Tie-handling method: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
@@ -1638,19 +1652,20 @@ class CoxPH_:
             c=c_ss,
             Z=Z_ss,
             n=n_ss,
-            method=method,
+            tie_method=tie_method,
             tol=tol,
         )
 
+    @renamed_arguments(id_col="i_col", method="tie_method")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",
-        id_col: str,
+        i_col: str,
         time_col: str,
         Z_cols: str | list[str],
         c_col: str,
         n_col: str | None = None,
-        method: str = "efron",
+        tie_method: str = "efron",
     ) -> SemiParametricRegressionModel:
         """
         Fit a timeline TVC Cox model from a DataFrame.
@@ -1661,12 +1676,12 @@ class CoxPH_:
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc_timeline(
-            i=df[id_col].to_numpy(),
+            i=df[i_col].to_numpy(),
             x=df[time_col].to_numpy(),
             Z=df[cols].to_numpy(),
             c=df[c_col].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
-            method=method,
+            tie_method=tie_method,
         )
         model.feature_names = cols
         return model

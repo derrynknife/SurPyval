@@ -778,7 +778,7 @@ resamples whole units and reruns the whole pipeline:
 .. jupyter-execute::
 
     model.cb(np.array([500.0, 600.0]), on='sf', method='bootstrap',
-             n_boot=100, seed=0)
+             n_boot=100, random_state=0)
 
 Both methods take ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``), ``alpha_ci`` (the
 total tail probability: a two-sided band has ``alpha_ci / 2`` in each tail, so
@@ -892,8 +892,8 @@ evaluated at a chosen stress:
 .. jupyter-execute::
 
     t = np.array([50.0, 100.0, 150.0])
-    band = model.cb(t, on='sf', method='bootstrap', Z=[0.0],
-                    n_boot=50, seed=0)
+    band = model.cb(t, Z=[0.0], on='sf', method='bootstrap',
+                    n_boot=50, random_state=0)
     band                                        # (n, 2): [lower, upper] at Z=0
 
 The analytic (generated-regressor) delta-method correction used for the plain
@@ -1258,7 +1258,8 @@ the clock is re-estimated on every resample.
 
     induced = step.induced_life(Z=profile, random_state=0)
     print('induced median life on the profile:', round(induced.median(), 1))
-    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50, seed=0)
+    step.cb([200.0, 240.0], Z=profile, method='bootstrap', n_boot=50,
+            random_state=0)
 
 ``acceleration='clock'`` cannot be combined with ``links`` or ``path='best'``,
 and the life model must be a plain distribution, since stress enters through
@@ -1961,13 +1962,13 @@ resampling specimens and refitting:
     print("location, scale           :", best.beta.round(4), round(best.sigma, 4))
     print("median strength at 10, 40 :", best.median_degradation([10.0, 40.0]).round(1))
     print("reliability at 25, 35, 45 :", best.sf([25.0, 35.0, 45.0]).round(3))
-    best.cb([25.0, 35.0, 45.0], n_boot=50, seed=0)
+    best.cb([25.0, 35.0, 45.0], n_boot=50, random_state=0)
 
 The linear transform wins, as simulated; the location recovers
 :math:`\log 100 \approx 4.61` and the slope :math:`-0.02` closely, and the
 median life, where the median strength falls to 50, is at about
-:math:`\ln 2 / 0.02 \approx 35`. ``median_degradation(t)`` is the
-``degradation_quantile(0.5, t)`` of the fitted measurement distribution.
+:math:`\ln 2 / 0.02 \approx 35`. ``median_degradation(x)`` is the
+``degradation_quantile(0.5, x)`` of the fitted measurement distribution.
 
 .. jupyter-execute::
     :hide-code:
@@ -2017,12 +2018,12 @@ including the *bootstrap* confidence bound. That bound reruns the whole fit on
 resampled units; the fitter it reruns (the lifetime distribution, or for an
 accelerated model the regression fitter such as ``WeibullPH`` or
 ``AFT(Weibull)``) is recovered from the restored life model, so with the same
-seed the reloaded model reproduces the original's band exactly:
+``random_state`` the reloaded model reproduces the original's band exactly:
 
 .. jupyter-execute::
 
-    band_saved = saveable.cb(grid, method="bootstrap", n_boot=50, seed=1)
-    band_reloaded = reloaded.cb(grid, method="bootstrap", n_boot=50, seed=1)
+    band_saved = saveable.cb(grid, method="bootstrap", n_boot=50, random_state=1)
+    band_reloaded = reloaded.cb(grid, method="bootstrap", n_boot=50, random_state=1)
     print(band_saved.round(3))
     print(band_reloaded.round(3))
 
@@ -2042,8 +2043,9 @@ its bootstrap bounds in the same way:
     from surpyval.degradation import DestructiveDegradationModel
 
     reloaded_destructive = DestructiveDegradationModel.from_dict(best.to_dict())
-    print(np.allclose(best.cb([25.0, 35.0], n_boot=20, seed=2),
-                      reloaded_destructive.cb([25.0, 35.0], n_boot=20, seed=2)))
+    print(np.allclose(best.cb([25.0, 35.0], n_boot=20, random_state=2),
+                      reloaded_destructive.cb([25.0, 35.0], n_boot=20,
+                                              random_state=2)))
 
 One limit: the path model is stored by its *name* (the ``path=`` string, such
 as ``"offset-exponential"``) and resolved among the built-in ones, so a model

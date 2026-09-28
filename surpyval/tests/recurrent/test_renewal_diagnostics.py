@@ -105,7 +105,9 @@ def test_fit_from_parameters_has_no_residuals():
 
 
 def _simulate_refit_residuals(truth, fitter, refit_kwargs, seed):
-    data = truth.count_terminated_simulation_data(8, items=250, seed=seed)
+    data = truth.count_terminated_simulation_data(
+        8, items=250, random_state=seed
+    )
     model = fitter.fit_from_recurrent_data(data, **refit_kwargs)
     return model.residuals("cumulative_hazard"), model
 
@@ -150,7 +152,9 @@ def test_intensity_reduction_residuals_are_exp1():
 
 
 def _small_fit(truth, fitter, refit_kwargs, seed):
-    data = truth.count_terminated_simulation_data(6, items=35, seed=seed)
+    data = truth.count_terminated_simulation_data(
+        6, items=35, random_state=seed
+    )
     return fitter.fit_from_recurrent_data(data, **refit_kwargs)
 
 
@@ -161,7 +165,7 @@ def test_cvm_age_reduction_runs_and_matches_statistic():
     model = _small_fit(
         truth, GeneralizedRenewal, dict(dist=Weibull, kijima="i"), seed=0
     )
-    result = model.cramer_von_mises(n_boot=10, seed=1)
+    result = model.cramer_von_mises(n_boot=10, random_state=1)
     assert isinstance(result, GoodnessOfFitResult)
     assert 0.0 < result.p_value <= 1.0
     assert result.n_systems == np.unique(model.data.i).size
@@ -174,7 +178,7 @@ def test_cvm_age_reduction_runs_and_matches_statistic():
 def test_cvm_intensity_reduction_runs():
     truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
     model = _small_fit(truth, ARI, dict(dist=CrowAMSAA, m=1), seed=4)
-    result = model.cramer_von_mises(n_boot=10, seed=2)
+    result = model.cramer_von_mises(n_boot=10, random_state=2)
     assert isinstance(result, GoodnessOfFitResult)
     assert 0.0 < result.p_value <= 1.0
 
@@ -186,8 +190,8 @@ def test_cvm_is_reproducible_with_seed():
     model = _small_fit(
         truth, GeneralizedRenewal, dict(dist=Weibull, kijima="i"), seed=3
     )
-    a = model.cramer_von_mises(n_boot=8, seed=99)
-    b = model.cramer_von_mises(n_boot=8, seed=99)
+    a = model.cramer_von_mises(n_boot=8, random_state=99)
+    b = model.cramer_von_mises(n_boot=8, random_state=99)
     assert a.statistic == b.statistic
     assert a.p_value == b.p_value
 

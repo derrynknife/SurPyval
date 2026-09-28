@@ -838,7 +838,9 @@ def test_adt_bootstrap_bounds():
     Zev = [0.5]
     sf_hat = np.asarray(model.sf(xs, Z=Zev), dtype=float).ravel()
 
-    band = model.cb(xs, on="sf", method="bootstrap", n_boot=150, seed=3, Z=Zev)
+    band = model.cb(
+        xs, on="sf", method="bootstrap", n_boot=150, random_state=3, Z=Zev
+    )
     assert band.shape == (3, 2)
     # the two-sided band brackets the point estimate and stays in [0, 1]
     assert np.all(band[:, 0] <= sf_hat + 1e-9)
@@ -849,7 +851,7 @@ def test_adt_bootstrap_bounds():
     assert np.any(band[:, 1] - band[:, 0] > 0)
     # reproducible with a fixed seed
     again = model.cb(
-        xs, on="sf", method="bootstrap", n_boot=150, seed=3, Z=Zev
+        xs, on="sf", method="bootstrap", n_boot=150, random_state=3, Z=Zev
     )
     assert np.array_equal(band, again)
 
@@ -866,7 +868,7 @@ def test_adt_bootstrap_bounds_one_sided_and_targets():
         method="bootstrap",
         bound="lower",
         n_boot=120,
-        seed=4,
+        random_state=4,
         Z=Zev,
     )
     upper = model.cb(
@@ -875,16 +877,16 @@ def test_adt_bootstrap_bounds_one_sided_and_targets():
         method="bootstrap",
         bound="upper",
         n_boot=120,
-        seed=4,
+        random_state=4,
         Z=Zev,
     )
     assert np.all(lower <= sf_hat) and np.all(sf_hat <= upper)
     # ff and Hf bounds are shaped and ordered correctly
     ff_band = model.cb(
-        xs, on="ff", method="bootstrap", n_boot=120, seed=5, Z=Zev
+        xs, on="ff", method="bootstrap", n_boot=120, random_state=5, Z=Zev
     )
     hf_band = model.cb(
-        xs, on="Hf", method="bootstrap", n_boot=120, seed=5, Z=Zev
+        xs, on="Hf", method="bootstrap", n_boot=120, random_state=5, Z=Zev
     )
     assert ff_band.shape == (2, 2) and hf_band.shape == (2, 2)
     assert np.all(ff_band[:, 0] <= ff_band[:, 1])

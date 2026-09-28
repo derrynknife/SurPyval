@@ -261,8 +261,8 @@ def test_recurrent_models_keep_the_query_shape():
     _assert_shape_in_shape_out(model.cif_cb, GRID, (2,))
     renewal = fitted(CASE_BY_NAME["GeneralizedOneRenewal"])
     # mcf([]) raised ValueError (the max of an empty array).
-    assert renewal.mcf([], seed=1).shape == (0,)
-    assert np.shape(renewal.mcf(5.0, seed=1)) == ()
+    assert renewal.mcf([], random_state=1).shape == (0,)
+    assert np.shape(renewal.mcf(5.0, random_state=1)) == ()
 
 
 # ---------------------------------------------------------------------------
@@ -282,11 +282,11 @@ def test_degradation_models_keep_the_query_shape():
     # bound of [0.99657, 1.0] and [1.1e-6, 1.0] where the bounds at the
     # four times are [1, 1], [1, 1], [1, 1] and [0.9962, 0.9995].
     t = np.array([[5.0, 20.0], [40.0, 60.0]])
-    got = destructive.cb(t, n_boot=10, seed=1)
-    flat = destructive.cb(t.ravel(), n_boot=10, seed=1)
+    got = destructive.cb(t, n_boot=10, random_state=1)
+    flat = destructive.cb(t.ravel(), n_boot=10, random_state=1)
     assert got.shape == (2, 2, 2)
     np.testing.assert_array_equal(got.reshape(-1, 2), flat)
-    assert destructive.cb(40.0, n_boot=10, seed=1).shape == (2,)
+    assert destructive.cb(40.0, n_boot=10, random_state=1).shape == (2,)
 
 
 def test_copula_points_keep_their_shape():

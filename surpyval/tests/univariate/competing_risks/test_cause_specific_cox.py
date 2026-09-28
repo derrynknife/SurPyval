@@ -1,6 +1,6 @@
 """Cause-specific proportional-hazards competing-risks regression.
 
-``CompetingRisksProportionalHazards.fit(how="Cox")`` fits one Cox model per
+``CompetingRisksProportionalHazards.fit(model="Cox")`` fits one Cox model per
 cause (other causes censored) and combines them into a cumulative-incidence
 prediction. These tests pin the correctness of that combination against a
 known analytic truth and exercise the DataFrame entry point.
@@ -53,7 +53,7 @@ def test_cox_cif_matches_analytic_with_differing_covariate_effects():
     # all-cause survival must combine each cause with its own coefficients
     # (not a summed coefficient), and the baseline must be cause-specific.
     x, Z, e, c, lam, beta = _exponential_cr_data(20000, 0)
-    m = CRPH.fit(x, Z, e, c=c, how="Cox")
+    m = CRPH.fit(x, Z, e, c=c, model="Cox")
     Z0 = np.array([0.5, -0.3])
     ts = np.array([0.5, 1.0, 2.0, 4.0])
     for event in (1, 2):
@@ -64,14 +64,14 @@ def test_cox_cif_matches_analytic_with_differing_covariate_effects():
 
 def test_cox_recovers_per_cause_coefficients():
     x, Z, e, c, lam, beta = _exponential_cr_data(20000, 1)
-    m = CRPH.fit(x, Z, e, c=c, how="Cox")
+    m = CRPH.fit(x, Z, e, c=c, model="Cox")
     assert np.allclose(m.betas[m.event_idx_map[1]], beta[0], atol=0.05)
     assert np.allclose(m.betas[m.event_idx_map[2]], beta[1], atol=0.05)
 
 
 def test_cif_is_monotone_and_bounded():
     x, Z, e, c, lam, beta = _exponential_cr_data(4000, 2)
-    m = CRPH.fit(x, Z, e, c=c, how="Cox")
+    m = CRPH.fit(x, Z, e, c=c, model="Cox")
     t = np.linspace(0.01, 8.0, 60)
     cif = m.cif(t, [0.2, -0.1], 1)
     assert np.all(cif >= 0) and np.all(cif <= 1)
@@ -81,7 +81,7 @@ def test_cif_is_monotone_and_bounded():
 def test_cifs_sum_below_one():
     # The competing CIFs plus the overall survival must sum to one.
     x, Z, e, c, lam, beta = _exponential_cr_data(6000, 3)
-    m = CRPH.fit(x, Z, e, c=c, how="Cox")
+    m = CRPH.fit(x, Z, e, c=c, model="Cox")
     t = np.array([0.5, 1.0, 3.0])
     Z0 = [0.1, 0.2]
     total = m.cif(t, Z0, 1) + m.cif(t, Z0, 2) + m.sf(t, Z0)
@@ -104,7 +104,7 @@ def test_baseline_uses_cause_specific_events_only():
     cause = T.argmin(axis=1) + 1
     e = np.array([int(ce) for ce in cause], dtype=object)
     c = np.zeros(N, dtype=int)
-    m = CRPH.fit(x, Z, e, c=c, how="Cox")
+    m = CRPH.fit(x, Z, e, c=c, model="Cox")
     f1 = m.cif([5.0], [0.0], 1)[0]
     f2 = m.cif([5.0], [0.0], 2)[0]
     assert f1 > 5 * f2  # cause 1 dominates, as its ~0.9 share implies
@@ -135,9 +135,9 @@ def test_fit_from_df_matches_array_fit(how):
         e_col="cause",
         Z_cols=["age", "dose"],
         c_col="c",
-        how=how,
+        model=how,
     )
-    m_arr = CRPH.fit(x, Z, e, c=c, how=how)
+    m_arr = CRPH.fit(x, Z, e, c=c, model=how)
     assert m_df.feature_names == ["age", "dose"]
     t = np.array([0.5, 1.0, 2.0])
     assert np.allclose(
@@ -215,6 +215,6 @@ def test_cause_order_is_sorted_and_reproducible():
         from surpyval import CoxPH
 
         c_e = np.where(e == cause, 0, 1)
-        single[cause] = CoxPH.fit(x, Z, c_e, method="efron").res.x
+        single[cause] = CoxPH.fit(x, Z, c_e, tie_method="efron").res.x
     assert np.allclose(m.betas[0], single["shock"])
     assert np.allclose(m.betas[1], single["wear"])

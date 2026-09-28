@@ -282,7 +282,7 @@ An infinite covariate is not missing: it is dropped at fit time along with the m
 Random draws and seeds
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, and the bootstraps behind confidence bounds such as ``bootstrap_cb()`` -- follows one rule for its seed argument (``random_state`` or ``seed``):
+Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, and the bootstraps behind confidence bounds such as ``bootstrap_cb()`` -- takes its seed as ``random_state`` and follows one rule for it:
 
 - ``None``, the default, draws from numpy's global random number generator, so ``np.random.seed(...)`` makes every draw reproducible, parametric or not.
 - An int, or a ``numpy.random.Generator``, gives a stream of its own (``numpy.random.default_rng(seed)``) that neither depends on nor advances the global one.
@@ -301,6 +301,7 @@ Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()
     print(first[0], second[0])
     print(first[1], second[1])
     print(km.random(5, random_state=1), km.random(5, random_state=1))
+    print(weibull.random(2, random_state=1), surv.Weibull.random(2, 100, 2, random_state=1))
 
 Offset, limited failure population and zero-inflation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -406,7 +407,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support``) is stamped 1 and still loads in older releases. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
+Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``) is stamped 1 and still loads in older releases. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
 A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 
