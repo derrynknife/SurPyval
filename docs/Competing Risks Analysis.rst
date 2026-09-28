@@ -529,11 +529,12 @@ the multiplicative change in the *rate* of cause :math:`k` among units still
 event-free, per unit increase of covariate :math:`p`.
 
 ``CompetingRisksProportionalHazards`` with ``how="Cox"`` fits one ``CoxPH``
-model per cause (see :doc:`regression/cox_ph`) and keeps each cause's Breslow
+model per cause (see :doc:`regression/cox_ph`) and keeps each cause's
 baseline cumulative hazard :math:`\hat{\Lambda}_{k,0}`. Its ``tie_method``
-argument is passed on as the Cox tie-handling ``method``; note that its
-default is ``"efron"``, whereas ``CoxPH.fit`` on its own defaults to
-``"breslow"``. The two agree when no failure times are tied. The CIF at a covariate vector :math:`Z` is then
+argument is passed on as the Cox tie-handling ``method``, ``"efron"`` by
+default as for ``CoxPH``, and the baseline follows it (Efron's tie correction
+after an Efron fit, Breslow's estimator otherwise; the two agree when no
+failure times are tied). The CIF at a covariate vector :math:`Z` is then
 assembled exactly as in the Aalen-Johansen formula, but with covariate-specific
 hazards:
 

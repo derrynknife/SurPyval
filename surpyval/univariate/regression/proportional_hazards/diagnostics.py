@@ -1,7 +1,7 @@
 """Residuals and the proportional-hazards test for a fitted Cox model.
 
 All quantities are computed from the per-observation training data retained
-on the fitted model (``model._fit_data``) and the Breslow baseline
+on the fitted model (``model._fit_data``) and its baseline
 (``model.x`` / ``model.H0``). Risk sets respect delayed entry (``tl``) and
 count weights (``n``), so the residuals are correct for left-truncated /
 start-stop data too.

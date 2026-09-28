@@ -632,8 +632,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 results.append(cox_model.res)
                 betas[i, :] = cox_model.res.x
                 # Cause-specific baseline hazard: reuse the fitted Cox model's
-                # own Breslow baseline, which is built from c_e (the
-                # cause-specific event indicator) and the standard risk set.
+                # own baseline (Efron's after an Efron fit, else Breslow's),
+                # which is built from c_e (the cause-specific event
+                # indicator) and the standard risk set.
                 # Map its cumulative hazard onto the shared unique_x grid and
                 # store increments so H0_e = baselines.cumsum stays coherent.
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)

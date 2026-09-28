@@ -4,6 +4,24 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Changed: ``CoxPH.fit`` defaults to Efron ties, with the matching Efron
+  baseline (#387).** ``fit`` defaulted to Breslow while ``fit_from_df``, the
+  time-varying-covariate fits and the competing-risks Cox model defaulted to
+  Efron, so the same tied data gave different models by different routes.
+  Every route is now Efron. Efron is chosen on merit: with ties from
+  rounding a continuous time, Breslow biases the coefficients towards zero
+  (in a simulation with true :math:`\beta = 0.7`, by -0.06 to -0.21 as the
+  ties grow, against -0.006 to -0.06 for Efron), at no saving worth having.
+  An Efron fit's baseline hazard now takes the same tie correction as its
+  likelihood: the :math:`d` deaths tied at a time leave the risk set a
+  fraction at a time, and the step is
+  :math:`\sum_{l<d} 1 / (R - \tfrac{l}{d} R_D)` instead of Breslow's
+  :math:`d / R` -- the covariate-weighted Fleming-Harrington estimator, as
+  Breslow's is the covariate-weighted Nelson-Aalen. It matches R's
+  ``survfit.coxph`` after an Efron fit (checked against it in the reference
+  tests) and the Efron residuals, which already used it. **Results change
+  on tied data**: pass ``method="breslow"`` for the old fit. Without ties
+  every method gives the same model as before.
 - **Property-based tests (#379).** Hypothesis generates data with mixed
   censoring, ties, counts, truncation and tiny samples, and checks the
   non-parametric estimators, parametric fits, regression, competing-risks,

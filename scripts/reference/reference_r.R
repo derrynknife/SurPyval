@@ -242,8 +242,13 @@ record("survival", "logrank_ties", "ties", "survival",
 # ---------------------------------------------------------------------------
 # survival: Cox proportional hazards.
 # ---------------------------------------------------------------------------
+# The baseline estimator that goes with the tie method, as survfit.coxph
+# chooses by default: Efron's (ctype = 2) for an Efron fit, Breslow's
+# (ctype = 1) otherwise. It is passed explicitly so the choice is recorded.
+baseline_ctype <- function(fit) if (fit$method == "efron") 2 else 1
 cox_values <- function(zero) function(fit) {
-    base <- survfit(fit, newdata = zero, ctype = 1, se.fit = FALSE)
+    base <- survfit(fit, newdata = zero, ctype = baseline_ctype(fit),
+                    se.fit = FALSE)
     list(
         coef = coef(fit), se = sqrt(diag(vcov(fit))),
         loglik = fit$loglik, n = fit$n, nevent = fit$nevent,
@@ -253,8 +258,10 @@ cox_values <- function(zero) function(fit) {
 cox_settings <- function(ties, extra = list()) c(
     list(ties = ties,
          baseline = paste("survfit(fit, newdata = <all covariates 0>,",
-                          "ctype = 1): the Breslow estimator of the",
-                          "uncentred baseline at the fitted coefficients")),
+                          if (ties == "efron") "ctype = 2): the Efron" else
+                              "ctype = 1): the Breslow",
+                          "estimator of the uncentred baseline at the",
+                          "fitted coefficients")),
     extra
 )
 lung_zero <- data.frame(age = 0, sex = 0, ph_ecog = 0)
@@ -294,7 +301,7 @@ strata_values <- function(fit) {
     out <- list(coef = coef(fit), se = sqrt(diag(vcov(fit))),
                 loglik = fit$loglik)
     base <- survfit(fit, newdata = data.frame(age = 0, ph_ecog = 0),
-                    ctype = 1, se.fit = FALSE)
+                    ctype = baseline_ctype(fit), se.fit = FALSE)
     s <- summary(base, censored = TRUE)
     for (k in c(1, 2)) {
         keep <- s$strata == paste0("sex=", k)

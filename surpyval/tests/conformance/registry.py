@@ -1826,11 +1826,6 @@ _NP_SHAPES = {
 _CONSTANT_HAZARD = (
     "hf ignores x, so hf(nan) is the constant rate instead of NaN"
 )
-_COX_TIES = (
-    "the tie-method defaults differ: CoxPH.fit uses breslow, fit_from_df "
-    "and fit_tvc use efron, so on the same tied data sf(2, [1, -0.5]) is "
-    "0.8852 by fit and 0.8837 by the others (equal when method is given)"
-)
 KNOWN_FAILURES: dict[str, dict[str, str]] = {
     # -- shapes ---------------------------------------------------------
     "KaplanMeier": _NP_SHAPES,
@@ -1933,10 +1928,6 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         "intensity falls (b = -0.021, cif(inf) = 6.04), so a sequence can "
         "stop short of its 4th event, and seed 7 draws one",
     },
-    "CoxPH": {
-        "fit_paths[fit_from_df]": _COX_TIES,
-        "fit_paths[fit_tvc]": _COX_TIES,
-    },
     **{
         f"{base}Frailty": {
             "missing_fit[groups]": "a NaN group label is kept, silently, as "
@@ -1975,8 +1966,6 @@ KNOWN_FAILURE_ISSUES: dict[str, str] = {
     "cif_sum": "#384",
     "units": "#385",
     "seed_explicit": "#386",
-    "fit_paths[fit_from_df]": "#387",
-    "fit_paths[fit_tvc]": "#387",
     "missing_fit[groups]": "#388",
 }
 
