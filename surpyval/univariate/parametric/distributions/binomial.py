@@ -220,7 +220,10 @@ class Binomial_(DiscreteParametricFitter):
         Hf : scalar or numpy array
             The value(s) of the cumulative hazard function at x
         """
-        return -np.log(self.sf(x, n, p))
+        sf = self.sf(x, n, p)
+        # From x = n on nothing survives: H = -log(0) = inf is right.
+        with np.errstate(divide="ignore"):
+            return -np.log(sf)
 
     def qf(self, u: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""

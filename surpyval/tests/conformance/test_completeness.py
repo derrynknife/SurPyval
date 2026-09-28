@@ -162,10 +162,21 @@ def test_every_property_runs_on_some_model(prop):
 
 
 def test_every_known_failure_names_its_issue():
-    """Each kind of known failure is tracked by an issue."""
-    from surpyval.tests.conformance.registry import KNOWN_FAILURE_ISSUES
+    """Each known failure is tracked by an issue, whose number leads its
+    xfail reason (from ``KNOWN_FAILURE_ISSUES`` or the reason itself)."""
+    import re
 
-    props = {p for d in KNOWN_FAILURES.values() for p in d}
-    assert props <= set(KNOWN_FAILURE_ISSUES), props - set(
-        KNOWN_FAILURE_ISSUES
-    )
+    from surpyval.tests.conformance.registry import KNOWN_INCONSISTENCIES
+
+    untracked = [
+        f"{case.name}: {prop}"
+        for case in CASES
+        for prop, reason in case.xfail.items()
+        if not re.match(r"#\d+: ", reason)
+    ]
+    untracked += [
+        key
+        for key, reason in KNOWN_INCONSISTENCIES.items()
+        if not re.match(r"#\d+: ", reason)
+    ]
+    assert not untracked, untracked
