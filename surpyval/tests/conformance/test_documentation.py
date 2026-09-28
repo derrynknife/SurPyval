@@ -18,11 +18,7 @@ import pytest
 from surpyval.tests.conformance.test_completeness import NAMESPACES, _public
 
 # Public items with a docstring but no example yet (#402).
-MISSING_EXAMPLE = frozenset(
-    {
-        "surpyval.Parametric",
-    }
-)
+MISSING_EXAMPLE: frozenset[str] = frozenset()
 # Public items with no docstring at all yet (#402).
 MISSING_DOCSTRING: frozenset[str] = frozenset()
 

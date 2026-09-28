@@ -201,10 +201,9 @@ Behaviour and API
 
     *Checked* for what exists: the documentation build runs every example
     and the hidden checks of the quoted numbers (see :doc:`Contributing`),
-    and the docstring examples run as tests. *Partly checked* for
-    completeness by ``conformance/test_documentation.py``, which fails for
-    a new public item without a docstring and example; the items that
-    still lack one are listed there against #402.
+    and the docstring examples run as tests. *Checked* for completeness
+    by ``conformance/test_documentation.py``: every public item has a
+    docstring with an example, and a new one without fails.
 
 Adding to the list
 ------------------

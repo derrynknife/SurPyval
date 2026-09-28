@@ -133,8 +133,8 @@ def test_qf_infinite_above_cure_fraction():
 
 
 def test_qf_inverts_ff_for_zero_inflation():
-    # The zero-inflation mass f0 sits at the offset (here 0), and above it
-    # the quantile inverts the failure function.
+    # The zero-inflation mass f0 sits at 0 (with or without an offset), and
+    # above it the quantile inverts the failure function.
     model = LogNormal.from_params([2.0, 0.4], f0=0.2)
     assert model.qf(0.1) == 0.0
     assert model.qf(0.2) == 0.0
@@ -188,6 +188,9 @@ def test_moment_one_equals_mean_across_mixtures():
         Weibull.from_params([10.0, 2.0], gamma=5.0, p=0.7),
     ):
         assert np.isclose(model.moment(1), model.mean())
+        assert np.isclose(
+            model.moment(1, defective=True), model.mean(defective=True)
+        )
 
 
 def test_offset_moment_includes_offset():
@@ -203,11 +206,15 @@ def test_offset_moment_includes_offset():
 
 
 def test_lfp_moment_is_finite_and_defective():
-    # With a cure fraction the defective moment is finite and equals the base
-    # moment scaled by the failing proportion p (no offset).
+    # With a cure fraction the moment of the lifetime is infinite (#404);
+    # the defective moment is finite and equals the base moment scaled by
+    # the failing proportion p (no offset).
     p = 0.6
     model = Weibull.from_params([10.0, 2.0], p=p)
-    assert np.isclose(model.moment(2), p * Weibull.moment(2, 10.0, 2.0))
+    assert np.isinf(model.moment(2))
+    assert np.isclose(
+        model.moment(2, defective=True), p * Weibull.moment(2, 10.0, 2.0)
+    )
 
 
 def test_defective_moment_matches_monte_carlo():
@@ -218,8 +225,10 @@ def test_defective_moment_matches_monte_carlo():
     n = 2_000_000
     fail = rng.uniform(size=n) < p
     t = np.where(fail, g + Weibull.random(n, *params), 0.0)
-    assert np.isclose(model.moment(1), t.mean(), rtol=0.02)
-    assert np.isclose(model.moment(2), (t**2).mean(), rtol=0.02)
+    assert np.isclose(model.moment(1, defective=True), t.mean(), rtol=0.02)
+    assert np.isclose(
+        model.moment(2, defective=True), (t**2).mean(), rtol=0.02
+    )
 
 
 # --- entropy for the mixture ----------------------------------------------
@@ -234,8 +243,8 @@ def test_entropy_is_offset_invariant():
 
 
 def test_entropy_raises_with_a_probability_atom():
-    # A cure fraction (mass at infinity) or zero-inflation (mass at the
-    # offset) leaves no single differential entropy.
+    # A cure fraction (mass at infinity) or zero-inflation (mass at 0)
+    # leaves no single differential entropy.
     with pytest.raises(ValueError, match="probability atom"):
         Weibull.from_params([10.0, 2.0], p=0.6).entropy()
     with pytest.raises(ValueError, match="probability atom"):

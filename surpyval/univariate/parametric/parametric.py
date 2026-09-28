@@ -99,6 +99,25 @@ class Parametric(
     Instances of this class are very useful when a user needs the other
     functions of a distribution for plotting, optimizations, monte carlo
     analysis and numeric integration.
+
+    Examples
+    --------
+    >>> import surpyval as surv
+    >>> model = surv.Weibull.fit([10, 12, 15, 17, 20, 25, 31])
+    >>> type(model).__name__
+    'Parametric'
+    >>> model.params.round(3)
+    array([20.881,  2.931])
+    >>> model.sf([10, 20]).round(4)
+    array([0.8909, 0.4143])
+
+    A model built from parameters has the same functions. With a limited
+    failure population, one unit in ten never fails, so the mean life is
+    infinite:
+
+    >>> lfp = surv.Weibull.from_params([20, 3], p=0.9)
+    >>> float(lfp.sf(1000.0).round(4)), lfp.mean(), lfp.extras
+    (0.1, inf, {'p': 0.9})
     """
 
     # Attributes populated after construction (by ``fit``, ``from_dict``
@@ -382,6 +401,84 @@ class Parametric(
             out["fixed"] = [names[i] for i in fixed_idx]
 
         return stamp_schema(out)
+
+    @property
+    def extras(self) -> dict[str, float]:
+        """
+        The offset, limited-failure proportion and zero-inflation fraction
+        the model carries, as the keywords of ``from_params``.
+
+        Only the ones the model has are included: ``"gamma"`` for an offset
+        model, ``"p"`` for a limited-failure-population model (also for a
+        ``Geometric`` or ``NegativeBinomial``, whose proportion is printed
+        as ``lfp_p``: ``from_params`` takes it as ``p``) and ``"f0"`` for a
+        zero-inflated one; a plain model gives an empty dict. So
+        ``dist.from_params(params, **model.extras)`` rebuilds the model with
+        other parameters, which :meth:`with_params` does. The dict is a
+        copy; changing it does not change the model.
+
+        Returns
+        -------
+        dict
+            ``{name: value}`` for each of ``gamma``, ``p`` and ``f0`` the
+            model has.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1).extras
+        {'gamma': 5.0, 'p': 0.9, 'f0': 0.1}
+        >>> Weibull.from_params([100, 2]).extras
+        {}
+        """
+        out: dict[str, float] = {}
+        # Keyed on the model's structure, as to_dict is, not on the values:
+        # a model fitted with lfp=True keeps its p even where it came out
+        # at 1.
+        if self.offset:
+            out["gamma"] = float(self.gamma)
+        if self.lfp:
+            out["p"] = float(self.p)
+        if self.zi:
+            out["f0"] = float(self.f0)
+        return out
+
+    def with_params(self, params: npt.ArrayLike) -> "Parametric":
+        """
+        The same model with other distribution parameters.
+
+        The distribution, offset ``gamma``, limited-failure proportion
+        ``p`` and zero-inflation fraction ``f0`` are kept (see
+        :attr:`extras`); only the distribution's own parameters change. Use
+        it to perturb or redraw a fitted model's parameters (sensitivity
+        or uncertainty analyses): ``from_params(model.params)`` alone
+        silently drops the offset, ``p`` and ``f0``.
+
+        Parameters
+        ----------
+        params : array like
+            The distribution's parameters, in the order of
+            ``model.dist.param_names``. They are checked as
+            ``from_params`` checks them.
+
+        Returns
+        -------
+        Parametric
+            A model built from parameters, as ``from_params`` builds it:
+            it has no data, covariance or fitted likelihood, since those
+            belong to the fit of the original parameters, so data-based
+            methods (``plot``, confidence bounds, ``aic``) are not
+            available on it.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1)
+        >>> other = model.with_params([120, 2])
+        >>> other.params, other.gamma, other.p, other.f0
+        (array([120,   2]), 5.0, 0.9, 0.1)
+        """
+        return self.dist.from_params(params, **self.extras)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):
@@ -913,7 +1010,7 @@ class Parametric(
             out = np.where(np.asarray(x) < 0, 0.0, out)[()]
         return out
 
-    def df(self, x: npt.ArrayLike) -> npt.NDArray:
+    def df(self, x: npt.ArrayLike, continuous: bool = False) -> npt.NDArray:
         r"""
 
         The density function for a distribution using the parameters found
@@ -925,6 +1022,15 @@ class Parametric(
         x : array like or scalar
             The values of the random variables at which the density function
             will be calculated.
+        continuous : bool, optional
+            Only matters for a zero-inflated model. If :code:`True`, return
+            the density of the continuous part alone, ``p - f0`` times
+            the base density at ``x - gamma``, with no point mass at 0:
+            it integrates to
+            ``p - f0``, so it is the one to integrate numerically (a
+            convolution, the trapezoidal rule). Defaults to
+            :code:`False`, which returns the point mass ``f0`` at
+            exactly 0, as the likelihood uses it.
 
         Returns
         -------
@@ -944,6 +1050,23 @@ class Parametric(
         np.float64(0.01190438297804473)
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
+
+        For a zero-inflated model, ``df(0)`` is the point mass ``f0`` (a
+        probability, not a density); ``continuous=True`` leaves it out:
+
+        >>> zi = Weibull.from_params([100, 2], f0=0.1)
+        >>> zi.df(0.0), zi.df(0.0, continuous=True)
+        (np.float64(0.1), np.float64(0.0))
+
+        Notes
+        -----
+        A zero-inflated model is a mixture of a point mass ``f0`` at 0 and
+        a continuous part of mass ``p - f0``. By default ``df`` returns the
+        point mass itself at exactly ``x == 0``, since that is the
+        probability an observation at 0 gets in the likelihood. A density
+        integrated over a grid that starts at 0 then counts a spurious
+        ``f0 * dx / 2`` (trapezoidal rule); use ``continuous=True`` for
+        that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
@@ -951,13 +1074,15 @@ class Parametric(
         # Below the (possibly offset) support the density is 0 (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_df = np.where(xg < s0, 0.0, base_df)
-        if self.f0 == 0:
-            df = self.p * base_df
+        if self.f0 == 0 or continuous:
+            # (p - f0) is p itself without zero inflation
+            df = (self.p - self.f0) * base_df
         else:
             # The continuous part carries mass (p - f0) — the same constant
             # as sf/ff and the likelihood; (1 - f0) * p was inconsistent
-            # with them for combined LFP + ZI models (#256).
-            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)
+            # with them for combined LFP + ZI models (#256). [()] makes a
+            # scalar argument give a scalar, not a 0-d array.
+            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)[()]
         return df
 
     def hf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -1045,7 +1170,9 @@ class Parametric(
             out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
             return out[()]
         else:
-            return -np.log(self.sf(x))
+            # 0.0 - log(...) rather than -log(...): where sf is exactly 1
+            # (before 0, or before the offset) the latter gave -0.0.
+            return 0.0 - np.log(self.sf(x))
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -1181,35 +1308,38 @@ class Parametric(
         size: int | tuple[int, ...],
         a: float | None = None,
         b: float | None = None,
-    ) -> "npt.NDArray | tuple":
+    ) -> npt.NDArray:
         r"""
 
-        A method to draw random samples from the distributions using the
+        A method to draw random lifetimes from the distribution using the
         parameters found in the ``.params`` attribute.
+
+        Each draw is ``qf(u)`` for one uniform ``u`` from numpy's global
+        random generator, for every model: so ``np.random.seed`` makes the
+        draws reproducible, and ``random(size)`` gives the same values as
+        ``qf(np.random.random_sample(size))`` after the same seed. A unit
+        of a limited-failure population that never fails (``p < 1``) is
+        ``inf``, and one dead on arrival (``f0``) is exactly 0. To simulate
+        a data set to fit, with the never-failing units right-censored,
+        use :meth:`random_data`.
 
         Parameters
         ----------
-        size : int
-            The number of random samples to be drawn from the distribution.
+        size : int or tuple of ints
+            The number (or shape) of random samples to be drawn from the
+            distribution.
         a: float or None
             The left truncated value if sampling from a truncated
             distribution
         b: float or None
             The right truncated value if sampling from a truncated
-            distribution
+            distribution. Truncated sampling is not available for offset,
+            limited-failure or zero-inflated models.
 
         Returns
         -------
-        random : numpy array, or tuple of numpy arrays
-            For a plain model, a numpy array of size ``size`` with random
-            values drawn from the distribution; a zero-inflated model
-            without a limited failure population also returns a plain
-            array, whose zero-inflated draws are exactly 0. A
-            limited-failure-population model (with or without zero
-            inflation) instead returns the draw as xcnt-format
-            ``(x, c, n, t)`` arrays, because some of its draws are
-            never-failing (right-censored) units that a bare array of
-            failure times cannot represent.
+        random : numpy array
+            An array of shape ``size`` of lifetimes drawn from the model.
 
         Examples
         --------
@@ -1221,6 +1351,10 @@ class Parametric(
         >>> model.random(10)
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
+        >>> lfp = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+        >>> np.random.seed(6)
+        >>> lfp.random(5)
+        array([       inf, 7.38380246,        inf, 0.        , 2.22387058])
         """
         if ((a is not None) or (b is not None)) and (
             (self.p != 1) or (self.f0 != 0)
@@ -1257,48 +1391,69 @@ class Parametric(
                 u = uniform.rvs(size=size)
                 return self.dist.qf((u * (Fb - Fa) + Fa), *self.params)
 
-        elif (self.p != 1) and (self.f0 == 0):
-            n_obs = np.random.binomial(size, self.p)
+        # One uniform per draw through the model's quantile function: inf
+        # for a unit that never fails, 0 for one dead on arrival (#403).
+        # This used to return (x, c, n, t) survival data for an LFP model
+        # (now random_data), and to draw a zero-inflated sample by a
+        # binomial count and a shuffle, which qf(u) could not reproduce.
+        return np.reshape(self.qf(uniform.rvs(size=size)), size)
 
-            f = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            s = np.ones(np.array(size) - n_obs) * self._censor_time(f)
+    def random_data(
+        self,
+        size: int,
+        a: float | None = None,
+        b: float | None = None,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        r"""
 
-            return fsli_to_xcnt(f, s)
+        Draw a random survival data set from the model, in xcnt format, for
+        simulate-and-refit studies (a data set to pass to ``fit``).
 
-        elif (self.p == 1) and (self.f0 != 0):
-            n_doa = np.random.binomial(size, self.f0)
+        The lifetimes are those of :meth:`random` (the same values after
+        the same seed). A unit that never fails (``p < 1``) cannot be
+        observed failing, so it is right-censored just after the last
+        failure drawn, as if the test stopped there; every other draw is
+        an observed failure, with the dead-on-arrival units (``f0``) at
+        exactly 0. Repeated values are counted in ``n``.
 
-            # The zero-inflation mass sits at 0, consistent with df / ff /
-            # qf and the likelihood (#256).
-            x0 = np.zeros(n_doa)
-            x = (
-                self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
-                + self.gamma
-            )
-            x = np.concatenate([x, x0])
-            np.random.shuffle(x)
+        Parameters
+        ----------
+        size : int
+            The number of units to draw.
+        a: float or None
+            The left truncation value if sampling from a truncated
+            distribution; it is recorded as every row's left truncation.
+        b: float or None
+            The right truncation value if sampling from a truncated
+            distribution; it is recorded as every row's right truncation.
 
-            return x
-        else:
-            N = np.random.multinomial(
-                1, [self.f0, self.p - self.f0, 1.0 - self.p], size
-            ).sum(axis=0)
+        Returns
+        -------
+        x, c, n, t : numpy arrays
+            The draw in xcnt format: values, censoring flags (0 failed,
+            1 right-censored), counts and ``[left, right]`` truncation.
 
-            N = np.atleast_2d(N)
-            n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa)
-
-            x = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-
-            f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * self._censor_time(f)
-            return fsli_to_xcnt(f, s)
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 3], p=0.5)
+        >>> np.random.seed(3)
+        >>> x, c, n, t = model.random_data(8)
+        >>> x
+        array([ 6.61335008,  8.11938035,  9.55304821, 10.55304821])
+        >>> c, n
+        (array([0, 0, 0, 1]), array([1, 1, 1, 5]))
+        """
+        x = np.ravel(self.random(size, a, b)).astype(float)
+        finite = np.isfinite(x)
+        f = x[finite]
+        s = np.full(int(np.sum(~finite)), self._censor_time(f))
+        xcnt = fsli_to_xcnt(f, s)
+        if (a is not None) or (b is not None):
+            t = xcnt[3]
+            t[:, 0] = -np.inf if a is None else a
+            t[:, 1] = np.inf if b is None else b
+        return xcnt
 
     def _censor_time(self, f: npt.NDArray) -> float:
         """A censoring time beyond every drawn failure, valid even when the
@@ -1308,10 +1463,22 @@ class Parametric(
             return float(np.max(f)) + 1.0
         return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
-    def mean(self) -> float:
+    def mean(self, defective: bool = False) -> float:
         r"""
         The mean of the distribution using the parameters found in the
         ``.params`` attribute.
+
+        Parameters
+        ----------
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the mean
+            lifetime, which is infinite there, since a fraction ``1 - p``
+            never fails. If :code:`True`, the *defective* mean
+            :math:`(p - f_0)\,\mathbb{E}[\gamma + X]`, the integral of
+            :math:`t\,dF(t)` over the units that fail, with :math:`X` the
+            base distribution; that is not the mean life of the units that
+            fail, which is :math:`\gamma + \mathbb{E}[X]`.
 
         Returns
         -------
@@ -1324,7 +1491,19 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
         np.float64(8.929795115692489)
+        >>> lfp = Weibull.from_params([100, 2], p=0.9)
+        >>> lfp.mean(), lfp.mean(defective=True)
+        (inf, np.float64(79.76042329074821))
+
+        Notes
+        -----
+        With ``p = 1`` the two agree, and give the mean lifetime of the
+        model: for a zero-inflated model the mass ``f0`` at 0 contributes
+        nothing, so it is :math:`(1 - f_0)\,\mathbb{E}[\gamma + X]`.
         """
+        if self.p < 1 and not defective:
+            # A fraction 1 - p never fails, so E[T] is infinite (#404).
+            return np.inf
         if not hasattr(self, "_mean"):
             # Defective mean: the zero-inflated mass f0 sits at 0 and
             # contributes nothing, so the continuous part carries (p - f0)
@@ -1334,10 +1513,19 @@ class Parametric(
             )
         return self._mean
 
-    def var(self) -> float:
+    def var(self, defective: bool = False) -> float:
         r"""
         The variance of the distribution using the parameters found in the
         ``.params`` attribute.
+
+        Parameters
+        ----------
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the variance of
+            the lifetime, which is infinite there (a fraction ``1 - p``
+            never fails). If :code:`True`, ``moment(2, defective=True) -
+            mean(defective=True)**2``, as in the Notes.
 
         Returns
         -------
@@ -1353,25 +1541,26 @@ class Parametric(
 
         Notes
         -----
-        For a limited-failure or zero-inflated model this follows the same
-        *defective* convention as :meth:`mean` and :meth:`moment`: it is the
-        variance of :math:`T` with the never-failing fraction ``1 - p`` and
-        the zero-inflated mass ``f0`` both counted at 0, i.e.
-        ``moment(2) - mean()**2``. With :math:`q = p - f_0` the proportion
-        failing through the base distribution :math:`X` (offset by
-        :math:`\gamma`),
+        For a zero-inflated model (``p = 1``) this is the variance of the
+        mixture, the mass ``f0`` sitting at 0. For a limited-failure model
+        it is infinite, unless ``defective=True``, which scores the
+        never-failing fraction ``1 - p`` at 0 as well (the *defective*
+        convention of :meth:`mean` and :meth:`moment`). With
+        :math:`q = p - f_0` the proportion failing through the base
+        distribution :math:`X` (offset by :math:`\gamma`), both are
 
         .. math::
             \mathrm{Var}(T) = q\,\mathrm{Var}(X)
                 + q(1 - q)\left(\gamma + \mathbb{E}[X]\right)^2,
 
         which reduces to :math:`\mathrm{Var}(X)` for a plain model (the
-        offset does not change a variance). For a zero-inflated model this
-        is exactly the variance of the mixture; for a limited-failure model
-        the cured units never fail, so it is the variance of the failure
-        time with those units scored as 0, not a variance conditional on
-        failure (fit without ``lfp`` for that).
+        offset does not change a variance). The defective variance of a
+        limited-failure model is not a variance conditional on failure
+        (fit without ``lfp`` for that).
         """
+        if self.p < 1 and not defective:
+            # A fraction 1 - p never fails: Var(T) is infinite (#404).
+            return np.inf
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
         base_var = m2 - m1**2
@@ -1384,7 +1573,7 @@ class Parametric(
         # and f0 were, while mean() already applied the (p - f0) weight.
         return q * base_var + q * (1 - q) * (m1 + self.gamma) ** 2
 
-    def moment(self, n: int) -> float:
+    def moment(self, n: int, defective: bool = False) -> float:
         r"""
 
         The n-th moment of the distribution using the parameters found
@@ -1394,6 +1583,12 @@ class Parametric(
         ----------
         n : integer
             The degree of the moment to be computed
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the moment of the
+            lifetime, which is infinite there for ``n >= 1`` (a fraction
+            ``1 - p`` never fails). If :code:`True`, the *defective*
+            moment described in the Notes.
 
         Returns
         -------
@@ -1411,16 +1606,19 @@ class Parametric(
 
         Notes
         -----
-        For an offset, limited-failure or zero-inflated model this is the
-        *defective* moment of the failure-time density, consistent with
-        :meth:`mean` (``moment(1) == mean()``): the offset shifts the failure
-        times and the cured fraction ``1 - p`` contributes nothing (rather than
-        the raw moment, which diverges when a cured fraction is present because
-        those units never fail). It is
-        :math:`(p - f_0)\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for
-        :math:`X` the base distribution (the zero-inflated mass sits at 0 and
-        contributes nothing to a moment about zero).
+        For an offset or zero-inflated model this is the moment of the
+        lifetime, consistent with :meth:`mean` (``moment(1) == mean()``):
+        the offset shifts the failure times, and the zero-inflated mass
+        sits at 0 and contributes nothing to a moment about zero. It is
+        :math:`(p - f_0)\,\mathbb{E}\!\left[(\gamma + X)^n\right]` for
+        :math:`X` the base distribution. For a limited-failure model the
+        moment of the lifetime diverges (those units never fail);
+        ``defective=True`` gives the same expression, in which the cured
+        fraction ``1 - p`` contributes nothing.
         """
+        if self.p < 1 and n >= 1 and not defective:
+            # A fraction 1 - p never fails: E[T^n] is infinite (#404).
+            return np.inf
         # Defective n-th moment E[(gamma + X)^n] weighted by the failing
         # proportion p; the binomial expansion recombines the base raw
         # moments. Reduces to the base moment for a plain model (gamma = 0,
@@ -1459,7 +1657,7 @@ class Parametric(
         not change it. It is only defined when the distribution has no
         probability atom; a limited-failure model places mass ``1 - p`` at
         infinity (the cured fraction) and a zero-inflated model places mass
-        ``f0`` at the offset, so a single differential entropy does not exist
+        ``f0`` at 0, so a single differential entropy does not exist
         for those and a ``ValueError`` is raised. The entropy *conditional on
         failure* of a limited-failure model equals the entropy of the same
         model fitted without ``lfp``.
@@ -1470,7 +1668,7 @@ class Parametric(
             "Differential entropy is undefined for a distribution with a "
             "probability atom: a limited-failure model places mass 1 - p at "
             "infinity (the cured fraction never fails) and a zero-inflated "
-            "model places mass f0 at the offset. Fit without lfp / zi to take "
+            "model places mass f0 at 0. Fit without lfp / zi to take "
             "the entropy (which, for lfp, is the entropy conditional on "
             "failure)."
         )

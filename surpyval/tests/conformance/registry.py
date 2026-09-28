@@ -762,7 +762,7 @@ def continuous(name, fitter=None, data=uni_data, x=X_UNI, **kw):
         functions=UNI_FUNCTIONS + ("qf",),
         x=x,
         paths=kw.pop("paths", _parametric_paths(fitter, **fixed)),
-        draw=lambda m, s: m.random(15),
+        draw=kw.pop("draw", lambda m, s: m.random(15)),
         **kw,
     )
 
@@ -1210,6 +1210,9 @@ def _univariate():
                     slow=(
                         frozenset() if name == "Weibull" else REFIT_PROPERTIES
                     ),
+                    # the lifetimes (inf for a unit that never fails)
+                    # and the survival data to refit (#403)
+                    draw=lambda m, s: (m.random(15), m.random_data(15)),
                 )
             )
     out.append(
@@ -2426,9 +2429,6 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
     "HPP": {"missing_query": "iif(nan) is the constant rate, not NaN"},
     "ProportionalIntensityHPP": {
         "missing_query": "iif(nan) is the constant rate, not NaN"
-    },
-    "AdditiveHazards": {
-        "missing_query": "hf(nan) is a number (-0.030), not NaN",
     },
     "Uniform": {
         "missing_query": "sf, ff, df, hf and Hf of nan are 1, 0, 0, 0 and "

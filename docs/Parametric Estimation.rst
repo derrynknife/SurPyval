@@ -939,11 +939,13 @@ than one point (step 2 above) and keeps the better; the
 
 Second, because the model is written through its likelihood, only MLE can fit
 it. Two consequences worth knowing: any quantile at or above :math:`p` is
-infinite, because that proportion of units never fails; and ``mean()`` of such
-a model is the *defective* mean :math:`p\,E[X_{b}]` (plus the offset, if any,
-inside the expectation), in which a never-failing unit contributes nothing. It
-is not the mean life of the susceptible units, which is the mean of the base
-distribution, :math:`E[X_{b}]`.
+infinite, because that proportion of units never fails; and for the same
+reason the mean lifetime, ``mean()``, is infinite (as are ``var()`` and
+``moment(n)``). ``mean(defective=True)`` is the *defective* mean
+:math:`p\,E[X_{b}]` (plus the offset, if any, inside the expectation), in
+which a never-failing unit contributes nothing. Neither is the mean life of
+the susceptible units, which is the mean of the base distribution,
+:math:`E[X_{b}]`.
 
 Zero inflation
 ^^^^^^^^^^^^^^
@@ -966,8 +968,12 @@ fails from the continuous distribution. Without LFP, :math:`p = 1`; without
 ZI, :math:`f_{0} = 0`; without an offset, :math:`\gamma = 0`. In the
 likelihood, each observation at exactly :math:`x = 0` contributes
 :math:`\ln f_{0}`, and every other observed failure
-:math:`\ln\left[(p - f_{0}) f_{b}(x - \gamma)\right]`. The zero mass sits at zero even for an
-offset model. ``zi=True`` requires a distribution whose support starts at
+:math:`\ln\left[(p - f_{0}) f_{b}(x - \gamma)\right]`. So that ``df`` gives
+the likelihood's terms, ``df(0)`` of a zero-inflated model is the mass
+:math:`f_{0}` itself, a probability rather than a density;
+``df(x, continuous=True)`` is the continuous part alone, which integrates to
+:math:`p - f_{0}`. The zero mass sits at zero even for an offset model, and
+nothing fails before zero. ``zi=True`` requires a distribution whose support starts at
 zero, and like LFP it can only be fitted by MLE.
 
 Discrete distributions

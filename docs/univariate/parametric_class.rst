@@ -7,7 +7,9 @@ The fitted model returned by every parametric distribution's ``fit``
 zero-inflated models), the data it was fitted to, and the parameter
 covariance, and provides the distribution's functions at those
 parameters (``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``cs``,
-``mean``, ``var``, ``moment``, ``entropy``, ``random``), confidence bounds
+``mean``, ``var``, ``moment``, ``entropy``, ``random``, ``random_data``),
+the same model with other parameters (``with_params``, ``extras``),
+confidence bounds
 on those functions (``cb``) and on the parameters (``param_cb``),
 information criteria
 (``aic``, ``aic_c``, ``bic``, ``neg_ll``), probability plots and
