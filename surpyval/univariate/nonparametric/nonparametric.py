@@ -11,7 +11,7 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -1714,7 +1714,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             The level of significance of the band. Defaults to 0.05.
         n_sims, random_state : optional
             No longer used (the critical value was once simulated);
-            passing either gives a ``DeprecationWarning``.
+            passing either gives a ``DeprecationWarning``, and they will
+            be removed in v0.22.0.
 
         Returns
         -------
@@ -1763,7 +1764,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         if n_sims is not None or random_state is not None:
             warnings.warn(
                 "'n_sims' and 'random_state' are no longer used by band(): "
-                "the critical value is computed numerically, not simulated.",
+                "the critical value is computed numerically, not simulated. "
+                "They will be removed in v{}.".format(REMOVED_IN),
                 DeprecationWarning,
                 # band -> the query-shape wrapper -> the caller
                 stacklevel=3,

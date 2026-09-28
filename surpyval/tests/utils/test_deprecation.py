@@ -61,3 +61,18 @@ def test_method_with_shape_wrapper_and_classmethod():
         assert _Model.draw(3, seed=1) == (3, 1)
     assert rec[0].filename == __file__
     assert "_Model.draw" in str(rec[0].message)
+
+
+def test_every_deprecation_names_its_removal_release():
+    # The two older deprecations, undated until 0.21, go with the renames.
+    import importlib
+    import sys
+
+    import surpyval as surv
+
+    km = surv.KaplanMeier.fit([1, 2, 3, 4, 5])
+    with pytest.warns(DeprecationWarning, match="v" + REMOVED_IN):
+        km.band([2, 3], n_sims=100)
+    sys.modules.pop("surpyval.experimental", None)
+    with pytest.warns(DeprecationWarning, match="v" + REMOVED_IN):
+        importlib.import_module("surpyval.experimental")
