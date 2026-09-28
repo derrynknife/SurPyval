@@ -113,6 +113,11 @@ def keeps_query_shape(
     ``@keeps_query_shape(point_ndim=1)`` for a copula's ``(x1, x2)``
     points.
 
+    The wrapper is one more frame between a warning raised in the method
+    and the caller: a warning meant for the caller's line needs a
+    ``stacklevel`` one higher than without it (3 raised in the method
+    itself).
+
     Examples
     --------
     >>> import numpy as np

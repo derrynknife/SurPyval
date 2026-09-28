@@ -4,6 +4,17 @@ Changelog
 v0.21.0 (unreleased)
 --------------------
 
+- **Mutation testing pilot (#396).** ``scripts/mutation/run.sh`` runs
+  mutmut on a module in a copy of the repository, and ``recheck.py``
+  checks new tests against its survivors. On the non-parametric estimators
+  593 of 2,702 mutants survived the test suite (score 78.1%); 273 were
+  real gaps, now covered by ``surpyval/tests/mutation``, which raises the
+  score to 88.6% (93.2% without the equivalent and dead-code mutants).
+  Among the gaps no test checked: the Hall-Wellner band's width off by a
+  factor of N, ``df`` ignoring ``interp``, and ``rmst_diff``'s interval
+  and ratio. It found #450-#452, pinned as strict expected failures, and
+  that a warning raised inside a shape-wrapped method pointed at the
+  wrapper instead of the caller (fixed).
 - **Changed: shape in, shape out, for every model (#381, #435).** A function
   evaluated at query points -- ``sf``, ``ff``, ``Hf``, ``hf``, ``df``,
   ``qf``, the per-cause and recurrent ``cif``, ``iif``, ``mcf``,

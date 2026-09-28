@@ -1729,7 +1729,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "'n_sims' and 'random_state' are no longer used by band(): "
                 "the critical value is computed numerically, not simulated.",
                 DeprecationWarning,
-                stacklevel=2,
+                # band -> the query-shape wrapper -> the caller
+                stacklevel=3,
             )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(

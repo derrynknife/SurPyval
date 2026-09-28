@@ -1945,7 +1945,8 @@ class Parametric(
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                stacklevel=3,
+                # _cb_lr -> cb -> the query-shape wrapper -> the caller
+                stacklevel=4,
             )
 
         inv = np.argsort(order)

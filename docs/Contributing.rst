@@ -117,6 +117,29 @@ model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
 
+Mutation testing
+----------------
+
+Coverage shows that a line ran, not that a test would notice if it were
+wrong. ``scripts/mutation/run.sh <module>`` (mutmut; see
+``scripts/mutation/README.md``) changes a module one small edit at a time --
+``<`` to ``<=``, a dropped argument, ``side="right"`` removed -- in a copy of
+the repository, and reruns the tests that reach the changed function; an
+edit no test notices is a *surviving mutant*. It takes hours (2.5 to 3.5 for
+the non-parametric module on two workers), so run it after a large change to
+a module or before a release, not on a pull request, and record the score in
+the README.
+
+Triage every survivor: a plausible bug no test would notice gets a test --
+preferably a conformance property that covers every model, else one in
+``surpyval/tests/mutation/test_<module>_kills.py``; a change with no
+observable effect is *equivalent*; code whose mutants can never be observed
+is a simplification candidate; a survivor that shows a bug is pinned as a
+strict xfail with its issue number. ``scripts/mutation/recheck.py`` checks
+new tests against the survivors in minutes. A fixture that caches results
+across tests hides mutants from mutmut: the plugin clears the conformance
+caches, and a new cache needs the same.
+
 Reviewing a module by bug class
 -------------------------------
 
