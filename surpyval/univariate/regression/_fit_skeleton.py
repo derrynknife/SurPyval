@@ -55,7 +55,11 @@ class LogLinearPhi:
 
     @staticmethod
     def phi(Z: Numeric, *params: Boxable) -> Boxable:
-        return np.exp(np.dot(Z, np.array(params)))
+        # A coefficient running off on separated data makes beta'Z large;
+        # exp overflows to inf, the right limit (survival 0), and must not
+        # leak numpy's raw overflow warning (principle 22).
+        with np.errstate(over="ignore"):
+            return np.exp(np.dot(Z, np.array(params)))
 
     @staticmethod
     def phi_bounds(Z: npt.NDArray) -> tuple:

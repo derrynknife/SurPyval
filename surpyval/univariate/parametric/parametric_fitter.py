@@ -1,4 +1,5 @@
 import functools
+import warnings
 from math import comb
 from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
@@ -65,6 +66,41 @@ from .parametric import Parametric, uniform_draws
 # data; in this one it destroys the thing being computed.
 Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
+
+
+# What a maximum-likelihood fit says when no start led to a verified
+# maximum (see ``is_local_minimum`` in ``fitters``).
+_UNVERIFIED_MLE = (
+    "The maximum-likelihood search did not reach a verified maximum (a "
+    "point where the gradient is zero and the log-likelihood curves down "
+    "in every direction); the parameters returned are the best point it "
+    "found. The likelihood may have no maximum -- a parameter running "
+    "off to a limit of its range -- or the search may have stalled. Check "
+    "the fit, or try another `init`."
+)
+
+
+# The families whose likelihood grows without bound as they concentrate
+# on one point (a location or scale with a free shape; see
+# ``ParametricFitter._point_mass_region``), and those that do so only
+# with an offset: a scale family whose offset runs up to the point.
+_POINT_MASS_FAMILIES = frozenset(
+    {
+        "Weibull",
+        "Gamma",
+        "LogNormal",
+        "LogLogistic",
+        "ExpoWeibull",
+        "Normal",
+        "Gumbel",
+        "GumbelLEV",
+        "Logistic",
+        "Beta",
+        "Beta4",
+        "Uniform",
+    }
+)
+_OFFSET_POINT_MASS_FAMILIES = frozenset({"Exponential", "Rayleigh"})
 
 
 def _offset_start(x: npt.ArrayLike) -> float:
@@ -246,6 +282,74 @@ def _support_guarded(
     return guarded
 
 
+def _as_array(value: Any) -> Any:
+    """A list or tuple as a float array; anything else (a scalar, an array,
+    an autograd box) as it is."""
+    if isinstance(value, (list, tuple)):
+        return np.asarray(value, dtype=float)
+    return value
+
+
+# The distribution functions of a time ``x`` (and ``qf`` of a probability)
+# that ``_array_inputs`` wraps.
+_QUERY_FUNCTIONS = tuple(_OUTSIDE_SUPPORT) + ("qf",)
+
+
+def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a distribution function so that a list or tuple argument
+    becomes an array, and a missing (NaN) query point gives NaN there.
+
+    The formulas are written for arrays: given a Python list, ``list *
+    int`` repeated the list before numpy saw it (``Gamma.sf([5, 10], 8,
+    3)`` returned six values) and ``list / int`` raised (#424). And a
+    missing query is answered as missing (principle 3): a constant
+    hazard's ``hf(nan)`` was its rate, a Uniform's ``sf(nan)`` 1 and
+    Bernoulli's ``sf(nan)`` raised (#382). The function is evaluated with
+    the NaNs replaced by a point it accepts, then NaN is put back, so
+    nothing else about the other points changes.
+    """
+
+    @functools.wraps(fn)
+    def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+        x = _as_array(x)
+        params = tuple(_as_array(p) for p in params)
+        if isinstance(x, ArrayBox):
+            return fn(self, x, *params)
+        x_arr = np.asarray(x, dtype=float)
+        missing = np.isnan(x_arr)
+        if not np.any(missing):
+            return fn(self, x, *params)
+        # A point asked for alongside is one the function accepts; failing
+        # that, the middle probability or the support's finite edge.
+        known = x_arr[~missing]
+        if known.size:
+            fill = float(known[0])
+        elif fn.__name__ == "qf":
+            fill = 0.5
+        else:
+            lo, hi = self._support_edges(*params)
+            fill = lo if np.isfinite(lo) else (hi if np.isfinite(hi) else 0.0)
+        out = fn(self, np.where(missing, fill, x_arr), *params)
+        out = np.where(missing, np.nan, out)
+        return out[()] if isinstance(out, np.ndarray) else out
+
+    wrapped._array_inputs = True  # type: ignore[attr-defined]
+    return wrapped
+
+
+def _log1mexp(d: Any) -> Any:
+    """``log(1 - exp(-d))`` for ``d >= 0``, exact at both ends: through
+    ``expm1`` below ``log 2`` and ``log1p`` above it (Maechler, 2012). Each
+    branch sees only arguments it is finite on, for autograd's sake; ``d =
+    inf`` gives 0."""
+    small = d < np.log(2.0)
+    d_small = np.where(small, d, 1.0)
+    d_large = np.where(small, 1.0, d)
+    return np.where(
+        small, np.log(-np.expm1(-d_small)), np.log1p(-np.exp(-d_large))
+    )
+
+
 def _optimizer_label(how: str, res: Any) -> str:
     """What found a non-MLE fit's answer, for ``model.optimizer``."""
     if how == "MPP":
@@ -377,12 +481,17 @@ class ParametricFitter:
         # ``_support_guarded``). The discrete ones guard their integer
         # supports themselves, as their docstrings describe.
         super().__init_subclass__(**kwargs)
-        if cls.discrete:
-            return
-        for name, (below, above) in _OUTSIDE_SUPPORT.items():
+        if not cls.discrete:
+            for name, (below, above) in _OUTSIDE_SUPPORT.items():
+                fn = cls.__dict__.get(name)
+                if callable(fn) and not getattr(fn, "_support_guarded", False):
+                    setattr(cls, name, _support_guarded(fn, below, above))
+        # Then every distribution's functions take lists and NaNs (see
+        # ``_array_inputs``), outermost, so the guard sees an array.
+        for name in _QUERY_FUNCTIONS:
             fn = cls.__dict__.get(name)
-            if callable(fn) and not getattr(fn, "_support_guarded", False):
-                setattr(cls, name, _support_guarded(fn, below, above))
+            if callable(fn) and not getattr(fn, "_array_inputs", False):
+                setattr(cls, name, _array_inputs(fn))
 
     def _support_edges(self, *params: Any) -> tuple[float, float]:
         """The support ``(lower, upper)`` at ``params``: the declared one,
@@ -662,7 +771,38 @@ class ParametricFitter:
             f0 + (p - f0) * self.ff(xl_safe - gamma, *dist_params),
             0.0,
         )
-        return np.sum(n * np.log(np.maximum(upper - lower, 0.0)))
+        window = np.maximum(upper - lower, 0.0)
+
+        # In the upper tail ``F(l) - F(r)`` is a difference of two numbers
+        # near 1, and once ``F(l)`` rounds to 1 it is 0: a left-truncated
+        # LogNormal at mu = -5 had a log-likelihood of +inf, where it is
+        # -23.73 (#412). Where ``F(l) > 1/2`` the window is taken from the
+        # survival function in log space instead,
+        # ``log S(l) + log(1 - S(r) / S(l))``, exact however small S is.
+        # Each form is evaluated only where it is used (a stand-in
+        # elsewhere), so the other cannot put a NaN into the gradient.
+        upper_tail = (
+            lo_finite & (_raw(lower) > 0.5)
+            if not self.discrete and _raw(f0) == 0 and _raw(p) == 1
+            else np.zeros(len(n), dtype=bool)
+        )
+        if not np.any(upper_tail):
+            return np.sum(n * np.log(window))
+        in_tail = float(xl[upper_tail][0])
+        log_sl = self.log_sf(
+            np.where(upper_tail, xl_safe, in_tail) - gamma, *dist_params
+        )
+        log_sr = np.where(
+            upper_tail & hi_finite,
+            self.log_sf(
+                np.where(upper_tail & hi_finite, xr_safe, in_tail) - gamma,
+                *dist_params,
+            ),
+            -np.inf,
+        )
+        tail = log_sl + _log1mexp(np.maximum(log_sl - log_sr, 0.0))
+        body = np.log(np.where(upper_tail, 1.0, window))
+        return np.sum(n * np.where(upper_tail, tail, body))
 
     def _log_likelihood(self, data: SurpyvalData, *params: Any) -> Any:
         return (
@@ -908,8 +1048,10 @@ for _name in ("log_df", "log_sf", "log_ff"):
     setattr(
         ParametricFitter,
         _name,
-        _support_guarded(
-            ParametricFitter.__dict__[_name], *_OUTSIDE_SUPPORT[_name]
+        _array_inputs(
+            _support_guarded(
+                ParametricFitter.__dict__[_name], *_OUTSIDE_SUPPORT[_name]
+            )
         ),
     )
 
@@ -1117,6 +1259,90 @@ class OptimisedFitMixin:
                 f"parameters."
             )
 
+    def _check_has_maximum(
+        self,
+        surv_data: SurpyvalData,
+        offset: bool,
+        lfp: bool,
+        zi: bool,
+        fixed: dict[str, float] | None,
+    ) -> None:
+        """Refuse data whose likelihood has no maximum because one failure
+        time explains every row (see ``_point_mass_region``)."""
+        if fixed or zi:
+            return
+        region = self._point_mass_region(surv_data, offset, lfp)
+        if region is not None:
+            raise ValueError(
+                f"The {self.name} likelihood has no maximum on this data: "
+                f"a single failure time {region} is consistent with every "
+                f"observation, so a distribution ever more concentrated "
+                f"there explains the data ever better, and the fit would "
+                f"run off to a degenerate spike. Provide observations "
+                f"that disagree about when the failures happened, or fix "
+                f"a parameter with `fixed=`."
+            )
+
+    def _point_mass_region(
+        self, surv_data: SurpyvalData, offset: bool, lfp: bool
+    ) -> str | None:
+        """Where a single failure time consistent with every row of the
+        data lies, if this family can concentrate its mass there; else
+        ``None``.
+
+        Such a time means the likelihood has no maximum (#392): a failure
+        at 0.5 and one known only to be before 1 are both explained
+        perfectly by a spike at 0.5, so a Weibull's likelihood grows
+        without bound with its shape, and the fit returned wherever it
+        stopped (``beta = 395.7``, a Normal ``sigma`` of 5e-324) in
+        silence. Tied exact values are the special case the distinct-value
+        count already refuses; this is the general one, as the Turnbull
+        existence check (#327) is for the non-parametric fit.
+
+        Each row's times form a set: an exact value ``{x}``, a right
+        censored one ``(x, inf)``, a left censored one ``(-inf, x]`` and an
+        interval ``(xl, xr]``. The time exists when their intersection
+        meets the support. With a limited failure population the right
+        censored rows are explained by the units that never fail, so they
+        are left out. Only the families that approach a point mass
+        anywhere in their support are checked (``_POINT_MASS_FAMILIES``,
+        and any scale family given an offset); a one-parameter family such
+        as the Exponential has a maximum on such data.
+        """
+        if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
+            _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
+        ):
+            return None
+        x = np.asarray(surv_data.x, dtype=float)
+        c = np.asarray(surv_data.c)
+        xl, xr = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
+        if lfp:
+            xl, xr, c = xl[c != 1], xr[c != 1], c[c != 1]
+        if c.size == 0 or np.all(c == 1):
+            return None
+        if self.name == "Uniform" and not np.any(c == 0):
+            # Its own fit refuses these, saying it needs an exact value
+            return None
+        lower = np.where(c == -1, -np.inf, xl)
+        upper = np.where(c == 1, np.inf, np.where(c == 0, xl, xr))
+        lo, hi = float(np.max(lower)), float(np.min(upper))
+        # Only an exact value's lower end is closed
+        lo_closed = bool(np.all(c[lower == lo] == 0))
+        support = np.asarray(self.support, dtype=float)
+        if offset or np.isnan(support).any():
+            support = np.array([-np.inf, np.inf])
+        if lo == hi:
+            inside = lo_closed and support[0] < lo < support[1]
+            return f"({lo:g})" if inside else None
+        lo, hi = max(lo, support[0]), min(hi, support[1])
+        if not lo < hi:
+            return None
+        if not np.isfinite(hi):
+            return f"(any time after {lo:g})"
+        if not np.isfinite(lo):
+            return f"(any time up to {hi:g})"
+        return f"(any time in ({lo:g}, {hi:g}])"
+
     def _validate_fit_inputs(
         self,
         surv_data: SurpyvalData,
@@ -1179,6 +1405,8 @@ class OptimisedFitMixin:
         # ``fixed``, so checking it would reject well posed fits.
         if how != "MPP":
             self._check_identifiable(surv_data, offset, lfp, zi, fixed)
+        if how == "MLE":
+            self._check_has_maximum(surv_data, offset, lfp, zi, fixed)
 
         if fixed and how == "MPP":
             detail = (
@@ -1438,7 +1666,9 @@ class OptimisedFitMixin:
         init : array like, optional
             initial guess of parameters. Instead of finding an initial guess
             for the optimization you can provide one. Can be useful to see if
-            optimization is failing due to poor initial guess.
+            optimization is failing due to poor initial guess. For MLE the
+            default start is tried as well and the better likelihood kept,
+            so a poor guess cannot give a worse fit than none.
 
         rr : {'y', 'x'}, str, optional
             The dimension on which to minimise the spacing between the line
@@ -2095,14 +2325,27 @@ turnbull_estimator
             # distribution whose default start is a grid choice. With a
             # default start, the optimiser is also run from the
             # alternatives each offers, and the best likelihood is kept.
-            if (
-                how == "MLE"
-                and not fixed
-                and (init is None or len(np.atleast_1d(init)) == 0)
-            ):
-                for start in self._alternative_starts(
-                    surv_data, offset, zi, lfp, heuristic
-                ):
+            #
+            # A start the user gave is followed by the default start
+            # (``[]``), so a poor ``init`` cannot hand back a worse model
+            # than no ``init`` would have: from a start far from the
+            # maximum the search can stall on a plateau where the
+            # likelihood only looks level (#427) -- a NegativeBinomial
+            # started at r = 4e6 stops in the Poisson limit, 1.2 below the
+            # maximum, at a point with a zero gradient. Where that is
+            # still not a verified maximum (see ``mle``), the default's
+            # alternatives are tried too.
+            user_init = init is not None and len(np.atleast_1d(init)) > 0
+            starts: list = []
+            if how == "MLE" and user_init:
+                starts = [[]]
+            if how == "MLE" and not fixed:
+                if not user_init or not results["_verified"]:
+                    starts += self._alternative_starts(
+                        surv_data, offset, zi, lfp, heuristic
+                    )
+            if starts:
+                for start in starts:
                     alt_model = Parametric(self, how, data, offset, lfp, zi)
                     alt_model.surv_data = surv_data
                     alt_info: dict = {}
@@ -2132,6 +2375,26 @@ turnbull_estimator
                         model.fitting_info = alt_info
         else:
             model.fitting_info = fitting_info
+
+        # Only the answer kept speaks: a start that failed and was beaten
+        # by another says nothing. A maximum-likelihood answer that is not
+        # verifiably a maximum is never returned in silence (principle 13).
+        # A family whose only parameters are its support's end points (the
+        # Uniform) has its maximum on the data's extremes, an edge where
+        # the gradient does not vanish: there is nothing to verify.
+        warning = results.pop("_warning", None)
+        edges_only = getattr(self, "support_param_index", None) == tuple(
+            range(self.k)
+        )
+        if (
+            warning is None
+            and not results.pop("_verified", True)
+            and not edges_only
+        ):
+            warning = _UNVERIFIED_MLE
+        results.pop("_verified", None)
+        if warning is not None:
+            warnings.warn(warning, stacklevel=3)
 
         for k, v in results.items():
             setattr(model, k, v)

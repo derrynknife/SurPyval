@@ -69,47 +69,51 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def sf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Survival function :math:`R(k) = q^{k^{\beta}}`."""
-        # Below zero the base of ``x**beta`` is negative and a fractional
-        # power of it is complex -- sf(-1) came back as 1.035+0.547j.
-        # Nothing can fail before the first trial, so R = 1 there. The
-        # dead branch is evaluated at 1 rather than 0 because ``0**beta``
-        # has a NaN gradient with respect to beta (see ``log_df``).
-        safe_x = np.where(x < 0.0, 1.0, x)
-        return np.where(x < 0.0, 1.0, q ** (safe_x**beta))
+        return np.exp(self.log_sf(x, q, beta))
 
     def ff(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = 1 - q^{k^{\beta}}`."""
-        return 1.0 - self.sf(x, q, beta)
+        # -expm1 keeps a small F, which 1 - R lost (#458).
+        return -np.expm1(self.log_sf(x, q, beta))
 
     def df(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""PMF :math:`P(T=k) = q^{(k-1)^{\beta}} - q^{k^{\beta}}`."""
-        # Below k = 1 the exponent base (k - 1) is negative, and a negative
-        # base to a fractional power is complex: df(0) came back as
-        # 0.0355+0.5468j. Guard the base as ``log_df`` already does, then
-        # zero the whole thing below the support.
-        # ``x`` is clamped, not just the result, so the discarded branch of
-        # the np.where never evaluates a negative base at all -- otherwise
-        # it still computes the NaN and warns before throwing it away.
-        safe_x = np.where(x < 1.0, 1.0, x)
-        km1 = safe_x - 1.0
-        safe_km1 = np.where(km1 > 0, km1, 1.0)
-        term_low = np.where(km1 > 0, q ** (safe_km1**beta), 1.0)
-        return np.where(x < 1.0, 0.0, term_low - q ** (safe_x**beta))
+        # From the log mass: the difference of the two powers cancelled
+        # (to 0 at k = 1e12 with shape 0.1, where the mass is 1.6e-18,
+        # #458).
+        return np.exp(self.log_df(x, q, beta))
+
+    def _steps(
+        self, x: Numeric, q: Boxable, beta: Boxable
+    ) -> tuple[Boxable, Boxable, Boxable]:
+        """For k >= 1: log R(k - 1) = (k - 1)^b log q, the hazard's
+        exponent (k^b - (k - 1)^b) log q, and k clamped to 1 below.
+
+        The difference of powers is formed as (k - 1)^b expm1(b
+        log1p(1 / (k - 1))), which keeps its digits where k^b and (k -
+        1)^b agree in most of theirs (k = 1e12, shape 0.1), and at k = 1
+        it is 1. Below k = 1 the argument is clamped, so the discarded
+        branch has neither a negative base nor 0**b (whose gradient in b
+        is NaN)."""
+        k = np.where(x < 1.0, 1.0, x)
+        km1 = np.where(k > 1.0, k - 1.0, 1.0)
+        before = np.where(k > 1.0, km1**beta, 0.0)
+        ratio = np.where(k > 1.0, np.expm1(beta * np.log1p(1.0 / km1)), 1.0)
+        diff = np.where(k > 1.0, before * ratio, 1.0)
+        log_q = np.log(q)
+        return before * log_q, diff * log_q, k
 
     def hf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Discrete hazard, :math:`1 - q^{k^{\beta} - (k-1)^{\beta}}`."""
-        # Same negative-base problem as ``df``, and no mass to condition
-        # on below k = 1.
-        safe_x = np.where(x < 1.0, 1.0, x)
-        km1 = safe_x - 1.0
-        safe_km1 = np.where(km1 > 0, km1, 1.0)
-        exponent = safe_x**beta - np.where(km1 > 0, safe_km1**beta, 0.0)
-        return np.where(x < 1.0, 0.0, 1.0 - q**exponent)
+        # No mass to condition on below k = 1. The exponent is a
+        # difference of powers; formed as one (see ``_steps``) it no
+        # longer reads inf - inf = NaN at k = 1e6 with shape 1000 (#458).
+        _, step, _ = self._steps(x, q, beta)
+        return np.where(x < 1.0, 0.0, -np.expm1(step))
 
     def Hf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -k^{\beta}\ln q`."""
-        safe_x = np.where(x < 0.0, 1.0, x)
-        return np.where(x < 0.0, 0.0, -(safe_x**beta) * np.log(q))
+        return -self.log_sf(x, q, beta)
 
     def qf(self, u: Numeric, q: Boxable, beta: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
@@ -175,24 +179,42 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.asarray(self.qf(U, q, beta))
 
     def log_sf(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
+        # R = 1 below the first trial; the base of ``x**beta`` is clamped
+        # to 1 there (a negative base to a fractional power is complex).
         safe_x = np.where(x < 0.0, 1.0, x)
         return np.where(x < 0.0, 0.0, (safe_x**beta) * np.log(q))
 
+    def log_ff(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
+        # log F from F where F is small, and log1p(-R) where R is: the
+        # base's log(1 - R) is 0 once R is below 1e-16 (#458). The unused
+        # branch of each ``where`` gets a harmless value, so log(0) warns
+        # nowhere; F = 0 (below k = 1) is -inf.
+        log_sf = self.log_sf(x, q, beta)
+        F = -np.expm1(log_sf)
+        small = F < 0.5
+        return np.where(
+            F <= 0.0,
+            -np.inf,
+            np.where(
+                small,
+                np.log(np.where(small & (F > 0.0), F, 1.0)),
+                np.log1p(-np.where(small, 0.0, np.exp(log_sf))),
+            ),
+        )
+
     def log_df(self, x: Numeric, q: Boxable, beta: Boxable) -> Boxable:
-        # PMF = q^{(k-1)^beta} - q^{k^beta}. At k = 1 the first term is
-        # q^{0^beta} = 1 with no beta dependence, but 0**beta has a NaN
-        # gradient w.r.t. beta under autograd, so guard the base: where
-        # k = 1 the term is the constant 1.
-        # Below k = 1 there is no mass, so this is -inf. Clamping ``x`` to 1
-        # rather than leaving it means the discarded branch evaluates the
-        # k = 1 mass (1 - q, safely positive) instead of a negative base
-        # and a log of zero, both of which warn before being thrown away.
-        safe_x = np.where(x < 1.0, 1.0, x)
-        km1 = safe_x - 1.0
-        safe_km1 = np.where(km1 > 0, km1, 1.0)
-        term_low = np.where(km1 > 0, q ** (safe_km1**beta), 1.0)
-        term_high = q ** (safe_x**beta)
-        return np.where(x < 1.0, -np.inf, np.log(term_low - term_high))
+        # P(T = k) = R(k - 1) h(k): log R(k - 1) plus the log of the
+        # hazard, both formed without a difference of powers (see
+        # ``_steps``). The log of the difference of the two masses was
+        # -inf where they underflowed (1e-400 at shape 1) and lost digits
+        # where they agreed (#458). No mass below k = 1.
+        log_before, step, _ = self._steps(x, q, beta)
+        hazard = -np.expm1(step)
+        return np.where(
+            x < 1.0,
+            -np.inf,
+            log_before + np.log(np.where(x < 1.0, 1.0, hazard)),
+        )
 
 
 DiscreteWeibull = DiscreteWeibull_("DiscreteWeibull")

@@ -202,7 +202,9 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         >>> Uniform.hf(x, 0, 6)
         array([0.2       , 0.25      , 0.33333333, 0.5       , 1.        ])
         """
-        return self.df(x, a, b) / self.sf(x, a, b)
+        # inf at x = b, where the survival function is 0: the true limit
+        with np.errstate(divide="ignore"):
+            return self.df(x, a, b) / self.sf(x, a, b)
 
     def log_df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""Log density, :math:`-\ln(b - a)` on the support.
@@ -251,7 +253,56 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         >>> Uniform.Hf(x, 0, 6)
         array([0.18232156, 0.40546511, 0.69314718, 1.09861229, 1.79175947])
         """
-        return -np.log(self.sf(x, a, b))
+        return 0.0 - self.log_sf(x, a, b)
+
+    @staticmethod
+    def _log_ff_sf(x: Numeric, a: Boxable, b: Boxable) -> tuple:
+        r"""
+        :math:`\ln F` and :math:`\ln R`, each from the distance to the
+        nearer edge of the support: :math:`\ln(x - a) - \ln(b - a)` and
+        ``log1p`` of minus its ratio, and the mirror image above the
+        middle. ``-log(1 - F)`` rounded to -0.0, and ``log F`` to -inf,
+        near the lower edge (#442, #443).
+        """
+        x = np.asarray(x, dtype=float)
+        # full-shaped: autograd's ``where`` does not unbroadcast its
+        # gradient
+        width = b - a + np.zeros_like(x)
+        inside = (x > a) & (x < b)
+        # the points outside (a, b) are evaluated at stand-ins inside it
+        x_in = np.where(inside, x, a + 0.5 * width)
+        lower = x_in - a <= b - x_in
+        x_lo = np.where(lower, x_in, a + 0.25 * width)
+        x_hi = np.where(lower, a + 0.75 * width, x_in)
+        log_width = np.log(width)
+        log_ff = np.where(
+            lower,
+            np.log(x_lo - a) - log_width,
+            np.log1p(-(b - x_hi) / width),
+        )
+        log_sf = np.where(
+            lower,
+            np.log1p(-(x_lo - a) / width),
+            np.log(b - x_hi) - log_width,
+        )
+        nan = np.isnan(x)
+        log_ff = np.where(
+            inside,
+            log_ff,
+            np.where(nan, np.nan, np.where(x <= a, -np.inf, 0.0)),
+        )
+        log_sf = np.where(
+            inside,
+            log_sf,
+            np.where(nan, np.nan, np.where(x <= a, 0.0, -np.inf)),
+        )
+        return log_ff[()], log_sf[()]
+
+    def log_ff(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
+        return self._log_ff_sf(x, a, b)[0]
+
+    def log_sf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
+        return self._log_ff_sf(x, a, b)[1]
 
     def qf(self, u: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""

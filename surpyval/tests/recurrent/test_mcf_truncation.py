@@ -179,5 +179,5 @@ def test_mcf_cb_rejects_t_distribution():
 def test_mcf_cb_rejects_bad_bound_type():
     x, i, c, tl = _delayed_entry_data()
     model = NonParametricCounting.fit(x, i, c=c, tl=tl)
-    with pytest.raises(ValueError, match="'bound_type' must be in"):
+    with pytest.raises(ValueError, match="'bound_type' must be one of"):
         model.mcf_cb(3.0, bound_type="student")

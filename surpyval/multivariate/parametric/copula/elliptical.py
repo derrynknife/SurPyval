@@ -35,10 +35,22 @@ class GaussianCopula(Copula):
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
-        pts = onp.stack([onp.ravel(a), onp.ravel(b)], axis=-1)
+        a, b = onp.broadcast_arrays(a, b)
+        # A missing coordinate gives a missing value (scipy's bivariate
+        # normal CDF read NaN as a point far below, 0; #382); the point is
+        # evaluated at 0 and overwritten.
+        missing = onp.isnan(a) | onp.isnan(b)
+        pts = onp.stack(
+            [
+                onp.ravel(onp.where(missing, 0.0, a)),
+                onp.ravel(onp.where(missing, 0.0, b)),
+            ],
+            axis=-1,
+        )
         cov = [[1.0, rho], [rho, 1.0]]
         out = multivariate_normal.cdf(pts, mean=[0.0, 0.0], cov=cov)
-        return onp.asarray(out).reshape(onp.asarray(a).shape)
+        out = onp.asarray(out).reshape(a.shape)
+        return onp.where(missing, onp.nan, out)
 
     # Named single parameter narrows the variadic base contract.
     def du(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]

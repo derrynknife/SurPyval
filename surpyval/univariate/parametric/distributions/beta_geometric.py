@@ -18,6 +18,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._discrete_tails import log_gamma_ratio
+
 
 class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
     r"""
@@ -73,50 +75,77 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def ff(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = 1 - R(k)`."""
-        return 1.0 - self.sf(x, a, b)
+        # -expm1 keeps a small F exact, where 1 - R lost it.
+        return -np.expm1(self.log_sf(x, a, b))
 
     def df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k) = B(a + 1, b + k - 1)/B(a, b)`."""
         return np.exp(self.log_df(x, a, b))
 
     def hf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
-        r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
-        return self.df(x, a, b) / self.sf(x - 1.0, a, b)
+        r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1) =
+        a / (a + b + k - 1)`, zero below ``k = 1``."""
+        # The closed form. The ratio df/sf was 0/0 = nan once both
+        # underflowed (at k = 1e6 with a = 1000, #449).
+        safe_x = np.where(x < 1.0, 1.0, x)
+        return np.where(x < 1.0, 0.0, a / (a + b + safe_x - 1.0))
 
     def Hf(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
         return -self.log_sf(x, a, b)
 
     def qf(self, u: Numeric, a: Boxable, b: Boxable) -> Boxable:
-        r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
+        r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`;
+        infinite at ``u = 1`` (the support has no last point)."""
         u_in = np.asarray(u, dtype=float)
-        u_arr = u_in.ravel()
-        out = np.ones_like(u_arr)
-        # The survival is monotone decreasing in k; find the smallest integer
-        # k with sf(k) <= 1 - u by geometric bracketing then bisection.
-        for idx, ui in enumerate(u_arr):
-            if ui <= 0.0:
-                out[idx] = 1.0
-                continue
-            # ``target`` is reached by cancellation -- the caller almost
-            # always passes u = F(k) = 1 - R(k), and 1 - (1 - R(k)) lands
-            # one ulp below R(k). A strict comparison then rejects the
-            # exact answer and returns k + 1, so F and its quantile did
-            # not invert each other. Compare with a relative slack.
-            target = (1.0 - ui) * (1.0 + 1e-12)
-            hi = 1
-            while self.sf(float(hi), a, b) > target and hi < 2**40:
-                hi *= 2
-            lo = hi // 2
-            while hi - lo > 1:
-                mid = (lo + hi) // 2
-                if self.sf(float(mid), a, b) > target:
-                    lo = mid
-                else:
-                    hi = mid
-            out[idx] = float(max(hi, 1))
+        u_arr, a_arr, b_arr = np.broadcast_arrays(
+            u_in, np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+        )
+        # F(k) >= u is tested on the smaller side, on the log scale: log F
+        # against log u below 1/2, log R against log(1 - u) above it, so
+        # neither loses a small probability. The caller usually passes
+        # u = F(k), and recovering the threshold from it can land an ulp
+        # on the wrong side, so the test has a relative slack of 1e-12.
+        lower = u_arr <= 0.5
+        with np.errstate(divide="ignore", invalid="ignore"):
+            target = np.where(
+                lower, np.log(u_arr), np.log1p(-np.where(lower, 0.0, u_arr))
+            )
+        slack = 1e-12 * np.maximum(1.0, np.abs(target))
+        slack = np.where(np.isfinite(slack), slack, 0.0)
+
+        def reached(k: npt.NDArray) -> npt.NDArray:
+            log_sf = self.log_sf(k, a_arr, b_arr)
+            with np.errstate(divide="ignore"):
+                log_ff = np.log(-np.expm1(log_sf))
+            return np.where(
+                lower, log_ff >= target - slack, log_sf <= target + slack
+            )
+
+        # Bracket by doubling, then bisect over the integers. The survival
+        # decays like k^-a, so at a small ``a`` the answer can be beyond
+        # the largest double: inf.
+        todo = (u_arr > 0.0) & (u_arr < 1.0)
+        hi = np.ones_like(u_arr)
+        while True:
+            grow = todo & np.isfinite(hi) & ~reached(hi)
+            if not grow.any():
+                break
+            hi = np.where(grow, hi * 2.0, hi)
+        lo = np.where(hi > 1.0, hi / 2.0, 1.0)
+        search = todo & np.isfinite(hi) & (hi > 1.0)
+        while True:
+            mid = np.floor(0.5 * (lo + hi))
+            step = search & (mid > lo) & (mid < hi)
+            if not step.any():
+                break
+            ok = reached(mid)
+            hi = np.where(step & ok, mid, hi)
+            lo = np.where(step & ~ok, mid, lo)
+        out = np.where(u_arr <= 0.0, 1.0, np.where(u_arr >= 1.0, np.inf, hi))
+        # A missing or impossible probability has no quantile.
+        out = np.where(np.isnan(u_arr) | (u_arr > 1.0), np.nan, out)
         # The shape of ``u``: a scalar for a scalar, empty for empty.
-        out = out.reshape(u_in.shape)
         return out[()] if out.ndim == 0 else out
 
     def mean(self, a: Boxable, b: Boxable) -> Boxable:
@@ -249,16 +278,41 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # R(k) = 1 for every k below the first mass point. The Beta-ratio
         # form does not know that -- at k = -1 it returns 2.0, a survival
         # above one -- so clamp the argument at zero, where it is already 1.
+        #
+        # ln R(k) = ln B(a, b + k) - ln B(a, b)
+        #         = [ln G(b + a) - ln G(b)] - [ln G(b + k + a) - ln G(b + k)],
+        # each bracket taken by ``log_gamma_ratio``, which keeps its digits
+        # at a large k where the four gammaln did not (#449).
         safe_x = np.where(x < 0.0, 0.0, x)
-        return self._log_beta(a, b + safe_x) - self._log_beta(a, b)
+        return log_gamma_ratio(b, a) - log_gamma_ratio(b + safe_x, a)
+
+    def log_ff(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
+        # log F from F where F is small, and log1p(-R) where R is: the
+        # base's log(1 - R) is 0 once R is below 1e-16. The unused branch
+        # of each ``where`` gets a harmless value, so log(0) warns nowhere;
+        # F = 0 (below k = 1) is -inf.
+        log_sf = self.log_sf(x, a, b)
+        F = -np.expm1(log_sf)
+        small = F < 0.5
+        return np.where(
+            F <= 0.0,
+            -np.inf,
+            np.where(
+                small,
+                np.log(np.where(small & (F > 0.0), F, 1.0)),
+                np.log1p(-np.where(small, 0.0, np.exp(log_sf))),
+            ),
+        )
 
     def log_df(self, x: Numeric, a: Boxable, b: Boxable) -> Boxable:
-        # Zero mass below k = 1. The Beta-ratio form returns 1.0 at k = 0,
-        # and B(a + 1, b + k - 1) is undefined once b + k - 1 <= 0, so the
-        # argument is clamped before the guard chooses the branch.
+        # Zero mass below k = 1; above it P(T = k) = R(k - 1) h(k), with
+        # the closed-form hazard h(k) = a / (a + b + k - 1). The argument
+        # is clamped before the guard chooses the branch.
         safe_x = np.where(x < 1.0, 1.0, x)
-        log_df = self._log_beta(a + 1.0, b + safe_x - 1.0) - self._log_beta(
-            a, b
+        log_df = (
+            self.log_sf(safe_x - 1.0, a, b)
+            + np.log(a)
+            - np.log(a + b + safe_x - 1.0)
         )
         return np.where(x < 1.0, -np.inf, log_df)
 

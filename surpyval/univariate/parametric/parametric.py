@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy.typing as npt
 from autograd import jacobian
-from scipy.optimize import NonlinearConstraint, brentq, minimize
+from scipy.optimize import (
+    NonlinearConstraint,
+    brentq,
+    minimize,
+    minimize_scalar,
+)
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -19,6 +24,11 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt
 from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.linalg import (
+    param_name,
+    wald_undefined,
+    warn_wald_undefined,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -561,7 +571,12 @@ class Parametric(
           be found is ``nan``, with a warning.
 
         A parameter fixed at fit time is known, so both methods give the
-        degenerate interval at its value.
+        degenerate interval at its value. A Wald bound does not exist
+        where the parameter's variance (from the inverse observed
+        information) is negative -- the information is not positive
+        definite, typically because the estimate is at or near a boundary
+        of the parameter space -- or where the estimate is on the edge of
+        its support: it is ``nan`` there, with a warning saying why.
 
         Parameters
         ----------
@@ -647,6 +662,14 @@ class Parametric(
                 "bound must be 'two-sided', 'lower' or 'upper'; got "
                 f"{bound!r}"
             )
+
+        # The edge only matters to the log and logit scales used below.
+        edges = param_bounds if param_bounds in ((0, None), (0, 1)) else ()
+        reason = wald_undefined(p_hat, var, *edges)
+        if reason is not None:
+            # Was nan with numpy's raw sqrt warning alone (#411).
+            warn_wald_undefined(param_name(name), reason, stacklevel=2)
+            return np.full(bounds.shape, np.nan)
 
         if param_bounds == (0, None):
             exponent = z(alpha) * np.sqrt(var) / p_hat
@@ -784,12 +807,12 @@ class Parametric(
             return neg_ll(theta)
 
         sci_bounds = []
+        limits = self._lr_limits()
         for j in free_idx:
-            lo, hi = self.dist.bounds[j]
+            lo, hi = limits[j]
             # A hard zero lower bound is nudged up so log-terms stay finite.
-            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
-            hi_s = np.inf if hi is None else hi
-            sci_bounds.append((lo_s, hi_s))
+            lo_s = 1e-10 if lo == 0 else lo
+            sci_bounds.append((lo_s, hi))
 
         x0 = fixed[free_idx]
         res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
@@ -802,6 +825,32 @@ class Parametric(
             if np.isfinite(res2.fun) and res2.fun < best:
                 best = res2.fun
         return float(best)
+
+    def _lr_limits(self) -> list[tuple[float, float]]:
+        """``(lower, upper)`` of each core parameter for the
+        likelihood-ratio searches: its declared bounds, and for a
+        parameter that is an edge of the support (the Uniform's and the
+        4-parameter Beta's ``a`` and ``b``) the data's extremes, beyond
+        which the likelihood is 0. The searches could not follow that
+        cliff: a Uniform band stalled at the estimate (#421)."""
+        limits = [
+            (-np.inf if lo is None else lo, np.inf if hi is None else hi)
+            for lo, hi in self.dist.bounds
+        ]
+        support = np.asarray(
+            getattr(self.dist, "support", (0.0, 0.0)), dtype=float
+        )
+        if np.any(np.isnan(support)):
+            x = np.asarray(self.surv_data.x, dtype=float)
+            x = x[np.isfinite(x)]
+            i_lo, i_hi = self.dist.support_param_index
+            if np.isnan(support[0]):
+                lo, hi = limits[i_lo]
+                limits[i_lo] = (lo, min(hi, float(x.min())))
+            if np.isnan(support[1]):
+                lo, hi = limits[i_hi]
+                limits[i_hi] = (max(lo, float(x.max())), hi)
+        return limits
 
     def _param_cb_lr(
         self, name: str, alpha_ci: float, bound: str
@@ -852,9 +901,7 @@ class Parametric(
             )
         )
 
-        lo_b, hi_b = self.dist.bounds[idx]
-        lo_b = -np.inf if lo_b is None else lo_b
-        hi_b = np.inf if hi_b is None else hi_b
+        lo_b, hi_b = self._lr_limits()[idx]
 
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
@@ -1150,6 +1197,11 @@ class Parametric(
             # every sibling method returned a numpy scalar. ``[()]`` is a
             # no-op on a real array and unwraps the 0-d case.
             return out[()]
+        elif self.dist.discrete:
+            # A discrete hazard is conditioned on survival to the step
+            # before, h(k) = P(T = k) / R(k - 1), as the distributions'
+            # own hf; df / sf(k) disagreed with it for an LFP or ZI model.
+            return self.df(x) / self.sf(np.asarray(x, dtype=float) - 1.0)
         else:
             return self.df(x) / self.sf(x)
 
@@ -1741,6 +1793,12 @@ class Parametric(
             will be calculated
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
             The function on which the confidence bound will be calculated.
+            The Wald bounds on ``sf``, ``ff`` and ``Hf`` come from one bound
+            on the logit of ``sf``; those on ``hf`` and ``df`` are on the log
+            scale (the logit scale for a discrete distribution, whose hazard
+            and mass are probabilities), and are 0 where the rate is 0. Where
+            the delta-method variance is negative (the covariance is not
+            positive definite) a Wald bound is ``nan``, with a warning.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
@@ -1910,22 +1968,27 @@ class Parametric(
 
         user_fixed = self._user_fixed_idx()
         sci_bounds = []
-        for j, (lo, hi) in enumerate(self.dist.bounds):
+        for j, (lo, hi) in enumerate(self._lr_limits()):
             if j in user_fixed:
                 # A parameter the user fixed at fit time is pinned during
                 # the constrained search too (#255).
                 v = float(theta_hat[j])
                 sci_bounds.append((v, v))
                 continue
-            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            lo_s = 1e-10 if lo == 0 else lo
             # A finite upper edge is nudged inside for the same reason:
             # SLSQP steps straight onto it (a Geometric p of 1), where the
             # likelihood is nan and the search stops.
-            hi_s = np.inf if hi is None else (hi - 1e-10 if hi == 1 else hi)
+            hi_s = hi - 1e-10 if hi == 1 else hi
             sci_bounds.append((lo_s, hi_s))
         constraint = NonlinearConstraint(deviance, -np.inf, crit)
 
         t = np.atleast_1d(t).astype(float)
+        free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        if len(free) == 1:
+            band = self._cb_lr_one_param(t, g, free[0], alpha_ci, bound)
+            if band is not None:
+                return band
         order = np.argsort(t)
         t_sorted = t[order]
         failed: list[float] = []
@@ -1946,6 +2009,15 @@ class Parametric(
             # starts and methods are tried in turn, each result is checked
             # to lie inside the likelihood region, and if none succeeds
             # the bound is nan, with a warning, rather than a wrong number.
+            #
+            # The estimate is inside the region, so a bound is at least as
+            # extreme as g there. A search that ends short of it has
+            # stopped at a stationary point of g (a density at x peaks in
+            # the scale, and a warm start can sit on the peak): a Rayleigh
+            # df lower bound of 0.0502 above the estimate 0.0359 (#421).
+            # Such a result is passed over for the next start.
+            g_hat = g(time, theta_hat)
+            reach = sign * g_hat + 1e-10 * max(abs(g_hat), 1e-300)
             attempts = [(warm, "SLSQP")]
             if not np.array_equal(warm, theta_hat):
                 attempts.append((theta_hat, "SLSQP"))
@@ -1961,7 +2033,7 @@ class Parametric(
                     )
                 except (ValueError, np.linalg.LinAlgError):
                     continue
-                if feasible(res):
+                if feasible(res) and sign * g(time, res.x) <= reach:
                     return g(time, res.x), res.x
             failed.append(float(time))
             return np.nan, warm
@@ -1990,8 +2062,9 @@ class Parametric(
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                # _cb_lr -> cb -> the query-shape wrapper -> the caller
-                stacklevel=4,
+                # _cb_lr -> cb -> the query-shape and renamed-argument
+                # wrappers -> the caller
+                stacklevel=5,
             )
 
         inv = np.argsort(order)
@@ -2001,6 +2074,66 @@ class Parametric(
             return lo_vals[inv]
         else:
             return hi_vals[inv]
+
+    def _cb_lr_one_param(
+        self, t: Any, g: Any, j: int, alpha_ci: float, bound: str
+    ) -> Any:
+        """The likelihood-ratio band of a model with one free parameter.
+
+        Its likelihood region is an interval, the profile bound on the
+        parameter, so the band at each time is the extreme of ``g`` over
+        that interval: at an end, or at an interior stationary point of
+        ``g`` (a density at ``x`` peaks in the scale). A constrained
+        search from a warm start found one end or the other, not always
+        the more extreme: a Geometric df(5) lower bound of 0.0740 in a
+        sweep but 0.0652 queried alone (#421). ``None`` (the general
+        search is used instead) where the interval cannot be found.
+        """
+        name = self.dist.param_names[j]
+        # A one-sided bound at alpha is an end of the two-sided region at
+        # 2 alpha: the same chi-squared critical value.
+        level = alpha_ci if bound == "two-sided" else 2.0 * alpha_ci
+        if not 0 < level < 1:
+            return None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ends = self._param_cb_lr(name, level, "two-sided")
+        if not np.all(np.isfinite(ends)):
+            return None
+        lo, hi = (float(e) for e in ends)
+        # The likelihood at a support edge (p = 0 or 1) is typically nan,
+        # so g is evaluated just inside it, as the search is.
+        lo_b, hi_b = self.dist.bounds[j]
+        lo = 1e-10 if lo_b == 0 and lo == 0 else lo
+        hi = hi - 1e-10 if hi_b == 1 and hi == 1 else hi
+        theta = np.array(self.params, dtype=float)
+
+        def at(time: Any, v: Any) -> Any:
+            th = theta.copy()
+            th[j] = v
+            return g(time, th)
+
+        lower = np.empty(t.shape)
+        upper = np.empty(t.shape)
+        with np.errstate(all="ignore"):
+            for i, time in enumerate(t):
+                values = [at(time, lo), at(time, hi), at(time, theta[j])]
+                for sign in (1.0, -1.0):
+                    res = minimize_scalar(
+                        lambda v: sign * at(time, v),
+                        bounds=(lo, hi),
+                        method="bounded",
+                    )
+                    if np.isfinite(res.fun):
+                        values.append(sign * res.fun)
+                values = np.asarray(values, dtype=float)
+                if not np.all(np.isfinite(values[:3])):
+                    return None
+                values = values[np.isfinite(values)]
+                lower[i], upper[i] = values.min(), values.max()
+        if bound == "two-sided":
+            return np.column_stack([lower, upper])
+        return lower if bound == "lower" else upper
 
     def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.
@@ -2072,7 +2205,32 @@ class Parametric(
     def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
-        return np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        var = np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        # Rounding can leave a zero variance (a flat direction, or a point
+        # outside the support) a hair below zero; only a variance
+        # negative beyond it says the covariance is not positive definite.
+        scale = np.einsum("ij,jk,ik->i", abs(jac), abs(ctx.cov), abs(jac))
+        return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
+
+    def _cb_sd(self, var: Any, x: Any, on: str) -> Any:
+        """The delta-method standard error, ``sqrt(var)``, with one
+        warning where the variance is negative (#411): the covariance is
+        not positive definite, so no Wald bound exists there, and the
+        bound is nan. It used to be a silent nan."""
+        bad = ~(var >= 0)
+        if np.any(bad):
+            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))[bad]
+            warn_wald_undefined(
+                f"{on} at x = {where.tolist()}",
+                "its delta-method variance is negative or not finite, so "
+                "the parameter covariance is not positive definite (the "
+                "estimate is at or near a boundary of the parameter space, "
+                "or the likelihood is not regular there)",
+                # _cb_sd -> the bound helper -> cb -> the query-shape and
+                # renamed-argument wrappers -> the caller
+                stacklevel=6,
+            )
+        return np.sqrt(np.where(bad, np.nan, var))
 
     def _cb_sf_bound(
         self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
@@ -2087,18 +2245,14 @@ class Parametric(
         def sf_func(phi: npt.NDArray) -> Any:
             return self._cb_full_sf(x, phi, ctx)
 
-        var_R = self._cb_delta_var(sf_func, ctx)
+        sd_R = self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
         R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
         if bound == "two-sided":
-            diff = (
-                z(alpha_ci / 2)
-                * np.sqrt(var_R)
-                * np.array([1.0, -1.0]).reshape(2, 1)
-            )
+            diff = z(alpha_ci / 2) * sd_R * np.array([1.0, -1.0]).reshape(2, 1)
         elif bound == "upper":
-            diff = z(alpha_ci) * np.sqrt(var_R)
+            diff = z(alpha_ci) * sd_R
         else:
-            diff = -z(alpha_ci) * np.sqrt(var_R)
+            diff = -z(alpha_ci) * sd_R
 
         with np.errstate(all="ignore"):
             exponent = diff / (R_hat * (1 - R_hat))
@@ -2117,22 +2271,36 @@ class Parametric(
         Both are non-negative, so the bound is computed on the log scale to
         keep the result positive. The delta method is applied directly to the
         rate function rather than differentiating the ``Hf`` bound curve.
+        The hazard is the model's own: ``df(x) / sf(x)``, or for a discrete
+        distribution ``df(k) / sf(k - 1)`` (#414). Where the rate is 0 --
+        below the (offset) support, or at a discrete ``k`` with no mass --
+        both bounds are 0 (#413).
         """
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = t - self.gamma
+        below = xg < s0
+        # Evaluated just inside the support there (and then replaced), so
+        # a negative argument cannot put a nan in the Jacobian (#256).
+        xg = np.where(below, s0 + 1e-10, xg)
 
         def density(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
-            return (p - f0) * self.dist.df(t - self.gamma, *core)
+            base = np.where(below, 0.0, self.dist.df(xg, *core))
+            return (p - f0) * base
 
         if on == "hf":
+            # The survival that conditions the hazard: to the step before
+            # for a discrete distribution, as its hf is defined.
+            t_sf = t - 1.0 if self.dist.discrete else t
 
             def func(phi: npt.NDArray) -> Any:
-                return density(phi) / self._cb_full_sf(t, phi, ctx)
+                return density(phi) / self._cb_full_sf(t_sf, phi, ctx)
 
         else:
             func = density
 
         g_hat = func(ctx.phi_hat)
-        var_g = self._cb_delta_var(func, ctx)
+        sd_g = self._cb_sd(self._cb_delta_var(func, ctx), t, on)
 
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
@@ -2141,7 +2309,17 @@ class Parametric(
         else:
             diff = z(alpha_ci)
 
-        cb = g_hat * np.exp(diff * np.sqrt(var_g) / g_hat)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if self.dist.discrete:
+                # A discrete hazard and mass are probabilities: the logit
+                # scale keeps their bounds in [0, 1], as for sf.
+                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
+                cb = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
+                cb = np.where(np.broadcast_to(g_hat == 1.0, cb.shape), 1.0, cb)
+            else:
+                cb = g_hat * np.exp(diff * sd_g / g_hat)
+        # Neither scale has a point at a rate of 0: the bounds are 0.
+        cb = np.where(np.broadcast_to(g_hat == 0.0, cb.shape), 0.0, cb)
         if bound == "two-sided":
             cb = cb.T
         return cb

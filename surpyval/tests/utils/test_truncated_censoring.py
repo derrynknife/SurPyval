@@ -165,7 +165,11 @@ def test_the_truncated_likelihood_is_bounded_above():
     )
     for mu in (-3.0, -5.0, -8.0, -15.0, -40.0):
         ll = LogNormal._log_likelihood(data, mu, 0.6, 0.0, 0.0, 1.0)
-        assert not (ll > best), f"log-likelihood at mu={mu} beats the fit"
+        # Finite as well as lower: ``not (ll > best)`` also held for the
+        # NaN the truncation term gave from mu = -8 on, once F(tl) had
+        # rounded to 1 (#412).
+        assert np.isfinite(ll), f"log-likelihood at mu={mu} is {ll}"
+        assert ll < best, f"log-likelihood at mu={mu} beats the fit"
 
 
 def test_right_censoring_under_right_truncation_recovers_the_truth():

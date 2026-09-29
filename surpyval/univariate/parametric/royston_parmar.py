@@ -248,6 +248,11 @@ class RoystonParmarModel(SerialisableMixin):
         """Quantile function: the time at which ``ff(x) = p``."""
         out = np.empty_like(p)
         for i, pi in enumerate(p):
+            if np.isnan(pi):
+                # A missing probability has a missing quantile; the root
+                # finder raised on it (#382).
+                out[i] = np.nan
+                continue
             target = 1.0 - pi  # sf(x) = 1 - p
             lo = self.knots[0] - 20.0
             hi = self.knots[-1] + 20.0
@@ -300,9 +305,36 @@ class RoystonParmarModel(SerialisableMixin):
         whose variance is ``B Sigma B'`` from the covariance -- and then
         pushed through the link, so ``sf`` / ``ff`` bounds stay in ``(0, 1)``.
         ``S`` is monotone decreasing in ``eta`` on every scale.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times at which to bound the function.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are aliases of
+            ``'sf'`` and ``'ff'``). Default ``'sf'``.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are ``[lower, upper]`` on the last axis; a
+            one-sided bound at ``alpha_ci`` is the matching end of the
+            two-sided bound at ``2 * alpha_ci``.
         """
         if self.covariance is None:
             raise ValueError("Confidence bounds need a covariance (MLE fit).")
+        if on not in ("sf", "R", "ff", "F", "Hf"):
+            raise ValueError("cb 'on' supports 'sf', 'ff' and 'Hf'.")
+        # An unknown bound (say 'both') used to be taken as 'upper' (#415).
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
+        # ff = 1 - sf and Hf = -log(sf) decrease in sf, so their lower
+        # bound is the transformed upper bound on sf, and vice versa. The
+        # one-sided bounds used to return the other side (#415).
+        if on in ("ff", "F", "Hf") and bound != "two-sided":
+            bound = "upper" if bound == "lower" else "lower"
         x = np.atleast_1d(np.asarray(x, dtype=float))
         B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
@@ -325,9 +357,7 @@ class RoystonParmarModel(SerialisableMixin):
             return band
         if on in ("ff", "F"):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
-        if on == "Hf":
-            return -np.log(band[:, ::-1] if band.ndim == 2 else band)
-        raise ValueError("cb 'on' supports 'sf', 'ff' and 'Hf'.")
+        return -np.log(band[:, ::-1] if band.ndim == 2 else band)
 
     # -- information criteria ---------------------------------------------
 

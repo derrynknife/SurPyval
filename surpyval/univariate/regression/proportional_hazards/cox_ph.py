@@ -37,6 +37,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.deprecation import renamed_arguments
 
+from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc, handle_tvc_timeline
 
@@ -548,16 +549,96 @@ def _exact_tie_term(
     return log_L, mean_dg, hess
 
 
+def _check_identifiable(
+    info: npt.NDArray, Z: npt.NDArray, n_events: float
+) -> None:
+    """Refuse covariates whose coefficients the partial likelihood cannot
+    determine (#409).
+
+    ``info`` is the information at ``beta = 0``: the sum over the event
+    times of the risk sets' covariate covariance. A direction with no
+    information is one in which the covariates do not vary within any
+    risk set at an event time, and then the partial likelihood does not
+    depend on it at all: a constant column (a Cox model has no
+    intercept), one constant within each stratum, or collinear columns.
+    Fitted anyway, the optimiser ran off along it on separated data
+    (a coefficient of 3.1e14 and an all-NaN baseline) and gave a
+    spurious "monotone likelihood" warning and a NaN p-value otherwise.
+    R's ``coxph`` reports such a coefficient as NA. A column with no
+    information of its own is refused; collinear columns, which each vary
+    but whose combination does not, are warned of (see below). ``Z`` and
+    ``n_events`` (the weighted number of events) scale the rounding
+    tolerance; with no event nothing is checked.
+
+    A column of zeros is let through: its coefficient stays at its start,
+    0, and it affects no prediction for rows like the data. It is how a
+    formula's declared level with no rows arrives, which ``fit_from_df``
+    already warns of (and a prediction for that level raises, #377).
+    """
+    info = np.atleast_2d(np.asarray(info, dtype=float))
+    Z = np.asarray(Z, dtype=float)
+    used = np.flatnonzero(np.any(Z != 0, axis=0))
+    if not n_events > 0 or used.size == 0:
+        return
+    info, Z = info[np.ix_(used, used)], Z[:, used]
+    d = np.diag(info)
+    # No information is either rounding (the risk-set variances are
+    # differences of second moments, exact to a few ulps of Z^2) or tiny
+    # beside the column's spread over the data (a column that varies
+    # only between strata).
+    rounding = 1e-14 * n_events * np.max(Z**2, axis=0)
+    spread = 1e-10 * n_events * np.ptp(Z, axis=0) ** 2
+    flat = ~((d > rounding) & (d > spread))
+    if flat.any():
+        raise ValueError(
+            "The partial likelihood does not depend on the coefficient(s) "
+            "of covariate column(s) {} of Z, so they cannot be estimated: "
+            "the column does not vary within any risk set at an event time "
+            "(a constant column, such as an intercept, which a Cox model "
+            "does not have; one constant within each stratum; or one that "
+            "varies too little beside its size to be told from a "
+            "constant), or every unit at risk fails at once. Remove it "
+            "from Z.".format(used[flat].tolist())
+        )
+    root_d = np.sqrt(d)
+    eigval, eigvec = np.linalg.eigh(info / np.outer(root_d, root_d))
+    if eigval[0] < 1e-10:
+        weights = np.abs(eigvec[:, 0])
+        involved = used[weights > 1e-3 * weights.max()]
+        # Warned of, not refused: a formula without an intercept (every
+        # level of a factor coded, which sums to a constant) or a spline
+        # basis is fitted this way on purpose, and the predictions, which
+        # depend only on the identified combinations, are sound.
+        warnings.warn(
+            "Covariate columns {} of Z are collinear within the risk sets "
+            "at the event times (a combination of them is constant there, "
+            "as the columns of every level of a factor are): the partial "
+            "likelihood does not depend on that combination, so their "
+            "separate coefficients, standard errors and p-values mean "
+            "nothing, though the predictions do not depend on it. Remove a "
+            "redundant column (or keep the formula's intercept) to "
+            "estimate them.".format(involved.tolist()),
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+
+
 def _solve_beta_and_p_values(
     neg_ll: Callable,
     jac: Callable,
     beta_init: npt.NDArray,
     tol: float,
+    Z: npt.NDArray,
+    n_events: float,
 ) -> tuple[Any, npt.NDArray]:
     """Root-find the score (with BFGS fallback) and compute Wald p-values
     from the observed information; shared by ``fit`` and
     ``_fit_stratified`` so the most-patched block in this file exists
-    exactly once."""
+    exactly once. The covariates ``Z`` and the weighted number of events
+    are for the identifiability check (:func:`_check_identifiable`)."""
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        info_at_start = jac(beta_init)[1]
+    _check_identifiable(info_at_start, Z, n_events)
     # Where the likelihood is monotone (below) the coefficients run off
     # towards infinity and the risk-set sums underflow to 0 on the way;
     # the resulting log(0) and 0/0 are that divergence, which is reported
@@ -581,7 +662,6 @@ def _solve_beta_and_p_values(
                 res = fallback
 
         hessian_matrix = jac(res.x)[1]
-        info_at_start = jac(beta_init)[1]
     _warn_if_monotone(hessian_matrix, info_at_start)
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -1156,10 +1236,17 @@ class CoxPH_:
             The observed times of the events.
         Z: array-like
             The covariates of the model, one row per observation. Rows with
-            a missing or infinite covariate are dropped, with a warning.
+            a missing or infinite covariate are dropped, with a warning. A
+            column whose coefficient the partial likelihood cannot
+            determine -- a constant column (a Cox model has no intercept)
+            or one constant within each stratum -- raises a
+            ``ValueError`` naming it; collinear columns (every level of a
+            factor, with no intercept) are fitted with a warning that
+            their separate coefficients mean nothing.
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
-            1 if right-censored. Defaults to all observed. Left-censored
+            1 if right-censored. Defaults to all observed. An exactly
+            observed time must be finite. Left-censored
             (-1) and interval-censored (2) rows raise a ``ValueError``: the
             partial likelihood has no term for them, so fit such data with
             a parametric regression model (e.g. ``WeibullPH``) instead.
@@ -1231,13 +1318,16 @@ class CoxPH_:
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
+        check_finite_event_times(x, c)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
         neg_ll, jac = func_generator(x, Z, c, n, tl)
 
-        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
+        res, p_values = _solve_beta_and_p_values(
+            neg_ll, jac, beta_init, tol, Z, float(n[c == 0].sum())
+        )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
@@ -1339,6 +1429,7 @@ class CoxPH_:
                 _sub(tl_o, mask),
                 tie_method,
             )
+            check_finite_event_times(xs, cs)
             if n_params is None:
                 n_params = Zs.shape[1]
             gen = func_generator(xs, Zs, cs, ns_, tls)
@@ -1350,7 +1441,17 @@ class CoxPH_:
         neg_ll, jac = _combine_generators(gens)
 
         beta_init = np.zeros(n_params)
-        res, p_values = _solve_beta_and_p_values(neg_ll, jac, beta_init, tol)
+        res, p_values = _solve_beta_and_p_values(
+            neg_ll,
+            jac,
+            beta_init,
+            tol,
+            np.vstack([data[3] for _, _, data in per_stratum]),
+            sum(
+                float(data[2][data[1] == 0].sum())
+                for _, _, data in per_stratum
+            ),
+        )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)

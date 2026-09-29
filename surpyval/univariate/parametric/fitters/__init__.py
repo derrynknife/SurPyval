@@ -1,5 +1,8 @@
+import warnings
 from typing import Any, Callable, Sequence
+
 import numpy.typing as npt
+from autograd import hessian, jacobian
 from scipy.optimize import minimize
 
 from surpyval import np
@@ -104,6 +107,126 @@ def fallback_minimize(
 def _usable(res: Any) -> bool:
     """A result with finite parameters and a finite objective."""
     return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
+
+
+# The largest scaled gradient (see ``is_local_minimum``) a point may have
+# and still count as the optimum. BFGS stops at 1e-6 in the same units;
+# the other rungs' absolute tolerances, and BFGS's own "precision loss"
+# stops at the optimum, land within 1e-5. A point this far from
+# stationary is at most ``n * gtol**2`` from the optimum in
+# log-likelihood, far below what any prediction can show.
+OPTIMUM_GTOL = 1e-4
+
+
+def is_local_minimum(
+    fun: Callable[..., Any],
+    jac: Callable[..., Any] | None,
+    hess: Callable[..., Any] | None,
+    x: npt.ArrayLike,
+    args: tuple[Any, ...] = (),
+    floor: "float | npt.ArrayLike" = 1.0,
+    obj_scale: float = 1.0,
+    gtol: float = OPTIMUM_GTOL,
+) -> bool:
+    """Whether ``x`` is verifiably a local minimum of ``fun``: its
+    gradient is ~0 and its Hessian positive definite.
+
+    An optimiser's ``success`` does not say this. BFGS, TNC and Newton-CG
+    each stop on an absolute test, and from a start far from the optimum
+    they meet it where the objective first looks flat: a Weibull fitted
+    from ``alpha = 1e7`` "converged" at ``beta = 0.099`` with a
+    log-likelihood 40 below the maximum (#427). Nor does a failure say the
+    opposite: BFGS often reports a loss of precision *at* the optimum.
+
+    Both tests are made in the units ``preconditioned_bfgs`` searches in,
+    each component scaled by ``max(|x|, floor)`` and the objective by
+    ``obj_scale`` (the number of observations), so they mean the same
+    thing whatever units the data are in. The gradient must be below
+    ``gtol`` in every component; the Hessian must have a Cholesky
+    factor. A point where either cannot be evaluated finitely is not
+    verified.
+    """
+    if jac is None or hess is None:
+        return False
+    at: npt.NDArray = np.asarray(x, dtype=float)
+    if not np.all(np.isfinite(at)):
+        return False
+    scale = np.maximum(np.abs(at), np.asarray(floor, dtype=float))
+    with np.errstate(all="ignore"):
+        try:
+            g = scale * np.asarray(jac(at, *args), dtype=float) / obj_scale
+            if not (np.all(np.isfinite(g)) and np.max(np.abs(g)) < gtol):
+                return False
+            h = np.atleast_2d(np.asarray(hess(at, *args), dtype=float))
+            if not np.all(np.isfinite(h)):
+                # autograd's second derivative can be NaN where the
+                # first is finite (a Weibull CDF at an interval's lower
+                # end of 0): central differences of the gradient instead.
+                h = _hessian_from_gradient(jac, at, args, scale)
+        except (ValueError, ZeroDivisionError, FloatingPointError):
+            return False
+    h = np.outer(scale, scale) * h / obj_scale
+    if not np.all(np.isfinite(h)):
+        return False
+    try:
+        np.linalg.cholesky(0.5 * (h + h.T))
+    except np.linalg.LinAlgError:
+        return False
+    return True
+
+
+def verify_or_polish(
+    fun: Callable[[npt.NDArray], Any],
+    res: Any,
+    n_obs: float,
+    objective: "Callable[[npt.NDArray], Any] | None" = None,
+) -> tuple[Any, bool]:
+    """``res``, a minimum of ``fun`` found some other way, and whether it
+    is verifiably a minimum of ``objective`` (``fun`` by default; see
+    ``is_local_minimum``).
+
+    The regression fitters search with Nelder-Mead and then TNC, whose
+    absolute tolerances stop short of the optimum from a poor start while
+    reporting success (#428), or fail far from it without a word: an
+    additive hazards Gamma baseline stopped at alpha ~ 1e-282 on a "linear
+    search failed". An answer that is not verified is polished with BFGS
+    in the units maximum likelihood searches in (see
+    ``preconditioned_bfgs``), kept where that improves it, and checked
+    again; the caller warns if it still is not a minimum.
+    """
+    objective = fun if objective is None else objective
+    jac, hess = jacobian(objective), hessian(objective)
+    if is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs):
+        return res, True
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        # A penalised objective is constant where the model is invalid,
+        # and autograd says so for every gradient taken there
+        warnings.filterwarnings("ignore", "Output seems independent")
+        polish = preconditioned_bfgs(
+            fun, res.x, (), jacobian(fun), obj_scale=n_obs
+        )
+    if _usable(polish) and polish.fun <= res.fun:
+        res = polish
+    return res, is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs)
+
+
+def _hessian_from_gradient(
+    jac: Callable[..., Any],
+    x: npt.NDArray,
+    args: tuple[Any, ...],
+    scale: npt.NDArray,
+) -> npt.NDArray:
+    """The Hessian at ``x`` by central differences of ``jac``, each
+    component stepped by 1e-5 of its ``scale``."""
+    steps = 1e-5 * scale
+    columns = []
+    for j, step in enumerate(steps):
+        e = np.zeros_like(x)
+        e[j] = step
+        up = np.asarray(jac(x + e, *args), dtype=float)
+        down = np.asarray(jac(x - e, *args), dtype=float)
+        columns.append((up - down) / (2 * step))
+    return np.array(columns).T
 
 
 def search_floor(model: Any) -> npt.NDArray:

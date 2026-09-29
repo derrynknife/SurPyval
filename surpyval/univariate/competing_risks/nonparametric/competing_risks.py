@@ -35,6 +35,9 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _on_support,
     _support_from_dict,
 )
+from surpyval.univariate.regression.regression_data import (
+    check_finite_event_times,
+)
 from surpyval.utils import (
     _get_idx,
     validate_cif_event,
@@ -467,6 +470,7 @@ class CompetingRisks(SerialisableMixin):
         array([0.1   , 0.3917])
         """
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
+        check_finite_event_times(x, c)
 
         # The causes in a fixed order (censored rows have no cause), the
         # same for every competing-risks class; labels of different types

@@ -55,6 +55,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
+    check_finite_event_times,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -334,20 +335,47 @@ class BuckleyJamesModel(SerialisableMixin):
         restore_covariate_meta(out, model_dict)
         return out
 
+    def _linear_predictor(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        """``beta'Z`` for each time in ``x``: ``Z`` is one covariate vector
+        (used at every time) or one row per time, paired in the order
+        given, as for the other regression models (#426)."""
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        p = self.beta.size
+        if Z_arr.ndim == 0:
+            Z_arr = Z_arr.reshape(1)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(1, -1)
+        if Z_arr.ndim != 2 or Z_arr.shape[1] != p:
+            raise ValueError(
+                "Z must be one covariate vector of length {} or one such "
+                "row per time; got an array of shape {}.".format(
+                    p, np.shape(Z)
+                )
+            )
+        if Z_arr.shape[0] not in (1, x.size):
+            raise ValueError(
+                "Z has {} covariate rows but there are {} times; give one "
+                "covariate vector, or one row per time.".format(
+                    Z_arr.shape[0], x.size
+                )
+            )
+        return Z_arr @ self.beta
+
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single
-        covariate vector ``Z``."""
+        """Survival ``P(T > x | Z) = S_eps(log x + beta'Z)``; ``Z`` is one
+        covariate vector (used at every time) or one row per time in
+        ``x``, paired in the order given."""
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = self._prepare_Z(Z)
-        Z = np.asarray(Z, dtype=float).ravel()
         # beta is the accelerated-failure (negated) slope, so the residual
         # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
         # has failed: survival 1 (log(0) = -inf gives that already, but
         # warned, and a negative time gave nan).
         positive = x > 0
         with np.errstate(divide="ignore"):
-            r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
+            r = np.log(np.where(positive, x, 1.0)) + self._linear_predictor(
+                x, Z
+            )
         # A missing covariate (a DataFrame row with a nan) gives nan, as in
         # the other families; the residual lookup read it as the last step
         # (survival 0). So does a missing time, which ``positive`` read as
@@ -357,14 +385,14 @@ class BuckleyJamesModel(SerialisableMixin):
 
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Failure probability ``1 - sf(x, Z)`` for a single covariate
-        vector ``Z``."""
+        """Failure probability ``1 - sf(x, Z)``; ``Z`` as for
+        :meth:`sf`."""
         return 1.0 - self.sf(x, Z)
 
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Cumulative hazard ``-log sf(x, Z)`` for a single covariate
-        vector ``Z``."""
+        """Cumulative hazard ``-log sf(x, Z)``; ``Z`` as for
+        :meth:`sf`."""
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
@@ -539,6 +567,7 @@ class BuckleyJames_:
         if x_a.ndim == 2:
             # Two columns with no interval row: xl == xr on every row.
             x_a = x_a[:, 0]
+        check_finite_event_times(x_a, c_a)
         Z_a = np.asarray(Z, dtype=float)
         if Z_a.ndim == 1:
             Z_a = Z_a.reshape(-1, 1)

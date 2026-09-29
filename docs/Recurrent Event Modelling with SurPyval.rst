@@ -708,7 +708,11 @@ refitted; the others return the non-parametric MCF of the simulated items:
   ``count_terminated_simulation_data(events, items)`` watch each item until
   it has had ``events + 1`` events (the extra event closes the window). The
   MCF version keeps only the part of the curve below ``events``, where it is
-  not yet distorted by the items dropping out.
+  not yet distorted by the items dropping out. A model whose intensity
+  falls away fast enough that its expected number of events over all time,
+  ``cif(inf)``, is finite (a ``CoxLewis`` with ``beta < 0``) raises a
+  ``ValueError``: an item may never have that many events, so use the
+  time-terminated versions for it.
 
 Pass ``random_state`` for a reproducible result. The time-terminated versions also
 take ``tol`` and ``max_events``: a sequence whose gaps shrink below ``tol``

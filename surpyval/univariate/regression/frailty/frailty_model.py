@@ -40,6 +40,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils import is_missing_event
 
 from ..regression_data import (
     prepare_Z,
@@ -159,6 +160,10 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError("Pass at most one of 'group' or 'frailty'.")
         if frailty is not None:
             return float(frailty)
+        if group is not None and is_missing_event(group):
+            # A missing group label (NaN, pandas NA) predicts nan, as a
+            # missing stratum does in a stratified Cox model.
+            return float("nan")
         if group is not None:
             key = group
             if key not in self.frailties:

@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 from scipy.interpolate import PchipInterpolator, interp1d
 from scipy.optimize import brentq
 from scipy.stats import norm
@@ -27,13 +26,32 @@ _CB_ON = ("sf", "ff", "Hf", "R", "F")
 _BOUNDS = ("two-sided", "upper", "lower")
 
 
+# The ``interp`` values: the step estimate, and the interpolation kinds
+# of ``interp_function`` ('cubic' is PCHIP, the rest scipy's interp1d).
+_INTERP: tuple[str, ...] = ("step", "linear", "cubic", "nearest")
+_INTERP += ("nearest-up", "zero", "slinear", "quadratic", "previous", "next")
+
+
+def _check_option(name: str, value: Any, accepted: tuple) -> None:
+    """Refuse an option ``value`` not in ``accepted``, naming the
+    argument and the values it takes (principle 2) -- the one message
+    for an unknown option value."""
+    if not isinstance(value, str) or value not in accepted:
+        raise ValueError(
+            "'{}' must be one of {}; got {!r}".format(name, accepted, value)
+        )
+
+
 def _check_bound(bound: str) -> None:
     # An unknown ``bound`` (e.g. 'both') used to reach the statistic's
     # if/elif chain and fail as an UnboundLocalError.
-    if bound not in _BOUNDS:
-        raise ValueError(
-            "'bound' must be one of {}; got {!r}".format(_BOUNDS, bound)
-        )
+    _check_option("bound", bound, _BOUNDS)
+
+
+def _check_interp(interp: str) -> None:
+    # An unknown ``interp`` used to reach scipy, which raised
+    # NotImplementedError (#416).
+    _check_option("interp", interp, _INTERP)
 
 
 def _check_support(
@@ -151,6 +169,54 @@ def interp_function(
         # value in log" warning, instead of 0 and inf.
         return lambda q: np.clip(pchip(np.asarray(q, dtype=float)), lo, hi)
     return interp1d(x, y, kind=kind, bounds_error=False, fill_value=np.nan)
+
+
+def _interp_bound(
+    xs: npt.NDArray,
+    R: npt.NDArray,
+    bound: npt.NDArray,
+    defined: npt.NDArray,
+    x: npt.NDArray,
+    kind: str,
+    in_unit: bool,
+) -> npt.NDArray:
+    """A confidence bound of the estimate ``R``, both known at the times
+    ``xs``, interpolated to ``x`` with ``kind``.
+
+    Up to the last time it is defined, the bound is the interpolated
+    estimate plus its interpolated distance from the estimate, the latter
+    over the times where the bound is defined. Where the variance is
+    undefined (from the time a Kaplan-Meier reaches zero) the bound is a
+    fill (see ``R_cb``), not an estimate, and interpolating the bound
+    itself let the fill feed the curve: a PCHIP's slope at a knot depends
+    on the next one, and the fill at the last time bent the cubic bounds
+    before it, so that they did not close onto ``sf`` as ``alpha_ci -> 1``
+    (0.1873 against 0.1948, #417). The distance is 0 where the estimate
+    has no variance and is interpolated without leaving the range of its
+    knots, so the bounds close onto ``sf`` and hold it between them. For
+    the linear, nearest and previous kinds it is the bound interpolated,
+    as before. Past the last defined time the fill is interpolated as
+    before. ``in_unit`` keeps the result within [0, 1] (the exponential
+    bounds).
+    """
+    everywhere = interp_function(xs, bound, kind=kind)(x)
+    if not defined.any():
+        return everywhere
+    last = int(np.flatnonzero(defined)[-1])
+    keep = defined[: last + 1]
+    try:
+        distance = interp_function(
+            xs[: last + 1][keep],
+            (bound - R)[: last + 1][keep],
+            kind=kind,
+        )(x)
+    except ValueError:
+        # Too few defined times for this ``kind`` (PCHIP needs two).
+        return everywhere
+    inside = interp_function(xs, R, kind=kind)(x) + distance
+    if in_unit:
+        inside = np.clip(inside, 0.0, 1.0)
+    return np.where(x <= xs[last], inside, everywhere)
 
 
 class NonParametric(SerialisableMixin, NonParametricDistribution):
@@ -346,10 +412,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -368,6 +437,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
         """
+        _check_interp(interp)
         return self._within_support(x, lambda q: self._sf(q, interp), 1.0)
 
     def _sf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -406,10 +476,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -460,10 +533,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -480,35 +556,48 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.hf([1.5, 2.5, 3.5])
         array([0.25      , 0.25      , 0.33333333])
         """
+        _check_interp(interp)
+        return self._jumps_within_support(x, interp)[0]
+
+    def _jumps_within_support(
+        self, x: npt.ArrayLike, interp: str
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """``(hf, df)`` at ``x``, restricted to the support when one is set
+        (see :meth:`set_support`)."""
         x = np.atleast_1d(x)
         if self.support is None:
-            return self._hf(x, interp)
+            return self._jumps(x, interp)
         # Only the points within the bounds are differenced (``Hf`` is 0
         # from ``lower`` and carried to ``upper``), and the increment is 0
         # before the first value.
         xf = np.asarray(x, dtype=float)
         lower, upper = self.support
         inside = (xf >= lower) & (xf <= upper)
-        out = np.full(xf.shape, np.nan)
+        hf, df = np.full(xf.shape, np.nan), np.full(xf.shape, np.nan)
         if inside.any():
-            out[inside] = self._hf(xf[inside], interp)
-        out[inside & (xf < self.x[0])] = 0.0
-        return out
+            hf[inside], df[inside] = self._jumps(xf[inside], interp)
+        before = inside & (xf < self.x[0])
+        hf[before], df[before] = 0.0, 0.0
+        return hf, df
 
-    def _hf(self, x: npt.NDArray, interp: str) -> npt.NDArray:
-        # ``hf`` without the bounds (see ``set_support``).
+    def _jumps(
+        self, x: npt.NDArray, interp: str
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        # ``hf`` and ``df`` without the bounds (see ``set_support``): the
+        # increment of ``Hf`` and the drop in ``sf`` over the same step,
+        # the one the conventions of ``hf`` pick for each point.
         if x.size == 0:
             # Nothing to difference (the first point below needs one).
-            return np.empty(0)
+            return np.empty(0), np.empty(0)
         missing = np.isnan(np.asarray(x, dtype=float))
         if missing.any():
             # A missing time has no value (NaN). The increments of the
             # others are the ones they have without it; the forward fill
             # below would otherwise copy a neighbour's increment into it.
-            filled = np.full(x.shape, np.nan)
+            hf, df = np.full(x.shape, np.nan), np.full(x.shape, np.nan)
             if not missing.all():
-                filled[~missing] = self._hf(x[~missing], interp)
-            return filled
+                hf[~missing], df[~missing] = self._jumps(x[~missing], interp)
+            return hf, df
         idx = np.argsort(x)
         rev = np.argsort(idx)
         x = x[idx]
@@ -521,46 +610,63 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             # zero-increment censoring steps), matching what the array
             # path returns for the same point inside a grid.
             xs = np.atleast_1d(self.x)
-            H_steps = np.atleast_1d(self.Hf(xs, interp=interp))
-            dH = np.diff(np.hstack([[0.0], H_steps]))
+            H = np.hstack([[0.0], self.Hf(xs, interp=interp)])
+            S = np.hstack([[1.0], self.sf(xs, interp=interp)])
             pos = np.searchsorted(xs, x[0], side="right") - 1
-            if pos < 0 or np.isnan(x[0]):
-                return np.array([np.nan])[rev]
-            sub = dH[: pos + 1]
-            nz = sub[sub > 0]
-            out = nz[-1] if nz.size else np.nan
-            return np.array([out])[rev]
-        H = np.hstack(
-            [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
-        )
+        else:
+            H = np.hstack(
+                [self.Hf(x[0], interp=interp), self.Hf(x, interp=interp)]
+            )
+            S = np.hstack(
+                [self.sf(x[0], interp=interp), self.sf(x, interp=interp)]
+            )
         # Once a Kaplan-Meier estimate reaches zero, H is inf at every
         # later time and inf - inf is NaN: no new increment, which the
         # forward fill below treats like a zero one (the hazard of the
         # step containing x, here the infinite jump to zero).
         with np.errstate(invalid="ignore"):
-            hf = np.diff(H)
-        if hf.size > 1:
-            hf[0] = hf[1]
-        hf = pd.Series(hf)
-        hf[hf == 0] = np.nan
-        hf = hf.ffill().values
-        return hf[rev]
+            dH = np.diff(H)
+        # step[i] is the step (from H[step] to H[step + 1]) whose increment
+        # point i takes: its own, or the last non-zero one before it; -1
+        # where there is none (NaN).
+        has_jump = ~np.isnan(dH) & (dH != 0)
+        if x.size == 1:
+            below = np.flatnonzero(has_jump[: max(pos + 1, 0)])
+            step = np.array([below[-1] if below.size else -1])
+        else:
+            candidate = np.where(has_jump, np.arange(dH.size), -1)
+            # The first point has nothing before it to difference from
+            # (its dH is 0) and repeats the second.
+            candidate[0] = candidate[1]
+            step = np.maximum.accumulate(candidate)
+        ok = step >= 0
+        s = np.where(ok, step, 0)
+        hf = np.where(ok, dH[s], np.nan)
+        # The drop in sf over that step: the probability the estimate puts
+        # there. Finite where hf * sf was not: inf * 0 once a Kaplan-Meier
+        # reaches zero (#408).
+        df = np.where(ok, S[s] - S[s + 1], np.nan)
+        return hf[rev], df[rev]
 
     @keeps_query_shape
     def df(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
-        Density function with the non-parametric estimates
-        from the data. This is calculated using the relationship
-        between the hazard function and the density:
+        The probability the non-parametric estimate puts in each step of
+        ``x``: the drop in ``sf`` over the step whose increment ``hf``
+        gives, the one from the previous requested point (with the same
+        conventions: the first point repeats the second, and a step with
+        no failure takes the last one that had a failure before it). Like
+        ``hf`` it is a jump size, not a density per unit of time, so it
+        depends on how finely ``x`` is spaced; over a step with increment
+        :math:`\Delta H` that starts at survival :math:`S` it is
+        :math:`S(1 - e^{-\Delta H})`, which for small steps is close to
+        :math:`h(x)e^{-H(x)}`.
 
-        .. math::
-            f(x) = h(x)e^{-H(x)}
-
-        with :math:`h` the discrete hazard of ``hf``, so it inherits that
-        method's dependence on the spacing of ``x``: it is roughly the
-        probability of failing in each step of ``x``, not a density per
-        unit of time.
+        It stays finite where the estimate reaches zero: the step a
+        Kaplan-Meier estimate takes to zero has an infinite ``hf``, but its
+        probability is the survival just before it. (``df`` used to be
+        computed as ``hf * exp(-Hf)``, which is ``inf * 0``, NaN, there.)
 
         Parameters
         ----------
@@ -572,27 +678,32 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
 
         df : scalar or numpy array
-            The value(s) of the density function at x
-
+            The probability of failing in the step of ``x`` at each x.
 
         Examples
         --------
-        >>> from surpyval import NelsonAalen
+        >>> from surpyval import KaplanMeier, NelsonAalen
         >>> x = np.array([1, 2, 3, 4, 5])
         >>> model = NelsonAalen.fit(x)
         >>> model.df([1.5, 2.5, 3.5])
-        array([0.20468269, 0.15940704, 0.15229351])
+        array([0.18110261, 0.18110261, 0.18074761])
+        >>> KaplanMeier.fit([1, 2, 3]).df([1.5, 2.5, 3.5])
+        array([0.33333333, 0.33333333, 0.33333333])
         """
-        return self.hf(x, interp=interp) * np.exp(-self.Hf(x, interp=interp))
+        _check_interp(interp)
+        return self._jumps_within_support(x, interp)[1]
 
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
@@ -618,10 +729,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -640,6 +754,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         array([0.2 , 0.2 , 0.45, 0.45])
         """
         # Bounded separately so that it starts at 0.0, not -log(1) = -0.0.
+        _check_interp(interp)
         return self._within_support(x, lambda q: self._Hf(q, interp), 0.0)
 
     def _Hf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -703,7 +818,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : ('step', 'linear', 'cubic'), optional
             How to interpolate the values between observations. Survival
             statistics traditionally uses step functions, but can use
-            interpolated values if desired. Defaults to step.
+            interpolated values if desired. Defaults to step. Takes the
+            values of ``sf``'s ``interp``.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
             Defaults to 0.05.
@@ -788,6 +904,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "('df', 'hf').".format(_CB_ON, on)
             )
         _check_bound(bound)
+        _check_interp(interp)
         # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
         # 0.0, not at -log(1) = -0.0.
         return self._bounds_within_support(
@@ -857,6 +974,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
+        _check_bound(bound)
+        _check_interp(interp)
         return self._bounds_within_support(
             x,
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
@@ -931,6 +1050,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     return np.where(finite, row, row[finite].min())
                 return np.asarray(self.R, dtype=float).copy()
 
+            # Where the bounds are defined, before the fill below.
+            defined = np.isfinite(R_out)
             if bound == "upper":
                 R_out = _fill_upper(R_out)
             elif bound == "lower":
@@ -951,12 +1072,26 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     R_out = np.where(idx < 0, 1, R_out)
 
             else:
+                unit = bound_type == "exp"
                 if bound == "two-sided":
-                    R1 = interp_function(self.x, R_out[0, :], kind=interp)(x)
-                    R2 = interp_function(self.x, R_out[1, :], kind=interp)(x)
-                    R_out = np.vstack([R1, R2])
+                    R_out = np.vstack(
+                        [
+                            _interp_bound(
+                                self.x,
+                                self.R,
+                                R_out[k],
+                                defined[k],
+                                x,
+                                interp,
+                                unit,
+                            )
+                            for k in (0, 1)
+                        ]
+                    )
                 else:
-                    R_out = interp_function(self.x, R_out, kind=interp)(x)
+                    R_out = _interp_bound(
+                        self.x, self.R, R_out, defined, x, interp, unit
+                    )
 
             # A missing x, or one outside the observed values, is NaN (or
             # set by the support): ``R_cb`` only asks within them (see
@@ -1561,7 +1696,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         whole range to about 1e-8.
         """
         if not 0 < 1 - alpha_ci < 1:
-            raise ValueError("'alpha_ci' must be between 0 and 1")
+            raise ValueError(
+                "'alpha_ci' must be strictly between 0 and 1; got "
+                "{}".format(alpha_ci)
+            )
         # t = a / (1 - a); a_u = 1 would put the end at infinity, which
         # the grid below cannot reach in finitely many steps.
         a_u = min(float(a_u), 1.0 - 1e-12)
@@ -1645,12 +1783,43 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         else:
             a_mid = min(max(0.5, a_l), a_u)
             lo = z * np.sqrt(a_mid * (1.0 - a_mid))
-        if inside(lo) >= target:
+        if not t_u > t_l:
             # A single point (a_l == a_u): the bound is attained.
             return float(lo)
-        hi = 1.5 * lo
-        while inside(hi) < target:
-            lo, hi = hi, 1.5 * hi
+        # The number of grid steps grows as 1 / c^2, so ``inside`` is only
+        # evaluated down to about the root. The search used to climb from
+        # ``lo``, which is far below the root when alpha_ci is large (z is
+        # 1.25e-6 at alpha_ci = 1 - 1e-6): alpha_ci = 0.9 took 13 s, and
+        # 1 - 1e-6 asked for a 158 TiB grid (#420). At the root itself the
+        # steps are bounded (about 8 log(1 / (1 - alpha_ci)), however narrow
+        # the range: a path staying within +-c over a stretch of n steps has
+        # a probability of about e^(-n / 8)). So start from an upper value
+        # and come down: for Hall-Wellner the Kolmogorov tail bound,
+        # P(sup |B| > c) <= 2 exp(-2 c^2) over the whole of [0, 1], and for
+        # the equal precision band 1 (or ``lo``), climbing if it is short.
+        if standardized:
+            c = max(lo, 1.0)
+        else:
+            c = max(lo, np.sqrt(np.log(2.0 / alpha_ci) / 2.0))
+        if inside(c) >= target:
+            hi = c
+            while True:
+                c = max(hi / 1.5, lo)
+                if c == lo:
+                    # Within a factor 1.5 of the root, so the grid is too.
+                    if inside(lo) >= target:
+                        # A range too short for the grid to tell apart from
+                        # a single point.
+                        return float(lo)
+                    break
+                if inside(c) < target:
+                    break
+                hi = c
+            lo = c
+        else:
+            lo, hi = c, 1.5 * c
+            while inside(hi) < target:
+                lo, hi = hi, 1.5 * hi
         return float(brentq(lambda c: inside(c) - target, lo, hi, xtol=1e-8))
 
     @keeps_query_shape
@@ -1693,11 +1862,16 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         for any range and results are reproducible.
 
         The band is only defined between the first and last observed
-        events (where the variance estimate is positive and finite);
-        NaN is returned outside that range, whether or not the model has
-        bounds (``set_support``). The asymptotic theory for
-        these bands is for right censored data; for Turnbull models
-        with interval censoring prefer ``bootstrap_cb()``.
+        events (where the variance estimate is positive and finite, and
+        the estimate strictly between 0 and 1); NaN is returned outside
+        that range, whether or not the model has bounds (``set_support``).
+        Over the first few events the estimate rests on a handful of
+        failures and the Brownian bridge approximation behind the equal
+        precision band is poor there: in simulation it covers about 0.89
+        for a nominal 0.95, the misses almost all at the first events
+        (#390). The Hall-Wellner band does not have this problem. The
+        asymptotic theory for these bands is for right censored data; for
+        Turnbull models with interval censoring prefer ``bootstrap_cb()``.
 
         Parameters
         ----------
@@ -1730,7 +1904,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         ValueError
             If no value has a positive, finite variance with an estimate
             strictly between 0 and 1 (e.g. no failures), or the model has
-            no variance estimate (``fit_from_ecdf``).
+            no variance estimate (``fit_from_ecdf``), or ``alpha_ci`` is not
+            strictly between 0 and 1.
 
         Examples
         --------
@@ -2021,6 +2196,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         dist = kwargs.pop("dist", "z")
 
         _check_bound(bound)
+        _check_interp(interp)
         # The censoring marks need the raw data. A restored Turnbull model
         # holds a ``data`` dict with only the estimator settings, so this
         # used to fail as ``KeyError: 'x'``.

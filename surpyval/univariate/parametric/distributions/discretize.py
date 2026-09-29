@@ -94,7 +94,25 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, *params: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
-        return np.maximum(np.ceil(self.dist.qf(u, *params)), 1.0)
+        u = np.asarray(u, dtype=float)
+        k = np.maximum(np.ceil(self.dist.qf(u, *params)), 1.0)
+        # The continuous quantile of u = F(k) lands on k only up to
+        # round-off, and ceil() of k + 1e-15 is k + 1: qf(ff(6)) was 7
+        # (#383). Step back to k - 1 where F(k - 1) already reaches u, up
+        # to a relative 1e-12 of the smaller of u and 1 - u (compared on
+        # that side, so a tail probability keeps its digits), and above
+        # 1/2 also up to u's own rounding (half an ulp below 1).
+        before = k - 1.0
+        lower = u <= 0.5
+        half_ulp = np.finfo(float).eps / 4.0
+        reached = np.where(
+            lower,
+            self.dist.ff(before, *params) >= u * (1.0 - 1e-12),
+            self.dist.sf(before, *params)
+            <= (1.0 - u) * (1.0 + 1e-12) + half_ulp,
+        )
+        k = np.where((before >= 1.0) & reached, before, k)
+        return k[()] if k.ndim == 0 else k
 
     def mean(self, *params: Boxable) -> Boxable:
         upper = int(np.ceil(self.dist.qf(1.0 - 1e-9, *params)))

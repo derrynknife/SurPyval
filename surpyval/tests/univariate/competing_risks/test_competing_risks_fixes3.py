@@ -64,7 +64,9 @@ def test_gray_calibrated_under_unequal_censoring(cause):
 
 
 def test_gray_equal_censoring_close_to_pooled_version():
-    # The docstring example: the pooled-censoring version gave 19.878.
+    # The docstring example: the pooled-censoring version gave 19.878, and
+    # SurPyval's own variance 19.962; cmprsk::cuminc gives 20.112602058
+    # (#380).
     rng = np.random.default_rng(0)
     group = rng.binomial(1, 0.5, 200)
     t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * group)))
@@ -74,7 +76,7 @@ def test_gray_equal_censoring_close_to_pooled_version():
     first = np.where(t_a < t_b, "a", "b")
     e = np.where(t_c < np.minimum(t_a, t_b), None, first)
     res = gray_test(x, e, group, event="a")
-    assert res.statistic == pytest.approx(19.962, abs=1e-3)
+    assert res.statistic == pytest.approx(20.112602058, rel=1e-9)
 
 
 def test_gray_invariances_hold():

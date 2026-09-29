@@ -73,6 +73,14 @@ def _degenerate_from_json(
     return read_model_dict(cls, model_dict)
 
 
+def _constant(x: npt.ArrayLike, value: float) -> npt.NDArray:
+    """``value`` at every point of ``x``, and NaN where ``x`` is NaN: a
+    missing query is answered as missing (principle 3; these returned the
+    constant there, #382)."""
+    x = np.asarray(x, dtype=float)
+    return np.where(np.isnan(x), np.nan, np.full_like(x, value))
+
+
 class NeverOccurs(Distribution):
     """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf).
 
@@ -94,33 +102,33 @@ class NeverOccurs(Distribution):
     @classmethod
     @keeps_query_shape
     def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.ones_like(x).astype(float)
+        return _constant(x, 1.0)
 
     @classmethod
     @keeps_query_shape
     def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(x).astype(float)
+        return _constant(x, 0.0)
 
     @classmethod
     @keeps_query_shape
     def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(x).astype(float)
+        return _constant(x, 0.0)
 
     @classmethod
     @keeps_query_shape
     def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(x).astype(float)
+        return _constant(x, 0.0)
 
     @classmethod
     @keeps_query_shape
     def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(x).astype(float)
+        return _constant(x, 0.0)
 
     @classmethod
     @renamed_arguments(u="p")
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.full_like(np.asarray(p, dtype=float), np.inf)
+        return _constant(p, np.inf)
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:
@@ -179,35 +187,35 @@ class InstantlyOccurs(Distribution):
     @classmethod
     @keeps_query_shape
     def sf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(x).astype(float)
+        return _constant(x, 0.0)
 
     @classmethod
     @keeps_query_shape
     def ff(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.ones_like(x).astype(float)
+        return _constant(x, 1.0)
 
     @classmethod
     @keeps_query_shape
     def df(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         # Point mass at zero: the "density" is the degenerate spike there.
         x = np.asarray(x, dtype=float)
-        return np.where(x == 0, np.inf, 0.0)
+        return np.where(np.isnan(x), np.nan, np.where(x == 0, np.inf, 0.0))
 
     @classmethod
     @keeps_query_shape
     def hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.full_like(np.asarray(x, dtype=float), np.inf)
+        return _constant(x, np.inf)
 
     @classmethod
     @keeps_query_shape
     def Hf(cls, x: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.full_like(x, np.inf, dtype=float)
+        return _constant(x, np.inf)
 
     @classmethod
     @renamed_arguments(u="p")
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return np.zeros_like(np.asarray(p, dtype=float))
+        return _constant(p, 0.0)
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:

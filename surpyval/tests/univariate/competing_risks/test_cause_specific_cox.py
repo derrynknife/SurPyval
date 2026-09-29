@@ -197,9 +197,9 @@ def test_cause_specific_incidences_sum_to_one_minus_survival():
         m = CompetingRisksProportionalHazards.fit(x, Z, e)
         for z in ([-1.5], [0.0], [1.5]):
             total = m.cif(m.x, z, "wear") + m.cif(m.x, z, "shock")
-            S, _ = m._product_limit_survival(z)
             assert total.max() <= 1.0 + 1e-12
-            assert np.allclose(total, 1.0 - S)
+            # 1 - sf, the model's own all-cause failure probability (#384).
+            assert np.allclose(total, m.ff(m.x, z), rtol=1e-12, atol=1e-15)
 
 
 def test_cause_order_is_sorted_and_reproducible():

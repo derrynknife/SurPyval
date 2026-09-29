@@ -5,8 +5,9 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent._bounded import unconstraining_maps
+from surpyval.recurrent._convergence import better_result, warn_unconverged
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.utils.fitter import singleton_fitter
@@ -235,10 +236,15 @@ class ProportionalIntensityNHPP:
 
         num_covariates = data.Z.shape[1]
         expected = len(dist.param_names) + num_covariates
-        if init is None:
-            init = np.append(
+
+        def default_init() -> np.ndarray:
+            return np.append(
                 self._baseline_start(data, dist), np.zeros(num_covariates)
             )
+
+        user_init = init is not None
+        if init is None:
+            init = default_init()
         else:
             # User-supplied starting values were previously overwritten
             # unconditionally (#288).
@@ -266,18 +272,28 @@ class ProportionalIntensityNHPP:
                 value = neg_ll(to_natural(u))
             return float(value) if np.isfinite(value) else 1e300
 
-        u0 = to_search(init)
-        res = minimize(objective, u0, method="BFGS")
-        res = minimize(
-            objective,
-            res.x,
-            method="Nelder-Mead",
-            options={
-                "maxfev": 2000 * expected,
-                "xatol": 1e-8,
-                "fatol": 1e-10,
-            },
-        )
+        def search(start: np.ndarray) -> Any:
+            res = minimize(objective, to_search(start), method="BFGS")
+            return minimize(
+                objective,
+                res.x,
+                method="Nelder-Mead",
+                options={
+                    "maxfev": 2000 * expected,
+                    "xatol": 1e-8,
+                    "fatol": 1e-10,
+                },
+            )
+
+        res = search(init)
+        # A start the user gave is followed by the default one, and the
+        # better answer kept: from Duane's alpha x1e6 the intensity
+        # overflows, the search cannot move, and the start was returned
+        # in silence (#429).
+        if user_init:
+            res = better_result(res, search(default_init()))
+        if not (res.success and res.fun < 1e300):
+            warn_unconverged("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res
         out.params = res.x[: len(dist.param_names)]

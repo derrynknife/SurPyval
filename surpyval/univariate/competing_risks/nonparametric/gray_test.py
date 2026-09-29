@@ -28,9 +28,6 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2
 
-from surpyval.univariate.competing_risks.aalen_johansen import (
-    aalen_johansen_iif,
-)
 from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
@@ -113,21 +110,24 @@ def gray_test(
     ``sum_t w(t) (d_g(t) - R_g(t) d(t) / R(t))``, with ``d`` the failures
     from the cause and ``R = sum_g R_g``.
 
-    Its variance is Gray's asymptotic estimate: the score is linearised in
-    each group's counting-process martingales, of the cause *and* of the
-    competing causes (the latter enter through ``F_g`` and ``S_g`` in the
-    risk set), and the martingale variances are estimated by the observed
-    failure counts. It is not the hypergeometric (log-rank) variance, which
+    Its variance is Gray's asymptotic estimate, computed as R's
+    ``cmprsk::cuminc`` computes it, and the statistic agrees with
+    ``cuminc``'s to rounding, ties included (#380). The score is linearised
+    in each group's counting-process martingales, of the cause *and* of
+    the competing causes (the latter enter through ``F_g`` and ``S_g`` in
+    the risk set), under the null hypothesis: the martingale variances are
+    the failures each group is expected to have from the cause, and those
+    it had from the competing causes, each with a correction for tied
+    failures. It is not the hypergeometric (log-rank) variance, which
     ignores the variability of the estimated risk sets. The pooled
-    incidence in the variance and in the ``rho`` weight is Gray's
-    ``F^0(t) = 1 - prod_{s <= t} (1 - d(s) / R(s))``. R's ``cmprsk``
-    implements the same test and forms ``R_g`` the same way: ``Y_g(t)``
-    counts the rows censored at ``t`` and ``S_g`` is taken just before
-    ``t``, so ``Y_g(t) / S_g(t-)`` is the group size times its censoring
-    survival just before ``t`` -- a censoring tied with a failure counts
-    after it, as in ``FineGray``'s weights. The pooled ``F^0`` (in the
-    weight and the variance) and the variance at tied failure times follow
-    Gray's paper and may differ from ``cmprsk``'s code in detail.
+    incidence ``F^0`` in the ``rho`` weight and the variance steps by
+    ``d(t) / sum_g Y_g(t) / S_g(t-)``, the failures over the whole
+    sample's censoring-weighted size. ``cmprsk`` forms ``R_g`` the same
+    way: ``Y_g(t)`` counts the rows censored at ``t`` and ``S_g`` is taken
+    just before ``t``, so ``Y_g(t) / S_g(t-)`` is the group size times its
+    censoring survival just before ``t`` -- a censoring tied with a failure
+    counts after it, as in ``FineGray``'s weights. Counts ``n`` enter as
+    frequency weights (``cmprsk`` has none).
 
     Examples
     --------
@@ -145,7 +145,7 @@ def gray_test(
     >>> e = np.where(t_c < np.minimum(t_a, t_b), None, first)
     >>> res = gray_test(x, e, group, event="a")
     >>> round(res.statistic, 3), res.df
-    (19.962, 1)
+    (20.113, 1)
     >>> bool(res.p_value < 0.001)
     True
     """
@@ -165,79 +165,8 @@ def gray_test(
     np.add.at(d2, (gi[is_competing], t_idx[is_competing]), n_arr[is_competing])
     # Everyone with x >= t is at risk at t.
     Y = counts[:, ::-1].cumsum(axis=1)[:, ::-1]
-    at_risk = Y > 0
-    Y_safe = np.where(at_risk, Y, 1.0)
 
-    # Each group's all-cause Kaplan-Meier survival and Aalen-Johansen
-    # incidences (of the cause, F1, and of the competing causes, F2).
-    S = np.cumprod(1.0 - np.where(at_risk, (d1 + d2) / Y_safe, 0.0), axis=1)
-    S_minus = _left_limit(S, 1.0)
-    F1 = np.array(
-        [aalen_johansen_iif(S[g], d1[g] / Y_safe[g]) for g in range(K)]
-    ).cumsum(axis=1)
-    F2 = np.array(
-        [aalen_johansen_iif(S[g], d2[g] / Y_safe[g]) for g in range(K)]
-    ).cumsum(axis=1)
-    F1_minus = _left_limit(F1, 0.0)
-
-    # Gray's subdistribution risk sets. S(t-) > 0 wherever anyone is still
-    # at risk, so the ratio is only formed there.
-    R = np.where(
-        at_risk,
-        Y * (1.0 - F1_minus) / np.where(at_risk, S_minus, 1.0),
-        0.0,
-    )
-    R_tot = R.sum(axis=0)
-    d_tot = d1.sum(axis=0)
-    pos = R_tot > 0
-    R_tot_safe = np.where(pos, R_tot, 1.0)
-
-    # Gray's pooled subdistribution hazard increments and incidence F^0.
-    dGamma = np.where(pos, d_tot / R_tot_safe, 0.0)
-    F0 = 1.0 - np.cumprod(1.0 - dGamma)
-    F0_minus = _left_limit(F0, 0.0)
-    L = (1.0 - F0_minus) ** rho
-
-    # Score: weighted observed minus expected failures from the cause.
-    U = (L * (d1 - R * d_tot / R_tot_safe) * pos).sum(axis=1)
-
-    # Variance. With c[t, k, r] = L (delta_kr R_k - R_k R_r / R), the score
-    # is z_k = sum_r int c_kr dGamma_r, and linearising group r's estimated
-    # subdistribution hazard Gamma_r in its martingales M1 (the cause) and
-    # M2 (the competing causes) gives z_k ~ sum_r int A_kr dM1_r +
-    # int B_kr dM2_r with
-    #   A_kr(u) = c_kr(u) / R_r(u) - F2_r(u) Q_kr(u) / Y_r(u),
-    #   B_kr(u) = -(1 - F^0(u)) Q_kr(u) / Y_r(u),
-    #   Q_kr(u) = int_(u, inf) c_kr(t) dGamma(t) / (1 - F^0(t-)).
-    # The competing causes enter because a group's risk set R_r depends on
-    # its incidence and survival estimates. The martingale variances are
-    # estimated by the observed failure counts d1 and d2.
-    p = np.where(pos, R / R_tot_safe, 0.0)  # (K, T)
-    eye = np.eye(K)
-    c_tkr = L[:, None, None] * (
-        R.T[:, :, None] * (eye[None, :, :] - p.T[:, None, :])
-    )
-    alive = 1.0 - F0_minus
-    q = np.where(alive > 0, dGamma / np.where(alive > 0, alive, 1.0), 0.0)
-    # Q at u sums the strictly later times: a reversed cumulative sum,
-    # shifted by one.
-    later = (c_tkr * q[:, None, None])[::-1].cumsum(axis=0)[::-1]
-    Q = np.concatenate([later[1:], np.zeros((1, K, K))], axis=0)
-    R_safe = np.where(R > 0, R, 1.0)
-    A = np.where(
-        (R > 0).T[:, None, :],
-        c_tkr / R_safe.T[:, None, :] - (F2 / Y_safe).T[:, None, :] * Q,
-        0.0,
-    )
-    B = np.where(
-        at_risk.T[:, None, :],
-        -((1.0 - F0)[:, None] / Y_safe.T)[:, None, :] * Q,
-        0.0,
-    )
-    V = np.einsum("tkr,tlr,rt->kl", A, A, d1) + np.einsum(
-        "tkr,tlr,rt->kl", B, B, d2
-    )
-
+    U, V = _score_and_variance(Y, d1, d2, rho)
     # Drop the last group for a full-rank (G-1) quadratic form.
     stat = safe_quadform(V[:-1, :-1], U[:-1])
     df = K - 1
@@ -248,6 +177,102 @@ def gray_test(
         cause=event,
         groups=groups,
     )
+
+
+def _score_and_variance(
+    Y: npt.NDArray, d1: npt.NDArray, d2: npt.NDArray, rho: float
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """Gray's score and its variance, as R's ``cmprsk`` computes them.
+
+    ``Y``, ``d1`` and ``d2`` are, per group (rows) and distinct time
+    (columns), the number at risk and the failures from the cause and from
+    the competing causes. Each step is ``cmprsk``'s ``crst`` routine (read
+    from its compiled code), vectorised over the times; the two agree to
+    rounding (#380).
+    """
+    K = Y.shape[0]
+    at_risk = Y > 0
+    Y_safe = np.where(at_risk, Y, 1.0)
+    # Each group's all-cause Kaplan-Meier survival (S, and S_minus just
+    # before each time) and Aalen-Johansen incidence of the cause (F1).
+    S = np.cumprod(1.0 - np.where(at_risk, (d1 + d2) / Y_safe, 0.0), axis=1)
+    S_minus = _left_limit(S, 1.0)
+    S_minus_safe = np.where(at_risk, S_minus, 1.0)
+    F1_minus = _left_limit(
+        np.cumsum(S_minus * np.where(at_risk, d1 / Y_safe, 0.0), axis=1), 0.0
+    )
+
+    # Gray's subdistribution risk sets R_g = Y_g (1 - F1_g(t-)) / S_g(t-).
+    # Y_g / S_g(t-) (``size``) is the group size times its censoring
+    # survival just before t.
+    size = np.where(at_risk, Y / S_minus_safe, 0.0)
+    R = size * (1.0 - F1_minus)
+    R_tot, size_tot = R.sum(axis=0), size.sum(axis=0)
+    d_tot = d1.sum(axis=0)
+    size_safe = np.where(size_tot > 0, size_tot, 1.0)
+    # The pooled incidence of the cause, F0, steps by d / sum_g Y_g / S_g:
+    # the failures over the censoring-weighted size of the whole sample.
+    dF0 = np.where(size_tot > 0, d_tot / size_safe, 0.0)
+    F0 = np.cumsum(dF0)
+    F0_minus = _left_limit(F0, 0.0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        L = (1.0 - F0_minus) ** rho
+
+    # Score: weighted observed minus expected failures from the cause.
+    pos = R_tot > 0
+    R_tot_safe = np.where(pos, R_tot, 1.0)
+    U = (L * (d1 - R * d_tot / R_tot_safe) * pos).sum(axis=1)
+
+    # Variance. The score is linearised in each group's counting-process
+    # martingales, of the cause and of the competing causes (these enter
+    # through the estimated risk sets), under the null hypothesis: every
+    # group's incidence is F0 and its expected failures from the cause at a
+    # time are its share of d. With share size_r / size, at each time
+    #   a_kr = W size_k (delta_kr - size_r / size),
+    #   Q_kr(u) = sum_{t > u} a_kr(t) dF0(t) / (1 - F0(t-)),
+    #   A_kr = a_kr + (1 - (1 - F0) / S_r) Q_kr,  B_kr = (1 - F0) / S_r Q_kr,
+    # and V_kl = sum_u sum_r A_kr A_lr w1_r + B_kr B_lr w2_r, the weights
+    # being the variances of the martingale steps: w1_r = d dF0 / size_r
+    # and w2_r = d2_r (S_r(u-) / Y_r)^2, each with a correction for tied
+    # failures.
+    share = size / size_safe
+    eye = np.eye(K)
+    both = at_risk.T[:, :, None] & at_risk.T[:, None, :]
+    a = np.where(
+        both,
+        (L[:, None] * size.T)[:, :, None] * (eye[None] - share.T[:, None, :]),
+        0.0,
+    )
+    alive = 1.0 - F0_minus
+    ok = (size_tot > 0) & (alive != 0)
+    q = np.where(ok, dF0 / np.where(ok, alive, 1.0), 0.0)
+    C = np.cumsum(a * q[:, None, None], axis=0)
+    Q = C[-1][None] - C
+    S_safe = np.where(S > 0, S, 1.0)
+    alive_now = (1.0 - F0)[None, :] / S_safe
+    tied1 = d_tot[None, :] > 1
+    spread = size_tot[None, :] * S_minus - 1.0
+    tie1 = np.where(
+        tied1,
+        1.0 - (d_tot[None, :] - 1.0) / np.where(tied1, spread, 1.0),
+        1.0,
+    )
+    w1 = np.where(
+        at_risk & (d_tot > 0)[None, :],
+        dF0[None, :] * tie1 / np.where(at_risk, size, 1.0),
+        0.0,
+    )
+    A = a + np.where(S > 0, 1.0 - alive_now, 1.0).T[:, None, :] * Q
+    tied2 = d2 > 1
+    tie2 = np.where(
+        tied2, 1.0 - (d2 - 1.0) / np.where(tied2, Y - 1.0, 1.0), 1.0
+    )
+    w2 = np.where((S > 0) & (d2 > 0), d2 * tie2 * (S_minus / Y_safe) ** 2, 0.0)
+    B = np.where(S > 0, alive_now, 0.0).T[:, None, :] * Q
+    V = np.einsum("tkr,tlr,rt->kl", A, A, w1) + np.einsum(
+        "tkr,tlr,rt->kl", B, B, w2
+    )
+    return U, V
 
 
 def _left_limit(values: npt.NDArray, start: float) -> npt.NDArray:

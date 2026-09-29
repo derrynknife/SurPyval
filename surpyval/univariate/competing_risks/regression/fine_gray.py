@@ -58,6 +58,9 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.regression.regression_data import (
+    check_finite_event_times,
+)
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
@@ -382,6 +385,7 @@ class FineGray_:
         array([0.5808, 0.7395])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        check_finite_event_times(x, c)
 
         causes = ordered_labels(e)
         if event is None:

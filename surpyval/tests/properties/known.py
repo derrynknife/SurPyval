@@ -11,20 +11,6 @@ fails a strict xfail), delete it and the predicate here.
 import numpy as np
 
 
-def turnbull_all_right_truncated(data):
-    """Every row has a finite right truncation time.
-
-    Turnbull's ladder is ``bounds[1:-1]``, which assumes the last bound is
-    ``+inf`` (the default ``tr``). With every ``tr`` finite the last
-    bound is the largest ``tr`` and the piece ending there is dropped: a
-    failure at 1 observable up to 1 gives ``sf(1) == 1``, and a single
-    left censored row leaves an empty ladder on which ``sf`` raises
-    ``IndexError``.
-    """
-    tr = data.get("tr")
-    return tr is not None and bool(np.all(np.isfinite(tr)))
-
-
 def point_mass_supremum(data):
     """A distribution concentrated ever closer to some time ``v`` does
     not lose likelihood on any row.
@@ -43,12 +29,11 @@ def point_mass_supremum(data):
       start (given ``X > tl``, a spike below ``tl`` leaves its tail just
       above ``tl``), or the mirror image below ``v``.
 
-    The fitters mean to refuse such data
-    (``ParametricFitter._check_identifiable``) but catch only fewer
-    distinct non-right-censored values than parameters: an exact value
-    at 0.5 and a left censored one at 1 give a Weibull ``beta`` of 395.7
-    with no warning, and take LogNormal about 20 s (pinned in
-    ``test_known_failures.py``).
+    The maximum-likelihood fits refuse such data where no row is
+    truncated (``ParametricFitter._point_mass_region``, #392): an exact
+    value at 0.5 and a left censored one at 1 gave a Weibull ``beta`` of
+    395.7 with no warning. The truncation cases above (a spike at a
+    window's edge) are not caught yet.
     """
     x = np.asarray(data["x"], dtype=float)
     xl = x if x.ndim == 1 else x[:, 0]
@@ -82,14 +67,13 @@ def point_mass_supremum(data):
 def truncated(data):
     """Some row is truncated (a finite ``tl`` or ``tr``).
 
-    A parametric fit to truncated data can depend on the time unit: the
-    optimiser stops at a different, worse point on the rescaled data. On
-    right censored at 10.5 (observable up to 13), exact 6.5, right
-    censored 2.5 and left censored 11, Normal gives mu 8.536, sigma 2.461
-    (log-likelihood -4.034), but on the data times 7.3 mu 48.87, sigma
-    23.04 (-4.630 in the original unit) instead of 62.31, 17.96; Gumbel's
-    rescaled fit gives the data zero likelihood (pinned in
-    ``test_known_failures.py``). The units property is therefore run on
-    untruncated data only (generated so, rather than filtered with this).
+    A parametric fit to truncated data depended on the time unit (#393,
+    fixed): on right censored at 10.5 (observable up to 13), exact 6.5,
+    right censored 2.5 and left censored 11, Normal gave mu 8.536, sigma
+    2.461 (log-likelihood -4.034), but on the data times 7.3 mu 48.87,
+    sigma 23.04 (-4.630 in the original unit); the truncation term was
+    NaN once F(tl) rounded to 1 (#412). The units property is still run
+    on untruncated data only (generated so, rather than filtered with
+    this) until it is widened.
     """
     return any(np.isfinite(data[k]).any() for k in ("tl", "tr") if k in data)

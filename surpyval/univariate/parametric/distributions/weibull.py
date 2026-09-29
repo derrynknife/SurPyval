@@ -11,6 +11,14 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import (
+    log1mexp,
+    log_ratio,
+    on_support,
+    positive_or_one,
+    power_at_zero,
+)
+
 
 class Weibull_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name: str) -> None:
@@ -334,16 +342,35 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         return euler_gamma * (1 - 1 / beta) + np.log(alpha) - np.log(beta) + 1
 
     def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
-        scaled = x / alpha
-        return (
-            np.log(beta)
-            - np.log(alpha)
-            + (beta - 1) * np.log(scaled)
-            - (scaled) ** beta
+        # x = 0 is the limit of (beta / alpha) (x / alpha)^(beta - 1):
+        # the formula is 0 * log 0 = NaN there at beta = 1 (#444).
+        x_pos = positive_or_one(x)
+        at_inf = x_pos == np.inf
+        if np.any(at_inf):
+            x_pos = np.where(at_inf, 1.0, x_pos)
+        log_scale = np.log(beta) - np.log(alpha)
+        with np.errstate(over="ignore"):
+            t = (x_pos / alpha) ** beta
+        inside = log_scale + (beta - 1) * log_ratio(x_pos, alpha) - t
+        if np.any(at_inf):
+            inside = np.where(at_inf, -np.inf, inside)
+        return on_support(
+            x, inside, lambda: power_at_zero(beta - 1, log_scale)[1]
         )
 
     def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return -((x / alpha) ** beta)
+
+    def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        # log(1 - e^-t) from t and log t: exact where F rounds to 1 (the
+        # generic log(-expm1(-t)) is 0 there, #442) and finite where t
+        # underflows (#443).
+        x_pos = positive_or_one(x)
+        log_t = beta * log_ratio(x_pos, alpha)
+        with np.errstate(over="ignore"):
+            t = (x_pos / alpha) ** beta
+        log_ff, _ = log1mexp(t, log_t)
+        return on_support(x, log_ff, -np.inf)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)

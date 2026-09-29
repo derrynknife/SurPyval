@@ -1020,8 +1020,6 @@ def _semi_parametric():
         },
         exclude={
             "df_hf_sf": step,
-            "bounds": "documented: the Lin-Ying cumulative hazard need "
-            "not be monotone and the implied survival can exceed 1",
         },
         rtol=1e-6,
     )
@@ -1624,6 +1622,12 @@ def _counting_draw(m, s):
     return m.count_terminated_simulation(3, items=2, random_state=s)
 
 
+def _timed_draw(m, s):
+    # For a falling intensity (the CoxLewis fixture: beta = -0.021, so
+    # cif(inf) = 6.04), which count termination refuses (#386).
+    return m.time_terminated_simulation(60.0, items=2, random_state=s)
+
+
 def _recurrent():
     out = []
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
@@ -1647,7 +1651,7 @@ def _recurrent():
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths=paths,
-                draw=_counting_draw,
+                draw=_timed_draw if name == "CoxLewis" else _counting_draw,
                 explicit_seed=True,
             )
         )
@@ -2001,8 +2005,15 @@ _NO_COVARIANCE = (
     "Hypoexponential",
 )
 # The likelihood-ratio search runs pointwise, so it is swept at three
-# times, and only in the full suite.
-_LR_X = {"Weibull": np.array([4.0, 8.0, 13.0])}
+# times, and only in the full suite. Rayleigh, Geometric and Uniform
+# joined in #421 (a df bound stalled on the far side of the estimate;
+# the Uniform's search stalled at the support's edge).
+_LR_X = {
+    "Weibull": np.array([4.0, 8.0, 13.0]),
+    "Rayleigh": np.array([3.2, 8.0, 14.6]),
+    "Geometric": np.array([2.0, 5.0, 8.0]),
+    "Uniform": np.array([3.2, 8.0, 14.6]),
+}
 
 
 def _parametric_bounds(case):
@@ -2016,8 +2027,9 @@ def _parametric_bounds(case):
             label="param_cb[wald]",
         ),
     ]
-    # The likelihood-ratio search is swept on Weibull only: it takes
-    # minutes a distribution (ExpoWeibull's param_cb sweep took 420 s).
+    # The likelihood-ratio search is swept on the fast cases only: it
+    # takes minutes a distribution elsewhere (ExpoWeibull's param_cb
+    # sweep took 420 s; see #421 for the others).
     # (Documented: it is not available for offset, limited-failure or
     # zero-inflated models.)
     if case.name not in _LR_X:
@@ -2066,9 +2078,12 @@ def _nonparametric_bounds(case):
                     "band",
                     kwargs={"method": method, "bound_type": bound_type},
                     sides=False,
-                    # Not swept to alpha_ci -> 1: the critical-value search
-                    # grows without bound there (13 s at alpha_ci = 0.9; at
-                    # 1 - 1e-6 it asks for a 158 TiB grid): #420.
+                    # Not a Wald interval: a whole path rarely stays inside
+                    # a narrow strip, so the critical value does not go to
+                    # 0 as alpha_ci -> 1 (0.27 at 1 - 1e-6, Hall-Wellner
+                    # over the whole range), and the band does not close
+                    # onto the estimate. (It used to be left out because
+                    # the search at alpha_ci -> 1 did not end, #420.)
                     wald=False,
                     in_range=bound_type == "exp",
                     nan_ok=True,
@@ -2227,8 +2242,8 @@ _INTERP = {
     "Turnbull": _NP_INTERP,
     "NonParametricCounting": ("step", "linear"),
     "CauseSpecificMCF": ("step", "linear"),
-    # Its functions take interp= (undocumented; "step" is the default).
-    "CompetingRisksProportionalHazards[Cox]": ("step", "linear"),
+    # Its baselines are steps: interp= takes "step" only (#416).
+    "CompetingRisksProportionalHazards[Cox]": ("step",),
 }
 
 # Estimation options. ``estimators`` are swept on the case's fixture;
@@ -2580,108 +2595,14 @@ CASES = [_with_convergence(c) for c in CASES]
 # failure is fixed -- then delete the entry. Numbers are on the case's
 # fixture; see the report for #379 for minimal reproductions.
 # ---------------------------------------------------------------------------
-_CONSTANT_HAZARD = (
-    "hf ignores x, so hf(nan) is the constant rate instead of NaN"
-)
 KNOWN_FAILURES: dict[str, dict[str, str]] = {
-    # -- identities -----------------------------------------------------
-    "Discretize(Weibull)": {
-        "qf_ff": "qf(ff(k)) is k + 1 at some atoms (k = 5: 6): qf is "
-        "ceil(continuous qf), which rounds k + 1e-15 up",
-    },
-    "CompetingRisksProportionalHazards[Cox]": {
-        "cif_sum": "sf is exp(-H) but the CIFs are weighted by the "
-        "product-limit survival: at t = 30 the CIFs sum to 1.0 while "
-        "1 - sf is 0.975",
-    },
-    # -- missing values -------------------------------------------------
-    "BetaGeometric": {"missing_query": "qf(nan) is 1, not NaN"},
-    "RoystonParmar": {
-        "missing_query": "qf(nan) raises ValueError from the root finder "
-        "('function value ... is NaN')",
-    },
-    "GaussianCopula": {
-        "missing_query": "cdf and sf of a point with a NaN coordinate are "
-        "numbers (cdf 0), not NaN",
-    },
-    "Exponential": {"missing_query": _CONSTANT_HAZARD},
-    "Exponential[offset]": {"missing_query": _CONSTANT_HAZARD},
-    "ExponentialPH": {"missing_query": _CONSTANT_HAZARD},
-    "ExponentialAFT": {"missing_query": _CONSTANT_HAZARD},
-    "ExponentialAH": {"missing_query": _CONSTANT_HAZARD},
-    "SurvivalTree[exponential]": {"missing_query": _CONSTANT_HAZARD},
-    "Geometric": {"missing_query": _CONSTANT_HAZARD},
-    "HPP": {"missing_query": "iif(nan) is the constant rate, not NaN"},
-    "ProportionalIntensityHPP": {
-        "missing_query": "iif(nan) is the constant rate, not NaN"
-    },
-    "Uniform": {
-        "missing_query": "sf, ff, df, hf and Hf of nan are 1, 0, 0, 0 and "
-        "0, not NaN",
-    },
-    # -- units (and missing values) --------------------------------------
+    # -- units ----------------------------------------------------------
     "Beta4": {
         "units": "the fit depends on the unit: alpha, beta = 1.00, 1.19 on "
         "the data but 0.18, 0.18 on the data x 7.3 (the end points sit on "
         "the sample extremes)",
-        "missing_query": "df(nan) is 0, not NaN",
-    },
-    "Binomial": {"missing_query": "hf(nan) is 0, not NaN"},
-    "Bernoulli": {
-        "missing_query": "sf, ff and Hf of nan raise ValueError ('defined "
-        "at x = 0 and x = 1 only') instead of giving NaN",
-    },
-    "FixedEventProbability": {
-        "missing_query": "sf, ff and Hf of nan are 0.3, 0.7 and 1.20, not "
-        "NaN",
-    },
-    "ExactEventTime": {
-        "missing_query": "sf, ff and Hf of nan are 0, 0 and 0 (so sf + ff "
-        "is 0), and qf(nan) is T, not NaN",
-    },
-    "NeverOccurs": {
-        "missing_query": "every function of nan is a number (sf 1, qf "
-        "inf), not NaN",
-    },
-    "InstantlyOccurs": {
-        "missing_query": "every function of nan is a number (sf 0, qf 0), "
-        "not NaN",
-    },
-    "NonParametricCounting": {
-        "missing_query": "mcf(nan) is the last value (4.33), not NaN",
-    },
-    "CoxLewis": {
-        "seed_explicit": "count_terminated_simulation(3, items=2, "
-        "random_state=7) "
-        "raises ValueError ('Event times x must be finite'): the fitted "
-        "intensity falls (b = -0.021, cif(inf) = 6.04), so a sequence can "
-        "stop short of its 4th event, and seed 7 draws one",
-    },
-    **{
-        f"{base}Frailty": {
-            "missing_fit[groups]": "a NaN group label is kept, silently, as "
-            "a group of its own (n_groups 7, not 6; sf(5, [0, -0.8]) "
-            "0.7825 where dropping the row gives 0.7418), and a None label "
-            "raises TypeError",
-        }
-        for base in ("Weibull", "Exponential", "Gamma", "LogNormal")
-    },
-    "CauseSpecificMCF": {
-        "missing_query": "mcf(nan, event) is the last value (2.67), not "
-        "NaN",
     },
 }
-for _name in (
-    "GeneralizedRenewal",
-    "GeneralizedRenewal[kijima ii]",
-    "GeneralizedOneRenewal",
-    "ARA",
-    "ARI",
-):
-    KNOWN_FAILURES[_name] = {
-        "missing_query": "mcf with a NaN time raises ValueError ('x' "
-        "cannot be empty) instead of giving NaN there",
-    }
 
 
 # -- option sweeps (test_options.py) ------------------------------------
@@ -2691,212 +2612,69 @@ def _each(props, name, reason):
     return {f"{p}[{name}]": reason for p in props}
 
 
-_RATE_AT_ZERO = (
-    "hf/df bounds are NaN where the rate is 0 (the log-scale bound of "
-    "0): Uniform hf(1) = 0 gives cb [nan, nan]"
-)
-_DISCRETE_HF = (
-    "cb(on='hf') is centred on df(k)/sf(k), not the model's hf(k) = "
-    "df(k)/sf(k-1)"
-)
-_LOGIT_CLIP = (
-    "sf is clipped to 1e-15 on the logit scale, so the Hf bounds stop at "
-    "-log(1e-15) = 34.54"
-)
 _NEGATIVE_VARIANCE = (
-    "a parameter on the edge of its support has a non-positive variance "
-    "(covariance diagonal"
+    "no Wald interval exists, so param_cb is nan (with a warning saying "
+    "why, #411): a parameter at or near the edge of its support has a "
+    "negative variance (covariance diagonal"
 )
-_RP_SIDES = (
-    "one-sided cb on ff and Hf returns the other side: ff(10) = 0.436, "
-    "two-sided (alpha 0.1) [0.291, 0.615], bound='lower' (0.05) 0.615"
-)
-_MCF_BOTH = (
-    "mcf_cb(bound='both') raises UnboundLocalError ('stat'), not ValueError"
-)
-_SCIPY_INTERP = (
-    "interp='bogus' raises scipy's NotImplementedError, not ValueError"
-)
-_KM_CUBIC = (
-    "with interp='cubic' the bound at x = 13 does not close onto sf as "
-    "alpha_ci -> 1 (0.1873 vs 0.1948): the fill of the undefined last "
-    "variance (lower 0, last finite upper) enters the PCHIP between the "
-    "last knots"
-)
-_BOUND_PROPS: tuple[str, ...] = ("cb_contains", "cb_range", "cb_sides")
-_BOUND_PROPS += ("cb_nested", "cb_centre")
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
-    # A. rate bounds at a zero rate
+    # A. an invalid covariance
     "Uniform": _each(
         ("cb_contains",),
         "cb[wald]",
-        _RATE_AT_ZERO + "; and df bounds are NaN everywhere (df(5) = "
-        "0.0688, cb [nan, nan])",
-    ),
-    "Weibull[offset]": _each(
-        ("cb_contains",),
-        "cb[wald]",
-        _RATE_AT_ZERO + "; here hf(5.5) = 0 below gamma = 6.56",
-    ),
-    "Exponential[offset]": _each(
-        ("cb_contains",), "cb[wald]", _RATE_AT_ZERO + "; here below gamma"
-    ),
-    # B. discrete hazard bounds (and A at k = 0)
-    "Poisson": _each(
-        ("cb_contains", "cb_centre"),
-        "cb[wald]",
-        _DISCRETE_HF + ": hf(10) = 0.728, cb [1.744, 4.096], df/sf(10) "
-        "= 2.673",
-    ),
-    "Geometric": _each(
-        ("cb_contains", "cb_centre"),
-        "cb[wald]",
-        _DISCRETE_HF + ": hf = p = 0.220, the bounds centre on p/(1-p) = "
-        "0.283; and hf(0) = 0 has bounds [nan, nan]",
-    ),
-    "NegativeBinomial": _each(
-        ("cb_contains", "cb_centre"),
-        "cb[wald]",
-        _DISCRETE_HF + ": hf(10) = 0.432, df/sf(10) = 0.760; and hf(0) "
-        "= 0 has bounds [nan, nan]",
-    ),
-    "DiscreteWeibull": _each(
-        ("cb_contains", "cb_centre"),
-        "cb[wald]",
-        _DISCRETE_HF + ": hf(10) = 0.474, cb [0.211, 3.842], df/sf(10) "
-        "= 0.900; and hf(0) = 0 has bounds [nan, nan]",
-    ),
-    "Discretize(Weibull)": _each(
-        ("cb_contains", "cb_centre"),
-        "cb[wald]",
-        _DISCRETE_HF + " (as DiscreteWeibull: hf(10) = 0.474, df/sf(10) "
-        "= 0.900); and hf(0) = 0 has bounds [nan, nan]",
-    ),
-    # C. Royston-Parmar
-    "RoystonParmar": {
-        **_each(("cb_contains", "cb_sides", "cb_transform"), "cb", _RP_SIDES),
-        "cb_api[cb]": "an unknown bound is not refused: cb(10, "
-        "bound='both') returns 0.709, as 'upper'",
-    },
-    # D. recurrent MCF bounds
-    **{
-        name: {
-            f"cb_api[mcf_cb[{t},{i}]]": _MCF_BOTH
-            for t in ("exp", "normal")
-            for i in ("step", "linear")
-        }
-        for name in ("NonParametricCounting", "CauseSpecificMCF")
-    },
-    # E. unknown interp
-    **{
-        name: {"interp_refused": _SCIPY_INTERP}
-        for name in ("NelsonAalen", "FlemingHarrington", "Turnbull")
-    },
-    "CompetingRisksProportionalHazards[Cox]": {
-        "interp_refused": "sf, ff, Hf, hf and df accept any interp "
-        "(even 'bogus') and ignore it: interp='linear' is the step curve",
-    },
-    # F. Kaplan-Meier cubic interpolation
-    "KaplanMeier": {
-        "interp_refused": _SCIPY_INTERP,
-        "cb_centre[cb[exp,cubic]]": _KM_CUBIC,
-        "cb_centre[cb[normal,cubic]]": _KM_CUBIC,
-    },
-    # G. logit clip of the regression survival bound
-    "GumbelPH": _each(
-        ("cb_contains", "cb_centre"),
-        "cb",
-        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 110.6, bounds [34.54, 34.54]",
-    ),
-    "GumbelAFT": _each(
-        ("cb_contains", "cb_centre"),
-        "cb",
-        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 1376.8, bounds [34.54, " "34.54]",
-    ),
-    "NormalPH": _each(
-        ("cb_centre",),
-        "cb",
-        _LOGIT_CLIP + ": Hf(22, [1, -0.2]) = 36.18, and the interval at "
-        "alpha_ci -> 1 is 34.54",
+        "the censored fixture's covariance is not positive definite (the "
+        "MLE sits on the edge of the support; a complete sample gets no "
+        "covariance at all): the delta-method variance of df = 1/(b - a) "
+        "is negative, so the df bounds are nan, with a warning, inside the "
+        "support (df(5) = 0.0688)",
     ),
     # H. boundary estimates with a non-positive variance
     "GeneralizedRenewal": _each(
         ("cb_contains",),
         "param_cb",
-        _NEGATIVE_VARIANCE + " -0.031 for q = 2.7e-16 and -10.6 for "
-        "alpha), and param_cb gives [nan, nan] for both, silently",
+        _NEGATIVE_VARIANCE + " -0.031 for q = 2.7e-16 and -10.6 for " "alpha)",
     ),
     "ARA": _each(
         ("cb_contains",),
         "param_cb",
         _NEGATIVE_VARIANCE + " -0.026 for rho = 1 - 3e-16 and -8.09 for "
-        "alpha), and param_cb gives [nan, nan] for both, silently",
+        "alpha)",
     ),
     "ARI": _each(
-        _BOUND_PROPS,
+        ("cb_contains",),
         "param_cb",
-        "rho = 1.0 exactly, the upper end of its (0, 1) support: "
-        "param_cb('rho') raises ZeroDivisionError (the logit of 1); its "
-        "variance is -0.0021",
+        "no Wald interval exists, so param_cb is nan (with a warning saying "
+        "why, #411): rho = 1.0 exactly, the upper end of its (0, 1) "
+        "support, with a variance of -0.0021 (it raised "
+        "ZeroDivisionError, the logit of 1)",
     ),
     "Beta4": _each(
         ("cb_contains",),
         "param_cb[wald]",
         _NEGATIVE_VARIANCE + " -8.4e-5 for alpha = 1.00008, whose fit "
-        "runs to the edge): param_cb('alpha') is [nan, nan], silently",
+        "runs to the edge)",
     ),
-    # I. BetaGeometric's degenerate fit
+    # I. BetaGeometric's degenerate fit (non-strict: see NON_STRICT)
     "BetaGeometric": {
-        f"cb_contains[{name}]": "the fit runs to alpha, beta = 1.0e5, "
-        "3.3e5 (the geometric limit) and every bound is NaN, silently"
-        for name in ("cb[wald]", "param_cb[wald]")
-    },
-    # K. estimation options
-    "CoxLewis": {
-        "estimators_agree[how]": "how='MSE' misses on a simulated sample "
-        "of the fitted model (40 items to t = 60): cif(55) is 113.4 by "
-        "MSE, 4.40 by MLE, 4.14 true (params 0.98, -0.0099 vs -2.08, "
-        "-0.0175)",
-    },
-    # L. on= aliases
-    "DestructiveDegradation": {
-        "cb_api[cb]": "cb(on='R') raises ValueError; the other cb "
-        "methods accept 'R' and 'F' for 'sf' and 'ff'",
+        **{
+            f"{prop}[{name}]": "the fit runs, silently, towards the "
+            "geometric limit (alpha, beta ~ 1e5, 3.5e5, where the likelihood "
+            "has no maximum): the covariance is near singular, so the Wald "
+            "bounds are NaN or not centred on the estimate"
+            for prop in ("cb_contains", "cb_centre")
+            for name in ("cb[wald]", "param_cb[wald]")
+        },
     },
 }
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "Uniform": "#413",
-    "Weibull[offset]": "#413",
-    "Exponential[offset]": "#413",
-    "Poisson": "#414",
-    "Geometric": "#414",
-    "NegativeBinomial": "#414",
-    "DiscreteWeibull": "#414",
-    "Discretize(Weibull)": "#414",
-    "RoystonParmar": "#415",
-    "NonParametricCounting": "#416",
-    "CauseSpecificMCF": "#416",
-    "NelsonAalen": "#416",
-    "FlemingHarrington": "#416",
-    "Turnbull": "#416",
-    "CompetingRisksProportionalHazards[Cox]": "#416",
-    "DestructiveDegradation": "#416",
-    "KaplanMeier": {
-        "interp_refused": "#416",
-        "cb_centre[cb[exp,cubic]]": "#417",
-        "cb_centre[cb[normal,cubic]]": "#417",
-    },
-    "GumbelPH": "#418",
-    "GumbelAFT": "#418",
-    "NormalPH": "#418",
-    "GeneralizedRenewal": "#411",
-    "ARA": "#411",
-    "ARI": "#411",
-    "Beta4": "#411",
+    "Uniform": "#460",
+    "GeneralizedRenewal": "#461",
+    "ARA": "#461",
+    "ARI": "#461",
+    "Beta4": "#385",
     "BetaGeometric": "#392",
-    "CoxLewis": "#419",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
@@ -2914,156 +2692,16 @@ for _name, _failures in _OPTION_FAILURES.items():
 # fit) or, where the data have no maximum, a finite answer as if there
 # were one. Grouped by the fault; the group's issue leads each reason.
 _CONVERGENCE_ISSUES = {
-    # univariate MLE: the ladder takes the first optimiser that reports
-    # success, which BFGS does where the gradient first looks flat
-    "start": "#427",
     # regression, Fine-Gray, copula, mixture and degradation fits of data
     # whose likelihood has no maximum (the #392 class, outside univariate)
     "no maximum": "#392",
-    # accelerated life (parameter substitution): stops short, silently
-    "al": "#428",
-    # recurrent NHPP and renewal fits: the optimiser's result is unchecked
-    "recurrent": "#429",
 }
-_FAR = "from init with its first parameter x1e6: "
-_FAR_AL = "from init with the life model's first parameter x1e6: "
-_FAR_SCALE = "from init with the scale x1e6: "
 _NO_EVENTS = (
     "a covariate that is 1 on exactly the censored rows (a group with no "
     "events, so no finite coefficient; CoxPH warns 'Monotone partial "
     "likelihood' on such data) gets a coefficient of "
 )
 _CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
-    "Weibull": (
-        "start",
-        _FAR + "alpha, beta 1.03e7, 0.099 (ll -78.2), not 10.31, 2.32 "
-        "(ll -37.9); sf(25) 0.757, not 0.0004",
-    ),
-    "Weibull[xcnt]": (
-        "start",
-        _FAR + "alpha, beta 0.034, 0.072 (ll -41.1), not 7.51, 1.35 "
-        "(ll -24.3)",
-    ),
-    "Weibull[offset]": (
-        "start",
-        "from init with alpha x1e6: gamma, alpha, beta -5.37e6, 5.37e6, "
-        "1.32e6 (ll -39.8), not 6.56, 8.53, 1.79 (ll -37.7)",
-    ),
-    "Weibull[lfp]": (
-        "start",
-        _FAR + "alpha, beta, p 9.82e6, 0.113, 1.0 (ll -80.3), not 9.82, "
-        "2.31, 0.596 (ll -50.7)",
-    ),
-    "Weibull[zi]": (
-        "start",
-        _FAR + "alpha, beta 1.03e7, 0.099 (ll -84.3), not 10.31, 2.32 "
-        "(ll -44.0)",
-    ),
-    "Gamma[lfp]": (
-        "start",
-        _FAR + "alpha, beta, p 3.66, 0.411, 0.644 (ll -50.97), not 4.16, "
-        "0.478, 0.595 (ll -50.80); sf(25) 0.360, not 0.407",
-    ),
-    "LogNormal[offset]": (
-        "start",
-        "from init with mu x1e6: mu, sigma 2.77, 0.636 (ll -43.7), not "
-        "2.73, 0.274 (ll -38.1)",
-    ),
-    "LogNormal[lfp]": (
-        "start",
-        _FAR + "mu, sigma 2.73, 2.66 (ll -62.8), not 2.04, 0.533 (ll -51.2)",
-    ),
-    "LogNormal[zi]": (
-        "start",
-        _FAR + "mu, sigma 2.33, 2.66 (ll -58.7), not 2.10, 0.550 (ll -44.6)",
-    ),
-    "LogLogistic": (
-        "start",
-        _FAR + "alpha, beta 8.42e6, 0.0 (ll -569.2), not 8.42, 3.15 "
-        "(ll -38.6)",
-    ),
-    "ExpoWeibull": (
-        "start",
-        _FAR + "alpha, beta, mu 1.03e7, 1.16, 0.066 (ll -74.5), not 10.27, "
-        "2.30, 1.01 (ll -37.9)",
-    ),
-    "Logistic": (
-        "start",
-        _FAR_SCALE + "mu, sigma 1.79e5, 1.18e5 (ll -177.1), not 8.93, "
-        "2.44 (ll -38.8)",
-    ),
-    "Normal": (
-        "start",
-        _FAR + "mu, sigma 9.68, 9.62 (ll -44.0), not 9.08, 4.15 (ll -38.4)",
-    ),
-    "Gumbel": (
-        "start",
-        _FAR + "mu, sigma 1.12e7, 5.11e5 (ll -454.9), not 11.17, 4.06 "
-        "(ll -39.8)",
-    ),
-    "Beta4": (
-        "start",
-        _FAR + "alpha stays at its start, 1.0e6 (ll -2.2e7), not 1.00 "
-        "(ll 3.98); sf is 1 everywhere",
-    ),
-    "ConformanceGompertz": (
-        "start",
-        _FAR + "nu, b 1.39e5, 0.0 (ll -42.9), not 0.139, 0.194 (ll -38.5)",
-    ),
-    "NegativeBinomial": (
-        "start",
-        _FAR + "r, p 4.13e6, 1.0 (ll -30.4), not 4.13, 0.557 (ll -29.3)",
-    ),
-    "BetaGeometric": (
-        "start",
-        _FAR + "a stays at its start, 1.04e11 (ll -582.9), not 1.04e5 "
-        "(ll -31.2)",
-    ),
-    "WeibullAL[InversePower]": (
-        "al",
-        _FAR_AL + "beta, a, n 1.22, 0.0115, 2.56 (ll -104.5), not 2.43, "
-        "0.0298, 1.21 (ll -89.8)",
-    ),
-    "WeibullAL[Linear]": (
-        "al",
-        _FAR_AL + "beta, a, b 2.27, 40.19, -10.53 (ll -93.04), not 2.13, "
-        "38.47, -9.94 (ll -92.91)",
-    ),
-    "WeibullAL[DualPower]": (
-        "al",
-        _FAR_AL + "n -0.138, not -0.130 (ll -89.6856, "
-        "not -89.6850): sf off by up to 2.6% (relative) in the tail",
-    ),
-    "WeibullAL[PowerExponential]": (
-        "al",
-        _FAR_AL + "beta, c, a, n 2.46, 6.65, 1.98, -0.717 (ll -92.1), not "
-        "2.50, 5.32, 1.93, -0.163 (ll -89.3)",
-    ),
-    "Duane": (
-        "recurrent",
-        _FAR + "alpha stays at its start, 7.76e5 (cif(5) inf, ll nan), not "
-        "0.776 (ll -46.7): nhpp_fitter.py never checks res.success",
-    ),
-    "ProportionalIntensityNHPP": (
-        "recurrent",
-        _FAR + "the Duane alpha stays at its start, 7.76e5 (cif(5) inf, ll "
-        "nan), not 0.776 (ll -46.7)",
-    ),
-    "CoxLewis": (
-        "recurrent",
-        _FAR + "alpha, beta -2.011, -0.0232 (ll -46.341), not -2.062, "
-        "-0.0211 (ll -46.333); cif(25) 2.54, not 2.47",
-    ),
-    "GeneralizedOneRenewal": (
-        "recurrent",
-        _FAR_SCALE + "q, alpha, beta 1.08, 3.40, 2.13 (ll -37.9), not "
-        "0.485, 5.72, 3.84 (ll -31.8); mcf(12) 1.93, not 1.23",
-    ),
-    "ARI": (
-        "recurrent",
-        _FAR_SCALE + "alpha stays at its start, 4.19e6 (ll -264.1), not "
-        "4.19 (ll -37.4); mcf(55) 0, not 4.8",
-    ),
     "FineGray": (
         "no maximum",
         _NO_EVENTS + "-12.87 (BFGS reports success); sf(30) 1.0",
@@ -3071,12 +2709,6 @@ _CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
     "CompetingRisksProportionalHazards[Fine-Gray]": (
         "no maximum",
         _NO_EVENTS + "-12.87 and -12.12 (causes a and b)",
-    ),
-    "LogNormalAH": (
-        "no maximum",
-        _NO_EVENTS + "-6.2e8, with mu, sigma 4.9e8, 3.0e8, and sf(2) is "
-        "inf (the other AH baselines warn that the fit ended on the "
-        "positivity boundary)",
     ),
     "MixtureModel": (
         "no maximum",
@@ -3148,39 +2780,19 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     }
 
 
-def _far_start_issue(case):
-    """The issue tracking ``case``'s fit from a distant start, for a case
-    starved that way (see ``_starve``), else ``None``."""
-    cls = case.model_class.rsplit(".", 1)[-1]
-    if case.name.startswith("WeibullAL"):
-        return _CONVERGENCE_ISSUES["al"]
-    if cls == "Parametric":
-        return _CONVERGENCE_ISSUES["start"]
-    recurrent = ("ParametricRecurrenceModel", "ProportionalIntensityModel")
-    if cls in recurrent + ("CauseSpecificNHPP", "RenewalModel"):
-        return _CONVERGENCE_ISSUES["recurrent"]
-    return None
-
-
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,
-# so they are non-strict xfails: case name -> properties. Whether an
-# optimiser started far from the maximum stops short is one such outcome
-# (the Logistic and LogNormal fits recover with one scipy and stop short
-# with another), so every fit starved by a distant start is marked so
-# until its issue is fixed; data with no maximum fail the same everywhere
-# and stay strict.
-NON_STRICT: dict[str, frozenset[str]] = {}
-for _case in CASES:
-    _issue = _far_start_issue(_case)
-    if _issue is None or not _case.applies("convergence"):
-        continue
-    NON_STRICT[_case.name] = frozenset({"convergence"})
-    KNOWN_FAILURES.setdefault(_case.name, {}).setdefault(
-        "convergence",
-        f"{_issue}: from a distant start this fit reached the maximum on "
-        "the builds tested, but whether the optimiser stops short depends "
-        "on the numpy / scipy build",
-    )
+# so they are non-strict xfails: case name -> properties. The fits started
+# far from the maximum were (#427, #428, #429); they now reach it, or say
+# they did not, on every build.
+NON_STRICT: dict[str, frozenset[str]] = {
+    # Where on the plateau towards its geometric limit the search stops
+    # (#392) depends on the build, and with it which bounds fail
+    "BetaGeometric": frozenset(
+        f"{prop}[{name}]"
+        for prop in ("cb_contains", "cb_centre")
+        for name in ("cb[wald]", "param_cb[wald]")
+    ),
+}
 
 
 # The issue that tracks each kind of known failure; its number leads the
@@ -3188,10 +2800,7 @@ for _case in CASES:
 KNOWN_FAILURE_ISSUES: dict[str, str] = {
     "missing_query": "#382",
     "qf_ff": "#383",
-    "cif_sum": "#384",
     "units": "#385",
-    "seed_explicit": "#386",
-    "missing_fit[groups]": "#388",
 }
 # The option-sweep and outside-data failures name their issue in the
 # reason itself (see _OPTION_ISSUES), as one key can fail for different

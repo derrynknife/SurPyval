@@ -1,7 +1,6 @@
 from typing import Any
 
 import numpy.typing as npt
-from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
@@ -13,8 +12,19 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
+from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 from surpyval.utils.surpyval_data import SurpyvalData
+
+
+def _power_log(k: Boxable, z: Boxable) -> Boxable:
+    r""":math:`k \ln z` for :math:`z \geq 0`, with its limit at
+    :math:`z = 0`: :math:`-\infty`, 0 or :math:`\infty` as ``k`` is
+    positive, 0 or negative. The log sees a positive argument only, so
+    nothing warns and no nan enters a gradient."""
+    positive = z > 0.0
+    at_zero = np.where(k > 0.0, -np.inf, np.where(k < 0.0, np.inf, 0.0))
+    return np.where(positive, k * np.log(np.where(positive, z, 1.0)), at_zero)
 
 
 class Beta4_(OptimisedFitMixin, ParametricFitter):
@@ -132,7 +142,12 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         >>> Beta4.sf(x, 3, 4, 2, 3)
         array([0.98415, 0.90112, 0.74431, 0.54432, 0.34375])
         """
-        return 1 - self.ff(x, alpha, beta, a, b)
+        # 1 - F where F is below 1/2, and the upper tail itself (from its
+        # log) where it is small: 1 - F was 0 where R is 1e-30 (#442).
+        ff = self.ff(x, alpha, beta, a, b)
+        return np.where(
+            ff < 0.5, 1.0 - ff, np.exp(self.log_sf(x, alpha, beta, a, b))
+        )
 
     def ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -217,16 +232,11 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         >>> Beta4.df(x, 3, 4, 2, 3)
         array([0.4374, 1.2288, 1.8522, 2.0736, 1.875 ])
         """
-        # The density is zero outside [a, b]; evaluating the power terms
-        # there returned arbitrary nonzero, negative, or NaN values
-        # (fractional powers of negative bases), so hf inherited garbage
-        # on any grid extending past the fitted support (#280).
-        x = np.asarray(x, dtype=float)
-        inside = (x >= a) & (x <= b)
-        xc = np.where(inside, x, 0.5 * (a + b))
-        num = (xc - a) ** (alpha - 1) * (b - xc) ** (beta - 1)
-        den = abeta(alpha, beta) * (b - a) ** (alpha + beta - 1)
-        return np.where(inside, num / den, 0.0)
+        # From the log density: the powers and B(alpha, beta) of the
+        # algebraic form overflow separately at extreme shapes (at alpha =
+        # 1000 on [-1e6, 1e6], (b - a)^999 raised OverflowError) although
+        # the density is an ordinary number (#445).
+        return np.exp(self.log_df(x, alpha, beta, a, b))
 
     def hf(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -262,12 +272,13 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         # df = 0 and sf = 0 above the support made hf return NaN (0/0)
         # for x > b; the hazard is 0 below the support (no mass yet) and
         # infinite at/above the upper bound (no survivors) (#289).
+        # On the log scale: df/sf was inf (or 0/0) once sf underflowed
+        # (#443).
         x_arr = np.asarray(x, dtype=float)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            out = self.df(x_arr, alpha, beta, a, b) / self.sf(
-                x_arr, alpha, beta, a, b
-            )
-        out = np.where(x_arr < a, 0.0, out)
+        log_hf = self.log_df(x_arr, alpha, beta, a, b) - self.log_sf(
+            x_arr, alpha, beta, a, b
+        )
+        out = np.where(x_arr < a, 0.0, np.exp(log_hf))
         return np.where(x_arr >= b, np.inf, out)
 
     def Hf(
@@ -300,7 +311,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
         """
-        return -np.log(self.sf(x, alpha, beta, a, b))
+        return -self.log_sf(x, alpha, beta, a, b)
 
     def qf(
         self, u: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -461,18 +472,43 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     def log_df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
     ) -> Boxable:
-        return (
-            (alpha - 1) * np.log(x - a)
-            + (beta - 1) * np.log(b - x)
+        # The density is zero outside [a, b]; evaluating the power terms
+        # there returned arbitrary nonzero, negative, or NaN values
+        # (fractional powers of negative bases), so hf inherited garbage
+        # on any grid extending past the fitted support (#280). At an edge
+        # the limit is taken: 0, the constant, or inf as the shape there
+        # is above, at or below 1.
+        x = np.asarray(x, dtype=float)
+        inside = (x >= a) & (x <= b)
+        xc = np.where(inside, x, 0.5 * (a + b))
+        log_df = (
+            _power_log(alpha - 1.0, (xc - a) / (b - a))
+            + _power_log(beta - 1.0, (b - xc) / (b - a))
             - abetaln(alpha, beta)
-            - (alpha + beta - 1) * np.log(b - a)
+            - np.log(b - a)
         )
+        return np.where(inside, log_df, -np.inf)
 
     def log_ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
     ) -> Boxable:
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
+
+    def log_sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
+        # The upper tail's own log (log(1 - F) lost R below 1e-16, #442,
+        # and was -inf where R underflowed, #443), as the lower tail of the
+        # mirrored Beta at (b - x) / (b - a) where that is small: taken from
+        # x, not as 1 - z, it keeps its digits near b.
+        z = np.clip(self._z(x, a, b), 0.0, 1.0)
+        zc = np.clip((b - x) / (b - a), 0.0, 1.0)
+        return np.where(
+            zc < 0.5,
+            abetaincln(beta, alpha, zc),
+            abetainccln(alpha, beta, z),
+        )
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

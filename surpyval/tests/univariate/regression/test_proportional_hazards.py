@@ -506,8 +506,13 @@ def test_exact_handles_large_tie_sets():
     Z = rng.normal(size=(n, 1))
     x = np.ones(n)  # every observation ties at the same time
     c = np.zeros(n, dtype=int)
-    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
-    assert model.neg_ll(np.array([0.7])) == pytest.approx(0.0, abs=1e-12)
+    neg_ll, _ = CoxPH.create_exact_ll_jac_hess(
+        x, Z, c, np.ones(n), np.full(n, -np.inf)
+    )
+    assert neg_ll(np.array([0.7])) == pytest.approx(0.0, abs=1e-12)
+    # A flat likelihood determines no coefficient: the fit says so (#409).
+    with pytest.raises(ValueError, match="partial likelihood does not"):
+        CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
 
 
 def test_kp_handles_heavy_ties():

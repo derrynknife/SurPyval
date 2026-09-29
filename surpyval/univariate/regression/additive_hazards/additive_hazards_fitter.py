@@ -40,6 +40,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
+from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -260,8 +261,9 @@ class AdditiveHazardsFitter(
 
     def _warn_if_on_positivity_boundary(
         self, data: SurpyvalData, params: npt.NDArray
-    ) -> None:
-        """Warn when the fit is held at the positivity boundary.
+    ) -> bool:
+        """Warn when the fit is held at the positivity boundary, and say
+        whether it did.
 
         Each failure contributes ``log h`` to the likelihood, so a hazard
         driven towards zero at one of them is a barrier: with a strongly
@@ -297,23 +299,25 @@ class AdditiveHazardsFitter(
         protected = (h > 0) & (h < self.BOUNDARY_HAZARD_FRACTION * h0)
         total = info.sum()
         if not np.any(protected) or not np.isfinite(total) or total <= 0:
-            return
+            return False
         i = int(np.argmax(np.where(protected, info, -np.inf)))
-        if info[i] / total > self.BOUNDARY_INFORMATION_SHARE:
-            warnings.warn(
-                "The additive hazards fit ended on the positivity boundary: "
-                "the fitted hazard h_0(x) + beta'Z at the observed failure "
-                "x = {:.4g} is {:.3g}, {:.2%} of the baseline hazard there, "
-                "and that one failure carries {:.0%} of the information "
-                "about beta. The covariate effect is too protective for the "
-                "additive model to fit without the hazard nearly vanishing, "
-                "so beta sits at the boundary and the baseline is "
-                "distorted. A proportional hazards model (e.g. {}PH) keeps "
-                "the hazard positive by construction.".format(
-                    x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
-                ),
-                stacklevel=3,
-            )
+        if info[i] / total <= self.BOUNDARY_INFORMATION_SHARE:
+            return False
+        warnings.warn(
+            "The additive hazards fit ended on the positivity boundary: "
+            "the fitted hazard h_0(x) + beta'Z at the observed failure "
+            "x = {:.4g} is {:.3g}, {:.2%} of the baseline hazard there, "
+            "and that one failure carries {:.0%} of the information "
+            "about beta. The covariate effect is too protective for the "
+            "additive model to fit without the hazard nearly vanishing, "
+            "so beta sits at the boundary and the baseline is "
+            "distorted. A proportional hazards model (e.g. {}PH) keeps "
+            "the hazard positive by construction.".format(
+                x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
+            ),
+            stacklevel=3,
+        )
+        return True
 
     # -- factory ----------------------------------------------------------
 
@@ -424,6 +428,11 @@ class AdditiveHazardsFitter(
 
             res = minimize(fun, init, method="Nelder-Mead")
             res = minimize(fun, res.x, method="TNC")
+            # TNC's result was never checked: a Gamma baseline stopped at
+            # alpha ~ 1e-282 on a "linear search failed", silently (#427).
+            res, converged = verify_or_polish(
+                fun, res, float(np.sum(data.n)), true_neg_ll
+            )
 
             params = inv_trans(const(res.x))
 
@@ -440,7 +449,17 @@ class AdditiveHazardsFitter(
                 "positive by construction and may be more appropriate for "
                 "this data.".format(self.dist.name)
             )
-        self._warn_if_on_positivity_boundary(data, params)
+        # A fit held at the positivity boundary is no stationary point, and
+        # its warning says why; any other that is not a maximum says so.
+        on_boundary = self._warn_if_on_positivity_boundary(data, params)
+        if not (converged or on_boundary):
+            warnings.warn(
+                "The additive hazards fit did not reach a verified maximum "
+                "of the likelihood (a zero gradient, curving down in every "
+                "direction); the parameters returned are the best point "
+                "found. Check the fit, or try another `init`.",
+                stacklevel=2,
+            )
 
         reg_model = _AdditiveReg()
         reg_model.name = "Additive [beta'Z]"

@@ -1,4 +1,5 @@
 import numpy.typing as npt
+from autograd.scipy.special import expit
 from scipy.stats import fisk
 
 from surpyval import np
@@ -10,6 +11,14 @@ from surpyval.univariate.parametric.parametric_fitter import (
     _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import (
+    log_ratio,
+    on_support,
+    positive_or_one,
+    power_at_zero,
+    softplus,
+)
 
 
 class LogLogistic_(OptimisedFitMixin, ParametricFitter):
@@ -88,10 +97,11 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.sf(x, 3, 4)
         array([0.98780488, 0.83505155, 0.5       , 0.24035608, 0.11473088])
         """
-        # 1 / (1 + (x/alpha)^beta): algebraically identical to the
-        # (x/alpha)^-beta form but defined at x = 0 (sf(0) = 1) instead
-        # of raising/NaN-ing on the negative power (#280).
-        return 1.0 / (1.0 + (x / alpha) ** beta)
+        # The logistic function of -z, z = beta ln(x / alpha): exact
+        # where (x / alpha)^beta under- or overflows. x = 0 is its limit,
+        # 1 (the negative power raised or was NaN there, #280).
+        z, x_pos = self._z(x, alpha, beta)
+        return on_support(x, expit(-z), 1.0)
 
     def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -126,10 +136,11 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.ff(x, 3, 4)
         array([0.01219512, 0.16494845, 0.5       , 0.75964392, 0.88526912])
         """
-        # z^beta / (1 + z^beta) rather than 1 / (1 + z^-beta): the
-        # negative power raised/NaN-ed at x = 0, where ff(0) = 0 (#280).
-        z = (x / alpha) ** beta
-        return z / (1.0 + z)
+        # The logistic function of z: z^beta / (1 + z^beta) was
+        # inf / inf = NaN far right (#444), and the negative power of
+        # 1 / (1 + z^-beta) raised or was NaN at x = 0 (#280).
+        z, x_pos = self._z(x, alpha, beta)
+        return on_support(x, expit(z), 0.0)
 
     def df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -165,9 +176,9 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.df(x, 3, 4)
         array([0.0481856 , 0.27548092, 0.33333333, 0.18258504, 0.08125416])
         """
-        return ((beta / alpha) * (x / alpha) ** (beta - 1.0)) / (
-            (1.0 + (x / alpha) ** beta) ** 2.0
-        )
+        # exp(log_df): the direct form is inf / inf = NaN far right, and
+        # 0 where its denominator overflows first (#444)
+        return np.exp(self.log_df(x, alpha, beta))
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -201,7 +212,11 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.hf(x, 3, 4)
         array([0.04878049, 0.32989691, 0.66666667, 0.75964392, 0.7082153 ])
         """
-        return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
+        # (beta / x) F in logs: the quotient f / R is NaN far right, where
+        # both are 0 or the density is NaN (#444)
+        z, x_pos = self._z(x, alpha, beta)
+        inside = np.exp(np.log(beta) - np.log(x_pos) - softplus(-z))
+        return on_support(x, inside, lambda: self._at_zero(alpha, beta)[0])
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -235,7 +250,10 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.Hf(x, 3, 4)
         array([0.01227009, 0.18026182, 0.69314718, 1.42563378, 2.16516608])
         """
-        return -np.log(self.sf(x, alpha, beta))
+        # log(1 + (x / alpha)^beta): -log(sf) is -0.0 where sf rounds to
+        # 1 (#442) and inf where it underflows (#443)
+        z, x_pos = self._z(x, alpha, beta)
+        return on_support(x, softplus(z), 0.0)
 
     def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -304,25 +322,37 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         else:
             return np.nan
 
+    @staticmethod
+    def _z(x: Numeric, alpha: Boxable, beta: Boxable) -> tuple:
+        """``z = beta ln(x / alpha)``, the logistic variable (``F`` is
+        its logistic function), and ``x`` with the points at and below
+        0 replaced by 1."""
+        x_pos = positive_or_one(x)
+        return beta * log_ratio(x_pos, alpha), x_pos
+
+    @staticmethod
+    def _at_zero(alpha: Boxable, beta: Boxable) -> tuple:
+        """The density (and hazard) at x = 0 and its log, where it
+        behaves like (beta / alpha) (x / alpha)^(beta - 1)."""
+        return power_at_zero(beta - 1.0, np.log(beta) - np.log(alpha))
+
     def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
-        return (
-            np.log(beta / alpha)
-            + (beta - 1) * np.log(x / alpha)
-            - 2 * np.log(1 + (x / alpha) ** beta)
-        )
+        # ln(beta / x) + ln F + ln R. The limit at x = 0 is exact: the
+        # formula was 0 * log 0 = NaN there at beta = 1 (#444).
+        z, x_pos = self._z(x, alpha, beta)
+        inside = np.log(beta) - np.log(x_pos) - softplus(-z) - softplus(z)
+        return on_support(x, inside, lambda: self._at_zero(alpha, beta)[1])
 
     def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
-        # logaddexp form: log(alpha^beta + x^beta) overflows for
-        # beta*log(alpha) or beta*log(x) beyond ~709 even when the log
-        # probability itself is modest (#280).
-        la = beta * np.log(alpha)
-        lx = beta * np.log(x)
-        return la - np.logaddexp(la, lx)
+        # -log(1 + e^z): neither overflows (log(alpha^beta + x^beta) did
+        # for beta ln(x) beyond ~709, #280) nor cancels (the difference
+        # of two logs of that size lost the digits of a log near 0, #442)
+        z, x_pos = self._z(x, alpha, beta)
+        return on_support(x, -softplus(z), 0.0)
 
     def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
-        la = beta * np.log(alpha)
-        lx = beta * np.log(x)
-        return lx - np.logaddexp(la, lx)
+        z, x_pos = self._z(x, alpha, beta)
+        return on_support(x, -softplus(-z), -np.inf)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)

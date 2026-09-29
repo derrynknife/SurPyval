@@ -27,7 +27,7 @@ FUNCTIONS = ("sf", "ff", "Hf", "hf", "df")
 START = {"sf": 1.0, "ff": 0.0, "Hf": 0.0, "hf": 0.0, "df": 0.0}
 
 # Right censored last, so no estimator reaches 0 (a Kaplan-Meier at 0 has
-# an infinite hazard jump, and df there is NaN with a warning, #408).
+# an infinite hazard jump, so hf there is inf).
 X = np.array([2.0, 3, 3, 5, 6, 8, 9, 11, 12, 14])
 C = np.array([0, 0, 1, 0, 0, 1, 0, 0, 0, 1])
 

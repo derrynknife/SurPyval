@@ -11,6 +11,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import log1mexp
+
 
 class Gumbel_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name: str) -> None:
@@ -305,7 +307,13 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         return -self.Hf(x, mu, sigma)
 
     def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return np.log(-np.expm1(-self.Hf(x, mu, sigma)))
+        # log(1 - e^-H) from H = e^z and log H = z: exact where F rounds
+        # to 1 (log(-expm1(-H)) is 0 there, #442) and finite where H
+        # underflows (#443).
+        z = (x - mu) / sigma
+        with np.errstate(over="ignore"):
+            H = np.exp(z)
+        return log1mexp(H, z)[0]
 
     def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
