@@ -32,7 +32,7 @@ from surpyval.univariate.regression._fit_skeleton import (
     runaway_coefficients,
 )
 
-NO_MAXIMUM = "The likelihood has no finite maximum"
+NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
 MONOTONE = "Monotone partial likelihood"
 
 

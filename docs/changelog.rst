@@ -25,6 +25,37 @@ Uniform's MLE refuses censored data again.
   interval-censored ones, and names the methods that take censored data
   (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
   or not, fit as before, still with no covariance.
+- **Fits with no finite maximum warn instead of returning silently
+  (#392).** Some data leave the likelihood with no maximum: a covariate
+  level with no events, perfectly dependent pairs, a mixture component on
+  a point mass, noise-free degradation readings. These fits returned
+  wherever their optimiser stopped, silently:
+
+  - a WeibullPH coefficient of -14.7 (+32 to +36 for the PO models, about
+    -32 for most frailty models);
+  - Fine-Gray -12.9, with BFGS reporting success;
+  - copula dependence of Clayton theta 3.2e6, Frank 1.2e7, Gumbel 105.5
+    (log-likelihood inf) and Gaussian rho at its 0.9999 cap;
+  - a mixture component with beta 9100;
+  - GammaProcess alpha at the end of its search range (1e6), and
+    DestructiveDegradation sigma 9.9e-16;
+  - BetaGeometric in its Geometric limit (a, b about 1e5, 3.5e5).
+
+  Each now gives one ``UserWarning`` starting "No finite maximum" at the
+  caller's line. It names the parameter that runs away and what to do
+  instead (for example "use Geometric"), and the fit still returns the
+  model it reached. Fine-Gray and ``CompetingRisksProportionalHazards``
+  (Fine-Gray) use CoxPH's "Monotone partial likelihood" warning.
+
+  The regression test is Newton's. Along each coefficient's profile,
+  Kantorovich's ``h = |f'''| |f'| / f''^2`` is 1 on the way to a supremum,
+  however far the optimiser went. At the maximum of an ordinary fit it is
+  at most 2e-4, over the test registry and 1360 calibration refits. The
+  additive-hazards models, whose likelihood rises without bound on such
+  data, now say so instead of reporting a positivity boundary (all except
+  GammaAH). The Gumbel copula no longer leaks about 230 raw numpy overflow
+  warnings. Univariate MLE now also refuses a point mass at the edge of a
+  truncation window (Weibull beta 455.6, Normal sigma 0.037, silently).
 - **Parametric additive hazards warn where their hazard is negative
   (#376).** ``h_0(x) + beta'Z`` has nothing keeping it positive away from
   the observed failures, so for a protective covariate row the cumulative

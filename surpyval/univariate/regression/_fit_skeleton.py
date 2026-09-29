@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian, jacobian
+from autograd import grad, hessian, jacobian, value_and_grad
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
@@ -29,6 +29,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -837,23 +838,23 @@ def warn_if_not_converged(res: Any) -> None:
 # point set by their tolerances, so a fixed collapse ratio cannot tell.
 #
 # Newton's method can. Along a coefficient's profile the log-likelihood of
-# such data approaches its supremum like C - A exp(-s t) (a Gaussian tail
-# for a LogNormal AFT, a power for others), and at every point on the way
-# the Newton step is as long as the distance over which the curvature
-# itself falls away: the next step is the same length again, and Newton's
-# method never converges. Kantorovich's theorem makes that the test. For
-# the negative log-likelihood f along the profile, the Newton step from the
-# fit is -f'/f'', and Newton's method is guaranteed to converge to a
-# minimum within two steps of it if h = |f'''| |f'| / f''^2 <= 1/2 (the
-# relative change of the curvature over one step, with |f'''| its local
-# bound). At a fit that has reached a maximum the step is at the level of
-# the optimiser's tolerance, so h is too (below 1e-5 on every fit in the
-# conformance registry); on the way to a supremum h is 1 (exactly, for an
-# exponential tail), wherever the optimiser stopped, and the curvature falls
-# in the direction the likelihood rises (f' f''' > 0). A curvature that is
-# zero or negative there (the likelihood rising linearly, as in an additive
-# hazards model whose no-event level drives its coefficient to -inf) is no
-# maximum either.
+# such data approaches its supremum like C - A exp(-s t) (or with a Gaussian
+# tail, for a LogNormal AFT), and at every point on the way the Newton step
+# is as long as the distance over which the curvature itself falls away:
+# the next step is the same length again, and Newton's method never
+# converges. Kantorovich's theorem makes that the test. For the negative
+# log-likelihood f along the profile, the Newton step from the fit is
+# -f'/f'', and Newton's method is guaranteed to converge to a minimum within
+# twice that distance if h = |f'''| |f'| / f''^2 <= 1/2 (the relative change
+# of the curvature over one step, with |f'''| its local bound). At a fit that
+# has reached a maximum the step is at the level of the optimiser's
+# tolerance, and so is h (at most 2e-5 on the ordinary fits of the
+# conformance registry, and 2e-4 over the 1360 refits of their calibration
+# study); on the way to a supremum h is 1 (exactly, for an exponential
+# tail) wherever the optimiser stopped, and the curvature falls in the
+# direction the likelihood rises (f' f''' > 0). A curvature that is zero or
+# negative there is no maximum either: the additive hazards likelihood rises
+# linearly as a no-event level's coefficient falls, without bound.
 
 
 def runaway_coefficients(
@@ -909,11 +910,18 @@ def runaway_coefficients(
                 d = _line_derivatives(neg_ll, at, v)
         if d is None or d[0] == 0.0:
             continue
-        d1, d2, d3 = d
-        if d2 <= 0.0 or d1 * d3 > 0.5 * d2**2:
+        if _no_convergence(*d):
             if start is None or not _flat_at_start(neg_ll, start, v):
                 out.append(k)
     return out
+
+
+def _no_convergence(d1: float, d2: float, d3: float) -> bool:
+    """Whether Newton's method cannot be shown to converge along a line on
+    which the objective has these derivatives: it has no curvature, or
+    Kantorovich's ``h = |f'''| |f'| / f''^2`` is above 1/2 with the
+    curvature falling the way the likelihood rises (see above)."""
+    return d2 <= 0.0 or d1 * d3 > 0.5 * d2**2
 
 
 def _flat_at_start(
@@ -1009,14 +1017,13 @@ def _line_derivatives(
     out = None
     for along in (line,) if moving.all() else (line, moving_only):
         try:
-            d1 = grad(along)
-            d2 = grad(d1)
-            d3 = grad(d2)
             with warnings.catch_warnings():
                 # autograd says so of a derivative that is constant (a
                 # likelihood linear along the line); it is 0, not a fault
                 warnings.filterwarnings("ignore", "Output seems independent")
-                out = float(d1(0.0)), float(d2(0.0)), float(d3(0.0))
+                d1 = grad(along)(0.0)
+                d2, d3 = value_and_grad(grad(grad(along)))(0.0)
+            out = float(d1), float(d2), float(d3)
         except (TypeError, ValueError, ArithmeticError):
             return None
         if np.all(np.isfinite(out)):
@@ -1029,15 +1036,19 @@ def _line_derivatives(
 #: tolerance of their optimum, and two or three reach rounding.
 _POLISH_STEPS = 10
 
-#: What the warning says, with the coefficients' numbers.
-NO_MAXIMUM = (
-    "The likelihood has no finite maximum: it keeps increasing as "
-    "coefficient(s) {} grow without bound, so the estimate is infinite (a "
-    "covariate separates the events from the survivors, as one level with "
-    "no events does). The fit stopped where the increase became too small "
-    "to follow; the reported value, its standard error and its bounds are "
-    "meaningless. Consider removing or coarsening the covariate, or a "
-    "penalised fit."
+#: What the warning says (through :func:`warn_no_maximum`), with the
+#: coefficients' numbers.
+NO_MAXIMUM_WHAT = (
+    "the likelihood keeps increasing as coefficient(s) {} grow without "
+    "bound, so the estimate is infinite (a covariate separates the events "
+    "from the survivors, as one level with no events does)"
+)
+NO_MAXIMUM_CONSEQUENCE = (
+    "The fit stopped where the increase became too small to follow, and "
+    "the reported value, its standard error and its bounds are meaningless"
+)
+NO_MAXIMUM_ADVICE = (
+    "consider removing or coarsening the covariate, or a penalised fit"
 )
 
 
@@ -1070,9 +1081,10 @@ def finish_search(
     positions = [pos for pos, _ in coefs]
     runaway = runaway_coefficients(fun, res.x, positions, start)
     if runaway:
-        warnings.warn(
-            NO_MAXIMUM.format([coefs[k][1] for k in runaway]),
-            stacklevel=_caller_stacklevel(),
+        warn_no_maximum(
+            NO_MAXIMUM_WHAT.format([coefs[k][1] for k in runaway]),
+            NO_MAXIMUM_CONSEQUENCE,
+            NO_MAXIMUM_ADVICE,
         )
         return True
     if getattr(res, "stopped_short", False):

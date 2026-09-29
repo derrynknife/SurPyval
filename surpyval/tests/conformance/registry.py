@@ -536,6 +536,19 @@ def discrete_data(start=0):
     return {"x": x, "c": c, "n": n}
 
 
+def beta_geometric_data():
+    """40 draws from BetaGeometric(3, 5), right censored above 8: more
+    dispersed than a Geometric, so the fit has an interior maximum (a, b =
+    1.72, 3.01). ``discrete_data`` is under-dispersed for it: its fit runs
+    to the geometric limit, where the likelihood has no finite maximum
+    (#392), and no bound can be tested there."""
+    return {
+        "x": np.array([1, 2, 3, 4, 6, 7, 8]),
+        "c": np.array([0, 0, 0, 0, 0, 0, 1]),
+        "n": np.array([14, 9, 4, 3, 4, 1, 5]),
+    }
+
+
 def binary_data():
     return {
         "x": np.array([0, 1, 1, 0, 1, 1, 0]),
@@ -806,7 +819,7 @@ def discrete(name, fitter=None, start=0, **kw):
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
         model_class="surpyval.Parametric",
         interface=UNIVARIATE,
-        data=functools.partial(discrete_data, start),
+        data=kw.pop("data", functools.partial(discrete_data, start)),
         fit=_fit(fitter),
         functions=UNI_FUNCTIONS + ("qf",),
         x=X_DISC,
@@ -1276,6 +1289,7 @@ def _univariate():
         discrete(
             "BetaGeometric",
             start=1,
+            data=beta_geometric_data,
         )
     )
     discretized = sp.Discretize(sp.Weibull)
@@ -2660,19 +2674,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
         _NEGATIVE_VARIANCE + " -8.4e-5 for alpha = 1.00008, whose fit "
         "runs to the edge)",
     ),
-    # I. BetaGeometric's degenerate fit (non-strict: see NON_STRICT)
-    "BetaGeometric": {
-        **{
-            f"{prop}[{name}]": "the fixture's likelihood has no finite "
-            "maximum: the fit runs towards the geometric limit (alpha, beta "
-            "~ 1e5, 3.5e5) and warns so, but there the covariance is near "
-            "singular, so the Wald bounds are NaN or not centred on the "
-            "estimate (a fixture more dispersed than a Geometric would test "
-            "the bounds)"
-            for prop in ("cb_contains", "cb_centre")
-            for name in ("cb[wald]", "param_cb[wald]")
-        },
-    },
 }
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
@@ -2681,7 +2682,6 @@ _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
     "ARA": "#461",
     "ARI": "#461",
     "Beta4": "#385",
-    "BetaGeometric": "#392",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
@@ -2718,13 +2718,6 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
 # far from the maximum were (#427, #428, #429); they now reach it, or say
 # they did not, on every build.
 NON_STRICT: dict[str, frozenset[str]] = {
-    # Where on the plateau towards its geometric limit the search stops
-    # (#392) depends on the build, and with it which bounds fail
-    "BetaGeometric": frozenset(
-        f"{prop}[{name}]"
-        for prop in ("cb_contains", "cb_centre")
-        for name in ("cb[wald]", "param_cb[wald]")
-    ),
 }
 
 
