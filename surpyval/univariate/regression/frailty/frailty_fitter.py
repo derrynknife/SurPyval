@@ -24,11 +24,13 @@ maximises its own marginal likelihood on a fresh optimiser.
 import warnings
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from autograd.extend import defvjp, primitive
+from autograd.scipy.special import gammaln
 from scipy.optimize import minimize
-from scipy.special import gammaln
 
 from surpyval.utils import (
     _caller_stacklevel,
@@ -38,7 +40,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.linalg import numerical_hessian
 
-from .._fit_skeleton import require_finite_fit, warn_if_not_converged
+from .._fit_skeleton import finish_search, require_finite_fit
 from ..proportional_hazards.cox_ph import _strata_labels
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
@@ -78,18 +80,20 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
         return np.array(out, dtype=float)
 
     def to_nat(unc: npt.NDArray, n_beta: int) -> npt.NDArray:
+        # In autograd's numpy, so the likelihood can be differentiated in
+        # the optimiser's parameters (see ``fit``).
         out = []
         for i, f in enumerate(forms):
             v = unc[i]
             if f == "log":
-                out.append(np.exp(v))
+                out.append(anp.exp(v))
             elif f == "logit":
-                out.append(1.0 / (1.0 + np.exp(-v)))
+                out.append(1.0 / (1.0 + anp.exp(-v)))
             else:
                 out.append(v)
-        out.extend(unc[k_dist : k_dist + n_beta])
-        out.append(np.exp(unc[-1]))
-        return np.array(out, dtype=float)
+        out.extend(unc[k_dist + i] for i in range(n_beta))
+        out.append(anp.exp(unc[-1]))
+        return anp.array(out)
 
     return to_unc, to_nat
 
@@ -109,26 +113,30 @@ def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
     """
     D = np.asarray(D, dtype=float)
     integer = np.isclose(D, np.round(D), rtol=0.0, atol=1e-9)
-    out = np.empty_like(D)
-    if integer.any():
-        d_int = np.round(D[integer]).astype(int)
-        k = np.arange(max(int(d_int.max()), 0), dtype=float)
-        cumulative = np.concatenate([[0.0], np.cumsum(np.log1p(k * theta))])
-        out[integer] = cumulative[d_int]
+    # Written without assignment into an array, so that autograd can
+    # differentiate it in theta: each form is evaluated where it is used
+    # (the integer one at 0 on the other rows), and the rows pick theirs.
+    d_int = np.where(integer, np.round(D), 0.0).astype(int)
+    k = np.arange(max(int(d_int.max(initial=0)), 0), dtype=float)
+    cumulative = anp.concatenate(
+        [np.zeros(1), anp.cumsum(anp.log1p(k * theta))]
+    )
+    out = cumulative[d_int]
     if (~integer).any():
-        d = D[~integer]
+        d = D
         if theta < 1e-6:
             # the Stirling series in theta = 1/a (Bernoulli polynomials),
             # where the gamma functions below would cancel
             d2 = d * (d - 1.0)
-            out[~integer] = (
+            other = (
                 d2 / 2.0 * theta
                 - d2 * (2.0 * d - 1.0) / 12.0 * theta**2
                 + d2**2 / 12.0 * theta**3
             )
         else:
             it = 1.0 / theta
-            out[~integer] = gammaln(d + it) - gammaln(it) - d * np.log(it)
+            other = gammaln(d + it) - gammaln(it) - d * anp.log(it)
+        out = anp.where(integer, out, other)
     return out
 
 
@@ -147,12 +155,33 @@ def _group_frailty_ll(
     ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
     tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
     """
-    if theta <= 0.0:
-        # the limit itself (theta underflowed): no frailty
-        return -np.asarray(H, dtype=float)
+    if theta * max(anp.max(H), np.max(D), 1.0) ** 2 < _EPS:
+        # theta is too small to change any group's term by more than
+        # rounding (each correction to the no-frailty value -H is of order
+        # theta H^2, theta D H or theta D^2), and the terms below divide by
+        # it: the limit itself. (Its derivatives in beta must stay finite
+        # there too, for the fit's check of its answer, #392.)
+        return -1.0 * H
     return _log_rising_ratio(D, theta) - (
-        D * np.log1p(H * theta) + np.log1p(H * theta) / theta
+        D * anp.log1p(H * theta) + anp.log1p(H * theta) / theta
     )
+
+
+_EPS = float(np.finfo(float).eps)
+
+
+@primitive
+def _group_sum(
+    values: npt.NDArray, inv: npt.NDArray, n_groups: int
+) -> npt.NDArray:
+    """Each group's sum of ``values`` (``inv`` the group of each), as
+    ``np.bincount``, which autograd cannot differentiate on its own."""
+    return np.bincount(inv, weights=values, minlength=n_groups)
+
+
+# The derivative of a group's sum in each of its values is 1: a gradient
+# with respect to the sums spreads back to each value from its group.
+defvjp(_group_sum, lambda ans, values, inv, n_groups: lambda g: g[inv])
 
 
 class FrailtyFitter:
@@ -198,15 +227,16 @@ class FrailtyFitter:
 
         H0 = self.dist.Hf(x, *dist_params)
         h0 = self.dist.hf(x, *dist_params)
-        eta = np.exp(eta_Z @ beta) if n_beta else np.ones_like(x)
+        # (autograd's numpy, so the fit can check its answer, #392)
+        eta = anp.exp(anp.dot(eta_Z, beta)) if n_beta else np.ones_like(x)
 
         event = c == 0
-        ll = np.sum(w[event] * (np.log(h0[event]) + np.log(eta[event])))
+        ll = anp.sum(w[event] * (anp.log(h0[event]) + anp.log(eta[event])))
 
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
-        H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        ll += np.sum(_group_frailty_ll(D, H, theta))
+        H = _group_sum(w * eta * H0, inv, n_groups)
+        ll = ll + anp.sum(_group_frailty_ll(D, H, theta))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -391,8 +421,15 @@ class FrailtyFitter:
         ):
             res = polished
         require_finite_fit(float(res.fun))
-        if not converged:
-            warn_if_not_converged(res)
+        # One warning: a coefficient with no finite maximum (a level with no
+        # events, #392), or else a search that did not converge.
+        res.stopped_short = not converged
+        finish_search(
+            obj_unc,
+            res,
+            [(self.k_dist + i, i) for i in range(n_beta)],
+            u0,
+        )
         nat = to_nat(res.x, n_beta)
 
         dist_params = nat[: self.k_dist]

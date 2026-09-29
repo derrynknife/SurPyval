@@ -25,6 +25,7 @@ class GaussianCopula(Copula):
     name = "Gaussian"
     bounds = ((-1, 1),)
     param_names = ("rho",)
+    dependence_limits = {1: "rho tends to 1", -1: "rho tends to -1"}
 
     @staticmethod
     def _clip_rho(rho: float) -> float:

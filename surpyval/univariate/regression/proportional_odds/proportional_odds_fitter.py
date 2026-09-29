@@ -13,6 +13,8 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    finish_search,
+    free_coefficients,
     make_objective,
     mirror_distribution,
     optimise_nm_tnc,
@@ -272,7 +274,7 @@ class ProportionalOddsFitter(
 
             fun = make_objective(self, data, inv_trans, const)
 
-            res = optimise_nm_tnc(fun, init_t)
+            res = optimise_nm_tnc(fun, init_t, quiet=True)
 
         params = inv_trans(const(res.x))
         reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
@@ -289,6 +291,9 @@ class ProportionalOddsFitter(
             fixed,
             centring=centring,
         )
+        # After the model is built (which may refuse the data), one
+        # warning for what the search found (#392).
+        finish_search(fun, res, free_coefficients(self, fixed, pmap), init_t)
         return model
 
 

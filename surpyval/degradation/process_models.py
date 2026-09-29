@@ -53,6 +53,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -1522,6 +1523,14 @@ class GammaProcess:
             ``ff``, ``mean``, ...) give the first-passage time to
             ``threshold``.
 
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when every increment is proportional to its
+            time step (noise-free readings), so the likelihood keeps
+            increasing with ``alpha``: the returned ``alpha`` and ``beta``
+            are meaningless. (``WienerProcess`` refuses such data.)
+
         Examples
         --------
         Five units whose wear accumulates in non-negative gamma-distributed
@@ -1586,6 +1595,7 @@ class GammaProcess:
                 alpha, beta, _ = cls._censored_fit(dt, dy, zero, delta, None)
             else:
                 alpha, beta = cls._profile_fit(dt, dy)
+                cls._warn_if_noise_free(dt, dy, alpha, beta)
             return GammaProcessModel(alpha, beta, threshold)
 
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
@@ -1619,6 +1629,7 @@ class GammaProcess:
         alpha = float(np.exp(v[0]))
         g = v[1:]
         beta = alpha * float((dt * np.exp(s @ g)).sum()) / sum_dy
+        cls._warn_if_noise_free(dt * np.exp(s @ g), dy, alpha, beta, True)
         return GammaProcessModel(
             alpha, beta, threshold, gamma=g / scale, stress_ref=z_ref
         )
@@ -1863,11 +1874,14 @@ class GammaProcess:
                 "non-monotone / noisy signals."
             )
 
+    #: The range the stationary fit searches for the shape rate ``alpha``.
+    _ALPHA_RANGE = (1e-6, 1e6)
+
     @staticmethod
-    def _profile_fit(dt: npt.NDArray, dy: npt.NDArray) -> tuple[float, float]:
-        """The stationary (stress-free) fit: ``(alpha, beta)``, for
-        strictly positive increments (zeros go through
-        :meth:`_censored_fit`)."""
+    def _profile_neg_ll(dt: npt.NDArray, dy: npt.NDArray) -> Callable:
+        """The negative log-likelihood of ``alpha`` with ``beta`` profiled
+        out, for strictly positive increments ``dy`` over time steps (or
+        clock steps) ``dt``."""
         sum_dt = dt.sum()
         sum_dy = dy.sum()
         log_dy = np.log(dy)
@@ -1881,7 +1895,65 @@ class GammaProcess:
             )
             return -ll
 
-        res = minimize_scalar(neg_ll, bounds=(1e-6, 1e6), method="bounded")
+        return neg_ll
+
+    @classmethod
+    def _profile_fit(
+        cls, dt: npt.NDArray, dy: npt.NDArray
+    ) -> tuple[float, float]:
+        """The stationary (stress-free) fit: ``(alpha, beta)``, for
+        strictly positive increments (zeros go through
+        :meth:`_censored_fit`)."""
+        neg_ll = cls._profile_neg_ll(dt, dy)
+        res = minimize_scalar(
+            neg_ll, bounds=cls._ALPHA_RANGE, method="bounded"
+        )
         alpha = float(res.x)
-        beta = alpha * sum_dt / sum_dy
+        beta = alpha * dt.sum() / dy.sum()
         return alpha, beta
+
+    @classmethod
+    def _warn_if_noise_free(
+        cls,
+        dtau: npt.NDArray,
+        dy: npt.NDArray,
+        alpha: float,
+        beta: float,
+        stress: bool = False,
+    ) -> None:
+        """Warn when the likelihood keeps increasing with ``alpha`` (#392).
+
+        Increments exactly proportional to their time steps (on the fitted
+        stress clock ``dtau``, with stress) are a deterministic path: a
+        gamma process fits them ever better as ``alpha`` grows (the
+        increments' variance ``alpha / beta^2`` per unit time shrinking to
+        0), so its likelihood has no finite maximum, and the fit returned
+        ``alpha, beta = 1e6, 2e6`` (the end of the search range) in
+        silence. ``WienerProcess`` refuses such data outright.
+
+        The criterion: the likelihood of ``alpha`` at the clock, with
+        ``beta`` profiled out, is highest at the upper end of the range
+        the stationary fit searches -- still rising when the search had
+        to stop. An ordinary fit has its maximum inside the range, where
+        the likelihood at the end is far lower.
+        """
+        neg_ll = cls._profile_neg_ll(dtau, dy)
+        at, _ = cls._profile_fit(dtau, dy)
+        top = cls._ALPHA_RANGE[1]
+        with np.errstate(all="ignore"):
+            rising = bool(neg_ll(top) <= neg_ll(at))
+        if not rising:
+            return
+        clock = " on the fitted stress clock" if stress else ""
+        warn_no_maximum(
+            f"every increment is proportional to its time step{clock} "
+            "(noise-free readings), so the gamma process likelihood keeps "
+            "increasing as the shape rate alpha grows, the increments' "
+            "variance shrinking to 0",
+            f"The reported alpha = {alpha:.4g} and beta = {beta:.4g} "
+            "(where the search stopped) are meaningless",
+            "the degradation is a deterministic path (a mean rate of "
+            f"{alpha / beta:.4g} per unit time{clock}) that reaches the "
+            "threshold at a fixed time; model it as such rather than as a "
+            "gamma process",
+        )

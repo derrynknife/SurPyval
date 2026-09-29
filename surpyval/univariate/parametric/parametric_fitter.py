@@ -1308,6 +1308,17 @@ class OptimisedFitMixin:
         anywhere in their support are checked (``_POINT_MASS_FAMILIES``,
         and any scale family given an offset); a one-parameter family such
         as the Exponential has a maximum on such data.
+
+        A truncated row is conditioned on its window ``(tl, tr]``, and a
+        spike outside the window keeps its likelihood where the row's set
+        reaches the window's edge: the conditional distribution then piles
+        up at that edge. So a set ending at ``tr`` (an exact value at its
+        own ``tr``, whose ``f(x) / F(tr)`` grows without bound, or a left
+        censored or interval one up to ``tr``) extends to every time
+        above ``tr``, and a set starting at ``tl`` (an interval from
+        ``tl``) to every time below it. An exact failure at 1 observable
+        only up to 1, one at 2 and one known to be before 3 gave a Weibull
+        ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in silence.
         """
         if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
@@ -1316,8 +1327,11 @@ class OptimisedFitMixin:
         x = np.asarray(surv_data.x, dtype=float)
         c = np.asarray(surv_data.c)
         xl, xr = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
+        tl = np.asarray(surv_data.tl, dtype=float)
+        tr = np.asarray(surv_data.tr, dtype=float)
         if lfp:
-            xl, xr, c = xl[c != 1], xr[c != 1], c[c != 1]
+            kept = c != 1
+            xl, xr, c, tl, tr = xl[kept], xr[kept], c[kept], tl[kept], tr[kept]
         if c.size == 0 or np.all(c == 1):
             return None
         if self.name == "Uniform" and not np.any(c == 0):
@@ -1325,6 +1339,9 @@ class OptimisedFitMixin:
             return None
         lower = np.where(c == -1, -np.inf, xl)
         upper = np.where(c == 1, np.inf, np.where(c == 0, xl, xr))
+        # Sets that reach an edge of their window extend beyond it
+        lower = np.where((c != 0) & (lower == tl), -np.inf, lower)
+        upper = np.where(upper == tr, np.inf, upper)
         lo, hi = float(np.max(lower)), float(np.min(upper))
         # Only an exact value's lower end is closed
         lo_closed = bool(np.all(c[lower == lo] == 0))
@@ -2393,6 +2410,14 @@ turnbull_estimator
         ):
             warning = _UNVERIFIED_MLE
         results.pop("_verified", None)
+        # A family whose likelihood can be highest in a limit of its
+        # parameters says so instead (one warning per fit).
+        if (
+            how == "MLE"
+            and not fixed
+            and self._warn_if_at_limit(surv_data, results, zi, lfp)
+        ):
+            warning = None
         if warning is not None:
             warnings.warn(warning, stacklevel=3)
 
@@ -2464,6 +2489,19 @@ turnbull_estimator
         self._set_support(model, offset)
 
         return model
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn, and return ``True``, when a maximum-likelihood fit's
+        ``results`` sit in a limit of the family where its likelihood has
+        no finite maximum (#392). None does here; a family that contains
+        another as a limit overrides this (see ``BetaGeometric``)."""
+        return False
 
     def _check_fixed_and_init(
         self, model: Parametric, fixed: Any, init: Any, how: str

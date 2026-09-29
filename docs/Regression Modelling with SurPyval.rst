@@ -251,6 +251,15 @@ change a subject's history, so they refuse a missing covariate instead.)
 Predicting from a DataFrame row with a missing covariate -- numeric or
 categorical -- gives ``nan`` for that row, in its place.
 
+A covariate that separates the events from the survivors -- a level of a
+factor with no events, say -- has no finite estimate: the likelihood keeps
+increasing as its coefficient grows. Every fitter says so with one warning
+naming the coefficient (``CoxPH`` and ``FineGray`` as a "monotone partial
+likelihood"; the parametric, additive-hazards and frailty fits as "no finite
+maximum") and returns the model where the search stopped, whose value for that
+coefficient, its standard error and its bounds mean nothing. Remove or coarsen
+the covariate (merge the level with another), or fit a penalised model.
+
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
 

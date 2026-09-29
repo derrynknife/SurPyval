@@ -58,6 +58,12 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.regression._fit_skeleton import (
+    runaway_coefficients,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+    warn_monotone,
+)
 from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
 )
@@ -82,7 +88,9 @@ def _fit_cause(
 
     Returns a dict with the fitted coefficients, their standard errors and
     p-values, the baseline cumulative subdistribution hazard (as sorted event
-    times and the cumulative hazard at each), and the optimiser result.
+    times and the cumulative hazard at each), the optimiser result, and the
+    coefficients along which the partial likelihood has no finite maximum
+    (``"runaway"``, see :func:`_warn_if_monotone`).
 
     The fit runs on the covariates centred at their ``n``-weighted means
     (#463), as ``CoxPH`` does (#459): the partial likelihood, and so
@@ -141,6 +149,12 @@ def _fit_cause(
     beta0 = np.zeros(Z.shape[1])
     res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
     beta = res.x
+    # A covariate that separates the events of interest from the rest (a
+    # level with none of them) drives its coefficient to infinity; BFGS
+    # stops where the rise is below its tolerance and reports success
+    # (-12.9 on such data). Newton's method cannot converge from there,
+    # which is what the check finds (#392).
+    runaway = runaway_coefficients(neg_ll, beta, list(range(beta.size)), beta0)
 
     # Standard errors from the inverse observed information.
     H = hessian(neg_ll)(beta)
@@ -176,7 +190,27 @@ def _fit_cause(
         "baseline_cumhaz": baseline_cumhaz,
         "neg_ll": float(res.fun),
         "res": res,
+        "runaway": runaway,
     }
+
+
+def _warn_if_monotone(fits: list) -> None:
+    """One warning for the causes, among the per-cause fits ``fits``
+    (``_fit_cause``'s dicts), whose partial likelihood has no finite
+    maximum; as ``CoxPH`` warns (``cox_ph.warn_monotone``), naming the
+    cause where the model has more than one."""
+    runaway = [(fit["cause"], fit["runaway"]) for fit in fits]
+    runaway = [(cause, coefs) for cause, coefs in runaway if coefs]
+    if not runaway:
+        return
+    if len(fits) == 1:
+        warn_monotone(str(runaway[0][1]))
+        return
+    warn_monotone(
+        " and ".join(
+            "{} (cause {!r})".format(coefs, cause) for cause, coefs in runaway
+        )
+    )
 
 
 def _cumhaz_at_origin(
@@ -494,7 +528,9 @@ class FineGray_:
                 f"Cause {event!r} not observed; causes are {causes}."
             )
 
-        return FineGrayModel(_fit_cause(x, Z, e, c, n, event, center))
+        fit = _fit_cause(x, Z, e, c, n, event, center)
+        _warn_if_monotone([fit])
+        return FineGrayModel(fit)
 
 
 FineGray = FineGray_()

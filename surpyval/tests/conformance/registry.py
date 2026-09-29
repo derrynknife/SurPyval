@@ -2663,10 +2663,12 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
     # I. BetaGeometric's degenerate fit (non-strict: see NON_STRICT)
     "BetaGeometric": {
         **{
-            f"{prop}[{name}]": "the fit runs, silently, towards the "
-            "geometric limit (alpha, beta ~ 1e5, 3.5e5, where the likelihood "
-            "has no maximum): the covariance is near singular, so the Wald "
-            "bounds are NaN or not centred on the estimate"
+            f"{prop}[{name}]": "the fixture's likelihood has no finite "
+            "maximum: the fit runs towards the geometric limit (alpha, beta "
+            "~ 1e5, 3.5e5) and warns so, but there the covariance is near "
+            "singular, so the Wald bounds are NaN or not centred on the "
+            "estimate (a fixture more dispersed than a Geometric would test "
+            "the bounds)"
             for prop in ("cb_contains", "cb_centre")
             for name in ("cb[wald]", "param_cb[wald]")
         },
@@ -2701,83 +2703,9 @@ _CONVERGENCE_ISSUES = {
     # whose likelihood has no maximum (the #392 class, outside univariate)
     "no maximum": "#392",
 }
-_NO_EVENTS = (
-    "a covariate that is 1 on exactly the censored rows (a group with no "
-    "events, so no finite coefficient; CoxPH warns 'Monotone partial "
-    "likelihood' on such data) gets a coefficient of "
-)
-_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
-    "FineGray": (
-        "no maximum",
-        _NO_EVENTS + "-12.87 (BFGS reports success); sf(30) 1.0",
-    ),
-    "CompetingRisksProportionalHazards[Fine-Gray]": (
-        "no maximum",
-        _NO_EVENTS + "-12.87 and -12.12 (causes a and b)",
-    ),
-    "MixtureModel": (
-        "no maximum",
-        "with 10 of the 20 rows at 3.0 (a point mass, so no maximum) the "
-        "first component comes back as alpha, beta 3.0, 8955",
-    ),
-    "GammaProcess": (
-        "no maximum",
-        "noise-free readings (y = t / 2: every increment 5) have no "
-        "maximum; the fit returns alpha, beta 1.0e6, 2.0e6 where "
-        "WienerProcess raises ValueError ('the fitted diffusion sigma is 0')",
-    ),
-    "DestructiveDegradation": (
-        "no maximum",
-        "noise-free readings (y = exp(4 - 0.02 x) exactly) have no maximum; "
-        "the fit returns sigma = 9.9e-16",
-    ),
-    "ClaytonCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 3.16e6",
-    ),
-    "GumbelCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 105.5, "
-        "with a log-likelihood of inf",
-    ),
-    "FrankCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 1.24e7",
-    ),
-    "GaussianCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: rho -> 1) give rho 0.9999",
-    ),
-}
-_REGRESSION_NO_EVENTS = {
-    "WeibullPH": -16.31,
-    "LogNormalPH": -19.38,
-    "ExponentialPH": -18.55,
-    "GammaPH": -18.47,
-    "NormalPH": -20.41,
-    "GumbelPH": -19.96,
-    "LogisticPH": -18.28,
-    "WeibullAFT": -16.77,
-    "LogNormalAFT": -4.75,
-    "ExponentialAFT": -31.58,
-    "GammaAFT": -10.61,
-    "NormalAFT": -31.27,
-    "GumbelAFT": -31.57,
-    "LogisticAFT": -29.60,
-    "WeibullPO": 33.63,
-    "LogNormalPO": 34.71,
-    "ExponentialPO": 33.60,
-    "GammaPO": 33.33,
-    "NormalPO": 33.77,
-    "GumbelPO": 32.01,
-    "LogisticPO": 33.48,
-    "WeibullFrailty": -9.22,
-    "ExponentialFrailty": -33.62,
-    "GammaFrailty": -32.60,
-    "LogNormalFrailty": -31.46,
-}
-for _name, _coef in _REGRESSION_NO_EVENTS.items():
-    _CONVERGENCE_FAILURES[_name] = ("no maximum", _NO_EVENTS + f"{_coef}")
+# (The regression, frailty and Fine-Gray fits of a covariate level with no
+# events now warn that the likelihood has no finite maximum, #392.)
+_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {}
 for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),

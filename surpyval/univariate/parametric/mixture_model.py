@@ -11,6 +11,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -372,6 +373,13 @@ class MixtureModel(SerialisableMixin, Distribution):
         None
             The fit is stored on this object.
 
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when a component has collapsed onto a
+            point mass (every row it explains is consistent with one time),
+            where a mixture's likelihood grows without bound.
+
         Examples
         --------
 
@@ -415,6 +423,60 @@ class MixtureModel(SerialisableMixin, Distribution):
             self._direct_mle()
         else:
             self._em()
+        self._warn_if_point_mass()
+
+    def _warn_if_point_mass(self) -> None:
+        """Warn when a component has collapsed onto a point mass (#392).
+
+        A mixture's likelihood grows without bound as one component
+        concentrates on a single time (a spike explaining a cluster of
+        tied values while the others explain the rest), so a fit that
+        heads there has no finite maximum and stops wherever the search
+        gives up: with 10 of 20 rows at 3.0 a Weibull component came back
+        with beta 8955, in silence.
+
+        The criterion is the univariate one (``_point_mass_region``,
+        which refuses such data for a single distribution), applied to
+        the rows each component still explains -- those it gives a
+        positive responsibility, to double precision. When one time is
+        consistent with every one of them, the component is a spike. A
+        component of an ordinary fit explains rows at several distinct
+        times, and is never flagged.
+        """
+        region_of = getattr(self.dist, "_point_mass_region", None)
+        if region_of is None:
+            return
+        data = self.data
+        log_r = self._log_resp(self.w, self.params)
+        with np.errstate(all="ignore"):
+            resp = np.exp(log_r - logsumexp(log_r, axis=0))
+        for i in range(self.m):
+            rows = (resp[i] > 0) & (data.n > 0)
+            if not rows.any():
+                continue
+            explained = SurpyvalData(
+                x=data.x[rows], c=data.c[rows], n=data.n[rows], t=data.t[rows]
+            )
+            region = region_of(explained, False, False)
+            if region is None:
+                continue
+            params = ", ".join(
+                f"{name} = {value:.4g}"
+                for name, value in zip(self.dist.param_names, self.params[i])
+            )
+            explained_rows = int(data.n[rows].sum())
+            warn_no_maximum(
+                f"mixture component {i} ({params}) has collapsed onto a "
+                f"point mass: a single time {region} is consistent with "
+                f"every one of the {explained_rows} rows it explains, and "
+                "a mixture's likelihood grows without bound as a "
+                "component concentrates on one time",
+                "The reported parameters and weights are meaningless",
+                "a component is a point mass: the data hold a cluster of "
+                "tied values; model that cluster separately, or fit fewer "
+                "components",
+            )
+            return
 
     def _direct_mle(self) -> Any:
         """Directly maximise the observed (truncation-corrected) negative

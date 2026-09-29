@@ -329,6 +329,33 @@ Gaussian copula second.
     assert sorted(_ll, key=_ll.get)[-2:] == ["Gaussian", "Frank"], _ll
     assert abs(_neg["Frank"].params[0] + 5) < 0.25
 
+The other limit is perfect dependence. When the rows observed in both series
+are perfectly concordant (Kendall's tau of 1: one lifetime an increasing
+function of the other, the comonotone copula), no Clayton, Gumbel, Frank or
+Gaussian copula with a finite parameter matches them; the families reach that
+copula only as their parameter runs off to its limit. The likelihood then
+keeps increasing, or peaks only where the fitted margins stop mapping one
+series exactly onto the other, and the parameter the search returns means
+nothing. The fit says so with a ``UserWarning`` (and Frank and Gaussian do the
+same for perfectly discordant data):
+
+.. jupyter-execute::
+
+    import warnings
+
+    same = np.column_stack([data[:, 0], data[:, 0] / 2])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        m = Clayton.fit(same, margins=[surv.Weibull, surv.Weibull])
+    print(caught[0].message)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(caught) == 1
+    assert str(caught[0].message).startswith("No finite maximum")
+
 Censoring and truncation
 ------------------------
 

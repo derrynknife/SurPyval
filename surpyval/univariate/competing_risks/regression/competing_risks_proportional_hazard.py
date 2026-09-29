@@ -42,7 +42,12 @@ from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
 
-from .fine_gray import FineGray, FineGrayModel, paired_covariate_rows
+from .fine_gray import (
+    FineGrayModel,
+    _fit_cause,
+    _warn_if_monotone,
+    paired_covariate_rows,
+)
 
 
 def _check_interp(interp: str) -> None:
@@ -780,10 +785,10 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             # subdistribution hazard for a coherent ``H0_e``.
             fg_models = {}
             results = []
+            fits = []
             for i, event in enumerate(causes):
-                fg = FineGray.fit(
-                    x, Z, e, c=c, n=n, event=event, center=center
-                )
+                fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
                 results.append(fg.res)
                 betas[i, :] = fg.beta
@@ -793,6 +798,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
             out._fg_models = fg_models
+            # One warning for every cause whose partial likelihood has no
+            # finite maximum (#392).
+            _warn_if_monotone(fits)
         else:
             raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
 

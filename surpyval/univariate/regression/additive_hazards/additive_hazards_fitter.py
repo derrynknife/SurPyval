@@ -57,6 +57,8 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    finish_search,
+    free_coefficients,
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
@@ -468,10 +470,18 @@ class AdditiveHazardsFitter(
                 "positive by construction and may be more appropriate for "
                 "this data.".format(self.dist.name)
             )
-        # A fit held at the positivity boundary is no stationary point, and
-        # its warning says why; any other that is not a maximum says so.
-        on_boundary = self._warn_if_on_positivity_boundary(data, params)
-        if not (converged or on_boundary):
+        # One warning: a likelihood with no finite maximum in a coefficient
+        # (a level with no events drives it to -inf, the likelihood rising
+        # linearly, #392) says so, and that is why the fit also ends on the
+        # boundary or unverified. Otherwise a fit held at the positivity
+        # boundary is no stationary point, and its warning says why; any
+        # other that is not a maximum says so.
+        coefs = free_coefficients(self, fixed, pmap)
+        if not (
+            finish_search(true_neg_ll, res, coefs, init)
+            or self._warn_if_on_positivity_boundary(data, params)
+            or converged
+        ):
             warnings.warn(
                 "The additive hazards fit did not reach a verified maximum "
                 "of the likelihood (a zero gradient, curving down in every "

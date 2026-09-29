@@ -18,6 +18,8 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    finish_search,
+    free_coefficients,
     make_objective,
     mirror_distribution,
     optimise_ph,
@@ -418,7 +420,7 @@ class ProportionalHazardsFitter(
 
             fun = make_objective(self, data, inv_trans, const)
 
-            res = optimise_ph(fun, init_t)
+            res = optimise_ph(fun, init_t, quiet=True)
 
         params = inv_trans(const(res.x))
 
@@ -441,4 +443,7 @@ class ProportionalHazardsFitter(
             fixed,
             centring=centring,
         )
+        # After the model is built (which may refuse the data), one
+        # warning for what the search found (#392).
+        finish_search(fun, res, free_coefficients(self, fixed, pmap), init_t)
         return model
