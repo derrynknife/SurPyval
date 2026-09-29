@@ -1,4 +1,5 @@
 import types
+import warnings
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
@@ -530,9 +531,66 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
             out = fn(x, Z, *self.params)
+        if self.kind == "Additive Hazard":
+            self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)
         return out
+
+    def _warn_if_hazard_negative(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.NDArray,
+        valid: Any = True,
+        stacklevel: int = 4,
+    ) -> None:
+        """Warn (once) when the additive hazard ``h_0(x) + beta'Z`` or its
+        integral is negative at a queried point (#376).
+
+        Nothing in the additive model keeps the hazard positive: the fit
+        keeps it positive at the observed failures only, so for a
+        protective covariate row, or far from the data, ``h`` can be
+        negative. The cumulative hazard then falls, and the predictions
+        stop being those of a distribution -- ``sf`` above 1, ``ff`` and
+        ``df`` negative. They are returned as the model defines them, with
+        this warning.
+        """
+        with np.errstate(all="ignore"):
+            h = np.asarray(self.model.hf(x, Z, *self.params), dtype=float)
+            H = np.asarray(self.model.Hf(x, Z, *self.params), dtype=float)
+        valid = np.broadcast_to(valid, h.shape)
+        neg_h = valid & (h < 0)
+        neg_H = valid & (H < 0)
+        if not (neg_h.any() or neg_H.any()):
+            return
+        self._warn_negative_hazard(
+            int((neg_h | neg_H).sum()),
+            h.size,
+            float(np.exp(-np.min(H[valid]))) if neg_H.any() else None,
+            stacklevel + 1,
+        )
+
+    def _warn_negative_hazard(
+        self, count: int, size: int, max_sf: "float | None", stacklevel: int
+    ) -> None:
+        above = (
+            ", so sf exceeds 1 (up to {:.4g}) and ff is negative".format(
+                max_sf
+            )
+            if max_sf is not None
+            else ""
+        )
+        warnings.warn(
+            "The additive hazard h_0(x) + beta'Z is negative at {} of the "
+            "{} queried points: the model's cumulative hazard falls there"
+            "{}. The additive model does not keep the hazard positive "
+            "(the fit does so only at the observed failures); these "
+            "values are the model's, not a distribution's. A proportional "
+            "hazards model (e.g. {}PH) keeps the hazard positive by "
+            "construction.".format(count, size, above, self.distribution.name),
+            RuntimeWarning,
+            stacklevel=stacklevel,
+        )
 
     @keeps_query_shape
     def sf(
@@ -689,6 +747,29 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         ndarray
             The cumulative hazard at each ``x``.
         """
+        H, falls = self._hf_tvc(x, Z, xl)
+        if falls:
+            self._warn_negative_hazard(
+                falls, H.size, self._max_sf(H), stacklevel=4
+            )
+        return H
+
+    @staticmethod
+    def _max_sf(H: npt.NDArray) -> "float | None":
+        finite = H[np.isfinite(H)]
+        if finite.size and finite.min() < 0:
+            return float(np.exp(-finite.min()))
+        return None
+
+    def _hf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None",
+    ) -> "tuple[npt.NDArray, int]":
+        """The cumulative hazard along the path, and the number of query
+        times at which an additive hazard fell (a negative ``H`` or a
+        negative segment increment, #376) -- 0 for the other families."""
         if self.kind not in self._TVC_EVALUABLE_KINDS:
             raise NotImplementedError(
                 "time-varying-covariate evaluation is defined for the "
@@ -702,18 +783,22 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # evaluated as usual.
         missing = np.isnan(xq)
         if missing.all():
-            return np.full(xq.shape, np.nan)
+            return np.full(xq.shape, np.nan), 0
         # A horizon at or below 0 materialises the one segment in force at
         # 0: H is then 0, or the baseline's value for a time below 0.
         t_max = float(np.max(xq[~missing]))
         starts, ends, Zseg = self._tvc_segments(schedule, t_max)
         xq_eval = np.where(missing, t_max, xq)
 
+        falls = np.zeros(xq.shape[0], dtype=bool)
         if self.kind in self._TVC_ADDITIVE_KINDS:
-            H = self._tvc_hf_additive(xq_eval, starts, ends, Zseg)
+            H = self._tvc_hf_additive(xq_eval, starts, ends, Zseg, falls)
         else:
             H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg)
-        return np.where(missing, np.nan, H)
+        if self.kind == "Additive Hazard":
+            falls |= H < 0
+        falls &= ~missing
+        return np.where(missing, np.nan, H), int(falls.sum())
 
     def _tvc_hf_additive(
         self,
@@ -721,6 +806,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         starts: npt.NDArray,
         ends: npt.NDArray,
         Zseg: npt.NDArray,
+        falls: "npt.NDArray | None" = None,
     ) -> npt.NDArray:
         """
         Cumulative hazard along a step path for the families whose hazard
@@ -753,6 +839,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                         self.model.Hf(np.array([a]), zrow, *self.params),
                         dtype=float,
                     ).ravel()
+            if falls is not None and self.kind == "Additive Hazard":
+                # A negative increment: the additive hazard fell in this
+                # segment before the query time (#376).
+                falls |= (hi - lo) < 0
             H = H + (hi - lo)
         return H
 
@@ -856,7 +946,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([4, 8, 12], [[0]]).round(4)
         array([0.7721, 0.4937, 0.2809])
         """
-        H = self.Hf_tvc(x, Z, xl)
+        H, falls = self._hf_tvc(x, Z, xl)
+        if falls:
+            self._warn_negative_hazard(
+                falls, H.size, self._max_sf(H), stacklevel=4
+            )
         if given is not None:
             given = float(given)
             if np.isnan(given):
@@ -865,7 +959,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             else:
                 # H(given) is 0 at or below 0, unless the baseline has
                 # mass below 0 (then it is -log of the survival to given).
-                H = H - self.Hf_tvc(given, Z, xl)
+                H = H - self._hf_tvc(given, Z, xl)[0]
         return np.exp(-H)
 
     @keeps_query_shape
@@ -1275,7 +1369,6 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             except np.linalg.LinAlgError:
                 bad = True
         if bad:
-            import warnings
 
             warnings.warn(
                 "The information matrix could not be inverted (the optimum "
@@ -1424,6 +1517,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # the coefficients are not nearly collinear with the baseline.
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
+        if self.kind == "Additive Hazard":
+            self._warn_if_hazard_negative(
+                x, self._centred(self._prepare_Z(Z)), stacklevel=4
+            )
 
         if on in ("hf", "df"):
             fn = self.model.hf if on == "hf" else self.model.df

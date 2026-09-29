@@ -82,29 +82,39 @@ def _fit_quietly(fit, *args, **kwargs):
         return fit(*args, **kwargs)
 
 
+# The deliberate warning of an additive hazard queried where it is
+# negative (#376); QUERY's row [-1.2, 0] is one such for WeibullAH.
+NEGATIVE_HAZARD = r"The additive hazard h_0\(x\) \+ beta'Z is negative"
+
+
 def _same_predictions(model, ref, s, cb=True):
-    for zq in QUERY:
-        for fn in ("sf", "Hf", "hf", "df", "ff"):
-            got = getattr(model, fn)(TIMES, zq + s)
-            want = getattr(ref, fn)(TIMES, zq)
-            assert np.all(np.isfinite(got)), fn
-            # Optimiser tolerance: the Nelder-Mead rung of the AFT and PO
-            # fits stops on a slightly different point for the same data
-            # centred with different rounding; 5e-4 is its size in the
-            # far tail (sf 3e-5), where Hf agrees to 3e-5.
-            np.testing.assert_allclose(
-                got, want, rtol=5e-4, atol=1e-10, err_msg=fn
-            )
-        if cb:
-            with warnings.catch_warnings():
-                warnings.simplefilter("error")
-                for on in ("sf", "Hf", "hf"):
-                    np.testing.assert_allclose(
-                        model.cb(TIMES, zq + s, on=on),
-                        ref.cb(TIMES, zq, on=on),
-                        rtol=2e-3,
-                        err_msg=on,
-                    )
+    # Every warning an error, except the deliberate negative-hazard one.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        warnings.filterwarnings(
+            "ignore", message=NEGATIVE_HAZARD, category=RuntimeWarning
+        )
+        for zq in QUERY:
+            for fn in ("sf", "Hf", "hf", "df", "ff"):
+                got = getattr(model, fn)(TIMES, zq + s)
+                want = getattr(ref, fn)(TIMES, zq)
+                assert np.all(np.isfinite(got)), fn
+                # Optimiser tolerance: the Nelder-Mead rung of the AFT and
+                # PO fits stops on a slightly different point for the same
+                # data centred with different rounding; 5e-4 is its size
+                # in the far tail (sf 3e-5), where Hf agrees to 3e-5.
+                np.testing.assert_allclose(
+                    got, want, rtol=5e-4, atol=1e-10, err_msg=fn
+                )
+            if not cb:
+                continue
+            for on in ("sf", "Hf", "hf"):
+                np.testing.assert_allclose(
+                    model.cb(TIMES, zq + s, on=on),
+                    ref.cb(TIMES, zq, on=on),
+                    rtol=2e-3,
+                    err_msg=on,
+                )
 
 
 @pytest.fixture(scope="module")
@@ -499,11 +509,15 @@ def test_time_varying_covariates(name, offset):
 def test_additive_hazards_cb_is_quiet_where_the_hazard_is_negative():
     # (#465) At Z = [-1.2, 0] the fitted cumulative hazard is negative;
     # the logit-scale sf bound computed 1 / (1 + exp(-t)) with t hugely
-    # negative, and leaked numpy's "overflow encountered in exp".
+    # negative, and leaked numpy's "overflow encountered in exp". Only the
+    # deliberate negative-hazard warning (#376) is left.
     x, Z, c = _data()
     model = sp.WeibullAH.fit(x, Z, c=c)
     assert np.any(model.Hf(TIMES, [-1.2, 0.0]) < 0)
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        for on in ("sf", "ff", "Hf", "hf"):
+    for on in ("sf", "ff", "Hf", "hf"):
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always")
             model.cb(TIMES, [-1.2, 0.0], on=on)
+        assert [str(w.message)[:44] for w in rec] == [
+            "The additive hazard h_0(x) + beta'Z is negat"
+        ], on

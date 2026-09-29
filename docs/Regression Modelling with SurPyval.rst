@@ -1199,8 +1199,9 @@ for it.
    or you are outside the range where it is well behaved. When covariate
    effects are strongly protective, a proportional-hazards model — whose
    exponential form keeps the hazard positive — is often the safer choice.
-   The parametric ``AH`` models below do not hold their cumulative hazard
-   yet: their survival can still exceed 1 where the hazard is negative.
+   The parametric ``AH`` models below keep their own values where the
+   hazard is negative (survival above 1, a negative density), and every
+   prediction there warns once that it is so.
 
 Just as Cox has parametric proportional-hazards counterparts (the next
 section), there is also a *parametric* additive-hazards model — a parametric

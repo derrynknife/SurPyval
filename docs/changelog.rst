@@ -25,6 +25,16 @@ Uniform's MLE refuses censored data again.
   interval-censored ones, and names the methods that take censored data
   (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
   or not, fit as before, still with no covariance.
+- **Parametric additive hazards warn where their hazard is negative
+  (#376).** ``h_0(x) + beta'Z`` has nothing keeping it positive away from
+  the observed failures, so for a protective covariate row the cumulative
+  hazard falls: ``sf`` exceeded 1 (1.03 for a ``WeibullAH``) and ``ff``
+  and ``df`` went negative, silently. The values are still the model's,
+  but ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``cb``, ``sf_tvc`` and
+  ``Hf_tvc`` now give one ``RuntimeWarning`` per call naming how many
+  queried points have a negative hazard and how far ``sf`` exceeds 1. (The
+  semi-parametric ``AdditiveHazards`` already predicts with the running
+  maximum of its cumulative hazard, since #462.)
 - **Additive hazards bounds no longer leak a numpy overflow warning
   (#465).** Where the fitted cumulative hazard is negative, the
   logit-scale ``sf`` bound computed ``1 / (1 + exp(-t))`` with ``t``

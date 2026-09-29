@@ -28,9 +28,13 @@ strongly protective covariate -- the fit ends pressed against that barrier,
 with the hazard nearly zero at one failure, ``beta`` held there and the
 baseline distorted to compensate. Such a fit is returned with a warning (the
 fit raises only if the optimiser cannot end at a finite likelihood at all).
-Positivity is not checked between the observed times. When covariate effects
-are strongly protective a proportional hazards model, whose exponential form
-keeps the hazard positive by construction, is the safer choice.
+Positivity is not enforced between the observed times or at other covariate
+rows: a prediction (``sf``, ``Hf``, ``cb``, the time-varying ``sf_tvc``, ...)
+where the hazard is negative returns the model's values -- ``sf`` above 1,
+``ff`` and ``df`` negative -- with one ``RuntimeWarning`` saying so (#376).
+When covariate effects are strongly protective a proportional hazards model,
+whose exponential form keeps the hazard positive by construction, is the
+safer choice.
 """
 
 import warnings
