@@ -31,7 +31,8 @@ Pre-built instances: ``ExponentialFrailty``, ``WeibullFrailty``,
 The frailty is Gamma-distributed (the only family currently available),
 so it integrates out of each group's likelihood in closed form. Only
 observed and right-censored data are supported, and at least two groups
-are needed. The fitted model predicts the *marginal* (population) curve
+are needed; a row with a missing group label (``None``, ``NaN``) is dropped,
+with a warning, and a missing ``group=`` at prediction gives ``nan``. The fitted model predicts the *marginal* (population) curve
 by default, or the curve conditional on an observed group's posterior
 frailty (``group=``) or on a given frailty (``frailty=``). Like the
 parametric regression models it reports ``neg_ll()``, ``aic()``,

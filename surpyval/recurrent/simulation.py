@@ -508,8 +508,14 @@ class RecurrenceSimulationMixin:
         if x.size == 0:
             # Nothing to simulate to (the horizon is the largest time).
             return np.empty(0)
+        # A missing time is NaN in the answer and plays no part in the
+        # horizon: it made the horizon NaN, and the simulation empty
+        # ("'x' cannot be empty", #382).
+        known = x[~np.isnan(x)]
+        if known.size == 0:
+            return np.full(x.shape, np.nan)
         np_model = self.time_terminated_simulation(
-            float(x.max()), items=items, random_state=random_state
+            float(known.max()), items=items, random_state=random_state
         )
         return np_model.mcf(x)
 

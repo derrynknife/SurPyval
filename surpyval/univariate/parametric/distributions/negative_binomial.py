@@ -2,7 +2,7 @@ from math import comb
 from typing import Any
 
 import numpy.typing as npt
-from autograd.scipy.special import gammaln
+from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.stats import nbinom
 
 from surpyval import np
@@ -16,8 +16,16 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
-from surpyval.utils.autograd_gamma_compat import betainc, betaincln
+from surpyval.utils.autograd_gamma_compat import (
+    beta_cf,
+    betainc,
+    betainccln,
+    betaincln,
+    betaln_accurate,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._discrete_tails import refine_quantile
 
 
 class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -81,13 +89,17 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         # R = 1 below the first mass point at k = 1. The incomplete beta's
         # first argument must be positive, so it returns NaN for k < 0
         # rather than the 1 it happens to give at k = 0.
-        safe_x = np.where(x < 0.0, 1.0, x)
-        return np.where(x < 0.0, 1.0, betainc(safe_x, r, 1.0 - p))
+        # 1 - F where F is below 1/2, and the upper tail itself (from its
+        # log) where it is small. The incomplete beta at 1 - p, the form
+        # this used, rounds 1 - p, which a small p cannot afford (#458).
+        ff = self.ff(x, r, p)
+        return np.where(ff < 0.5, 1.0 - ff, np.exp(self.log_sf(x, r, p)))
 
     def ff(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = I_{p}(r, k)`."""
-        safe_x = np.where(x < 0.0, 1.0, x)
-        return np.where(x < 0.0, 0.0, betainc(r, safe_x, p))
+        # Nothing fails before k = 1 (I_p(r, 0) is 1, not 0).
+        safe_x = np.where(x <= 0.0, 1.0, x)
+        return np.where(x <= 0.0, 0.0, betainc(r, safe_x, p))
 
     def df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k)`."""
@@ -95,7 +107,25 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def hf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
-        return self.df(x, r, p) / self.sf(x - 1.0, r, p)
+        # On the log scale: df/sf was 0/0 = nan once both underflowed
+        # (#458).
+        log_hf = self.log_df(x, r, p) - self.log_sf(x - 1.0, r, p)
+        if isinstance(r, ArrayBox) or isinstance(p, ArrayBox):
+            return np.exp(log_hf)
+        # Deep in the right tail both logs are of size k ln(1 - p), and
+        # their difference lost 3e-5 of the hazard at k = 1e12. There
+        # R(k - 1) = I_{1-p}(k - 1, r) is exactly P(T = k) times the
+        # incomplete beta's continued fraction, so the hazard is its
+        # reciprocal, with no cancellation. (Values only: a fit
+        # differentiates the log form above.)
+        x = np.asarray(x, dtype=float)
+        a = x - 1.0
+        tail = (a >= 1.0) & (1.0 - p < (a + 1.0) / (a + r + 2.0))
+        if np.any(tail):
+            a_t = np.where(tail, a, 1.0)
+            cf = beta_cf(a_t, r, np.where(tail, 1.0 - p, 0.5))
+            log_hf = np.where(tail, -np.log(np.abs(cf)), log_hf)
+        return np.exp(log_hf)
 
     def Hf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
@@ -103,7 +133,15 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
-        return nbinom.ppf(u, r, p) + 1.0
+        u_arr = np.asarray(u, dtype=float)
+        k = refine_quantile(
+            nbinom.ppf(u_arr, r, p) + 1.0,
+            u_arr,
+            lambda k: self.log_sf(k, r, p),
+            lambda k: self.log_ff(k, r, p),
+            first=1.0,
+        ).reshape(u_arr.shape)
+        return k[()] if k.ndim == 0 else k
 
     def mean(self, r: Boxable, p: Boxable) -> Boxable:
         r"""Mean number of cycles, :math:`E[T] = 1 + r(1 - p)/p`.
@@ -170,20 +208,34 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         return nbinom.rvs(r, p, size=size, random_state=state) + 1.0
 
     def log_df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
-        safe_x = np.where(x < 1.0, 1.0, x)
+        # The coefficient G(k - 1 + r) / (G(r) G(k)) is 1 / ((k - 1)
+        # B(r, k - 1)), exactly 1 at k = 1, with ln B taken without the
+        # cancellation of two gammaln of size k ln k (5e-6 of the mass at
+        # k = 1e9); and log1p(-p), not log(1 - p), which loses a small p
+        # (#458).
+        safe_x = np.where(x < 2.0, 2.0, x)
+        log_coef = np.where(
+            x < 2.0,
+            0.0,
+            -np.log(safe_x - 1.0) - betaln_accurate(r, safe_x - 1.0),
+        )
+        k = np.where(x < 1.0, 1.0, x)
         return np.where(
             x < 1.0,
             -np.inf,
-            gammaln(safe_x - 1.0 + r)
-            - gammaln(r)
-            - gammaln(safe_x)
-            + r * np.log(p)
-            + (safe_x - 1.0) * np.log(1.0 - p),
+            log_coef + r * np.log(p) + (k - 1.0) * np.log1p(-p),
         )
 
     def log_sf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
-        safe_x = np.where(x < 0.0, 1.0, x)
-        return np.where(x < 0.0, 0.0, betaincln(safe_x, r, 1.0 - p))
+        # R(k) = 1 - I_p(r, k), the upper tail's own log at p itself (see
+        # ``betainccln``): log(sf) was capped at -708 and lost R near 1
+        # (#458). R = 1 up to k = 0.
+        safe_x = np.where(x <= 0.0, 1.0, x)
+        return np.where(x <= 0.0, 0.0, betainccln(r, safe_x, p))
+
+    def log_ff(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
+        safe_x = np.where(x <= 0.0, 1.0, x)
+        return np.where(x <= 0.0, -np.inf, betaincln(r, safe_x, p))
 
 
 NegativeBinomial = NegativeBinomial_("NegativeBinomial")

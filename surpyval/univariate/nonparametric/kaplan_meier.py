@@ -1,7 +1,10 @@
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.univariate.nonparametric.fleming_harrington import _snap
+from surpyval.univariate.nonparametric.fleming_harrington import (
+    _check_at_risk,
+    _snap,
+)
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
@@ -41,7 +44,9 @@ def greenwood_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
         # d / r, rather than the difference: snapped to a whole number up
         # to round-off, it is exactly 1 for the undefined d == r case and
         # exactly 0 for no events, whatever the scale of the counts.
-        q = np.array([_snap(v) for v in d / r])
+        # A step with no events adds nothing, even with no one at risk
+        # (0 / 0), as the estimate carries its value there (#425).
+        q = np.array([_snap(v) for v in np.where(d == 0, 0.0, d / r)])
         var = np.where(q == 1, np.nan, np.where(q == 0, 0.0, var))
         var = np.where(np.isfinite(var), var, np.nan)
         return np.cumsum(var)
@@ -75,8 +80,15 @@ def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     -------
     R : ndarray
         The survival estimate just after each time, the same length as
-        ``r``. A step with ``d`` equal to ``r`` takes it to zero; one
-        with ``r`` zero (0 / 0) is taken as zero too.
+        ``r``. A step with ``d`` equal to ``r`` takes it to zero. A step
+        with no events leaves it unchanged, even with no one at risk
+        (0 / 0), as R's ``survfit`` carries the estimate there.
+
+    Raises
+    ------
+    ValueError
+        If a step has events but no one at risk (``d > 0`` where ``r``
+        is not positive).
 
     Examples
     --------
@@ -87,12 +99,24 @@ def kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     >>> kaplan_meier(r, d).round(4)
     array([0.8 , 0.7 , 0.28])
     """
+    r, d = _check_at_risk(r, d)
+    return _kaplan_meier(r, d)
+
+
+def _kaplan_meier(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    # ``kaplan_meier`` without the check of its counts, for the Turnbull
+    # EM, whose expected counts carry round-off.
+    r = np.asarray(r, dtype=float)
+    d = np.asarray(d, dtype=float)
+    # A step with no events changes nothing, whatever the risk set: no one
+    # at risk (0 / 0) used to be taken as a total failure, dropping the
+    # estimate to zero where the Fleming-Harrington kept it (#425).
+    with np.errstate(divide="ignore", invalid="ignore"):
+        q = np.where(d == 0, 0.0, d / r)
     # d cannot exceed r, so a negative factor is round-off in the Turnbull
     # EM's expected counts (d = r + 4e-15 at the last value); left in, it
-    # made the survival there -2e-16 rather than 0. No one at risk (0 / 0)
-    # is documented to take the estimate to zero, without a raw warning.
-    with np.errstate(divide="ignore", invalid="ignore"):
-        factor = np.maximum(1 - (d / r), 0.0)
+    # made the survival there -2e-16 rather than 0.
+    factor = np.maximum(1 - q, 0.0)
     factor[np.isnan(factor)] = 0
     # A product below the smallest float is zero, the right value: it used
     # to raise under errstate(under="raise") and fall back to

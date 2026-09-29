@@ -68,19 +68,20 @@ def _truncated_sample():
 
 @pytest.mark.parametrize("name", ESTIMATORS)
 @pytest.mark.parametrize("interp", ["step", "linear"])
-def test_density_is_hazard_times_survival(name, interp):
-    # df = hf * sf holds exactly for the discrete hazard too, since both
-    # sides use the same query points. Conformance excludes "df_hf_sf"
-    # for the non-parametric cases ("a step function"); it could keep it.
-    # Kills nonparametric.py:554 '*' -> '/', '-Hf' -> '+Hf', and either
-    # 'interp=interp' dropped.
+def test_density_is_the_drop_over_the_hazard_step(name, interp):
+    # df is the drop in sf over the step whose increment hf gives (#408):
+    # where that is the step from the previous point, df = sf(q) (e^hf - 1)
+    # exactly, the discrete form of df = hf * sf. Kills a wrong sign or
+    # operator in either, and either 'interp=interp' dropped.
     model = _fit(name)
     q = np.array([1.5, 2.5, 3.5, 5, 6.2, 8, 9.5])
+    hf = model.hf(q, interp=interp)
+    own = np.append(False, np.diff(model.Hf(q, interp=interp)) > 0)
+    assert own[1:].sum() >= 4
     assert_allclose(
-        model.df(q, interp=interp),
-        model.hf(q, interp=interp) * model.sf(q, interp=interp),
+        model.df(q, interp=interp)[own],
+        (model.sf(q, interp=interp) * np.expm1(hf))[own],
         rtol=1e-12,
-        equal_nan=True,
     )
 
 
@@ -130,26 +131,30 @@ def test_fit_from_ecdf_accepts_its_documented_edges(x, R):
 # --- the estimators' low-level functions ------------------------------------
 
 
-def test_kaplan_meier_step_with_no_one_at_risk_is_zero():
-    # Documented: a step with r zero (0 / 0) takes the estimate to zero,
-    # without a raw numpy warning (principle 22; it leaked "invalid value"
-    # until #450). Kills kaplan_meier.py:95 (NaN set to 1).
+def test_kaplan_meier_step_with_no_one_at_risk_keeps_its_value():
+    # Documented: a step with no events and r zero (0 / 0) leaves the
+    # estimate unchanged (#425; it took it to zero), without a raw numpy
+    # warning (principle 22; it leaked "invalid value" until #450).
+    r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        R = nonp.kaplan_meier(np.array([2.0, 1, 0]), np.array([1.0, 0, 0]))
-    assert_allclose(R, [0.5, 0.5, 0.0])
+        R = nonp.kaplan_meier(r, d)
+        var = nonp.greenwood_variance(r, d)
+    assert_allclose(R, [0.5, 0.5, 0.5])
+    assert_allclose(var, [0.5, 0.5, 0.5])
 
 
-def test_nelson_aalen_step_with_no_one_at_risk_is_zero_quietly():
-    # Documented: no one at risk and no events (0 / 0) takes it to zero,
-    # without a raw numpy warning (principle 22). Kills nelson_aalen.py:96
-    # and :37 (the errstate relaxed).
+def test_nelson_aalen_step_with_no_one_at_risk_keeps_its_value_quietly():
+    # Documented: no one at risk and no events (0 / 0) leaves it unchanged
+    # (#425), without a raw numpy warning (principle 22). Kills the
+    # errstates relaxed.
     r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         R = nonp.nelson_aalen(r, d)
-        nonp.nelson_aalen_variance(r, d)
-    assert_allclose(R, [np.exp(-0.5), np.exp(-0.5), 0.0])
+        var = nonp.nelson_aalen_variance(r, d)
+    assert_allclose(R, np.exp(-0.5) * np.ones(3))
+    assert_allclose(var, [0.25, 0.25, 0.25])
 
 
 def test_snap_is_relative_and_one_in_a_billion():

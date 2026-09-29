@@ -336,8 +336,8 @@ class ARI(RenewalFitMixin):
         validate_nhpp_data(data, dist)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        base_params0 = (
-            self._initial_baseline_params(data, dist) if init is None else None
+        base_params0 = self._default_start(
+            lambda: self._initial_baseline_params(data, dist), init
         )
         res, params = self._fit_restoration_ml(
             data,

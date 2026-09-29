@@ -61,6 +61,7 @@ from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
+    check_finite_event_times,
     design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
@@ -88,6 +89,7 @@ def _validate(
     if x_arr.ndim == 2:
         # Two columns with no interval row: xl == xr on every row.
         x_arr = x_arr[:, 0]
+    check_finite_event_times(x_arr, c_arr)
     Z_arr = np.asarray(Z, dtype=float)
     if Z_arr.ndim == 1:
         Z_arr = Z_arr.reshape(-1, 1)
@@ -310,50 +312,10 @@ class AdditiveHazardsModel(SerialisableMixin):
         kern = np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
         return (kern * dH0[None, :]).sum(axis=1) / bandwidth
 
-    @keeps_query_shape
-    def hf(
-        self,
-        x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
-        bandwidth: "float | None" = None,
-    ) -> npt.NDArray:
-        """
-        Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline.
-
-        The semiparametric baseline is a step cumulative hazard, so the
-        rate requires smoothing (Epanechnikov kernel over the increments;
-        ``bandwidth`` defaults to a normal-reference rule on the event
-        times). Estimates near the boundaries of the observed time range
-        are attenuated by kernel truncation. Past the last observed time
-        the estimate holds (see :meth:`Hf`), so the hazard there is 0.
-        """
-        Z = self._prepare_Z(Z)
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        rate = self._h0_rate(x, bandwidth) + (Z @ self.beta)
-        # A NaN time is 0 in no kernel, so the rate would be beta'Z there.
-        rate = np.where(np.isnan(x), np.nan, rate)
-        return np.where(x > self.x[-1], 0.0, rate)
-
-    @keeps_query_shape
-    def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
-    ) -> npt.NDArray:
-        """
-        Cumulative hazard ``H0(x) + x * beta'Z`` at ``x`` for covariates
-        ``Z`` (one row, or one row per ``x``). The baseline ``H0`` jumps
-        by ``d / S0`` at each event time and, between the grid times,
-        falls continuously by the covariate-mean drift
-        ``beta' Zbar(t)`` (so ``H0`` is not 0 before the first event
-        unless the covariates are centred there). The prediction
-        ``H(x | Z)`` is the same however the covariates are centred.
-
-        Past the last observed time there is no risk set to estimate
-        anything from, so ``Hf`` holds its value there, as the other
-        semi-parametric estimates do (#400).
-        """
-        Z = self._prepare_Z(Z)
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        x = np.where(x > self.x[-1], self.x[-1], x)
+    def _baseline_H(self, x: npt.NDArray) -> npt.NDArray:
+        """The baseline ``H0`` at ``x`` (at most the last grid time): the
+        step at the last grid time at or before ``x``, less the drift
+        accrued since."""
         idx = self._h0_at(x)
         last = self.x.size - 1
         H0 = np.where(idx < 0, 0.0, self.H0[np.clip(idx, 0, last)])
@@ -363,14 +325,115 @@ class AdditiveHazardsModel(SerialisableMixin):
             # grid).
             since = x - np.where(idx < 0, 0.0, self.x[np.clip(idx, 0, last)])
             H0 = H0 - since * self.drift[np.clip(idx + 1, 0, last)]
+        return H0
+
+    def _cumulative_hazard(
+        self, x: npt.NDArray, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """``(H*, H)`` at the times ``x``: the Lin-Ying estimate
+        ``H(x | Z) = H0(x) + x beta'Z`` and its running maximum from time
+        0, ``H*(x) = max(0, max_{0 <= s <= x} H(s | Z))``, the cumulative
+        hazard the model predicts with (#376)."""
+        bz = np.broadcast_to(
+            np.asarray(self._prepare_Z(Z) @ self.beta, dtype=float), x.shape
+        )
+        # Past the last observed time there is no risk set: hold (#400).
+        x_held = np.where(x > self.x[-1], self.x[-1], x)
         # H(t | Z) = H0(t) + integral_0^t beta'Z ds = H0(t) + t * beta'Z.
-        return H0 + x * (Z @ self.beta)
+        H = self._baseline_H(x_held) + x_held * bz
+        # H is linear between the grid times and jumps up (by d / S0) at
+        # them, so its maximum over [0, x] is at x or at a grid time at or
+        # before x, from the left or the right. Both have the slope x_j in
+        # beta'Z, so the larger of the two baseline values is kept.
+        grid = self.x
+        before = np.concatenate([[0.0], grid[:-1]])
+        left = self._baseline_H(before) - (grid - before) * (
+            self.drift if self.drift is not None else 0.0
+        )
+        top = np.maximum(self.H0, left)
+        idx = self._h0_at(x_held)
+        running = np.full(x.shape, -np.inf)
+        values, which = np.unique(bz, return_inverse=True)
+        which = np.ravel(which)
+        for k, value in enumerate(values):
+            at = np.flatnonzero((which == k) & (idx >= 0))
+            peaks = np.maximum.accumulate(top + grid * value)
+            running[at] = peaks[idx[at]]
+        H_star = np.maximum(np.maximum(running, H), 0.0)
+        # Nothing happens before time 0, where the covariate effect starts
+        # (a missing time or covariate stays nan).
+        H_star = np.where(x <= 0, 0.0, H_star)
+        return H_star, H
+
+    @keeps_query_shape
+    def hf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        bandwidth: "float | None" = None,
+    ) -> npt.NDArray:
+        """
+        Hazard rate ``h0(t) + beta'Z`` with a kernel-smoothed baseline,
+        floored at 0, and 0 where the cumulative hazard :meth:`Hf` is
+        held (see there).
+
+        The semiparametric baseline is a step cumulative hazard, so the
+        rate requires smoothing (Epanechnikov kernel over the increments;
+        ``bandwidth`` defaults to a normal-reference rule on the event
+        times). Estimates near the boundaries of the observed time range
+        are attenuated by kernel truncation. Past the last observed time
+        the estimate holds (see :meth:`Hf`), so the hazard there is 0, as
+        it is at and before time 0.
+        """
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        H_star, H = self._cumulative_hazard(x, Z)
+        rate = self._h0_rate(x, bandwidth) + (self._prepare_Z(Z) @ self.beta)
+        # A negative rate is not a hazard; nor is one where Hf is held.
+        rate = np.where((rate < 0) | (H < H_star), 0.0, rate)
+        # A NaN time is 0 in no kernel, so the rate would be beta'Z there.
+        rate = np.where(np.isnan(H_star), np.nan, rate)
+        return np.where((x > self.x[-1]) | (x <= 0), 0.0, rate)
+
+    @keeps_query_shape
+    def Hf(
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+    ) -> npt.NDArray:
+        """
+        Cumulative hazard at ``x`` for covariates ``Z`` (one row, or one
+        row per ``x``): the Lin-Ying estimate ``H(x | Z) = H0(x) + x *
+        beta'Z``, held at its running maximum from time 0. The baseline
+        ``H0`` jumps by ``d / S0`` at each event time and, between the
+        grid times, falls continuously by the covariate-mean drift
+        ``beta' Zbar(t)`` (so ``H0`` is not 0 before the first event
+        unless the covariates are centred there). The prediction
+        ``H(x | Z)`` is the same however the covariates are centred.
+
+        Nothing constrains the additive hazard ``h0(t) + beta'Z`` to be
+        positive, so the estimate can fall -- between the event times, or
+        for a covariate row whose hazard the model takes below 0 -- and
+        ``exp(-H)`` would be a survival that rises, and exceeds 1. The
+        prediction is therefore the smallest non-decreasing cumulative
+        hazard at or above the estimate and 0:
+        ``max(0, max_{0 <= s <= x} H(s | Z))``. It is the estimate
+        wherever the estimate is at its running maximum, and flat (a
+        hazard of 0) where it is not; ``sf`` stays in ``[0, 1]`` and never
+        increases (#376). The estimate is consistent for a
+        non-decreasing truth, and so is its running maximum.
+
+        Before time 0, where the covariate effect starts, ``Hf`` is 0;
+        past the last observed time there is no risk set to estimate
+        anything from, so ``Hf`` holds its value there, as the other
+        semi-parametric estimates do (#400).
+        """
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        return self._cumulative_hazard(x, Z)[0]
 
     @keeps_query_shape
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
-        """Survival ``exp(-Hf(x, Z))``."""
+        """Survival ``exp(-Hf(x, Z))``, in ``[0, 1]`` and non-increasing
+        (see :meth:`Hf`)."""
         return np.exp(-self.Hf(x, Z))
 
     @keeps_query_shape

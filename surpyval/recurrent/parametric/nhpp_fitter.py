@@ -2,10 +2,11 @@ from typing import Callable
 
 from autograd import numpy as np
 from numpy.typing import ArrayLike
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent._bounded import unconstraining_maps
+from surpyval.recurrent._convergence import better_result, warn_unconverged
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
@@ -99,7 +100,8 @@ class NHPPFitter(IntensityModel):
             Likelihood Estimation or 'MSE' for Mean Square Error. Default
             is 'MLE'.
         init: array_like, optional
-            Initial parameters for optimization.
+            Initial parameters for optimization. The default start is
+            tried too, and the better fit kept.
 
         Returns
         -------
@@ -113,8 +115,9 @@ class NHPPFitter(IntensityModel):
                 "how must be 'MLE' or 'MSE'; got {!r}".format(how)
             )
         validate_nhpp_data(data, self)
+        default_init = self.parameter_initialiser(data.x)
         if init is None:
-            param_init = self.parameter_initialiser(data.x)
+            param_init = default_init
         else:
             param_init = np.atleast_1d(np.asarray(init, dtype=float))
             if param_init.shape != (len(self.param_names),):
@@ -142,24 +145,34 @@ class NHPPFitter(IntensityModel):
                 )
             return float(value) if np.isfinite(value) else 1e300
 
-        res = minimize(fun, to_search(np.asarray(param_init, dtype=float)))
-        u_init = res.x
+        ll_func = self.create_negll_func(data) if how == "MLE" else None
 
-        ll_func = None
-        if how == "MSE":
-            params = to_natural(res.x)
+        def search_ll(u: np.ndarray) -> float:
+            assert ll_func is not None
+            with np.errstate(all="ignore"):
+                value = ll_func(to_natural(u))
+            return float(value) if np.isfinite(value) else 1e300
 
-        elif how == "MLE":
-            ll_func = self.create_negll_func(data)
-            natural_ll = ll_func
+        def search(start: np.ndarray) -> OptimizeResult:
+            # The least-squares fit, and for MLE the likelihood searched
+            # from it
+            res = minimize(fun, to_search(np.asarray(start, dtype=float)))
+            if how == "MLE":
+                res = minimize(search_ll, res.x, method="Nelder-Mead")
+            return res
 
-            def search_ll(u: np.ndarray) -> float:
-                with np.errstate(all="ignore"):
-                    value = natural_ll(to_natural(u))
-                return float(value) if np.isfinite(value) else 1e300
-
-            res = minimize(search_ll, u_init, method="Nelder-Mead")
-            params = to_natural(res.x)
+        res = search(param_init)
+        # A start the user gave is followed by the default one, and the
+        # better answer kept: from a start far from the optimum the search
+        # can stay where it began -- Duane from alpha = 7.8e5, where the
+        # intensity overflows -- and that was returned in silence (#429).
+        if init is not None:
+            res = better_result(res, search(default_init))
+        if not (res.success and res.fun < 1e300):
+            warn_unconverged(
+                "The {} fit".format(getattr(self, "name", "NHPP"))
+            )
+        params = to_natural(res.x)
 
         model = ParametricRecurrenceModel()
         model.mcf_hat = mcf_hat
@@ -234,7 +247,8 @@ class NHPPFitter(IntensityModel):
             non-parametric MCF of the data). Default is 'MLE'; the MLE
             search starts from the MSE fit.
         init: array_like, optional
-            Initial parameters for optimization.
+            Initial parameters for optimization. The default start is
+            tried too, and the better fit kept.
         windows: dict, optional
             Gapped (multi-window) observation: a mapping ``{item: [(start,
             end), ...]}`` giving each item's disjoint observation windows,

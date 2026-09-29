@@ -18,6 +18,7 @@ bit-identical to the copies it replaced, so consolidating changed no
 fitted numbers anywhere.
 """
 
+import warnings
 from typing import Any, Callable
 
 import numpy as np
@@ -166,6 +167,56 @@ def log_transformed_cb(
     return cb if bound == "two-sided" else cb[..., 0]
 
 
+def wald_undefined(
+    p_hat: float,
+    var: float,
+    lower: "float | None" = None,
+    upper: "float | None" = None,
+) -> "str | None":
+    """
+    Why a Wald bound on a parameter does not exist, or ``None`` when it
+    does: the variance from the inverse observed information is negative
+    or not finite (the information is not positive definite, typically
+    because the estimate is at or near a boundary of the parameter
+    space), or the estimate lies on the edge of the support that the
+    bound's transformed scale (log or logit) needs it inside of (#411).
+    A zero variance (a parameter fixed at fit time) is not undefined: its
+    interval is the degenerate one at the estimate.
+    """
+    if not np.isfinite(var) or var < 0:
+        return (
+            "its variance from the inverse observed information is "
+            f"{var:.3g}, so the information matrix is not positive "
+            "definite (the estimate is at or near a boundary of the "
+            "parameter space, or the likelihood is not regular there)"
+        )
+    if (lower is not None and p_hat <= lower) or (
+        upper is not None and p_hat >= upper
+    ):
+        return (
+            f"the estimate {p_hat:.6g} is on the edge of its support "
+            f"({lower}, {upper}), where the likelihood is not regular"
+        )
+    return None
+
+
+def warn_wald_undefined(what: str, reason: str, stacklevel: int = 3) -> None:
+    """The one warning a Wald bound that does not exist gives (#411):
+    the bound on ``what`` is undefined because of ``reason``."""
+    warnings.warn(
+        f"The Wald confidence bound on {what} is undefined: {reason}. "
+        "nan is returned; a profile-likelihood or bootstrap interval, "
+        "where the model has one, does not need the variance.",
+        RuntimeWarning,
+        stacklevel=stacklevel + 1,
+    )
+
+
+def param_name(name: "str | None") -> str:
+    """How :func:`warn_wald_undefined` names a parameter."""
+    return "the parameter" if name is None else f"the parameter {name!r}"
+
+
 def wald_bound_on_support(
     p_hat: float,
     var: float,
@@ -173,6 +224,7 @@ def wald_bound_on_support(
     upper: "float | None",
     alpha_ci: float = 0.05,
     bound: str = "two-sided",
+    name: "str | None" = None,
 ) -> npt.NDArray:
     """
     Wald confidence bound(s) on a single fitted parameter, computed on a
@@ -186,8 +238,19 @@ def wald_bound_on_support(
     recurrent-event inference mixin's and the parametric regression
     model's -- shared verbatim; each supplies ``p_hat``/``var`` and the
     parameter's ``(lower, upper)`` from its own bookkeeping.
+
+    Where the bound does not exist (see :func:`wald_undefined`) it is
+    ``nan``, with a warning naming the parameter ``name`` and why; it
+    used to be ``nan`` with only numpy's raw "invalid value encountered
+    in sqrt", or a ``ZeroDivisionError`` for an estimate on the edge of
+    an interval support (#411).
     """
     alpha, signs = bound_signs(alpha_ci, bound)
+    reason = wald_undefined(p_hat, var, lower, upper)
+    if reason is not None:
+        # wald_bound_on_support -> param_cb -> the caller
+        warn_wald_undefined(param_name(name), reason, stacklevel=3)
+        return np.full(signs.shape, np.nan)
     offsets = signs * norm.ppf(1.0 - alpha) * np.sqrt(var)
 
     if lower is not None and upper is not None:

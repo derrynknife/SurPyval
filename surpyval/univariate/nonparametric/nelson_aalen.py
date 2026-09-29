@@ -2,6 +2,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.fleming_harrington import (
+    _check_at_risk,
     _snap,
     _snap_array,
 )
@@ -39,7 +40,9 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
         # A proportion failing that is 0 up to round-off (a Turnbull EM
         # expected count of ~1e-15) is no event, as in Greenwood's formula;
         # left in, it gave a variance where the estimate is still 1.
-        q = np.array([_snap(v) for v in d / r])
+        # A step with no events adds nothing, even with no one at risk
+        # (0 / 0), as the estimate carries its value there (#425).
+        q = np.array([_snap(v) for v in np.where(d == 0, 0.0, d / r)])
         var = np.where(q == 0, 0.0, var)
         var = np.where(np.isfinite(var), var, np.nan)
         return np.cumsum(var)
@@ -73,8 +76,15 @@ def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     R : ndarray
         The survival estimate just after each time, the same length as
         ``r``. Unlike the Kaplan-Meier estimate it stays above zero when
-        the last items at risk all fail; a step with no one at risk and
-        no events (0 / 0) takes it to zero.
+        the last items at risk all fail. A step with no events leaves it
+        unchanged, even with no one at risk (0 / 0), as R's ``survfit``
+        carries the estimate there.
+
+    Raises
+    ------
+    ValueError
+        If a step has events but no one at risk (``d > 0`` where ``r``
+        is not positive).
 
     Examples
     --------
@@ -85,16 +95,24 @@ def nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     >>> nelson_aalen(r, d).round(4)
     array([0.8187, 0.7225, 0.3965])
     """
-    # The Turnbull EM hands over expected counts carrying round-off. Past
-    # the last event the risk set is 0 in exact arithmetic but came out as
-    # 9e-16 on alternate iterations: 0 / 9e-16 = 0 kept the survival up
-    # while 0 / 0 dropped it to zero, so the EM flipped between the two and
-    # never converged. Counts that are whole numbers up to round-off are
-    # taken as those whole numbers, as the Fleming-Harrington does.
+    r, d = _check_at_risk(r, d)
+    return _nelson_aalen(r, d)
+
+
+def _nelson_aalen(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    # ``nelson_aalen`` without the check of its counts, for the Turnbull
+    # EM, whose expected counts carry round-off.
+    # Past the last event the risk set is 0 in exact arithmetic but came
+    # out as 9e-16 on alternate iterations of the EM: 0 / 9e-16 = 0 kept
+    # the survival up while 0 / 0 dropped it to zero, so the EM flipped
+    # between the two and never converged. Counts that are whole numbers
+    # up to round-off are taken as those whole numbers, as the
+    # Fleming-Harrington does, and a step with no events adds no hazard
+    # whatever the risk set: 0 / 0 is no change (#425).
     r = _snap_array(r)
     d = _snap_array(d)
     with np.errstate(divide="ignore", invalid="ignore"):
-        H = np.cumsum(d / r)
+        H = np.cumsum(np.where(d == 0, 0.0, d / r))
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)
     return R

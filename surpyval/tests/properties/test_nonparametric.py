@@ -31,7 +31,6 @@ from surpyval.tests.conformance.checks import (
     permuted,
 )
 from surpyval.tests.conformance.registry import predictions
-from surpyval.tests.properties import known
 from surpyval.tests.properties import strategies as gen
 from surpyval.tests.properties.common import (
     case_for,
@@ -45,9 +44,7 @@ ESTIMATORS = KM_FAMILY + ("Turnbull",)
 
 
 def _turnbull_data(**kw):
-    return gen.xcnt(**kw).filter(
-        lambda d: not known.turnbull_all_right_truncated(d)
-    )
+    return gen.xcnt(**kw)
 
 
 def _data(name):

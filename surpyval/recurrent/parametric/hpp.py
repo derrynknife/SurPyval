@@ -88,7 +88,9 @@ class HPP(CountingProcess):
         ndarray
             The IIF values at specified x.
         """
-        return np.ones_like(x) * rate
+        # NaN at a missing time, like every other intensity (it was the
+        # rate there, #382).
+        return np.where(np.isnan(x), np.nan, 1.0) * rate
 
     # The base contract is variadic (*params); HPP's one parameter
     # is named for clarity, which the checker flags as a narrower
@@ -112,7 +114,7 @@ class HPP(CountingProcess):
         ndarray
             The log(IIF) values at specified x.
         """
-        return np.log(rate) * np.ones_like(x)
+        return np.log(rate) * np.where(np.isnan(x), np.nan, 1.0)
 
     # The base contract is variadic (*params); HPP's one parameter
     # is named for clarity, which the checker flags as a narrower

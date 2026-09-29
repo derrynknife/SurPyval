@@ -504,7 +504,11 @@ to the pointwise one here, a sign that the asymptotic formula is adequate for th
 ``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
 and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value, that of the
 limiting Brownian bridge over the range the band covers, is computed numerically rather than
-simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+simulated, so results are accurate and reproducible. The Hall-Wellner band covers the first to the
+last event; the Nair band starts later, where :math:`a = N\hat{\sigma}^2/(1 + N\hat{\sigma}^2)`
+reaches 0.1 (without censoring, where the estimate falls to about 0.9), and is ``nan`` before that:
+over the first few events the approximation behind it fails, and started at the first event it
+covered only about 89% for a nominal 95%, however large the sample. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
 one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
 outside the range of the data unless the model has a support (``set_support``).
 
@@ -593,8 +597,8 @@ from the same Weibull distribution, whose true hazard is :math:`0.15 (t/10)^{0.5
 The smoothed estimate follows the true rising hazard, drifting low at 12 where few items remain at
 risk, while ``hf()`` returns increments over 3-unit steps (roughly three times the rate). Note that
 the first two ``hf()`` values are equal: the first point has nothing before it to difference from, so
-it repeats the second. ``df()`` is ``hf()`` times the survival, so it is (roughly) a grid-dependent
-probability of failing in each step rather than a density. ``smoothed_hf()`` is ``nan`` outside the
+it repeats the second. ``df()`` is the drop in the survival over the same step, so it is a
+grid-dependent probability of failing in each step rather than a density. ``smoothed_hf()`` is ``nan`` outside the
 observed range and, if ``bandwidth`` is omitted, uses one eighth of that range.
 
 .. jupyter-execute::

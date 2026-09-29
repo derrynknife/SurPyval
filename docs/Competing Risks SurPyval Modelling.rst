@@ -940,10 +940,12 @@ method is fast, even with ties this heavy.
 With ``model="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:
 
-- ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``,
-  :math:`\sum_{x_j \le x} \Delta\hat{\Lambda}_{k,0}(x_j) e^{Z\hat\beta_k}
-  \hat{S}(x_{j-1} \mid Z)` with :math:`\hat{S}` the product-limit all-cause
-  survival at ``Z``;
+- ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``:
+  over each step :math:`x_j` the unit, event-free with probability
+  :math:`\hat{S}(x_{j-1} \mid Z) = e^{-H}`, fails with probability
+  :math:`1 - e^{-\Delta H}`, and cause :math:`k` takes the share
+  :math:`\Delta H_k / \Delta H` of it (the matrix-exponential form R's
+  ``survival`` uses for a multi-state ``coxph``);
 - ``Hf``/``hf`` -- the cause-specific cumulative hazard and its increment at
   the most recent event time; with ``event=None`` they are summed over causes,
   each cause with its own coefficients;
@@ -963,17 +965,15 @@ one covariate vector ``Z`` and an optional ``event``:
     print("sum of CIFs          :", np.round(cif1 + cif2, 4))
     print("1 - all-cause sf     :", np.round(1 - csph.sf(times, Z=z), 4))
 
-The CIFs add up to the all-cause failure probability. Exactly, in fact, for
-the product-limit survival the CIFs are built on (so their total never exceeds
-one); ``sf`` reports the Cox survival :math:`e^{-H}`, which is very slightly
-higher, so ``1 - sf`` sits just below the sum.
+The CIFs add up to the all-cause failure probability ``1 - sf``, exactly, so
+their total never exceeds one.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     _gap = (cif1 + cif2) - (1 - csph.sf(times, Z=z))
-    assert np.all((_gap > 0) & (_gap < 0.002)), _gap
+    assert np.all(np.abs(_gap) < 1e-12), _gap
 
 With ``model="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
 an ``event`` and come from each cause's Fine-Gray model; ``hf`` and ``df``

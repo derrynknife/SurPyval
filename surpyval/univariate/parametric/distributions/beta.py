@@ -1,7 +1,6 @@
 import numpy.typing as npt
-from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
-from scipy.special import betaincinv, digamma
+from scipy.special import betaincinv, betaln, digamma
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -11,8 +10,22 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
+from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from .beta4 import _power_log
+
+
+def _log_beta(alpha: Boxable, beta: Boxable) -> Boxable:
+    """ln B(alpha, beta), exactly -ln(alpha) when beta is 1 (and the
+    mirror), where the density is a power of x alone: at alpha = 1/2,
+    beta = 1 the log density at x = 1/4 is then exactly 0."""
+    return np.where(
+        beta == 1.0,
+        -np.log(alpha),
+        np.where(alpha == 1.0, -np.log(beta), abetaln(alpha, beta)),
+    )
 
 
 class Beta_(OptimisedFitMixin, ParametricFitter):
@@ -77,7 +90,12 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.sf(x, 3, 4)
         array([0.98415, 0.90112, 0.74431, 0.54432, 0.34375])
         """
-        return 1 - self.ff(x, alpha, beta)
+        # 1 - F where F is below 1/2, and the upper tail itself (from its
+        # log) where it is small: 1 - F was 0 where R is 1e-30 (#458).
+        ff = self.ff(x, alpha, beta)
+        return np.where(
+            ff < 0.5, 1.0 - ff, np.exp(self.log_sf(x, alpha, beta))
+        )
 
     def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -147,7 +165,9 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.df(x, 3, 4)
         array([0.4374, 1.2288, 1.8522, 2.0736, 1.875 ])
         """
-        return (x ** (alpha - 1) * (1 - x) ** (beta - 1)) / abeta(alpha, beta)
+        # From the log density: B(1000, 1000) underflows, and the ratio
+        # of the powers to it was 0/0 (#458).
+        return np.exp(self.log_df(x, alpha, beta))
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -181,7 +201,11 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.hf(x, 3, 4)
         array([0.44444444, 1.36363636, 2.48847926, 3.80952381, 5.45454545])
         """
-        return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
+        # On the log scale: df/sf was 0/0 where both underflow, and inf
+        # where only sf did (#458). At x = 1 nothing survives: inf.
+        x = np.asarray(x, dtype=float)
+        log_hf = self.log_df(x, alpha, beta) - self.log_sf(x, alpha, beta)
+        return np.where(x >= 1.0, np.inf, np.exp(log_hf))
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -215,7 +239,7 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.Hf(x, 3, 4)
         array([0.01597695, 0.10411684, 0.29529766, 0.60821797, 1.06784063])
         """
-        return -np.log(self.sf(x, alpha, beta))
+        return -self.log_sf(x, alpha, beta)
 
     def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -246,7 +270,18 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         >>> Beta.qf(u, 3, 4)
         array([0.20090888, 0.26864915, 0.32332388, 0.37307973, 0.42140719])
         """
-        return betaincinv(alpha, beta, u)
+        u = np.asarray(u, dtype=float)
+        x = betaincinv(alpha, beta, u)
+        # scipy stops at the smallest normal double where the quantile is
+        # far below it (1e-29699 at shapes 1e-3). There I_x(a, b) is
+        # x^a / (a B(a, b)) to first order, so log x is known (#458).
+        # The next term is a relative (b - 1) a x / (a + 1), so the first
+        # order is exact to double precision below x (|b| + 1) of 1e-17.
+        with np.errstate(divide="ignore"):
+            log_x = (np.log(u) + np.log(alpha) + betaln(alpha, beta)) / alpha
+        small = np.exp(log_x)
+        exact = small * (np.abs(beta) + 1.0) < 1e-17
+        return np.where(exact | ~(x > np.finfo(float).tiny), small, x)
 
     def mean(self, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -353,14 +388,22 @@ class Beta_(OptimisedFitMixin, ParametricFitter):
         )
 
     def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        # At an edge the limit: -inf, the constant or inf as the shape there
+        # is above, at or below 1 (0 * log 0 was NaN, #458).
+        x = np.asarray(x, dtype=float)
         return (
-            (alpha - 1) * np.log(x)
-            + (beta - 1) * np.log1p(-x)
-            - abetaln(alpha, beta)
+            _power_log(alpha - 1.0, x)
+            + _power_log(beta - 1.0, 1.0 - x)
+            - _log_beta(alpha, beta)
         )
 
     def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         return abetaincln(alpha, beta, x)
+
+    def log_sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
+        # The upper tail's own log: log(1 - F) lost R below 1e-16 and was
+        # -inf where R underflowed (#458).
+        return abetainccln(alpha, beta, x)
 
     def mpp_y_transform(self, y: npt.NDArray, *params: Boxable) -> Boxable:
         return self.qf(y, *params)

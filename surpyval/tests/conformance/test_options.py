@@ -44,6 +44,7 @@ from surpyval.tests.conformance.registry import (
     ALPHAS,
     CASES,
     KNOWN_INCONSISTENCIES,
+    NON_STRICT,
     Q_PROBS,
     WITH_COVARIATES,
     call,
@@ -80,9 +81,12 @@ def _bound_params(prop, where=None):
             if where is not None and not where(case, spec):
                 continue
             marks = list(param.marks)
-            reason = case.xfail.get(f"{prop}[{spec.name}]")
+            key = f"{prop}[{spec.name}]"
+            reason = case.xfail.get(key)
             if reason:
-                marks.append(pytest.mark.xfail(strict=True, reason=reason))
+                # Non-strict where the outcome depends on the build
+                strict = key not in NON_STRICT.get(case.name, ())
+                marks.append(pytest.mark.xfail(strict=strict, reason=reason))
             if spec.slow:
                 marks.append(pytest.mark.slow)
             params.append(
@@ -470,7 +474,7 @@ def test_ff_and_Hf_bounds_are_the_sf_bounds_transformed(case, spec):
                 sf = bounds(case, spec, "two-sided", alpha, "sf")
                 got = bounds(case, spec, "two-sided", alpha, fname)
                 np.testing.assert_allclose(
-                    got,
+                    _underflow(got, g(sf[..., ::-1])),
                     g(sf[..., ::-1]),
                     rtol=max(spec.rtol, 1e-10),
                     atol=1e-12,
@@ -479,13 +483,25 @@ def test_ff_and_Hf_bounds_are_the_sf_bounds_transformed(case, spec):
                 if not spec.sides:
                     continue
                 for side, other in (("lower", "upper"), ("upper", "lower")):
+                    want = g(bounds(case, spec, other, alpha, "sf"))
                     np.testing.assert_allclose(
-                        bounds(case, spec, side, alpha, fname),
-                        g(bounds(case, spec, other, alpha, "sf")),
+                        _underflow(
+                            bounds(case, spec, side, alpha, fname), want
+                        ),
+                        want,
                         rtol=max(spec.rtol, 1e-10),
                         atol=1e-12,
                         err_msg=f"{fname} {side} at {alpha}",
                     )
+
+
+def _underflow(got, want):
+    """``got`` with inf where ``want`` is -log of an sf bound that
+    underflowed to 0: an Hf bound computed on its own scale is finite
+    there (#418), and must be past -log of the smallest double."""
+    under = np.isposinf(want) & np.isfinite(got)
+    assert np.all(got[under] > 744.0), got[under]
+    return np.where(under, np.inf, got)
 
 
 def _function_bound(case, spec):

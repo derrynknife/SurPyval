@@ -259,8 +259,8 @@ covariates. Given **one** covariate row they return the curve over all the
 times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
 time per row, which is what you want for scoring a data set but not for drawing
 several curves. To draw curves for several covariate values, call once per
-value. (Buckley-James predictions take a single covariate row only, and the
-survival tree and forest return a full grid; both are noted in their sections.)
+value. (The survival tree and forest return a full grid instead; see their
+section.)
 A small simulated data set shows both forms:
 
 .. jupyter-execute::
@@ -1182,16 +1182,19 @@ for it.
 .. note::
 
    An additive hazard can go **negative** when :math:`\beta' Z` is sufficiently
-   negative — nothing constrains :math:`h_0(x) + \beta' Z > 0`. When that
-   happens the fitted cumulative hazard is no longer monotone and the implied
-   survival can rise above 1. SurPyval returns the raw estimate without
-   clamping; a survival above 1 is a signal that the additive model is a poor
-   description at that covariate value (or that you are outside the range where
-   it is well behaved), and is best read as a caution rather than a prediction.
-   This is an inherent property of additive-hazards models, not a defect of the
-   fit. When covariate effects are strongly protective, a proportional-hazards
-   model — whose exponential form keeps the hazard positive — is often the
-   safer choice.
+   negative — nothing constrains :math:`h_0(x) + \beta' Z > 0` — and the
+   Lin-Ying estimate also dips between the event times, where its baseline
+   drifts down by :math:`\beta'\bar Z(t)`. ``AdditiveHazards`` therefore
+   predicts with the running maximum of its estimate from time 0: ``Hf`` is
+   held where the estimate falls, ``hf`` is 0 there, and ``sf`` stays in
+   :math:`[0, 1]` and never rises. Where ``Hf`` is held for long (a flat
+   survival curve), the model says the covariate value's hazard is negative
+   there: the additive model is a poor description at that covariate value,
+   or you are outside the range where it is well behaved. When covariate
+   effects are strongly protective, a proportional-hazards model — whose
+   exponential form keeps the hazard positive — is often the safer choice.
+   The parametric ``AH`` models below do not hold their cumulative hazard
+   yet: their survival can still exceed 1 where the hazard is negative.
 
 Just as Cox has parametric proportional-hazards counterparts (the next
 section), there is also a *parametric* additive-hazards model — a parametric

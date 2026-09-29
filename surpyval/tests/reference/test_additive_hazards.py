@@ -25,7 +25,16 @@ def test_lin_ying_matches_timereg_aalen_const():
     model = sp.AdditiveHazards.fit(d["x"], Z, c=d["c"])
     assert_allclose(model.beta, ref["gamma"], **EXACT)
     assert_allclose(model.covariance(), ref["var_gamma"], **EXACT)
-    # The cumulative baseline B0(t) (timereg's cum): -log S(t | Z = 0).
+    # The cumulative baseline B0(t) (timereg's cum), the estimate at
+    # Z = 0 at the event times: the fitted H0 on its grid.
     t = ref["cum_time"][1:]
-    H0 = -np.log(model.sf(t, np.zeros((t.size, 2))))
-    assert_allclose(H0, ref["cum_baseline"][1:], **EXACT)
+    at = np.searchsorted(model.x, t)
+    assert_allclose(model.x[at], t, rtol=0, atol=0)
+    assert_allclose(model.H0[at], ref["cum_baseline"][1:], **EXACT)
+    # B0 is negative early on (the drift of a positive beta'Zbar), where
+    # the model predicts with its running maximum from 0 (#376): -log S is
+    # max(0, max_{s <= t} B0(s)) there.
+    assert np.min(ref["cum_baseline"]) < 0
+    H = -np.log(model.sf(t, np.zeros((t.size, 2))))
+    envelope = np.maximum(np.maximum.accumulate(model.H0[at]), 0.0)
+    assert_allclose(H, envelope, **EXACT)

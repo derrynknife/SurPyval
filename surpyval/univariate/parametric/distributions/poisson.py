@@ -1,7 +1,8 @@
 from typing import Any
 
 import numpy.typing as npt
-from autograd.scipy.special import gammainc, gammaincc, gammaln
+from autograd.numpy.numpy_boxes import ArrayBox
+from autograd.scipy.special import gammaincc, gammaln
 from scipy.stats import poisson
 
 from surpyval import np
@@ -15,7 +16,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.autograd_gamma_compat import gammainccln, gammaincln
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._discrete_tails import poisson_log_tails, refine_quantile
 
 
 class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
@@ -72,8 +76,10 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         # only reaches that far by accident: its first argument is
         # floor(k) + 1, which is 0 at k = -1 (where gammainc returns 1) but
         # negative below that, where it returns NaN.
-        safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
-        return np.where(x < 0.0, 1.0, gammainc(safe_a, mu))
+        # 1 - F where F is below 1/2, and the upper tail itself (from its
+        # log) where it is small (#442).
+        ff = self.ff(x, mu)
+        return np.where(ff < 0.5, 1.0 - ff, np.exp(self.log_sf(x, mu)))
 
     def ff(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = P(T \le k)`."""
@@ -86,7 +92,30 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def hf(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
-        return self.df(x, mu) / self.sf(x - 1.0, mu)
+        # On the log scale: df/sf was 0/0 = nan once both underflowed
+        # (#444).
+        log_hf = self.log_df(x, mu) - self.log_sf(x - 1.0, mu)
+        if isinstance(mu, ArrayBox):
+            return np.exp(log_hf)
+        # Beyond the mean both logs grow like k log k and their difference
+        # loses the hazard's digits. There R(k - 1) = P(T = k) S with
+        # S = sum_n mu^n / ((k + 1) ... (k + n)), so h = 1 / S exactly;
+        # its terms shrink by mu / (k + n) (values only: a fit
+        # differentiates the log form above).
+        x = np.asarray(x, dtype=float)
+        k = np.floor(x)
+        tail = k > 2.0 * mu
+        if np.any(tail):
+            kt = np.where(tail, k, 2.0 * mu + 1.0)
+            total = np.ones_like(kt)
+            term = np.ones_like(kt)
+            for n in range(1, 200):
+                term = term * mu / (kt + n)
+                total = total + term
+                if np.all(term <= 1e-17 * total):
+                    break
+            log_hf = np.where(tail, -np.log(total), log_hf)
+        return np.exp(log_hf)
 
     def Hf(self, x: Numeric, mu: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
@@ -94,7 +123,15 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, mu: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
-        return poisson.ppf(u, mu)
+        u_arr = np.asarray(u, dtype=float)
+        k = refine_quantile(
+            poisson.ppf(u_arr, mu),
+            u_arr,
+            lambda k: self.log_sf(k, mu),
+            lambda k: self.log_ff(k, mu),
+            first=0.0,
+        ).reshape(u_arr.shape)
+        return k[()] if k.ndim == 0 else k
 
     def mean(self, mu: Boxable) -> Boxable:
         r"""Mean count, :math:`E[T] = \mu`.
@@ -154,9 +191,30 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
             x < 0.0, -np.inf, x * np.log(mu) - mu - gammaln(x + 1.0)
         )
 
-    def log_sf(self, x: Numeric, mu: Boxable) -> Boxable:
+    def _log_tails(self, x: Numeric, mu: Boxable) -> tuple[Boxable, Boxable]:
+        """log R and log F: the incomplete gamma P(k + 1, mu) and its
+        complement on their own log scale (log(gammainc) was capped at
+        -708, #443, and lost R near 1, #442), with the small tail summed
+        from the mass where scipy's is not accurate (see
+        ``poisson_log_tails``; values only, a fit differentiates the
+        incomplete gamma)."""
         safe_a = np.where(x < 0.0, 1.0, np.floor(x) + 1.0)
-        return np.where(x < 0.0, 0.0, np.log(gammainc(safe_a, mu)))
+        log_sf = gammaincln(safe_a, mu)
+        log_ff = gammainccln(safe_a, mu)
+        if not isinstance(mu, ArrayBox):
+            log_sf, log_ff = poisson_log_tails(
+                np.where(x < 0.0, -1.0, safe_a - 1.0), mu, log_sf, log_ff
+            )
+        return (
+            np.where(x < 0.0, 0.0, log_sf),
+            np.where(x < 0.0, -np.inf, log_ff),
+        )
+
+    def log_sf(self, x: Numeric, mu: Boxable) -> Boxable:
+        return self._log_tails(x, mu)[0]
+
+    def log_ff(self, x: Numeric, mu: Boxable) -> Boxable:
+        return self._log_tails(x, mu)[1]
 
 
 Poisson = Poisson_("Poisson")

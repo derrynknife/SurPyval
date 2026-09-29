@@ -222,8 +222,8 @@ class ARA(RenewalFitMixin):
         validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        dist_params0 = (
-            self._initial_dist_params(data, dist) if init is None else None
+        dist_params0 = self._default_start(
+            lambda: self._initial_dist_params(data, dist), init
         )
         res, params = self._fit_restoration_ml(
             data,

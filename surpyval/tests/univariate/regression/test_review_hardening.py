@@ -214,6 +214,7 @@ def test_degenerate_tvc_fit_degrades_instead_of_crashing():
     xr = np.array([1.0, 2.0, 1.0, 2.0])
     c = np.array([1, 0, 1, 0])
     Z = np.array([[1.0], [1.0], [1.0], [1.0]])
-    m = CoxPH.fit_tvc(i, xl, xr, c, Z)
-    # Singular information: NaN p-values are the correct signal.
-    assert m.p_values is not None
+    # A constant covariate has no coefficient in a Cox model: the fit
+    # refuses it by name (#409); it used to return NaN p-values.
+    with pytest.raises(ValueError, match=r"column\(s\) \[0\]"):
+        CoxPH.fit_tvc(i, xl, xr, c, Z)

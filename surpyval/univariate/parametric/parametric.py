@@ -19,6 +19,11 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt
 from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.linalg import (
+    param_name,
+    wald_undefined,
+    warn_wald_undefined,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -561,7 +566,12 @@ class Parametric(
           be found is ``nan``, with a warning.
 
         A parameter fixed at fit time is known, so both methods give the
-        degenerate interval at its value.
+        degenerate interval at its value. A Wald bound does not exist
+        where the parameter's variance (from the inverse observed
+        information) is negative -- the information is not positive
+        definite, typically because the estimate is at or near a boundary
+        of the parameter space -- or where the estimate is on the edge of
+        its support: it is ``nan`` there, with a warning saying why.
 
         Parameters
         ----------
@@ -647,6 +657,14 @@ class Parametric(
                 "bound must be 'two-sided', 'lower' or 'upper'; got "
                 f"{bound!r}"
             )
+
+        # The edge only matters to the log and logit scales used below.
+        edges = param_bounds if param_bounds in ((0, None), (0, 1)) else ()
+        reason = wald_undefined(p_hat, var, *edges)
+        if reason is not None:
+            # Was nan with numpy's raw sqrt warning alone (#411).
+            warn_wald_undefined(param_name(name), reason, stacklevel=2)
+            return np.full(bounds.shape, np.nan)
 
         if param_bounds == (0, None):
             exponent = z(alpha) * np.sqrt(var) / p_hat
@@ -1150,6 +1168,11 @@ class Parametric(
             # every sibling method returned a numpy scalar. ``[()]`` is a
             # no-op on a real array and unwraps the 0-d case.
             return out[()]
+        elif self.dist.discrete:
+            # A discrete hazard is conditioned on survival to the step
+            # before, h(k) = P(T = k) / R(k - 1), as the distributions'
+            # own hf; df / sf(k) disagreed with it for an LFP or ZI model.
+            return self.df(x) / self.sf(x - 1.0)
         else:
             return self.df(x) / self.sf(x)
 
@@ -1741,6 +1764,12 @@ class Parametric(
             will be calculated
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
             The function on which the confidence bound will be calculated.
+            The Wald bounds on ``sf``, ``ff`` and ``Hf`` come from one bound
+            on the logit of ``sf``; those on ``hf`` and ``df`` are on the log
+            scale (the logit scale for a discrete distribution, whose hazard
+            and mass are probabilities), and are 0 where the rate is 0. Where
+            the delta-method variance is negative (the covariance is not
+            positive definite) a Wald bound is ``nan``, with a warning.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
@@ -1946,6 +1975,15 @@ class Parametric(
             # starts and methods are tried in turn, each result is checked
             # to lie inside the likelihood region, and if none succeeds
             # the bound is nan, with a warning, rather than a wrong number.
+            #
+            # The estimate is inside the region, so a bound is at least as
+            # extreme as g there. A search that ends short of it has
+            # stopped at a stationary point of g (a density at x peaks in
+            # the scale, and a warm start can sit on the peak): a Rayleigh
+            # df lower bound of 0.0502 above the estimate 0.0359 (#421).
+            # Such a result is passed over for the next start.
+            g_hat = g(time, theta_hat)
+            reach = sign * g_hat + 1e-10 * max(abs(g_hat), 1e-300)
             attempts = [(warm, "SLSQP")]
             if not np.array_equal(warm, theta_hat):
                 attempts.append((theta_hat, "SLSQP"))
@@ -1961,7 +1999,7 @@ class Parametric(
                     )
                 except (ValueError, np.linalg.LinAlgError):
                     continue
-                if feasible(res):
+                if feasible(res) and sign * g(time, res.x) <= reach:
                     return g(time, res.x), res.x
             failed.append(float(time))
             return np.nan, warm
@@ -1990,8 +2028,9 @@ class Parametric(
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                # _cb_lr -> cb -> the query-shape wrapper -> the caller
-                stacklevel=4,
+                # _cb_lr -> cb -> the query-shape and renamed-argument
+                # wrappers -> the caller
+                stacklevel=5,
             )
 
         inv = np.argsort(order)
@@ -2072,7 +2111,32 @@ class Parametric(
     def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
-        return np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        var = np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
+        # Rounding can leave a zero variance (a flat direction, or a point
+        # outside the support) a hair below zero; only a variance
+        # negative beyond it says the covariance is not positive definite.
+        scale = np.einsum("ij,jk,ik->i", abs(jac), abs(ctx.cov), abs(jac))
+        return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
+
+    def _cb_sd(self, var: Any, x: Any, on: str) -> Any:
+        """The delta-method standard error, ``sqrt(var)``, with one
+        warning where the variance is negative (#411): the covariance is
+        not positive definite, so no Wald bound exists there, and the
+        bound is nan. It used to be a silent nan."""
+        bad = ~(var >= 0)
+        if np.any(bad):
+            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))[bad]
+            warn_wald_undefined(
+                f"{on} at x = {where.tolist()}",
+                "its delta-method variance is negative or not finite, so "
+                "the parameter covariance is not positive definite (the "
+                "estimate is at or near a boundary of the parameter space, "
+                "or the likelihood is not regular there)",
+                # _cb_sd -> the bound helper -> cb -> the query-shape and
+                # renamed-argument wrappers -> the caller
+                stacklevel=6,
+            )
+        return np.sqrt(np.where(bad, np.nan, var))
 
     def _cb_sf_bound(
         self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
@@ -2087,18 +2151,14 @@ class Parametric(
         def sf_func(phi: npt.NDArray) -> Any:
             return self._cb_full_sf(x, phi, ctx)
 
-        var_R = self._cb_delta_var(sf_func, ctx)
+        sd_R = self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
         R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
         if bound == "two-sided":
-            diff = (
-                z(alpha_ci / 2)
-                * np.sqrt(var_R)
-                * np.array([1.0, -1.0]).reshape(2, 1)
-            )
+            diff = z(alpha_ci / 2) * sd_R * np.array([1.0, -1.0]).reshape(2, 1)
         elif bound == "upper":
-            diff = z(alpha_ci) * np.sqrt(var_R)
+            diff = z(alpha_ci) * sd_R
         else:
-            diff = -z(alpha_ci) * np.sqrt(var_R)
+            diff = -z(alpha_ci) * sd_R
 
         with np.errstate(all="ignore"):
             exponent = diff / (R_hat * (1 - R_hat))
@@ -2117,22 +2177,36 @@ class Parametric(
         Both are non-negative, so the bound is computed on the log scale to
         keep the result positive. The delta method is applied directly to the
         rate function rather than differentiating the ``Hf`` bound curve.
+        The hazard is the model's own: ``df(x) / sf(x)``, or for a discrete
+        distribution ``df(k) / sf(k - 1)`` (#414). Where the rate is 0 --
+        below the (offset) support, or at a discrete ``k`` with no mass --
+        both bounds are 0 (#413).
         """
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = t - self.gamma
+        below = xg < s0
+        # Evaluated just inside the support there (and then replaced), so
+        # a negative argument cannot put a nan in the Jacobian (#256).
+        xg = np.where(below, s0 + 1e-10, xg)
 
         def density(phi: npt.NDArray) -> Any:
             core, p, f0 = self._cb_unpack(phi, ctx)
-            return (p - f0) * self.dist.df(t - self.gamma, *core)
+            base = np.where(below, 0.0, self.dist.df(xg, *core))
+            return (p - f0) * base
 
         if on == "hf":
+            # The survival that conditions the hazard: to the step before
+            # for a discrete distribution, as its hf is defined.
+            t_sf = t - 1.0 if self.dist.discrete else t
 
             def func(phi: npt.NDArray) -> Any:
-                return density(phi) / self._cb_full_sf(t, phi, ctx)
+                return density(phi) / self._cb_full_sf(t_sf, phi, ctx)
 
         else:
             func = density
 
         g_hat = func(ctx.phi_hat)
-        var_g = self._cb_delta_var(func, ctx)
+        sd_g = self._cb_sd(self._cb_delta_var(func, ctx), t, on)
 
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
@@ -2141,7 +2215,17 @@ class Parametric(
         else:
             diff = z(alpha_ci)
 
-        cb = g_hat * np.exp(diff * np.sqrt(var_g) / g_hat)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if self.dist.discrete:
+                # A discrete hazard and mass are probabilities: the logit
+                # scale keeps their bounds in [0, 1], as for sf.
+                exponent = -diff * sd_g / (g_hat * (1 - g_hat))
+                cb = g_hat / (g_hat + (1 - g_hat) * np.exp(exponent))
+                cb = np.where(np.broadcast_to(g_hat == 1.0, cb.shape), 1.0, cb)
+            else:
+                cb = g_hat * np.exp(diff * sd_g / g_hat)
+        # Neither scale has a point at a rate of 0: the bounds are 0.
+        cb = np.where(np.broadcast_to(g_hat == 0.0, cb.shape), 0.0, cb)
         if bound == "two-sided":
             cb = cb.T
         return cb

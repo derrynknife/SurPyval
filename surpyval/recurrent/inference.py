@@ -241,4 +241,6 @@ class LikelihoodInferenceMixin:
         p_hat = float(self._mle[idx])
         var = float(self.covariance()[idx, idx])
         lower, upper = self._parameter_bounds()[idx]
-        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
+        return wald_bound_on_support(
+            p_hat, var, lower, upper, alpha_ci, bound, name=name
+        )

@@ -535,17 +535,20 @@ argument is passed on as the Cox tie-handling ``method``, ``"efron"`` by
 default as for ``CoxPH``, and the baseline follows it (Efron's tie correction
 after an Efron fit, Breslow's estimator otherwise; the two agree when no
 failure times are tied). The CIF at a covariate vector :math:`Z` is then
-assembled exactly as in the Aalen-Johansen formula, but with covariate-specific
-hazards:
+assembled step by step from the covariate-specific hazard increments
+:math:`\Delta\hat{\Lambda}_l(x_j \mid Z) = \Delta\hat{\Lambda}_{l,0}(x_j)
+e^{Z\hat{\beta}_l}`, with :math:`\Delta\hat{\Lambda}(x_j \mid Z)` their sum
+over the causes:
 
 .. math::
 
     \hat{F}_k(t \mid Z) = \sum_{x_j \leq t}
-        \Delta\hat{\Lambda}_{k,0}(x_j)\, e^{Z\hat{\beta}_k}\,
-        \hat{S}(x_{j-1} \mid Z),
+        \hat{S}(x_{j-1} \mid Z)\,
+        \frac{\Delta\hat{\Lambda}_k(x_j \mid Z)}{\Delta\hat{\Lambda}(x_j \mid Z)}
+        \Big(1 - e^{-\Delta\hat{\Lambda}(x_j \mid Z)}\Big),
     \qquad
-    \hat{S}(t \mid Z) = \prod_{x_j \leq t}\Big(1 - \sum_{l=1}^{m}
-        \Delta\hat{\Lambda}_{l,0}(x_j)\, e^{Z\hat{\beta}_l}\Big).
+    \hat{S}(t \mid Z) = \exp\Big(-\sum_{l=1}^{m}
+        \hat{\Lambda}_{l,0}(t)\, e^{Z\hat{\beta}_l}\Big).
 
 The formula shows the catch in interpreting cause-specific coefficients: the
 incidence of cause :math:`k` depends on *every* cause's coefficients through
@@ -553,16 +556,17 @@ incidence of cause :math:`k` depends on *every* cause's coefficients through
 (:math:`\beta_k > 0`) and yet lower its incidence, if it raises a competing
 cause's hazard even more.
 
-The survival weight is a *product limit*, for the same reason as in the
-Aalen-Johansen estimator: only then do the increments telescope, so that the
-cause-specific CIFs sum to exactly :math:`1 - \hat{S}(t \mid Z)` and never
-exceed one. At a covariate value far from the data a step's total hazard
-increment :math:`\sum_l \Delta\hat{\Lambda}_{l,0}\, e^{Z\hat{\beta}_l}` can
-exceed one (a small risk set times a large multiplier); such a step exhausts
-the survivors, and each cause takes its proportional share of them. The model's
-``sf`` is the Cox survival :math:`\exp(-\sum_l \hat{\Lambda}_{l,0}(t)
-e^{Z\hat{\beta}_l})`, which is very close to the product limit when the
-increments are small.
+Each step is the Aalen-Johansen step with the transition probabilities of the
+matrix exponential of that step's hazards, which is how R's ``survival``
+computes the state probabilities of a multi-state ``coxph``; SurPyval matches
+it to rounding. A unit still event-free before the step fails over it with
+probability :math:`1 - e^{-\Delta\hat{\Lambda}}`, and each cause takes its
+share of that. The increments telescope, so the cause-specific CIFs sum to
+exactly :math:`1 - \hat{S}(t \mid Z)`, the model's ``ff``, and never exceed
+one, even at a covariate value far from the data, where a step's total hazard
+increment can exceed one (a small risk set times a large multiplier). The
+plain product limit :math:`\prod (1 - \Delta\hat{\Lambda})` would need a
+clip there, and would not be the survival ``sf`` reports.
 
 The Fine-Gray model in detail
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -731,51 +735,49 @@ Its variance is not the hypergeometric variance of an ordinary log-rank test:
 the risk sets :math:`R_g` are themselves estimates, built from each group's
 incidence and survival, so failures from the *competing* causes add
 variability too. Gray linearises :math:`U` in each group's counting-process
-martingales, of the cause and of the competing causes, which gives
+martingales, of the cause and of the competing causes, under the null
+hypothesis. With :math:`n_g(\tau) = Y_g(\tau)/\hat{S}_g(\tau^-)` (the group
+size times its censoring survival), :math:`n = \sum_g n_g`, and
+:math:`\hat{F}^0` the pooled CIF of the cause, which steps by
+:math:`d(\tau)/n(\tau)`, this gives
 
 .. math::
 
-    V_{gh} = \sum_r \sum_u \Big[A_{gr}(u)\,A_{hr}(u)\,d_{r}(u)
-             + B_{gr}(u)\,B_{hr}(u)\,d^{c}_{r}(u)\Big],
-
-with :math:`d_r` and :math:`d^c_r` the failures from the cause and from the
-competing causes in group :math:`r` at time :math:`u`,
+    V_{gh} = \sum_r \sum_u \Big[A_{gr}(u)\,A_{hr}(u)\,w_r(u)
+             + B_{gr}(u)\,B_{hr}(u)\,w^{c}_r(u)\Big],
 
 .. math::
 
-    A_{gr}(u) &= \frac{c_{gr}(u)}{R_r(u)}
-                - \frac{\hat{F}^c_r(u)\,Q_{gr}(u)}{Y_r(u)}, \qquad
-    B_{gr}(u) = -\frac{\{1 - \hat{F}^0(u)\}\,Q_{gr}(u)}{Y_r(u)}, \\
-    Q_{gr}(u) &= \sum_{\tau > u} c_{gr}(\tau)\,
-                 \frac{d(\tau)/R(\tau)}{1 - \hat{F}^0(\tau^-)}, \qquad
-    c_{gr}(\tau) = W(\tau)\,R_g(\tau)\Big[\delta_{gr}
-                 - \frac{R_r(\tau)}{R(\tau)}\Big],
+    A_{gr}(u) &= a_{gr}(u) + \Big(1 - \frac{1 - \hat{F}^0(u)}{\hat{S}_r(u)}\Big)
+                Q_{gr}(u), \qquad
+    B_{gr}(u) = \frac{1 - \hat{F}^0(u)}{\hat{S}_r(u)}\,Q_{gr}(u), \\
+    Q_{gr}(u) &= \sum_{\tau > u} a_{gr}(\tau)\,
+                 \frac{d(\tau)/n(\tau)}{1 - \hat{F}^0(\tau^-)}, \qquad
+    a_{gr}(\tau) = W(\tau)\,n_g(\tau)\Big[\delta_{gr}
+                 - \frac{n_r(\tau)}{n(\tau)}\Big],
 
-where :math:`\hat{F}^c_r` is group :math:`r`'s cumulative incidence of the
-competing causes and :math:`\hat{F}^0(t) = 1 - \prod_{\tau \le t}\{1 -
-d(\tau)/R(\tau)\}` Gray's pooled CIF of the cause. Dropping one group to
-make :math:`V` invertible, the statistic :math:`U^{\top} V^{-1} U` is
-referred to a :math:`\chi^2` distribution with (number of groups
-:math:`- 1`) degrees of freedom. The weight :math:`W(\tau) = \{1 -
-\hat{F}^0(\tau^-)\}^{\rho}`; the default :math:`\rho = 0` (every event
-time weighted equally) is the standard test, and :math:`\rho > 0`
-down-weights late event times, making the test more sensitive to differences
-in early incidence.
+where the martingale variances are the failures from the cause that group
+:math:`r` is expected to have under the null hypothesis,
+:math:`w_r(u) = d(u)/\{n(u)\,n_r(u)\}`, and those it had from the competing
+causes, :math:`w^c_r(u) = d^c_r(u)\,\{\hat{S}_r(u^-)/Y_r(u)\}^2`, each times
+a correction for tied failures (:math:`1 - (d - 1)/(n \hat{S}_r(u^-) - 1)` and
+:math:`1 - (d^c_r - 1)/(Y_r - 1)`). Dropping one group to make :math:`V`
+invertible, the statistic :math:`U^{\top} V^{-1} U` is referred to a
+:math:`\chi^2` distribution with (number of groups :math:`- 1`) degrees of
+freedom. The weight :math:`W(\tau) = \{1 - \hat{F}^0(\tau^-)\}^{\rho}`; the
+default :math:`\rho = 0` (every event time weighted equally) is the standard
+test, and :math:`\rho > 0` down-weights late event times, making the test
+more sensitive to differences in early incidence.
 
-Because every group's risk set carries its own censoring estimate, the test
-does not need the groups to be censored alike. In a simulation with identical
-cause-specific hazards in two groups censored exponentially with means 2 and
-50, about 5% of the p-values fell below 0.05 with 100, 400 and 1,000 units per
-group, and the variance :math:`V` matched the simulated variance of :math:`U`.
-R's ``cmprsk::cuminc`` implements the same test. The subdistribution risk
-set :math:`R_g(t)` is formed as in ``cmprsk``, from the number at risk at
-:math:`t` and the survival just before :math:`t`; :math:`Y_g(t)/\hat{S}_g(t^-)`
-is the group size times its censoring survival just before :math:`t`, so a
-censoring tied with a failure counts after it, the same ordering as the
-Fine-Gray weights above. Elsewhere SurPyval follows Gray's paper and has been
-checked by simulation rather than against ``cmprsk``: the pooled incidence
-:math:`\hat{F}^0` in the weight and the variance, and the variance at tied
-failure times, may differ from ``cmprsk``'s in detail.
+This is the test R's ``cmprsk::cuminc`` computes, step for step: SurPyval's
+statistic agrees with ``cuminc``'s to rounding, with ties and for any
+:math:`\rho`. The subdistribution risk set :math:`R_g(t)` is formed from
+the number at risk at :math:`t` and the survival just before :math:`t`, so
+a censoring tied with a failure counts after it, the same ordering as the
+Fine-Gray weights above. Because every group's risk set carries its own
+censoring estimate, the test does not need the groups to be censored alike;
+the how-to page checks its size by simulation, with groups censored very
+differently.
 
 A useful way to see the difference from a cause-specific log-rank: imagine two
 groups with *identical* cause-1 hazards but a much larger cause-2 hazard in the

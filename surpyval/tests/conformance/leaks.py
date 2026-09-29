@@ -89,49 +89,7 @@ class Leak:
 # frame is "<path relative to surpyval/>:<function>", so an entry does not
 # go stale when lines move. Each has a strict-xfail reproduction in
 # test_warnings.py.
-KNOWN_LEAKS: dict[tuple[str, str], str] = {
-    (
-        "univariate/nonparametric/nonparametric.py:df",
-        "invalid value encountered in multiply",
-    ): (
-        "#408: df = hf * exp(-Hf) is inf * 0 = NaN at and after the time "
-        "a Kaplan-Meier estimate reaches zero: KaplanMeier.fit([1, 2, 3])"
-        ".df([2.5, 3.5, 4.5]) is not finite, where the step "
-        "probabilities are 1/3 and 0"
-    ),
-    (
-        "univariate/regression/semi_parametric_regression_model.py:phi",
-        "overflow encountered in exp",
-    ): (
-        "#409: CoxPH fitted to separated data with a constant covariate "
-        "column gives that column a coefficient of 3.1e14, so exp(beta'Z) "
-        "overflows and sf is NaN (properties/test_regression.py, "
-        "test_rows_are_independent[CoxPH])"
-    ),
-    (
-        "univariate/parametric/distributions/logistic.py:sf",
-        "invalid value encountered in divide",
-    ): (
-        "#410: Logistic.sf is e / (1 + e) with e = exp(-(x - mu) / sigma), "
-        "which is inf / inf = NaN once (mu - x) / sigma > 709: Logistic.sf(0, "
-        "1000, 1) is NaN, not 1 (properties/test_parametric.py, "
-        "test_fit_succeeds_or_refuses[Logistic], nightly profile)"
-    ),
-    (
-        "univariate/parametric/distributions/logistic.py:sf",
-        "overflow encountered in exp",
-    ): "#410: the overflow behind the NaN of Logistic.sf (entry above)",
-    (
-        "utils/linalg.py:wald_bound_on_support",
-        "invalid value encountered in sqrt",
-    ): (
-        "#411: a Wald bound from a negative variance is NaN with a raw sqrt "
-        "warning: GeneralizedRenewal on the registry fixture puts q at "
-        "2.7e-16, on its bound, where the inverse Hessian has variances "
-        "-0.031 and -10.6, so param_cb('alpha') and param_cb('q') are "
-        "[nan, nan] with nothing saying why (test_options.py)"
-    ),
-}
+KNOWN_LEAKS: dict[tuple[str, str], str] = {}
 
 
 def _short(path: str) -> str:

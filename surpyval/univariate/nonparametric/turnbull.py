@@ -15,9 +15,12 @@ from ._turnbull_npmle import (
     UNDETERMINED,
     npmle_existence,
 )
-from .fleming_harrington import fleming_harrington as fh
-from .kaplan_meier import kaplan_meier as km
-from .nelson_aalen import nelson_aalen as na
+
+# The unchecked forms: the EM's expected counts carry round-off (a
+# fraction of an event where the risk set came out as 0).
+from .fleming_harrington import _fleming_harrington as fh
+from .kaplan_meier import _kaplan_meier as km
+from .nelson_aalen import _nelson_aalen as na
 
 # The estimators that can be applied to the Turnbull ladder. Checked up
 # front: an unknown name used to fall through to Fleming-Harrington in the
@@ -455,11 +458,23 @@ def turnbull(
     # Report the requested hazard-form estimator on the converged ladder.
     R = func(r, d)
 
+    # The ladder reports each piece at its right end, ``bounds[j + 1]``, so
+    # it holds the pieces that end at a finite bound. Normally the last
+    # bound is +inf (the default ``tr``): the piece ending there, and the
+    # one after it, are left out, hence ``k = M - 2``. When every row is
+    # right truncated at a finite time the last bound is the largest
+    # ``tr``, and only the piece after it has no finite end. Slicing
+    # ``[:-2]`` there as well dropped the piece ending at the last bound,
+    # with whatever failed in it: one failure at 1 observable up to 1 gave
+    # sf(1) = 1, and a left censored row at its truncation time an empty
+    # ladder (#391).
+    k = M - 1 if np.isfinite(bounds[-1]) else M - 2
+
     # A converged fit whose survival has entirely collapsed (all mass forced
     # to the boundary, so S(x) ~ 0 across the whole observed range) is the
     # non-identifiable degenerate state, not a real estimate.
-    if not degenerate and R.size > 2:
-        reported = R[:-2]
+    if not degenerate and k > 0:
+        reported = R[:k]
         if any_truncated:
             # Only inspect the identifiable region: positions before the
             # earliest entry time are pinned at 1.0 and previously masked
@@ -655,19 +670,19 @@ def turnbull(
     #
     # Ladder index j is the piece ``(bounds[j], bounds[j+1]]``, so the
     # survival after it, ``R[j]``, is reported at its *right* end,
-    # ``bounds[j+1]`` -- hence ``x = bounds[1:-1]`` with ``R[:-2]``. The
-    # counts that produce ``R[j]`` must go out on the same index: slicing
-    # them ``[1:-1]`` instead paired each x with the *next* piece's
-    # failures, so the variance had already stepped where the estimate had
-    # not yet dropped, and ``cb()`` on interval-censored data gave bounds
-    # like [0, 1] where the survival estimate was still 1.
+    # ``bounds[j+1]`` -- hence ``x = bounds[1:k + 1]`` with ``R[:k]`` (``k``
+    # above). The counts that produce ``R[j]`` must go out on the same
+    # index: slicing them ``[1:k + 1]`` instead paired each x with the
+    # *next* piece's failures, so the variance had already stepped where
+    # the estimate had not yet dropped, and ``cb()`` on interval-censored
+    # data gave bounds like [0, 1] where the survival estimate was still 1.
     out: dict[str, Any] = {}
-    out["x"] = bounds[1:-1]
-    out["r"] = r[:-2]
-    out["d"] = d[:-2]
+    out["x"] = bounds[1 : k + 1]
+    out["r"] = r[:k]
+    out["d"] = d[:k]
     if any_truncated:
-        out["var_r"] = r_var[:-2]
-        out["var_d"] = d_var[:-2]
+        out["var_r"] = r_var[:k]
+        out["var_d"] = d_var[:k]
     elif km_reducible:
         # Variance from the observed counts (the Greenwood ladder): the
         # estimation ladder redistributes each right-censored observation
@@ -677,7 +692,7 @@ def turnbull(
         from surpyval.utils import xcnt_to_xrd
 
         xg, rg, dg = xcnt_to_xrd(x_raw, c_raw, n_raw, t_raw)
-        ladder_x = bounds[1:-1]
+        ladder_x = bounds[1 : k + 1]
         var_d = np.zeros(ladder_x.shape[0])
         var_r = np.ones(ladder_x.shape[0])
         pos = np.searchsorted(xg, ladder_x)
@@ -695,10 +710,10 @@ def turnbull(
         var_d[take] = dg[pos[take]]
         out["var_r"] = var_r
         out["var_d"] = var_d
-    out["R"] = R[0:-2]
-    out["F"] = 1 - R[0:-2]
-    out["R_upper"] = R[0:-2]
-    out["R_lower"] = R[1:-1]
+    out["R"] = R[:k]
+    out["F"] = 1 - R[:k]
+    out["R_upper"] = R[:k]
+    out["R_lower"] = R[1 : k + 1]
     out["bounds"] = bounds
     out["model"] = "Turnbull"
     out["turnbull_estimator"] = estimator
@@ -731,9 +746,11 @@ class Turnbull_(NonParametricFitter):
     model carries:
 
     - ``bounds``: the endpoints of the Turnbull pieces, including
-      :math:`\pm\infty`; ``x`` is ``bounds[1:-1]``, so an exactly observed
-      time appears twice, and ``d[k]`` is the expected number of failures
-      in the piece ending at ``x[k]``;
+      :math:`\pm\infty` (without :math:`+\infty` when every observation
+      is right truncated at a finite time); ``x`` is ``bounds[1:]`` without
+      a last bound at :math:`+\infty`, so an exactly observed time appears
+      twice, and ``d[k]`` is the expected number of failures in the piece
+      ending at ``x[k]``;
     - ``R_upper`` and ``R_lower``: the survival at the start and end of
       each piece, the range any curve through it could take;
     - ``turnbull_estimator``, ``converged`` and ``iters``;

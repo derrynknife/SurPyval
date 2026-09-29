@@ -20,9 +20,6 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.competing_risks.aalen_johansen import (
-    aalen_johansen_iif,
-)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -30,6 +27,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression.regression_data import (
+    check_finite_event_times,
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
@@ -313,7 +311,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     ) -> npt.NDArray:
         """
         :math:`e^{-H}` at ``x`` for covariates ``Z``: the all-cause survival
-        (``event=None``) or one cause's net survival (the other causes
+        (``event=None``), which is one minus the sum of the causes'
+        :meth:`cif`, or one cause's net survival (the other causes
         treated as censoring). For a Fine-Gray model, ``1 - cif``.
         """
         Z = self._prepare_Z(Z)
@@ -368,9 +367,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         Cumulative incidence of cause ``event`` at ``x`` for covariates
         ``Z``: the probability of failing from that cause by ``x`` with the
         other causes acting. The cause-specific (``model="Cox"``) model
-        integrates the cause's hazard against the all-cause product-limit
-        survival; the Fine-Gray model evaluates the subdistribution
-        directly.
+        builds it step by step from the causes' hazard increments, as R's
+        ``survfit`` does for a multi-state ``coxph`` (the Aalen-Johansen
+        estimate with each step's matrix exponential), so the causes'
+        incidences sum to ``ff = 1 - exp(-H)``; the Fine-Gray model
+        evaluates the subdistribution directly.
 
         ``Z`` is one covariate vector (a 1-D array or a single row), used
         at every time, or one row per time in ``x`` (row ``i`` with
@@ -389,43 +390,55 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
 
+        e_i = self.event_idx_map[event]
+
+        def incidence(z: npt.NDArray) -> npt.NDArray:
+            return self._incidence_steps(z)[e_i].cumsum()
+
+        return self._per_covariate_row(x, Z, incidence, 0.0)
+
+    def _per_covariate_row(
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, curve: Any, start: float
+    ) -> npt.NDArray:
+        """A step function of the shared time grid ``self.x`` that depends
+        on the covariates, ``curve(z)``, read at each time in ``x`` with
+        its paired covariate row: ``Z`` is one row for every time or one
+        row per time. ``start`` is its value before the first time."""
         x_flat = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
         rows = paired_covariate_rows(Z, x_flat.size, self.betas.shape[1])
-        e_i = self.event_idx_map[event]
         out = np.empty(x_flat.size)
-        # One incidence curve per distinct covariate row, read at the times
-        # paired with that row.
+        # One curve per distinct covariate row, read at the times paired
+        # with that row.
         uniq, inverse = np.unique(rows, axis=0, return_inverse=True)
         inverse = np.ravel(inverse)
         for u, z in enumerate(uniq):
             at = np.flatnonzero(inverse == u)
-            S, shares = self._product_limit_survival(z)
-            cif = aalen_johansen_iif(S, shares[e_i]).cumsum()
+            values = curve(z)
             idx = np.searchsorted(self.x, x_flat[at], side="right") - 1
             # Times before the first event would wrap to the last value
             # (#253).
-            out[at] = np.where(idx < 0, 0.0, cif[np.maximum(idx, 0)])
-        # A missing (NaN) time is nan, not the incidence at t = inf.
+            out[at] = np.where(idx < 0, start, values[np.maximum(idx, 0)])
+        # A missing (NaN) time is nan, not the value at t = inf.
         return np.where(np.isnan(x_flat), np.nan, out)
 
-    def _product_limit_survival(
-        self, Z: npt.ArrayLike
-    ) -> tuple[npt.NDArray, npt.NDArray]:
+    def _incidence_steps(self, Z: npt.ArrayLike) -> npt.NDArray:
         """
-        All-cause survival at the event times as a product limit, and each
-        cause's share of the hazard increment, for the incidence weights.
+        Each cause's step in cumulative incidence at the event times, for
+        one covariate row: an array of shape ``(n_causes, len(self.x))``.
 
-        Only the product-limit survival ``prod (1 - dH(t_j))`` satisfies the
-        telescoping identity ``sum_j S(t_j-) dH(t_j) = 1 - S(t)``, so weighting
-        the cause-specific increments with ``exp(-H)`` inflated the incidence
-        and let the causes sum past 1 (#278). A Breslow increment can also
-        exceed 1 at a covariate value far from the data (a small risk set
-        times a large multiplier); such a step exhausts the survivors, and
-        each cause takes its proportional share of them. The causes'
-        incidences then sum to exactly ``1 - S``.
-
-        Returns ``(S, shares)`` with ``shares[e]`` cause ``e``'s effective
-        hazard increments.
+        Over a step the causes' hazards add ``dH_k`` each and ``dH`` in
+        all, and the transition probabilities are those of the matrix
+        exponential of the step's hazards, as R's ``survfit`` computes
+        them for a multi-state ``coxph``: a unit still event-free before
+        the step, with probability ``S(t-) = exp(-H(t-))``, fails from
+        cause ``k`` over it with probability
+        ``S(t-) (dH_k / dH) (1 - exp(-dH))``. The incidences then sum to
+        ``1 - exp(-H) = ff`` exactly, and a step stays a probability
+        however large the increment (a Breslow increment times a large
+        multiplier can exceed 1). The incidence used to be built on the
+        product-limit survival ``prod (1 - dH)`` while ``sf`` is
+        ``exp(-H)``, so the two disagreed (1.0 against 0.975, #384); the
+        product ``prod (1 - dH)`` also needs a clip where ``dH > 1``.
         """
         increments = np.array(
             [
@@ -437,10 +450,13 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             dtype=float,
         )
         total = increments.sum(axis=0)
-        scale = np.where(total > 1.0, 1.0 / np.where(total > 0, total, 1), 1.0)
-        shares = increments * scale
-        S = np.cumprod(1.0 - shares.sum(axis=0))
-        return np.clip(S, 0.0, 1.0), shares
+        # exp(-H(t-)): the survival just before each step.
+        before = np.exp(-np.concatenate([[0.0], np.cumsum(total)[:-1]]))
+        positive = total > 0
+        share = np.where(
+            positive, increments / np.where(positive, total, 1.0), 0.0
+        )
+        return before * -np.expm1(-total) * share
 
     @classmethod
     @renamed_arguments(how="model")
@@ -521,7 +537,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ['g[T.b]', 'g[T.c]']
         >>> new = pd.DataFrame({"g": ["a", "b", "c"]})
         >>> model.cif(np.full(3, 5.0), new, "a").round(4)
-        array([0.3757, 0.6465, 0.2553])
+        array([0.3752, 0.6449, 0.2551])
         >>> restored = surpyval.from_dict(model.to_dict())
         >>> bool(np.allclose(restored.cif(np.full(3, 5.0), new, "a"),
         ...                  model.cif(np.full(3, 5.0), new, "a")))
@@ -626,9 +642,10 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         array([[0.985],
                [0.005]])
         >>> model.cif([5, 10], [[1]], "a").round(4)
-        array([0.5922, 0.7401])
+        array([0.59  , 0.7369])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
+        check_finite_event_times(x, c)
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.

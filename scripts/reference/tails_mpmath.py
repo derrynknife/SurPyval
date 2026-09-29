@@ -123,18 +123,10 @@ SKIPPED = {
     "distribution",
 }
 # Specified below, but not generated yet: the reference computation itself
-# fails or is too slow on this grid (#448). Listed as skipped so the check
-# names them; build() leaves them out.
-NOT_GENERATED = {
-    "Beta": "not generated yet (#448): mpmath's incomplete beta returns a "
-    "complex value at the extreme shapes",
-    "NegativeBinomial": "not generated yet (#448): 11 minutes for the "
-    "grid, then an integer-to-string limit at the largest counts",
-    "DiscreteWeibull": "not generated yet (#448): at shape 1000 the values "
-    "are about 1e-(3e18) and fail the 80-digit re-check",
-    "Binomial": "not generated yet (#448): over 30 minutes at the largest "
-    "numbers of trials",
-}
+# fails or is too slow on this grid. Listed as skipped so the check names
+# them; build() leaves them out. None since #448 (the incomplete beta by
+# its continued fraction, the discrete Weibull on the log scale).
+NOT_GENERATED: dict[str, str] = {}
 SKIPPED.update(NOT_GENERATED)
 
 INF = mpmath.inf
@@ -458,15 +450,59 @@ def _betainc(a, b, x):
     return mp.betainc(a, b, 0, x, regularized=True)
 
 
+def _beta_cf(a, b, x):
+    """The continued fraction of I_x(a, b) (Lentz's method), which
+    converges fast for x below (a + 1) / (a + b + 2)."""
+    tiny = mpf(10) ** -(mp.dps * 4)
+    tol = mpf(10) ** -(mp.dps + 5)
+
+    def nonzero(v):
+        return tiny if abs(v) < tiny else v
+
+    c = mpf(1)
+    d = 1 / nonzero(1 - (a + b) * x / (a + 1))
+    h = d
+    m = 0
+    while True:
+        m += 1
+        for aa in (
+            m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m)),
+            -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1)),
+        ):
+            d = 1 / nonzero(1 + aa * d)
+            c = nonzero(1 + aa / c)
+            h *= d * c
+        if abs(d * c - 1) < tol:
+            return h
+
+
+def _beta_tail(a, b, x, xc):
+    """I_x(a, b) by its continued fraction (``xc = 1 - x``)."""
+    log_front = a * mp.log(x) + b * mp.log(xc) - _log_beta(a, b)
+    return mp.exp(log_front) * _beta_cf(a, b, x) / a
+
+
 def _betainc_pair(a, b, x, xc):
-    """(I_x(a, b), 1 - I_x(a, b)) with ``xc = 1 - x``, the smaller one
-    summed directly. The upper tail is tried first; when it is below 1/4
-    the lower is its complement (mpmath is slow, 10 s and more, on the
-    lower tail of a Negative Binomial's I_p(r, k) at k = 1e12)."""
-    upper = _betainc(b, a, xc)
-    if upper < 0.25:
-        return 1 - upper, upper
-    return _betainc(a, b, x), upper
+    """(I_x(a, b), 1 - I_x(a, b)) with ``xc = 1 - x``, from the continued
+    fraction on the side where it converges fast; the other is the
+    complement. mpmath's hypergeometric ``betainc`` stalls here: minutes a
+    call at the Negative Binomial's r = 1e-3 and p = 1e-6, and near an
+    hour for a Binomial's grid (#448)."""
+    with mp.workdps(mp.dps + 30):
+        if x < (a + 1) / (a + b + 2):
+            lower = _beta_tail(a, b, x, xc)
+            upper = complement = 1 - lower
+        else:
+            upper = _beta_tail(b, a, xc, x)
+            lower = complement = 1 - upper
+        # The side is chosen at the distribution's centre, so the
+        # complement keeps nearly all the extra digits; never quietly
+        # fewer than the working precision.
+        if complement < mpf(10) ** -25:
+            raise RuntimeError(
+                "incomplete beta complement lost: {} {} {}".format(a, b, x)
+            )
+    return +lower, +upper
 
 
 def _expo_weibull_L(u, uc, mu):
@@ -484,7 +520,9 @@ def _beta_core(z, zc, alpha, beta):
 
 
 def _beta(x, alpha, beta):
-    return _beta_core(x, 1 - x, alpha, beta)
+    # 1 - x exactly: at 50 digits 1 - 2e-302 rounds to 1, which made sf 1
+    # (and log_ff -inf) at a tiny x where F is 0.5 (shape 1e-3, #458)
+    return _beta_core(x, mp.fsub(1, x, exact=True), alpha, beta)
 
 
 def _beta4(x, alpha, beta, a, b):
@@ -682,15 +720,24 @@ CONTINUOUS = [
 
 
 class Discrete:
+    """A discrete distribution. ``logs(k, *p)``, where given, returns
+    ``log_sf``, ``log_df`` and ``hf`` computed directly on the support,
+    for a distribution whose sf and mass can be too small for an mpf's
+    mantissa to mean anything (a discrete Weibull's q^(k^1000) is
+    exp(-1e301); its log is an ordinary number)."""
+
     discrete = True
 
-    def __init__(self, name, grid, core, first, last=None, extra_dps=0):
+    def __init__(
+        self, name, grid, core, first, last=None, extra_dps=0, logs=None
+    ):
         self.name = name
         self.grid = grid
         self.core = core
         self.first = first
         self.last = last
         self.extra_dps = extra_dps
+        self.logs = logs
 
     def _sf_ff_pmf(self, k, p):
         if k < self.first:
@@ -706,7 +753,10 @@ class Discrete:
             sf, ff, pmf = self._sf_ff_pmf(k, p)
             sf_before = self._sf_ff_pmf(k - 1, p)[0]
             out = _values_from(sf, ff, pmf, sf_before)
-            if _near_one(pmf):
+            if self.logs is not None and k >= self.first:
+                out.update(self.logs(k, *p))
+                out["Hf"] = -out["log_sf"]
+            elif _near_one(pmf):
                 with mp.workdps(mp.dps + NEAR_ONE_DPS):
                     out["log_df"] = mp.log(self._sf_ff_pmf(k, p)[2])
         return {key: +v for key, v in out.items()}
@@ -766,15 +816,40 @@ def _negative_binomial(k, r, p):
     return sf, ff, mp.exp(log_pmf)
 
 
-def _discrete_weibull(k, q, beta):
+def _discrete_weibull_terms(k, q, beta):
+    """log sf(k - 1) = (k - 1)^beta log q, log sf(k) = k^beta log q, and
+    their difference, each formed directly: at shape 1000, 2^1000 - 1 is
+    2^1000 at 50 digits, so the difference of the two logs lost log
+    sf(k - 1) entirely (it made the mass at k = 2 one, not q, #458)."""
     log_q = mp.log(q)
     now = mpf(k) ** beta
     before = mpf(k - 1) ** beta if k > 1 else mpf(0)
+    with mp.workdps(mp.dps + int(mp.mag(now) * 0.302) + 10):
+        step = (mpf(k) ** beta - (mpf(k - 1) ** beta if k > 1 else 0)) * log_q
+    return before * log_q, now * log_q, +step
+
+
+def _discrete_weibull(k, q, beta):
+    log_before, log_sf, step = _discrete_weibull_terms(k, q, beta)
     return (
-        mp.exp(now * log_q),
-        -mp.expm1(now * log_q),
-        mp.exp(before * log_q) * -mp.expm1((now - before) * log_q),
+        mp.exp(log_sf),
+        -mp.expm1(log_sf),
+        mp.exp(log_before) * -mp.expm1(step),
     )
+
+
+def _discrete_weibull_logs(k, q, beta):
+    # At shape 1000, log sf is -1e301 at k = 2: sf and the mass are far
+    # below any double, and their mpf mantissas are noise (the exponent
+    # takes all the digits); the logs and the hazard 1 - q^(k^b - (k-1)^b)
+    # are ordinary numbers.
+    log_before, log_sf, step = _discrete_weibull_terms(k, q, beta)
+    hf = -mp.expm1(step)
+    return {
+        "log_sf": log_sf,
+        "log_df": log_before + _log(hf),
+        "hf": hf,
+    }
 
 
 def _log_beta(a, b):
@@ -817,11 +892,10 @@ DISCRETE = [
     ),
     Discrete(
         "NegativeBinomial",
-        # r = 1e3 with p = 1e-6 is left out: its mass sits at k ~ 1e9 with
-        # a spread of 3e7, where mpmath's incomplete beta takes seconds a
-        # call; r = 1e3 with p = 1e-3 stands in for it
-        _product((1e-3, 1.0), (1e-6, 0.5, 1 - 1e-6))
-        + _product((1e3,), (1e-3, 0.5, 1 - 1e-6)),
+        # r = 1e3 with p = 1e-3 as well: its mass sits at k ~ 1e6, between
+        # the others'
+        _product((1e-3, 1.0, 1e3), (1e-6, 0.5, 1 - 1e-6))
+        + [(1e3, 1e-3)],
         _negative_binomial,
         1,
     ),
@@ -830,6 +904,9 @@ DISCRETE = [
         _product((1e-6, 0.5, 1 - 1e-6), (0.1, 1.0, 3.0, 1e3)),
         _discrete_weibull,
         1,
+        # k^b - (k - 1)^b cancels 13 digits at k = 1e12, b = 0.1
+        extra_dps=30,
+        logs=_discrete_weibull_logs,
     ),
     Discrete(
         "BetaGeometric",
@@ -931,6 +1008,10 @@ def _agree(a, b):
     if not (_finite(a) and _finite(b)):
         return a == b
     if a == b:
+        return True
+    if _enc(a).endswith("999999") and _enc(a) == _enc(b):
+        # both far beyond the doubles (see ``_enc``), where only the sign
+        # and the side are stored; their mantissas can be noise
         return True
     return abs(a - b) <= mpf(10) ** -30 * max(abs(a), abs(b))
 

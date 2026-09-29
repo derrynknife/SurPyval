@@ -41,6 +41,25 @@ def drop_intercept(model_matrix: Any) -> Any:
     return model_matrix
 
 
+def check_finite_event_times(x: npt.ArrayLike, c: npt.ArrayLike) -> None:
+    """Refuse an exactly observed (``c == 0``) time that is not finite.
+
+    A failure at infinity is not an observation: the semi-parametric
+    fitters used to take it as an event time (``CoxPH`` then returned a
+    coefficient of 19.4 on two rows, #394). A right-censored infinite
+    time -- a unit that never failed -- is accepted, as elsewhere.
+    """
+    x_arr = np.asarray(x, dtype=float)
+    event = np.asarray(c) == 0
+    exact = x_arr[event] if x_arr.ndim == 1 else x_arr[event].ravel()
+    if not np.isfinite(exact).all():
+        raise ValueError(
+            "Exactly observed values (c=0) must be finite; an item that "
+            "had not failed by the end of observation is right censored "
+            "(c=1)."
+        )
+
+
 def design_matrix_from_df(
     df: pd.DataFrame,
     Z_cols: str | list[str] | None = None,

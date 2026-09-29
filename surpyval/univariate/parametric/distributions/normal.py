@@ -16,6 +16,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import normal_hazard
+
 
 class Normal_(OptimisedFitMixin, ParametricFitter):
     r"""
@@ -221,7 +223,9 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.hf(x, 3, 4)
         array([0.12729011, 0.16145984, 0.19947114, 0.24088849, 0.28526944])
         """
-        return norm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
+        # not pdf / sf, which is 0 / 0 once both underflow (#444)
+        with np.errstate(over="ignore"):
+            return normal_hazard((x - mu) / sigma) / sigma
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -256,7 +260,10 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.Hf(x, 3, 4)
         array([0.36894642, 0.51298408, 0.69314718, 0.91306176, 1.17591176])
         """
-        return -np.log(norm.sf(x, mu, sigma))
+        # -logsf, not -log(sf): sf rounds to 1 in the left tail, where
+        # this was -0.0 (#442), and underflows in the right, where it was
+        # inf (#443)
+        return 0.0 - norm.logsf(x, mu, sigma)
 
     def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

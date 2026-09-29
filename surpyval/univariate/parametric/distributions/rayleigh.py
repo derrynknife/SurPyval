@@ -15,6 +15,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import log1mexp, log_ratio, on_support, positive_or_one
+
+_LOG2 = float(np.log(2.0))
+
 
 class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name: str) -> None:
@@ -268,7 +272,10 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.qf(u, 3)
         array([1.37713082, 2.00414169, 2.53380129, 3.03230296, 3.53223007])
         """
-        return sigma * np.sqrt(2 * np.log(1 / (1 - u)))
+        # log1p(-u), not log(1 / (1 - u)): 1 - u rounds to 1, and the
+        # quantile to 0, below u = 1e-16 (#447). u = 1 is inf.
+        with np.errstate(divide="ignore"):
+            return sigma * np.sqrt(-2.0 * np.log1p(-u))
 
     def mean(self, sigma: Boxable) -> Boxable:
         r"""
@@ -343,10 +350,22 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
     def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:
-        return np.log(x) - 2 * np.log(sigma) - 0.5 * (x / sigma) ** 2
+        # -inf at x = 0, without a log(0) warning
+        x_pos = positive_or_one(x)
+        inside = np.log(x_pos) - 2 * np.log(sigma) - 0.5 * (x_pos / sigma) ** 2
+        return on_support(x, inside, -np.inf)
 
     def log_sf(self, x: Numeric, sigma: Boxable) -> Boxable:
         return -0.5 * (x / sigma) ** 2
+
+    def log_ff(self, x: Numeric, sigma: Boxable) -> Boxable:
+        # log(1 - e^-t) with t = (x / sigma)^2 / 2, from t and log t:
+        # exact where F rounds to 1 (the generic log(-expm1(-t)) is 0
+        # there, #442) and finite where t underflows (#443).
+        x_pos = positive_or_one(x)
+        log_t = 2.0 * log_ratio(x_pos, sigma) - _LOG2
+        log_ff, _ = log1mexp(0.5 * (x_pos / sigma) ** 2, log_t)
+        return on_support(x, log_ff, -np.inf)
 
     def mpp(
         self,

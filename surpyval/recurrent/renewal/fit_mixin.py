@@ -51,6 +51,23 @@ class RenewalFitMixin:
         return dist_params
 
     @staticmethod
+    def _default_start(
+        start: Callable[[], np.ndarray], init: "ArrayLike | None"
+    ) -> "np.ndarray | None":
+        """``start()``, the default initial distribution parameters. With
+        a user ``init`` they are only the fallback starts (see
+        ``_multistart``), so a failure to find them is ``None``, not an
+        error."""
+        if init is None:
+            return start()
+        try:
+            with np.errstate(all="ignore"):
+                params = np.asarray(start(), dtype=float)
+        except Exception:
+            return None
+        return params if np.all(np.isfinite(params)) else None
+
+    @staticmethod
     def _renewal_dist_params(data: Any, dist: Any) -> "np.ndarray | None":
         """
         The distribution fitted to the interarrival times, the MLE of an
@@ -92,9 +109,13 @@ class RenewalFitMixin:
     ) -> Any:
         """
         Drive the multi-start fit. ``fit_once(x0) -> OptimizeResult`` runs the
-        optimiser from a single natural-space start ``x0``. With no user
-        ``init`` every start in ``inits`` is tried and the result with the
-        lowest (finite) objective is returned; a user ``init`` is run once.
+        optimiser from a single natural-space start ``x0``. Every start in
+        ``inits`` is tried and the result with the lowest (finite)
+        objective is returned. A user ``init`` is tried first, and the
+        default ``inits`` after it where given: from a start far from the
+        maximum the search can stay where it began -- an ARI baseline
+        scale of 4e6, 227 below the maximum -- and that used to be
+        returned in silence (#429).
 
         A start that stops at Nelder-Mead's evaluation cap still counts.
         When the maximum is on the boundary of the parameter space (an ARA
@@ -134,17 +155,26 @@ class RenewalFitMixin:
                 return again
             return res
 
+        def best_of(starts: list) -> "Any | None":
+            # A start far from the maximum takes the search where the
+            # likelihood overflows; that is the searches' business, and
+            # their floating-point warnings are not the user's (#429).
+            with np.errstate(all="ignore"):
+                results = [r for r in map(fit_once, starts) if usable(r)]
+                if not results:
+                    return None
+                best = results[int(np.argmin([r.fun for r in results]))]
+                return polished(best)
+
         if user_init is None:
             assert inits is not None
-            starts = [x0 for x0 in inits if feasible(x0)]
-            results = [res for res in map(fit_once, starts) if usable(res)]
-            if not results:
+            found = best_of([x0 for x0 in inits if feasible(x0)])
+            if found is None:
                 raise ValueError(
                     "Could not find a good solution. "
                     + "Try using `init` for better initial guess."
                 )
-            best = results[int(np.argmin([res.fun for res in results]))]
-            return polished(best)
+            return found
 
         if not feasible(user_init):
             raise ValueError(
@@ -152,13 +182,16 @@ class RenewalFitMixin:
                 "the model's support for this data). Try a different "
                 "initial guess."
             )
-        res = fit_once(user_init)
-        if not usable(res):
+        res = best_of([user_init])
+        if res is None:
             raise ValueError(
                 "Optimization with the provided `init` did not "
                 "converge. Try a different initial guess."
             )
-        return polished(res)
+        default = best_of([x0 for x0 in inits or [] if feasible(x0)])
+        if default is not None and default.fun < res.fun:
+            return default
+        return res
 
     def _fit_restoration_ml(
         self,
@@ -178,8 +211,9 @@ class RenewalFitMixin:
         log-likelihood over ``[restoration, *dist params]``, run in the
         unconstrained (bounded-to-unbounded) transform space. Each family
         supplies its restoration parameter's name, bounds and start grid,
-        and the initial distribution parameters (``None`` when a user
-        ``init`` is given). Returns ``(res, natural_params)``.
+        and the initial distribution parameters (``None`` where they could
+        not be found; a user ``init`` is then tried alone). Returns
+        ``(res, natural_params)``.
 
         ``renewal_restoration`` is a restoration value next to the one at
         which the family is an ordinary renewal process (perfect repair:
@@ -214,10 +248,8 @@ class RenewalFitMixin:
             # already in the transformed space).
             return minimize(objective, res.x, method="Nelder-Mead")
 
-        if init is None:
-            # The caller supplies initial distribution parameters whenever
-            # it does not supply a full ``init``.
-            assert dist_init_params is not None
+        inits = None
+        if dist_init_params is not None:
             inits = [[r0, *dist_init_params] for r0 in restoration_inits]
             if renewal_restoration is not None:
                 renewal = self._renewal_dist_params(data, dist)
@@ -225,7 +257,7 @@ class RenewalFitMixin:
                     renewal, dist_init_params
                 ):
                     inits.append([renewal_restoration, *renewal])
-        else:
+        if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
             expected = 1 + len(dist.param_names)
             if init.shape != (expected,):
@@ -237,7 +269,6 @@ class RenewalFitMixin:
                         init.size,
                     )
                 )
-            inits = None
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
         return res, inv_trans(res.x)
 

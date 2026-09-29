@@ -3,9 +3,12 @@ from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 
-from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.fitters import (
+    bounds_convert,
+    verify_or_polish,
+)
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -27,6 +30,17 @@ from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from .lifemodel import LifeModel
+
+
+def _search(
+    fun: Callable[[npt.NDArray], Any], x0: npt.NDArray, n_obs: float
+) -> tuple[OptimizeResult, bool]:
+    """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
+    always searched, and whether the answer is verifiably a minimum (see
+    ``verify_or_polish``, which polishes one that is not)."""
+    res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
+    res2 = minimize(fun, res1.x, method="TNC")
+    return verify_or_polish(fun, res2 if res2.success else res1, n_obs)
 
 
 class ParameterSubstitutionFitter(
@@ -306,7 +320,8 @@ class ParameterSubstitutionFitter(
         init : array_like, optional
             Initial parameter values: the distribution parameters (with any
             value in the life parameter's slot) followed by the life-model
-            parameters.
+            parameters. Where the fit from them does not reach a verified
+            maximum, the default start is tried too and the better kept.
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter or
             a life-model parameter such as ``"n"``).
@@ -457,22 +472,34 @@ class ParameterSubstitutionFitter(
                 ),
             )
 
-            res1 = minimize(
-                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
-            )
-            res2 = minimize(
-                fun,
-                res1.x,
-                method="TNC",
-                # tol=1e-20,
-                # options={"maxiter": 1000},
-            )
-            if not res2.success:
-                res = res1
-            else:
-                res = res2
+            n_obs = float(np.sum(data.n))
+            res, verified = _search(fun, init, n_obs)
+            # From a start far from the maximum the search can stop short
+            # of it, silently: InversePower started with its first
+            # parameter x1e6 ended 14.7 below the maximum (#428). The
+            # default start is then tried too, and the better kept.
+            if user_init and not verified:
+                try:
+                    default = finite_start(
+                        fun, transform(default_init())[not_fixed], None
+                    )
+                except ValueError:
+                    # No default start (a single stress level, say)
+                    default = None
+                if default is not None:
+                    alt, alt_verified = _search(fun, default, n_obs)
+                    if alt.fun < res.fun or not np.isfinite(res.fun):
+                        res, verified = alt, alt_verified
 
         require_finite_fit(float(res.fun))
+        if not verified:
+            warnings.warn(
+                "The accelerated life fit did not reach a verified maximum "
+                "of the likelihood (a zero gradient, curving down in every "
+                "direction); the parameters returned are the best point "
+                "found. Check the fit, or try another `init`.",
+                stacklevel=2,
+            )
         params = inv_trans(const(res.x))
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])

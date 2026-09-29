@@ -25,7 +25,8 @@ and standard errors come from resampling rather than a likelihood
 The fitted ``beta`` uses the package's AFT sign convention: a positive
 coefficient *shortens* life, so it is the negative of the slope of the
 regression of :math:`\log x` on :math:`Z`. The model's ``sf(x, Z)``
-takes a single covariate vector.
+takes one covariate vector, used at every time, or one row per time, as
+the other regression models do.
 
 Usage::
 

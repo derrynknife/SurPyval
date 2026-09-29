@@ -39,6 +39,25 @@ def _snap_array(v: npt.ArrayLike) -> npt.NDArray:
     return np.where(close, nearest, v)
 
 
+def _check_at_risk(
+    r: npt.ArrayLike, d: npt.ArrayLike
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """``r`` and ``d`` as float arrays, refused where a step has events but
+    no one at risk: the proportion failing, ``d / r``, is then undefined.
+    (A step with neither, 0 / 0, is valid: nothing happens there.)"""
+    r = np.asarray(r, dtype=float)
+    d = np.asarray(d, dtype=float)
+    bad = (d > 0) & ~(r > 0)
+    if bad.any():
+        i = int(np.flatnonzero(bad)[0])
+        raise ValueError(
+            "A step has events but no one at risk (d = {} with r = {} at "
+            "index {}); the number at risk must be positive wherever "
+            "there are events.".format(d[i], r[i], i)
+        )
+    return r, d
+
+
 def _ladder_steps(r_i: float, d_i: float) -> int:
     """Number of whole 1/r terms in the tie ladder, or -1 if the
     ladder exhausts the risk set (the hazard diverges)."""
@@ -59,6 +78,11 @@ def fh_h(r_i: float, d_i: float) -> float:
     r_i, d_i = _snap(r_i), _snap(d_i)
     if d_i == 0:
         return 0.0  # no deaths, no hazard (whatever the risk set)
+    if not r_i > 0:
+        # Deaths with no one at risk (only round-off in the Turnbull EM
+        # reaches here; the public functions refuse it): used to raise
+        # ZeroDivisionError.
+        return np.inf
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -79,6 +103,11 @@ def fh_var_h(r_i: float, d_i: float) -> float:
     r_i, d_i = _snap(r_i), _snap(d_i)
     if d_i == 0:
         return 0.0  # no deaths, no hazard (whatever the risk set)
+    if not r_i > 0:
+        # Deaths with no one at risk (only round-off in the Turnbull EM
+        # reaches here; the public functions refuse it): used to raise
+        # ZeroDivisionError.
+        return np.inf
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -153,7 +182,15 @@ def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     R : ndarray
         The survival estimate just after each time, the same length as
         ``r``. Like the Nelson-Aalen estimate it stays above zero, even
-        when all the items at risk fail at once.
+        when all the items at risk fail at once (``fleming_harrington([3],
+        [3])`` is ``exp(-(1/3 + 1/2 + 1))``, 0.1599). A step with no
+        events leaves it unchanged, even with no one at risk (0 / 0).
+
+    Raises
+    ------
+    ValueError
+        If a step has events but no one at risk (``d > 0`` where ``r``
+        is not positive).
 
     Examples
     --------
@@ -167,7 +204,14 @@ def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     >>> fleming_harrington(r, d).round(4)
     array([0.8097, 0.7145, 0.3265])
     """
-    Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
+    r, d = _check_at_risk(r, d)
+    return _fleming_harrington(r, d)
+
+
+def _fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    # ``fleming_harrington`` without the check of its counts, for the
+    # Turnbull EM, whose expected counts carry round-off.
+    Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)], dtype=float)
     H = Y.cumsum()
     H[np.isnan(H)] = np.inf
     R = np.exp(-H)

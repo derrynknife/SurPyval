@@ -274,12 +274,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         def polish(res: Any) -> Any:
             return fit_once(res.x)
 
-        if init is None:
-            dist_params = dist.fit(
-                data.interarrival_times, data.c, data.n
-            ).params
+        dist_params = self._default_start(
+            lambda: dist.fit(data.interarrival_times, data.c, data.n).params,
+            init,
+        )
+        inits = None
+        if dist_params is not None:
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
-        else:
+        if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
             if init.shape != (1 + len(dist.param_names),):
                 raise ValueError(
@@ -289,7 +291,6 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                         init.size,
                     )
                 )
-            inits = None
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
 
         underlying_model = dist.from_params(list(res.x[1:]))

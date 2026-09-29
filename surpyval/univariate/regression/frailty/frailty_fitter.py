@@ -21,6 +21,7 @@ module
 maximises its own marginal likelihood on a fresh optimiser.
 """
 
+import warnings
 from typing import Any, Callable
 
 import numpy as np
@@ -30,6 +31,7 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.utils import (
+    _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     xcnt_handler,
@@ -37,6 +39,7 @@ from surpyval.utils import (
 from surpyval.utils.linalg import numerical_hessian
 
 from .._fit_skeleton import require_finite_fit, warn_if_not_converged
+from ..proportional_hazards.cox_ph import _strata_labels
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
 
@@ -234,7 +237,9 @@ class FrailtyFitter:
         n : array_like, optional
             Observation weights / counts. Defaults to 1.
         groups : array_like
-            The group (cluster) label of each observation. Required.
+            The group (cluster) label of each observation. Required. Rows
+            with a missing label (``None``, ``NaN`` or pandas ``NA``) are
+            dropped, with a warning.
         init : array_like, optional
             Optional initial natural parameters ``[*dist, *beta, theta]``.
 
@@ -281,7 +286,12 @@ class FrailtyFitter:
         w = np.asarray(n_h, dtype=float).ravel()
         if groups is None:
             raise ValueError("'groups' (a cluster label per row) is required.")
-        groups = np.asarray(groups).ravel()
+        # Read element by element: a ``None`` label in an array of numbers
+        # made ``np.unique`` raise a TypeError, and a NaN label was kept as
+        # a group of its own (#388).
+        groups, missing = _strata_labels(
+            np.asarray(groups, dtype=object).ravel().tolist()
+        )
         if groups.shape[0] != n_obs:
             raise ValueError(
                 "'groups' has {} label(s) but there are {} observations; "
@@ -296,8 +306,30 @@ class FrailtyFitter:
             check_covariate_rows(Zc, n_obs)
             keep = finite_covariate_mask(Zc)
             if not keep.all():
-                x, c, w, groups, Zc = (a[keep] for a in (x, c, w, groups, Zc))
+                x, c, w, groups, missing, Zc = (
+                    a[keep] for a in (x, c, w, groups, missing, Zc)
+                )
                 n_obs = x.shape[0]
+        if missing.any():
+            # A row without a group has no frailty to share: it is dropped,
+            # as a row with a missing stratum label is in a stratified Cox
+            # model.
+            if missing.all():
+                raise ValueError(
+                    "Every group label is missing; there is nothing to fit."
+                )
+            warnings.warn(
+                "Dropped {} of {} rows with a missing group label.".format(
+                    int(missing.sum()), n_obs
+                ),
+                UserWarning,
+                stacklevel=_caller_stacklevel(),
+            )
+            keep = ~missing
+            x, c, w, groups = (a[keep] for a in (x, c, w, groups))
+            if Z is not None:
+                Zc = Zc[keep]
+            n_obs = x.shape[0]
 
         if int((c == 0).sum()) == 0:
             raise ValueError("At least one event (c=0) is required.")
@@ -441,7 +473,8 @@ class FrailtyFitter:
         x_col : str
             The column of times.
         group_col : str
-            The column of group (cluster) labels.
+            The column of group (cluster) labels; rows with a missing label
+            are dropped, with a warning.
         Z_cols : str or list of str, optional
             The covariate columns.
         c_col, n_col : str, optional

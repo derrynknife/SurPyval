@@ -17,6 +17,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import log1mexp, on_support, positive_or_one
+
 
 class Exponential_(OptimisedFitMixin, ParametricFitter):
     r"""
@@ -438,6 +440,16 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
     def log_sf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         return -failure_rate * x
+
+    def log_ff(self, x: Numeric, failure_rate: Boxable) -> Boxable:
+        # log(1 - e^-r) with r = failure_rate * x: exact where F rounds to
+        # 1 (the generic log(-expm1(-r)) is 0 there, #442) and finite
+        # where r underflows.
+        x_pos = positive_or_one(x)
+        log_ff, _ = log1mexp(
+            failure_rate * x_pos, np.log(failure_rate) + np.log(x_pos)
+        )
+        return on_support(x, log_ff, -np.inf)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

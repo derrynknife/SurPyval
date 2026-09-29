@@ -1478,7 +1478,8 @@ single population, needs a shape of 0.2 and a characteristic life of about
 :math:`10^{14}` hours, and its AIC is 18 worse. Its fitted curve never levels
 off, which is exactly the flat ridge described in
 :doc:`Parametric Estimation`: along it only the combination
-``p * alpha**(-beta)`` matters. A start far out on that ridge stays there:
+``p * alpha**(-beta)`` matters. A search started far out on that ridge
+barely moves off it, which is why an explicit ``init`` is not trusted alone:
 
 .. jupyter-execute::
     :hide-code:
@@ -1501,19 +1502,20 @@ off, which is exactly the flat ridge described in
     print("by default : p =", ic_lfp.p, " alpha =", ic_lfp.alpha,
           " neg_ll =", ic_lfp.neg_ll())
 
-With an explicit ``init`` SurPyval uses that start alone, and the optimiser
-barely moves off it. Without one, an LFP fit is also started from the failures
-alone (a Weibull fitted to the 28 failures, with ``p`` at 28/4156), and the
-start with the best likelihood wins, which here is almost ten log-likelihood
-units better. If you do pass ``init`` to an LFP fit, compare ``neg_ll()`` with
-the default fit.
+From ``alpha = 1e6`` the search stops on the ridge, almost ten
+log-likelihood units below the maximum, and that used to be the model
+returned. Now a fit given ``init`` is also started from the default start
+(and, where that is not verifiably a maximum, from its alternatives -- for an
+LFP fit, the failures alone: a Weibull fitted to the 28 failures, with ``p``
+at 28/4156), and the start with the best likelihood wins, so the two fits
+above are the same model.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert abs(stuck.alpha / 1e6 - 1) < 1e-6          # barely moves
-    assert 9 < stuck.neg_ll() - ic_lfp.neg_ll() < 10  # "almost ten"
+    assert abs(stuck.neg_ll() - ic_lfp.neg_ll()) < 1e-6  # the same model
+    assert abs(stuck.alpha / ic_lfp.alpha - 1) < 1e-4
 
 Distributions that call one of their own parameters ``p`` -- the
 ``Geometric`` and the ``NegativeBinomial`` -- keep that name, and their

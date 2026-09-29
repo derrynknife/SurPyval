@@ -1,4 +1,3 @@
-import warnings
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -12,6 +11,8 @@ from scipy.optimize import OptimizeResult, minimize
 
 from surpyval import np
 from surpyval.univariate.parametric.fitters import (
+    _usable,
+    is_local_minimum,
     preconditioned_bfgs,
     search_floor,
 )
@@ -71,6 +72,18 @@ def mle(model: "Parametric") -> Any:
     jac = jacobian(fun)
     hess = hessian(fun)
 
+    # The Hessian at the verified answer (see ``is_local_minimum``) is the
+    # one the covariance needs too, where no parameter is held: kept, not
+    # taken twice. On a large sample it is the dearest part of the check.
+    hess_at: dict = {}
+
+    def hess_kept(x: npt.NDArray, *args: Any) -> Any:
+        key = np.asarray(x, dtype=float).tobytes()
+        if key not in hess_at:
+            hess_at.clear()
+            hess_at[key] = hess(x, *args)
+        return hess_at[key]
+
     best = np.inf
     best_result = None
     best_method = None
@@ -118,44 +131,89 @@ def mle(model: "Parametric") -> Any:
         # motivated the original order survives for the fits that
         # actually need it -- they are simply no longer paid for by the
         # fits that do not.
+        #
+        # "Converges" means the answer is verifiably a maximum -- its
+        # gradient ~0 and its Hessian positive definite (see
+        # ``is_local_minimum``) -- not that the optimiser reported
+        # success. The ladder used to stop at the first rung reporting
+        # success, and from a start far from the maximum a gradient
+        # method reports it where the likelihood first looks flat: a
+        # Weibull started at alpha = 1e7 stopped at beta = 0.099, 40 below
+        # the maximum, in silence (#427). So a rung stops the ladder only
+        # when the best point so far is verified, which costs one
+        # gradient and one Hessian; a fit the first rung solves stops
+        # there, as before. Each rung starts where it always did: from the
+        # first rung's answer that reported success, or from the initial
+        # guess (Nelder-Mead from both, Powell from the guess). If no rung
+        # is verified, the answer is the first rung that reported success,
+        # as it used to be, or failing that the best point found;
+        # ``verified`` is then False and the caller tries other starts
+        # and, failing those, warns.
+        floor = search_floor(model)
+        obj_scale = float(np.sum(model.data["n"]))
+        args = (offset, lfp, zi, True)
+        # With nothing to optimise, the answer is exact
+        verified = len(init) == 0
+        first_success = None
         for method, jac_i, hess_i in methods:
             opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
-            if method in ("Nelder-Mead", "Powell") or best_result is None:
-                x0 = init
+            if method == "Powell" or first_success is None:
+                starts = [init]
+            elif method == "Nelder-Mead":
+                starts = [init, first_success[0].x]
             else:
-                x0 = best_result.x
-            if method == "BFGS":
-                # Scaled per parameter (see ``search_floor``) and per
-                # observation: the negative log-likelihood itself moves
-                # with the data's units, so ``|f(x0)|`` is not a scale
-                # free normaliser for it (see ``preconditioned_bfgs``).
-                res = preconditioned_bfgs(
-                    fun,
-                    x0,
-                    (offset, lfp, zi, True),
-                    jac_i,
-                    opts,
-                    floor=search_floor(model),
-                    obj_scale=float(np.sum(model.data["n"])),
-                )
-            else:
-                res = minimize(
-                    fun,
-                    x0,
-                    args=(offset, lfp, zi, True),
-                    method=method,
-                    jac=jac_i,
-                    hess=hess_i,
-                    options=opts,
-                )
-            if res.success and res.fun < best:
-                best_result = res
-                best_method = method
-                best = res.fun
+                starts = [first_success[0].x]
+            for x0 in starts:
+                if method == "BFGS":
+                    # Scaled per parameter (see ``search_floor``) and per
+                    # observation: the negative log-likelihood itself
+                    # moves with the data's units, so ``|f(x0)|`` is not a
+                    # scale free normaliser for it (see
+                    # ``preconditioned_bfgs``).
+                    res = preconditioned_bfgs(
+                        fun,
+                        x0,
+                        args,
+                        jac_i,
+                        opts,
+                        floor=floor,
+                        obj_scale=obj_scale,
+                    )
+                else:
+                    res = minimize(
+                        fun,
+                        x0,
+                        args=args,
+                        method=method,
+                        jac=jac_i,
+                        hess=hess_i,
+                        options=opts,
+                    )
+                if not _usable(res):
+                    continue
+                if res.success and first_success is None:
+                    first_success = (res, method)
+                if res.fun < best:
+                    best_result, best_method, best = res, method, res.fun
+            if best_result is not None and is_local_minimum(
+                fun,
+                jac,
+                hess_kept,
+                best_result.x,
+                args,
+                floor=floor,
+                obj_scale=obj_scale,
+            ):
+                verified = True
                 break
 
+        if not verified and first_success is not None:
+            best_result, best_method = first_success
         if best_result is not None:
             res = best_result
+            # A verified answer stands whatever its rung reported: BFGS
+            # often stops with "precision loss" at the maximum.
+            res.success = res.success or verified
 
         winning_message = (
             best_result.get("message", "")
@@ -163,8 +221,13 @@ def mle(model: "Parametric") -> Any:
             else res.get("message", "")
         )
 
-        if "Desired error not necessarily" in winning_message:
-            warnings.warn(
+        # The warning is the caller's to give (``results["_warning"]``):
+        # it may try other starts, and only the answer it keeps speaks.
+        warning = None
+        if verified:
+            pass
+        elif "Desired error not necessarily" in winning_message:
+            warning = (
                 "Precision was lost, try:"
                 "\n- Using alternate fitting method"
                 "\n- visually checking model fit"
@@ -172,7 +235,7 @@ def mle(model: "Parametric") -> Any:
             )
 
         elif (not res.success) or (np.isnan(res.x).any()):
-            warnings.warn(
+            warning = (
                 "MLE Failed; returning the optimiser's starting point "
                 "(a probability-plot fit, or a rougher initial guess where "
                 "the distribution has none) instead. "
@@ -266,7 +329,15 @@ def mle(model: "Parametric") -> Any:
                 cov_matrix = np.zeros((n_total - n_head, n_total - n_head))
             else:
                 u_var = u_full[var_idx]
-                hess_u = hessian(transformed_fun)(u_var)
+                kept = hess_at.get(np.asarray(u_var, dtype=float).tobytes())
+                if (
+                    n_head == 0
+                    and len(var_idx) == n_total
+                    and kept is not None
+                ):
+                    hess_u = kept
+                else:
+                    hess_u = hessian(transformed_fun)(u_var)
                 # A corrupted autograd Hessian (e.g. a primitive whose
                 # VJP silently drops second-order terms) shows up as
                 # asymmetry; recompute numerically rather than invert
@@ -301,6 +372,8 @@ def mle(model: "Parametric") -> Any:
         results["_neg_ll"] = neg_ll_val
         results["log_likelihood"] = -neg_ll_val
         results["res"] = res
+        results["_verified"] = bool(verified) and not use_initial
+        results["_warning"] = warning
         results["optimizer"] = (
             best_method if best_method is not None else method
         )

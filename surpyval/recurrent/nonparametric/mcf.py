@@ -254,7 +254,9 @@ class NonParametricCounting(SerialisableMixin):
             mcf = np.interp(x, grid, values)
         else:
             raise ValueError("`interp` must be either 'step' or 'linear'")
-        mcf[(x > self.x.max()) | (x < self._origin())] = np.nan
+        # ... nor at a missing time: NaN in, NaN out (the step lookup put
+        # a NaN past every time, at the last value, #382).
+        mcf[(x > self.x.max()) | (x < self._origin()) | np.isnan(x)] = np.nan
         return mcf
 
     def _origin(self) -> float:
@@ -366,7 +368,7 @@ class NonParametricCounting(SerialisableMixin):
                 "critical value is what the asymptotic theory of the MCF "
                 "estimator justifies."
             )
-        x = np.atleast_1d(x)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
         if bound in ["upper", "lower"]:
             stat = norm.ppf(alpha_ci, 0, 1)
             if bound == "upper":
@@ -403,7 +405,8 @@ class NonParametricCounting(SerialisableMixin):
             # (sqrt(var * mcf**2)), giving far too wide, negative bounds.
             mcf_cb = self.mcf_hat + np.sqrt(self.var) * stat
         # Let's not assume we can predict above the highest measurement
-        invalid = (x > self.x.max()) | (x < self._origin())
+        # ... nor at a missing time (see ``_mcf``).
+        invalid = (x > self.x.max()) | (x < self._origin()) | np.isnan(x)
         if interp == "step":
             # Select by query position FIRST, then mask the query-length
             # result: the masks used to be applied to the grid-length

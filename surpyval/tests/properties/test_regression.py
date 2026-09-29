@@ -1,8 +1,9 @@
 """Properties of the regression models on generated data (#379).
 
 Data: exact and right censored times with ties and counts, one or two
-numeric covariates on a coarse grid, sometimes a constant column (which
-Cox ignores and a parametric model folds into its scale), and, for the
+numeric covariates on a coarse grid, sometimes a constant column (which a
+parametric model folds into its scale, and which Cox, having no
+intercept, refuses: it is left out of Cox's data, #409), and, for the
 formula path, a categorical label.
 
 - **row order**: permuting the rows does not change the predictions;
@@ -45,8 +46,36 @@ def _separated(data):
     """Whether the data (nearly) separate: the Cox coefficients run off
     to infinity (monotone partial likelihood) and a fit is wherever its
     optimiser stopped. A property comparing two fits does not apply."""
-    beta = np.asarray(_fit("CoxPH", data).beta, dtype=float)
+    data, _ = _for_cox(data, data["Z"])
+    try:
+        beta = np.asarray(_fit("CoxPH", data).beta, dtype=float)
+    except ValueError:
+        # A column that does not vary within the risk sets: Cox has no
+        # coefficient for it (#409), and nothing runs off.
+        return False
     return bool(np.max(np.abs(data["Z"] @ beta)) > 8)
+
+
+def _for_cox(data, Z):
+    """The data and query rows without the constant column, which Cox
+    (no intercept) refuses (#409)."""
+    if not _constant(data):
+        return data, Z
+    return {**data, "Z": data["Z"][:, :-1]}, Z[:, :-1]
+
+
+def _prepared(name, data, Z):
+    """``(data, Z)`` for model ``name``: for Cox without the constant
+    column, and assumed to be data Cox can fit -- a generated column can
+    still be constant within every risk set, and Cox refuses that."""
+    if name != "CoxPH":
+        return data, Z
+    data, Z = _for_cox(data, Z)
+    try:
+        _fit(name, data)
+    except ValueError:
+        assume(False)
+    return data, Z
 
 
 def _query(data, Z):
@@ -71,7 +100,7 @@ def _constant(d):
 @pytest.mark.parametrize("name", MODELS)
 @given(data=st.data())
 def test_row_order(name, data):
-    d, Z = data.draw(_with_query(), label="data, Z")
+    d, Z = _prepared(name, *data.draw(_with_query(), label="data, Z"))
     assume(not _separated(d))
     perm = data.draw(gen.permutations(len(d["x"])), label="perm")
     case = case_for(name, d, rtol=RTOL[name])
@@ -84,7 +113,7 @@ def test_row_order(name, data):
 @pytest.mark.parametrize("name", MODELS)
 @given(data=_with_query())
 def test_counts_equal_repeated_rows(name, data):
-    d, Z = data
+    d, Z = _prepared(name, *data)
     assume(np.any(d["n"] > 1) and not _separated(d))
     case = case_for(name, d, rtol=RTOL[name])
     x = _query(d, Z)
@@ -96,7 +125,7 @@ def test_counts_equal_repeated_rows(name, data):
 @pytest.mark.parametrize("name", MODELS)
 @given(data=_with_query())
 def test_rows_are_independent(name, data):
-    d, Z = data
+    d, Z = _prepared(name, *data)
     model = _fit(name, d)
     x = _query(d, Z)
     jumps = ("hf", "df") if name == "CoxPH" else ()
@@ -135,7 +164,12 @@ def test_formula_row_order(name, data):
     df = _frame(d)
     fitter = getattr(sp, name)
     kw = dict(x_col="x", c_col="c", n_col="n", formula="z0 + C(g)")
-    ref = quietly(fitter.fit_from_df, df, **kw)
+    try:
+        ref = quietly(fitter.fit_from_df, df, **kw)
+    except ValueError:
+        # Cox refuses a column constant within every risk set (#409).
+        assume(name != "CoxPH")
+        raise
     got = quietly(
         fitter.fit_from_df, df.iloc[perm].reset_index(drop=True), **kw
     )

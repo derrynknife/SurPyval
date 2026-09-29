@@ -74,7 +74,10 @@ class ProportionalIntensityHPP:
     name = "Constant"
 
     def iif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
-        return np.ones_like(np.asarray(x, dtype=float)) * rate
+        # NaN at a missing time (it was the rate there, #382).
+        return (
+            np.where(np.isnan(np.asarray(x, dtype=float)), np.nan, 1.0) * rate
+        )
 
     def cif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return rate * np.asarray(x, dtype=float)

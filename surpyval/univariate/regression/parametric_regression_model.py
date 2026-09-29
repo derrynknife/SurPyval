@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import expit
+from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
@@ -1266,7 +1268,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         n_phi = len(names) - self.k_dist
         all_bounds = dist_bounds + [(None, None)] * n_phi
         lower, upper = all_bounds[idx]
-        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
+        return wald_bound_on_support(
+            p_hat, var, lower, upper, alpha_ci, bound, name=name
+        )
 
     @keeps_query_shape
     def cb(
@@ -1282,9 +1286,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         The bounds propagate the fitted parameter covariance through the
         requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from a survival-function bound taken on the logit scale (so it
-        stays in ``(0, 1)``); ``hf``/``df`` use a log-scale bound (so they stay
-        positive).
+        derived from one bound on the logit of the survival function (so it
+        stays in ``(0, 1)``), formed from the cumulative hazard so the ``Hf``
+        bound has no ceiling where ``sf`` underflows; ``hf``/``df`` use a
+        log-scale bound (so they stay positive).
 
         Parameters
         ----------
@@ -1322,30 +1327,67 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
             return log_transformed_cb(est, se, alpha_ci, bound)
 
-        # sf, ff and Hf all derive from a survival-function bound.
-        sf_hat = np.asarray(self.model.sf(x, Zp, *params), dtype=float)
-        se = delta_method_se(lambda p: self.model.sf(x, Zp, *p), params, cov)
+        # sf, ff and Hf all derive from one bound on the logit of sf,
+        # formed from the cumulative hazard: logit(sf) = -H - log(1 -
+        # exp(-H)). It used to be formed from sf clipped at 1e-15, so the
+        # Hf bounds stopped at -log(1e-15) = 34.54 (#418); from H the Hf
+        # bound, log(1 + exp(-logit)), has no ceiling.
+        def logit_sf(p: npt.NDArray) -> npt.NDArray:
+            H = np.asarray(self.model.Hf(x, Zp, *p), dtype=float)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                return -H - np.log(-np.expm1(-H))
 
+        H_hat = np.asarray(self.model.Hf(x, Zp, *params), dtype=float)
+        H_hat = np.broadcast_to(H_hat, np.broadcast(H_hat, x).shape)
+        # sf = 1 (H = 0) and sf = 0 (H = inf) are the logit's infinities:
+        # the bounds are the estimate there. A negative H (an additive
+        # hazards sf above 1, documented) keeps the clipped-sf bound.
+        positive = np.isfinite(H_hat) & (H_hat > 0)
+        L_hat = logit_sf(params)
+        with np.errstate(invalid="ignore"):
+            # inf - inf at those edges, replaced below
+            se_L = delta_method_se(logit_sf, params, cov)
+        if not positive.all():
+            sf_hat = np.asarray(self.model.sf(x, Zp, *params), dtype=float)
+            se = delta_method_se(
+                lambda p: self.model.sf(x, Zp, *p), params, cov
+            )
+
+        def bounds_at(sign: float, tail: float) -> dict:
+            # One end on the sf, ff and Hf scales; sign +1 is sf's upper.
+            L = L_hat + sign * norm.ppf(1.0 - tail) * se_L
+            with np.errstate(over="ignore", invalid="ignore"):
+                sf_b, ff_b, Hf_b = expit(L), expit(-L), np.logaddexp(0.0, -L)
+            if not positive.all():
+                sf_c = logit_sf_bound(sf_hat, se, sign, tail)
+                with np.errstate(divide="ignore"):
+                    Hf_c = -np.log(sf_c)
+                sf_b = np.where(positive, sf_b, sf_c)
+                ff_b = np.where(positive, ff_b, 1.0 - sf_c)
+                Hf_b = np.where(positive, Hf_b, Hf_c)
+                for edge, values in (
+                    (0.0, (1.0, 0.0, 0.0)),
+                    (np.inf, (0.0, 1.0, np.inf)),
+                ):
+                    at = H_hat == edge
+                    sf_b = np.where(at, values[0], sf_b)
+                    ff_b = np.where(at, values[1], ff_b)
+                    Hf_b = np.where(at, values[2], Hf_b)
+            return {"sf": sf_b, "ff": ff_b, "Hf": Hf_b}
+
+        name = {"R": "sf", "F": "ff"}.get(on, on)
         if bound == "two-sided":
-            sf_lo = logit_sf_bound(sf_hat, se, -1.0, alpha_ci / 2.0)
-            sf_hi = logit_sf_bound(sf_hat, se, +1.0, alpha_ci / 2.0)
-            if on in ("sf", "R"):
-                return np.stack([sf_lo, sf_hi], axis=-1)
-            elif on in ("ff", "F"):
-                return np.stack([1.0 - sf_hi, 1.0 - sf_lo], axis=-1)
-            else:  # Hf: -log(sf) is decreasing in sf
-                return np.stack([-np.log(sf_hi), -np.log(sf_lo)], axis=-1)
-
-        # One-sided. ff and Hf decrease in sf, so their bound uses the
-        # opposite survival-function tail.
-        if on in ("sf", "R"):
-            sign = -1.0 if bound == "lower" else 1.0
-            return logit_sf_bound(sf_hat, se, sign, alpha_ci)
-        sign = 1.0 if bound == "lower" else -1.0
-        sf_b = logit_sf_bound(sf_hat, se, sign, alpha_ci)
-        if on in ("ff", "F"):
-            return 1.0 - sf_b
-        return -np.log(sf_b)
+            lo = bounds_at(-1.0, alpha_ci / 2.0)
+            hi = bounds_at(+1.0, alpha_ci / 2.0)
+            if name == "sf":
+                return np.stack([lo["sf"], hi["sf"]], axis=-1)
+            # ff and Hf decrease in sf: their lower end is sf's upper.
+            return np.stack([hi[name], lo[name]], axis=-1)
+        # One-sided: ff and Hf use the opposite survival-function tail.
+        sign = -1.0 if bound == "lower" else 1.0
+        if name != "sf":
+            sign = -sign
+        return bounds_at(sign, alpha_ci)[name]
 
     def plot(
         self,

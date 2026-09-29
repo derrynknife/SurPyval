@@ -223,7 +223,7 @@ Shape in, shape out. Every function evaluated at query points -- times ``x``, or
 - a 1-D query (a list, tuple or array) gives a 1-D array of its length, and a 2-D query an array of its 2-D shape, with the values the flattened query would give;
 - an empty query gives an empty array of its shape.
 
-This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions. A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
+This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions, and for a distribution's own functions called with explicit parameters (``surv.Gamma.sf([5, 10], 8, 3)`` is ``surv.Gamma.sf(np.array([5, 10]), 8, 3)``; a list or tuple, of times or of parameters, is taken as an array). A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
 
 With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row. The survival tree and forest are the one documented exception: with a matrix of covariates they evaluate every row at every time, a grid of shape ``(n_rows,) + x.shape`` (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
 
@@ -246,6 +246,9 @@ A step estimate's ``hf`` and ``df`` are the jumps between the points asked for (
     assert km.sf([[2, 4], [6, 7]]).shape == (2, 2)
     np.testing.assert_array_equal(
         km.cb([[2, 4], [6, 7]]).reshape(-1, 2), km.cb([2, 4, 6, 7])
+    )
+    np.testing.assert_array_equal(
+        surv.Gamma.sf([5, 10], 8, 3), surv.Gamma.sf(np.array([5, 10]), 8, 3)
     )
 
 .. _missing-values:
