@@ -95,6 +95,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     _restored_covariance: "npt.NDArray | None" = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
+    #: The covariate point the baseline parameters are at: zeros (or
+    #: ``None``, for an accelerated life model) when they are those of a
+    #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
+    #: its baseline at the ``n``-weighted covariate means (#463), stored
+    #: here, and every prediction uses ``Z - center``.
+    center: "npt.NDArray | None" = None
+    #: ``(params, center, jacobian)`` of the centred fit behind a model
+    #: that reports its baseline at 0 (the log-linear families whose
+    #: baseline maps exactly between the two, #463): the covariance and
+    #: the confidence bounds are computed there, where the parameters are
+    #: well conditioned, and carried to ``params`` by the jacobian of the
+    #: map.
+    _fit_centring: "tuple | None" = None
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
     # Declared here so static type checkers know their types.
@@ -220,6 +233,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out["gamma"] = float(getattr(self, "gamma", 0.0))
         out["p"] = float(getattr(self, "p", 1.0))
         out["f0"] = float(getattr(self, "f0", 0.0))
+        if self._has_center():
+            # Only a baseline at the covariate means (center=True, #463) is
+            # stored, which makes the dict schema 2: a schema-1 reader
+            # would take it for the baseline at Z = 0.
+            out["center"] = np.asarray(self.center, dtype=float).tolist()
         serialise_covariate_meta(self, out)
 
         # Store the parameter covariance so the restored model can produce
@@ -359,6 +377,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
+        if kind != "Accelerated Life":
+            # A dict without one has its baseline at Z = 0 (#463).
+            out.center = np.array(
+                model_dict.get("center", np.zeros(len(params) - k_dist)),
+                dtype=float,
+            )
+            if out.center.shape != (len(params) - k_dist,):
+                raise ValueError(
+                    "The model dict's 'center' has {} value(s) for {} "
+                    "covariate coefficient(s).".format(
+                        out.center.size, len(params) - k_dist
+                    )
+                )
         restore_covariate_meta(out, model_dict)
 
         if "covariance" in model_dict:
@@ -382,6 +413,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         unchanged.
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
+
+    def _has_center(self) -> bool:
+        """Whether the baseline is at a nonzero covariate ``center``."""
+        return self.center is not None and bool(np.any(self.center))
+
+    def _centred(
+        self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+    ) -> Any:
+        """The covariate rows ``Z`` (already prepared) relative to
+        ``center`` (default: the model's), where the baseline is."""
+        center = self.center if center is None else center
+        if center is None or not np.any(center):
+            return Z
+        return np.asarray(Z, dtype=float) - center
 
     def __repr__(self) -> str:
         dist_params = self.params[0 : self.k_dist]
@@ -417,6 +462,18 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 reg_model=self.reg_model.name,
             )
 
+            if self._has_center():
+                # A fit with center=True (#463): say where the baseline
+                # parameters are.
+                out += (
+                    "\nBaseline at         : the covariate means, "
+                    "Z = center = {}".format(
+                        np.array2string(
+                            np.asarray(self.center, dtype=float),
+                            separator=", ",
+                        )
+                    )
+                )
             out = (
                 out
                 + "\nDistribution        :\n"
@@ -444,7 +501,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "covariate effect is additive (beta'Z on the hazard), "
                 "not a multiplier."
             )
-        return self.reg_model.phi(Z, *self.phi_params)
+        # Relative to the centre for a baseline kept there (#463).
+        return self.reg_model.phi(self._centred(Z), *self.phi_params)
 
     def _eval(
         self,
@@ -459,7 +517,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # named method carried this verbatim.
         if isinstance(x, list):
             x = np.array(x)
-        Z = self._prepare_Z(Z)
+        Z = self._centred(self._prepare_Z(Z))
         # Below the support (a negative time for a positive distribution)
         # nothing has happened yet: survival 1, and 0 for the others. The
         # distribution functions gave nan there, with a RuntimeWarning, and
@@ -673,7 +731,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         H = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = np.asarray(z, dtype=float).reshape(1, -1)
+            zrow = self._centred(np.asarray(z, dtype=float).reshape(1, -1))
             # Query times before 0 fall in the first segment when the
             # baseline is defined there.
             upper = np.clip(xq, min(a, support_lo) if i == 0 else a, b)
@@ -719,7 +777,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = np.asarray(z, dtype=float).reshape(1, -1)
+            zrow = self._centred(np.asarray(z, dtype=float).reshape(1, -1))
             phi_seg = float(
                 np.asarray(
                     self.model._phi(zrow, *phi_params), dtype=float
@@ -998,7 +1056,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         size: int,
         Z: "npt.ArrayLike | pd.DataFrame",
         random_state: Any = None,
-    ) -> npt.NDArray:
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         r"""
 
         A method to draw random samples from the distributions using the
@@ -1056,9 +1114,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # on every path.
         Z = self._prepare_Z(Z)
         if hasattr(self.model, "random"):
-            return self.model.random(
-                size, Z, *self.params, random_state=random_state
+            if not self._has_center():
+                return self.model.random(
+                    size, Z, *self.params, random_state=random_state
+                )
+            # A baseline at the covariate means (#463): draw at Z - center
+            # and report the rows as given.
+            x, Z_out = self.model.random(
+                size, self._centred(Z), *self.params, random_state=random_state
             )
+            return x, Z_out + self.center
         raise NotImplementedError(
             f"random() is not implemented for {self.kind} models."
         )
@@ -1141,23 +1206,60 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         A parameter driven to a boundary breaks the Wald approximation; the
         covariance is then returned filled with ``nan`` (with a warning).
+
+        For a fit on centred covariates (#463) the information is that of
+        the centred fit, carried to the reported parameters (the baseline
+        at ``Z = 0``) by the jacobian of the map between them.
         """
         restored = getattr(self, "_restored_covariance", None)
         if restored is not None:
             return restored
         self._check_inference()
+        _, _, cov = self._inference_state()
+        if self._fit_centring is not None:
+            J = self._fit_centring[2]
+            cov = J @ cov @ J.T
+        return cov
+
+    def _inference_state(
+        self,
+    ) -> "tuple[npt.NDArray, npt.NDArray | None, npt.NDArray]":
+        """``(params, center, covariance)`` of the parameterisation the
+        confidence bounds are computed in: that of the centred fit behind
+        a model that reports its baseline at 0 (#463), where the
+        coefficients and the baseline are not nearly collinear, else the
+        model's own."""
+        restored = getattr(self, "_restored_covariance", None)
+        if restored is not None:
+            return np.asarray(self.params, dtype=float), self.center, restored
+        if self._fit_centring is not None:
+            params, center = self._fit_centring[:2]
+        else:
+            params, center = self.params, self.center
+        p_hat = np.asarray(params, dtype=float)
+        return p_hat, center, self._observed_covariance(p_hat, center)
+
+    def _observed_covariance(
+        self, p_hat: npt.NDArray, center: "npt.NDArray | None"
+    ) -> npt.NDArray:
+        """The inverse of the numerical Hessian of the negative
+        log-likelihood at ``p_hat``, the baseline at ``center``."""
         names = self.parameter_names()
-        p_hat = np.asarray(self.params, dtype=float)
         free = [i for i, nm in enumerate(names) if nm not in self.fixed]
         n = len(names)
         cov = np.zeros((n, n))
         if not free:
             return cov
+        data = self.data
+        if center is not None and np.any(center):
+            from ._fit_skeleton import centred_copy
+
+            data = centred_copy(data, center)
 
         def neg_ll_free(free_vals: npt.NDArray) -> float:
             full = p_hat.copy()
             full[free] = free_vals
-            return self.model.neg_ll(self.data, *full)
+            return self.model.neg_ll(data, *full)
 
         step = self._hessian_step(p_hat)[free]
         H = numerical_hessian(neg_ll_free, p_hat[free], step)
@@ -1317,9 +1419,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        Zp = self._prepare_Z(Z)
-        params = np.asarray(self.params, dtype=float)
-        cov = self.covariance()
+        # In the parameterisation of the centred fit when there is one
+        # (#463): the bounds are the same function of the data, and there
+        # the coefficients are not nearly collinear with the baseline.
+        params, center, cov = self._inference_state()
+        Zp = self._centred(self._prepare_Z(Z), center)
 
         if on in ("hf", "df"):
             fn = self.model.hf if on == "hf" else self.model.df

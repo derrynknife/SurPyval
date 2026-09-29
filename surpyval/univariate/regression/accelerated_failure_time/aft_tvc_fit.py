@@ -160,8 +160,10 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 
 
 from .._fit_skeleton import (  # noqa: E402
+    Centring,
     LogLinearPhi,
     MirroredDistributionAttrs,
+    OriginWatch,
     check_fixed_and_init,
     optimise_nm_tnc,
     require_finite_fit,
@@ -185,6 +187,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         Z: npt.ArrayLike,
         n: "npt.ArrayLike | None" = None,
         fixed: "dict[str, float] | None" = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated failure time model to start-stop (counting-process)
@@ -205,6 +208,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             Count weight per subject (read from the terminal row). Default 1.
         fixed : dict, optional
             Parameters to hold fixed, by name.
+        center : bool, optional
+            Report the baseline at the covariate means of the interval
+            rows (stored as ``model.center``) instead of at ``Z = 0``, as
+            for :meth:`fit`.
 
         Returns
         -------
@@ -217,7 +224,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
         x, c_a, n_a, tl, Z_a, ident = handle_tvc(i, xl, xr, c, Z, n)
         return self._fit_tvc_arrays(
-            x, c_a, n_a, tl, Z_a, ident, AFTFitter, fixed
+            x, c_a, n_a, tl, Z_a, ident, AFTFitter, fixed, center
         )
 
     def fit_tvc_timeline(
@@ -228,16 +235,20 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         c: npt.ArrayLike,
         n: "npt.ArrayLike | None" = None,
         fixed: "dict[str, float] | None" = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit from a per-subject covariate *timeline* (one row per covariate
         change, terminal status on the last row) instead of explicit
         ``(xl, xr]`` intervals. See ``CoxPH.fit_tvc_timeline`` for the format.
+        ``fixed`` and ``center`` are as for :meth:`fit_tvc`.
         """
         from ..proportional_hazards.tvc import handle_tvc_timeline
 
         i2, xl, xr, c2, Z2, n2 = handle_tvc_timeline(i, x, Z, c, n)
-        return self.fit_tvc(i2, xl, xr, c2, Z2, n=n2, fixed=fixed)
+        return self.fit_tvc(
+            i2, xl, xr, c2, Z2, n=n2, fixed=fixed, center=center
+        )
 
     @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
@@ -250,10 +261,12 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         Z_cols: "str | list[str]",
         n_col: "str | None" = None,
         fixed: "dict[str, float] | None" = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         ``fit_tvc`` from a start-stop ``DataFrame``. ``Z_cols`` may be a single
         column name or a list; ``feature_names`` is recorded on the model.
+        ``fixed`` and ``center`` are as for :meth:`fit_tvc`.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         n = None if n_col is None else df[n_col].values
@@ -265,6 +278,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             df[cols].values,
             n=n,
             fixed=fixed,
+            center=center,
         )
         model.feature_names = cols
         return model
@@ -279,6 +293,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         ident: npt.NDArray,
         AFTFitter: Any,
         fixed: "dict[str, float] | None",
+        center: bool = False,
     ) -> ParametricRegressionModel:
         if fixed is None:
             fixed = {}
@@ -289,11 +304,21 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         _validate_full_coverage(x, tl, ident)
         grp = _grouped_episodes(x, c, n, tl, ident)
 
+        # Centred on the interval rows' means, as the ordinary AFT fit
+        # (#463): exp(beta'z) on a covariate far from 0 overflows.
+        centring = Centring.plan(
+            self, "Accelerated Failure Time", Z, n, fixed, center
+        )
+        watch = (
+            None if centring is not None else OriginWatch(Z, n, self.k_dist)
+        )
+        mean = np.zeros(p) if centring is None else centring.center
+
         # Result fitter: a fresh AFTFitter (so all ordinary prediction
         # functions are inherited unchanged) with the accumulated-age
         # likelihood bound onto this one instance only.
         like = AFTFitter(self.dist)
-        like._tvc = {**grp, "Zep": Z}
+        like._tvc = {**grp, "Zep": Z - mean}
         like.neg_ll = types.MethodType(_aft_tvc_neg_ll, like)
 
         # Initial values: a plain distribution fit to the subject exit times,
@@ -324,10 +349,33 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
             # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
             # which says so when neither rung converged.
-            res = optimise_nm_tnc(fun, init)
+            if watch is None:
+                res = optimise_nm_tnc(fun, init)
+            else:
+                res = watch.run(optimise_nm_tnc, fun, init)
         require_finite_fit(float(res.fun))
 
         params = inv_trans(const(res.x))
+        fit_centring = None
+        center_out = np.zeros(p)
+        if watch is not None:
+            watch.check_params(np.asarray(params, dtype=float))
+        if centring is not None:
+            # The baseline moved to Z = 0 when that is representable, as
+            # for the ordinary fit; the likelihood of the data as given is
+            # the check.
+            raw = AFTFitter(self.dist)
+            raw._tvc = {**grp, "Zep": Z}
+            params_c = np.asarray(params, dtype=float)
+            params, center_out, J = centring.finish(
+                params_c,
+                float(res.fun),
+                lambda *q: _aft_tvc_neg_ll(raw, None, *q),
+                bounds,
+                self.dist.name,
+            )
+            if J is not None:
+                fit_centring = (params_c, centring.center, J)
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -355,6 +403,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         # Estimated parameters only; see ``assemble_regression_model``.
         model.k = len(bounds) - len(fixed or {})
         model.data = edata
+        model.center = center_out
+        model._fit_centring = fit_centring
         model.is_tvc = True
 
         # Report information criteria on the *subjects*, not the episode
@@ -366,5 +416,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._ic_n = ic_sample_size(
             np.where(grp["event"], 0, 1), grp["weight"]
         )
-
+        if watch is not None and not set(fixed) & set(self.param_names):
+            # On covariates far from 0, check the coefficients against the
+            # same model with its baseline at the means (#463).
+            watch.compare(
+                model,
+                lambda: self._fit_tvc_arrays(
+                    x, c, n, tl, Z, ident, AFTFitter, fixed, center=True
+                ),
+            )
         return model

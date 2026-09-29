@@ -166,9 +166,11 @@ def test_formula_row_order(name, data):
     kw = dict(x_col="x", c_col="c", n_col="n", formula="z0 + C(g)")
     try:
         ref = quietly(fitter.fit_from_df, df, **kw)
-    except ValueError:
-        # Cox refuses a column constant within every risk set (#409).
-        assume(name != "CoxPH")
+    except ValueError as e:
+        # Cox refuses a column constant within every risk set (#409); a
+        # parametric fit refuses a baseline at Z = 0 it cannot represent,
+        # as when separated data send the coefficients off (#463).
+        assume(name != "CoxPH" and "center=True" not in str(e))
         raise
     got = quietly(
         fitter.fit_from_df, df.iloc[perm].reset_index(drop=True), **kw

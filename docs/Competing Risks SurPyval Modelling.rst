@@ -802,7 +802,12 @@ A positive :math:`\beta_0` raises the cause-1 incidence, so the ``Z1 = +1``
 curve sits above ``Z1 = -1``. The fitted CIF is a step function built on the
 observed cause-1 event times, so it is flat after the last of them (about
 :math:`t = 5.6` in this sample) rather than extrapolating. ``sf(x, Z)`` returns
-``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`.
+``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`. As the
+Cox fit does, the Fine-Gray fit centres the covariates on their means, which
+leaves the coefficients and every prediction unchanged but keeps
+:math:`e^{Z\beta}` from overflowing on a covariate far from zero; the
+baseline is then reported at :math:`Z = 0`, or, with ``center=True``, at the
+means (``model.center``, and ``phi`` is relative to them).
 
 .. jupyter-execute::
     :hide-code:
@@ -889,9 +894,9 @@ together produce the incidence effect.
     assert _b[1][0] > 0 and _b[2][0] < 0, _b
 
 The causes are sorted, so the row order of ``betas`` is reproducible.
-``phi_e(Z, row)`` is a cause's hazard multiplier
-:math:`e^{(Z - \bar Z)\hat\beta_k}`, relative to a unit at the covariate means
-:math:`\bar Z` (``center``, where the Cox fits put the baselines), and
+``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
+(relative to a unit at the covariate means, ``center``, for a fit with
+``center=True``, which keeps the baselines there), and
 ``results`` holds each cause's optimiser result. The model also has ``beta``
 and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
 of the rows of ``betas``, which is not a quantity of the model, and no

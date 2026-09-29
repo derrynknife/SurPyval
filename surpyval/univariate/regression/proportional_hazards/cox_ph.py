@@ -746,14 +746,70 @@ def _covariate_center(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
     differences within a risk set, so fitting on ``Z - center`` gives the
     same coefficients, while ``exp(beta'Z)`` stays near 1 for the rows of
     the data instead of overflowing on a column far from 0 (a year, a
-    date as a day count). The baseline hazard is then that of a unit at
-    the centre, and every prediction uses ``exp(beta'(Z - center))``. R's
-    ``coxph``, lifelines and scikit-survival centre the same way; for
-    start-stop data R's mean is over the interval rows, as here.
+    date as a day count). The baseline hazard it gives is that of a unit
+    at the centre; with ``center=True`` the model keeps it there, and every
+    prediction uses ``exp(beta'(Z - center))``, as R's ``coxph``,
+    lifelines and scikit-survival do (for start-stop data R's mean is over
+    the interval rows, as here). By default it is moved to ``Z = 0``
+    (:func:`_baseline_at_origin`).
     """
     Z = np.asarray(Z, dtype=float)
     n = np.asarray(n, dtype=float).reshape(-1)
     return (n @ Z) / n.sum()
+
+
+_LOG_MAX = float(np.log(np.finfo(float).max))
+_TINY = float(np.finfo(float).tiny)
+
+
+def _baseline_at_origin(
+    beta: npt.NDArray,
+    center: npt.NDArray,
+    Z: npt.NDArray,
+    r: npt.NDArray,
+    h0: npt.NDArray,
+    what: str = "baseline hazard",
+) -> "tuple[npt.NDArray, npt.NDArray]":
+    """The risk weights ``r`` and baseline increments ``h0`` fitted at the
+    covariate ``center`` moved to ``Z = 0`` (#463), as R's
+    ``basehaz(fit, centered = FALSE)``: ``h0 * exp(-beta'center)`` and
+    ``r * exp(beta'center)``, computed on the log scale.
+
+    Refused, with a ``ValueError`` that points to ``center=True``, where
+    that is not representable: a positive increment underflows (to 0 or a
+    subnormal number) or overflows, a risk weight does, or ``exp(beta'Z)``
+    overflows on the fitted rows ``Z`` -- the covariates are too far from
+    0 for a baseline there to mean anything in floating point.
+    """
+    beta = np.asarray(beta, dtype=float)
+    shift = float(np.dot(beta, center))
+    with np.errstate(all="ignore"):
+        lp = np.asarray(Z, dtype=float) @ beta
+        h0_0 = np.exp(np.log(h0) - shift)
+        r_0 = np.exp(np.log(r) + shift)
+    ok = (
+        bool(np.all(np.abs(lp) < _LOG_MAX))
+        and bool(np.all(np.isfinite(h0_0)) and np.all(np.isfinite(r_0)))
+        and bool(np.all(h0_0[h0 > 0] >= _TINY))
+        and bool(np.all(r_0[r > 0] >= _TINY))
+    )
+    if not ok:
+        raise ValueError(
+            "The {} at Z = 0 cannot be represented for these covariates: "
+            "their means are {} and the linear predictor there is "
+            "beta'center = {:.4g}, so the baseline at Z = 0 is exp({:.4g}) "
+            "times that at the means, which over- or underflows (as it "
+            "does when a covariate separates the events, and the "
+            "coefficients run off towards infinity). Fit with center=True "
+            "to report the baseline at the covariate means (model.center) "
+            "instead, or move the covariates nearer 0.".format(
+                what,
+                np.array2string(np.asarray(center), precision=4),
+                shift,
+                -shift,
+            )
+        )
+    return r_0, h0_0
 
 
 def cox_at_risk_mask(
@@ -779,10 +835,11 @@ class CoxPH_:
     choice of tie handling, Efron's by default) and the baseline by the
     Breslow estimator, with Efron's tie correction after an Efron fit.
     As in R's ``coxph``, the fit centres the covariates on their
-    (``n``-weighted) means, stored as the model's ``center``: the
-    coefficients are unchanged by this, the baseline is that of a unit at
-    ``center``, and a covariate far from 0 (a year, a date) cannot
-    overflow :math:`e^{\\beta' Z}`. Supports right censoring, left
+    (``n``-weighted) means, which leaves the coefficients unchanged and
+    keeps a covariate far from 0 (a year, a date) from overflowing
+    :math:`e^{\\beta' Z}`. The baseline is then reported at ``Z = 0``
+    (R's ``basehaz(fit, centered = FALSE)``), or, with ``center=True``, at
+    the means, stored as the model's ``center``. Supports right censoring, left
     truncation (delayed entry), stratification and time-varying
     covariates in start-stop form; left- and interval-censored data are
     refused, as the partial likelihood has no term for them (use a
@@ -807,8 +864,8 @@ class CoxPH_:
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
         # Baseline hazard increments at each distinct time -- the hazard of
         # a unit whose covariates are 0 in the ``Z`` given; ``fit`` passes
-        # the centred covariates, so a fitted model's baseline is that of a
-        # unit at its ``center`` (#459) -- returned with the risk weight
+        # the centred covariates (#459), and moves the result to Z = 0
+        # unless ``center=True`` (#463) -- returned with the risk weight
         # ``r`` and the deaths ``d``. Breslow's increment is
         # ``d / r``. With Efron ties (``tie_method="efron"``) the ``m`` tied
         # deaths at a time see the risk set step down, ``r - (l / m) * r_D``
@@ -1251,6 +1308,7 @@ class CoxPH_:
         tie_method: str = "efron",
         tol: float = 1e-10,
         strata: npt.ArrayLike | None = None,
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fits Cox Proportional Hazards model to the provided data.
@@ -1305,15 +1363,24 @@ class CoxPH_:
             argument to select that stratum's baseline. Observations with a
             missing label (``None``, ``NaN`` or pandas ``NA``) are dropped,
             with a warning.
+        center: bool, optional
+            ``False`` (the default) reports the baseline (``h0``, ``H0``,
+            each stratum's) at ``Z = 0``; ``True`` reports it at the
+            covariate means, stored as ``model.center`` (as R's ``coxph``
+            and ``basehaz(fit)``), and ``phi(Z)`` is then relative to them.
+            The fit runs on centred covariates either way, so the
+            coefficients and predictions are the same; the default refuses,
+            with a ``ValueError``, covariates so far from 0 that the
+            baseline there over- or underflows.
 
         Returns
         -------
 
         model: SemiParametricRegressionModel
             The fitted model: ``params`` (also ``beta``) are the
-            coefficients and ``p_values`` their Wald p-values; ``center``
-            is the covariate means the fit centred on, and the baseline
-            (``h0``, ``H0``) is that of a unit at ``center``. If a
+            coefficients and ``p_values`` their Wald p-values; the
+            baseline (``h0``, ``H0``) is that of a unit at ``center``
+            (zeros unless ``center=True``). If a
             covariate separates the events from the survivors the partial
             likelihood has no finite maximum; the fit then warns
             ("monotone partial likelihood") and the coefficient is
@@ -1342,7 +1409,7 @@ class CoxPH_:
 
         if strata is not None:
             return self._fit_stratified(
-                x, Z, c, n, tl, tie_method, tol, strata, func_generator
+                x, Z, c, n, tl, tie_method, tol, strata, func_generator, center
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
@@ -1353,8 +1420,8 @@ class CoxPH_:
 
         # Fitted on centred covariates, so exp(beta'Z) cannot overflow on a
         # column far from 0 (#459); see ``_covariate_center``.
-        center = _covariate_center(Z, n)
-        Zc = Z - center
+        mean = _covariate_center(Z, n)
+        Zc = Z - mean
         neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
         res, p_values = _solve_beta_and_p_values(
@@ -1371,7 +1438,6 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
-        model.center = center
 
         # Retain the per-observation training data (before ``baseline``
         # reassigns ``x`` to the unique event times) so the model can compute
@@ -1385,8 +1451,15 @@ class CoxPH_:
             "tl": np.asarray(tl, dtype=float),
         }
 
-        # The baseline of a unit at the centre.
+        # The baseline of a unit at the centre, moved to Z = 0 by default.
         x, r, d, h0 = self.baseline(model.beta, x, c, n, Zc, tl, tie_method)
+        if center:
+            model.center = mean
+        else:
+            r, h0 = _baseline_at_origin(model.beta, mean, Z, r, h0)
+            model.center = np.zeros_like(mean)
+        # Where the fit centred, for the residuals and diagnostics.
+        model._fit_center = mean
         model.x = x
         model.r = r
         model.d = d
@@ -1407,6 +1480,7 @@ class CoxPH_:
         tol: float,
         strata: npt.ArrayLike,
         func_generator: Callable,
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """Fit a stratified Cox model (shared ``beta``, per-stratum baseline).
 
@@ -1470,13 +1544,13 @@ class CoxPH_:
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
         # coxph), so the strata's baselines stay comparable (#459).
-        center = _covariate_center(
+        mean = _covariate_center(
             np.vstack([v[5] for v in validated]),
             np.concatenate([v[3] for v in validated]),
         )
         per_stratum = []
         for s, xs, cs, ns_, tls, Zs in validated:
-            Zcs = Zs - center
+            Zcs = Zs - mean
             gen = func_generator(xs, Zcs, cs, ns_, tls)
             per_stratum.append((s, gen, (xs, cs, ns_, Zcs, tls)))
 
@@ -1508,18 +1582,21 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
-        model.center = center
+        model.center = mean if center else np.zeros_like(mean)
         model.is_stratified = True
         model.strata_labels = list(labels)
 
         # A separate baseline per stratum, each that of a unit at the
-        # centre. Prediction selects the stratum's baseline via the
-        # ``stratum`` argument to ``hf``/``Hf``/...
+        # centre, moved to Z = 0 by default. Prediction selects the
+        # stratum's baseline via the ``stratum`` argument to ``hf``/``Hf``.
+        Z_all = np.vstack([v[5] for v in validated])
         baselines: dict[Any, dict[str, npt.NDArray]] = {}
         for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
             bx, br, bd, bh0 = self.baseline(
                 model.beta, xs, cs, ns_, Zs, tls, tie_method
             )
+            if not center:
+                br, bh0 = _baseline_at_origin(model.beta, mean, Z_all, br, bh0)
             baselines[s] = {
                 "x": bx,
                 "r": br,
@@ -1554,6 +1631,7 @@ class CoxPH_:
         tie_method: str = "efron",
         strata_col: str | None = None,
         tl_col: str | None = None,
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fits a Cox PH model using a pandas dataframe as the input.
@@ -1589,6 +1667,9 @@ class CoxPH_:
             The column name of the left-truncation (delayed-entry) times,
             passed to :meth:`fit` as ``tl``. A subject enters the risk sets
             only after its entry time.
+        center: bool, optional
+            Report the baseline at the covariate means (``model.center``)
+            instead of at ``Z = 0``; see :meth:`fit`.
 
         Returns
         -------
@@ -1610,7 +1691,14 @@ class CoxPH_:
         )
 
         model = self.fit(
-            x, Z, c, n, tl=tl, tie_method=tie_method, strata=strata
+            x,
+            Z,
+            c,
+            n,
+            tl=tl,
+            tie_method=tie_method,
+            strata=strata,
+            center=center,
         )
         model.formula = form
         model.feature_names = feature_names
@@ -1629,6 +1717,7 @@ class CoxPH_:
         n: npt.ArrayLike | None = None,
         tie_method: str = "efron",
         tol: float = 1e-10,
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fit a Cox model with time-varying covariates in start-stop format.
@@ -1656,6 +1745,9 @@ class CoxPH_:
             :meth:`fit`.
         tol : float, optional
             Optimiser tolerance.
+        center : bool, optional
+            Report the baseline at the covariate means of the interval rows
+            (``model.center``) instead of at ``Z = 0``; see :meth:`fit`.
 
         Returns
         -------
@@ -1697,6 +1789,7 @@ class CoxPH_:
             tl=tl,
             tie_method=tie_method,
             tol=tol,
+            center=center,
         )
         model.is_tvc = True
         # Subject ids per *internal* (sorted) row, and the permutation from
@@ -1720,12 +1813,14 @@ class CoxPH_:
         Z_cols: str | list[str],
         n_col: str | None = None,
         tie_method: str = "efron",
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
 
         See :meth:`fit_tvc`; ``Z_cols`` names the covariate column(s) and the
         remaining arguments name the id / ``xl`` / ``xr`` / ``c`` columns.
+        ``tie_method`` and ``center`` are as for :meth:`fit`.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc(
@@ -1736,6 +1831,7 @@ class CoxPH_:
             Z=df[cols].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
             tie_method=tie_method,
+            center=center,
         )
         model.feature_names = cols
         return model
@@ -1750,6 +1846,7 @@ class CoxPH_:
         n: npt.ArrayLike | None = None,
         tie_method: str = "efron",
         tol: float = 1e-10,
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a covariate *timeline*.
@@ -1786,6 +1883,9 @@ class CoxPH_:
             :meth:`fit`.
         tol : float, optional
             Optimiser tolerance.
+        center : bool, optional
+            Report the baseline at the covariate means (``model.center``)
+            instead of at ``Z = 0``; see :meth:`fit`.
 
         Returns
         -------
@@ -1802,6 +1902,7 @@ class CoxPH_:
             n=n_ss,
             tie_method=tie_method,
             tol=tol,
+            center=center,
         )
 
     @renamed_arguments(id_col="i_col", time_col="x_col", method="tie_method")
@@ -1814,6 +1915,7 @@ class CoxPH_:
         c_col: str,
         n_col: str | None = None,
         tie_method: str = "efron",
+        center: bool = False,
     ) -> SemiParametricRegressionModel:
         """
         Fit a timeline TVC Cox model from a DataFrame.
@@ -1821,6 +1923,7 @@ class CoxPH_:
         See :meth:`fit_tvc_timeline`; ``x_col`` names the change-point time
         column (``x``), ``Z_cols`` the covariate column(s) and ``c_col`` the
         terminal event / censoring column (``0`` event, ``1`` censored).
+        ``tie_method`` and ``center`` are as for :meth:`fit`.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc_timeline(
@@ -1830,6 +1933,7 @@ class CoxPH_:
             c=df[c_col].to_numpy(),
             n=None if n_col is None else df[n_col].to_numpy(),
             tie_method=tie_method,
+            center=center,
         )
         model.feature_names = cols
         return model

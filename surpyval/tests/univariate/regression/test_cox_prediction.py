@@ -21,9 +21,8 @@ def test_nothing_has_happened_before_the_first_event(model):
     assert np.all(model.hf(before, [[0.3]]) == 0.0)
     assert np.all(model.sf(before, [[0.3]]) == 1.0)
     assert np.all(model.ff(before, [[0.3]]) == 0.0)
-    # and at the first event the baseline -- that of a unit at the
-    # covariate means, ``center`` (#459) -- has made its first jump
-    assert model.Hf(model.x[0], [model.center]) == pytest.approx(model.H0[0])
+    # and at the first event the baseline has made its first jump
+    assert model.Hf(model.x[0], [[0.0]]) == pytest.approx(model.H0[0])
 
 
 def test_times_pair_with_their_own_covariate_row(model):

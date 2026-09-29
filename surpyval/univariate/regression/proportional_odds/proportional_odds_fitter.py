@@ -188,6 +188,7 @@ class ProportionalOddsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional odds model by maximum likelihood.
@@ -215,6 +216,14 @@ class ProportionalOddsFitter(
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
             such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``.
+            ``True`` reports the baseline at the covariate means (stored as
+            ``model.center``) instead: the fit runs on ``Z - center``, and
+            ``init`` and ``fixed`` are read there too. Use it for
+            covariates far from 0 (a year, a date), where the baseline at
+            ``Z = 0`` cannot be represented or fitted, which the default
+            fit refuses with a ``ValueError`` saying so.
 
         Returns
         -------
@@ -245,19 +254,34 @@ class ProportionalOddsFitter(
             fixed,
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
+            kind="Proportional Odds",
+            center=center,
         )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
+        (
+            init_t,
+            bounds,
+            pmap,
+            transform,
+            inv_trans,
+            const,
+            fixed,
+            centring,
+            watch,
+        ) = prep
 
         with np.errstate(all="ignore"):
 
             fun = make_objective(self, data, inv_trans, const)
 
-            res = optimise_nm_tnc(fun, init_t)
+            if watch is None:
+                res = optimise_nm_tnc(fun, init_t)
+            else:
+                res = watch.run(optimise_nm_tnc, fun, init_t)
 
         params = inv_trans(const(res.x))
         reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
 
-        return assemble_regression_model(
+        model = assemble_regression_model(
             self,
             "Proportional Odds",
             reg_model,
@@ -267,7 +291,19 @@ class ProportionalOddsFitter(
             bounds,
             pmap,
             fixed,
+            centring=centring,
+            watch=watch,
         )
+        if watch is not None and not set(fixed) & set(self.param_names):
+            # On covariates far from 0, check the coefficients against the
+            # same model with its baseline at the means (#463).
+            watch.compare(
+                model,
+                lambda: self.fit(
+                    x, Z, c=c, n=n, t=t, fixed=fixed, center=True
+                ),
+            )
+        return model
 
 
 def PO(distribution: Any) -> "ProportionalOddsFitter":

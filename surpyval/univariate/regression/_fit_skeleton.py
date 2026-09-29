@@ -10,6 +10,7 @@ family supplies only its optimiser strategy and covariate-link object
 separate: its life-model parameter juggling does not fit this shape.
 """
 
+import copy
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -177,6 +178,408 @@ class HazardIdentitiesMixin:
         return np.log(self.hf(x, Z, *params)) - self.Hf(x, Z, *params)
 
 
+# -- covariate centring (#463) ------------------------------------------------
+#
+# A log-linear link evaluates exp(beta'Z), which on a covariate far from 0
+# (a year, a date as a day count) overflows at the optimiser's first trial
+# steps, and the fit wandered off to a wrong answer silently (a WeibullPH
+# beta of 0.0247 instead of 0.907 with 2000 added to the covariate).
+#
+# ``fit(..., center=True)`` fits on Z - center, center the n-weighted
+# covariate means, as CoxPH does (#459), and the model keeps its baseline
+# there (``model.center``): exp(beta'(Z - center)) stays near 1 on the data
+# whatever the covariates' origin. That works for every family and link.
+#
+# By default the baseline is reported at Z = 0, as it always was. For the
+# family/link pairs below, centring is an exact reparameterisation -- the
+# model with its baseline at the centre is the model with its baseline at
+# Z = 0, with the baseline parameters moved by the linear predictor at the
+# centre, s = beta'center -- so the fit still runs on centred covariates,
+# and its parameters are mapped back to Z = 0, where they must be
+# representable (else the fit says so, and points to ``center=True``).
+# Each entry maps the distribution parameters at the centre to those at
+# Z = 0 (the map with -s is its inverse) and names the parameters it moves.
+#
+# - PH, H(x | Z) = exp(beta'Z) H0(x): H0 at Z = 0 is exp(-s) times H0 at
+#   the centre -- a scale change for Weibull, Rayleigh and Exponential, a
+#   location shift for Gumbel (H0 = exp((x - mu) / sigma)).
+# - AFT, H(x | Z) = H0(exp(beta'Z) x): time at Z = 0 is time at the
+#   centre scaled by exp(s), so any scale family maps (a scale parameter
+#   times exp(s), a rate times exp(-s), a log-time location plus s, and
+#   both location and scale times exp(s) for a distribution on the whole
+#   line).
+# - PO, S/F(x | Z) = exp(beta'Z) S/F_0(x): the survival odds at Z = 0 are
+#   exp(-s) times those at the centre, a scale change for LogLogistic
+#   (odds (x / alpha)^-beta) and a location shift for Logistic (odds
+#   exp(-(x - mu) / sigma)).
+#
+# Every other pair (LogNormal, Gamma, Normal or Logistic PH, and PO with
+# any baseline but those two) is not closed under the change: the model
+# with its baseline at the covariate means is a different model from the
+# one with its baseline at 0, with a different maximum likelihood. By
+# default those are fitted at Z = 0 as they always were, on the
+# covariates as given (:class:`OriginWatch` refuses the fit where that
+# breaks down), as are the additive hazards models, whose term beta'Z has
+# no exp to overflow.
+
+
+def _ph_weibull(p: Any, s: Any) -> list:
+    return [p[0] * np.exp(s / p[1]), p[1]]
+
+
+def _rate_down(p: Any, s: Any) -> list:
+    return [p[0] * np.exp(-s)]
+
+
+def _first_scale_up(p: Any, s: Any) -> list:
+    return [p[0] * np.exp(s), *p[1:]]
+
+
+def _both_scale_up(p: Any, s: Any) -> list:
+    return [p[0] * np.exp(s), p[1] * np.exp(s)]
+
+
+ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
+    ("Proportional Hazard", "Weibull"): ((0,), _ph_weibull),
+    ("Proportional Hazard", "Exponential"): ((0,), _rate_down),
+    ("Proportional Hazard", "Rayleigh"): (
+        (0,),
+        lambda p, s: [p[0] * np.exp(s / 2.0)],
+    ),
+    ("Proportional Hazard", "Gumbel"): (
+        (0,),
+        lambda p, s: [p[0] + p[1] * s, p[1]],
+    ),
+    ("Accelerated Failure Time", "Weibull"): ((0,), _first_scale_up),
+    ("Accelerated Failure Time", "Exponential"): ((0,), _rate_down),
+    ("Accelerated Failure Time", "Rayleigh"): ((0,), _first_scale_up),
+    ("Accelerated Failure Time", "LogLogistic"): ((0,), _first_scale_up),
+    ("Accelerated Failure Time", "ExpoWeibull"): ((0,), _first_scale_up),
+    ("Accelerated Failure Time", "Gamma"): (
+        (1,),
+        lambda p, s: [p[0], p[1] * np.exp(-s)],
+    ),
+    ("Accelerated Failure Time", "LogNormal"): (
+        (0,),
+        lambda p, s: [p[0] + s, p[1]],
+    ),
+    ("Accelerated Failure Time", "Normal"): ((0, 1), _both_scale_up),
+    ("Accelerated Failure Time", "Logistic"): ((0, 1), _both_scale_up),
+    ("Accelerated Failure Time", "Gumbel"): ((0, 1), _both_scale_up),
+    ("Accelerated Failure Time", "GumbelLEV"): ((0, 1), _both_scale_up),
+    ("Proportional Odds", "LogLogistic"): (
+        (0,),
+        lambda p, s: [p[0] * np.exp(-s / p[1]), p[1]],
+    ),
+    ("Proportional Odds", "Logistic"): (
+        (0,),
+        lambda p, s: [p[0] - p[1] * s, p[1]],
+    ),
+}
+
+#: The hint every refusal below ends with.
+_CENTER_HINT = (
+    "Fit with center=True to report the baseline at the covariate means "
+    "(model.center) instead, or move the covariates nearer 0."
+)
+
+
+def covariate_center(Z: npt.ArrayLike, n: npt.ArrayLike) -> npt.NDArray:
+    """The ``n``-weighted mean of the covariate rows, where a centred fit
+    puts its baseline (#459, #463)."""
+    Z_arr = np.asarray(Z, dtype=float)
+    n_arr = np.asarray(n, dtype=float).reshape(-1)
+    return np.dot(n_arr, Z_arr) / n_arr.sum()
+
+
+class Centring:
+    """A fit on the centred covariates ``Z - center``.
+
+    With ``move`` (a map of :data:`ORIGIN_MAPS`) the fitted parameters are
+    moved to ``Z = 0`` afterwards: ``to_origin`` moves a full parameter
+    vector (distribution parameters, then coefficients) from the centre to
+    ``Z = 0``, and ``from_origin`` back. Without, the model keeps its
+    baseline at the centre (``fit(..., center=True)``).
+    """
+
+    #: The data as given (uncentred covariates), which the fitted model
+    #: keeps; set by :func:`prepare_regression_fit`.
+    raw: "SurpyvalData | None" = None
+
+    def __init__(
+        self,
+        center: npt.NDArray,
+        k_dist: int,
+        move: "Callable | None" = None,
+    ):
+        self.center = np.asarray(center, dtype=float)
+        self.k_dist = k_dist
+        self._move = move
+
+    @classmethod
+    def plan(
+        cls,
+        fitter: Any,
+        kind: "str | None",
+        Z: npt.NDArray,
+        n: npt.NDArray,
+        fixed: dict,
+        center: bool = False,
+    ) -> "Centring | None":
+        """The centring of a fit, or ``None`` to fit on ``Z`` as given.
+
+        ``center=True`` always centres, and keeps the baseline there.
+        Otherwise the fit is centred only where the baseline maps back to
+        ``Z = 0`` exactly (``kind`` names the log-linear family) and it
+        matters: not for covariates whose means are already 0, nor where
+        ``fixed`` holds a baseline parameter the map moves (a value fixed
+        at ``Z = 0`` is not a fixed value at the centre)."""
+        if np.size(Z) == 0:
+            return None
+        if center:
+            return cls(covariate_center(Z, n), fitter.k_dist)
+        entry = ORIGIN_MAPS.get((kind or "", getattr(fitter.dist, "name", "")))
+        if entry is None:
+            return None
+        moved, move = entry
+        if any(fitter.param_names[i] in fixed for i in moved):
+            return None
+        mean = covariate_center(Z, n)
+        if not np.all(np.isfinite(mean)) or not np.any(mean):
+            return None
+        return cls(mean, fitter.k_dist, move)
+
+    @property
+    def maps_back(self) -> bool:
+        """Whether the fitted baseline is moved to ``Z = 0``."""
+        return self._move is not None
+
+    def _shifted(self, params: Any, sign: float) -> Any:
+        dist = params[: self.k_dist]
+        beta = params[self.k_dist :]
+        s = sign * np.dot(beta, self.center)
+        assert self._move is not None
+        return np.concatenate([np.array(self._move(dist, s)), beta])
+
+    def to_origin(self, params: Any) -> Any:
+        """The parameters with the baseline at the centre moved to Z = 0."""
+        return self._shifted(params, 1.0)
+
+    def from_origin(self, params: Any) -> Any:
+        """The parameters with the baseline at Z = 0 moved to the centre."""
+        return self._shifted(params, -1.0)
+
+    def finish(
+        self,
+        params_c: npt.NDArray,
+        neg_ll_c: float,
+        raw_neg_ll: Callable,
+        bounds: tuple,
+        dist_name: str = "",
+    ) -> "tuple[npt.NDArray, npt.NDArray, npt.NDArray | None]":
+        """``(params, center, jacobian)`` of the fitted model.
+
+        A baseline kept at the centre is returned as fitted, with
+        ``jacobian`` ``None``. Otherwise the parameters of the centred fit
+        ``params_c`` are moved to ``Z = 0``, which must be representable:
+        the moved values finite and inside their bounds, and the
+        log-likelihood of the data as given, ``raw_neg_ll``, reproducing
+        the centred fit's ``neg_ll_c`` (it overflows otherwise --
+        ``exp(beta'Z)`` on the raw covariates -- or loses the precision the
+        fit had); a ``ValueError`` says so if not. The model then has a
+        zero centre, and ``jacobian``, the derivative of the move, carries
+        the covariance over.
+        """
+        params_c = np.asarray(params_c, dtype=float)
+        if not self.maps_back:
+            return params_c, self.center, None
+        with np.errstate(all="ignore"):
+            params_0 = np.asarray(self.to_origin(params_c), dtype=float)
+            ok = bool(np.all(np.isfinite(params_0)))
+            for value, (lower, upper) in zip(params_0, bounds):
+                if (lower is not None and not value > lower) or (
+                    upper is not None and not value < upper
+                ):
+                    ok = False
+            if ok:
+                ll_0 = float(raw_neg_ll(*params_0))
+                ok = bool(np.isfinite(ll_0)) and abs(
+                    ll_0 - neg_ll_c
+                ) <= 1e-8 * max(1.0, abs(neg_ll_c))
+            if ok:
+                J = np.asarray(jacobian(self.to_origin)(params_c), float)
+                ok = bool(np.all(np.isfinite(J)))
+        if not ok:
+            s = float(np.dot(params_c[self.k_dist :], self.center))
+            raise ValueError(
+                "The baseline at Z = 0 cannot be represented for these "
+                "covariates: their means are {} and the linear predictor "
+                "there is beta'center = {:.4g}, so the {} baseline at Z = 0 "
+                "(parameters {}, moved from {} at the means) over- or "
+                "underflows, and exp(beta'Z) on the covariates as given "
+                "with it. {}".format(
+                    np.array2string(self.center, precision=4),
+                    s,
+                    dist_name,
+                    np.array2string(
+                        params_0[: self.k_dist], precision=4, separator=", "
+                    ),
+                    np.array2string(
+                        params_c[: self.k_dist], precision=4, separator=", "
+                    ),
+                    _CENTER_HINT,
+                )
+            )
+        return params_0, np.zeros_like(self.center), J
+
+
+def far_from_zero(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
+    """Which covariates' means are more than ten of their standard
+    deviations from 0 (a constant column if it is not 0): far enough that
+    ``exp(beta'Z)`` swings by orders of magnitude over a coefficient
+    change the data barely distinguish."""
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.size == 0:
+        return np.zeros(np.shape(Z_arr)[-1], dtype=bool)
+    mean = covariate_center(Z_arr, n)
+    n_arr = np.asarray(n, dtype=float).reshape(-1)
+    sd = np.sqrt(np.dot(n_arr, (Z_arr - mean) ** 2) / n_arr.sum())
+    return np.abs(mean) > 10.0 * sd
+
+
+class OriginWatch:
+    """Refuses an uncentred log-linear fit that the covariates' distance
+    from 0 has broken (#463).
+
+    Where the baseline at ``Z = 0`` has no exact map from the covariate
+    means (:data:`ORIGIN_MAPS`), the default fit is at ``Z = 0``, as it
+    always was. On covariates far from 0 that can fail: ``exp(beta'Z)``
+    over- or underflows on the data at the parameters the optimiser
+    returns, the likelihood or its gradient is not finite there, or the
+    optimiser does not reach a verified maximum. Each of those used to
+    return a model (a few with a warning), a Gamma PO one with a
+    log-likelihood of +3914. Or the optimiser stops at a local maximum
+    where the coefficient of the far covariate has collapsed towards 0 -- the
+    effect exp(beta'Z) can no longer express without overflowing -- as a
+    LogNormal PH fit on a covariate 300 from 0 did (0.006 against 0.64),
+    silently; :meth:`compare` catches that against the same model fitted
+    with its baseline at the means. The fit now raises in each case, and
+    points to ``center=True``. A fit the old code managed is unchanged.
+    """
+
+    def __init__(self, Z: npt.NDArray, n: npt.NDArray, k_dist: int):
+        self.Z = np.asarray(Z, dtype=float)
+        self.far_cols = far_from_zero(self.Z, n)
+        self.far = bool(np.any(self.far_cols))
+        self.center = covariate_center(self.Z, n)
+        self.k_dist = k_dist
+
+    def run(self, optimise: Callable, fun: Callable, init_t: Any) -> Any:
+        """``optimise(fun, init_t)``, refused if the covariates' origin
+        broke it; its warnings are passed on otherwise."""
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            res = optimise(fun, init_t)
+        self._check(res, fun, caught)
+        for w in caught:
+            warnings.warn_explicit(
+                w.message, w.category, w.filename, w.lineno, source=w.source
+            )
+        return res
+
+    def check_params(self, params: npt.NDArray) -> None:
+        """Refuse parameters at which ``exp(beta'Z)`` over- or underflows
+        on the data (covariates far from 0)."""
+        if not self.far:
+            return
+        beta = np.asarray(params, dtype=float)[self.k_dist :]
+        with np.errstate(all="ignore"):
+            lp = np.dot(self.Z, beta)
+        limit = np.log(np.finfo(float).max)
+        if not np.all(np.abs(lp) < limit):
+            self._refuse(
+                "exp(beta'Z) over- or underflows on the data at the fitted "
+                "coefficients (beta'Z reaches {:.4g})".format(
+                    float(np.max(np.abs(lp)))
+                )
+            )
+
+    def compare(self, model: Any, fit_centred: Callable) -> None:
+        """Refuse a fit on covariates far from 0 whose coefficient of such
+        a covariate has collapsed: it differs by more than half from the
+        coefficient of the same model fitted with its baseline at the
+        covariate means (``fit_centred()``, a ``center=True`` fit), which
+        the data determine to within a third of itself (three standard
+        errors). The two models differ only in where their baseline is
+        anchored, and both estimate the same log hazard (or odds) ratio;
+        a coefficient that moves that far is the optimiser failing, not
+        the model. Nothing is checked on covariates near 0, where the
+        default fit is as it always was."""
+        if not self.far:
+            return
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"):
+                try:
+                    ref = fit_centred()
+                    se = np.asarray(ref.standard_errors(), dtype=float)
+                except ValueError:
+                    return
+        k = self.k_dist
+        beta = np.asarray(model.params, dtype=float)[k:]
+        beta_c = np.asarray(ref.params, dtype=float)[k:]
+        se = se[k:]
+        with np.errstate(invalid="ignore"):
+            collapsed = (
+                self.far_cols
+                & (np.abs(beta_c) > 3.0 * se)
+                & (np.abs(beta - beta_c) > 0.5 * np.abs(beta_c))
+            )
+        if np.any(collapsed):
+            j = int(np.flatnonzero(collapsed)[0])
+            self._refuse(
+                "the coefficient of covariate {} is {:.4g}, where the same "
+                "model with its baseline at the covariate means has "
+                "{:.4g} (standard error {:.2g}); exp(beta'Z) cannot carry "
+                "that effect this far from 0, and the optimiser stopped "
+                "at a local maximum without it".format(
+                    j, beta[j], beta_c[j], se[j]
+                )
+            )
+
+    def _check(self, res: Any, fun: Callable, caught: list) -> None:
+        if not self.far:
+            return
+        if not np.isfinite(res.fun) or _gradient(fun, res.x) is None:
+            self._refuse(
+                "the log-likelihood or its gradient is not finite at the "
+                "optimiser's answer"
+            )
+        if any(
+            "did not converge" in str(w.message)
+            or "verified maximum" in str(w.message)
+            for w in caught
+        ):
+            self._refuse("the optimiser did not reach a verified maximum")
+
+    def _refuse(self, what: str) -> None:
+        raise ValueError(
+            "The fit with the baseline at Z = 0 failed on these covariates, "
+            "whose means are {}: {}. This model's baseline does not map "
+            "exactly between Z = 0 and the covariate means, so the fit "
+            "cannot be centred and reported at 0. {}".format(
+                np.array2string(self.center, precision=4), what, _CENTER_HINT
+            )
+        )
+
+
+def centred_copy(data: SurpyvalData, center: npt.NDArray) -> SurpyvalData:
+    """A shallow copy of ``data`` whose covariates are ``Z - center``."""
+    out = copy.copy(data)
+    out.add_covariates(np.asarray(data.Z, dtype=float) - center)
+    return out
+
+
 def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
     """``size`` uniform draws on ``(0, 1)`` for the inverse-transform
     samplers (``random``) of the regression fitters.
@@ -204,14 +607,25 @@ def prepare_regression_fit(
     phi_bounds: "Callable[[npt.NDArray], tuple] | tuple",
     phi_param_map: "Callable[[npt.NDArray], dict] | dict",
     phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    kind: "str | None" = None,
+    center: bool = False,
 ) -> tuple[SurpyvalData, tuple]:
     """Common head of every parametric-regression ``fit``.
 
     Returns ``(data, fun_builder_inputs)`` where the second element is the
-    tuple ``(init_t, bounds, pmap, transform, inv_trans, const, not_fixed,
-    fixed)`` — everything the family's optimiser step and the final
-    assembly need. ``phi_bounds``/``phi_param_map``/``phi_init`` may be
-    callables of the covariate array or static values.
+    tuple ``(init_t, bounds, pmap, transform, inv_trans, const, fixed,
+    centring, watch)`` — everything the family's optimiser step and the
+    final assembly need. ``phi_bounds``/``phi_param_map``/``phi_init`` may
+    be callables of the covariate array or static values.
+
+    ``kind`` names a log-linear family (``"Proportional Hazard"``, ...),
+    whose fit runs on centred covariates where its baseline maps back to
+    ``Z = 0`` exactly, and ``center=True`` centres any family and keeps the
+    baseline at the covariate means (:class:`Centring`). ``data`` is then
+    the centred copy the objective uses, an ``init`` given at ``Z = 0`` is
+    moved to the centre, and ``centring`` (else ``None``) keeps the data as
+    given for :func:`assemble_regression_model`. An uncentred log-linear
+    fit gets an :class:`OriginWatch` (else ``None``) for its optimiser.
     """
     data = SurpyvalData(x, c, n, t, group_and_sort=False)
     # A one-dimensional Z is a single covariate (one value per row), as
@@ -224,6 +638,13 @@ def prepare_regression_fit(
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
+    centring = Centring.plan(fitter, kind, Z_data, data.n, fixed, center)
+    watch = None
+    if centring is not None:
+        centring.raw = data
+        data = centred_copy(data, centring.center)
+    elif kind is not None:
+        watch = OriginWatch(Z_data, data.n, fitter.k_dist)
 
     def default_init() -> npt.NDArray:
         ps = fitter.dist.fit_from_surpyval_data(data).params
@@ -250,18 +671,37 @@ def prepare_regression_fit(
     check_fixed_and_init(fixed, init, param_map)
 
     user_init = init is not None and len(np.atleast_1d(init)) > 0
-    init = np.array(init) if user_init else default_init()
+    if not user_init:
+        init = default_init()
+    elif centring is None or not centring.maps_back:
+        init = np.array(init)
+    else:
+        # A user's ``init`` has its baseline at Z = 0, as a fitted model
+        # reports it; the search runs with the baseline at the centre.
+        with np.errstate(all="ignore"):
+            init = centring.from_origin(np.asarray(init, dtype=float))
 
     transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
         data.x, bounds, fixed, param_map
     )
-    init_t = transform(init)[not_fixed]
+    with np.errstate(all="ignore"):
+        init_t = transform(init)[not_fixed]
     init_t = finite_start(
         make_objective(fitter, data, inv_trans, const),
         init_t,
         (lambda: transform(default_init())[not_fixed]) if user_init else None,
     )
-    return data, (init_t, bounds, pmap, transform, inv_trans, const, fixed)
+    return data, (
+        init_t,
+        bounds,
+        pmap,
+        transform,
+        inv_trans,
+        const,
+        fixed,
+        centring,
+        watch,
+    )
 
 
 def drop_nonfinite_covariates(
@@ -390,10 +830,37 @@ def assemble_regression_model(
     pmap: dict,
     fixed: dict,
     neg_ll: "float | None" = None,
+    centring: "Centring | None" = None,
+    watch: "OriginWatch | None" = None,
 ) -> ParametricRegressionModel:
-    """Common tail of every parametric-regression ``fit``."""
+    """Common tail of every parametric-regression ``fit``.
+
+    With a ``centring``, ``data`` and ``params`` are those of the centred
+    fit: the model keeps the data as given, and its parameters and
+    ``center`` are placed by :meth:`Centring.finish`. A ``watch`` checks
+    the parameters of an uncentred fit.
+    """
+    if watch is not None:
+        watch.check_params(np.asarray(params, dtype=float))
     require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
+    fit_centring = None
+    center = np.zeros(np.shape(data.Z)[1])
+    if centring is not None and centring.raw is not None:
+        raw = centring.raw
+        params_c = np.asarray(params, dtype=float)
+        params, center, J = centring.finish(
+            params_c,
+            float(res.fun) if neg_ll is None else neg_ll,
+            lambda *p: fitter.neg_ll(raw, *p),
+            bounds,
+            fitter.dist.name,
+        )
+        if J is not None:
+            fit_centring = (params_c, centring.center, J)
+        data = raw
     model = ParametricRegressionModel()
+    model.center = center
+    model._fit_centring = fit_centring
     model.distribution_param_map = fitter.param_map
     model.phi_param_map = pmap
     model.model = fitter

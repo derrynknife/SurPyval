@@ -69,8 +69,8 @@ class TVCFitMixin:
         not truncated), then fitted with the ordinary parametric MLE, so the
         fit is identical to the equivalent non-time-varying data and its
         log-likelihood is that of ``sf_tvc`` / ``hf`` along each subject's
-        covariate path. Extra keyword arguments (``init``, ``fixed``) are
-        passed through to ``fit``.
+        covariate path. Extra keyword arguments (``init``, ``fixed``,
+        ``center``) are passed through to ``fit``.
 
         A subject's rows must not overlap, it may have at most one event,
         and that event must be on its last interval; gaps between its
@@ -93,7 +93,7 @@ class TVCFitMixin:
         n : array_like, optional
             Count weight of each row. Defaults to 1.
         **kwargs
-            Passed to ``fit`` (``init``, ``fixed``).
+            Passed to ``fit`` (``init``, ``fixed``, ``center``).
 
         Returns
         -------
@@ -198,7 +198,7 @@ class TVCFitMixin:
         n : array_like, optional
             Count weight of each subject, read from its last row.
         **kwargs
-            Passed to ``fit`` (``init``, ``fixed``).
+            Passed to ``fit`` (``init``, ``fixed``, ``center``).
 
         Returns
         -------
@@ -228,8 +228,8 @@ class TVCFitMixin:
         columns passed to :meth:`fit_tvc` as ``i``, ``xl``, ``xr``, ``c`` and
         ``n``; ``Z_cols`` is a column name or a list of them, recorded on the
         model as ``feature_names`` so it predicts from a DataFrame. Other
-        keyword arguments go to ``fit`` (``init``, ``fixed``). Returns the
-        fitted ``ParametricRegressionModel``.
+        keyword arguments go to ``fit`` (``init``, ``fixed``, ``center``).
+        Returns the fitted ``ParametricRegressionModel``.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         model = self.fit_tvc(
@@ -261,7 +261,7 @@ class TVCFitMixin:
         passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``;
         ``Z_cols`` is a column name or a list of them, recorded on the model
         as ``feature_names``. Other keyword arguments go to ``fit``
-        (``init``, ``fixed``). Returns the fitted
+        (``init``, ``fixed``, ``center``). Returns the fitted
         ``ParametricRegressionModel``.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)

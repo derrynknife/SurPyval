@@ -64,13 +64,16 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "carry. Call them on the fitted model, or refit."
         )
     data = model._fit_data
-    center = getattr(model, "center", None)
+    # The covariates centred as the fit centred them (#459), whichever
+    # centre the model reports its baseline at (#463): every quantity here
+    # depends on Z only through differences within a risk set, or through
+    # exp(beta'Z) times a baseline recomputed here from the same rows;
+    # centred, exp(beta'Z) cannot overflow either.
+    center = getattr(model, "_fit_center", None)
+    if center is None:
+        center = getattr(model, "center", None)
     if center is None:
         return data
-    # The covariates centred as the fit centred them (#459): every
-    # quantity here depends on Z only through differences within a risk
-    # set, or through exp(beta'Z) times the baseline, which the fit put at
-    # the centre; centred, exp(beta'Z) cannot overflow either.
     return dict(data, Z=np.asarray(data["Z"], dtype=float) - center)
 
 
