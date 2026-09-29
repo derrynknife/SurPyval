@@ -14,7 +14,8 @@ and 13). Now:
   still runs centred and maps back, so it is the same model whatever the
   origin, and refuses (pointing to ``center=True``) where the baseline at
   0 cannot be represented. Elsewhere the fit is at ``Z = 0`` as it always
-  was, and refuses covariates far from 0 that break it.
+  was, unchecked: on covariates far from 0 it may fail, and ``center=True``
+  is the way round that.
 """
 
 import copy
@@ -195,28 +196,6 @@ def test_the_reported_baseline_at_zero_across_offsets(name):
 def test_by_default_a_baseline_that_cannot_be_represented_is_refused(
     name, offset
 ):
-    x, Z, c = _data()
-    with pytest.raises(ValueError, match="center=True"):
-        getattr(sp, name).fit(x, Z + _shift(offset), c=c)
-
-
-@pytest.mark.parametrize(
-    "name, offset",
-    [
-        ("LogNormalPH", 300.0),
-        ("GammaPH", 2000.0),
-        ("NormalPH", 30.0),
-        ("WeibullPO", 300.0),
-        ("GammaPO", 2000.0),
-        ("ExponentialPO", 1e5),
-    ],
-)
-def test_by_default_a_family_without_a_map_refuses_what_breaks_it(
-    name, offset
-):
-    # At Z = 0 these fits used to return a coefficient near 0 (LogNormal PH
-    # at 300: 0.006 against 0.64 at the means), a log-likelihood of +3914
-    # (Gamma PO at 2000), or a non-converged point with a warning.
     x, Z, c = _data()
     with pytest.raises(ValueError, match="center=True"):
         getattr(sp, name).fit(x, Z + _shift(offset), c=c)

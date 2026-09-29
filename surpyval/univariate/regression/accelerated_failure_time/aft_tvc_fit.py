@@ -163,7 +163,6 @@ from .._fit_skeleton import (  # noqa: E402
     Centring,
     LogLinearPhi,
     MirroredDistributionAttrs,
-    OriginWatch,
     check_fixed_and_init,
     optimise_nm_tnc,
     require_finite_fit,
@@ -309,9 +308,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         centring = Centring.plan(
             self, "Accelerated Failure Time", Z, n, fixed, center
         )
-        watch = (
-            None if centring is not None else OriginWatch(Z, n, self.k_dist)
-        )
         mean = np.zeros(p) if centring is None else centring.center
 
         # Result fitter: a fresh AFTFitter (so all ordinary prediction
@@ -349,17 +345,12 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
             # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
             # which says so when neither rung converged.
-            if watch is None:
-                res = optimise_nm_tnc(fun, init)
-            else:
-                res = watch.run(optimise_nm_tnc, fun, init)
+            res = optimise_nm_tnc(fun, init)
         require_finite_fit(float(res.fun))
 
         params = inv_trans(const(res.x))
         fit_centring = None
         center_out = np.zeros(p)
-        if watch is not None:
-            watch.check_params(np.asarray(params, dtype=float))
         if centring is not None:
             # The baseline moved to Z = 0 when that is representable, as
             # for the ordinary fit; the likelihood of the data as given is
@@ -416,13 +407,4 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._ic_n = ic_sample_size(
             np.where(grp["event"], 0, 1), grp["weight"]
         )
-        if watch is not None and not set(fixed) & set(self.param_names):
-            # On covariates far from 0, check the coefficients against the
-            # same model with its baseline at the means (#463).
-            watch.compare(
-                model,
-                lambda: self._fit_tvc_arrays(
-                    x, c, n, tl, Z, ident, AFTFitter, fixed, center=True
-                ),
-            )
         return model

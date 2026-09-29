@@ -170,17 +170,13 @@ class AFTFitter(
             const,
             fixed,
             centring,
-            watch,
         ) = prep
 
         with np.errstate(all="ignore"):
 
             fun = make_objective(self, data, inv_trans, const)
 
-            if watch is None:
-                res = optimise_nm_tnc(fun, init_t)
-            else:
-                res = watch.run(optimise_nm_tnc, fun, init_t)
+            res = optimise_nm_tnc(fun, init_t)
 
         params = inv_trans(const(res.x))
         reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
@@ -196,17 +192,7 @@ class AFTFitter(
             pmap,
             fixed,
             centring=centring,
-            watch=watch,
         )
-        if watch is not None and not set(fixed) & set(self.param_names):
-            # On covariates far from 0, check the coefficients against the
-            # same model with its baseline at the means (#463).
-            watch.compare(
-                model,
-                lambda: self.fit(
-                    x, Z, c=c, n=n, t=t, fixed=fixed, center=True
-                ),
-            )
         return model
 
 
