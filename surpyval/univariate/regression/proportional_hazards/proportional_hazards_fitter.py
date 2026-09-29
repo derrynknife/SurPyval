@@ -296,6 +296,7 @@ class ProportionalHazardsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional hazards model to the data.
@@ -323,6 +324,14 @@ class ProportionalHazardsFitter(
             A dictionary of parameters to fix to a specific value, by name
             (a distribution parameter such as ``"beta"``, or a coefficient
             ``"beta_0"``, ``"beta_1"``, ...).
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``.
+            ``True`` reports the baseline at the covariate means (stored as
+            ``model.center``) instead: the fit runs on ``Z - center``, and
+            ``init`` and ``fixed`` are read there too. Use it for
+            covariates far from 0 (a year, a date), where the baseline at
+            ``Z = 0`` cannot be represented or fitted, which the default
+            fit refuses with a ``ValueError`` saying so.
 
         Returns
         -------
@@ -387,21 +396,33 @@ class ProportionalHazardsFitter(
             self.phi_bounds,
             self.phi_param_map,
             self.phi_init,
-            # Only the log-linear multiplier is centred (#463); a custom phi
-            # is fitted on the covariates as given.
+            # Only the log-linear multiplier can be centred and reported at
+            # Z = 0 (#463); a custom phi is centred only with center=True.
             kind=(
                 "Proportional Hazard" if self.phi is LogLinearPhi.phi else None
             ),
+            center=center,
         )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed, centring = (
-            prep
-        )
+        (
+            init_t,
+            bounds,
+            pmap,
+            transform,
+            inv_trans,
+            const,
+            fixed,
+            centring,
+            watch,
+        ) = prep
 
         with np.errstate(all="ignore"):
 
             fun = make_objective(self, data, inv_trans, const)
 
-            res = optimise_ph(fun, init_t)
+            if watch is None:
+                res = optimise_ph(fun, init_t)
+            else:
+                res = watch.run(optimise_ph, fun, init_t)
 
         params = inv_trans(const(res.x))
 
@@ -423,4 +444,5 @@ class ProportionalHazardsFitter(
             pmap,
             fixed,
             centring=centring,
+            watch=watch,
         )

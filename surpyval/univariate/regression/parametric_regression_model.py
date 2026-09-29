@@ -97,17 +97,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     _restored: bool = False
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
-    #: unit with ``Z = 0``, the usual reading. A log-linear fit runs on
-    #: covariates centred at their ``n``-weighted means (#463) and reports
-    #: its baseline at 0 when that is exact and representable; when it is
-    #: not (``exp(beta'Z)`` would overflow on the data as given), the
-    #: baseline stays at the means, kept here, and every prediction uses
-    #: ``Z - center``.
+    #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
+    #: its baseline at the ``n``-weighted covariate means (#463), stored
+    #: here, and every prediction uses ``Z - center``.
     center: "npt.NDArray | None" = None
     #: ``(params, center, jacobian)`` of the centred fit behind a model
-    #: that reports its baseline at 0: the covariance and the confidence
-    #: bounds are computed there, where the parameters are well
-    #: conditioned, and carried to ``params`` by the jacobian of the map.
+    #: that reports its baseline at 0 (the log-linear families whose
+    #: baseline maps exactly between the two, #463): the covariance and
+    #: the confidence bounds are computed there, where the parameters are
+    #: well conditioned, and carried to ``params`` by the jacobian of the
+    #: map.
     _fit_centring: "tuple | None" = None
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
@@ -235,9 +234,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out["p"] = float(getattr(self, "p", 1.0))
         out["f0"] = float(getattr(self, "f0", 0.0))
         if self._has_center():
-            # Only a baseline kept at the covariate means (#463) is stored,
-            # which makes the dict schema 2: a schema-1 reader would take
-            # it for the baseline at Z = 0.
+            # Only a baseline at the covariate means (center=True, #463) is
+            # stored, which makes the dict schema 2: a schema-1 reader
+            # would take it for the baseline at Z = 0.
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         serialise_covariate_meta(self, out)
 
@@ -464,8 +463,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
 
             if self._has_center():
-                # The baseline could not be moved to Z = 0 (#463): say
-                # where its parameters are.
+                # A fit with center=True (#463): say where the baseline
+                # parameters are.
                 out += (
                     "\nBaseline at         : the covariate means, "
                     "Z = center = {}".format(

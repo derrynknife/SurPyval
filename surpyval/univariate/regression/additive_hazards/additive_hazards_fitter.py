@@ -351,6 +351,7 @@ class AdditiveHazardsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the parametric additive hazards model by maximum likelihood.
@@ -376,6 +377,15 @@ class AdditiveHazardsFitter(
             covariate coefficients).
         fixed : dict, optional
             Parameters to hold fixed, by name.
+        center : bool, optional
+            ``False`` (the default) fits ``h_0(x) + beta'Z``, the baseline
+            at ``Z = 0``. ``True`` fits ``h_0(x) + beta'(Z - center)``, the
+            baseline at the covariate means (stored as ``model.center``),
+            with ``init`` and ``fixed`` read there too. The two are
+            different models: ``h_0`` plus a constant is not a hazard of
+            the baseline's family (and for the Exponential the positivity
+            bound moves), so, unlike the log-linear families, the additive
+            model is never centred by default.
 
         Returns
         -------
@@ -409,11 +419,13 @@ class AdditiveHazardsFitter(
             fixed,
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
+            center=center,
         )
-        # Not centred (no ``kind``): the additive term beta'Z is not a
-        # reparameterisation away from its origin, as the baseline hazard
-        # must stay positive where it is added (#463).
-        init, bounds, pmap, transform, inv_trans, const, fixed, _ = prep
+        # Centred only with center=True (no ``kind``): the additive term
+        # beta'Z does not reparameterise away from its origin, as the
+        # baseline plus a constant leaves the baseline's family (#463).
+        init, bounds, pmap, transform, inv_trans, const, fixed = prep[:7]
+        centring = prep[7]
 
         with np.errstate(all="ignore"):
 
@@ -479,4 +491,5 @@ class AdditiveHazardsFitter(
             pmap,
             fixed,
             neg_ll=final_neg_ll,
+            centring=centring,
         )

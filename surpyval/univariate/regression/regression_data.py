@@ -9,6 +9,7 @@ time so that a DataFrame can be passed to ``sf``, ``ff``, ``df``, ``hf``,
 ``Hf`` and ``random`` and the correct columns will be selected automatically.
 """
 
+import inspect
 import re
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
@@ -724,6 +725,7 @@ class DataFrameRegressionMixin:
         formula: str | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> "ParametricRegressionModel":
         """
         Fit the regression model using a pandas DataFrame as the input.
@@ -757,6 +759,10 @@ class DataFrameRegressionMixin:
             The initial values for the parameters.
         fixed : dict, optional
             A dictionary of parameters to fix to a specific value.
+        center : bool, optional
+            Report the baseline at the covariate means (stored as
+            ``model.center``) instead of at ``Z = 0``; see ``fit``. Not
+            available for an accelerated life model.
 
         Returns
         -------
@@ -811,7 +817,20 @@ class DataFrameRegressionMixin:
             )
             t = np.column_stack([tl, tr])
 
-        model = self.fit(x, Z, c=c, n=n, t=t, init=init, fixed=fixed)
+        # Passed only when asked for: the accelerated life fitter, which
+        # shares this method, has no ``center`` (#463).
+        extra: dict = {}
+        if center:
+            if "center" not in inspect.signature(self.fit).parameters:
+                raise ValueError(
+                    "center=True is not available for this model: its "
+                    "covariates enter through a life model of the stress, "
+                    "not a linear predictor with an origin to move."
+                )
+            extra["center"] = True
+        model = self.fit(
+            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra
+        )
 
         model.feature_names = feature_names
         model.formula = formula
