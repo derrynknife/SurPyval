@@ -1,6 +1,195 @@
 Changelog
 =========
 
+v0.21.1 (unreleased)
+--------------------
+
+**Behaviour changes.** Fits accept an optimiser's answer only when it is a
+verified maximum, and a fit given ``init`` is also started from the default
+start, so a few fits that stopped short silently now reach a better
+maximum or warn; data with no maximum raise ``ValueError``. A
+non-parametric ``df`` is the probability of each step. Kaplan-Meier and
+Nelson-Aalen keep the estimate over a step with no one at risk, as R's
+``survfit`` does. Gray's test and the competing-risks Cox incidences now
+match R. Unknown option values raise ``ValueError`` everywhere.
+
+- **Fits no longer stop far from the maximum in silence (#427, #428,
+  #429).** The maximum-likelihood ladder took the first optimiser that
+  reported success, and from a poor start BFGS, TNC and Newton-CG report it
+  where the likelihood first looks flat: a Weibull started at alpha 1e7
+  returned beta 0.099 with a log-likelihood 40 below the maximum. A rung
+  now counts only when its answer has a zero gradient and a
+  positive-definite Hessian; a fit given ``init`` is also started from the
+  default start and keeps the best likelihood; an answer still not a
+  verified maximum warns. Accelerated-life fits (InversePower was 14.7
+  below the maximum), additive-hazards fits, and NHPP, proportional
+  intensity and renewal fits (ARI 227 below; Duane NaN) check their answer
+  and use the default start the same way. Fits the first rung solves cost
+  the same as before.
+- **Data with no maximum are refused (#392).** A parametric MLE whose data
+  one failure time explains completely returned a spike: an exact 0.5 with
+  a left-censored 1 gave a Weibull beta of 395.7 and a Normal sigma of
+  5e-324; the intervals (1, 3] and (2, 4] gave beta 57.9. These raise
+  ``ValueError`` now, as tied values already did.
+- **The truncated likelihood is exact in the upper tail (#412, #393).** A
+  truncation or interval window where F rounds to 1 gave +inf or NaN (a
+  LogNormal left-truncated at 1 with mu = -5 gave +inf, not -23.73), which
+  made truncated fits depend on the data's units (Normal 8.536, 2.461 on
+  the data but 48.87, 23.04 on the data x 7.3). Such windows are computed
+  from the log survival function now; truncated fits are unit-free, reach
+  the maximum (8.745, 2.459), and run about 40 times faster.
+- **Continuous distributions are accurate in their tails (#410, #442,
+  #443, #444, #447).** Functions no longer take the log or complement of a
+  probability already rounded to 1, 0 or inf. ``Logistic.sf`` was NaN
+  more than 709 scales below the location; ``Hf`` and ``log_sf`` were
+  -0.0 deep in the left tail (true 1e-300) and ``log_ff`` 0 deep in the
+  right (true -1e-30); log forms were +-inf where the probability
+  underflows (Weibull ``log_ff`` at 1e-400 is -921); hazards were NaN
+  where density and survival both underflow (``Normal.hf`` uses the
+  asymptotic series above z = 100); LogNormal, Weibull, LogLogistic and
+  Gamma were NaN at x = 0; Gamma ``df`` raised ``OverflowError`` at shape
+  1000; ``Rayleigh.qf(1e-30)`` was 0 and ``Hypoexponential.qf(1e-30, 1,
+  2)`` 4.3e-61 against 1.0e-15. Hypoexponential uses a power series near
+  the origin and gains ``log_sf``, ``log_ff`` and ``log_df``. Every
+  function is within 1e-8 of 50-digit mpmath values on the tail grid, and
+  fitted parameters are unchanged.
+- **Discrete and Beta-family distributions are accurate in their tails
+  (#442-#447, #449, #458).** Geometric used ``log(1 - p)`` (8 digits lost
+  at p = 1e-9); BetaGeometric took ``ln B(a, b + k)`` as a difference of
+  ``gammaln`` values of size 2.6e13, losing up to 22% of ``ff`` at
+  k = 1e12, and its ``qf(1)`` was finite; Beta4 raised ``OverflowError``
+  at extreme shapes. The references generated for Beta, Binomial,
+  DiscreteWeibull and NegativeBinomial (#448) exposed 102 more failing
+  groups -- a Beta ``sf`` of 0 against 1e-30, a NaN density at
+  alpha = beta = 1000, a Binomial hazard of 0 against 0.99999, a
+  NegativeBinomial ``qf`` 2.5% short at p = 1e-6 -- and Poisson and Beta4
+  lost their tails the same way. The incomplete beta gains log-scale tails
+  (``betaincln`` and the new ``betainccln``, a continued fraction where a
+  tail is below 1e-3), with accurate ``ln B`` and gamma ratios and exact
+  discrete quantiles. Every one of the 1,404 tail groups now agrees with
+  50-digit mpmath values; fitted parameters are unchanged.
+- **Discretize: ``qf(ff(k))`` is k (#383).** It returned k + 1 where
+  ``ceil`` rounded k + 1e-15 up.
+- **Distribution functions accept lists and tuples (#424).**
+  ``Gamma.sf([5, 10], 8, 3)`` returned six values (Python list repetition)
+  and ``Weibull.sf([5, 10], 8, 3)`` raised ``TypeError``; every
+  distribution's functions take a list or tuple as an array now.
+- **A missing query gives NaN everywhere (#382).** The constant-hazard
+  models (Exponential and its regressions, Geometric, the HPP ``iif``),
+  Uniform, Beta4, Binomial, Bernoulli, FixedEventProbability,
+  ExactEventTime, NeverOccurs, InstantlyOccurs, BetaGeometric and
+  RoystonParmar ``qf``, the Gaussian copula's ``cdf`` and the
+  non-parametric and renewal ``mcf`` returned a number, the last value or
+  raised at a NaN; they give NaN there now.
+- **Fixed: Turnbull keeps its last piece when every row is right
+  truncated (#391).** The ladder assumed the last bound was +inf and
+  dropped the piece ending at the largest ``tr``: one failure at 1
+  observable up to 1 gave sf(1) = 1 (0 with
+  ``turnbull_estimator='Kaplan-Meier'``), and a left-censored row at its
+  truncation time raised ``IndexError``.
+- **Changed: a non-parametric ``df`` is the step probability (#408).** It
+  is the drop in ``sf`` over the step ``hf`` differences, not
+  ``hf * exp(-Hf)``, which was inf x 0 = NaN (with a raw warning) where a
+  Kaplan-Meier reaches zero: ``KaplanMeier.fit([1, 2, 3]).df([2.5, 3.5,
+  4.5])`` was ``[inf, nan, nan]`` and is ``[1/3, 1/3, 1/3]``. Values move
+  slightly elsewhere (the Nelson-Aalen example: 0.2047 to 0.1811).
+- **Fixed: cubic confidence bounds close onto the estimate (#417).** A
+  non-linear ``interp``'s bounds are the interpolated estimate plus the
+  interpolated distance over the times with a variance, so they close onto
+  ``sf`` and always contain it (at ``alpha_ci`` -> 1, 0.1873 against sf
+  0.1948 before); linear bounds are unchanged.
+- **Fixed: ``band`` at a large ``alpha_ci`` (#420).** The critical-value
+  search climbed from far below the root: ``alpha_ci = 0.9`` took 13 s and
+  ``1 - 1e-6`` tried to allocate 158 TiB or hung. Now 0.1-6 s; critical
+  values at the usual levels are unchanged.
+- **Changed: a step with no one at risk keeps the estimate (#425).**
+  ``kaplan_meier`` and ``nelson_aalen`` took a step with no one at risk and
+  no events to zero while ``fleming_harrington`` kept its value. All three,
+  and the variances, now carry the estimate there, as R's ``survfit``
+  does; a step with events and no one at risk raises ``ValueError``.
+- **Semi-parametric fitters refuse an infinite event time (#394).**
+  ``CoxPH`` (stratified too), ``AdditiveHazards``, ``BuckleyJames``,
+  ``CompetingRisksProportionalHazards``, ``FineGray`` and ``CompetingRisks``
+  took an observed ``x = inf`` as an event: Cox returned beta 19.4 on two
+  rows and Lin-Ying died in a ``LinAlgError``. They now raise the
+  univariate fitters' ``ValueError``; an infinite censoring time is still
+  accepted.
+- **Buckley-James takes one covariate row per time (#426).** ``sf``,
+  ``ff`` and ``Hf`` took one vector only and raised numpy's bare matmul
+  error for paired rows; they now pair row i with ``x[i]`` like every other
+  regression model, and refuse a mismatched ``Z`` with a message.
+- **Frailty models drop a row with a missing group (#388).** A ``NaN``
+  label was a group of its own (9 groups instead of 8) and ``None`` raised
+  ``TypeError``; such rows are dropped with one "Dropped k of n rows"
+  warning, and ``group=nan`` predicts ``nan``.
+- **Cox refuses a coefficient it cannot estimate (#409).** A constant
+  column on separated data got a coefficient of 3.1e14, an all-NaN baseline
+  and a dozen raw numpy warnings. ``CoxPH`` refuses a column that does not
+  vary within any risk set at an event time, naming it, and warns of
+  collinear columns.
+- **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
+  built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
+  to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each
+  step now uses the matrix-exponential transition probabilities of R's
+  multi-state ``coxph``, which it matches to 7 digits.
+- **Gray's test matches cmprsk (#380).** The variance was SurPyval's own
+  linearisation: 6.741 against ``cuminc``'s 7.015 on tied data. The score,
+  variance and rho-weight incidence now follow cmprsk's ``crst`` routine
+  and agree with ``cuminc`` to about 1e-14, with ties and any rho.
+- **Lin-Ying survival stays in [0, 1] (#376).** ``AdditiveHazards.sf``
+  rose above 1 (1.21 inside the data, 57.8 at a row with a negative
+  hazard) because the estimate falls between event times. It now predicts
+  with the running maximum of its cumulative-hazard estimate from time 0;
+  the fitted ``H0`` is unchanged. The parametric additive hazards models
+  are not yet changed.
+- **Wald bounds that do not exist say so (#411).** ``param_cb`` and ``cb``
+  were a silent ``[nan, nan]`` where a variance was negative
+  (GeneralizedRenewal's ``q`` = 2.7e-16 had variance -0.031), and ARI's
+  ``rho = 1.0`` raised ``ZeroDivisionError``. They give NaN with one
+  warning naming the parameter and the reason now.
+- **Rate bounds at zero, and discrete hazards (#413, #414).**
+  ``cb(on='hf'/'df')`` was ``[nan, nan]`` where the rate is 0; it is
+  ``[0, 0]``. The discrete hazard bound was centred on ``df(k)/sf(k)``
+  (Poisson ``hf(10)`` = 0.719 had bounds [1.73, 3.78]); it uses the
+  model's ``df(k)/sf(k-1)`` on the logit scale now ([0.634, 0.791]), and
+  ``hf`` of a discrete limited-failure or zero-inflated model is
+  ``df(k)/sf(k-1)`` too (it gave 0.271 for 0.213).
+- **Royston-Parmar one-sided bounds (#415).** ``bound='lower'`` on ``ff``
+  or ``Hf`` returned the upper end, and ``bound='both'`` was taken as
+  ``'upper'``; both are right now, and ``'both'`` raises.
+- **Regression cumulative-hazard bounds have no ceiling (#418).** ``sf``
+  was clipped at 1e-15, so ``Hf`` bounds stopped at 34.54 (GumbelPH
+  ``Hf`` = 110.6 had [34.54, 34.54]); they are formed from ``Hf`` now
+  ([4.4e-18, 261]).
+- **Likelihood-ratio bounds (#421, partly).** A search that stopped on
+  the wrong side of the estimate is retried (Rayleigh's ``df`` lower bound
+  was 0.0502 against an estimate of 0.0359), one-parameter bands are the
+  exact extreme over the profile interval, and the Uniform's search
+  respects the data's extremes (30 s to 1.3 s).
+- **Count-terminated simulation of a falling intensity is refused with the
+  reason (#386).** A CoxLewis with beta < 0 expects only ``cif(inf)``
+  events ever (6.04 on the conformance fixture), so a sequence can stop
+  short of the count: one seed failed with "Event times 'x' must be
+  finite" and others returned a sample silently.
+  ``count_terminated_simulation`` (and ``_data``) raise a ``ValueError``
+  for every seed now, giving ``cif(inf)``, the chance of falling short and
+  the time-terminated alternative.
+- **CoxLewis least-squares fit (#419).** The search started at
+  alpha = beta = 1, where ``cif(60)`` is about 1e26, and BFGS stopped far
+  off: on a sample of the fitted model ``cif(55)`` was 113.4 against 4.40
+  by MLE. It starts from the constant rate through the MCF now, and a BFGS
+  stop that did not converge is finished by Nelder-Mead: 4.32, matching a
+  direct minimisation. Fits in hours rather than days agree too (both gave
+  a ``cif`` of inf).
+- **One rule for unknown option values (#416).** ``mcf_cb(bound='both')``
+  raised ``UnboundLocalError`` and an unknown ``interp`` there returned the
+  event-time bounds; an unknown ``interp`` on the non-parametric estimators
+  raised scipy's ``NotImplementedError``; the cause-specific Cox model
+  accepted any ``interp`` and ignored it. All raise ``ValueError: '<arg>'
+  must be one of (...); got ...`` now; the cause-specific Cox model takes
+  ``interp="step"`` only, and ``DestructiveDegradation.cb`` accepts
+  ``on='R'`` / ``'F'`` like every other ``cb``.
+
 v0.21.0 (28 September 2026)
 ---------------------------
 
