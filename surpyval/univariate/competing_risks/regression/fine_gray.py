@@ -82,6 +82,13 @@ def _fit_cause(
     Returns a dict with the fitted coefficients, their standard errors and
     p-values, the baseline cumulative subdistribution hazard (as sorted event
     times and the cumulative hazard at each), and the optimiser result.
+
+    The fit runs on the covariates centred at their ``n``-weighted means,
+    ``center`` (#463), as ``CoxPH`` does (#459): the partial
+    likelihood, and so ``beta`` and its covariance, are unchanged by it,
+    while ``exp(beta'Z)`` on a covariate far from 0 (a year, a date)
+    overflowed and the fit failed ("SVD did not converge"). The baseline is
+    then that of a unit at ``center``.
     """
     is_cause = label_mask(e, cause)
     is_event = (c == 0) & is_cause
@@ -114,6 +121,8 @@ def _fit_cause(
         G_t[:, None] / G_x[None, :]
     )
 
+    center = (n @ Z) / n.sum()
+    Z = Z - center
     n_event = n[is_event]
     Z_event = Z[is_event]
 
@@ -152,6 +161,7 @@ def _fit_cause(
     return {
         "cause": cause,
         "beta": beta,
+        "center": center,
         "se": se,
         "p_values": p_values,
         "cov": cov,
@@ -202,6 +212,13 @@ class FineGrayModel(SerialisableMixin):
         self.cause = fit["cause"]
         self.coefficients = fit["beta"]
         self.beta = fit["beta"]
+        #: The covariate means the fit centred on (#463): the baseline is
+        #: that of a unit at ``center``, and ``phi`` is relative to it.
+        #: Zeros for a model saved before centring, whose baseline is at
+        #: ``Z = 0``.
+        self.center = np.asarray(
+            fit.get("center", np.zeros(np.size(fit["beta"]))), dtype=float
+        )
         self.se = fit["se"]
         self.p_values = fit["p_values"]
         self.cov = fit["cov"]
@@ -218,9 +235,12 @@ class FineGrayModel(SerialisableMixin):
         dict.
 
         Stores the coefficients and their covariance, plus the fitted
-        subdistribution baseline cumulative-hazard step arrays, so the reloaded
-        model reproduces ``cif``/``sf`` exactly and can still report the
-        coefficient summary. The optimiser objects are not stored.
+        subdistribution baseline cumulative-hazard step arrays with the
+        covariate ``center`` they are at, so the reloaded model reproduces
+        ``cif``/``sf`` exactly and can still report the coefficient summary.
+        A nonzero centre makes the dict schema 2 (a schema-1 reader would
+        take the baseline for that at ``Z = 0``). The optimiser objects are
+        not stored.
         """
         return stamp_schema(
             {
@@ -228,6 +248,7 @@ class FineGrayModel(SerialisableMixin):
                 # native type: a numpy scalar label breaks JSON/BSON
                 "cause": to_native(self.cause),
                 "beta": np.asarray(self.beta, dtype=float).tolist(),
+                "center": np.asarray(self.center, dtype=float).tolist(),
                 "se": np.asarray(self.se, dtype=float).tolist(),
                 "p_values": np.asarray(self.p_values, dtype=float).tolist(),
                 "cov": np.asarray(self.cov, dtype=float).tolist(),
@@ -245,10 +266,21 @@ class FineGrayModel(SerialisableMixin):
     def from_dict(cls, model_dict: dict) -> "FineGrayModel":
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
         require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
+        beta = np.array(model_dict["beta"], dtype=float)
+        # Written before the fit was centred (#463): the baseline is at 0.
+        center = np.array(
+            model_dict.get("center", np.zeros(beta.size)), dtype=float
+        )
+        if center.shape != beta.shape:
+            raise ValueError(
+                "The model dict's 'center' has {} value(s) for {} "
+                "coefficient(s).".format(center.size, beta.size)
+            )
         return cls(
             {
                 "cause": label_from_native(model_dict["cause"]),
-                "beta": np.array(model_dict["beta"], dtype=float),
+                "beta": beta,
+                "center": center,
                 "se": np.array(model_dict["se"], dtype=float),
                 "p_values": np.array(model_dict["p_values"], dtype=float),
                 "cov": np.array(model_dict["cov"], dtype=float),
@@ -264,15 +296,18 @@ class FineGrayModel(SerialisableMixin):
         )
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
-        """The subdistribution hazard multiplier :math:`e^{\\beta' Z}`, one
-        value per row of ``Z`` (a scalar for a single covariate vector)."""
-        return np.exp(np.asarray(Z, dtype=float) @ self.beta)
+        """The subdistribution hazard multiplier
+        :math:`e^{\\beta' (Z - \\text{center})}`, relative to a unit at the
+        covariate means where the baseline is (#463), one value per row of
+        ``Z`` (a scalar for a single covariate vector)."""
+        return np.exp((np.asarray(Z, dtype=float) - self.center) @ self.beta)
 
     @keeps_query_shape
     def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """
         Cumulative incidence of the cause of interest at times ``x``:
-        ``1 - exp(-Lambda0(x) * exp(beta'Z))``. ``Z`` is one covariate
+        ``1 - exp(-Lambda0(x) * exp(beta'(Z - center)))``, the baseline
+        ``Lambda0`` that of a unit at ``center``. ``Z`` is one covariate
         vector (a 1-D array or a single row), used at every time, or one
         row per time in ``x`` (row ``i`` with ``x[i]``). The CIF is flat
         before the first event time and after the last (the baseline is a
@@ -284,7 +319,7 @@ class FineGrayModel(SerialisableMixin):
         H0 = step_at(self._times, self._cumhaz, x, before=0.0)
         # step_at reads a nan time as the value after the last jump.
         H0 = np.where(np.isnan(x), np.nan, H0)
-        return 1.0 - np.exp(-H0 * np.exp(rows @ self.beta))
+        return 1.0 - np.exp(-H0 * np.exp((rows - self.center) @ self.beta))
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:

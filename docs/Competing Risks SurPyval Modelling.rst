@@ -802,7 +802,12 @@ A positive :math:`\beta_0` raises the cause-1 incidence, so the ``Z1 = +1``
 curve sits above ``Z1 = -1``. The fitted CIF is a step function built on the
 observed cause-1 event times, so it is flat after the last of them (about
 :math:`t = 5.6` in this sample) rather than extrapolating. ``sf(x, Z)`` returns
-``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`.
+``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{(Z - \bar Z)\beta}`,
+relative to a unit at the covariate means :math:`\bar Z` (``model.center``):
+as the Cox fit does, the Fine-Gray fit centres the covariates, which leaves
+the coefficients and every prediction unchanged but keeps
+:math:`e^{Z\beta}` from overflowing on a covariate far from zero, and its
+baseline is that of a unit at the means.
 
 .. jupyter-execute::
     :hide-code:

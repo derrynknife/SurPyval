@@ -88,10 +88,10 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     n_event_types: int
     h0_e: "npt.NDArray"
     H0_e: "npt.NDArray"
-    #: The covariate means the cause-specific Cox fits centred on (#459):
-    #: the baselines ``h0_e`` are those of a unit at ``center``, and
-    #: ``phi_e`` is relative to it. Zeros for a Fine-Gray model, whose
-    #: baselines are at ``Z = 0``.
+    #: The covariate means the per-cause fits centred on (the Cox fits,
+    #: #459; the Fine-Gray fits, #463): the baselines ``h0_e`` are those of
+    #: a unit at ``center``, and ``phi_e`` is relative to it. Zeros for a
+    #: model saved before centring, whose baselines are at ``Z = 0``.
     center: "npt.NDArray"
     phi: Any
     phi_e: Any
@@ -654,7 +654,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             row of coefficients per cause, in the order of ``event_idx_map``
             (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
             multiplier, relative to a unit at the covariate means
-            ``center`` for ``model="Cox"`` (where its baseline is).
+            ``center`` (where its baseline is).
             ``beta`` and ``phi`` (the sum of the per-cause
             coefficients and its multiplier) are kept for backward
             compatibility but are not a model quantity: every prediction
@@ -701,8 +701,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         unique_x = np.unique(x)
 
         baselines = np.zeros((n_event_types, len(unique_x)))
-        # The Fine-Gray baselines are at Z = 0; the Cox ones at the centre
-        # the Cox fits share (they fit the same rows).
+        # The baselines are at the centre the per-cause fits share (they
+        # fit the same rows).
         center = np.zeros(Z.shape[1])
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
@@ -745,6 +745,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 fg_models[event] = fg
                 results.append(fg.res)
                 betas[i, :] = fg.beta
+                center = np.asarray(fg.center, dtype=float)
                 # Store increments so the shared ``H0_e = baselines.cumsum``
                 # equals this cause's cumulative subdistribution hazard.
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)

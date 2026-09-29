@@ -410,7 +410,10 @@ class AdditiveHazardsFitter(
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
         )
-        init, bounds, pmap, transform, inv_trans, const, fixed = prep
+        # Not centred (no ``kind``): the additive term beta'Z is not a
+        # reparameterisation away from its origin, as the baseline hazard
+        # must stay positive where it is added (#463).
+        init, bounds, pmap, transform, inv_trans, const, fixed, _ = prep
 
         with np.errstate(all="ignore"):
 

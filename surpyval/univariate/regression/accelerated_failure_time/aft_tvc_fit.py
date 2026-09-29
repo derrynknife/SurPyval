@@ -160,6 +160,7 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 
 
 from .._fit_skeleton import (  # noqa: E402
+    Centring,
     LogLinearPhi,
     MirroredDistributionAttrs,
     check_fixed_and_init,
@@ -289,11 +290,18 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         _validate_full_coverage(x, tl, ident)
         grp = _grouped_episodes(x, c, n, tl, ident)
 
+        # Centred on the interval rows' means, as the ordinary AFT fit
+        # (#463): exp(beta'z) on a covariate far from 0 overflows.
+        centring = Centring.plan(
+            self, "Accelerated Failure Time", Z, n, fixed
+        )
+        center = np.zeros(p) if centring is None else centring.center
+
         # Result fitter: a fresh AFTFitter (so all ordinary prediction
         # functions are inherited unchanged) with the accumulated-age
         # likelihood bound onto this one instance only.
         like = AFTFitter(self.dist)
-        like._tvc = {**grp, "Zep": Z}
+        like._tvc = {**grp, "Zep": Z - center}
         like.neg_ll = types.MethodType(_aft_tvc_neg_ll, like)
 
         # Initial values: a plain distribution fit to the subject exit times,
@@ -328,6 +336,22 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         require_finite_fit(float(res.fun))
 
         params = inv_trans(const(res.x))
+        fit_centring = None
+        if centring is not None:
+            # The baseline moved to Z = 0 when that is representable, as
+            # for the ordinary fit; the likelihood of the data as given is
+            # the check.
+            raw = AFTFitter(self.dist)
+            raw._tvc = {**grp, "Zep": Z}
+            params_c = np.asarray(params, dtype=float)
+            params, center, J = centring.finish(
+                params_c,
+                float(res.fun),
+                lambda *q: _aft_tvc_neg_ll(raw, None, *q),
+                bounds,
+            )
+            if J is not None:
+                fit_centring = (params_c, centring.center, J)
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -355,6 +379,8 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         # Estimated parameters only; see ``assemble_regression_model``.
         model.k = len(bounds) - len(fixed or {})
         model.data = edata
+        model.center = center
+        model._fit_centring = fit_centring
         model.is_tvc = True
 
         # Report information criteria on the *subjects*, not the episode

@@ -245,8 +245,11 @@ class ProportionalOddsFitter(
             fixed,
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
+            kind="Proportional Odds",
         )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
+        init_t, bounds, pmap, transform, inv_trans, const, fixed, centring = (
+            prep
+        )
 
         with np.errstate(all="ignore"):
 
@@ -267,6 +270,7 @@ class ProportionalOddsFitter(
             bounds,
             pmap,
             fixed,
+            centring=centring,
         )
 
 

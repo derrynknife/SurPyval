@@ -387,8 +387,15 @@ class ProportionalHazardsFitter(
             self.phi_bounds,
             self.phi_param_map,
             self.phi_init,
+            # Only the log-linear multiplier is centred (#463); a custom phi
+            # is fitted on the covariates as given.
+            kind=(
+                "Proportional Hazard" if self.phi is LogLinearPhi.phi else None
+            ),
         )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
+        init_t, bounds, pmap, transform, inv_trans, const, fixed, centring = (
+            prep
+        )
 
         with np.errstate(all="ignore"):
 
@@ -415,4 +422,5 @@ class ProportionalHazardsFitter(
             bounds,
             pmap,
             fixed,
+            centring=centring,
         )
