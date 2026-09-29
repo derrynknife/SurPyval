@@ -30,7 +30,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
     Wald p-values, and ``x``, ``h0``, ``H0`` the baseline hazard
     increments (Breslow's estimator, with Efron's tie correction after an
     Efron fit) and cumulative hazard at the distinct observed times (the
-    increment is 0 at a censoring time). The survival functions take
+    increment is 0 at a censoring time). As in R's ``coxph``, the
+    covariates are centred on their means, ``center``: the baseline is
+    that of a unit at ``center``, and ``phi(Z)``, the hazard multiplier,
+    is relative to it, :math:`e^{\\beta' (Z - \\text{center})}`. The
+    survival functions take
     the covariates as a second argument, ``sf(x, Z)`` (and a ``stratum``
     for a stratified fit); ``sf_tvc`` / ``Hf_tvc`` follow a time-varying
     covariate path. The model also provides residuals, the
@@ -76,6 +80,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
     strata_labels: Any = None
     #: For a stratified fit, ``{label: {"x", "r", "d", "h0", "H0"}}``.
     strata_baselines: Any = None
+    #: The covariate values the fit centred on (the ``n``-weighted column
+    #: means of the fitted rows, #459): the baseline is that of a unit at
+    #: ``center``. ``None`` (a model built by hand) is read as zeros.
+    center: "npt.NDArray | None" = None
 
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
@@ -116,17 +124,35 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
+    def _center(self) -> npt.NDArray:
+        """The centre as an array, zeros for a model without one."""
+        beta = np.asarray(self.beta, dtype=float)
+        if self.center is None:
+            return np.zeros(beta.shape[0])
+        return np.asarray(self.center, dtype=float)
+
+    def _risk(self, Z: npt.NDArray) -> npt.NDArray:
+        """``exp(beta'(Z - center))`` for numeric covariate rows ``Z``,
+        the multiplier of the fitted (centred) baseline."""
+        return np.exp(
+            (Z - self._center()) @ np.asarray(self.beta, dtype=float)
+        )
+
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
-        The hazard multiplier :math:`e^{\beta' Z}` for covariates ``Z``: a
-        single row, one row per prediction, a DataFrame for a model fitted
-        with ``fit_from_df``, or a scalar for a one-covariate model (as the
+        The hazard multiplier :math:`e^{\\beta' (Z - \\text{center})}` for
+        covariates ``Z``: the hazard ratio of ``Z`` against a unit at the
+        covariate means ``center``, whose hazard the baseline ``h0`` is
+        (R's ``predict(fit, type = "risk")``). ``Z`` is a single row, one
+        row per prediction, a DataFrame for a model fitted with
+        ``fit_from_df``, or a scalar for a one-covariate model (as the
         parametric families accept; it used to fail in the matrix product).
+        The ratio of two multipliers is the hazard ratio of the two rows.
         """
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         if Z_arr.ndim == 0:
             Z_arr = Z_arr.reshape(1)
-        return np.exp(Z_arr @ np.asarray(self.beta, dtype=float))
+        return self._risk(Z_arr)
 
     def __repr__(self) -> str:
         out = (
@@ -152,7 +178,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         baseline, so what is stored is the covariate coefficients ``beta`` and
         the fitted baseline step arrays (event times ``x`` and the baseline
         hazard ``h0`` / cumulative hazard ``H0``); the hazard multiplier
-        ``phi(Z) = exp(beta'Z)`` is rebuilt from ``beta`` on load. Everything
+        ``phi(Z) = exp(beta'(Z - center))`` is rebuilt from ``beta`` and the
+        covariate means ``center`` on load. Everything
         needed for ``hf``/``Hf``/``sf``/``ff``/``df`` (and, for a
         time-varying-covariate fit, ``predict_tvc``) round-trips exactly. The
         optimiser objects (the ``neg_ll`` closure, ``jac``, ``hess``, ``res``)
@@ -173,6 +200,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
             "parameterization": self.parameterization,
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "params": np.asarray(self.params, dtype=float).tolist(),
+            # The baseline is that of a unit at ``center`` (#459); a
+            # nonzero centre makes the dict schema 2, as a schema-1 reader
+            # would ignore it and read the baseline as at Z = 0.
+            "center": self._center().tolist(),
             "x": np.asarray(self.x, dtype=float).tolist(),
             "r": np.asarray(self.r, dtype=float).tolist(),
             "d": np.asarray(self.d, dtype=float).tolist(),
@@ -213,12 +244,17 @@ class SemiParametricRegressionModel(SerialisableMixin):
         beta = np.array(model_dict["beta"], dtype=float)
         out.beta = beta
         out.params = np.array(model_dict["params"], dtype=float)
+        # A dict written before the covariates were centred (#459) has no
+        # "center": its baseline is at Z = 0.
+        out.center = np.array(
+            model_dict.get("center", np.zeros(beta.shape[0])), dtype=float
+        )
         out.x = np.array(model_dict["x"], dtype=float)
         out.r = np.array(model_dict["r"], dtype=float)
         out.d = np.array(model_dict["d"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
-        # phi is fully determined by beta (the ``phi`` method).
+        # phi is fully determined by beta and center (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
@@ -445,7 +481,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
             = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' Z(u_j)},
 
         summing the fitted baseline-hazard jumps ``h0`` weighted by the hazard
-        multiplier of the covariate value *active* at each jump time. With a
+        multiplier of the covariate value *active* at each jump time (the
+        baseline is that of a unit at ``center``, so the multiplier is
+        :meth:`phi`, :math:`e^{\beta' (Z(u_j) - \text{center})}`). With a
         single constant interval this reduces exactly to ``sf(t, Z)``.
 
         Parameters
@@ -525,17 +563,18 @@ class SemiParametricRegressionModel(SerialisableMixin):
         ``starts[i]``:
 
         .. math::
-            H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' Z(u_j)},
+            H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' (Z(u_j) - c)},
 
         summing the baseline-hazard jumps ``h0`` at the fitted event times
-        weighted by the multiplier of the covariate *active* at each jump.
+        weighted by the multiplier of the covariate *active* at each jump
+        (``c`` the model's ``center``).
         ``base_t``/``base_h0`` are the baseline (of the stratum, if any).
         """
         # (xl, xr] convention, matching the fit: the old covariate is at
         # risk at exactly its stop time (#259).
         active = np.searchsorted(starts, base_t, side="left") - 1
         active = np.clip(active, 0, starts.shape[0] - 1)
-        phi = np.exp(Zseg[active] @ self.beta)
+        phi = self._risk(Zseg[active])
         H_cum = np.cumsum(base_h0 * phi)
         idx = np.searchsorted(base_t, query, side="right") - 1
         last = H_cum.shape[0] - 1

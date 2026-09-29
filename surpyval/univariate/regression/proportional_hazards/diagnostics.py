@@ -63,7 +63,15 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "which a model restored with from_dict / from_json does not "
             "carry. Call them on the fitted model, or refit."
         )
-    return model._fit_data
+    data = model._fit_data
+    center = getattr(model, "center", None)
+    if center is None:
+        return data
+    # The covariates centred as the fit centred them (#459): every
+    # quantity here depends on Z only through differences within a risk
+    # set, or through exp(beta'Z) times the baseline, which the fit put at
+    # the centre; centred, exp(beta'Z) cannot overflow either.
+    return dict(data, Z=np.asarray(data["Z"], dtype=float) - center)
 
 
 def _risk_set_means(
@@ -498,13 +506,12 @@ def check_ph(
     ranked as three tied events, exactly as the data written out row by
     row would be. The ``"log"`` transform needs positive event times.
     """
-    _require_cox(model)
+    data = _require_cox(model)
     if transform not in _TRANSFORMS:
         raise ValueError(
             f"Unknown transform {transform!r}; expected one of {_TRANSFORMS}."
         )
     beta = np.asarray(model.beta, dtype=float)
-    data = model._fit_data
     x, c, n = data["x"], data["c"], data["n"]
 
     sch = compute_residuals(model, "schoenfeld")  # (n_events, p)

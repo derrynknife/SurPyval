@@ -13,6 +13,22 @@ Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 ``survfit`` does. Gray's test and the competing-risks Cox incidences now
 match R. Unknown option values raise ``ValueError`` everywhere.
 
+- **Cox models no longer break on a covariate far from zero (#459).**
+  ``CoxPH`` fitted on the raw covariates, so a column such as a year or a
+  date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)
+  covariate moved beta from 0.860 to 0.768, made the survival and
+  p-values NaN, gave a false "monotone partial likelihood" warning and
+  leaked numpy overflow warnings. The fit now centres the covariates on
+  their (n-weighted) means, as R's ``coxph``, lifelines and
+  scikit-survival do, and stores them as ``model.center``; beta and every
+  prediction are unchanged by any shift of a column, for plain,
+  stratified and time-varying fits, residuals, ``check_ph``, robust
+  errors and the cause-specific Cox model. The reported baseline (``h0``,
+  ``H0``) is now that of a unit at ``center`` (R's
+  ``basehaz(centered=TRUE)``), and ``phi(Z)`` the hazard ratio against it,
+  ``exp(beta'(Z - center))``. Saved Cox models carry ``"center"`` and are
+  stamped schema 2, which 0.21.0 and earlier refuse with a request to
+  upgrade; files saved earlier load with their baseline at 0, as fitted.
 - **Fits no longer stop far from the maximum in silence (#427, #428,
   #429).** The maximum-likelihood ladder took the first optimiser that
   reported success, and from a poor start BFGS, TNC and Newton-CG report it

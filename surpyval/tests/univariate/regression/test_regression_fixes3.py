@@ -35,8 +35,8 @@ from surpyval.univariate.regression import (
     InversePower,
     Linear,
     Power,
+    _fit_skeleton,
 )
-from surpyval.univariate.regression import _fit_skeleton
 from surpyval.univariate.regression.additive_hazards.additive_hazards import (
     AdditiveHazardsModel,
 )
@@ -401,7 +401,10 @@ def test_cox_accepts_a_scalar_covariate():
         np.testing.assert_allclose(
             getattr(model, fn)([3.0], 0.5), getattr(model, fn)([3.0], [0.5])
         )
-    np.testing.assert_allclose(model.phi(0.5), np.exp(0.5 * model.beta[0]))
+    # The multiplier is relative to the covariate means (#459).
+    np.testing.assert_allclose(
+        model.phi(0.5), np.exp((0.5 - model.center[0]) * model.beta[0])
+    )
 
 
 # -- 8. Clear errors ---------------------------------------------------------

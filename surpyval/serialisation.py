@@ -152,7 +152,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # stored only in the schema-2 form (see ``_needs_formula_reader``), or a
 # non-parametric estimate with the ``"support"`` its ``set_support`` gave
 # it (new in schema 2; a schema-1 reader would silently drop it, and
-# with it the estimate's values outside the data).
+# with it the estimate's values outside the data), or a Cox model with
+# a nonzero covariate ``"center"`` (new in schema 2, #459; a schema-1
+# reader would ignore it and take the baseline, which is that of a unit
+# at the centre, for the baseline at 0).
 SCHEMA_VERSION = 2
 
 # The oldest version whose readers restore a document with neither of
@@ -416,9 +419,10 @@ def required_schema(model_dict: dict) -> int:
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
     ``"support"`` of a non-parametric estimate's ``set_support`` or the
-    ``"band_n"`` of its ``band``, which a schema-1 reader would silently
-    ignore; 1 otherwise, the layout SurPyval v0.20 reads. This is the
-    version :func:`stamp_schema` writes.
+    ``"band_n"`` of its ``band``, or the nonzero covariate ``"center"`` of
+    a Cox model, which a schema-1 reader would silently ignore; 1
+    otherwise, the layout SurPyval v0.20 reads. This is the version
+    :func:`stamp_schema` writes.
 
     Examples
     --------
@@ -429,14 +433,35 @@ def required_schema(model_dict: dict) -> int:
     2
     >>> required_schema({"x": [1.0, 2.0], "support": [0.0, 5.0]})
     2
+    >>> required_schema({"beta": [0.5], "center": [0.0]})
+    1
+    >>> required_schema({"beta": [0.5], "center": [2000.0]})
+    2
     """
     return (
         SCHEMA_VERSION
         if _carries_non_finite(model_dict)
         or _needs_formula_reader(model_dict)
         or _carries_support(model_dict)
+        or _carries_center(model_dict)
         else _SCHEMA_WITHOUT_NON_FINITE
     )
+
+
+def _carries_center(value: Any) -> bool:
+    """Whether ``value`` or any dictionary nested in it has a
+    ``"center"`` with a nonzero entry: the covariate means a Cox model
+    centred on (#459), whose baseline is that of a unit there. A schema-1
+    reader would drop it and read the baseline as at 0; a zero centre
+    reads the same either way."""
+    if isinstance(value, dict):
+        center = value.get("center")
+        if isinstance(center, (list, tuple)) and any(v != 0 for v in center):
+            return True
+        return any(_carries_center(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_carries_center(v) for v in value)
+    return False
 
 
 def _carries_support(value: Any) -> bool:

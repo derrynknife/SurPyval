@@ -738,6 +738,24 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
     return neg_ll, jac_hess
 
 
+def _covariate_center(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
+    """The ``n``-weighted mean of the covariate rows, the point the fit
+    centres the covariates on (#459).
+
+    The partial likelihood depends on the covariates only through their
+    differences within a risk set, so fitting on ``Z - center`` gives the
+    same coefficients, while ``exp(beta'Z)`` stays near 1 for the rows of
+    the data instead of overflowing on a column far from 0 (a year, a
+    date as a day count). The baseline hazard is then that of a unit at
+    the centre, and every prediction uses ``exp(beta'(Z - center))``. R's
+    ``coxph``, lifelines and scikit-survival centre the same way; for
+    start-stop data R's mean is over the interval rows, as here.
+    """
+    Z = np.asarray(Z, dtype=float)
+    n = np.asarray(n, dtype=float).reshape(-1)
+    return (n @ Z) / n.sum()
+
+
 def cox_at_risk_mask(
     x: npt.NDArray, tl: npt.NDArray, tau: float
 ) -> npt.NDArray:
@@ -760,10 +778,15 @@ class CoxPH_:
     The coefficients are estimated from the partial likelihood (with a
     choice of tie handling, Efron's by default) and the baseline by the
     Breslow estimator, with Efron's tie correction after an Efron fit.
-    Supports right censoring, left truncation (delayed entry),
-    stratification and time-varying covariates in start-stop form; left-
-    and interval-censored data are refused, as the partial likelihood has
-    no term for them (use a parametric regression model).
+    As in R's ``coxph``, the fit centres the covariates on their
+    (``n``-weighted) means, stored as the model's ``center``: the
+    coefficients are unchanged by this, the baseline is that of a unit at
+    ``center``, and a covariate far from 0 (a year, a date) cannot
+    overflow :math:`e^{\\beta' Z}`. Supports right censoring, left
+    truncation (delayed entry), stratification and time-varying
+    covariates in start-stop form; left- and interval-censored data are
+    refused, as the partial likelihood has no term for them (use a
+    parametric regression model).
     ``CoxPH`` is an instance of this class; its fit methods return a
     :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
     """
@@ -782,8 +805,11 @@ class CoxPH_:
         tl: "npt.NDArray | None" = None,
         tie_method: str = "breslow",
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-        # Baseline hazard increments at each distinct time, returned with
-        # the risk weight ``r`` and the deaths ``d``. Breslow's increment is
+        # Baseline hazard increments at each distinct time -- the hazard of
+        # a unit whose covariates are 0 in the ``Z`` given; ``fit`` passes
+        # the centred covariates, so a fitted model's baseline is that of a
+        # unit at its ``center`` (#459) -- returned with the risk weight
+        # ``r`` and the deaths ``d``. Breslow's increment is
         # ``d / r``. With Efron ties (``tie_method="efron"``) the ``m`` tied
         # deaths at a time see the risk set step down, ``r - (l / m) * r_D``
         # for ``l = 0 .. m-1`` with ``r_D`` the tied deaths' own weight, and
@@ -1285,7 +1311,9 @@ class CoxPH_:
 
         model: SemiParametricRegressionModel
             The fitted model: ``params`` (also ``beta``) are the
-            coefficients and ``p_values`` their Wald p-values. If a
+            coefficients and ``p_values`` their Wald p-values; ``center``
+            is the covariate means the fit centred on, and the baseline
+            (``h0``, ``H0``) is that of a unit at ``center``. If a
             covariate separates the events from the survivors the partial
             likelihood has no finite maximum; the fit then warns
             ("monotone partial likelihood") and the coefficient is
@@ -1323,7 +1351,11 @@ class CoxPH_:
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
-        neg_ll, jac = func_generator(x, Z, c, n, tl)
+        # Fitted on centred covariates, so exp(beta'Z) cannot overflow on a
+        # column far from 0 (#459); see ``_covariate_center``.
+        center = _covariate_center(Z, n)
+        Zc = Z - center
+        neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
         res, p_values = _solve_beta_and_p_values(
             neg_ll, jac, beta_init, tol, Z, float(n[c == 0].sum())
@@ -1339,6 +1371,7 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
+        model.center = center
 
         # Retain the per-observation training data (before ``baseline``
         # reassigns ``x`` to the unique event times) so the model can compute
@@ -1352,7 +1385,8 @@ class CoxPH_:
             "tl": np.asarray(tl, dtype=float),
         }
 
-        x, r, d, h0 = self.baseline(model.beta, x, c, n, Z, tl, tie_method)
+        # The baseline of a unit at the centre.
+        x, r, d, h0 = self.baseline(model.beta, x, c, n, Zc, tl, tie_method)
         model.x = x
         model.r = r
         model.d = d
@@ -1417,8 +1451,7 @@ class CoxPH_:
         x_o, c_o, n_o, Z_o, tl_o = obs
 
         labels = np.unique(labels_arr)
-        per_stratum = []
-        n_params = None
+        validated = []
         for s in labels:
             mask = labels_arr == s
             xs, cs, ns_, tls, Zs = validate_coxph(
@@ -1430,13 +1463,23 @@ class CoxPH_:
                 tie_method,
             )
             check_finite_event_times(xs, cs)
-            if n_params is None:
-                n_params = Zs.shape[1]
-            gen = func_generator(xs, Zs, cs, ns_, tls)
-            per_stratum.append((s, gen, (xs, cs, ns_, Zs, tls)))
+            validated.append((s, xs, cs, ns_, tls, Zs))
 
-        if n_params is None:
+        if not validated:
             raise ValueError("no observations to fit")
+        n_params = validated[0][5].shape[1]
+        # One centre for every stratum, the mean over all the rows (as R's
+        # coxph), so the strata's baselines stay comparable (#459).
+        center = _covariate_center(
+            np.vstack([v[5] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
+        )
+        per_stratum = []
+        for s, xs, cs, ns_, tls, Zs in validated:
+            Zcs = Zs - center
+            gen = func_generator(xs, Zcs, cs, ns_, tls)
+            per_stratum.append((s, gen, (xs, cs, ns_, Zcs, tls)))
+
         gens = [g for _, g, _ in per_stratum]
         neg_ll, jac = _combine_generators(gens)
 
@@ -1446,7 +1489,9 @@ class CoxPH_:
             jac,
             beta_init,
             tol,
-            np.vstack([data[3] for _, _, data in per_stratum]),
+            # The raw covariates, whose scale the identifiability check's
+            # tolerance is set against.
+            np.vstack([v[5] for v in validated]),
             sum(
                 float(data[2][data[1] == 0].sum())
                 for _, _, data in per_stratum
@@ -1463,11 +1508,13 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
+        model.center = center
         model.is_stratified = True
         model.strata_labels = list(labels)
 
-        # A separate baseline per stratum. Prediction selects the stratum's
-        # baseline via the ``stratum`` argument to ``hf``/``Hf``/...
+        # A separate baseline per stratum, each that of a unit at the
+        # centre. Prediction selects the stratum's baseline via the
+        # ``stratum`` argument to ``hf``/``Hf``/...
         baselines: dict[Any, dict[str, npt.NDArray]] = {}
         for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
             bx, br, bd, bh0 = self.baseline(

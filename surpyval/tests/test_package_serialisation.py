@@ -353,12 +353,16 @@ def test_schema_1_documents_read_identically_in_a_schema_1_release(
     rng = np.random.default_rng(0)
     x = rng.weibull(2.0, 60) * 10
     Z = rng.normal(size=(60, 1))
+    # A Cox model is schema 1 only when its covariate means are 0 (its
+    # baseline is that of a unit at the means, #459): values whose sum is
+    # exactly 0.
+    Z_cox = np.tile([-0.5, 0.5], 30)[:, None]
     models = {
         "weibull": Weibull.fit(x),
         "weibull_fixed": Weibull.fit(x, fixed={"beta": 2.0}),
         "weibull_offset": Weibull.fit(x + 5, offset=True),
         "weibullph": WeibullPH.fit(x=x, Z=Z),
-        "cox": CoxPH.fit(x=x, Z=Z),
+        "cox": CoxPH.fit(x=x, Z=Z_cox),
         "crow": CrowAMSAA.fit(
             np.cumsum(rng.exponential(1, 20)), c=[0] * 19 + [1]
         ),
