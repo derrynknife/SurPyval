@@ -25,6 +25,12 @@ Uniform's MLE refuses censored data again.
   interval-censored ones, and names the methods that take censored data
   (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
   or not, fit as before, still with no covariance.
+- **Additive hazards bounds no longer leak a numpy overflow warning
+  (#465).** Where the fitted cumulative hazard is negative, the
+  logit-scale ``sf`` bound computed ``1 / (1 + exp(-t))`` with ``t``
+  hugely negative, and numpy warned "overflow encountered in exp" on the
+  way to the right answer, 0. It now uses ``scipy.special.expit``; the
+  bounds are unchanged.
 - **Cox models no longer break on a covariate far from zero (#459).**
   ``CoxPH`` fitted on the raw covariates, so a column such as a year or a
   date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)

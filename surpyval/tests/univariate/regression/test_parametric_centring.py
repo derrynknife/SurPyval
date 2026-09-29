@@ -82,7 +82,7 @@ def _fit_quietly(fit, *args, **kwargs):
         return fit(*args, **kwargs)
 
 
-def _same_predictions(model, ref, s, cb=True, quiet=True):
+def _same_predictions(model, ref, s, cb=True):
     for zq in QUERY:
         for fn in ("sf", "Hf", "hf", "df", "ff"):
             got = getattr(model, fn)(TIMES, zq + s)
@@ -97,9 +97,7 @@ def _same_predictions(model, ref, s, cb=True, quiet=True):
             )
         if cb:
             with warnings.catch_warnings():
-                # (An additive hazards cb where the fitted H is negative
-                # leaks numpy's overflow warning, centred or not: #465.)
-                warnings.simplefilter("error" if quiet else "ignore")
+                warnings.simplefilter("error")
                 for on in ("sf", "Hf", "hf"):
                     np.testing.assert_allclose(
                         model.cb(TIMES, zq + s, on=on),
@@ -130,7 +128,7 @@ def test_center_true_leaves_the_model_unchanged(
     # The baseline is at the means, so every parameter is the same.
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-4, atol=1e-6)
     np.testing.assert_allclose(-model.neg_ll(), -ref.neg_ll(), rtol=1e-7)
-    _same_predictions(model, ref, s, quiet=name != "WeibullAH")
+    _same_predictions(model, ref, s)
     for p in model.parameter_names():
         np.testing.assert_allclose(
             model.param_cb(p), ref.param_cb(p), rtol=1e-3, atol=1e-5
@@ -496,3 +494,16 @@ def test_time_varying_covariates(name, offset):
         # By default the baseline at 0 is exp(1000s) away: refused.
         with pytest.raises(ValueError, match="center=True"):
             fitter.fit_tvc(i, xl, xr, c, Z + offset)
+
+
+def test_additive_hazards_cb_is_quiet_where_the_hazard_is_negative():
+    # (#465) At Z = [-1.2, 0] the fitted cumulative hazard is negative;
+    # the logit-scale sf bound computed 1 / (1 + exp(-t)) with t hugely
+    # negative, and leaked numpy's "overflow encountered in exp".
+    x, Z, c = _data()
+    model = sp.WeibullAH.fit(x, Z, c=c)
+    assert np.any(model.Hf(TIMES, [-1.2, 0.0]) < 0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for on in ("sf", "ff", "Hf", "hf"):
+            model.cb(TIMES, [-1.2, 0.0], on=on)
