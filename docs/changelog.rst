@@ -50,14 +50,14 @@ match R. Unknown option values raise ``ValueError`` everywhere.
   centred covariates and maps back, so beta, the predictions and the
   bounds are the same whatever the covariates' origin, and it raises
   ``ValueError``, pointing to ``center=True``, when the baseline at 0 over-
-  or underflows. For the other pairs the default fit is at ``Z = 0`` as
-  before, and on covariates far from zero it now raises where it used to
-  return a wrong answer silently (a LogNormal PH coefficient of 0.006
-  against 0.64; a Gamma PO log-likelihood of +3914). ``center=True`` fits
+  or underflows. For the other pairs the default fit is at ``Z = 0``,
+  unchanged and unchecked, so on covariates far from zero it can still
+  fail or stop at a poor answer (a LogNormal PH coefficient of 0.006
+  against 0.64 at a shift of 300). ``center=True`` fits
   any family with its baseline at the means (``model.center``, shown in the
   summary and saved, schema 2), where a shift of a column changes nothing.
-  The additive hazards default is not yet checked (#465); for it,
-  ``center=True`` is a different model, ``h0 + beta'(Z - center)``.
+  For additive hazards, ``center=True`` is a different model,
+  ``h0 + beta'(Z - center)``.
   On ordinary data the reported parameters are those of before to
   optimiser tolerance (log-likelihoods within 2e-8 on 48 of 49 test fits;
   one Logistic PO fit on 34 tires stops 1.3e-5 nats short of the old
