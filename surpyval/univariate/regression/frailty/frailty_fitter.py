@@ -22,6 +22,7 @@ maximises its own marginal likelihood on a fresh optimiser.
 """
 
 import warnings
+from types import SimpleNamespace
 from typing import Any, Callable
 
 import autograd.numpy as anp
@@ -29,8 +30,9 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from autograd.extend import defvjp, primitive
-from autograd.scipy.special import gammaln
+from autograd.scipy.special import gammaln as _ad_gammaln
 from scipy.optimize import minimize
+from scipy.special import gammaln
 
 from surpyval.utils import (
     _caller_stacklevel,
@@ -48,7 +50,7 @@ from .frailty_model import FrailtyModel
 
 def _make_transforms(dist: Any, k_dist: int) -> tuple[
     Callable[[npt.NDArray, int], npt.NDArray],
-    Callable[[npt.NDArray, int], npt.NDArray],
+    Callable[..., npt.NDArray],
 ]:
     """Per-parameter (natural <-> unconstrained) maps for the optimiser.
 
@@ -79,26 +81,28 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
         out.append(np.log(nat[-1]))  # theta: log
         return np.array(out, dtype=float)
 
-    def to_nat(unc: npt.NDArray, n_beta: int) -> npt.NDArray:
-        # In autograd's numpy, so the likelihood can be differentiated in
-        # the optimiser's parameters (see ``fit``).
+    def to_nat(unc: npt.NDArray, n_beta: int, ops: Any = None) -> npt.NDArray:
+        # ``ops`` as for ``_neg_ll_natural``.
+        xp = (ops or _NUMPY).np
         out = []
         for i, f in enumerate(forms):
             v = unc[i]
             if f == "log":
-                out.append(anp.exp(v))
+                out.append(xp.exp(v))
             elif f == "logit":
-                out.append(1.0 / (1.0 + anp.exp(-v)))
+                out.append(1.0 / (1.0 + xp.exp(-v)))
             else:
                 out.append(v)
         out.extend(unc[k_dist + i] for i in range(n_beta))
-        out.append(anp.exp(unc[-1]))
-        return anp.array(out)
+        out.append(xp.exp(unc[-1]))
+        return xp.array(out)
 
     return to_unc, to_nat
 
 
-def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
+def _log_rising_ratio(
+    D: npt.NDArray, theta: float, ops: Any = None
+) -> npt.NDArray:
     """
     ``log Gamma(D + 1/theta) - log Gamma(1/theta) - D log(1/theta)``,
     computed without cancellation.
@@ -109,8 +113,11 @@ def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
     an integer ``D`` the ratio is the product ``prod_{k<D} (1 + k theta)``,
     so its log is a sum of ``log1p`` terms; a non-integer ``D`` (fractional
     weights) uses the gamma functions, or their Stirling series once
-    ``theta`` is small enough for the gamma functions to cancel.
+    ``theta`` is small enough for the gamma functions to cancel. ``ops`` as
+    for ``FrailtyFitter._neg_ll_natural``.
     """
+    ops = ops or _NUMPY
+    xp = ops.np
     D = np.asarray(D, dtype=float)
     integer = np.isclose(D, np.round(D), rtol=0.0, atol=1e-9)
     # Written without assignment into an array, so that autograd can
@@ -118,9 +125,7 @@ def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
     # (the integer one at 0 on the other rows), and the rows pick theirs.
     d_int = np.where(integer, np.round(D), 0.0).astype(int)
     k = np.arange(max(int(d_int.max(initial=0)), 0), dtype=float)
-    cumulative = anp.concatenate(
-        [np.zeros(1), anp.cumsum(anp.log1p(k * theta))]
-    )
+    cumulative = xp.concatenate([np.zeros(1), xp.cumsum(xp.log1p(k * theta))])
     out = cumulative[d_int]
     if (~integer).any():
         d = D
@@ -135,13 +140,13 @@ def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
             )
         else:
             it = 1.0 / theta
-            other = gammaln(d + it) - gammaln(it) - d * anp.log(it)
-        out = anp.where(integer, out, other)
+            other = ops.gammaln(d + it) - ops.gammaln(it) - d * xp.log(it)
+        out = xp.where(integer, out, other)
     return out
 
 
 def _group_frailty_ll(
-    D: npt.NDArray, H: npt.NDArray, theta: float
+    D: npt.NDArray, H: npt.NDArray, theta: float, ops: Any = None
 ) -> npt.NDArray:
     """
     Each group's gamma-frailty term of the marginal log-likelihood,
@@ -154,16 +159,18 @@ def _group_frailty_ll(
     rearranged so that it stays accurate as ``theta -> 0``: it equals
     ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
     tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
+    ``ops`` as for ``FrailtyFitter._neg_ll_natural``.
     """
-    if theta * max(anp.max(H), np.max(D), 1.0) ** 2 < _EPS:
+    xp = (ops or _NUMPY).np
+    if theta * max(xp.max(H), np.max(D), 1.0) ** 2 < _EPS:
         # theta is too small to change any group's term by more than
         # rounding (each correction to the no-frailty value -H is of order
         # theta H^2, theta D H or theta D^2), and the terms below divide by
         # it: the limit itself. (Its derivatives in beta must stay finite
         # there too, for the fit's check of its answer, #392.)
         return -1.0 * H
-    return _log_rising_ratio(D, theta) - (
-        D * anp.log1p(H * theta) + anp.log1p(H * theta) / theta
+    return _log_rising_ratio(D, theta, ops) - (
+        D * xp.log1p(H * theta) + xp.log1p(H * theta) / theta
     )
 
 
@@ -182,6 +189,17 @@ def _group_sum(
 # The derivative of a group's sum in each of its values is 1: a gradient
 # with respect to the sums spreads back to each value from its group.
 defvjp(_group_sum, lambda ans, values, inv, n_groups: lambda g: g[inv])
+
+# The functions the likelihood is written in: numpy's for the search, which
+# evaluates it thousands of times, and autograd's, for the fit's check of
+# its answer (#392), which differentiates it. They compute the same values;
+# autograd's wrappers only cost time where nothing is differentiated.
+_NUMPY = SimpleNamespace(
+    np=np,
+    gammaln=gammaln,
+    group_sum=lambda v, inv, n: np.bincount(inv, weights=v, minlength=n),
+)
+_AUTOGRAD = SimpleNamespace(np=anp, gammaln=_ad_gammaln, group_sum=_group_sum)
 
 
 class FrailtyFitter:
@@ -215,28 +233,32 @@ class FrailtyFitter:
         eta_Z: npt.NDArray,
         inv: npt.NDArray,
         n_beta: int,
+        ops: Any = None,
     ) -> float:
         """Marginal negative log-likelihood in natural parameters.
 
         ``eta_Z`` is the covariate matrix (n_obs x n_beta); ``inv`` maps each
         observation to its group index; ``w`` are observation weights.
+        ``ops`` holds the functions it is computed with: numpy's (the
+        default) or, to be differentiated, autograd's (``_AUTOGRAD``).
         """
+        ops = ops or _NUMPY
+        xp = ops.np
         dist_params = nat[: self.k_dist]
         beta = nat[self.k_dist : self.k_dist + n_beta]
         theta = nat[-1]
 
         H0 = self.dist.Hf(x, *dist_params)
         h0 = self.dist.hf(x, *dist_params)
-        # (autograd's numpy, so the fit can check its answer, #392)
-        eta = anp.exp(anp.dot(eta_Z, beta)) if n_beta else np.ones_like(x)
+        eta = xp.exp(xp.dot(eta_Z, beta)) if n_beta else np.ones_like(x)
 
         event = c == 0
-        ll = anp.sum(w[event] * (anp.log(h0[event]) + anp.log(eta[event])))
+        ll = xp.sum(w[event] * (xp.log(h0[event]) + xp.log(eta[event])))
 
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
-        H = _group_sum(w * eta * H0, inv, n_groups)
-        ll = ll + anp.sum(_group_frailty_ll(D, H, theta))
+        H = ops.group_sum(w * eta * H0, inv, n_groups)
+        ll = ll + xp.sum(_group_frailty_ll(D, H, theta, ops))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -424,8 +446,15 @@ class FrailtyFitter:
         # One warning: a coefficient with no finite maximum (a level with no
         # events, #392), or else a search that did not converge.
         res.stopped_short = not converged
+
+        def obj_traced(u: npt.NDArray) -> Any:
+            nat = to_nat(u, n_beta, _AUTOGRAD)
+            return self._neg_ll_natural(
+                nat, x, c, w, Zc, inv, n_beta, _AUTOGRAD
+            )
+
         finish_search(
-            obj_unc,
+            obj_traced,
             res,
             [(self.k_dist + i, i) for i in range(n_beta)],
             u0,

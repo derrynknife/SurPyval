@@ -50,8 +50,11 @@ Uniform's MLE refuses censored data again.
   The regression test is Newton's. Along each coefficient's profile,
   Kantorovich's ``h = |f'''| |f'| / f''^2`` is 1 on the way to a supremum,
   however far the optimiser went. At the maximum of an ordinary fit it is
-  at most 2e-4, over the test registry and 1360 calibration refits. The
-  additive-hazards models, whose likelihood rises without bound on such
+  at most 2e-4, over the test registry and 1360 calibration refits. It
+  costs one Hessian at the fitted values, and a coefficient's profile is
+  read only when its Newton step there exceeds 1/709.8 of its value (the
+  log of the largest double): every coefficient running off to infinity
+  exceeds it and a converged one does not. The additive-hazards models, whose likelihood rises without bound on such
   data, now say so instead of reporting a positivity boundary (all except
   GammaAH). The Gumbel copula no longer leaks about 230 raw numpy overflow
   warnings. Univariate MLE now also refuses a point mass at the edge of a

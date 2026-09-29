@@ -2717,8 +2717,7 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say
 # they did not, on every build.
-NON_STRICT: dict[str, frozenset[str]] = {
-}
+NON_STRICT: dict[str, frozenset[str]] = {}
 
 
 # The issue that tracks each kind of known failure; its number leads the

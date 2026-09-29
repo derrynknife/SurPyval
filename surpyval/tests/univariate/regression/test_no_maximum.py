@@ -20,6 +20,7 @@ import autograd.numpy as anp
 import numpy as np
 import pandas as pd
 import pytest
+from autograd import grad, hessian
 
 import surpyval as sp
 from surpyval.tests.conformance.registry import grouped_reg_data, reg_data
@@ -27,6 +28,7 @@ from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
+from surpyval.univariate.regression import _fit_skeleton as skeleton
 from surpyval.univariate.regression._fit_skeleton import (
     _flat_at_start,
     runaway_coefficients,
@@ -273,3 +275,78 @@ def test_collinear_fine_gray_formula_does_not_warn():
         )
     )
     assert not w, [str(x.message) for x in w]
+
+
+# -- the gate: profiles are read only where Newton has not converged ----------
+
+
+def _count_profiles(monkeypatch):
+    calls = []
+    profile = skeleton._profile
+
+    def counted(neg_ll, x, H, j):
+        calls.append(j)
+        return profile(neg_ll, x, H, j)
+
+    monkeypatch.setattr(skeleton, "_profile", counted)
+    return calls
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda: sp.WeibullPH.fit(**reg_data()),
+        lambda: sp.LogNormalAFT.fit(**reg_data()),
+        lambda: sp.LogisticPO.fit(**reg_data()),
+        lambda: sp.WeibullAH.fit(**reg_data()),
+        lambda: sp.WeibullFrailty.fit(**grouped_reg_data()),
+        lambda: FineGray.fit(**_competing(reg_data()), event="a"),
+    ],
+    ids=["PH", "AFT", "PO", "AH", "Frailty", "FineGray"],
+)
+def test_an_ordinary_fit_reads_no_profile(monkeypatch, fit):
+    # Its Newton step is at the optimiser's tolerance in every coefficient
+    # (the frailty variance of these data sits at its limit of 0, which the
+    # step leaves out), so the third derivatives are never taken.
+    calls = _count_profiles(monkeypatch)
+    _, w = _fit(fit)
+    assert calls == [] and not w, [str(x.message) for x in w]
+
+
+@pytest.mark.parametrize(
+    "name", ["WeibullPH", "LogNormalAFT", "LogisticPO", "LogNormalPO"]
+)
+def test_a_runaway_has_its_profile_read(monkeypatch, name):
+    # Only the runaway coefficient's (0): the other's step is at tolerance.
+    # LogNormalAFT and the PO fits run furthest onto the plateau (profile
+    # information 1e-13 to 1e-15 of the start's).
+    calls = _count_profiles(monkeypatch)
+    _, w = _fit(lambda: getattr(sp, name).fit(**_no_events(reg_data())))
+    assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
+    k_dist = len(getattr(sp, name).param_names)
+    assert calls == [k_dist]
+
+
+def test_the_gate_clears_a_maximum_and_nothing_else():
+    # A maximum: the Newton step is 0, well within 1/709.8 of the value.
+    quadratic = lambda p: (p[0] - 2.0) ** 2 + (p[1] + 3.0) ** 2  # noqa: E731
+    x = np.array([2.0, -3.0])
+    H, g = hessian(quadratic)(x), grad(quadratic)(x)
+    assert skeleton._cleared(x, H, g).tolist() == [True, True]
+    # A runaway along t = u (exp(t) + 50 (u - t)^2 at t = u = -15): the
+    # step is (1, 1), 1/15 of the value, so neither is cleared.
+    runaway = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
+    x = np.array([-15.0, -15.0])
+    H, g = hessian(runaway)(x), grad(runaway)(x)
+    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    # A linear rise has no curvature: no Hessian to trust, nothing cleared.
+    linear = lambda p: -3.0 * p[0] + p[1] ** 2  # noqa: E731
+    x = np.array([-50.0, 0.0])
+    H, g = hessian(linear)(x), grad(linear)(x)
+    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    # A parameter the likelihood does not depend on is left out of the
+    # step, and the others are still cleared.
+    ignores = lambda p: (p[0] - 1.0) ** 2 + 0.0 * p[1]  # noqa: E731
+    x = np.array([1.0, 7.0])
+    H, g = hessian(ignores)(x), grad(ignores)(x)
+    assert skeleton._cleared(x, H, g).tolist() == [True, False]

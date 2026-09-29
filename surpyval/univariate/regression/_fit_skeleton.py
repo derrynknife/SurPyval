@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian, jacobian, value_and_grad
+from autograd.differential_operators import make_hvp
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
@@ -855,6 +856,28 @@ def warn_if_not_converged(res: Any) -> None:
 # direction the likelihood rises (f' f''' > 0). A curvature that is zero or
 # negative there is no maximum either: the additive hazards likelihood rises
 # linearly as a no-event level's coefficient falls, without bound.
+#
+# Reading a profile costs third derivatives, several times an ordinary fit's
+# own work, so a coefficient's is read only when Newton's method has not
+# already shown the fit to be a maximum in it (``_cleared``, which costs one
+# Hessian, needed for the profile anyway). The coefficient's part of the
+# Newton step -H^{-1} g is at the level of the optimiser's tolerance at a
+# maximum. On the way to a supremum it is 1/s, however far the optimiser
+# went: write the gradient as H d plus the tail's s A e^{-st} along the flat
+# direction u, d the optimiser's leftover displacement of the other
+# parameters; along u, H d is the curvature s^2 A e^{-st} times d's small
+# component, so the step along u is 1/s plus that component, and the
+# leftover error cannot hide the runaway (which it does on the profile line
+# until polished, see ``_profile``). The coefficient itself is then about t,
+# and s t is the linear predictor the runaway drives, which exp keeps within
+# log(largest float) = 709.8 of 0: beyond it the rows it moves underflow and
+# the likelihood no longer depends on the coefficient at all. So a runaway's
+# step is at least 1/709.8 of its size (measured: 1/100 to 1/5 on every
+# runaway in the conformance registry), and a coefficient with a smaller
+# step has converged. A larger step (at most 1/5900 of the coefficient on
+# the registry's ordinary fits, and on a few of the calibration refits
+# more), or a Hessian that is not positive definite, has the profile read,
+# which only costs time.
 
 
 def runaway_coefficients(
@@ -893,11 +916,17 @@ def runaway_coefficients(
     try:
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Output seems independent")
-            H = np.asarray(hessian(neg_ll)(at), dtype=float)
+            # The gradient comes with the Hessian, from one trace.
+            hvp, g = make_hvp(neg_ll)(at)
+            H = np.array([hvp(e) for e in np.eye(at.size)], dtype=float)
+            g = np.asarray(g, dtype=float)
     except (TypeError, ValueError, ArithmeticError):
         return []
+    cleared = _cleared(at, H, g)
     out = []
     for k, j in enumerate(coefs):
+        if cleared[j]:
+            continue
         axis = np.zeros(at.size)
         axis[j] = 1.0
         with np.errstate(all="ignore"):
@@ -914,6 +943,39 @@ def runaway_coefficients(
             if start is None or not _flat_at_start(neg_ll, start, v):
                 out.append(k)
     return out
+
+
+#: The largest linear predictor exp can take, log(largest float): a
+#: runaway's Newton step is at least this fraction of its coefficient's
+#: size (see above).
+_LOG_FLOAT_RANGE = float(np.log(np.finfo(float).max))
+
+
+def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
+    """Which parameters Newton's method shows to be at a maximum at ``x``,
+    ``H`` and ``g`` the Hessian and gradient there: those whose part of the
+    Newton step ``-H^{-1} g`` is no more than ``1 / log(largest float)`` of
+    their size, which no parameter running off to a supremum can be (see
+    above).
+
+    Parameters the likelihood does not depend on at ``x`` to second order
+    (a zero gradient and Hessian row, as a frailty variance held at its
+    limit of 0 has) are left out of the step. None is cleared where the
+    Hessian of the others is not finite and positive definite: a maximum
+    has one, and a runaway's may not (a linear rise has no curvature)."""
+    cleared = np.zeros(x.size, dtype=bool)
+    if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
+        return cleared
+    used = np.flatnonzero(np.any(H != 0, axis=1) | (g != 0))
+    H_u = H[np.ix_(used, used)]
+    try:
+        np.linalg.cholesky(H_u)
+        step = np.linalg.solve(H_u, g[used])
+    except np.linalg.LinAlgError:
+        return cleared
+    with np.errstate(all="ignore"):
+        cleared[used] = np.abs(step) * _LOG_FLOAT_RANGE <= np.abs(x[used])
+    return cleared
 
 
 def _no_convergence(d1: float, d2: float, d3: float) -> bool:
