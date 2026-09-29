@@ -65,6 +65,7 @@ This appears to be a much better fit, however, there is still quite a bit of dif
 A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval derives everything else from it. Our spline uses the Weibull cumulative hazard below a 'knot' and adds a LogLogistic cumulative hazard above it. The knot must stay within the range of the data, so rather than estimate the knot directly we estimate it as a fraction of the $50,000 cap, ``knot_frac``, bounded between 0 and 1.
 
 .. jupyter-execute::
+    :stderr:
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
@@ -98,6 +99,8 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
     model.plot()
 
 Much better! The knot sits at about half the cap, near $25,000, which is where the 'disconnect' in the earlier plots was.
+
+The two warnings are worth reading. The knot makes the cumulative hazard bend sharply where one piece meets the other, so the log-likelihood has a kink rather than a smooth peak, and SurPyval cannot confirm that the answer is a maximum: at a kink the gradient need not be zero, and the parameter covariance (the inverse of the curvature) is not positive definite here. The fit is still the best point the search found, but the Wald confidence bounds, which rely on that covariance, do not exist where the delta-method variance is negative, so the plot's bounds are missing over part of the range. A bootstrap would give intervals for a model like this.
 
 It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model could not be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
 
