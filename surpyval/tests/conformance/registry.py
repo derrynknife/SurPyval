@@ -463,6 +463,14 @@ def uni_data():
     return {"x": x, "c": c, "n": n}
 
 
+def uni_exact_data():
+    """``uni_data`` with every value exactly observed: the Uniform's MLE
+    refuses censored values (#460)."""
+    data = uni_data()
+    data["c"] = np.zeros_like(data["c"])
+    return data
+
+
 def xcnt_data():
     """Every censoring type, with left truncation: the full data model."""
     x = np.array(
@@ -1197,7 +1205,7 @@ def _univariate():
         if name in alias:
             fitters += (f"surpyval.{alias[name]}",)
         out.append(continuous(name, fitters=fitters))
-    out.append(continuous("Uniform"))
+    out.append(continuous("Uniform", data=uni_exact_data))
     out.append(
         continuous(
             "Beta",
@@ -2016,17 +2024,25 @@ _LR_X = {
 }
 
 
+# Fits with no parameter covariance by design, so no Wald bounds: the
+# Uniform's MLE sits on the sample extremes, where the likelihood's
+# curvature says nothing about its uncertainty (#460).
+_NO_WALD = {"Uniform"}
+
+
 def _parametric_bounds(case):
     on = tuple(f for f in _ON_ALL if f in case.functions)
-    out = [
-        Bound("cb", on=on, kwargs={"method": "wald"}, label="cb[wald]"),
-        Bound(
-            "param_cb",
-            kind="param",
-            kwargs={"method": "wald"},
-            label="param_cb[wald]",
-        ),
-    ]
+    out = []
+    if case.name not in _NO_WALD:
+        out += [
+            Bound("cb", on=on, kwargs={"method": "wald"}, label="cb[wald]"),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "wald"},
+                label="param_cb[wald]",
+            ),
+        ]
     # The likelihood-ratio search is swept on the fast cases only: it
     # takes minutes a distribution elsewhere (ExpoWeibull's param_cb
     # sweep took 420 s; see #421 for the others).
@@ -2618,16 +2634,6 @@ _NEGATIVE_VARIANCE = (
     "negative variance (covariance diagonal"
 )
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
-    # A. an invalid covariance
-    "Uniform": _each(
-        ("cb_contains",),
-        "cb[wald]",
-        "the censored fixture's covariance is not positive definite (the "
-        "MLE sits on the edge of the support; a complete sample gets no "
-        "covariance at all): the delta-method variance of df = 1/(b - a) "
-        "is negative, so the df bounds are nan, with a warning, inside the "
-        "support (df(5) = 0.0688)",
-    ),
     # H. boundary estimates with a non-positive variance
     "GeneralizedRenewal": _each(
         ("cb_contains",),
@@ -2669,7 +2675,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "Uniform": "#460",
     "GeneralizedRenewal": "#461",
     "ARA": "#461",
     "ARI": "#461",

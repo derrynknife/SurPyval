@@ -11,8 +11,20 @@ maximum or warn; data with no maximum raise ``ValueError``. A
 non-parametric ``df`` is the probability of each step. Kaplan-Meier and
 Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 ``survfit`` does. Gray's test and the competing-risks Cox incidences now
-match R. Unknown option values raise ``ValueError`` everywhere.
+match R. Unknown option values raise ``ValueError`` everywhere. The
+Uniform's MLE refuses censored data again.
 
+- **The Uniform's MLE refuses censored data again (#460).** 0.21.0 fitted
+  right- and left-censored data by maximum likelihood. The estimates were
+  right, but they sit on a wall of the likelihood (the smallest or largest
+  observation), where its curvature says nothing about their uncertainty.
+  The covariance it reported was not positive definite, so Wald bounds
+  were NaN or silently several times too wide: an ``sf`` bound of [0.25,
+  0.98] where the likelihood-ratio bound is [0.72, 0.85]. ``Uniform.fit``
+  now raises ``ValueError`` on any censored value, as it always did for
+  interval-censored ones, and names the methods that take censored data
+  (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
+  or not, fit as before, still with no covariance.
 - **Cox models no longer break on a covariate far from zero (#459).**
   ``CoxPH`` fitted on the raw covariates, so a column such as a year or a
   date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)

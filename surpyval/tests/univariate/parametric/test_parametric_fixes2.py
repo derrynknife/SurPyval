@@ -82,24 +82,27 @@ def test_discrete_distributions_cannot_be_offset(dist, x):
 # -- Uniform MLE with censoring --------------------------------------------
 
 
-def test_uniform_censored_mle_is_not_min_max():
-    x, c = [0, 9.9, 9.9, 9.9, 10], [0, 1, 1, 1, 0]
-    model = surv.Uniform.fit(x, c=c)
-    # neg_ll = 2 log b - 3 log((b - 9.9) / b) is minimised at b = 24.75
-    np.testing.assert_allclose(model.params, [0.0, 24.75], atol=1e-7)
-    assert model.neg_ll() == pytest.approx(7.950127849, abs=1e-8)
-    assert model.neg_ll() < 18.42
+@pytest.mark.parametrize(
+    "x, c",
+    [
+        ([0, 9.9, 9.9, 9.9, 10], [0, 1, 1, 1, 0]),  # right, below the max
+        ([0, 10, 10, 5], [0, 0, 1, 0]),  # right, tied with the max
+        ([-10, -10, -5, 0], [0, -1, 0, 0]),  # left
+        ([1.0, 2, 3, 5], [0, 0, 0, 1]),  # right, at the max
+    ],
+)
+def test_uniform_mle_refuses_censored_data(x, c):
+    # The censored MLE exists but sits on a wall of the likelihood, where
+    # its covariance was not positive definite and the Wald bounds were
+    # nan or several times too wide (#460).
+    with pytest.raises(ValueError, match="does not support censored"):
+        surv.Uniform.fit(x, c=c)
 
 
-def test_uniform_censored_mle_matches_the_profile_solution():
-    # A tie between an exact and a right-censored maximum: the censored
-    # unit has zero probability at b = 10, so b = 40 / 3 (from
-    # d/db [log(b - 10) - 4 log b] = 0 with a = 0).
-    model = surv.Uniform.fit([0, 10, 10, 5], c=[0, 0, 1, 0])
-    np.testing.assert_allclose(model.params, [0.0, 40 / 3], rtol=1e-9)
-    # left censoring mirrors it onto a
-    model = surv.Uniform.fit([-10, -10, -5, 0], c=[0, -1, 0, 0])
-    np.testing.assert_allclose(model.params, [-40 / 3, 0.0], rtol=1e-9)
+def test_uniform_other_methods_take_censored_data():
+    x, c = [0, 2, 4, 6, 9.9, 9.9, 10], [0, 0, 0, 0, 1, 1, 0]
+    model = surv.Uniform.fit(x, c=c, how="MPS")
+    assert model.params[0] <= 0 and model.params[1] >= 10
 
 
 def test_uniform_complete_data_still_closed_form():
@@ -365,9 +368,5 @@ def test_mps_truncation_messages_have_no_space_run():
     assert "  " not in str(err.value)
 
 
-def test_censored_uniform_reports_its_search_as_the_optimizer():
-    censored = surv.Uniform.fit([0, 9.9, 9.9, 9.9, 10], c=[0, 1, 1, 1, 0])
-    # The search is a root of the likelihood's derivative (it was
-    # L-BFGS-B, which stopped short of the optimum)
-    assert censored.optimizer.startswith("brentq")
+def test_uniform_reports_its_closed_form_as_the_optimizer():
     assert surv.Uniform.fit([1.0, 2.0, 3.0, 5.0]).optimizer == "closed-form"

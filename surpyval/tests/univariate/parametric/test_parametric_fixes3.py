@@ -451,37 +451,11 @@ def test_uniform_accepts_truncation_beyond_the_data():
     assert np.allclose(model.params, [1, 4])
 
 
-def test_uniform_censored_at_the_maximum_has_the_closed_form():
-    # N = 4 units, k = 1 censored at r = 5, a = 1: b = (N r - k a)/(N - k)
-    model = surv.Uniform.fit([1.0, 2, 3, 5], [0, 0, 0, 1])
-    assert model.params == pytest.approx([1.0, 19 / 3], rel=1e-8)
-    model = surv.Uniform.fit([1.0, 2, 3, 5], [0, 0, 0, 1], tr=100)
-    assert model.params == pytest.approx([1.0, 19 / 3], rel=1e-8)
-
-
-@pytest.mark.parametrize("seed", [0, 134, 287])
-def test_uniform_censored_mle_reaches_the_optimum(seed):
-    # L-BFGS-B stopped up to 1% short here (b = 10.10 for 9.98)
-    np.random.seed(seed)
-    x = np.sort(surv.Uniform.random(100, 0, 10))
-    n = len(x)
-    c = np.zeros(n)
-    c[-1] = 1
-    b_hat = (n * x[-1] - x[0]) / (n - 1)
-    assert surv.Uniform.fit(x, c).params == pytest.approx(
-        [x[0], b_hat], rel=1e-12
-    )
-    c = np.zeros(n)
-    c[0] = -1
-    a_hat = (n * x[0] - x[-1]) / (n - 1)
-    assert surv.Uniform.fit(x, c).params == pytest.approx(
-        [a_hat, x[-1]], rel=1e-10, abs=1e-12
-    )
-
-
-def test_uniform_still_refuses_where_no_mle_exists():
-    with pytest.raises(ValueError, match="no unique MLE"):
-        surv.Uniform.fit([1.0, 2, 3, 5], [0, 0, 0, 1], tr=5.5)
+def test_uniform_refuses_censored_data_even_when_truncated():
+    # (#460: no censored Uniform MLE; the truncated window used to add its
+    # own "no unique MLE" refusal.)
+    with pytest.raises(ValueError, match="does not support censored"):
+        surv.Uniform.fit([1.0, 2, 3, 5], [0, 0, 0, 1], tr=100)
 
 
 # -- serialisation ----------------------------------------------------------

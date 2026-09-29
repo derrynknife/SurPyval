@@ -212,15 +212,16 @@ def test_parametric_param_cb_with_a_negative_variance_warns():
 
 
 def test_function_cb_with_a_negative_variance_warns():
-    # Uniform's covariance on its fixture is not positive definite, so the
-    # delta-method variance of df = 1 / (b - a) is negative: the df
-    # bounds were a silent [nan, nan] everywhere inside the support.
-    model = _fresh("Uniform")
-    with pytest.warns(RuntimeWarning, match=r"df at x = \[5.0\]") as rec:
+    # A covariance that is not positive definite makes the delta-method
+    # variance negative: the bounds were a silent [nan, nan]. (The censored
+    # Uniform fit that showed it is refused since #460, so the covariance
+    # is broken by hand here.)
+    model = _fresh("Weibull")
+    model.cov_matrix = -np.abs(np.asarray(model.hess_inv))
+    with pytest.warns(RuntimeWarning, match=r"df at x = \[1.0, 5.0\]") as rec:
         cb = model.cb([1.0, 5.0], on="df")
     assert len(rec) == 1 and rec[0].filename == __file__
-    np.testing.assert_array_equal(cb[0], [0.0, 0.0])  # below a: rate 0
-    assert np.all(np.isnan(cb[1]))
+    assert np.all(np.isnan(cb))
 
 
 # -- #421: likelihood-ratio bands ------------------------------------------
@@ -268,13 +269,14 @@ def test_lr_band_of_the_uniform_follows_the_support_edge():
     # [1.533, 1.821], its lower end the 80% band's and its upper end the
     # estimate. The searches now keep a and b beyond the data's
     # extremes. A brute-force grid over (a, b) of the likelihood region
-    # gives [1.216, 1.949] (95%) and [1.501, 1.875] (80%).
+    # of the (exact, #460) fixture gives [1.337, 1.949] (95%) and
+    # [1.578, 1.876] (80%).
     model = _fresh("Uniform")
     x = np.array([3.2, 8.0, 14.6])
     wide = _quiet(model.cb, x, on="Hf", alpha_ci=0.05, method="lr")
     narrow = _quiet(model.cb, x, on="Hf", alpha_ci=0.2, method="lr")
-    np.testing.assert_allclose(wide[2], [1.216, 1.949], rtol=5e-3)
-    np.testing.assert_allclose(narrow[2], [1.501, 1.875], rtol=5e-3)
+    np.testing.assert_allclose(wide[2], [1.337, 1.949], rtol=5e-3)
+    np.testing.assert_allclose(narrow[2], [1.578, 1.876], rtol=5e-3)
     Hf = model.Hf(x)
     assert np.all(wide[:, 0] < narrow[:, 0]) and np.all(narrow[:, 0] < Hf)
     assert np.all(Hf < narrow[:, 1]) and np.all(narrow[:, 1] < wide[:, 1])

@@ -917,7 +917,13 @@ for _name in (
 PLANS["ConformanceGompertz"] = Plan(
     _uni_censored, 300, 40, params=_parametric_params
 )
-PLANS["Uniform"] = Plan(_uni_censored, 300, 100, note=_ENDPOINTS)
+PLANS["Uniform"] = Plan(
+    _uni_plain,
+    300,
+    100,
+    note=_ENDPOINTS
+    + " (complete data: the MLE refuses censored values, #460)",
+)
 PLANS["Beta4"] = Plan(
     _uni_censored,
     300,

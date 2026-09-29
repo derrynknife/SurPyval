@@ -172,7 +172,7 @@ class TestDistributionEdges:
         assert np.all(np.isfinite(params))
 
     def test_uniform_interval_clear_error(self):
-        with pytest.raises(ValueError, match="interval-censored"):
+        with pytest.raises(ValueError, match="does not support censored"):
             Uniform.fit(x=[1.0, 2.0, [2, 4], 3.5, [3, 5]], c=[0, 0, 2, 0, 2])
 
 
