@@ -28,8 +28,8 @@ _BOUNDS = ("two-sided", "upper", "lower")
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
 # of ``interp_function`` ('cubic' is PCHIP, the rest scipy's interp1d).
-_INTERP = ("step", "linear", "cubic", "nearest", "nearest-up", "zero")
-_INTERP += ("slinear", "quadratic", "previous", "next")
+_INTERP: tuple[str, ...] = ("step", "linear", "cubic", "nearest")
+_INTERP += ("nearest-up", "zero", "slinear", "quadratic", "previous", "next")
 
 
 def _check_option(name: str, value: Any, accepted: tuple) -> None:

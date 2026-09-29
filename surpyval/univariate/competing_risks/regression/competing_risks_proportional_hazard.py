@@ -25,6 +25,7 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.nonparametric.nonparametric import _check_option
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
@@ -44,6 +45,13 @@ from surpyval.utils.shapes import keeps_query_shape
 from .fine_gray import FineGray, FineGrayModel, paired_covariate_rows
 
 
+def _check_interp(interp: str) -> None:
+    # The baselines are step functions and are only evaluated as steps:
+    # any other interp, even 'bogus', used to be accepted and ignored, so
+    # interp='linear' silently gave the step curve (#416).
+    _check_option("interp", interp, ("step",))
+
+
 class CompetingRisksProportionalHazards(SerialisableMixin):
     """
     Competing-risks proportional-hazards regression.
@@ -59,9 +67,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     the covariates ``Z`` and, for one cause, its label ``event``: an array
     in the fitted column order or, for a model fitted with ``fit_from_df``,
     a DataFrame of the raw covariate columns (a ``formula`` is applied to
-    it, as for ``CoxPH``). A fitted model can be saved with
-    ``to_dict``/``to_json`` and restored with ``from_dict``/``from_json``
-    (or ``surpyval.from_dict``).
+    it, as for ``CoxPH``). The baselines are step functions, so the
+    ``interp`` of ``sf``, ``ff``, ``Hf``, ``hf`` and ``df`` takes only
+    ``"step"``; another value raises a ``ValueError``. A fitted model can
+    be saved with ``to_dict``/``to_json`` and restored with
+    ``from_dict``/``from_json`` (or ``surpyval.from_dict``).
     """
 
     # Populated by ``fit``; declared for the type checker. ``model`` is
@@ -273,6 +283,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         cause's (``event``) or the sum over causes (``event=None``). Not
         available for a Fine-Gray model.
         """
+        _check_interp(interp)
         if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution hazard has no pointwise "
@@ -295,6 +306,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         (``event=None``). For a Fine-Gray model, the cumulative
         subdistribution hazard of ``event``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
@@ -315,6 +327,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         :meth:`cif`, or one cause's net survival (the other causes
         treated as censoring). For a Fine-Gray model, ``1 - cif``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
@@ -332,6 +345,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``1 - sf`` at ``x`` for covariates ``Z``. For a Fine-Gray model,
         the cumulative incidence of ``event``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             return self.cif(x, Z, event)
@@ -349,6 +363,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``hf * sf`` at ``x`` for covariates ``Z``. Not available for a
         Fine-Gray model.
         """
+        _check_interp(interp)
         if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution density has no pointwise form "

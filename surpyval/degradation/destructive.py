@@ -246,7 +246,8 @@ class DestructiveDegradationModel(SerialisableMixin):
         x : array_like
             Times at which to evaluate the bound(s).
         on : {'sf', 'ff', 'Hf'}, optional
-            The lifetime function to bound. Default ``'sf'``.
+            The lifetime function to bound (``'R'`` and ``'F'`` are
+            accepted for ``'sf'`` and ``'ff'``). Default ``'sf'``.
         alpha_ci : float, optional
             Total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
@@ -258,10 +259,19 @@ class DestructiveDegradationModel(SerialisableMixin):
             Seed or generator for the resampling. ``None`` (the default) seeds
             from numpy's global RNG, so ``np.random.seed`` controls it.
         """
-        if on not in ("sf", "ff", "Hf"):
-            raise ValueError("`on` must be one of 'sf', 'ff', 'Hf'")
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        # 'R' and 'F' are the aliases every other ``cb`` takes; they
+        # were refused here (#416).
+        valid = ("sf", "R", "ff", "F", "Hf")
+        if on not in valid:
+            raise ValueError(
+                "'on' must be one of {}; got {!r}".format(valid, on)
+            )
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        bounds = ("two-sided", "lower", "upper")
+        if bound not in bounds:
+            raise ValueError(
+                "'bound' must be one of {}; got {!r}".format(bounds, bound)
+            )
         x = np.atleast_1d(np.asarray(x, dtype=float))
         rng = as_generator(random_state)
         if self.data is None:

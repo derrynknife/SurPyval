@@ -10,6 +10,8 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.nonparametric.nonparametric import (
+    _BOUNDS,
+    _check_option,
     _check_support,
     _on_support,
     _support_from_dict,
@@ -26,6 +28,9 @@ from surpyval.utils.shapes import keeps_query_shape
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
+
+# The ``interp`` values of the MCF and its bounds.
+_MCF_INTERP = ("step", "linear")
 
 # How ``set_support`` names the range an MCF's bounds must contain.
 _MCF_RANGE = (
@@ -239,6 +244,7 @@ class NonParametricCounting(SerialisableMixin):
             value at the last observed time from there to ``upper``, and
             NaN outside them.
         """
+        _check_option("interp", interp, _MCF_INTERP)
         return self._within_support(x, lambda q: self._mcf(q, interp))
 
     def _mcf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -253,7 +259,7 @@ class NonParametricCounting(SerialisableMixin):
         elif interp == "linear":
             mcf = np.interp(x, grid, values)
         else:
-            raise ValueError("`interp` must be either 'step' or 'linear'")
+            _check_option("interp", interp, _MCF_INTERP)
         # ... nor at a missing time: NaN in, NaN out (the step lookup put
         # a NaN past every time, at the last value, #382).
         mcf[(x > self.x.max()) | (x < self._origin()) | np.isnan(x)] = np.nan
@@ -335,8 +341,14 @@ class NonParametricCounting(SerialisableMixin):
         ------
         ValueError
             If the model carries no variance (an MCF built from simulated
-            data).
+            data), or ``bound``, ``interp``, ``bound_type`` or ``dist`` is
+            not one of its values.
         """
+        # Up front, as unknown values: 'both' used to fail as an
+        # UnboundLocalError ('stat'), and an unknown interp returned the
+        # unselected bounds (#416).
+        _check_option("bound", bound, _BOUNDS)
+        _check_option("interp", interp, _MCF_INTERP)
         return self._within_support(
             x,
             lambda q: self._mcf_cb(
@@ -356,8 +368,7 @@ class NonParametricCounting(SerialisableMixin):
         # ``mcf_cb`` without the bounds (see ``set_support``).
         # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
         # per-step one for ``from_xrd``) with a normal (z) critical value.
-        if bound_type not in ["exp", "normal"]:
-            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        _check_option("bound_type", bound_type, ("exp", "normal"))
         if dist != "z":
             raise ValueError(
                 "'dist' must be 'z'. The 't' option (Student-t with the "
