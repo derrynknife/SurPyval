@@ -36,9 +36,10 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.optimize import minimize
 
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..parametric_regression_model import ParametricRegressionModel
@@ -161,6 +162,9 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 from .._fit_skeleton import (  # noqa: E402
     LogLinearPhi,
     MirroredDistributionAttrs,
+    check_fixed_and_init,
+    optimise_nm_tnc,
+    require_finite_fit,
 )
 
 
@@ -235,10 +239,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         i2, xl, xr, c2, Z2, n2 = handle_tvc_timeline(i, x, Z, c, n)
         return self.fit_tvc(i2, xl, xr, c2, Z2, n=n2, fixed=fixed)
 
+    @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
         self,
         df: Any,
-        id_col: str,
+        i_col: str,
         xl_col: str,
         xr_col: str,
         c_col: str,
@@ -253,7 +258,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         n = None if n_col is None else df[n_col].values
         model = self.fit_tvc(
-            df[id_col].values,
+            df[i_col].values,
             df[xl_col].values,
             df[xr_col].values,
             df[c_col].values,
@@ -306,6 +311,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             **{k: v + self.k_dist for k, v in phi_param_map.items()},
         }
 
+        check_fixed_and_init(fixed, None, param_map)
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
             grp["exit"], bounds, fixed, param_map
         )
@@ -316,11 +322,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             def fun(pars: npt.NDArray) -> float:
                 return like.neg_ll(None, *inv_trans(const(pars)))
 
-            res = minimize(
-                fun, init, method="Nelder-Mead", options={"maxiter": 1000}
-            )
-            res2 = minimize(fun, res.x, method="TNC")
-            res = res2 if res2.success else res
+            # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
+            # which says so when neither rung converged.
+            res = optimise_nm_tnc(fun, init)
+        require_finite_fit(float(res.fun))
 
         params = inv_trans(const(res.x))
 
@@ -347,21 +352,19 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._neg_ll = res.fun
         model.fixed = fixed
         model.k_dist = self.k_dist
-        model.k = len(bounds)
+        # Estimated parameters only; see ``assemble_regression_model``.
+        model.k = len(bounds) - len(fixed or {})
         model.data = edata
         model.is_tvc = True
 
-        # Report information criteria on the *subject* count, not the episode
-        # rows: the accumulated-age likelihood is one term per subject.
-        n_subjects = float(grp["weight"].sum())
-        n_events = float(grp["weight"][grp["event"]].sum())
+        # Report information criteria on the *subjects*, not the episode
+        # rows: the accumulated-age likelihood is one term per subject. The
+        # sample size of bic and aic_c is the shared rule (ic_sample_size):
+        # the subjects whose failure was observed, or all subjects when
+        # none was. With none, bic used to fall back to the episode data.
         model.n_subjects = int(grp["n_subjects"])
-        k = model.k
-        if n_events > 0:
-            model._bic = k * np.log(n_events) + 2 * res.fun
-        if n_subjects - k - 1 > 0:
-            model._aic_c = (2 * k + 2 * res.fun) + (2 * k**2 + 2 * k) / (
-                n_subjects - k - 1
-            )
+        model._ic_n = ic_sample_size(
+            np.where(grp["event"], 0, 1), grp["weight"]
+        )
 
         return model

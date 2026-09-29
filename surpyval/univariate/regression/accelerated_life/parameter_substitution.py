@@ -1,5 +1,5 @@
 import warnings
-from typing import Callable
+from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -11,9 +11,18 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._fit_skeleton import HazardIdentitiesMixin, make_objective
+from .._fit_skeleton import (
+    HazardIdentitiesMixin,
+    check_fixed_and_init,
+    drop_nonfinite_covariates,
+    finite_start,
+    make_objective,
+    require_finite_fit,
+    uniform_draws,
+)
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -23,6 +32,20 @@ from .lifemodel import LifeModel
 class ParameterSubstitutionFitter(
     HazardIdentitiesMixin, DataFrameRegressionMixin
 ):
+    """
+    Accelerated life fitter: the life parameter of a distribution is
+    replaced by a function of the stress, :math:`L(Z)`, given by a life
+    model (``Power``, ``Eyring``, ...), while the other distribution
+    parameters are shared by every stress level.
+
+    Which parameter carries the life, and how, depends on the
+    distribution: :math:`\\alpha = L(Z)` for Weibull, :math:`\\mu = L(Z)`
+    for Normal, Gumbel and Logistic, :math:`\\mu = \\ln L(Z)` for LogNormal,
+    and the rate is :math:`1 / L(Z)` for Exponential (``failure_rate``)
+    and Gamma (``beta``). Create one with
+    ``AcceleratedLife(distribution, life_model)`` rather than directly.
+    """
+
     def __init__(
         self,
         kind: str,
@@ -70,16 +93,33 @@ class ParameterSubstitutionFitter(
             self.param_transform = param_transform
             self.inverse_param_transform = inverse_param_transform
 
+    def _stress_matrix(self, Z: Numeric) -> npt.NDArray:
+        """``Z`` as a 2-D array with one row per stress vector.
+
+        A scalar or 0-d stress is one stress (``AxisError`` from
+        ``np.unique`` before); a 1-D array is one stress per entry for a
+        single-stress life model (#261) but, for a two-stress model, a
+        single row ``[T, V]`` of the right length -- which ``phi`` already
+        accepted while ``sf``/``hf``/``cb``/``random`` raised
+        ``IndexError``.
+        """
+        Z_arr = np.asarray(Z, dtype=float)
+        n_stresses = getattr(self.life_model, "n_stresses", 1)
+        if Z_arr.ndim == 0:
+            return Z_arr.reshape(1, 1)
+        if Z_arr.ndim == 1:
+            if (
+                n_stresses is not None
+                and n_stresses > 1
+                and Z_arr.shape[0] == n_stresses
+            ):
+                return Z_arr.reshape(1, -1)
+            return Z_arr.reshape(-1, 1)
+        return Z_arr
+
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.array(x)
-        if np.isscalar(Z):
-            Z_arr = np.ones_like(x) * Z
-        else:
-            Z_arr = np.array(Z)
-        if Z_arr.ndim == 1:
-            # A 1-D stress vector (one stress variable) becomes a single
-            # column so the per-stress masking below works (#261).
-            Z_arr = Z_arr.reshape(-1, 1)
+        Z_arr = self._stress_matrix(Z)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -99,18 +139,20 @@ class ParameterSubstitutionFitter(
             mask = (Z_arr == stress).all(axis=1)
             Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
 
-        return Hf
+        return self._nan_at_unknown_stress(Hf, Z_arr)
+
+    @staticmethod
+    def _nan_at_unknown_stress(values: Boxable, Z_arr: npt.NDArray) -> Boxable:
+        # A row with a missing stress matches no stress level, so it kept
+        # the initial 0 (a survival of 1); its prediction is unknown.
+        known = np.isfinite(Z_arr).all(axis=1)
+        if known.all():
+            return values
+        return np.where(known, values, np.nan)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.array(x)
-        if np.isscalar(Z):
-            Z_arr = np.ones_like(x) * Z
-        else:
-            Z_arr = np.array(Z)
-        if Z_arr.ndim == 1:
-            # A 1-D stress vector (one stress variable) becomes a single
-            # column so the per-stress masking below works (#261).
-            Z_arr = Z_arr.reshape(-1, 1)
+        Z_arr = self._stress_matrix(Z)
 
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -129,7 +171,7 @@ class ParameterSubstitutionFitter(
             mask = (Z_arr == stress).all(axis=1)
             hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
 
-        return hf
+        return self._nan_at_unknown_stress(hf, Z_arr)
 
     # sf/ff/df and the log identities come from HazardIdentitiesMixin;
     # Hf and hf above already do the scalar/1-D stress coercion (#261),
@@ -142,19 +184,36 @@ class ParameterSubstitutionFitter(
         return y
 
     def random(
-        self, size: int, Z: Numeric | tuple[float, float], *params: Boxable
+        self,
+        size: int,
+        Z: Numeric,
+        *params: Boxable,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples at each distinct stress in ``Z``.
+
+        ``Z`` is a scalar stress, a 1-D array of stresses (one stress
+        variable), or one row per stress for a multi-stress life model.
+        Returns the draws and the stress row each was drawn at.
+        ``random_state`` seeds the draw: ``None`` (the default) draws from
+        numpy's global generator, so ``np.random.seed`` reproduces it; an
+        int or a ``numpy.random.Generator`` gives a stream of its own.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
 
         x = []
         Z_out = []
-        if isinstance(Z, tuple):
-            # A (low, high) pair draws the stresses uniformly.
-            Z = np.random.uniform(*Z, size)
-        Z_arr = np.asarray(Z)
-        if Z_arr.ndim == 1:
-            Z_arr = Z_arr.reshape(-1, 1)
+        # A scalar or 1-D stress is one stress variable: make it a column,
+        # as ``Hf``/``hf`` do. (A former ``(low, high)`` tuple option that
+        # drew the stresses uniformly was unreachable through the fitted
+        # model, whose ``random`` converts ``Z`` to an array first, and
+        # returned ``size`` draws per random stress -- ``size**2`` in all.)
+        Z_arr = self._stress_matrix(Z)
+        # One stream for every stress (an int seed would otherwise restart
+        # and give every stress the same uniforms).
+        rng = None if random_state is None else as_generator(random_state)
 
         for stress in np.unique(Z_arr, axis=0):
             life_param_mask = (
@@ -167,7 +226,7 @@ class ParameterSubstitutionFitter(
                 dist_params,
             )
 
-            U = np.random.uniform(0, 1, size)
+            U = uniform_draws(size, rng)
             x.append(self.dist.qf(U, *dist_params_i))
             if np.isscalar(stress):
                 cols = 1
@@ -179,6 +238,34 @@ class ParameterSubstitutionFitter(
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
 
+    def _check_stresses(self, Z_arr: npt.NDArray) -> None:
+        """Refuse stresses the life model is not defined at.
+
+        ``Power`` (``a Z**n``), ``InversePower``, ``DualPower``, the power
+        column of ``PowerExponential`` and the Eyring models (an absolute
+        temperature) need strictly positive stresses. A non-positive one
+        used to reach the log-linear starting fit and fail there with an
+        SVD ``LinAlgError`` and LAPACK messages on stderr.
+        """
+        cols = getattr(self.life_model, "positive_stress_columns", ())
+        n_stresses = getattr(self.life_model, "n_stresses", None)
+        if n_stresses is not None and Z_arr.shape[1] != n_stresses:
+            raise ValueError(
+                "The {} life model takes {} stress column(s); Z has "
+                "{}.".format(self.life_model.name, n_stresses, Z_arr.shape[1])
+            )
+        for col in cols:
+            if np.any(np.asarray(Z_arr[:, col], dtype=float) <= 0):
+                raise ValueError(
+                    "The {} life model needs strictly positive stresses "
+                    "(column {} of Z has a value <= 0): it raises the stress "
+                    "to a power or takes its logarithm. Shift or rescale the "
+                    "stress, or use a life model defined there (e.g. "
+                    "Linear or ExponentialLifeModel).".format(
+                        self.life_model.name, col
+                    )
+                )
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -189,18 +276,88 @@ class ParameterSubstitutionFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
-        x_arr: npt.NDArray = np.asarray(x)
+        """
+        Fit the accelerated life model by maximum likelihood.
+
+        Parameters
+        ----------
+
+        x : array_like
+            The observed event times.
+        Z : array_like
+            The stress of each observation: a 1-D array for a one-stress
+            life model, or one column per stress (two for ``DualPower``,
+            ``DualExponential``, ``PowerExponential``). Designed for a few
+            controlled stress levels: without ``init`` the starting point
+            comes from fitting the distribution at each distinct stress
+            level, so at least two levels are needed. ``Power``,
+            ``InversePower``, ``DualPower``, the Eyring models and the
+            second (power) stress of ``PowerExponential`` need strictly
+            positive stresses. Rows with a missing or infinite stress are
+            dropped, with a warning.
+        c : array_like, optional
+            The censoring indicators (0 observed, 1 right, -1 left, 2
+            interval). Defaults to all observed.
+        n : array_like, optional
+            The count of observations at each time. Defaults to 1.
+        t : array_like, optional
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
+        init : array_like, optional
+            Initial parameter values: the distribution parameters (with any
+            value in the life parameter's slot) followed by the life-model
+            parameters.
+        fixed : dict, optional
+            Parameters to hold fixed, by name (a distribution parameter or
+            a life-model parameter such as ``"n"``).
+
+        Returns
+        -------
+
+        ParametricRegressionModel
+            The fitted model. The life parameter's slot in ``params`` and
+            ``dist_params`` holds a placeholder value of 1 (it is replaced
+            by the life model at each stress); the life-model parameters
+            are in ``phi_params``.
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, AcceleratedLife, Power
+        >>> np.random.seed(1)
+        >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
+        >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)
+        >>> model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+        >>> model.params.round(3)
+        array([  1.   ,   2.831, 558.686,  -0.828])
+        """
+        # ``x`` goes through the data handler before anything reads it as
+        # an array: the documented ragged form ``[10, [11, 13], ...]`` is
+        # not a rectangular array, and ``np.asarray(x)`` on it raised a raw
+        # numpy error.
         data = SurpyvalData(x=x, c=c, n=n, t=t, group_and_sort=False)
         # A 1-D stress vector (one stress variable) becomes a single column
-        # so the per-stress masking in the initialiser works (#261).
-        Z_arr = np.asarray(Z)
+        # so the per-stress masking in the initialiser works (#261). As
+        # floats, so a ``None`` is a missing value, dropped with the rest.
+        Z_arr = np.asarray(Z, dtype=float)
         if Z_arr.ndim == 1:
             Z_arr = Z_arr.reshape(-1, 1)
+        data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
+        self._check_stresses(Z_arr)
         data.add_covariates(Z_arr)
+        # The per-stress fallback start uses each row's time (the midpoint
+        # of an interval row).
+        x_arr: npt.NDArray = (
+            data.x if data.x.ndim == 1 else data.x.mean(axis=1)
+        )
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
-        if init is None or len(init) == 0:  # type: ignore[arg-type]
+
+        def default_init() -> npt.NDArray:
+            # The distribution fitted at each distinct stress, with the life
+            # model fitted through the per-stress life parameters.
             stress_data = []
             params_at_Z = []
 
@@ -231,8 +388,8 @@ class ParameterSubstitutionFitter(
 
             if len(params_at_Z) < 2:
                 raise ValueError(
-                    "Insufficient data at separate Z values. Try manually \
-                    setting initial guess using `init` keyword in `fit`"
+                    "Insufficient data at separate Z values. Try manually "
+                    "setting initial guess using `init` keyword in `fit`"
                 )
 
             parameter_data = params_at_Z[:, life_parameter_idx]
@@ -245,9 +402,24 @@ class ParameterSubstitutionFitter(
             # for a non-callable phi_init. Neither could run: all ten
             # life models are callable with the two-argument signature.
             phi_init = self.life_model.phi_init(parameter_data, stress_data)
-            init = np.array([*dist_init, *phi_init])
+            return np.array([*dist_init, *phi_init])
+
+        if callable(self.life_model.phi_param_map):
+            phi_param_map = self.life_model.phi_param_map(data.Z)
         else:
-            init = np.array(init)
+            phi_param_map = self.life_model.phi_param_map
+
+        # Keep the merged map local: assigning it to ``self.param_map``
+        # mutated the fitter, so a second ``fit()`` re-merged on top of the
+        # already-merged map and produced out-of-range indices (#261).
+        param_map = {
+            **self.param_map,
+            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
+        }
+        check_fixed_and_init(fixed, init, param_map, self.fixed)
+
+        user_init = init is not None and len(np.atleast_1d(init)) > 0
+        init = np.array(init) if user_init else default_init()
 
         if self.baseline != []:
             baseline_model = self.dist.fit_from_surpyval_data(data)
@@ -266,21 +438,8 @@ class ParameterSubstitutionFitter(
         else:
             bounds = (*self.bounds, *self.life_model.phi_bounds)
 
-        if callable(self.life_model.phi_param_map):
-            phi_param_map = self.life_model.phi_param_map(data.Z)
-        else:
-            phi_param_map = self.life_model.phi_param_map
-
-        # Keep the merged map local: assigning it to ``self.param_map``
-        # mutated the fitter, so a second ``fit()`` re-merged on top of the
-        # already-merged map and produced out-of-range indices (#261).
-        param_map = {
-            **self.param_map,
-            **{k: v + len(self.param_map) for k, v in phi_param_map.items()},
-        }
-
         transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-            x, bounds, fixed, param_map
+            data.x, bounds, fixed, param_map
         )
 
         init = transform(init)[not_fixed]
@@ -288,6 +447,15 @@ class ParameterSubstitutionFitter(
         with np.errstate(all="ignore"):
 
             fun = make_objective(self, data, inv_trans, const)
+            init = finite_start(
+                fun,
+                init,
+                (
+                    (lambda: transform(default_init())[not_fixed])
+                    if user_init
+                    else None
+                ),
+            )
 
             res1 = minimize(
                 fun, init, method="Nelder-Mead", options={"maxiter": 1000}
@@ -304,6 +472,7 @@ class ParameterSubstitutionFitter(
             else:
                 res = res2
 
+        require_finite_fit(float(res.fun))
         params = inv_trans(const(res.x))
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
@@ -325,7 +494,11 @@ class ParameterSubstitutionFitter(
         model.k_dist = self.k_dist
         model.fun = fun
 
-        model.k = len(bounds)
+        # Estimated parameters only. ``fixed`` holds the life-parameter
+        # placeholder (its value is replaced by the life model, so it is not
+        # a parameter at all), any baseline parameters and the user's fixed
+        # values; counting them inflated AIC/BIC.
+        model.k = len(bounds) - len(fixed)
 
         model.data = {"x": x, "c": c, "n": n, "t": t}
         model.data = data

@@ -2,13 +2,17 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.tree import SurvivalTree
+from surpyval.beta.ml.forest.tree import (
+    SurvivalTree,
+    drop_missing_covariate_rows,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
 )
 from surpyval.utils.score import score
+from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -38,12 +42,11 @@ class RandomSurvivalForest(SerialisableMixin):
         bootstrap: bool = True,
         kind: str = "weibull",
     ) -> None:
-        self.data: SurpyvalData = data
-        Z = np.asarray(Z)
-        if Z.ndim == 1:
-            # A 1-d Z is a single feature, one value per sample
-            Z = Z.reshape(-1, 1)
-        self.Z: NDArray = Z
+        # Rows with a missing covariate are dropped once, here, with the
+        # standard warning, so no bootstrap sample can draw one.
+        self.data: SurpyvalData
+        self.Z: NDArray
+        self.data, self.Z = drop_missing_covariate_rows(data, Z)
         self.n_trees = n_trees
         self.bootstrap = bootstrap
         self.kind = kind
@@ -94,6 +97,73 @@ class RandomSurvivalForest(SerialisableMixin):
         bootstrap: bool = True,
         kind: str = "weibull",
     ) -> "RandomSurvivalForest":
+        """
+        Fit a random survival forest.
+
+        Parameters
+        ----------
+        x : array_like, optional
+            Event times (``[left, right]`` rows for interval-censored
+            observations).
+        Z : array_like
+            Covariate (feature) matrix, one row per observation. Required.
+            Rows with a missing (NaN) or infinite covariate are dropped,
+            with a warning giving the count.
+        c : array_like, optional
+            Censoring flags: 0 observed, 1 right, -1 left, 2 interval
+            censored. Defaults to all observed.
+        n : array_like, optional
+            Counts. Defaults to 1.
+        t : array_like, optional
+            (N, 2) truncation bounds.
+        xl, xr : array_like, optional
+            Interval bounds, instead of 2-D ``x``.
+        tl, tr : array_like, optional
+            Left and right truncation, instead of ``t``.
+        max_depth : int, optional
+            Maximum depth of a tree. Defaults to unlimited.
+        min_leaf_samples : int, optional
+            A split is only made if each child keeps at least this many
+            observations. Defaults to 5.
+        min_leaf_failures : int, optional
+            ... and at least this many failures. Defaults to 2.
+        n_features_split : int, float or str, optional
+            The number of features considered at each split: an int, a
+            fraction of the features (float), ``"sqrt"`` (the default),
+            ``"log2"`` or ``"all"``.
+        n_trees : int, optional
+            The number of trees. Defaults to 100.
+        bootstrap : bool, optional
+            Fit each tree to a bootstrap resample of the data (the
+            default); otherwise every tree sees all of it. Resampling uses
+            NumPy's global random state, so seed it with
+            ``np.random.seed`` for a reproducible forest.
+        kind : str, optional
+            The tree type, ``"weibull"`` (the default), ``"exponential"``
+            or ``"non-parametric"``; see
+            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+
+        Returns
+        -------
+        RandomSurvivalForest
+            The fitted forest.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> c = (x > 12).astype(int)
+        >>> x = np.minimum(x, 12)
+        >>> np.random.seed(0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, c=c, n_trees=5, max_depth=1, kind="exponential"
+        ... )
+        >>> forest.sf(5, [[0.2, 0.5], [0.8, 0.5]]).round(3)
+        array([0.561, 0.396])
+        """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
         data = SurpyvalData(
@@ -122,9 +192,10 @@ class RandomSurvivalForest(SerialisableMixin):
         Parameters
         ----------
         x : int | float | ArrayLike
-            Time samples
+            Times, the same for every covariate vector.
         Z : ArrayLike | NDArray
-            Covariant matrix
+            One covariate vector (1-D), or a matrix with one covariate
+            vector per row (2-D).
         ensemble_method : str, optional
             Determines whether to average across terminal nodes the terminal
             node survival functions or cumulative hazard functions.
@@ -134,7 +205,12 @@ class RandomSurvivalForest(SerialisableMixin):
         Returns
         -------
         NDArray
-            Survival function of x as 1D array
+            For a 1-D ``Z``, the survival function at ``x``, shaped like
+            ``x`` (a scalar for a scalar ``x``). For a 2-D ``Z``, a grid of
+            shape ``(n_rows,) + x.shape`` whose row ``i`` is the survival
+            function for ``Z[i]`` (every row at every time). A covariate
+            vector with a missing (NaN) value gives NaN, and leaves the
+            other rows unaffected.
         """
         if ensemble_method == "Hf":
             Hf = self._apply_model_function_to_trees("Hf", x, Z)
@@ -144,26 +220,36 @@ class RandomSurvivalForest(SerialisableMixin):
     def ff(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Failure (CDF) function averaged over the trees, as for
+        :meth:`sf`."""
         return self._apply_model_function_to_trees("ff", x, Z)
 
     def df(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Density averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("df", x, Z)
 
     def hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Hazard rate averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("hf", x, Z)
 
     def Hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """Cumulative hazard averaged over the trees, as for :meth:`sf`."""
         return self._apply_model_function_to_trees("Hf", x, Z)
 
     def mortality(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> ArrayLike:
+        """
+        The ensemble mortality of each covariate vector: its cumulative
+        hazard summed over the times ``x`` (the risk score used by
+        :meth:`score`).
+        """
         mortality = np.atleast_2d(self.Hf(x, Z)).sum(1)
         return np.clip(mortality, 0, np.finfo(np.float64).max)
 
@@ -173,22 +259,21 @@ class RandomSurvivalForest(SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
     ) -> NDArray:
-        # Prep input - make sure numpy array
-        x = np.array(x, ndmin=1)
+        # The times flat; the result gets their shape back (on its last
+        # axis for a grid), so a scalar time gives a scalar.
+        x, restore = flatten_query(x)
         single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
 
-        res = np.zeros((Z.shape[0], x.size)).astype(np.float64)
-        for i_covariant_vector in range(Z.shape[0]):
-            for tree in self.trees:
-                values = tree.apply_model_function(
-                    function_name, x, Z[i_covariant_vector, :]
-                )
-                res[i_covariant_vector, :] += values
+        # Each tree routes every row to its own leaf and returns an
+        # (n_rows, x.size) grid
+        res = np.zeros((Z.shape[0], x.size), dtype=np.float64)
+        for tree in self.trees:
+            res += tree.apply_model_function(function_name, x, Z)
         res = res / self.n_trees
         if single_covariant_vector:
-            return res[0]
-        return res
+            return restore(res[0])
+        return restore(res, axis=-1)
 
     def score(
         self,
@@ -197,8 +282,15 @@ class RandomSurvivalForest(SerialisableMixin):
         c: ArrayLike,
         tie_tol: float = 1e-8,
     ) -> float:
-        """Harrell's concordance index of the forest's mortality scores."""
+        """Harrell's concordance index of the forest's mortality scores.
+
+        A missing (NaN) covariate or time leaves a subject's score, and so
+        the index, undefined: the index is NaN, not a number computed by
+        comparing the NaN score as though it were one.
+        """
         scores: ArrayLike = self.mortality(x, Z)
+        if np.isnan(scores).any():
+            return float("nan")
         return score(x, c, scores, tie_tol)
 
     def to_dict(self) -> dict:

@@ -98,6 +98,22 @@ class LinkedPathModel(PathModel):
         ``{parameter name: "identity" | "log"}`` for the parameters
         whose link is not the identity (a parameter left out gets the
         identity link).
+
+    Examples
+    --------
+    The linear path ``a + b t`` with its slope on a log link, so that
+    ``b`` stays positive:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import LinkedPathModel, get_path_model
+    >>> linked = LinkedPathModel(get_path_model("linear"), {"b": "log"})
+    >>> linked.param_names
+    ['a', 'log(b)']
+    >>> eta = linked.to_link([10.0, 0.3])
+    >>> eta.round(4)
+    array([10.   , -1.204])
+    >>> linked.path(np.array([0.0, 10.0]), *eta)
+    array([10., 13.])
     """
 
     def __init__(self, base: PathModel, links: dict[str, str]) -> None:
@@ -119,22 +135,33 @@ class LinkedPathModel(PathModel):
         self._deriv = [f[2] for f in fns]
 
     def to_natural(self, eta: npt.ArrayLike) -> npt.NDArray:
-        """Natural-scale parameters ``theta = h(eta)``."""
+        """Natural-scale parameters ``theta = h(eta)``.
+
+        ``eta`` is one parameter vector, or an array of them with the
+        parameters along the last axis (one row per Monte-Carlo draw).
+        """
         eta_arr = np.asarray(eta, dtype=float)
-        return np.array([h(e) for h, e in zip(self._forward, eta_arr)])
+        return np.stack(
+            [h(eta_arr[..., k]) for k, h in enumerate(self._forward)],
+            axis=-1,
+        )
 
     def to_link(self, theta: npt.ArrayLike) -> npt.NDArray:
-        """Link-scale parameters ``eta = h^-1(theta)``."""
+        """Link-scale parameters ``eta = h^-1(theta)``; the parameters
+        run along the last axis, as for :meth:`to_natural`."""
         theta_arr = np.asarray(theta, dtype=float)
-        for name, link, t in zip(
-            self.base.param_names, self.links.values(), theta_arr
-        ):
-            if link == "log" and not t > 0:
+        for k, (name, link) in enumerate(self.links.items()):
+            column = theta_arr[..., k]
+            if link == "log" and not np.all(column > 0):
+                bad = float(np.min(column))
                 raise ValueError(
                     "Path parameter {} = {:.6g} is not positive, so it "
-                    "cannot be modelled on a log link".format(name, t)
+                    "cannot be modelled on a log link".format(name, bad)
                 )
-        return np.array([g(t) for g, t in zip(self._inverse, theta_arr)])
+        return np.stack(
+            [g(theta_arr[..., k]) for k, g in enumerate(self._inverse)],
+            axis=-1,
+        )
 
     def _link_derivative(self, eta: npt.NDArray) -> npt.NDArray:
         return np.array([d(e) for d, e in zip(self._deriv, eta)])

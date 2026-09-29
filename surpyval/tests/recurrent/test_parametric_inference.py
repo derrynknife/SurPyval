@@ -271,7 +271,7 @@ def test_renewal_param_cb():
     # The renewal models share the same mixin; the restoration parameter's
     # bounds flow through so its confidence bounds respect the support.
     true = GeneralizedRenewal.fit_from_parameters([10, 2.5], 0.3, dist=Weibull)
-    data = true.count_terminated_simulation_data(10, items=6, seed=3)
+    data = true.count_terminated_simulation_data(10, items=6, random_state=3)
     model = GeneralizedRenewal.fit_from_recurrent_data(data)
     assert model.parameter_names == ["q", "alpha", "beta"]
     assert model._parameter_bounds() == [(0, None), (0, None), (0, None)]

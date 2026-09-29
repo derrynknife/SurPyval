@@ -45,10 +45,14 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import (
+    check_covariate_rows,
+    finite_covariate_mask,
     wrangle_and_check_form_and_Z_cols,
-    wrangle_Z,
     xcnt_handler,
 )
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
     restore_covariate_meta,
@@ -135,6 +139,36 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
+def _check_design(Z: npt.NDArray, w: npt.NDArray) -> None:
+    """Refuse covariates the least-squares step cannot resolve.
+
+    The slope is fitted with the intercept profiled out, so a covariate
+    must vary across the observations: a constant covariate (or a single
+    observation) leaves nothing after centring, and collinear covariates
+    leave a singular system. Both used to escape as a bare
+    ``LinAlgError: Singular matrix``.
+    """
+    Zc = Z - (w[:, None] * Z).sum(axis=0) / w.sum()
+    A = (w[:, None] * Zc).T @ Zc
+    scale = (w[:, None] * Z**2).sum(axis=0)
+    flat = np.diag(A) <= 1e-12 * np.maximum(scale, np.finfo(float).tiny)
+    if np.any(flat):
+        raise ValueError(
+            "Covariate(s) {} are constant across the observations (or there "
+            "are too few observations), so the Buckley-James slope cannot "
+            "be estimated: the intercept is profiled out, and a constant "
+            "covariate is exactly that intercept.".format(
+                np.flatnonzero(flat).tolist()
+            )
+        )
+    d = np.sqrt(np.diag(A))
+    if np.linalg.matrix_rank(A / np.outer(d, d), tol=1e-10) < A.shape[0]:
+        raise ValueError(
+            "The covariates are collinear, so the Buckley-James slope "
+            "cannot be estimated; drop the redundant covariate(s)."
+        )
+
+
 def _fit_beta(
     Y: npt.NDArray,
     delta: npt.NDArray,
@@ -174,6 +208,25 @@ class BuckleyJamesModel(SerialisableMixin):
     beta'Z)``. ``coef`` are the covariate coefficients in surpyval's
     accelerated-failure convention: a positive coefficient accelerates failure
     (shortens life), matching ``WeibullAFT`` and the PH models.
+
+    Examples
+    --------
+    On the Rossi recidivism data, where ``arrest`` is already the
+    censoring flag, prior convictions (``prio``) shorten the time to
+    arrest and financial aid (``fin``) lengthens it:
+
+    >>> from surpyval import BuckleyJames
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = BuckleyJames.fit(x, Z, c=c)
+    >>> model.beta.round(4)
+    array([-0.2663, -0.0253,  0.0588])
+    >>> model.converged
+    True
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9444, 0.8113])
     """
 
     feature_names = None
@@ -281,6 +334,7 @@ class BuckleyJamesModel(SerialisableMixin):
         restore_covariate_meta(out, model_dict)
         return out
 
+    @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
         """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single
         covariate vector ``Z``."""
@@ -288,30 +342,63 @@ class BuckleyJamesModel(SerialisableMixin):
         Z = self._prepare_Z(Z)
         Z = np.asarray(Z, dtype=float).ravel()
         # beta is the accelerated-failure (negated) slope, so the residual
-        # r = log t - gamma'Z = log t + beta'Z.
-        r = np.log(x) + Z @ self.beta
-        return self._resid_sf(r)
+        # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
+        # has failed: survival 1 (log(0) = -inf gives that already, but
+        # warned, and a negative time gave nan).
+        positive = x > 0
+        with np.errstate(divide="ignore"):
+            r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
+        # A missing covariate (a DataFrame row with a nan) gives nan, as in
+        # the other families; the residual lookup read it as the last step
+        # (survival 0). So does a missing time, which ``positive`` read as
+        # "not after time 0" (survival 1).
+        out = np.where(positive, self._resid_sf(r), 1.0)
+        return np.where(np.isnan(r) | np.isnan(x), np.nan, out)
 
+    @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+        """Failure probability ``1 - sf(x, Z)`` for a single covariate
+        vector ``Z``."""
         return 1.0 - self.sf(x, Z)
 
+    @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
+        """Cumulative hazard ``-log sf(x, Z)`` for a single covariate
+        vector ``Z``."""
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
+    @renamed_arguments(seed="random_state")
     def bootstrap_ci(
         self,
         alpha_ci: float = 0.05,
         n_boot: int = 200,
-        seed: "int | None" = None,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Percentile bootstrap confidence intervals for the coefficients.
 
         Buckley-James has no simple closed-form standard error, so uncertainty
         is obtained by resampling observations with replacement, refitting, and
-        taking percentiles of the coefficient distribution. Returns an
-        ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
+        taking percentiles of the coefficient distribution. Counts ``n`` are
+        frequency weights, so the observations resampled are the rows
+        expanded by their counts: the bounds are those of the data written
+        out one row per observation.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            One minus the confidence level of the intervals. Default 0.05.
+        n_boot : int, optional
+            The number of bootstrap resamples. Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the resampling. ``None`` (the default) draws from
+            numpy's global generator, so ``np.random.seed`` reproduces it.
+
+        Returns
+        -------
+        numpy.ndarray
+            An ``(n_coef, 2)`` array of ``[lower, upper]`` bounds.
         """
         if self._data is None:
             raise ValueError(
@@ -319,15 +406,28 @@ class BuckleyJamesModel(SerialisableMixin):
                 "carry"
             )
         Y, delta, Z, w = self._data
-        rng = np.random.default_rng(seed)
-        n = Y.shape[0]
+        rng = as_generator(random_state)
+        # The counts ``w`` are frequency weights: a row with count 3 is
+        # three observations, as the fit itself treats it. The bootstrap
+        # therefore resamples the *observations* -- the rows expanded by
+        # their counts -- rather than the rows, which treated each count as
+        # one cluster and gave intervals too wide for the data. (With unit
+        # counts the two are the same draw.)
+        units = np.repeat(np.arange(Y.shape[0]), np.round(w).astype(int))
+        whole = np.allclose(w, np.round(w)) and units.size > 0
         boot = []
         for _ in range(n_boot):
-            idx = rng.integers(0, n, size=n)
+            if whole:
+                idx = units[rng.integers(0, units.size, size=units.size)]
+                w_b = np.ones(idx.size)
+            else:
+                # Fractional weights have no expansion; draw new counts in
+                # proportion to them instead.
+                counts = rng.multinomial(Y.shape[0], w / w.sum())
+                idx = np.flatnonzero(counts)
+                w_b = w[idx] * counts[idx]
             try:
-                g, _, _ = _fit_beta(
-                    Y[idx], delta[idx], Z[idx], w[idx], 1e-5, 100
-                )
+                g, _, _ = _fit_beta(Y[idx], delta[idx], Z[idx], w_b, 1e-5, 100)
                 boot.append(-g)  # report in the accelerated-failure sign
             except np.linalg.LinAlgError:
                 continue
@@ -353,6 +453,21 @@ class BuckleyJamesModel(SerialisableMixin):
 
 
 class BuckleyJames_:
+    """
+    The Buckley-James semi-parametric accelerated failure time estimator:
+    a least-squares regression of :math:`\\log x` on the covariates in
+    which each right-censored time is replaced by its conditional
+    expectation under the Kaplan-Meier estimate of the residual
+    distribution, iterated to convergence. No baseline distribution is
+    assumed.
+
+    Coefficients are reported with the package's AFT sign: a *positive*
+    coefficient shortens life (the textbook ``log T = gamma'Z + eps``
+    slope is ``-beta``). ``BuckleyJames`` is an instance of this class;
+    its ``fit`` returns a
+    :class:`~surpyval.univariate.regression.buckley_james.buckley_james.BuckleyJamesModel`.
+    """
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -375,7 +490,13 @@ class BuckleyJames_:
             Censoring flags: 0 observed, 1 right-censored. Left and interval
             censoring are not supported. Defaults to all observed.
         n : array_like, optional
-            Counts per row (case weights). Defaults to 1.
+            Counts per row (frequency weights). Defaults to 1.
+
+        Rows with a missing or infinite covariate are dropped, with a
+        warning. A covariate that is constant across the observations (or
+        a single observation) cannot be separated from the intercept, and
+        collinear covariates cannot be separated from each other; both
+        raise a ``ValueError``.
         tol : float, optional
             Convergence tolerance on the coefficient step. Default 1e-5.
         max_iter : int, optional
@@ -384,24 +505,57 @@ class BuckleyJames_:
         Returns
         -------
         BuckleyJamesModel
-            The fitted model.
+            The fitted model. A warning is raised if the iteration did not
+            converge within ``max_iter``.
+
+        Examples
+        --------
+        Log-life falls by 0.5 per unit of the covariate; follow-up ends at
+        12:
+
+        >>> import numpy as np
+        >>> from surpyval import BuckleyJames
+        >>> rng = np.random.default_rng(2)
+        >>> Z = rng.normal(size=(100, 1))
+        >>> t = np.exp(2.0 - 0.5 * Z[:, 0] + rng.normal(0, 0.5, 100))
+        >>> c = (t > 12).astype(int)
+        >>> x = np.minimum(t, 12)
+        >>> model = BuckleyJames.fit(x, Z, c=c)
+        >>> model.beta.round(3)
+        array([0.435])
+        >>> model.bootstrap_ci(random_state=1).round(3)
+        array([[0.33 , 0.541]])
+        >>> model.sf([5, 10], [0.0]).round(4)
+        array([0.7366, 0.2693])
         """
         x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        Z_arr, mask = wrangle_Z(Z)
-        x_a = np.asarray(x_h, dtype=float)[mask]
-        c_a = np.asarray(c_h, dtype=float)[mask]
-        n_a = np.asarray(n_h, dtype=float)[mask]
-        Z_a = np.asarray(Z_arr, dtype=float)
-
+        c_a = np.asarray(c_h, dtype=float)
         if np.any((c_a != 0) & (c_a != 1)):
             raise ValueError(
                 "Buckley-James supports only observed (c=0) and "
                 "right-censored (c=1) data."
             )
+        x_a = np.asarray(x_h, dtype=float)
+        if x_a.ndim == 2:
+            # Two columns with no interval row: xl == xr on every row.
+            x_a = x_a[:, 0]
+        Z_a = np.asarray(Z, dtype=float)
+        if Z_a.ndim == 1:
+            Z_a = Z_a.reshape(-1, 1)
+        elif Z_a.ndim != 2:
+            raise ValueError("Covariate matrix must be two dimensional")
+        check_covariate_rows(Z_a, x_a.shape[0])
+        # Rows with a NaN / infinite covariate are dropped with a warning,
+        # as in every regression fitter (NaN rows used to go silently).
+        mask = finite_covariate_mask(Z_a)
+        x_a, c_a, Z_a = x_a[mask], c_a[mask], Z_a[mask]
+        n_a = np.asarray(n_h, dtype=float)[mask]
+
         if np.any(x_a <= 0):
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
+        _check_design(Z_a, n_a)
 
         Y = np.log(x_a)
         delta = (c_a == 0).astype(float)
@@ -435,6 +589,27 @@ class BuckleyJames_:
         """
         Fit a Buckley-James model from a pandas DataFrame. See :meth:`fit` for
         the estimator; ``Z_cols`` or ``formula`` selects the covariates.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col : str
+            The column of times.
+        Z_cols : str or list of str, optional
+            The covariate columns. Give either this or ``formula``.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        formula : str, optional
+            A formula (formulaic syntax) for the covariates.
+        tol, max_iter : optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        BuckleyJamesModel
+            The fitted model, which keeps the covariate names (or formula)
+            so it predicts from DataFrame rows.
         """
         Z, mask, form, feature_names, model_spec = (
             wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)

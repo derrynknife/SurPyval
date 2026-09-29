@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -56,7 +57,10 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         x = data.x
         # sqrt(E[x^2] / 2) is the closed-form uncensored MLE for sigma
         if offset:
-            gamma_init = np.min(x) - 1.0
+            # The fitter's starting offset (see ``_offset_start``), not
+            # ``min(x) - 1``: a step of one unit is a thousand spreads
+            # for data in thousandths, and sigma seeded that far out.
+            gamma_init = _offset_start(x)
             sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
             return np.array([gamma_init, sigma_init], dtype=float)
         # A one-tuple, not the bare scalar this used to return. Rayleigh
@@ -325,6 +329,17 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         return (sigma**m) * (2 ** (m / 2)) * gamma_func(1 + m / 2)
 
     def entropy(self, sigma: Boxable) -> Boxable:
+        r"""
+        Differential entropy of the Rayleigh distribution,
+        :math:`S = 1 + \ln(\sigma/\sqrt{2}) + \gamma_{e}/2`, with
+        :math:`\gamma_{e}` the Euler-Mascheroni constant.
+
+        Examples
+        --------
+        >>> from surpyval import Rayleigh
+        >>> Rayleigh.entropy(3)
+        np.float64(2.0406465308389032)
+        """
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
     def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:

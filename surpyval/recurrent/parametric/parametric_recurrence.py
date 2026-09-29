@@ -1,7 +1,6 @@
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
 from surpyval.recurrent import diagnostics
@@ -13,14 +12,23 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.shapes import keeps_query_shape
+
+# How the model was obtained, as the repr reports it.
+_FITTED_BY = {
+    "MLE": "MLE",
+    "MSE": "MSE (least squares on the MCF)",
+    "from_params": "given parameters (not fitted)",
+}
 
 
 class ParametricRecurrenceModel(
     SerialisableMixin, RecurrenceSimulationMixin, LikelihoodInferenceMixin
 ):
     """
-    A class for holding the parameters, data, and usefult methods for a
+    A class for holding the parameters, data, and useful methods for a
     fitted parametric recurrence model. This is the result of the ``fit`` calls
     from the counting distributions.
 
@@ -114,7 +122,8 @@ class ParametricRecurrenceModel(
             "Parametric Recurrence SurPyval Model"
             + "\n=================================="
             + f"\nProcess             : {self.dist.name}"
-            + "\nFitted by           : MLE"
+            + "\nFitted by           : "
+            + _FITTED_BY.get(getattr(self, "how", "MLE"), "MLE")
             + "\nParameters          :\n"
             + param_string
         )
@@ -123,6 +132,7 @@ class ParametricRecurrenceModel(
     # CoxLewis post-processing from RecurrenceSimulationMixin; this model is
     # unconditional, so it needs no extra cif args (_cif_args defaults to ()).
 
+    @keeps_query_shape
     def cif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the cumulative incidence function (CIF) based on the fitted
@@ -166,6 +176,7 @@ class ParametricRecurrenceModel(
         """
         return self.cif(x)
 
+    @keeps_query_shape
     def iif(self, x: ArrayLike) -> np.ndarray:
         """
         Compute the intensity function based on the fitted model. No need to
@@ -187,6 +198,22 @@ class ParametricRecurrenceModel(
         return self.dist.iif(x, *self.params)
 
     def inv_cif(self, x: ArrayLike) -> np.ndarray:
+        """
+        The inverse of the cumulative intensity function: the time by which
+        ``x`` events are expected.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Expected numbers of events.
+
+        Returns
+        -------
+
+        array_like
+            The times at which the cumulative intensity reaches ``x``.
+        """
         x = np.array(x)
         if hasattr(self.dist, "inv_cif"):
             return self.dist.inv_cif(x, *self.params)
@@ -206,13 +233,25 @@ class ParametricRecurrenceModel(
         kind: {'cumulative_hazard', 'pit', 'martingale'}, optional
             ``'cumulative_hazard'`` returns the rescaled interarrival times
             ``cif(t_k) - cif(t_{k-1})`` of every observed event (pooled
-            across items), which are iid Exp(1) under the fitted model.
+            across items); see below for how far they are iid Exp(1).
             ``'pit'`` applies the probability integral transform
-            ``1 - exp(-e)`` to those residuals, giving iid U(0, 1) values.
+            ``1 - exp(-e)`` to those residuals (U(0, 1) under the same
+            conditions).
             ``'martingale'`` returns one residual per (sorted-unique) item:
             its observed event count minus the count the model expects over
             its observation window; positive values mean the item saw more
             events than predicted.
+
+            Only complete gaps (event to event) are returned. When an
+            item's observation ends at a window close rather than at an
+            event, its final gap is censored and left out, and that
+            selection makes the returned residuals smaller than Exp(1) on
+            average -- noticeably so with few events per item (a mean
+            near 0.66 with about three events per item). So they are
+            exactly iid Exp(1) only for failure-truncated items; otherwise
+            read a Q-Q plot against Exp(1) with this downward bias in
+            mind, or use ``cramer_von_mises``, which conditions on each
+            item's window correctly.
 
         Returns
         -------
@@ -265,8 +304,9 @@ class ParametricRecurrenceModel(
             self.data, test=test, alternative=alternative
         )
 
+    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
-        self, n_boot: int = 200, seed: "int | None" = None
+        self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
         """
         Cramer-von Mises goodness-of-fit test of the fitted intensity.
@@ -289,7 +329,7 @@ class ParametricRecurrenceModel(
 
         n_boot: int, optional
             Number of bootstrap replicates for the p-value. Default is 200.
-        seed: int or numpy.random.Generator, optional
+        random_state: int or numpy.random.Generator, optional
             Seed for a reproducible p-value.
 
         Returns
@@ -298,10 +338,16 @@ class ParametricRecurrenceModel(
         GoodnessOfFitResult
             The observed statistic and its bootstrap p-value.
         """
-        self._check_fitted()
+        # Data first: a restored or from_params model has neither data nor
+        # likelihood, and the missing data is the more useful message; an
+        # MSE fit has data but no likelihood to refit by.
         self._check_has_data("cramer_von_mises")
-        return diagnostics.cramer_von_mises(self, n_boot=n_boot, seed=seed)
+        self._check_fitted()
+        return diagnostics.cramer_von_mises(
+            self, n_boot=n_boot, random_state=random_state
+        )
 
+    @keeps_query_shape
     def cif_cb(
         self,
         x: ArrayLike,
@@ -314,8 +360,8 @@ class ParametricRecurrenceModel(
         The variance of the fitted CIF is propagated from the parameter
         covariance (the inverse observed information) through the CIF's
         gradient, and the bounds are computed on the log scale -- the same
-        construction as the exponential Greenwood bounds on the nonparametric
-        MCF -- so they cannot go negative.
+        construction as the default (``bound_type="exp"``) bounds on the
+        nonparametric MCF -- so they cannot go negative.
 
         Parameters
         ----------
@@ -345,11 +391,13 @@ class ParametricRecurrenceModel(
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
     # Narrows the mixin plot (bounds options) -- same known divergence.
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,
         plot_bounds: bool = True,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Plot the fitted CIF over the nonparametric MCF of the data used to
@@ -366,8 +414,10 @@ class ParametricRecurrenceModel(
             Whether to draw the confidence band around the fitted CIF.
             Ignored for models with no likelihood (``how="MSE"`` fits and
             ``from_params`` models). Default is True.
-        confidence: float, optional
-            The confidence level of the band. Default is 0.95.
+        alpha_ci: float, optional
+            The total tail probability of the band: a
+            ``1 - alpha_ci`` confidence band. Default is 0.05. Keyword
+            only.
 
         Returns
         -------
@@ -375,8 +425,11 @@ class ParametricRecurrenceModel(
         matplotlib axes
             An axes object with the plot.
         """
+        self._check_has_data("plot")
         x, r, d = self.data.to_xrd()
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         x_plot = np.linspace(0, self.data.x.max(), 1000)
@@ -384,13 +437,13 @@ class ParametricRecurrenceModel(
         ax.step(x, (d / r).cumsum(), color="r", where="post")
         ax.plot(x_plot, self.cif(x_plot), color="b")
         if plot_bounds and hasattr(self, "_neg_ll"):
-            cb = self.cif_cb(x_plot, alpha_ci=1.0 - confidence)
+            cb = self.cif_cb(x_plot, alpha_ci=alpha_ci)
             ax.fill_between(
                 x_plot,
                 cb[:, 0],
                 cb[:, 1],
                 color="b",
                 alpha=0.2,
-                label=f"{confidence * 100}% Confidence Band",
+                label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
         return ax

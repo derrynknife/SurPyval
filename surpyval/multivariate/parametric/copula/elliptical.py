@@ -14,6 +14,7 @@ from scipy.special import ndtr, ndtri
 from scipy.stats import multivariate_normal
 
 from surpyval.multivariate.parametric.copula.copula import Copula
+from surpyval.utils.rng import as_generator
 
 _RHO_MAX = 0.9999
 
@@ -72,7 +73,7 @@ class GaussianCopula(Copula):
         random_state: "int | None" = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
         rho = self._clip_rho(params[0])
-        rng = onp.random.default_rng(random_state)
+        rng = as_generator(random_state)
         z1 = rng.standard_normal(size)
         z2 = rng.standard_normal(size)
         z2 = rho * z1 + onp.sqrt(1.0 - rho**2) * z2

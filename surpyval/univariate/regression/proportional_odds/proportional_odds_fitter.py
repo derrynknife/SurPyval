@@ -21,25 +21,36 @@ from .._fit_skeleton import (
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
+from ..tvc_fit import TVCFitMixin
 
 
 class ProportionalOddsFitter(
-    MirroredDistributionAttrs, DataFrameRegressionMixin
+    MirroredDistributionAttrs, TVCFitMixin, DataFrameRegressionMixin
 ):
     """
-    Proportional Odds model fitter using exp(beta'Z) as the odds multiplier.
+    Proportional Odds model fitter using :math:`\\phi = e^{\\beta' Z}` as
+    the multiplier of the survival odds :math:`O(x) = S(x) / F(x)`:
 
-    The survival odds satisfy:
-        O(x | Z) = O_0(x) * exp(beta'Z)   where O(x) = S(x) / F(x)
-
-    This gives:
-        sf(x | Z) = exp(beta'Z) * S_0(x) / (F_0(x) + exp(beta'Z) * S_0(x))
-        ff(x | Z) = F_0(x) / (F_0(x) + exp(beta'Z) * S_0(x))
-        hf(x | Z) = h_0(x) / (F_0(x) + exp(beta'Z) * S_0(x))
+    .. math::
+        O(x \\mid Z) = \\phi\\, O_0(x), \\qquad
+        S(x \\mid Z) = \\frac{\\phi S_0(x)}{F_0(x) + \\phi S_0(x)}, \\qquad
+        h(x \\mid Z) = \\frac{h_0(x)}{F_0(x) + \\phi S_0(x)}.
 
     A positive beta coefficient means higher covariate values increase the
-    survival odds (protective effect — longer life). To match the PH sign
-    convention (positive beta = shorter life), negate your covariates or betas.
+    survival odds (protective effect -- longer life). This is the opposite
+    sign to the PH and AFT fitters, where a positive coefficient shortens
+    life; negate the coefficients to compare them.
+
+    The hazard depends only on the time and the current covariate, so a
+    fitted model is evaluated exactly along a step covariate path by
+    ``sf_tvc`` / ``Hf_tvc`` (a sum of per-segment cumulative-hazard
+    increments), and ``fit_tvc`` (with the timeline and DataFrame variants)
+    fits start-stop time-varying-covariate data exactly by splitting each
+    subject into one delayed-entry row per constant-covariate interval, as
+    for the proportional and additive hazards fitters.
+
+    Use the pre-built instances (``LogisticPO``, ``WeibullPO``, ...) or the
+    ``PO`` factory.
     """
 
     def __init__(self, distribution: Any) -> None:
@@ -54,6 +65,11 @@ class ProportionalOddsFitter(
         return LogLinearPhi.phi(Z, *phi_params)
 
     def sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Survival function :math:`\\phi S_0 / (F_0 + \\phi S_0)` at ``x`` for
+        covariates ``Z``; ``params`` are the distribution parameters
+        followed by the covariate coefficients.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -64,6 +80,10 @@ class ProportionalOddsFitter(
         return phi * S0 / (F0 + phi * S0)
 
     def ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Failure (CDF) function :math:`F_0 / (F_0 + \\phi S_0)` at ``x`` for
+        covariates ``Z``; ``params`` as for :meth:`sf`.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -74,6 +94,10 @@ class ProportionalOddsFitter(
         return F0 / (F0 + phi * S0)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate :math:`h_0 / (F_0 + \\phi S_0)` at ``x`` for covariates
+        ``Z``; ``params`` as for :meth:`sf`.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -85,9 +109,30 @@ class ProportionalOddsFitter(
         return h0 / (F0 + phi * S0)
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        return -np.log(self.sf(x, Z, *params))
+        """
+        Cumulative hazard :math:`-\\ln S(x \\mid Z)` at ``x`` for covariates
+        ``Z``; ``params`` as for :meth:`sf`.
+
+        Evaluated as :math:`H_0(x) - \\ln\\phi + \\ln(F_0 + \\phi S_0)`,
+        which stays finite where :math:`S_0` underflows to zero (there
+        ``-log(sf)`` is ``inf``, and a difference of two such values along
+        a time-varying path would be ``nan``).
+        """
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        Z = np.atleast_2d(np.asarray(Z, dtype=float))
+        dist_params = params[: self.k_dist]
+        phi_params = params[self.k_dist :]
+        phi = self._phi(Z, *phi_params)
+        H0 = self.Hf_dist(x, *dist_params)
+        S0 = self.sf_dist(x, *dist_params)
+        F0 = self.ff_dist(x, *dist_params)
+        return H0 - np.log(phi) + np.log(F0 + phi * S0)
 
     def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Density :math:`\\phi f_0 / (F_0 + \\phi S_0)^2` at ``x`` for
+        covariates ``Z``; ``params`` as for :meth:`sf`.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -144,6 +189,51 @@ class ProportionalOddsFitter(
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
     ) -> ParametricRegressionModel:
+        """
+        Fit the proportional odds model by maximum likelihood.
+
+        Parameters
+        ----------
+
+        x : array_like
+            The observed event times.
+        Z : array_like
+            The covariate matrix, one row per observation (a 1-D array is
+            read as a single covariate). Rows with a missing or infinite
+            covariate are dropped, with a warning.
+        c : array_like, optional
+            The censoring indicators (0 observed, 1 right, -1 left, 2
+            interval). Defaults to all observed.
+        n : array_like, optional
+            The count of observations at each time. Defaults to 1.
+        t : array_like, optional
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
+        init : array_like, optional
+            Initial parameter values: the distribution parameters followed
+            by the covariate coefficients.
+        fixed : dict, optional
+            Parameters to hold fixed, by name (a distribution parameter
+            such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+
+        Returns
+        -------
+
+        ParametricRegressionModel
+            The fitted model.
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Logistic, LogisticPO
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Logistic.random(100, 10, 2) + 2.0 * Z[:, 0]
+        >>> model = LogisticPO.fit(x, Z)
+        >>> model.params.round(3)
+        array([9.708, 2.337, 0.918])
+        """
         data, prep = prepare_regression_fit(
             self,
             x,

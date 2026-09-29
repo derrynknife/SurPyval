@@ -9,6 +9,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
@@ -98,7 +99,12 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             # ``1 / 12s`` the estimate explodes: 649 for a true shape of
             # 3. Together these made MSE and MOM offset fits return
             # silent nonsense.
-            gamma_init = np.min(x) - 1.0
+            #
+            # The shift is the fitter's starting offset (see
+            # ``_offset_start``). It was ``min(x) - 1``, a thousand
+            # spreads below data in thousandths, which seeded a shape in
+            # the tens of thousands that the search never came back from.
+            gamma_init = _offset_start(x)
             alpha, beta = self._moment_estimate(x - gamma_init)
             return np.array([gamma_init, alpha, beta], dtype=float)
         return np.asarray(self._moment_estimate(x), dtype=float)
@@ -120,7 +126,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -137,7 +143,9 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.sf(x, 3, 2)
         array([0.67667642, 0.23810331, 0.0619688 , 0.01375397, 0.0027694 ])
         """
-        return 1 - self.ff(x, alpha, beta)
+        # the upper incomplete gamma directly, not 1 - P: the difference is
+        # 0 past survival ~1e-16
+        return np.exp(self.log_sf(x, alpha, beta))
 
     def ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -156,7 +164,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -193,7 +201,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -235,7 +243,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -252,7 +260,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.hf(x, 3, 2)
         array([0.8       , 1.23076923, 1.44      , 1.56097561, 1.63934426])
         """
-        return self.df(x, alpha, beta) / self.sf(x, alpha, beta)
+        # in logs, so the ratio stays finite deep in the tail
+        return np.exp(
+            self.log_df(x, alpha, beta) - self.log_sf(x, alpha, beta)
+        )
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -271,7 +282,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
 
         Returns
@@ -288,7 +299,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.Hf(x, 3, 2)
         array([0.39056209, 1.43505064, 2.78112418, 4.28642793, 5.88912614])
         """
-        return -np.log(self.sf(x, alpha, beta))
+        return -self.log_sf(x, alpha, beta)
 
     def qf(self, u: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -296,7 +307,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         Quantile function for the Gamma Distribution:
 
         .. math::
-            q(u) = \frac{-\ln\left ( u \right )}{\lambda}
+            q(u) = \frac{P^{-1} \left ( \alpha, u \right )}{\beta}
+
+        where :math:`P^{-1}` inverts the regularised lower incomplete gamma
+        function :math:`P(\alpha, z) = \gamma(\alpha, z) / \Gamma(\alpha)`.
 
         Parameters
         ----------
@@ -306,7 +320,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -338,7 +352,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -372,7 +386,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------
@@ -434,8 +448,8 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         at x.
 
         .. math::
-            \log f(x) = \log \left ( \frac{\lambda^{\alpha}}{\Gamma(\alpha)}
-            x^{\alpha - 1}e^{-\lambda x} \right )
+            \log f(x) = \log \left ( \frac{\beta^{\alpha}}{\Gamma(\alpha)}
+            x^{\alpha - 1}e^{-\beta x} \right )
 
         Parameters
         ----------
@@ -445,7 +459,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         alpha : numpy array or scalar
             The shape parameter for the Gamma distribution
         beta : numpy array or scalar
-            The scale parameter for the Gamma distribution
+            The rate parameter for the Gamma distribution
 
         Returns
         -------

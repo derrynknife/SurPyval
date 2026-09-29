@@ -231,7 +231,7 @@ def test_cvm_observed_statistic_uses_per_item_covariate_transforms():
     # The observed statistic must be the CvM statistic of the conditionally-
     # uniform transforms under each item's own covariate-scaled CIF.
     model = _fitted()
-    result = model.cramer_von_mises(n_boot=20, seed=0)
+    result = model.cramer_von_mises(n_boot=20, random_state=0)
     u, _ = _conditional_uniforms(model.data, model._item_cif_map())
     assert np.isclose(result.statistic, cvm_statistic(u))
     assert isinstance(result, GoodnessOfFitResult)
@@ -241,8 +241,8 @@ def test_cvm_observed_statistic_uses_per_item_covariate_transforms():
 
 def test_cvm_is_reproducible_with_seed():
     model = _fitted()
-    a = model.cramer_von_mises(n_boot=30, seed=123)
-    b = model.cramer_von_mises(n_boot=30, seed=123)
+    a = model.cramer_von_mises(n_boot=30, random_state=123)
+    b = model.cramer_von_mises(n_boot=30, random_state=123)
     assert a.statistic == b.statistic
     assert a.p_value == b.p_value
 
@@ -250,7 +250,7 @@ def test_cvm_is_reproducible_with_seed():
 def test_cvm_hpp_regression_runs():
     x, i, c, Z = _two_group_data()
     model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
-    result = model.cramer_von_mises(n_boot=20, seed=1)
+    result = model.cramer_von_mises(n_boot=20, random_state=1)
     assert isinstance(result, GoodnessOfFitResult)
     assert 0.0 < result.p_value <= 1.0
 
@@ -275,7 +275,7 @@ def test_cvm_flags_a_misspecified_baseline():
         Zi = float(rng.integers(0, 2))
         item += 1
         d = truth.time_terminated_simulation_data(
-            30.0, np.array([Zi]), items=1, seed=int(rng.integers(1e9))
+            30.0, np.array([Zi]), items=1, random_state=int(rng.integers(1e9))
         )
         for t in d.x[d.c == 0]:
             xs.append(float(t))
@@ -290,9 +290,9 @@ def test_cvm_flags_a_misspecified_baseline():
 
     good = ProportionalIntensityNHPP.fit(
         xs, Zs, i=iis, c=cs, dist=CrowAMSAA
-    ).cramer_von_mises(n_boot=60, seed=10)
+    ).cramer_von_mises(n_boot=60, random_state=10)
     bad = ProportionalIntensityHPP.fit(xs, Zs, i=iis, c=cs).cramer_von_mises(
-        n_boot=60, seed=11
+        n_boot=60, random_state=11
     )
     assert bad.p_value < good.p_value
     assert bad.p_value < 0.1

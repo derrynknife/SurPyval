@@ -5,6 +5,8 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class InversePower_(LifeModel):
+    positive_stress_columns = (0,)
+
     def __init__(self) -> None:
         super().__init__(
             "InversePower",
@@ -25,6 +27,8 @@ InversePower = InversePower_()
 
 
 class Power_(LifeModel):
+    positive_stress_columns = (0,)
+
     def __init__(self) -> None:
         super().__init__(
             "Power",

@@ -2,7 +2,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
-from scipy.optimize import brentq
 
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 
@@ -15,7 +14,9 @@ from surpyval.utils.recurrent_utils import (
     reject_gapped_observation,
     reject_left_truncation,
     validate_memory,
+    validate_nhpp_data,
     validate_renewal_censoring,
+    validate_restoration,
 )
 
 
@@ -155,39 +156,58 @@ class ARI(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
+        from surpyval.recurrent.renewal.renewal_model import (
+            DiscountedMemory,
+            solve_bracketed,
+        )
+
         dist = model.model.dist
         dp = model.model.params
         rho = model.rho
-        m = model.m
-        history_iif = []
-        running = [0.0]
-        reduction = [0.0]
+        # The baseline intensities at the failures so far, discounted over
+        # the last m of them: the intensity reduction is rho times this.
+        memory = DiscountedMemory(n, rho, model.m)
+        running = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            t0 = running[0]
-            red = reduction[0]
-            energy = -np.log(ui)
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            t0 = running[idx]
+            reduction = rho * memory.value(idx)
+            energy = -np.log(u)
+            cif0 = np.asarray(dist.cif(t0, *dp), dtype=float)
 
-            def g(x: float) -> float:
-                delta = dist.cif(t0 + x, *dp) - dist.cif(t0, *dp)
-                return delta - red * x - energy
+            def g(x: np.ndarray, sel: np.ndarray) -> np.ndarray:
+                cif = np.asarray(dist.cif(t0[sel] + x, *dp), dtype=float)
+                return cif - cif0[sel] - reduction[sel] * x - energy[sel]
 
-            hi = 1.0
-            expansions = 0
-            while g(hi) < 0 and expansions < 60:
-                hi *= 2.0
-                expansions += 1
-            xi = hi if g(hi) < 0 else brentq(g, 0.0, hi)
+            everything = np.arange(idx.size)
+            hi = np.ones(idx.size)
+            growing = everything
+            for _ in range(60):
+                growing = growing[g(hi[growing], growing) < 0]
+                if not growing.size:
+                    break
+                hi[growing] *= 2.0
+            g_hi = g(hi, everything)
+            # Still short of the energy after 60 doublings: take hi, as the
+            # scalar sampler did.
+            gap = hi.copy()
+            rest = np.flatnonzero(g_hi > 0)
+            if rest.size:
+                gap[rest] = solve_bracketed(
+                    lambda x, sel: g(x, rest[sel]),
+                    np.zeros(rest.size),
+                    hi[rest],
+                    -energy[rest],
+                    g_hi[rest],
+                    xtol=2e-12,
+                )
+            arrival = t0 + gap
+            running[idx] = arrival
+            memory.record(idx, np.asarray(dist.iif(arrival, *dp), dtype=float))
+            return gap
 
-            running[0] = t0 + xi
-            history_iif.append(dist.iif(running[0], *dp))
-            reduction[0] = float(
-                ari_reduction(np.asarray(history_iif), rho, m)
-            )
-            return xi
-
-        return sample
+        return step
 
     def _make_model(
         self,
@@ -289,7 +309,7 @@ class ARI(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : object, optional
             A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
@@ -303,13 +323,17 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            A fitted ARI object.
+        RenewalModel
+            A fitted renewal model.
         """
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # The baseline is an NHPP intensity, with the same needs: some
+        # events, times inside its support (no event at t = 0 for a power
+        # law) and more than one failure-truncated event.
+        validate_nhpp_data(data, dist)
 
         neg_ll = self.create_negll_func(data, dist, m)
         base_params0 = (
@@ -327,16 +351,7 @@ class ARI(RenewalFitMixin):
         )
         rho, *dist_params = params
         out = self._make_model(dist, dist_params, rho, m)
-        # Only the observed failures (c == 0) contribute an intensity term, so
-        # they are the events that enter the BIC sample size.
-        self._attach_inference(
-            out,
-            neg_ll,
-            [rho, *dist_params],
-            int((data.c == 0).sum()),
-            res,
-            data,
-        )
+        self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
     @staticmethod
@@ -374,13 +389,17 @@ class ARI(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A recurrent baseline intensity model. Default is ``CrowAMSAA``.
         m : int or float, optional
@@ -392,8 +411,21 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            A fitted ARI object.
+        RenewalModel
+            A fitted renewal model.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ARI, CrowAMSAA
+        >>> x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+        >>> i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+        >>> c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+        >>> model = ARI.fit(x, i, c=c, m=1, dist=CrowAMSAA)
+        >>> model.model.params.round(3)
+        array([3.508, 1.3  ])
+        >>> round(float(model.rho), 3)
+        1.0
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
@@ -424,8 +456,9 @@ class ARI(RenewalFitMixin):
         Returns
         -------
 
-        ARI
-            An ARI object built from the supplied parameters.
+        RenewalModel
+            A model built from the supplied parameters, for simulation.
         """
         validate_memory(m)
+        validate_restoration(rho, "rho", (0, 1))
         return self._make_model(dist, dist_params, rho, m)

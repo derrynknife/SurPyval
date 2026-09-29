@@ -1,5 +1,6 @@
 import numpy.typing as npt
 from autograd.scipy.stats import norm
+from scipy.optimize import brentq
 from scipy.stats import norm as scipy_norm
 
 from surpyval import np
@@ -13,6 +14,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
+    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -52,8 +54,12 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         x, c, n = data.x, data.c, data.n
         if offset:
             # Shift the data so the log transform is defined, then
-            # initialise mu and sigma from the shifted data
-            gamma_init = np.min(x) - 1.0
+            # initialise mu and sigma from the shifted data. The shift is
+            # the fitter's starting offset (see ``_offset_start``); it was
+            # ``min(x) - 1``, which for data in thousandths shifted by a
+            # thousand spreads, leaving a sigma so small that MPS and MSE
+            # sat at the start and never moved.
+            gamma_init = _offset_start(x)
             norm_mod = para.Normal.fit(
                 np.log(x - gamma_init), c=c, n=n, how="MLE"
             )
@@ -108,7 +114,11 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.sf(x, 3, 4)
         array([0.77337265, 0.71793339, 0.68273014, 0.65668272, 0.63594491])
         """
-        return 1 - self.ff(x, mu, sigma)
+        # norm.sf, not 1 - cdf: the difference is 0 past survival ~1e-16.
+        # log(0) = -inf gives sf(0) = 1, which is right.
+        with np.errstate(divide="ignore"):
+            log_x = np.log(x)
+        return norm.sf(log_x, mu, sigma)
 
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -211,7 +221,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.hf(x, 3, 4)
         array([0.09734551, 0.05881839, 0.04349249, 0.03500202, 0.02952687])
         """
-        return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
+        # in logs, so the ratio stays finite deep in the tail
+        return np.exp(self.log_df(x, mu, sigma) - self.log_sf(x, mu, sigma))
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -245,7 +256,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.Hf(x, 3, 4)
         array([0.25699427, 0.33137848, 0.3816556 , 0.4205543 , 0.45264333])
         """
-        return -np.log(self.sf(x, mu, sigma))
+        return -self.log_sf(x, mu, sigma)
 
     def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -317,7 +328,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         m-th (non central) moment of the LogNormal distribution
 
         .. math::
-            E = ... complicated.
+            E\left [ X^{m} \right ] = e^{m\mu + \frac{m^{2}\sigma^{2}}{2}}
 
         Parameters
         ----------
@@ -406,6 +417,59 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         norm_mod = para.Normal.fit(np.log(x), how="MOM")
         mu, sigma = norm_mod.params
         return mu, sigma
+
+    def _mom_offset(self, x: npt.NDArray) -> "npt.NDArray | None":
+        r"""The offset LogNormal matching the sample's mean, variance and
+        third central moment exactly, as ``(gamma, mu, sigma)``; ``None``
+        where no such model exists and the optimiser has to find the
+        closest one.
+
+        The skewness depends on sigma alone, through ``w = exp(sigma^2)``:
+
+        .. math::
+            g = (w + 2)\sqrt{w - 1},
+
+        so with ``t = w - 1`` it is the root of ``t (t + 3)^2 = g^2``,
+        which increases in ``t`` and lies in ``(0, g^2 / 9]``. The
+        variance ``e^{2\mu} w (w - 1)`` then gives mu, and the mean the
+        offset.
+
+        The optimiser reached the same answer only from some starting
+        points. The mismatch has a second, spurious minimum with the
+        offset pressed against the first observation (0.19 on a sample
+        whose moments are matched exactly at an offset 24 below it), and
+        which one a search ends in depends on its route -- on how far it
+        steps in mu, a log-location whose starting magnitude moves with
+        the data's units. The same sample fitted by moments in five
+        different units came back with the offset at the first
+        observation in three of them.
+
+        None is returned for a sample with no positive skew (a LogNormal
+        is always right skewed) and where the solution puts the offset
+        at or above the smallest value.
+        """
+        x = np.asarray(x, dtype=float)
+        m1 = x.mean()
+        m2 = np.mean((x - m1) ** 2)
+        m3 = np.mean((x - m1) ** 3)
+        if not (m2 > 0 and m3 > 0):
+            return None
+        g2 = m3**2 / m2**3
+        t = brentq(
+            lambda t: t * (t + 3) ** 2 - g2,
+            0.0,
+            g2 / 9.0,
+            xtol=1e-300,
+            rtol=4 * np.finfo(float).eps,
+        )
+        if not t > 0:
+            return None
+        sigma = np.sqrt(np.log1p(t))
+        mu = 0.5 * np.log(m2 / ((1 + t) * t))
+        gamma = m1 - np.sqrt(m2 / t)
+        if not (np.isfinite([gamma, mu, sigma]).all() and gamma < x.min()):
+            return None
+        return np.array([gamma, mu, sigma])
 
 
 LogNormal: LogNormal_ = LogNormal_("LogNormal")

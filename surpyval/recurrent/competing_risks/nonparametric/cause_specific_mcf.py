@@ -15,31 +15,54 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
-from surpyval.recurrent.nonparametric.mcf import NonParametricCounting
+from surpyval.recurrent.nonparametric.mcf import (
+    _MCF_RANGE,
+    NonParametricCounting,
+    _lawless_nadeau_var,
+    _observation_origin,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+)
+from surpyval.univariate.nonparametric.nonparametric import (
+    _check_support,
+    _support_from_dict,
+)
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
 
 
-def _counting_model_from_xrd(
-    x: np.ndarray, r: np.ndarray, d: np.ndarray
-) -> Any:
-    """Single-cause ``NonParametricCounting`` from an ``(x, r, d)``
-    triple; delegates to the one shared estimator."""
+def _cause_model(data: Any, cause: Any) -> Any:
+    """Single-cause ``NonParametricCounting`` for ``cause``: the shared
+    Nelson-Aalen estimator on the cause's counts over the shared risk set,
+    with the Lawless-Nadeau robust variance of those counts (the per-step
+    variance ``from_xrd`` computes ignores each item's covariance across
+    steps, so it understates the variance when items differ in their
+    rates)."""
+    x, r, d = data.to_cause_specific_xrd(cause)
     # ``from_xrd`` is a classmethod, so calling it through the
     # singleton instance binds the class exactly as ``type(...)`` did.
-    return NonParametricCounting.from_xrd(x, r, d)
+    model = NonParametricCounting.from_xrd(x, r, d)
+    # Only this cause's events count; the other causes' events are
+    # non-events for it, while each item stays in the (shared) risk set.
+    model.var = _lawless_nadeau_var(
+        data, x, r, d, counted=label_mask(data.e, cause)
+    )
+    model.origin = _observation_origin(data)
+    return model
 
 
 class CauseSpecificMCF(SerialisableMixin):
@@ -48,8 +71,30 @@ class CauseSpecificMCF(SerialisableMixin):
     competing event types.
 
     The model fits one ``NonParametricCounting`` MCF per event type, sharing
-    the at-risk set across causes. Access the per-cause models through
-    ``self.models[cause]`` or use the convenience methods below.
+    the at-risk set across causes. Each cause's MCF carries the
+    Lawless-Nadeau robust variance of that cause's events (the other
+    causes' events count as non-events for it), as the overall MCF does.
+    Access the per-cause models through ``self.models[cause]`` or use the
+    convenience methods below.
+
+    Examples
+    --------
+    Two pumps, each repaired for seal or motor failures and observed to
+    times 10 and 12 (the ``c=1`` rows, which have no event type):
+
+    >>> from surpyval.recurrent import CauseSpecificMCF
+    >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+    >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+    >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+    >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+    >>> model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
+    >>> model
+    Cause-specific MCF with causes: ['motor', 'seal']
+
+    The mean number of seal repairs per pump by times 4 and 10:
+
+    >>> model.mcf([4, 10], "seal")
+    array([1.5, 2. ])
     """
 
     # Populated by the fit classmethods; declared for the type checker.
@@ -59,6 +104,9 @@ class CauseSpecificMCF(SerialisableMixin):
     models: dict
     x: "np.ndarray"
     r: "np.ndarray"
+    #: The ``(lower, upper)`` interval the MCFs are defined on, set by
+    #: :meth:`set_support`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     def __repr__(self) -> str:
         return "Cause-specific MCF with causes: {}".format(self.event_types)
@@ -74,15 +122,17 @@ class CauseSpecificMCF(SerialisableMixin):
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "CauseSpecificMCF",
-                "event_types": to_native(list(self.event_types)),
-                "models": [
-                    self.models[cause].to_dict() for cause in self.event_types
-                ],
-            }
-        )
+        out = {
+            "model": "CauseSpecificMCF",
+            "event_types": to_native(list(self.event_types)),
+            "models": [
+                self.models[cause].to_dict() for cause in self.event_types
+            ],
+        }
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "CauseSpecificMCF":
@@ -97,35 +147,126 @@ class CauseSpecificMCF(SerialisableMixin):
             model_dict, "CauseSpecificMCF", "a cause-specific MCF"
         )
         out = cls()
-        out.event_types = list(model_dict["event_types"])
+        # JSON writes a tuple label as a list; turn it back into a tuple.
+        out.event_types = [
+            label_from_native(v) for v in model_dict["event_types"]
+        ]
         out.models = {
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_support(*support)
         return out
 
+    def set_support(self, lower: float, upper: float) -> "CauseSpecificMCF":
+        """
+        Give every cause's MCF the explicit support ``[lower, upper]``.
+
+        Each cause's :meth:`mcf` and :meth:`mcf_cb` are then 0 from
+        ``lower`` to the origin (where observation begins), the value at
+        the last observed time from there to ``upper``, and NaN outside
+        them, instead of NaN before the origin and after the last observed
+        time; see ``NonParametricCounting.set_support``. The bounds are
+        kept by ``to_dict``.
+
+        Parameters
+        ----------
+        lower : float
+            The lower end of the support; at most the origin.
+        upper : float
+            The upper end; at least the last observed time, and above
+            ``lower``.
+
+        Returns
+        -------
+        CauseSpecificMCF
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain ``[origin, last]``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CauseSpecificMCF
+        >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+        >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+        >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+        >>> model = CauseSpecificMCF.fit(x, i=i, c=c, e=e)
+        >>> model.mcf([-1, 4, 15], "seal")
+        array([nan, 1.5, nan])
+        >>> model.set_support(-5, 20).mcf([-10, -1, 4, 15, 25], "seal")
+        array([nan, 0. , 1.5, 2. , nan])
+        """
+        # The causes share the risk set, so their grids and origins agree;
+        # checked against their union all the same.
+        models = [self.models[cause] for cause in self.event_types]
+        support = _check_support(
+            lower,
+            upper,
+            min(m._origin() for m in models),
+            max(float(m.x.max()) for m in models),
+            _MCF_RANGE,
+        )
+        for model in models:
+            model.support = support
+        self.support = support
+        return self
+
+    @renamed_arguments(cause="event")
     def mcf(
-        self, x: ArrayLike, cause: Any, interp: str = "step"
+        self, x: ArrayLike, event: Any, interp: str = "step"
     ) -> np.ndarray:
-        """Cause-specific MCF evaluated at ``x`` for the given ``cause``."""
-        return self.models[cause].mcf(x, interp=interp)
+        """Cause-specific MCF evaluated at ``x`` for the event type
+        ``event`` (see ``NonParametricCounting.mcf``, and
+        :meth:`set_support` for its values outside the data)."""
+        return self.models[event].mcf(x, interp=interp)
 
-    def mcf_cb(self, x: ArrayLike, cause: Any, **kwargs: Any) -> Any:
-        """Confidence bounds on the cause-specific MCF for ``cause``."""
-        return self.models[cause].mcf_cb(x, **kwargs)
+    @renamed_arguments(cause="event", confidence=("alpha_ci", lambda c: 1 - c))
+    def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
+        """Confidence bounds on the cause-specific MCF for the event type
+        ``event``; ``kwargs`` are those of
+        ``NonParametricCounting.mcf_cb``."""
+        return self.models[event].mcf_cb(x, **kwargs)
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         plot_bounds: bool = True,
         ax: Any = None,
     ) -> Any:
-        """Overlay the MCF of every cause on a single axis."""
+        """Overlay the MCF of every cause on a single axis.
+
+        With ``plot_bounds`` each cause's pointwise two-sided
+        ``1 - alpha_ci`` bounds are drawn as dashed steps in the colour of
+        its MCF. The arguments are keyword only.
+        """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
         for cause in self.event_types:
             model = self.models[cause]
-            ax.step(model.x, model.mcf_hat, where="post", label=str(cause))
+            (line,) = ax.step(
+                model.x, model.mcf_hat, where="post", label=str(cause)
+            )
+            if plot_bounds and model.var is not None:
+                cb = model.mcf_cb(model.x, alpha_ci=alpha_ci)
+                ax.step(
+                    model.x,
+                    cb,
+                    where="post",
+                    color=line.get_color(),
+                    linestyle="--",
+                    linewidth=0.8,
+                )
         ax.legend()
         return ax
 
@@ -143,8 +284,7 @@ class CauseSpecificMCF(SerialisableMixin):
         out.x, out.r, _ = data.to_xrd()
         out.models = {}
         for cause in out.event_types:
-            x, r, d = data.to_cause_specific_xrd(cause)
-            out.models[cause] = _counting_model_from_xrd(x, r, d)
+            out.models[cause] = _cause_model(data, cause)
         return out
 
     @classmethod
@@ -173,12 +313,19 @@ class CauseSpecificMCF(SerialisableMixin):
             Count of events at each row. Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None`` for censored rows.
+            A mark may be any hashable label: an integer, a string, a
+            tuple, or a mix of these.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item. The at-risk set
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item). The at-risk set
             is shared across causes, so a delayed entry shrinks the risk set
             for every cause until the item enters at ``tl``.
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``: the end of
+            its observation
+            window. The item stays in the (shared) at-risk set up to ``tr``,
+            exactly as if it had an end-of-observation (``c=1``) row there.
 
         Returns
         -------

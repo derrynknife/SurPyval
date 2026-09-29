@@ -38,6 +38,7 @@ from scipy import integrate
 from scipy.special import factorial, xlogy
 
 from surpyval import np
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -101,17 +102,23 @@ class Hypoexponential_(ParametricFitter):
     Class used to generate the Hypoexponential class: the sum of
     independent Exponential stages with distinct rates.
 
-    .. code:: python
-
-        from surpyval import Hypoexponential
-
-        model = Hypoexponential.from_params([0.5, 1.5, 3.0])
-
     The singleton has no fixed parameter count -- ``from_params`` takes
     any number of rates and the model it returns has that many
     parameters, named ``lambda_1 ... lambda_m``. The distribution
     functions take the rates as the parameters:
-    ``Hypoexponential.sf(x, 0.5, 1.5, 3.0)``.
+    ``Hypoexponential.sf(x, 0.5, 1.5, 3.0)``. It is not fitted from data
+    (``fit`` raises); build it from known stage rates.
+
+    Examples
+    --------
+    Two stages in series, with mean times 2 and 2/3:
+
+    >>> from surpyval import Hypoexponential
+    >>> model = Hypoexponential.from_params([0.5, 1.5])
+    >>> model.sf([1, 2, 4]).round(4)
+    array([0.7982, 0.5269, 0.2018])
+    >>> round(float(model.mean()), 4)
+    2.6667
     """
 
     def __init__(self, name: str, m: int = 0) -> None:
@@ -569,7 +576,10 @@ class Hypoexponential_(ParametricFitter):
         return -integrate.quad(func, 0, np.inf)[0]
 
     def random(
-        self, size: int | tuple[int, ...], *rates: Boxable
+        self,
+        size: int | tuple[int, ...],
+        *rates: Boxable,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -585,6 +595,10 @@ class Hypoexponential_(ParametricFitter):
             Shape or size of the random draw
         rates : numpy array or scalars
             The stage rates ``lambda_1, ..., lambda_m``
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own; ``None`` (the
+            default) draws from numpy's global stream (see
+            :meth:`ParametricFitter.random`).
 
         Returns
         -------
@@ -602,7 +616,9 @@ class Hypoexponential_(ParametricFitter):
         """
         r = _validate_rates(rates)
         shape = (size,) if isinstance(size, int) else tuple(size)
-        stages = np.random.exponential(1.0 / r, size=shape + (len(r),))
+        state = draw_state(random_state)
+        source = np.random if state is None else state
+        stages = source.exponential(1.0 / r, size=shape + (len(r),))
         return np.sum(stages, axis=-1)
 
 

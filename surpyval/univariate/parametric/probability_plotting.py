@@ -12,8 +12,6 @@ carried their own near-identical copy of this logic.
 import re
 import warnings
 
-from matplotlib.ticker import FixedLocator
-
 from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.utils import _round_vals
@@ -195,6 +193,8 @@ def draw_probability_plot(
     Draw the probability plot described by the ``probability_plot_data``
     dictionary ``d`` onto the matplotlib axes ``ax``.
     """
+    from matplotlib.ticker import FixedLocator
+
     # Set limits and scale
     ax.set_ylim([max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)])
     ax.set_xscale(d["x_scale"])

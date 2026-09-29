@@ -16,9 +16,44 @@ the discrete hazard ``P(T = k) / R(k - 1)``, and the survival ``sf(k)``
 is ``P(T > k)``.
 """
 
+from math import comb
+
 from surpyval import np
 
 from .parametric_fitter import ParametricFitter
+
+
+def eulerian_numbers(m: int) -> list[int]:
+    r"""The Eulerian numbers :math:`A(m, i)`, :math:`i = 0, \dots, m - 1`.
+
+    They give the raw moments of the Geometric (and, mixed over a Beta,
+    of the Beta-Geometric) exactly: for :math:`T` Geometric on
+    :math:`\{1, 2, \dots\}` with :math:`P(T = k) = p (1 - p)^{k - 1}`,
+
+    .. math::
+        E[T^{m}] = p^{-m} \sum_{i=0}^{m-1} A(m, i)\,(1 - p)^{i} .
+    """
+    return [
+        sum(
+            (-1) ** j * comb(m + 1, j) * (i + 1 - j) ** m for j in range(i + 1)
+        )
+        for i in range(m)
+    ]
+
+
+def stirling2_numbers(m: int) -> list[int]:
+    r"""The Stirling numbers of the second kind :math:`S(m, j)`,
+    :math:`j = 0, \dots, m`: :math:`E[X^{m}] = \sum_j S(m, j)\,
+    E[(X)_{j}]` turns factorial moments :math:`E[X(X - 1)\cdots(X - j +
+    1)]`, which the Poisson and Negative Binomial have in closed form,
+    into raw moments."""
+    row = [1]  # S(0, 0)
+    for n in range(1, m + 1):
+        row = [0] + [
+            j * (row[j] if j < len(row) else 0) + row[j - 1]
+            for j in range(1, n + 1)
+        ]
+    return row
 
 
 class DiscreteParametricFitter(ParametricFitter):
@@ -37,6 +72,23 @@ class DiscreteParametricFitter(ParametricFitter):
     MLE, MSE (least squares against the nonparametric estimate, which is
     a step function anyway) and MOM (via each distribution's ``moment``)
     remain available.
+
+    Examples
+    --------
+    The discrete distributions (``Poisson``, ``Geometric``, ``Binomial``
+    ...) are instances of it:
+
+    >>> import numpy as np
+    >>> from surpyval import Poisson
+    >>> from surpyval.univariate.parametric import DiscreteParametricFitter
+    >>> isinstance(Poisson, DiscreteParametricFitter)
+    True
+    >>> x = np.array([0, 1, 1, 2, 2, 2, 3, 3, 4, 6])
+    >>> model = Poisson.fit(x)
+    >>> model.params.round(4)
+    array([2.4])
+    >>> model.sf([2]).round(4)
+    array([0.4303])
     """
 
     discrete = True

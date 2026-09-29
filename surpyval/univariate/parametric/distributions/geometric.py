@@ -1,10 +1,13 @@
+from typing import Any
+
 import numpy.typing as npt
-from scipy.stats import uniform
 
 from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
+    eulerian_numbers,
 )
+from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -100,17 +103,59 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, p: Boxable) -> Boxable:
+        r"""Mean number of cycles to failure, :math:`E[T] = 1/p`.
+
+        Examples
+        --------
+        >>> from surpyval import Geometric
+        >>> Geometric.mean(0.2)
+        5.0
+        """
         return 1.0 / p
 
     def moment(self, m: int, p: Boxable) -> Boxable:
-        # Non-central moment E[T^m] by a truncated sum over the pmf out to a
-        # far quantile (no simple closed form for general m).
-        upper = int(self.qf(1.0 - 1e-9, p))
-        k = np.arange(1, upper + 1, dtype=float)
-        return np.sum(k**m * self.df(k, p))
+        r"""The ``m``-th raw moment :math:`E[T^{m}]`, exactly:
 
-    def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
-        U = uniform.rvs(size=size)
+        .. math::
+            E[T^{m}] = p^{-m} \sum_{i=0}^{m-1} A(m, i)\,(1 - p)^{i}
+
+        with :math:`A(m, i)` the Eulerian numbers, so ``moment(1)`` is
+        ``mean()``.
+
+        Examples
+        --------
+        >>> from surpyval import Geometric
+        >>> Geometric.moment(2, 0.2)
+        45.0
+        """
+        if m == 0:
+            return 1.0
+        if m == 1:
+            return self.mean(p)
+        # The old sum over the mass function stopped at the 1 - 1e-9
+        # quantile, so moment(1) and mean() disagreed in the eighth digit.
+        q = 1.0 - p
+        return sum(a * q**i for i, a in enumerate(eulerian_numbers(m))) / p**m
+
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        p: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Draw ``size`` cycle counts by inverting the CDF (see ``qf``);
+        ``random_state`` is as for :meth:`ParametricFitter.random`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Geometric
+        >>> np.random.seed(1)
+        >>> Geometric.random(5, 0.3)
+        array([2., 4., 1., 2., 1.])
+        """
+        U = uniform_draws(size, random_state)
         # qf is declared Boxable because a fit differentiates it;
         # sampling never does, so this is always a real array.
         return np.asarray(self.qf(U, p))

@@ -40,14 +40,23 @@ moves), the standard destructive-degradation / degradation-distribution model
 (Meeker & Escobar).
 """
 
+from numbers import Number
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-from surpyval.serialisation import stamp_schema
-from surpyval.univariate.parametric import LogNormal, Normal
+from surpyval.serialisation import (
+    SerialisableMixin,
+    require_model_tag,
+    stamp_schema,
+)
+from surpyval.univariate.parametric import LogNormal
+from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
@@ -63,22 +72,29 @@ _TRANSFORMS = {
 # the log scale, so ordinary-least-squares initial values use log(y).
 _LOG_RESPONSE = {"LogNormal", "LogLogistic"}
 
-_DIST_BY_NAME = {"Normal": Normal, "LogNormal": LogNormal}
-
 
 def _resolve_distribution(distribution: Any) -> Any:
+    """
+    The response distribution, given as the fitter or its name.
+
+    A name resolves through the package's distribution registry (the same
+    lookup the parametric models' ``from_dict`` uses), so every
+    distribution ``fit`` accepts -- and hence every name ``to_dict`` can
+    write -- reads back; only ``Normal`` and ``LogNormal`` used to, so a
+    model fitted with, say, ``Logistic`` could be saved but not loaded.
+    """
     if isinstance(distribution, str):
-        if distribution not in _DIST_BY_NAME:
-            raise ValueError(
-                "distribution {!r} is not a known destructive-degradation "
-                "response; use one of {} or pass the distribution object "
-                "directly".format(distribution, sorted(_DIST_BY_NAME))
-            )
-        return _DIST_BY_NAME[distribution]
+        return resolve_distribution(distribution)
     return distribution
 
 
-class DestructiveDegradationModel:
+def _transform_ok(transform: str, x: npt.NDArray) -> bool:
+    """Whether the time transform is finite at every time in ``x``."""
+    with np.errstate(all="ignore"):
+        return bool(np.isfinite(_TRANSFORMS[transform][0](x)).all())
+
+
+class DestructiveDegradationModel(SerialisableMixin):
     """
     Result of :meth:`DestructiveDegradation.fit`.
 
@@ -86,6 +102,26 @@ class DestructiveDegradationModel:
     (``sf`` / ``ff`` / ``Hf`` / ``df``) plus the fitted *degradation*
     distribution over time (``degradation_quantile``). The fitted parameters
     are the location intercept and slope ``beta`` and the scale ``sigma``.
+
+    Examples
+    --------
+    Six units destroyed in a strength test at each of four ages; a unit
+    has failed once its strength is below 20:
+
+    >>> import numpy as np
+    >>> from surpyval.degradation import DestructiveDegradation
+    >>> rng = np.random.default_rng(1)
+    >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+    >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+    >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+
+    The median strength at ages 10 and 50, and the probability a unit is
+    still above the threshold at 50 and 80:
+
+    >>> model.degradation_quantile(0.5, [10, 50]).round(3)
+    array([45.674, 19.987])
+    >>> model.sf([50, 80]).round(4)
+    array([0.4956, 0.    ])
     """
 
     def __init__(
@@ -118,26 +154,38 @@ class DestructiveDegradationModel:
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
+    @renamed_arguments(q="p", t="x")
     def degradation_quantile(
-        self, q: npt.ArrayLike, t: npt.ArrayLike
+        self, p: npt.ArrayLike, x: npt.ArrayLike
     ) -> npt.NDArray:
         """
-        The ``q``-quantile of the destructive measurement at time ``t`` (the
-        fitted degradation distribution ``dist(loc(t), sigma)``).
-        """
-        loc = self._loc(t)
-        out = np.asarray(self.distribution.qf(q, loc, self.sigma), dtype=float)
-        return out[0] if np.ndim(t) == 0 else out
+        The ``p``-quantile of the destructive measurement at time ``x`` (the
+        fitted degradation distribution ``dist(loc(x), sigma)``).
 
-    def median_degradation(self, t: npt.ArrayLike) -> npt.NDArray:
-        """Median destructive measurement at time ``t``."""
-        return self.degradation_quantile(0.5, t)
+        Parameters
+        ----------
+        p : float or array_like
+            Probability (or probabilities) in ``(0, 1)``.
+        x : float or array_like
+            Time(s) at which to read the degradation distribution; a
+            scalar ``x`` gives a scalar result.
+        """
+        loc = self._loc(x)
+        out = np.asarray(self.distribution.qf(p, loc, self.sigma), dtype=float)
+        return out[0] if np.ndim(x) == 0 else out
+
+    @renamed_arguments(t="x")
+    def median_degradation(self, x: npt.ArrayLike) -> npt.NDArray:
+        """Median destructive measurement at time ``x``."""
+        return self.degradation_quantile(0.5, x)
 
     # -- induced lifetime distribution at the threshold -------------------
 
-    def ff(self, t: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
-        loc = self._loc(t)
+        loc = self._loc(x)
         thr = self.threshold
         if self.direction == "increasing":
             # failed once degradation exceeds the threshold
@@ -148,37 +196,43 @@ class DestructiveDegradationModel:
             out = np.asarray(
                 self.distribution.ff(thr, loc, self.sigma), dtype=float
             )
-        return out[0] if np.ndim(t) == 0 else out
+        return out
 
-    def sf(self, t: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
-        return 1.0 - self.ff(t)
+        return 1.0 - self.ff(x)
 
-    def Hf(self, t: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
-        return -np.log(np.maximum(self.sf(t), np.finfo(float).tiny))
+        return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
-    def df(self, t: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def df(self, x: npt.ArrayLike) -> npt.NDArray:
         """
         Density of the induced lifetime distribution (finite-difference of the
         CDF; the closed form depends on the time transform).
         """
-        scalar = np.ndim(t) == 0
-        ta = np.atleast_1d(np.asarray(t, dtype=float))
-        h = np.maximum(np.abs(ta), 1.0) * 1e-6
-        out = (self.ff(ta + h) - self.ff(ta - h)) / (2.0 * h)
-        return out[0] if scalar else out
+        x = np.asarray(x, dtype=float)
+        h = np.maximum(np.abs(x), 1.0) * 1e-6
+        return (self.ff(x + h) - self.ff(x - h)) / (2.0 * h)
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
+    @renamed_arguments(t="x", seed="random_state")
+    @keeps_query_shape
     def cb(
         self,
-        t: npt.ArrayLike,
+        x: npt.ArrayLike,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         n_boot: int = 200,
-        seed: "int | None" = None,
+        random_state: "int | None" = None,
     ) -> npt.NDArray:
         """
         Bootstrap confidence bounds on the induced lifetime function ``on``.
@@ -189,48 +243,53 @@ class DestructiveDegradationModel:
 
         Parameters
         ----------
-        t : array_like
+        x : array_like
             Times at which to evaluate the bound(s).
         on : {'sf', 'ff', 'Hf'}, optional
             The lifetime function to bound. Default ``'sf'``.
         alpha_ci : float, optional
             Total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis, with
+            ``alpha_ci / 2`` in each tail. Default ``'two-sided'``.
         n_boot : int, optional
             Number of bootstrap resamples. Default 200.
-        seed : optional
-            Seed for the resampling.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for the resampling. ``None`` (the default) seeds
+            from numpy's global RNG, so ``np.random.seed`` controls it.
         """
         if on not in ("sf", "ff", "Hf"):
             raise ValueError("`on` must be one of 'sf', 'ff', 'Hf'")
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
-        t = np.atleast_1d(np.asarray(t, dtype=float))
-        rng = np.random.default_rng(seed)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        rng = as_generator(random_state)
         if self.data is None:
             raise ValueError(
-                "Bootstrap bounds need the fit data, which this "
-                "deserialised model does not carry."
+                "Bootstrap bounds need the fit data, which this model "
+                "does not carry (it was restored from a dictionary "
+                "written before the data was stored); refit it to get "
+                "bounds."
             )
-        x, y, c = self.data["x"], self.data["y"], self.data["c"]
-        n = x.shape[0]
+        xd, yd, cd = self.data["x"], self.data["y"], self.data["c"]
+        n = xd.shape[0]
 
         draws = []
         for _ in range(n_boot):
             idx = rng.integers(0, n, size=n)
             try:
                 m = DestructiveDegradation.fit(
-                    x[idx],
-                    y[idx],
+                    xd[idx],
+                    yd[idx],
                     threshold=self.threshold,
-                    c=c[idx],
+                    c=cd[idx],
                     distribution=self.distribution,
                     transform=self.transform,
                     direction=self.direction,
                 )
             except Exception:
                 continue
-            draws.append(getattr(m, on)(t))
+            draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
         draws_arr = np.vstack(draws)
@@ -246,29 +305,64 @@ class DestructiveDegradationModel:
     # -- serialisation ----------------------------------------------------
 
     def to_dict(self) -> dict:
-        """Serialise to a plain JSON-safe dict."""
-        return stamp_schema(
-            {
-                "model": "DestructiveDegradationModel",
-                "distribution": self.distribution.name,
-                "transform": self.transform,
-                "direction": self.direction,
-                "beta": self.beta.tolist(),
-                "sigma": float(self.sigma),
-                "threshold": float(self.threshold),
-            }
-        )
+        """
+        Serialise this fitted model to a plain, JSON-serialisable dict.
+
+        The fit data ``(x, y, c)`` is stored along with the fitted
+        parameters -- as ``DegradationModel`` stores its raw data -- so
+        the restored model reproduces the original's predictions *and*
+        its bootstrap :meth:`cb` (with the same ``random_state``, exactly).
+
+        See Also
+        --------
+        from_dict, to_json, from_json
+        """
+        out: dict = {
+            "model": "DestructiveDegradationModel",
+            "distribution": self.distribution.name,
+            "transform": self.transform,
+            "direction": self.direction,
+            "beta": self.beta.tolist(),
+            "sigma": float(self.sigma),
+            "threshold": float(self.threshold),
+            "neg_ll": float(self._neg_ll),
+            "transform_scores": (
+                None
+                if self.transform_scores is None
+                else {
+                    str(k): float(v) for k, v in self.transform_scores.items()
+                }
+            ),
+            "data": (
+                None
+                if self.data is None
+                else {
+                    "x": np.asarray(self.data["x"], dtype=float).tolist(),
+                    "y": np.asarray(self.data["y"], dtype=float).tolist(),
+                    "c": np.asarray(self.data["c"], dtype=int).tolist(),
+                }
+            ),
+        }
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, d: dict) -> "DestructiveDegradationModel":
-        """Rebuild a model from :meth:`to_dict`."""
-        if d.get("model") != "DestructiveDegradationModel":
-            got = d.get("model")
-            raise ValueError(
-                "dict is not a DestructiveDegradationModel "
-                "(model={!r})".format(got)
-            )
+        """
+        Rebuild a model from a :meth:`to_dict` dictionary.
+
+        Dictionaries written before the fit data was stored still load;
+        the model they give predicts, but its :meth:`cb` raises because
+        there is no data to resample.
+
+        See Also
+        --------
+        to_dict, to_json, from_json
+        """
+        require_model_tag(
+            d, "DestructiveDegradationModel", "a destructive degradation model"
+        )
         dist = _resolve_distribution(d["distribution"])
+        data = d.get("data")
         return cls(
             distribution=dist,
             transform=d["transform"],
@@ -276,8 +370,17 @@ class DestructiveDegradationModel:
             beta=np.asarray(d["beta"], dtype=float),
             sigma=float(d["sigma"]),
             threshold=float(d["threshold"]),
-            data=None,
-            neg_ll=np.nan,
+            data=(
+                None
+                if data is None
+                else {
+                    "x": np.asarray(data["x"], dtype=float),
+                    "y": np.asarray(data["y"], dtype=float),
+                    "c": np.asarray(data["c"], dtype=int),
+                }
+            ),
+            neg_ll=float(d.get("neg_ll", np.nan)),
+            transform_scores=d.get("transform_scores"),
         )
 
     def __repr__(self) -> str:
@@ -393,7 +496,10 @@ class DestructiveDegradation_:
             ``-1`` left-censored (below the test floor). Default all observed.
         distribution : Parametric or str, optional
             Location-scale response distribution -- ``LogNormal`` (default,
-            positive response) or ``Normal``.
+            positive response), ``Normal``, or another such as
+            ``Logistic`` or ``LogLogistic`` -- as the object or its name.
+            A distribution with positive support needs every measurement
+            positive.
         transform : str, optional
             Time transform :math:`\varphi(t)` for the location: ``"linear"``,
             ``"log"``, ``"sqrt"``, ``"reciprocal"``, or ``"best"`` to pick the
@@ -406,6 +512,33 @@ class DestructiveDegradation_:
         Returns
         -------
         DestructiveDegradationModel
+            The fitted model, whose life-distribution methods (``sf``,
+            ``ff``, ...) give the probability of having crossed
+            ``threshold`` by each time.
+
+        Examples
+        --------
+        Six units broken at each of four ages; strength falls
+        log-linearly with age, and a unit has failed once its strength
+        is below 20:
+
+        >>> import numpy as np
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> x = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> y = np.exp(4.0 - 0.02 * x + rng.normal(0, 0.1, 24))
+        >>> model = DestructiveDegradation.fit(x, y, threshold=20)
+        >>> model
+        Destructive Degradation Model
+        =============================
+        Response distribution : LogNormal
+        Time transform        : t
+        Direction             : decreasing
+        Threshold             : 20
+        Location              : 4.02814 + -0.0206616*t
+        Scale (sigma)         : 0.0612395
+        >>> model.sf([50, 80]).round(4)
+        array([0.4956, 0.    ])
         """
         dist = _resolve_distribution(distribution)
         x = np.atleast_1d(np.asarray(x, dtype=float))
@@ -424,6 +557,22 @@ class DestructiveDegradation_:
             )
         if not np.isin(c, (-1, 0, 1)).all():
             raise ValueError("c must be 0 (observed), 1 (right) or -1 (left)")
+        # Bad input used to fit silently to nonsense or fail deep inside
+        # the least-squares start (``LinAlgError: SVD did not converge``,
+        # with LAPACK noise on stderr); refuse it up front instead.
+        if not (np.isfinite(x).all() and np.isfinite(y).all()):
+            raise ValueError("x and y must contain only finite values")
+        if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
+            threshold = threshold.item()
+        if not isinstance(threshold, Number) or not np.isfinite(threshold):
+            raise ValueError("threshold must be a finite number")
+        if dist.support[0] >= 0 and np.any(y <= 0):
+            raise ValueError(
+                "the {} response distribution has positive support, but "
+                "some measurements are zero or negative; use a "
+                "distribution on the real line (e.g. Normal) for this "
+                "response".format(dist.name)
+            )
 
         if direction == "auto":
             # Direction from the sign of the (raw-time) trend in the data.
@@ -441,6 +590,8 @@ class DestructiveDegradation_:
             fits = {}
             n = x.shape[0]
             for name in _TRANSFORMS:
+                if not _transform_ok(name, x):
+                    continue  # e.g. log(t) or 1/t with a time of zero
                 try:
                     beta, sigma, nll = self._fit_one(dist, name, x, y, c)
                 except Exception:
@@ -466,6 +617,13 @@ class DestructiveDegradation_:
                     "transform must be one of {} or 'best'".format(
                         sorted(_TRANSFORMS)
                     )
+                )
+            if not _transform_ok(transform, x):
+                raise ValueError(
+                    "the {!r} time transform, {}, is not finite at every "
+                    "measurement time (it needs positive times); use "
+                    "another transform or drop the non-positive "
+                    "times".format(transform, _TRANSFORMS[transform][1])
                 )
             beta, sigma, nll = self._fit_one(dist, transform, x, y, c)
             transform_scores = None

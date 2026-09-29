@@ -26,6 +26,7 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval import np
+from surpyval.utils.rng import as_generator
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
@@ -50,24 +51,40 @@ class Copula:
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        """The copula :math:`C(u, v)`; defined by each family."""
         raise NotImplementedError
 
     def du(self, u: Any, v: Any, *params: Any) -> Any:
-        """``dC/du`` -- the h-function. autograd default; override if known."""
-        return elementwise_grad(lambda a: self.cdf(a, v, *params))(
-            onp.asarray(u, dtype=float)
+        """``dC/du`` -- the h-function :math:`P(V \\le v \\mid U = u)`.
+
+        The default differentiates :meth:`cdf` with autograd; override it
+        when a closed form is known. ``u`` and ``v`` broadcast against each
+        other, and the result has their common shape.
+        """
+        # autograd's elementwise gradient is the gradient of the *sum* of
+        # the outputs, so it is only elementwise when each output depends on
+        # its own input alone: broadcast first, or a scalar ``u`` with an
+        # array ``v`` returned one summed derivative.
+        u_b, v_b = _broadcast_pair(u, v)
+        return elementwise_grad(lambda a: self.cdf(a, v_b, *params))(
+            onp.asarray(u_b, dtype=float)
         )
 
     def dv(self, u: Any, v: Any, *params: Any) -> Any:
-        """``dC/dv``. autograd default; override if known."""
-        return elementwise_grad(lambda b: self.cdf(u, b, *params))(
-            onp.asarray(v, dtype=float)
+        """``dC/dv``, the h-function :math:`P(U \\le u \\mid V = v)`;
+        ``u`` and ``v`` broadcast as for :meth:`du`."""
+        u_b, v_b = _broadcast_pair(u, v)
+        return elementwise_grad(lambda b: self.cdf(u_b, b, *params))(
+            onp.asarray(v_b, dtype=float)
         )
 
     def pdf(self, u: Any, v: Any, *params: Any) -> Any:
-        """``d2C/du dv`` -- the copula density. autograd default."""
-        return elementwise_grad(lambda b: self.du(u, b, *params))(
-            onp.asarray(v, dtype=float)
+        """``d2C/du dv`` -- the copula density. The default differentiates
+        :meth:`du` with autograd; ``u`` and ``v`` broadcast as for
+        :meth:`du`."""
+        u_b, v_b = _broadcast_pair(u, v)
+        return elementwise_grad(lambda b: self.du(u_b, b, *params))(
+            onp.asarray(v_b, dtype=float)
         )
 
     # -- dependence measures (closed-form overrides preferred) ------------
@@ -105,7 +122,7 @@ class Copula:
         ``dC/du(u, v) = w`` (a CDF in ``v``, hence monotone) by bisection.
         Override for families with a direct sampler (e.g. Gaussian).
         """
-        rng = onp.random.default_rng(random_state)
+        rng = as_generator(random_state)
         u = rng.uniform(_EPS, 1 - _EPS, size=size)
         w = rng.uniform(_EPS, 1 - _EPS, size=size)
         v = self._invert_du(u, w, params)
@@ -197,15 +214,39 @@ class Copula:
             ll = ll - self._trunc_logmass(params, d0, d1)
         return ll
 
+    def _boundary_cdf(self, u: Any, v: Any, params: Any) -> Any:
+        """``C(u, v)`` with the boundary values every copula shares.
+
+        ``C(0, v) = C(u, 0) = 0``, ``C(u, 1) = u`` and ``C(1, v) = v``.
+        The truncation window's untruncated sides sit exactly on that
+        boundary, where a family's formula can divide by zero (Clayton's
+        ``u ** -theta`` at ``u = 0``); only interior points reach it.
+        """
+        u = onp.asarray(u, dtype=float)
+        v = onp.asarray(v, dtype=float)
+        u, v = onp.broadcast_arrays(u, v)
+        zero = (u <= 0) | (v <= 0)
+        u_one = u >= 1
+        v_one = v >= 1
+        interior = ~(zero | u_one | v_one)
+        out = onp.where(v_one, u, onp.where(u_one, v, 0.0))
+        out = onp.where(zero, 0.0, out)
+        if interior.any():
+            out = out.copy()
+            out[interior] = onp.asarray(
+                self.cdf(u[interior], v[interior], *params)
+            )
+        return out
+
     def _trunc_logmass(self, params: Any, d0: Any, d1: Any) -> Any:
         """Log copula mass over the per-row truncation rectangle."""
         ul0, ur0 = d0["ul"], d0["ur"]
         ul1, ur1 = d1["ul"], d1["ur"]
         mass = (
-            onp.asarray(self.cdf(ur0, ur1, *params))
-            - onp.asarray(self.cdf(ul0, ur1, *params))
-            - onp.asarray(self.cdf(ur0, ul1, *params))
-            + onp.asarray(self.cdf(ul0, ul1, *params))
+            self._boundary_cdf(ur0, ur1, params)
+            - self._boundary_cdf(ul0, ur1, params)
+            - self._boundary_cdf(ur0, ul1, params)
+            + self._boundary_cdf(ul0, ul1, params)
         )
         return onp.log(onp.clip(mass, _TINY, None))
 
@@ -220,15 +261,45 @@ class Copula:
         tl: Any,
         tr: Any,
     ) -> dict:
-        """Transform one dimension's data into copula (u-space) arrays."""
-        u = onp.clip(onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS)
-        ulo = onp.clip(onp.asarray(margin.ff(xl), dtype=float), _EPS, 1 - _EPS)
-        uhi = onp.clip(onp.asarray(margin.ff(xr), dtype=float), _EPS, 1 - _EPS)
+        """Transform one dimension's data into copula (u-space) arrays.
+
+        A non-parametric margin (e.g. a fitted ``KaplanMeier``) gives the
+        semi-parametric pseudo-likelihood of Genest, Ghoudi and Rivest
+        (1995): its step CDF is rescaled by ``N/(N+1)`` so the largest
+        values stay inside the unit square, and it contributes no density
+        term -- a step function has none, and the term would not depend
+        on the copula parameter anyway.
+        """
+        semiparametric = _is_nonparametric(margin)
+        scale = 1.0
+        if semiparametric:
+            n_units = float(onp.max(getattr(margin, "r", [len(x)])))
+            scale = n_units / (n_units + 1.0)
+        u = onp.clip(
+            scale * onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS
+        )
+        # An interval may start at the edge of a margin's support (0 for a
+        # LogNormal, whose ff takes log(0) = -inf on the way to the correct
+        # value 0); that is not an error, so it is not reported as one.
         with onp.errstate(divide="ignore"):
-            logf = onp.log(onp.clip(onp.asarray(margin.df(x)), _TINY, None))
+            ulo = scale * onp.asarray(margin.ff(xl), dtype=float)
+            uhi = scale * onp.asarray(margin.ff(xr), dtype=float)
+        ulo = onp.clip(ulo, _EPS, 1 - _EPS)
+        uhi = onp.clip(uhi, _EPS, 1 - _EPS)
+        if semiparametric:
+            logf = onp.zeros(onp.shape(u))
+        else:
+            with onp.errstate(divide="ignore"):
+                logf = onp.log(
+                    onp.clip(onp.asarray(margin.df(x)), _TINY, None)
+                )
         has_trunc = bool(onp.isfinite(tl).any() or onp.isfinite(tr).any())
-        ul = onp.where(onp.isfinite(tl), onp.asarray(margin.ff(tl)), 0.0)
-        ur = onp.where(onp.isfinite(tr), onp.asarray(margin.ff(tr)), 1.0)
+        ul = scale * _ff_where_finite(margin, tl, 0.0)
+        ur = onp.where(
+            onp.isfinite(onp.asarray(tr, dtype=float)),
+            scale * _ff_where_finite(margin, tr, 1.0),
+            1.0,
+        )
         return {
             "c": onp.asarray(c, dtype=int),
             "u": u,
@@ -241,6 +312,7 @@ class Copula:
         }
 
     def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
+        """The copula-stage negative log-likelihood (used by the fit)."""
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
 
@@ -254,6 +326,7 @@ class Copula:
         how: str = "IFM",
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
+        init: "npt.ArrayLike | None" = None,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
@@ -265,10 +338,51 @@ class Copula:
         margins : sequence of length D
             Either surpyval distribution classes (e.g. ``surpyval.Weibull``)
             to be fitted, or already-fitted models exposing ``ff``/``df``.
+            Under ``"IFM"`` a fitted model is used as it is. Under ``"MLE"``
+            a fitted parametric model supplies the starting values and its
+            configuration: it is re-estimated jointly with the copula with
+            the same offset, limited-failure or zero-inflated option, and
+            any parameters it was fitted with ``fixed`` stay at their
+            values. A non-parametric margin (a class such as
+            ``surpyval.KaplanMeier``, or a fitted non-parametric model) can
+            only be used with ``"IFM"``: it gives the semi-parametric
+            pseudo-likelihood estimator, and the likelihood and criteria
+            then compare copula families with the same margins only.
         how : {"IFM", "MLE"}
             ``"IFM"`` (default) fits each margin independently then the
             single copula parameter (robust two-stage estimation).
             ``"MLE"`` jointly optimises copula parameter + margin parameters.
+        init : array like, optional
+            Starting value of the copula parameter(s) for the search, one per
+            entry of ``param_names``, each strictly inside the family's
+            ``bounds``. By default each family starts from its own guess
+            (the built-in families match the empirical Kendall's tau).
+
+        Returns
+        -------
+        CopulaModel
+            The fitted model: the copula parameter(s) ``params`` and the
+            fitted ``margins``, with the joint ``sf``/``cdf``/``pdf``,
+            sampling, dependence measures and the likelihood-based
+            ``log_likelihood``/``neg_ll``/``aic``/``bic``.
+
+        Examples
+        --------
+        Simulate from a Clayton copula with Weibull margins, then recover
+        it:
+
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
+        >>> model.params.round(3)
+        array([2.293])
+        >>> round(float(model.kendall_tau()), 3)
+        0.534
         """
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
@@ -285,26 +399,120 @@ class Copula:
         if len(margins) != data.D:
             raise ValueError("need one margin per dimension")
 
+        if how not in ("IFM", "MLE"):
+            raise ValueError("how must be 'IFM' or 'MLE'")
+        if init is not None:
+            init = self._check_init(init)
+
         margin_models = self._fit_margins(margins, data)
         if how == "IFM":
-            theta = self._fit_theta(margin_models, data)
-        elif how == "MLE":
-            theta, margin_models = self._fit_joint(
-                margins, margin_models, data
+            theta = self._fit_theta(margin_models, data, init)
+            # A margin passed already fitted is used as it is, so only the
+            # margins fitted here count as estimated parameters.
+            # A non-parametric margin has no parameter vector: the
+            # criteria then count the copula's parameters only (and are a
+            # pseudo-likelihood's, for comparing copula families with the
+            # same margins).
+            k = len(self.param_names) + sum(
+                len(getattr(m, "params", ()))
+                for m, given in zip(margin_models, margins)
+                if hasattr(given, "fit") and not _is_nonparametric(m)
             )
         else:
-            raise ValueError("how must be 'IFM' or 'MLE'")
+            theta, margin_models = self._fit_joint(
+                margins, margin_models, data, init
+            )
+            # The joint search re-estimates every free margin parameter,
+            # including an offset, cure or zero-inflation proportion.
+            k = len(self.param_names) + sum(
+                _JointMargin.n_free_of(m) for m in margin_models
+            )
 
-        return CopulaModel(self, theta, margin_models, data=data, how=how)
+        return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
 
     def from_params(self, params: Any, margins: Any) -> Any:
-        """Build a :class:`CopulaModel` from a known parameter and margins."""
+        """
+        Build a
+        :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`
+        from a known parameter and margins, without fitting.
+
+        Parameters
+        ----------
+        params : array like
+            The copula parameter(s), e.g. ``[theta]`` (empty for the
+            independence copula): one per entry of ``param_names``, each
+            strictly inside the family's ``bounds`` (Gumbel's ``theta = 1``,
+            the independence copula, is allowed too). Anything else raises
+            ``ValueError``.
+        margins : sequence of length 2
+            Fitted (or ``from_params``) univariate models, one per
+            dimension, each exposing ``ff`` and ``df``.
+
+        Returns
+        -------
+        CopulaModel
+            The model, for evaluation and simulation.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> model = Clayton.from_params([2.0], margins)
+        >>> round(float(model.kendall_tau()), 3)
+        0.5
+        """
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
         )
 
+        params = self._check_params(params)
+        margins = list(margins)
+        if len(margins) != 2:
+            raise ValueError(
+                f"A bivariate copula needs 2 margins, one per dimension; "
+                f"got {len(margins)}."
+            )
+        for d, m in enumerate(margins):
+            if not all(callable(getattr(m, a, None)) for a in ("ff", "df")):
+                raise ValueError(
+                    f"Margin {d} is not a fitted univariate model (it needs "
+                    "`ff` and `df`); build one with e.g. "
+                    "`Weibull.from_params`."
+                )
+        return CopulaModel(self, params, margins, data=None, how="given")
+
+    #: Names of parameters whose finite bounds are themselves valid values
+    #: (Gumbel's ``theta = 1`` is the independence copula). The fitter
+    #: never reaches a bound, but ``from_params`` may be given one.
+    closed_bounds: tuple = ()
+
+    def _check_params(self, params: npt.ArrayLike) -> npt.NDArray:
+        """Validate copula parameters given directly: one finite value per
+        entry of ``param_names``, inside ``bounds``. An unchecked value
+        silently gave a non-copula (a Clayton ``theta = -2`` has a negative
+        density) or was clipped (a Gaussian ``rho = 1.5``)."""
         params = onp.atleast_1d(onp.asarray(params, dtype=float))
-        return CopulaModel(self, params, list(margins), data=None, how="given")
+        if params.shape != (len(self.param_names),):
+            raise ValueError(
+                f"The {self.name} copula takes {len(self.param_names)} "
+                f"parameter(s) {self.param_names}, got {params.tolist()}."
+            )
+        for name, value, (low, high) in zip(
+            self.param_names, params, self.bounds
+        ):
+            closed = name in self.closed_bounds
+            above = low is None or value > low or (closed and value == low)
+            below = high is None or value < high or (closed and value == high)
+            if not (onp.isfinite(value) and above and below):
+                raise ValueError(
+                    f"{self.name} copula parameter {name} = {value} is "
+                    f"outside its bounds ({low}, {high})."
+                )
+        return params
 
     def _fit_margins(self, margins: Any, data: Any) -> list:
         models = []
@@ -315,16 +523,24 @@ class Copula:
             # Reuse the univariate fitter, honouring each margin's own
             # censoring. Interval entries (c == 2) are passed via xl/xr,
             # exactly as the univariate API expects.
-            xd, cd, xld, xrd, _, _ = data.dimension(d)
+            # Each margin is fitted with the rows' counts and its own
+            # dimension's truncation window (a margin fitted without them
+            # is biased, and the copula stage inherits the bias).
+            xd, cd, xld, xrd, tld, trd = data.dimension(d)
+            kwargs: dict = {"c": cd, "n": data.n}
+            if onp.isfinite(tld).any():
+                kwargs["tl"] = tld
+            if onp.isfinite(trd).any():
+                kwargs["tr"] = trd
             if (cd == 2).any():
                 # surpyval mixes interval and point data in one 2-column x:
                 # point rows have equal columns, interval rows carry [xl, xr].
                 x2 = onp.column_stack(
                     [onp.where(cd == 2, xld, xd), onp.where(cd == 2, xrd, xd)]
                 )
-                models.append(margin.fit(x=x2, c=cd))
+                models.append(margin.fit(x=x2, **kwargs))
             else:
-                models.append(margin.fit(x=xd, c=cd))
+                models.append(margin.fit(x=xd, **kwargs))
         return models
 
     def _bounds_transforms(self) -> tuple:
@@ -336,7 +552,12 @@ class Copula:
         )
         return to_unbounded, to_bounded
 
-    def _fit_theta(self, margin_models: list, data: Any) -> npt.NDArray:
+    def _fit_theta(
+        self,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
+    ) -> npt.NDArray:
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
@@ -347,44 +568,65 @@ class Copula:
             params = to_bounded(phi)
             return self.neg_ll(params, dims, data.n)
 
-        init = to_unbounded(self._init_theta(dims))
-        res = minimize(obj, init, method="Nelder-Mead")
+        if init is None:
+            init = self._init_theta(dims)
+        # A start on (or outside) a bound maps to +-inf or NaN in the
+        # unbounded space, from which Nelder-Mead never moves: the fit would
+        # silently return the starting value. Refuse it instead (the
+        # transform's own warning would only restate the error).
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            start = onp.asarray(to_unbounded(init), dtype=float)
+        if not onp.all(onp.isfinite(start)):
+            raise ValueError(
+                f"The starting value {onp.asarray(init).tolist()} of the "
+                f"{self.name} copula is not strictly inside its bounds "
+                f"{self.bounds}; pass `init` to fit."
+            )
+        res = minimize(obj, start, method="Nelder-Mead")
         return onp.asarray(to_bounded(res.x), dtype=float)
 
     def _fit_joint(
-        self, margins: Any, margin_models: list, data: Any
+        self,
+        margins: Any,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
     ) -> tuple:
         # Start from the IFM solution, then refine copula + margin params
-        # jointly. Margins are re-evaluated from their parameter vectors at
-        # each step via ``from_params``.
-        theta0 = self._fit_theta(margin_models, data)
-        dist_classes = [m.dist for m in margin_models]
-        splits = onp.cumsum([len(m.params) for m in margin_models])[:-1]
+        # jointly. Each margin is rebuilt from its parameter vector at every
+        # step with the configuration it was fitted with (offset,
+        # limited-failure or zero-inflated, and any fixed parameters kept
+        # at their values); rebuilding a plain distribution of its family
+        # silently dropped all of that.
+        joint = [
+            _JointMargin(margin_models[d], data, d) for d in range(data.D)
+        ]
+        theta0 = self._fit_theta(margin_models, data, init)
+        n_cop = len(self.param_names)
+        splits = onp.cumsum([j.n_free for j in joint])[:-1]
         to_unbounded, to_bounded = self._bounds_transforms()
 
         def unpack(phi: npt.NDArray) -> tuple:
-            theta = to_bounded(phi[: len(self.param_names)])
-            rest = phi[len(self.param_names) :]
-            parts = onp.split(rest, splits)
-            models = [
-                dist_classes[d].from_params(parts[d]) for d in range(data.D)
-            ]
-            return theta, models
+            theta = to_bounded(phi[:n_cop])
+            parts = onp.split(phi[n_cop:], splits)
+            return theta, [j.build(part) for j, part in zip(joint, parts)]
 
         def obj(phi: npt.NDArray) -> float:
             theta, models = unpack(phi)
+            if any(m is None for m in models):
+                return onp.inf  # a margin parameter left its bounds
             dims = [
                 self._prepare_dim(models[d], *data.dimension(d))
                 for d in range(data.D)
             ]
             return self.neg_ll(theta, dims, data.n)
 
-        init = onp.concatenate(
-            [to_unbounded(theta0)] + [m.params for m in margin_models]
+        start = onp.concatenate(
+            [to_unbounded(theta0)] + [j.start for j in joint]
         )
         res = minimize(
             obj,
-            init,
+            start,
             method="Nelder-Mead",
             options={"xatol": 1e-6, "fatol": 1e-6},
         )
@@ -392,8 +634,51 @@ class Copula:
         return onp.asarray(theta, dtype=float), models
 
     def _init_theta(self, dims: list) -> npt.NDArray:
-        """Initial parameter guess. Override per family for robustness."""
-        return onp.asarray([1.0])
+        """Initial parameter guess, strictly inside ``bounds``.
+
+        Per parameter: 1 when that is strictly inside its bounds (the
+        historical default), otherwise the midpoint of a finite interval or
+        one unit inside a single finite bound. A fixed 1 sat on the bound of
+        a family such as ``(-1, 1)``, where the bounds transform gives an
+        infinite start and the search never moved. The built-in families
+        override this with a data-driven guess; a user can pass ``init`` to
+        :meth:`fit`.
+        """
+        starts = []
+        for low, high in self.bounds:
+            if (low is None or low < 1.0) and (high is None or 1.0 < high):
+                starts.append(1.0)
+            elif low is not None and high is not None:
+                starts.append(0.5 * (low + high))
+            elif low is not None:
+                starts.append(low + 1.0)
+            else:
+                starts.append(high - 1.0)
+        return onp.asarray(starts, dtype=float)
+
+    def _check_init(self, init: npt.ArrayLike) -> npt.NDArray:
+        """Validate a user's ``init``: one value per parameter, each
+        strictly inside its bounds (a start on a bound cannot move)."""
+        init = onp.atleast_1d(onp.asarray(init, dtype=float))
+        if init.shape != (len(self.param_names),):
+            raise ValueError(
+                f"init must have one value per copula parameter "
+                f"{self.param_names}, got {init.tolist()}"
+            )
+        for name, value, (low, high) in zip(
+            self.param_names, init, self.bounds
+        ):
+            inside = (
+                bool(onp.isfinite(value))
+                and (low is None or value > low)
+                and (high is None or value < high)
+            )
+            if not inside:
+                raise ValueError(
+                    f"init for {name} must be strictly inside its bounds "
+                    f"({low}, {high}), got {value}"
+                )
+        return init
 
     @staticmethod
     def _emp_tau(dims: list) -> float:
@@ -405,3 +690,141 @@ class Copula:
             return 0.0
         tau = kendalltau(dims[0]["u"][both], dims[1]["u"][both]).statistic
         return 0.0 if not onp.isfinite(tau) else float(tau)
+
+
+class _JointMargin:
+    """One margin's parameters in the joint (``how="MLE"``) search.
+
+    The margin is re-estimated with the configuration it was fitted with:
+    its full parameter vector is laid out as the model's ``param_map`` --
+    the offset ``gamma`` (if any), the distribution's parameters, the
+    limited-failure ``p`` and the zero-inflation ``f0`` -- and the
+    parameters fixed at fit time stay at their values. ``gamma`` is kept
+    below the dimension's smallest time, and ``p`` and ``f0`` inside
+    (0, 1), through the same unbounded transforms the univariate fitters
+    use. The distribution's own parameters are searched as they are (a
+    step out of their bounds scores ``inf``), as they always were.
+    """
+
+    def __init__(self, model: Any, data: Any, d: int) -> None:
+        from surpyval.univariate.parametric.fitters import bounds_convert
+        from surpyval.univariate.parametric.parametric import Parametric
+
+        if not isinstance(model, Parametric):
+            raise ValueError(
+                f"how='MLE' re-estimates every margin, so margin {d} must "
+                "be a parametric distribution (e.g. surpyval.Weibull) or a "
+                f"model fitted with one; got {type(model).__name__}. Use "
+                "how='IFM' to keep this margin as it is."
+            )
+        self.dist = model.dist
+        self.offset = bool(model.offset)
+        self.lfp = bool(model.lfp)
+        self.zi = bool(model.zi)
+        self.k = len(model.params)
+        full: list = []
+        bounds: list = []
+        if self.offset:
+            upper = self._gamma_upper(data, d)
+            gamma = float(model.gamma)
+            if gamma >= upper:
+                # Fitted to other data: start just inside this data.
+                gamma = upper - 1e-6 * max(abs(upper), 1.0)
+            full.append(gamma)
+            bounds.append((None, upper))
+        full.extend(onp.asarray(model.params, dtype=float).tolist())
+        bounds.extend([(None, None)] * self.k)
+        if self.lfp:
+            full.append(float(model.p))
+            bounds.append((0, 1))
+        if self.zi:
+            full.append(float(model.f0))
+            bounds.append((0, 1))
+        self.fixed = sorted(int(i) for i in model._user_fixed_idx())
+        self.free = [i for i in range(len(full)) if i not in self.fixed]
+        self.n_free = len(self.free)
+        to_unb, self._to_bounded = bounds_convert(
+            None, bounds, None, {str(i): i for i in range(len(full))}
+        )[:2]
+        self._full = onp.asarray(full, dtype=float)
+        self._unbounded = onp.asarray(to_unb(self._full), dtype=float)
+        self.start = self._unbounded[self.free]
+
+    @staticmethod
+    def _gamma_upper(data: Any, d: int) -> float:
+        """The offset must stay below every time of the dimension (the
+        univariate fitter's bound), ignoring exact zeros for a
+        zero-inflated margin."""
+        x, c, xl, _, _, _ = data.dimension(d)
+        times = onp.where(c == 2, xl, x)
+        times = times[onp.isfinite(times)]
+        positive = times[times != 0]
+        return float(onp.min(positive if positive.size else times))
+
+    @staticmethod
+    def n_free_of(model: Any) -> int:
+        """Parameters of a margin the joint search estimated: all of its
+        parameters (with ``gamma``, ``p``, ``f0``) but the fixed ones."""
+        fixed: set = getattr(model, "_user_fixed_idx", lambda: set())()
+        return int(model.k) - len(fixed)
+
+    def build(self, phi: npt.NDArray) -> Any:
+        """The margin for the free parameters ``phi`` (unbounded space), or
+        ``None`` if a distribution parameter is outside its bounds."""
+        unbounded = self._unbounded.copy()
+        unbounded[self.free] = phi
+        full = onp.asarray(self._to_bounded(unbounded), dtype=float)
+        full[self.fixed] = self._full[self.fixed]  # exactly as fixed
+        i = 0
+        gamma = p = f0 = None
+        if self.offset:
+            gamma, i = full[0], 1
+        end = i + self.k
+        params = full[i:end]
+        i = end
+        if self.lfp:
+            p, i = full[i], i + 1
+        if self.zi:
+            f0 = full[i]
+        try:
+            model = self.dist.from_params(params, gamma=gamma, p=p, f0=f0)
+        except ValueError:
+            return None
+        if self.fixed:
+            # Kept so the margin reports its fixed parameters (and its own
+            # parameter count) as the fitted margin did.
+            model.fitting_info = {"fixed_idx": list(self.fixed)}
+        return model
+
+
+def _broadcast_pair(u: Any, v: Any) -> tuple:
+    """``u`` and ``v`` broadcast to their common shape.
+
+    Adding zeros keeps an autograd-traced argument traced (``pdf``
+    differentiates ``du`` through its ``v``), which
+    ``numpy.broadcast_arrays`` would not.
+    """
+    zeros = onp.zeros(onp.broadcast_shapes(onp.shape(u), onp.shape(v)))
+    return u + zeros, v + zeros
+
+
+def _is_nonparametric(margin: Any) -> bool:
+    """True for a fitted non-parametric margin (a step CDF, no params)."""
+    from surpyval.distribution import NonParametricDistribution
+
+    return isinstance(margin, NonParametricDistribution)
+
+
+def _ff_where_finite(margin: Any, t: Any, fill: float) -> npt.NDArray:
+    """``margin.ff(t)`` at finite ``t``, ``fill`` at the infinite defaults.
+
+    Evaluating a margin at +-inf warns (``log(-inf)`` for a LogNormal), so
+    the infinite entries -- "no truncation on this side" -- are never
+    passed to it.
+    """
+    t = onp.asarray(t, dtype=float)
+    finite = onp.isfinite(t)
+    out = onp.full(t.shape, fill, dtype=float)
+    if finite.any():
+        out[finite] = onp.asarray(margin.ff(t[finite]), dtype=float)
+    return out

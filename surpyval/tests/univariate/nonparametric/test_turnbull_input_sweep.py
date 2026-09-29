@@ -94,19 +94,21 @@ KINDS = [
     "right_truncated",
     "both_truncated",
     "interval_left_truncated",
-    # Left censoring together with two or more distinct entry times is
-    # not identifiable: the likelihood has a flat direction with its
-    # supremum on the boundary, so the NPMLE is not attained and the EM
-    # cannot settle. The fit now warns and reports the share of mass
-    # resting there (#308), but the estimate it returns is still the
-    # boundary one, so this sweep's assertions still fail. Deciding the
-    # case exactly, rather than by a mass threshold, is #327. Marked
-    # xfail rather than dropped so the sweep reports the day it changes.
+    # For this sample the NPMLE does not exist: a left-censored support
+    # holds the piece just after the first entry, nothing penalises the
+    # hazard there, and the likelihood only approaches its supremum as the
+    # survival there drops to zero (#327 decides this from the data; see
+    # test_sweep_verdicts). The EM cannot converge to a point that does not
+    # exist, so the assertions below cannot pass while the fit returns the
+    # boundary estimate. Returning a conditional estimate instead is the
+    # open follow-up in #327. Marked xfail rather than dropped so the sweep
+    # reports the day that changes.
     pytest.param(
         "all_censoring_types_truncated",
         marks=pytest.mark.xfail(
-            reason="left censoring + distinct entry times is not "
-            "identifiable; see #327",
+            reason="the NPMLE does not exist for this sample (npmle == "
+            "'does not exist'), so the EM cannot converge; returning a "
+            "conditional estimate is the follow-up in #327",
             strict=True,
         ),
     ),
@@ -253,9 +255,9 @@ def test_left_censored_row_keeps_the_interval_starting_at_its_entry_time():
 
 
 @pytest.mark.xfail(
-    reason="left censoring + distinct entry times is not identifiable; the "
-    "fit now warns, but the estimate itself is still the boundary one. "
-    "See #327",
+    reason="the NPMLE does not exist for these data (npmle == 'does not "
+    "exist'): the fit warns, but the estimate is still the boundary one. "
+    "Returning the conditional estimate is the follow-up in #327",
     strict=True,
 )
 def test_distinct_entry_times_with_left_censoring_round_trip():
@@ -276,6 +278,12 @@ def test_distinct_entry_times_with_left_censoring_round_trip():
 
     Six points rather than the thirty in the issue, and the failure is
     the same, so this is the cheaper thing to debug against.
+
+    It cannot pass as long as the NPMLE is returned (#327): the piece
+    (0.1, 0.28] is inside only the first row's left-censored support,
+    which ends at 2 while exact failures come later, so the likelihood
+    keeps rising as the hazard there goes to one and has no maximum. The
+    untruncated curve is what a *conditional* estimate would return.
     """
     x = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     c = np.array([-1, 0, 0, -1, 0, 0])
@@ -324,9 +332,10 @@ def test_non_identifiable_entry_windows_are_reported():
     their own entry. The likelihood has no interior maximum, so the
     estimate is not identifiable and the EM cannot settle (#308).
 
-    Rejecting the data would be wrong -- over 240 simulated samples that
-    all met the structural condition, most fitted perfectly well -- so
-    the fit is returned with a warning and a reported share.
+    The fit is returned with a warning and ``npmle`` set to "does not
+    exist", decided from the data before the EM runs (#327). The older
+    screen (mass on "exploitable" pieces above 0.9) agrees here, but it
+    depended on how far the EM got.
     """
     x = np.array([2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
     c = np.array([-1, 0, 0, -1, 0, 0])
@@ -340,6 +349,7 @@ def test_non_identifiable_entry_windows_are_reported():
             max_iter=MAX_ITER,
         )
     assert model.exploitable_mass > 0.9
+    assert model.npmle == "does not exist"
 
 
 @pytest.mark.parametrize(
@@ -395,3 +405,23 @@ def test_distinct_entry_times_alone_are_identifiable():
     np.testing.assert_allclose(
         np.ravel(model.sf([2.5, 4.5])), untruncated, rtol=1e-9, atol=1e-9
     )
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [k for k in KINDS if isinstance(k, str)]
+    + ["all_censoring_types_truncated"],
+)
+def test_sweep_verdicts(kind):
+    # The structural verdict on every sweep case (#327): every regime is
+    # attainable except left censoring with distinct entry times, which is
+    # the one xfailed above.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = Turnbull.fit(**_case(kind), max_iter=10)
+    expected = (
+        "does not exist"
+        if kind == "all_censoring_types_truncated"
+        else "exists"
+    )
+    assert model.npmle == expected

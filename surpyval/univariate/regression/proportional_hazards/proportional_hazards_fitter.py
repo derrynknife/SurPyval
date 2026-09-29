@@ -2,12 +2,15 @@ import inspect
 from typing import Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
+from scipy.optimize import brentq
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._fit_skeleton import (
@@ -19,6 +22,7 @@ from .._fit_skeleton import (
     mirror_distribution,
     optimise_ph,
     prepare_regression_fit,
+    uniform_draws,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -39,6 +43,75 @@ class ProportionalHazardsFitter(
     TVCFitMixin,
     DataFrameRegressionMixin,
 ):
+    """
+    Parametric proportional hazards fitter: a parametric baseline hazard
+    multiplied by a covariate function,
+
+    .. math::
+        h(x \\mid Z) = \\phi(Z)\\, h_0(x), \\qquad
+        H(x \\mid Z) = \\phi(Z)\\, H_0(x),
+
+    with :math:`\\phi(Z) = e^{\\beta' Z}` for the pre-built instances
+    (``WeibullPH``, ``ExponentialPH``, ...) and for ``PH(dist)``. A positive
+    coefficient raises the hazard (shortens life).
+
+    Use the pre-built instances or the ``PH`` factory rather than building
+    this class directly; the constructor exists for a custom ``phi(Z,
+    *params)`` with its own bounds and parameter names. ``fit`` returns a
+    :class:`~surpyval.univariate.regression.parametric_regression_model.ParametricRegressionModel`.
+
+    Parameters
+    ----------
+    name : str
+        The fitter's name (e.g. ``"WeibullLinearRR"``).
+    dist : ParametricFitter
+        The baseline distribution (e.g. ``Weibull``).
+    phi : callable
+        The covariate function, with the signature ``phi(Z, *params)``,
+        written with ``autograd.numpy`` so the likelihood can be
+        differentiated; it must be positive at the fitted parameters.
+    phi_name : str
+        A display name for ``phi``, shown in the fitted model's ``repr``.
+    phi_bounds : tuple or callable
+        The ``(lower, upper)`` bounds of each ``phi`` parameter (``None``
+        for unbounded), or a function of the covariate matrix returning
+        them. The bounds are how ``phi`` is kept positive.
+    phi_param_map : dict or callable
+        ``{name: position}`` of the ``phi`` parameters, or a function of the
+        covariate matrix returning it.
+    phi_init : callable, optional
+        A function of the covariate matrix returning starting values for
+        the ``phi`` parameters. Defaults to zeros.
+
+    A model with a custom ``phi`` predicts, and gives bounds, like the
+    pre-built ones, but cannot be serialised (``phi`` cannot be rebuilt
+    from a name).
+
+    Examples
+    --------
+    An excess-relative-risk model, :math:`\\phi(z) = 1 + \\beta z` with
+    :math:`\\beta > 0`:
+
+    >>> import numpy as np
+    >>> import autograd.numpy as anp
+    >>> from surpyval import ProportionalHazardsFitter, Weibull
+    >>> def linear_rr(Z, *params):
+    ...     return 1.0 + anp.dot(Z, anp.array(params))
+    >>> WeibullLinearRR = ProportionalHazardsFitter(
+    ...     "WeibullLinearRR", Weibull, linear_rr, "Linear [1 + beta'Z]",
+    ...     phi_bounds=lambda Z: ((0, None),) * Z.shape[1],
+    ...     phi_param_map=lambda Z: {
+    ...         f"beta_{i}": i for i in range(Z.shape[1])
+    ...     },
+    ...     phi_init=lambda Z: np.full(Z.shape[1], 0.5),
+    ... )
+    >>> rng = np.random.default_rng(0)
+    >>> dose = rng.uniform(0, 4, 400)
+    >>> x = 10 * (-np.log(rng.uniform(size=400)) / (1 + 0.5 * dose)) ** 0.5
+    >>> WeibullLinearRR.fit(x=x, Z=dose).params.round(3)
+    array([10.15 ,  2.081,  0.604])
+    """
+
     def __init__(
         self,
         name: str,
@@ -77,12 +150,21 @@ class ProportionalHazardsFitter(
         self.phi_param_map = phi_param_map
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Cumulative hazard :math:`\\phi(Z) H_0(x)` at ``x`` for covariates
+        ``Z``; ``params`` are the distribution parameters followed by the
+        covariate coefficients.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Hf_raw = self.Hf_dist(x, *dist_params)
         return self.phi(Z, *phi_params) * Hf_raw
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Hazard rate :math:`\\phi(Z) h_0(x)` at ``x`` for covariates ``Z``;
+        ``params`` as for :meth:`Hf`.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         hf_raw = self.hf_dist(x, *dist_params)
@@ -95,21 +177,77 @@ class ProportionalHazardsFitter(
         return y
 
     def random(
-        self, size: int, Z: npt.ArrayLike, *params: float
+        self,
+        size: int,
+        Z: npt.ArrayLike,
+        *params: float,
+        random_state: Any = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Draw ``size`` samples for each covariate row of ``Z``.
+
+        Returns the draws and a 2-D array of the covariate row each was
+        drawn at, row by row. ``random_state`` seeds the draw: ``None``
+        (the default) draws from numpy's global generator, so
+        ``np.random.seed`` reproduces it; an int or a
+        ``numpy.random.Generator`` gives a stream of its own.
+        """
         dist_params = np.array(params[0 : self.k_dist])
         phi_params = np.array(params[self.k_dist :])
         Z_arr = np.atleast_2d(np.asarray(Z, dtype=float))
+        # One stream for every row: a seed given as an int would otherwise
+        # restart, and give every row the same uniforms.
+        rng = None if random_state is None else as_generator(random_state)
         x = []
         Z_out = []
         for row in Z_arr:
             phi = self.phi(row, *phi_params)
-            U = np.random.uniform(0, 1, size)
-            # S(x|Z) = S0(x)^phi, so inverting S(x|Z) = U gives
-            # x = qf(1 - U^(1/phi)); U^phi inverts the wrong quantity.
-            x.append(self.dist.qf(1 - U ** (1.0 / phi), *dist_params))
+            U = uniform_draws(size, rng)
+            x.append(
+                self._invert_cumulative_hazard(-np.log(U) / phi, dist_params)
+            )
             Z_out.append(np.tile(row, (size, 1)))
         return np.concatenate(x), np.vstack(Z_out)
+
+    def _invert_cumulative_hazard(
+        self, h: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """
+        The times at which the baseline cumulative hazard reaches ``h``.
+
+        ``S(x|Z) = S0(x)^phi``, so a draw ``U`` of the survival is reached
+        where ``H0(x) = -log(U) / phi``. Through the quantile function that
+        is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
+        so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
+        ``inf``, although the time is finite. Those draws are solved on
+        ``log H0(x) = log h`` directly.
+        """
+        h = np.asarray(h, dtype=float)
+        with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out = np.asarray(
+                self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
+            )
+        lost = ~np.isfinite(out) & np.isfinite(h)
+        if lost.any():
+            out = out.copy()
+            start = float(self.dist.qf(0.5, *dist_params))
+            for k in np.flatnonzero(lost):
+                target = np.log(h[k])
+
+                def gap(t: float) -> float:
+                    with onp.errstate(all="ignore"):
+                        return float(
+                            np.log(self.dist.Hf(t, *dist_params)) - target
+                        )
+
+                upper = max(start, 1.0)
+                for _ in range(2000):
+                    if gap(upper) >= 0:
+                        break
+                    upper *= 2.0
+                lower = upper / 2.0 if upper > start else 0.0
+                out[k] = brentq(gap, lower, upper, xtol=1e-300, rtol=1e-12)
+        return out
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
@@ -168,17 +306,23 @@ class ProportionalHazardsFitter(
         x : array_like
             The observed event times.
         Z : array_like
-            The covariates to fit the model to.
+            The covariates to fit the model to, one row per observation.
+            Rows with a missing or infinite covariate are dropped, with a
+            warning.
         c : array_like, optional
             The censoring indicators.
         n : array_like, optional
             The number of observations at each time.
         t : array_like, optional
-            The time intervals.
+            Truncation bounds: an (N, 2) array of the left and right
+            truncation times of each observation.
         init : array_like, optional
-            The initial values for the parameters.
+            The initial values for the parameters: the distribution
+            parameters followed by the covariate coefficients.
         fixed : dict, optional
-            A dictionary of parameters to fix to a specific value.
+            A dictionary of parameters to fix to a specific value, by name
+            (a distribution parameter such as ``"beta"``, or a coefficient
+            ``"beta_0"``, ``"beta_1"``, ...).
 
         Returns
         -------

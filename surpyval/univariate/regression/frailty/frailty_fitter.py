@@ -29,8 +29,14 @@ import pandas as pd
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.utils import (
+    check_covariate_rows,
+    finite_covariate_mask,
+    xcnt_handler,
+)
 from surpyval.utils.linalg import numerical_hessian
 
+from .._fit_skeleton import require_finite_fit, warn_if_not_converged
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
 
@@ -85,6 +91,67 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
     return to_unc, to_nat
 
 
+def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
+    """
+    ``log Gamma(D + 1/theta) - log Gamma(1/theta) - D log(1/theta)``,
+    computed without cancellation.
+
+    Written directly, the three terms are each of size about
+    ``(1/theta) log(1/theta)`` while their difference is at most of order
+    ``D^2 theta``, so for a small ``theta`` round-off swamps the answer. For
+    an integer ``D`` the ratio is the product ``prod_{k<D} (1 + k theta)``,
+    so its log is a sum of ``log1p`` terms; a non-integer ``D`` (fractional
+    weights) uses the gamma functions, or their Stirling series once
+    ``theta`` is small enough for the gamma functions to cancel.
+    """
+    D = np.asarray(D, dtype=float)
+    integer = np.isclose(D, np.round(D), rtol=0.0, atol=1e-9)
+    out = np.empty_like(D)
+    if integer.any():
+        d_int = np.round(D[integer]).astype(int)
+        k = np.arange(max(int(d_int.max()), 0), dtype=float)
+        cumulative = np.concatenate([[0.0], np.cumsum(np.log1p(k * theta))])
+        out[integer] = cumulative[d_int]
+    if (~integer).any():
+        d = D[~integer]
+        if theta < 1e-6:
+            # the Stirling series in theta = 1/a (Bernoulli polynomials),
+            # where the gamma functions below would cancel
+            d2 = d * (d - 1.0)
+            out[~integer] = (
+                d2 / 2.0 * theta
+                - d2 * (2.0 * d - 1.0) / 12.0 * theta**2
+                + d2**2 / 12.0 * theta**3
+            )
+        else:
+            it = 1.0 / theta
+            out[~integer] = gammaln(d + it) - gammaln(it) - d * np.log(it)
+    return out
+
+
+def _group_frailty_ll(
+    D: npt.NDArray, H: npt.NDArray, theta: float
+) -> npt.NDArray:
+    """
+    Each group's gamma-frailty term of the marginal log-likelihood,
+
+    .. math::
+        -\\tfrac{1}{\\theta}\\log\\theta - \\log\\Gamma(\\tfrac{1}{\\theta})
+        + \\log\\Gamma(D + \\tfrac{1}{\\theta})
+        - (D + \\tfrac{1}{\\theta}) \\log(H + \\tfrac{1}{\\theta}),
+
+    rearranged so that it stays accurate as ``theta -> 0``: it equals
+    ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
+    tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
+    """
+    if theta <= 0.0:
+        # the limit itself (theta underflowed): no frailty
+        return -np.asarray(H, dtype=float)
+    return _log_rising_ratio(D, theta) - (
+        D * np.log1p(H * theta) + np.log1p(H * theta) / theta
+    )
+
+
 class FrailtyFitter:
     """Configured fitter for a shared-frailty PH model on one distribution."""
 
@@ -131,18 +198,12 @@ class FrailtyFitter:
         eta = np.exp(eta_Z @ beta) if n_beta else np.ones_like(x)
 
         event = c == 0
-        it = 1.0 / theta
         ll = np.sum(w[event] * (np.log(h0[event]) + np.log(eta[event])))
 
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        ll += np.sum(
-            -it * np.log(theta)
-            - gammaln(it)
-            + gammaln(D + it)
-            - (D + it) * np.log(H + it)
-        )
+        ll += np.sum(_group_frailty_ll(D, H, theta))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -164,7 +225,9 @@ class FrailtyFitter:
             Observed times.
         Z : array_like, optional
             Covariates ``(n_obs, p)``. Omit for a frailty model with no
-            covariates (a pure random-effects survival model).
+            covariates (a pure random-effects survival model). Rows with a
+            missing or infinite covariate are dropped (with their group
+            labels), with a warning.
         c : array_like, optional
             Censoring flags: ``0`` event, ``1`` right-censored (the only two
             supported). Defaults to all events.
@@ -174,24 +237,68 @@ class FrailtyFitter:
             The group (cluster) label of each observation. Required.
         init : array_like, optional
             Optional initial natural parameters ``[*dist, *beta, theta]``.
-        """
-        x = np.asarray(x, dtype=float).ravel()
-        n_obs = x.shape[0]
-        c = (
-            np.zeros(n_obs, dtype=int)
-            if c is None
-            else np.asarray(c, dtype=int).ravel()
-        )
-        w = np.ones(n_obs) if n is None else np.asarray(n, dtype=float).ravel()
-        if groups is None:
-            raise ValueError("'groups' (a cluster label per row) is required.")
-        groups = np.asarray(groups).ravel()
 
+        Returns
+        -------
+        FrailtyModel
+            The fitted model: the baseline ``dist_params``, the coefficients
+            ``beta``, the frailty variance ``theta`` and each group's
+            posterior frailty.
+
+        Examples
+        --------
+        Thirty groups of six units, each group with its own gamma frailty
+        (mean 1, variance 0.5):
+
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(4)
+        >>> groups = np.repeat(np.arange(30), 6)
+        >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+        >>> Z = rng.binomial(1, 0.5, (180, 1))
+        >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+        >>> x = 10 * H**0.5  # Weibull baseline, alpha 10 and beta 2
+        >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
+        >>> model.beta.round(3), round(model.theta, 3)
+        (array([0.399]), 0.432)
+        """
+        # Through the data handler first, in the caller's row order: the
+        # documented ragged form ``[10, [11, 13], ...]`` is not a
+        # rectangular array, and ``np.asarray(x, dtype=float)`` on it raised
+        # a raw numpy error.
+        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
+        c = np.asarray(c_h, dtype=int).ravel()
         if not np.all(np.isin(c, (0, 1))):
             raise ValueError(
                 "Frailty fitting supports only observed (c=0) and "
                 "right-censored (c=1) data."
             )
+        x = np.asarray(x_h, dtype=float)
+        if x.ndim == 2:
+            # Two columns with no interval row: xl == xr on every row.
+            x = x[:, 0]
+        n_obs = x.shape[0]
+        w = np.asarray(n_h, dtype=float).ravel()
+        if groups is None:
+            raise ValueError("'groups' (a cluster label per row) is required.")
+        groups = np.asarray(groups).ravel()
+        if groups.shape[0] != n_obs:
+            raise ValueError(
+                "'groups' has {} label(s) but there are {} observations; "
+                "give one group label per row.".format(groups.shape[0], n_obs)
+            )
+
+        if Z is not None:
+            Zc = np.atleast_2d(np.asarray(Z, dtype=float))
+            if Zc.shape[0] != n_obs and Zc.shape[1] == n_obs:
+                # A single covariate given as a row.
+                Zc = Zc.T
+            check_covariate_rows(Zc, n_obs)
+            keep = finite_covariate_mask(Zc)
+            if not keep.all():
+                x, c, w, groups, Zc = (a[keep] for a in (x, c, w, groups, Zc))
+                n_obs = x.shape[0]
+
         if int((c == 0).sum()) == 0:
             raise ValueError("At least one event (c=0) is required.")
 
@@ -208,9 +315,6 @@ class FrailtyFitter:
             n_beta = 0
             feature_names = None
         else:
-            Zc = np.atleast_2d(np.asarray(Z, dtype=float))
-            if Zc.shape[0] != n_obs:
-                Zc = Zc.T
             n_beta = Zc.shape[1]
             feature_names = None
 
@@ -222,7 +326,16 @@ class FrailtyFitter:
                 [np.asarray(base, float), np.zeros(n_beta), [0.5]]
             )
         else:
-            init_nat = np.asarray(init, dtype=float)
+            init_nat = np.asarray(init, dtype=float).ravel()
+            n_params = self.k_dist + n_beta + 1
+            if init_nat.shape[0] != n_params:
+                raise ValueError(
+                    "`init` has {} value(s) but the model has {} parameters: "
+                    "the {} distribution parameter(s), {} coefficient(s) and "
+                    "theta, in that order.".format(
+                        init_nat.shape[0], n_params, self.k_dist, n_beta
+                    )
+                )
 
         def obj_unc(u: npt.NDArray) -> float:
             nat = to_nat(u, n_beta)
@@ -236,7 +349,18 @@ class FrailtyFitter:
                 method="Nelder-Mead",
                 options={"maxiter": 10000, "xatol": 1e-8, "fatol": 1e-8},
             )
-            res = minimize(obj_unc, res.x, method="BFGS")
+            polished = minimize(obj_unc, res.x, method="BFGS")
+        # BFGS often stops on "precision loss" at the optimum Nelder-Mead
+        # already found; keep whichever is better, and say so only if
+        # neither converged.
+        converged = bool(res.success or polished.success)
+        if np.isfinite(polished.fun) and (
+            polished.fun <= res.fun or not np.isfinite(res.fun)
+        ):
+            res = polished
+        require_finite_fit(float(res.fun))
+        if not converged:
+            warn_if_not_converged(res)
         nat = to_nat(res.x, n_beta)
 
         dist_params = nat[: self.k_dist]
@@ -246,10 +370,11 @@ class FrailtyFitter:
         # Posterior (empirical-Bayes) frailty per group.
         H0 = self.dist.Hf(x, *dist_params)
         eta = np.exp(Zc @ beta) if n_beta else np.ones_like(x)
-        it = 1.0 / theta
         D = np.bincount(inv, weights=w * (c == 0), minlength=n_groups)
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        post = (D + it) / (H + it)
+        # (D + 1/theta) / (H + 1/theta), written to stay finite (and tend
+        # to 1) as theta -> 0
+        post = (1.0 + D * theta) / (1.0 + H * theta)
 
         # Covariance of the natural parameters via a numerical Hessian.
         param_names = list(self.dist.param_names)
@@ -282,8 +407,11 @@ class FrailtyFitter:
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
         model.covariance = covariance
         model.param_names = param_names
+        model.k = len(param_names)
         model.n_obs = n_obs
         model.n_events = int((c == 0).sum())
+        model.n_events_weighted = float(w[c == 0].sum())
+        model.n_obs_weighted = float(w.sum())
         model.n_groups = n_groups
         model._neg_ll = float(res.fun)
         return model
@@ -305,6 +433,29 @@ class FrailtyFitter:
         for a no-covariate frailty model); ``group_col`` names the cluster
         column. Covariate names / the formula transformer are retained so the
         fitted model predicts from raw-covariate DataFrames.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col : str
+            The column of times.
+        group_col : str
+            The column of group (cluster) labels.
+        Z_cols : str or list of str, optional
+            The covariate columns.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        formula : str, optional
+            A formula (formulaic syntax) for the covariates, instead of
+            ``Z_cols``.
+        init : array_like, optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        FrailtyModel
+            The fitted model.
         """
         x = df[x_col].values
         c = None if c_col is None else df[c_col].values

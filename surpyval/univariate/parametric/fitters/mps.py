@@ -9,7 +9,7 @@ from autograd import hessian, jacobian
 
 from surpyval import np
 
-from . import fallback_minimize
+from . import fallback_minimize, search_floor
 
 
 def mps_fun(
@@ -49,6 +49,21 @@ def mps_fun(
     else:
         params = inv_trans(const(params))
         x_new = x.copy()
+        # The same for an unshifted fit. With no truncation the left
+        # bound arrives here as the support's edge -- ``fit`` clamps
+        # -inf onto it -- and F there is 0 whatever the parameters, but
+        # evaluating the CDF *at* the edge taped a nan derivative for
+        # every distribution with a singular derivative there (the
+        # LogNormal's log(0), the ExpoWeibull's t**mu at mu < 1). The
+        # objective was right, the gradient was nan, and BFGS handed
+        # over to Nelder-Mead, whose absolute tolerances are neither
+        # tight nor scale free: a censored ExpoWeibull MPS fit came back
+        # 1% short of its optimum.
+        s0, s1 = dist.support
+        if np.isfinite(tl) and tl <= s0:
+            tl = -np.inf
+        if np.isfinite(tr) and tr >= s1:
+            tr = np.inf
     D = dist.neg_mean_D(x_new, c, n, tl, tr, *params)
     return D
 
@@ -76,7 +91,15 @@ def mps(model: "Parametric") -> Any:
     hess = hessian(mps_fun)
 
     args = (dist, x, inv_trans, const, c, n, tl, tr, offset)
-    res = fallback_minimize(mps_fun, init, args, jac, hess, newton_tol=1e-15)
+    res = fallback_minimize(
+        mps_fun,
+        init,
+        args,
+        jac,
+        hess,
+        newton_tol=1e-15,
+        floor=search_floor(model),
+    )
 
     if (res.success is False) or (np.isnan(res.x).any()):
         warnings.warn("MPS FAILED: Try alternate estimation method")

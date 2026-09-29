@@ -71,8 +71,8 @@ def test_cause_specific_mcf_counts_by_cause():
     model = CauseSpecificMCF.fit(x, i, c, e=e)
     assert model.event_types == ["A", "B"]
     # three A events over two items -> MCF reaches 1.5; one B event -> 0.5
-    assert np.isclose(model.mcf(6, "A")[0], 1.5)
-    assert np.isclose(model.mcf(6, "B")[0], 0.5)
+    assert np.isclose(model.mcf(6, "A"), 1.5)
+    assert np.isclose(model.mcf(6, "B"), 0.5)
 
 
 def test_cause_specific_mcf_requires_marks():
@@ -106,7 +106,7 @@ def test_cause_specific_mcf_from_df():
         df, "t", "mark", i_col="item", c_col="cens"
     )
     assert model.event_types == ["A", "B"]
-    assert np.isclose(model.mcf(6, "A")[0], 1.5)
+    assert np.isclose(model.mcf(6, "A"), 1.5)
     assert model.df is df
 
 
@@ -116,8 +116,12 @@ def test_cause_specific_mcf_from_df():
 def _simulate_two_cause_marks(paramsA, paramsB, T, items, seed):
     truthA = CrowAMSAA.from_params(paramsA)
     truthB = CrowAMSAA.from_params(paramsB)
-    dA = truthA.time_terminated_simulation_data(T, items=items, seed=seed)
-    dB = truthB.time_terminated_simulation_data(T, items=items, seed=seed + 1)
+    dA = truthA.time_terminated_simulation_data(
+        T, items=items, random_state=seed
+    )
+    dB = truthB.time_terminated_simulation_data(
+        T, items=items, random_state=seed + 1
+    )
     xs, ii, cc, ee = [], [], [], []
     for item in range(items):
         for xv in dA.x[(dA.i == item) & (dA.c == 0)]:

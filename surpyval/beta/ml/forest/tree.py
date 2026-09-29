@@ -12,7 +12,30 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils import check_covariate_rows, finite_covariate_mask
+from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+
+
+def drop_missing_covariate_rows(
+    data: SurpyvalData, Z: ArrayLike | NDArray
+) -> tuple[SurpyvalData, NDArray]:
+    """Pair ``Z`` with the data and drop the rows with a missing (NaN) or
+    infinite covariate from both, with one warning giving the count.
+
+    A NaN compares false with every split value, so such rows used to be
+    sent down the right-hand branch of every split on their missing feature
+    and kept in the fit without a word.
+    """
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim == 1:
+        # A 1-d Z is a single feature, one value per sample
+        Z = Z.reshape(-1, 1)
+    check_covariate_rows(Z, len(data))
+    mask = finite_covariate_mask(Z)
+    if mask.all():
+        return data, Z
+    return data[mask], Z[mask]
 
 
 class SurvivalTree(SerialisableMixin):
@@ -52,8 +75,7 @@ class SurvivalTree(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
     ) -> None:
-        self.data = data
-        self.Z = Z
+        self.data, self.Z = drop_missing_covariate_rows(data, Z)
 
         n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]
@@ -61,7 +83,7 @@ class SurvivalTree(SerialisableMixin):
 
         self.n_features_split = n_features
 
-        self.kind = parse_kind(kind, data)
+        self.kind = parse_kind(kind, self.data)
 
         self._root = build_tree(
             data=self.data,
@@ -102,6 +124,72 @@ class SurvivalTree(SerialisableMixin):
         be given as ``xl``/``xr``, and truncation as ``tl``/``tr``
         instead of the two-column ``t``. ``kind`` selects the tree type
         (see the class docstring).
+
+        Parameters
+        ----------
+        x : array_like, optional
+            Event times (``[left, right]`` rows for interval-censored
+            observations).
+        Z : array_like
+            Covariate (feature) matrix, one row per observation. Required.
+            Rows with a missing (NaN) or infinite covariate are dropped,
+            with a warning giving the count.
+        c : array_like, optional
+            Censoring flags: 0 observed, 1 right, -1 left, 2 interval
+            censored. Defaults to all observed.
+        n : array_like, optional
+            Counts. Defaults to 1.
+        t : array_like, optional
+            (N, 2) truncation bounds.
+        xl, xr : array_like, optional
+            Interval bounds, instead of 2-D ``x``.
+        tl, tr : array_like, optional
+            Left and right truncation, instead of ``t``.
+        max_depth : int, optional
+            Maximum depth of a tree. Defaults to unlimited.
+        min_leaf_samples : int, optional
+            A split is only made if each child keeps at least this many
+            observations. Defaults to 5.
+        min_leaf_failures : int, optional
+            ... and at least this many failures. Defaults to 2.
+        n_features_split : int, float or str, optional
+            The number of features considered at each split: an int, a
+            fraction of the features (float), ``"sqrt"`` (the default),
+            ``"log2"`` or ``"all"``.
+        kind : str, optional
+            ``"weibull"`` (the default), ``"exponential"`` or
+            ``"non-parametric"``; see the class docstring.
+
+        Returns
+        -------
+        SurvivalTree
+            The fitted tree. Its ``sf(x, Z)`` (and ``ff``, ``df``, ``hf``,
+            ``Hf``) evaluate the model of the leaf that a covariate vector
+            ``Z`` falls in; a matrix ``Z`` gives one row per covariate
+            vector and one column per time. A covariate vector with a
+            missing (NaN) value gives NaN.
+
+        Examples
+        --------
+        Life halves when the first feature exceeds 0.5; a single split
+        finds it:
+
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import SurvivalTree
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> c = (x > 12).astype(int)
+        >>> x = np.minimum(x, 12)
+        >>> tree = SurvivalTree.fit(x, Z, c=c, max_depth=1, n_features_split=2)
+        >>> tree.sf(5, [0.2, 0.5]).round(4), tree.sf(5, [0.8, 0.5]).round(4)
+        (np.float64(0.8831), np.float64(0.3168))
+
+        A matrix routes each row to its own leaf:
+
+        >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]]).round(4)
+        array([[0.9897, 0.8831],
+               [0.8062, 0.3168]])
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -128,35 +216,110 @@ class SurvivalTree(SerialisableMixin):
         x: int | float | ArrayLike,
         Z: ArrayLike | NDArray,
     ) -> NDArray:
-        # Prep input - make sure numpy array
-        x = np.array(x, ndmin=1)
-        Z = np.array(Z, ndmin=1)
+        """
+        Evaluate ``function_name`` (``"sf"``, ``"ff"``, ``"df"``, ``"hf"``
+        or ``"Hf"``) of the leaf model that each covariate vector falls in.
 
-        return self._root.apply_model_function(function_name, x, Z)
+        Parameters
+        ----------
+        function_name : str
+            The name of the leaf model's function to evaluate.
+        x : int, float or array_like
+            Times, the same for every covariate vector.
+        Z : array_like
+            One covariate vector (1-D), or a matrix with one covariate
+            vector per row (2-D).
+
+        Returns
+        -------
+        ndarray
+            For a 1-D ``Z``, the values at ``x``, shaped like ``x`` (a
+            scalar for a scalar ``x``). For a 2-D ``Z``, a grid of shape
+            ``(n_rows,) + x.shape`` whose row ``i`` is the values for
+            ``Z[i]`` -- every row at every time, the one documented
+            exception to pairing rows with times -- as for
+            :class:`~surpyval.beta.ml.forest.forest.RandomSurvivalForest`.
+            A covariate vector with a missing (NaN) value gives NaN, and
+            leaves the other rows unaffected.
+        """
+        # The times flat; the result gets their shape back (on its last
+        # axis for a grid), so a scalar time gives a scalar.
+        x, restore = flatten_query(x)
+        return restore(self._apply_flat(function_name, x, Z), axis=-1)
+
+    def _apply_flat(
+        self, function_name: str, x: NDArray, Z: ArrayLike | NDArray
+    ) -> NDArray:
+        # ``apply_model_function`` at a 1-D array of times.
+        Z = np.array(Z, ndmin=1, dtype=float)
+        if Z.ndim > 2:
+            raise ValueError(
+                f"Z must be one covariate vector (1-D) or one per row "
+                f"(2-D), got {Z.ndim} dimensions"
+            )
+
+        # A NaN compares false with every split value, so it used to be
+        # routed right at every split on its feature and given a number.
+        # A covariate vector with a missing value has no leaf: NaN out.
+        if Z.ndim == 1:
+            if np.isnan(Z).any():
+                return np.full(x.shape, np.nan)
+            return self._root.apply_model_function(function_name, x, Z)
+        missing = np.isnan(Z).any(axis=1)
+        if not missing.any():
+            return self._root.apply_model_function(function_name, x, Z)
+        res = np.full((Z.shape[0], x.size), np.nan)
+        if not missing.all():
+            res[~missing] = self._root.apply_model_function(
+                function_name, x, Z[~missing]
+            )
+        return res
 
     def sf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Survival function at ``x`` of the leaf model each covariate vector
+        falls in; ``Z`` and the result are as for
+        :meth:`apply_model_function` (a 2-D ``Z`` gives one row per
+        covariate vector).
+        """
         return self.apply_model_function("sf", x, Z)
 
     def ff(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Failure (CDF) function at ``x`` of the leaf model each covariate
+        vector falls in, as for :meth:`sf`.
+        """
         return self.apply_model_function("ff", x, Z)
 
     def df(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Density at ``x`` of the leaf model each covariate vector falls in,
+        as for :meth:`sf`.
+        """
         return self.apply_model_function("df", x, Z)
 
     def hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Hazard rate at ``x`` of the leaf model each covariate vector falls
+        in, as for :meth:`sf`.
+        """
         return self.apply_model_function("hf", x, Z)
 
     def Hf(
         self, x: int | float | ArrayLike, Z: ArrayLike | NDArray
     ) -> NDArray:
+        """
+        Cumulative hazard at ``x`` of the leaf model each covariate vector
+        falls in, as for :meth:`sf`.
+        """
         return self.apply_model_function("Hf", x, Z)
 
     def to_dict(self) -> dict:

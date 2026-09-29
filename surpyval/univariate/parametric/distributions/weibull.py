@@ -112,8 +112,9 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         Density function for the Weibull Distribution:
 
         .. math::
-            f(x) = \frac{\beta}{\alpha} \frac{x}{\alpha}^{\beta - 1} e^{-\left
-            ( \frac{x}{\alpha} \right )^\beta}
+            f(x) = \frac{\beta}{\alpha} \left ( \frac{x}{\alpha}
+            \right )^{\beta - 1} e^{-\left ( \frac{x}{\alpha}
+            \right )^\beta}
 
         Parameters
         ----------
@@ -139,11 +140,11 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         >>> Weibull.df(x, 3, 4)
         array([0.0487768 , 0.32424881, 0.49050592, 0.13402009, 0.00275073])
         """
-        return (
-            (beta / alpha)
-            * (x / alpha) ** (beta - 1)
-            * np.exp(-((x / alpha) ** beta))
-        )
+        # At x = 0 with beta < 1, 0 ** (beta - 1) is inf: the density
+        # really is unbounded there.
+        with np.errstate(divide="ignore"):
+            power = (x / alpha) ** (beta - 1)
+        return (beta / alpha) * power * np.exp(-((x / alpha) ** beta))
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -178,7 +179,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         >>> Weibull.hf(x, 3, 4)
         array([0.04938272, 0.39506173, 1.33333333, 3.16049383, 6.17283951])
         """
-        return (beta / alpha) * (x / alpha) ** (beta - 1)
+        # At x = 0 with beta < 1, 0 ** (beta - 1) is inf: the hazard
+        # really is unbounded there.
+        with np.errstate(divide="ignore"):
+            return (beta / alpha) * (x / alpha) ** (beta - 1)
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -186,7 +190,7 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         Cumulative hazard rate for the Weibull Distribution:
 
         .. math::
-            h(x) = \frac{x}{\alpha}^{\beta}
+            H(x) = \left ( \frac{x}{\alpha} \right )^{\beta}
 
         Parameters
         ----------
@@ -312,6 +316,21 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         return alpha**m * gamma_func(1 + m / beta)
 
     def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:
+        r"""
+        Differential entropy of the Weibull distribution,
+
+        .. math::
+            S = \gamma_{e}\left(1 - \frac{1}{\beta}\right)
+                + \ln\frac{\alpha}{\beta} + 1,
+
+        with :math:`\gamma_{e}` the Euler-Mascheroni constant.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.entropy(10, 2)
+        np.float64(2.898045744884867)
+        """
         return euler_gamma * (1 - 1 / beta) + np.log(alpha) - np.log(beta) + 1
 
     def log_df(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:

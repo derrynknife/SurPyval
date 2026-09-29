@@ -69,10 +69,11 @@ def test_cb_finite_at_boundary():
 def test_lfp_random_with_no_failures_drawn():
     np.random.seed(3)
     m = Weibull.from_params([10, 3], p=0.05)
-    # With p = 0.05 and size 3 the binomial draw is usually 0 failures;
-    # this crashed on np.max of an empty array (#256).
-    out = m.random(3)
-    assert out is not None
+    # With p = 0.05 and size 3 the draw usually has no failures; the
+    # survival-data draw crashed on np.max of an empty array (#256). It is
+    # random_data since #403 (random draws the lifetimes, here all inf).
+    x, c, n, _ = m.random_data(3)
+    assert np.all(c == 1) and n.sum() == 3 and np.all(np.isfinite(x))
 
 
 def test_left_censored_fit_uses_stable_path():

@@ -141,15 +141,20 @@ def test_formula_cox_round_trips_with_raw_covariates():
     assert np.allclose(model.sf(t, raw_Z), restored.sf(t, raw_Z))
 
 
-def test_stateful_transform_formula_serialisation_raises():
+def test_stateful_transform_formula_round_trips():
+    import pandas as pd
+
     df = _formula_df(seed=3)
     model = WeibullPH.fit_from_df(
         df, x_col="time", c_col="c", formula="scale(age) + sex"
     )
-    # scale() keeps fitted stats that cannot be restored from levels; the
-    # failure is raised early (at to_dict) rather than a silently wrong encode.
-    with pytest.raises(NotImplementedError, match="data-dependent transform"):
-        model.to_dict()
+    # scale() keeps fitted statistics (the training mean and sd); they are
+    # stored with the formula, so the restored model scales new data by
+    # the *training* statistics, as the original does.
+    restored = surpyval.from_dict(_rt(model.to_dict()))
+    raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
+    t = np.array([5.0, 12.0])
+    assert np.allclose(model.sf(t, raw_Z), restored.sf(t, raw_Z))
 
 
 # -- tagged families (one representative per family) --------------------------
@@ -269,11 +274,27 @@ def test_from_json_file_tagged(tmp_path):
 # -- errors -------------------------------------------------------------------
 
 
-def test_schema_version_is_stamped():
+def test_schema_version_is_the_oldest_that_reads_the_document():
     from surpyval.serialisation import SCHEMA_VERSION
 
+    # no non-finite value: the schema-1 layout, which v0.20 reads
     d = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
-    assert d["schema"] == SCHEMA_VERSION
+    assert "non_finite" not in d
+    assert d["schema"] == 1
+    # an infinite cumulative hazard is written as null with a record, which
+    # a schema-1 reader would misread, so the document is schema 2
+    d = KaplanMeier.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
+    assert "non_finite" in d
+    assert d["schema"] == SCHEMA_VERSION == 2
+    # a nested record makes the enclosing document schema 2 as well
+    from surpyval.multivariate import Clayton
+
+    rng = np.random.default_rng(0)
+    x = rng.weibull(2.0, size=(50, 2)) * 10
+    km_margin = Clayton.fit(x, margins=[KaplanMeier, Weibull]).to_dict()
+    assert km_margin["schema"] == 2
+    plain = Clayton.fit(x, margins=[Weibull, Weibull]).to_dict()
+    assert plain["schema"] == 1
 
 
 def test_unversioned_documents_still_load():
@@ -310,3 +331,72 @@ def test_from_dict_rejects_unknown_tag():
 def test_from_dict_rejects_unknown_parameterization():
     with pytest.raises(ValueError, match="bayesian"):
         surpyval.from_dict({"parameterization": "bayesian"})
+
+
+# The schema-1 promise, checked against a real schema-1 reader: point
+# SURPYVAL_SCHEMA1_READER at a checkout of a release that reads schema 1
+# (e.g. ``git worktree add /tmp/surpyval-v0.20 v0.20.0``) to run it.
+_SCHEMA1_READER = __import__("os").environ.get("SURPYVAL_SCHEMA1_READER")
+
+
+@pytest.mark.skipif(
+    not _SCHEMA1_READER, reason="SURPYVAL_SCHEMA1_READER not set"
+)
+def test_schema_1_documents_read_identically_in_a_schema_1_release(
+    tmp_path,
+):
+    import subprocess
+    import sys
+
+    from surpyval.recurrent import CrowAMSAA
+
+    rng = np.random.default_rng(0)
+    x = rng.weibull(2.0, 60) * 10
+    Z = rng.normal(size=(60, 1))
+    models = {
+        "weibull": Weibull.fit(x),
+        "weibull_fixed": Weibull.fit(x, fixed={"beta": 2.0}),
+        "weibull_offset": Weibull.fit(x + 5, offset=True),
+        "weibullph": WeibullPH.fit(x=x, Z=Z),
+        "cox": CoxPH.fit(x=x, Z=Z),
+        "crow": CrowAMSAA.fit(
+            np.cumsum(rng.exponential(1, 20)), c=[0] * 19 + [1]
+        ),
+    }
+    docs = {k: m.to_dict() for k, m in models.items()}
+    assert all(d["schema"] == 1 for d in docs.values())
+    path = tmp_path / "docs.json"
+    path.write_text(json.dumps(docs, allow_nan=False))
+    reader = (
+        "import json, sys, numpy as np\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "import surpyval\n"
+        "docs = json.load(open(sys.argv[2]))\n"
+        "q = np.array([3.0, 8.0, 15.0]); Z = np.zeros((3, 1))\n"
+        "out = {}\n"
+        "for k, d in docs.items():\n"
+        "    m = surpyval.from_dict(d)\n"
+        "    if k in ('weibullph', 'cox'): v = m.sf(q, Z)\n"
+        "    elif k == 'crow': v = m.cif(q)\n"
+        "    else: v = m.sf(q)\n"
+        "    out[k] = np.asarray(v, float).ravel().tolist()\n"
+        "print(json.dumps(out))\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", reader, _SCHEMA1_READER, str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+    )
+    old = json.loads(result.stdout.strip().splitlines()[-1])
+    q = np.array([3.0, 8.0, 15.0])
+    Z0 = np.zeros((3, 1))
+    for k, m in models.items():
+        if k in ("weibullph", "cox"):
+            now = m.sf(q, Z0)
+        elif k == "crow":
+            now = m.cif(q)
+        else:
+            now = m.sf(q)
+        np.testing.assert_allclose(old[k], np.ravel(now), rtol=1e-9)

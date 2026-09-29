@@ -11,7 +11,10 @@ from numdifftools import Hessian  # type: ignore
 from scipy.optimize import OptimizeResult, minimize
 
 from surpyval import np
-from surpyval.univariate.parametric.fitters import preconditioned_bfgs
+from surpyval.univariate.parametric.fitters import (
+    preconditioned_bfgs,
+    search_floor,
+)
 
 
 def mle(model: "Parametric") -> Any:
@@ -122,8 +125,18 @@ def mle(model: "Parametric") -> Any:
             else:
                 x0 = best_result.x
             if method == "BFGS":
+                # Scaled per parameter (see ``search_floor``) and per
+                # observation: the negative log-likelihood itself moves
+                # with the data's units, so ``|f(x0)|`` is not a scale
+                # free normaliser for it (see ``preconditioned_bfgs``).
                 res = preconditioned_bfgs(
-                    fun, x0, (offset, lfp, zi, True), jac_i, opts
+                    fun,
+                    x0,
+                    (offset, lfp, zi, True),
+                    jac_i,
+                    opts,
+                    floor=search_floor(model),
+                    obj_scale=float(np.sum(model.data["n"])),
                 )
             else:
                 res = minimize(
@@ -160,7 +173,9 @@ def mle(model: "Parametric") -> Any:
 
         elif (not res.success) or (np.isnan(res.x).any()):
             warnings.warn(
-                "MLE Failed, using MPP results instead. "
+                "MLE Failed; returning the optimiser's starting point "
+                "(a probability-plot fit, or a rougher initial guess where "
+                "the distribution has none) instead. "
                 "Try making the values of the data closer to "
                 "1 by dividing or multiplying by some constant."
                 "\n\nAlternately try setting the `init` keyword in"
@@ -169,7 +184,7 @@ def mle(model: "Parametric") -> Any:
                 "A good way to do this is to set any shape parameter to 1. "
                 "and any scale parameter to be the mean of the data "
                 "(or it's inverse)"
-                "\n\nModel returned with inital guesses (MPP)"
+                "\n\nModel returned with the initial guesses."
             )
 
             use_initial = True

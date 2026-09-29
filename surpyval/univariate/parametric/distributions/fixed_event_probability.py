@@ -11,9 +11,10 @@ This was exported as ``Bernoulli`` as well until 0.20.0, when
 whose survival steps at the outcome. The two are different models and
 now different classes; this one is unchanged.
 
-``df``, ``hf``, ``qf`` and ``mean`` are absent by construction: ``F`` is
-constant, so there is no density, no invertible quantile, and no time to
-average.
+``df``, ``hf`` and ``qf`` are absent by construction: ``F`` is constant,
+so there is no density and no invertible quantile. There is no failure
+*time* to average either, so ``moment`` and ``mean`` are those of the
+0/1 event indicator: ``p`` for every order.
 """
 
 from surpyval import np
@@ -28,7 +29,26 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from ._single_probability import SingleProbabilityMixin
 
 
-class FixedEventProbability_(SingleProbabilityMixin, DiscreteParametricFitter):
+class FixedEventProbability_(  # type: ignore[misc]
+    SingleProbabilityMixin, DiscreteParametricFitter
+):
+    """``F(x) = p`` at every ``x``: a fraction ``p`` of units fail and the
+    rest never do, with nothing said about *when* (see the module
+    docstring). It is fitted from 0/1 event indicators, 1 for a unit that
+    failed.
+
+    Examples
+    --------
+    Two of ten units failed:
+
+    >>> from surpyval import FixedEventProbability
+    >>> model = FixedEventProbability.fit([1, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+    >>> model.params
+    array([0.2])
+    >>> model.ff([10, 100])
+    array([0.2, 0.2])
+    """
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -179,6 +199,21 @@ class FixedEventProbability_(SingleProbabilityMixin, DiscreteParametricFitter):
         0.5
         """
         return p
+
+    def mean(self, p: Boxable) -> Boxable:
+        r"""
+
+        Mean of the event indicator, :math:`E = p` -- the first
+        :meth:`moment` (``mean`` used to be missing while ``moment``
+        existed, so a model's ``mean()`` raised AttributeError).
+
+        Examples
+        --------
+        >>> from surpyval import FixedEventProbability
+        >>> FixedEventProbability.mean(0.3)
+        0.3
+        """
+        return self.moment(1, p)
 
 
 FixedEventProbability: FixedEventProbability_ = FixedEventProbability_(

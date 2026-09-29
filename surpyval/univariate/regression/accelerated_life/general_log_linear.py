@@ -5,6 +5,8 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class GeneralLogLinear_(LifeModel):
+    n_stresses = None
+
     def __init__(self) -> None:
         super().__init__(
             "GeneralLogLinear",

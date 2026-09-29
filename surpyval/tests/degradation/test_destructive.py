@@ -134,7 +134,7 @@ def test_bootstrap_cb_brackets_point_estimate():
     Df = np.exp(1.0 + 0.05 * 30)
     m = DestructiveDegradation.fit(t, y, threshold=Df, distribution=LogNormal)
     ts = np.array([20.0, 30.0, 40.0])
-    band = m.cb(ts, on="sf", n_boot=120, seed=3)
+    band = m.cb(ts, on="sf", n_boot=120, random_state=3)
     assert band.shape == (3, 2)
     assert np.all(band[:, 0] <= band[:, 1])
     point = m.sf(ts)

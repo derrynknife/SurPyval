@@ -57,7 +57,9 @@ def test_ari_fit_and_information_criteria():
 
 def test_ari_mcf_simulation_monotonic():
     model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=CrowAMSAA)
-    mcf = model.mcf(np.array([5.0, 10.0, 20.0, 30.0]), items=800, seed=0)
+    mcf = model.mcf(
+        np.array([5.0, 10.0, 20.0, 30.0]), items=800, random_state=0
+    )
     assert np.all(np.diff(mcf) >= -1e-9)
     assert np.all(mcf >= 0)
 
@@ -135,7 +137,7 @@ PARAM_GRID = [
 @pytest.mark.parametrize("m", [1, 2, 3, np.inf])
 def test_vectorised_negll_matches_the_scalar_original(m):
     truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=m, dist=CrowAMSAA)
-    data = truth.count_terminated_simulation_data(6, items=12, seed=1)
+    data = truth.count_terminated_simulation_data(6, items=12, random_state=1)
     negll = ARI.create_negll_func(data, CrowAMSAA, m)
     for params in PARAM_GRID:
         want = _scalar_negll(data, CrowAMSAA, m, np.array(params))
@@ -181,7 +183,7 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
     # a rising baseline (beta > 1) stays positive even at rho = 1, so
     # the case has to be built from a flat or falling one.
     truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
-    data = truth.count_terminated_simulation_data(6, items=10, seed=2)
+    data = truth.count_terminated_simulation_data(6, items=10, random_state=2)
     negll = ARI.create_negll_func(data, CrowAMSAA, 1)
     got = negll(np.array(params))
     assert np.isinf(got) and got > 0
@@ -192,7 +194,7 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
 def test_fit_scales_to_many_items():
     # 250 items took 19 seconds under the per-event loop.
     truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
-    data = truth.count_terminated_simulation_data(8, items=250, seed=5)
+    data = truth.count_terminated_simulation_data(8, items=250, random_state=5)
     model = ARI.fit_from_recurrent_data(data, dist=CrowAMSAA, m=1)
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.model.params).all()

@@ -54,7 +54,7 @@ from surpyval.recurrent.competing_risks import (
     CauseSpecificMCF,
     CauseSpecificNHPP,
 )
-from surpyval.serialisation import SCHEMA_VERSION
+from surpyval.serialisation import required_schema
 from surpyval.univariate.competing_risks import (
     CompetingRisks,
     FineGray,
@@ -232,7 +232,7 @@ def _fit_mixture():
 
 def _fit_fine_gray():
     x, Z, e, c = _cr_data()
-    return FineGray.fit(x, Z, e, c=c, cause=1)
+    return FineGray.fit(x, Z, e, c=c, event=1)
 
 
 def _fit_parametric_cr():
@@ -421,7 +421,7 @@ def test_mongo_round_trip(name):
         model_dict = model.to_dict()
 
     _assert_bson_native(model_dict)
-    assert model_dict["schema"] == SCHEMA_VERSION
+    assert model_dict["schema"] == required_schema(model_dict)
     restored = surpyval.from_dict(_mongo_round_trip(model_dict))
     assert type(restored).__name__ == type(model).__name__
     check(model, restored)

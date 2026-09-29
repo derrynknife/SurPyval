@@ -95,7 +95,9 @@ def test_gapped_likelihood_matches_manual_window_items():
 
 def test_nhpp_recovers_parameters_from_gapped_data():
     truth = CrowAMSAA.from_params([5.0, 1.4])
-    full = truth.time_terminated_simulation_data(30.0, items=400, seed=7)
+    full = truth.time_terminated_simulation_data(
+        30.0, items=400, random_state=7
+    )
 
     # Impose a common unobserved gap (12, 20): each item is observed on
     # [0, 12] and [20, 30], and events inside the gap are dropped.

@@ -164,7 +164,7 @@ def test_from_df_and_timeline_match_arrays():
         tl_c += [1, 1, 0]
     df = pd.DataFrame(rows, columns=["id", "xl", "xr", "c", "z"])
     m_df = WeibullAFT.fit_tvc_from_df(
-        df, id_col="id", xl_col="xl", xr_col="xr", c_col="c", Z_cols="z"
+        df, i_col="id", xl_col="xl", xr_col="xr", c_col="c", Z_cols="z"
     )
     m_arr = WeibullAFT.fit_tvc(
         df["id"].values,

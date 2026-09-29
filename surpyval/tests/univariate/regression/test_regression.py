@@ -32,7 +32,7 @@ def test_coxph_against_ll_rossi_static():
         x_col="week",
         c_col="arrest",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
-        method="efron",
+        tie_method="efron",
     )
 
     assert np.allclose(model.beta, ll_answer)
@@ -50,7 +50,7 @@ def test_coxph_against_r_lung_1():
     c = lung["status"].values
     Z = lung[["sex"]].values
 
-    model = CoxPH.fit(x=x, Z=Z, c=c, method="efron")
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
 
     assert np.allclose(model.beta, r_answer)
 
@@ -64,7 +64,7 @@ def test_coxph_against_r_lung_2():
         x_col="time",
         c_col="status",
         Z_cols=["age", "sex", "ph.ecog"],
-        method="efron",
+        tie_method="efron",
     )
 
     assert np.allclose(model.beta, r_answer)
@@ -92,7 +92,7 @@ def test_breslow_betas_rossi():
         x_col="week",
         c_col="arrest",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
-        method="breslow",
+        tie_method="breslow",
     )
 
     assert np.allclose(model.beta, expected)
@@ -106,7 +106,7 @@ def test_breslow_p_values_rossi():
         x_col="week",
         c_col="arrest",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
-        method="breslow",
+        tie_method="breslow",
     )
 
     assert model.p_values is not None
@@ -122,14 +122,14 @@ def test_formula_interface_matches_Z_cols():
     Z_cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
     model_z = CoxPH.fit_from_df(
-        rossi, x_col="week", c_col="arrest", Z_cols=Z_cols, method="efron"
+        rossi, x_col="week", c_col="arrest", Z_cols=Z_cols, tie_method="efron"
     )
     model_f = CoxPH.fit_from_df(
         rossi,
         x_col="week",
         c_col="arrest",
         formula="fin + age + race + wexp + mar + paro + prio",
-        method="efron",
+        tie_method="efron",
     )
 
     assert np.allclose(model_z.beta, model_f.beta)

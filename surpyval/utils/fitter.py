@@ -31,10 +31,12 @@ def singleton_fitter(cls: type[T]) -> T:
         HPP.fit(x)        # HPP is the instance; fit is an instance method
 
     The underlying class remains reachable via ``type(instance)`` and, for
-    Sphinx ``autoclass`` and other import-by-name introspection, is also kept
-    in its defining module under the conventional ``<Name>_`` alias (e.g.
-    ``HPP_``) -- the same private name the explicit ``Foo_`` + ``Foo = Foo_()``
-    pattern used before.
+    import-by-name introspection, is also kept in its defining module under
+    the conventional ``<Name>_`` alias (e.g. ``HPP_``) -- the same private
+    name the explicit ``Foo_`` + ``Foo = Foo_()`` pattern used before. The
+    class's ``__name__`` stays ``<Name>``, so Sphinx's ``autoclass`` renders
+    the alias only as "alias of"; the API pages document such a fitter
+    with ``autodata`` on the instance and ``automethod`` for its methods.
     """
     module = sys.modules.get(cls.__module__)
     if module is not None:

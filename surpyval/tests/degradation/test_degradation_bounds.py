@@ -165,7 +165,7 @@ def test_analytic_and_bootstrap_agree():
     m, _ = _fit(5)
     x = np.array([25.0, 40.0])
     an = m.cb(x, on="sf", method="analytic")
-    bs = m.cb(x, on="sf", method="bootstrap", n_boot=150, seed=7)
+    bs = m.cb(x, on="sf", method="bootstrap", n_boot=150, random_state=7)
     # Same ballpark: the two 95% intervals overlap substantially at each point.
     for a, b in zip(an, bs):
         lo = max(a[0], b[0])

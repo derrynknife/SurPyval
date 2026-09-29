@@ -8,7 +8,9 @@ Three consequences are used:
 
 - the rescaled interarrival times ``L(t_k) - L(t_{k-1})`` are iid Exp(1)
   (cumulative-hazard residuals), so ``1 - exp(-e)`` are iid U(0, 1)
-  (probability-integral-transform residuals);
+  (probability-integral-transform residuals). Only complete gaps are
+  returned; an item's final gap is censored when its window closes before
+  an event, and dropping it biases the returned residuals low;
 - the observed count minus the expected count over each item's window is a
   martingale evaluated at the window close (martingale residuals);
 - conditional on the number of events an item has in its observation
@@ -26,6 +28,9 @@ from typing import Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
+
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.rng import as_generator
 
 
 def _validate_diagnostic_data(data: Any, what: str) -> None:
@@ -98,8 +103,10 @@ def cumulative_hazard_residuals(data: Any, cif: Any) -> np.ndarray:
     """
     Rescaled interarrival times ``cif(t_k) - cif(t_{k-1})`` for every
     observed event (with ``t_0`` each item's entry time), pooled across
-    items in sorted-item then time order. Under the fitted model these are
-    iid Exp(1).
+    items in sorted-item then time order. Under the fitted model the
+    complete gaps are Exp(1), but each time-truncated item's final,
+    censored gap is not returned, and that selection pulls the returned
+    values below Exp(1) on average (see the model ``residuals`` methods).
 
     ``cif`` is either a single callable used for every item (an unconditional
     model) or an ``item -> callable`` mapping (a regression model, whose
@@ -158,6 +165,21 @@ class GoodnessOfFitResult:
         The number of (transformed) event times in the statistic.
     n_systems : int
         The number of systems (items) in the data.
+
+    Examples
+    --------
+    Is a constant failure rate (``HPP``) consistent with these failure
+    times of one system? The p-value comes from a parametric bootstrap:
+
+    >>> from surpyval.recurrent import HPP
+    >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    >>> result = HPP.fit(x).cramer_von_mises(n_boot=99, random_state=0)
+    >>> round(result.statistic, 4)
+    0.1872
+    >>> result.n_events, result.n_systems
+    (8, 1)
+    >>> bool(result.p_value > 0.05)
+    True
     """
 
     def __init__(
@@ -315,7 +337,7 @@ def _cvm_pvalue(
     payload: Any,
     simulate_refit: Callable,
     n_boot: int,
-    seed: "int | None",
+    random_state: "int | None",
     uniforms: Callable = _conditional_uniforms,
 ) -> "GoodnessOfFitResult":
     """
@@ -333,7 +355,7 @@ def _cvm_pvalue(
     u, n_systems = uniforms(data, payload)
     observed = cvm_statistic(u)
 
-    rng = np.random.default_rng(seed)
+    rng = as_generator(random_state)
     statistics: list = []
     failures = 0
     while len(statistics) < n_boot and failures < 2 * n_boot:
@@ -392,8 +414,9 @@ def _simulate_window(
     return times, close
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted parametric recurrent
@@ -441,11 +464,12 @@ def cramer_von_mises(
         refit = model.dist.fit_from_recurrent_data(sim_data)
         return sim_data, refit.cif
 
-    return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, seed)
+    return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, random_state)
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises_regression(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted proportional-intensity
@@ -513,11 +537,12 @@ def cramer_von_mises_regression(
         }
         return sim_data, refit_cif
 
-    return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, seed)
+    return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, random_state)
 
 
+@renamed_arguments(seed="random_state")
 def cramer_von_mises_renewal(
-    model: Any, n_boot: int = 200, seed: "int | None" = None
+    model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
     """
     Cramer-von Mises goodness-of-fit test of a fitted renewal / virtual-age
@@ -526,43 +551,70 @@ def cramer_von_mises_renewal(
 
     These processes have no marginal cumulative intensity, so the transforms
     use the compensator built from each interval's rescaled increment (the
-    conditional-intensity residual). The bootstrap simulates, for every item,
-    a fresh sequence with the item's observed number of events from the fitted
-    model, refits the full imperfect-repair model, and recomputes the
-    statistic -- so the p-value accounts for the restoration and lifetime /
-    intensity parameters having been estimated. It is therefore markedly
-    slower than the residual diagnostics (each replicate is a multi-start
-    optimisation).
+    conditional-intensity residual). The bootstrap resimulates every item
+    from the fitted model the way it was observed, refits the full
+    imperfect-repair model, and recomputes the statistic -- so the p-value
+    accounts for the restoration and lifetime / intensity parameters having
+    been estimated.
+    It is therefore markedly slower than the residual diagnostics (each
+    replicate is a multi-start optimisation).
     """
     from surpyval.utils.recurrent_utils import handle_xicn
 
     data = model.data
     fitter = model._fitter
     increments = fitter._rescaled_increments(model, data)
-    # The observed per-item event counts drive the (count-terminated)
-    # bootstrap: each item is resimulated with the same number of events.
-    counts = [
-        int((data.c[data.i == item] == 0).sum()) for item in np.unique(data.i)
-    ]
+    # How each item was observed drives its resimulation: an item whose
+    # last row is an end-of-observation (c=1) row was watched to that fixed
+    # time (time truncated); otherwise it was watched until its last event
+    # (failure truncated), and its event count is what was fixed. The
+    # bootstrap used to resimulate every item failure-truncated, which
+    # misrepresents a fixed-window item's random event count.
+    schemes = []
+    for item in np.unique(data.i):
+        mask = data.i == item
+        c_item = data.c[mask]
+        count = int((c_item == 0).sum())
+        close = float(data.x[mask][-1]) if c_item[-1] == 1 else None
+        schemes.append((count, close))
+
+    # A failure-truncated item was watched until its count-th event, so
+    # exactly that many are drawn, all exact. A time-truncated item was
+    # watched to a fixed close, so events are drawn until the next one would
+    # fall after it and the item ends in an end-of-observation (c=1) row
+    # there -- its event count is random, as it was in the data.
+    closes = np.array(
+        [np.inf if close is None else close for _, close in schemes]
+    )
+    counts = np.array(
+        [count if close is None else 0 for count, close in schemes]
+    )
 
     def simulate_refit(rng: Any) -> tuple:
-        x_b, i_b = [], []
-        new_id = 0
-        for count in counts:
-            if count < 1:
-                continue
-            new_id += 1
-            child = int(rng.integers(0, 2**31 - 1))
-            sim = model.count_terminated_simulation_data(
-                count - 1, items=1, seed=child
+        from surpyval.recurrent.simulation import simulate_sequences
+
+        run = simulate_sequences(
+            model._new_batch_sampler(len(schemes)),
+            len(schemes),
+            rng,
+            close=closes,
+            count=counts,
+        )
+        # A time-truncated sequence whose interarrival times collapse (the
+        # model heading for infinitely many events before its close) or
+        # that reaches the event cap cannot be observed to its close: the
+        # bootstrap counts the replicate as failed.
+        if run.stalled or run.hit_max_events:
+            raise ValueError(
+                "simulated sequence did not reach its observation close"
             )
-            x_b.extend(np.asarray(sim.x, dtype=float).tolist())
-            i_b.extend([new_id] * sim.x.size)
-        if len(x_b) < 2:
+        x_b, i_b, c_b = run.x, run.i + 1, run.c
+        if int(np.sum(np.asarray(c_b) == 0)) < 2:
             raise ValueError("too few simulated events to refit")
         sim_data = handle_xicn(
             np.asarray(x_b, dtype=float),
             np.asarray(i_b),
+            np.asarray(c_b),
             as_recurrent_data=True,
         )
         refit = fitter._refit(model, sim_data)
@@ -574,6 +626,6 @@ def cramer_von_mises_renewal(
         increments,
         simulate_refit,
         n_boot,
-        seed,
+        random_state,
         uniforms=_renewal_conditional_uniforms,
     )

@@ -12,10 +12,12 @@ supports, the docstrings that state each model's own convention -- stays
 on the classes themselves.
 """
 
+from typing import Any
+
 import numpy.typing as npt
-from scipy.stats import uniform
 
 from surpyval import np
+from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     reject_structural_params,
@@ -32,9 +34,17 @@ class SingleProbabilityMixin:
     name: str
 
     def entropy(self, p: Boxable) -> Boxable:
+        r"""The (Shannon) entropy of the 0/1 outcome,
+        :math:`-(1 - p)\ln(1 - p) - p\ln p`, in nats."""
         return -(1 - p) * np.log1p(-p) - p * np.log(p)
 
-    def random(self, size: int | tuple[int, ...], p: Boxable) -> npt.NDArray:
+    def random(
+        self,
+        size: int | tuple[int, ...],
+        p: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
         r"""
 
         Draws random samples from the distribution in shape `size`
@@ -46,6 +56,10 @@ class SingleProbabilityMixin:
             Shape or size of the random draw
         p : float
             The probability of the ``1`` outcome
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own; ``None`` (the
+            default) draws from numpy's global stream (see
+            :meth:`ParametricFitter.random`).
 
         Returns
         -------
@@ -54,12 +68,27 @@ class SingleProbabilityMixin:
             Random values drawn from the distribution in shape `size`
 
         """
-        U = uniform.rvs(size=size)
+        U = uniform_draws(size, random_state)
         return (U <= p).astype(int)
 
     def fit(
         self, x: npt.ArrayLike, n: npt.NDArray | None = None
     ) -> Parametric:
+        """
+        Estimate ``p`` as the (count-weighted) proportion of ones.
+
+        Parameters
+        ----------
+        x : array like
+            The 0/1 outcomes; any other value raises a ``ValueError``.
+        n : array like, optional
+            The count of each outcome in ``x``. Defaults to one each.
+
+        Returns
+        -------
+        Parametric
+            The fitted model, with ``params`` holding ``p``.
+        """
         x_arr = np.atleast_1d(x)
         # Each observation must be a 0 or a 1 — elementwise, for any length
         # (the previous check broadcast x against the literal [0, 1], so any
@@ -73,6 +102,8 @@ class SingleProbabilityMixin:
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x_arr * n_arr).sum() / n_arr.sum()
         model.params = np.array([p])
+        # As from_dict sets it, so a fitted and a restored model agree.
+        self._set_support(model, False)  # type: ignore[attr-defined]
         return model
 
     # Narrower than ParametricFitter.from_params, which takes
@@ -116,4 +147,5 @@ class SingleProbabilityMixin:
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.atleast_1d(prob)
+        self._set_support(model, False)  # type: ignore[attr-defined]
         return model

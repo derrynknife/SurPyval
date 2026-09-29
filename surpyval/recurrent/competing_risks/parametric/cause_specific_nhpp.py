@@ -22,9 +22,9 @@ unchanged.
 from typing import Any
 
 import numpy as np
-from matplotlib import pyplot as plt
 from numpy.typing import ArrayLike
 
+from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.parametric.crow_amsaa import CrowAMSAA
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
@@ -36,7 +36,12 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+)
 from surpyval.utils import optional_column
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -51,6 +56,28 @@ class CauseSpecificNHPP(SerialisableMixin):
     ``self.models[cause]`` -- each is an ordinary
     :class:`ParametricRecurrenceModel` with its full ``cif``/``iif``/inference/
     diagnostic behaviour -- or use the convenience methods below.
+
+    Examples
+    --------
+    Two pumps, each repaired for seal or motor failures and observed to
+    times 10 and 12 (the ``c=1`` rows, which have no event type):
+
+    >>> from surpyval.recurrent import CauseSpecificNHPP
+    >>> x = [2, 5, 7, 10, 3, 4, 8, 12]
+    >>> i = [1, 1, 1, 1, 2, 2, 2, 2]
+    >>> c = [0, 0, 0, 1, 0, 0, 0, 1]
+    >>> e = ["seal", "motor", "seal", None, "seal", "seal", "motor", None]
+    >>> model = CauseSpecificNHPP.fit(x, i=i, c=c, e=e)
+    >>> model
+    Cause-specific Crow-AMSAA with causes: ['motor', 'seal']
+
+    The expected number of seal repairs per pump by time 10, and of
+    repairs of either kind:
+
+    >>> model.cif([10], "seal").round(4)
+    array([1.8376])
+    >>> model.total_cif([10]).round(4)
+    array([2.6773])
     """
 
     # Populated by the fit classmethods; declared for the type checker.
@@ -103,7 +130,10 @@ class CauseSpecificNHPP(SerialisableMixin):
         )
         out = cls()
         out.dist = intensity_dist_by_name(model_dict["dist"])
-        out.event_types = list(model_dict["event_types"])
+        # JSON writes a tuple label as a list; turn it back into a tuple.
+        out.event_types = [
+            label_from_native(v) for v in model_dict["event_types"]
+        ]
         out.models = {
             cause: ParametricRecurrenceModel.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
@@ -191,7 +221,7 @@ class CauseSpecificNHPP(SerialisableMixin):
         out.models = {}
         for cause in out.event_types:
             cx, ci, cc, ctl = [], [], [], []
-            is_cause = [ev == cause for ev in data.e]
+            is_cause = label_mask(data.e, cause)
             for k, item in enumerate(data.i):
                 if data.c[k] == 0 and is_cause[k]:
                     entry, _ = windows[item]
@@ -244,10 +274,17 @@ class CauseSpecificNHPP(SerialisableMixin):
             Count of events at each row. Defaults to 1.
         e : array like
             Event type (mark) for each row. ``None``/``NaN`` for censored rows.
+            A mark may be any hashable label: an integer, a string, a
+            tuple, or a mix of these.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item.
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item).
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``. It closes
+            the item's window, as a ``c=1`` row does; an item with both
+            must have them at the same time (a ``c=1`` row before ``tr``
+            raises a ``ValueError``).
         dist : counting-process fitter, optional
             The intensity model fitted per cause (``CrowAMSAA`` by default).
         how : str, optional
@@ -312,19 +349,24 @@ class CauseSpecificNHPP(SerialisableMixin):
                 )
             )
 
-    def cif(self, x: ArrayLike, cause: Any) -> np.ndarray:
-        """Cause-specific cumulative intensity (expected ``cause`` count)."""
-        self._check_cause(cause)
-        return self.models[cause].cif(x)
+    @renamed_arguments(cause="event")
+    def cif(self, x: ArrayLike, event: Any) -> np.ndarray:
+        """Cause-specific cumulative intensity: the expected count of
+        events of type ``event``."""
+        self._check_cause(event)
+        return self.models[event].cif(x)
 
-    def iif(self, x: ArrayLike, cause: Any) -> np.ndarray:
-        """Cause-specific instantaneous intensity for ``cause``."""
-        self._check_cause(cause)
-        return self.models[cause].iif(x)
+    @renamed_arguments(cause="event")
+    def iif(self, x: ArrayLike, event: Any) -> np.ndarray:
+        """Cause-specific instantaneous intensity of events of type
+        ``event``."""
+        self._check_cause(event)
+        return self.models[event].iif(x)
 
-    def mcf(self, x: ArrayLike, cause: Any) -> np.ndarray:
+    @renamed_arguments(cause="event")
+    def mcf(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific mean cumulative function (alias of :meth:`cif`)."""
-        return self.cif(x, cause)
+        return self.cif(x, event)
 
     def total_cif(self, x: ArrayLike) -> np.ndarray:
         """
@@ -340,8 +382,12 @@ class CauseSpecificNHPP(SerialisableMixin):
         return total
 
     def plot(self, ax: Any = None) -> Any:
-        """Overlay the fitted cause-specific CIFs on a single axis."""
+        """Overlay the fitted cause-specific CIFs on a single axis, over
+        the observed time range of the data they were fitted to."""
+        require_data(self, "plot")
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
         x_plot = np.linspace(0, float(self.data.x.max()), 200)
         for cause in self.event_types:

@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 from scipy.stats import binom
 
@@ -5,6 +7,7 @@ from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
+from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -188,7 +191,11 @@ class Binomial_(DiscreteParametricFitter):
         d = self.df(x, n, p)
         # P(X >= x) = P(X > x) + P(X = x)
         denom = self.sf(x, n, p) + d
-        return np.where(denom > 0, d / denom, 0.0)
+        # Beyond n nothing is left at risk and the hazard is 0; the
+        # division is only taken where the risk set is not empty (it used
+        # to be taken everywhere, warning 0/0 for every x > n).
+        safe = np.where(denom > 0, denom, 1.0)
+        return np.where(denom > 0, d / safe, 0.0)
 
     def Hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -214,7 +221,10 @@ class Binomial_(DiscreteParametricFitter):
         Hf : scalar or numpy array
             The value(s) of the cumulative hazard function at x
         """
-        return -np.log(self.sf(x, n, p))
+        sf = self.sf(x, n, p)
+        # From x = n on nothing survives: H = -log(0) = inf is right.
+        with np.errstate(divide="ignore"):
+            return -np.log(sf)
 
     def qf(self, u: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -304,8 +314,13 @@ class Binomial_(DiscreteParametricFitter):
         """
         return binom.entropy(n, p)
 
-    def random(
-        self, size: int | tuple[int, ...], n: Boxable, p: Boxable
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        n: Boxable,
+        p: Boxable,
+        *,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
 
@@ -320,6 +335,10 @@ class Binomial_(DiscreteParametricFitter):
             The number of trials
         p : float
             The per-trial probability of an event
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a draw of its own; ``None`` (the
+            default) draws from numpy's global stream (see
+            :meth:`ParametricFitter.random`).
 
         Returns
         -------
@@ -327,7 +346,18 @@ class Binomial_(DiscreteParametricFitter):
         random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
         """
-        return binom.rvs(n, p, size=size)
+        # A fitted model holds n as a float (5.0), which numpy's binomial
+        # draw refused: "Cannot cast scalar from dtype('float64') to
+        # dtype('int64')".
+        trials = np.asarray(n, dtype=float)
+        if np.any(trials != np.round(trials)):
+            raise ValueError(f"n must be a whole number of trials; got {n}")
+        return binom.rvs(
+            trials.astype(int),
+            p,
+            size=size,
+            random_state=draw_state(random_state),
+        )
 
     def fit(
         self,
@@ -394,10 +424,16 @@ class Binomial_(DiscreteParametricFitter):
         model = Parametric(self, "MLE", None, False, False, False)
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
-        # Exclusive bounds either side of the outcomes {0, ..., n_trials};
-        # see the note in __init__.
-        model.support = np.array([-1, n_trials + 1])
+        self._set_support(model, False)
         return model
+
+    def _set_support(self, model: Any, offset: bool) -> None:
+        """Exclusive bounds either side of the outcomes ``{0, ..., n}``
+        (see the note in ``__init__``), with ``n`` read from the model.
+        ``from_dict`` restores the support through this, so a restored
+        model keeps ``[-1, n + 1]``; the inherited version read the
+        declared ``[-1, inf]``."""
+        model.support = np.array([-1, float(model.params[0]) + 1])
 
     # Narrower than ParametricFitter.from_params, which takes
     # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
@@ -462,9 +498,7 @@ class Binomial_(DiscreteParametricFitter):
 
         model = Parametric(self, "given parameters", None, False, False, False)
         model.params = np.array([float(n), prob])
-        # Exclusive bounds either side of the outcomes {0, ..., n}; see the
-        # note in __init__.
-        model.support = np.array([-1, n + 1])
+        self._set_support(model, False)
         return model
 
 

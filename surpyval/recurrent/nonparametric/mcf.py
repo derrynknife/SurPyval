@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import numpy.typing as npt
-from matplotlib import pyplot as plt
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -10,19 +9,50 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.nonparametric.nonparametric import (
+    _check_support,
+    _on_support,
+    _support_from_dict,
+)
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.shapes import keeps_query_shape
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
 
 
+# How ``set_support`` names the range an MCF's bounds must contain.
+_MCF_RANGE = (
+    "the origin of the MCF, where observation begins",
+    "the last observed time",
+)
+
+
 @singleton_fitter
 class NonParametricCounting(SerialisableMixin):
+    """
+    The non-parametric (Nelson-Aalen) estimate of the mean cumulative
+    function (MCF), the expected number of events per item by time
+    :math:`t`:
+
+    .. math::
+        \\hat{M}(t) = \\sum_{t_j \\le t} \\frac{d_j}{r_j},
+
+    with :math:`d_j` the events at :math:`t_j` and :math:`r_j` the number of
+    items under observation then. Its variance is the Lawless-Nadeau robust
+    estimate, which does not assume the items share one Poisson process.
+
+    ``NonParametricCounting`` is an instance of this class; its ``fit``
+    returns a new, fitted instance, which carries ``mcf``, ``mcf_cb`` and
+    ``plot``.
+    """
+
     # Set on the instance the fit returns, not in __init__ -- the
     # singleton fitter is called on a bare class and hands back a
     # populated one. Annotated (not assigned) so the attributes have
@@ -35,6 +65,13 @@ class NonParametricCounting(SerialisableMixin):
     #: ``None`` on simulated models, which carry no variance.
     var: "npt.NDArray | None"
     data: RecurrentEventData
+    #: Where observation begins: the MCF is 0 from here to the first event
+    #: and undefined (NaN) before it. That is time 0 unless an item enters
+    #: earlier (a negative ``tl``), which makes negative times observed.
+    origin: float = 0.0
+    #: The ``(lower, upper)`` interval the MCF is defined on, set by
+    #: :meth:`set_support`; ``None`` (the default) when it has not been set.
+    support: "tuple[float, float] | None" = None
 
     # -- serialisation -----------------------------------------------------
 
@@ -44,7 +81,8 @@ class NonParametricCounting(SerialisableMixin):
         plain, JSON-serialisable dict.
 
         Stores the step arrays that ``mcf``/``mcf_cb`` read: the event times
-        ``x``, the estimate ``mcf_hat`` and its Greenwood variance ``var``.
+        ``x``, the estimate ``mcf_hat`` and its variance ``var`` (the
+        Lawless-Nadeau robust variance for a fitted MCF).
         The raw ``data`` is not stored (it is only needed to re-fit or to plot
         raw counts).
 
@@ -52,14 +90,25 @@ class NonParametricCounting(SerialisableMixin):
         --------
         from_dict, to_json, from_json
         """
-        return stamp_schema(
-            {
-                "model": "NonParametricCounting",
-                "x": np.asarray(self.x, dtype=float).tolist(),
-                "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
-                "var": np.asarray(self.var, dtype=float).tolist(),
-            }
-        )
+        out = {
+            "model": "NonParametricCounting",
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "mcf_hat": np.asarray(self.mcf_hat, dtype=float).tolist(),
+            # A simulated MCF has no variance; ``None`` (JSON null) keeps
+            # it that way on reload. ``asarray(None)`` stored a NaN, and
+            # the restored ``mcf_cb`` returned NaN bounds instead of saying
+            # there are none.
+            "var": (
+                None
+                if self.var is None
+                else np.asarray(self.var, dtype=float).tolist()
+            ),
+            "origin": float(self.origin),
+        }
+        # Only when set: without it the dictionary is readable by v0.20.
+        if self.support is not None:
+            out["support"] = [float(v) for v in self.support]
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "NonParametricCounting":
@@ -76,34 +125,168 @@ class NonParametricCounting(SerialisableMixin):
         out = cls()
         out.x = np.array(model_dict["x"], dtype=float)
         out.mcf_hat = np.array(model_dict["mcf_hat"], dtype=float)
-        out.var = np.array(model_dict["var"], dtype=float)
+        var = model_dict["var"]
+        # Older files stored a missing variance as a single NaN; read that
+        # (and null) as no variance.
+        var_arr = None if var is None else np.array(var, dtype=float)
+        if var_arr is not None and var_arr.ndim == 0 and np.isnan(var_arr):
+            var_arr = None
+        out.var = var_arr
+        out.origin = float(model_dict.get("origin", 0.0))
+        support = _support_from_dict(model_dict)
+        if support is not None:
+            out.set_support(*support)
         return out
 
+    def set_support(
+        self, lower: float, upper: float
+    ) -> "NonParametricCounting":
+        """
+        Give the MCF an explicit support, ``[lower, upper]``.
+
+        Without one, the MCF is 0 from the origin (where observation
+        begins: time 0, or the earliest entry) to the first event, and NaN
+        before the origin and after the last observed time, since nothing
+        is known there. With a support set, :meth:`mcf` and :meth:`mcf_cb`
+        (for every ``interp``) are
+
+        - 0 in ``[lower, origin)``;
+        - the value at the last observed time, carried, in
+          ``(last, upper]``;
+        - NaN outside ``[lower, upper]``.
+
+        Carrying the last value says that no events happen after the last
+        observed time, which is the analyst's claim to make, not the
+        data's. The variable need not be time: ``lower`` may be negative,
+        and either bound infinite. The bounds are kept by ``to_dict``.
+
+        Parameters
+        ----------
+        lower : float
+            The lower end of the support; at most the origin.
+        upper : float
+            The upper end; at least the last observed time, and above
+            ``lower``.
+
+        Returns
+        -------
+        NonParametricCounting
+            The model itself, so the call can be chained.
+
+        Raises
+        ------
+        ValueError
+            If a bound is NaN or not a number, ``lower`` is not below
+            ``upper``, or the bounds do not contain ``[origin, last]``.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> x = [3, 9, 20, 35, 56, 60, 11, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 1]
+        >>> model = NonParametricCounting.fit(x, i=i, c=c)
+        >>> model.mcf([-5, 30, 80])
+        array([nan, 2. , nan])
+        >>> model.set_support(-10, 100).mcf([-20, -5, 30, 80, 120])
+        array([nan, 0. , 2. , 3.5, nan])
+        """
+        self.support = _check_support(
+            lower,
+            upper,
+            self._origin(),
+            float(self.x.max()),
+            _MCF_RANGE,
+        )
+        return self
+
+    def _within_support(
+        self,
+        x: npt.ArrayLike,
+        f: Callable[[npt.ArrayLike], npt.NDArray],
+    ) -> npt.NDArray:
+        """``f(x)``, restricted to the support when one is set (see
+        :meth:`set_support`); the MCF and its bounds start at 0."""
+        if self.support is None:
+            return f(x)
+        return _on_support(
+            self.support, self._origin(), float(self.x.max()), x, f, 0.0
+        )
+
+    @keeps_query_shape
     def mcf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
-        x = np.atleast_1d(x)
+        """
+        The estimated mean cumulative function at ``x``.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which to evaluate the MCF.
+        interp : str, optional
+            ``"step"`` (the default) for the right-continuous step estimate,
+            or ``"linear"`` to interpolate linearly between event times
+            (from 0 at time 0).
+
+        Returns
+        -------
+        numpy array
+            The MCF at each ``x``: 0 before the first event time (for
+            ``"linear"``, rising from 0 at the origin to the first event),
+            and NaN beyond the last observed time and before the origin.
+            The origin is time 0, or the earliest entry when an item enters
+            before it (a negative ``tl``). With a support set (see
+            :meth:`set_support`) it is 0 from ``lower`` to the origin, the
+            value at the last observed time from there to ``upper``, and
+            NaN outside them.
+        """
+        return self._within_support(x, lambda q: self._mcf(q, interp))
+
+    def _mcf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
+        # ``mcf`` without the bounds (see ``set_support``).
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        grid, values = self._curve_from_origin(self.mcf_hat)
         # Let's not assume we can predict above the highest measurement
         if interp == "step":
             idx = np.searchsorted(self.x, x, side="right") - 1
-            mcf = self.mcf_hat[idx]
-            mcf[np.where(x < self.x.min())] = 0
-            mcf[np.where(x > self.x.max())] = np.nan
-            mcf[np.where(x < 0)] = np.nan
-            return mcf
+            mcf = self.mcf_hat[np.clip(idx, 0, None)].astype(float)
+            mcf[idx < 0] = 0
         elif interp == "linear":
-            mcf = np.hstack([[0], self.mcf_hat])
-            x_data = np.hstack([[0], self.x])
-            mcf = np.interp(x, x_data, mcf)
-            mcf[np.where(x > self.x.max())] = np.nan
-            return mcf
+            mcf = np.interp(x, grid, values)
         else:
             raise ValueError("`interp` must be either 'step' or 'linear'")
+        mcf[(x > self.x.max()) | (x < self._origin())] = np.nan
+        return mcf
 
+    def _origin(self) -> float:
+        """Where observation begins; never after the first time on the
+        grid (a from_xrd triple may start below 0)."""
+        return float(min(getattr(self, "origin", 0.0), self.x.min()))
+
+    def _curve_from_origin(
+        self, values: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """The grid and ``values`` with the MCF's starting point, 0 at the
+        origin, prepended (unless the first time is the origin itself), for
+        linear interpolation. ``values`` may be ``(k, len(x))``."""
+        origin = self._origin()
+        values = np.asarray(values, dtype=float)
+        if self.x.min() > origin:
+            zero = np.zeros(values.shape[:-1] + (1,))
+            return (
+                np.hstack([[origin], self.x]),
+                np.concatenate([zero, values], axis=-1),
+            )
+        return np.asarray(self.x, dtype=float), values
+
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
+    @keeps_query_shape
     def mcf_cb(
         self,
         x: npt.ArrayLike,
         bound: str = "two-sided",
         interp: str = "step",
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         bound_type: str = "exp",
         dist: str = "z",
     ) -> npt.NDArray:
@@ -112,12 +295,65 @@ class NonParametricCounting(SerialisableMixin):
 
         Two-sided bounds return one row per query with columns ordered
         ``[lower, upper]`` (matching the parametric ``cif_cb``); one-sided
-        bounds return a 1-D array. Queries below the first observed time
-        return 0; queries above the last observed time (or negative)
-        return NaN, mirroring :meth:`mcf`.
+        bounds return a 1-D array. Queries before the first event return 0
+        (for ``interp="linear"``, bounds rising from 0 at the origin, as
+        the MCF does); queries after the last observed time or before the
+        origin return NaN, mirroring :meth:`mcf`. With a support set (see
+        :meth:`set_support`) they are 0 from ``lower`` to the origin, the
+        bounds at the last observed time from there to ``upper``, and NaN
+        outside them.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which to compute the bounds.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        interp : str, optional
+            ``"step"`` (the default) or ``"linear"``, as for :meth:`mcf`.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s): a two-sided
+            ``1 - alpha_ci`` interval, or a one-sided bound exceeded with
+            probability ``alpha_ci``. Defaults to 0.05. Keyword only, as
+            are the arguments after it.
+        bound_type : str, optional
+            ``"exp"`` (the default) for bounds on the log scale,
+            :math:`\\hat{M} e^{\\pm z \\sqrt{V} / \\hat{M}}`, which stay
+            positive; or ``"normal"`` for Wald bounds
+            :math:`\\hat{M} \\pm z \\sqrt{V}`.
+        dist : str, optional
+            Only ``"z"``, the normal critical value.
+
+        Returns
+        -------
+        numpy array
+            The bound(s) at each ``x``.
+
+        Raises
+        ------
+        ValueError
+            If the model carries no variance (an MCF built from simulated
+            data).
         """
-        # Greenwood's variance with a normal (z) critical value. Ref found:
-        # http://reliawiki.org/index.php/Non-Parametric_Life_Data_Analysis
+        return self._within_support(
+            x,
+            lambda q: self._mcf_cb(
+                q, bound, interp, alpha_ci, bound_type, dist
+            ),
+        )
+
+    def _mcf_cb(
+        self,
+        x: npt.ArrayLike,
+        bound: str,
+        interp: str,
+        alpha_ci: float,
+        bound_type: str,
+        dist: str,
+    ) -> npt.NDArray:
+        # ``mcf_cb`` without the bounds (see ``set_support``).
+        # The stored variance (Lawless-Nadeau robust for a fitted MCF, the
+        # per-step one for ``from_xrd``) with a normal (z) critical value.
         if bound_type not in ["exp", "normal"]:
             raise ValueError("'bound_type' must be in ['exp', 'normal']")
         if dist != "z":
@@ -132,11 +368,11 @@ class NonParametricCounting(SerialisableMixin):
             )
         x = np.atleast_1d(x)
         if bound in ["upper", "lower"]:
-            stat = norm.ppf(1 - confidence, 0, 1)
+            stat = norm.ppf(alpha_ci, 0, 1)
             if bound == "upper":
                 stat = -stat
         elif bound == "two-sided":
-            stat = norm.ppf((1 - confidence) / 2, 0, 1)
+            stat = norm.ppf(alpha_ci / 2, 0, 1)
             # Row 0 carries the negative multiplier (lower bound), row 1
             # the positive one, so two-sided output is [lower, upper] —
             # it used to be [upper, lower], inconsistent with the
@@ -149,14 +385,25 @@ class NonParametricCounting(SerialisableMixin):
                 "confidence bounds are unavailable."
             )
         if bound_type == "exp":
-            # Exponential Greenwood confidence
-            mcf_cb = self.mcf_hat * np.exp(
-                stat * np.sqrt(self.var) / self.mcf_hat
+            # Log-scale (exponential) bounds
+            # Before the first event (possible for one cause of a
+            # cause-specific MCF) the estimate and its variance are both
+            # 0, and so are the bounds -- not 0/0.
+            positive = self.mcf_hat > 0
+            ratio = np.divide(
+                np.sqrt(self.var),
+                self.mcf_hat,
+                out=np.zeros_like(self.mcf_hat, dtype=float),
+                where=positive,
             )
+            mcf_cb = self.mcf_hat * np.exp(stat * ratio)
         else:
-            # Normal Greenwood confidence
-            mcf_cb = self.mcf_hat + np.sqrt(self.var * self.mcf_hat**2) * stat
+            # Normal (Wald) bounds: estimate +- z * standard error. This
+            # used to scale the standard error by the estimate again
+            # (sqrt(var * mcf**2)), giving far too wide, negative bounds.
+            mcf_cb = self.mcf_hat + np.sqrt(self.var) * stat
         # Let's not assume we can predict above the highest measurement
+        invalid = (x > self.x.max()) | (x < self._origin())
         if interp == "step":
             # Select by query position FIRST, then mask the query-length
             # result: the masks used to be applied to the grid-length
@@ -165,8 +412,7 @@ class NonParametricCounting(SerialisableMixin):
             # IndexError for more queries than bounds (#285).
             idx = np.searchsorted(self.x, x, side="right") - 1
             safe_idx = np.clip(idx, 0, None)
-            below = (x < self.x.min()) | (idx < 0)
-            invalid = (x > self.x.max()) | (x < 0)
+            below = idx < 0
             if bound == "two-sided":
                 mcf_cb = mcf_cb[:, safe_idx].T
                 mcf_cb[below, :] = 0
@@ -176,23 +422,53 @@ class NonParametricCounting(SerialisableMixin):
                 mcf_cb[below] = 0
                 mcf_cb[invalid] = np.nan
         elif interp == "linear":
+            # From 0 at the origin, as the linear MCF itself is: before the
+            # first event the bounds used to be held at the first event's,
+            # so they did not contain the interpolated MCF.
+            grid, bounds = self._curve_from_origin(mcf_cb)
             if bound == "two-sided":
-                R1 = np.interp(x, self.x, mcf_cb[0, :])
-                R2 = np.interp(x, self.x, mcf_cb[1, :])
+                R1 = np.interp(x, grid, bounds[0, :])
+                R2 = np.interp(x, grid, bounds[1, :])
                 mcf_cb = np.vstack([R1, R2]).T
             else:
-                mcf_cb = np.interp(x, self.x, mcf_cb)
-            mcf_cb[np.where(x > self.x.max())] = np.nan
+                mcf_cb = np.interp(x, grid, bounds)
+            mcf_cb[invalid] = np.nan
         return mcf_cb
 
+    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
-        confidence: float = 0.95,
+        *,
+        alpha_ci: float = 0.05,
         plot_bounds: bool = True,
         ax: "Axes | None" = None,
         start: float = 0.0,
     ) -> "Axes":
+        """
+        Plot the MCF as a step function, with its confidence bounds.
+        The arguments are keyword only.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The total tail probability of the two-sided bounds: a
+            ``1 - alpha_ci`` interval. Defaults to 0.05.
+        plot_bounds : bool, optional
+            Whether to draw the bounds (skipped if the model has no
+            variance). Defaults to :code:`True`.
+        ax : matplotlib Axes, optional
+            The axes to draw on. Defaults to the current axes.
+        start : float, optional
+            The time the step plot starts from, at an MCF of 0. Defaults
+            to 0.
+
+        Returns
+        -------
+        matplotlib Axes
+        """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         # Prepend the start point so the step plot always begins from it
@@ -207,16 +483,14 @@ class NonParametricCounting(SerialisableMixin):
         ax.step(x, mcf_hat, where="post", label="MCF")
         if plot_bounds:
             if self.var is not None:
-                cb = self.mcf_cb(
-                    self.x, bound="two-sided", confidence=confidence
-                )
+                cb = self.mcf_cb(self.x, bound="two-sided", alpha_ci=alpha_ci)
                 if start is not None and start < self.x.min():
                     cb = np.vstack([[0.0, 0.0], cb])
                 ax.step(
                     x,
                     cb,
                     where="post",
-                    label=f"{confidence * 100}% Confidence Bounds",
+                    label=f"{(1 - alpha_ci) * 100:g}% Confidence Bounds",
                     color="red",
                 )
         return ax
@@ -225,28 +499,82 @@ class NonParametricCounting(SerialisableMixin):
     def from_xrd(
         cls, x: npt.ArrayLike, r: npt.ArrayLike, d: npt.ArrayLike
     ) -> "NonParametricCounting":
-        """Build the Nelson-Aalen MCF and its Lawless-Nadeau variance
-        from an ``(x, r, d)`` triple; the single home of the estimator
-        (cause-specific MCF used to carry a drifted copy)."""
+        """Build the Nelson-Aalen MCF from an ``(x, r, d)`` triple; the
+        single home of the estimator.
+
+        An ``(x, r, d)`` triple does not say which item each event came
+        from, so the variance here is the per-step (naive) one, which
+        assumes that the ``d`` events at a time all happened to different
+        items (so ``d <= r``; a step with more events than items at risk
+        makes the variance NaN from there on). Each of the ``r`` items at
+        risk then contributes 1 or 0 events, and the step's increment
+        ``d / r`` has estimated variance
+
+        .. math::
+
+            \\frac{1}{r^2} \\sum_k \\Big(n_k - \\frac{d}{r}\\Big)^2
+            = \\frac{d (r - d)}{r^3},
+
+        the squared deviations of the items' counts from the step's mean
+        :math:`d/r`. Steps are treated as independent of one another. That
+        is right for a Poisson process but understates the variance when
+        items differ in their rates, because it has no within-item
+        covariance. :meth:`fit` (and ``CauseSpecificMCF``) have the per-item
+        data and replace it with the Lawless-Nadeau robust variance.
+
+        Examples
+        --------
+        Two events at a time when three items are at risk:
+
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> model = NonParametricCounting.from_xrd([1.0], [3], [2])
+        >>> model.mcf_hat, model.var
+        (array([0.66666667]), array([0.07407407]))
+        """
         out = cls()
         x, r, d = np.asarray(x), np.asarray(r), np.asarray(d)
         out.x, out.r, out.d = x, r, d
         out.mcf_hat = np.cumsum(d / r)
-        var = (
-            1.0
-            / r**2
-            * (d * (1 - 1.0 / r) ** 2 + (r - d) * (0 - 1.0 / r) ** 2)
-        )
-        var = (d > 0).astype(int) * var
-        out.var = np.cumsum(var)
+        # Centred on the step's mean d / r. It used to be centred on 1 / r
+        # (the mean only when d == 1), which overstated the variance of
+        # tied steps; for d == 1 the two agree. d (r - d) / r^3 is 0 when
+        # there are no events, so no masking is needed. More events than
+        # items at risk breaks the one-event-per-item assumption, and the
+        # triple cannot say how the events were shared out, so the
+        # variance from that step on is unknown (NaN), not negative.
+        step_var = np.where(d <= r, d * (r - d) / r**3, np.nan)
+        out.var = np.cumsum(step_var)
         return out
 
     def fit_from_recurrent_data(
         self, data: RecurrentEventData
     ) -> "NonParametricCounting":
+        """
+        Fit the MCF from a prepared
+        :class:`~surpyval.utils.recurrent_event_data.RecurrentEventData`,
+        as built by ``surpyval.handle_xicn``. :meth:`fit` builds one from
+        its arrays and calls this; the same restrictions on censoring and
+        truncation apply.
+
+        Returns
+        -------
+        NonParametricCounting
+            The fitted estimate.
+        """
+        out = self._point_estimate(data)
+        out.var = _lawless_nadeau_var(data, out.x, out.r, out.d)
+        return out
+
+    def _point_estimate(
+        self, data: RecurrentEventData
+    ) -> "NonParametricCounting":
+        """:meth:`fit_from_recurrent_data` without the Lawless-Nadeau
+        variance, which costs about (items x distinct times) and which the
+        simulations, returning only the MCF, discard."""
         reject_unsupported_nonparametric(data, "NonParametricCounting")
         out = type(self).from_xrd(*data.to_xrd())
         out.data = data
+        out.origin = _observation_origin(data)
         return out
 
     def fit(
@@ -269,15 +597,25 @@ class NonParametricCounting(SerialisableMixin):
         i : array like, optional
             Item / subject id for each row. Defaults to a single item.
         c : array like, optional
-            Censoring flag for each row (0 observed, 1 right censored).
+            Censoring flag for each row: 0 an observed event, 1 the
+            right-censored end of an item's observation. Left- (-1) and
+            interval- (2) censored rows are not supported and raise a
+            ``ValueError``.
         n : array like, optional
             Count of events at each row. Defaults to 1.
         tl : array like or scalar, optional
-            Left-truncation (delayed-entry) time per item. An item only
+            Left-truncation (delayed-entry) time of each item: a scalar for
+            every item, or one value per row (the same on every row of an
+            item). An item only
             enters the at-risk set once observation begins at ``tl``, so
             earlier event times are estimated over a smaller risk set.
         tr : array like or scalar, optional
-            Right-truncation time per item.
+            Right-truncation time of each item, given like ``tl``: the end
+            of its observation
+            window. The item stays in the at-risk set up to ``tr`` and
+            leaves it after, exactly as if it had an end-of-observation
+            (``c=1``) row at ``tr`` -- the same window-close the parametric
+            NHPP fits integrate to.
         windows : dict, optional
             Gapped (multi-window) observation: a mapping ``{item: [(start,
             end), ...]}`` giving each item's disjoint observation windows.
@@ -289,6 +627,96 @@ class NonParametricCounting(SerialisableMixin):
         Returns
         -------
         NonParametricCounting
+            The fitted estimate.
+
+        Examples
+        --------
+        Two systems observed to t = 60 (the ``c=1`` rows):
+
+        >>> from surpyval.recurrent import NonParametricCounting
+        >>> x = [3, 9, 20, 35, 56, 60, 11, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 1]
+        >>> model = NonParametricCounting.fit(x, i=i, c=c)
+        >>> model.mcf([10, 30, 60])
+        array([1. , 2. , 3.5])
+        >>> model.mcf_cb([10, 30, 60])
+        array([[0.25009765, 3.99843816],
+               [1.00019529, 3.999219  ],
+               [1.93248007, 6.33900458]])
         """
         data = handle_xicn(x, i, c, n, tl=tl, tr=tr, windows=windows)
         return self.fit_from_recurrent_data(data)
+
+
+def _observation_origin(data: RecurrentEventData) -> float:
+    """Where the MCF starts: time 0, or the earliest entry ``tl`` when an
+    item enters before 0 (its negative times are then observed; the MCF
+    used to be NaN there)."""
+    tl = np.asarray(data.tl, dtype=float)
+    finite = tl[np.isfinite(tl)]
+    return float(min(0.0, finite.min())) if finite.size else 0.0
+
+
+def _lawless_nadeau_var(
+    data: RecurrentEventData,
+    x: npt.NDArray,
+    r: npt.NDArray,
+    d: npt.NDArray,
+    counted: "npt.NDArray | None" = None,
+) -> npt.NDArray:
+    """The Lawless-Nadeau robust variance of the Nelson-Aalen MCF.
+
+    With :math:`\\delta_k(t)` item ``k``'s at-risk indicator,
+    :math:`n_k(t)` its events at ``t`` and :math:`\\hat{m}(t) = d(t)/r(t)`
+    the MCF increment,
+
+    .. math::
+
+        \\widehat{Var}\\,\\hat{M}(t) = \\sum_k \\Big[ \\sum_{t_j \\le t}
+        \\frac{\\delta_k(t_j)}{r(t_j)} \\big(n_k(t_j) -
+        \\hat{m}(t_j)\\big) \\Big]^2 .
+
+    Each item's deviations are summed over time *before* squaring, so
+    an item with a high rate throughout adds its covariance across
+    steps; that is what makes the variance robust to items differing in
+    their rates (it does not assume a Poisson process). Items split
+    into observation windows are regrouped under their original item.
+    With a single item there is nothing to compare it with, and the
+    variance is zero.
+
+    ``counted`` is an optional row mask restricting which events count
+    (``n_k``); ``d`` must count the same events. The cause-specific MCF
+    passes the rows of one cause, so the other causes' events count as
+    non-events while the risk set stays shared.
+    """
+    x_out = data.midpoints if data.x.ndim == 2 else data.x
+    is_event = (data.c == 0) | (data.c == 2) | (data.c == -1)
+    if counted is not None:
+        is_event = is_event & counted
+    col = np.searchsorted(x, x_out)
+    dm = np.where(r > 0, d / np.where(r > 0, r, 1), 0.0)
+    inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
+    window_map = getattr(data, "window_map", None) or {}
+    # The same windows the risk set ``r`` was built from, so each item's
+    # at-risk indicator agrees with its share of ``r`` (including a
+    # right-truncation close past its last row).
+    entry, exit_ = data.item_observation_windows()
+
+    clusters: dict = {}
+    for item, entry_k, exit_k in zip(data.items, entry, exit_):
+        rows = data.i == item
+        at_risk = (entry_k <= x) & (x <= exit_k)
+        n_k = np.bincount(
+            col[rows & is_event],
+            weights=data.n[rows & is_event],
+            minlength=len(x),
+        )
+        dev = at_risk * inv_r * (n_k - dm)
+        key = window_map[item][0] if item in window_map else item
+        clusters[key] = clusters.get(key, 0.0) + dev
+
+    total = np.zeros(len(x))
+    for dev in clusters.values():
+        total += np.cumsum(dev) ** 2
+    return total

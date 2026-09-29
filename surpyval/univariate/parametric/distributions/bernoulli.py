@@ -12,7 +12,9 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from ._single_probability import SingleProbabilityMixin
 
 
-class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
+class Bernoulli_(  # type: ignore[misc]
+    SingleProbabilityMixin, DiscreteParametricFitter
+):
     r"""A single weighted coin flip: ``X`` is 0 or 1 with ``P(X = 1) = p``.
 
     ``x`` is the outcome, not a time, so 0 and 1 are the only values any
@@ -35,12 +37,23 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
     :math:`R(k) = P(X > k)`; this one uses :math:`P(X \geq x)`, so the
     two are offset by one: ``Bernoulli.sf(x, p) == Binomial.sf(x - 1,
     1, p)``.
+
+    Examples
+    --------
+    Ten demands on a one-shot device, which worked (1) on eight:
+
+    >>> from surpyval import Bernoulli
+    >>> model = Bernoulli.fit([1, 1, 0, 1, 1, 1, 0, 1, 1, 1])
+    >>> model.params
+    array([0.8])
+    >>> model.sf([0, 1])
+    array([1. , 0.8])
     """
 
     @staticmethod
     def _check_x(x: Numeric) -> npt.NDArray:
         """Reject anything that is not a Bernoulli outcome."""
-        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
+        x_arr = np.asarray(x, dtype=float)
         if not np.isin(x_arr, (0.0, 1.0)).all():
             raise ValueError(
                 "Bernoulli is defined at x = 0 and x = 1 only; x is the "
@@ -48,6 +61,11 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
                 "probability is p at every x, use FixedEventProbability."
             )
         return x_arr
+
+    @staticmethod
+    def _shaped(out: Boxable) -> Boxable:
+        """``out`` with the shape of ``x``: a scalar for a scalar ``x``."""
+        return np.asarray(out)[()] if np.ndim(out) == 0 else out
 
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -93,7 +111,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
         array([1. , 0.3])
         """
         x_arr = self._check_x(x)
-        return np.where(x_arr == 0.0, 1.0, p)
+        return self._shaped(np.where(x_arr == 0.0, 1.0, p))
 
     def ff(self, x: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -163,7 +181,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
         array([0.7, 0.3])
         """
         x_arr = self._check_x(x)
-        return np.where(x_arr == 0.0, 1.0 - p, p)
+        return self._shaped(np.where(x_arr == 0.0, 1.0 - p, p))
 
     def hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -199,7 +217,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
         array([0.7, 1. ])
         """
         x_arr = self._check_x(x)
-        return np.where(x_arr == 0.0, 1.0 - p, 1.0)
+        return self._shaped(np.where(x_arr == 0.0, 1.0 - p, 1.0))
 
     def Hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -234,7 +252,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
         array([0.       , 1.2039728])
         """
         x_arr = self._check_x(x)
-        return np.where(x_arr == 0.0, 0.0, -np.log(p))
+        return self._shaped(np.where(x_arr == 0.0, 0.0, -np.log(p)))
 
     def qf(self, u: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -297,7 +315,7 @@ class Bernoulli_(SingleProbabilityMixin, DiscreteParametricFitter):
         # mass is f(x) = h(x) R(x) -- the continuous form. Taking the
         # log of the pmf directly sidesteps the choice.
         x_arr = self._check_x(x)
-        return np.where(x_arr == 0.0, np.log1p(-p), np.log(p))
+        return self._shaped(np.where(x_arr == 0.0, np.log1p(-p), np.log(p)))
 
     def mean(self, p: Boxable) -> Boxable:
         r"""

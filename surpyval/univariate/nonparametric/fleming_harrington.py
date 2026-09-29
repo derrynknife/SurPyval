@@ -16,6 +16,29 @@ from surpyval.univariate.nonparametric.nonparametric_fitter import (
 _MAX_TIE_LOOP = 64
 
 
+def _snap(v: float) -> float:
+    """``v`` rounded to the nearest integer when it is one up to round-off.
+
+    The Turnbull EM hands these functions expected counts that are whole
+    numbers plus round-off (``1 + 2e-16``). ``ceil`` of such a count adds a
+    ladder step with a risk set of about ``1e-16``, so the hazard of a
+    single death doubled (and ``d = r = 3`` gave 2.83 instead of 1.83).
+    """
+    nearest = float(np.round(v))
+    if abs(v - nearest) <= 1e-9 * max(1.0, abs(nearest)):
+        return nearest
+    return float(v)
+
+
+def _snap_array(v: npt.ArrayLike) -> npt.NDArray:
+    """``_snap`` applied elementwise, vectorised for use inside the EM."""
+    v = np.asarray(v, dtype=float)
+    nearest = np.round(v)
+    with np.errstate(invalid="ignore"):
+        close = np.abs(v - nearest) <= 1e-9 * np.maximum(1.0, np.abs(nearest))
+    return np.where(close, nearest, v)
+
+
 def _ladder_steps(r_i: float, d_i: float) -> int:
     """Number of whole 1/r terms in the tie ladder, or -1 if the
     ladder exhausts the risk set (the hazard diverges)."""
@@ -33,6 +56,9 @@ def fh_h(r_i: float, d_i: float) -> float:
     # sum(1 / (r - i) for i in 0 ... ceil(d) - 2) + (d - full) / (r - full):
     # each of the d tied events sees a risk set that shrinks by one,
     # with the fractional remainder of d contributing pro rata.
+    r_i, d_i = _snap(r_i), _snap(d_i)
+    if d_i == 0:
+        return 0.0  # no deaths, no hazard (whatever the risk set)
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -50,6 +76,9 @@ def fh_var_h(r_i: float, d_i: float) -> float:
     # Variance increment with the same tie-splitting as fh_h, i.e.
     # each of the d tied events contributes 1/r**2 with a risk set
     # that shrinks by one for each event.
+    r_i, d_i = _snap(r_i), _snap(d_i)
+    if d_i == 0:
+        return 0.0  # no deaths, no hazard (whatever the risk set)
     full = _ladder_steps(r_i, d_i)
     if full < 0:
         return np.inf
@@ -73,6 +102,17 @@ def fleming_harrington_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
     This is the variance used by R's ``survfit`` with ``ctype=2`` and
     reduces to the Nelson-Aalen (Aalen/Poisson) variance, sum(d / r**2),
     when there are no tied events.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import (
+    ...     fleming_harrington_variance,
+    ... )
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> fleming_harrington_variance(r, d).round(4)
+    array([0.0223, 0.038 , 0.2516])
     """
     with np.errstate(all="ignore"):
         var = np.array([fh_var_h(r_i, d_i) for r_i, d_i in zip(r, d)])
@@ -81,6 +121,52 @@ def fleming_harrington_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
 
 
 def fleming_harrington(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
+    r"""
+    Fleming-Harrington estimate of the survival function from the number
+    at risk and the number of events at each time. It is the Nelson-Aalen
+    estimate with ties counted one after another, each of the ``d``
+    events at a time removing one item from the risk set before the next:
+
+    .. math::
+        R(x_i) = e^{-\sum_{j \leq i} \sum_{k=0}^{d_j-1}
+            \frac{1}{r_j - k}}
+
+    A fractional count (from the Turnbull EM) contributes its remainder
+    pro rata. With no ties this is the Nelson-Aalen estimate.
+
+    This is the low-level function behind :code:`FlemingHarrington.fit()`,
+    which builds ``r`` and ``d`` from the data (see
+    :code:`surpyval.xcnt_to_xrd`) and wraps the result in a
+    ``NonParametric`` model; use that unless you already have the
+    counts.
+
+    Parameters
+    ----------
+    r : array_like
+        Number of items at risk just before each distinct event time,
+        in time order.
+    d : array_like
+        Number of events at each of those times. May be fractional.
+
+    Returns
+    -------
+    R : ndarray
+        The survival estimate just after each time, the same length as
+        ``r``. Like the Nelson-Aalen estimate it stays above zero, even
+        when all the items at risk fail at once.
+
+    Examples
+    --------
+    The ties at the first and last times make the estimate lower than
+    the Nelson-Aalen one (0.8187, 0.7225, 0.3965):
+
+    >>> import numpy as np
+    >>> from surpyval.univariate.nonparametric import fleming_harrington
+    >>> r = np.array([10, 8, 5])
+    >>> d = np.array([2, 1, 3])
+    >>> fleming_harrington(r, d).round(4)
+    array([0.8097, 0.7145, 0.3265])
+    """
     Y = np.array([fh_h(r_i, d_i) for r_i, d_i in zip(r, d)])
     H = Y.cumsum()
     H[np.isnan(H)] = np.inf
@@ -96,9 +182,13 @@ class FlemingHarrington_(NonParametricFitter):
 
     .. math::
 
-        R = e^{-\sum_{i:x_{i} \leq x} \sum_{i=0}^{d_x-1} \frac{1}{r_x - i}}
+        R(x) = e^{-\sum_{i:x_{i} \leq x} \sum_{j=0}^{d_i-1}
+            \frac{1}{r_i - j}}
 
-    See 'NonParametric section for detailed estimate of how H is computed.'
+    That is, the ``d_i`` deaths tied at ``x_i`` are counted one after
+    another, each removing one unit from the risk set before the next
+    (a fractional expected count, from the Turnbull EM, contributes its
+    remainder pro rata). With no ties this is the Nelson-Aalen estimate.
 
     The variance of the cumulative hazard used for confidence bounds is
     estimated with the same tie correction as the estimator itself

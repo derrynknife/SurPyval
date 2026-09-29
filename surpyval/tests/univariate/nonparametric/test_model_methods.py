@@ -48,11 +48,11 @@ def test_quantile_cb_brookmeyer_crowley_inversion():
     else:
         expected_upper = np.nan
     cb = model.quantile_cb(p)
-    assert cb.shape == (1, 2)
-    assert cb[0, 0] == expected_lower
-    assert np.isnan(cb[0, 1]) == np.isnan(expected_upper)
+    assert cb.shape == (2,)
+    assert cb[0] == expected_lower
+    assert np.isnan(cb[1]) == np.isnan(expected_upper)
     # The interval contains the point estimate when the median is reached
-    assert cb[0, 0] <= model.median
+    assert cb[0] <= model.median
 
 
 def test_quantile_cb_brackets_estimate_large_sample():
@@ -60,10 +60,10 @@ def test_quantile_cb_brackets_estimate_large_sample():
     x = rng.exponential(1.0, 200)
     model = surpyval.KaplanMeier.fit(x)
     cb = model.quantile_cb(0.5)
-    assert cb[0, 0] <= model.median <= cb[0, 1]
+    assert cb[0] <= model.median <= cb[1]
     # With n=200 the median CI should be reasonably tight around ln(2)
-    assert cb[0, 0] > 0.4
-    assert cb[0, 1] < 1.1
+    assert cb[0] > 0.4
+    assert cb[1] < 1.1
 
 
 def test_mean_uncensored_equals_sample_mean():
@@ -119,7 +119,7 @@ def test_bootstrap_cb_kaplan_meier():
     c = np.array([0, 0, 1, 0, 0, 1, 0, 1, 0, 0])
     model = surpyval.KaplanMeier.fit(x, c=c)
     x_test = [10.0, 30.0]
-    cb = model.bootstrap_cb(x_test, B=100, random_state=42)
+    cb = model.bootstrap_cb(x_test, n_boot=100, random_state=42)
     assert cb.shape == (2, 2)
     assert (cb[:, 0] <= cb[:, 1]).all()
     # Bootstrap interval should contain the point estimate
@@ -127,7 +127,7 @@ def test_bootstrap_cb_kaplan_meier():
     assert (cb[:, 0] <= sf).all()
     assert (sf <= cb[:, 1]).all()
     # Reproducible with the same seed
-    cb2 = model.bootstrap_cb(x_test, B=100, random_state=42)
+    cb2 = model.bootstrap_cb(x_test, n_boot=100, random_state=42)
     assert np.allclose(cb, cb2)
 
 
@@ -135,7 +135,7 @@ def test_bootstrap_cb_turnbull():
     left = np.array([1, 8, 8, 7, 7, 17, 37, 46, 46, 45.0])
     right = np.array([7, 8, 10, 16, 14, np.inf, 44, np.inf, np.inf, np.inf])
     model = surpyval.Turnbull.fit(xl=left, xr=right)
-    cb = model.bootstrap_cb([10.0, 20.0], B=30, random_state=7)
+    cb = model.bootstrap_cb([10.0, 20.0], n_boot=30, random_state=7)
     assert cb.shape == (2, 2)
     assert (cb[:, 0] <= cb[:, 1]).all()
     sf = model.sf([10.0, 20.0])
@@ -146,8 +146,8 @@ def test_bootstrap_cb_turnbull():
 def test_bootstrap_cb_one_sided():
     x = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
     model = surpyval.KaplanMeier.fit(x)
-    lower = model.bootstrap_cb([2.5], bound="lower", B=50, random_state=1)
-    upper = model.bootstrap_cb([2.5], bound="upper", B=50, random_state=1)
+    lower = model.bootstrap_cb([2.5], bound="lower", n_boot=50, random_state=1)
+    upper = model.bootstrap_cb([2.5], bound="upper", n_boot=50, random_state=1)
     assert lower.shape == (1,)
     assert (lower <= upper).all()
     with pytest.raises(ValueError):

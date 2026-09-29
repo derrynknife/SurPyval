@@ -60,8 +60,8 @@ def test_cause_specific_mcf_fit_and_eval():
     # MCF is the expected number of events per item (events / shared risk
     # set). 'a': events at 3, 8, 9 over a risk set of 2 -> 1.5; 'b': events
     # at 4, 5 -> 1.0. Evaluated at the last observation time (12).
-    assert model.mcf(12, "a")[0] == 1.5
-    assert model.mcf(12, "b")[0] == 1.0
+    assert model.mcf(12, "a") == 1.5
+    assert model.mcf(12, "b") == 1.0
     # confidence bounds return a finite interval inside observation
     cb = model.mcf_cb(9, "a")
     assert np.isfinite(cb).all()

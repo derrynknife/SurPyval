@@ -31,10 +31,28 @@ class CountingProcess(ABC):
     :class:`ProportionalIntensityNHPP` verify, with a simple ``isinstance``
     check, that the intensity model handed to them really is a counting
     process.
+
+    Examples
+    --------
+    It is abstract; the intensity models (``HPP``, ``CrowAMSAA``,
+    ``Duane``, ``CoxLewis`` ...) are instances of it:
+
+    >>> import numpy as np
+    >>> from surpyval.recurrent import CountingProcess, CrowAMSAA
+    >>> isinstance(CrowAMSAA, CountingProcess)
+    True
+    >>> CrowAMSAA.param_names
+    ['alpha', 'beta']
+    >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    >>> model = CrowAMSAA.fit(x)
+    >>> CrowAMSAA.cif(np.array([30.0, 60.0]), *model.params).round(4)
+    array([ 2.7808, 11.1094])
     """
 
     #: Names of the model's parameters (see the class docstring).
     param_names: list
+    #: ``(low, high)`` bounds per parameter, ``None`` for unbounded.
+    bounds: tuple
 
     @abstractmethod
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:

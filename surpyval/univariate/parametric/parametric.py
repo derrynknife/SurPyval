@@ -1,12 +1,11 @@
+import warnings
 from collections import namedtuple
 from copy import copy, deepcopy
 from math import comb
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-import matplotlib.pyplot as plt
 import numpy.typing as npt
 from autograd import jacobian
-from matplotlib.axes import Axes
 from scipy.optimize import NonlinearConstraint, brentq, minimize
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -14,8 +13,14 @@ from scipy.stats import uniform
 import surpyval as surv
 from surpyval import ParametricDistribution, np
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils import fsli_to_xcnt
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
@@ -24,12 +29,87 @@ from .probability_plotting import (
     probability_plot_data,
 )
 
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
 # Shared inputs for the confidence-bound computations: the fitted parameter
 # vector ``phi_hat`` (core params plus any LFP/ZI parameters), its covariance
 # ``cov``, and ``n_core`` (the number of leading core parameters). These three
 # always travel together, so they are bundled to keep the bound helpers'
 # signatures small.
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
+
+
+def draw_state(random_state: Any = None) -> Any:
+    """The ``random_state`` to give a numpy or scipy draw.
+
+    ``None`` stays ``None``, numpy's global stream, so ``np.random.seed``
+    reproduces a draw exactly as it did before ``random_state`` was an
+    argument. Anything else is ``as_generator(random_state)``: a stream
+    of its own, with an int seed meaning ``np.random.default_rng(seed)``
+    (scipy's ``rvs`` would otherwise read an int as a legacy
+    ``RandomState`` seed).
+    """
+    return None if random_state is None else as_generator(random_state)
+
+
+def uniform_draws(
+    size: int | tuple[int, ...], random_state: Any = None
+) -> npt.NDArray:
+    """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    return uniform.rvs(size=size, random_state=draw_state(random_state))
+
+
+def is_custom_distribution(dist: Any) -> bool:
+    """Whether ``dist`` is, or discretizes, a ``CustomDistribution``."""
+    # Imported here since the distributions import this module
+    from .distributions.custom_distribution import CustomDistribution
+    from .distributions.discretize import DiscretizedFitter
+
+    if isinstance(dist, DiscretizedFitter):
+        return is_custom_distribution(dist.dist)
+    return isinstance(dist, CustomDistribution)
+
+
+def resolve_distribution(name: str, custom: bool = False) -> Any:
+    """The distribution a serialised model names, for ``from_dict``.
+
+    - SurPyval's own distributions are looked up by name among the
+      package's exports, and only there, so an untrusted dictionary cannot
+      resolve arbitrary attributes.
+    - ``"Discretize(<name>)"`` is rebuilt as ``Discretize`` of the
+      distribution ``<name>`` resolves to.
+    - A ``CustomDistribution`` holds user functions, which a dictionary
+      cannot carry. Constructing one registers it under its name, so a
+      model of it is read back in any session that has constructed the
+      same distribution again (``custom`` says the dictionary came from
+      one, and makes the registry take precedence over a built-in of the
+      same name). Otherwise a ``ValueError`` says what to do.
+    """
+    from .distributions.custom_distribution import registered_custom
+    from .distributions.discretize import Discretize
+    from .parametric_fitter import ParametricFitter
+
+    if name.startswith("Discretize(") and name.endswith(")"):
+        return Discretize(resolve_distribution(name[11:-1], custom))
+    if custom:
+        dist = registered_custom(name)
+        if dist is not None:
+            return dist
+        raise ValueError(
+            f"'{name}' is a CustomDistribution, whose cumulative hazard "
+            "cannot be stored in a dictionary. Construct it again with "
+            f"CustomDistribution('{name}', ...) in this session, then "
+            "read the dictionary back."
+        )
+    dist = getattr(surv, name, None)
+    if isinstance(dist, ParametricFitter):
+        return dist
+    # A dictionary written before custom models were flagged
+    dist = registered_custom(name)
+    if dist is not None:
+        return dist
+    raise ValueError(f"Unknown distribution '{name}'")
 
 
 class Parametric(
@@ -42,6 +122,25 @@ class Parametric(
     Instances of this class are very useful when a user needs the other
     functions of a distribution for plotting, optimizations, monte carlo
     analysis and numeric integration.
+
+    Examples
+    --------
+    >>> import surpyval as surv
+    >>> model = surv.Weibull.fit([10, 12, 15, 17, 20, 25, 31])
+    >>> type(model).__name__
+    'Parametric'
+    >>> model.params.round(3)
+    array([20.881,  2.931])
+    >>> model.sf([10, 20]).round(4)
+    array([0.8909, 0.4143])
+
+    A model built from parameters has the same functions. With a limited
+    failure population, one unit in ten never fails, so the mean life is
+    infinite:
+
+    >>> lfp = surv.Weibull.from_params([20, 3], p=0.9)
+    >>> float(lfp.sf(1000.0).round(4)), lfp.mean(), lfp.extras
+    (0.1, inf, {'p': 0.9})
     """
 
     # Attributes populated after construction (by ``fit``, ``from_dict``
@@ -57,8 +156,10 @@ class Parametric(
     cov_matrix: npt.NDArray
     surv_data: "SurpyvalData"
     fitting_info: dict[str, Any]
+    optimizer: str
     tl: Any
     tr: Any
+    lfp_name: str
     _neg_ll: float
     _mean: float
     _bic: float
@@ -102,9 +203,20 @@ class Parametric(
         else:
             self.gamma = 0
 
+        # The limited-failure proportion is addressed as ``p`` (in
+        # ``fixed``, ``param_cb`` and the repr) -- unless the distribution
+        # has a parameter of its own called ``p`` (Geometric,
+        # NegativeBinomial). Both keys then landed on the same
+        # ``param_map`` entry, the proportion overwrote the distribution's
+        # parameter, and the map came out one entry short of the bounds:
+        # every such LFP fit died in a zip() length check, and
+        # ``param_cb('p')`` read the distribution's ``p`` as the
+        # proportion. The distribution keeps ``p`` and the proportion
+        # becomes ``lfp_p``.
+        self.lfp_name = "lfp_p" if "p" in dist.param_map else "p"
         if lfp:
             bounds = (*bounds, (0, 1))
-            param_map.update({"p": len(param_map)})
+            param_map.update({self.lfp_name: len(param_map)})
             self.k += 1
         else:
             self.p = 1
@@ -121,26 +233,49 @@ class Parametric(
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "Parametric":
-        # Imported here since parametric_fitter imports this module
-        from surpyval.univariate.parametric.parametric_fitter import (
-            ParametricFitter,
-        )
+        """
+        Rebuild a model from the dictionary written by :meth:`to_dict`.
 
+        Parameters
+        ----------
+        model_dict : dict
+            A dictionary produced by :meth:`to_dict` (for example read
+            back from JSON or a document store).
+
+        Returns
+        -------
+        Parametric
+            The restored model. Methods that need the original data
+            (``plot``, likelihood-ratio bounds) work only if the
+            dictionary was written with ``with_data=True``; ``aic``,
+            ``bic`` and ``aic_c`` work from the stored likelihood and
+            sample size either way.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> from surpyval.univariate.parametric.parametric import Parametric
+        >>> model = Weibull.from_params([10, 2])
+        >>> Parametric.from_dict(model.to_dict()).params
+        array([10,  2])
+        """
         if model_dict["parameterization"] != "parametric":
             raise ValueError(
                 "Must create parametric model from parametric model dict"
             )
 
-        # Restrict the lookup to known distributions so an untrusted
-        # model dict cannot resolve arbitrary surpyval attributes
-        dist = getattr(surv, model_dict["distribution"], None)
-        if not isinstance(dist, ParametricFitter):
-            raise ValueError(
-                f"Unknown distribution '{model_dict['distribution']}'"
-            )
+        dist = resolve_distribution(
+            model_dict["distribution"], bool(model_dict.get("custom", False))
+        )
         # A variable-arity distribution supplies the instance sized to
         # these parameters; every other distribution returns itself.
         dist = dist._for_params(model_dict["params"])
+        if len(model_dict["params"]) != dist.k:
+            raise ValueError(
+                f"The dictionary holds {len(model_dict['params'])} "
+                f"parameter(s) but the distribution '{dist.name}' has "
+                f"{dist.k}."
+            )
         how = model_dict["how"]
         if "data" in model_dict:
             # Coerce the JSON lists back to arrays so downstream users
@@ -172,6 +307,21 @@ class Parametric(
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
 
+        # The sample size of bic() and aic_c(), so they work -- and agree
+        # with the fitted model -- without the data. Dicts written before
+        # this key existed need the data for them.
+        out._ic_n = cls._restored_ic_n(model_dict)
+
+        # The parameters fixed at fit time are not estimated, so they do
+        # not count towards the k of aic() and bic(); restoring them keeps
+        # a round-tripped model's criteria equal to the fitted one's.
+        # Dicts written before this key existed have none.
+        fixed_names = model_dict.get("fixed") or []
+        if fixed_names:
+            out.fitting_info = {
+                "fixed_idx": [out.param_map[name] for name in fixed_names]
+            }
+
         out.params = np.array(model_dict["params"])
 
         # Restore the support interval, which fit-time construction sets via
@@ -181,9 +331,48 @@ class Parametric(
         return out
 
     def to_dict(self, with_data: bool = False) -> dict:
+        """
+        Serialise the model to a dictionary of plain Python types.
+
+        The dictionary holds the distribution name, the parameters, the
+        offset / LFP / ZI settings, the names of any parameters fixed at fit
+        time (``"fixed"``) and, if available, the parameter covariance,
+        fitted negative log-likelihood and the sample size of BIC and
+        AIC_c (``"ic_n"``), so a restored model can compute confidence
+        bounds, ``aic``, ``bic`` and ``aic_c``. Restore it with
+        :meth:`from_dict` or ``surpyval.from_dict``.
+
+        Parameters
+        ----------
+        with_data : bool, optional
+            If :code:`True`, also store the ``x``, ``c``, ``n``, ``t`` data
+            the model was fitted to, which ``plot`` and likelihood-ratio
+            bounds need. Defaults to :code:`False`.
+            ``to_json(path, with_data=True)`` writes this to a file.
+
+        Returns
+        -------
+        dict
+            A strict-JSON dictionary: non-finite values (such as the
+            untruncated ``-inf``/``inf`` bounds in the data) are ``None``,
+            recorded under ``"non_finite"`` and restored by
+            :meth:`from_dict` (see :doc:`/surpyval.serialisation`).
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 2])
+        >>> d = model.to_dict()
+        >>> d["distribution"], d["params"]
+        ('Weibull', [10, 2])
+        """
         out: dict[str, Any] = {}
         out["parameterization"] = "parametric"
         out["distribution"] = self.dist.name
+        if is_custom_distribution(self.dist):
+            # Read back from the CustomDistribution registry rather than
+            # from SurPyval's own distributions (see resolve_distribution).
+            out["custom"] = True
         out["how"] = self.method
         out["param_names"] = self.dist.param_names
 
@@ -223,8 +412,96 @@ class Parametric(
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
+
+        fixed_idx = sorted(self._user_fixed_idx())
+        if fixed_idx:
+            # Named, not indexed, so the entry reads on its own; from_dict
+            # maps the names back through the rebuilt param_map.
+            names = {i: name for name, i in self.param_map.items()}
+            out["fixed"] = [names[i] for i in fixed_idx]
 
         return stamp_schema(out)
+
+    @property
+    def extras(self) -> dict[str, float]:
+        """
+        The offset, limited-failure proportion and zero-inflation fraction
+        the model carries, as the keywords of ``from_params``.
+
+        Only the ones the model has are included: ``"gamma"`` for an offset
+        model, ``"p"`` for a limited-failure-population model (also for a
+        ``Geometric`` or ``NegativeBinomial``, whose proportion is printed
+        as ``lfp_p``: ``from_params`` takes it as ``p``) and ``"f0"`` for a
+        zero-inflated one; a plain model gives an empty dict. So
+        ``dist.from_params(params, **model.extras)`` rebuilds the model with
+        other parameters, which :meth:`with_params` does. The dict is a
+        copy; changing it does not change the model.
+
+        Returns
+        -------
+        dict
+            ``{name: value}`` for each of ``gamma``, ``p`` and ``f0`` the
+            model has.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1).extras
+        {'gamma': 5.0, 'p': 0.9, 'f0': 0.1}
+        >>> Weibull.from_params([100, 2]).extras
+        {}
+        """
+        out: dict[str, float] = {}
+        # Keyed on the model's structure, as to_dict is, not on the values:
+        # a model fitted with lfp=True keeps its p even where it came out
+        # at 1.
+        if self.offset:
+            out["gamma"] = float(self.gamma)
+        if self.lfp:
+            out["p"] = float(self.p)
+        if self.zi:
+            out["f0"] = float(self.f0)
+        return out
+
+    def with_params(self, params: npt.ArrayLike) -> "Parametric":
+        """
+        The same model with other distribution parameters.
+
+        The distribution, offset ``gamma``, limited-failure proportion
+        ``p`` and zero-inflation fraction ``f0`` are kept (see
+        :attr:`extras`); only the distribution's own parameters change. Use
+        it to perturb or redraw a fitted model's parameters (sensitivity
+        or uncertainty analyses): ``from_params(model.params)`` alone
+        silently drops the offset, ``p`` and ``f0``.
+
+        Parameters
+        ----------
+        params : array like
+            The distribution's parameters, in the order of
+            ``model.dist.param_names``. They are checked as
+            ``from_params`` checks them.
+
+        Returns
+        -------
+        Parametric
+            A model built from parameters, as ``from_params`` builds it:
+            it has no data, covariance or fitted likelihood, since those
+            belong to the fit of the original parameters, so data-based
+            methods (``plot``, confidence bounds, ``aic``) are not
+            available on it.
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([100, 2], gamma=5.0, p=0.9, f0=0.1)
+        >>> other = model.with_params([120, 2])
+        >>> other.params, other.gamma, other.p, other.f0
+        (array([120,   2]), 5.0, 0.9, 0.1)
+        """
+        return self.dist.from_params(params, **self.extras)
 
     def __repr__(self) -> str:
         if hasattr(self, "params"):
@@ -244,7 +521,8 @@ class Parametric(
                 out += f"\nOffset (gamma)      : {self.gamma}"
 
             if self.lfp:
-                out += f"\nMax Proportion (p)  : {self.p}"
+                label = f"Max Proportion ({self.lfp_name})"
+                out += f"\n{label:<20}: {self.p}"
 
             if self.zi:
                 out += f"\nZero-Inflation (f0) : {self.f0}"
@@ -279,7 +557,45 @@ class Parametric(
           respects the parameter's boundary, and need not be symmetric about
           the estimate -- usually better small-sample coverage than Wald, and
           the reliability-engineering default. Aliases: ``"likelihood"``,
-          ``"likelihood-ratio"``, ``"profile"``.
+          ``"likelihood-ratio"``, ``"profile"``. A side whose bound cannot
+          be found is ``nan``, with a warning.
+
+        A parameter fixed at fit time is known, so both methods give the
+        degenerate interval at its value.
+
+        Parameters
+        ----------
+        name : str
+            The parameter, by name (e.g. ``"alpha"``; ``"p"`` for a
+            limited-failure model, ``"f0"`` for a zero-inflated one). A
+            distribution parameter named ``p`` (``Geometric``,
+            ``NegativeBinomial``) keeps its name, and the limited-failure
+            proportion of such a model is ``"lfp_p"``. The offset
+            ``"gamma"`` has no confidence bound: it is a threshold
+            parameter, whose likelihood is not regular, so no standard
+            error is estimated for it.
+        alpha_ci : float, optional
+            The significance level: 0.05 (the default) gives a 95% bound.
+        bound : str, optional
+            ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
+        method : str, optional
+            ``"wald"`` (the default) or ``"lr"``, as above.
+
+        Returns
+        -------
+        numpy array
+            ``[lower, upper]`` for a two-sided bound, else the one bound.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> model.param_cb("alpha")
+        array([ 7.83345374, 10.56940099])
+        >>> model.param_cb("beta", method="lr")
+        array([1.82826755, 3.27740643])
         """
         if method.lower() in (
             "lr",
@@ -294,25 +610,18 @@ class Parametric(
                 "use 'wald' or 'lr'."
             )
 
-        if name in ("p", "f0"):
-            if name == "p" and not self.lfp:
-                raise ValueError("'p' is only estimated for lfp models")
-            if name == "f0" and not self.zi:
-                raise ValueError("'f0' is only estimated for zi models")
+        is_core, idx = self._resolve_param_name(name)
+        if not is_core:
             cov = getattr(self, "cov_matrix", None)
             if cov is None:
                 raise ValueError(
                     f"Model has no covariance for '{name}'; "
                     "it must be fit with the MLE method"
                 )
-            idx = len(self.params)
-            if name == "f0" and self.lfp:
-                idx += 1
-            p_hat = self.p if name == "p" else self.f0
+            p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
             param_bounds = (0, 1)
         else:
-            idx = self.dist.param_map[name]
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
@@ -353,9 +662,88 @@ class Parametric(
             bounds = -bounds * factor
             return p_hat + bounds
 
+    def _resolve_param_name(self, name: str) -> tuple[bool, int]:
+        """Locate the parameter ``name`` for a confidence bound.
+
+        Returns ``(True, i)`` for the distribution's own ``i``-th
+        parameter and ``(False, j)`` for the limited-failure proportion or
+        the zero-inflation fraction, ``j`` being its index in the extended
+        covariance ``cov_matrix`` (core parameters, then ``p``, then
+        ``f0``). The distribution's parameters are looked up first, so a
+        ``Geometric`` ``p`` is never mistaken for the LFP proportion (which
+        is then ``lfp_p``, see ``__init__``). Anything else -- the offset,
+        or a name the model does not have -- raises a ``ValueError``
+        naming the valid choices rather than a bare ``KeyError``.
+        """
+        if name in self.dist.param_map:
+            return True, self.dist.param_map[name]
+        if name == self.lfp_name:
+            if not self.lfp:
+                raise ValueError(f"'{name}' is only estimated for lfp models")
+            return False, len(self.params)
+        if name == "f0":
+            if not self.zi:
+                raise ValueError("'f0' is only estimated for zi models")
+            return False, len(self.params) + int(self.lfp)
+        if name == "gamma":
+            if not self.offset:
+                raise ValueError("'gamma' is only estimated for offset models")
+            # mle holds gamma out of the covariance: the threshold of an
+            # offset model is non-regular (the likelihood's support moves
+            # with it), so a Wald variance for it would be misleading.
+            raise ValueError(
+                "No confidence bound is available for the offset 'gamma': "
+                "it is a threshold parameter whose likelihood is not "
+                "regular, so no standard error is estimated for it."
+            )
+        valid = list(self.dist.param_names)
+        if self.lfp:
+            valid.append(self.lfp_name)
+        if self.zi:
+            valid.append("f0")
+        raise ValueError(
+            f"Unknown parameter {name!r} for this {self.dist.name} model; "
+            f"expected one of {valid}"
+        )
+
+    def _ensure_surv_data(self) -> None:
+        """Make ``surv_data`` available for the likelihood-ratio bounds.
+
+        A fitted model holds it; a model restored from a dictionary
+        written with ``to_dict(with_data=True)`` holds the same data as
+        its ``x``, ``c``, ``n`` and ``t`` arrays, so the ``SurpyvalData``
+        is rebuilt from those. Only without the data at all is there
+        nothing to profile.
+        """
+        if hasattr(self, "surv_data"):
+            return
+        if self.data is None:
+            raise ValueError(
+                "Likelihood-ratio bounds need the original data, which this "
+                "model does not have (it was built from parameters, or "
+                "restored from a dict saved without its data -- save it "
+                "with to_dict(with_data=True) to keep them); use "
+                "method='wald' (which uses the stored covariance)."
+            )
+        self.surv_data = SurpyvalData(
+            x=self.data["x"],
+            c=self.data["c"],
+            n=self.data["n"],
+            t=self.data["t"],
+        )
+
+    def _is_fixed_param(self, name: str) -> bool:
+        """Whether ``name`` was fixed at fit time."""
+        # fixed_idx indexes param_map (which leads with gamma for an
+        # offset model and ends with p / f0), so look the name up there.
+        return self.param_map.get(name) in self._user_fixed_idx()
+
     def _user_fixed_idx(self) -> set:
-        """Core-parameter indices the user fixed at fit time (empty set for
-        models without fitting info, e.g. ``from_params``)."""
+        """``param_map`` indices of the parameters the user fixed at fit
+        time (empty set for models without fitting info, e.g.
+        ``from_params``). Without an offset these are the core-parameter
+        indices; the likelihood-ratio bounds that read them as such reject
+        offset models."""
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
@@ -405,10 +793,13 @@ class Parametric(
 
         x0 = fixed[free_idx]
         res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
-        best = res.fun
-        if not np.isfinite(best):
-            res2 = minimize(obj, x0, method="Nelder-Mead")
-            if np.isfinite(res2.fun):
+        best = res.fun if np.isfinite(res.fun) else np.inf
+        if not (res.success and np.isfinite(res.fun)):
+            # A failed profile search overstates the profile likelihood
+            # and so narrows the interval; retry derivative free from the
+            # fit and keep whichever is lower.
+            res2 = minimize(obj, x0, method="Nelder-Mead", bounds=sci_bounds)
+            if np.isfinite(res2.fun) and res2.fun < best:
                 best = res2.fun
         return float(best)
 
@@ -428,30 +819,32 @@ class Parametric(
         """
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
-        if not hasattr(self, "surv_data"):
-            raise ValueError(
-                "Likelihood-ratio bounds need the original data, which a "
-                "deserialised model does not carry; refit in-process, or "
-                "use method='wald' (which uses the stored covariance)."
-            )
+        self._ensure_surv_data()
         if self.offset or self.lfp or self.zi:
             raise NotImplementedError(
                 "Likelihood-ratio bounds are not yet available for offset, "
                 "limited-failure-population or zero-inflated models; use "
                 "method='wald'."
             )
-        if name in ("p", "f0"):
+        is_core, idx = self._resolve_param_name(name)
+        if not is_core:
             raise NotImplementedError(
                 "Likelihood-ratio bounds on 'p' / 'f0' are not yet "
                 "available; use method='wald'."
             )
 
-        idx = self.dist.param_map[name]
-        if idx in self._user_fixed_idx():
-            raise ValueError(
-                f"'{name}' was fixed at fit time; a confidence bound on a "
-                "fixed parameter is not defined."
-            )
+        if self._is_fixed_param(name):
+            # A parameter fixed at fit time is known, not estimated: the
+            # degenerate interval at its value, as the Wald method gives
+            # (its variance is zero). This used to raise instead.
+            value = float(self.params[idx])
+            if bound == "two-sided":
+                return np.array([value, value])
+            if bound not in ("lower", "upper"):
+                raise ValueError(
+                    "bound must be 'two-sided', 'lower' or 'upper'"
+                )
+            return np.array([value])
         theta_hat = float(self.params[idx])
         nll_hat = float(
             self.dist._neg_ll_func(
@@ -484,8 +877,30 @@ class Parametric(
         def deviance(v: npt.NDArray) -> Any:
             return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
 
+        def unsolved(direction: Any) -> float:
+            # Never fall back on the last candidate or the estimate: an
+            # unfound bound is reported as such.
+            side = "upper" if direction > 0 else "lower"
+            warnings.warn(
+                f"The likelihood-ratio {side} bound on '{name}' could not "
+                "be found (the profile deviance never crossed the critical "
+                "value, or was not finite); nan is returned for it. "
+                "method='wald' gives a bound in its place.",
+                RuntimeWarning,
+                stacklevel=4,
+            )
+            return np.nan
+
         def solve_side(direction: Any) -> Any:
-            limit = hi_b if direction > 0 else lo_b
+            edge = hi_b if direction > 0 else lo_b
+            # The likelihood at a bound of 0 or 1 itself is typically nan
+            # (0 * log 0), so it is probed just inside; reaching it still
+            # reports the edge itself below.
+            limit = edge
+            if edge == 0:
+                limit = 1e-10
+            elif edge == 1:
+                limit = 1 - 1e-10
             below = theta_hat  # deviance(below) ~ 0 < crit
             step = se
             for _ in range(80):
@@ -495,24 +910,30 @@ class Parametric(
                 )
                 if at_edge:
                     v = limit
-                if deviance(v) >= crit:
+                dev_v = deviance(v)
+                if dev_v >= crit:
                     a, b = sorted((below, v))
-                    return float(
-                        brentq(
-                            lambda x: deviance(x) - crit,
-                            a,
-                            b,
-                            xtol=1e-8,
-                            rtol=1e-8,
+                    try:
+                        return float(
+                            brentq(
+                                lambda x: deviance(x) - crit,
+                                a,
+                                b,
+                                xtol=1e-8,
+                                rtol=1e-8,
+                            )
                         )
-                    )
+                    except ValueError:
+                        return unsolved(direction)
+                if not np.isfinite(dev_v):
+                    return unsolved(direction)
                 if at_edge:
                     # Hit the support boundary without crossing: the interval
                     # is open at the edge.
-                    return float(limit)
+                    return float(edge)
                 below = v
                 step *= 1.6
-            return float(v)
+            return unsolved(direction)
 
         if bound == "two-sided":
             return np.array([solve_side(-1), solve_side(1)])
@@ -560,7 +981,12 @@ class Parametric(
         # at a negative argument (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_sf = np.where(xg < s0, 1.0, base_sf)
-        return 1 - self.p + (self.p - self.f0) * base_sf
+        out = 1 - self.p + (self.p - self.f0) * base_sf
+        if self.f0 != 0:
+            # The zero-inflation mass sits at 0, so before 0 nothing has
+            # failed yet: R = 1 there, not 1 - f0.
+            out = np.where(np.asarray(x) < 0, 1.0, out)[()]
+        return out
 
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -601,9 +1027,13 @@ class Parametric(
         # the base function at a negative argument gave F < 0 (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_ff = np.where(xg < s0, 0.0, base_ff)
-        return self.f0 + (self.p - self.f0) * base_ff
+        out = self.f0 + (self.p - self.f0) * base_ff
+        if self.f0 != 0:
+            # The zero-inflation mass f0 arrives at 0, not before it.
+            out = np.where(np.asarray(x) < 0, 0.0, out)[()]
+        return out
 
-    def df(self, x: npt.ArrayLike) -> npt.NDArray:
+    def df(self, x: npt.ArrayLike, continuous: bool = False) -> npt.NDArray:
         r"""
 
         The density function for a distribution using the parameters found
@@ -615,6 +1045,15 @@ class Parametric(
         x : array like or scalar
             The values of the random variables at which the density function
             will be calculated.
+        continuous : bool, optional
+            Only matters for a zero-inflated model. If :code:`True`, return
+            the density of the continuous part alone, ``p - f0`` times
+            the base density at ``x - gamma``, with no point mass at 0:
+            it integrates to
+            ``p - f0``, so it is the one to integrate numerically (a
+            convolution, the trapezoidal rule). Defaults to
+            :code:`False`, which returns the point mass ``f0`` at
+            exactly 0, as the likelihood uses it.
 
         Returns
         -------
@@ -634,6 +1073,23 @@ class Parametric(
         np.float64(0.01190438297804473)
         >>> model.df([1, 2, 3, 4, 5])
         array([0.002997  , 0.01190438, 0.02628075, 0.04502424, 0.06618727])
+
+        For a zero-inflated model, ``df(0)`` is the point mass ``f0`` (a
+        probability, not a density); ``continuous=True`` leaves it out:
+
+        >>> zi = Weibull.from_params([100, 2], f0=0.1)
+        >>> zi.df(0.0), zi.df(0.0, continuous=True)
+        (np.float64(0.1), np.float64(0.0))
+
+        Notes
+        -----
+        A zero-inflated model is a mixture of a point mass ``f0`` at 0 and
+        a continuous part of mass ``p - f0``. By default ``df`` returns the
+        point mass itself at exactly ``x == 0``, since that is the
+        probability an observation at 0 gets in the likelihood. A density
+        integrated over a grid that starts at 0 then counts a spurious
+        ``f0 * dx / 2`` (trapezoidal rule); use ``continuous=True`` for
+        that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
@@ -641,13 +1097,15 @@ class Parametric(
         # Below the (possibly offset) support the density is 0 (#256).
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         base_df = np.where(xg < s0, 0.0, base_df)
-        if self.f0 == 0:
-            df = self.p * base_df
+        if self.f0 == 0 or continuous:
+            # (p - f0) is p itself without zero inflation
+            df = (self.p - self.f0) * base_df
         else:
             # The continuous part carries mass (p - f0) — the same constant
             # as sf/ff and the likelihood; (1 - f0) * p was inconsistent
-            # with them for combined LFP + ZI models (#256).
-            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)
+            # with them for combined LFP + ZI models (#256). [()] makes a
+            # scalar argument give a scalar, not a 0-d array.
+            df = np.where(x == 0, self.f0, (self.p - self.f0) * base_df)[()]
         return df
 
     def hf(self, x: npt.ArrayLike) -> npt.NDArray:
@@ -735,7 +1193,9 @@ class Parametric(
             out = np.where(xg < s0, 0.0, self.dist.Hf(xg, *self.params))
             return out[()]
         else:
-            return -np.log(self.sf(x))
+            # 0.0 - log(...) rather than -log(...): where sf is exactly 1
+            # (before 0, or before the offset) the latter gave -0.0.
+            return 0.0 - np.log(self.sf(x))
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -771,8 +1231,8 @@ class Parametric(
         For a model with a limited-failure (cure) fraction the failure
         function only reaches ``p`` in the limit, so any quantile at or above
         ``p`` is infinite (that proportion of the population never fails). For
-        a zero-inflated model the mass ``f0`` sits at the offset, so quantiles
-        at or below ``f0`` return the offset.
+        a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
+        so quantiles at or below ``f0`` return 0.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -782,7 +1242,7 @@ class Parametric(
 
         # Invert the mixture failure function
         #   F(x) = f0 + (p - f0) F0(x - gamma):
-        #   u <= f0    -> the zero-inflation mass, which sits at the offset
+        #   u <= f0    -> the zero-inflation mass, which sits at 0
         #   f0 < u < p -> gamma + F0^{-1}((u - f0) / (p - f0))
         #   u >= p     -> beyond the attainable proportion (cure), so infinite
         with np.errstate(divide="ignore", invalid="ignore"):
@@ -829,12 +1289,41 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.cs(11, 10)
         np.float64(0.00025840046151723767)
+
+        Notes
+        -----
+        The ratio is taken of the model's own :meth:`sf`, so a
+        limited-failure proportion ``p``, a zero-inflation fraction ``f0``
+        and an offset ``gamma`` all enter it: the never-failing units
+        still count among the survivors at ``X``, and survival to an
+        ``X`` before the offset is certain. Where :math:`R(X) = 0` the
+        conditional survival is undefined and ``nan`` is returned.
         """
-        x = np.asarray(x)
-        X = np.asarray(X)
-        Xg = X - self.gamma  # type: ignore[operator]
-        cs = np.array(self.dist.cs(x, Xg, *self.params))
-        cs[cs > 1.0] = 1
+        x_arr = np.asarray(x, dtype=float)
+        X_arr = np.asarray(X, dtype=float)
+        Xg = X_arr - self.gamma
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        with np.errstate(all="ignore"):
+            # The ratio of the model's own sf. Handing the shifted X to
+            # ``dist.cs`` ignored p and f0 entirely (0.29 instead of 0.67
+            # for p = 0.7) and, for an X before the offset, evaluated the
+            # base sf at a negative time (1.0 or nan instead of 0.96).
+            cs = np.asarray(
+                self.sf(x_arr + X_arr) / self.sf(X_arr), dtype=float
+            )
+            if (self.p == 1) and (self.f0 == 0):
+                # A plain model inside its support keeps the
+                # distribution's own form, which is exact where the ratio
+                # cancels in the far tail (the memoryless Exponential).
+                inside = np.broadcast_to(Xg >= s0, cs.shape)
+                if inside.any():
+                    Xg_safe = np.where(Xg >= s0, Xg, s0)
+                    own = np.asarray(
+                        self.dist.cs(x_arr, Xg_safe, *self.params),
+                        dtype=float,
+                    )
+                    cs = np.where(inside, own, cs)
+        cs = np.where(cs > 1.0, 1.0, cs)
         return cs[()]
 
     def random(
@@ -842,32 +1331,46 @@ class Parametric(
         size: int | tuple[int, ...],
         a: float | None = None,
         b: float | None = None,
-    ) -> "npt.NDArray | tuple":
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
         r"""
 
-        A method to draw random samples from the distributions using the
+        A method to draw random lifetimes from the distribution using the
         parameters found in the ``.params`` attribute.
+
+        Each draw is ``qf(u)`` for one uniform ``u``, for every model. With
+        no ``random_state`` the uniforms come from numpy's global random
+        generator: so ``np.random.seed`` makes the draws reproducible, and
+        ``random(size)`` gives the same values as
+        ``qf(np.random.random_sample(size))`` after the same seed. A unit
+        of a limited-failure population that never fails (``p < 1``) is
+        ``inf``, and one dead on arrival (``f0``) is exactly 0. To simulate
+        a data set to fit, with the never-failing units right-censored,
+        use :meth:`random_data`.
 
         Parameters
         ----------
-        size : int
-            The number of random samples to be drawn from the distribution.
+        size : int or tuple of ints
+            The number (or shape) of random samples to be drawn from the
+            distribution.
         a: float or None
             The left truncated value if sampling from a truncated
             distribution
         b: float or None
             The right truncated value if sampling from a truncated
-            distribution
+            distribution. Truncated sampling is not available for offset,
+            limited-failure or zero-inflated models.
+        random_state : int or numpy.random.Generator, optional
+            Seed or generator for a reproducible draw of its own, which
+            neither depends on nor advances numpy's global stream (an int
+            is ``np.random.default_rng(seed)``). ``None`` (the default)
+            draws from the global stream, as above.
 
         Returns
         -------
-        random : numpy array, or tuple of numpy arrays
-            For a plain model, a numpy array of size ``size`` with random
-            values drawn from the distribution. A limited-failure-population
-            or zero-inflated model instead returns the draw as xcnt-format
-            ``(x, c, n, t)`` arrays, because some of its draws are
-            never-failing (right-censored) units that a bare array of
-            failure times cannot represent.
+        random : numpy array
+            An array of shape ``size`` of lifetimes drawn from the model.
 
         Examples
         --------
@@ -879,6 +1382,13 @@ class Parametric(
         >>> model.random(10)
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
+        >>> lfp = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+        >>> np.random.seed(6)
+        >>> lfp.random(5)
+        array([       inf, 7.38380246,        inf, 0.        , 2.22387058])
+        >>> bool(np.array_equal(model.random(3, random_state=1),
+        ...                     model.random(3, random_state=1)))
+        True
         """
         if ((a is not None) or (b is not None)) and (
             (self.p != 1) or (self.f0 != 0)
@@ -895,11 +1405,15 @@ class Parametric(
             if (a is None) and (b is None):
                 if hasattr(self.dist, "qf"):
                     return (
-                        self.dist.qf(uniform.rvs(size=size), *self.params)
+                        self.dist.qf(
+                            uniform_draws(size, random_state), *self.params
+                        )
                         + self.gamma
                     )
                 else:
-                    return self.dist.random(size, *self.params)
+                    return self.dist.random(
+                        size, *self.params, random_state=random_state
+                    )
 
             else:
                 # Truncated sampling
@@ -912,51 +1426,79 @@ class Parametric(
                     Fb = 1
                 else:
                     Fb = self.dist.ff(b, *self.params)
-                u = uniform.rvs(size=size)
+                u = uniform_draws(size, random_state)
                 return self.dist.qf((u * (Fb - Fa) + Fa), *self.params)
 
-        elif (self.p != 1) and (self.f0 == 0):
-            n_obs = np.random.binomial(size, self.p)
+        # One uniform per draw through the model's quantile function: inf
+        # for a unit that never fails, 0 for one dead on arrival (#403).
+        # This used to return (x, c, n, t) survival data for an LFP model
+        # (now random_data), and to draw a zero-inflated sample by a
+        # binomial count and a shuffle, which qf(u) could not reproduce.
+        return np.reshape(self.qf(uniform_draws(size, random_state)), size)
 
-            f = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-            s = np.ones(np.array(size) - n_obs) * self._censor_time(f)
+    def random_data(
+        self,
+        size: int,
+        a: float | None = None,
+        b: float | None = None,
+        *,
+        random_state: Any = None,
+    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+        r"""
 
-            return fsli_to_xcnt(f, s)
+        Draw a random survival data set from the model, in xcnt format, for
+        simulate-and-refit studies (a data set to pass to ``fit``).
 
-        elif (self.p == 1) and (self.f0 != 0):
-            n_doa = np.random.binomial(size, self.f0)
+        The lifetimes are those of :meth:`random` (the same values after
+        the same seed). A unit that never fails (``p < 1``) cannot be
+        observed failing, so it is right-censored just after the last
+        failure drawn, as if the test stopped there; every other draw is
+        an observed failure, with the dead-on-arrival units (``f0``) at
+        exactly 0. Repeated values are counted in ``n``.
 
-            # The zero-inflation mass sits at 0, consistent with df / ff /
-            # qf and the likelihood (#256).
-            x0 = np.zeros(n_doa)
-            x = (
-                self.dist.qf(uniform.rvs(size=size - n_doa), *self.params)
-                + self.gamma
-            )
-            x = np.concatenate([x, x0])
-            np.random.shuffle(x)
+        Parameters
+        ----------
+        size : int
+            The number of units to draw.
+        a: float or None
+            The left truncation value if sampling from a truncated
+            distribution; it is recorded as every row's left truncation.
+        b: float or None
+            The right truncation value if sampling from a truncated
+            distribution; it is recorded as every row's right truncation.
+        random_state : int or numpy.random.Generator, optional
+            As for :meth:`random`: ``None`` (the default) draws from
+            numpy's global stream, anything else from a stream of its own.
 
-            return x
-        else:
-            N = np.random.multinomial(
-                1, [self.f0, self.p - self.f0, 1.0 - self.p], size
-            ).sum(axis=0)
+        Returns
+        -------
+        x, c, n, t : numpy arrays
+            The draw in xcnt format: values, censoring flags (0 failed,
+            1 right-censored), counts and ``[left, right]`` truncation.
 
-            N = np.atleast_2d(N)
-            n_doa, n_obs, n_cens = N[:, 0], N[:, 1], N[:, 2]
-            x0 = np.zeros(n_doa)
-
-            x = (
-                self.dist.qf(uniform.rvs(size=n_obs), *self.params)
-                + self.gamma
-            )
-
-            f = np.concatenate([x, x0])
-            s = np.ones(n_cens) * self._censor_time(f)
-            return fsli_to_xcnt(f, s)
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> model = Weibull.from_params([10, 3], p=0.5)
+        >>> np.random.seed(3)
+        >>> x, c, n, t = model.random_data(8)
+        >>> x
+        array([ 6.61335008,  8.11938035,  9.55304821, 10.55304821])
+        >>> c, n
+        (array([0, 0, 0, 1]), array([1, 1, 1, 5]))
+        """
+        x = np.ravel(
+            self.random(size, a, b, random_state=random_state)
+        ).astype(float)
+        finite = np.isfinite(x)
+        f = x[finite]
+        s = np.full(int(np.sum(~finite)), self._censor_time(f))
+        xcnt = fsli_to_xcnt(f, s)
+        if (a is not None) or (b is not None):
+            t = xcnt[3]
+            t[:, 0] = -np.inf if a is None else a
+            t[:, 1] = np.inf if b is None else b
+        return xcnt
 
     def _censor_time(self, f: npt.NDArray) -> float:
         """A censoring time beyond every drawn failure, valid even when the
@@ -966,10 +1508,22 @@ class Parametric(
             return float(np.max(f)) + 1.0
         return float(self.dist.qf(0.999, *self.params)) + self.gamma + 1.0
 
-    def mean(self) -> float:
+    def mean(self, defective: bool = False) -> float:
         r"""
         The mean of the distribution using the parameters found in the
         ``.params`` attribute.
+
+        Parameters
+        ----------
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the mean
+            lifetime, which is infinite there, since a fraction ``1 - p``
+            never fails. If :code:`True`, the *defective* mean
+            :math:`(p - f_0)\,\mathbb{E}[\gamma + X]`, the integral of
+            :math:`t\,dF(t)` over the units that fail, with :math:`X` the
+            base distribution; that is not the mean life of the units that
+            fail, which is :math:`\gamma + \mathbb{E}[X]`.
 
         Returns
         -------
@@ -982,7 +1536,19 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
         np.float64(8.929795115692489)
+        >>> lfp = Weibull.from_params([100, 2], p=0.9)
+        >>> lfp.mean(), lfp.mean(defective=True)
+        (inf, np.float64(79.76042329074821))
+
+        Notes
+        -----
+        With ``p = 1`` the two agree, and give the mean lifetime of the
+        model: for a zero-inflated model the mass ``f0`` at 0 contributes
+        nothing, so it is :math:`(1 - f_0)\,\mathbb{E}[\gamma + X]`.
         """
+        if self.p < 1 and not defective:
+            # A fraction 1 - p never fails, so E[T] is infinite (#404).
+            return np.inf
         if not hasattr(self, "_mean"):
             # Defective mean: the zero-inflated mass f0 sits at 0 and
             # contributes nothing, so the continuous part carries (p - f0)
@@ -992,10 +1558,19 @@ class Parametric(
             )
         return self._mean
 
-    def var(self) -> float:
+    def var(self, defective: bool = False) -> float:
         r"""
         The variance of the distribution using the parameters found in the
         ``.params`` attribute.
+
+        Parameters
+        ----------
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the variance of
+            the lifetime, which is infinite there (a fraction ``1 - p``
+            never fails). If :code:`True`, ``moment(2, defective=True) -
+            mean(defective=True)**2``, as in the Notes.
 
         Returns
         -------
@@ -1008,12 +1583,42 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.var()
         np.float64(10.533288486847923)
+
+        Notes
+        -----
+        For a zero-inflated model (``p = 1``) this is the variance of the
+        mixture, the mass ``f0`` sitting at 0. For a limited-failure model
+        it is infinite, unless ``defective=True``, which scores the
+        never-failing fraction ``1 - p`` at 0 as well (the *defective*
+        convention of :meth:`mean` and :meth:`moment`). With
+        :math:`q = p - f_0` the proportion failing through the base
+        distribution :math:`X` (offset by :math:`\gamma`), both are
+
+        .. math::
+            \mathrm{Var}(T) = q\,\mathrm{Var}(X)
+                + q(1 - q)\left(\gamma + \mathbb{E}[X]\right)^2,
+
+        which reduces to :math:`\mathrm{Var}(X)` for a plain model (the
+        offset does not change a variance). The defective variance of a
+        limited-failure model is not a variance conditional on failure
+        (fit without ``lfp`` for that).
         """
+        if self.p < 1 and not defective:
+            # A fraction 1 - p never fails: Var(T) is infinite (#404).
+            return np.inf
         m1 = self.dist._moment(1, *self.params)
         m2 = self.dist._moment(2, *self.params)
-        return m2 - m1**2
+        base_var = m2 - m1**2
+        q = self.p - self.f0
+        if q == 1:
+            return base_var
+        # Written as q Var(X) + q (1 - q) mu^2 rather than as
+        # moment(2) - mean()**2, which subtracts two nearly equal numbers
+        # once the offset is large. It used to return Var(X) whatever p
+        # and f0 were, while mean() already applied the (p - f0) weight.
+        return q * base_var + q * (1 - q) * (m1 + self.gamma) ** 2
 
-    def moment(self, n: int) -> float:
+    def moment(self, n: int, defective: bool = False) -> float:
         r"""
 
         The n-th moment of the distribution using the parameters found
@@ -1023,6 +1628,12 @@ class Parametric(
         ----------
         n : integer
             The degree of the moment to be computed
+        defective : bool, optional
+            Only matters for a limited-failure-population model
+            (``p < 1``). If :code:`False` (the default), the moment of the
+            lifetime, which is infinite there for ``n >= 1`` (a fraction
+            ``1 - p`` never fails). If :code:`True`, the *defective*
+            moment described in the Notes.
 
         Returns
         -------
@@ -1040,16 +1651,19 @@ class Parametric(
 
         Notes
         -----
-        For an offset, limited-failure or zero-inflated model this is the
-        *defective* moment of the failure-time density, consistent with
-        :meth:`mean` (``moment(1) == mean()``): the offset shifts the failure
-        times and the cured fraction ``1 - p`` contributes nothing (rather than
-        the raw moment, which diverges when a cured fraction is present because
-        those units never fail). It is
-        :math:`(p - f_0)\\,\\mathbb{E}\\!\\left[(\\gamma + X)^n\\right]` for
-        :math:`X` the base distribution (the zero-inflated mass sits at 0 and
-        contributes nothing to a moment about zero).
+        For an offset or zero-inflated model this is the moment of the
+        lifetime, consistent with :meth:`mean` (``moment(1) == mean()``):
+        the offset shifts the failure times, and the zero-inflated mass
+        sits at 0 and contributes nothing to a moment about zero. It is
+        :math:`(p - f_0)\,\mathbb{E}\!\left[(\gamma + X)^n\right]` for
+        :math:`X` the base distribution. For a limited-failure model the
+        moment of the lifetime diverges (those units never fail);
+        ``defective=True`` gives the same expression, in which the cured
+        fraction ``1 - p`` contributes nothing.
         """
+        if self.p < 1 and n >= 1 and not defective:
+            # A fraction 1 - p never fails: E[T^n] is infinite (#404).
+            return np.inf
         # Defective n-th moment E[(gamma + X)^n] weighted by the failing
         # proportion p; the binomial expansion recombines the base raw
         # moments. Reduces to the base moment for a plain model (gamma = 0,
@@ -1088,7 +1702,7 @@ class Parametric(
         not change it. It is only defined when the distribution has no
         probability atom; a limited-failure model places mass ``1 - p`` at
         infinity (the cured fraction) and a zero-inflated model places mass
-        ``f0`` at the offset, so a single differential entropy does not exist
+        ``f0`` at 0, so a single differential entropy does not exist
         for those and a ``ValueError`` is raised. The entropy *conditional on
         failure* of a limited-failure model equals the entropy of the same
         model fitted without ``lfp``.
@@ -1099,21 +1713,23 @@ class Parametric(
             "Differential entropy is undefined for a distribution with a "
             "probability atom: a limited-failure model places mass 1 - p at "
             "infinity (the cured fraction never fails) and a zero-inflated "
-            "model places mass f0 at the offset. Fit without lfp / zi to take "
+            "model places mass f0 at 0. Fit without lfp / zi to take "
             "the entropy (which, for lfp, is the entropy conditional on "
             "failure)."
         )
 
+    @renamed_arguments(t="x")
+    @keeps_query_shape
     def cb(
         self,
-        t: npt.ArrayLike,
+        x: npt.ArrayLike,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
     ) -> npt.NDArray:
         r"""
-        Confidence bounds of the ``on`` function at the ``alpa_ci`` level of
+        Confidence bounds of the ``on`` function at the ``alpha_ci`` level of
         significance. Can be the upper, lower, or two-sided confidence by
         changing value of ``bound``.
 
@@ -1133,27 +1749,53 @@ class Parametric(
         method : ('wald', 'lr'), str, optional
             ``"wald"`` (default) propagates the parameter covariance through
             the ``on`` function by the delta method. ``"lr"`` gives a
-            profile-likelihood (likelihood-ratio) band: at each ``t`` the bound
+            profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
             confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (the reliability-engineering default), but it is computed
-            pointwise and so is slower, needs the original data (a deserialised
-            model raises), and is not yet available for offset / LFP / ZI
-            models.
+            pointwise and so is slower, needs the original data (a model
+            restored from ``to_dict(with_data=True)`` has it; one saved
+            without it raises), and is not yet available for offset / LFP /
+            ZI models. Where the constrained search cannot find a bound
+            from any start, that bound is ``nan``, with a warning.
 
         Returns
         -------
 
         cb : scalar or numpy array
             The value(s) of the upper, lower, or both confidence bound(s) of
-            the selected function at x
+            the selected function at x. A two-sided bound has one row per
+            ``x`` holding the ``[lower, upper]`` pair.
 
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.cb([5, 10], on="sf")
+        array([[0.65821001, 0.89149672],
+               [0.17231083, 0.4256438 ]])
+        >>> model.cb([5, 10], on="sf", bound="lower")
+        array([0.68394304, 0.18735771])
         """
-        t = np.atleast_1d(t)
+        t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+        # Checked up front, as param_cb does: an unrecognised value (say
+        # 'both') used to fall through to the lower-bound branch and
+        # return one bound as if it were what was asked for.
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
+        if np.size(t) == 0 and on in ("sf", "R", "ff", "F", "Hf", "hf", "df"):
+            # Nothing to bound (the Jacobian of no values fails).
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
 
         if method.lower() in (
             "lr",
@@ -1233,12 +1875,7 @@ class Parametric(
         which keeps the pointwise sweep fast. The core MLE path is untouched --
         this only re-evaluates the stored likelihood on ``surv_data``.
         """
-        if not hasattr(self, "surv_data"):
-            raise ValueError(
-                "Likelihood-ratio bounds need the original data, which a "
-                "deserialised model does not carry; refit in-process, or "
-                "use method='wald' (which uses the stored covariance)."
-            )
+        self._ensure_surv_data()
         if self.offset or self.lfp or self.zi:
             raise NotImplementedError(
                 "Likelihood-ratio confidence bounds are not yet available "
@@ -1281,25 +1918,53 @@ class Parametric(
                 sci_bounds.append((v, v))
                 continue
             lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
-            hi_s = np.inf if hi is None else hi
+            # A finite upper edge is nudged inside for the same reason:
+            # SLSQP steps straight onto it (a Geometric p of 1), where the
+            # likelihood is nan and the search stops.
+            hi_s = np.inf if hi is None else (hi - 1e-10 if hi == 1 else hi)
             sci_bounds.append((lo_s, hi_s))
         constraint = NonlinearConstraint(deviance, -np.inf, crit)
 
         t = np.atleast_1d(t).astype(float)
         order = np.argsort(t)
         t_sorted = t[order]
+        failed: list[float] = []
+
+        def feasible(res: Any) -> bool:
+            if not (res.success and np.all(np.isfinite(res.x))):
+                return False
+            dev = deviance(res.x)
+            return bool(np.isfinite(dev) and dev <= crit + 1e-4)
 
         def extreme(time: Any, sign: Any, warm: Any) -> Any:
             # sign = +1 minimises g (lower bound); -1 maximises g (upper).
-            res = minimize(
-                lambda th: sign * g(time, th),
-                warm,
-                method="SLSQP",
-                bounds=sci_bounds,
-                constraints=[constraint],
-            )
-            x = res.x if res.success else warm
-            return g(time, x), x
+            #
+            # A failed search used to keep its starting point, which for
+            # the first time is the estimate itself: the band silently
+            # collapsed onto the point estimate on that side (a Geometric
+            # lower bound equal to the fitted sf, 65% coverage). So other
+            # starts and methods are tried in turn, each result is checked
+            # to lie inside the likelihood region, and if none succeeds
+            # the bound is nan, with a warning, rather than a wrong number.
+            attempts = [(warm, "SLSQP")]
+            if not np.array_equal(warm, theta_hat):
+                attempts.append((theta_hat, "SLSQP"))
+            attempts += [(theta_hat, "COBYLA"), (theta_hat, "trust-constr")]
+            for x0, method in attempts:
+                try:
+                    res = minimize(
+                        lambda th: sign * g(time, th),
+                        x0,
+                        method=method,
+                        bounds=sci_bounds,
+                        constraints=[constraint],
+                    )
+                except (ValueError, np.linalg.LinAlgError):
+                    continue
+                if feasible(res):
+                    return g(time, res.x), res.x
+            failed.append(float(time))
+            return np.nan, warm
 
         want_lower = bound in ("two-sided", "lower")
         want_upper = bound in ("two-sided", "upper")
@@ -1317,6 +1982,17 @@ class Parametric(
                     hi_vals[i], warm_hi = extreme(time, -1.0, warm_hi)
         finally:
             np.seterr(**old_err_state)
+
+        if failed:
+            warnings.warn(
+                "The likelihood-ratio bound could not be found at "
+                f"t = {sorted(set(failed))} (the constrained optimiser "
+                "failed from every start); nan is returned there. "
+                "method='wald' gives a bound in its place.",
+                RuntimeWarning,
+                # _cb_lr -> cb -> the query-shape wrapper -> the caller
+                stacklevel=4,
+            )
 
         inv = np.argsort(order)
         if bound == "two-sided":
@@ -1387,7 +2063,11 @@ class Parametric(
             # stays finite (np.where evaluates both branches under autograd).
             xg = np.where(below, s0 + 1e-10, xg)
         base_sf = np.where(below, 1.0, self.dist.sf(xg, *core))
-        return 1 - p + (p - f0) * base_sf
+        out = 1 - p + (p - f0) * base_sf
+        if self.zi:
+            # No zero-inflation mass before 0, matching ``sf``.
+            out = np.where(x < 0, 1.0, out)
+        return out
 
     def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
@@ -1469,9 +2149,33 @@ class Parametric(
     # neg_ll/aic/bic/aic_c come from InformationCriteriaMixin. The aic_c
     # correction uses the same parameter count as the aic() penalty it
     # corrects — including gamma / p / f0 when fitted (#256).
-    def _ic_counts(self) -> Any:
-        n, c = self.data["n"], self.data["c"]
-        return n[c == 0].sum(), n.sum()
+    def _ic_k(self) -> int:
+        """The number of *estimated* parameters, the ``k`` of AIC and BIC.
+
+        ``self.k`` counts every parameter of the model -- the
+        distribution's, plus gamma / p / f0 when fitted -- including any the
+        user fixed. A fixed parameter is known, not estimated, so it costs
+        no degree of freedom: counting it penalised a Weibull with its
+        shape fixed as a two-parameter model, which is not the standard
+        definition and biased every comparison against fixed fits.
+        """
+        return self.k - len(self._user_fixed_idx())
+
+    def _require_data(self, what: str) -> None:
+        if self.data is None:
+            raise ValueError(
+                "{} needs the data the model was fitted to, which this model "
+                "does not have (it was built from parameters, or restored "
+                "from a dict saved without its data -- save it with "
+                "to_dict(with_data=True) to keep them)".format(what)
+            )
+
+    def _ic_sample_size_from_data(self) -> float:
+        self._require_data("This information criterion")
+        # The observed failures -- exact, left- or interval-censored --
+        # falling back to the units when there is none; the rule every
+        # model's BIC and AIC_c share (ic_sample_size).
+        return ic_sample_size(self.data["c"], self.data["n"])
 
     def get_plot_data(
         self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05
@@ -1507,6 +2211,7 @@ class Parametric(
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
         """
+        self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
         if (
             hasattr(self, "hess_inv")
@@ -1584,6 +2289,8 @@ class Parametric(
         <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
         """
         if ax is None:
+            import matplotlib.pyplot as plt
+
             ax = plt.gcf().gca()
 
         if not hasattr(self, "params"):
@@ -1601,6 +2308,7 @@ class Parametric(
                 f"{self.dist.name} does not support probability plotting"
             )
 
+        self._require_data("plot()")
         heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
         d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)

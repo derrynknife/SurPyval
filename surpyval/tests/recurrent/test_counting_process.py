@@ -54,9 +54,12 @@ def test_counting_process_cannot_be_instantiated():
 
 
 def _toy_recurrent_data():
+    # One row per item: covariates are per item and must not change
+    # within one.
     x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    i = [1, 2, 3, 4, 5]
     Z = np.array([[0.0], [1.0], [0.0], [1.0], [0.0]])
-    return handle_xicn(x, Z=Z, as_recurrent_data=True)
+    return handle_xicn(x, i, Z=Z, as_recurrent_data=True)
 
 
 @pytest.mark.parametrize("bad_dist", [object(), "Duane", Duane.__class__, 42])

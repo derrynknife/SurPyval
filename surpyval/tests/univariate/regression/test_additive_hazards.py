@@ -149,3 +149,28 @@ def test_rejects_interval_and_left_censoring():
     x = np.array([[1.0, 2.0], [3.0, 4.0]])
     with pytest.raises(ValueError, match="right-censored"):
         AdditiveHazards.fit(x, np.array([[0.5], [0.7]]), c=np.array([2, 2]))
+
+
+def test_estimate_holds_past_the_last_time():
+    # There is no risk set past the last observed time, so the estimate
+    # holds there like every other semi-parametric one (#400); it used to
+    # keep drifting at the last interval's rate beta'(Z - Zbar).
+    x, c, Z = _simulate(300, 5)
+    model = AdditiveHazards.fit(x, Z, c=c)
+    last = model.x[-1]
+    t = last * np.array([1.0, 1.5, 10.0, 100.0])
+    Z0 = np.array([0.8, -0.9])
+    H = model.Hf(t, Z0)
+    assert np.all(H == H[0]), H
+    assert np.all(model.sf(t, Z0) == model.sf(last, Z0))
+    assert np.all(model.hf(t[1:], Z0) == 0.0)
+    assert np.all(model.df(t[1:], Z0) == 0.0)
+    # Inside the data nothing changed: the hazard still moves.
+    assert model.Hf(0.5 * last, Z0) < H[0]
+
+
+def test_hf_is_nan_at_a_nan_time():
+    x, c, Z = _simulate(300, 5)
+    model = AdditiveHazards.fit(x, Z, c=c)
+    out = model.hf(np.array([1.0, np.nan]), np.array([0.2, -0.1]))
+    assert np.isfinite(out[0]) and np.isnan(out[1]), out

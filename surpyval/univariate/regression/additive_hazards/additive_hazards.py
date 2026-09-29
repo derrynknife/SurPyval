@@ -52,8 +52,13 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import check_Z_and_x, wrangle_Z, xcnt_handler
+from surpyval.utils import (
+    check_covariate_rows,
+    finite_covariate_mask,
+    xcnt_handler,
+)
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.shapes import keeps_query_shape
 
 from ..regression_data import (
     design_matrix_from_df,
@@ -73,17 +78,70 @@ def _validate(
     n: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
     x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-    Z_arr, mask = wrangle_Z(np.asarray(Z, dtype=float))
-    x_arr = np.asarray(x_h, dtype=float)[mask]
-    c_arr = np.asarray(c_h, dtype=float)[mask]
-    n_arr = np.asarray(n_h, dtype=float)[mask]
-    check_Z_and_x(Z_arr, x_arr)
+    c_arr = np.asarray(c_h, dtype=float)
     if not np.all((c_arr == 0) | (c_arr == 1)):
         raise ValueError(
             "The additive hazards model supports only observed (c=0) and "
             "right-censored (c=1) data."
         )
+    x_arr = np.asarray(x_h, dtype=float)
+    if x_arr.ndim == 2:
+        # Two columns with no interval row: xl == xr on every row.
+        x_arr = x_arr[:, 0]
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    check_covariate_rows(Z_arr, x_arr.shape[0])
+    # Rows with a NaN / infinite covariate are dropped with a warning, as in
+    # every regression fitter (this one used to drop NaN rows silently).
+    mask = finite_covariate_mask(Z_arr)
+    x_arr, c_arr, Z_arr = x_arr[mask], c_arr[mask], Z_arr[mask]
+    n_arr = np.asarray(n_h, dtype=float)[mask]
+    if np.any(x_arr < 0):
+        # The estimating equations integrate over the risk sets from time
+        # 0; a negative time fed a negative width into that integral.
+        raise ValueError(
+            "The additive hazards model integrates the hazard from time 0; "
+            "all times must be non-negative."
+        )
+    if not np.any(c_arr == 0):
+        raise ValueError(
+            "The additive hazards model needs at least one event (c=0); "
+            "with every observation censored the coefficients are not "
+            "estimable."
+        )
     return x_arr, c_arr, n_arr, Z_arr
+
+
+def _check_estimable(A: npt.NDArray, scale: npt.NDArray) -> None:
+    """Refuse a design whose coefficients the data cannot determine.
+
+    ``A`` is the integrated risk-set covariate scatter and ``scale`` the
+    integrated raw second moment of each covariate, the yardstick for "no
+    spread" (a constant covariate leaves only rounding in ``A``). A
+    constant covariate, a single observation or collinear covariates make
+    ``A`` singular, and the pseudo-inverse then returned ``beta = 0``
+    without a word.
+    """
+    d = np.diag(A)
+    flat = d <= 1e-10 * np.maximum(scale, np.finfo(float).tiny)
+    if np.any(flat):
+        raise ValueError(
+            "Covariate(s) {} do not vary within the risk sets (a constant "
+            "covariate, or too few observations), so the additive hazards "
+            "coefficients cannot be estimated.".format(
+                np.flatnonzero(flat).tolist()
+            )
+        )
+    corr = A / np.sqrt(np.outer(d, d))
+    if np.linalg.matrix_rank(corr, tol=1e-10) < A.shape[0]:
+        raise ValueError(
+            "The covariates are collinear within the risk sets, so the "
+            "additive hazards coefficients cannot be estimated; drop the "
+            "redundant covariate(s)."
+        )
 
 
 class AdditiveHazardsModel(SerialisableMixin):
@@ -94,6 +152,24 @@ class AdditiveHazardsModel(SerialisableMixin):
     The covariate effect is additive on the hazard, so the prediction
     methods use ``h(t | Z) = h0(t) + beta'Z`` and the cumulative
     ``H(t | Z) = H0(t) + t * beta'Z``.
+
+    Examples
+    --------
+    On the Rossi recidivism data each coefficient is an excess hazard of
+    arrest per week, per unit of the covariate:
+
+    >>> from surpyval import AdditiveHazards
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> Z = df[["fin", "age", "prio"]].values
+    >>> model = AdditiveHazards.fit(x, Z, c=c)
+    >>> model.beta.round(4)
+    array([-0.002 , -0.0003,  0.0007])
+    >>> model.p_values.round(4)
+    array([0.0725, 0.0004, 0.0083])
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9269, 0.7725])
     """
 
     # Populated by ``fit`` / ``fit_from_df``.
@@ -110,6 +186,10 @@ class AdditiveHazardsModel(SerialisableMixin):
     x: npt.NDArray
     h0: npt.NDArray
     H0: npt.NDArray
+    #: ``beta'Zbar(t)`` on each interval ``(x[j-1], x[j]]`` of the grid (the
+    #: last value is held beyond it). ``None`` on a model restored from a
+    #: dict written before it was stored; ``Hf`` then reads ``H0`` as a step.
+    drift: "npt.NDArray | None" = None
     _A: npt.NDArray
     _b: npt.NDArray
 
@@ -165,6 +245,8 @@ class AdditiveHazardsModel(SerialisableMixin):
         }
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
+        if self.drift is not None:
+            out["drift"] = np.asarray(self.drift, dtype=float).tolist()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -191,6 +273,8 @@ class AdditiveHazardsModel(SerialisableMixin):
         out.se = np.array(model_dict["se"], dtype=float)
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
+        if "drift" in model_dict:
+            out.drift = np.array(model_dict["drift"], dtype=float)
         restore_covariate_meta(out, model_dict)
         return out
 
@@ -226,6 +310,7 @@ class AdditiveHazardsModel(SerialisableMixin):
         kern = np.where(np.abs(u) <= 1.0, 0.75 * (1.0 - u**2), 0.0)
         return (kern * dH0[None, :]).sum(axis=1) / bandwidth
 
+    @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
@@ -239,35 +324,67 @@ class AdditiveHazardsModel(SerialisableMixin):
         rate requires smoothing (Epanechnikov kernel over the increments;
         ``bandwidth`` defaults to a normal-reference rule on the event
         times). Estimates near the boundaries of the observed time range
-        are attenuated by kernel truncation.
+        are attenuated by kernel truncation. Past the last observed time
+        the estimate holds (see :meth:`Hf`), so the hazard there is 0.
         """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        return self._h0_rate(x, bandwidth) + (Z @ self.beta)
+        rate = self._h0_rate(x, bandwidth) + (Z @ self.beta)
+        # A NaN time is 0 in no kernel, so the rate would be beta'Z there.
+        rate = np.where(np.isnan(x), np.nan, rate)
+        return np.where(x > self.x[-1], 0.0, rate)
 
+    @keeps_query_shape
     def Hf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """
+        Cumulative hazard ``H0(x) + x * beta'Z`` at ``x`` for covariates
+        ``Z`` (one row, or one row per ``x``). The baseline ``H0`` jumps
+        by ``d / S0`` at each event time and, between the grid times,
+        falls continuously by the covariate-mean drift
+        ``beta' Zbar(t)`` (so ``H0`` is not 0 before the first event
+        unless the covariates are centred there). The prediction
+        ``H(x | Z)`` is the same however the covariates are centred.
+
+        Past the last observed time there is no risk set to estimate
+        anything from, so ``Hf`` holds its value there, as the other
+        semi-parametric estimates do (#400).
+        """
         Z = self._prepare_Z(Z)
         x = np.atleast_1d(np.asarray(x, dtype=float))
+        x = np.where(x > self.x[-1], self.x[-1], x)
         idx = self._h0_at(x)
-        H0 = np.where(idx < 0, 0.0, self.H0[np.clip(idx, 0, self.x.size - 1)])
+        last = self.x.size - 1
+        H0 = np.where(idx < 0, 0.0, self.H0[np.clip(idx, 0, last)])
+        if self.drift is not None:
+            # The drift accrued since the last grid time at or before x, at
+            # the rate of the interval x lies in (the last one beyond the
+            # grid).
+            since = x - np.where(idx < 0, 0.0, self.x[np.clip(idx, 0, last)])
+            H0 = H0 - since * self.drift[np.clip(idx + 1, 0, last)]
         # H(t | Z) = H0(t) + integral_0^t beta'Z ds = H0(t) + t * beta'Z.
         return H0 + x * (Z @ self.beta)
 
+    @keeps_query_shape
     def sf(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Survival ``exp(-Hf(x, Z))``."""
         return np.exp(-self.Hf(x, Z))
 
+    @keeps_query_shape
     def ff(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Failure probability ``1 - sf(x, Z)``."""
         return -np.expm1(-self.Hf(x, Z))
 
+    @keeps_query_shape
     def df(
         self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
     ) -> npt.NDArray:
+        """Density ``hf(x, Z) * sf(x, Z)``, with the smoothed hazard."""
         return self.hf(x, Z) * self.sf(x, Z)
 
     def standard_errors(self) -> npt.NDArray:
@@ -280,6 +397,21 @@ class AdditiveHazardsModel(SerialisableMixin):
 
 
 class AdditiveHazards_:
+    """
+    The Lin & Ying semi-parametric additive hazards model: the covariates
+    *add* a constant risk difference to a baseline hazard that is left to
+    the data,
+
+    .. math::
+        h(x \\mid Z) = h_0(x) + \\beta' Z.
+
+    The coefficients have a closed-form estimate (no iteration) with a
+    sandwich variance. ``AdditiveHazards`` is an instance of this class;
+    its ``fit`` returns an
+    :class:`~surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel`.
+    For a parametric baseline see the ``AH`` family.
+    """
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -296,7 +428,11 @@ class AdditiveHazards_:
         x : array-like
             The observed event/censoring times.
         Z : array-like
-            The covariate matrix (one row per observation).
+            The covariate matrix (one row per observation). Rows with a
+            missing or infinite covariate are dropped, with a warning; a
+            covariate that does not vary within the risk sets (constant, or
+            a single observation), collinear covariates, data with no
+            event and negative times raise a ``ValueError``.
         c : array-like, optional
             Censoring flags: 0 observed (event), 1 right-censored. Defaults
             to all observed.
@@ -309,6 +445,21 @@ class AdditiveHazards_:
         AdditiveHazardsModel
             The fitted model, carrying ``beta``, standard errors, the
             coefficient covariance, p-values, and the baseline hazard.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import AdditiveHazards
+        >>> rng = np.random.default_rng(3)
+        >>> Z = rng.binomial(1, 0.5, (300, 1)).astype(float)
+        >>> x = rng.exponential(1 / (0.1 + 0.05 * Z[:, 0]))
+        >>> c = (x > 15).astype(int)  # follow-up ends at 15
+        >>> x = np.minimum(x, 15)
+        >>> model = AdditiveHazards.fit(x, Z, c=c)
+        >>> model.beta.round(4), model.se.round(4)
+        (array([0.0291]), array([0.0162]))
+        >>> model.sf([5, 10], [[1]]).round(4)
+        array([0.4465, 0.2387])
         """
         x, c, n, Z = _validate(x, Z, c, n)
         p = Z.shape[1]
@@ -341,6 +492,7 @@ class AdditiveHazards_:
         widths = np.diff(np.concatenate([[0.0], unique_x]))
         V = S2 - (S1[:, :, None] * S1[:, None, :]) / S0[:, None, None]
         A = (V * widths[:, None, None]).sum(axis=0)
+        _check_estimable(A, np.einsum("jii,j->i", S2, widths))
 
         # b = sum over events of (Z_event - Zbar(t_event)); events aggregated
         # per unique time so ties share one Zbar.
@@ -372,6 +524,12 @@ class AdditiveHazards_:
         Lambda = np.cumsum(dLambda)
         G = np.cumsum(Zbar * widths[:, None], axis=0)
         H0 = Lambda - G @ beta
+        # The covariate-mean drift beta'Zbar(t) is a rate, constant on each
+        # interval (u_{j-1}, u_j] of the risk-set grid; Hf integrates it
+        # continuously between grid times. Reading H0 as a step (the drift
+        # accrued only at the grid times) made predictions between event
+        # times depend on how the covariates were centred.
+        drift = Zbar @ beta
 
         model = AdditiveHazardsModel()
         model.beta = copy(beta)
@@ -382,6 +540,7 @@ class AdditiveHazards_:
         model.x = unique_x
         model.h0 = dLambda
         model.H0 = H0
+        model.drift = drift
         model._A = A
         model._b = b
         return model

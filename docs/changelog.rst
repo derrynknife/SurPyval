@@ -1,6 +1,1203 @@
 Changelog
 =========
 
+v0.21.0 (28 September 2026)
+---------------------------
+
+**Upgrading to 0.21.** Most code runs unchanged, but these changes can alter
+results or break code without a warning:
+
+- **Shapes.** A scalar query now returns a numpy scalar, not a ``(1,)``
+  array, and a two-sided bound ends in a ``[lower, upper]`` axis: code
+  that indexed a scalar result (``km.sf(5)[0]``) raises ``IndexError`` and
+  uses the result directly instead.
+- **Cox ties.** ``CoxPH.fit`` defaults to Efron's tie handling (it was
+  Breslow's), so fits to tied data change; pass ``tie_method="breslow"``
+  for the old model.
+- **Draws.** ``random()`` of a non-parametric estimate draws from the
+  estimate, with ``inf`` for the probability beyond the last time; of a
+  limited-failure or zero-inflated model it returns lifetimes (``inf`` for
+  a unit that never fails), and the old survival-data draw is
+  ``random_data()``. Seeded draws of those models give different numbers.
+- **Limited-failure summaries.** ``mean()``, ``moment()`` and ``var()`` of a
+  model with ``p < 1`` are ``inf``; ``defective=True`` gives the old values.
+- **Criteria and extrapolation.** ``ParametricCompetingRisks.bic()`` is the
+  joint criterion (larger than before), and the additive hazards model
+  holds its estimate after the last observed time instead of extending it.
+- **Missing values.** A missing time, covariate or probability gives NaN at
+  prediction, and fitting drops rows with a missing covariate with one
+  warning (or refuses them where a row is part of one unit).
+- **Recurrent interval levels** are ``alpha_ci=0.05``, by keyword only: an
+  old positional ``confidence`` level in ``mcf_cb`` or the recurrent
+  ``plot`` methods raises ``TypeError``.
+
+Renamed arguments keep working, with a ``DeprecationWarning`` naming the new
+name, until v0.22.0, which removes them together with the
+``surpyval.experimental`` alias (use ``surpyval.beta.ml``) and ``band``'s
+unused ``n_sims`` and ``random_state``. To find the calls to update, run your
+code or tests with ``python -W error::DeprecationWarning``. Saved models from
+earlier versions still load; a model saved by 0.21 with a feature older
+versions cannot read (a ``set_support`` support, a truncated band's sample
+size, some formula terms) is stamped schema 2 and refused by them with a
+request to upgrade.
+
+- **Changed: one name per option (#422, principle 21).** The same option
+  had different names in different parts of the package; each now has one,
+  and the old name keeps working until v0.22.0 with a
+  ``DeprecationWarning`` naming the new one (``surpyval.utils.deprecation``
+  does this for every rename):
+
+  - Interval level: ``alpha_ci=0.05`` everywhere (the recurrent ``mcf_cb``
+    and plots took ``confidence=0.95``). Seeds: ``random_state`` everywhere
+    (some recurrent, Buckley-James and degradation methods took ``seed``).
+    Bootstrap size: ``n_boot`` (``B`` in ``NonParametric.bootstrap_cb``).
+  - Times are ``x`` and a quantile's probability ``p`` everywhere
+    (``Parametric.cb``, Royston-Parmar and the degradation models took
+    ``t``; ``qf`` took ``u`` or ``q`` in a few models).
+  - Regression and competing risks: ``CoxPH.fit``, ``fit_from_df`` and
+    ``fit_tvc*`` take ``tie_method`` (was ``method``; ``CoxPH.baseline`` and
+    the competing-risks Cox already did); the ``fit_tvc*_from_df`` methods
+    take ``i_col`` (was ``id_col``: the data argument is ``i``) and
+    ``fit_tvc_timeline_from_df`` takes ``x_col`` (was ``time_col``);
+    ``BuckleyJamesModel.bootstrap_ci`` takes ``random_state`` (was
+    ``seed``); ``CompetingRisksProportionalHazards.fit`` / ``fit_from_df``
+    take ``model="Cox"`` or ``"Fine-Gray"`` (was ``how``, the estimation
+    method everywhere else; the fitted ``.how`` is ``.model``); and
+    ``FineGray.fit`` and ``gray_test`` take ``event`` (was ``cause``). The
+    non-parametric ``CompetingRisks.fit`` / ``fit_from_df`` choose their
+    survival estimator with ``how`` (was ``method``; the fitted
+    ``.method`` is ``.how``).
+  - Recurrent events: ``NonParametricCounting.mcf_cb`` and ``.plot``,
+    ``CauseSpecificMCF.mcf_cb`` and ``.plot``, and the parametric and
+    proportional-intensity ``plot`` take ``alpha_ci=0.05`` (was
+    ``confidence=0.95``; ``confidence=0.9`` is read as ``alpha_ci=0.1``),
+    keyword-only, so an old level passed by position raises rather than
+    silently meaning its complement. The simulations, the simulated
+    ``mcf`` and ``plot`` and every ``cramer_von_mises`` take
+    ``random_state`` (was ``seed``), and ``CauseSpecificMCF`` /
+    ``CauseSpecificNHPP`` take ``event`` (was ``cause``). Plot labels read
+    "95%", not "95.0%".
+  - Degradation: times are ``x``, not ``t``, in the Wiener and Gamma process
+    models (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) and
+    ``DestructiveDegradationModel`` (``sf``, ``ff``, ``df``, ``Hf``, ``cb``,
+    ``median_degradation``, ``degradation_quantile``, whose probability is
+    ``p``, not ``q``). ``Z`` comes straight after the query:
+    ``DegradationModel.cb(x, Z, on, ...)`` and the process models'
+    ``random(size, Z, random_state)``, as ``DegradationModel.random``;
+    ``DegradationModel.induced_life(n_samples, *, Z, random_state)``,
+    ``DegradationModel.predict_rul(x, y, *, Z, Z_future, alpha_ci,
+    n_samples, random_state)`` and the process models'
+    ``predict_rul(current_degradation, *, Z, alpha_ci)`` take ``Z`` first
+    and the rest by keyword, so any argument they are given by position
+    after the query is read in the old order, with a warning. A
+    call in the old positional order (a string second argument to ``cb``,
+    or two positional arguments after ``size`` in ``random``, read as
+    ``(random_state, Z)``) still works with a warning; ``random(size, v)``
+    on a model fitted with stress, which raised for the missing ``Z``,
+    now draws at stress ``v``.
+- **Every ``random`` takes ``random_state`` (#389).** The univariate
+  distributions and models (``random``, ``random_data``), mixture models
+  (which accepted and ignored it), Royston-Parmar and the PH, AH and
+  accelerated-life regressions now take a keyword-only ``random_state``:
+  ``None`` draws from numpy's global stream exactly as before, and a seed
+  gives a stream of its own (``numpy.random.default_rng(seed)``) that
+  leaves the global one alone. ``conformance/test_seeds.py`` checks this
+  for every registered model that draws.
+- **``Binomial.random`` accepts a fitted model's parameters.** A fitted
+  ``n`` is a float (5.0), and ``random`` raised ``TypeError: Cannot cast
+  scalar from dtype('float64') to dtype('int64')``; a whole-number float is
+  accepted now, and a fractional ``n`` raises a ``ValueError``.
+- **Time-varying covariate paths start at 0 (#433).** A schedule starting
+  before 0 was counted as age in the AFT ``sf_tvc`` and the degradation
+  stress clock: a constant ``WeibullAFT`` path from -10 gave
+  ``sf_tvc(20) = 0.8626`` against ``sf(20, Z) = 0.9362``, and the clock gave
+  F(100) = 0.662 against 0.489. A schedule starting after a query time
+  raised. Every schedule is now clipped to start at 0 -- the part before 0
+  is ignored, a later start holds its first value back to 0 -- for every
+  family and ``StressClock`` (whose ``tau(0)`` is now 0).
+- **``StepSchedule.from_expression`` means what Python means (#434).**
+  ``and`` / ``or`` returned a bool, so ``"(t > 50) and 2.0 or 1.0"`` was 1.0
+  everywhere; they return an operand now (2.0 after t = 50). Keyword
+  arguments were dropped (``round(t/10, ndigits=1)`` gave 0 at t = 1, 2)
+  and ``round(t/10, 1)`` raised a ``TypeError``; both give 0.1, 0.2 now,
+  and a keyword a function cannot take raises a ``ValueError`` naming it.
+- **``sf_tvc`` / ``Hf_tvc`` accept any time (#435).** Time 0 raised "x must
+  contain a positive time"; it gives sf 1 (or the baseline's value at 0)
+  now, and negative times match ``sf`` (``NormalAFT`` gave 0.9725 at -5,
+  not 0.9801). ``given`` at or below 0 now conditions as documented (a
+  Logistic baseline: sf(20 | 0) = 0.9378, not the unconditional 0.8831).
+  The new ``conformance/test_tvc.py`` checks every model with ``sf_tvc``
+  against ``sf`` for constant paths.
+- **Kaplan-Meier no longer fails when the estimate underflows (#450).**
+  Once the product fell below the smallest float -- 1100 staggered entries
+  with two at risk at each failure, R = 0.5^k -- ``KaplanMeier.fit``
+  raised ``FloatingPointError`` from its log-space fallback and leaked
+  "divide by zero in log". It gives 0 there now, quietly, and matches
+  scikit-survival 0.28 exactly at all 1100 times. A step with no one at
+  risk no longer leaks "invalid value" either.
+- **``bootstrap_cb`` is NaN outside the data, like ``cb`` (#452).** Without
+  a support it carried its step convention past the data: Kaplan-Meier of
+  1..10 (last censored) gave ``bootstrap_cb([0.5, 11]) = [[1, 1], [0,
+  0.548]]`` where ``cb`` is NaN, and a missing time got the last bounds.
+  ``cb``, ``R_cb`` and ``bootstrap_cb`` now share one rule: NaN outside the
+  data and at a missing time, or the support's values under
+  ``set_support``.
+- **A left-truncated estimate's band survives saving without its data
+  (#451).** A restored model took ``band``'s N from the largest risk set:
+  37 instead of 60 in one example, moving the band at the 20% time from
+  [0.4900, 0.8917] to [0.4535, 0.9018] (a truncated Turnbull fit went the
+  other way, 8 instead of 4). ``to_dict`` stores it as ``"band_n"`` where
+  it differs, stamped schema 2; older dictionaries keep the old fallback
+  and untruncated models are still schema 1.
+- **Recurrent cause labels (#440).** ``CauseSpecificNHPP`` and
+  ``CauseSpecificMCF`` handle cause labels with the same code as the
+  univariate competing-risks models. A tuple label did not load back
+  (``from_dict`` raised "unhashable type: 'list'"), mixed labels such as
+  ``'s'`` and ``2`` raised a bare ``TypeError`` from sorting, and a tuple
+  mark on every row was split into a column so the fit raised. All three
+  fit, predict per cause and round-trip now. The new conformance property
+  ``test_labels.py`` checks tuple and mixed labels for every model fitted
+  with ``e=``.
+- **Additive-hazards draws below 0 (#441).** ``random()`` of an additive
+  hazards model on a Normal, Gumbel or Logistic baseline searches the
+  whole support, so the share ``ff(0)`` of its mass below 0 is drawn there
+  (GumbelAH: 0.0347 of the draws against ``ff(0)`` = 0.0361); it returned
+  2.7e-20 for all of them.
+- **Changed: ``ParametricCompetingRisks.bic()`` is the joint criterion,**
+  ``2 neg_ll + K ln(n)`` with K the parameters of all causes and n the
+  failures of any cause, as every other SurPyval BIC counts n. It was the
+  sum of the causes' BICs, which charged each cause only ``ln`` of its own
+  failures: the competing-risks guide's example goes from 2220.8 to 2223.1
+  (Weibull + Exponential). ``aic()`` was already the joint AIC.
+- **ExpoWeibull is accurate in both tails (#436).** ``1 - exp(-t)`` rounded
+  to 0 below t = 1e-16 and ``x / alpha`` overflowed:
+  ``log_df(1e-4, 10, 4, 0.5)`` was +inf (true -13.12),
+  ``ff(1e-3, 10, 4, 2)`` 23% high, and at mu = 1 ``hf``, ``Hf`` and
+  ``log_sf`` at x = 100 were NaN, inf and -inf (the Weibull's 30, 1000 and
+  -1000). Every function is now computed on the log scale with exact
+  branches for each regime and exact values at 0, ``moment`` and ``mean``
+  take array parameters, and a fit that failed on data with a value at
+  1e-4 (returning its start, neg_ll 124.97) now reaches 90.97.
+- **``CustomDistribution`` checks its inputs (#437).** A parameter named
+  after a model attribute (``k``, ``dist``, ``data``, ``method``, ...)
+  overwrote it silently -- ``k`` moved the AIC from 289.50 to 290.08 -- and
+  is now refused with a ``ValueError`` listing the reserved names. ``qf``
+  outside [0, 1] is NaN (it was the support's lower bound), any
+  ``(x, *args)`` signature is accepted, and reusing a name warns that it
+  replaces the registry entry used to restore saved models.
+- **``fit_from_non_parametric`` matches ``fit(how='MPP')`` (#438).** It
+  plotted the censored times too (alpha 10.711 instead of 10.597 on
+  censored data); it plots the failure times only now. ``fit_from_ecdf``
+  raises a ``ValueError`` for an F outside [0, 1] or NaN (dropped silently
+  before) and for unequal lengths (an ``IndexError`` before).
+- **Probability plots with a tick at 0 (#439).** ``round_sig`` took
+  ``log10(0)``, so ``Normal.fit([-1, 0.5, 2, 3, 5]).plot()`` raised
+  ``OverflowError``. Zero, negative and non-finite ticks work, and
+  ``round_sig(0)`` is 0.
+- **Mutation testing pilot (#396).** ``scripts/mutation/run.sh`` runs
+  mutmut on a module in a copy of the repository, and ``recheck.py``
+  checks new tests against its survivors. On the non-parametric estimators
+  593 of 2,702 mutants survived the test suite (score 78.1%); 273 were
+  real gaps, now covered by ``surpyval/tests/mutation``, which raises the
+  score to 88.6% (93.2% without the equivalent and dead-code mutants).
+  Among the gaps no test checked: the Hall-Wellner band's width off by a
+  factor of N, ``df`` ignoring ``interp``, and ``rmst_diff``'s interval
+  and ratio. It found #450-#452, pinned as strict expected failures, and
+  that a warning raised inside a shape-wrapped method pointed at the
+  wrapper instead of the caller (fixed).
+- **Changed: shape in, shape out, for every model (#381, #435).** A function
+  evaluated at query points -- ``sf``, ``ff``, ``Hf``, ``hf``, ``df``,
+  ``qf``, the per-cause and recurrent ``cif``, ``iif``, ``mcf``,
+  ``sf_tvc``, ``Hf_tvc``, ``smoothed_hf`` and every confidence bound --
+  returns the query's shape: a scalar gives a numpy scalar, 1-D and 2-D
+  queries keep their shape, an empty query gives an empty array, and a
+  two-sided bound adds a trailing ``[lower, upper]`` axis. The
+  non-parametric estimates, Royston-Parmar, the AFT, PO and AL
+  regressions, Cox, the competing-risks and recurrent models, the
+  degradation models and every ``cb`` returned ``(1,)`` for a scalar
+  (``(1, 2)`` for a bound); several raised on a 2-D or empty query; and
+  some gave a right-looking shape with wrong values -- a Kaplan-Meier
+  ``cb`` of a (2, 2) query had its axes transposed (lower 0.724 above
+  upper 0.063), and a copula's (2, 2, 2) query mixed its coordinates.
+  Of 18,342 surveyed calls, 5,506 changed shape and no 1-D value changed.
+  Survival trees and forests keep their row-by-time grid, now
+  ``(n_rows,) + x.shape``. Code that indexed a scalar query's result
+  (``km.sf(5)[0]``) now uses the result directly. Parametric
+  ``sf_tvc(..., given=nan)`` is now NaN.
+- **Tail accuracy is checked against 50-digit references (#398).**
+  ``reference/test_tails.py`` compares ``sf``, ``ff``, ``df``, ``hf``,
+  ``Hf``, ``qf`` and the log forms of 17 distributions with mpmath values
+  (stored in ``tails_mpmath.json``, written by
+  ``scripts/reference/tails_mpmath.py``, so CI needs no mpmath) on a grid
+  of extreme parameters and times, from survival 1e-300 to 1e-300 of
+  failure. It needs relative accuracy 1e-8 where the value is a normal
+  double, or 64 ulps of the inputs' own sensitivity where the function is
+  ill-conditioned. 212 groups of values fail, pinned by cause:
+  cancellation near probability 1 (#442), log-scale functions that
+  under- or overflow (#443), NaN at valid arguments (#444), overflow
+  errors at extreme shapes (#445), Geometric at small p (#446), ``qf`` at
+  tiny probabilities (#447), BetaGeometric (#449), and the ExpoWeibull
+  (#436) and Logistic (#410) forms. Beta, NegativeBinomial,
+  DiscreteWeibull and Binomial await their references (#448).
+- **Changed: ``random()`` of a non-parametric estimate draws from the
+  estimate itself.** It drew each observed value with the estimate's
+  probability there, but where the estimate does not reach zero it
+  spread the remaining probability over the observed values, so the
+  draws disagreed with the model's own ``sf`` (by 0.12 for one Turnbull
+  fit) and an all-censored fit raised. Each draw is now ``qf(u)`` for one
+  uniform ``u``, and the probability left beyond the last time is drawn
+  as ``inf``, as for a parametric model's never-failing units (#403).
+- **Every model is refitted to data drawn from itself (#397).** A new
+  nightly study, ``calibration/test_refit_registry.py``, takes each model
+  in the conformance registry that can simulate (120 of 128; the rest are
+  excluded with a reason), draws a few hundred units from its fitted
+  fixture 20-100 times, refits, and requires the mean estimate within
+  ``3/sqrt(reps) + 0.2`` standard deviations of the truth and the mean
+  curve within 3 Monte Carlo standard errors + 0.02. A likelihood that
+  ignored delayed entry shows as a 1.44 sd bias against a tolerance of
+  0.5. It found that ``random()`` of an additive-hazards model on a
+  Normal, Gumbel or Logistic baseline never draws below 0, putting that
+  mass (3.6% for one fixture) at 2.7e-20 instead (#441).
+- **Added: ``set_support`` for the non-parametric estimates.** Outside the
+  data a non-parametric estimate only had a convention: the step curves
+  started at 1 and held their last value however far away, while the
+  interpolated forms, the confidence bounds and the mean cumulative
+  functions were NaN. ``KaplanMeier``, ``NelsonAalen``,
+  ``FlemingHarrington`` and ``Turnbull`` models, ``CompetingRisks`` (both
+  methods), ``NonParametricCounting`` and ``CauseSpecificMCF`` now take
+  ``model.set_support(lower, upper)``: every function, every ``interp`` and
+  the pointwise bounds are then at their start value (``sf`` 1, the rest
+  0) from ``lower`` to the first observed value, hold the last value up to
+  ``upper``, and are NaN outside. Negative and infinite bounds are allowed
+  (the variable need not be time). The bounds are the model's ``support``,
+  as for the parametric models, and are saved by ``to_dict`` (schema 2).
+  Without the call nothing changes.
+- **Fixed: a failing non-parametric call no longer silences numpy for the
+  whole process.** ``cb``, ``R_cb``, ``band`` and the Turnbull fit turned
+  numpy's floating-point warnings off with ``np.seterr`` and back on
+  afterwards; a call that raised in between -- ``cb(bound_type="bogus")``,
+  an unknown ``interp``, ``band(alpha_ci=2.0)`` -- left them off for every
+  later computation in the session. They now use ``np.errstate``, which
+  restores the state however the call ends.
+- **Fixed: cubic non-parametric curves no longer dip below 0 (#417).** At
+  the last time of a Kaplan-Meier estimate that falls to 0,
+  ``sf(x, interp="cubic")`` was -2.3e-17, so ``Hf`` there was NaN with a
+  raw warning instead of inf. The PCHIP curve is now clipped to the range
+  of its knots.
+- **Silent non-convergence is checked for every model (#401).** A new
+  conformance property, ``test_convergence.py``, forces each iterative fit
+  to fail -- an iteration limit of 1, a start a million times the answer,
+  or data whose likelihood has no maximum -- and requires a warning, a
+  ``ValueError``, or the true maximum. It found 62 fits that return a
+  wrong model without a word, pinned as known failures: for example
+  ``Weibull.fit`` from ``init=[1.03e7, 2.32]`` returns alpha 1.03e7, beta
+  0.099 (log-likelihood -78.2 against -37.9; #427), and every parametric
+  PH/AFT/PO model gives a group with no events a finite coefficient
+  (-16.3 for WeibullPH) where ``CoxPH`` warns (#392); also #428 and #429.
+- **Fixed: ``init`` with an offset is checked in the right order.** The
+  check read ``[gamma, *params]`` as ``[*params, gamma]``, so it refused
+  valid starts (``Exponential.fit(..., offset=True, init=[6, 10])``:
+  "gamma = 10.0 lies outside its bounds") and let an offset beyond the
+  first observation through to fail later as "MLE Failed".
+- **Changed: ``random()`` of a limited-failure or zero-inflated model draws
+  lifetimes (#403).** It returned ``(x, c, n, t)`` survival data when
+  ``p < 1`` and an array otherwise, and drew zero-inflated samples by a
+  binomial count and a shuffle, so a seed did not give ``qf(u)``. It now
+  returns an array for every model, ``qf(u)`` from one uniform per draw:
+  ``inf`` for a unit that never fails, 0 for one dead on arrival, and the
+  same numbers as ``qf(np.random.random_sample(size))`` after the same
+  seed. The survival-data draw is the new ``random_data()``, which censors
+  the never-failing units after the last failure, ready to refit.
+- **Changed: ``mean()``, ``moment(n)`` and ``var()`` of a limited-failure
+  model are infinite (#404).** They returned the defective values (79.76
+  for ``Weibull.from_params([100, 2], p=0.9)``), which code reading
+  ``mean()`` as the mean life took at face value. A fraction ``1 - p``
+  never fails, so they are now ``inf``; ``defective=True`` gives the old
+  values. Models with ``p = 1`` are unchanged.
+- **Added: ``df(x, continuous=True)`` (#405).** A zero-inflated model's
+  ``df(0)`` is the point mass ``f0``, so integrating ``df`` on a grid from 0
+  counted a spurious ``f0 * dx / 2`` (0.95 instead of 0.90 for
+  ``f0 = 0.1``). ``continuous=True`` returns the continuous part alone,
+  ``(p - f0)`` times the base density; the docstring says what ``df(0)``
+  is. A zero-inflated ``df`` at a scalar now returns a scalar.
+- **Added: ``model.with_params(params)`` and ``model.extras`` (#406).**
+  ``from_params(model.params)`` silently dropped the offset, ``p`` and
+  ``f0`` (``sf(50)`` 0.7788 instead of 0.7533). ``extras`` is the dict of
+  those the model has (``{"gamma": 5.0, "p": 0.9, "f0": 0.1}``, empty for
+  a plain model), and ``with_params`` rebuilds the same model with other
+  parameters, validated as ``from_params`` validates them.
+- **Fixed: loose ends of the zero-inflation mass at 0 (#407).** ``Hf``
+  before time 0 was ``-0.0``; it is ``0.0``. The entropy docstring and
+  error message still put the mass at the offset; they now say 0.
+- **Every public item has a runnable example (#402).** 49 public classes,
+  functions and fitters had a docstring but no example, and the low-level
+  ``kaplan_meier``, ``nelson_aalen`` and ``fleming_harrington`` had no
+  docstring. Each now has a short, seeded example that runs as a doctest
+  in CI, and the conformance check allows no public item without one.
+- **Changed: the additive hazards model holds its estimate past the last
+  observed time (#400).** ``AdditiveHazardsModel.Hf`` kept changing after
+  the last observed time, at the last interval's rate
+  :math:`\beta'(Z - \bar Z)`, where there is no risk set to estimate
+  anything from: on one fit, ``Hf`` was 3.52 at the last time and 23.0 at
+  100 times it. It now holds its value there, as every other
+  semi-parametric estimate does, so ``sf`` and ``ff`` hold and ``hf`` and
+  ``df`` are 0. ``hf`` at a NaN time is now NaN rather than
+  :math:`\beta' Z`.
+- **Design principles (#379).** A new page, :doc:`Design Principles`, lists
+  the rules every model keeps -- one data format, ``nan`` in and out, order,
+  units and counts not mattering, consistent shapes and identities,
+  behaviour outside the data, entry points agreeing, the same defaults and
+  names everywhere, calibrated and consistent intervals, one seed rule,
+  useful warnings, documented examples -- each with the tests that enforce
+  it and the issues where a model does not yet comply. The README
+  summarises them. Three new conformance checks fill the gaps: behaviour
+  outside the data (``test_outside_data.py``: a step or semi-parametric
+  estimate starts at its initial value and, past the last time, holds or is
+  ``nan`` for every function alike; found #400, additive hazards
+  extrapolating), the same defaults across a fitter's entry points
+  (``test_defaults.py``), documentation (``test_documentation.py``: every
+  public item has a docstring with an example; 49 are listed against #402
+  and the list can only shrink).
+- **Option sweeps in the conformance suite (#379).** The other checks call
+  each model with its default options, where many past bugs lived in the
+  others. ``test_options.py`` sweeps every confidence-bound method of every
+  registered model over ``on=``, ``bound=``, ``alpha_ci`` and their
+  variants, every ``interp=`` value and every estimation option. It checks
+  that the bounds contain the estimate and stay in range, that one-sided
+  and two-sided bounds agree, that intervals nest and close onto the
+  estimate as ``alpha_ci`` approaches 1, the ``sf``/``ff``/``Hf``
+  transforms and the output shapes, and that shared options have one name
+  and default across models. It found bound failures now tracked as #411
+  and #413-#419 (for example discrete ``cb(on="hf")`` centred on
+  ``df/sf(k)`` instead of ``hf``, Royston-Parmar one-sided ``ff``/``Hf``
+  bounds on the wrong side, and ``Hf`` bounds capped at 34.54) and ten
+  naming inconsistencies (#422), each a strict expected failure.
+- **Raw numerical warnings no longer leak from Kaplan-Meier, Binomial,
+  Weibull and LogNormal functions.** ``KaplanMeier.Hf``/``hf`` past the
+  time the estimate reaches zero, ``Binomial.Hf`` from ``x = n`` on,
+  ``Weibull.df``/``hf`` at 0 with a shape below 1, and ``LogNormal.sf`` at
+  0 gave numpy "divide by zero" or "invalid value" warnings; their values
+  (``inf``, or 1 for ``sf(0)``) were already right and are now returned
+  without a warning. The conformance and property suites now fail on any
+  raw numpy, scipy or autograd warning that escapes the package, and check
+  that a fit or prediction gives each deliberate warning at most once
+  (#379). The check found five wrong results hidden behind warnings,
+  tracked as #408-#412.
+- **Changed: ``CoxPH.fit`` defaults to Efron ties, with the matching Efron
+  baseline (#387).** ``fit`` defaulted to Breslow while ``fit_from_df``, the
+  time-varying-covariate fits and the competing-risks Cox model defaulted to
+  Efron, so the same tied data gave different models by different routes.
+  Every route is now Efron. Efron is chosen on merit: with ties from
+  rounding a continuous time, Breslow biases the coefficients towards zero
+  (in a simulation with true :math:`\beta = 0.7`, by -0.06 to -0.21 as the
+  ties grow, against -0.006 to -0.06 for Efron), at no saving worth having.
+  An Efron fit's baseline hazard now takes the same tie correction as its
+  likelihood: the :math:`d` deaths tied at a time leave the risk set a
+  fraction at a time, and the step is
+  :math:`\sum_{l<d} 1 / (R - \tfrac{l}{d} R_D)` instead of Breslow's
+  :math:`d / R` -- the covariate-weighted Fleming-Harrington estimator, as
+  Breslow's is the covariate-weighted Nelson-Aalen. It matches R's
+  ``survfit.coxph`` after an Efron fit (checked against it in the reference
+  tests) and the Efron residuals, which already used it. **Results change
+  on tied data**: pass ``tie_method="breslow"`` for the old fit. Without ties
+  every method gives the same model as before.
+- **Property-based tests (#379).** Hypothesis generates data with mixed
+  censoring, ties, counts, truncation and tiny samples, and checks the
+  non-parametric estimators, parametric fits, regression, competing-risks,
+  recurrent-event and serialisation paths against general properties
+  (valid curves, local optimality against an independent likelihood,
+  invariance to row order, units and counts, ``ValueError`` on invalid
+  input), shrinking any failure to a minimal case. The default run takes
+  under a minute; ``SURPYVAL_HYPOTHESIS_PROFILE=nightly`` searches
+  thoroughly in the nightly workflow. ``hypothesis`` is a new test-only
+  dependency. It found four bugs, pinned as strict expected failures:
+  Turnbull dropping its last piece under right truncation (#391), silent
+  degenerate fits where the likelihood has no maximum (#392), unit-dependent
+  fits to truncated data (#393), and ``CoxPH`` accepting an infinite event
+  time (#394).
+- **Statistical calibration suite and nightly run (#379).** Simulation
+  studies in ``surpyval/tests/calibration`` (opt in with
+  ``--run-calibration``) check that results are statistically right, not
+  only consistent: confidence-interval coverage for parametric,
+  non-parametric, Cox and parametric regression, degradation and recurrent
+  bounds; parameter recovery with truncation, interval censoring, limited
+  failure, frailty and renewal models; size and power of the log-rank,
+  stratified log-rank, Gray, Laplace, MIL-HDBK-189C and Cramer-von Mises
+  tests; and Brier/AUC bias with tied times. Each passes within 3 Monte
+  Carlo standard errors plus a stated slack, with fixed seeds, and would
+  have caught the old Gray's test (size 0.20 against 0.05) and the #365
+  Brier bias. The scheduled ``nightly.yml`` runs the full suite on three
+  Pythons, the docs build and the calibration suite against ``develop``
+  daily, once it is on ``master``. Found: the equal-precision (``nair``)
+  Kaplan-Meier band covers about 0.89 for a nominal 0.95 (#390).
+- **A conformance suite checks every model against the same properties
+  (#379).** Bugs kept reappearing as old kinds of failure in new models
+  (unsorted input, units, row routing, missing values, serialisation),
+  because each fix tested only its own case. ``surpyval/tests/conformance``
+  registers every public model (128 cases) and runs each through the
+  identities between its functions; scalar, 2-D and empty queries; query
+  and row order; units, data-row order and counts; valid values; the
+  missing-value rule; seeds; the strict-JSON round trip; and agreement of
+  its fit paths. A test fails when a public model is left unregistered. The
+  fast set runs on every pull request (about 40 s). The 58 failures it
+  found are strict expected failures, each naming its issue (#381-#388).
+- **Numbers quoted in the documentation are checked (#379).** The prose
+  around executed examples quoted outputs ("a shape of about 2.1", "the
+  lower AIC") that nothing verified, so they went stale when outputs
+  changed. Hidden cells now assert 263 such claims across 16 pages, and the
+  documentation build fails when one no longer holds. The first pass found
+  two stale statements in the offset section of *Parametric SurPyval
+  Modelling*: the starting offset is ``min(x)`` minus the data's mean
+  spacing, not ``min(x) - 1``, and the example's quoted moment-based shape
+  was from a different sample. See "Checking the numbers quoted in the
+  text" in :doc:`Contributing`.
+- **Stored results from R and Python survival software (#379).**
+  ``surpyval/tests/reference`` compares SurPyval with 82 results computed
+  once on shared fixtures (lung, heart, aml, ovarian, PBC, and small sets
+  with ties, left truncation, interval censoring and competing risks) by R
+  survival 3.5-8, cmprsk 2.2-11, timereg 2.0.5, pec, riskRegression, npsurv
+  and fitdistrplus, lifelines 0.30.3 and scikit-survival 0.28, so CI needs
+  neither R nor lifelines; ``scripts/reference/regenerate.sh`` rebuilds
+  them. Kaplan-Meier, Nelson-Aalen, restricted mean, log-rank, MCF,
+  Aalen-Johansen, Lin-Ying, Brier score and AUC agree to rounding; Cox
+  (Breslow, Efron, strata, left truncation, start-stop), survreg AFT fits,
+  Fine-Gray and Turnbull to between 1e-6 and 5e-4. Deliberate differences
+  are asserted and recorded with their reason. Gray's test disagrees with
+  cmprsk in its variance (#380).
+- **Degradation: missing values give NaN, and predictions read a DataFrame by
+  name (#375, #374).** Gamma- and Wiener-process models gave sf = 1 and
+  ``ff = Hf = hf = df = 0`` at a NaN time and ``qf(nan) = inf``, raised on a
+  NaN stress, and ``predict_rul(current_degradation=nan)`` never returned.
+  ``DegradationModel.qf`` returned inf for a NaN covariate or p and used only
+  the first row of ``Z``; ``InducedFailureDistribution`` gave
+  ``ff(nan) = 0``; the bootstrap ``cb`` raised on a NaN stress. A missing
+  time, stress or probability now gives NaN for that element only, and
+  ``qf`` pairs each p with its row of ``Z``. ``predict_rul``,
+  ``predict_failure_time`` and ``induced_life`` still raise for a missing
+  value (they describe one unit), and the process quantile search can no
+  longer loop forever. ``DegradationAnalysis.fit_from_df`` and the new
+  ``WienerProcess.fit_from_df`` / ``GammaProcess.fit_from_df`` record the
+  stress columns as ``Z_cols`` (kept through ``to_dict``), so every method
+  that takes ``Z`` accepts a DataFrame and selects those columns by name; a
+  model fitted from arrays refuses one with an accurate message (it used to
+  say "fit the model with ``fit_from_df``" to a model fitted that way).
+- **One rule for missing values (#375).** Prediction: a missing covariate,
+  time or probability gives NaN for exactly the outputs that depend on it,
+  and a method whose input is one unit's history (``predict_rul``,
+  ``induced_life``, ``sf_tvc``, ``mcf``) raises instead. Fitting: rows with
+  a missing covariate are dropped with one warning where rows are
+  independent observations, and refused where a row is only part of one; a
+  missing time or response always raises. See :doc:`Conventions`. Fixed to
+  follow it:
+
+  - Survival trees and forests sent a missing covariate right at every
+    split, so it predicted like +inf (tree sf 0.6974 for both), and kept
+    such rows in the fit without a warning. They are now dropped with a
+    warning, predict NaN, and ``RandomSurvivalForest.score`` is NaN when a
+    score is missing.
+  - Proportional-intensity ``mcf`` with a missing covariate ran every
+    sequence to ``max_events`` and then reported a missing *time*; it and
+    the simulation entry points now refuse a missing or mis-shaped ``Z`` by
+    name before simulating.
+  - ``survival_probability`` cast ``Z`` to float, so a formula fit with
+    string levels could not be scored; a DataFrame is now passed to
+    ``model.sf`` as it is.
+  - A missing time at prediction returned the value at t = inf in
+    ``CoxPH`` (every method, plain and stratified: sf 0.0102, ``hf`` and
+    ``df`` 0), competing-risks Cox (cif 0.385) and Fine-Gray (0.354), and
+    sf = 1 in Buckley-James; it now gives NaN. Cox ``predict_tvc`` refuses a
+    covariate path with a missing value by name.
+  - Fine-Gray and the competing-risks Cox array path dropped rows with a
+    missing covariate silently; they now warn like every other fitter (and
+    drop infinite covariates too).
+  - Stratified ``CoxPH`` raised a ``TypeError`` on a missing stratum label;
+    such observations are now dropped with one warning, and the array path
+    warns once in total rather than once per stratum.
+  - Kaplan-Meier, Nelson-Aalen, Fleming-Harrington and Turnbull (every
+    function, ``cb`` and ``band``) and non-parametric ``CompetingRisks``
+    returned the value at t = inf for a missing time (a NaN sorts past the
+    last step), and the array ``hf`` / ``df`` copied a neighbour's increment
+    into it; parametric ``sf_tvc`` / ``Hf_tvc`` raised an ``IndexError``.
+    They now give NaN for that time only.
+  - Covariates given as a list or object array holding ``None`` raised a
+    ``TypeError`` in the parametric PH and AH families, the accelerated-life
+    fit and ``AdditiveHazards`` prediction; they are now read as floats,
+    so ``None`` is a missing value.
+- **Competing-risks Cox pairs each time with its own covariate row.** With
+  one row per time and unsorted times, ``hf`` / ``Hf`` / ``sf`` / ``ff`` /
+  ``df`` read the baseline at the sorted times but used the rows in the
+  given order (times [10, 1], rows [2], [-2]: ``Hf`` gave [0.139, 0.590]
+  instead of [4.961, 0.017]). ``cif`` was not affected.
+- **A declared category level with no fitted rows is refused at prediction
+  (#377).** A level listed in ``C(g, levels=[...])``, or an unused category
+  of a ``pd.Categorical`` column, got a coefficient with nothing to estimate
+  it, so its predictions were made up (the reference level's for
+  ``WeibullPH`` and ``CoxPH``; a drifted coefficient for ``WeibullAFT``,
+  S = 0.863 against 0.803). The fit now warns once, naming the column and
+  the empty levels, and keeps the column so coding stays the same across
+  data splits; predicting for such a level raises the same "not fitted
+  with" ``ValueError`` as an unseen level, fitted or restored.
+  ``AdditiveHazards`` and Buckley-James, which reject an all-zero covariate
+  column, still refuse such a fit after the warning. A saved model with an
+  empty level needs schema 2.
+- **Turnbull reaches the maximum-likelihood estimate with interval
+  censoring and right truncation (#368).** Two index searches were one
+  Turnbull piece off: a right-censored observation could not fail in the
+  piece just after its censoring time, and a right-truncated window
+  ``(tl, tr]`` took in the piece just after ``tr``. Exact and right-censored
+  data were unaffected; otherwise the EM converged to a curve that was not
+  the NPMLE (one failure in (1, 2] and one unit censored at 1.5 were fitted
+  at a likelihood of 0.375 instead of 1). On 600 random small data sets the
+  old fits fell up to 1.4 log-likelihood units short without right
+  truncation and 25 to 68 with it; some right-truncated fits had likelihood
+  zero, and a few doubly truncated ones raised ``IndexError``. Every fit
+  whose NPMLE exists now matches an independent maximisation to 2e-9, and
+  the ``npmle`` verdict, now built on the corrected supports, agreed with
+  the EM's behaviour on all 399 of those data sets where it gave a firm
+  verdict. Delayed-entry data in which a unit is censored before a later
+  unit enters is now reported ``"not unique"`` (with a warning), since the
+  mass between them is not determined; the Kaplan-Meier option still
+  returns the delayed-entry Kaplan-Meier. The Nair interval example in the
+  docs rises from -59.52 to -58.06 in log-likelihood.
+- **Formula models refuse a category level they were not fitted with
+  (#371).** Predicting for a level absent from the fitted data coded it
+  silently as the reference level (``WeibullPH`` gave S(5) = 0.5283 for both
+  ``g="a"`` and an unknown ``g="d"``), with only formulaic's
+  ``DataMismatchWarning``. Every family that takes a ``formula``
+  (parametric PH/AFT/PO/AH, ``AcceleratedLife``, ``CoxPH``,
+  ``AdditiveHazards``, Buckley-James, frailty, competing-risks Cox and
+  Fine-Gray) now raises a ``ValueError`` naming the column and the unknown
+  levels, fitted or restored. A fit whose data has a level outside its
+  ``C(g, levels=[...])`` list raises too; declared levels count as known. A
+  missing categorical value still predicts NaN in place, as a missing
+  numeric one does. Buckley-James returned survival 0 for any missing
+  covariate and now returns NaN.
+- **Competing-risks Cox predicts from a DataFrame (#370).**
+  ``CompetingRisksProportionalHazards`` read a DataFrame by column
+  position: with ``Z_cols=["z", "w"]``, passing the columns as ``[w, z]``
+  changed S(5) from 0.655 to 0.914, and a ``formula`` fit could not expand
+  raw covariates at all. ``sf``, ``ff``, ``Hf``, ``hf``, ``df``, ``cif``,
+  ``phi`` and ``phi_e`` now select and encode the columns recorded by
+  ``fit_from_df``, as ``CoxPH`` does, fitted or restored. Arrays work as
+  before.
+- **Proportional odds fits time-varying covariates (#372).** ``PO(dist)``
+  models could be evaluated along a step covariate path but not fitted to
+  one; the docs said PO lacked the structure. It does not: the PO hazard
+  :math:`h_0 / (F_0 + \phi S_0)` depends only on the time and the current
+  covariate, so splitting a subject into delayed-entry intervals is exact.
+  ``fit_tvc``, ``fit_tvc_timeline`` and their ``_from_df`` forms now work
+  for ``WeibullPO`` / ``PO(dist)``. On simulated step-path data (8 x 2,000
+  subjects, truth [10, 2, 1, -0.5]) the mean estimate is
+  [10.03, 1.98, 0.98, -0.50], and the fitted negative log-likelihood equals
+  the path likelihood from ``sf_tvc`` / ``hf`` to about 1e-12.
+- **``fit_tvc`` no longer truncates at time 0.** For PH, AH and PO models with
+  a baseline defined below zero (Normal, Gumbel, Logistic), each subject's
+  first interval was treated as left-truncated at 0, conditioning the fit on
+  surviving to 0, so a constant covariate split into intervals did not
+  reproduce ``fit`` (LogisticPO scale 5.22 against 9.33, NormalPH 5.56
+  against 9.65). A first interval starting at 0 is now untruncated,
+  matching ``fit`` and ``sf_tvc``. Baselines on the positive axis are
+  unchanged.
+- **Survival tree predictions for several subjects (#369).**
+  ``SurvivalTree.sf(x, Z)`` (and ``ff``, ``df``, ``hf``, ``Hf``) routed a
+  covariate matrix by a row, ``Z[split_index]``, instead of a column. With
+  one covariate every subject silently got the first subject's curve
+  (S(5) = 0.8811 for all rows, where row by row gives 0.2955 for half of
+  them); with two or more it raised. ``survival_probability``, and so the
+  Brier score and AUC, were wrong for a single tree. Each row now goes to
+  its own leaf, and a 2-D ``Z`` returns an ``(n_rows, n_times)`` grid equal
+  to stacking the per-row results, as ``RandomSurvivalForest`` does; a 1-D
+  ``Z`` (one subject) is unchanged. The forest, already correct, now
+  evaluates the whole matrix in one call per tree: identical results, about
+  3x faster in ``survival_probability`` and ``score``.
+- **Turnbull decides from the data whether its estimate exists (#327).** A
+  fit warned "not identifiable" when more than 90% of its mass sat on pieces
+  some observation gains from and none pays for, or when the EM did not
+  converge: a cut-off tuned on simulated samples. On samples whose estimate
+  does not exist that share ranged from 0.11 to 0.99 depending on how far
+  the EM had got, so half were caught only because they had not converged;
+  other non-existent estimates (a delayed-entry Kaplan-Meier that drops to
+  zero before a later entry, Lynden-Bell and doubly truncated exact data)
+  were reported only as not converged, and flat likelihoods not at all. The
+  new ``model.npmle`` is ``"exists"``, ``"not unique"``, ``"does not
+  exist"`` or ``"undetermined"``, from a structural criterion checked
+  before the EM runs: Vardi and Wang's graph condition for exact data, and
+  a hazard-scale gap argument for one-sided truncation with any censoring.
+  It takes a few milliseconds on thousands of rows, and the warnings name
+  the case and the time involved. On 240 simulated left-truncated samples,
+  all 63 "does not exist" fits drifted to the boundary and none of the 176
+  "exists" fits did. With censoring and truncation on both sides existence
+  can depend on the counts, and such fits are reported as
+  ``"undetermined"``. The fitted estimate is unchanged, and
+  ``exploitable_mass`` is still reported as a diagnostic.
+- **Every regression formula round-trips through serialisation (#244).** A
+  model fitted with ``fit_from_df(..., formula=...)`` refused ``to_dict``
+  for wrapped categoricals (``C(g)``, ``C(g, levels=...)``,
+  ``C(g, contr.sum)``) and fitted transforms (``scale``, ``center``,
+  ``poly``, ``bs``, ``cs``). It restored integer-level categoricals with
+  string levels, so every row was coded as the reference level (sf off by
+  up to 0.09), and Cox and competing-risks Cox models lost a ``0 +`` from the
+  formula, so a restored model had 3 design columns for 4 coefficients and
+  could not predict. ``to_dict`` now stores each factor's levels, in order
+  and with their types, and each transform's fitted state as strict JSON;
+  ``from_dict`` rebuilds the same design-matrix transformer, and restored
+  models predict identically (rtol 1e-12) across the PH/AFT/PO/AH,
+  accelerated-life, Cox, Lin-Ying, Buckley-James, frailty and
+  competing-risks families. A formula is checked when saving, so anything
+  that cannot be restored raises in ``to_dict``. A formula that SurPyval
+  0.20 cannot rebuild is stamped schema 2, so 0.20 asks for an upgrade
+  instead of failing with a formula error; plain columns and string
+  categoricals stay schema 1. Old files still load, and a Cox file missing
+  its ``0 +`` is repaired. Also fixed: predicting with plain integers for a
+  column fitted as an integer ``Categorical`` treated it as numeric (sf
+  0.372 instead of 0.083).
+- **Brier score and time-dependent AUC with tied event and censoring times
+  (#365, #290).** The censoring survival :math:`\hat G` behind the
+  inverse-probability-of-censoring weights counted an event as still at risk
+  of being censored at its own time, and weighted it by
+  :math:`1/\hat G(x_i)`. The metrics now use the events-first reverse
+  Kaplan-Meier (as ``prodlim`` and scikit-survival) and weight an event by
+  :math:`1/\hat G(x_i-)` (as ``pec``; Gerds and Schumacher 2006). On a data
+  set whose true values are known exactly, the Brier score at t = 2 was
+  0.2330 against a true 0.2250 (now exact) and the AUC 0.6703 against 2/3;
+  in simulation with discrete times the old Brier score was biased by
+  -0.029 and is now unbiased (scikit-survival's :math:`1/\hat G(x_i)`
+  weighting gives +0.011). Without such ties the results are unchanged and
+  equal scikit-survival's. ``censoring_survival`` gains ``ties=``; Fine-Gray
+  keeps its ``cmprsk`` convention. Also: ``integrated_brier_score`` sorts an
+  unsorted grid (0.1908 became 0.1949 on one example); ``c`` must be 0 or 1
+  and match ``x`` in length (a left-censored row was scored as a survivor);
+  ``x_train`` needs ``c_train``; and a horizon that needs the training
+  :math:`\hat G` where it has fallen to 0 scores NaN rather than being
+  biased towards 0 (0.179 against a true 0.25).
+- **Proportional odds along a time-varying covariate path (#236).**
+  ``sf_tvc`` / ``Hf_tvc`` raised ``NotImplementedError`` for ``PO(dist)``
+  models. The PO hazard :math:`h_0 / (F_0 + e^{\beta'z} S_0)` depends only on
+  the time and the current covariate, so the cumulative hazard along a step
+  path is exactly the sum of the constant-covariate increments, as for PH;
+  PO now takes that path. It matches a numerical integral of the hazard to
+  1e-9, and a constant path gives ``sf(x, Z)`` to 1e-13. PO's ``Hf`` is now
+  computed as :math:`H_0 - \ln\phi + \ln(F_0 + \phi S_0)` rather than
+  ``-log(sf)``: before, a change-point where the baseline survival underflows
+  made every ``sf_tvc`` value NaN (``WeibullPO`` with a change at t = 1500:
+  S(5) was NaN, now 0.8387). Time-varying *fitting* is still not available
+  for PO.
+- **``sf_tvc`` for PH and AH with a baseline defined below zero.** For a
+  Normal, Gumbel or Logistic baseline a constant covariate path gave the
+  survival conditional on surviving to time 0, not ``sf(x, Z)`` (at x = 5:
+  PH(Normal) 0.91842 against 0.91551, PH(Gumbel) 0.90613 against 0.87800).
+  The first segment now starts at the bottom of the support, so a constant
+  path reproduces ``sf`` exactly.
+- **Recurrent-event simulations are much faster (#362); seeded results
+  change.** ``mcf``, ``plot``, ``time_terminated_simulation``,
+  ``count_terminated_simulation`` (and their ``..._data`` versions) and the
+  renewal models' ``cramer_von_mises`` bootstrap used to simulate one item
+  and one event at a time, with two model calls per event. Every item is
+  now advanced together, one event per round, with one array operation per
+  round, and the renewal models' root finding is vectorised too. An
+  ``mcf`` over 1000 items is 23-46x faster for the Kijima and ARA models
+  (``GeneralizedRenewal`` with a Weibull lifetime and Kijima II: 2.0 s to
+  0.06 s), 9-18x for ARI and the intensity models, and 4x for the already
+  cheap G1 model. The simulated MCF also no longer
+  computes the Lawless-Nadeau variance it then discarded, which was most of
+  the time for the intensity models with many items. The draws follow the
+  same processes (checked against one-sequence-at-a-time references to
+  round-off), but the uniforms are assigned to events in a different order,
+  so a given ``seed`` now gives different simulated values and bootstrap
+  p-values than in 0.20. The unused uniform-pool helpers
+  ``initialize_simulation``, ``get_uniform_random_number`` and
+  ``clear_simulation`` are removed. Three examples in :doc:`Recurrent Event
+  Modelling with SurPyval` use new seeds so that they still illustrate
+  what the text describes.
+- **One seeding rule for every random draw (#361).** With the default
+  ``random_state=None`` (or ``seed=None``), the non-parametric
+  ``random()`` and ``bootstrap_cb()``, ``ParametricCompetingRisks.random()``,
+  the copulas' ``sample_uv()`` (and so ``random()``), the degradation
+  models' ``random()``, ``induced_life()``, ``predict_rul()`` and bootstrap
+  bounds, the Buckley-James bootstrap and the recurrent-event goodness-of-fit
+  p-values used a fresh OS-seeded generator on every call, so
+  ``np.random.seed`` had no effect on them while it did control
+  ``Parametric.random`` and the recurrent simulations. ``None`` now draws
+  from numpy's global RNG throughout (``surpyval.utils.rng.as_generator``).
+  An explicit seed or ``Generator`` gives the same stream as before. See
+  :doc:`Conventions`.
+- **``import surpyval`` no longer imports matplotlib (#363).** pyplot is
+  imported inside the plotting methods, which saves about 0.3 s on every
+  cold start of a program that never plots. Plotting is unchanged.
+- **Design changes approved after the third documentation review.**
+
+  - **One sample size for BIC and AIC_c.** Every model that reports a BIC
+    or AIC_c uses the number of observed failures (exact, left- and
+    interval-censored, weighted by their counts), or the number of
+    observations when there is none. Recurrent-event models count
+    observed events; copulas count rows in which at least one series
+    failed. Previously univariate models counted failures for BIC but all
+    units for AIC_c, regression counted exact failures only (``-inf``
+    without one), recurrent models counted exact events (NaN without
+    one), and copula and Royston-Parmar models counted every row.
+    Univariate BIC on exact and right-censored data is unchanged; AIC_c on
+    censored data now uses the failures. Restored models store the sample
+    size (``"ic_n"``), so ``bic()`` and ``aic_c()`` work without the data.
+    ``fit_best(metric="aic_c")`` raises a clear error when no candidate
+    has a finite AIC_c instead of returning ``None``.
+  - **Fine-Gray follows cmprsk on tied times.** The censoring weights are
+    :math:`\hat{G}(t-)/\hat{G}(x_i-)`, with the censoring Kaplan-Meier read
+    just before each time, as in R's ``cmprsk::crr``. Results are
+    unchanged when no censoring time equals an event time.
+  - **Readings from a coarse gauge.** ``GammaProcess.fit(gauge=...)`` (with
+    ``rounding``, ``exact_start`` and ``gauge_method``) maximises the
+    probability that each unit's path passes through its recorded gauge
+    bins. With a gauge step near the mean increment, taking rounded
+    increments at face value more than doubled ``alpha`` and shrank
+    stress coefficients; the gauge likelihood recovers the unrounded
+    estimates. The default fit is unchanged.
+  - **Scale-equivariant parametric fits.** Every continuous distribution
+    and method, with or without an offset, now gives the same answer in
+    any units from 1e-4 to 1e5: the search is scaled per coordinate, MLE
+    normalises its objective per observation, MOM uses the scaled search,
+    MPS no longer evaluates the CDF at the support edge, and offsets start
+    one data spacing (not one unit) below the smallest value, with MPP
+    searching the offset in the data's spacing. At a data scale of 1e-3,
+    Rayleigh MOM had been 1.2% off, Uniform MPS 0.15% and Beta4 MLE 0.1%,
+    and many offset fits never left their start. Fits in their own units
+    move by about 1e-6 relative, towards the optimum.
+  - **Strict-JSON serialisation.** ``to_dict``/``to_json`` no longer emit
+    ``NaN``/``Infinity``: non-finite values are written as ``null`` and
+    listed under ``"non_finite"`` (JSON Pointers by kind), and every reader
+    restores them. Each file is stamped with the oldest schema version that
+    reads it: 2 when it records non-finite values this way, and 1 (the
+    layout SurPyval 0.20 reads, which loads it identically) otherwise;
+    older dictionaries and files still load. ``to_json(path, with_data=True)`` works for ``Parametric``
+    and ``NonParametric``, and every class-level ``from_dict`` applies the
+    package reader's checks.
+  - **Non-parametric copula margins.** Under ``how="IFM"`` a margin can be
+    ``KaplanMeier`` (or any fitted non-parametric model), giving the
+    semi-parametric estimator of Genest, Ghoudi and Rivest (1995); it
+    used to crash.
+  - **Datasets.** ``load_framingham``, ``load_pbc2`` and
+    ``load_support2`` expose bundled data that had no loader; the
+    undocumented ``synthetic_dataset.csv`` is removed. The G1 example data
+    are credited to Kaminskiy and Krivtsov (2010).
+
+- **Bug fixes found in the third documentation review.** This review
+  probed the documented behaviour adversarially (identities, round trips,
+  cross-method agreement, edge cases). Each fix has a regression test
+  that fails on the old code.
+
+  *Wrong results that are now correct.*
+
+  - **Degradation:** the default two-sided analytic ``cb`` band was a 90%
+    band (each side used the full ``alpha_ci``). Units already past the
+    threshold at their first measurement were treated as survivors; they
+    are left-censored there. Wiener ``sf``/``ff`` returned NaN for low
+    noise; ``GammaProcessModel.mean`` could be negative; zero Gamma
+    increments are censored below a ``resolution`` instead of a 1e-12
+    nudge.
+  - **Gray's test** is Gray's (1988) statistic with group-specific
+    censoring; the pooled version rejected a true null up to 89% of the
+    time when groups were censored differently.
+  - **Parametric competing risks:** ``cif`` and ``probability_of_cause``
+    are integrated per query instead of on a fixed grid (they could sum
+    to 0.81, or 0.0005).
+  - **Recurrent events:** GRP/ARA simulation was wrong at long horizons
+    and NHPP simulation failed past ~745 expected events; renewal fits
+    could keep a worse optimum than one they found (boundary optima such
+    as ARA ``rho -> 1``); left-censored counts now cover ``(tl, x]``.
+  - **Regression:** a missing or infinite covariate made PH/AH/frailty
+    return their starting values (rows are now dropped with a warning in
+    every fitter); stratified Cox ``predict_tvc`` used the first
+    stratum's baseline; Lin-Ying predictions depended on covariate
+    centring; counts were treated as clusters in robust standard errors,
+    ``check_ph`` ranks and the Buckley-James bootstrap; some AFT/PO fits
+    stopped short of the maximum (``PO(Weibull)`` by 5.5 nats) and are
+    finished by a gradient-based optimiser.
+  - **Parametric:** ``cs`` ignored ``p``, ``f0`` and the offset;
+    likelihood-ratio bands collapsed onto the estimate when the inner
+    search failed (Geometric coverage 0.65); the mixture EM stalled on a
+    ``log(0)``; ExpoWeibull and ``CustomDistribution`` moments were wrong
+    away from unit scale; MPS and MSE were not scale invariant; raw
+    distribution functions were evaluated outside their support;
+    ``bic()`` was ``-inf`` without exact failures; LogNormal and Gamma
+    hazards overflowed in the far tail.
+  - **Non-parametric:** ``qf``/``median`` had no round-off tolerance (the
+    median of 1..30 was 16); ``band()`` critical values were ~1.5% low;
+    log-rank counted groups never at risk in its degrees of freedom; the
+    Turnbull identifiability warning fired on correct fits.
+  - **Copulas:** Frank overflowed for :math:`\theta \gtrsim 37` and
+    Clayton collapsed at extreme :math:`\theta`; joint MLE dropped
+    pre-fitted margins' options; automatic derivatives summed over
+    broadcast axes.
+  - **Data layer:** NaN truncation bounds were read differently by each
+    fitter; unsorted xrd input gave a wrong estimate.
+
+  *Crashes and unclear errors.* Two-column ``x`` without intervals now
+  works in every fitter; truncation rules are identical for one- and
+  two-column ``x``; bad ``fixed``/``init``/``bound``/``how`` arguments,
+  wrong covariate row counts, degenerate data, out-of-range parameters
+  in ``from_params``/``fit_from_parameters``, non-integer data for
+  discrete distributions and corrupt serialised dictionaries raise clear
+  errors. Models restored without their data explain what needs it.
+
+  *Serialisation.* Discretize, ``CustomDistribution`` (after
+  re-construction), ``NeverOccurs``/``InstantlyOccurs``, destructive
+  degradation models with any distribution, and competing-risks models
+  with mixed or tuple labels round-trip; Cox dictionaries are strict
+  JSON; likelihood-ratio bounds work after a ``with_data`` restore.
+
+  *Behaviour changes to note.* BIC's sample size for univariate models
+  counts every non-right-censored failure; ``aic_c`` is NaN when
+  :math:`N \le k + 1`; recurrent covariates must be constant within an
+  item; Cox ``model.phi`` is a method; stratified ``sf_tvc`` requires
+  ``stratum=``; ``band()``'s ``n_sims``/``random_state`` are deprecated;
+  two-column ``x`` without intervals is stored as one column.
+
+- **Bug fixes found in the second documentation review.** Each was
+  reproduced first and has a regression test that fails on the old code;
+  documentation describing the old behaviour was updated.
+
+  *Non-parametric.*
+
+  - **Turnbull confidence bounds stepped a piece too early.** The variance
+    at each value included the next piece's expected failures, so ``cb()``
+    on interval-censored data gave ``[0, 1]`` where the estimate was 1. The
+    ``r``, ``d`` and variance ladders now line up with ``R``; the
+    Kaplan-Meier option without truncation starts the EM on Turnbull's
+    innermost intervals; MPP fits with ``heuristic='Turnbull'`` pair each
+    failure with the CDF after its drop (their estimates move slightly).
+  - ``smoothed_hf()`` works on Turnbull models; Turnbull ``bootstrap_cb()``
+    refits with the fit's ``tol`` and ``max_iter``; Greenwood's variance no
+    longer blows up (about 1e14) from round-off at the last value.
+  - ``'Benard'`` plotting positions use Benard's (i - 0.3)/(N + 0.4); an
+    unknown ``turnbull_estimator`` raises a ``ValueError`` up front.
+
+  *Parametric.*
+
+  - **Distribution parameters named** ``p`` **clashed with the
+    limited-failure proportion.** ``param_cb('p')`` on a Geometric or
+    NegativeBinomial now bounds the distribution's own ``p``, and
+    ``lfp=True`` works for them (the proportion is named ``lfp_p``).
+  - **Uniform MLE with censoring was not the maximum.** ``(min, max)`` is
+    used only for exact data; censored data gets a bounded search (``b =
+    24.75``, not 10, in the reported example).
+  - **Method of moments could return its start as the fit.**
+    Beta-Geometric MOM has a closed form, non-finite moments at the start
+    raise, and the search backs away from regions without moments. With
+    ``fixed``, MOM matches one moment per free parameter.
+  - ``CustomDistribution`` gains finite moments and ``var()``, a fast MOM,
+    and the standard MPP refusal; ``offset=True`` is refused for discrete
+    distributions; ``param_cb('gamma')`` and unknown names give clear
+    errors; ``var()`` of LFP and zero-inflated models follows ``mean()``'s
+    convention; the MSE/MPS fallback ends on Nelder-Mead as documented.
+  - The gradients of the incomplete gamma/beta helpers had the wrong shape
+    when a scalar argument met an array partner (NegativeBinomial fits
+    that differentiate the CDF crashed).
+
+  *Information criteria.*
+
+  - **AIC, AICc and BIC count only estimated parameters.** Fixed
+    parameters (and the accelerated-life placeholder) no longer add to
+    ``k``, in parametric and regression models; restored models agree.
+    A Weibull with its shape fixed now scores the same as the equivalent
+    Rayleigh, and ``AcceleratedLife(Weibull, Power)`` AICs drop by 2.
+  - Recurrent models use one BIC sample size, the number of exactly
+    observed events (it was every row, or only failures for ARI).
+
+  *Regression.*
+
+  - **The exact Cox tie methods are fast.** ``'kp'`` uses the
+    Gail-Lubin-Rubinstein recursion and ``'exact'`` the DeLong-Guirguis-So
+    integral, with analytic score and information: a 107-way tie that took
+    over nine minutes fits in 0.06 s, and the twelve-tie cap is gone.
+  - **Cox silently fitted left-censored rows as right-censored** and
+    failed on interval rows; both are refused with a clear error.
+    ``CoxPH.fit_from_df`` gains ``tl_col``, and strata labels follow the
+    missing-covariate row mask.
+  - **A parametric regression fit could return its starting values** when
+    the start's log-likelihood was infinite; it now falls back to the
+    default start with a warning, or raises.
+  - ``AH(...).random`` works with several covariate rows; the unreachable
+    accelerated-life ``(low, high)`` stress option is removed and a scalar
+    stress works; additive-hazards fits held at the positivity boundary
+    warn; ``FrailtyModel`` gains ``neg_ll``/``aic``/``bic``/``aic_c`` and
+    is warning-free near :math:`\theta = 0`.
+
+  *Competing risks and copulas.*
+
+  - ``gray_test`` counted a NaN cause as a competing failure (only
+    ``None`` was censored); it uses the shared missing-cause rule.
+  - ``CompetingRisksProportionalHazards`` (Cox and Fine-Gray) can be saved
+    and restored, reproducing every prediction.
+  - Copula fits start strictly inside the family's bounds and take a public
+    ``init``; ``CopulaModel`` reports ``log_likelihood``, ``neg_ll()``,
+    ``aic()`` and ``bic()`` from the full censored and truncated
+    likelihood.
+
+  *Recurrent events.*
+
+  - **The cause-specific MCF's bounds were too narrow**: it used the
+    per-step variance; each cause now gets the Lawless-Nadeau robust
+    variance. The per-step variance itself was wrong with ties.
+  - The non-parametric MCF accepts right truncation (``tr``); models
+    without data raise an informative error; G1, ARI and NHPP fits are
+    warning-free (NHPP searches run on an unconstrained scale, moving
+    fitted values only within the optimiser tolerance); the renewal
+    goodness-of-fit bootstrap resimulates each item as it was observed.
+
+  *Degradation.*
+
+  - Offset-exponential models could not be reloaded; every built-in path
+    now round-trips. ``DestructiveDegradationModel`` gains
+    ``to_json``/``from_json`` and keeps its data, so a reloaded model's
+    ``cb`` matches the original.
+
+- **Bug fixes found while rewriting the documentation.** Each was
+  reproduced first, is covered by a new test, and the documentation that
+  described the old behaviour (or a workaround for it) has been updated.
+
+  *Regression.*
+
+  - **Cox predictions before the first event were wrong.** The baseline
+    lookup index was -1 there, which wrapped to the *last* baseline value,
+    so ``Hf(0.1)`` returned the end-of-data cumulative hazard and ``sf``
+    was near 0 where it should be 1. It is now 0 before the first event.
+  - **Cox predictions paired unsorted times with the wrong covariate
+    rows.** The query times were sorted for the baseline lookup but
+    ``phi(Z)`` was not, so ``Hf([3, 1], Z)`` gave ``[9.69, 0.39]`` instead
+    of ``[1.87, 2.03]``. Times and rows now stay paired, in the order
+    given.
+  - **The gamma-frailty fit broke when there was little frailty.** Its
+    group log-likelihood subtracted terms of size
+    :math:`(1/\theta)\log(1/\theta)` to get a difference of order
+    :math:`\theta`; as :math:`\theta \to 0` round-off swamped it and the
+    fit chased the noise (``neg_ll`` of -1985 against the PH fit's 755) or
+    divided by an underflowed :math:`\theta`. It is now computed in a
+    form that tends to the PH contribution, and the fit coincides with the
+    ordinary PH fit when there is no frailty.
+  - **A 1-D ``Z`` raised ``IndexError``** in the PH, AFT, PO and AH
+    fitters; it is read as one covariate, as the other fitters already
+    did.
+  - **Accelerated life with a Gamma baseline had the life model backwards.**
+    Gamma's ``beta`` is a rate, so the life now enters as ``1 / life`` (as
+    for the Exponential); a longer modelled life had meant a faster rate.
+  - **PH random draws returned ``inf`` for a tiny hazard multiplier**; they
+    now invert through the cumulative hazard.
+  - Docstring: Schoenfeld residuals follow the input order of the event
+    rows, not event-time order.
+
+  *Competing risks.*
+
+  - **``CompetingRisksProportionalHazards`` (``how="Cox"``) incidence could
+    exceed 1.** Its CIF weighted each hazard increment by ``exp(-H)`` (the
+    #278 defect, fixed for the non-parametric CIF but not here): total
+    incidence reached 1.07-1.18 in small samples, and 118 in one. The
+    weight is the product-limit survival, and the CIFs now sum to exactly
+    ``1 - S``.
+  - **``CompetingRisks(method="Kaplan-Meier")`` only changed ``S``;** ``sf``,
+    ``ff`` and ``Hf`` still used ``exp(-H)``. They now follow the method
+    (the default is unchanged; the method is serialised).
+  - The causes of a Cox competing-risks model are sorted, so the row order
+    of ``betas`` no longer depends on the hash seed. Docstrings for
+    ``how``/``tie_method``, FineGray's ``c``, and API entries for
+    ``FineGrayModel`` and ``GrayTestResult``.
+
+  *Parametric.*
+
+  - **Two-sided parameter bounds other than (0, 1) were ignored** (a spline
+    knot bounded to (0, 50) was fitted at 89.7). Every finite interval is
+    now enforced.
+  - **Poor default starts reported success at poor optima.** A
+    ``CustomDistribution`` started each positive parameter at 1, where for
+    data on another scale the likelihood is flat to machine precision; it
+    now starts from the best of a grid of magnitudes, with the old start as
+    a second try. A limited-failure-population fit could settle on the
+    worse of two optima (Meeker's data: ``p = 0.116``, ``neg_ll`` 302.9,
+    instead of ``p = 0.0067``, 293.0); it is also started from the failures
+    alone. An MLE fit without ``init`` keeps the best of these starts.
+  - **Restored models:** ``neg_ll()`` and ``aic()`` work from the stored
+    likelihood; ``bic()``, ``aic_c()`` and ``plot()`` explain that the data
+    were not saved instead of raising ``TypeError``.
+  - Docstrings for ``from_params``' ``p``, zero-inflation in ``qf`` and
+    ``random``, ``tl``/``tr``, ``MixtureModel.loglike`` and the
+    ``CustomDistribution`` example.
+
+  *Non-parametric.*
+
+  - **``Turnbull.fit`` modified its input.** Infinite interval endpoints
+    were rewritten in the caller's array, so refitting the same array gave
+    a different answer.
+  - **Fleming-Harrington could return ``nan``** when the Turnbull EM's risk
+    and death sets carried float noise (``1 + 2e-16``); near-integer sets
+    are treated as integers.
+  - Docstrings for ``turnbull_estimator`` (Fleming-Harrington, the default,
+    was missing), ``hf`` (it returns increments, not a rate), and the
+    Turnbull EM (the estimator option acts inside the EM too).
+
+  *Multivariate (copulas).*
+
+  - **IFM ignored counts and truncation in the margins.** The first stage
+    now fits each margin with the row counts and its own series'
+    truncation window.
+  - **Clayton had a spurious likelihood maximum near** :math:`\theta = 0`.
+    The closed form rounded to ``C = 1`` and density ``1/(uv)`` below
+    :math:`\theta \approx 10^{-16}`, which negatively dependent data drove
+    the fit into; computed through ``log1p``/``expm1`` it tends to the
+    independence copula.
+  - ``MultivariateSurpyvalData``: interval rows without ``xl``/``xr`` are
+    rejected (the check could never fire), a single row of ``D`` censoring
+    codes broadcasts, and no ``RuntimeWarning`` comes from the default
+    infinite truncation bounds.
+
+  *Recurrent events.*
+
+  - **The MCF variance ignored within-item covariance.** It is now the
+    Lawless-Nadeau robust variance; the per-step variance was about eight
+    times too small when items differ in their rates.
+  - **``mcf_cb(bound_type="normal")`` scaled the standard error by the
+    estimate a second time**, giving far too wide, negative bounds; it is
+    now ``M +- z SE``.
+  - **``ProportionalIntensityNHPP`` stopped short of the optimum** (Duane
+    baseline: 15-30 AIC worse than the same model as Crow-AMSAA). It starts
+    from the covariate-free baseline fit and searches on an unconstrained
+    scale; on one-event-per-item data it now reproduces Weibull PH exactly.
+    Crow-AMSAA's ``beta`` is bounded below by 0.
+  - ``CauseSpecificNHPP(dist=HPP)`` works (it raised ``TypeError``) and
+    ``HPP`` has ``from_params``; model summaries say how the model was
+    obtained instead of always "MLE"; a covariate dict of scalars and a
+    1-D ``Z`` are accepted; ``CauseSpecificMCF.plot`` draws confidence
+    bounds and honours ``confidence``/``plot_bounds``.
+  - Docstrings: residuals are not exactly i.i.d. Exp(1) when an item's
+    window closes before an event; the Rossi example passes ``i`` and
+    ``c`` by keyword.
+
+  *Degradation.*
+
+  - **Bootstrap bounds failed on a reloaded model.** ``from_dict`` did not
+    restore the fitter the refits need, so every refit failed; it is now
+    recovered from the restored life model (the distribution, or the
+    regression fitter of an accelerated model).
+
+- **REML population fits are 20-60x faster.** ``population_method="reml"``
+  -- the plain and stress-dependent (``links``) populations, linear and
+  nonlinear paths -- now evaluates the same REML objective through the
+  Woodbury identity (a ``p x p`` computation per unit instead of an
+  ``n_i x n_i`` factorisation) and searches it by BFGS with a
+  Nelder-Mead fallback. The Nelder-Mead search it replaces used an
+  absolute function tolerance that round-off could prevent it from
+  meeting, and then ran to its 20,000-evaluation cap in every
+  Lindstrom-Bates iteration: a nonlinear fit whose units' time scales
+  differ several-fold ran for more than ten minutes, and now takes
+  0.05 s. The estimates move only within the optimiser tolerance (at
+  most ~1e-5 relative across the fingerprinted REML fits, with the REML
+  objective at the new optimum equal to the old to 3e-10); moments fits
+  are bit-identical. The degradation test suite runs in half the time.
+
+- **Accelerated degradation, Stage 2: stress-conditional predictions**
+  (<#155>, second half). A model fitted with ``links`` now uses its
+  stress-conditional path population, ``eta ~ N(D(z) gamma, Sigma)``
+  on the link scale, for prediction:
+
+  - ``predict_rul(x, y, Z=...)`` updates a new unit's trajectory
+    against the population of units at *its* stress rather than the
+    pooled population that mixes every tested stress. The posterior is
+    taken on the link scale, so a log-linked rate stays positive, and
+    ``posterior_mean``/``posterior_cov`` are reported there.
+  - ``induced_life(Z=...)`` gives the Lu-Meeker induced failure-time
+    distribution at any stress -- until now it was refused for every
+    accelerated model. Outside the tested range the mechanism, not a
+    curve through the pseudo failure times, carries the extrapolation.
+    The induced distribution records the stress it was taken at
+    (``stress``, serialised and shown in its ``repr``).
+  - ``path_param_link_mean(Z)`` and ``path_param_median(Z)`` expose the
+    population at a stress, the latter on the natural scale (the median
+    of each parameter, exactly, since each link is monotone).
+
+  A linked model requires ``Z`` in these calls and a model without
+  ``links`` refuses it, each with a message naming the fix. Everything
+  without ``links`` is bit-identical to before (66 fingerprinted
+  outputs across ``predict_rul`` and ``induced_life`` on plain,
+  nonlinear and Stage-1 accelerated models). The degradation theory
+  page gains a section on the stress-dependent model and the how-to a
+  worked example.
+
+- **Accelerated degradation, Stage 3: step-stress process models**
+  (<#155>). ``WienerProcess.fit`` and ``GammaProcess.fit`` take ``Z``
+  (one stress row per measurement, the stress applied over the interval
+  ending there) and ``stress_ref``, so constant-stress *and*
+  step-stress accelerated tests can be fitted. Stress accelerates the
+  process clock, ``AF(z) = exp(gamma'(z - z_ref))``: the process runs on
+  the operational time ``tau(t) = integral of AF(z(s)) ds``
+  (Whitmore & Schenkelberg, 1997), the fitted process parameters are
+  the reference-stress values and the new ``gamma`` coefficients how
+  strongly stress speeds degradation up (``z = 1/T`` gives Arrhenius).
+
+  - ``ff``, ``sf``, ``df``, ``hf``, ``Hf``, ``qf``, ``mean``, ``random``
+    and ``predict_rul`` take ``Z``: a single stress row, or a
+    ``StepSchedule`` for a stress that changes over time. The life
+    under any profile is closed form, ``F(t) = F0(tau(t))``, for both
+    processes; for ``predict_rul`` the schedule starts now.
+  - ``acceleration_factor(Z)`` and ``is_accelerated``; ``gamma`` and
+    ``stress_ref`` are serialised and shown in the ``repr``.
+  - For the Wiener process stress scales the diffusion along with the
+    drift, the assumption that makes the model identifiable and the
+    life closed form.
+
+  A stressed model requires ``Z`` for predictions and a stress-free one
+  refuses it. Fits and predictions without ``Z`` are bit-identical to
+  before (84 fingerprinted outputs). The degradation theory page gains
+  a section on time-varying stress and the how-to a step-stress worked
+  example.
+
+- **Accelerated degradation, Stage 3: step-stress general-path models**
+  (<#155>). ``DegradationAnalysis.fit(..., Z=Z, acceleration="clock",
+  stress_ref=...)`` lets a unit's stress change *during* its test.
+  Stress speeds up the clock of every unit's path,
+  ``AF(z) = exp(gamma'(z - z_ref))``: the path is the ordinary path
+  model on the reference-stress time the unit has aged (the
+  cumulative-exposure model, Nelson 1980, which for these paths is
+  also the rate-based model -- damage carries over at a step). ``Z``
+  has one row per measurement, the stress over the interval ending
+  there.
+
+  - ``population_method="moments"`` estimates ``gamma`` by profile
+    least squares from the units whose stress steps (and refuses data
+    with no steps); ``"reml"`` fits the mixed model -- the FOCE
+    profile likelihood of ``gamma`` -- which also identifies it from
+    units at different constant stresses.
+  - The path parameters, their population and the pseudo failure
+    times are on the reference-stress clock, the life distribution is
+    fitted to those reference-stress lifetimes, and ``sf``, ``ff``,
+    ``df``, ``hf``, ``Hf``, ``qf``, ``mean`` and ``random`` take ``Z``
+    as a stress row or a ``StepSchedule``: ``F(t) = F0(tau(t))``.
+  - ``gamma``, ``stress_ref``, ``acceleration_factor(Z)``; ``path(t,
+    unit)`` and ``plot`` follow each unit's own stress history.
+    Serialised and shown in the ``repr``.
+  - Prediction for a monitored unit on its own clock: ``predict_rul``,
+    ``predict_failure_time`` and ``predict_remaining_life`` take the
+    unit's stress history as ``Z`` (one row per measurement, or one row)
+    and the planned stress from its last measurement as ``Z_future`` (a
+    row or a ``StepSchedule`` starting now; by default the last stress
+    is held). The posterior is taken against the reference-stress
+    population and each draw's failure time is mapped back to calendar
+    time along the history and the plan.
+  - ``induced_life(Z=...)`` under a stress row or a profile, and
+    two-stage bootstrap bounds ``cb(..., Z=..., method="bootstrap")``
+    that resample units with their stress histories and re-estimate the
+    clock on every refit. The analytic correction and
+    ``life_parameter_covariance`` are not derived for a clock model
+    (its pseudo failure times also depend on the estimated clock) and
+    say so, pointing to the bootstrap. ``links`` and ``path="best"``
+    cannot be combined with the clock.
+
+  The clock leaves every existing fit bit-identical (118 fingerprinted
+  outputs of plain, REML, nonlinear, ``path="best"``, Stage-1 and ``links`` models,
+  and the 84 process-model outputs); the only change is that the error
+  for a ``Z`` that varies within a unit now points to
+  ``acceleration="clock"``. The process models' clock moved to a shared
+  module unchanged, and the REML step gained a Woodbury-identity variant
+  used by the clock fit. The theory page gains a section on the
+  accelerated clock and the how-to a step-stress worked example,
+  including remaining life under two stress plans.
+
 v0.20.0 (23 September 2026)
 ---------------------------
 

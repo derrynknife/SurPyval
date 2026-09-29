@@ -28,13 +28,18 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.integrate import cumulative_trapezoid
+from scipy.integrate import quad_vec
 
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
     to_native,
+)
+from surpyval.univariate.competing_risks.labels import (
+    label_from_native,
+    label_mask,
+    ordered_labels,
 )
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
@@ -43,6 +48,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils.rng import as_generator
 
 
 def _validate(
@@ -115,7 +121,7 @@ class ParametricCompetingRisks(SerialisableMixin):
             "a parametric competing-risks model",
         )
         out = cls()
-        out.causes = list(model_dict["causes"])
+        out.causes = [label_from_native(k) for k in model_dict["causes"]]
         out.models = {
             cause: Parametric.from_dict(sub)
             for cause, sub in zip(out.causes, model_dict["models"])
@@ -187,31 +193,103 @@ class ParametricCompetingRisks(SerialisableMixin):
         :math:`\\int_0^t f_k^{\\mathrm{sub}}(u)\\,du`, the probability of
         having failed from cause ``k`` by ``t``; ``event=None`` gives the
         all-cause incidence :math:`1 - S(t) = \\sum_k \\mathrm{CIF}_k(t)`.
+
+        The integral is taken over the cause's own probability scale,
+
+        .. math::
+            \\mathrm{CIF}_k(t) = \\int_0^{F_k(t)}
+            \\prod_{j \\neq k} S_j\\left(F_k^{-1}(p)\\right) dp,
+
+        (the substitution :math:`p = F_k(u)`), by adaptive quadrature to a
+        relative accuracy of about :math:`10^{-10}`. The integrand is
+        bounded by 1 and monotone, so the result is accurate for every
+        requested time independently of the others, over any span of
+        times, and also where a cause's density is infinite (a Weibull
+        shape below 1) or very heavy-tailed. The causes' CIFs sum to the
+        all-cause ``ff`` to that accuracy. Each cause's model needs a
+        quantile function ``qf``.
+
+        Parameters
+        ----------
+        x : array_like or float
+            Times at which to evaluate the incidence; ``inf`` gives the
+            eventual probability of the cause (see
+            :meth:`probability_of_cause`).
+        event : optional
+            The cause; ``None`` for all causes combined.
+
+        Returns
+        -------
+        numpy array or float
+            The cumulative incidence at each time, in the shape of ``x`` (a
+            float for a scalar ``x``).
         """
         if event is None:
             return self.ff(x)
         self._check_event(event)
-        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-        upper = max(float(x_arr.max()), np.finfo(float).tiny)
-        grid = np.linspace(0.0, upper, 4000)
-        integrand = self.iif(grid, event)
-        # A hazard may diverge at 0 (e.g. Weibull shape < 1); the mass there
-        # is finite and negligible on a fine grid, so drop non-finite points.
-        integrand = np.where(np.isfinite(integrand), integrand, 0.0)
-        cif_grid = cumulative_trapezoid(integrand, grid, initial=0.0)
-        out = np.interp(x_arr, grid, cif_grid)
-        return out if np.ndim(x) else float(out[0])
+        x_arr = np.asarray(x, dtype=float)
+        flat = np.atleast_1d(x_arr).ravel()
+        model = self.models[event]
+        others = [self.models[j] for j in self.causes if j != event]
+
+        # F_k(x): the upper limit of the integral on the probability scale.
+        # A time outside a model's support can give NaN (a Weibull's
+        # log(-5)); no probability has accrued there. ``inf`` is the
+        # model's limit, which a few families' formulas cannot evaluate
+        # (inf / inf).
+        with np.errstate(all="ignore"):
+            top = np.asarray(model.ff(flat), dtype=float).ravel()
+        top = np.where(np.isinf(flat) & (flat > 0), _ff_limit(model), top)
+        top = np.where(np.isfinite(top), np.clip(top, 0.0, 1.0), 0.0)
+        out = np.where(np.isnan(flat), np.nan, 0.0)
+        todo = (top > 0) & ~np.isnan(flat)
+        if todo.any():
+            upper = top[todo]
+            # The survival of the other causes at the far end of a cause's
+            # support, used where its quantile is infinite.
+            s_inf = [1.0 - _ff_limit(m) for m in others]
+
+            def integrand(t: float) -> npt.NDArray:
+                with np.errstate(all="ignore"):
+                    s = np.asarray(model.qf(t * upper), dtype=float).ravel()
+                val = np.ones_like(s)
+                far = np.isposinf(s)
+                for m, s_end in zip(others, s_inf):
+                    with np.errstate(all="ignore"):
+                        sj = np.asarray(m.sf(s), dtype=float).ravel()
+                    val = val * np.where(far, s_end, sj)
+                # Below a model's support its survival formula can give
+                # NaN; it is 1 there.
+                return np.where(np.isfinite(val), val, 1.0)
+
+            integral, _ = quad_vec(
+                integrand,
+                0.0,
+                1.0,
+                epsabs=1e-13,
+                epsrel=1e-11,
+                norm="max",
+                limit=2000,
+            )
+            out[todo] = upper * np.asarray(integral, dtype=float)
+        if np.ndim(x) == 0:
+            return float(out[0])
+        return out.reshape(x_arr.shape)
 
     def probability_of_cause(self, event: Any) -> Any:
         """
         The eventual probability that a unit fails from ``event``,
-        :math:`\\mathrm{CIF}_k(\\infty)`. These sum to one over all causes.
+        :math:`\\mathrm{CIF}_k(\\infty)`. These sum to one over all causes
+        unless a cause has a cure (limited-failure) fraction, in which case
+        they sum to the all-cause probability of ever failing.
+
+        It is :meth:`cif` at ``inf``: the integral runs over the whole of
+        the cause's probability scale, so no finite horizon is chosen and
+        a very heavy-tailed cause (a LogNormal with a large :math:`\\sigma`)
+        is as accurate as any other.
         """
         self._check_event(event)
-        # Integrate out to where the all-cause incidence has essentially
-        # converged, so the CIF grid stays concentrated where the mass is.
-        upper = max(self._model_horizon(k) for k in self.causes)
-        return self.cif(upper, event)
+        return self.cif(np.inf, event)
 
     def random(
         self, size: int, random_state: "int | None" = None
@@ -230,7 +308,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
         Returns a structured array with fields ``x`` and ``e``.
         """
-        rng = np.random.default_rng(random_state)
+        rng = as_generator(random_state)
         latent = np.column_stack(
             [
                 np.ravel(self.models[k].qf(rng.uniform(size=size)))
@@ -256,12 +334,50 @@ class ParametricCompetingRisks(SerialisableMixin):
         return float(sum(self.models[k].neg_ll() for k in self.causes))
 
     def aic(self) -> float:
-        """Akaike information criterion of the joint model."""
+        """Akaike information criterion of the joint model,
+        ``2 K + 2 neg_ll`` with ``K`` the number of parameters estimated
+        over all causes: the sum of the causes' AICs, since both terms
+        add over causes."""
         return float(sum(self.models[k].aic() for k in self.causes))
 
     def bic(self) -> float:
-        """Bayesian information criterion of the joint model."""
-        return float(sum(self.models[k].bic() for k in self.causes))
+        """Bayesian information criterion of the joint model.
+
+        ``2 neg_ll + K ln(n)``, with ``K`` the number of parameters
+        estimated over all causes and ``n`` the sample size every SurPyval
+        BIC uses, counted on the whole data: the observed failures of any
+        cause, weighted by their counts (right-censored units add
+        nothing). That is the sum of the causes' own sample sizes, since
+        each counts the failures of its cause; for a model assembled with
+        :meth:`from_fitted` it is that sum, which is the whole data's count
+        when each model was fitted to the cause-specific view of the same
+        data.
+
+        It is not the sum of the causes' BICs, which charged each cause's
+        parameters ``ln`` of its own cause's failures (and was what this
+        method returned before v0.21), a smaller penalty.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> round(model.bic(), 4)
+        61.5902
+        >>> round(float(2 * model.neg_ll() + 2 * np.log(8)), 4)
+        61.5902
+        """
+        k_total, n_total = 0, 0.0
+        for k in self.causes:
+            k_cause, n_cause = _ic_terms(self.models[k])
+            k_total += k_cause
+            n_total += n_cause
+        return float(2 * self.neg_ll() + k_total * np.log(n_total))
 
     # -- helpers ----------------------------------------------------------
 
@@ -272,35 +388,6 @@ class ParametricCompetingRisks(SerialisableMixin):
                     event, list(self.causes)
                 )
             )
-
-    def _model_horizon(self, k: Any) -> float:
-        # The time by which cause k has essentially played out, used as the
-        # finite upper limit for the (numerically integrated) CIF(inf). Its
-        # very high quantile when that is finite; for a cure fraction the
-        # quantile saturates to infinity, so grow a bound on the failure time
-        # until the cause's incidence stops rising.
-        model = self.models[k]
-        try:
-            q = float(np.ravel(model.qf(1.0 - 1e-6))[0])
-            if np.isfinite(q) and q > 0:
-                return q
-        except Exception:
-            pass
-        t = 1.0
-        try:
-            m = float(model.mean())
-            if np.isfinite(m) and m > 0:
-                t = m
-        except Exception:
-            pass
-        prev = -1.0
-        for _ in range(200):
-            val = float(np.ravel(model.ff(t))[0])
-            if val - prev < 1e-10:
-                break
-            prev = val
-            t *= 1.5
-        return t
 
     # -- construction -----------------------------------------------------
 
@@ -314,9 +401,11 @@ class ParametricCompetingRisks(SerialisableMixin):
         with a limited-failure (cure) fraction for one cause, a LogNormal for
         another, a discrete distribution for a third, and so on. The only
         requirement is that every model exposes the standard surpyval model
-        interface (``sf`` / ``ff`` / ``df`` / ``hf`` / ``Hf``); the cumulative
-        incidence, all-cause survival and sampling are then assembled from
-        them exactly as for a :meth:`fit` model.
+        interface (``sf`` / ``ff`` / ``df`` / ``hf`` / ``Hf``, and the
+        quantile function ``qf``, over which the cumulative incidence is
+        integrated and the samples are drawn); the cumulative incidence,
+        all-cause survival and sampling are then assembled from them exactly
+        as for a :meth:`fit` model.
 
         This is the right entry point when each cause has been modelled
         separately -- for example fitted with its own distribution, offset,
@@ -352,7 +441,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         for k, m in mapping.items():
             missing = [
                 a
-                for a in ("sf", "ff", "df", "hf", "Hf")
+                for a in ("sf", "ff", "df", "hf", "Hf", "qf")
                 if not callable(getattr(m, a, None))
             ]
             if missing:
@@ -362,10 +451,7 @@ class ParametricCompetingRisks(SerialisableMixin):
                         k, missing
                     )
                 )
-        try:
-            causes = sorted(mapping)
-        except TypeError:
-            causes = list(mapping)
+        causes = ordered_labels(mapping)
 
         model = cls()
         model.causes = causes
@@ -390,8 +476,10 @@ class ParametricCompetingRisks(SerialisableMixin):
         x : array_like
             Observed times.
         e : array_like
-            The cause of each observation. A missing value (``None`` / ``NaN``)
-            marks a censored observation with no attributed cause.
+            The cause of each observation: any hashable labels (integers,
+            strings, tuples, or a mix), kept in sorted order in ``causes``.
+            A missing value (``None`` / ``NaN``) marks a censored
+            observation with no attributed cause.
         c : array_like, optional
             Censoring flag (0 observed, 1 right-censored). If omitted it is
             derived from ``e`` -- a missing event is censored, an event present
@@ -401,8 +489,8 @@ class ParametricCompetingRisks(SerialisableMixin):
             Counts per observation.
         dist : ParametricFitter or dict, optional
             The distribution fitted to each cause (default ``Weibull``). Pass a
-            ``{cause: distribution}`` mapping to use a different distribution
-            per cause.
+            ``{cause: distribution}`` mapping, with an entry for every cause,
+            to use a different distribution per cause.
         how : str, optional
             Estimation method passed to each distribution's ``fit`` (default
             ``"MLE"``).
@@ -411,18 +499,39 @@ class ParametricCompetingRisks(SerialisableMixin):
         -------
         ParametricCompetingRisks
             The fitted model.
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+        >>> e = ['a', 'b', 'a', None, 'a', 'b', 'a', None, 'b', 'a']
+        >>> model = ParametricCompetingRisks.fit(x, e, dist=Exponential)
+        >>> model.cif([5, 10], 'a').round(4)
+        array([0.323 , 0.4791])
+        >>> round(model.probability_of_cause('a'), 4)
+        0.625
         """
         x, c, n, e = _validate(x, c, n, e)
 
-        causes = sorted({ev for ev in e[c == 0]})
+        causes = ordered_labels(e[c == 0])
         if not causes:
             raise ValueError("No observed events to fit a cause to.")
+        if isinstance(dist, dict):
+            missing = [k for k in causes if k not in dist]
+            if missing:
+                raise ValueError(
+                    "`dist` has no distribution for the cause(s) {}; give "
+                    "one for every cause {}.".format(missing, causes)
+                )
 
         models = {}
         for k in causes:
             # Cause k observed where its event occurred; every other event and
             # every censored row is right-censored for cause k.
-            c_k = np.where((e == k) & (c == 0), 0, 1).astype(int)
+            c_k = np.where(label_mask(e, k) & (c == 0), 0, 1).astype(int)
             distribution = dist[k] if isinstance(dist, dict) else dist
             models[k] = distribution.fit(x=x, c=c_k, n=n, how=how)
 
@@ -442,11 +551,56 @@ class ParametricCompetingRisks(SerialisableMixin):
         dist: Any = Weibull,
         how: str = "MLE",
     ) -> "ParametricCompetingRisks":
-        """Fit from a DataFrame; see :meth:`fit`. ``x_col`` / ``e_col`` name
-        the time and cause columns, with optional ``c_col`` / ``n_col``."""
+        """
+        Fit from the columns of a :class:`pandas.DataFrame`; see :meth:`fit`.
+
+        Parameters
+        ----------
+        df : DataFrame
+            The data.
+        x_col, e_col : str
+            The time and cause columns.
+        c_col, n_col : str, optional
+            The censoring-flag and count columns.
+        dist, how : optional
+            As for :meth:`fit`.
+
+        Returns
+        -------
+        ParametricCompetingRisks
+            The fitted model.
+        """
         x = df[x_col].to_numpy()
         e = df[e_col].to_numpy(dtype=object)
         c = None if c_col is None else df[c_col].to_numpy()
         n = None if n_col is None else df[n_col].to_numpy()
         model = cls.fit(x, e, c=c, n=n, dist=dist, how=how)
         return model
+
+
+def _ic_terms(model: Any) -> tuple[int, float]:
+    """``(k, n)`` of one cause's model: the parameters it estimated and
+    the sample size of its BIC (its observed failures). A parametric
+    model counts only the parameters it estimated (``_ic_k``); a
+    Royston-Parmar model carries both as attributes."""
+    if hasattr(model, "_ic_k"):
+        return int(model._ic_k()), float(model._ic_sample_size())
+    return int(model.k), float(model._ic_n)
+
+
+def _ff_limit(model: Any) -> float:
+    """``lim F(t)`` as ``t -> inf``: 1, or the cure ceiling of a
+    limited-failure model.
+
+    ``ff(inf)`` gives it for most families; a few formulas evaluate
+    ``inf / inf`` there (the LogLogistic), so fall back to the last finite
+    value of ``ff`` on a geometric grid of large times (``ff`` is monotone).
+    """
+    with np.errstate(all="ignore"):
+        val = float(np.ravel(model.ff(np.inf))[0])
+        if np.isfinite(val):
+            return min(max(val, 0.0), 1.0)
+        grid = np.logspace(0, 300, 301)
+        vals = np.asarray(model.ff(grid), dtype=float).ravel()
+    finite = vals[np.isfinite(vals)]
+    return float(min(max(finite[-1], 0.0), 1.0)) if finite.size else 1.0

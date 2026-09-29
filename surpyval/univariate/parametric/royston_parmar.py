@@ -50,7 +50,11 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.rng import as_generator
+from surpyval.utils.shapes import keeps_query_shape
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -145,6 +149,25 @@ class RoystonParmarModel(SerialisableMixin):
     covariance for confidence bounds. Exposes the usual distribution surface:
     :meth:`sf`, :meth:`ff`, :meth:`hf`, :meth:`Hf`, :meth:`df`, :meth:`qf`,
     :meth:`random`, :meth:`mean`, and :meth:`cb`.
+
+    Examples
+    --------
+    ``RoystonParmar.fit`` returns one. Here with one internal knot
+    (``df=2``) on the Rossi recidivism data, where ``arrest`` is already
+    the censoring flag:
+
+    >>> from surpyval import RoystonParmar
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, df["arrest"].values
+    >>> model = RoystonParmar.fit(x, c=c, df=2)
+    >>> model.params.round(4)
+    array([-6.9934,  1.5755,  0.0377])
+    >>> model.sf([20, 52]).round(4)
+    array([0.9182, 0.7365])
+    >>> model.cb([20, 52]).round(4)
+    array([[0.8915, 0.9386],
+           [0.6923, 0.7754]])
     """
 
     def __init__(self) -> None:
@@ -156,6 +179,9 @@ class RoystonParmarModel(SerialisableMixin):
         self.n = 0
         self.n_events = 0
         self._neg_ll = 0.0
+        # The sample size of bic() (see ic_sample_size), from the data at
+        # fit time.
+        self._ic_n = 0.0
 
     # -- linear predictor --------------------------------------------------
 
@@ -171,34 +197,58 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- distribution functions -------------------------------------------
 
-    def sf(self, t: Any) -> np.ndarray:
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def sf(self, x: Any) -> np.ndarray:
+        """Survival function at ``x``: 1 at and before time 0 (the spline
+        is in ``log x``, which does not exist there, so this came back nan)
+        and 0 at infinity, as in the likelihood (see ``_sf_at``)."""
+        x = np.asarray(x, dtype=float)
         with np.errstate(all="ignore"):
-            return _sf_from_eta(self._eta(t), self.scale)
+            out = _sf_from_eta(self._eta(x), self.scale)
+        out = np.where(x <= 0.0, 1.0, out)
+        return np.where(np.isposinf(x), 0.0, out)
 
-    def ff(self, t: Any) -> np.ndarray:
-        return 1.0 - self.sf(t)
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def ff(self, x: Any) -> np.ndarray:
+        """Failure (CDF) function ``1 - sf(x)``."""
+        return 1.0 - self.sf(x)
 
-    def Hf(self, t: Any) -> np.ndarray:
-        return -np.log(self.sf(t))
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def Hf(self, x: Any) -> np.ndarray:
+        """Cumulative hazard ``-log sf(x)``."""
+        # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
+        return -np.log(self.sf(x)) + 0.0
 
-    def hf(self, t: Any) -> np.ndarray:
-        return self.df(t) / self.sf(t)
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def hf(self, x: Any) -> np.ndarray:
+        """Hazard rate ``df(x) / sf(x)``."""
+        return self.df(x) / self.sf(x)
 
-    def df(self, t: Any) -> np.ndarray:
-        t = np.asarray(t, dtype=float)
+    @renamed_arguments(t="x")
+    @keeps_query_shape
+    def df(self, x: Any) -> np.ndarray:
+        """Density at ``x``, from the derivative of the spline."""
+        x = np.asarray(x, dtype=float)
         with np.errstate(all="ignore"):
-            eta = self._eta(t)
-            sp = self._eta_deriv(t)
+            eta = self._eta(x)
+            sp = self._eta_deriv(x)
             _, log_negdS = _scale_terms(eta, self.scale)
-            return np.exp(log_negdS + np.log(sp) - np.log(t))
+            out = np.exp(log_negdS + np.log(sp) - np.log(x))
+        # Nothing fails at or before time 0 (nan there before), nor at
+        # infinity; with sf = 1 there, hf and Hf are 0 too.
+        return np.where((x <= 0.0) | np.isposinf(x), 0.0, out)
 
-    def qf(self, q: Any) -> np.ndarray:
-        """Quantile function: the time at which ``ff(t) = q``."""
-        scalar_in = np.ndim(q) == 0
-        q = np.atleast_1d(np.asarray(q, dtype=float))
-        out = np.empty_like(q)
-        for i, qi in enumerate(q):
-            target = 1.0 - qi  # sf(t) = 1 - q
+    @renamed_arguments(q="p")
+    @keeps_query_shape
+    def qf(self, p: Any) -> np.ndarray:
+        """Quantile function: the time at which ``ff(x) = p``."""
+        out = np.empty_like(p)
+        for i, pi in enumerate(p):
+            target = 1.0 - pi  # sf(x) = 1 - p
             lo = self.knots[0] - 20.0
             hi = self.knots[-1] + 20.0
             out[i] = np.exp(
@@ -209,10 +259,20 @@ class RoystonParmarModel(SerialisableMixin):
                     hi,
                 )
             )
-        return out[0] if scalar_in else out
+        return out
 
-    def random(self, size: int) -> np.ndarray:
-        return self.qf(np.random.uniform(0, 1, size))
+    def random(self, size: int, *, random_state: Any = None) -> np.ndarray:
+        """Draw ``size`` random lifetimes (by inverting ``ff``).
+
+        ``random_state`` (an int or a ``numpy.random.Generator``) gives a
+        draw of its own, which neither depends on nor advances numpy's
+        global stream; ``None`` (the default) draws from the global
+        stream, so ``np.random.seed`` reproduces it."""
+        if random_state is None:
+            u = np.random.uniform(0, 1, size)
+        else:
+            u = as_generator(random_state).uniform(0, 1, size)
+        return self.qf(u)
 
     def mean(self) -> float:
         """Mean life, by integrating the survival function."""
@@ -225,9 +285,11 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- confidence bounds -------------------------------------------------
 
+    @renamed_arguments(t="x")
+    @keeps_query_shape
     def cb(
         self,
-        t: Any,
+        x: Any,
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
@@ -241,8 +303,8 @@ class RoystonParmarModel(SerialisableMixin):
         """
         if self.covariance is None:
             raise ValueError("Confidence bounds need a covariance (MLE fit).")
-        t = np.atleast_1d(np.asarray(t, dtype=float))
-        B = _rcs_basis(np.log(t), self.knots)
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
         var = np.einsum("ij,jk,ik->i", B, self.covariance, B)
         se = np.sqrt(np.maximum(var, 0.0))
@@ -274,15 +336,27 @@ class RoystonParmarModel(SerialisableMixin):
         return len(self.params)
 
     def neg_ll(self) -> float:
+        """The negative log-likelihood at the fitted coefficients."""
         return self._neg_ll
 
     def aic(self) -> float:
+        """Akaike's information criterion, ``2k + 2 neg_ll``."""
         return 2 * self.k + 2 * self._neg_ll
 
     def bic(self) -> float:
-        return self.k * np.log(self.n) + 2 * self._neg_ll
+        """The Bayesian information criterion, ``k log(d) + 2 neg_ll``.
+
+        ``d`` is the number of observed failures -- exact, left- and
+        interval-censored observations, weighted by their counts -- or the
+        number of observations when there is none: the sample size every
+        SurPyval BIC uses (it was the number of observations here, so a
+        spline fit's BIC was not comparable with the parametric fits').
+        """
+        return self.k * np.log(self._ic_n) + 2 * self._neg_ll
 
     def summary(self) -> str:
+        """A text summary of the fit: link scale, knots, likelihood and
+        coefficients."""
         lines = [
             "Royston-Parmar Flexible Parametric Model",
             "========================================",
@@ -304,6 +378,8 @@ class RoystonParmarModel(SerialisableMixin):
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
+        """Serialise the fitted model to a plain dictionary; restore it
+        with :meth:`from_dict` or ``surpyval.from_dict``."""
         out: dict[str, Any] = {
             "model": "RoystonParmarModel",
             "scale": self.scale,
@@ -312,6 +388,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
+            "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -319,6 +396,7 @@ class RoystonParmarModel(SerialisableMixin):
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RoystonParmarModel":
+        """Rebuild a model from a :meth:`to_dict` dictionary."""
         require_model_tag(
             model_dict, "RoystonParmarModel", "a Royston-Parmar model"
         )
@@ -329,6 +407,12 @@ class RoystonParmarModel(SerialisableMixin):
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        if "ic_n" in model_dict:
+            out._ic_n = float(model_dict["ic_n"])
+        else:
+            # Written before the sample size was stored: the exact failures
+            # are the only failures the dict records.
+            out._ic_n = ic_sample_size([0], [out.n_events], n_rows=out.n)
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         return out
@@ -337,6 +421,21 @@ class RoystonParmarModel(SerialisableMixin):
 class RoystonParmar_:
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
+
+    The Royston-Parmar model is a restricted cubic spline in log time on
+    the log cumulative hazard (``scale="hazard"``), log cumulative odds
+    or probit scale: a smooth parametric survival curve whose flexibility
+    is set by ``df``. ``df=1`` is a Weibull (on the hazard scale).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import RoystonParmar
+    >>> rng = np.random.default_rng(0)
+    >>> x = 10 * rng.weibull(2, 50)
+    >>> model = RoystonParmar.fit(x, df=3)
+    >>> model.sf([5, 10]).round(4)
+    array([0.8029, 0.4131])
     """
 
     def fit(
@@ -534,6 +633,7 @@ class RoystonParmar_:
         )
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
+        model._ic_n = ic_sample_size(data.c, data.n)
         return model
 
 

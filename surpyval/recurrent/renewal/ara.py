@@ -5,7 +5,11 @@ from numpy.typing import ArrayLike
 
 from surpyval import Weibull
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
-from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.recurrent.renewal.renewal_model import (
+    DiscountedMemory,
+    RenewalModel,
+    conditional_gaps,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
@@ -13,6 +17,8 @@ from surpyval.utils.recurrent_utils import (
     reject_left_truncation,
     validate_memory,
     validate_renewal_censoring,
+    validate_renewal_times,
+    validate_restoration,
 )
 
 
@@ -88,29 +94,22 @@ class ARA(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any) -> Callable:
+    def _build_sampler(model: Any, n: int) -> Callable:
         rho = model.rho
-        m = model.m
-        arrivals: list = []
-        running = 0.0
+        # The arrival times so far, discounted over the last m of them.
+        memory = DiscountedMemory(n, rho, model.m)
+        last_arrival = np.zeros(n)
 
-        def sample(ui: float) -> float:
-            nonlocal running
-            if not arrivals:
-                v = 0.0
-            else:
-                T = np.asarray(arrivals)
-                n = T.size
-                upper = n if np.isinf(m) else min(int(m), n)
-                j = np.arange(upper)
-                v = T[-1] - rho * np.sum(((1.0 - rho) ** j) * T[n - 1 - j])
-            u_adj = ui * model.model.sf(v)
-            xi = model.model.qf(1 - u_adj) - v
-            running += xi
-            arrivals.append(running)
-            return xi
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            latest = last_arrival[idx]
+            age = latest - rho * memory.value(idx)
+            gap = conditional_gaps(model.model, age, u)
+            arrival = latest + gap
+            last_arrival[idx] = arrival
+            memory.record(idx, arrival)
+            return gap
 
-        return sample
+        return step
 
     def _make_model(
         self, underlying_model: Any, rho: float, m: "int | float"
@@ -142,9 +141,12 @@ class ARA(RenewalFitMixin):
             [ara_virtual_ages(a, model.rho, model.m) for a in arrival_by_item]
         )
         x_new = interarrival + virtual_ages
-        return np.asarray(
-            model.model.Hf(x_new) - model.model.Hf(virtual_ages), dtype=float
-        )
+        # H(0) = 0 exactly, but some distributions take log(0) on the way.
+        with np.errstate(divide="ignore"):
+            return np.asarray(
+                model.model.Hf(x_new) - model.model.Hf(virtual_ages),
+                dtype=float,
+            )
 
     def _refit(self, model: Any, data: Any) -> Any:
         """Refit this model family on ``data`` with the same lifetime
@@ -170,14 +172,14 @@ class ARA(RenewalFitMixin):
             )
             x_new = interarrival + virtual_ages
 
-            ll_o = dist.log_df(x_new, *dist_params) - dist.log_sf(
-                virtual_ages, *dist_params
-            )
+            # Every item starts at virtual age 0, where some distributions
+            # take log(0) on the way to the exact S(0) = 1 (a LogNormal's
+            # log(x)); that warned thousands of times per fit.
+            with np.errstate(divide="ignore"):
+                log_sf_v = dist.log_sf(virtual_ages, *dist_params)
+                ll_o = dist.log_df(x_new, *dist_params) - log_sf_v
+                ll_right = dist.log_sf(x_new, *dist_params) - log_sf_v
             ll = np.where(c == 0, ll_o, 0.0)
-
-            ll_right = dist.log_sf(x_new, *dist_params) - dist.log_sf(
-                virtual_ages, *dist_params
-            )
             ll = np.where(c == 1, ll_right, ll)
 
             return -ll.sum()
@@ -197,7 +199,7 @@ class ARA(RenewalFitMixin):
         Parameters
         ----------
 
-        data : RecurrentData
+        data : RecurrentEventData
             Data containing the recurrence details.
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
@@ -217,6 +219,7 @@ class ARA(RenewalFitMixin):
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
         dist_params0 = (
@@ -231,13 +234,12 @@ class ARA(RenewalFitMixin):
             (0.1, 0.5, 0.9),
             dist_params0,
             init,
+            renewal_restoration=0.99,
         )
         rho, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, rho, m)
-        self._attach_inference(
-            out, neg_ll, [rho, *dist_params], len(data.x), res, data
-        )
+        self._attach_inference(out, neg_ll, [rho, *dist_params], res, data)
         return out
 
     def fit(
@@ -257,13 +259,17 @@ class ARA(RenewalFitMixin):
         ----------
 
         x : array_like
-            An array of event times.
+            The event times, pooled over items (each row belongs to the item
+            named in ``i``), measured from the start of each item's life.
         i : array_like, optional
-            An array of item indices.
+            Identity of the item each row belongs to. Defaults to all rows
+            belonging to one item.
         c : array_like, optional
-            An array of censoring indicators.
+            Censoring indicators: 0 an observed failure, 1 the
+            right-censored end of an item's observation. Other codes raise
+            a ``ValueError``. Defaults to all observed.
         n : array_like, optional
-            An array of counts.
+            Count of events at each row. Defaults to 1.
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         m : int or float, optional
@@ -277,6 +283,24 @@ class ARA(RenewalFitMixin):
 
         RenewalModel
             A fitted renewal model.
+
+        Examples
+        --------
+        Two systems observed to t = 60 (the ``c=1`` rows). The fitted
+        repair efficiency is 1 -- as good as new -- so the model reduces to
+        an ordinary renewal process, with the Weibull fitted to the times
+        between failures:
+
+        >>> import numpy as np
+        >>> from surpyval.recurrent import ARA
+        >>> x = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
+        >>> i = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
+        >>> c = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
+        >>> model = ARA.fit(x, i, c=c, m=2)
+        >>> model.model.params.round(3)
+        array([13.779,  1.917])
+        >>> round(float(model.rho), 3)
+        1.0
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
@@ -307,9 +331,10 @@ class ARA(RenewalFitMixin):
         Returns
         -------
 
-        ARA
-            An ARA object built from the supplied parameters.
+        RenewalModel
+            A model built from the supplied parameters, for simulation.
         """
         validate_memory(m)
+        validate_restoration(rho, "rho", (0, 1))
         model = dist.from_params(params)
         return self._make_model(model, rho, m)

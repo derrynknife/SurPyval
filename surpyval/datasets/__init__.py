@@ -13,6 +13,17 @@ def load_bearing_failures() -> pd.DataFrame:
     Data on the failure of bearings, from [1]_. "Cycles to Failure (millions)"
     is the number of cycles to failure in millions of cycles.
 
+    The 23 values are all exact failure times: there is no censoring
+    column, so pass the column as ``x`` alone.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_bearing_failures
+    >>> x = load_bearing_failures()["Cycles to Failure (millions)"]
+    >>> surpyval.Weibull.fit(x).params.round(3)
+    array([81.875,  2.102])
+
     References
     ----------
     .. [1] Lieblein, J. and Zelen, M. (1956) Statistical Investigation
@@ -52,6 +63,10 @@ def load_bofors_steel() -> pd.DataFrame:
     """
     Returns a Pandas DataFrame containing the data of
     the tensile strength of Bofors Steel from [2]_.
+
+    Grouped data in ten rows: ``x`` is the strength and ``n`` the number
+    of specimens with that strength, so pass the columns as ``x`` and
+    ``n``. Every value is an exact observation.
 
     First 5 rows of the dataset:
 
@@ -97,6 +112,11 @@ def load_boston_housing() -> pd.DataFrame:
     analysed with survival analysis methods by considering the
     fact that the highest prices appear to be right censored.
 
+    One row per census tract (506), with the thirteen covariates of the
+    original data and ``medv``, the median house value in thousands of
+    dollars. ``medv`` is capped at 50: the 16 tracts at 50.0 are right
+    censored there. There is no censoring column; build one from the cap.
+
     References
     ----------
 
@@ -113,12 +133,18 @@ def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [4]_.
 
+    One system with twelve failures. ``x`` is the *cumulative* time of
+    each failure (the times between failures are 3, 6, 11, 5, 16, 9, 19,
+    22, 37, 23, 31 and 45); every row is an observed failure and there is
+    no item or censoring column.
+
     References
     ----------
 
     .. [4] Kaminskiy, M.P. and Krivtsov, V.V. (2010).
            G1-renewal process as repairable system model.
-           Reliability Engineering and System Safety, 95(1), 1-9.
+           Reliability: Theory & Applications, 1(3) (issue 18).
+           arXiv:1006.3718.
     """
     x = np.array([3, 6, 11, 5, 16, 9, 19, 22, 37, 23, 31, 45]).cumsum()
 
@@ -129,6 +155,14 @@ def load_heart_transplants() -> pd.DataFrame:
     """
     Data on the survival of patients who may or may not have received a
     heart transplant, from [5]_.
+
+    Start-stop form: each patient (``id``) has one row before a
+    transplant and, if transplanted, one after (``transplant`` 1), over
+    ``(start, stop]``; ``event`` is 1 for a death at ``stop`` (so
+    ``c = 1 - event``). There are 172 rows for 103 patients, 75 of whom
+    died. ``age`` is the age at acceptance minus 48 years, ``year`` the
+    date of acceptance in years after 1 November 1967 and ``surgery`` 1
+    for prior bypass surgery. ``Unnamed: 0`` is a row index.
 
     References
     ----------
@@ -145,6 +179,24 @@ def load_lung() -> pd.DataFrame:
     """
 
     Data on the survival of patients with advanced lung cancer from [6]_.
+
+    ``time`` is the survival time in days. ``status`` is coded as
+    SurPyval's censoring flag -- 0 for a death, 1 for a patient censored
+    (alive at last follow-up) -- so use it directly as ``c``. There are
+    228 patients, 165 of whom died. The other columns are the covariates
+    of the original data (``inst``, ``age``, ``sex`` with 1 male and 2
+    female, ``ph.ecog``, ``ph.karno``, ``pat.karno``, ``meal.cal`` and
+    ``wt.loss``, several with missing values); ``Unnamed: 0`` is a row
+    index.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_lung
+    >>> df = load_lung()
+    >>> km = surpyval.KaplanMeier.fit(df["time"], c=df["status"])
+    >>> km.sf([365]).round(3)
+    array([0.409])
 
     References
     ----------
@@ -163,6 +215,10 @@ def load_lung() -> pd.DataFrame:
 def load_mettas_and_zhao() -> pd.DataFrame:
     """
     Data on the survival of a repairable system from [7]_.
+
+    Recurrent event data for six systems: ``x`` is the cumulative time of
+    each event on system ``i``, and ``c`` is 1 on each system's last
+    row, the end of its observation (0 for a failure).
 
     References
     ----------
@@ -231,6 +287,17 @@ def load_rossi_static() -> pd.DataFrame:
     Data on the recidivism of released prisoners from [8]_. Uses only
     static covariates.
 
+    One row per prisoner (432): ``week`` is the week of first arrest after
+    release, or 52 for those not arrested in the year of follow-up, and
+    the covariates are ``fin`` (financial aid), ``age``, ``race``,
+    ``wexp`` (work experience), ``mar`` (married), ``paro`` (released on
+    parole) and ``prio`` (number of prior convictions).
+
+    Note that in this copy ``arrest`` is coded as SurPyval's censoring
+    flag -- 1 for a prisoner *not* arrested (right-censored at week 52),
+    0 for an arrest -- the reverse of the original data. Use it directly
+    as ``c``. (The two leading ``Unnamed`` columns are row indices.)
+
     References
     ----------
 
@@ -251,6 +318,13 @@ def load_rossi_time_varying() -> pd.DataFrame:
     Data on the recidivism of released prisoners from [9]_. Includes time
     varying covariates.
 
+    Start-stop (counting-process) form: one row per prisoner-week, with
+    ``id`` the prisoner, ``start`` and ``stop`` the week's interval,
+    ``event`` 1 if the prisoner was arrested at the end of that week (so
+    ``c = 1 - event``), and ``employed`` the time-varying covariate. Here
+    ``arrest`` keeps the original coding (1 = arrested during follow-up),
+    unlike :func:`load_rossi_static`.
+
     References
     ----------
 
@@ -270,6 +344,11 @@ def load_tires_data() -> pd.DataFrame:
     """
     Data on the survival of tires from [10]_.
 
+    One row per tire (34). ``Survival`` is the (normalised) time and
+    ``Censoring`` is coded as SurPyval's censoring flag -- 1 for a tire
+    that had not failed, 0 for a failure (11 of them) -- so use it
+    directly as ``c``. The other seven columns are the covariates.
+
     References
     ----------
 
@@ -286,7 +365,9 @@ def load_sae() -> pd.DataFrame:
     """
     Data on failures in automotive industry from [11]_.
 
-    Features heavily (right) censored data.
+    Features heavily (right) censored data: ``x`` is the time and ``c``
+    SurPyval's censoring flag, with 10 failures (``c = 0``) and 21 right
+    censored values (``c = 1``).
 
     References
     ----------
@@ -331,7 +412,10 @@ def load_meeker_lfp() -> pd.DataFrame:
     Data on failures of integrated circuits from [12]_.
 
     Very difficult for LFP calculations since the data is heavily
-    right censored.
+    right censored: 4,156 circuits were tested for 1,370 hours and 28
+    failed. The data is in ``xcnt`` form: ``x`` the time in hours, ``c``
+    the censoring flag and ``n`` the count, with the 4,128 survivors in
+    one row right censored at 1,370.
 
     References
     ----------
@@ -376,3 +460,141 @@ def load_meeker_lfp() -> pd.DataFrame:
     s = np.ones(total_tested - len(f)) * 1370
     x, c, n, _ = fs_to_xcnt(f, s)
     return pd.DataFrame({"x": x, "c": c, "n": n})
+
+
+def load_framingham() -> pd.DataFrame:
+    """
+    The Framingham Heart Study teaching dataset, from [13]_.
+
+    A longitudinal extract: 4434 participants (``RANDID``) examined at up
+    to three visits (``PERIOD`` 1-3, 11627 rows), with the risk factors
+    measured at each visit (``SEX`` 1 male / 2 female, ``AGE``,
+    ``TOTCHOL``, ``SYSBP``, ``DIABP``, ``CURSMOKE``, ``CIGPDAY``, ``BMI``,
+    ``DIABETES``, ``BPMEDS``, ``HEARTRTE``, ``GLUCOSE``, ``educ``,
+    ``HDLC``, ``LDLC``; ``TIME`` is the visit's day since baseline) and
+    ``PREV*`` flags for conditions present at the visit.
+
+    Follow-up is 24 years (8766 days). Each outcome has an event flag and
+    a time in days: ``DEATH``/``TIMEDTH``, ``ANGINA``/``TIMEAP``,
+    ``HOSPMI``/``TIMEMI``, ``MI_FCHD``/``TIMEMIFC``, ``ANYCHD``/``TIMECHD``,
+    ``STROKE``/``TIMESTRK``, ``CVD``/``TIMECVD`` and
+    ``HYPERTEN``/``TIMEHYP``. A flag of 1 means the event happened at that
+    time, so ``c = 1 - flag``; outcome columns repeat on every visit row,
+    so take one row per participant (e.g. ``PERIOD == 1``) for a
+    time-to-event fit. 1550 participants died during follow-up.
+
+    The teaching data are anonymised and perturbed by the NHLBI; they are
+    meant for learning methods, not for publishing epidemiological
+    results.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_framingham
+    >>> df = load_framingham()
+    >>> baseline = df[df["PERIOD"] == 1]
+    >>> km = surpyval.KaplanMeier.fit(
+    ...     baseline["TIMEDTH"] / 365.25, c=1 - baseline["DEATH"]
+    ... )
+    >>> km.sf([10, 20]).round(3)
+    array([0.903, 0.732])
+
+    References
+    ----------
+    .. [13] National Heart, Lung, and Blood Institute, Biologic Specimen
+           and Data Repository Information Coordinating Center (BioLINCC).
+           Framingham Heart Study Longitudinal Data Documentation
+           (teaching dataset).
+    """
+
+    data_path = importlib.resources.files(data_module) / "framingham.csv"
+    return pd.read_csv(data_path)
+
+
+def load_pbc2() -> pd.DataFrame:
+    """
+    The Mayo Clinic primary biliary cirrhosis (PBC) trial, longitudinal
+    version, from [14]_.
+
+    312 patients (``id``) randomised to D-penicillamine or placebo
+    (``drug``), with repeated laboratory measurements: one row per visit
+    (1945 rows), ``year`` being the visit time in years since
+    enrolment. Per-patient columns (repeated on every row) are ``years``,
+    the follow-up time in years, and ``status`` (``"alive"``,
+    ``"transplanted"`` or ``"dead"``) at that time; ``status2`` is 1 for
+    death and 0 otherwise (alive or transplanted), so for survival with
+    transplantation treated as censoring ``c = 1 - status2``. 140
+    patients died and 29 were transplanted. The per-visit covariates are
+    ``ascites``, ``hepatomegaly``, ``spiders``, ``edema``, ``serBilir``,
+    ``serChol``, ``albumin``, ``alkaline``, ``SGOT``, ``platelets``,
+    ``prothrombin`` and ``histologic``; ``age`` and ``sex`` are at
+    baseline and ``sno.`` is a row index.
+
+    Transplantation is a competing event for death, so the data also
+    suit :doc:`competing risks </Competing Risks SurPyval Modelling>`
+    (causes from ``status``).
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_pbc2
+    >>> df = load_pbc2()
+    >>> patients = df.groupby("id").first()
+    >>> km = surpyval.KaplanMeier.fit(
+    ...     patients["years"], c=1 - patients["status2"]
+    ... )
+    >>> km.sf([5, 10]).round(3)
+    array([0.712, 0.479])
+
+    References
+    ----------
+    .. [14] Murtaugh, P.A., Dickson, E.R., Van Dam, G.M., Malinchoc, M.,
+           Grambsch, P.M., Langworthy, A.L. and Gips, C.H. (1994) Primary
+           biliary cirrhosis: prediction of short-term survival based on
+           repeated patient visits. Hepatology, 20(1), 126-134. (Data as
+           distributed in the R package JM, Rizopoulos, D.)
+    """
+
+    data_path = importlib.resources.files(data_module) / "pbc2.csv"
+    return pd.read_csv(data_path)
+
+
+def load_support2() -> pd.DataFrame:
+    """
+    The SUPPORT study of seriously ill hospitalised adults, from [15]_.
+
+    9105 patients, one row each (``sno`` is a row index). ``d.time`` is
+    the follow-up time in days and ``death`` 1 for a death during
+    follow-up (6201 patients), so ``c = 1 - death``; ``hospdead`` flags a
+    death in hospital and ``slos`` is the days from study entry to
+    discharge. ``dzgroup``/``dzclass`` give the disease group (acute
+    respiratory failure or multiple organ system failure, CHF, COPD,
+    cirrhosis, colon or lung cancer, coma). The remaining columns are
+    demographics (``age``, ``sex``, ``race``, ``edu``, ``income``),
+    comorbidity and severity scores (``num.co``, ``scoma``, ``sps``,
+    ``aps``, ``avtisst``), physiology on day 3 (``meanbp``, ``wblc``,
+    ``hrt``, ``resp``, ``temp``, ``pafi``, ``alb``, ``bili``, ``crea``,
+    ``sod``, ``ph``, ``glucose``, ``bun``, ``urine``), costs, activities
+    of daily living and the study's own model and physician survival
+    estimates (``surv2m``, ``surv6m``, ``prg2m``, ``prg6m``). Many
+    physiology columns have missing values.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_support2
+    >>> df = load_support2()
+    >>> km = surpyval.KaplanMeier.fit(df["d.time"], c=1 - df["death"])
+    >>> km.sf([30, 365]).round(3)
+    array([0.729, 0.446])
+
+    References
+    ----------
+    .. [15] Knaus, W.A., Harrell, F.E., Lynn, J., et al. (1995) The
+           SUPPORT prognostic model: objective estimates of survival for
+           seriously ill hospitalized adults. Annals of Internal Medicine,
+           122(3), 191-203.
+    """
+
+    data_path = importlib.resources.files(data_module) / "support2.csv"
+    return pd.read_csv(data_path)

@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy.typing as npt
 
 import surpyval
@@ -25,12 +27,28 @@ class ExactEventTime_(ParametricFitter):
         )
 
     def sf(self, x: Numeric, T: Boxable) -> npt.NDArray:
-        x_arr = np.atleast_1d(x)
-        return (x_arr < T).astype(float)
+        r"""Survival function: 1 before ``T`` and 0 from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.sf([4., 5., 6.], 5.)
+        array([1., 0., 0.])
+        """
+        out = (np.asarray(x) < T).astype(float)
+        return out[()] if out.ndim == 0 else out
 
     def ff(self, x: Numeric, T: Boxable) -> npt.NDArray:
-        x_arr = np.atleast_1d(x)
-        return (x_arr >= T).astype(float)
+        r"""CDF: 0 before ``T`` and 1 from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.ff([4., 5., 6.], 5.)
+        array([0., 1., 1.])
+        """
+        out = (np.asarray(x) >= T).astype(float)
+        return out[()] if out.ndim == 0 else out
 
     # ``df`` and ``hf`` do not exist for a point mass, and used to be
     # answered with ``inf``.
@@ -69,13 +87,21 @@ class ExactEventTime_(ParametricFitter):
         )
 
     def Hf(self, x: Numeric, T: Boxable) -> npt.NDArray:
+        r"""Cumulative hazard :math:`-\ln R(x)`: 0 before ``T`` and
+        infinite from ``T`` on.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.Hf([4., 5., 6.], 5.)
+        array([ 0., inf, inf])
+        """
         # -log R(x): zero while the item survives, infinite once the
         # event has certainly happened. Previously this returned hf,
         # which happened to be the same two values.
-        x_arr = np.atleast_1d(x)
-        Hf = np.zeros_like(x_arr).astype(float)
-        Hf[x_arr >= T] = np.inf
-        return Hf
+        x_arr = np.asarray(x)
+        Hf = np.where(x_arr >= T, np.inf, 0.0)
+        return Hf[()] if Hf.ndim == 0 else Hf
 
     def qf(self, u: Numeric, T: Boxable) -> Boxable:
         r"""Quantile function: :math:`T` for every :math:`u \in (0, 1)`.
@@ -91,7 +117,7 @@ class ExactEventTime_(ParametricFitter):
         >>> ExactEventTime.qf([0.1, 0.5, 0.9], 5.0)
         array([5., 5., 5.])
         """
-        return np.ones_like(np.atleast_1d(np.asarray(u, dtype=float))) * T
+        return np.ones_like(np.asarray(u, dtype=float)) * T
 
     def mean(self, T: Boxable) -> Boxable:
         r"""Mean of the distribution: :math:`E[X] = T`.
@@ -118,7 +144,16 @@ class ExactEventTime_(ParametricFitter):
         """
         return T**m
 
-    def random(self, size: int | tuple[int, ...], T: Boxable) -> npt.NDArray:
+    def random(  # type: ignore[override]
+        self,
+        size: int | tuple[int, ...],
+        T: Boxable,
+        *,
+        random_state: Any = None,
+    ) -> npt.NDArray:
+        """Every draw is ``T``: an array of shape ``size`` filled with it
+        (``random_state`` is taken for a common signature; nothing is
+        random)."""
         return np.ones(size) * T
 
     # Narrower than OptimisedFitMixin.fit by design, and no longer a
@@ -133,6 +168,40 @@ class ExactEventTime_(ParametricFitter):
         n: npt.ArrayLike | None = None,
         t: npt.ArrayLike | None = None,
     ) -> Parametric:
+        """
+        Estimate the event time from "not yet" and "already" checks.
+
+        Every ``T`` between the latest right-censored value (the event
+        had not yet happened) and the earliest left-censored value (it
+        already had) has likelihood one; the midpoint is returned.
+
+        Parameters
+        ----------
+        x : array like
+            The times at which the item was checked.
+        c : array like, optional
+            ``1`` where the event had not yet happened, ``-1`` where it
+            already had. At least one of each is needed; an exactly
+            observed value (``0``) raises, since then ``T`` is known (use
+            :meth:`from_params`), and interval censoring is not
+            supported.
+        n : array like, optional
+            Counts, accepted for the common signature (they do not change
+            the estimate).
+        t : array like, optional
+            Truncation, accepted for the common signature and ignored.
+
+        Returns
+        -------
+        Parametric
+            The fitted model, with ``params`` holding ``T``.
+
+        Examples
+        --------
+        >>> from surpyval import ExactEventTime
+        >>> ExactEventTime.fit([2, 3, 4, 5, 6], c=[1, 1, -1, -1, -1]).params
+        array([3.5])
+        """
         x, c, n, t = surpyval.xcnt_handler(x=x, c=c, n=n, t=t)
 
         if 0 in c:
@@ -159,11 +228,23 @@ class ExactEventTime_(ParametricFitter):
             )
         max_r = np.max(x[c == 1])
         min_l = np.min(x[c == -1])
+        # "Not yet" at max_r and "already" at min_l bracket T only when
+        # max_r < min_l. Otherwise the checks contradict each other and no
+        # T has any likelihood; the midpoint of the reversed pair used to
+        # be returned as if it were an estimate.
+        if not max_r < min_l:
+            raise ValueError(
+                "The checks contradict each other: the event had not yet "
+                f"happened at {max_r:g} (c=1) but had already happened at "
+                f"{min_l:g} (c=-1). Every 'not yet' check must come before "
+                "every 'already' check."
+            )
 
         T = (max_r + min_l) / 2.0
 
         model = Parametric(self, "MLE", None, False, False, False)
         model.params = np.array([T])
+        self._set_support(model, False)
         return model
 
     def from_params(
@@ -181,7 +262,9 @@ class ExactEventTime_(ParametricFitter):
         """
         reject_structural_params(self.name, gamma, p, f0)
         model = Parametric(self, "from_params", None, False, False, False)
-        model.params = np.array([params])
+        # T given bare or as a one-element list, like every from_params
+        model.params = np.atleast_1d(np.asarray(params, dtype=float)).ravel()
+        self._set_support(model, False)
         return model
 
 

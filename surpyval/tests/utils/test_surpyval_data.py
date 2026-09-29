@@ -167,7 +167,8 @@ def test_to_json_returns_string(basic_data):
     s = basic_data.to_json()
     assert isinstance(s, str)
     parsed = json.loads(s)
-    assert set(parsed.keys()) == {"x", "c", "n", "t"}
+    # "non_finite" records the untruncated (+-inf) bounds written as null.
+    assert set(parsed.keys()) == {"x", "c", "n", "t", "non_finite"}
 
 
 def test_to_json_no_Z_key_when_no_covariates(basic_data):

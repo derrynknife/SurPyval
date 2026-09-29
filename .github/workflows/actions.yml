@@ -10,7 +10,8 @@ run-name: SurPyval CI
 # The jobs below are not all gated the same way. Lint runs on everything;
 # the test suite and the documentation build run only on the release pull
 # request into `master`, where the time they cost is worth paying. Each
-# job carries the reasoning for its own condition.
+# job carries the reasoning for its own condition. The fast conformance
+# suite runs on everything, like lint.
 on:
   pull_request:
     branches: [develop, master]
@@ -44,6 +45,47 @@ jobs:
 
       - name: black
         run: black --check $SRC
+
+  # The conformance suite runs on every pull request, like lint, rather
+  # than waiting for the release pull request with the rest of the tests.
+  #
+  # It runs every public model, listed once in a registry
+  # (surpyval/tests/conformance/registry.py), through one battery of
+  # general properties: the identities between sf, ff, Hf, hf, df and qf;
+  # scalar, 2-D and empty queries; query order and covariate rows; units,
+  # data-row order and counts; valid values; the missing-value rule; seeds;
+  # and the serialisation round trip. Every documentation sweep found bugs
+  # that were an old kind of failure in a model nobody had checked for it
+  # -- unsorted input, units, row routing, missing values -- and each fix
+  # tested only its own case (#379). This is the check that makes the next
+  # change meet the same properties, and the one worth paying for on every
+  # pull request.
+  #
+  # It takes about forty seconds on one core: the fixtures are tiny, and
+  # the refits of the less common variants (the other regression baselines
+  # and life models, the offset / LFP / zero-inflated forms beyond
+  # Weibull) are marked ``slow`` and left out here. The full suite, on the
+  # release pull request and nightly, runs them too. A known failure is a
+  # strict xfail, so this stays green, and turns red the day the failure
+  # is fixed, as a reminder to remove its entry.
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set-up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_dev.txt
+
+      - name: pytest (conformance)
+        run:
+          python -m pytest surpyval/tests/conformance -m "not slow"
 
   # The test suite runs on the release pull request into `master`, and on
   # pushes to `master`, but not on pull requests into `develop`.

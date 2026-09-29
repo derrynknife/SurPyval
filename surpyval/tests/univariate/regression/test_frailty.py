@@ -221,3 +221,52 @@ def test_theta_zero_gives_ph_limit_not_nan():
     x = np.array([2.0, 5.0, 10.0])
     assert np.allclose(m.Hf(x), Weibull.Hf(x, 10.0, 3.0))
     assert np.all(np.isfinite(m.sf(x)))
+
+
+def test_no_frailty_in_the_data_reduces_to_the_ph_fit():
+    # With no shared frailty the variance goes to its boundary, theta -> 0.
+    # The marginal likelihood written directly cancels catastrophically
+    # there (terms of size theta^-1 log theta^-1), which let the optimiser
+    # chase round-off to a nonsense optimum or divide by an underflowed
+    # theta. It now tends to the proportional-hazards likelihood.
+    from surpyval import WeibullPH
+    from surpyval.univariate.regression.frailty import WeibullFrailty
+
+    rng = np.random.default_rng(1)
+    n = 300
+    Z = rng.normal(size=(n, 1))
+    groups = rng.integers(0, 30, n)
+    x = 10.0 * rng.weibull(1.5, n) * np.exp(-0.8 * Z[:, 0] / 1.5)
+    c = (x > 12).astype(int)
+    x = np.minimum(x, 12.0)
+
+    ph = WeibullPH.fit(x=x, Z=Z, c=c)
+    fr = WeibullFrailty.fit(x, Z=Z, c=c, groups=groups)
+    assert fr.theta < 1e-3
+    assert fr._neg_ll == pytest.approx(ph._neg_ll, abs=1e-4)
+    assert fr.beta[0] == pytest.approx(ph.params[-1], rel=1e-3)
+    assert np.allclose(fr.dist_params, ph.params[:2], rtol=1e-3)
+    assert np.all(np.isfinite(list(fr.frailties.values())))
+
+
+def test_stable_group_likelihood_matches_the_direct_formula():
+    from scipy.special import gammaln
+
+    from surpyval.univariate.regression.frailty.frailty_fitter import (
+        _group_frailty_ll,
+    )
+
+    D = np.array([0.0, 1.0, 3.0, 7.0, 2.5])
+    H = np.array([0.2, 1.3, 2.9, 6.0, 1.7])
+    for theta in (5.0, 0.7, 0.05, 1e-3):
+        it = 1.0 / theta
+        direct = (
+            -it * np.log(theta)
+            - gammaln(it)
+            + gammaln(D + it)
+            - (D + it) * np.log(H + it)
+        )
+        assert np.allclose(_group_frailty_ll(D, H, theta), direct, atol=1e-9)
+    # and the no-frailty limit is -H
+    assert np.allclose(_group_frailty_ll(D, H, 1e-14), -H, atol=1e-10)
+    assert np.allclose(_group_frailty_ll(D, H, 0.0), -H)

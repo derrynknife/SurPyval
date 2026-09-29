@@ -19,7 +19,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 
 class Node(ABC):
-    """The common methods between IntermediateNode and LeafNode."""
+    """The common methods between IntermediateNode and TerminalNode."""
 
     @abstractmethod
     def apply_model_function(
@@ -27,13 +27,29 @@ class Node(ABC):
         function_name: str,
         x: int | float | ArrayLike,
         Z: NDArray,
-    ) -> NDArray: ...
+    ) -> NDArray:
+        """
+        Evaluate ``function_name`` (``"sf"``, ``"Hf"``, ...) of the leaf
+        model(s) reached by ``Z`` at the times ``x``.
+
+        A 1-D ``Z`` is one covariate vector and returns that leaf's values
+        at ``x``. A 2-D ``Z`` holds one covariate vector per row; each row
+        is routed on its own and the result is an ``(n_rows, x.size)``
+        grid, row ``i`` being the values for ``Z[i]``.
+        """
 
     @abstractmethod
     def to_dict(self) -> dict: ...
 
 
 class IntermediateNode(Node):
+    """
+    A split in a survival tree: observations whose feature
+    ``split_feature_index`` is at most ``split_feature_value`` go to
+    ``left_child``, the rest to ``right_child``. Building one grows the
+    subtree below it.
+    """
+
     def __init__(
         self,
         data: SurpyvalData,
@@ -87,10 +103,28 @@ class IntermediateNode(Node):
         x: int | float | ArrayLike,
         Z: NDArray,
     ) -> NDArray:
-        # Determine which node, left/right, to call sf() on
-        if Z[self.split_feature_index] <= self.split_feature_value:
-            return self.left_child.apply_model_function(function_name, x, Z)
-        return self.right_child.apply_model_function(function_name, x, Z)
+        if np.ndim(Z) < 2:
+            # One covariate vector: follow its side of the split
+            if Z[self.split_feature_index] <= self.split_feature_value:
+                return self.left_child.apply_model_function(
+                    function_name, x, Z
+                )
+            return self.right_child.apply_model_function(function_name, x, Z)
+
+        # One covariate vector per row: split the rows on the feature
+        # *column* and send each group down its own branch, so every leaf
+        # is evaluated once for all the rows that reach it.
+        goes_left = Z[:, self.split_feature_index] <= self.split_feature_value
+        res = np.empty((Z.shape[0], np.size(x)), dtype=np.float64)
+        if goes_left.any():
+            res[goes_left] = self.left_child.apply_model_function(
+                function_name, x, Z[goes_left]
+            )
+        if not goes_left.all():
+            res[~goes_left] = self.right_child.apply_model_function(
+                function_name, x, Z[~goes_left]
+            )
+        return res
 
     def to_dict(self) -> dict:
         """Serialise the split rule and both child subtrees. The training
@@ -119,6 +153,14 @@ class IntermediateNode(Node):
 
 
 class TerminalNode(Node):
+    """
+    A leaf of a survival tree. It holds the observations that reach it
+    and fits, on first use, the leaf model given by the tree's ``kind``
+    (``model``): a Weibull or Exponential fit, or a Nelson-Aalen estimate
+    for a non-parametric tree (``NeverOccurs`` for a leaf with no
+    failures).
+    """
+
     def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
         self.data = deepcopy(data)
         self.kind = kind
@@ -150,6 +192,7 @@ class TerminalNode(Node):
 
     @cached_property
     def model(self) -> Any:
+        """The leaf's fitted model, fitted when first used."""
         if self.kind == "non-parametric":
             return self._nonparametric_model()
 
@@ -179,9 +222,14 @@ class TerminalNode(Node):
         self,
         function_name: str,
         x: int | float | ArrayLike,
-        _: NDArray,
+        Z: NDArray,
     ) -> NDArray:
-        return getattr(self.model, function_name)(x)
+        values = getattr(self.model, function_name)(x)
+        if np.ndim(Z) < 2:
+            return values
+        # Every row that reached this leaf shares its curve
+        values = np.asarray(values, dtype=np.float64).reshape(1, -1)
+        return np.repeat(values, np.shape(Z)[0], axis=0)
 
     def to_dict(self) -> dict:
         """Serialise the leaf as its *fitted* model rather than its data, so

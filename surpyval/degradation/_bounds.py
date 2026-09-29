@@ -40,9 +40,8 @@ from scipy.stats import norm
 from surpyval.utils.linalg import bound_signs as _bound_signs
 from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import (
-    safe_inv,
-)
+from surpyval.utils.linalg import safe_inv
+from surpyval.utils.rng import as_generator
 
 # -- delta-method helpers shared with the recurrent package (the two
 # packages used to carry verbatim copies of these, the drift-prone
@@ -98,15 +97,16 @@ def pseudo_time_variances(model: Any) -> npt.NDArray:
     ``J_i`` the path Jacobian at the fitted parameters), and the pseudo failure
     time ``t_i = inv_path(threshold; theta_i)`` has variance
     ``grad' Cov(theta_i) grad`` by the delta method. Censored units (whose
-    "pseudo failure time" is an observed censoring time, not an extrapolation)
-    get zero.
+    "pseudo failure time" is an observed censoring time, not an extrapolation
+    -- right censored at the last measurement, or left censored at the first
+    for a unit already past the threshold) get zero.
     """
     v = np.zeros(len(model.units))
     sigma2 = float(model.measurement_var)
     if not sigma2 > 0:
         return v  # exact path fits: no first-stage uncertainty
     for idx, unit in enumerate(model.units):
-        if model.c[idx] == 1:
+        if model.c[idx] != 0:
             continue
         theta = model.path_params[idx]
         x_unit = model.x[model.i == unit]
@@ -122,7 +122,9 @@ def pseudo_time_variances(model: Any) -> npt.NDArray:
 
 def _life_loglik(model: Any, phi: npt.NDArray, t: npt.ArrayLike) -> float:
     """Life-model log-likelihood at parameters ``phi`` and pseudo failure
-    times ``t`` (events use the density, censored units the survival)."""
+    times ``t`` (events use the density, right-censored units the
+    survival, and units already past the threshold at their first
+    measurement -- left censored there -- the CDF)."""
     lm = model.life_model
     gamma = float(getattr(lm, "gamma", 0.0) or 0.0)
     xt = np.asarray(t, dtype=float) - gamma
@@ -130,7 +132,8 @@ def _life_loglik(model: Any, phi: npt.NDArray, t: npt.ArrayLike) -> float:
     with np.errstate(divide="ignore", invalid="ignore"):
         logf = np.log(np.clip(lm.dist.df(xt, *phi), tiny, None))
         logs = np.log(np.clip(lm.dist.sf(xt, *phi), tiny, None))
-    contrib = np.where(model.c == 0, logf, logs)
+        logF = np.log(np.clip(lm.dist.ff(xt, *phi), tiny, None))
+    contrib = np.where(model.c == 0, logf, np.where(model.c == -1, logF, logs))
     return float(np.sum(contrib))
 
 
@@ -221,8 +224,11 @@ def analytic_cb(
     se = _delta_se(sf_of, phi, cov)
 
     if bound == "two-sided":
-        sf_lo = _logit_bound(sf_hat, se, alpha_ci, "lower")
-        sf_hi = _logit_bound(sf_hat, se, alpha_ci, "upper")
+        # Each side is a one-sided bound, so it takes half the total tail
+        # probability: with the full ``alpha_ci`` per side the "95%" band
+        # was really a 90% one.
+        sf_lo = _logit_bound(sf_hat, se, alpha_ci / 2.0, "lower")
+        sf_hi = _logit_bound(sf_hat, se, alpha_ci / 2.0, "upper")
         if on in ("sf", "R"):
             return np.stack([sf_lo, sf_hi], axis=-1)
         elif on in ("ff", "F"):
@@ -245,7 +251,7 @@ def bootstrap_cb(
     alpha_ci: float,
     bound: str,
     n_boot: int,
-    seed: "int | None",
+    random_state: "int | None",
     Z: "npt.ArrayLike | None" = None,
 ) -> npt.NDArray:
     """
@@ -256,7 +262,10 @@ def bootstrap_cb(
 
     For an *accelerated* (covariate) model pass the stress ``Z`` to
     evaluate at: each resampled unit carries its stress row and the
-    covariate life fit is rerun per resample. The selected path model is
+    covariate life fit is rerun per resample. For a step-stress
+    (``acceleration="clock"``) model ``Z`` is a stress row or a
+    ``StepSchedule``; each resampled unit carries its stress history and
+    the clock is re-estimated per resample. The selected path model is
     held fixed across resamples (matching ``path="best"``'s chosen
     model), so the bound reflects life-fit and extrapolation
     variability, not path re-selection. Refits whose curve is not
@@ -267,10 +276,31 @@ def bootstrap_cb(
     from .degradation_analysis import DegradationAnalysis
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
-    rng = np.random.default_rng(seed)
+    rng = as_generator(random_state)
     method_name = _on_method(on)
+    # A missing time or stress makes the model's own curve nan there: the
+    # bound is nan at those points, and only the others must be finite
+    # for a refit to count (every refit used to be dropped, and the bound
+    # raised).
+    own = getattr(model, method_name)
+    missing = np.isnan(np.asarray(own(x) if Z is None else own(x, Z)))
+    if missing.all():
+        shape = missing.shape + ((2,) if bound == "two-sided" else ())
+        return np.full(shape, np.nan)
     n_units = len(model.units)
     curves = []
+    # A step-stress (clock) model refits its clock on every resample: each
+    # unit carries its own stress rows, the reference stress is held so the
+    # refits describe the same reference-stress life, and gamma is
+    # re-estimated by the model's own population method.
+    clock = getattr(model, "acceleration", None) == "clock"
+    clock_kwargs: dict = {}
+    if clock:
+        clock_kwargs = {
+            "acceleration": "clock",
+            "stress_ref": model.stress_ref,
+            "population_method": model.population_method,
+        }
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
@@ -285,7 +315,9 @@ def bootstrap_cb(
                 xs.append(model.x[mask])
                 ys.append(model.y[mask])
                 ids.append(np.full(n_meas, new_id))
-                if Z is not None:
+                if clock:
+                    Zs.append(model.Z[mask])
+                elif Z is not None:
                     Zs.append(np.tile(model.Z[idx], (n_meas, 1)))
             try:
                 m = DegradationAnalysis.fit(
@@ -297,13 +329,14 @@ def bootstrap_cb(
                     distribution=model._distribution,
                     how=model._how,
                     Z=None if Z is None else np.concatenate(Zs),
+                    **clock_kwargs,
                 )
                 curve_fn = getattr(m, method_name)
                 curve = np.asarray(
                     curve_fn(x) if Z is None else curve_fn(x, Z), dtype=float
                 )
-                if np.isfinite(curve).all():
-                    curves.append(curve)
+                if np.isfinite(curve[~missing]).all():
+                    curves.append(np.where(missing, np.nan, curve))
             except Exception:
                 continue
     if len(curves) < 2:
@@ -313,6 +346,11 @@ def bootstrap_cb(
             if Z is not None
             else ""
         )
+        if model._distribution is None:
+            detail = (
+                " (the model does not know the lifetime-distribution "
+                "fitter the refits need)"
+            )
         raise RuntimeError(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
