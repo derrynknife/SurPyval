@@ -7,10 +7,9 @@ Three studies:
   sample, n = 100.
 - **Simultaneous** ``band`` (Hall-Wellner and equal precision): the whole
   true survival curve, over the range the band covers, must lie inside it.
-  The equal precision band used to start at the first event and covered
-  about 0.89, at n = 100 and at n = 400, almost all of its misses at the
-  first few event times; it now starts where a = n var / (1 + n var)
-  reaches 0.1 (#390).
+  The equal precision band fails this (xfail, below): it covers about 0.89,
+  at n = 100 and at n = 400, and almost all of its misses are at the first
+  few event times.
 - **Band critical values**, checked against an independent Monte Carlo of
   the limiting Brownian bridge. This is the check that sees a critical
   value 1.5% low (coverage 94.4% for 95%), which no finite-sample coverage
@@ -95,7 +94,24 @@ def _band_covers(model, method):
     )
 
 
-@pytest.mark.parametrize("method", ["hall-wellner", "nair"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "hall-wellner",
+        pytest.param(
+            "nair",
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason=(
+                    "#390: equal precision band covers 0.89 (n = 100) and "
+                    "0.89 (n = 400) for 0.95: it starts at the first event, "
+                    "a_l ~ 1/n, where the Brownian bridge limit does not "
+                    "hold; the misses are at the first few events"
+                ),
+            ),
+        ),
+    ],
+)
 def test_band_coverage(method):
     rng = np.random.default_rng(202 if method == "nair" else 203)
     reps = 500

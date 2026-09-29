@@ -21,25 +21,37 @@ if TYPE_CHECKING:
 # there); the absolute tolerance ``_snap`` gives values of order one.
 _QF_TOL = 1e-9
 
-# The lower end of the equal precision band on the a = N var / (1 + N var)
-# scale (see ``band``), from the calibration study (#390): started at the
-# first event the band covered 0.89 for 0.95; from a = 0.02, where the
-# tables of Klein and Moeschberger (Appendix C) start, 0.92; from 0.1,
-# 0.94 at N = 100 and 0.946 at N = 400.
-_EP_A_LOWER = 0.1
-
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 _BOUNDS = ("two-sided", "upper", "lower")
 
 
+# The ``interp`` values: the step estimate, and the interpolation kinds
+# of ``interp_function`` ('cubic' is PCHIP, the rest scipy's interp1d).
+_INTERP = ("step", "linear", "cubic", "nearest", "nearest-up", "zero")
+_INTERP += ("slinear", "quadratic", "previous", "next")
+
+
+def _check_option(name: str, value: Any, accepted: tuple) -> None:
+    """Refuse an option ``value`` not in ``accepted``, naming the
+    argument and the values it takes (principle 2) -- the one message
+    for an unknown option value."""
+    if not isinstance(value, str) or value not in accepted:
+        raise ValueError(
+            "'{}' must be one of {}; got {!r}".format(name, accepted, value)
+        )
+
+
 def _check_bound(bound: str) -> None:
     # An unknown ``bound`` (e.g. 'both') used to reach the statistic's
     # if/elif chain and fail as an UnboundLocalError.
-    if bound not in _BOUNDS:
-        raise ValueError(
-            "'bound' must be one of {}; got {!r}".format(_BOUNDS, bound)
-        )
+    _check_option("bound", bound, _BOUNDS)
+
+
+def _check_interp(interp: str) -> None:
+    # An unknown ``interp`` used to reach scipy, which raised
+    # NotImplementedError (#416).
+    _check_option("interp", interp, _INTERP)
 
 
 def _check_support(
@@ -400,10 +412,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -422,6 +437,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
         """
+        _check_interp(interp)
         return self._within_support(x, lambda q: self._sf(q, interp), 1.0)
 
     def _sf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -460,10 +476,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -514,10 +533,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -534,6 +556,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.hf([1.5, 2.5, 3.5])
         array([0.25      , 0.25      , 0.33333333])
         """
+        _check_interp(interp)
         return self._jumps_within_support(x, interp)[0]
 
     def _jumps_within_support(
@@ -655,10 +678,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -676,6 +702,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> KaplanMeier.fit([1, 2, 3]).df([1.5, 2.5, 3.5])
         array([0.33333333, 0.33333333, 0.33333333])
         """
+        _check_interp(interp)
         return self._jumps_within_support(x, interp)[1]
 
     @keeps_query_shape
@@ -702,10 +729,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : str, optional
             How to evaluate between the estimate's time points: ``"step"``
             (the default, the right-continuous step function), ``"linear"``,
-            ``"cubic"`` (a monotone PCHIP curve) or any other ``kind``
-            accepted by :func:`scipy.interpolate.interp1d`. The interpolated
-            forms return NaN outside the range of the data, unless the
-            model has bounds (see ``set_support``).
+            ``"cubic"`` (a monotone PCHIP curve) or one of the other
+            string kinds of :func:`scipy.interpolate.interp1d`
+            (``"nearest"``, ``"nearest-up"``, ``"zero"``, ``"slinear"``,
+            ``"quadratic"``, ``"previous"``, ``"next"``); any other value
+            raises a ``ValueError``. The interpolated forms return NaN
+            outside the range of the data, unless the model has bounds
+            (see ``set_support``).
 
         Returns
         -------
@@ -724,6 +754,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         array([0.2 , 0.2 , 0.45, 0.45])
         """
         # Bounded separately so that it starts at 0.0, not -log(1) = -0.0.
+        _check_interp(interp)
         return self._within_support(x, lambda q: self._Hf(q, interp), 0.0)
 
     def _Hf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -787,7 +818,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         interp : ('step', 'linear', 'cubic'), optional
             How to interpolate the values between observations. Survival
             statistics traditionally uses step functions, but can use
-            interpolated values if desired. Defaults to step.
+            interpolated values if desired. Defaults to step. Takes the
+            values of ``sf``'s ``interp``.
         alpha_ci : scalar, optional
             The level of significance at which the bound will be computed.
             Defaults to 0.05.
@@ -872,6 +904,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 "('df', 'hf').".format(_CB_ON, on)
             )
         _check_bound(bound)
+        _check_interp(interp)
         # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
         # 0.0, not at -log(1) = -0.0.
         return self._bounds_within_support(
@@ -941,6 +974,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         from ``lower`` to the first value, the bounds at the last value
         from there to ``upper``, and NaN outside.
         """
+        _check_bound(bound)
+        _check_interp(interp)
         return self._bounds_within_support(
             x,
             lambda q: self._R_cb(q, bound, interp, alpha_ci, bound_type, dist),
@@ -1830,14 +1865,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         events (where the variance estimate is positive and finite, and
         the estimate strictly between 0 and 1); NaN is returned outside
         that range, whether or not the model has bounds (``set_support``).
-        The equal precision band starts later, where
-        :math:`a = N\sigma^2/(1 + N\sigma^2)` reaches 0.1 (:math:`\sigma^2`
-        the variance of the cumulative hazard; without censoring
-        :math:`a` is the estimated CDF, so the band starts where the
-        estimate falls to about 0.9). Before that the estimate rests on a
-        handful of events and the Brownian bridge approximation behind the
-        band does not hold: started at the first event, the band covered
-        about 0.89 for a nominal 0.95, however large the sample. The
+        Over the first few events the estimate rests on a handful of
+        failures and the Brownian bridge approximation behind the equal
+        precision band is poor there: in simulation it covers about 0.89
+        for a nominal 0.95, the misses almost all at the first events
+        (#390). The Hall-Wellner band does not have this problem. The
         asymptotic theory for these bands is for right censored data; for
         Turnbull models with interval censoring prefer ``bootstrap_cb()``.
 
@@ -1871,10 +1903,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
 
         ValueError
             If no value has a positive, finite variance with an estimate
-            strictly between 0 and 1 (e.g. no failures), or none has
-            :math:`a \geq 0.1` for the equal precision band, or the model
-            has no variance estimate (``fit_from_ecdf``), or ``alpha_ci``
-            is not strictly between 0 and 1.
+            strictly between 0 and 1 (e.g. no failures), or the model has
+            no variance estimate (``fit_from_ecdf``), or ``alpha_ci`` is not
+            strictly between 0 and 1.
 
         Examples
         --------
@@ -1941,24 +1972,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 )
 
             a = N * sigma2 / (1 + N * sigma2)
-            if method == "nair":
-                # The equal precision band starts at a = 0.1, not at the
-                # first event (a ~ 1 / N), where the estimate rests on a
-                # handful of events and the Brownian bridge limit behind
-                # the band does not hold: starting there it covered 0.89
-                # for 0.95, at N = 100 and at N = 400, missing mostly at
-                # the first few events (#390).
-                a_max = a[valid].max()
-                valid &= a >= _EP_A_LOWER
-                if not valid.any():
-                    raise ValueError(
-                        "The equal precision band is undefined: it covers "
-                        "the times where a = N var / (1 + N var) is at "
-                        "least {} (var the variance of the cumulative "
-                        "hazard), and the estimate never gets there (its "
-                        "largest a is {:.3g}). Use method='hall-wellner'."
-                        "".format(_EP_A_LOWER, a_max)
-                    )
             a_l = a[valid].min()
             a_u = a[valid].max()
 
@@ -2183,6 +2196,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         dist = kwargs.pop("dist", "z")
 
         _check_bound(bound)
+        _check_interp(interp)
         # The censoring marks need the raw data. A restored Turnbull model
         # holds a ``data`` dict with only the estimator settings, so this
         # used to fail as ``KeyError: 'x'``.

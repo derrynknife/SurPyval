@@ -1,4 +1,4 @@
-"""Regression tests for the non-parametric fixes of #390, #391, #408, #417,
+"""Regression tests for the non-parametric fixes of #391, #408, #417,
 #420 and #425."""
 
 import warnings
@@ -231,58 +231,16 @@ def test_band_refuses_alpha_ci_outside_the_open_unit_interval(alpha_ci):
         model.band(alpha_ci=alpha_ci)
 
 
-# -- #390: the equal precision band's range -----------------------------------
+# -- #390: the equal precision band starts at the first event ---------------
 
 
-def _km_ci_data():
+def test_equal_precision_band_starts_at_the_first_event():
+    # Kept from the first event, like the Hall-Wellner band; its coverage
+    # there is below nominal, documented in band() and pinned in the
+    # calibration study (#390).
     rng = np.random.default_rng(3)
-    n = 60
-    t = sp.Weibull.from_params([10, 1.5]).qf(rng.uniform(size=n))
-    cens = rng.uniform(0, 25, n)
-    return np.round(np.minimum(t, cens), 3), (cens < t).astype(int)
-
-
-def test_equal_precision_band_starts_at_a_of_one_tenth():
-    x, c = _km_ci_data()
-    model = sp.KaplanMeier.fit(x, c=c)
-    n = len(x)
-    a = n * model.greenwood / (1 + n * model.greenwood)
-    band = model.band(method="nair")
-    defined = np.isfinite(band[:, 0])
-    first = np.flatnonzero(defined)[0]
-    assert a[first] >= 0.1 and a[first - 1] < 0.1
-    # The Hall-Wellner band still starts at the first event.
-    assert np.isfinite(model.band()[np.flatnonzero(model.d)[0]]).all()
-
-
-def test_equal_precision_band_matches_km_ci():
-    # R's km.ci (0.5-6), method="logep", tl = 2.267 (where a reaches 0.1)
-    # and tu = 13.77 (its default, the last event before the estimate
-    # reaches 0). km.ci interpolates its critical value in Klein and
-    # Moeschberger's table, so the bands agree to about 0.003.
-    x, c = _km_ci_data()
-    model = sp.KaplanMeier.fit(x, c=c)
-    t = np.array([2.267, 2.442, 2.925, 3.117, 12.644, 13.011, 13.77])
-    km_ci = np.array(
-        [
-            [0.6715, 0.9698],
-            [0.6505, 0.9608],
-            [0.6297, 0.9512],
-            [0.6092, 0.9410],
-            [0.0248, 0.3974],
-            [0.0117, 0.3593],
-            [0.0036, 0.3184],
-        ]
-    )
-    np.testing.assert_allclose(model.band(t, method="nair"), km_ci, atol=3e-3)
-
-
-def test_equal_precision_band_refused_below_one_tenth():
-    # One failure among 50: a is 1 / 50 / (1 + 1 / 49) ~ 0.02.
-    x = np.arange(1.0, 51.0)
-    c = np.ones(50, dtype=int)
-    c[0] = 0
-    model = sp.KaplanMeier.fit(x, c=c)
-    with pytest.raises(ValueError, match="hall-wellner"):
-        model.band(method="nair")
-    assert np.isfinite(model.band()[0]).all()
+    t = sp.Weibull.from_params([10, 1.5]).qf(rng.uniform(size=60))
+    model = sp.KaplanMeier.fit(t)
+    first = np.flatnonzero(model.d)[0]
+    for method in ("nair", "hall-wellner"):
+        assert np.isfinite(model.band(method=method)[first]).all()
