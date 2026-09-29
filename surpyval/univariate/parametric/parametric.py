@@ -807,12 +807,12 @@ class Parametric(
             return neg_ll(theta)
 
         sci_bounds = []
+        limits = self._lr_limits()
         for j in free_idx:
-            lo, hi = self.dist.bounds[j]
+            lo, hi = limits[j]
             # A hard zero lower bound is nudged up so log-terms stay finite.
-            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
-            hi_s = np.inf if hi is None else hi
-            sci_bounds.append((lo_s, hi_s))
+            lo_s = 1e-10 if lo == 0 else lo
+            sci_bounds.append((lo_s, hi))
 
         x0 = fixed[free_idx]
         res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
@@ -825,6 +825,32 @@ class Parametric(
             if np.isfinite(res2.fun) and res2.fun < best:
                 best = res2.fun
         return float(best)
+
+    def _lr_limits(self) -> list[tuple[float, float]]:
+        """``(lower, upper)`` of each core parameter for the
+        likelihood-ratio searches: its declared bounds, and for a
+        parameter that is an edge of the support (the Uniform's and the
+        4-parameter Beta's ``a`` and ``b``) the data's extremes, beyond
+        which the likelihood is 0. The searches could not follow that
+        cliff: a Uniform band stalled at the estimate (#421)."""
+        limits = [
+            (-np.inf if lo is None else lo, np.inf if hi is None else hi)
+            for lo, hi in self.dist.bounds
+        ]
+        support = np.asarray(
+            getattr(self.dist, "support", (0.0, 0.0)), dtype=float
+        )
+        if np.any(np.isnan(support)):
+            x = np.asarray(self.surv_data.x, dtype=float)
+            x = x[np.isfinite(x)]
+            i_lo, i_hi = self.dist.support_param_index
+            if np.isnan(support[0]):
+                lo, hi = limits[i_lo]
+                limits[i_lo] = (lo, min(hi, float(x.min())))
+            if np.isnan(support[1]):
+                lo, hi = limits[i_hi]
+                limits[i_hi] = (max(lo, float(x.max())), hi)
+        return limits
 
     def _param_cb_lr(
         self, name: str, alpha_ci: float, bound: str
@@ -875,9 +901,7 @@ class Parametric(
             )
         )
 
-        lo_b, hi_b = self.dist.bounds[idx]
-        lo_b = -np.inf if lo_b is None else lo_b
-        hi_b = np.inf if hi_b is None else hi_b
+        lo_b, hi_b = self._lr_limits()[idx]
 
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
@@ -1177,7 +1201,7 @@ class Parametric(
             # A discrete hazard is conditioned on survival to the step
             # before, h(k) = P(T = k) / R(k - 1), as the distributions'
             # own hf; df / sf(k) disagreed with it for an LFP or ZI model.
-            return self.df(x) / self.sf(x - 1.0)
+            return self.df(x) / self.sf(np.asarray(x, dtype=float) - 1.0)
         else:
             return self.df(x) / self.sf(x)
 
@@ -1944,18 +1968,18 @@ class Parametric(
 
         user_fixed = self._user_fixed_idx()
         sci_bounds = []
-        for j, (lo, hi) in enumerate(self.dist.bounds):
+        for j, (lo, hi) in enumerate(self._lr_limits()):
             if j in user_fixed:
                 # A parameter the user fixed at fit time is pinned during
                 # the constrained search too (#255).
                 v = float(theta_hat[j])
                 sci_bounds.append((v, v))
                 continue
-            lo_s = -np.inf if lo is None else (1e-10 if lo == 0 else lo)
+            lo_s = 1e-10 if lo == 0 else lo
             # A finite upper edge is nudged inside for the same reason:
             # SLSQP steps straight onto it (a Geometric p of 1), where the
             # likelihood is nan and the search stops.
-            hi_s = np.inf if hi is None else (hi - 1e-10 if hi == 1 else hi)
+            hi_s = hi - 1e-10 if hi == 1 else hi
             sci_bounds.append((lo_s, hi_s))
         constraint = NonlinearConstraint(deviance, -np.inf, crit)
 

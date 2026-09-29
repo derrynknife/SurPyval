@@ -1622,6 +1622,12 @@ def _counting_draw(m, s):
     return m.count_terminated_simulation(3, items=2, random_state=s)
 
 
+def _timed_draw(m, s):
+    # For a falling intensity (the CoxLewis fixture: beta = -0.021, so
+    # cif(inf) = 6.04), which count termination refuses (#386).
+    return m.time_terminated_simulation(60.0, items=2, random_state=s)
+
+
 def _recurrent():
     out = []
     for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
@@ -1645,7 +1651,7 @@ def _recurrent():
                 x=X_REC,
                 rows=("x", "i", "c", "n"),
                 paths=paths,
-                draw=_counting_draw,
+                draw=_timed_draw if name == "CoxLewis" else _counting_draw,
                 explicit_seed=True,
             )
         )
@@ -1999,12 +2005,14 @@ _NO_COVARIANCE = (
     "Hypoexponential",
 )
 # The likelihood-ratio search runs pointwise, so it is swept at three
-# times, and only in the full suite. Rayleigh and Geometric joined in
-# #421 (a df bound stalled on the far side of the estimate).
+# times, and only in the full suite. Rayleigh, Geometric and Uniform
+# joined in #421 (a df bound stalled on the far side of the estimate;
+# the Uniform's search stalled at the support's edge).
 _LR_X = {
     "Weibull": np.array([4.0, 8.0, 13.0]),
     "Rayleigh": np.array([3.2, 8.0, 14.6]),
     "Geometric": np.array([2.0, 5.0, 8.0]),
+    "Uniform": np.array([3.2, 8.0, 14.6]),
 }
 
 
@@ -2234,8 +2242,8 @@ _INTERP = {
     "Turnbull": _NP_INTERP,
     "NonParametricCounting": ("step", "linear"),
     "CauseSpecificMCF": ("step", "linear"),
-    # Its functions take interp= (undocumented; "step" is the default).
-    "CompetingRisksProportionalHazards[Cox]": ("step", "linear"),
+    # Its baselines are steps: interp= takes "step" only (#416).
+    "CompetingRisksProportionalHazards[Cox]": ("step",),
 }
 
 # Estimation options. ``estimators`` are swept on the case's fixture;
@@ -2594,13 +2602,6 @@ KNOWN_FAILURES: dict[str, dict[str, str]] = {
         "the data but 0.18, 0.18 on the data x 7.3 (the end points sit on "
         "the sample extremes)",
     },
-    "CoxLewis": {
-        "seed_explicit": "count_terminated_simulation(3, items=2, "
-        "random_state=7) "
-        "raises ValueError ('Event times x must be finite'): the fitted "
-        "intensity falls (b = -0.021, cif(inf) = 6.04), so a sequence can "
-        "stop short of its 4th event, and seed 7 draws one",
-    },
 }
 
 
@@ -2616,12 +2617,6 @@ _NEGATIVE_VARIANCE = (
     "why, #411): a parameter at or near the edge of its support has a "
     "negative variance (covariance diagonal"
 )
-_MCF_BOTH = (
-    "mcf_cb(bound='both') raises UnboundLocalError ('stat'), not ValueError"
-)
-_SCIPY_INTERP = (
-    "interp='bogus' raises scipy's NotImplementedError, not ValueError"
-)
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
     # A. an invalid covariance
     "Uniform": _each(
@@ -2633,29 +2628,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
         "is negative, so the df bounds are nan, with a warning, inside the "
         "support (df(5) = 0.0688)",
     ),
-    # D. recurrent MCF bounds
-    **{
-        name: {
-            f"cb_api[mcf_cb[{t},{i}]]": _MCF_BOTH
-            for t in ("exp", "normal")
-            for i in ("step", "linear")
-        }
-        for name in ("NonParametricCounting", "CauseSpecificMCF")
-    },
-    # E. unknown interp
-    **{
-        name: {"interp_refused": _SCIPY_INTERP}
-        for name in (
-            "KaplanMeier",
-            "NelsonAalen",
-            "FlemingHarrington",
-            "Turnbull",
-        )
-    },
-    "CompetingRisksProportionalHazards[Cox]": {
-        "interp_refused": "sf, ff, Hf, hf and df accept any interp "
-        "(even 'bogus') and ignore it: interp='linear' is the step curve",
-    },
     # H. boundary estimates with a non-positive variance
     "GeneralizedRenewal": _each(
         ("cb_contains",),
@@ -2693,37 +2665,16 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
             for name in ("cb[wald]", "param_cb[wald]")
         },
     },
-    # K. estimation options
-    "CoxLewis": {
-        "estimators_agree[how]": "how='MSE' misses on a simulated sample "
-        "of the fitted model (40 items to t = 60): cif(55) is 113.4 by "
-        "MSE, 4.40 by MLE, 4.14 true (params 0.98, -0.0099 vs -2.08, "
-        "-0.0175)",
-    },
-    # L. on= aliases
-    "DestructiveDegradation": {
-        "cb_api[cb]": "cb(on='R') raises ValueError; the other cb "
-        "methods accept 'R' and 'F' for 'sf' and 'ff'",
-    },
 }
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "Uniform": "#TBD",
-    "NonParametricCounting": "#416",
-    "CauseSpecificMCF": "#416",
-    "NelsonAalen": "#416",
-    "FlemingHarrington": "#416",
-    "Turnbull": "#416",
-    "CompetingRisksProportionalHazards[Cox]": "#416",
-    "DestructiveDegradation": "#416",
-    "KaplanMeier": "#416",
-    "GeneralizedRenewal": "#TBD",
-    "ARA": "#TBD",
-    "ARI": "#TBD",
-    "Beta4": "#TBD",
+    "Uniform": "#460",
+    "GeneralizedRenewal": "#461",
+    "ARA": "#461",
+    "ARI": "#461",
+    "Beta4": "#385",
     "BetaGeometric": "#392",
-    "CoxLewis": "#419",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
@@ -2850,7 +2801,6 @@ KNOWN_FAILURE_ISSUES: dict[str, str] = {
     "missing_query": "#382",
     "qf_ff": "#383",
     "units": "#385",
-    "seed_explicit": "#386",
 }
 # The option-sweep and outside-data failures name their issue in the
 # reason itself (see _OPTION_ISSUES), as one key can fail for different

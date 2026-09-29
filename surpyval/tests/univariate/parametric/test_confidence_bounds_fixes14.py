@@ -260,3 +260,24 @@ def test_lr_band_of_one_parameter_is_the_extreme_over_its_interval():
                 band[k],
                 rtol=1e-8,
             )
+
+
+def test_lr_band_of_the_uniform_follows_the_support_edge():
+    # The likelihood is 0 once a > min(x) or b < max(x), a cliff the
+    # constrained search could not follow: the 95% Hf band at 14.6 was
+    # [1.533, 1.821], its lower end the 80% band's and its upper end the
+    # estimate. The searches now keep a and b beyond the data's
+    # extremes. A brute-force grid over (a, b) of the likelihood region
+    # gives [1.216, 1.949] (95%) and [1.501, 1.875] (80%).
+    model = _fresh("Uniform")
+    x = np.array([3.2, 8.0, 14.6])
+    wide = _quiet(model.cb, x, on="Hf", alpha_ci=0.05, method="lr")
+    narrow = _quiet(model.cb, x, on="Hf", alpha_ci=0.2, method="lr")
+    np.testing.assert_allclose(wide[2], [1.216, 1.949], rtol=5e-3)
+    np.testing.assert_allclose(narrow[2], [1.501, 1.875], rtol=5e-3)
+    Hf = model.Hf(x)
+    assert np.all(wide[:, 0] < narrow[:, 0]) and np.all(narrow[:, 0] < Hf)
+    assert np.all(Hf < narrow[:, 1]) and np.all(narrow[:, 1] < wide[:, 1])
+    # The profile bound on a ends at the smallest observation.
+    lo, hi = model.param_cb("a", method="lr")
+    assert lo < hi == model.params[0] == 2.411
