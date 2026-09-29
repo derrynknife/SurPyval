@@ -433,18 +433,18 @@ class Centring:
         return params_0, np.zeros_like(self.center), J
 
 
-def covariates_far_from_zero(Z: npt.NDArray, n: npt.NDArray) -> bool:
-    """Whether some covariate's mean is more than ten of its standard
-    deviations from 0 (a constant column counts if it is not 0): far
-    enough that ``exp(beta'Z)`` swings by orders of magnitude over a
-    coefficient change the data barely distinguish."""
+def far_from_zero(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
+    """Which covariates' means are more than ten of their standard
+    deviations from 0 (a constant column if it is not 0): far enough that
+    ``exp(beta'Z)`` swings by orders of magnitude over a coefficient
+    change the data barely distinguish."""
     Z_arr = np.asarray(Z, dtype=float)
     if Z_arr.size == 0:
-        return False
+        return np.zeros(np.shape(Z_arr)[-1], dtype=bool)
     mean = covariate_center(Z_arr, n)
     n_arr = np.asarray(n, dtype=float).reshape(-1)
     sd = np.sqrt(np.dot(n_arr, (Z_arr - mean) ** 2) / n_arr.sum())
-    return bool(np.any(np.abs(mean) > 10.0 * sd))
+    return np.abs(mean) > 10.0 * sd
 
 
 class OriginWatch:
@@ -457,14 +457,20 @@ class OriginWatch:
     over- or underflows on the data at the parameters the optimiser
     returns, the likelihood or its gradient is not finite there, or the
     optimiser does not reach a verified maximum. Each of those used to
-    return a model (a few with a warning), one with a log-likelihood of
-    +3897; the fit now raises, and points to ``center=True``. A fit the
-    old code managed is unchanged.
+    return a model (a few with a warning), a Gamma PO one with a
+    log-likelihood of +3914. Or the optimiser stops at a local maximum
+    where the coefficient of the far covariate has collapsed towards 0 -- the
+    effect exp(beta'Z) can no longer express without overflowing -- as a
+    LogNormal PH fit on a covariate 300 from 0 did (0.006 against 0.64),
+    silently; :meth:`compare` catches that against the same model fitted
+    with its baseline at the means. The fit now raises in each case, and
+    points to ``center=True``. A fit the old code managed is unchanged.
     """
 
     def __init__(self, Z: npt.NDArray, n: npt.NDArray, k_dist: int):
         self.Z = np.asarray(Z, dtype=float)
-        self.far = covariates_far_from_zero(self.Z, n)
+        self.far_cols = far_from_zero(self.Z, n)
+        self.far = bool(np.any(self.far_cols))
         self.center = covariate_center(self.Z, n)
         self.k_dist = k_dist
 
@@ -495,6 +501,49 @@ class OriginWatch:
                 "exp(beta'Z) over- or underflows on the data at the fitted "
                 "coefficients (beta'Z reaches {:.4g})".format(
                     float(np.max(np.abs(lp)))
+                )
+            )
+
+    def compare(self, model: Any, fit_centred: Callable) -> None:
+        """Refuse a fit on covariates far from 0 whose coefficient of such
+        a covariate has collapsed: it differs by more than half from the
+        coefficient of the same model fitted with its baseline at the
+        covariate means (``fit_centred()``, a ``center=True`` fit), which
+        the data determine to within a third of itself (three standard
+        errors). The two models differ only in where their baseline is
+        anchored, and both estimate the same log hazard (or odds) ratio;
+        a coefficient that moves that far is the optimiser failing, not
+        the model. Nothing is checked on covariates near 0, where the
+        default fit is as it always was."""
+        if not self.far:
+            return
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            with np.errstate(all="ignore"):
+                try:
+                    ref = fit_centred()
+                    se = np.asarray(ref.standard_errors(), dtype=float)
+                except ValueError:
+                    return
+        k = self.k_dist
+        beta = np.asarray(model.params, dtype=float)[k:]
+        beta_c = np.asarray(ref.params, dtype=float)[k:]
+        se = se[k:]
+        with np.errstate(invalid="ignore"):
+            collapsed = (
+                self.far_cols
+                & (np.abs(beta_c) > 3.0 * se)
+                & (np.abs(beta - beta_c) > 0.5 * np.abs(beta_c))
+            )
+        if np.any(collapsed):
+            j = int(np.flatnonzero(collapsed)[0])
+            self._refuse(
+                "the coefficient of covariate {} is {:.4g}, where the same "
+                "model with its baseline at the covariate means has "
+                "{:.4g} (standard error {:.2g}); exp(beta'Z) cannot carry "
+                "that effect this far from 0, and the optimiser stopped "
+                "at a local maximum without it".format(
+                    j, beta[j], beta_c[j], se[j]
                 )
             )
 

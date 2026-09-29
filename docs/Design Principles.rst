@@ -61,10 +61,16 @@ Inputs
    *Checked* by ``conformance/test_metamorphic.py``.
 
 6. **Units don't matter.** Rescaling time rescales the answer and nothing
-   else.
+   else. Nor does a covariate's origin: with ``center=True`` every
+   regression gives the same model when a constant is added to a
+   covariate, and so do the defaults of Cox, Fine-Gray and the families
+   whose baseline maps exactly between origins. The other defaults raise
+   rather than return a broken fit.
 
-   *Checked* by ``conformance/test_metamorphic.py``; known gap #385 (the
-   Beta4, whose likelihood has no maximum on some data).
+   *Checked* by ``conformance/test_metamorphic.py``
+   (``test_covariate_origin*`` for covariates); known gaps #385 (the
+   Beta4, whose likelihood has no maximum on some data) and #465 (the
+   additive hazards default).
 
 Outputs
 -------

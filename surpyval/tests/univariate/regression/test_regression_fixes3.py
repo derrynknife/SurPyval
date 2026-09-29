@@ -401,10 +401,7 @@ def test_cox_accepts_a_scalar_covariate():
         np.testing.assert_allclose(
             getattr(model, fn)([3.0], 0.5), getattr(model, fn)([3.0], [0.5])
         )
-    # The multiplier is relative to the covariate means (#459).
-    np.testing.assert_allclose(
-        model.phi(0.5), np.exp((0.5 - model.center[0]) * model.beta[0])
-    )
+    np.testing.assert_allclose(model.phi(0.5), np.exp(0.5 * model.beta[0]))
 
 
 # -- 8. Clear errors ---------------------------------------------------------

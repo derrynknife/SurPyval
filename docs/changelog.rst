@@ -18,17 +18,50 @@ match R. Unknown option values raise ``ValueError`` everywhere.
   date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)
   covariate moved beta from 0.860 to 0.768, made the survival and
   p-values NaN, gave a false "monotone partial likelihood" warning and
-  leaked numpy overflow warnings. The fit now centres the covariates on
-  their (n-weighted) means, as R's ``coxph``, lifelines and
-  scikit-survival do, and stores them as ``model.center``; beta and every
-  prediction are unchanged by any shift of a column, for plain,
-  stratified and time-varying fits, residuals, ``check_ph``, robust
-  errors and the cause-specific Cox model. The reported baseline (``h0``,
-  ``H0``) is now that of a unit at ``center`` (R's
-  ``basehaz(centered=TRUE)``), and ``phi(Z)`` the hazard ratio against it,
-  ``exp(beta'(Z - center))``. Saved Cox models carry ``"center"`` and are
-  stamped schema 2, which 0.21.0 and earlier refuse with a request to
-  upgrade; files saved earlier load with their baseline at 0, as fitted.
+  leaked numpy overflow warnings. The fit now always runs on the
+  covariates centred on their (n-weighted) means, as R's ``coxph``,
+  lifelines and scikit-survival do; beta and every prediction are
+  unchanged by any shift of a column, for plain, stratified and
+  time-varying fits, residuals, ``check_ph``, robust errors and the
+  cause-specific Cox model. The reported baseline (``h0``, ``H0``) stays
+  at ``Z = 0`` (R's ``basehaz(fit, centered = FALSE)``), as before, and
+  ``phi(Z)`` is ``exp(beta'Z)``; predictions combine the two on the log
+  scale, so a tiny baseline and a huge multiplier lose nothing. Where the
+  baseline at ``Z = 0`` cannot be represented (it over- or underflows),
+  the fit raises ``ValueError`` and says to pass the new ``center=True``
+  (on ``fit``, ``fit_from_df`` and the ``fit_tvc`` variants), which keeps
+  the baseline at the means, ``model.center`` (R's ``basehaz(fit)``), with
+  ``phi(Z) = exp(beta'(Z - center))``, and saves ``"center"`` (schema 2).
+  A default fit's file has the layout of before (schema 1), and files
+  saved by 0.21.0 and earlier load as fitted.
+- **Parametric regressions and Fine-Gray no longer break on a covariate
+  far from zero (#463).** ``exp(beta'Z)`` overflowed in these fits too:
+  adding 2000 to a N(0, 1) covariate turned a ``WeibullPH`` coefficient of
+  0.707 into 0.0247 with a scale of 2.4e18, silently, and ``FineGray.fit``
+  and ``CompetingRisksProportionalHazards(model="Fine-Gray")`` raised
+  ``LinAlgError: SVD did not converge``. ``FineGray`` and the competing-
+  risks model now centre as Cox does, and take ``center=`` with the same
+  meaning. The parametric families (``PH``, ``AFT``, ``PO``, ``AH`` and
+  their ``fit_from_df`` / ``fit_tvc`` variants) take ``center=False``: by
+  default the baseline is reported at ``Z = 0``, as before. Where the
+  family and link have an exact map between the covariate means and
+  ``Z = 0`` (a Weibull, Rayleigh, Exponential or Gumbel PH; every AFT
+  baseline SurPyval has; a LogLogistic or Logistic PO) the fit runs on
+  centred covariates and maps back, so beta, the predictions and the
+  bounds are the same whatever the covariates' origin, and it raises
+  ``ValueError``, pointing to ``center=True``, when the baseline at 0 over-
+  or underflows. For the other pairs the default fit is at ``Z = 0`` as
+  before, and on covariates far from zero it now raises where it used to
+  return a wrong answer silently (a LogNormal PH coefficient of 0.006
+  against 0.64; a Gamma PO log-likelihood of +3914). ``center=True`` fits
+  any family with its baseline at the means (``model.center``, shown in the
+  summary and saved, schema 2), where a shift of a column changes nothing.
+  The additive hazards default is not yet checked (#465); for it,
+  ``center=True`` is a different model, ``h0 + beta'(Z - center)``.
+  On ordinary data the reported parameters are those of before to
+  optimiser tolerance (log-likelihoods within 2e-8 on 48 of 49 test fits;
+  one Logistic PO fit on 34 tires stops 1.3e-5 nats short of the old
+  point), and the fits are no slower.
 - **Fits no longer stop far from the maximum in silence (#427, #428,
   #429).** The maximum-likelihood ladder took the first optimiser that
   reported success, and from a poor start BFGS, TNC and Newton-CG report it

@@ -75,6 +75,7 @@ def _fit_cause(
     c: npt.NDArray,
     n: npt.NDArray,
     cause: Any,
+    center: bool = False,
 ) -> dict:
     """
     Fit the Fine-Gray subdistribution-hazard model for a single ``cause``.
@@ -83,12 +84,14 @@ def _fit_cause(
     p-values, the baseline cumulative subdistribution hazard (as sorted event
     times and the cumulative hazard at each), and the optimiser result.
 
-    The fit runs on the covariates centred at their ``n``-weighted means,
-    ``center`` (#463), as ``CoxPH`` does (#459): the partial
-    likelihood, and so ``beta`` and its covariance, are unchanged by it,
-    while ``exp(beta'Z)`` on a covariate far from 0 (a year, a date)
-    overflowed and the fit failed ("SVD did not converge"). The baseline is
-    then that of a unit at ``center``.
+    The fit runs on the covariates centred at their ``n``-weighted means
+    (#463), as ``CoxPH`` does (#459): the partial likelihood, and so
+    ``beta`` and its covariance, are unchanged by it, while
+    ``exp(beta'Z)`` on a covariate far from 0 (a year, a date) overflowed
+    and the fit failed ("SVD did not converge"). The baseline it gives is
+    that of a unit at the means; it is kept there, as ``center``, with
+    ``center=True``, and otherwise moved to ``Z = 0`` (``center`` zeros),
+    which is refused where that over- or underflows.
     """
     is_cause = label_mask(e, cause)
     is_event = (c == 0) & is_cause
@@ -121,8 +124,9 @@ def _fit_cause(
         G_t[:, None] / G_x[None, :]
     )
 
-    center = (n @ Z) / n.sum()
-    Z = Z - center
+    Z_raw = Z
+    mean = (n @ Z) / n.sum()
+    Z = Z - mean
     n_event = n[is_event]
     Z_event = Z[is_event]
 
@@ -157,11 +161,14 @@ def _fit_cause(
     dL = np.zeros(uniq_t.shape[0])
     np.add.at(dL, inv, d_over_r)
     baseline_cumhaz = np.cumsum(dL)
+    if not center:
+        baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
+        mean = np.zeros_like(mean)
 
     return {
         "cause": cause,
         "beta": beta,
-        "center": center,
+        "center": mean,
         "se": se,
         "p_values": p_values,
         "cov": cov,
@@ -170,6 +177,43 @@ def _fit_cause(
         "neg_ll": float(res.fun),
         "res": res,
     }
+
+
+def _cumhaz_at_origin(
+    beta: npt.NDArray,
+    center: npt.NDArray,
+    Z: npt.NDArray,
+    cumhaz: npt.NDArray,
+) -> npt.NDArray:
+    """The baseline cumulative subdistribution hazard fitted at the
+    covariate ``center`` moved to ``Z = 0``, ``cumhaz * exp(-beta'center)``
+    on the log scale (#463); refused, pointing to ``center=True``, where
+    that over- or underflows or ``exp(beta'Z)`` overflows on the rows
+    ``Z``."""
+    shift = float(np.dot(beta, center))
+    with np.errstate(all="ignore"):
+        lp = np.asarray(Z, dtype=float) @ beta
+        out = np.exp(np.log(cumhaz) - shift)
+    tiny = np.finfo(float).tiny
+    if not (
+        np.all(np.abs(lp) < np.log(np.finfo(float).max))
+        and np.all(np.isfinite(out))
+        and np.all(out[cumhaz > 0] >= tiny)
+    ):
+        raise ValueError(
+            "The baseline cumulative subdistribution hazard at Z = 0 "
+            "cannot be represented for these covariates: their means are {} "
+            "and the linear predictor there is beta'center = {:.4g}, so "
+            "the baseline at Z = 0 is exp({:.4g}) times that at the means, "
+            "which over- or underflows. Fit with center=True to report the "
+            "baseline at the covariate means (model.center) instead, or "
+            "move the covariates nearer 0.".format(
+                np.array2string(np.asarray(center), precision=4),
+                shift,
+                -shift,
+            )
+        )
+    return out
 
 
 def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
@@ -212,10 +256,9 @@ class FineGrayModel(SerialisableMixin):
         self.cause = fit["cause"]
         self.coefficients = fit["beta"]
         self.beta = fit["beta"]
-        #: The covariate means the fit centred on (#463): the baseline is
-        #: that of a unit at ``center``, and ``phi`` is relative to it.
-        #: Zeros for a model saved before centring, whose baseline is at
-        #: ``Z = 0``.
+        #: The covariate point the baseline is at, and ``phi`` relative to:
+        #: zeros (``Z = 0``) by default, the covariate means for a fit with
+        #: ``center=True`` (#463).
         self.center = np.asarray(
             fit.get("center", np.zeros(np.size(fit["beta"]))), dtype=float
         )
@@ -235,39 +278,36 @@ class FineGrayModel(SerialisableMixin):
         dict.
 
         Stores the coefficients and their covariance, plus the fitted
-        subdistribution baseline cumulative-hazard step arrays with the
-        covariate ``center`` they are at, so the reloaded model reproduces
+        subdistribution baseline cumulative-hazard step arrays (and, for a
+        fit with ``center=True``, the covariate ``center`` they are at,
+        which makes the dict schema 2: a schema-1 reader would take the
+        baseline for that at ``Z = 0``), so the reloaded model reproduces
         ``cif``/``sf`` exactly and can still report the coefficient summary.
-        A nonzero centre makes the dict schema 2 (a schema-1 reader would
-        take the baseline for that at ``Z = 0``). The optimiser objects are
-        not stored.
+        The optimiser objects are not stored.
         """
-        return stamp_schema(
-            {
-                "model": "FineGrayModel",
-                # native type: a numpy scalar label breaks JSON/BSON
-                "cause": to_native(self.cause),
-                "beta": np.asarray(self.beta, dtype=float).tolist(),
-                "center": np.asarray(self.center, dtype=float).tolist(),
-                "se": np.asarray(self.se, dtype=float).tolist(),
-                "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-                "cov": np.asarray(self.cov, dtype=float).tolist(),
-                "baseline_times": np.asarray(
-                    self._times, dtype=float
-                ).tolist(),
-                "baseline_cumhaz": np.asarray(
-                    self._cumhaz, dtype=float
-                ).tolist(),
-                "neg_ll": float(self._neg_ll),
-            }
-        )
+        out = {
+            "model": "FineGrayModel",
+            # native type: a numpy scalar label breaks JSON/BSON
+            "cause": to_native(self.cause),
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "se": np.asarray(self.se, dtype=float).tolist(),
+            "p_values": np.asarray(self.p_values, dtype=float).tolist(),
+            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            "baseline_times": np.asarray(self._times, dtype=float).tolist(),
+            "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
+            "neg_ll": float(self._neg_ll),
+        }
+        if np.any(self.center):
+            out["center"] = np.asarray(self.center, dtype=float).tolist()
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "FineGrayModel":
         """Rebuild a Fine-Gray model from a :meth:`to_dict` dictionary."""
         require_model_tag(model_dict, "FineGrayModel", "a Fine-Gray model")
         beta = np.array(model_dict["beta"], dtype=float)
-        # Written before the fit was centred (#463): the baseline is at 0.
+        # No "center" (a default fit, or one saved before #463): the
+        # baseline is at Z = 0.
         center = np.array(
             model_dict.get("center", np.zeros(beta.size)), dtype=float
         )
@@ -297,10 +337,16 @@ class FineGrayModel(SerialisableMixin):
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
         """The subdistribution hazard multiplier
-        :math:`e^{\\beta' (Z - \\text{center})}`, relative to a unit at the
-        covariate means where the baseline is (#463), one value per row of
-        ``Z`` (a scalar for a single covariate vector)."""
-        return np.exp((np.asarray(Z, dtype=float) - self.center) @ self.beta)
+        :math:`e^{\\beta' (Z - \\text{center})}`, relative to a unit at
+        ``center``, where the baseline is (``Z = 0`` unless fitted with
+        ``center=True``), one value per row of ``Z`` (a scalar for a single
+        covariate vector). It can overflow to ``inf`` on covariates far
+        from ``center``; :meth:`cif` does not, as it combines it with the
+        baseline on the log scale."""
+        with np.errstate(over="ignore"):
+            return np.exp(
+                (np.asarray(Z, dtype=float) - self.center) @ self.beta
+            )
 
     @keeps_query_shape
     def cif(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
@@ -319,7 +365,11 @@ class FineGrayModel(SerialisableMixin):
         H0 = step_at(self._times, self._cumhaz, x, before=0.0)
         # step_at reads a nan time as the value after the last jump.
         H0 = np.where(np.isnan(x), np.nan, H0)
-        return 1.0 - np.exp(-H0 * np.exp((rows - self.center) @ self.beta))
+        # H0 * exp(beta'(Z - center)) on the log scale: a baseline at Z = 0
+        # far from the data is tiny and the multiplier huge (#463).
+        with np.errstate(divide="ignore", over="ignore"):
+            H = np.exp(np.log(H0) + (rows - self.center) @ self.beta)
+        return -np.expm1(-H)
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
@@ -371,6 +421,7 @@ class FineGray_:
         c: "npt.ArrayLike | None" = None,
         n: "npt.ArrayLike | None" = None,
         event: Any = None,
+        center: bool = False,
     ) -> FineGrayModel:
         """
         Fit the Fine-Gray model for a cause of interest.
@@ -395,6 +446,14 @@ class FineGray_:
             The cause of interest (a label in ``e``). May be omitted only
             when the data contains a single event type. The fitted model
             keeps it as ``cause``.
+        center : bool, optional
+            ``False`` (the default) reports the baseline cumulative
+            subdistribution hazard at ``Z = 0``; ``True`` reports it at the
+            covariate means, stored as ``model.center``, and ``phi`` is
+            then relative to them. The fit runs on centred covariates either
+            way, so the coefficients and every prediction are the same; the
+            default refuses, with a ``ValueError``, covariates so far from
+            0 that the baseline there over- or underflows.
 
         Returns
         -------
@@ -435,7 +494,7 @@ class FineGray_:
                 f"Cause {event!r} not observed; causes are {causes}."
             )
 
-        return FineGrayModel(_fit_cause(x, Z, e, c, n, event))
+        return FineGrayModel(_fit_cause(x, Z, e, c, n, event, center))
 
 
 FineGray = FineGray_()

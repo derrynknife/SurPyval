@@ -230,12 +230,15 @@ def test_cox_constant_column_on_separated_data():
     with pytest.raises(ValueError, match=r"column\(s\) \[2\]"):
         sp.CoxPH.fit(**_COX_CONSTANT)
     # Without it the data are still separated: the one warning is the
-    # monotone-likelihood one, and the predictions are finite.
+    # monotone-likelihood one, and the predictions are finite. (The
+    # coefficients run off far enough that the baseline at Z = 0
+    # underflows, which the default refuses, #463; at the covariate means
+    # it is representable.)
     data = dict(_COX_CONSTANT, Z=_COX_CONSTANT["Z"][:, :2])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with leaks.watch() as found:
-            model = sp.CoxPH.fit(**data)
+            model = sp.CoxPH.fit(**data, center=True)
             sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
     assert found == [], leaks.report(found)
     assert [str(w.message)[:28] for w in caught] == [

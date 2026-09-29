@@ -828,9 +828,7 @@ class DataFrameRegressionMixin:
                     "not a linear predictor with an origin to move."
                 )
             extra["center"] = True
-        model = self.fit(
-            x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra
-        )
+        model = self.fit(x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra)
 
         model.feature_names = feature_names
         model.formula = formula

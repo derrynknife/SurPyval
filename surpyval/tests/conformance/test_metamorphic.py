@@ -10,11 +10,12 @@ answer, refits, and compares every function of the two models:
 - **row order**: a permutation of the data rows (the input-order bugs);
 - **counts**: a count ``n`` gives what that many repeated rows give;
 - **covariate origin**: a constant added to a covariate column (and to
-  the query rows) changes nothing, for the models where the origin is
-  not part of the model: the Cox-based and Fine-Gray partial likelihoods
-  see only differences within a risk set (#459, #463), and the
-  log-linear parametric families whose baseline maps exactly between
-  origins fit on centred covariates (#463).
+  the query rows) changes nothing: for every model fitted with
+  ``center=True`` (the baseline at the covariate means), and by default
+  (the baseline at Z = 0) for the Cox and Fine-Gray partial likelihoods,
+  which see only differences within a risk set, and the log-linear
+  parametric families whose baseline maps exactly between the two
+  (#459, #463).
 """
 
 import numpy as np
@@ -34,6 +35,7 @@ from surpyval.tests.conformance.registry import (
     predictions,
     refit,
 )
+from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
 K = 7.3  # an awkward unit change, so it cannot hide in rounding
 
@@ -62,12 +64,9 @@ def test_counts_equal_repeated_rows(case):
     compare(case, got, ref)
 
 
-# The models whose covariates enter through a partial likelihood, which
-# is invariant to the origin of each covariate (#459, #463), and the
-# parametric regressions. Those fit on centred covariates (#463), which
-# is exact for the log-linear families whose baseline maps between
-# origins; for the others the covariates' origin is part of the model
-# (pinned below).
+# Every model whose fit takes ``center``: those whose covariates enter
+# through a partial likelihood, which is invariant to the origin of each
+# covariate, and the parametric regressions (#459, #463).
 _PARTIAL_LIKELIHOOD = (
     "CoxPH",
     "CoxPH[strata]",
@@ -76,70 +75,66 @@ _PARTIAL_LIKELIHOOD = (
     "FineGray",
 )
 _PARAMETRIC = tuple(
-    base + kind
-    for kind in ("PH", "AFT", "PO", "AH")
-    for base in BASELINES
+    base + kind for kind in ("PH", "AFT", "PO", "AH") for base in BASELINES
 )
-# Far enough from 0 that exp(beta'Z) on the raw values overflows.
-_SHIFTS = (1e5, -3e4)
-_NOT_CLOSED = (
-    "#463: the {} baseline is not closed under the change of origin "
-    "(exp(beta'c) times its {} is not a {} {}), so the model "
-    "with its baseline at Z = 0 differs from the one at the covariate "
-    "means (the maximum log-likelihood moves with a shift of 1 already); "
-    "it is fitted as defined, on the covariates as given, and a shift of "
-    "1e5 wrecks that fit"
-)
-_ORIGIN_DEPENDENT: dict[str, str] = {
-    **{
-        f"{base}PH": _NOT_CLOSED.format(
-            base, "cumulative hazard", base, "cumulative hazard"
-        )
-        for base in ("LogNormal", "Gamma", "Normal", "Logistic")
-    },
-    **{
-        f"{base}PO": _NOT_CLOSED.format(
-            base, "survival odds", base, "survival odds"
-        )
-        for base in ("Weibull", "LogNormal", "Exponential", "Gamma")
-        + ("Normal", "Gumbel")
-    },
-    **{
-        f"{base}AH": "#463: the additive hazards models are not centred: "
-        "h0(x) + beta'c is not a hazard of the baseline's family (but for "
-        "the Exponential, whose positivity bound then moves with c), so "
-        "the origin is part of the model, and a shift of 1e5 changes the "
-        "fit"
-        for base in BASELINES
-    },
+# The parametric families whose baseline maps exactly between the
+# covariate means and Z = 0 (ORIGIN_MAPS): by default they are the same
+# model wherever the covariates' zero is. For the others (and the additive
+# hazards models) the origin is part of the default model, whose baseline
+# is at Z = 0; with center=True it is at the means for every family.
+_KIND = {
+    "Proportional Hazard": "PH",
+    "Accelerated Failure Time": "AFT",
+    "Proportional Odds": "PO",
 }
+_MAPPED = tuple(
+    name
+    for name in (dist + _KIND[kind] for kind, dist in ORIGIN_MAPS)
+    if name in _PARAMETRIC
+)
+# Far enough from 0 that exp(beta'Z) on the raw values overflows: only a
+# baseline at the means (center=True) is representable there.
+_SHIFTS = (1e5, -3e4)
+# Near enough that the default baseline at Z = 0 is representable.
+_MODERATE_SHIFTS = (30.0, -20.0)
 
 
-def _origin_cases():
-    out = []
-    for case in CASES:
-        if case.name not in _PARTIAL_LIKELIHOOD + _PARAMETRIC:
-            continue
-        marks = []
-        if case.name in _ORIGIN_DEPENDENT:
-            marks.append(
-                pytest.mark.xfail(
-                    strict=True, reason=_ORIGIN_DEPENDENT[case.name]
-                )
-            )
-        if case.is_slow("units"):
-            marks.append(pytest.mark.slow)
-        out.append(pytest.param(case, id=case.name, marks=marks))
-    return out
+def _origin_cases(names):
+    return [
+        pytest.param(
+            c,
+            id=c.name,
+            marks=[pytest.mark.slow] if c.is_slow("units") else [],
+        )
+        for c in CASES
+        if c.name in names
+    ]
 
 
-@pytest.mark.parametrize("case", _origin_cases())
-def test_covariate_origin(case):
-    data = case.data()
-    shift = np.array(_SHIFTS[: np.shape(data["Z"])[1]])
+def _moved(case, data, shifts):
+    shift = np.array(shifts[: np.shape(data["Z"])[1]])
     moved = dict(data, Z=np.asarray(data["Z"], dtype=float) + shift)
+    return moved, np.asarray(case.Z, dtype=float) + shift
+
+
+@pytest.mark.parametrize(
+    "case", _origin_cases(_PARTIAL_LIKELIHOOD + _PARAMETRIC)
+)
+def test_covariate_origin(case):
+    # With the baseline at the covariate means, far shifts included.
+    data = dict(case.data(), center=True)
+    moved, Z = _moved(case, data, _SHIFTS)
+    ref = predictions(case, refit(case, data))
+    got = predictions(case, refit(case, moved), Z=Z)
+    compare(case, got, ref)
+
+
+@pytest.mark.parametrize("case", _origin_cases(_PARTIAL_LIKELIHOOD + _MAPPED))
+def test_covariate_origin_by_default(case):
+    # With the baseline at Z = 0 (the default), where that is the same
+    # model wherever the origin is and the shift keeps it representable.
+    data = case.data()
+    moved, Z = _moved(case, data, _MODERATE_SHIFTS)
     ref = predictions(case, fitted(case))
-    got = predictions(
-        case, refit(case, moved), Z=np.asarray(case.Z, dtype=float) + shift
-    )
+    got = predictions(case, refit(case, moved), Z=Z)
     compare(case, got, ref)

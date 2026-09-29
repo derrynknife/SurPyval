@@ -152,10 +152,10 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # stored only in the schema-2 form (see ``_needs_formula_reader``), or a
 # non-parametric estimate with the ``"support"`` its ``set_support`` gave
 # it (new in schema 2; a schema-1 reader would silently drop it, and
-# with it the estimate's values outside the data), or a Cox model with
-# a nonzero covariate ``"center"`` (new in schema 2, #459; a schema-1
-# reader would ignore it and take the baseline, which is that of a unit
-# at the centre, for the baseline at 0).
+# with it the estimate's values outside the data), or a regression model
+# fitted with ``center=True``, with a nonzero covariate ``"center"`` (new
+# in schema 2, #459, #463; a schema-1 reader would ignore it and take the
+# baseline, which is that of a unit at the centre, for the baseline at 0).
 SCHEMA_VERSION = 2
 
 # The oldest version whose readers restore a document with neither of
@@ -420,7 +420,8 @@ def required_schema(model_dict: dict) -> int:
     levels, or fitted transforms such as ``scale(z)``), or holds the
     ``"support"`` of a non-parametric estimate's ``set_support`` or the
     ``"band_n"`` of its ``band``, or the nonzero covariate ``"center"`` of
-    a Cox model, which a schema-1 reader would silently ignore; 1
+    a regression model fitted with ``center=True``, which a schema-1
+    reader would silently ignore; 1
     otherwise, the layout SurPyval v0.20 reads. This is the version
     :func:`stamp_schema` writes.
 
@@ -450,8 +451,8 @@ def required_schema(model_dict: dict) -> int:
 
 def _carries_center(value: Any) -> bool:
     """Whether ``value`` or any dictionary nested in it has a
-    ``"center"`` with a nonzero entry: the covariate means a Cox model
-    centred on (#459), whose baseline is that of a unit there. A schema-1
+    ``"center"`` with a nonzero entry: the covariate means where a model
+    fitted with ``center=True`` has its baseline (#459, #463). A schema-1
     reader would drop it and read the baseline as at 0; a zero centre
     reads the same either way."""
     if isinstance(value, dict):

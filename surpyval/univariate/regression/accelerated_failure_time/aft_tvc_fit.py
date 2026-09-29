@@ -162,8 +162,8 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
 from .._fit_skeleton import (  # noqa: E402
     Centring,
     LogLinearPhi,
-    OriginWatch,
     MirroredDistributionAttrs,
+    OriginWatch,
     check_fixed_and_init,
     optimise_nm_tnc,
     require_finite_fit,
@@ -309,7 +309,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         centring = Centring.plan(
             self, "Accelerated Failure Time", Z, n, fixed, center
         )
-        watch = None if centring is not None else OriginWatch(Z, n, self.k_dist)
+        watch = (
+            None if centring is not None else OriginWatch(Z, n, self.k_dist)
+        )
         mean = np.zeros(p) if centring is None else centring.center
 
         # Result fitter: a fresh AFTFitter (so all ordinary prediction
@@ -414,5 +416,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model._ic_n = ic_sample_size(
             np.where(grp["event"], 0, 1), grp["weight"]
         )
-
+        if watch is not None and not set(fixed) & set(self.param_names):
+            # On covariates far from 0, check the coefficients against the
+            # same model with its baseline at the means (#463).
+            watch.compare(
+                model,
+                lambda: self._fit_tvc_arrays(
+                    x, c, n, tl, Z, ident, AFTFitter, fixed, center=True
+                ),
+            )
         return model

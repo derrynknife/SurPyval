@@ -281,7 +281,7 @@ class ProportionalOddsFitter(
         params = inv_trans(const(res.x))
         reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
 
-        return assemble_regression_model(
+        model = assemble_regression_model(
             self,
             "Proportional Odds",
             reg_model,
@@ -294,6 +294,16 @@ class ProportionalOddsFitter(
             centring=centring,
             watch=watch,
         )
+        if watch is not None and not set(fixed) & set(self.param_names):
+            # On covariates far from 0, check the coefficients against the
+            # same model with its baseline at the means (#463).
+            watch.compare(
+                model,
+                lambda: self.fit(
+                    x, Z, c=c, n=n, t=t, fixed=fixed, center=True
+                ),
+            )
+        return model
 
 
 def PO(distribution: Any) -> "ProportionalOddsFitter":

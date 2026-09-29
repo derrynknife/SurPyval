@@ -1056,7 +1056,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         size: int,
         Z: "npt.ArrayLike | pd.DataFrame",
         random_state: Any = None,
-    ) -> npt.NDArray:
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         r"""
 
         A method to draw random samples from the distributions using the

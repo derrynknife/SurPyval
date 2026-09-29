@@ -91,9 +91,8 @@ def test_tied_fit_matches_hand_weighted_partial_likelihood():
     )
     assert model.beta[0] == pytest.approx(hand.x, abs=1e-5)
 
-    # Breslow baseline: d(t) / sum_i w_i(t) exp(beta z_i) at each event time,
-    # that of a unit at the covariate mean, where the fit centres (#463).
-    dL = 1.0 / (W_HAND @ np.exp((Z - model.center[0]) * model.beta[0]))
+    # Breslow baseline: d(t) / sum_i w_i(t) exp(beta z_i) at each event time.
+    dL = 1.0 / (W_HAND @ np.exp(Z * model.beta[0]))
     np.testing.assert_allclose(d["baseline_times"], EVENT_TIMES)
     np.testing.assert_allclose(d["baseline_cumhaz"], np.cumsum(dL), rtol=1e-12)
 

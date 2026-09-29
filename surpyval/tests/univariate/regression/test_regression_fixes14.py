@@ -230,7 +230,10 @@ def test_cox_on_separated_data_warns_once_without_the_constant_column():
     data = dict(_SEPARATED, Z=_SEPARATED["Z"][:, :2])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        model = sp.CoxPH.fit(**data)
+        # The coefficients run off far enough that the baseline at Z = 0
+        # underflows (the default refuses that, #463); at the covariate
+        # means it is representable.
+        model = sp.CoxPH.fit(**data, center=True)
         sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
     messages = [str(w.message) for w in caught]
     assert len(messages) == 1 and messages[0].startswith("Monotone")

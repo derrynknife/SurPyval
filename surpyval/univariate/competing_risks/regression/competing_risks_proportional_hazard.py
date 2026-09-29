@@ -88,10 +88,10 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     n_event_types: int
     h0_e: "npt.NDArray"
     H0_e: "npt.NDArray"
-    #: The covariate means the per-cause fits centred on (the Cox fits,
-    #: #459; the Fine-Gray fits, #463): the baselines ``h0_e`` are those of
-    #: a unit at ``center``, and ``phi_e`` is relative to it. Zeros for a
-    #: model saved before centring, whose baselines are at ``Z = 0``.
+    #: The covariate point the baselines ``h0_e`` are at, and ``phi_e``
+    #: relative to: zeros (``Z = 0``) by default, the covariate means for a
+    #: fit with ``center=True`` (#459, #463). The per-cause fits centre on
+    #: the means either way.
     center: "npt.NDArray"
     phi: Any
     phi_e: Any
@@ -162,10 +162,12 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             "x": np.asarray(self.x, dtype=float).tolist(),
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
-            # A nonzero centre makes the dict schema 2 (#459): a schema-1
-            # reader would read the baselines as at Z = 0.
-            "center": np.asarray(self.center, dtype=float).tolist(),
         }
+        if np.any(self.center):
+            # A baseline at the covariate means (center=True) is stored,
+            # which makes the dict schema 2 (#459): a schema-1 reader would
+            # read the baselines as at Z = 0.
+            out["center"] = np.asarray(self.center, dtype=float).tolist()
         if self.model == "Fine-Gray":
             # The Fine-Gray predictions come from the per-cause models (the
             # shared grid only mirrors their baselines), so store them whole,
@@ -208,7 +210,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         model._finish(
             betas,
             np.array(model_dict["h0_e"], dtype=float),
-            # Written before the Cox fits were centred (#459): the
+            # No "center" (a default fit, or one saved before #459): the
             # baselines are at Z = 0.
             np.array(
                 model_dict.get("center", np.zeros(betas.shape[1])),
@@ -231,12 +233,22 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         self.beta = betas.sum(axis=0)
         self.center = center
         # Relative to the centre, where the baselines are (#459).
-        self.phi_e = lambda Z, e_i: np.exp(
-            (self._prepare_Z(Z) - self.center) @ self.betas[e_i, :]
-        )
+        self.phi_e = lambda Z, e_i: np.exp(self._log_phi_e(Z, e_i))
         self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ self.beta)
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
+
+    def _log_phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
+        """The log of cause ``e_i``'s hazard multiplier ``phi_e``."""
+        return (self._prepare_Z(Z) - self.center) @ self.betas[e_i, :]
+
+    @staticmethod
+    def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
+        """``base * exp(log_risk)`` on the log scale, so a tiny baseline at
+        ``Z = 0`` and a huge multiplier on covariates far from 0 do not
+        overflow (#463)."""
+        with np.errstate(divide="ignore", over="ignore"):
+            return np.exp(np.log(base) + log_risk)
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -284,13 +296,16 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             if event not in self.event_idx_map:
                 raise ValueError("Unrecognised event type for this model")
             e_i = self.event_idx_map[event]
-            return base[e_i] * self.phi_e(Z, e_i)
+            return self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
         # All causes combined: each cause contributes with its OWN
         # coefficients, so the all-cause (cumulative) hazard is the sum of
         # H0_e(t) * exp(beta_e'Z), not a single summed-coefficient term.
-        return sum(
-            base[e_i] * self.phi_e(Z, e_i)
-            for e_i in self.event_idx_map.values()
+        return np.sum(
+            [
+                self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
+                for e_i in self.event_idx_map.values()
+            ],
+            axis=0,
         )
 
     @keeps_query_shape
@@ -481,7 +496,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         increments = np.array(
             [
                 np.broadcast_to(
-                    self.h0_e[e_i] * self.phi_e(Z, e_i), self.x.shape
+                    self._times_risk(self.h0_e[e_i], self._log_phi_e(Z, e_i)),
+                    self.x.shape,
                 )
                 for e_i in range(self.n_event_types)
             ],
@@ -509,6 +525,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         formula: "str | None" = None,
         model: str = "Cox",
         tie_method: str = "efron",
+        center: bool = False,
     ) -> "CompetingRisksProportionalHazards":
         """
         Fit a competing-risks proportional-hazards model from a pandas
@@ -539,6 +556,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             Tie handling for the ``model='Cox'`` path, passed to
             :meth:`CoxPH.fit`: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``).
+        center : bool, optional
+            Report the baselines at the covariate means (``model.center``)
+            instead of at ``Z = 0``; see :meth:`fit`.
 
         Returns
         -------
@@ -592,7 +612,16 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        fitted = cls.fit(x, Z, e, c=c, n=n, model=model, tie_method=tie_method)
+        fitted = cls.fit(
+            x,
+            Z,
+            e,
+            c=c,
+            n=n,
+            model=model,
+            tie_method=tie_method,
+            center=center,
+        )
         fitted.formula = form
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
@@ -609,6 +638,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         n: "npt.ArrayLike | None" = None,
         model: str = "Cox",
         tie_method: str = "efron",
+        center: bool = False,
     ) -> "CompetingRisksProportionalHazards":
         r"""
         Fit the competing-risks proportional-hazards model.
@@ -646,6 +676,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             Tie handling for the ``'Cox'`` path, passed to
             :meth:`CoxPH.fit`. Default ``'efron'``.
 
+        center : bool, optional
+            ``False`` (the default) reports each cause's baseline at
+            ``Z = 0``; ``True`` at the covariate means, stored as
+            ``model.center``, with ``phi_e`` then relative to them. Passed
+            to each cause's fit (:meth:`CoxPH.fit`, ``FineGray.fit``),
+            which centres either way; the default refuses covariates so far
+            from 0 that the baseline there over- or underflows.
+
         Returns
         -------
 
@@ -653,8 +691,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             A competing-risks proportional-hazards model. ``betas`` holds one
             row of coefficients per cause, in the order of ``event_idx_map``
             (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
-            multiplier, relative to a unit at the covariate means
-            ``center`` (where its baseline is).
+            multiplier, relative to a unit at ``center`` (where its
+            baseline is: ``Z = 0`` unless ``center=True``).
             ``beta`` and ``phi`` (the sum of the per-cause
             coefficients and its multiplier) are kept for backward
             compatibility but are not a model quantity: every prediction
@@ -701,9 +739,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         unique_x = np.unique(x)
 
         baselines = np.zeros((n_event_types, len(unique_x)))
-        # The baselines are at the centre the per-cause fits share (they
-        # fit the same rows).
-        center = np.zeros(Z.shape[1])
+        # The baselines are at the point the per-cause fits share (they
+        # fit the same rows): Z = 0, or the means with center=True.
+        at = np.zeros(Z.shape[1])
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
 
@@ -718,11 +756,13 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             results = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                cox_model = CoxPH.fit(x, Z, c_e, n, tie_method=tie_method)
+                cox_model = CoxPH.fit(
+                    x, Z, c_e, n, tie_method=tie_method, center=center
+                )
 
                 results.append(cox_model.res)
                 betas[i, :] = cox_model.res.x
-                center = np.asarray(cox_model.center, dtype=float)
+                at = np.asarray(cox_model.center, dtype=float)
                 # Cause-specific baseline hazard: reuse the fitted Cox model's
                 # own baseline (Efron's after an Efron fit, else Breslow's),
                 # which is built from c_e (the cause-specific event
@@ -741,11 +781,13 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             fg_models = {}
             results = []
             for i, event in enumerate(causes):
-                fg = FineGray.fit(x, Z, e, c=c, n=n, event=event)
+                fg = FineGray.fit(
+                    x, Z, e, c=c, n=n, event=event, center=center
+                )
                 fg_models[event] = fg
                 results.append(fg.res)
                 betas[i, :] = fg.beta
-                center = np.asarray(fg.center, dtype=float)
+                at = np.asarray(fg.center, dtype=float)
                 # Store increments so the shared ``H0_e = baselines.cumsum``
                 # equals this cause's cumulative subdistribution hazard.
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
@@ -755,6 +797,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
 
         out.results = results
-        out._finish(betas, baselines, center)
+        out._finish(betas, baselines, at)
         out.x = unique_x
         return out
