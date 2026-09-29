@@ -221,3 +221,42 @@ def test_function_cb_with_a_negative_variance_warns():
     assert len(rec) == 1 and rec[0].filename == __file__
     np.testing.assert_array_equal(cb[0], [0.0, 0.0])  # below a: rate 0
     assert np.all(np.isnan(cb[1]))
+
+
+# -- #421: likelihood-ratio bands ------------------------------------------
+def test_lr_band_does_not_stall_on_the_far_side_of_the_estimate():
+    # A density at x peaks in the scale, and the warm-started search for
+    # the lower df bound stopped on that peak: Rayleigh's 99% df band at
+    # 14.6 was [0.0502, 0.0504], above the estimate 0.0359.
+    model = _fresh("Rayleigh")
+    x = np.array([3.2, 8.0, 14.6])
+    df = model.df(x)
+    for alpha in (0.01, 0.05, 0.2):
+        cb = _quiet(model.cb, x, on="df", alpha_ci=alpha, method="lr")
+        assert np.all(cb[:, 0] <= df) and np.all(df <= cb[:, 1]), cb
+
+
+def test_lr_band_of_one_parameter_is_the_extreme_over_its_interval():
+    # With one free parameter the likelihood region is the profile
+    # interval, and the band is the extreme of the function over it. The
+    # search found one end or the other: Geometric's df(5) lower bound
+    # was 0.0740 in a sweep over [2, 5, 8] and 0.0652 queried alone.
+    model = _fresh("Geometric")
+    x = np.array([2.0, 5.0, 8.0])
+    for alpha in (0.05, 0.2):
+        band = model.cb(x, on="df", alpha_ci=alpha, method="lr")
+        lo, hi = model.param_cb("p", alpha_ci=alpha, method="lr")
+        grid = np.linspace(lo, hi, 2001)
+        want = np.array(
+            [
+                [f.min(), f.max()]
+                for f in (surv.Geometric.df(k, grid) for k in x)
+            ]
+        )
+        np.testing.assert_allclose(band, want, rtol=1e-5)
+        for k in range(x.size):
+            np.testing.assert_allclose(
+                model.cb(x[k], on="df", alpha_ci=alpha, method="lr"),
+                band[k],
+                rtol=1e-8,
+            )

@@ -1999,8 +1999,13 @@ _NO_COVARIANCE = (
     "Hypoexponential",
 )
 # The likelihood-ratio search runs pointwise, so it is swept at three
-# times, and only in the full suite.
-_LR_X = {"Weibull": np.array([4.0, 8.0, 13.0])}
+# times, and only in the full suite. Rayleigh and Geometric joined in
+# #421 (a df bound stalled on the far side of the estimate).
+_LR_X = {
+    "Weibull": np.array([4.0, 8.0, 13.0]),
+    "Rayleigh": np.array([3.2, 8.0, 14.6]),
+    "Geometric": np.array([2.0, 5.0, 8.0]),
+}
 
 
 def _parametric_bounds(case):
@@ -2014,8 +2019,9 @@ def _parametric_bounds(case):
             label="param_cb[wald]",
         ),
     ]
-    # The likelihood-ratio search is swept on Weibull only: it takes
-    # minutes a distribution (ExpoWeibull's param_cb sweep took 420 s).
+    # The likelihood-ratio search is swept on the fast cases only: it
+    # takes minutes a distribution elsewhere (ExpoWeibull's param_cb
+    # sweep took 420 s; see #421 for the others).
     # (Documented: it is not available for offset, limited-failure or
     # zero-inflated models.)
     if case.name not in _LR_X:

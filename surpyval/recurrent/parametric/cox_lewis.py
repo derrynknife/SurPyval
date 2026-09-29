@@ -1,3 +1,5 @@
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
@@ -20,7 +22,9 @@ class CoxLewis(NHPPFitter):
     ``alpha`` is the log of the intensity at ``t = 0`` and ``beta`` its
     proportional change per unit time: positive is deteriorating, negative
     improving. With a negative ``beta`` the cumulative intensity levels off
-    at ``exp(alpha) / -beta``, and ``inv_cif`` returns ``inf`` beyond it.
+    at ``exp(alpha) / -beta``, and ``inv_cif`` returns ``inf`` beyond it;
+    such a model's ``count_terminated_simulation`` raises a ``ValueError``
+    (a sequence may never reach the count), so simulate it to a time.
     ``CoxLewis`` is an instance of this class; ``fit`` and ``from_params``
     return a ``ParametricRecurrenceModel``.
 
@@ -106,6 +110,20 @@ class CoxLewis(NHPPFitter):
                 np.log1p(safe_arg) / np.where(beta == 0, 1.0, beta),
             )
         return np.where(reached, ratio, np.inf)
+
+    def _default_start(
+        self, data: Any, x_unique: npt.NDArray, mcf_hat: npt.NDArray
+    ) -> npt.NDArray:
+        # The constant rate through the end of the MCF (beta = 0, an HPP).
+        # The all-ones start is a rate that grows e-fold per unit time: by
+        # t = 60 its cif is 1e26, where the least-squares search lost its
+        # way and stopped at a cif(55) of 113 against an MCF of 4.4 (#419).
+        # It was also not unit free: time in hours or in days started at
+        # different places.
+        span = float(x_unique[-1])
+        if span > 0 and mcf_hat[-1] > 0:
+            return np.array([np.log(mcf_hat[-1] / span), 0.0])
+        return self.parameter_initialiser(data.x)
 
 
 def _expm1_over(beta: Boxable, x: npt.NDArray) -> Boxable:

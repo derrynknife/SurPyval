@@ -6,7 +6,12 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy.typing as npt
 from autograd import jacobian
-from scipy.optimize import NonlinearConstraint, brentq, minimize
+from scipy.optimize import (
+    NonlinearConstraint,
+    brentq,
+    minimize,
+    minimize_scalar,
+)
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -1955,6 +1960,11 @@ class Parametric(
         constraint = NonlinearConstraint(deviance, -np.inf, crit)
 
         t = np.atleast_1d(t).astype(float)
+        free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        if len(free) == 1:
+            band = self._cb_lr_one_param(t, g, free[0], alpha_ci, bound)
+            if band is not None:
+                return band
         order = np.argsort(t)
         t_sorted = t[order]
         failed: list[float] = []
@@ -2040,6 +2050,66 @@ class Parametric(
             return lo_vals[inv]
         else:
             return hi_vals[inv]
+
+    def _cb_lr_one_param(
+        self, t: Any, g: Any, j: int, alpha_ci: float, bound: str
+    ) -> Any:
+        """The likelihood-ratio band of a model with one free parameter.
+
+        Its likelihood region is an interval, the profile bound on the
+        parameter, so the band at each time is the extreme of ``g`` over
+        that interval: at an end, or at an interior stationary point of
+        ``g`` (a density at ``x`` peaks in the scale). A constrained
+        search from a warm start found one end or the other, not always
+        the more extreme: a Geometric df(5) lower bound of 0.0740 in a
+        sweep but 0.0652 queried alone (#421). ``None`` (the general
+        search is used instead) where the interval cannot be found.
+        """
+        name = self.dist.param_names[j]
+        # A one-sided bound at alpha is an end of the two-sided region at
+        # 2 alpha: the same chi-squared critical value.
+        level = alpha_ci if bound == "two-sided" else 2.0 * alpha_ci
+        if not 0 < level < 1:
+            return None
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ends = self._param_cb_lr(name, level, "two-sided")
+        if not np.all(np.isfinite(ends)):
+            return None
+        lo, hi = (float(e) for e in ends)
+        # The likelihood at a support edge (p = 0 or 1) is typically nan,
+        # so g is evaluated just inside it, as the search is.
+        lo_b, hi_b = self.dist.bounds[j]
+        lo = 1e-10 if lo_b == 0 and lo == 0 else lo
+        hi = hi - 1e-10 if hi_b == 1 and hi == 1 else hi
+        theta = np.array(self.params, dtype=float)
+
+        def at(time: Any, v: Any) -> Any:
+            th = theta.copy()
+            th[j] = v
+            return g(time, th)
+
+        lower = np.empty(t.shape)
+        upper = np.empty(t.shape)
+        with np.errstate(all="ignore"):
+            for i, time in enumerate(t):
+                values = [at(time, lo), at(time, hi), at(time, theta[j])]
+                for sign in (1.0, -1.0):
+                    res = minimize_scalar(
+                        lambda v: sign * at(time, v),
+                        bounds=(lo, hi),
+                        method="bounded",
+                    )
+                    if np.isfinite(res.fun):
+                        values.append(sign * res.fun)
+                values = np.asarray(values, dtype=float)
+                if not np.all(np.isfinite(values[:3])):
+                    return None
+                values = values[np.isfinite(values)]
+                lower[i], upper[i] = values.min(), values.max()
+        if bound == "two-sided":
+            return np.column_stack([lower, upper])
+        return lower if bound == "lower" else upper
 
     def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.

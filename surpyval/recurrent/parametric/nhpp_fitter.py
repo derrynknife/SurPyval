@@ -79,6 +79,17 @@ class NHPPFitter(IntensityModel):
 
         return negll_func
 
+    def _default_start(
+        self,
+        data: RecurrentEventData,
+        x_unique: np.ndarray,
+        mcf_hat: np.ndarray,
+    ) -> np.ndarray:
+        """The start of the least-squares search when no ``init`` is
+        given: ``parameter_initialiser`` unless the model has a better one
+        from the non-parametric MCF (``mcf_hat`` at ``x_unique``)."""
+        return self.parameter_initialiser(data.x)
+
     def fit_from_recurrent_data(
         self,
         data: RecurrentEventData,
@@ -115,7 +126,9 @@ class NHPPFitter(IntensityModel):
                 "how must be 'MLE' or 'MSE'; got {!r}".format(how)
             )
         validate_nhpp_data(data, self)
-        default_init = self.parameter_initialiser(data.x)
+        x_unqiue, r, d = data.to_xrd()
+        mcf_hat = np.cumsum(d / r)
+        default_init = self._default_start(data, x_unqiue, mcf_hat)
         if init is None:
             param_init = default_init
         else:
@@ -128,9 +141,6 @@ class NHPPFitter(IntensityModel):
                         param_init.size,
                     )
                 )
-
-        x_unqiue, r, d = data.to_xrd()
-        mcf_hat = np.cumsum(d / r)
 
         # Both searches run on an unconstrained scale: with the bounds
         # given to the optimiser it clipped trial points onto them, and a
@@ -159,6 +169,13 @@ class NHPPFitter(IntensityModel):
             res = minimize(fun, to_search(np.asarray(start, dtype=float)))
             if how == "MLE":
                 res = minimize(search_ll, res.x, method="Nelder-Mead")
+            elif not res.success:
+                # BFGS's finite-difference gradient can stop it at the
+                # minimum with "precision loss" (Cox-Lewis, whose squared
+                # errors span many orders of magnitude around it): finish
+                # without a gradient, as the likelihood search does. The
+                # simplex keeps its start, so this is never worse.
+                res = minimize(fun, res.x, method="Nelder-Mead")
             return res
 
         res = search(param_init)
