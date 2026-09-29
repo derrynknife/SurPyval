@@ -332,4 +332,10 @@ def test_schema_stamp_is_the_oldest_that_rebuilds_the_formula(formula, schema):
     )
     for family in (surv.WeibullPH, surv.CoxPH):
         d = family.fit_from_df(df, x_col="x", formula=formula).to_dict()
-        assert d["schema"] == schema == required_schema(d)
+        assert d["schema"] == required_schema(d)
+        if family is surv.CoxPH:
+            # A Cox model's nonzero covariate centre alone makes it schema
+            # 2 (#459); the formula is judged without it.
+            assert d["schema"] == 2
+            d = {k: v for k, v in d.items() if k != "center"}
+        assert required_schema(d) == schema

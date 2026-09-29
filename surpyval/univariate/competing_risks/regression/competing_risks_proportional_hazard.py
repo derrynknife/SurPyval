@@ -88,6 +88,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     n_event_types: int
     h0_e: "npt.NDArray"
     H0_e: "npt.NDArray"
+    #: The covariate means the cause-specific Cox fits centred on (#459):
+    #: the baselines ``h0_e`` are those of a unit at ``center``, and
+    #: ``phi_e`` is relative to it. Zeros for a Fine-Gray model, whose
+    #: baselines are at ``Z = 0``.
+    center: "npt.NDArray"
     phi: Any
     phi_e: Any
     _fg_models: dict
@@ -121,7 +126,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
         Stores the causes (``event_idx_map``), the per-cause coefficients
         ``betas`` and the per-cause baseline step arrays on the shared time
-        grid ``x``; for ``model="Fine-Gray"`` also each cause's
+        grid ``x`` (with the covariate ``center`` they are at); for
+        ``model="Fine-Gray"`` also each cause's
         :class:`FineGrayModel` (its own ``to_dict``), from which the
         Fine-Gray predictions come. The reloaded model reproduces every
         prediction (``cif``, ``sf``, ``ff``, ``Hf``, ``hf``, ``df``) for any
@@ -156,6 +162,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             "x": np.asarray(self.x, dtype=float).tolist(),
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
+            # A nonzero centre makes the dict schema 2 (#459): a schema-1
+            # reader would read the baselines as at Z = 0.
+            "center": np.asarray(self.center, dtype=float).tolist(),
         }
         if self.model == "Fine-Gray":
             # The Fine-Gray predictions come from the per-cause models (the
@@ -195,21 +204,35 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 )
             }
         model.results = None
+        betas = np.array(model_dict["betas"], dtype=float)
         model._finish(
-            np.array(model_dict["betas"], dtype=float),
+            betas,
             np.array(model_dict["h0_e"], dtype=float),
+            # Written before the Cox fits were centred (#459): the
+            # baselines are at Z = 0.
+            np.array(
+                model_dict.get("center", np.zeros(betas.shape[1])),
+                dtype=float,
+            ),
         )
         restore_covariate_meta(model, model_dict)
         return model
 
-    def _finish(self, betas: npt.NDArray, baselines: npt.NDArray) -> None:
+    def _finish(
+        self,
+        betas: npt.NDArray,
+        baselines: npt.NDArray,
+        center: npt.NDArray,
+    ) -> None:
         # The attributes derived from the per-cause coefficients and baseline
         # increments, shared by ``fit`` and ``from_dict`` so a reloaded model
         # is rebuilt exactly as the fitted one was.
         self.betas = betas
         self.beta = betas.sum(axis=0)
+        self.center = center
+        # Relative to the centre, where the baselines are (#459).
         self.phi_e = lambda Z, e_i: np.exp(
-            self._prepare_Z(Z) @ self.betas[e_i, :]
+            (self._prepare_Z(Z) - self.center) @ self.betas[e_i, :]
         )
         self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ self.beta)
         self.h0_e = baselines
@@ -630,7 +653,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             A competing-risks proportional-hazards model. ``betas`` holds one
             row of coefficients per cause, in the order of ``event_idx_map``
             (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
-            multiplier. ``beta`` and ``phi`` (the sum of the per-cause
+            multiplier, relative to a unit at the covariate means
+            ``center`` for ``model="Cox"`` (where its baseline is).
+            ``beta`` and ``phi`` (the sum of the per-cause
             coefficients and its multiplier) are kept for backward
             compatibility but are not a model quantity: every prediction
             uses the per-cause coefficients.
@@ -676,6 +701,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         unique_x = np.unique(x)
 
         baselines = np.zeros((n_event_types, len(unique_x)))
+        # The Fine-Gray baselines are at Z = 0; the Cox ones at the centre
+        # the Cox fits share (they fit the same rows).
+        center = np.zeros(Z.shape[1])
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
 
@@ -694,6 +722,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
                 results.append(cox_model.res)
                 betas[i, :] = cox_model.res.x
+                center = np.asarray(cox_model.center, dtype=float)
                 # Cause-specific baseline hazard: reuse the fitted Cox model's
                 # own baseline (Efron's after an Efron fit, else Breslow's),
                 # which is built from c_e (the cause-specific event
@@ -725,6 +754,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
 
         out.results = results
-        out._finish(betas, baselines)
+        out._finish(betas, baselines, center)
         out.x = unique_x
         return out

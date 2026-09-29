@@ -112,7 +112,12 @@ error asking for an upgrade rather than misreading its ``null`` values. So is
 a regression model fitted with a formula that SurPyval 0.20 cannot rebuild
 (a wrapped categorical such as ``C(g)``, integer category levels, or a
 fitted transform such as ``scale(z)``); a formula of plain columns and
-string categoricals is stamped ``1``. ``SurpyvalData.to_json`` uses the same
+string categoricals is stamped ``1``. So is a Cox model (``CoxPH``, or the
+cause-specific ``CompetingRisksProportionalHazards``) whose covariate means
+``center`` are not all zero: its baseline is that of a unit at ``center``,
+which SurPyval 0.20 would ignore, reading the baseline as at ``Z = 0``. A
+file written before the covariates were centred has no ``center`` and loads
+with its baseline at 0, as it was fitted. ``SurpyvalData.to_json`` uses the same
 convention. :func:`~surpyval.serialisation.encode_non_finite` and
 :func:`~surpyval.serialisation.decode_non_finite` apply and undo it on
 any dictionary.

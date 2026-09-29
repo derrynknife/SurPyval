@@ -889,7 +889,9 @@ together produce the incidence effect.
     assert _b[1][0] > 0 and _b[2][0] < 0, _b
 
 The causes are sorted, so the row order of ``betas`` is reproducible.
-``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`, and
+``phi_e(Z, row)`` is a cause's hazard multiplier
+:math:`e^{(Z - \bar Z)\hat\beta_k}`, relative to a unit at the covariate means
+:math:`\bar Z` (``center``, where the Cox fits put the baselines), and
 ``results`` holds each cause's optimiser result. The model also has ``beta``
 and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
 of the rows of ``betas``, which is not a quantity of the model, and no

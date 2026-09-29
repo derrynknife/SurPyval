@@ -391,8 +391,11 @@ The ``p_values`` are exactly the Wald tests :math:`2(1 - \Phi(|\beta/\text{se}|)
 built from these standard errors. Because the model contains an interaction,
 no single coefficient can be changed on its own — raising peel force also
 raises the interaction column — so a hazard ratio is best computed between two
-concrete tires. ``model.phi(Z)`` returns the multiplier :math:`e^{\beta'Z}`, and
-the ratio of two multipliers is their hazard ratio at every time:
+concrete tires. ``model.phi(Z)`` returns the multiplier
+:math:`e^{\beta'(Z - \bar Z)}`, the hazard ratio against a tire at the
+covariate means :math:`\bar Z` (``model.center``, on which the Cox fit centres
+the covariates, as R's ``coxph`` does), and the ratio of two multipliers is
+their hazard ratio at every time:
 
 .. jupyter-execute::
     :hide-code:
