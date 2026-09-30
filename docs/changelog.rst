@@ -26,7 +26,9 @@ non-parametric ``df`` is the probability of each step. Kaplan-Meier and
 Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 ``survfit`` does. Gray's test and the competing-risks Cox incidences now
 match R. Unknown option values raise ``ValueError`` everywhere. The
-Uniform's MLE refuses censored data again.
+Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
+``P(X > x)``, as for every other discrete distribution. Fits whose data
+have no finite maximum warn "No finite maximum".
 
 - **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
   ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
