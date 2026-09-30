@@ -521,8 +521,10 @@ bands change (#477).
   family's probability-plot scale (``log(-log S)`` for the Weibull, the
   normal quantile for the Normal and LogNormal), where they are monotone
   whenever the shape's own interval excludes 0; that bound is now 0.83.
-  Large samples are unchanged to 2e-4. ``plot`` and ``get_plot_data``
-  take ``method=`` to draw the likelihood-ratio band.
+  Large samples are unchanged to 2e-4. The degradation models' two-stage
+  band is formed on the same scale, so it still contains the life model's
+  own. ``plot`` and ``get_plot_data`` take ``method=`` to draw the
+  likelihood-ratio band.
 - **quantile_cb and mean_cb (#494).** Parametric models give confidence
   bounds on a quantile (a B-life) and on the mean, by Wald (matching R's
   ``survreg`` to 1e-7) or likelihood ratio (``method="lr"``, better on
