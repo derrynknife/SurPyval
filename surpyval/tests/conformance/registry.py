@@ -2048,7 +2048,10 @@ _LR_X = {
     "Geometric": np.array([2.0, 5.0, 8.0]),
     "Uniform": np.array([3.2, 8.0, 14.6]),
     "NegativeBinomial": np.array([2.0, 5.0, 8.0]),
-    "ExpoWeibull": np.array([4.0, 8.0, 13.0]),
+    # One time for ExpoWeibull: its searches in a three-parameter valley
+    # take seconds each, and three times tripled a 17-minute sweep. The
+    # tail (13) is where its bands were hardest (the hf nesting in #421).
+    "ExpoWeibull": np.array([13.0]),
 }
 
 
