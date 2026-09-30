@@ -463,67 +463,224 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return Z
         return np.asarray(Z, dtype=float) - center
 
-    def __repr__(self) -> str:
-        dist_params = self.params[0 : self.k_dist]
-        reg_model_params = self.params[self.k_dist :]
-        dist_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(dist_params, self.distribution.param_names)
-            ]
-        )
+    #: What ``exp(coef)`` is, for a log-linear link, by kind.
+    _EXP_MEANING = {
+        "Proportional Hazard": "the hazard ratio",
+        "Accelerated Failure Time": "the acceleration factor",
+        "Proportional Odds": "the survival odds ratio",
+    }
 
-        reg_model_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    reg_model_params, self.reg_model.phi_param_map
-                )
-                if name not in self.fixed
-            ]
-        )
+    def _is_linear_predictor(self) -> bool:
+        """Whether the covariate parameters are coefficients of a linear
+        predictor ``beta'Z`` (one per column of ``Z``), which the
+        coefficient table is for; an accelerated-life model's are the
+        parameters of its life model."""
+        n_phi = len(self.params) - self.k_dist
+        pmap = dict(getattr(self.reg_model, "phi_param_map", {}) or {})
+        return self.kind != "Accelerated Life" and pmap == {
+            "beta_{}".format(i): i for i in range(n_phi)
+        }
 
-        if hasattr(self, "params"):
-            out = (
-                "Parametric Regression SurPyval Model"
-                + "\n===================================="
-                + "\nKind                : {kind}"
-                + "\nDistribution        : {dist}"
-                + "\nRegression Model    : {reg_model}"
-                + "\nFitted by           : MLE"
-            ).format(
-                kind=self.kind,
-                dist=self.distribution.name,
-                reg_model=self.reg_model.name,
+    def _exp_meaning(self) -> "str | None":
+        """What ``exp(coef)`` means, or ``None`` where the link is not
+        log-linear (``exp(coef)`` is then not a ratio)."""
+        from ._fit_skeleton import LogLinearPhi
+
+        name = getattr(self.reg_model, "name", "")
+        if name not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
+            return None
+        return self._EXP_MEANING.get(self.kind)
+
+    def _summary_se(self) -> npt.NDArray:
+        """The standard errors for the summary: ``nan`` where there are
+        none (a model built from parameters, or one whose information
+        cannot be inverted), and for a parameter held fixed."""
+        n = len(self.params)
+        try:
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                se = np.array(self.standard_errors(), dtype=float)
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            se = np.full(n, np.nan)
+        if se.shape != (n,):
+            se = np.full(n, np.nan)
+        names = self.parameter_names()
+        se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
+        return se
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The parameter table (#484), in lifelines' layout: the baseline
+        distribution's parameters, then the regression coefficients (or,
+        for an accelerated-life model, the life model's parameters), each
+        with its standard error and a two-sided ``1 - alpha_ci`` Wald
+        interval; for the coefficients also ``exp(coef)`` (where the link
+        is log-linear: the hazard ratio for proportional hazards, the
+        acceleration factor for AFT, the survival odds ratio for
+        proportional odds), the Wald statistic ``z`` and its two-sided
+        p-value. The coefficients are named by ``feature_names`` for a
+        model fitted with ``fit_from_df``.
+
+        The baseline parameters' intervals are those of :meth:`param_cb`,
+        which stay in the parameter's support (a positive scale's is
+        computed on the log scale). A fixed parameter has no standard
+        error or interval (``nan``), nor does an aliased coefficient
+        (#476), whose value is ``nan`` too.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Indexed by ``(part, name)``, ``part`` one of ``"baseline"``,
+            ``"coefficients"`` or ``"life model"``, with the columns of
+            ``CoxPH``'s :meth:`summary`: ``coef`` (the estimate),
+            ``exp(coef)``, ``se(coef)``, ``coef lower 95%``, ``coef upper
+            95%``, ``exp(coef) lower 95%``, ``exp(coef) upper 95%``, ``z``
+            and ``p``.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> model = WeibullPH.fit_from_df(
+        ...     df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                               coef  se(coef)       p
+        part         name
+        baseline     alpha  32.2365   11.4172     NaN
+                     beta    1.3801    0.1241     NaN
+        coefficients fin    -0.3296    0.1898  0.0826
+                     age    -0.0713    0.0209  0.0006
+        """
+        import pandas as pd
+
+        from ._summary import coefficient_names, coefficient_table
+
+        params = np.asarray(self.params, dtype=float)
+        se = self._summary_se()
+        names = self.parameter_names()
+        k = self.k_dist
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        if self._is_linear_predictor():
+            part = "coefficients"
+            rows = coefficient_table(
+                coefficient_names(self, len(params) - k),
+                params[k:],
+                se[k:],
+                alpha_ci,
+                exp=self._exp_meaning() is not None,
             )
+            first = k
+        else:
+            part, rows, first = "life model", None, len(params)
+        # The other parameters: their estimate, standard error and the
+        # support-respecting interval of ``param_cb``.
+        others = []
+        for i in range(first):
+            bounds = np.full(2, np.nan)
+            if np.isfinite(se[i]):
+                try:
+                    with warnings.catch_warnings(), np.errstate(all="ignore"):
+                        warnings.simplefilter("ignore")
+                        bounds = np.asarray(
+                            self.param_cb(names[i], alpha_ci), dtype=float
+                        ).ravel()
+                except (ValueError, ArithmeticError):
+                    pass
+            others.append(
+                {
+                    "coef": params[i],
+                    "se(coef)": se[i],
+                    "coef lower " + level: bounds[0],
+                    "coef upper " + level: bounds[-1],
+                }
+            )
+        table = pd.DataFrame(
+            others,
+            columns=list(coefficient_table([], [], [], alpha_ci).columns),
+        )
+        parts = ["baseline"] * min(k, first) + [part] * (first - k)
+        index = list(zip(parts, names[:first]))
+        if rows is not None:
+            table = pd.concat([table, rows.reset_index(drop=True)])
+            index += [(part, name) for name in rows.index]
+        table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
+        return table
 
-            if self._has_center():
-                # A fit with center=True (#463): say where the baseline
-                # parameters are.
-                out += (
-                    "\nBaseline at         : the covariate means, "
-                    "Z = center = {}".format(
-                        np.array2string(
-                            np.asarray(self.center, dtype=float),
-                            separator=", ",
-                        )
+    def __repr__(self) -> str:
+        if not hasattr(self, "params"):
+            return "Unable to fit values"
+        from ._summary import coefficient_repr, format_table
+
+        out = (
+            "Parametric Regression SurPyval Model"
+            + "\n===================================="
+            + "\nKind                : {kind}"
+            + "\nDistribution        : {dist}"
+            + "\nRegression Model    : {reg_model}"
+            + "\nFitted by           : MLE"
+        ).format(
+            kind=self.kind,
+            dist=self.distribution.name,
+            reg_model=self.reg_model.name,
+        )
+        if self._has_center():
+            # A fit with center=True (#463): say where the baseline
+            # parameters are.
+            out += (
+                "\nBaseline at         : the covariate means, "
+                "Z = center = {}".format(
+                    np.array2string(
+                        np.asarray(self.center, dtype=float),
+                        separator=", ",
                     )
                 )
-            out = (
-                out
-                + "\nDistribution        :\n"
-                + "{params}".format(params=dist_param_string)
             )
-
-            out = (
-                out
-                + "\nRegression Model    :\n"
-                + "{params}".format(params=reg_model_param_string)
+        # The life parameter an accelerated-life model substitutes is held
+        # at a placeholder value, not a parameter of the model.
+        placeholder = set()
+        if self.kind == "Accelerated Life":
+            placeholder = set(getattr(self.model, "fixed", None) or {})
+        fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
+        if fixed:
+            out += "\nFixed               : {}".format(
+                ", ".join("{} = {:.6g}".format(k, v) for k, v in fixed.items())
             )
+        table = self.summary()
+        estimates = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
 
-            return out
-        else:
-            return "Unable to fit values"
+        def block(part: str) -> str:
+            rows = table.loc[part].rename(columns=estimates)
+            rows = rows.loc[[n for n in rows.index if n not in placeholder]]
+            rows.index.name = None
+            return format_table(rows, list(estimates.values()))
+
+        out += (
+            "\nBaseline            : {} parameters; Wald 95% "
+            "intervals\n".format(self.distribution.name)
+        ) + block("baseline")
+        parts = table.index.get_level_values(0)
+        if "life model" in parts:
+            out += "\nLife model          : Wald 95% intervals\n" + block(
+                "life model"
+            )
+        if "coefficients" in parts:
+            meaning = self._exp_meaning()
+            out += "\nCoefficients        : {}Wald 95% intervals\n".format(
+                "exp(coef) is {}; ".format(meaning) if meaning else ""
+            ) + coefficient_repr(table.loc["coefficients"])
+        return out
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)

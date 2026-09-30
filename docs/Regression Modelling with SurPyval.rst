@@ -417,6 +417,27 @@ tire there, :math:`e^{\beta'(Z - \bar Z)}`.)
     assert np.allclose(model.p_values,
                        2 * (1 - norm.cdf(np.abs(model.beta / se))))
 
+``model.summary()`` gathers these into one table, as R's ``summary(coxph)``
+and lifelines' ``summary`` do: the coefficient, the hazard ratio
+``exp(coef)``, the standard error, 95% Wald intervals for both, ``z`` and the
+p-value, one row per covariate (named by the columns for a model fitted with
+``fit_from_df``). The model's printout shows the same table;
+``summary(robust=True)`` uses the cluster-robust standard errors of
+`Cluster-robust standard errors`_ instead. The parametric models'
+``summary()`` has the same columns, with the baseline distribution's
+parameters in rows of their own, above the coefficients.
+
+.. jupyter-execute::
+
+    model.summary().round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.summary()['se(coef)'], se)
+    assert np.allclose(model.summary()['p'], model.p_values)
+
 .. jupyter-execute::
 
     Z_mean = Z.mean().values

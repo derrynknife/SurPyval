@@ -601,7 +601,7 @@ def _solve_beta_and_p_values(
     n: npt.NDArray,
     n_events: float,
     strata: "npt.NDArray | None" = None,
-) -> tuple[Any, npt.NDArray, npt.NDArray]:
+) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Root-find the score (with BFGS fallback) and compute Wald p-values
     from the observed information; shared by ``fit`` and
     ``_fit_stratified`` so the most-patched block in this file exists
@@ -609,9 +609,9 @@ def _solve_beta_and_p_values(
     number of events and stratum labels are for the aliasing check
     (:func:`_cox_aliased`).
 
-    Returns ``(res, p_values, aliased)``: ``res.x`` has 0 at the aliased
-    columns (the coefficients the predictions use), and their p-values
-    are nan."""
+    Returns ``(res, p_values, se, aliased)``: ``res.x`` has 0 at the
+    aliased columns (the coefficients the predictions use), and their
+    p-values and standard errors ``se`` are nan."""
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         info_at_start = jac(beta_init)[1]
     p = len(np.atleast_1d(beta_init))
@@ -647,7 +647,7 @@ def _solve_beta_and_p_values(
         beta_init = np.asarray(beta_init, dtype=float)[kept]
         if kept.size == 0:
             res = OptimizeResult(x=np.zeros(p), success=True, fun=0.0)
-            return res, np.full(p, np.nan), aliased
+            return res, np.full(p, np.nan), np.full(p, np.nan), aliased
     # Where the likelihood is monotone (below) the coefficients run off
     # towards infinity and the risk-set sums underflow to 0 on the way;
     # the resulting log(0) and 0/0 are that divergence, which is reported
@@ -688,12 +688,14 @@ def _solve_beta_and_p_values(
     # which is the correct signal, so suppress the sqrt-of-negative
     # warning rather than emit it.
     with np.errstate(invalid="ignore"):
-        z_score = res.x / np.sqrt(var)
+        se = np.sqrt(var)
+        z_score = res.x / se
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
     if aliased.size:
         res.x = embed(res.x)
         p_values = expand(p_values, kept, p)
-    return res, p_values, aliased
+        se = expand(se, kept, p)
+    return res, p_values, se, aliased
 
 
 def _warn_if_monotone(
@@ -1452,13 +1454,14 @@ class CoxPH_:
         Zc = Z - mean
         neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
-        res, p_values, aliased = _solve_beta_and_p_values(
+        res, p_values, se, aliased = _solve_beta_and_p_values(
             neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
+        model.se = se
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = tie_method
@@ -1592,7 +1595,7 @@ class CoxPH_:
         neg_ll, jac = _combine_generators(gens)
 
         beta_init = np.zeros(n_params)
-        res, p_values, aliased = _solve_beta_and_p_values(
+        res, p_values, se, aliased = _solve_beta_and_p_values(
             neg_ll,
             jac,
             beta_init,
@@ -1612,6 +1615,7 @@ class CoxPH_:
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
+        model.se = se
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = tie_method

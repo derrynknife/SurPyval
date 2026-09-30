@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -11,6 +12,11 @@ from surpyval.serialisation import (
 from surpyval.utils import is_missing_event
 from surpyval.utils.shapes import keeps_query_shape
 
+from ._summary import (
+    coefficient_names,
+    coefficient_repr,
+    coefficient_table,
+)
 from .regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -99,6 +105,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
     h0: npt.NDArray
     H0: npt.NDArray
     p_values: npt.NDArray
+    #: The coefficients' standard errors, from the observed information
+    #: (``None`` for a model saved before they were stored).
+    se: "npt.NDArray | None" = None
     #: The fit's score/Hessian and negative-partial-log-likelihood
     #: closures (the scalar value is ``_neg_log_like``).
     jac: Callable
@@ -203,10 +212,78 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 )
             )
 
-        out = out + "\nParameters          :\n"
-        for i, p in enumerate(self.params):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
-        return out
+        tie_method = getattr(self, "tie_method", None)
+        if tie_method is not None:
+            out += "\nTie method          : {}".format(tie_method)
+        out += (
+            "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
+            "95% intervals\n"
+        )
+        return out + coefficient_repr(self.summary()) + "\n"
+
+    def summary(
+        self,
+        alpha_ci: float = 0.05,
+        robust: bool = False,
+        cluster: "npt.ArrayLike | None" = None,
+    ) -> "pd.DataFrame":
+        """
+        The coefficient table, as R's ``summary(coxph)`` and lifelines'
+        ``summary`` give it (#484): one row per covariate (named by
+        ``feature_names`` for a model fitted with ``fit_from_df``), with the
+        coefficient, the hazard ratio ``exp(coef)``, the standard error, a
+        two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
+        statistic ``z`` and its two-sided p-value. An aliased coefficient
+        (#476) is ``nan`` throughout.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+        robust : bool, optional
+            Use the cluster-robust (sandwich) standard errors of
+            :meth:`robust_summary` instead of the model-based ones.
+        cluster : array_like, optional
+            With ``robust=True``, the cluster label of each row (as for
+            :meth:`robust_covariance`).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``coef``, ``exp(coef)``, ``se(coef)``, ``coef lower
+            95%``, ``coef upper 95%``, ``exp(coef) lower 95%``, ``exp(coef)
+            upper 95%``, ``z`` and ``p`` (the level follows ``alpha_ci``).
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> model = CoxPH.fit_from_df(
+        ...     df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
+                     coef  exp(coef)  se(coef)       p
+        covariate
+        fin       -0.3279     0.7204    0.1899  0.0841
+        age       -0.0715     0.9310    0.0209  0.0006
+        """
+        beta = np.asarray(self.beta, dtype=float)
+        names = coefficient_names(self, beta.size)
+        if robust:
+            se = np.asarray(self.robust_summary(cluster)["se"], dtype=float)
+            return coefficient_table(names, beta, se, alpha_ci)
+        se = getattr(self, "se", None)
+        p_values = getattr(self, "p_values", None)
+        if se is None and p_values is None:
+            se = np.full(beta.shape, np.nan)
+        elif se is None:
+            # A model saved before the standard errors were: they follow
+            # from the Wald p-values, |beta| / z.
+            with np.errstate(divide="ignore", invalid="ignore"):
+                z = norm.isf(np.asarray(p_values, dtype=float) / 2)
+                se = np.abs(beta) / z
+        return coefficient_table(names, beta, se, alpha_ci, p=p_values)
 
     # -- serialisation -----------------------------------------------------
 
@@ -265,6 +342,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 out["tl"] = tl.tolist()
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
+        if getattr(self, "se", None) is not None:
+            out["se"] = np.asarray(self.se, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
         serialise_covariate_meta(self, out)
@@ -312,6 +391,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         )
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
+        if "se" in model_dict:
+            out.se = np.array(model_dict["se"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         restore_covariate_meta(out, model_dict)
