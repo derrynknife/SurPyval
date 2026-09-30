@@ -1448,7 +1448,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return [*self.distribution.bounds, *phi_bounds]
 
     def _hessian_step(self, p_hat: npt.NDArray) -> npt.NDArray:
-        """Finite-difference step for the covariance Hessian.
+        """Finite-difference step for the covariance Hessian, and the
+        scale its inversion (numerical or exact) is done in.
 
         The usual ``eps**(1/3) * max(|p|, 1e-2)``, except that a parameter
         closer to one of its bounds than a few steps gets a step relative
