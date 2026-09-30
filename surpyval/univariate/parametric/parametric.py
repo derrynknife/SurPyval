@@ -2379,22 +2379,22 @@ class Parametric(
         step estimate (Brookmeyer and Crowley); :meth:`mean_cb` bounds the
         mean.
         """
-        p = np.asarray(p, dtype=float)
+        probs = np.asarray(p, dtype=float)
         self._check_summary_cb(alpha_ci, bound)
-        if p.size == 0:
+        if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
-        if not np.all((p > 0) & (p < 1)):
-            raise ValueError(f"'p' must be in (0, 1); got {p.tolist()}")
+        if not np.all((probs > 0) & (probs < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
         if self.dist.discrete:
             self._is_lr(method)  # checks the name
-            return self._quantile_cb_discrete(p, alpha_ci, bound, method)
+            return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
         if self._is_lr(method):
             fns = [
                 lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
-                for p_i in p
+                for p_i in probs
             ]
             return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
-        return self._quantile_cb_wald(p, alpha_ci, bound)
+        return self._quantile_cb_wald(probs, alpha_ci, bound)
 
     def mean_cb(
         self,
@@ -2597,48 +2597,59 @@ class Parametric(
     ) -> npt.NDArray:
         """The bound on a discrete quantile, the smallest ``k`` with
         ``F(k) >= p``: that ``k`` from the band on ``F`` instead of from
-        ``F`` -- from its upper bound for the lower bound on the quantile,
-        and its lower bound for the upper -- as the nonparametric
+        ``F`` -- from its upper end for the lower bound on the quantile,
+        and its lower end for the upper -- as the nonparametric
         ``quantile_cb`` inverts its band (Brookmeyer and Crowley). A
         discrete quantile is a step, with no gradient for the delta
-        method. ``inf`` where the band never reaches ``p``.
+        method. Each ``k`` is found by doubling and then bisection, so a
+        heavy tail costs a few dozen evaluations of the band, not one per
+        count; ``inf`` where the band does not reach ``p`` by ``2**40``.
         """
-        side = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
         start = float(getattr(self.dist, "support", (0, np.inf))[0])
         start = 0.0 if not np.isfinite(start) else start
-        target = np.max(p)
-        # The support up to where the band's lower end reaches every p
-        ks = np.arange(start, start + 64)
-        while True:
-            band = np.asarray(
-                self.cb(
-                    ks,
-                    on="ff",
-                    alpha_ci=alpha_ci,
-                    bound=side[bound],
-                    method=method,
-                ),
-                dtype=float,
-            )
-            band = np.nan_to_num(band, nan=0.0)
-            # The end of the band that reaches p last: its lower end
-            need = band[:, 0] if bound == "two-sided" else band
-            if (need >= target).any() or ks[-1] > start + 1e6:
-                break
-            ks = np.arange(start, 2 * ks[-1] + 2 - start)
-        if bound == "two-sided":
-            f_lo, f_up = band[:, 0], band[:, 1]
-        else:
-            # one end, the one asked for: F's upper for the quantile's
-            # lower bound, F's lower for its upper
-            f_lo = f_up = band
 
-        def first(values: npt.NDArray, level: float) -> float:
-            hit = values >= level
-            return float(ks[np.argmax(hit)]) if hit.any() else np.inf
+        def band_end(k: float, end: str) -> float:
+            # "upper" or "lower" end of the band on F at k: the one-sided
+            # bound at alpha_ci for a one-sided bound on the quantile, the
+            # end of the two-sided band otherwise
+            if bound == "two-sided":
+                b = self.cb(k, on="ff", alpha_ci=alpha_ci, method=method)
+                value = b[1] if end == "upper" else b[0]
+            else:
+                value = self.cb(
+                    k, on="ff", alpha_ci=alpha_ci, bound=end, method=method
+                )
+            value = float(value)
+            return value if np.isfinite(value) else 0.0
 
-        lower = np.array([first(f_up, p_i) for p_i in p])
-        upper = np.array([first(f_lo, p_i) for p_i in p])
+        def first(level: float, end: str) -> float:
+            # The smallest count at which the band's end reaches level
+            if band_end(start, end) >= level:
+                return start
+            lo, step = start, 1.0
+            while band_end(start + step, end) < level:
+                lo = start + step
+                step *= 2
+                if step > 2.0**40:
+                    return np.inf
+            hi = start + step
+            while hi - lo > 1:
+                mid = np.floor((lo + hi) / 2)
+                if band_end(mid, end) >= level:
+                    hi = mid
+                else:
+                    lo = mid
+            return hi
+
+        with warnings.catch_warnings():
+            # a warning of the band's is given once, not once per count
+            warnings.simplefilter("ignore")
+            lower = np.full(len(p), np.nan)
+            upper = np.full(len(p), np.nan)
+            if bound in ("two-sided", "lower"):
+                lower = np.array([first(p_i, "upper") for p_i in p])
+            if bound in ("two-sided", "upper"):
+                upper = np.array([first(p_i, "lower") for p_i in p])
         if bound == "two-sided":
             return np.column_stack([lower, upper])
         return lower if bound == "lower" else upper
@@ -2702,8 +2713,12 @@ class Parametric(
         with np.errstate(all="ignore"):
             region = self._lr_region(free, crit)
             for i, f in enumerate(fns):
+
+                def psi(theta: npt.NDArray, f: Callable = f) -> float:
+                    return to_psi(f(theta))
+
                 lo, hi = self._cb_lr_psi_bounds(
-                    lambda theta, f=f: to_psi(f(theta)),
+                    psi,
                     free,
                     crit,
                     want_lower,

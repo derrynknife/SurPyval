@@ -2147,6 +2147,41 @@ explained in :doc:`Parametric Estimation`.
     for _lo, _hi in [wald_cb, lr_cb]:
         assert _hi - _b > _b - _lo, (_lo, _hi)
 
+B-lives and the mean have their own bounds, ``quantile_cb(p)`` and
+``mean_cb()`` -- the names the non-parametric models use -- with the same
+``alpha_ci``, ``bound`` and ``method``. "What is the B10 life, and its 95%
+lower bound?":
+
+.. jupyter-execute::
+
+    print("B10               :", model.qf(0.1))
+    print("B10 95% lower, Wald:", model.quantile_cb(0.1, bound='lower'))
+    print("B10 95% lower, LR  :", model.quantile_cb(0.1, bound='lower', method='lr'))
+    print("mean with 95% bounds:", model.mean(), model.mean_cb())
+
+The Wald bound on a quantile :math:`t_p` is the delta method on
+:math:`\log t_p` (for the Weibull,
+:math:`\log t_p = \log\alpha + \log(-\log(1 - p))/\beta`), the "Fisher
+matrix" bound; it agrees with R's ``survreg`` (``predict(type="uquantile",
+se.fit=TRUE)``) to seven digits. In small, heavily censored samples its lower
+bound on a low quantile is too high too often, so it covers less than its
+nominal level; the likelihood-ratio bound, the extreme of :math:`t_p` over the
+parameters' likelihood region, stays much closer to it, and is the one to use
+there. Both are checked for coverage at 100 units in the calibration studies
+(``calibration/test_coverage_parametric.py``). Do not find a B-life bound by
+reading the band from ``cb(t, on='ff')`` across: a pointwise band on
+:math:`F` does not invert to the interval on :math:`t_p`.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _lo_w = model.quantile_cb(0.1, bound='lower')
+    _lo_lr = model.quantile_cb(0.1, bound='lower', method='lr')
+    assert _lo_w < model.qf(0.1) and _lo_lr < model.qf(0.1)
+    _m = model.mean_cb()
+    assert _m[0] < model.mean() < _m[1]
+
 
 Creating a custom Distribution
 ------------------------------
