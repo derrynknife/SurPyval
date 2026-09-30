@@ -337,7 +337,10 @@ hypothesis of a homogeneous Poisson process (no trend) directly on the event
 times; no model is fitted. They take the event times ``x``, the item ids
 ``i`` and the observation end ``T`` — a scalar, one value per item, or a
 dict keyed by item. Leave ``T`` out for failure-truncated data, and the last
-event of each item is treated as the end of its window.
+event of each item is treated as the end of its window. Data in the fitters'
+form, ``x``, ``i`` and ``c``, can be passed as they are with ``c=`` by
+keyword: an item's ``c = 1`` row ends its window (the third positional
+argument is ``T``, so ``laplace(x, i, c)`` raises an error saying so).
 
 .. jupyter-execute::
 

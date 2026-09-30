@@ -695,6 +695,9 @@ naming and the status column ``c`` follows surpyval's censoring convention —
 ``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
 (a covariate change or administrative end). A subject may have at most one
 ``c = 0`` row, it must be its last interval, and its intervals must not overlap.
+The covariates are ``Z_cols`` (numeric columns) or, as in ``fit_from_df``, a
+``formula=`` that codes categorical columns such as the ``"yes"`` / ``"no"``
+columns of ``load_rossi_time_varying()``.
 In the example below a covariate
 ``stress`` switches from 0 to 1 at a random time for each unit and genuinely
 raises the hazard once it turns on; units that fail before the switch

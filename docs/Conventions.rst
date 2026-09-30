@@ -389,8 +389,8 @@ Saving and Loading Models
 Almost every fitted SurPyval model can be saved and restored (the exceptions are listed at the end of this section):
 
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
-- ``model.to_json(path)`` writes that dictionary to a JSON file. The dictionaries and files are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
-- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it**. You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
+- ``model.to_json(path)`` writes that dictionary to a JSON file; ``model.to_json()``, with no path, returns the JSON text instead. The dictionaries, files and text are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
+- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it** (``from_json`` also takes the JSON text itself). You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
 - Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class, and otherwise check a dictionary exactly as ``surpyval.from_dict`` does.
 
 .. jupyter-execute::
