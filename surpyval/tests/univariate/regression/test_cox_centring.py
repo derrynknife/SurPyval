@@ -344,10 +344,12 @@ def test_a_dict_written_by_0_21_0_with_a_center_still_loads():
         )
 
 
-def test_a_constant_column_far_from_zero_is_still_refused():
+def test_a_constant_column_far_from_zero_is_still_aliased():
     # Centred, a constant column is (nearly) zero; the identifiability
-    # check still judges it on the raw values.
+    # check still judges it on the raw values (#476).
     x, Z, c = _data()
     Z = np.column_stack([Z[:, 0], np.full(x.size, 2000.0)])
-    with pytest.raises(ValueError, match=r"column\(s\) \[1\]"):
-        CoxPH.fit(x, Z, c=c)
+    with pytest.warns(UserWarning, match=r"column\(s\) 1 of Z cannot"):
+        model = CoxPH.fit(x, Z, c=c)
+    assert np.isnan(model.beta[1])
+    assert model.beta[0] == pytest.approx(CoxPH.fit(x, Z[:, :1], c=c).beta[0])

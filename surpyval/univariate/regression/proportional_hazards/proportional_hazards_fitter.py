@@ -355,37 +355,18 @@ class ProportionalHazardsFitter(
         ...     'Wedge gauge×peel force'
         ... ]].values
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c)
-        >>> model
-        Parametric Regression SurPyval Model
-        ====================================
-        Kind                : Proportional Hazard
-        Distribution        : Weibull
-        Regression Model    : Log Linear [e^(beta'Z)]
-        Fitted by           : MLE
-        Distribution        :
-             alpha: 0.2425513627560218
-              beta: 16.057785182711932
-        Regression Model    :
-            beta_0: -9.165062726518311
-            beta_1: -7.998573055929788
-            beta_2: -27.50318580568538
-            beta_3: 18.385445332039488
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                                coef  se(coef)       p
+        part         name
+        baseline     alpha    0.2426    0.0814     NaN
+                     beta    16.0578    3.9506     NaN
+        coefficients beta_0  -9.1651    3.7237  0.0138
+                     beta_1  -7.9986    2.8119  0.0044
+                     beta_2 -27.5032    9.5366  0.0039
+                     beta_3  18.3854    6.4222  0.0042
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
-        >>> model
-        Parametric Regression SurPyval Model
-        ====================================
-        Kind                : Proportional Hazard
-        Distribution        : Weibull
-        Regression Model    : Log Linear [e^(beta'Z)]
-        Fitted by           : MLE
-        Distribution        :
-             alpha: 0.237729668424067
-              beta: 15.0
-        Regression Model    :
-            beta_0: -8.62832691738283
-            beta_1: -7.617529362323243
-            beta_2: -25.952367249502934
-            beta_3: 17.270148387391387
+        >>> model.params.round(4)
+        array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])
         """
         data, prep = prepare_regression_fit(
             self,

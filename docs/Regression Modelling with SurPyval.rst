@@ -266,11 +266,12 @@ Each family also has a ``fit_from_df`` that names DataFrame columns instead
 Predictions — ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` — take times and
 covariates. Given **one** covariate row they return the curve over all the
 times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
-time per row, which is what you want for scoring a data set but not for drawing
-several curves. To draw curves for several covariate values, call once per
-value. (The survival tree and forest return a full grid instead; see their
-section.)
-A small simulated data set shows both forms:
+time per row, which is what you want for scoring a data set; any other number
+of rows is refused with a ``ValueError``. For a curve per covariate row --
+every time for every row, lifelines' ``predict_survival_function`` -- pass
+``grid=True``: the result has shape ``(len(Z),) + x.shape``, row ``i`` for
+row ``i`` of ``Z``, as the survival tree and forest return it.
+A small simulated data set shows the three forms:
 
 .. jupyter-execute::
 
@@ -285,6 +286,16 @@ A small simulated data set shows both forms:
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
+    print('two rows, a grid     :')
+    print(demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True)
+    assert _g.shape == (2, 3)
+    assert np.allclose(_g[1], demo.sf([5.0, 10.0, 15.0], Z=[1.0]))
 
 The regression models do not have a quantile function (``qf``). A quantile at a
 given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a
@@ -416,6 +427,27 @@ tire there, :math:`e^{\beta'(Z - \bar Z)}`.)
     from scipy.stats import norm
     assert np.allclose(model.p_values,
                        2 * (1 - norm.cdf(np.abs(model.beta / se))))
+
+``model.summary()`` gathers these into one table, as R's ``summary(coxph)``
+and lifelines' ``summary`` do: the coefficient, the hazard ratio
+``exp(coef)``, the standard error, 95% Wald intervals for both, ``z`` and the
+p-value, one row per covariate (named by the columns for a model fitted with
+``fit_from_df``). The model's printout shows the same table;
+``summary(robust=True)`` uses the cluster-robust standard errors of
+`Cluster-robust standard errors`_ instead. The parametric models'
+``summary()`` has the same columns, with the baseline distribution's
+parameters in rows of their own, above the coefficients.
+
+.. jupyter-execute::
+
+    model.summary().round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.summary()['se(coef)'], se)
+    assert np.allclose(model.summary()['p'], model.p_values)
 
 .. jupyter-execute::
 
@@ -636,7 +668,39 @@ encoded exactly as at fit time:
 
 A formula beginning with ``0 +`` asks for the full one-hot coding instead; with
 a baseline distribution in the model that brings back the collinearity above,
-so it is rarely what you want. Wrapped categoricals (``C(site)``, with
+so the last level is aliased (see below) and it is rarely what you want.
+
+A covariate column the data cannot determine -- a constant column (the
+baseline is the intercept: Cox's baseline hazard, or the scale of a family
+whose scale absorbs a constant, as for Weibull PH or any AFT family), one
+constant within each stratum of a stratified Cox fit, or a column that is a
+linear combination of the others -- is **aliased**, as R's ``coxph`` and
+``lm`` do it: the fit runs on the other columns, whose estimates are what they
+are without it, reports its coefficient, standard error and p-value as
+``nan``, lists it in ``model.aliased``, and predicts as though its coefficient
+were 0. One warning names the columns. The columns are taken in order, so of
+two collinear columns it is the later one that is aliased:
+
+.. jupyter-execute::
+
+    import warnings
+
+    doubled = np.column_stack([patients['age'], 2 * patients['age']])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        aliased = CoxPH.fit(patients['time'], doubled, patients['censored'])
+    print(aliased.beta, aliased.aliased)
+    print(str(caught[0].message)[:60])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _alone = CoxPH.fit(patients['time'], doubled[:, :1], patients['censored'])
+    assert np.isnan(aliased.beta[1]) and list(aliased.aliased) == [1]
+    assert abs(aliased.beta[0] - _alone.beta[0]) < 1e-10
+
+Wrapped categoricals (``C(site)``, with
 ``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
 (``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
 are kept when the model is saved (see `Saving and loading a fitted model`_).

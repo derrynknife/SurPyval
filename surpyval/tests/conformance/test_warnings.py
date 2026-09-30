@@ -226,9 +226,19 @@ def test_cox_constant_column_on_separated_data():
     # #409: the constant column's coefficient ran off to 3.1e14, so
     # exp(beta'Z) overflowed (about ten raw numpy warnings) and every
     # prediction was NaN. The column has no coefficient in a Cox model:
-    # it is refused, by name.
-    with pytest.raises(ValueError, match=r"column\(s\) \[2\]"):
-        sp.CoxPH.fit(**_COX_CONSTANT)
+    # it is aliased (#476), with one warning naming it.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with leaks.watch() as found:
+            model = sp.CoxPH.fit(**_COX_CONSTANT, center=True)
+    assert found == [], leaks.report(found)
+    # The other two columns separate the data: that is the second problem,
+    # and the second warning.
+    assert [str(w.message)[:28] for w in caught] == [
+        "Covariate column(s) 2 of Z c",
+        "Monotone partial likelihood:",
+    ]
+    assert np.isnan(model.beta[2])
     # Without it the data are still separated: the one warning is the
     # monotone-likelihood one, and the predictions are finite. (The
     # coefficients run off far enough that the baseline at Z = 0

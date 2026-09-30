@@ -22,6 +22,8 @@ from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import _caller_stacklevel, formula_model_matrix
 
+from ._aliasing import covariate_columns
+
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
@@ -83,8 +85,10 @@ def design_matrix_from_df(
         implicit intercept so categoricals get reference-level
         (reduced-rank) coding, and the intercept column is then dropped —
         the baseline distribution provides the intercept, and a full
-        one-hot encoding would be exactly collinear with it (#252). Pass an
-        explicit ``"0 + ..."`` to opt out and keep full-rank coding.
+        one-hot encoding would be exactly collinear with it (#252). An
+        explicit ``"0 + ..."`` opts out and keeps every level's column;
+        with the baseline as the intercept, the fit then aliases the last
+        level (#476).
 
     Returns
     -------
@@ -828,7 +832,10 @@ class DataFrameRegressionMixin:
                     "not a linear predictor with an origin to move."
                 )
             extra["center"] = True
-        model = self.fit(x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra)
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(
+                x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra
+            )
 
         model.feature_names = feature_names
         model.formula = formula

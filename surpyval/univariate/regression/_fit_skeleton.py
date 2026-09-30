@@ -40,6 +40,7 @@ from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._aliasing import aliased_columns, constant_columns, warn_aliased
 from .parametric_regression_model import ParametricRegressionModel
 
 
@@ -463,6 +464,71 @@ def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
     return as_generator(random_state).uniform(0, 1, size)
 
 
+class _Fixed(dict):
+    """The ``fixed`` of a fit, with the aliased coefficients (#476) held
+    at 0 among them; ``aliased`` names those, which the fitted model
+    reports as ``nan`` rather than as fixed."""
+
+    aliased: "tuple[str, ...]" = ()
+
+
+def alias_coefficients(
+    fitter: Any,
+    kind: "str | None",
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    fixed: dict,
+    pmap: dict,
+) -> dict:
+    """``fixed`` with the coefficients the data cannot determine held at
+    0 and named, with one warning (#476; see :mod:`._aliasing`).
+
+    Only where each coefficient multiplies one column of ``Z``
+    (``beta_j`` for column ``j``). A constant column is aliased where the
+    family has an intercept -- where adding a constant to the linear
+    predictor moves the baseline parameters and nothing else
+    (:data:`ORIGIN_MAPS`, a scale family, as R's ``survreg`` and ``lm``
+    treat an intercept) -- and otherwise only a column of zeros is.
+    Columns whose coefficient the caller fixed are offsets, left out.
+    """
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim != 2 or Z.shape[1] == 0 or Z.shape[0] == 0:
+        return fixed
+    p = Z.shape[1]
+    if pmap != {"beta_{}".format(j): j for j in range(p)}:
+        return fixed
+    free = np.array([j for j in range(p) if "beta_{}".format(j) not in fixed])
+    if free.size == 0:
+        return fixed
+    n = np.asarray(n, dtype=float).reshape(-1)
+    Zf = Z[:, free]
+    intercept = (kind or "", getattr(fitter.dist, "name", "")) in ORIGIN_MAPS
+    if intercept:
+        Zf = Zf - covariate_center(Zf, n)
+        constant = constant_columns(Z[:, free])
+    else:
+        constant = np.all(Zf == 0, axis=0)
+    gram = Zf.T @ (n[:, None] * Zf)
+    aliased = free[aliased_columns(gram, Z.shape[0], constant)]
+    if aliased.size == 0:
+        return fixed
+    warn_aliased(
+        aliased,
+        (
+            "they are constant (the baseline distribution's scale is the "
+            "model's intercept) or a linear combination of the other "
+            "columns"
+            if intercept
+            else "they are all zero or a linear combination of the other "
+            "columns"
+        ),
+    )
+    names = tuple("beta_{}".format(j) for j in aliased.tolist())
+    out = _Fixed({**fixed, **{name: 0.0 for name in names}})
+    out.aliased = names
+    return out
+
+
 def prepare_regression_fit(
     fitter: Any,
     x: npt.ArrayLike,
@@ -505,6 +571,14 @@ def prepare_regression_fit(
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
+    fixed = alias_coefficients(
+        fitter,
+        kind,
+        Z_data,
+        data.n,
+        fixed,
+        phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map,
+    )
     centring = Centring.plan(fitter, kind, Z_data, data.n, fixed, center)
     if centring is not None:
         centring.raw = data
@@ -727,12 +801,17 @@ def assemble_regression_model(
     model.kind = kind
     model.distribution = fitter.dist
     params_arr = np.array(params)
+    aliased = getattr(fixed, "aliased", ())
+    if aliased:
+        # Reported as nan, R's NA (#476); the model predicts with 0.
+        params_arr = np.array(params_arr, dtype=float)
+        params_arr[[fitter.k_dist + pmap[name] for name in aliased]] = np.nan
     model.params = params_arr
     model.dist_params = np.array(params_arr[: fitter.k_dist])
     model.phi_params = np.array(params_arr[fitter.k_dist :])
     model.res = res
     model._neg_ll = float(res.fun) if neg_ll is None else neg_ll
-    model.fixed = fixed
+    model.fixed = {k: v for k, v in fixed.items() if k not in aliased}
     model.k_dist = fitter.k_dist
     # Estimated parameters only: a parameter held at a value by ``fixed``
     # costs the model nothing in AIC/BIC.
@@ -1296,13 +1375,12 @@ def keep_information(
     if no_maximum or derivatives is None:
         return
     names = model.parameter_names()
-    free = np.array(
-        [i for i, name in enumerate(names) if name not in model.fixed]
-    )
+    held = model._held()
+    free = np.array([i for i, name in enumerate(names) if name not in held])
     if model._fit_centring is not None:
         p_hat = model._fit_centring[0]
     else:
-        p_hat = model.params
+        p_hat = model._eval_params()
     with np.errstate(all="ignore"):
         at = np.asarray(inv_trans(const(t)), dtype=float)
     if not np.array_equal(at, np.asarray(p_hat, dtype=float)):

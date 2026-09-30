@@ -70,6 +70,14 @@ Every competing-risks fit takes the same core arrays:
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
 
+lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
+integer column with ``0`` for a censored row. Here ``0`` is a cause like any
+other (you may number causes from 0), so convert such data with
+``e = np.where(np.asarray(e) == 0, None, e)``. Because the two codings
+cannot be told apart, a fit whose labels are numbers including 0, with none
+missing and no ``c``, warns and says so; passing ``c`` (``np.zeros(len(e))``
+when nothing is censored) silences it.
+
 The smallest possible example is the six-unit data set worked by hand on the
 :doc:`Competing Risks Analysis` page. The fourth unit is censored:
 

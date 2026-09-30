@@ -151,7 +151,8 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             )
         Zp = prepare_Z(Z, self.feature_names, self._model_spec)
         Zp = np.atleast_2d(np.asarray(Zp, dtype=float))
-        eta = np.exp(Zp @ self.beta)
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        eta = np.exp(Zp @ np.where(np.isnan(self.beta), 0.0, self.beta))
         return eta[0] if eta.shape[0] == 1 else eta
 
     def _resolve_frailty(self, group: Any, frailty: Any) -> "float | None":

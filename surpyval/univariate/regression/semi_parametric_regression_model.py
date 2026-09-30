@@ -2,6 +2,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -9,8 +10,17 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import is_missing_event
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
+from ._summary import (
+    coefficient_names,
+    coefficient_repr,
+    coefficient_table,
+)
 from .regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -99,6 +109,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
     h0: npt.NDArray
     H0: npt.NDArray
     p_values: npt.NDArray
+    #: The coefficients' standard errors, from the observed information
+    #: (``None`` for a model saved before they were stored).
+    se: "npt.NDArray | None" = None
     #: The fit's score/Hessian and negative-partial-log-likelihood
     #: closures (the scalar value is ``_neg_log_like``).
     jac: Callable
@@ -135,10 +148,24 @@ class SemiParametricRegressionModel(SerialisableMixin):
             return np.zeros(beta.shape[0])
         return np.asarray(self.center, dtype=float)
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column, one constant within each
+        stratum, or a linear combination of the others. Their ``beta`` is
+        ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+
+    def _coef(self) -> npt.NDArray:
+        """``beta`` with an aliased coefficient as 0, as the predictions
+        use it (R's ``predict.coxph`` does the same)."""
+        beta = np.asarray(self.beta, dtype=float)
+        return np.where(np.isnan(beta), 0.0, beta)
+
     def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
         """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log
         of the multiplier of the baseline."""
-        return (Z - self._center()) @ np.asarray(self.beta, dtype=float)
+        return (Z - self._center()) @ self._coef()
 
     @staticmethod
     def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
@@ -189,10 +216,78 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 )
             )
 
-        out = out + "\nParameters          :\n"
-        for i, p in enumerate(self.params):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
-        return out
+        tie_method = getattr(self, "tie_method", None)
+        if tie_method is not None:
+            out += "\nTie method          : {}".format(tie_method)
+        out += (
+            "\nCoefficients        : exp(coef) is the hazard ratio; Wald "
+            "95% intervals\n"
+        )
+        return out + coefficient_repr(self.summary()) + "\n"
+
+    def summary(
+        self,
+        alpha_ci: float = 0.05,
+        robust: bool = False,
+        cluster: "npt.ArrayLike | None" = None,
+    ) -> "pd.DataFrame":
+        """
+        The coefficient table, as R's ``summary(coxph)`` and lifelines'
+        ``summary`` give it (#484): one row per covariate (named by
+        ``feature_names`` for a model fitted with ``fit_from_df``), with the
+        coefficient, the hazard ratio ``exp(coef)``, the standard error, a
+        two-sided ``1 - alpha_ci`` Wald interval for both, the Wald
+        statistic ``z`` and its two-sided p-value. An aliased coefficient
+        (#476) is ``nan`` throughout.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+        robust : bool, optional
+            Use the cluster-robust (sandwich) standard errors of
+            :meth:`robust_summary` instead of the model-based ones.
+        cluster : array_like, optional
+            With ``robust=True``, the cluster label of each row (as for
+            :meth:`robust_covariance`).
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``coef``, ``exp(coef)``, ``se(coef)``, ``coef lower
+            95%``, ``coef upper 95%``, ``exp(coef) lower 95%``, ``exp(coef)
+            upper 95%``, ``z`` and ``p`` (the level follows ``alpha_ci``).
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> model = CoxPH.fit_from_df(
+        ...     df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
+                     coef  exp(coef)  se(coef)       p
+        covariate
+        fin       -0.3279     0.7204    0.1899  0.0841
+        age       -0.0715     0.9310    0.0209  0.0006
+        """
+        beta = np.asarray(self.beta, dtype=float)
+        names = coefficient_names(self, beta.size)
+        if robust:
+            se = np.asarray(self.robust_summary(cluster)["se"], dtype=float)
+            return coefficient_table(names, beta, se, alpha_ci)
+        se = getattr(self, "se", None)
+        p_values = getattr(self, "p_values", None)
+        if se is None and p_values is None:
+            se = np.full(beta.shape, np.nan)
+        elif se is None:
+            # A model saved before the standard errors were: they follow
+            # from the Wald p-values, |beta| / z.
+            with np.errstate(divide="ignore", invalid="ignore"):
+                z = norm.isf(np.asarray(p_values, dtype=float) / 2)
+                se = np.abs(beta) / z
+        return coefficient_table(names, beta, se, alpha_ci, p=p_values)
 
     # -- serialisation -----------------------------------------------------
 
@@ -251,6 +346,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 out["tl"] = tl.tolist()
         if getattr(self, "p_values", None) is not None:
             out["p_values"] = np.asarray(self.p_values, dtype=float).tolist()
+        if getattr(self, "se", None) is not None:
+            out["se"] = np.asarray(self.se, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
         serialise_covariate_meta(self, out)
@@ -298,6 +395,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         )
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
+        if "se" in model_dict:
+            out.se = np.array(model_dict["se"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         restore_covariate_meta(out, model_dict)
@@ -363,12 +462,36 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out = np.where(idx >= 0, values[np.maximum(idx, 0)], before)
         return np.where(np.isnan(x), np.nan, out)
 
+    def _scaled_step(
+        self,
+        values: npt.NDArray,
+        bx: npt.NDArray,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        grid: bool,
+    ) -> npt.NDArray:
+        """The baseline step function ``values`` at ``x`` times ``phi(Z)``:
+        paired (row ``i`` of ``Z`` with ``x[i]``, or one of them single),
+        or on the grid of every row by every time, ``(len(Z), len(x))``."""
+        base = self._baseline_step(bx, values, x)
+        if grid:
+            rows = covariate_rows(
+                self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+            )
+            log_risk = self._log_risk(rows)
+            return self._times_risk(base[None, :], log_risk[:, None])
+        log_risk = self._log_phi(Z)
+        check_paired_rows(base.size, np.size(log_risk))
+        return self._times_risk(base, log_risk)
+
     @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Hazard at ``x`` for covariates ``Z``: the baseline hazard
@@ -377,11 +500,15 @@ class SemiParametricRegressionModel(SerialisableMixin):
         baseline times ``self.x`` include the censoring times, where the
         increment is 0. ``Z`` is one row (used for every ``x``) or one row
         per ``x``, paired in the order given.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
         """
         bx, bh0, _ = self._baseline_arrays(stratum)
-        return self._times_risk(
-            self._baseline_step(bx, bh0, x), self._log_phi(Z)
-        )
+        return self._scaled_step(bh0, bx, x, Z, grid)
 
     @keeps_query_shape
     def Hf(
@@ -389,17 +516,23 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Cumulative hazard at ``x`` for covariates ``Z``: the baseline
         ``H0(x)`` (0 before the first event time) times
         ``phi(Z)``. ``Z`` is one row (used for every ``x``) or one row per
         ``x``, paired in the order given.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
         """
         bx, _, bH0 = self._baseline_arrays(stratum)
-        return self._times_risk(
-            self._baseline_step(bx, bH0, x), self._log_phi(Z)
-        )
+        return self._scaled_step(bH0, bx, x, Z, grid)
 
     @keeps_query_shape
     def sf(
@@ -407,14 +540,35 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Survival :math:`e^{-H_0(x) e^{\\beta' Z}}` at ``x`` for covariates
         ``Z`` (one row, or one row per ``x``); ``stratum`` selects the
         baseline of a stratified fit. A missing (``NaN``) time, covariate
         or stratum label gives ``nan`` in its place.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+        >>> subjects = [[0, 20], [1, 20], [0, 40]]
+        >>> model.sf([10, 30, 50], subjects, grid=True).round(3)
+        array([[0.949, 0.8  , 0.641],
+               [0.963, 0.851, 0.726],
+               [0.987, 0.948, 0.899]])
         """
-        return np.exp(-self.Hf(x, Z, stratum))
+        return np.exp(-self.Hf(x, Z, stratum, grid=grid))
 
     @keeps_query_shape
     def ff(
@@ -422,12 +576,14 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Failure probability ``1 - sf`` at ``x`` for covariates ``Z``;
         arguments as for :meth:`sf`.
         """
-        return -np.expm1(-self.Hf(x, Z, stratum))
+        return -np.expm1(-self.Hf(x, Z, stratum, grid=grid))
 
     @keeps_query_shape
     def df(
@@ -435,13 +591,17 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         ``hf * sf`` at ``x`` for covariates ``Z``: the probability mass at
         each baseline event time (the baseline is a step function);
         arguments as for :meth:`sf`.
         """
-        return self.hf(x, Z, stratum) * self.sf(x, Z, stratum)
+        return self.hf(x, Z, stratum, grid=grid) * self.sf(
+            x, Z, stratum, grid=grid
+        )
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """
