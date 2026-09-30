@@ -63,7 +63,16 @@ Uniform's MLE refuses censored data again.
   costs one Hessian at the fitted values, and a coefficient's profile is
   read only when its Newton step there exceeds 1/709.8 of its value (the
   log of the largest double): every coefficient running off to infinity
-  exceeds it and a converged one does not. The additive-hazards models, whose likelihood rises without bound on such
+  exceeds it and a converged one does not. That Hessian is kept:
+  ``covariance()``, ``standard_errors()``, ``cb()`` and ``param_cb()`` of
+  the PH, AFT, PO, AH, frailty and Fine-Gray fits invert it instead of
+  computing a numerical Hessian on every call, so a PH fit followed by
+  its standard errors and a band is 8-42% faster than before, and the
+  standard errors move by at most 5e-4 relative (rounding in the
+  numerical Hessian). The numerical Hessian is still used for reloaded
+  models, accelerated-life and AFT ``fit_tvc`` fits, fits with no finite
+  maximum, and Hessians that are not positive definite. The
+  additive-hazards models, whose likelihood rises without bound on such
   data, now say so instead of reporting a positivity boundary (all except
   GammaAH). The Gumbel copula no longer leaks about 230 raw numpy overflow
   warnings. Univariate MLE now also refuses a point mass at the edge of a
