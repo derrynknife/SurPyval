@@ -1474,7 +1474,16 @@ class OptimisedFitMixin:
             raise ValueError(detail)
 
         if (surv_data.c == 1).all():
-            raise ValueError("Cannot have only right censored data")
+            # No failure: the likelihood keeps rising as the distribution
+            # moves out past every suspension, with a shape fixed or not.
+            raise ValueError(
+                "Cannot have only right censored data: with no failure the "
+                "likelihood has no maximum (it keeps rising as the "
+                "distribution moves out past every suspension). For a "
+                "zero-failure analysis of a Weibull or Exponential with a "
+                "known shape, surpyval.weibayes(x, c, n, beta=...) gives the "
+                "standard lower bound on the scale"
+            )
 
         if (surv_data.c == -1).all():
             raise ValueError("Cannot have only left censored data")
@@ -1873,11 +1882,16 @@ class OptimisedFitMixin:
             raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
 
         # A duration column would be read in its storage ticks (#480)
-        for name, col in (("x", x), ("xl", xl), ("xr", xr)):
-            if col is not None:
-                refuse_time_values(df[col], name)
-        for name, col in (("tl", tl), ("tr", tr)):
-            if isinstance(col, str):
+        columns: list[tuple[str, Any]] = [
+            ("x", x),
+            ("xl", xl),
+            ("xr", xr),
+            ("tl", tl),
+            ("tr", tr),
+        ]
+        for name, col in columns:
+            # tl and tr may be scalars rather than column labels
+            if col is not None and (name[0] == "x" or isinstance(col, str)):
                 refuse_time_values(df[col], name)
         if x is not None:
             x = df[x].astype(float)

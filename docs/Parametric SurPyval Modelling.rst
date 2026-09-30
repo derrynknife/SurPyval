@@ -924,6 +924,33 @@ enough:
 
     surv.Weibull.fit([10.], fixed={'beta': 2.}).params
 
+With *no* failure at all there is still no fit, shape fixed or not: every
+unit suspended leaves the likelihood rising without bound as the scale grows
+past the suspensions, so ``fit`` raises. The standard answer to "ten units
+ran 500 hours with no failure; assuming a shape of 2, how long is the
+characteristic life at least?" is not a maximum-likelihood estimate but a
+confidence bound, the Weibayes bound (Nelson, 1985; Abernethy's *New Weibull
+Handbook*, chapter 6), and ``surpyval.weibayes`` computes it:
+
+.. jupyter-execute::
+
+    bound = surv.weibayes([500] * 10, c=[1] * 10, beta=2, alpha_ci=0.05)
+    print("alpha is at least", bound.params[0].round(1))
+    print("R(500) is at least", bound.sf(500).round(3))
+
+It returns the Weibull at the bound, so its ``sf`` is the lower bound on
+the reliability (0.741 at 500 hours, the same as ``success_run(10)``) and
+its ``qf`` the lower bound on a B-life. It takes failures too (the bound
+then uses :math:`2r + 2` degrees of freedom), and ``beta=1`` gives the
+exponential zero-failure bound on the mean life.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(bound.params[0], 1) == 913.5
+    assert round(bound.sf(500), 3) == round(surv.success_run(10), 3) == 0.741
+
 Finally, the optimiser can be given a starting point with ``init``: the
 values in the order of ``param_names``, with ``gamma`` first if there is an
 offset and ``p`` then ``f0`` last for a limited failure population or zero

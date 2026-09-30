@@ -55,6 +55,7 @@ from surpyval.univariate.parametric import (
     RoystonParmarModel,
     Uniform,
     Weibull,
+    weibayes,
 )
 from surpyval.utils import (
     fs_to_xcnt,
