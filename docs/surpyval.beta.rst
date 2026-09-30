@@ -3,9 +3,10 @@ Machine Learning (beta)
 
 Tree-based survival models: a survival tree, and a random survival
 forest built from them. Both accept the full surpyval data model --
-arbitrary censoring and truncation -- and return a fitted parametric
-model at each leaf, so a prediction is a distribution rather than a
-point.
+arbitrary censoring and truncation -- and return a fitted model at each
+leaf (parametric, or a Nelson-Aalen or Turnbull estimate for
+``kind="non-parametric"``), so a prediction is a distribution rather
+than a point.
 
 .. warning::
 

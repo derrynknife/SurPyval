@@ -3,8 +3,9 @@
 The tree's ``kind`` couples a split criterion with its matching leaf
 model: ``"weibull"`` (Weibull deviance split + Weibull leaves, the
 default), ``"exponential"`` (exponential deviance split + Exponential
-leaves) and ``"non-parametric"`` (risk-set log-rank + Nelson-Aalen;
-observed/right-censored data only). These tests pin:
+leaves) and ``"non-parametric"`` (risk-set log-rank + Nelson-Aalen on
+observed/right-censored data; the Turnbull-score split + Turnbull leaves
+on untruncated left/interval-censored data). These tests pin:
 
 - the exponential and Weibull MLEs inside the deviance split against
   SurPyval's own ``Exponential.fit`` / ``Weibull.fit`` on every data
@@ -14,8 +15,9 @@ observed/right-censored data only). These tests pin:
   ordering;
 - that the Weibull kind detects a *shape-only* (crossing-hazards)
   signal that the exponential deviance is nearly blind to;
-- kind validation: non-parametric raises on data its log-rank split
-  cannot express, unknown kinds raise;
+- kind validation: non-parametric raises on data neither of its
+  splits can express (truncation with left/interval censoring, right
+  truncation), unknown kinds raise;
 - that parametric kinds stay parametric all the way down (leaves);
 - the forest passthrough.
 """
@@ -331,11 +333,16 @@ def test_non_parametric_kind_on_classic_data():
     assert s_fast < s_slow
 
 
-def test_non_parametric_kind_on_interval_data_raises():
+def test_non_parametric_kind_on_truncated_interval_data_raises():
+    # Untruncated interval data now take the Turnbull-score split (#188,
+    # stage 1; see test_turnbull_score_split.py); with truncation the
+    # scores are not implemented yet.
     Z, x, c = _signal_data()
     x_in, c_in = _intervalise(x, c)
     with pytest.raises(ValueError, match="non-parametric"):
-        SurvivalTree.fit(x=x_in, Z=Z, c=c_in, kind="non-parametric")
+        SurvivalTree.fit(
+            x=x_in, Z=Z, c=c_in, tl=0.1 * x, kind="non-parametric"
+        )
 
 
 def test_invalid_kind_raises():

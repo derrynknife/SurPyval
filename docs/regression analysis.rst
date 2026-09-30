@@ -611,10 +611,18 @@ surpyval's trees couple the split rule with the leaf model (``kind=``):
       L = \frac{\sum_j \bigl(d_{j,L} - Y_{j,L}\, d_j / Y_j\bigr)}
       {\sqrt{\sum_j \frac{Y_{j,L}}{Y_j}\Bigl(1 - \frac{Y_{j,L}}{Y_j}\Bigr)\frac{Y_j - d_j}{Y_j - 1}\, d_j}},
 
-  summed over the pooled distinct times, with :math:`d` deaths and :math:`Y` numbers at risk (left child and total). The at-risk counts use the same ``(entry, exit]`` convention as everywhere else, so left truncation is handled; the leaves are Nelson-Aalen estimates. A risk-set statistic only exists for observed and right-censored data, so this kind rejects left and interval censoring and right truncation.
+  summed over the pooled distinct times, with :math:`d` deaths and :math:`Y` numbers at risk (left child and total). The at-risk counts use the same ``(entry, exit]`` convention as everywhere else, so left truncation is handled; the leaves are Nelson-Aalen estimates.
+
+  A risk-set statistic only exists for observed and right-censored data. For left- and interval-censored data the tree uses the score form of the same test instead [Finkelstein1986reg]_: at each node it fits the pooled Turnbull estimate :math:`\hat S` once, gives each unit whose event lies in :math:`(L, R]` the log-rank score
+
+  .. math::
+
+      c_i = \frac{\hat S(L)\log \hat S(L) - \hat S(R)\log \hat S(R)}{\hat S(L) - \hat S(R)}
+
+  (so :math:`\log \hat S(L)` if right censored at :math:`L`, :math:`1 + \log \hat S(t)` if observed at :math:`t`, and the :math:`L \to 0` limit if left censored), and scores a split by the standardised sum of the left child's scores, :math:`|\sum_{i \in L} c_i - n_L \bar c| / \sqrt{\tfrac{n_L n_R}{n(n-1)}\sum_i (c_i - \bar c)^2}`, with its permutation variance. :math:`\hat S` is taken as :math:`e^{-\hat H}`, where :math:`\hat H` is the Nelson-Aalen hazard of the Turnbull estimate's expected risk sets and events; this keeps every score finite (a Kaplan-Meier type estimate reaches zero at a last observed failure, whose score would be :math:`-\infty`). On right-censored data the scores are then exactly the log-rank scores :math:`\delta_i - \hat H(x_i)`, whose sum over a child is the log-rank numerator, so the two splits agree asymptotically. The leaves are Turnbull estimates. Truncation with left or interval censoring, and right truncation, are not supported yet: the scores would have to come from the truncation-conditioned likelihood.
 - ``"weibull"`` (the default) and ``"exponential"`` score a split by the gain in the maximised full log-likelihood of a Weibull (or exponential [DavisAnderson1989reg]_) model in each child. Because it uses the full likelihood of the proportional hazards section, this works for every kind of censoring and truncation; the leaves are the fitted Weibull or exponential models.
 
-A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. In surpyval both live in ``surpyval.beta.ml`` — tested and usable, but with an interface that may still change (see :doc:`surpyval.beta`).
+A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. Because every tree is grown without about a third of the rows, each row can be scored by the trees that never saw it: the forest's out-of-bag log-likelihood is the mean of those rows' full likelihoods (density, survival, failure or interval probability, over the truncation probability), an estimate of how well it predicts new data for every kind of censoring, and shuffling one covariate among the out-of-bag rows and measuring the drop gives its permutation importance [Breiman2001reg]_. In surpyval both live in ``surpyval.beta.ml`` — tested and usable, but with an interface that may still change (see :doc:`surpyval.beta`).
 
 Choosing a model
 ^^^^^^^^^^^^^^^^
@@ -663,6 +671,10 @@ Whatever the choice, check it: residuals and the PH test for the assumption, inf
 .. [Harrell1982reg] Harrell, F.E., Califf, R.M., Pryor, D.B., Lee, K.L. and Rosati, R.A., 1982. Evaluating the yield of medical tests. *JAMA*, 247(18), pp.2543-2546.
 
 .. [LeBlancCrowley1993reg] LeBlanc, M. and Crowley, J., 1993. Survival trees by goodness of split. *Journal of the American Statistical Association*, 88(422), pp.457-467.
+
+.. [Finkelstein1986reg] Finkelstein, D.M., 1986. A proportional hazards model for interval-censored failure time data. *Biometrics*, 42(4), pp.845-854.
+
+.. [Breiman2001reg] Breiman, L., 2001. Random forests. *Machine Learning*, 45(1), pp.5-32.
 
 .. [DavisAnderson1989reg] Davis, R.B. and Anderson, J.R., 1989. Exponential survival trees. *Statistics in Medicine*, 8(8), pp.947-961.
 
