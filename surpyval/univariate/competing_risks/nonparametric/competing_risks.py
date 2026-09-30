@@ -8,7 +8,6 @@ Copyright 2022 Cartiga LLC
 """
 
 import textwrap
-import warnings
 from typing import Any
 
 import numpy as np
@@ -45,7 +44,6 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.shapes import keeps_query_shape
 
 
@@ -357,23 +355,6 @@ class CompetingRisks(SerialisableMixin):
         """
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
-
-    @property
-    def method(self) -> str:
-        """Deprecated: ``how``, the all-cause survival estimator, under its
-        old name."""
-        warnings.warn(
-            "CompetingRisks.method is deprecated and will be removed in "
-            "v{}; use .how.".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.how
-
-    def __dir__(self) -> list[str]:
-        # The deprecated alias is left out of listings (tab completion,
-        # anything that walks ``dir``), which would otherwise warn.
-        return [name for name in super().__dir__() if name != "method"]
 
     @classmethod
     def fit_from_df(

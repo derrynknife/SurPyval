@@ -1,5 +1,4 @@
 import numbers
-import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
@@ -1662,8 +1661,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         a_u: float,
         alpha_ci: float,
         standardized: bool,
-        n_sims: int | None = None,
-        random_state: int | None = None,
     ) -> float:
         r"""
         Critical value of the supremum of :math:`|B(a)|`, a Brownian bridge
@@ -1676,8 +1673,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         below :math:`a = 0.001`: the value came out about 1.5% low (1.337
         against the Kolmogorov 1.358 over the whole range), for roughly
         94.4% coverage, and a valid range falling between grid points
-        crashed. It is now computed numerically, and deterministically;
-        ``n_sims`` and ``random_state`` are no longer used.
+        crashed. It is now computed numerically, and deterministically.
 
         With :math:`t = a/(1 - a)`, :math:`B(a) = W(t)/(1 + t)` for a
         Brownian motion :math:`W`, so the event is that :math:`W` stays
