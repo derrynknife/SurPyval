@@ -410,14 +410,26 @@ moves the plotting positions of the failures after it, but has no position
 of its own, so it is not drawn as a point (the convention of Abernethy's
 *New Weibull Handbook* and of Weibull++); ``show_censored=True`` marks the
 suspension times with ticks along the time axis, here the censored units at
-40. ``get_plot_data()`` returns them as ``x_censored``.
+40. The time axis still spans every time.
+
+For a plot of your own, ``get_plot_data()`` returns every row of the
+plotting positions as ``x_`` and ``F``, suspensions included, with a boolean
+mask ``failed`` selecting the failures (the points drawn above,
+``d["x_"][d["failed"]]`` and ``d["F"][d["failed"]]``) and the suspension
+times as ``x_censored``:
+
+.. jupyter-execute::
+
+    d = model.get_plot_data()
+    print(len(d["x_"]), "rows,", d["failed"].sum(), "failures")
+    print("suspension times:", d["x_censored"])
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _d = model.get_plot_data()
-    assert len(_d["x_"]) == (c == 0).sum() and list(_d["x_censored"]) == [40]
+    assert d["failed"].sum() == (c == 0).sum() and list(d["x_censored"]) == [40]
+    assert len(d["x_"]) == len(np.unique(x))
 
 The results from this model are very close to the data we input, and with only 50 samples.
 

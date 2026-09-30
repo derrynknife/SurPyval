@@ -180,9 +180,7 @@ def test_mixture_plot_draws_the_failures_and_marks_suspensions(show):
     rug = _rug(ax)
     assert len(rug) == int(show)
     if show:
-        np.testing.assert_array_equal(
-            rug[0].get_xdata(), np.sort(x[c == 1])
-        )
+        np.testing.assert_array_equal(rug[0].get_xdata(), np.sort(x[c == 1]))
 
 
 def test_nonparametric_get_plot_data_marks_the_failures():
