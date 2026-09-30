@@ -124,7 +124,7 @@ def test_clayton_far_lower_corner_at_large_theta(theta):
 class _AMH(Copula):
     name = "AMH"
     bounds = ((-1, 1),)
-    param_names = ("theta",)
+    parameter_names = ("theta",)
 
     def cdf(self, u, v, theta):
         return u * v / (1 - theta * (1 - u) * (1 - v))

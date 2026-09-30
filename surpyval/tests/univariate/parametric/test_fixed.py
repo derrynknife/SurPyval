@@ -25,7 +25,7 @@ def test_fixed():
         Normal,
     ]:
         for method in ["MLE", "MSE", "MPS", "MOM"]:
-            for param in dist.param_names:
+            for param in dist.parameter_names:
                 x = dist.random(100, 10, 2)
                 fixed_value = np.random.randint(2, 10)
                 model = dist.fit(x, fixed={param: fixed_value}, how=method)

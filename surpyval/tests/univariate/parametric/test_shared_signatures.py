@@ -170,7 +170,7 @@ def _param_names_by_module():
         dist = getattr(surpyval, name)
         if isinstance(dist, ParametricFitter):
             stem = type(dist).__module__.rsplit(".", 1)[-1]
-            out[stem].update(getattr(dist, "param_names", []) or [])
+            out[stem].update(getattr(dist, "parameter_names", []) or [])
     return out
 
 

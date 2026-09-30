@@ -101,7 +101,7 @@ def _direct_hessian(model):
     (p_hat, center, data, _), _ = model._information
     free = [
         i
-        for i, name in enumerate(model.parameter_names())
+        for i, name in enumerate(model.parameter_names)
         if name not in model.fixed
     ]
     if center is not None:
@@ -242,7 +242,7 @@ def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
     exact = model.covariance()
     assert calls == []
     for name in options.get("fixed", {}):
-        k = model.parameter_names().index(name)
+        k = model.parameter_names.index(name)
         assert not np.any(exact[k]) and not np.any(exact[:, k])
     np.testing.assert_allclose(
         np.sqrt(np.diag(exact)), _numerical_se(model), rtol=1e-4, atol=0

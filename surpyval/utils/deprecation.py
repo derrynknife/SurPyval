@@ -14,6 +14,7 @@ such a rename takes:
 """
 
 import functools
+import sys
 import warnings
 from typing import Any, Callable, TypeVar
 
@@ -163,11 +164,16 @@ def renamed_class_attribute(cls: type, old: str, new: str) -> None:
     value = cls.__dict__.get(old)
     if value is None or isinstance(value, RenamedAttribute):
         return
+    # Point at the class statement: past this function, the caller's
+    # ``__init_subclass__`` and, for an ABC, ``ABCMeta.__new__``.
+    level, frame = 3, sys._getframe(2)
+    while frame is not None and frame.f_globals.get("__name__") == "abc":
+        level, frame = level + 1, frame.f_back
     warnings.warn(
         "{}: the class attribute '{}' is deprecated and will be removed in "
         "v{}; define '{}'.".format(cls.__qualname__, old, REMOVED_IN, new),
         DeprecationWarning,
-        stacklevel=3,
+        stacklevel=level,
     )
     if new not in cls.__dict__:
         setattr(cls, new, value)

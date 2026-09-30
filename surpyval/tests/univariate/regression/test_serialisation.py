@@ -63,7 +63,7 @@ def test_predictions_round_trip(name):
         b = np.asarray(getattr(restored, fn)(xs, Zq), dtype=float)
         assert np.allclose(a, b, rtol=1e-10, atol=1e-12), fn
     assert np.allclose(model.params, restored.params)
-    assert model.parameter_names() == restored.parameter_names()
+    assert model.parameter_names == restored.parameter_names
     assert model.kind == restored.kind
     assert model.distribution.name == restored.distribution.name
 
@@ -85,8 +85,8 @@ def test_confidence_bounds_round_trip(name):
     se1 = model.standard_errors()
     se2 = restored.standard_errors()
     assert np.allclose(se1, se2, rtol=1e-6, atol=1e-8, equal_nan=True)
-    pc1 = model.param_cb(model.parameter_names()[-1])
-    pc2 = restored.param_cb(restored.parameter_names()[-1])
+    pc1 = model.param_cb(model.parameter_names[-1])
+    pc2 = restored.param_cb(restored.parameter_names[-1])
     assert np.allclose(pc1, pc2, rtol=1e-6, atol=1e-8)
 
 

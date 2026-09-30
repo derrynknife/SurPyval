@@ -35,7 +35,7 @@ def _assert_information_criteria(model, dist):
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
     assert np.isclose(model.aic, 2 * k - 2 * ll)
     assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
-    assert model.parameter_names == list(dist.param_names)
+    assert model.parameter_names == list(dist.parameter_names)
 
 
 @pytest.mark.parametrize("dist", [HPP, CrowAMSAA, Duane])

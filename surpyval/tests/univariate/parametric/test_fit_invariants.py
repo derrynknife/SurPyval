@@ -243,7 +243,7 @@ def test_structural_flags_pairwise(dist):
         {"lfp": True, "zi": True},
     ]
     if dist.k >= 2:
-        first = dist.param_names[0]
+        first = dist.parameter_names[0]
         combos.append({"fixed": {first: float(TRUE[dist.name][0])}})
         combos.append(
             {"offset": True, "fixed": {first: float(TRUE[dist.name][0])}}

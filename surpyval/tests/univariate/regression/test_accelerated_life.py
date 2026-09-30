@@ -26,9 +26,9 @@ def test_life_param_map_names_a_real_parameter():
     # index up in ``param_map``.
     for dist_name, (life_param, _, _) in _LIFE_PARAM_MAP.items():
         dist = getattr(surpyval, dist_name)
-        assert life_param in dist.param_names, (
+        assert life_param in dist.parameter_names, (
             f"{dist_name} life parameter {life_param!r} is not in "
-            f"{dist.param_names}"
+            f"{dist.parameter_names}"
         )
 
 
@@ -109,7 +109,7 @@ def test_gamma_life_is_the_reciprocal_of_its_rate():
     assert gamma.params[2:] == pytest.approx(expo.params[1:], rel=0.02)
 
 
-# -- #489: the substituted life parameter, param_names, one stress level ---
+# -- #489: the substituted life parameter, parameter_names, one stress level
 
 
 def _weibull_power(levels=(20.0, 30.0, 40.0)):
@@ -136,19 +136,19 @@ def test_repr_does_not_show_the_life_parameter_as_a_fitted_value():
     assert "failure_rate: 1 / L(Z)" in repr(expo)
 
 
-def test_param_names_and_life_parameter():
+def test_parameter_names_and_life_parameter():
     x, stress = _weibull_power()
     model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
-    assert model.param_names == ["alpha", "beta", "a", "n"]
-    assert len(model.param_names) == model.params.size
+    assert model.parameter_names == ["alpha", "beta", "a", "n"]
+    assert len(model.parameter_names) == model.params.size
     assert model.life_parameter == "alpha"
     restored = surpyval.from_dict(model.to_dict())
-    assert restored.param_names == model.param_names
+    assert restored.parameter_names == model.parameter_names
     assert restored.life_parameter == "alpha"
     assert "alpha: L(Z)" in repr(restored)
-    # the other regression families have param_names and no life parameter
+    # the other regression families have parameter_names and no life parameter
     ph = surpyval.WeibullPH.fit(x, stress.reshape(-1, 1))
-    assert ph.param_names == ["alpha", "beta", "beta_0"]
+    assert ph.parameter_names == ["alpha", "beta", "beta_0"]
     assert ph.life_parameter is None
 
 

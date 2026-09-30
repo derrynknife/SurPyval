@@ -58,7 +58,7 @@ def test_analytic_jacobian_matches_finite_differences(model, params):
     analytic = model.jacobian(x, *params)
     # invoke the base class' finite-difference implementation directly
     numeric = PathModel.jacobian(model, x, *params)
-    assert analytic.shape == (len(x), len(model.param_names))
+    assert analytic.shape == (len(x), len(model.parameter_names))
     assert np.allclose(analytic, numeric, rtol=1e-4, atol=1e-6)
 
 
