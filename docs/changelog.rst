@@ -30,6 +30,22 @@ Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 ``P(X > x)``, as for every other discrete distribution. Fits whose data
 have no finite maximum warn "No finite maximum".
 
+- **Continuously varying covariates: CovariatePath (#172, phase 1).**
+  ``sf_tvc`` and ``Hf_tvc`` accepted only step schedules, so a ramp-stress
+  profile or a thermal cycle had to be cut into steps. That was slow (150
+  ms for 1000 steps), and only accurate to the square of the step width,
+  with no error reported. ``CovariatePath.from_points(times, values,
+  period=None)`` (straight lines; a repeated time is a jump) and
+  ``CovariatePath.from_callable(func, p=1, breakpoints=None, period=None)``
+  now describe the path. PH, AH, PO and AFT integrate the hazard (AFT the
+  accelerated age, Nelson's cumulative exposure) by adaptive Gauss-Kronrod
+  quadrature to 1e-10 relative error on H, with one ``RuntimeWarning`` if
+  that is missed. Cox sums its baseline jumps along the path exactly. The
+  error against closed forms is 5e-16 to 9e-14, in about 2 ms for 200
+  times. ``given=`` integrates from the conditioning age. A step schedule
+  is still summed exactly, and a flat path gives the same result to
+  rounding. A path evaluates a fitted model only: fitting still uses steps
+  (``fit_tvc``).
 - **Out-of-bag log-likelihood and permutation importance for the random
   survival forest (#186).** The forest could only be scored by
   concordance, which needs right-censored data.
