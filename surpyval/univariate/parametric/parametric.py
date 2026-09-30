@@ -225,7 +225,7 @@ def _lr_walk(
     """
     ws, ds = [w_hat], [d_hat]
     # brentq starts from the bracket's ends, which the walk has solved.
-    solved: dict[float, float] = {}
+    solved: dict[float, float] = {float(w_hat): float(d_hat)}
 
     def dev_at(v: float) -> float:
         v = float(v)
@@ -263,6 +263,9 @@ def _lr_walk(
             for v in np.linspace(ws[-1], w, 9)[1:]:
                 dev = dev_at(v)
                 if dev >= crit:
+                    if f(ws[-1]) >= 0:
+                        # A start on the boundary (``d_hat`` at crit).
+                        return "root", float(ws[-1])
                     a, b = sorted((ws[-1], v))
                     try:
                         root = brentq(f, a, b, xtol=1e-9, rtol=1e-9)
@@ -2496,9 +2499,10 @@ class Parametric(
 
     def _lr_region(
         self, free: list[int], crit: float
-    ) -> tuple[list[tuple[Any, Any]], list[npt.NDArray]]:
+    ) -> tuple[list[tuple[Any, Any]], list[list[npt.NDArray]]]:
         """The box a likelihood-ratio band's searches run in, and the
-        points they may start from, at the critical value ``crit``.
+        points they may start from (one list per walk), at the critical
+        value ``crit``.
 
         The box is the one the parameters' own intervals at this level
         make: the region's extent in each parameter is that parameter's
@@ -2525,13 +2529,16 @@ class Parametric(
                 if np.isfinite(hi_j):
                     b_hi = hi_j if b_hi is None else min(b_hi, hi_j)
                 box[k] = (b_lo, b_hi)
+            # One list per walk.
             seeds = [
-                np.array([coords[i].to_u(theta[i]) for i in free])
+                [
+                    np.array([coords[i].to_u(theta[i]) for i in free])
+                    for theta in self.__dict__.get("_lr_points", {}).get(
+                        self._lr_key(j, crit, d), []
+                    )
+                ]
                 for j in free
                 for d in (-1.0, 1.0)
-                for theta in self.__dict__.get("_lr_points", {}).get(
-                    self._lr_key(j, crit, d), []
-                )
             ]
         return box, seeds
 
@@ -2544,7 +2551,7 @@ class Parametric(
         want_upper: bool,
         ends: tuple[float, float],
         box: list[tuple[Any, Any]],
-        seeds: list[npt.NDArray],
+        seeds: list[list[npt.NDArray]],
     ) -> tuple[float, float]:
         """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
         the free core parameters, searched in ``box``: ``(lower,
@@ -2634,13 +2641,20 @@ class Parametric(
         def dev_u(u: npt.NDArray) -> float:
             return 2.0 * (nll_of(u) - nll_hat)
 
-        # The points of the region known so far, with their psi.
+        # The points of the region known so far, with their psi, and
+        # those of each walk.
         known = [(psi_hat, u_start)]
-        for seed in seeds:
-            seed = self._lr_start(seed, box)
-            psi_seed = psi_u(seed)
-            if np.isfinite(psi_seed) and dev_u(seed) <= crit:
-                known.append((psi_seed, seed))
+        walks = []
+        for group in seeds:
+            walk = []
+            for seed in group:
+                seed = self._lr_start(seed, box)
+                psi_seed = psi_u(seed)
+                if np.isfinite(psi_seed) and dev_u(seed) <= crit:
+                    walk.append((psi_seed, seed))
+            known.extend(walk)
+            if walk:
+                walks.append(walk)
 
         def direct(direction: float, start: npt.NDArray) -> float | None:
             # The extreme of psi over the region, sought directly (SLSQP),
@@ -2684,17 +2698,32 @@ class Parametric(
             return psi_star
 
         def solve_side(direction: float) -> float:
+            # The search starts from the estimate and from the farthest
+            # points of the two walks that reach farthest (the region can
+            # have more than one local extreme: an ExpoWeibull hf(13) of
+            # 0.108 on its near boundary at 99%, and 0.102 down the valley
+            # of alpha -> 0, inside the 95% region already), and the most
+            # extreme result that checks out is taken.
+            tips = sorted(
+                (max(walk, key=lambda k: direction * k[0]) for walk in walks),
+                key=lambda k: -direction * k[0],
+            )
+            best = None
+            for start in [u_start] + [k[1] for k in tips[:2]]:
+                quick = direct(direction, start)
+                if quick is not None and (
+                    best is None or direction * quick > direction * best
+                ):
+                    best = quick
+            far = max(direction * k[0] for k in known)
+            if best is not None and direction * best >= far:
+                return best
             # The bound is at least as far out as every point of the
             # region known: a search that stops short of one has stopped
             # at a local extreme, and is tried again from the points
             # beyond it, farthest first.
-            tried: list[int] = []
-            start = u_start
-            for _ in range(4):
-                quick = direct(direction, start)
-                far = max(direction * k[0] for k in known)
-                if quick is not None and direction * quick >= far:
-                    return quick
+            tried: list[int] = [id(k[1]) for k in tips[:2]]
+            for _ in range(3):
                 beyond = [
                     k
                     for k in sorted(known, key=lambda k: -direction * k[0])
@@ -2704,6 +2733,10 @@ class Parametric(
                     break
                 start = beyond[0][1]
                 tried.append(id(start))
+                quick = direct(direction, start)
+                far = max(direction * k[0] for k in known)
+                if quick is not None and direction * quick >= far:
+                    return quick
             # Otherwise the profile of psi is walked out from the
             # farthest point known.
             far_psi, far_u = max(known, key=lambda k: direction * k[0])
