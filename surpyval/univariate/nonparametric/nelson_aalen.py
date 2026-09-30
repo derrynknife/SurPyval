@@ -3,7 +3,6 @@ import numpy.typing as npt
 
 from surpyval.univariate.nonparametric.fleming_harrington import (
     _check_at_risk,
-    _snap,
     _snap_array,
 )
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
@@ -42,7 +41,7 @@ def nelson_aalen_variance(r: npt.NDArray, d: npt.NDArray) -> npt.NDArray:
         # left in, it gave a variance where the estimate is still 1.
         # A step with no events adds nothing, even with no one at risk
         # (0 / 0), as the estimate carries its value there (#425).
-        q = np.array([_snap(v) for v in np.where(d == 0, 0.0, d / r)])
+        q = _snap_array(np.where(d == 0, 0.0, d / r))
         var = np.where(q == 0, 0.0, var)
         var = np.where(np.isfinite(var), var, np.nan)
         return np.cumsum(var)

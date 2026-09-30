@@ -1329,7 +1329,20 @@ def optimise_nm_tnc(
     used to come back tenths of a nat short of the maximum, silently. A
     converged fit is returned exactly as before. ``quiet`` as for
     :func:`optimise_ph`.
+
+    When autograd can differentiate the objective, the gradient ladder of
+    :func:`optimise_ph` runs first, and its answer is kept when it is a
+    verified optimum. Nelder-Mead was the bulk of an AFT or PO fit: 436
+    derivative-free evaluations on a 5-covariate Weibull AFT, where the
+    gradient ladder needs a few dozen and reaches the same maximum 4-6x
+    sooner (#499). A result it cannot verify falls through to the ladder
+    below, unchanged.
     """
+    if _gradient(fun, init_t) is not None:
+        fast = optimise_ph(fun, init_t, quiet=True)
+        stopped_short = getattr(fast, "stopped_short", False)
+        if np.isfinite(fast.fun) and not stopped_short:
+            return fast
     res = minimize(
         fun, init_t, method="Nelder-Mead", options={"maxiter": 1000}
     )
