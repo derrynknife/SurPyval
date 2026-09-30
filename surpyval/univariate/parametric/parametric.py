@@ -1025,12 +1025,32 @@ class Parametric(
         return set(info.get("fixed_idx", []) or [])
 
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
-        """The negative log-likelihood at core parameters ``theta``."""
+        """The negative log-likelihood at core parameters ``theta``, as
+        the likelihood-ratio searches see it.
+
+        ``nan`` where it cannot be right: at parameters that are not
+        finite (a search that has stepped off to nan; some likelihoods
+        iterate to their limit on nan, a NegativeBinomial's incomplete
+        beta for 2 s a call), and below the fit's own minimum by more
+        than ``_LR_NOISE`` in deviance. The fit is the maximum, so a
+        likelihood above it is the likelihood failing at extreme
+        parameters: an ExpoWeibull's at ``beta`` = 1e14 and ``mu`` =
+        1e-14 is a deviance of -1e21, and a search that reached it took
+        it for the best point there.
+        """
         if not np.all(np.isfinite(theta)):
-            # A search that has stepped off to nan: some likelihoods
-            # iterate to their limit on nan (a NegativeBinomial's
-            # incomplete beta took 2 s a call).
             return np.nan
+        nll = self._lr_raw_neg_ll(theta)
+        params = np.asarray(self.params, dtype=float)
+        kept = self.__dict__.get("_lr_nll_hat")
+        if kept is None or kept[0] != params.tobytes():
+            kept = (params.tobytes(), self._lr_raw_neg_ll(params))
+            self.__dict__["_lr_nll_hat"] = kept
+        if 2.0 * (nll - kept[1]) < -_LR_NOISE:
+            return np.nan
+        return nll
+
+    def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
         with np.errstate(all="ignore"):
             return float(
                 self.dist._neg_ll_func(
@@ -1120,8 +1140,10 @@ class Parametric(
 
         coords, limits = self._lr_coords()
         free_coords = [coords[j] for j in free]
-        box = self._lr_box(free_coords, [limits[j] for j in free])
+        box = [limits[j] for j in free]
         bounds = box if any(b != (None, None) for b in box) else None
+        # Starts are held inside the coordinates' ends as well.
+        start_box = self._lr_box(free_coords, box)
 
         def obj(u: npt.NDArray) -> float:
             th = theta.copy()
@@ -1137,7 +1159,7 @@ class Parametric(
             for x0 in starts + [u_hat]:
                 res = minimize(
                     obj,
-                    self._lr_start(x0, box),
+                    self._lr_start(x0, start_box),
                     method="L-BFGS-B",
                     jac="3-point",
                     bounds=bounds,
@@ -1151,7 +1173,7 @@ class Parametric(
                 # fit, as a last resort.
                 res = minimize(
                     obj,
-                    self._lr_start(u_hat, box),
+                    self._lr_start(u_hat, start_box),
                     method="Nelder-Mead",
                     bounds=bounds,
                 )
