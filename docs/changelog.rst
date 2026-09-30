@@ -34,11 +34,41 @@ as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``. The bundled
 Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
 only when it is significant. ``qf`` outside [0, 1] is ``nan``.
-``param_names`` is deprecated in favour of ``parameter_names``. Durations
+``param_names`` is deprecated in favour of ``parameter_names``. The
+bundled lung data's ``status`` is 1 for a death. ``CoxPH.check_ph()``
+returns a ``DataFrame``. Durations
 and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
 
+- **Changed: load_lung()'s status means a death (#509).** It was stored as
+  SurPyval's censoring flag (0 = death), the opposite of lifelines, so
+  ``c = 1 - status`` fitted the complement (a Kaplan-Meier median of 588
+  days instead of 310). ``status`` is now 1 for a death, as in lifelines
+  and R; pass ``c = 1 - status``.
+- **A fitted model's printout shows its data (#508).** For example ``Data
+  : 60 units: 9 failures, 51 right censored``, with left, interval and
+  truncated counts when present, counted in units (weighted by ``n``).
+  Parametric, mixture, non-parametric, parametric regression, Cox and
+  Buckley-James models print it, and keep it through ``to_dict``. A "1 =
+  failed" column passed as ``c`` is now visible at a glance.
+- **Changed: probability plots take label= and color= (#510).**
+  ``Parametric.plot`` and ``MixtureModel.plot`` draw the points, fitted
+  line and bounds in one colour (by default the axes' next colour), with
+  ``label=`` on the fitted line, so fits overlaid on one plot can be told
+  apart. The fitted line is solid and the bounds dashed; they were a black
+  dashed line and red bounds. Overlaid plots keep both ranges in view.
+- **Changed: CoxPH.check_ph() returns a table (#514).** A ``DataFrame`` as
+  R's ``cox.zph`` prints it: a row per covariate and a ``GLOBAL`` row, with
+  ``statistic``, ``df`` and ``p``. The old dictionary is
+  ``proportional_hazards.diagnostics.check_ph(model)``.
+- **Conditional survival: sf(x, given=g) and ff(x, given=g) (#514)** on
+  parametric, non-parametric and mixture models, :math:`S(x)/S(g)`, as the
+  regression models' ``sf_tvc(..., given=)``. ``cs`` still works.
+- **Plots label their axes (#514).** The time axis is "Time" unless it is
+  already labelled; non-parametric plots say "Survival probability" and
+  "Kaplan-Meier estimate" (etc.), not "R" and "Model Survival Plot". A
+  failure at exactly 0 now points to ``zi=True``.
 - **Faster Efron Cox fits with tied times (#515).** The Efron score was
   computed on a masked (times x largest tie x covariates) array: one
   51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
