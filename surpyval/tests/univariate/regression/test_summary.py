@@ -34,16 +34,22 @@ COLUMNS = [
 ]
 
 
+def _rossi():
+    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
+    df = load_rossi_static()
+    return df.assign(censored=1 - df["arrest"])
+
+
 def _cox():
     return sp.CoxPH.fit_from_df(
-        load_rossi_static(), x_col="week", c_col="arrest", Z_cols=COLS
+        _rossi(), x_col="week", c_col="censored", Z_cols=COLS
     )
 
 
 def test_cox_summary_matches_r():
     # R: summary(coxph(Surv(week, arrest) ~ fin + age + race + wexp + mar
-    # + paro + prio, data = rossi)) -- the bundled copy's arrest column is
-    # the censoring flag already.
+    # + paro + prio, data = rossi)) -- the censoring flag is
+    # 1 - arrest (#479).
     table = _cox().summary()
     assert list(table.columns) == COLUMNS
     assert list(table.index) == COLS
@@ -96,8 +102,8 @@ def test_cox_repr_names_the_covariates():
         "-1.983",
         "0.04742",
     ]
-    x = load_rossi_static()
-    unnamed = sp.CoxPH.fit(x.week, x[COLS].to_numpy(), x.arrest)
+    x = _rossi()
+    unnamed = sp.CoxPH.fit(x.week, x[COLS].to_numpy(), x.censored)
     assert "beta_6" in repr(unnamed)
 
 
@@ -117,9 +123,9 @@ def test_cox_standard_errors_are_saved():
 
 
 def test_parametric_summary_and_repr_separate_the_baseline():
-    df = load_rossi_static()
+    df = _rossi()
     model = sp.WeibullPH.fit_from_df(
-        df, x_col="week", c_col="arrest", Z_cols=["fin", "age", "prio"]
+        df, x_col="week", c_col="censored", Z_cols=["fin", "age", "prio"]
     )
     table = model.summary()
     assert list(table.columns) == COLUMNS
@@ -155,8 +161,8 @@ def test_parametric_summary_and_repr_separate_the_baseline():
 
 
 def test_parametric_links_without_a_ratio():
-    df = load_rossi_static()
-    x, c = df.week.to_numpy(), df.arrest.to_numpy()
+    df = _rossi()
+    x, c = df.week.to_numpy(), df.censored.to_numpy()
     additive = sp.WeibullAH.fit(x, df[["fin"]].to_numpy(), c)
     assert np.isnan(additive.summary()["exp(coef)"]).all()
     assert "exp(coef)" not in repr(additive).split("Coefficients")[1]
@@ -177,8 +183,8 @@ def test_parametric_links_without_a_ratio():
 
 
 def test_fixed_and_aliased_parameters():
-    df = load_rossi_static()
-    x, c = df.week.to_numpy(), df.arrest.to_numpy()
+    df = _rossi()
+    x, c = df.week.to_numpy(), df.censored.to_numpy()
     model = sp.WeibullPH.fit(x, df[["fin"]].to_numpy(), c, fixed={"beta": 1.4})
     row = model.summary().loc[("baseline", "beta")]
     assert row["coef"] == 1.4 and np.isnan(row["se(coef)"])
@@ -192,14 +198,14 @@ def test_fixed_and_aliased_parameters():
 
 
 def _frailty():
-    df = load_rossi_static()
+    df = _rossi()
     df["grp"] = np.arange(len(df)) % 40
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sp.WeibullFrailty.fit_from_df(
             df,
             x_col="week",
-            c_col="arrest",
+            c_col="censored",
             Z_cols=["fin", "age"],
             group_col="grp",
         )

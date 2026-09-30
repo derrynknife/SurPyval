@@ -265,8 +265,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
         >>> model = CoxPH.fit_from_df(
-        ...     df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
         ... )
         >>> model.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
                      coef  exp(coef)  se(coef)       p
@@ -562,7 +563,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, df["arrest"].values
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
         >>> subjects = [[0, 20], [1, 20], [0, 40]]
         >>> model.sf([10, 30, 50], subjects, grid=True).round(3)

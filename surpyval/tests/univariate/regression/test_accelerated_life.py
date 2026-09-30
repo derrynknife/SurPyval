@@ -126,7 +126,10 @@ def test_repr_does_not_show_the_life_parameter_as_a_fitted_value():
     text = repr(model)
     assert "alpha: 1.0" not in text
     assert "alpha: L(Z) of the Power life model" in text
-    assert "beta: " in text and "n: " in text
+    # The fitted parameters are the rows of the tables (#484).
+    index = model.summary().index
+    assert ("baseline", "beta") in index and ("life model", "n") in index
+    assert ("baseline", "alpha") not in index
     lognormal = AcceleratedLife(surpyval.LogNormal, Power).fit(x, Z=stress)
     assert "mu: ln L(Z) of the Power life model" in repr(lognormal)
     expo = AcceleratedLife(Exponential, Power).fit(x, Z=stress)

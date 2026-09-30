@@ -582,8 +582,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> from surpyval import WeibullPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
         >>> model = WeibullPH.fit_from_df(
-        ...     df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
         ... )
         >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
                                coef  se(coef)       p
@@ -616,8 +617,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             part, rows, first = "life model", None, len(params)
         # The other parameters: their estimate, standard error and the
         # support-respecting interval of ``param_cb``.
+        # The life parameter an accelerated-life model replaces by its life
+        # model is a placeholder, not a parameter (#489): no row.
+        kept = [i for i in range(first) if names[i] != self.life_parameter]
         others = []
-        for i in range(first):
+        for i in kept:
             bounds = np.full(2, np.nan)
             if np.isfinite(se[i]):
                 try:
@@ -641,7 +645,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             columns=list(coefficient_table([], [], [], alpha_ci).columns),
         )
         parts = ["baseline"] * min(k, first) + [part] * (first - k)
-        index = list(zip(parts, names[:first]))
+        index = [(parts[i], names[i]) for i in kept]
         if rows is not None:
             table = pd.concat([table, rows.reset_index(drop=True)])
             index += [(part, name) for name in rows.index]
@@ -701,16 +705,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             rows.index.name = None
             return format_table(rows, list(estimates.values()))
 
-        out += (
-            "\nBaseline            : {} parameters; Wald 95% "
-            "intervals\n".format(self.distribution.name)
-        ) + block("baseline")
+        parts = table.index.get_level_values(0)
+        out += "\nBaseline            : {} parameters".format(
+            self.distribution.name
+        )
+        if "baseline" in parts:
+            out += "; Wald 95% intervals\n" + block("baseline")
         if self.life_parameter is not None:
             # Replaced by the life model, not fitted (#489).
             out += "\n    {}: {}".format(
                 self.life_parameter, self._life_relation()
             )
-        parts = table.index.get_level_values(0)
         if "life model" in parts:
             out += "\nLife model          : Wald 95% intervals\n" + block(
                 "life model"

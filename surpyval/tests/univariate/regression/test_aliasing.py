@@ -28,12 +28,18 @@ from surpyval.univariate.competing_risks import (
 COLS = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
 
-def _rossi():
+def _rossi_df():
+    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
     df = load_rossi_static()
+    return df.assign(censored=1 - df["arrest"])
+
+
+def _rossi():
+    df = _rossi_df()
     return (
         df.week.to_numpy(),
         df[COLS].to_numpy(float),
-        df.arrest.to_numpy().astype(int),
+        df.censored.to_numpy().astype(int),
     )
 
 
@@ -116,17 +122,17 @@ def test_additive_hazards_constant_column_is_identified():
 
 
 def test_the_warning_names_the_columns_of_a_data_frame():
-    df = load_rossi_static().assign(one=1.0)
+    df = _rossi_df().assign(one=1.0)
     model, messages, caught = _fit(
         lambda: sp.CoxPH.fit_from_df(
-            df, x_col="week", c_col="arrest", Z_cols=["fin", "one", "age"]
+            df, x_col="week", c_col="censored", Z_cols=["fin", "one", "age"]
         )
     )
     assert messages[0].startswith(_aliased("1 ('one')"))
     assert caught[0].filename == __file__
     model, messages, _ = _fit(
         lambda: sp.WeibullPH.fit_from_df(
-            df, x_col="week", c_col="arrest", Z_cols=["fin", "one", "age"]
+            df, x_col="week", c_col="censored", Z_cols=["fin", "one", "age"]
         )
     )
     assert messages[0].startswith(_aliased("1 ('one')"))
@@ -135,15 +141,15 @@ def test_the_warning_names_the_columns_of_a_data_frame():
 def test_every_level_of_a_factor():
     # "0 + C(race)" codes every level; with the model's intercept (the Cox
     # baseline, the Weibull scale) their sum is aliased, as in R.
-    df = load_rossi_static()
+    df = _rossi_df()
     for fitter in (sp.CoxPH, sp.WeibullPH):
         model, messages, _ = _fit(
             lambda: fitter.fit_from_df(
-                df, x_col="week", c_col="arrest", formula="age + 0 + C(race)"
+                df, x_col="week", c_col="censored", formula="age + 0 + C(race)"
             )
         )
         ref = fitter.fit_from_df(
-            df, x_col="week", c_col="arrest", formula="age + C(race)"
+            df, x_col="week", c_col="censored", formula="age + C(race)"
         )
         assert len(messages) == 1
         assert "('C(race)[1]')" in messages[0]

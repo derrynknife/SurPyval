@@ -21,11 +21,17 @@ FITTERS = ["CoxPH", "WeibullPH", "WeibullAFT", "WeibullPO", "WeibullAH"]
 FUNCTIONS = ["sf", "ff", "df", "hf", "Hf"]
 
 
-def _fit(name):
+def _rossi():
+    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
     df = load_rossi_static()
+    return df.assign(censored=1 - df["arrest"])
+
+
+def _fit(name):
+    df = _rossi()
     fitter = getattr(sp, name)
     return fitter.fit(
-        df.week.values, df[["fin", "age"]].values, df.arrest.values
+        df.week.values, df[["fin", "age"]].values, df.censored.values
     )
 
 
@@ -69,16 +75,16 @@ def test_grid(name):
 
 
 def test_grid_from_a_data_frame_and_a_stratum():
-    df = load_rossi_static()
+    df = _rossi()
     model = sp.CoxPH.fit_from_df(
-        df, x_col="week", c_col="arrest", Z_cols=["fin", "age"]
+        df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
     )
     new = pd.DataFrame(SUBJECTS, columns=["fin", "age"])
     np.testing.assert_allclose(
         model.sf(TIMES, new, grid=True), model.sf(TIMES, SUBJECTS, grid=True)
     )
     strat = sp.CoxPH.fit(
-        df.week.values, df[["age"]].values, df.arrest.values, strata=df.fin
+        df.week.values, df[["age"]].values, df.censored.values, strata=df.fin
     )
     grid = strat.sf(TIMES, [[20.0], [30.0]], stratum=1, grid=True)
     np.testing.assert_allclose(
