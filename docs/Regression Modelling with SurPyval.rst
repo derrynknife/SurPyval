@@ -1878,10 +1878,13 @@ Notice that the Weibull shape parameter :math:`\beta` is estimated globally —
 it is the same for all stress levels — while the scale parameter :math:`\alpha`
 varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
-``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
-by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
-in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhenius parameter ``a`` is
-:math:`E_a / k_B`, so the fit estimates the activation energy directly:
+report shows ``alpha`` as ``L(Z)``, not as a value: the life parameter
+(``model_arr.life_parameter``) is replaced by the life model at each stress, so
+it is not estimated. Its slot in ``params`` (named by ``model_arr.param_names``)
+holds a placeholder 1 that carries no information: it is listed in
+``model_arr.fixed``, is not counted as a parameter in the AIC, and ``param_cb``
+refuses it. The Arrhenius parameter ``a`` is :math:`E_a / k_B`, so the fit
+estimates the activation energy directly:
 
 .. jupyter-execute::
 
@@ -1894,6 +1897,9 @@ in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhe
 
     assert c_al[stress == 358.].sum() > 10          # most of the coolest
     assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
+    assert model_arr.life_parameter == 'alpha'
+    assert model_arr.param_names == ['alpha', 'beta', 'a', 'b']
+    assert 'alpha: L(Z) of the' in repr(model_arr)
     assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
     assert round(model_arr.params[2] * k, 2) == 0.67
     _lo, _hi = model_arr.param_cb('a') * k
@@ -1991,8 +1997,9 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
     model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
         x_2s, Z=np.column_stack([temp, volts]))
-    for name, value in zip(model_2s.parameter_names(), model_2s.params):
-        print(f'{name:5s} = {value:.4g}')
+    for name, value in zip(model_2s.param_names, model_2s.params):
+        if name != model_2s.life_parameter:   # alpha is given by the life model
+            print(f'{name:5s} = {value:.4g}')
     print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
 
 The fit separates the two effects — an activation energy of 0.67 eV against
