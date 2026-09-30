@@ -2167,7 +2167,8 @@ se.fit=TRUE)``) to seven digits. In small, heavily censored samples its lower
 bound on a low quantile is too high too often, so it covers less than its
 nominal level; the likelihood-ratio bound, the extreme of :math:`t_p` over the
 parameters' likelihood region, stays much closer to it, and is the one to use
-there. Both are checked for coverage at 100 units in the calibration studies
+there. The Wald bounds on the B10 and the mean are checked for coverage at
+100 units in the calibration studies
 (``calibration/test_coverage_parametric.py``). Do not find a B-life bound by
 reading the band from ``cb(t, on='ff')`` across: a pointwise band on
 :math:`F` does not invert to the interval on :math:`t_p`.
