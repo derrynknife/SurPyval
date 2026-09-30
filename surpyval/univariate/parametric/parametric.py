@@ -430,7 +430,7 @@ class Parametric(
         - ``"unknown"``: a maximum-likelihood fit restored from a
           dictionary saved before the attribute existed.
 
-        :func:`~surpyval.fit_best` ranks a candidate by its criterion
+        :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
         only when this is ``"verified"``, unless nothing else fitted.
 
     Examples

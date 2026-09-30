@@ -5,7 +5,8 @@ The fitted model returned by every parametric distribution's ``fit``
 (and by ``from_params``). It holds the fitted parameters ``params``
 (with ``gamma``, ``p`` and ``f0`` for offset, limited-failure and
 zero-inflated models), the data it was fitted to, and the parameter
-covariance, and provides the distribution's functions at those
+covariance, and whether a maximum-likelihood fit reached a verified
+maximum (``maximum``), and provides the distribution's functions at those
 parameters (``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``qf``, ``cs``,
 ``mean``, ``var``, ``moment``, ``entropy``, ``random``, ``random_data``),
 the same model with other parameters (``with_params``, ``extras``),
