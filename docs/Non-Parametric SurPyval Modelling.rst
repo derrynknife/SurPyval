@@ -77,6 +77,25 @@ Note the use of ``n``: rather than typing 389 values, each distinct stress is gi
 
     assert n.sum() == 389
 
+Data held in a pandas ``DataFrame`` can be passed with ``fit_from_df``,
+naming the columns, exactly as for a parametric distribution
+(``x``, ``c``, ``n``, ``xl`` / ``xr`` and ``tl`` / ``tr``); the estimate is
+the one ``fit`` gives on the same arrays:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    bofors = pd.DataFrame({'stress': x, 'broke': n})
+    bofors_df_na = surv.NelsonAalen.fit_from_df(bofors, x='stress', n='broke')
+    print(bofors_df_na.sf([34, 36]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(bofors_df_na.R, bofors_steel_na.R)
+
 So what purpose is this?
 
 With our non-parametric model of the Bofors steel. We can use this model to estimate the reliability in our application. Let's say that our application uses Bofors steel up to 34. What is our estimate of the number of failures?

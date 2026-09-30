@@ -140,6 +140,35 @@ Other areas of the package add a few more names, always with the same meaning:
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
 
+Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
+``DataFrame`` and the names of its columns in place of these arrays, passes
+every other option to ``fit``, and gives the model ``fit`` gives on the same
+arrays (the conformance suite checks this for every model). The columns are
+named in one of two ways, by family:
+
+- the distributions and estimators of one lifetime per row (parametric,
+  non-parametric, ``RoystonParmar``, ``MixtureModel``), the copulas and the
+  degradation models use the array's own name: ``x='hours'``, ``c=``,
+  ``n=``, ``xl=`` / ``xr=``, ``tl=`` / ``tr=`` (a column or one number),
+  ``y=``, ``i=``;
+- the regression, competing-risks and recurrent-event fitters add
+  ``_col``: ``x_col='hours'``, ``c_col=``, ``n_col=``, ``tl_col=``,
+  ``tr_col=``, ``e_col=``, ``i_col=``, and ``Z_cols=`` for the covariates
+  (or a ``formula``, where the model supports one).
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting
+
+    table = pd.DataFrame({'hours': [5.0, 8, 12, 20, 25, 30],
+                          'failed': [0, 0, 0, 1, 0, 1]})
+    km = surv.KaplanMeier.fit_from_df(table, x='hours', c='failed')
+    log = pd.DataFrame({'hours': [3.0, 9, 20, 5, 12],
+                        'unit': [1, 1, 1, 2, 2], 'end': [0, 0, 1, 0, 1]})
+    mcf = NonParametricCounting.fit_from_df(log, x_col='hours', i_col='unit',
+                                            c_col='end')
+    print(km.sf(10), mcf.mcf(10))
+
 
 Censoring Flag Conventions
 --------------------------

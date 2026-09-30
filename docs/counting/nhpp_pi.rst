@@ -13,3 +13,4 @@ taking the covariates alongside the time).
 
    .. automethod:: surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit
    .. automethod:: surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.regression.nhpp_proportional_intensity.ProportionalIntensityNHPP.fit_from_df

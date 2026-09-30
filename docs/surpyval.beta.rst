@@ -24,11 +24,15 @@ Random Survival Forest
 .. autoclass:: surpyval.beta.ml.forest.forest.RandomSurvivalForest
    :members:
 
+   .. automethod:: fit_from_df
+
 Survival Tree
 -------------
 
 .. autoclass:: surpyval.beta.ml.forest.tree.SurvivalTree
    :members:
+
+   .. automethod:: fit_from_df
 
 Tree Nodes
 ----------

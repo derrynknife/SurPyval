@@ -97,6 +97,33 @@ The intensity models accept all of these (see `Delayed entry and right
 truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
 ``tr`` and ``windows``; the renewal models need each item watched from new.
 
+Event logs usually arrive as a table, one row per event with a column naming
+the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
+of its columns: ``x_col`` and, as needed, ``i_col``, ``c_col``, ``n_col``,
+``tl_col`` and ``tr_col`` (the names the regression and competing-risks
+``fit_from_df`` use). Every other ``fit`` option (``how``, ``dist``,
+``init``, ...) is passed straight through, and the model is the one ``fit``
+gives on the same columns:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    log = pd.DataFrame({
+        "hours": [120, 380, 610, 700, 90, 400, 520, 650],
+        "truck": [1, 1, 1, 1, 2, 2, 2, 2],
+        "c":     [0, 0, 0, 1, 0, 0, 0, 1],
+    })
+    from_log = CrowAMSAA.fit_from_df(log, x_col="hours", i_col="truck", c_col="c")
+    print(from_log.params.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
+    assert np.allclose(from_log.params, same.params)
+
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1538,7 +1565,8 @@ fluke of this sample.
 
 Both classes also have a ``fit_from_df`` method that reads the columns of a
 ``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
-``c_col``, ``n_col``, ``tl_col``, ``tr_col``).
+``c_col``, ``n_col``, ``tl_col``, ``tr_col``), as every recurrent fitter
+does (with ``e_col`` for the causes).
 
 Saving and loading a fitted model
 ---------------------------------
