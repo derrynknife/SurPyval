@@ -32,7 +32,8 @@ A fitted baseline distribution combined with a covariate function. The
 page below covers the proportional-hazards, accelerated-failure-time,
 proportional-odds, parametric additive-hazards and accelerated-life
 families, the fitted model they all return, and the time-varying
-covariate schedules the PH, AFT and AH families can be evaluated along.
+covariate paths (step schedules and continuously varying paths) the PH,
+AFT, AH and PO families can be evaluated along.
 
 .. toctree::
     :maxdepth: 1

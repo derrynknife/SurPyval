@@ -28,7 +28,10 @@ covariate vector (``sf``, ``ff``, ``df``, ``hf``, ``Hf``) and, for a
 time-varying covariate, the survival along a covariate path: ``sf_tvc`` /
 ``Hf_tvc`` take a piecewise-constant
 :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` (or
-``(xl, Z)`` arrays), the same interface the parametric families use, while the
+``(xl, Z)`` arrays) or a continuously varying
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` (exact for
+Cox: only the path at the baseline jump times counts), the same interface
+the parametric families use, while the
 older interval-oriented ``predict_tvc`` returns the survival at the baseline
 jump times along a subject's ``(xl, xr]`` intervals.
 

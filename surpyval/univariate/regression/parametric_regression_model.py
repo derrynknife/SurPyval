@@ -679,14 +679,18 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` and
         check its covariate count against the fitted model.
         """
-        from .tvc_schedule import as_step_schedule
+        from .tvc_schedule import as_covariate_path
 
-        schedule = as_step_schedule(Z, xl)
+        schedule = as_covariate_path(Z, xl)
         n_cov = self.params.shape[0] - self.k_dist
         if schedule.p != n_cov:
             raise ValueError(
-                "the schedule has {} covariate(s) but the model was fit with "
-                "{}".format(schedule.p, n_cov)
+                "the {} has {} covariate(s) but the model was fit with "
+                "{}".format(
+                    "schedule" if hasattr(schedule, "segments") else "path",
+                    schedule.p,
+                    n_cov,
+                )
             )
         return schedule
 
@@ -698,7 +702,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         xl: "npt.ArrayLike | None" = None,
     ) -> npt.NDArray:
         r"""
-        Cumulative hazard for a covariate following a step schedule ``Z(t)``.
+        Cumulative hazard for a covariate following a path ``Z(t)``: a step
+        schedule, or a continuously varying path.
 
         For the proportional-hazards, additive-hazards and proportional-odds
         families the hazard at time :math:`t` depends only on :math:`t` and
@@ -731,6 +736,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
         segment reduces exactly to ``Hf(x, Z)``.
 
+        Along a
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`, a
+        covariate that changes continuously, the same hazards are
+        integrated: :math:`H(x) = \int_0^x h(u \mid Z(u))\, du`, and for
+        accelerated failure time
+        :math:`\psi(x) = \int_0^x e^{\beta' Z(u)}\, du` (Nelson's cumulative
+        exposure). For proportional odds the hazard is that of the current
+        covariate, :math:`h_0(t) / (F_0(t) + \phi(Z(t)) S_0(t))`: the limit
+        of the step sum above, and the model ``fit_tvc`` fits. The integral
+        is by adaptive Gauss-Kronrod quadrature to a relative error of about
+        ``1e-10``; where that is not reached, one ``RuntimeWarning`` says at
+        how many query times. The type of ``Z`` picks the method: a
+        ``StepSchedule`` is always summed exactly.
+
         The path is measured from time zero: a schedule starting after zero
         has its first value held back to zero, and the part of a schedule
         before zero is ignored (the value in force at zero applies from
@@ -741,9 +760,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         ----------
         x : array_like
             Times at which to evaluate the cumulative hazard.
-        Z : StepSchedule or array_like
-            The covariate path -- either a
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path -- a
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`,
             or an array of per-segment covariate rows (with ``xl`` giving the
             segment start times).
         xl : array_like, optional
@@ -753,13 +773,53 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         -------
         ndarray
             The cumulative hazard at each ``x``.
+
+        Examples
+        --------
+        An exponential proportional hazards model along a stress ramp
+        ``Z(t) = 0.1 t``, whose cumulative hazard is
+        :math:`\lambda (e^{0.1 \beta t} - 1) / (0.1 \beta)`:
+
+        >>> import numpy as np
+        >>> from surpyval import CovariatePath, ExponentialPH
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 2, (300, 1))
+        >>> x = rng.exponential(10 * np.exp(-0.7 * Z[:, 0]))
+        >>> model = ExponentialPH.fit(x, Z)
+        >>> lam, beta = model.params
+        >>> ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
+        >>> t = np.array([2.0, 5.0, 10.0])
+        >>> H = model.Hf_tvc(t, ramp)
+        >>> exact = lam * np.expm1(0.1 * beta * t) / (0.1 * beta)
+        >>> bool(np.allclose(H, exact, rtol=1e-12, atol=0))
+        True
         """
-        H, falls = self._hf_tvc(x, Z, xl)
+        H, falls, accuracy = self._hf_tvc(x, Z, xl)
+        self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        return H
+
+    def _warn_tvc(
+        self,
+        H: npt.NDArray,
+        falls: int,
+        accuracy: "tuple[int, int, float, str] | None",
+        stacklevel: int,
+    ) -> None:
+        """The warnings of ``sf_tvc`` / ``Hf_tvc``: a falling additive
+        hazard (#376), and a quadrature that missed its target (#172);
+        ``stacklevel`` counts from here to the caller of the public
+        method."""
         if falls:
             self._warn_negative_hazard(
-                falls, H.size, self._max_sf(H), stacklevel=4
+                falls, H.size, self._max_sf(H), stacklevel=stacklevel
             )
-        return H
+        if accuracy is not None:
+            from .tvc_path import warn_missed_target
+
+            missed, total, worst, limit = accuracy
+            warn_missed_target(
+                missed, total, worst, limit, self._tvc_rtol, stacklevel
+            )
 
     @staticmethod
     def _max_sf(H: npt.NDArray) -> "float | None":
@@ -773,10 +833,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | Any",
         xl: "npt.ArrayLike | None",
-    ) -> "tuple[npt.NDArray, int]":
-        """The cumulative hazard along the path, and the number of query
+        given: "float | None" = None,
+    ) -> "tuple[npt.NDArray, int, tuple | None]":
+        """The cumulative hazard along the path, the number of query
         times at which an additive hazard fell (a negative ``H`` or a
-        negative segment increment, #376) -- 0 for the other families."""
+        negative segment increment, #376) -- 0 for the other families --
+        and, for a ``CovariatePath`` whose quadrature missed its target,
+        ``(missed, total, worst)`` (else ``None``). ``given`` is used only
+        for a ``CovariatePath``: ``H`` is then integrated from ``given``,
+        ``H(x) - H(given)``."""
+        from .tvc_path import CovariatePath
+
         if self.kind not in self._TVC_EVALUABLE_KINDS:
             raise NotImplementedError(
                 "time-varying-covariate evaluation is defined for the "
@@ -790,7 +857,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # evaluated as usual.
         missing = np.isnan(xq)
         if missing.all():
-            return np.full(xq.shape, np.nan), 0
+            return np.full(xq.shape, np.nan), 0, None
+        if isinstance(schedule, CovariatePath):
+            # Integrated, not summed.
+            return self._tvc_hf_path(xq, schedule, given)
         # A horizon at or below 0 materialises the one segment in force at
         # 0: H is then 0, or the baseline's value for a time below 0.
         t_max = float(np.max(xq[~missing]))
@@ -805,7 +875,181 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if self.kind == "Additive Hazard":
             falls |= H < 0
         falls &= ~missing
-        return np.where(missing, np.nan, H), int(falls.sum())
+        return np.where(missing, np.nan, H), int(falls.sum()), None
+
+    #: The relative accuracy the quadrature along a ``CovariatePath``
+    #: aims for on the cumulative hazard (private: tests change it).
+    _tvc_rtol: float = 1e-10
+
+    def _tvc_hf_path(
+        self,
+        xq: npt.NDArray,
+        path: Any,
+        given: "float | None",
+    ) -> "tuple[npt.NDArray, int, tuple | None]":
+        r"""
+        The cumulative hazard along a continuously varying ``path`` (#172),
+        less its value at ``given`` when that is supplied; the values and
+        counts are as for :meth:`_hf_tvc`.
+
+        At and before time 0 the value in force at 0 applies, exactly as
+        for a step schedule, so there the one-segment step sum gives ``H``.
+        After 0 the hazard (for AFT, the accelerated-age rate) is
+        integrated over panels by :func:`~.tvc_path.integrate_panels`, and
+        summed outward from ``given`` (or 0): nothing is subtracted for a
+        baseline that starts at 0.
+        """
+        from .tvc_path import (
+            integrate_panels,
+            missed_target,
+            path_mesh,
+            sum_between,
+        )
+
+        aft = self.kind == "Accelerated Failure Time"
+        missing = np.isnan(xq)
+        xe = np.where(missing, 0.0, xq)
+        n = xq.shape[0]
+        g_pos = given is not None and given > 0
+
+        # H at min(x, 0), at 0 and at min(given, 0): the one segment in
+        # force at 0, [0, 0], of the step sum.
+        z0 = np.asarray(path._values(np.zeros(1), left=False), dtype=float)
+        g_low = min(given, 0.0) if given is not None else 0.0
+        low_t = np.concatenate([np.minimum(xe, 0.0), [0.0, g_low]])
+        falls_low = np.zeros(low_t.shape, dtype=bool)
+        seg = (np.zeros(1), np.zeros(1), z0.reshape(1, -1))
+        if aft:
+            H_low = self._tvc_hf_aft(low_t, *seg)
+        else:
+            H_low = self._tvc_hf_additive(low_t, *seg, falls_low)
+        H_x_low, H_at0, H_g_low = H_low[:n], H_low[n], H_low[n + 1]
+        falls = falls_low[:n].copy()
+
+        points = xe[xe > 0]
+        if g_pos:
+            points = np.append(points, given)
+        if points.size == 0:
+            # Every time is at or before 0.
+            H_full = H_x_low
+            H = H_full if given is None else H_full - H_g_low
+            accuracy = None
+        else:
+            ex = np.maximum(xe, 0.0)
+            res = integrate_panels(
+                self._path_panel_terms(path),
+                path_mesh(path, np.unique(points)),
+                self._tvc_rtol,
+            )
+            edges, value = res["edges"], res["value"]
+            from_0 = sum_between(edges, value, 0.0, ex)
+            if aft:
+                # The accelerated age, through the baseline once.
+                H_full = np.where(xe > 0, self._aft_H0(from_0), H_x_low)
+                H = H_full
+                if given is not None:
+                    if g_pos:
+                        psi_g = sum_between(
+                            edges, value, 0.0, np.array([given])
+                        )
+                        H = H_full - self._aft_H0(psi_g)[0]
+                    else:
+                        H = H_full - H_g_low
+                origin = 0.0
+                reach = np.maximum(ex, given) if g_pos else ex
+            else:
+                # H(x) = A(x) + int_0^max(x, 0) h, with A(x) the step
+                # value at min(x, 0) (0 for a baseline that starts at 0).
+                A_x = np.where(xe > 0, H_at0, H_x_low)
+                H_full = A_x + from_0
+                origin = float(given) if given is not None and g_pos else 0.0
+                H = H_full
+                if given is not None:
+                    A_g = H_at0 if g_pos else H_g_low
+                    H = (A_x - A_g) + sum_between(edges, value, origin, ex)
+                reach = ex
+                if self.kind == "Additive Hazard":
+                    # A negative hazard at a node before x (#376).
+                    fell = sum_between(
+                        edges, res["flag"], 0.0, ex, signed=False
+                    )
+                    falls |= fell > 0
+            accuracy = missed_target(
+                res, origin, reach, self._tvc_rtol, missing
+            )
+        if self.kind == "Additive Hazard":
+            falls |= H_full < 0
+        falls &= ~missing
+        return np.where(missing, np.nan, H), int(falls.sum()), accuracy
+
+    def _aft_H0(self, psi: npt.NDArray) -> npt.NDArray:
+        """The AFT baseline cumulative hazard at accelerated ages ``psi``.
+        (An age of 0 makes a log-time baseline evaluate log(0) = -inf on
+        its way to the correct H = 0.)"""
+        with np.errstate(divide="ignore"):
+            return np.asarray(
+                self.model.Hf_dist(
+                    np.asarray(psi, dtype=float), *self.params[: self.k_dist]
+                ),
+                dtype=float,
+            ).ravel()
+
+    def _path_panel_terms(self, path: Any) -> Any:
+        """
+        The family's ``panel_terms(a, b)`` for
+        :func:`~.tvc_path.integrate_panels`: on each panel ``[a, b]`` the
+        exact increment with the covariate frozen at the panel's midpoint
+        value ``zbar``, and at the 15 Kronrod nodes the correction
+        integrand -- the hazard along the path less the hazard at ``zbar``
+        (for AFT, ``phi(Z(u)) - phi(zbar)``) -- its size, for the rounding
+        floor, and (for AH) whether the hazard is negative at a node. The
+        correction is 0 where the path is flat.
+        """
+        from .tvc_path import _NODES
+
+        M, params = self.model, self.params
+        beta = params[self.k_dist :]
+        aft = self.kind == "Accelerated Failure Time"
+        additive = self.kind == "Additive Hazard"
+        starts_at_0 = float(self.distribution.support[0]) >= 0
+
+        def flat(values: Any, n: int) -> npt.NDArray:
+            arr = np.asarray(values, dtype=float)
+            if arr.size == 1 and n != 1:
+                return np.full(n, float(arr.ravel()[0]))
+            return arr.reshape(n)
+
+        def terms(a: npt.NDArray, b: npt.NDArray) -> tuple:
+            m = a.shape[0]
+            mid, half = 0.5 * (a + b), 0.5 * (b - a)
+            u = (mid[:, None] + half[:, None] * _NODES[None, :]).ravel()
+            n = u.shape[0]
+            zu = self._centred(path._values(u))
+            zbar = self._centred(path._values(mid))
+            zrep = np.repeat(zbar, _NODES.shape[0], axis=0)
+            with np.errstate(all="ignore"):
+                if aft:
+                    along = flat(M._phi(zu, *beta), n)
+                    frozen = flat(M._phi(zrep, *beta), n)
+                    exact = flat(M._phi(zbar, *beta), m) * (b - a)
+                else:
+                    along = flat(M.hf(u, zu, *params), n)
+                    frozen = flat(M.hf(u, zrep, *params), n)
+                    # The first panel of a baseline that starts at 0 has
+                    # H(0) = 0 (a log-time baseline would say log(0)).
+                    first = (a == 0) & starts_at_0
+                    hi = flat(M.Hf(b, zbar, *params), m)
+                    lo = flat(M.Hf(np.where(first, b, a), zbar, *params), m)
+                    exact = hi - np.where(first, 0.0, lo)
+                g = (along - frozen).reshape(m, -1)
+            scale = np.abs(along).reshape(m, -1)
+            if additive:
+                flag = (along < 0).reshape(m, -1).any(axis=1)
+            else:
+                flag = np.zeros(m, dtype=bool)
+            return exact, g, scale, flag
+
+        return terms
 
     def _tvc_hf_additive(
         self,
@@ -900,8 +1144,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         given: "float | None" = None,
     ) -> npt.NDArray:
         r"""
-        Survival for a covariate that follows a step (piecewise-constant)
-        schedule ``Z(t)``.
+        Survival for a covariate that follows a path ``Z(t)``: a step
+        (piecewise-constant) schedule, or a continuously varying path.
 
         With a time-varying covariate the survival depends on the whole
         covariate path, not one fixed vector. This is exact along a step path
@@ -909,25 +1153,33 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         accelerated-failure-time families: ``S(x) = exp(-H(x))`` with ``H`` the
         per-segment accumulation in :meth:`Hf_tvc` (a cumulative-hazard sum for
         PH/AH/PO, an accelerated-age sum fed through the baseline for AFT).
-        A constant path gives ``sf(x, Z)``. Accelerated life models raise
-        ``NotImplementedError``.
+        Along a
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath` the
+        same quantities are integrated by quadrature, to a relative error of
+        about ``1e-10`` on ``H`` (see :meth:`Hf_tvc`). A constant path gives
+        ``sf(x, Z)``. Accelerated life models raise ``NotImplementedError``.
 
         Parameters
         ----------
         x : array_like
             Times at which to evaluate survival.
-        Z : StepSchedule or array_like
-            The covariate path. Either a
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path. A
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
             (built from change-points, intervals, a cyclic pattern, or a
-            step-valued expression) or an array of per-segment covariate rows
-            with ``xl`` giving the segment start times.
+            step-valued expression), a
+            :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+            (a covariate that changes continuously), or an array of
+            per-segment covariate rows with ``xl`` giving the segment start
+            times.
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional
             If supplied, return the *conditional* survival given the item has
             survived to age ``given``:
-            ``S(x | given) = exp(-(H(x) - H(given)))``.
+            ``S(x | given) = exp(-(H(x) - H(given)))``. Along a
+            ``CovariatePath`` the hazard is integrated from ``given`` on,
+            so nothing is subtracted.
 
         Returns
         -------
@@ -952,21 +1204,35 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         array([0.7721, 0.5698, 0.4292])
         >>> model.sf([4, 8, 12], [[0]]).round(4)
         array([0.7721, 0.4937, 0.2809])
+
+        Along a covariate ramped from 0 to 1 over the first 10 time units,
+        and conditional on survival to 4:
+
+        >>> from surpyval import CovariatePath
+        >>> ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
+        >>> model.sf_tvc([4, 8, 12], ramp).round(4)
+        array([0.8195, 0.6331, 0.471 ])
+        >>> model.sf_tvc([4, 8, 12], ramp, given=4).round(4)
+        array([1.    , 0.7725, 0.5747])
         """
-        H, falls = self._hf_tvc(x, Z, xl)
-        if falls:
-            self._warn_negative_hazard(
-                falls, H.size, self._max_sf(H), stacklevel=4
-            )
-        if given is not None:
-            given = float(given)
-            if np.isnan(given):
+        from .tvc_path import CovariatePath
+
+        g = None if given is None else float(given)
+        # Along a path the hazard is integrated from given on; a step
+        # schedule subtracts H(given).
+        from_given = (
+            isinstance(Z, CovariatePath) and g is not None and not np.isnan(g)
+        )
+        H, falls, accuracy = self._hf_tvc(x, Z, xl, g if from_given else None)
+        self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        if g is not None and not from_given:
+            if np.isnan(g):
                 # A missing conditioning age: nothing is known (as Cox).
                 H = np.full(np.shape(H), np.nan)
             else:
                 # H(given) is 0 at or below 0, unless the baseline has
                 # mass below 0 (then it is -log of the survival to given).
-                H = H - self._hf_tvc(given, Z, xl)[0]
+                H = H - self._hf_tvc(g, Z, xl)[0]
         return np.exp(-H)
 
     @keeps_query_shape

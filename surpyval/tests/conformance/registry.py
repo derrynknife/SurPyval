@@ -2816,6 +2816,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.RecurrentEventData": _DATA,
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
+    "surpyval.CovariatePath": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.recurrent.TrendTestResult": _RESULT,
