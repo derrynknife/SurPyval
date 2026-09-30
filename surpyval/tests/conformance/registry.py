@@ -1236,6 +1236,16 @@ def _univariate():
             data=unit_interval_data,
             x=np.array([0.15, 0.2, 0.35, 0.5, 0.65, 0.75]),
             slow=frozenset({"*"}),
+            exclude={
+                "units": "its likelihood is unbounded (a shape below 1 "
+                "puts infinite density at a support end), so the MLE has "
+                "no maximum and stops where its search gave up, which "
+                "depends on the units: shapes 1.00, 1.19 on the fixture, "
+                "0.18, 0.18 on it times 7.3. The fit warns (No finite "
+                "maximum, or not a verified maximum) and recommends "
+                "how='MPS', which is unit-free: test_beta4_no_maximum.py "
+                "(#385)"
+            },
         )
     )
     # offset / limited failure population / zero-inflation, for the
@@ -2045,7 +2055,7 @@ _NO_COVARIANCE = (
 # the Uniform's search stalled at the support's edge), then
 # NegativeBinomial and ExpoWeibull (profiles that did not follow their
 # valleys, bounds that were rounding noise where they are infinite, and
-# bands that were not nested). Beta4 waits on #385.
+# bands that were not nested). Beta4's MLE has no maximum (#385).
 _LR_X = {
     "Weibull": np.array([4.0, 8.0, 13.0]),
     "Rayleigh": np.array([3.2, 8.0, 14.6]),
@@ -2656,14 +2666,7 @@ CASES = [_with_convergence(c) for c in CASES]
 # failure is fixed -- then delete the entry. Numbers are on the case's
 # fixture; see the report for #379 for minimal reproductions.
 # ---------------------------------------------------------------------------
-KNOWN_FAILURES: dict[str, dict[str, str]] = {
-    # -- units ----------------------------------------------------------
-    "Beta4": {
-        "units": "the fit depends on the unit: alpha, beta = 1.00, 1.19 on "
-        "the data but 0.18, 0.18 on the data x 7.3 (the end points sit on "
-        "the sample extremes)",
-    },
-}
+KNOWN_FAILURES: dict[str, dict[str, str]] = {}
 
 
 # -- option sweeps (test_options.py) ------------------------------------
@@ -2712,7 +2715,7 @@ _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
     "GeneralizedRenewal": "#461",
     "ARA": "#461",
     "ARI": "#461",
-    "Beta4": "#385",
+    "Beta4": "#461",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
@@ -2756,7 +2759,6 @@ NON_STRICT: dict[str, frozenset[str]] = {}
 KNOWN_FAILURE_ISSUES: dict[str, str] = {
     "missing_query": "#382",
     "qf_ff": "#383",
-    "units": "#385",
 }
 # The option-sweep and outside-data failures name their issue in the
 # reason itself (see _OPTION_ISSUES), as one key can fail for different

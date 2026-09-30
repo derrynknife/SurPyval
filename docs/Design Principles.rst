@@ -67,8 +67,10 @@ Inputs
    whose baseline maps exactly between origins.
 
    *Checked* by ``conformance/test_metamorphic.py``
-   (``test_covariate_origin*`` for covariates); known gap #385 (the
-   Beta4, whose likelihood has no maximum on some data).
+   (``test_covariate_origin*`` for covariates). One family is excepted:
+   the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
+   depend on the units, and warns when it does; its MPS fit does not
+   (#385).
 
 Outputs
 -------
