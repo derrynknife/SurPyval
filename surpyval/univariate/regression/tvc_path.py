@@ -107,9 +107,7 @@ def _as_rows(values: Any, name: str) -> npt.NDArray:
     try:
         arr = np.asarray(values, dtype=float)
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            "'{}' must be numeric: {}".format(name, exc)
-        ) from exc
+        raise ValueError("'{}' must be numeric: {}".format(name, exc)) from exc
     if arr.ndim == 1:
         arr = arr.reshape(-1, 1)
     if arr.ndim != 2:
@@ -310,7 +308,9 @@ class CovariatePath:
             tl, th = t[lo], t[hi]
             width = th - tl
             with np.errstate(invalid="ignore", divide="ignore"):
-                w = np.where(width > 0, (u - tl) / np.where(width > 0, width, 1.0), 0.0)
+                w = np.where(
+                    width > 0, (u - tl) / np.where(width > 0, width, 1.0), 0.0
+                )
             w = np.clip(w, 0.0, 1.0)[:, None]
             vl, vh = v[lo], v[hi]
             # Exactly the point's value at a point, and exactly the flat
@@ -375,9 +375,13 @@ class CovariatePath:
                 "{!r}".format(type(func).__name__)
             )
         if isinstance(p, bool) or not isinstance(p, (int, np.integer)):
-            raise ValueError("'p' must be a positive integer, got {!r}".format(p))
+            raise ValueError(
+                "'p' must be a positive integer, got {!r}".format(p)
+            )
         if p < 1:
-            raise ValueError("'p' must be a positive integer, got {!r}".format(p))
+            raise ValueError(
+                "'p' must be a positive integer, got {!r}".format(p)
+            )
         p = int(p)
         period = _as_period(period)
         if breakpoints is None:
@@ -495,7 +499,9 @@ class CovariatePath:
             "knot" if self._kind == "points" else "breakpoint",
         )
         period = (
-            ", period={:g}".format(self.period) if self.period is not None else ""
+            ", period={:g}".format(self.period)
+            if self.period is not None
+            else ""
         )
         return "CovariatePath({}, {}, p={}{})".format(
             self._kind, count, self.p, period
@@ -547,9 +553,7 @@ def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
                 ),
             )
         )
-    edges = np.unique(
-        np.concatenate([[0.0], path.breakpoints(t_max), points])
-    )
+    edges = np.unique(np.concatenate([[0.0], path.breakpoints(t_max), points]))
     grading = edges[1] * 0.5 ** np.arange(1, _GRADING + 1)
     return np.unique(np.concatenate([edges, grading]))
 
@@ -564,9 +568,7 @@ def _missed(
     exceeds ``rtol`` of the integral of ``|h|`` from 0 (and the rounding
     floor accumulated with it)."""
     with np.errstate(invalid="ignore", over="ignore"):
-        allowed = np.maximum(
-            rtol * np.cumsum(np.abs(value)), np.cumsum(noise)
-        )
+        allowed = np.maximum(rtol * np.cumsum(np.abs(value)), np.cumsum(noise))
         return np.cumsum(err) > allowed
 
 

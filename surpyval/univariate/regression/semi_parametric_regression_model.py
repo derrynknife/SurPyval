@@ -697,7 +697,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
             raise ValueError(
                 "the {} has {} covariate(s) but the model was fit with "
                 "{}".format(
-                    "path" if isinstance(schedule, CovariatePath) else "schedule",
+                    (
+                        "path"
+                        if isinstance(schedule, CovariatePath)
+                        else "schedule"
+                    ),
                     schedule.p,
                     n_cov,
                 )
@@ -750,9 +754,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         def at_edge(t: npt.NDArray) -> npt.NDArray:
             # The last baseline time at or before t (-inf before the first).
             idx = np.searchsorted(base_t, t, side="right") - 1
-            return np.where(
-                idx >= 0, base_t[np.clip(idx, 0, None)], -np.inf
-            )
+            return np.where(idx >= 0, base_t[np.clip(idx, 0, None)], -np.inf)
 
         out = sum_between(
             edges,
@@ -834,9 +836,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
             and not np.isnan(float(given))
         ):
             # Summed from given on.
-            return np.exp(
-                -self._hf_tvc(x, Z, xl, stratum, given=float(given))
-            )
+            return np.exp(-self._hf_tvc(x, Z, xl, stratum, given=float(given)))
         H = self._hf_tvc(x, Z, xl, stratum)
         if given is not None:
             given = float(given)
