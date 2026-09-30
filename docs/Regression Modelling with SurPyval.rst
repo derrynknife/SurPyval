@@ -3001,24 +3001,42 @@ Concordance
 Harrell's concordance index is the fraction of comparable pairs of subjects
 that a risk score ranks in the right order (the one that failed first has the
 higher score), with 0.5 for chance and 1 for perfect; the pair and tie rules
-are on the :doc:`regression analysis` page. surpyval's implementation is
-``surpyval.utils.score.score(x, c, scores)``, where the scores are
-*mortality-like* — higher means expected to fail earlier. For a proportional
-hazards model the linear predictor :math:`\beta'Z` is exactly such a score:
+are on the :doc:`regression analysis` page. Every regression model has a
+``concordance`` method: with no arguments it scores the data the model was
+fitted to, and given ``x``, ``c`` and ``Z`` it scores those, such as a test
+set. For any other score there is
+:func:`surpyval.metrics.concordance_index(x, c, risk) <surpyval.metrics.concordance.concordance_index>`,
+where the scores are *mortality-like* — higher means expected to fail
+earlier. For a proportional hazards model the linear predictor
+:math:`\beta'Z` is exactly such a score, and it is the one ``CoxPH`` uses:
 
 .. jupyter-execute::
 
-    from surpyval.utils.score import score
+    from surpyval.metrics import concordance_index
 
-    print('C, Cox on the test set  : %.3f' % score(x_te, c_te, Z_te @ cox.beta))
-    print('C, a random score       : %.3f' % score(
+    print('C, Cox on the training set: %.3f' % cox.concordance())
+    print('C, Cox on the test set    : %.3f' % cox.concordance(x_te, c_te, Z_te))
+    print('C, a random score         : %.3f' % concordance_index(
         x_te, c_te, np.random.default_rng(0).normal(size=len(x_te))))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox.concordance(x_te, c_te, Z_te) == concordance_index(
+        x_te, c_te, Z_te @ cox.beta)
 
 For proportional odds, where a higher linear predictor means a *longer* life,
 negate it first; for any model, the predicted failure probability
-:math:`1 - S(t \mid Z)` at a fixed time is also a valid risk score. Concordance only
-measures ranking; pair it with the Brier score, which also checks that the
-predicted probabilities are right.
+:math:`1 - S(t \mid Z)` at a fixed time is also a valid risk score. The
+``concordance`` method makes that choice for each family (the linear
+predictor for Cox, the frailty models and the Lin-Ying additive model; the
+cumulative hazard at the median time scored for the parametric families,
+which ranks exactly as the linear predictor with its sign; minus the linear
+predictor for Buckley-James). The pairs are counted in
+:math:`O(n \log n)`, so 50,000 subjects take a fraction of a second.
+Concordance only measures ranking; pair it with the Brier score, which also
+checks that the predicted probabilities are right.
 
 Survival trees and random survival forests (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3109,13 +3127,12 @@ is compared with a Cox model on the same metrics:
     cox_t = CoxPH.fit(x=xt_tr, Z=Zt_tr, c=ct_tr)
     grid = np.array([3.0, 6.0, 9.0])
     scores = {}
-    for name, m, risk in [('forest', rsf, None),
-                          ('Cox', cox_t, Zt_te @ cox_t.beta)]:
+    for name, m in [('forest', rsf), ('Cox', cox_t)]:
         S_m = survival_probability(m, Zt_te, grid)
         ibs_m = integrated_brier_score(xt_te, ct_te, S_m, grid,
                                        x_train=xt_tr, c_train=ct_tr)
-        C = rsf.score(xt_te, Zt_te, ct_te) if risk is None else \
-            score(xt_te, ct_te, risk)
+        C = rsf.score(xt_te, Zt_te, ct_te) if m is rsf else \
+            m.concordance(xt_te, ct_te, Zt_te)
         scores[name] = ibs_m, C
         print(f'{name:6s}  IBS = {ibs_m:.3f}   C = {C:.3f}')
 

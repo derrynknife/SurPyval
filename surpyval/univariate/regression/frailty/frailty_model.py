@@ -44,6 +44,7 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils import is_missing_event
 from surpyval.utils.deprecation import RenamedAttribute
 
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -66,7 +67,9 @@ def _standard_error(variance: Any) -> np.ndarray:
     return np.sqrt(np.where(variance >= 0, variance, np.nan))
 
 
-class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
+class FrailtyModel(
+    ConcordanceMixin, InformationCriteriaMixin, SerialisableMixin
+):
     """A fitted shared-frailty proportional-hazards model.
 
     See :class:`FrailtyFitter` for how one is produced. Prediction methods
@@ -160,6 +163,14 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
 
     # -- covariate / frailty resolution ------------------------------------
+
+    def _concordance_risk(self, x: np.ndarray, Z: Any) -> np.ndarray:
+        # The conditional log hazard ratio beta'Z (a unit of mean frailty).
+        if self.beta.size == 0:
+            return np.zeros(x.size)
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        Zp = np.asarray(Zp, dtype=float).reshape(x.size, -1)
+        return Zp @ np.where(np.isnan(self.beta), 0.0, self.beta)
 
     def _eta(self, Z: Any) -> np.ndarray:
         """The hazard multiplier ``exp(beta'Z)`` for a covariate setting."""

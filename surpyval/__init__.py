@@ -8,6 +8,14 @@ from surpyval.distribution import (
     NonParametricDistribution,
     ParametricDistribution,
 )
+from surpyval.metrics import (  # noqa: E402,F401
+    auc_td,
+    brier_score,
+    concordance_index,
+    integrated_brier_score,
+    survival_probability,
+)
+from surpyval.univariate.competing_risks import gray_test  # noqa: E402,F401
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -72,13 +80,6 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
-from surpyval.univariate.competing_risks import gray_test  # noqa: E402,F401
-from surpyval.metrics import (  # noqa: E402,F401
-    auc_td,
-    brier_score,
-    integrated_brier_score,
-    survival_probability,
-)
 
 from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,

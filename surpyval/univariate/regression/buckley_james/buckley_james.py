@@ -62,6 +62,7 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
     check_finite_event_times,
     restore_covariate_meta,
@@ -197,7 +198,7 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(SerialisableMixin):
+class BuckleyJamesModel(ConcordanceMixin, SerialisableMixin):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -262,6 +263,17 @@ class BuckleyJamesModel(SerialisableMixin):
         fit profiles out, or a linear combination of the others. Their
         ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
         return np.flatnonzero(np.isnan(self.beta))
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        beta = np.where(np.isnan(self.beta), 0.0, self.beta)
+        return -(Z_arr.reshape(x.size, -1) @ beta)
+
+    def _concordance_data(self) -> "tuple | None":
+        if self._data is None:
+            return None
+        Y, delta, Z, w = self._data
+        return np.exp(Y), (delta == 0).astype(int), w, Z
 
     def _prepare_Z(self, Z: Any) -> npt.NDArray:
         from ..regression_data import prepare_Z
