@@ -152,6 +152,13 @@ def keeps_query_shape(
             if x is None:
                 # A query left to its default (the fitted times, say).
                 return method(self, x, *args, **kwargs)
+            if kwargs.get("given") is not None and not point_ndim:
+                # A conditioning time per point (#514): broadcast against
+                # the query first, so that both flatten alike.
+                from surpyval.utils.conditional import broadcast_given
+
+                x, given = broadcast_given(x, kwargs["given"])
+                kwargs["given"] = given.reshape(-1)
             flat, restore = flatten_query(x, point_ndim)
             if kwargs.get("grid"):
                 # A row-by-time grid: the points are on the last axis.

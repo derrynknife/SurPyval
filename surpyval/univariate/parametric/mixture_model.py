@@ -14,6 +14,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.conditional import conditional_ff, conditional_sf
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
@@ -717,7 +718,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         return df
 
     @keeps_query_shape
-    def ff(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+    def ff(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
         """
         The cumulative density function of the fitted model.
 
@@ -728,19 +729,25 @@ class MixtureModel(SerialisableMixin, Distribution):
             The values at which the cumulative density function will be
             evaluated.
 
+        given : array like or scalar, optional
+            The conditional failure probability, ``1 - sf(x,
+            given=given)``, of a unit known to have survived to ``given``.
+
         Returns
         -------
 
         array like
             The cumulative density function evaluated at x.
         """
+        if given is not None:
+            return conditional_ff(self.ff, self.sf, x, given)
         F = np.zeros_like(x)
         for i in range(self.m):
             F = F + self.w[i] * self.dist.ff(x, *self.params[i])
         return F
 
     @keeps_query_shape
-    def sf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+    def sf(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
         """
         The survival function of the fitted model.
 
@@ -750,12 +757,20 @@ class MixtureModel(SerialisableMixin, Distribution):
         x : array like
             The values at which the survival function will be evaluated.
 
+        given : array like or scalar, optional
+            The conditional survival: the probability of surviving to
+            ``x`` for a unit known to have survived to ``given``,
+            ``S(x) / S(given)``, and 1 for ``x <= given``. A scalar, or an
+            array that broadcasts against ``x``.
+
         Returns
         -------
 
         array like
             The survival function evaluated at x.
         """
+        if given is not None:
+            return conditional_sf(self.sf, x, given)
         return 1 - self.ff(x)
 
     def cs(self, x: Any, X: Any, *args: Any, **kwargs: Any) -> Any:
