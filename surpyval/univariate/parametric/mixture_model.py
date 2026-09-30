@@ -14,6 +14,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -83,7 +84,7 @@ class _FitMethod:
         return fit
 
 
-class MixtureModel(SerialisableMixin, Distribution):
+class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
     """
     A class for creating a Mixture Model fitter.
 

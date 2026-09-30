@@ -28,6 +28,12 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval import np
+from surpyval.utils.dataframe import (
+    call_fit,
+    frame_column,
+    frame_columns,
+    require_frame,
+)
 from surpyval.utils.deprecation import (
     RenamedAttribute,
     renamed_class_attribute,
@@ -337,6 +343,95 @@ class Copula:
         """The copula-stage negative log-likelihood (used by the fit)."""
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
+
+    def fit_from_df(
+        self,
+        df: Any,
+        x: "list[str]",
+        c: "list[str] | None" = None,
+        n: "str | None" = None,
+        xl: "list[str] | None" = None,
+        xr: "list[str] | None" = None,
+        tl: "list[str] | None" = None,
+        tr: "list[str] | None" = None,
+        **fit_options: Any,
+    ) -> Any:
+        """Fit the copula and its margins to the columns of a
+        :class:`pandas.DataFrame`.
+
+        Each argument names, per dimension, the columns :meth:`fit` takes
+        as arrays: ``x=["a", "b"]`` reads the two series from columns
+        ``a`` and ``b``. The names match the univariate ``fit_from_df``
+        (``Weibull.fit_from_df(df, x=..., c=...)``); every other
+        :meth:`fit` option (``margins``, ``how``, ``init``) is passed to it
+        unchanged.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data, one row per unit.
+        x : list of str
+            The column of each dimension's values.
+        c : list of str, optional
+            The column of each dimension's censoring flags. Defaults to
+            every value observed.
+        n : str, optional
+            The column of row counts.
+        xl, xr : list of str, optional
+            The columns of each dimension's interval ends, where ``c``
+            is 2.
+        tl, tr : list of str, optional
+            The columns of each dimension's left / right truncation.
+        **fit_options
+            Every other option of :meth:`fit`.
+
+        Returns
+        -------
+        CopulaModel
+            The model :meth:`fit` returns for the same arrays.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> df = pd.DataFrame(X, columns=["pump", "motor"])
+        >>> model = Clayton.fit_from_df(
+        ...     df, x=["pump", "motor"], margins=[Weibull, Weibull]
+        ... )
+        >>> model.params.round(3)
+        array([2.293])
+        """
+        df = require_frame(df)
+        arrays: dict[str, Any] = {
+            "x": frame_columns(df, x, "x", time=True).astype(float)
+        }
+        for key, cols in (("c", c), ("xl", xl), ("xr", xr)):
+            if cols is not None:
+                arrays[key] = frame_columns(df, cols, key, time=key != "c")
+        if n is not None:
+            arrays["n"] = frame_column(df, n, "n")
+        if tl is not None or tr is not None:
+            shape = arrays["x"].shape
+            lower = (
+                onp.full(shape, -onp.inf)
+                if tl is None
+                else frame_columns(df, tl, "tl", time=True).astype(float)
+            )
+            upper = (
+                onp.full(shape, onp.inf)
+                if tr is None
+                else frame_columns(df, tr, "tr", time=True).astype(float)
+            )
+            arrays["t"] = onp.stack([lower, upper], axis=-1)
+        names = {k: k for k in ("x", "c", "n", "xl", "xr")}
+        names["t"] = "tl` / `tr"
+        return call_fit(self, arrays, names, fit_options)
 
     def fit(
         self,

@@ -24,13 +24,14 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.score import score
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
-class RandomSurvivalForest(SerialisableMixin):
+class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     """Random survival forest: an ensemble of survival trees.
 
     ``n_trees`` instances of

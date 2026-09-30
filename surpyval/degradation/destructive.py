@@ -56,6 +56,7 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
+from surpyval.utils.dataframe import call_fit, frame_column, require_frame
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -513,6 +514,67 @@ class DestructiveDegradation_:
         beta = res.x[:2]
         sigma = float(np.exp(res.x[2]))
         return beta, sigma, float(res.fun)
+
+    def fit_from_df(
+        self,
+        df: Any,
+        x: str = "x",
+        y: str = "y",
+        c: "str | None" = None,
+        **fit_kwargs: Any,
+    ) -> "DestructiveDegradationModel":
+        """
+        Fit a destructive degradation model from the columns of a
+        :class:`pandas.DataFrame`, with the argument names of
+        ``DegradationAnalysis.fit_from_df``.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            One row per unit tested.
+        x : str, optional
+            Column of the measurement times. Defaults to ``"x"``.
+        y : str, optional
+            Column of the measurements. Defaults to ``"y"``.
+        c : str, optional
+            Column of the measurements' censoring flags. Default all
+            observed.
+        **fit_kwargs
+            Remaining arguments passed to :meth:`fit`: ``threshold``
+            (required), and optionally ``distribution``, ``transform`` and
+            ``direction``.
+
+        Returns
+        -------
+        DestructiveDegradationModel
+            The model :meth:`fit` returns for the same arrays.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> age = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> df = pd.DataFrame({
+        ...     "age": age,
+        ...     "strength": np.exp(4.0 - 0.02 * age + rng.normal(0, 0.1, 24)),
+        ... })
+        >>> model = DestructiveDegradation.fit_from_df(
+        ...     df, x="age", y="strength", threshold=20
+        ... )
+        >>> model.sf([50, 80]).round(4)
+        array([0.4956, 0.    ])
+        """
+        df = require_frame(df)
+        arrays = {
+            "x": frame_column(df, x, "x", time=True),
+            "y": frame_column(df, y, "y"),
+        }
+        if c is not None:
+            arrays["c"] = frame_column(df, c, "c")
+        names = {"x": "x", "y": "y", "c": "c"}
+        return call_fit(self, arrays, names, fit_kwargs)
 
     def fit(
         self,

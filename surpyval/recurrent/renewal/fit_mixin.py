@@ -6,9 +6,10 @@ from scipy.optimize import minimize
 
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.dataframe import RecurrentDataFrameMixin
 
 
-class RenewalFitMixin:
+class RenewalFitMixin(RecurrentDataFrameMixin):
     """
     Shared maximum-likelihood scaffolding for the imperfect-repair fitters
     (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``).

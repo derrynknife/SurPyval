@@ -7,13 +7,13 @@ from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy.typing as npt
-import pandas as pd
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
 import surpyval
 from surpyval import np
-from surpyval.utils import _check_x_not_empty, refuse_time_values
+from surpyval.utils import _check_x_not_empty
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.no_maximum import maximum_warnings_quiet
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -412,7 +412,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter:
+class ParametricFitter(UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -1814,150 +1814,6 @@ class OptimisedFitMixin:
             on_d_is_0=on_d_is_0,
             turnbull_estimator=turnbull_estimator,
         )
-
-    def fit_from_df(
-        self,
-        df: pd.DataFrame,
-        x: str | None = None,
-        c: str | None = None,
-        n: str | None = None,
-        xl: str | None = None,
-        xr: str | None = None,
-        tl: str | float | None = None,
-        tr: str | float | None = None,
-        **fit_options: Any,
-    ) -> Parametric:
-        r"""
-        Fit the distribution to data held in the columns of a
-        :class:`pandas.DataFrame`.
-
-        The column names are passed in place of the arrays :meth:`fit`
-        takes; every other :meth:`fit` option can be passed as a keyword.
-
-        Parameters
-        ----------
-
-        df : DataFrame
-            DataFrame of data to be used to create surpyval model
-
-        x : string, optional
-            column name for the column in df containing the variable data.
-            If not provided must provide both xl and xr.
-
-        c : string, optional
-            column name for the column in df containing the censor flag of x.
-            If not provided assumes all values of x are observed.
-
-        n : string, optional
-            column name in for the column in df containing the counts of x.
-            If not provided assumes each x is one observation.
-
-        tl : string or scalar, optional
-            If string, column name in for the column in df containing the left
-            truncation data. If scalar assumes each x is left truncated by
-            that value. If not provided assumes x is not left truncated.
-
-        tr : string or scalar, optional
-            If string, column name in for the column in df containing the
-            right truncation data. If scalar assumes each x is right truncated
-            by that value. If not provided assumes x is not right truncated.
-
-        xl : string, optional
-            column name for the column in df containing the left interval for
-            interval censored data. If left interval is -Inf, assumes left
-            censored. If xl[i] == xr[i] assumes observed. Cannot be provided
-            with x, must be provided with xr.
-
-        xr : string, optional
-            column name for the column in df containing the right interval
-            for interval censored data. If right interval is Inf, assumes
-            right censored. If xl[i] == xr[i] assumes observed. Cannot be
-            provided with x, must be provided with xl.
-
-        fit_options : dict, optional
-            dictionary of fit options that will be passed to the :code:`fit`
-            method, see that method for options.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the fitted parameters and methods for
-            all functions of the distribution using the fitted parameters.
-
-
-        Examples
-        --------
-        >>> import surpyval as surv
-        >>> from surpyval.datasets import load_bofors_steel
-        >>> df = load_bofors_steel()
-        >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Offset (gamma)      : 39.76557772434183
-        Parameters          :
-             alpha: 7.141983615103902
-              beta: 2.62047590823775
-        """
-
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("df must be a pandas DataFrame")
-
-        if (x is not None) and ((xl is not None) or (xr is not None)):
-            raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
-
-        # A duration column would be read in its storage ticks (#480)
-        columns: list[tuple[str, Any]] = [
-            ("x", x),
-            ("xl", xl),
-            ("xr", xr),
-            ("tl", tl),
-            ("tr", tr),
-        ]
-        for name, col in columns:
-            # tl and tr may be scalars rather than column labels
-            if col is not None and (name[0] == "x" or isinstance(col, str)):
-                refuse_time_values(df[col], name)
-        if x is not None:
-            x = df[x].astype(float)
-        else:
-            xl = df[xl].astype(float)
-            xr = df[xr].astype(float)
-            x = np.vstack([xl, xr]).T
-
-        if c is not None:
-            c = df[c].values.astype(int)
-
-        if n is not None:
-            n = df[n].values.astype(int)
-
-        if tl is not None:
-            if isinstance(tl, str):
-                tl = df[tl].values.astype(float)
-            elif np.isscalar(tl):
-                tl = (np.ones(df.shape[0]) * tl).astype(float)
-            else:
-                raise ValueError("`tl` must be scalar or column label string")
-        else:
-            tl = np.ones(df.shape[0]) * -np.inf
-
-        if tr is not None:
-            if isinstance(tr, str):
-                tr = df[tr].values.astype(float)
-            elif np.isscalar(tr):
-                tr = (np.ones(df.shape[0]) * tr).astype(float)
-            else:
-                detail = "`tr` must be scalar or a column label string"
-                raise ValueError(detail)
-        else:
-            tr = np.ones(df.shape[0]) * np.inf
-
-        t = np.vstack([tl, tr]).T
-
-        return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
     def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
         r"""

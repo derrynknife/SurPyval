@@ -18,6 +18,7 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _on_support,
     _support_from_dict,
 )
+from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
@@ -41,7 +42,7 @@ _MCF_RANGE = (
 
 
 @singleton_fitter
-class NonParametricCounting(SerialisableMixin):
+class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
     """
     The non-parametric (Nelson-Aalen) estimate of the mean cumulative
     function (MCF), the expected number of events per item by time
