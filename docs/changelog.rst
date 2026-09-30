@@ -84,6 +84,35 @@ bands change (#477).
   now go through in one pass. The saved documents are byte-identical. A
   Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
   1.22 s).
+- **fit_from_df on every fitter (#511).** Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull, RoystonParmar, MixtureModel, the
+  closed-form distributions, the copulas, FineGray,
+  DestructiveDegradation, the survival trees and forest, and the recurrent
+  fitters had no ``fit_from_df``. They now take a ``DataFrame``, naming the
+  columns as their family already did (``x=``, ``c=``, ``xl=``, ``tl=``
+  for one lifetime per row; ``x_col=``, ``i_col=``, ``c_col=``,
+  ``Z_cols=`` for recurrent and regression data), and give the model
+  ``fit`` gives on the same arrays, which the conformance suite checks for
+  every registered model. ``Weibull.fit_from_df`` no longer casts ``c`` to
+  an integer, which turned a missing flag into -9.2e18.
+- **The concordance index is fast, and a metric (#512).** Harrell's C was
+  a pairwise Python loop: 2.9 s at 5,000 subjects and about 5 minutes at
+  50,000. A merge sort over the ranked scores gives the same value, with
+  the same tie rules, in 0.01 s and 0.15 s. It is
+  ``sp.metrics.concordance_index(x, c, risk)``, and every regression model
+  has ``concordance()``, scoring its training data by default.
+  ``surpyval.utils.score.score`` is deprecated until v0.23. With tied
+  event times the value differs slightly from R and lifelines (0.6369 vs
+  0.6371 on the lung Cox model), which do not count two events at the same
+  time as a usable pair.
+- **Changed: renewal models print the restoration factor's uncertainty
+  (#513).** A generalized renewal fit to minimal-repair data printed q =
+  2.63 with no sign that its 95% interval was [0.094, 73.4]. The printout
+  now gives each parameter's standard error and Wald interval (also
+  ``summary()``) and says when ``q`` or ``rho`` is not determined by the
+  data or sits at the edge of its range. The docstrings say what ``q`` and
+  ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
+  that data LR = 0.40, p = 0.53).
 - **Faster Efron Cox fits with tied times (#515).** The Efron score was
   computed on a masked (times x largest tie x covariates) array: one
   51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
