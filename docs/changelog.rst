@@ -478,6 +478,15 @@ bands change (#477).
   ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
   ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
   print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **The recurrent-event, competing-risks and degradation models are
+  importable from surpyval.** ``sp.CrowAMSAA``, ``sp.ARA``,
+  ``sp.FineGray``, ``sp.CompetingRisks``, ``sp.DegradationAnalysis`` and
+  the other model classes are now at the top level, as the regression
+  models already were, and stay in their packages too. Helper functions
+  and result types (``laplace``, ``mil_hdbk_189c``,
+  ``TrendTestResult``) and the generically named copulas (``Gaussian``,
+  ``Frank``, ...) stay in their packages; asking for one at the top level
+  says where it is.
 - **The bundled Claude Code skill matches 0.22, and its code is tested
   (#491).** Every code block in it runs as a test.
 - **Offset fits with no maximum warn (#487).** With a shape below 1 the

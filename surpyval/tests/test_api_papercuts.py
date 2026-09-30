@@ -181,15 +181,62 @@ def test_fit_best_metric_message_is_spelled_right():
 @pytest.mark.parametrize(
     "name, where",
     [
-        ("CrowAMSAA", "surpyval.recurrent"),
-        ("HPP", "surpyval.recurrent"),
-        ("CompetingRisks", "surpyval.univariate.competing_risks"),
+        ("laplace", "surpyval.recurrent"),
+        ("TrendTestResult", "surpyval.recurrent"),
+        ("Gaussian", "surpyval.multivariate"),
     ],
 )
-def test_top_level_names_a_model_s_subpackage(name, where):
+def test_top_level_names_a_helper_s_subpackage(name, where):
     with pytest.raises(AttributeError, match=f"it is in {where}"):
         getattr(sp, name)
     assert not hasattr(sp, name)
+
+
+@pytest.mark.parametrize(
+    "name, where",
+    [
+        (name, "surpyval.recurrent")
+        for name in [
+            "ARA",
+            "ARI",
+            "CauseSpecificMCF",
+            "CauseSpecificNHPP",
+            "CoxLewis",
+            "CrowAMSAA",
+            "Duane",
+            "GeneralizedOneRenewal",
+            "GeneralizedRenewal",
+            "HPP",
+            "NonParametricCounting",
+            "ProportionalIntensityHPP",
+            "ProportionalIntensityNHPP",
+        ]
+    ]
+    + [
+        (name, "surpyval.univariate.competing_risks")
+        for name in [
+            "CompetingRisks",
+            "CompetingRisksProportionalHazards",
+            "FineGray",
+            "ParametricCompetingRisks",
+        ]
+    ]
+    + [
+        (name, "surpyval.degradation")
+        for name in [
+            "DegradationAnalysis",
+            "DestructiveDegradation",
+            "GammaProcess",
+            "WienerProcess",
+        ]
+    ],
+)
+def test_models_are_importable_from_the_top_level(name, where):
+    # The model classes are at the top level, as the regression models
+    # are; the same objects as in their packages.
+    import importlib
+
+    assert getattr(sp, name) is getattr(importlib.import_module(where), name)
 
 
 # -- readable signatures -----------------------------------------------------
