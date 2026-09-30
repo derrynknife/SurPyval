@@ -1202,7 +1202,11 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. Here we simulate from an ARI model with a deteriorating
+distribution. Its ``dist`` is that intensity model, so ``ARI.fit(x, i,
+dist=Weibull)`` raises an error saying so and naming ``ARA`` and
+``GeneralizedRenewal`` (a Weibull hazard as the baseline intensity is the power
+law, ``dist=CrowAMSAA``); the other fitters likewise refuse an intensity model
+as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
 power-law baseline (:math:`\beta = 2.5`) and fit it back:
 
 .. jupyter-execute::

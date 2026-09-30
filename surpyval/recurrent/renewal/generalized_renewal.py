@@ -14,6 +14,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_lifetime_dist,
     validate_renewal_censoring,
     validate_renewal_times,
     validate_restoration,
@@ -287,6 +288,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         # unknown one (it used to surface as a NameError from inside the
         # likelihood, or as a starting-value fit failure).
         self._resolve_virtual_age_function(kijima)
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
@@ -432,6 +434,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             sigma: 2
         """
         self._resolve_virtual_age_function(kijima)
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_restoration(q, "q", (0, None))
         model = dist.from_params(params)
         return self._make_model(model, q, kijima)

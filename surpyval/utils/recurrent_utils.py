@@ -196,6 +196,68 @@ def validate_nhpp_data(data: RecurrentEventData, dist: object) -> None:
         )
 
 
+_INTENSITY_MODELS = "CrowAMSAA, Duane or CoxLewis"
+
+
+def _is_intensity_model(dist: object) -> bool:
+    return all(
+        hasattr(dist, a)
+        for a in ("iif", "cif", "from_params", "fit_from_recurrent_data")
+    )
+
+
+def validate_intensity_model(dist: object, fitter: str) -> None:
+    """
+    Refuse a ``dist`` that is not a recurrence intensity model, for the
+    fitters whose ``dist`` is the baseline intensity (ARI, #495).
+
+    ARA and the generalized renewal processes take a *lifetime
+    distribution* as ``dist``, so ``sp.Weibull`` is the natural thing to
+    pass here too; it failed with an ``AttributeError`` from inside the
+    fit.
+    """
+    if _is_intensity_model(dist):
+        return
+    name = getattr(dist, "name", repr(dist))
+    if hasattr(dist, "fit") and hasattr(dist, "hf"):
+        raise ValueError(
+            "{f}'s `dist` is the baseline intensity model ({m}), not a "
+            "lifetime distribution; got {n}. For imperfect repair with a "
+            "{n} lifetime use ARA (reduction of age) or GeneralizedRenewal, "
+            "or, for ARI with a power-law intensity (a Weibull hazard), "
+            "dist=CrowAMSAA.".format(f=fitter, m=_INTENSITY_MODELS, n=name)
+        )
+    raise ValueError(
+        "{}'s `dist` must be a recurrence intensity model ({}); got "
+        "{!r}.".format(fitter, _INTENSITY_MODELS, dist)
+    )
+
+
+def validate_lifetime_dist(dist: object, fitter: str) -> None:
+    """
+    Refuse a ``dist`` that is not a lifetime distribution, for the fitters
+    whose ``dist`` is the distribution of the times between repairs (ARA
+    and the generalized renewal processes, #495). The mirror image of
+    :func:`validate_intensity_model`: an intensity model passed here was
+    read as a distribution and failed with an unrelated message.
+    """
+    if hasattr(dist, "fit") and hasattr(dist, "hf"):
+        return
+    name = getattr(dist, "name", repr(dist))
+    if _is_intensity_model(dist):
+        raise ValueError(
+            "{f}'s `dist` is a lifetime distribution (e.g. Weibull, "
+            "Exponential, LogNormal, Gamma), not an intensity model; got "
+            "{n}. For imperfect repair that reduces a baseline intensity "
+            "use ARI (arithmetic reduction of intensity), whose `dist` is "
+            "the intensity model.".format(f=fitter, n=name)
+        )
+    raise ValueError(
+        "{}'s `dist` must be a lifetime distribution (e.g. Weibull, "
+        "Exponential, LogNormal, Gamma); got {!r}.".format(fitter, dist)
+    )
+
+
 def validate_renewal_times(
     data: RecurrentEventData,
     dist: object,

@@ -15,6 +15,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_lifetime_dist,
     validate_memory,
     validate_renewal_censoring,
     validate_renewal_times,
@@ -215,6 +216,7 @@ class ARA(RenewalFitMixin):
         RenewalModel
             A fitted renewal model.
         """
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
@@ -334,6 +336,7 @@ class ARA(RenewalFitMixin):
         RenewalModel
             A model built from the supplied parameters, for simulation.
         """
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_memory(m)
         validate_restoration(rho, "rho", (0, 1))
         model = dist.from_params(params)
