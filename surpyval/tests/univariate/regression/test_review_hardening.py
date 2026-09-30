@@ -215,6 +215,8 @@ def test_degenerate_tvc_fit_degrades_instead_of_crashing():
     c = np.array([1, 0, 1, 0])
     Z = np.array([[1.0], [1.0], [1.0], [1.0]])
     # A constant covariate has no coefficient in a Cox model: the fit
-    # refuses it by name (#409); it used to return NaN p-values.
-    with pytest.raises(ValueError, match=r"column\(s\) \[0\]"):
-        CoxPH.fit_tvc(i, xl, xr, c, Z)
+    # aliases it by name (#409, #476); it used to return NaN p-values
+    # without saying why.
+    with pytest.warns(UserWarning, match=r"column\(s\) 0 of Z cannot"):
+        model = CoxPH.fit_tvc(i, xl, xr, c, Z)
+    assert np.isnan(model.beta[0]) and np.isnan(model.p_values[0])

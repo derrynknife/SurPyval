@@ -108,6 +108,20 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
 
+Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    import surpyval as surv
+
+    installed = pd.to_datetime(["2023-01-01", "2023-01-05", "2023-02-01"])
+    failed = pd.to_datetime(["2023-03-01", "2023-06-17", "2023-04-11"])
+    days = (failed - installed) / pd.Timedelta(days=1)
+    print(days.to_numpy())
+    print(surv.Weibull.fit(days).params)
+
 ``x`` cannot be combined with ``xl``/``xr``, and ``t`` cannot be combined with ``tl``/``tr``. ``tl`` and ``tr`` can each be used alone.
 
 Non-parametric models are better defined in the "xrd" format. These are taken to mean:
@@ -225,7 +239,7 @@ Shape in, shape out. Every function evaluated at query points -- times ``x``, or
 
 This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions, and for a distribution's own functions called with explicit parameters (``surv.Gamma.sf([5, 10], 8, 3)`` is ``surv.Gamma.sf(np.array([5, 10]), 8, 3)``; a list or tuple, of times or of parameters, is taken as an array). A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
 
-With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row. The survival tree and forest are the one documented exception: with a matrix of covariates they evaluate every row at every time, a grid of shape ``(n_rows,) + x.shape`` (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
+With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row, and any other number of rows is refused with a ``ValueError``. The grid of every row at every time has shape ``(n_rows,) + x.shape``: the Cox and parametric regression models give it with ``grid=True``, and the survival tree and forest, the one documented exception to the rule, give it whenever they have a matrix of covariates (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
 
 A step estimate's ``hf`` and ``df`` are the jumps between the points asked for (see above), so a point asked for alone can differ from the same point inside an array; the shapes follow the rule all the same.
 
@@ -389,8 +403,8 @@ Saving and Loading Models
 Almost every fitted SurPyval model can be saved and restored (the exceptions are listed at the end of this section):
 
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
-- ``model.to_json(path)`` writes that dictionary to a JSON file. The dictionaries and files are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
-- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it**. You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
+- ``model.to_json(path)`` writes that dictionary to a JSON file; ``model.to_json()``, with no path, returns the JSON text instead. The dictionaries, files and text are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
+- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it** (``from_json`` also takes the JSON text itself). You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
 - Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class, and otherwise check a dictionary exactly as ``surpyval.from_dict`` does.
 
 .. jupyter-execute::

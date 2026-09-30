@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from autograd import grad
 from autograd.scipy.special import beta as abeta
@@ -16,6 +18,11 @@ from ._stable import softplus
 
 
 class Logistic_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # the logit of ff, on which this family is a straight line in
+    # time (#477).
+    _cb_link = "logit"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

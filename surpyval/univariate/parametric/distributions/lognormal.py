@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from autograd.scipy.stats import norm
 from scipy.optimize import brentq
@@ -28,6 +30,11 @@ def _log_pos(x: Numeric) -> Boxable:
 
 
 class LogNormal_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # the normal quantile of ff, on which this family is a straight line in
+    # log time (#477).
+    _cb_link = "probit"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

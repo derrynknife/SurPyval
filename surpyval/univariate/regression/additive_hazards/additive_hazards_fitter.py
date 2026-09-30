@@ -37,6 +37,8 @@ whose exponential form keeps the hazard positive by construction, is the
 safer choice.
 """
 
+from __future__ import annotations
+
 import warnings
 from typing import Any
 

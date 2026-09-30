@@ -31,6 +31,8 @@ refused with a clear error rather than returning a survival function
 poisoned by cancellation; equal rates are the Erlang / Gamma case.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy.typing as npt

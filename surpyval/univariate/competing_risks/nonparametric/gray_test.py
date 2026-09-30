@@ -22,6 +22,8 @@ References
 - Fine & Gray (1999) for the subdistribution risk set.
 """
 
+from __future__ import annotations
+
 from typing import Any, NamedTuple
 
 import numpy as np

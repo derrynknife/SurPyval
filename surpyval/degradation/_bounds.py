@@ -67,6 +67,39 @@ def _logit_bound(
     return cb if bound == "two-sided" else cb[..., 0]
 
 
+def _sf_bound(
+    sf_hat: npt.ArrayLike,
+    se: npt.ArrayLike,
+    alpha_ci: float,
+    bound: str,
+    link: str = "logit",
+) -> npt.NDArray:
+    """Confidence bounds for a survival probability on the life
+    distribution's straight-line scale, ``link`` (its ``_cb_link``), as the
+    parametric models form theirs (#477): ``log(-log R)`` (``"loglog"``),
+    the normal quantile of ``F`` (``"probit"``) or the logit. The bands of
+    the two stages are then on one scale, so the two-stage band contains
+    the life model's own."""
+    if link not in ("loglog", "probit"):
+        return _logit_bound(sf_hat, se, alpha_ci, bound)
+    R = np.clip(np.asarray(sf_hat, dtype=float), 1e-15, 1.0 - 1e-15)
+    alpha, signs = _bound_signs(alpha_ci, bound)
+    # ``signs`` +1 is the upper bound on R.
+    step = (
+        signs * norm.ppf(1.0 - alpha) * np.asarray(se, dtype=float)[..., None]
+    )
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        if link == "loglog":
+            # v = log H, dv/dR = -1 / (R H)
+            H = -np.log(R)[..., None]
+            cb = np.exp(-H * np.exp(-step / (R[..., None] * H)))
+        else:
+            # q = Phi^-1(F), dq/dR = -1 / phi(q)
+            q = norm.ppf(1.0 - R)[..., None]
+            cb = norm.sf(q - step / norm.pdf(q))
+    return cb if bound == "two-sided" else cb[..., 0]
+
+
 # -- first stage: per-unit pseudo-failure-time variances ------------------
 
 
@@ -219,6 +252,7 @@ def analytic_cb(
 ) -> npt.NDArray:
     cov = life_parameter_covariance(model, method="analytic")
     phi = np.asarray(model.life_model.params, dtype=float)
+    link = getattr(model.life_model.dist, "_cb_link", "logit")
     x, sf_of = _target(model, x, on)
     sf_hat = np.asarray(sf_of(phi), dtype=float)
     se = _delta_se(sf_of, phi, cov)
@@ -227,8 +261,8 @@ def analytic_cb(
         # Each side is a one-sided bound, so it takes half the total tail
         # probability: with the full ``alpha_ci`` per side the "95%" band
         # was really a 90% one.
-        sf_lo = _logit_bound(sf_hat, se, alpha_ci / 2.0, "lower")
-        sf_hi = _logit_bound(sf_hat, se, alpha_ci / 2.0, "upper")
+        sf_lo = _sf_bound(sf_hat, se, alpha_ci / 2.0, "lower", link)
+        sf_hi = _sf_bound(sf_hat, se, alpha_ci / 2.0, "upper", link)
         if on in ("sf", "R"):
             return np.stack([sf_lo, sf_hi], axis=-1)
         elif on in ("ff", "F"):
@@ -238,9 +272,9 @@ def analytic_cb(
 
     # one-sided: ff and Hf decrease in sf, so flip the tail
     if on in ("sf", "R"):
-        return _logit_bound(sf_hat, se, alpha_ci, bound)
+        return _sf_bound(sf_hat, se, alpha_ci, bound, link)
     flip = "upper" if bound == "lower" else "lower"
-    sf_b = _logit_bound(sf_hat, se, alpha_ci, flip)
+    sf_b = _sf_bound(sf_hat, se, alpha_ci, flip, link)
     return (1.0 - sf_b) if on in ("ff", "F") else -np.log(sf_b)
 
 

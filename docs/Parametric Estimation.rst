@@ -1144,12 +1144,27 @@ has no ``param_cb``.
 **Wald bounds on a function** (``cb``) apply the delta method once more, to a
 function of the parameters: the variance of :math:`\hat{R}(x)` is
 :math:`\nabla R\,\mathrm{Cov}(\hat{\theta})\,\nabla R^{T}`. The interval is
-formed on the logit of :math:`R`, which keeps it inside :math:`(0, 1)`:
+formed on the scale on which the distribution is a straight line in (log)
+time -- its probability-plot scale -- which also keeps it inside
+:math:`(0, 1)`: :math:`\ln H = \ln(-\ln R)` for the Weibull, Exponential,
+Rayleigh and Gumbel, the normal quantile :math:`\Phi^{-1}(F)` for the Normal
+and LogNormal, and the logit :math:`\ln(F/R)` for the Logistic, the
+LogLogistic and every distribution with no such scale. For the Weibull,
 
 .. math::
 
-    R_{\text{bound}} = \frac{\hat{R}}{\hat{R} + (1 - \hat{R})
-    \exp\left(\pm z\,se(\hat{R}) / [\hat{R}(1 - \hat{R})]\right)}.
+    R_{\text{bound}} = \exp\left(-\hat{H}
+    \exp\left(\pm z\,se(\hat{R}) / [\hat{R}\hat{H}]\right)\right).
+
+On the straight-line scale :math:`a\,s - b` (with :math:`s` the (log)
+time) the band is the envelope of the lines of the parameters' Wald
+ellipsoid, so it rises with time whenever the slope's -- the shape's -- own
+Wald interval excludes 0. The logit scale used for every distribution
+before v0.22 had no such property: on small samples its bound on
+:math:`F` could fall in a tail, 0.39 at :math:`t = 5` and 0.00004 at
+:math:`t = 10` on one six-point Weibull fit. With fewer failures than it
+takes for the shape's interval to exclude 0, only the likelihood-ratio band
+below is sure to be monotone.
 
 Bounds on :math:`F` and :math:`H` follow from those on :math:`R`
 (:math:`F = 1 - R`, :math:`H = -\ln R`), and bounds on the hazard and density

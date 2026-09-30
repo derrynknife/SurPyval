@@ -42,10 +42,10 @@ def _semipar_data(seed=0, n=80):
 
 
 def test_cox_round_trip_predictions():
-    rossi = load_rossi_static()
+    rossi = load_rossi_static().assign(c=lambda d: 1 - d["arrest"])
     Zc = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
     model = CoxPH.fit_from_df(
-        rossi, x_col="week", c_col="arrest", Z_cols=Zc, tie_method="efron"
+        rossi, x_col="week", c_col="c", Z_cols=Zc, tie_method="efron"
     )
     restored = SemiParametricRegressionModel.from_dict(
         json.loads(json.dumps(model.to_dict()))

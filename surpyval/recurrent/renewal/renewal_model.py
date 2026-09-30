@@ -313,6 +313,16 @@ class RenewalModel(
         (e.g. ``(0, 1)`` for ARA/ARI's ``rho``), used by ``param_cb`` to pick
         a transform that keeps its confidence bounds inside the support.
 
+    Notes
+    -----
+    ``params`` is every parameter of the model in one vector, in the order
+    of ``param_names``: the restoration parameter (``q`` or ``rho``) first,
+    then the lifetime distribution's parameters (for ARI, the baseline
+    intensity's) -- the order of ``parameter_names``, :meth:`covariance`,
+    :meth:`standard_errors` and ``param_cb``. The restoration parameter is
+    also ``restoration`` (and ``q`` or ``rho``), and the distribution's
+    parameters ``model.params``.
+
     Examples
     --------
     ``ARA.fit`` returns one. Two systems, repaired at each failure and
@@ -332,6 +342,10 @@ class RenewalModel(
     1.0
     >>> model.model.params.round(3)
     array([13.779,  1.917])
+    >>> model.param_names
+    ['rho', 'alpha', 'beta']
+    >>> model.params.round(3)
+    array([ 1.   , 13.779,  1.917])
 
     The expected number of failures per system by times 20 and 60, by
     simulation:
@@ -494,6 +508,22 @@ class RenewalModel(
     def _new_batch_sampler(self, n: int) -> Callable:
         return self._sampler_factory(self, n)
 
+    @property
+    def params(self) -> np.ndarray:
+        """Every parameter of the model, in the order of ``param_names``:
+        the restoration parameter, then the distribution's parameters."""
+        return np.concatenate(
+            [[self.restoration], np.asarray(self.model.params, dtype=float)]
+        ).astype(float)
+
+    @property
+    def param_names(self) -> list:
+        """The names of ``params``, in order: the restoration parameter
+        (``q`` or ``rho``), then the distribution's parameters. The same
+        as ``parameter_names``, but available on a model built from
+        parameters too."""
+        return list(self._parameter_names())
+
     def _parameter_names(self) -> list:
         # The restoration parameter (``q``/``rho``) leads ``_mle``, followed by
         # the underlying lifetime/intensity model's parameters.
@@ -568,7 +598,11 @@ class RenewalModel(
         )
 
     def trend_test(
-        self, test: str = "laplace", alternative: str = "two-sided"
+        self,
+        test: str = "laplace",
+        alternative: str = "two-sided",
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Run a trend test on the data this model was fitted to. The null
@@ -583,19 +617,24 @@ class RenewalModel(
             The trend test to run. Default is 'laplace'.
         alternative: {'two-sided', 'increasing', 'decreasing'}, optional
             The alternative hypothesis. Default is 'two-sided'.
+        alpha_ci: float, optional
+            The significance level at which the result's ``trend`` is
+            judged (default 0.05, keyword only): a trend is named only when
+            ``p_value < alpha_ci``.
 
         Returns
         -------
 
         TrendTestResult
-            The test result, carrying the statistic, p-value and suggested
-            trend direction.
+            The test result, carrying the statistic, p-value, the
+            direction of the statistic and the trend concluded at
+            ``alpha_ci``.
         """
         self._check_has_data("trend_test")
         from surpyval.recurrent import diagnostics
 
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative
+            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
         )
 
     def cramer_von_mises(

@@ -37,6 +37,8 @@ evaluated at ``tau(t)``: closed form for both processes. With ``z = 1/T`` the
 acceleration factor is the Arrhenius relationship.
 """
 
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np

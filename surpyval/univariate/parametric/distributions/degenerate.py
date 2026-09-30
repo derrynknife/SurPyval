@@ -14,7 +14,6 @@ the model: every method is a classmethod and the classes serialise by
 name alone.
 """
 
-import json
 import os
 from typing import Any
 
@@ -24,9 +23,11 @@ import numpy.typing as npt
 from surpyval.distribution import Distribution
 from surpyval.serialisation import (
     checked_from_dict,
+    read_json,
     read_model_dict,
     require_model_tag,
     stamp_schema,
+    write_json,
 )
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -53,17 +54,15 @@ def _degenerate_from_dict(
 
 
 def _degenerate_to_json(
-    cls: type[Distribution], fp: str | os.PathLike
-) -> None:
-    with open(fp, "w+") as f:
-        json.dump(_degenerate_to_dict(cls), f, allow_nan=False)
+    cls: type[Distribution], fp: str | os.PathLike | None
+) -> str | None:
+    return write_json(_degenerate_to_dict(cls), fp)
 
 
 def _degenerate_from_json(
     cls: type[Distribution], fp: str | os.PathLike
 ) -> type[Distribution]:
-    with open(fp, "r") as f:
-        model_dict = json.load(f)
+    model_dict = read_json(fp)
     if not isinstance(model_dict, dict):
         raise ValueError(
             "Expected a serialised model dict, got "
@@ -153,9 +152,10 @@ class NeverOccurs(Distribution):
         return _degenerate_from_dict(cls, model_dict)
 
     @classmethod
-    def to_json(cls, fp: str | os.PathLike) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        _degenerate_to_json(cls, fp)
+    def to_json(cls, fp: str | os.PathLike | None = None) -> str | None:
+        """Write :meth:`to_dict` to ``fp`` as JSON, or return the JSON
+        text without ``fp``."""
+        return _degenerate_to_json(cls, fp)
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:
@@ -239,9 +239,10 @@ class InstantlyOccurs(Distribution):
         return _degenerate_from_dict(cls, model_dict)
 
     @classmethod
-    def to_json(cls, fp: str | os.PathLike) -> None:
-        """Write :meth:`to_dict` to ``fp`` as JSON."""
-        _degenerate_to_json(cls, fp)
+    def to_json(cls, fp: str | os.PathLike | None = None) -> str | None:
+        """Write :meth:`to_dict` to ``fp`` as JSON, or return the JSON
+        text without ``fp``."""
+        return _degenerate_to_json(cls, fp)
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> type["Distribution"]:

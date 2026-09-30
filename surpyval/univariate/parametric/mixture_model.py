@@ -1,5 +1,8 @@
+from __future__ import annotations
+
+import functools
 import warnings
-from typing import Any
+from typing import Any, Callable
 
 import numpy.typing as npt
 from scipy.optimize import minimize
@@ -29,6 +32,57 @@ from .probability_plotting import (
 LOG_FLOOR = -1e4
 
 
+class _FitMethod:
+    """``MixtureModel.fit`` as both an instance and a class method (#482).
+
+    On a model (``MixtureModel(dist, m).fit(x)``) it fits in place, as it
+    always has, and returns the model. On the class
+    (``MixtureModel.fit(x, dist=Weibull, m=2)``) it builds the model from
+    ``dist`` and ``m`` and fits it, the ``Dist.fit(x)`` form of every other
+    fitter.
+    """
+
+    def __init__(self, func: Callable[..., Any]) -> None:
+        self.func = func
+        functools.update_wrapper(self, func)  # type: ignore[arg-type]
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Any:
+        if obj is not None:
+            return functools.partial(self.func, obj)
+        func = self.func
+
+        @functools.wraps(func)
+        def fit(
+            x: npt.ArrayLike | None = None,
+            c: npt.ArrayLike | None = None,
+            n: npt.ArrayLike | None = None,
+            t: npt.ArrayLike | None = None,
+            tl: npt.ArrayLike | None = None,
+            tr: npt.ArrayLike | None = None,
+            xl: npt.ArrayLike | None = None,
+            xr: npt.ArrayLike | None = None,
+            *,
+            dist: Any = None,
+            m: int = 2,
+        ) -> Any:
+            if isinstance(x, objtype):
+                # ``MixtureModel.fit(model, x, ...)``: the unbound call of
+                # the instance method, which worked before #482.
+                return func(x, c, n, t, tl, tr, xl, xr)
+            if dist is None:
+                raise ValueError(
+                    "MixtureModel.fit needs `dist`, the distribution of "
+                    "every component, e.g. "
+                    "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
+                )
+            return func(objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr)
+
+        # Keep the docstring but show this signature (with ``dist`` and
+        # ``m``), not the instance method's.
+        del fit.__wrapped__
+        return fit
+
+
 class MixtureModel(SerialisableMixin, Distribution):
     """
     A class for creating a Mixture Model fitter.
@@ -50,6 +104,22 @@ class MixtureModel(SerialisableMixin, Distribution):
     m : int, optional
         The number of sub-distributions to be used in the mixture model.
         Defaults to 2.
+
+    Examples
+    --------
+    Fit in one call, like any other fitter:
+
+    >>> import surpyval as surv
+    >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+    >>> wmm.w.round(3)
+    array([0.618, 0.382])
+
+    or build the (unfitted) model first and fit it, which returns the
+    same model:
+
+    >>> surv.MixtureModel(dist=surv.Weibull, m=2)
+    Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)
     """
 
     def __init__(self, dist: Any, m: int = 2) -> None:
@@ -125,19 +195,27 @@ class MixtureModel(SerialisableMixin, Distribution):
                 ]
             )
             weight_string = ",\n\t".join([str(w) for w in self.w])
+            # Truncated data is fitted by direct maximisation, not EM; a
+            # model restored by ``from_dict`` does not know how it was fit.
+            fitted_by = {True: "MLE", False: "EM", None: "-"}[
+                getattr(self, "_truncated", None)
+            ]
             out = (
                 "Parametric Mixture SurPyval Model"
                 "\n================================="
                 f"\nDistribution        : {self.dist.name}"
                 f"\nSub-Distributions   : {self.m}"
-                "\nFitted by           : EM"
+                f"\nFitted by           : {fitted_by}"
                 f"\nWeights             : \n\t{weight_string}"
                 f"\nParameters          :\n{param_string}"
             )
 
             return out
         else:
-            return "Unable to fit values"
+            return (
+                "Unfitted Parametric Mixture SurPyval Model "
+                f"({self.dist.name}, m = {self.m})"
+            )
 
     def likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
@@ -307,6 +385,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.params = params
         self.w = np.ones(shape=(self.m)) / self.m
 
+    @_FitMethod
     def fit(
         self,
         x: npt.ArrayLike | None = None,
@@ -319,13 +398,15 @@ class MixtureModel(SerialisableMixin, Distribution):
         xr: npt.ArrayLike | None = None,
     ) -> Any:
         """
-        Fit the mixture to data, in place.
+        Fit the mixture to data.
 
-        Unlike the single-distribution fitters, this does not return a new
-        model: it sets the fitted ``params`` (one row per sub-distribution)
-        and mixing weights ``w`` on this object, which is then used as the
-        model. Untruncated data is fitted by the EM algorithm; truncated
-        data by direct maximisation of the truncated likelihood.
+        Call it on the class, ``MixtureModel.fit(x, ..., dist=Weibull,
+        m=2)``, to build and fit a model in one step, as with every other
+        fitter; or on a model built with ``MixtureModel(dist, m)``, which
+        it fits in place. Either way it returns the fitted model, with the
+        ``params`` (one row per sub-distribution) and mixing weights ``w``.
+        Untruncated data is fitted by the EM algorithm; truncated data by
+        direct maximisation of the truncated likelihood.
 
         Parameters
         ----------
@@ -366,12 +447,18 @@ class MixtureModel(SerialisableMixin, Distribution):
             Array like of the right array for 2-dimensional input of x. This
             is useful for data that is all intervally censored. Must be used
             with the :code:`xl` input.
+        dist : surpyval distribution
+            The distribution of every component. Keyword only, and only on
+            the class call (a model already has its ``dist``).
+        m : int, optional
+            The number of components (default 2). Keyword only, and only
+            on the class call.
 
         Returns
         -------
 
-        None
-            The fit is stored on this object.
+        MixtureModel
+            The fitted model (on a model, the model itself).
 
         Warns
         -----
@@ -385,9 +472,8 @@ class MixtureModel(SerialisableMixin, Distribution):
 
         >>> import surpyval as surv
         >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17 ,17, 18, 19]
-        >>> # Create a Weibull Mixture Model fitter with 2 sub-distributions
-        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-        >>> wmm.fit(x)
+        >>> # A Weibull Mixture Model with 2 sub-distributions
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
         >>> wmm
         Parametric Mixture SurPyval Model
         =================================
@@ -424,6 +510,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         else:
             self._em()
         self._warn_if_point_mass()
+        return self
 
     def _warn_if_point_mass(self) -> None:
         """Warn when a component has collapsed onto a point mass (#392).
@@ -523,8 +610,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         --------
         >>> import surpyval as surv
         >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
-        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-        >>> wmm.fit(x)
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
         >>> round(float(wmm.mean()), 4)
         9.8294
         """

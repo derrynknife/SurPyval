@@ -47,6 +47,8 @@ Brier score in general survival models with right-censored event times",
 Biometrical Journal 48, 1029-1040.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -320,7 +322,7 @@ def integrated_brier_score(
     ...     survival_probability,
     ... )
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> times = [13, 26, 39]
     >>> cox = CoxPH.fit(x, Z, c=c)

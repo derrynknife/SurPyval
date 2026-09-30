@@ -19,6 +19,8 @@ reference-stress lifetimes, and life under any stress profile follows from
 the reference-stress life distribution. See :mod:`.step_stress`.
 """
 
+from __future__ import annotations
+
 import inspect
 import warnings
 from dataclasses import dataclass, field

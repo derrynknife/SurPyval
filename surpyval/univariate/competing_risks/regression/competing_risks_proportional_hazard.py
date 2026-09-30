@@ -7,6 +7,8 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -26,6 +28,11 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.nonparametric.nonparametric import _check_option
 from surpyval.univariate.regression import CoxPH
+from surpyval.univariate.regression._aliasing import (
+    collect_aliased,
+    covariate_columns,
+    warn_collected,
+)
 from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
     prepare_Z,
@@ -206,6 +213,17 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         restore_covariate_meta(model, model_dict)
         return model
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine in some cause's fit (#476): a constant column, which
+        the cause's baseline hazard absorbs, or a linear combination of
+        the others. Their coefficients are
+        ``nan`` in that cause's row of ``betas`` (R's ``NA``), and
+        predictions take them as 0."""
+        betas = np.atleast_2d(np.asarray(self.betas, dtype=float))
+        return np.flatnonzero(np.isnan(betas).any(axis=0))
+
     def _finish(
         self,
         betas: npt.NDArray,
@@ -218,15 +236,20 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         self.betas = betas
         self.beta = betas.sum(axis=0)
         self.center = center
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        coef = np.where(np.isnan(self.beta), 0.0, self.beta)
         # Relative to the centre, where the baselines are (#459).
         self.phi_e = lambda Z, e_i: np.exp(self._log_phi_e(Z, e_i))
-        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ self.beta)
+        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ coef)
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
 
     def _log_phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
         """The log of cause ``e_i``'s hazard multiplier ``phi_e``."""
-        return (self._prepare_Z(Z) - self.center) @ self.betas[e_i, :]
+        beta = self.betas[e_i, :]
+        return (self._prepare_Z(Z) - self.center) @ np.where(
+            np.isnan(beta), 0.0, beta
+        )
 
     @staticmethod
     def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
@@ -597,16 +620,17 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        fitted = cls.fit(
-            x,
-            Z,
-            e,
-            c=c,
-            n=n,
-            model=model,
-            tie_method=tie_method,
-            center=center,
-        )
+        with covariate_columns(feature_names, Z, model_spec):
+            fitted = cls.fit(
+                x,
+                Z,
+                e,
+                c=c,
+                n=n,
+                model=model,
+                tie_method=tie_method,
+                center=center,
+            )
         fitted.formula = form
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
@@ -734,18 +758,23 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         out.event_idx_map = event_idx_map
         out.model = model
 
+        # One warning for the columns aliased in any cause's fit (#476).
+        found: list = []
         if model == "Cox":
             # Cause-specific proportional hazards: one Cox model per cause,
             # treating every other cause (and censoring) as right-censored.
             results = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                cox_model = CoxPH.fit(
-                    x, Z, c_e, n, tie_method=tie_method, center=center
-                )
+                with collect_aliased() as aliased:
+                    cox_model = CoxPH.fit(
+                        x, Z, c_e, n, tie_method=tie_method, center=center
+                    )
+                found += aliased
 
                 results.append(cox_model.res)
-                betas[i, :] = cox_model.res.x
+                # nan where aliased, as the Cox model reports it.
+                betas[i, :] = cox_model.beta
                 at = np.asarray(cox_model.center, dtype=float)
                 # Cause-specific baseline hazard: reuse the fitted Cox model's
                 # own baseline (Efron's after an Efron fit, else Breslow's),
@@ -766,7 +795,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             results = []
             fits = []
             for i, event in enumerate(causes):
-                fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                with collect_aliased() as aliased:
+                    fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                found += aliased
                 fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
                 results.append(fg.res)
@@ -782,6 +813,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             _warn_if_monotone(fits)
         else:
             raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
+        warn_collected(found, "in the fit of each cause")
 
         out.results = results
         out._finish(betas, baselines, at)

@@ -243,7 +243,11 @@ def _conditional_uniforms(data: Any, cif: Any) -> tuple[np.ndarray, int]:
 
 
 def trend_test(
-    data: Any, test: str = "laplace", alternative: str = "two-sided"
+    data: Any,
+    test: str = "laplace",
+    alternative: str = "two-sided",
+    *,
+    alpha_ci: float = 0.05,
 ) -> Any:
     """
     Trend test for recurrent-event data: the null hypothesis is that the
@@ -278,7 +282,7 @@ def trend_test(
         x.extend(events)
         i.extend([item_id] * events.size)
         T[item_id] = close
-    return tests[test](x, i=i, T=T, alternative=alternative)
+    return tests[test](x, i=i, T=T, alternative=alternative, alpha_ci=alpha_ci)
 
 
 def cvm_statistic(u: ArrayLike) -> float:

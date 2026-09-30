@@ -162,43 +162,57 @@ def _cox_data(seed=0, n=50):
     return x, Z
 
 
-def test_cox_refuses_a_constant_column_on_separated_data():
+# A coefficient the partial likelihood cannot determine is aliased, as R's
+# coxph does (#476): nan, the others fitted as without it, one warning.
+
+
+def test_cox_aliases_a_constant_column_on_separated_data():
     # It gave the constant column a coefficient of 3.1e14 and an all-NaN
     # baseline, with about ten raw numpy warnings.
-    with pytest.raises(ValueError, match=r"column\(s\) \[2\] of Z"):
-        sp.CoxPH.fit(**_SEPARATED)
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(**_SEPARATED, center=True)
+    assert np.isnan(model.beta[2]) and np.isnan(model.p_values[2])
+    assert np.isfinite(model.sf([5.0], [[0.5, 1.5, 1.0]])).all()
 
 
 @pytest.mark.parametrize("value", [1.0, 2000.0])
-def test_cox_refuses_a_constant_column(value):
+def test_cox_aliases_a_constant_column(value):
     # On data that do not separate it gave a spurious monotone-likelihood
     # warning and a NaN p-value.
     x, Z = _cox_data()
-    Z = np.column_stack([Z[:, 0], np.full(len(x), value), Z[:, 1]])
-    with pytest.raises(ValueError, match=r"column\(s\) \[1\] of Z"):
-        sp.CoxPH.fit(x, Z)
-
-
-def test_cox_warns_of_collinear_columns():
-    # It returned p-values of 0 for all three, silently. A formula with no
-    # intercept is fitted this way on purpose, so it warns: the
-    # predictions are sound.
-    x, Z = _cox_data()
-    Z3 = np.column_stack([Z, Z[:, 0] - 2 * Z[:, 1]])
-    with pytest.warns(UserWarning, match=r"columns \[0, 1, 2\] of Z are"):
+    Z3 = np.column_stack([Z[:, 0], np.full(len(x), value), Z[:, 1]])
+    with pytest.warns(UserWarning, match=r"column\(s\) 1 of Z cannot"):
         model = sp.CoxPH.fit(x, Z3)
     ref = sp.CoxPH.fit(x, Z)
+    np.testing.assert_allclose(model.beta[[0, 2]], ref.beta, rtol=1e-10)
+    assert np.isnan(model.beta[1])
+
+
+def test_cox_aliases_the_later_of_collinear_columns():
+    # It returned p-values of 0 for all three, silently, then warned that
+    # the separate coefficients meant nothing. As R's coxph, the later
+    # column is aliased and the others are the fit without it.
+    x, Z = _cox_data()
+    Z3 = np.column_stack([Z, Z[:, 0] - 2 * Z[:, 1]])
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, Z3)
+    ref = sp.CoxPH.fit(x, Z)
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
+    np.testing.assert_allclose(model.p_values[:2], ref.p_values, rtol=1e-8)
+    assert np.isnan(model.beta[2]) and np.isnan(model.p_values[2])
     q = np.array([[0.5, -1.0, 2.5]])
     np.testing.assert_allclose(
-        model.sf([0.5, 1.0], q), ref.sf([0.5, 1.0], q[:, :2]), rtol=1e-6
+        model.sf([0.5, 1.0], q), ref.sf([0.5, 1.0], q[:, :2]), rtol=1e-10
     )
 
 
-def test_cox_refuses_a_column_constant_within_each_stratum():
+def test_cox_aliases_a_column_constant_within_each_stratum():
     x, Z = _cox_data()
     strata = np.repeat([0, 1], 25)
-    with pytest.raises(ValueError, match=r"column\(s\) \[2\] of Z"):
-        sp.CoxPH.fit(x, np.column_stack([Z, strata]), strata=strata)
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, np.column_stack([Z, strata]), strata=strata)
+    ref = sp.CoxPH.fit(x, Z, strata=strata)
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
     # Across strata it is an ordinary covariate.
     assert np.isfinite(
         sp.CoxPH.fit(x, np.column_stack([Z, strata])).beta
@@ -216,14 +230,14 @@ def test_cox_still_fits_an_offset_covariate():
     assert np.isfinite(model.p_values).all()
 
 
-def test_cox_lets_a_column_of_zeros_through():
-    # How a declared formula level with no rows arrives (#377): its
-    # coefficient stays 0, and fit_from_df warns of the level.
+def test_cox_aliases_a_column_of_zeros():
+    # Nothing estimates its coefficient: it was left at its start, 0.
     x, Z = _cox_data()
-    model = sp.CoxPH.fit(x, np.column_stack([Z, np.zeros(len(x))]))
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, np.column_stack([Z, np.zeros(len(x))]))
     ref = sp.CoxPH.fit(x, Z)
-    assert model.beta[2] == 0.0
-    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-8)
+    assert np.isnan(model.beta[2])
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
 
 
 def test_cox_on_separated_data_warns_once_without_the_constant_column():
@@ -365,7 +379,7 @@ def test_lin_ying_predictions_inside_the_data_are_the_estimate():
     model = sp.AdditiveHazards.fit(
         df["week"].values,
         df[["fin", "age", "prio"]].values,
-        c=df["arrest"].values,
+        c=1 - df["arrest"].values,
     )
     np.testing.assert_allclose(
         model.sf([20, 52], [1, 25, 3]), [0.9269, 0.7725], atol=5e-5

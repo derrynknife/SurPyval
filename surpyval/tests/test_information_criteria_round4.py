@@ -136,12 +136,20 @@ def test_regression_counts_all_observed_failures(mixed):
 def test_regression_with_null_covariate_matches_univariate(mixed):
     X, c = mixed
     uni = Weibull.fit(x=X, c=c)
-    reg = WeibullPH.fit(x=X, c=c, Z=np.zeros((N, 1)))
+    # A column of zeros determines no coefficient: it is aliased (#476),
+    # with a warning, and not estimated, so it costs no degree of freedom.
+    with pytest.warns(UserWarning, match="cannot be estimated"):
+        reg = WeibullPH.fit(x=X, c=c, Z=np.zeros((N, 1)))
     assert reg.neg_ll() == pytest.approx(uni.neg_ll(), rel=1e-6)
-    # the same d: the regression pays only for its extra coefficient
-    assert reg.bic() - uni.bic() == pytest.approx(np.log(60), rel=1e-5)
-    assert reg.aic_c() - reg.aic() == pytest.approx(24 / (60 - 4))
+    # the same d, and the same number of estimated parameters
+    assert reg.bic() == pytest.approx(uni.bic(), rel=1e-6)
+    assert reg.aic_c() - reg.aic() == pytest.approx(12 / (60 - 3))
     assert uni.aic_c() - uni.aic() == pytest.approx(12 / (60 - 3))
+    # A covariate that is estimated costs one.
+    Z = np.random.default_rng(0).normal(size=(N, 1))
+    reg = WeibullPH.fit(x=X, c=c, Z=Z)
+    assert reg.k == uni.k + 1
+    assert reg.aic_c() - reg.aic() == pytest.approx(24 / (60 - 4))
 
 
 def test_regression_without_exact_failures_uses_failures():

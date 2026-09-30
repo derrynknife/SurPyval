@@ -63,6 +63,14 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "which a model restored with from_dict / from_json does not "
             "carry. Call them on the fitted model, or refit."
         )
+    aliased = np.flatnonzero(np.isnan(np.asarray(model.beta, dtype=float)))
+    if aliased.size:
+        raise ValueError(
+            "Residuals, the proportional-hazards test and robust standard "
+            "errors are not available for a model with aliased "
+            "coefficients (column(s) {} of Z, whose coefficients are "
+            "nan, #476). Refit without those columns.".format(aliased.tolist())
+        )
     data = model._fit_data
     # The covariates centred as the fit centred them (#459), whichever
     # centre the model reports its baseline at (#463): every quantity here

@@ -5,6 +5,7 @@
 
 # Copyright 2022 Cartiga LLC
 
+from __future__ import annotations
 
 import warnings
 from copy import copy
@@ -15,7 +16,7 @@ import numpy.ma as ma
 import numpy.typing as npt
 from numpy.linalg import inv, pinv
 from pandas import isna
-from scipy.optimize import minimize, root
+from scipy.optimize import OptimizeResult, minimize, root
 from scipy.stats import norm
 
 if TYPE_CHECKING:
@@ -31,11 +32,20 @@ from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
+    formula_model_matrix,
     is_missing_event,
+    numeric_columns,
     validate_coxph,
     validate_coxph_df_inputs,
 )
 
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    covariate_columns,
+    expand,
+    warn_aliased,
+)
 from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc, handle_tvc_timeline
@@ -548,78 +558,41 @@ def _exact_tie_term(
     return log_L, mean_dg, hess
 
 
-def _check_identifiable(
-    info: npt.NDArray, Z: npt.NDArray, n_events: float
-) -> None:
-    """Refuse covariates whose coefficients the partial likelihood cannot
-    determine (#409).
+def _cox_aliased(
+    info: npt.NDArray,
+    Z: npt.NDArray,
+    n: npt.NDArray,
+    n_events: float,
+    strata: "npt.NDArray | None" = None,
+) -> npt.NDArray:
+    """The columns whose coefficients the partial likelihood cannot
+    determine (#409, #476), to be aliased (see
+    :mod:`surpyval.univariate.regression._aliasing`).
 
     ``info`` is the information at ``beta = 0``: the sum over the event
     times of the risk sets' covariate covariance. A direction with no
     information is one in which the covariates do not vary within any
     risk set at an event time, and then the partial likelihood does not
     depend on it at all: a constant column (a Cox model has no
-    intercept), one constant within each stratum, or collinear columns.
-    Fitted anyway, the optimiser ran off along it on separated data
-    (a coefficient of 3.1e14 and an all-NaN baseline) and gave a
-    spurious "monotone likelihood" warning and a NaN p-value otherwise.
-    R's ``coxph`` reports such a coefficient as NA. A column with no
-    information of its own is refused; collinear columns, which each vary
-    but whose combination does not, are warned of (see below). ``Z`` and
-    ``n_events`` (the weighted number of events) scale the rounding
-    tolerance; with no event nothing is checked.
-
-    A column of zeros is let through: its coefficient stays at its start,
-    0, and it affects no prediction for rows like the data. It is how a
-    formula's declared level with no rows arrives, which ``fit_from_df``
-    already warns of (and a prediction for that level raises, #377).
+    intercept), one constant within each stratum, collinear columns
+    (every level of a factor coded, with no intercept), or every unit at
+    risk failing at once. Fitted anyway, a coefficient ran off to 5.5e14
+    and every prediction was nan, with a misleading "monotone likelihood"
+    warning. ``Z`` are the covariates with counts ``n`` (a column's
+    spread over the data is what its information is judged against), and
+    ``strata`` the stratum labels; with no event nothing is checked.
     """
     info = np.atleast_2d(np.asarray(info, dtype=float))
+    p = info.shape[0]
+    if not n_events > 0 or p == 0:
+        return np.array([], dtype=int)
     Z = np.asarray(Z, dtype=float)
-    used = np.flatnonzero(np.any(Z != 0, axis=0))
-    if not n_events > 0 or used.size == 0:
-        return
-    info, Z = info[np.ix_(used, used)], Z[:, used]
-    d = np.diag(info)
-    # No information is either rounding (the risk-set variances are
-    # differences of second moments, exact to a few ulps of Z^2) or tiny
-    # beside the column's spread over the data (a column that varies
-    # only between strata).
-    rounding = 1e-14 * n_events * np.max(Z**2, axis=0)
-    spread = 1e-10 * n_events * np.ptp(Z, axis=0) ** 2
-    flat = ~((d > rounding) & (d > spread))
-    if flat.any():
-        raise ValueError(
-            "The partial likelihood does not depend on the coefficient(s) "
-            "of covariate column(s) {} of Z, so they cannot be estimated: "
-            "the column does not vary within any risk set at an event time "
-            "(a constant column, such as an intercept, which a Cox model "
-            "does not have; one constant within each stratum; or one that "
-            "varies too little beside its size to be told from a "
-            "constant), or every unit at risk fails at once. Remove it "
-            "from Z.".format(used[flat].tolist())
-        )
-    root_d = np.sqrt(d)
-    eigval, eigvec = np.linalg.eigh(info / np.outer(root_d, root_d))
-    if eigval[0] < 1e-10:
-        weights = np.abs(eigvec[:, 0])
-        involved = used[weights > 1e-3 * weights.max()]
-        # Warned of, not refused: a formula without an intercept (every
-        # level of a factor coded, which sums to a constant) or a spline
-        # basis is fitted this way on purpose, and the predictions, which
-        # depend only on the identified combinations, are sound.
-        warnings.warn(
-            "Covariate columns {} of Z are collinear within the risk sets "
-            "at the event times (a combination of them is constant there, "
-            "as the columns of every level of a factor are): the partial "
-            "likelihood does not depend on that combination, so their "
-            "separate coefficients, standard errors and p-values mean "
-            "nothing, though the predictions do not depend on it. Remove a "
-            "redundant column (or keep the formula's intercept) to "
-            "estimate them.".format(involved.tolist()),
-            UserWarning,
-            stacklevel=_caller_stacklevel(),
-        )
+    n = np.asarray(n, dtype=float).reshape(-1)
+    Zc = Z - _covariate_center(Z, n)
+    spread = n_events * (n @ Zc**2) / n.sum()
+    return aliased_columns(
+        info, Z.shape[0], constant_columns(Z, strata), spread
+    )
 
 
 def _solve_beta_and_p_values(
@@ -628,16 +601,56 @@ def _solve_beta_and_p_values(
     beta_init: npt.NDArray,
     tol: float,
     Z: npt.NDArray,
+    n: npt.NDArray,
     n_events: float,
-) -> tuple[Any, npt.NDArray]:
+    strata: "npt.NDArray | None" = None,
+) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray]:
     """Root-find the score (with BFGS fallback) and compute Wald p-values
     from the observed information; shared by ``fit`` and
     ``_fit_stratified`` so the most-patched block in this file exists
-    exactly once. The covariates ``Z`` and the weighted number of events
-    are for the identifiability check (:func:`_check_identifiable`)."""
+    exactly once. The covariates ``Z``, counts ``n``, weighted
+    number of events and stratum labels are for the aliasing check
+    (:func:`_cox_aliased`).
+
+    Returns ``(res, p_values, se, aliased)``: ``res.x`` has 0 at the
+    aliased columns (the coefficients the predictions use), and their
+    p-values and standard errors ``se`` are nan."""
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         info_at_start = jac(beta_init)[1]
-    _check_identifiable(info_at_start, Z, n_events)
+    p = len(np.atleast_1d(beta_init))
+    aliased = _cox_aliased(info_at_start, Z, n, n_events, strata)
+    kept = np.setdiff1d(np.arange(p), aliased)
+    if aliased.size:
+        warn_aliased(
+            aliased,
+            "the partial likelihood does not depend on them, as they do "
+            "not vary within the risk sets at the event times beyond a "
+            "combination of the other columns (a constant column -- a Cox "
+            "model has no intercept --, one constant within each stratum, "
+            "or a linear combination of the others, as the columns of "
+            "every level of a factor are)",
+        )
+        full_neg_ll, full_jac = neg_ll, jac
+
+        def embed(b: npt.NDArray) -> npt.NDArray:
+            out = np.zeros(p)
+            out[kept] = b
+            return out
+
+        def neg_ll(b: npt.NDArray) -> float:
+            return full_neg_ll(embed(b))
+
+        def jac(b: npt.NDArray) -> tuple:
+            score, hess = full_jac(embed(b))
+            score = np.atleast_1d(score)
+            hess = np.atleast_2d(hess)
+            return score[kept], hess[np.ix_(kept, kept)]
+
+        info_at_start = np.atleast_2d(info_at_start)[np.ix_(kept, kept)]
+        beta_init = np.asarray(beta_init, dtype=float)[kept]
+        if kept.size == 0:
+            res = OptimizeResult(x=np.zeros(p), success=True, fun=0.0)
+            return res, np.full(p, np.nan), np.full(p, np.nan), aliased
     # Where the likelihood is monotone (below) the coefficients run off
     # towards infinity and the risk-set sums underflow to 0 on the way;
     # the resulting log(0) and 0/0 are that divergence, which is reported
@@ -661,7 +674,7 @@ def _solve_beta_and_p_values(
                 res = fallback
 
         hessian_matrix = jac(res.x)[1]
-    _warn_if_monotone(hessian_matrix, info_at_start)
+    _warn_if_monotone(hessian_matrix, info_at_start, kept)
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
     try:
@@ -678,12 +691,21 @@ def _solve_beta_and_p_values(
     # which is the correct signal, so suppress the sqrt-of-negative
     # warning rather than emit it.
     with np.errstate(invalid="ignore"):
-        z_score = res.x / np.sqrt(var)
+        se = np.sqrt(var)
+        z_score = res.x / se
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
-    return res, p_values
+    if aliased.size:
+        res.x = embed(res.x)
+        p_values = expand(p_values, kept, p)
+        se = expand(se, kept, p)
+    return res, p_values, se, aliased
 
 
-def _warn_if_monotone(info: npt.NDArray, info_at_start: npt.NDArray) -> None:
+def _warn_if_monotone(
+    info: npt.NDArray,
+    info_at_start: npt.NDArray,
+    columns: "npt.NDArray | None" = None,
+) -> None:
     """Warn when the partial likelihood has no finite maximum.
 
     When a covariate separates the events from the survivors (every
@@ -693,6 +715,8 @@ def _warn_if_monotone(info: npt.NDArray, info_at_start: npt.NDArray) -> None:
     (``beta`` of 35 with a p-value of 1 on such data). The symptom is that
     the information for that coefficient has collapsed: the risk sets'
     weighted covariate variance goes to 0 as the coefficient grows.
+    ``columns`` are the columns of ``Z`` the matrices are for (all of
+    them by default; the identified ones after aliasing).
     """
     d = np.diag(np.atleast_2d(info))
     d0 = np.diag(np.atleast_2d(info_at_start))
@@ -700,6 +724,8 @@ def _warn_if_monotone(info: npt.NDArray, info_at_start: npt.NDArray) -> None:
         (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
     )
     if diverged.size:
+        if columns is not None:
+            diverged = np.asarray(columns)[diverged]
         warn_monotone(str(diverged.tolist()))
 
 
@@ -1327,11 +1353,13 @@ class CoxPH_:
             The covariates of the model, one row per observation. Rows with
             a missing or infinite covariate are dropped, with a warning. A
             column whose coefficient the partial likelihood cannot
-            determine -- a constant column (a Cox model has no intercept)
-            or one constant within each stratum -- raises a
-            ``ValueError`` naming it; collinear columns (every level of a
-            factor, with no intercept) are fitted with a warning that
-            their separate coefficients mean nothing.
+            determine -- a constant column (a Cox model has no
+            intercept), one constant within each stratum, or a linear
+            combination of the others (every level of a factor, with no
+            intercept) -- is aliased, as R's ``coxph`` does: the fit runs
+            on the other columns, its coefficient and p-value are ``nan``
+            (``model.aliased`` lists it), predictions take it as 0, and
+            one warning names it (#476).
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
             1 if right-censored. Defaults to all observed. An exactly
@@ -1393,14 +1421,14 @@ class CoxPH_:
 
         Examples
         --------
-        In the bundled copy of the Rossi recidivism data ``arrest`` is 1
-        for a subject still free at week 52, so it is already the
-        censoring flag:
+        In the Rossi recidivism data ``arrest`` is 1 for a subject
+        arrested during follow-up, so the censoring flag is
+        ``1 - arrest``:
 
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, df["arrest"].values
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> Z = df[["fin", "age", "prio"]].values
         >>> model = CoxPH.fit(x, Z, c=c)
         >>> model.params.round(4)
@@ -1429,13 +1457,14 @@ class CoxPH_:
         Zc = Z - mean
         neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
-        res, p_values = _solve_beta_and_p_values(
-            neg_ll, jac, beta_init, tol, Z, float(n[c == 0].sum())
+        res, p_values, se, aliased = _solve_beta_and_p_values(
+            neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
+        model.se = se
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = tie_method
@@ -1443,6 +1472,12 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
+        if aliased.size:
+            # Reported as nan (R's NA); ``res.x`` keeps the 0 the
+            # predictions use (#476).
+            model.beta = np.array(res.x, dtype=float)
+            model.beta[aliased] = np.nan
+            model.params = model.beta.copy()
 
         # Retain the per-observation training data (before ``baseline``
         # reassigns ``x`` to the unique event times) so the model can compute
@@ -1457,11 +1492,11 @@ class CoxPH_:
         }
 
         # The baseline of a unit at the centre, moved to Z = 0 by default.
-        x, r, d, h0 = self.baseline(model.beta, x, c, n, Zc, tl, tie_method)
+        x, r, d, h0 = self.baseline(res.x, x, c, n, Zc, tl, tie_method)
         if center:
             model.center = mean
         else:
-            r, h0 = _baseline_at_origin(model.beta, mean, Z, r, h0)
+            r, h0 = _baseline_at_origin(res.x, mean, Z, r, h0)
             model.center = np.zeros_like(mean)
         # Where the fit centred, for the residuals and diagnostics.
         model._fit_center = mean
@@ -1563,23 +1598,27 @@ class CoxPH_:
         neg_ll, jac = _combine_generators(gens)
 
         beta_init = np.zeros(n_params)
-        res, p_values = _solve_beta_and_p_values(
+        res, p_values, se, aliased = _solve_beta_and_p_values(
             neg_ll,
             jac,
             beta_init,
             tol,
-            # The raw covariates, whose scale the identifiability check's
-            # tolerance is set against.
+            # The covariates, counts and strata, for the aliasing check.
             np.vstack([v[5] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
             sum(
                 float(data[2][data[1] == 0].sum())
                 for _, _, data in per_stratum
+            ),
+            np.concatenate(
+                [np.full(len(v[1]), k) for k, v in enumerate(validated)]
             ),
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
         model._neg_log_like = neg_ll(res.x)
         model.p_values = p_values
+        model.se = se
         model.neg_ll = neg_ll
         model.jac = jac
         model.tie_method = tie_method
@@ -1587,6 +1626,12 @@ class CoxPH_:
         model.res = res
         model.beta = copy(res.x)
         model.params = res.x
+        if aliased.size:
+            # Reported as nan (R's NA); ``res.x`` keeps the 0 the
+            # predictions use (#476).
+            model.beta = np.array(res.x, dtype=float)
+            model.beta[aliased] = np.nan
+            model.params = model.beta.copy()
         model.center = mean if center else np.zeros_like(mean)
         model.is_stratified = True
         model.strata_labels = list(labels)
@@ -1598,10 +1643,10 @@ class CoxPH_:
         baselines: dict[Any, dict[str, npt.NDArray]] = {}
         for s, _, (xs, cs, ns_, Zs, tls) in per_stratum:
             bx, br, bd, bh0 = self.baseline(
-                model.beta, xs, cs, ns_, Zs, tls, tie_method
+                res.x, xs, cs, ns_, Zs, tls, tie_method
             )
             if not center:
-                br, bh0 = _baseline_at_origin(model.beta, mean, Z_all, br, bh0)
+                br, bh0 = _baseline_at_origin(res.x, mean, Z_all, br, bh0)
             baselines[s] = {
                 "x": bx,
                 "r": br,
@@ -1694,16 +1739,17 @@ class CoxPH_:
             )
         )
 
-        model = self.fit(
-            x,
-            Z,
-            c,
-            n,
-            tl=tl,
-            tie_method=tie_method,
-            strata=strata,
-            center=center,
-        )
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(
+                x,
+                Z,
+                c,
+                n,
+                tl=tl,
+                tie_method=tie_method,
+                strata=strata,
+                center=center,
+            )
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec
@@ -1812,30 +1858,37 @@ class CoxPH_:
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None = None,
         n_col: str | None = None,
         tie_method: str = "efron",
         center: bool = False,
+        formula: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
 
         See :meth:`fit_tvc`; ``Z_cols`` names the covariate column(s) and the
         remaining arguments name the id / ``xl`` / ``xr`` / ``c`` columns.
-        ``tie_method`` and ``center`` are as for :meth:`fit`.
+        ``tie_method`` and ``center`` are as for :meth:`fit`. Instead of
+        ``Z_cols``, ``formula`` (as in :meth:`fit_from_df`) gives the
+        covariates as a ``formulaic`` formula, which codes categorical
+        (e.g. ``"yes"`` / ``"no"``) columns.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc(
-            i=df[i_col].to_numpy(),
-            xl=df[xl_col].to_numpy(),
-            xr=df[xr_col].to_numpy(),
-            c=df[c_col].to_numpy(),
-            Z=df[cols].to_numpy(),
-            n=None if n_col is None else df[n_col].to_numpy(),
-            tie_method=tie_method,
-            center=center,
-        )
-        model.feature_names = cols
+        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
+            model = self.fit_tvc(
+                i=df[i_col].to_numpy(),
+                xl=df[xl_col].to_numpy(),
+                xr=df[xr_col].to_numpy(),
+                c=df[c_col].to_numpy(),
+                Z=Z,
+                n=None if n_col is None else df[n_col].to_numpy(),
+                tie_method=tie_method,
+                center=center,
+            )
+        model.feature_names = names
+        model.formula = form
+        model._model_spec = spec
         return model
 
     def fit_tvc_timeline(
@@ -1911,11 +1964,12 @@ class CoxPH_:
         df: "pd.DataFrame",
         i_col: str,
         x_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None,
         c_col: str,
         n_col: str | None = None,
         tie_method: str = "efron",
         center: bool = False,
+        formula: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a timeline TVC Cox model from a DataFrame.
@@ -1923,20 +1977,54 @@ class CoxPH_:
         See :meth:`fit_tvc_timeline`; ``x_col`` names the change-point time
         column (``x``), ``Z_cols`` the covariate column(s) and ``c_col`` the
         terminal event / censoring column (``0`` event, ``1`` censored).
-        ``tie_method`` and ``center`` are as for :meth:`fit`.
+        ``tie_method`` and ``center`` are as for :meth:`fit`. Instead of
+        ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
+        ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc_timeline(
-            i=df[i_col].to_numpy(),
-            x=df[x_col].to_numpy(),
-            Z=df[cols].to_numpy(),
-            c=df[c_col].to_numpy(),
-            n=None if n_col is None else df[n_col].to_numpy(),
-            tie_method=tie_method,
-            center=center,
-        )
-        model.feature_names = cols
+        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
+            model = self.fit_tvc_timeline(
+                i=df[i_col].to_numpy(),
+                x=df[x_col].to_numpy(),
+                Z=Z,
+                c=df[c_col].to_numpy(),
+                n=None if n_col is None else df[n_col].to_numpy(),
+                tie_method=tie_method,
+                center=center,
+            )
+        model.feature_names = names
+        model.formula = form
+        model._model_spec = spec
         return model
+
+
+def _df_covariates(
+    df: Any, Z_cols: str | list[str] | None, formula: str | None
+) -> tuple:
+    """The covariates of the TVC ``*_from_df`` fits, from ``Z_cols`` or a
+    ``formula`` (#485), with every row kept: a TVC fit refuses a missing
+    covariate rather than dropping part of a subject's path."""
+    from formulaic import Formula
+
+    from ..regression_data import drop_intercept
+
+    if (Z_cols is None) == (formula is None):
+        raise ValueError("Give exactly one of 'Z_cols' or 'formula'")
+    if formula is not None:
+        matrix, spec = formula_model_matrix(formula, df)
+        matrix = drop_intercept(matrix)
+        return (
+            np.asarray(matrix, dtype=float),
+            Formula(formula),
+            list(matrix.columns),
+            spec,
+        )
+    assert Z_cols is not None  # exactly one of the two, checked above
+    cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+    unknown = [col for col in cols if col not in df.columns]
+    if unknown:
+        raise ValueError("{} not in dataframe columns".format(unknown))
+    return numeric_columns(df, cols), None, cols, None
 
 
 CoxPH = CoxPH_()

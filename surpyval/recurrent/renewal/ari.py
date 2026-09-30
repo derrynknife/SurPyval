@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
@@ -13,6 +15,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_intensity_model,
     validate_memory,
     validate_nhpp_data,
     validate_renewal_censoring,
@@ -326,6 +329,7 @@ class ARI(RenewalFitMixin):
         RenewalModel
             A fitted renewal model.
         """
+        validate_intensity_model(dist, type(self).__name__)
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
@@ -401,7 +405,11 @@ class ARI(RenewalFitMixin):
         n : array_like, optional
             Count of events at each row. Defaults to 1.
         dist : object, optional
-            A recurrent baseline intensity model. Default is ``CrowAMSAA``.
+            A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
+            ``CoxLewis``). Default is ``CrowAMSAA``. Unlike ARA's and
+            GeneralizedRenewal's ``dist``, it is not a lifetime
+            distribution: passing one (e.g. ``Weibull``) raises a
+            ``ValueError`` that names the alternatives.
         m : int or float, optional
             Memory of the ARI model; a positive integer or ``numpy.inf``.
             Default is 1.
@@ -427,6 +435,9 @@ class ARI(RenewalFitMixin):
         >>> round(float(model.rho), 3)
         1.0
         """
+        # Before the data: a lifetime distribution here (as ARA takes)
+        # failed deep inside the fit (#495).
+        validate_intensity_model(dist, type(self).__name__)
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
@@ -459,6 +470,7 @@ class ARI(RenewalFitMixin):
         RenewalModel
             A model built from the supplied parameters, for simulation.
         """
+        validate_intensity_model(dist, type(self).__name__)
         validate_memory(m)
         validate_restoration(rho, "rho", (0, 1))
         return self._make_model(dist, dist_params, rho, m)

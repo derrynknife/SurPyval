@@ -266,11 +266,12 @@ Each family also has a ``fit_from_df`` that names DataFrame columns instead
 Predictions — ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` — take times and
 covariates. Given **one** covariate row they return the curve over all the
 times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
-time per row, which is what you want for scoring a data set but not for drawing
-several curves. To draw curves for several covariate values, call once per
-value. (The survival tree and forest return a full grid instead; see their
-section.)
-A small simulated data set shows both forms:
+time per row, which is what you want for scoring a data set; any other number
+of rows is refused with a ``ValueError``. For a curve per covariate row --
+every time for every row, lifelines' ``predict_survival_function`` -- pass
+``grid=True``: the result has shape ``(len(Z),) + x.shape``, row ``i`` for
+row ``i`` of ``Z``, as the survival tree and forest return it.
+A small simulated data set shows the three forms:
 
 .. jupyter-execute::
 
@@ -285,6 +286,16 @@ A small simulated data set shows both forms:
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
+    print('two rows, a grid     :')
+    print(demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True)
+    assert _g.shape == (2, 3)
+    assert np.allclose(_g[1], demo.sf([5.0, 10.0, 15.0], Z=[1.0]))
 
 The regression models do not have a quantile function (``qf``). A quantile at a
 given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a
@@ -416,6 +427,27 @@ tire there, :math:`e^{\beta'(Z - \bar Z)}`.)
     from scipy.stats import norm
     assert np.allclose(model.p_values,
                        2 * (1 - norm.cdf(np.abs(model.beta / se))))
+
+``model.summary()`` gathers these into one table, as R's ``summary(coxph)``
+and lifelines' ``summary`` do: the coefficient, the hazard ratio
+``exp(coef)``, the standard error, 95% Wald intervals for both, ``z`` and the
+p-value, one row per covariate (named by the columns for a model fitted with
+``fit_from_df``). The model's printout shows the same table;
+``summary(robust=True)`` uses the cluster-robust standard errors of
+`Cluster-robust standard errors`_ instead. The parametric models'
+``summary()`` has the same columns, with the baseline distribution's
+parameters in rows of their own, above the coefficients.
+
+.. jupyter-execute::
+
+    model.summary().round(3)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(model.summary()['se(coef)'], se)
+    assert np.allclose(model.summary()['p'], model.p_values)
 
 .. jupyter-execute::
 
@@ -636,7 +668,40 @@ encoded exactly as at fit time:
 
 A formula beginning with ``0 +`` asks for the full one-hot coding instead; with
 a baseline distribution in the model that brings back the collinearity above,
-so it is rarely what you want. Wrapped categoricals (``C(site)``, with
+so the last level is aliased (see below) and it is rarely what you want.
+
+A covariate column the data cannot determine -- a constant column (the
+baseline is the intercept: Cox's or Lin-Ying's baseline hazard, the
+Buckley-James intercept, or the scale of a family whose scale absorbs a
+constant, as for Weibull PH or any AFT family), one
+constant within each stratum of a stratified Cox fit, or a column that is a
+linear combination of the others -- is **aliased**, as R's ``coxph`` and
+``lm`` do it: the fit runs on the other columns, whose estimates are what they
+are without it, reports its coefficient, standard error and p-value as
+``nan``, lists it in ``model.aliased``, and predicts as though its coefficient
+were 0. One warning names the columns. The columns are taken in order, so of
+two collinear columns it is the later one that is aliased:
+
+.. jupyter-execute::
+
+    import warnings
+
+    doubled = np.column_stack([patients['age'], 2 * patients['age']])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        aliased = CoxPH.fit(patients['time'], doubled, patients['censored'])
+    print(aliased.beta, aliased.aliased)
+    print(str(caught[0].message)[:60])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _alone = CoxPH.fit(patients['time'], doubled[:, :1], patients['censored'])
+    assert np.isnan(aliased.beta[1]) and list(aliased.aliased) == [1]
+    assert abs(aliased.beta[0] - _alone.beta[0]) < 1e-10
+
+Wrapped categoricals (``C(site)``, with
 ``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
 (``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
 are kept when the model is saved (see `Saving and loading a fitted model`_).
@@ -647,8 +712,8 @@ and the level. So does a level declared with ``C(site, levels=[...])`` (or
 an unused category of a ``pd.Categorical`` column) that the fitted data has
 no rows of: declaring the full list keeps the columns the same across data
 splits, but nothing estimates that level's coefficient, so the fit warns,
-naming the level, and a prediction for it raises. (``AdditiveHazards`` and
-``BuckleyJames`` refuse such a fit, as the level's column is constant.) A
+naming the level, and a prediction for it raises. (The level's column is
+all zeros, so it is aliased, without a second warning.) A
 missing value is not a level: that row predicts ``nan``, as for a missing
 numeric covariate. This holds for every family that takes a ``formula``,
 before and after saving:
@@ -695,6 +760,9 @@ naming and the status column ``c`` follows surpyval's censoring convention —
 ``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
 (a covariate change or administrative end). A subject may have at most one
 ``c = 0`` row, it must be its last interval, and its intervals must not overlap.
+The covariates are ``Z_cols`` (numeric columns) or, as in ``fit_from_df``, a
+``formula=`` that codes categorical columns such as the ``"yes"`` / ``"no"``
+columns of ``load_rossi_time_varying()``.
 In the example below a covariate
 ``stress`` switches from 0 to 1 at a random time for each unit and genuinely
 raises the hazard once it turns on; units that fail before the switch
@@ -1878,10 +1946,13 @@ Notice that the Weibull shape parameter :math:`\beta` is estimated globally —
 it is the same for all stress levels — while the scale parameter :math:`\alpha`
 varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
-``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
-by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
-in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhenius parameter ``a`` is
-:math:`E_a / k_B`, so the fit estimates the activation energy directly:
+report shows ``alpha`` as ``L(Z)``, not as a value: the life parameter
+(``model_arr.life_parameter``) is replaced by the life model at each stress, so
+it is not estimated. Its slot in ``params`` (named by ``model_arr.param_names``)
+holds a placeholder 1 that carries no information: it is listed in
+``model_arr.fixed``, is not counted as a parameter in the AIC, and ``param_cb``
+refuses it. The Arrhenius parameter ``a`` is :math:`E_a / k_B`, so the fit
+estimates the activation energy directly:
 
 .. jupyter-execute::
 
@@ -1894,6 +1965,9 @@ in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhe
 
     assert c_al[stress == 358.].sum() > 10          # most of the coolest
     assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
+    assert model_arr.life_parameter == 'alpha'
+    assert model_arr.param_names == ['alpha', 'beta', 'a', 'b']
+    assert 'alpha: L(Z) of the' in repr(model_arr)
     assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
     assert round(model_arr.params[2] * k, 2) == 0.67
     _lo, _hi = model_arr.param_cb('a') * k
@@ -1991,8 +2065,9 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
     model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
         x_2s, Z=np.column_stack([temp, volts]))
-    for name, value in zip(model_2s.parameter_names(), model_2s.params):
-        print(f'{name:5s} = {value:.4g}')
+    for name, value in zip(model_2s.param_names, model_2s.params):
+        if name != model_2s.life_parameter:   # alpha is given by the life model
+            print(f'{name:5s} = {value:.4g}')
     print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
 
 The fit separates the two effects — an activation energy of 0.67 eV against
@@ -2635,7 +2710,7 @@ label per observation (see :doc:`regression/frailty`):
         x=np.array(rows_x), c=np.array(rows_c),
         Z=np.array(rows_z).reshape(-1, 1), groups=np.array(rows_g),
     )
-    print(model.summary())
+    print(model)
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
     print("theta standard error: %.3f" % model.standard_errors()["theta"])
 
@@ -2651,7 +2726,9 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name.
+errors of every parameter as a dictionary keyed by name. Every estimate is
+also in one vector, ``model.params``, in the order of ``model.param_names``:
+the baseline's parameters, the coefficients, then ``theta``.
 
 .. jupyter-execute::
     :hide-code:

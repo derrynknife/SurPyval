@@ -159,9 +159,13 @@ def _forced_check_output(self, want, got, optionflags):
     contains a number is compared numerically instead, so the fallback
     is exercised against all 229 of them rather than against today's
     accidental few. Outputs with no numbers keep the text comparison;
-    there is nothing in them for this to compare.
+    there is nothing in them for this to compare. Nor does an output
+    that elides part of itself with ``...`` under ``ELLIPSIS`` (an
+    error's message cut short): the numbers in the elided part cannot be
+    paired with the ones expected.
     """
-    if not _NUMBER.search(want):
+    elided = optionflags & doctest.ELLIPSIS and "..." in want
+    if not _NUMBER.search(want) or elided:
         return _text_check_output(self, want, got, optionflags)
     return _numerically_equal(want, got)
 

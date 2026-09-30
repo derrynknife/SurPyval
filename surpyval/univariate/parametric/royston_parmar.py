@@ -152,13 +152,13 @@ class RoystonParmarModel(SerialisableMixin):
     Examples
     --------
     ``RoystonParmar.fit`` returns one. Here with one internal knot
-    (``df=2``) on the Rossi recidivism data, where ``arrest`` is already
-    the censoring flag:
+    (``df=2``) on the Rossi recidivism data, where ``arrest`` is 1 for an
+    arrest (so the censoring flag is ``1 - arrest``):
 
     >>> from surpyval import RoystonParmar
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> model = RoystonParmar.fit(x, c=c, df=2)
     >>> model.params.round(4)
     array([-6.9934,  1.5755,  0.0377])

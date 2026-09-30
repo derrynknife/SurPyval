@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np
@@ -32,9 +34,8 @@ class ProportionalIntensityHPP:
     --------
 
     One event (or censoring) per subject, so the fit is an exponential
-    regression. In the bundled copy of the Rossi data ``arrest`` is 1 for
-    a subject still free at the end of follow-up, so it is already the
-    censoring flag ``c``:
+    regression. In the Rossi data ``arrest`` is 1 for a subject arrested
+    during follow-up, so the censoring flag is ``c = 1 - arrest``:
 
     >>> import numpy as np
     >>> from surpyval.datasets import load_rossi_static
@@ -42,7 +43,7 @@ class ProportionalIntensityHPP:
     >>>
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> c = data['arrest'].values
+    >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(data))
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)

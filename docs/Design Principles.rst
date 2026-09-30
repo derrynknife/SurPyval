@@ -78,10 +78,13 @@ Outputs
 7. **Shape in, shape out.** A scalar query gives a numpy scalar, a 1-D or
    2-D query a result of its shape, and an empty query an empty result of
    its shape; a two-sided confidence bound adds a last ``[lower, upper]``
-   axis. With covariates the shape is that of the times. The documented
-   exception is the survival tree and forest's row-by-time grid,
-   ``(n_rows,) + x.shape``. ``surpyval.utils.shapes`` applies the rule at
-   every model's public methods.
+   axis. With covariates the shape is that of the times, rows and times
+   paired: one row for every time, or one time for every row; other
+   counts raise. ``grid=True`` on the Cox and parametric regression
+   functions gives the row-by-time grid, ``(n_rows,) + x.shape``, which
+   the survival tree and forest return by default.
+   ``surpyval.utils.shapes`` applies the rule at every model's public
+   methods.
 
    *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
    ``conformance/test_options.py``, for every registered model, and for
@@ -137,7 +140,11 @@ Estimation
 
 12. **A fit returns what it claims:** the optimum of its stated estimator.
     If the estimator has no optimum on the data, the fit refuses or warns;
-    it never returns a silent degenerate answer.
+    it never returns a silent degenerate answer. Where the data do not
+    determine a coefficient -- a covariate column that is constant where
+    the model has an intercept, or a combination of the others -- the fit
+    says so: the coefficient is ``nan`` and listed in ``aliased``, with
+    one warning naming the column, rather than an arbitrary value.
 
     *Partly checked.* The property tests check that parametric fits, on
     generated data with every kind of censoring and truncation, are local
@@ -150,7 +157,13 @@ Estimation
     Fine-Gray, copula, mixture and degradation fits warn "No finite
     maximum" (#392); known gaps: the AFT ``fit_tvc`` path, and abutting
     intervals such as (1, 3] and (3, 5], whose likelihood has a flat
-    ridge.
+    ridge. ``conformance/test_aliasing.py`` refits every registered model
+    that has coefficients with a repeated covariate column, and with a
+    constant one where it has an intercept, and requires the aliasing and
+    otherwise the fit without the column; the time-varying fits are
+    checked in ``univariate/regression/test_aliasing.py``. Known gaps:
+    the proportional-intensity recurrent regressions (#502) and the
+    dual-stress life models (#503).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.

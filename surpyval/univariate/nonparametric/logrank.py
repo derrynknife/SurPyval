@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+import warnings
+
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
@@ -324,6 +328,24 @@ def logrank(
             )
 
     k = groups.size
+    # Groups are categories. When most of them hold a single unit the
+    # labels are almost certainly a continuous variable, or an argument in
+    # the wrong slot: logrank(x, x * 1.3) ran a 50-group test with 49
+    # degrees of freedom on 50 observations, in silence (#485).
+    units = np.ones(x.shape) if n_arr is None else n_arr.astype(float)
+    sizes = np.array([units[Z == g].sum() for g in groups])
+    singletons = int(np.sum(sizes <= 1))
+    if singletons > k / 2:
+        warnings.warn(
+            "logrank: {} of the {} groups in `Z` have a single member ({} "
+            "observations in all), so `Z` looks like a continuous "
+            "variable, or another argument in its place (the "
+            "signature is logrank(x, Z, c, n)). `Z` should hold group "
+            "labels; to test a continuous covariate, fit CoxPH.".format(
+                singletons, k, int(sizes.sum())
+            ),
+            stacklevel=2,
+        )
     n_strata = None
     if strata is None:
         z, V, E = _logrank_z_v(

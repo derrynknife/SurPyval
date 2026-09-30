@@ -28,8 +28,30 @@ Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 match R. Unknown option values raise ``ValueError`` everywhere. The
 Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 ``P(X > x)``, as for every other discrete distribution. Fits whose data
-have no finite maximum warn "No finite maximum".
+have no finite maximum warn "No finite maximum". A covariate column
+the others already account for gets a ``nan`` coefficient and a warning,
+as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
+that cannot be paired with the times raise ``ValueError``. The bundled
+Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
+only when it is significant. ``qf`` outside [0, 1] is ``nan``. Durations
+and dates are refused. Probability plots show failures only. ``fit_best``
+no longer considers the Uniform and Beta4 by default. Small-sample Wald
+bands change (#477).
 
+- **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
+  (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
+  ``d / r`` to a whole number in a Python loop, most of a large fit;
+  vectorised, a 100,000-row Kaplan-Meier fit takes 50 ms instead of 207
+  ms (Nelson-Aalen 53 ms, was 228), with bit-identical variances and
+  bounds. AFT and PO fits started with Nelder-Mead, hundreds of
+  derivative-free evaluations; with a differentiable likelihood they now
+  take the gradient ladder the PH models use first, and fall back to the
+  old ladder only when that cannot verify its optimum. At 100,000 rows and
+  5 covariates a WeibullAFT fit takes 0.48 s (was 2.0 s) and WeibullPO
+  0.64 s (3.9 s); at 1,000 rows AFT and PO fits are 4-6 times faster. They
+  reach the same maximum to 1e-6 in the log-likelihood, or a slightly
+  higher one. The time-varying AFT likelihood is not differentiable and
+  keeps Nelder-Mead.
 - **Likelihood-ratio bounds at the edge, and along valleys (#421).**
   Profiles are now searched on the log or logit scale of each parameter,
   each point starting from the ones already solved. The old search on raw
@@ -351,11 +373,162 @@ have no finite maximum warn "No finite maximum".
   label was a group of its own (9 groups instead of 8) and ``None`` raised
   ``TypeError``; such rows are dropped with one "Dropped k of n rows"
   warning, and ``group=nan`` predicts ``nan``.
-- **Cox refuses a coefficient it cannot estimate (#409).** A constant
-  column on separated data got a coefficient of 3.1e14, an all-NaN baseline
-  and a dozen raw numpy warnings. ``CoxPH`` refuses a column that does not
-  vary within any risk set at an event time, naming it, and warns of
-  collinear columns.
+- **Coefficients the data cannot separate are NaN, as in R (#476, #409).**
+  A covariate column that adds nothing to the others -- a constant column
+  where the baseline already has a scale, a duplicated column, dummy
+  columns that add up to another column -- has no estimate of its own:
+  shifting weight between it and the columns it repeats fits the data
+  equally well. The fit used to return whichever split its search stopped
+  at. A constant column moved WeibullAFT's ``alpha`` from 54.06 to 51.02,
+  a repeated column split a Cox effect into 0.148 and -0.264, and
+  a constant column on separated data got 3.1e14 with an all-NaN baseline.
+  Now the fit leaves such columns out, as R's ``coxph`` and ``survreg``
+  do: their coefficients are ``nan``, with ``nan`` standard error and
+  p-value, ``model.aliased`` lists them, and one warning names them. The
+  other coefficients and the predictions are those of the fit without the
+  column. This covers ``CoxPH`` (with strata and time-varying
+  covariates), the parametric proportional hazards, AFT, proportional odds
+  and additive hazards models and their ``fit_tvc`` (the AFT one split a
+  repeated column's 0.338 into 1.685 and -1.346), Fine-Gray, the
+  competing-risks Cox model, the frailty models, and the Lin-Ying
+  ``AdditiveHazards`` and ``BuckleyJames`` models. **Changed:** those two
+  raised ``ValueError`` for a constant column, a single observation or
+  collinear columns; they now fit the other columns and warn. Fits without
+  such a column are unchanged. The proportional-intensity recurrent
+  regressions (#502) and the dual-stress life models (#503) do not alias
+  yet. ``conformance/test_aliasing.py`` checks every registered model
+  (principle 12).
+- **Regression models print a coefficient table: summary() (#484).** The
+  Cox and parametric regression models' ``summary()`` returns a
+  ``DataFrame`` in the layout of R's ``summary(coxph)`` and lifelines:
+  ``coef``, ``exp(coef)``, ``se(coef)``, Wald intervals for both, ``z``
+  and ``p``, one row per covariate, named from the ``DataFrame`` columns
+  for ``fit_from_df``. On the Rossi data it matches R (``fin``: coef
+  -0.37942, se 0.19138, p 0.04742). The parametric models add the
+  baseline's parameters, with the intervals of ``param_cb``, so the
+  Weibull shape ``beta`` is no longer printed among the coefficients
+  ``beta_0``, ``beta_1``, .... The models' ``repr`` prints the table.
+- **Changed: FrailtyModel.summary() returns the table (#484).** It
+  returned the text its ``repr`` prints; it now returns the same
+  ``DataFrame`` as the parametric models, with a ``frailty`` row for
+  ``theta``. ``print(model)`` gives the text.
+- **A cause label 0 with no censoring warns (#486).** lifelines,
+  scikit-survival and R's ``cmprsk`` code a censored row as cause 0;
+  SurPyval codes it as a missing cause (``None`` or ``NaN``), or with
+  ``c``. Data coded the other way fitted without complaint as a model with
+  an extra cause "0" and no censoring. Numeric cause labels that include
+  0, with none missing and no ``c``, now warn and give the one-line
+  conversion; passing ``c`` says 0 really is a cause and silences it.
+- **Covariate rows and times that cannot be paired raise (#488).** A
+  regression model pairs row ``i`` of ``Z`` with time ``x[i]`` (one row
+  for every time, or one time for every row). Any other count was a raw
+  numpy broadcast error; it is now a ``ValueError`` saying so. For a
+  survival curve per subject, the Cox and parametric regression
+  functions take ``grid=True``, which gives every row at every time,
+  shape ``(len(Z),) + x.shape``, as the survival tree and forest do.
+- **Changed: load_rossi_static()'s arrest means an arrest (#479).** It
+  stored the censoring flag (1 = not arrested) as a float under the name
+  ``arrest``, so ``c = 1 - df["arrest"]``, the natural call coming from R
+  or lifelines, fitted the complement without complaint (a Cox
+  coefficient of -0.001 for age instead of -0.057). ``arrest`` is now an
+  integer, 1 for an arrest, as in R's ``carData::Rossi`` and lifelines.
+  Code that passed ``c=df["arrest"]`` must pass ``c=1 - df["arrest"]``.
+  The bundled rossi, heart and lung data also lose their saved row-index
+  columns (``Unnamed: 0``).
+- **Changed: trend tests name a trend only when it is significant (#481).**
+  ``laplace`` and ``mil_hdbk_189c`` printed "Suggested trend: increasing"
+  at p = 0.25. ``trend`` is now the conclusion at a keyword-only
+  ``alpha_ci=0.05`` (``"none"`` unless p < ``alpha_ci``) and the new
+  ``direction`` is the sign of the statistic. The models' ``trend_test()``
+  take ``alpha_ci``, and the tests take ``c=`` by keyword only.
+- **MixtureModel.fit returns the model (#482).** It returned ``None``.
+  ``MixtureModel.fit(x, dist=Weibull, m=2)`` also builds and fits in one
+  call. An unfitted model's ``repr`` names it, and a truncated fit reports
+  "Fitted by: MLE", which it is, not "EM".
+- **params and param_names on FrailtyModel and RenewalModel (#483).**
+  Frailty: the baseline, the coefficients, then ``theta``. Renewal: ``q``
+  or ``rho``, then the distribution's parameters, the order of
+  ``standard_errors``.
+- **AcceleratedLife reports its life parameter as the life model's
+  (#489).** It printed "alpha: 1.0", a placeholder, as if fitted; it now
+  prints ``alpha: L(Z) of the Power life model``, ``param_cb`` refuses
+  that parameter, and the model has ``life_parameter``. Every parametric
+  regression model has ``param_names``. Data at one stress level raise
+  "needs at least two distinct stress levels", and too few levels with
+  ``init`` warn that the life-stress relationship cannot be identified.
+- **The repair models say which kind of dist they take (#495).** A
+  lifetime distribution passed to ``ARI`` (an ``AttributeError``) and an
+  intensity model passed to ``ARA``, ``GeneralizedRenewal`` or
+  ``GeneralizedOneRenewal`` ("more than one right censored time") raise a
+  ``ValueError`` naming the right fitter.
+- **API papercuts (#485).** ``to_json()`` without a path returns the
+  JSON text, and ``from_json`` reads it. A model with no data (from
+  ``from_params``, or loaded) plots its CDF. ``how`` is case-insensitive.
+  ``x``, ``c`` and ``n`` given as (n, 1) columns are read as one value per
+  row. **Changed:** ``qf`` outside [0, 1] is ``nan`` (it was ``inf`` or
+  0), a continuous distribution's ``qf(0)`` is the start of its support (a
+  Normal's ``-inf``, not 0), and a bounded one's ``qf(1)`` its end
+  (``Uniform(2, 5)``: 5, not ``inf``). Kaplan-Meier, Nelson-Aalen and
+  Fleming-Harrington given left- or interval-censored or right-truncated
+  data point to Turnbull. ``logrank`` warns when most groups have one
+  member. ``fit_best`` passes over candidates whose support excludes the
+  data quietly and reports other failures once. The MPP heuristic error
+  lists the valid names, and ``sp.CrowAMSAA`` and the like say which
+  subpackage to import from. ``CoxPH.fit_tvc_from_df`` and
+  ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
+  ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
+  print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **The bundled Claude Code skill matches 0.22, and its code is tested
+  (#491).** Every code block in it runs as a test.
+- **Offset fits with no maximum warn (#487).** With a shape below 1 the
+  density is infinite at the offset, so the likelihood grows without
+  bound as ``gamma`` runs onto the first failure. Such a fit returned a
+  degenerate model silently or behind "MLE Failed": the 3-parameter
+  Weibull on [55, ..., 140] reached a shape of 0.09. Every offset family
+  now warns "No finite maximum" and recommends ``how="MPS"``, and returns
+  the point its search reached. The Exponential's genuine maximum at the
+  first failure is unchanged.
+- **Changed: durations and dates are refused (#480).** ``timedelta64``
+  and ``datetime64`` input was fitted in its storage ticks (a scale of
+  5.0e5 for durations of days held in seconds, 6.9e14 in nanoseconds),
+  and predictions raised numpy's ``TypeError``. SurPyval has no time
+  unit, so such values now raise a ``ValueError`` wherever a time is
+  accepted, with the conversion to use (``x / pd.Timedelta(days=1)``).
+- **Changed: suspensions are not plotted (#478).** A probability plot
+  drew each suspension at the ``F`` of the failure before it, where it
+  looked like one more failure. The points are now the failures only,
+  as in Abernethy's *New Weibull Handbook* and Weibull++. ``get_plot_data``'s
+  ``x_`` and ``F`` hold failures only and its new ``x_censored`` the
+  suspension times, which ``plot(show_censored=True)`` marks on the time
+  axis.
+- **weibayes (#493).** ``surpyval.weibayes(x, c, n, beta)`` gives the
+  Weibayes lower confidence bound on a Weibull's scale of known shape
+  from few or no failures (Nelson 1985; Abernethy), as a Weibull model:
+  ten units run 500 hours with no failure and a shape of 2 give a 95%
+  lower bound on the scale of 913.5 hours. ``fit`` still refuses data
+  with no failures, and now points to it.
+- **Changed: fit_best ranks regular maxima only (#492).** AIC and BIC
+  assume a regular maximum. The Uniform and Beta4, whose support ends are
+  parameters, are no longer default candidates (``include=`` still
+  tries them), and a fit with no finite maximum or an unverified one is
+  ranked only when no regular candidate fits, with one warning naming it.
+  The Beta4 no longer "wins" on [1, ..., 7], nor the Uniform on 50
+  Weibull draws.
+- **Changed: Wald bands are monotone (#477).** Wald bounds on ``sf``,
+  ``ff`` and ``Hf`` were formed on the logit of ``sf`` for every family,
+  and on small samples turned back: the issue's lower bound on ``F`` fell
+  from 0.39 to 0.00004 as time went on. They are now formed on each
+  family's probability-plot scale (``log(-log S)`` for the Weibull, the
+  normal quantile for the Normal and LogNormal), where they are monotone
+  whenever the shape's own interval excludes 0; that bound is now 0.83.
+  Large samples are unchanged to 2e-4. The degradation models' two-stage
+  band is formed on the same scale, so it still contains the life model's
+  own. ``plot`` and ``get_plot_data`` take ``method=`` to draw the
+  likelihood-ratio band.
+- **quantile_cb and mean_cb (#494).** Parametric models give confidence
+  bounds on a quantile (a B-life) and on the mean, by Wald (matching R's
+  ``survreg`` to 1e-7) or likelihood ratio (``method="lr"``, better on
+  small samples), with ``bound=`` and ``alpha_ci`` as on ``cb``.
 - **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
   built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
   to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each

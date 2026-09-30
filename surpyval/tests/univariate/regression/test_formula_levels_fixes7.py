@@ -131,8 +131,10 @@ def test_empty_declared_level_raises_at_prediction(family, restored):
 def test_empty_declared_level_old_answer_was_the_reference_level():
     # The numbers of the issue: WeibullPH left the coefficient of 'd' at
     # its start value 0, so 'd' predicted exactly as the reference 'a'.
+    # Nothing estimates it: it is aliased now (#476), reported as nan and
+    # predicted with as 0.
     model = _fit_quietly("WeibullPH", "z + " + LEVELS, _df())
-    assert model.params[-1] == 0.0
+    assert np.isnan(model.params[-1])
     assert model.feature_names[-1] == LEVELS + "[T.d]"
     Z_a = np.array([[2.0, 0.0, 0.0, 0.0]])
     Z_d = np.array([[2.0, 0.0, 0.0, 1.0]])
@@ -239,14 +241,19 @@ def test_accelerated_life_empty_level():
 
 
 @pytest.mark.parametrize("name", ["AdditiveHazards", "BuckleyJames"])
-def test_semi_parametric_fits_refuse_the_empty_column(name):
-    # Lin-Ying and Buckley-James refuse a covariate that does not vary,
-    # which the empty level's column is; the warning names the level.
-    with pytest.warns(UserWarning, match=r"no rows at the level\(s\) \['d'\]"):
-        with pytest.raises(ValueError, match="Covariate"):
-            getattr(surpyval, name).fit_from_df(
-                _df(), x_col="t", c_col="c", formula="z + " + LEVELS
-            )
+def test_semi_parametric_fits_alias_the_empty_column(name):
+    # Lin-Ying and Buckley-James refused the empty level's column, which
+    # does not vary; it is aliased now (#476), as in the other fits, and
+    # the one warning is the empty level's.
+    with pytest.warns(UserWarning) as record:
+        model = getattr(surpyval, name).fit_from_df(
+            _df(), x_col="t", c_col="c", formula="z + " + LEVELS
+        )
+    assert len(record) == 1
+    assert "no rows at the level(s) ['d']" in str(record[0].message)
+    np.testing.assert_array_equal(model.aliased, [3])
+    with pytest.raises(ValueError, match="not fitted with"):
+        model.sf([5.0], pd.DataFrame({"z": [2.0], "g": ["d"]}))
 
 
 # -- #375 8b: None in list covariates -------------------------------------

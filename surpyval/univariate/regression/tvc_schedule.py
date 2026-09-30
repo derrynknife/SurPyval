@@ -35,6 +35,8 @@ which ``sf_tvc`` integrates the hazard (#172); the type of the path chooses the
 method.
 """
 
+from __future__ import annotations
+
 import ast
 import math
 from typing import Any, Callable

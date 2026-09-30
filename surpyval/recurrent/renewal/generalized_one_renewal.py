@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np
@@ -12,6 +14,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_lifetime_dist,
     validate_renewal_censoring,
     validate_renewal_times,
     validate_restoration,
@@ -191,6 +194,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         non-negative lifetime distribution; distributions with support over
         negative values (e.g. Normal, Gumbel) are not eligible.
         """
+        validate_lifetime_dist(dist, "GeneralizedOneRenewal")
         if dist.support[0] < 0:
             raise ValueError(
                 "{} has support {} which includes negative values; the G1 "

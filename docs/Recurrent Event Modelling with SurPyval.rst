@@ -337,7 +337,10 @@ hypothesis of a homogeneous Poisson process (no trend) directly on the event
 times; no model is fitted. They take the event times ``x``, the item ids
 ``i`` and the observation end ``T`` — a scalar, one value per item, or a
 dict keyed by item. Leave ``T`` out for failure-truncated data, and the last
-event of each item is treated as the end of its window.
+event of each item is treated as the end of its window. Data in the fitters'
+form, ``x``, ``i`` and ``c``, can be passed as they are with ``c=`` by
+keyword: an item's ``c = 1`` row ends its window (the third positional
+argument is ``T``, so ``laplace(x, i, c)`` raises an error saying so).
 
 .. jupyter-execute::
 
@@ -354,9 +357,11 @@ Both tests find strong evidence of an increasing intensity, so an HPP would be
 a poor model. The ``alternative`` argument chooses a two-sided test (the
 default) or a one-sided test for ``"increasing"`` (deterioration) or
 ``"decreasing"`` (reliability growth). The result carries ``statistic``,
-``p_value``, ``trend``, ``n_events`` and ``n_systems`` (and ``dof`` for the
-MIL-HDBK-189C test). Its ``trend`` attribute is only the *direction* of the
-statistic; look at ``p_value`` to judge whether the trend is real:
+``p_value``, ``direction``, ``trend``, ``n_events`` and ``n_systems`` (and
+``dof`` for the MIL-HDBK-189C test). ``direction`` is only the way the
+statistic points; ``trend`` is the test's conclusion, ``"increasing"`` or
+``"decreasing"`` only when ``p_value`` is below the significance level
+``alpha_ci`` (default 0.05, set by keyword) and ``"none"`` otherwise:
 
 .. jupyter-execute::
     :hide-code:
@@ -368,17 +373,18 @@ statistic; look at ``p_value`` to judge whether the trend is real:
 .. jupyter-execute::
 
     result = laplace([3, 11, 14, 22, 30, 35], T=40)
-    print(result.trend, "- p-value", round(result.p_value, 3))
+    print(result.direction, "/", result.trend, "- p-value", round(result.p_value, 3))
 
 Here the statistic leans (slightly) towards a decreasing rate, but the
 p-value is far from small: with six events there is no evidence of any
-trend.
+trend, and ``trend`` is ``"none"``.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert result.trend == "decreasing" and result.p_value > 0.5
+    assert result.direction == "decreasing" and result.trend == "none"
+    assert result.p_value > 0.5
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -837,16 +843,18 @@ the second, and ``alternative`` works as for the standalone functions):
 .. jupyter-execute::
 
     result = model.trend_test()
-    print(result.trend, "trend, p-value", round(result.p_value, 3))
+    print(result.direction, "/", result.trend, "- p-value", round(result.p_value, 3))
 
-The direction is increasing, but with a p-value of about 0.2 the evidence is
-weak — consistent with the wide interval on ``alpha`` above.
+The statistic points to an increasing rate, but with a p-value of about 0.2
+the evidence is weak and no trend is concluded at the 5% level — consistent
+with the wide interval on ``alpha`` above.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert result.trend == "increasing" and round(result.p_value, 1) == 0.2
+    assert result.direction == "increasing" and result.trend == "none"
+    assert round(result.p_value, 1) == 0.2
 
 Second, **residuals**. Via the time-rescaling theorem, the fitted model turns
 the event times into what should be a unit-rate Poisson process, so the
@@ -1197,7 +1205,11 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. Here we simulate from an ARI model with a deteriorating
+distribution. Its ``dist`` is that intensity model, so ``ARI.fit(x, i,
+dist=Weibull)`` raises an error saying so and naming ``ARA`` and
+``GeneralizedRenewal`` (a Weibull hazard as the baseline intensity is the power
+law, ``dist=CrowAMSAA``); the other fitters likewise refuse an intensity model
+as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
 power-law baseline (:math:`\beta = 2.5`) and fit it back:
 
 .. jupyter-execute::
@@ -1227,12 +1239,13 @@ Checking a renewal model
 
 The renewal models carry the same likelihood inference as the intensity
 models. The parameter list starts with the repair parameter (``q`` or
-``rho``) followed by the lifetime (or baseline) parameters, and the interval
-on ``rho`` is computed on the logit scale so it stays inside (0, 1):
+``rho``) followed by the lifetime (or baseline) parameters -- the order of
+``params`` and ``param_names`` too -- and the interval on ``rho`` is
+computed on the logit scale so it stays inside (0, 1):
 
 .. jupyter-execute::
 
-    print("parameters :", ari.parameter_names)
+    print("parameters :", ari.param_names, ari.params.round(3))
     print("std errors :", ari.standard_errors().round(3))
     print("rho 95% CI :", ari.param_cb("rho").round(3))
 
@@ -1279,8 +1292,8 @@ rows), and for complete data the Weibull maximum-likelihood equations force
 the cumulative hazards of the gaps to sum to their number. Their *pattern*
 (a Q-Q plot against Exp(1), a drift with time) is what carries information.
 With a p-value of about 0.1 the goodness-of-fit test gives no strong evidence
-against the model (the trend test's "decreasing" is only the sign of an
-unconvincing statistic).
+against the model, and the trend test finds no trend (its statistic leans,
+unconvincingly, towards a decreasing rate).
 
 .. jupyter-execute::
     :hide-code:
@@ -1289,7 +1302,8 @@ unconvincing statistic).
     assert model.q < 1e-9 and np.isclose(model.residuals().mean(), 1)
     assert np.isclose(gof.p_value * 21, round(gof.p_value * 21))
     assert round(gof.p_value, 1) == 0.1, gof.p_value
-    assert model.trend_test().trend == "decreasing"
+    assert model.trend_test().trend == "none"
+    assert model.trend_test().direction == "decreasing"
 
 Predicting with a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

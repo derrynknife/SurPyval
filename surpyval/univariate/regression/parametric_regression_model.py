@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import types
 import warnings
 from typing import TYPE_CHECKING, Any
@@ -18,7 +20,11 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
 from ._bounds import logit_sf_bound
 from .regression_data import (
@@ -63,7 +69,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     (``AH``) and accelerated life (``AcceleratedLife``) families.
 
     ``params`` holds the distribution parameters followed by the covariate
-    coefficients (``dist_params`` and ``phi_params`` split them). The
+    coefficients (``dist_params`` and ``phi_params`` split them), named in
+    order by ``param_names``. In an accelerated life model the life
+    parameter (``life_parameter``, e.g. the Weibull's ``alpha``) is not
+    estimated: the life model gives it at each stress, and its slot in
+    ``params`` holds a placeholder 1, which the printed model does not show
+    as a value. The
     survival functions take the covariates as a second argument,
     ``sf(x, Z)``; ``sf_tvc`` / ``Hf_tvc`` evaluate them along a
     time-varying covariate path. The model also provides parameter
@@ -422,6 +433,43 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column where the family has an
+        intercept, or a linear combination of the others. Their
+        coefficients are ``nan`` in ``params`` (R's ``NA``), as are their
+        standard errors, and predictions take them as 0."""
+        phi = np.asarray(self.params, dtype=float)[self.k_dist :]
+        return np.flatnonzero(np.isnan(phi))
+
+    def _eval_params(self) -> npt.NDArray:
+        """``params`` with an aliased coefficient as 0, as the model
+        predicts with it."""
+        if not self.aliased.size:
+            return self.params
+        params = np.array(self.params, dtype=float)
+        params[self.k_dist + self.aliased] = 0.0
+        return params
+
+    def _held(self) -> set:
+        """The names of the parameters that were not estimated: the
+        ``fixed`` ones and the aliased coefficients."""
+        names = self.parameter_names()
+        return set(self.fixed) | {
+            names[self.k_dist + j] for j in self.aliased.tolist()
+        }
+
+    def _n_covariates(self) -> int:
+        """The number of columns of ``Z``: that of the fitted data where
+        the model has it, else one per coefficient (an accelerated-life
+        model's life-model parameters are not one per column)."""
+        data = getattr(self, "data", None)
+        Z = getattr(data, "Z", None)
+        if Z is not None and np.ndim(Z) == 2:
+            return int(np.shape(Z)[1])
+        return len(self.params) - self.k_dist
+
     def _has_center(self) -> bool:
         """Whether the baseline is at a nonzero covariate ``center``."""
         return self.center is not None and bool(np.any(self.center))
@@ -436,67 +484,248 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return Z
         return np.asarray(Z, dtype=float) - center
 
-    def __repr__(self) -> str:
-        dist_params = self.params[0 : self.k_dist]
-        reg_model_params = self.params[self.k_dist :]
-        dist_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(dist_params, self.distribution.param_names)
-            ]
-        )
+    #: What ``exp(coef)`` is, for a log-linear link, by kind.
+    _EXP_MEANING = {
+        "Proportional Hazard": "the hazard ratio",
+        "Accelerated Failure Time": "the acceleration factor",
+        "Proportional Odds": "the survival odds ratio",
+    }
 
-        reg_model_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    reg_model_params, self.reg_model.phi_param_map
-                )
-                if name not in self.fixed
-            ]
-        )
+    @property
+    def life_parameter(self) -> "str | None":
+        """The distribution parameter an accelerated life model replaces by
+        its life model (``None`` for the other families)."""
+        if self.kind != "Accelerated Life":
+            return None
+        return getattr(getattr(self, "model", None), "life_parameter", None)
 
-        if hasattr(self, "params"):
-            out = (
-                "Parametric Regression SurPyval Model"
-                + "\n===================================="
-                + "\nKind                : {kind}"
-                + "\nDistribution        : {dist}"
-                + "\nRegression Model    : {reg_model}"
-                + "\nFitted by           : MLE"
-            ).format(
-                kind=self.kind,
-                dist=self.distribution.name,
-                reg_model=self.reg_model.name,
+    def _life_relation(self) -> str:
+        # How the life parameter follows from the life model, e.g.
+        # "L(Z) of the Power life model", for the printed model.
+        relation = getattr(self.model, "life_relation", "L(Z)")
+        return "{} of the {} life model".format(relation, self.reg_model.name)
+
+    def _is_linear_predictor(self) -> bool:
+        """Whether the covariate parameters are coefficients of a linear
+        predictor ``beta'Z`` (one per column of ``Z``), which the
+        coefficient table is for; an accelerated-life model's are the
+        parameters of its life model."""
+        n_phi = len(self.params) - self.k_dist
+        pmap = dict(getattr(self.reg_model, "phi_param_map", {}) or {})
+        return self.kind != "Accelerated Life" and pmap == {
+            "beta_{}".format(i): i for i in range(n_phi)
+        }
+
+    def _exp_meaning(self) -> "str | None":
+        """What ``exp(coef)`` means, or ``None`` where the link is not
+        log-linear (``exp(coef)`` is then not a ratio)."""
+        from ._fit_skeleton import LogLinearPhi
+
+        name = getattr(self.reg_model, "name", "")
+        if name not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
+            return None
+        return self._EXP_MEANING.get(self.kind)
+
+    def _summary_se(self) -> npt.NDArray:
+        """The standard errors for the summary: ``nan`` where there are
+        none (a model built from parameters, or one whose information
+        cannot be inverted), and for a parameter held fixed."""
+        n = len(self.params)
+        try:
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                se = np.array(self.standard_errors(), dtype=float)
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            se = np.full(n, np.nan)
+        if se.shape != (n,):
+            se = np.full(n, np.nan)
+        names = self.parameter_names()
+        se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
+        return se
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The parameter table (#484), in lifelines' layout: the baseline
+        distribution's parameters, then the regression coefficients (or,
+        for an accelerated-life model, the life model's parameters), each
+        with its standard error and a two-sided ``1 - alpha_ci`` Wald
+        interval; for the coefficients also ``exp(coef)`` (where the link
+        is log-linear: the hazard ratio for proportional hazards, the
+        acceleration factor for AFT, the survival odds ratio for
+        proportional odds), the Wald statistic ``z`` and its two-sided
+        p-value. The coefficients are named by ``feature_names`` for a
+        model fitted with ``fit_from_df``.
+
+        The baseline parameters' intervals are those of :meth:`param_cb`,
+        which stay in the parameter's support (a positive scale's is
+        computed on the log scale). A fixed parameter has no standard
+        error or interval (``nan``), nor does an aliased coefficient
+        (#476), whose value is ``nan`` too.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Indexed by ``(part, name)``, ``part`` one of ``"baseline"``,
+            ``"coefficients"`` or ``"life model"``, with the columns of
+            ``CoxPH``'s :meth:`summary`: ``coef`` (the estimate),
+            ``exp(coef)``, ``se(coef)``, ``coef lower 95%``, ``coef upper
+            95%``, ``exp(coef) lower 95%``, ``exp(coef) upper 95%``, ``z``
+            and ``p``.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
+        >>> model = WeibullPH.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                               coef  se(coef)       p
+        part         name
+        baseline     alpha  32.2365   11.4172     NaN
+                     beta    1.3801    0.1241     NaN
+        coefficients fin    -0.3296    0.1898  0.0826
+                     age    -0.0713    0.0209  0.0006
+        """
+        import pandas as pd
+
+        from ._summary import coefficient_names, coefficient_table
+
+        params = np.asarray(self.params, dtype=float)
+        se = self._summary_se()
+        names = self.parameter_names()
+        k = self.k_dist
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        if self._is_linear_predictor():
+            part = "coefficients"
+            rows = coefficient_table(
+                coefficient_names(self, len(params) - k),
+                params[k:],
+                se[k:],
+                alpha_ci,
+                exp=self._exp_meaning() is not None,
             )
+            first = k
+        else:
+            part, rows, first = "life model", None, len(params)
+        # The other parameters: their estimate, standard error and the
+        # support-respecting interval of ``param_cb``.
+        # The life parameter an accelerated-life model replaces by its life
+        # model is a placeholder, not a parameter (#489): no row.
+        kept = [i for i in range(first) if names[i] != self.life_parameter]
+        others = []
+        for i in kept:
+            bounds = np.full(2, np.nan)
+            if np.isfinite(se[i]):
+                try:
+                    with warnings.catch_warnings(), np.errstate(all="ignore"):
+                        warnings.simplefilter("ignore")
+                        bounds = np.asarray(
+                            self.param_cb(names[i], alpha_ci), dtype=float
+                        ).ravel()
+                except (ValueError, ArithmeticError):
+                    pass
+            others.append(
+                {
+                    "coef": params[i],
+                    "se(coef)": se[i],
+                    "coef lower " + level: bounds[0],
+                    "coef upper " + level: bounds[-1],
+                }
+            )
+        table = pd.DataFrame(
+            others,
+            columns=list(coefficient_table([], [], [], alpha_ci).columns),
+        )
+        parts = ["baseline"] * min(k, first) + [part] * (first - k)
+        index = [(parts[i], names[i]) for i in kept]
+        if rows is not None:
+            table = pd.concat([table, rows.reset_index(drop=True)])
+            index += [(part, name) for name in rows.index]
+        table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
+        return table
 
-            if self._has_center():
-                # A fit with center=True (#463): say where the baseline
-                # parameters are.
-                out += (
-                    "\nBaseline at         : the covariate means, "
-                    "Z = center = {}".format(
-                        np.array2string(
-                            np.asarray(self.center, dtype=float),
-                            separator=", ",
-                        )
+    def __repr__(self) -> str:
+        if not hasattr(self, "params"):
+            return "Unable to fit values"
+        from ._summary import coefficient_repr, format_table
+
+        out = (
+            "Parametric Regression SurPyval Model"
+            + "\n===================================="
+            + "\nKind                : {kind}"
+            + "\nDistribution        : {dist}"
+            + "\nRegression Model    : {reg_model}"
+            + "\nFitted by           : MLE"
+        ).format(
+            kind=self.kind,
+            dist=self.distribution.name,
+            reg_model=self.reg_model.name,
+        )
+        if self._has_center():
+            # A fit with center=True (#463): say where the baseline
+            # parameters are.
+            out += (
+                "\nBaseline at         : the covariate means, "
+                "Z = center = {}".format(
+                    np.array2string(
+                        np.asarray(self.center, dtype=float),
+                        separator=", ",
                     )
                 )
-            out = (
-                out
-                + "\nDistribution        :\n"
-                + "{params}".format(params=dist_param_string)
             )
-
-            out = (
-                out
-                + "\nRegression Model    :\n"
-                + "{params}".format(params=reg_model_param_string)
+        # The life parameter an accelerated-life model substitutes is held
+        # at a placeholder value, not a parameter of the model.
+        placeholder = set()
+        if self.kind == "Accelerated Life":
+            placeholder = set(getattr(self.model, "fixed", None) or {})
+        fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
+        if fixed:
+            out += "\nFixed               : {}".format(
+                ", ".join("{} = {:.6g}".format(k, v) for k, v in fixed.items())
             )
+        table = self.summary()
+        estimates = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
 
-            return out
-        else:
-            return "Unable to fit values"
+        def block(part: str) -> str:
+            rows = table.loc[part].rename(columns=estimates)
+            rows = rows.loc[[n for n in rows.index if n not in placeholder]]
+            rows.index.name = None
+            return format_table(rows, list(estimates.values()))
+
+        parts = table.index.get_level_values(0)
+        out += "\nBaseline            : {} parameters".format(
+            self.distribution.name
+        )
+        if "baseline" in parts:
+            out += "; Wald 95% intervals\n" + block("baseline")
+        if self.life_parameter is not None:
+            # Replaced by the life model, not fitted (#489).
+            out += "\n    {}: {}".format(
+                self.life_parameter, self._life_relation()
+            )
+        if "life model" in parts:
+            out += "\nLife model          : Wald 95% intervals\n" + block(
+                "life model"
+            )
+        if "coefficients" in parts:
+            meaning = self._exp_meaning()
+            out += "\nCoefficients        : {}Wald 95% intervals\n".format(
+                "exp(coef) is {}; ".format(meaning) if meaning else ""
+            ) + coefficient_repr(table.loc["coefficients"])
+        return out
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
@@ -510,7 +739,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "not a multiplier."
             )
         # Relative to the centre for a baseline kept there (#463).
-        return self.reg_model.phi(self._centred(Z), *self.phi_params)
+        return self.reg_model.phi(
+            self._centred(Z), *self._eval_params()[self.k_dist :]
+        )
 
     def _eval(
         self,
@@ -518,6 +749,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         below_support: float,
+        grid: bool = False,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -525,7 +757,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # named method carried this verbatim.
         if isinstance(x, list):
             x = np.array(x)
-        Z = self._centred(self._prepare_Z(Z))
+        Z = self._prepare_Z(Z)
+        shape = None
+        if grid:
+            # Every time for every row (#488): the pairs, then reshaped.
+            rows = covariate_rows(Z, self._n_covariates())
+            shape = (rows.shape[0], np.size(x))
+            x = np.tile(np.asarray(x, dtype=float).reshape(-1), shape[0])
+            Z = np.repeat(rows, shape[1], axis=0)
+        elif np.ndim(Z) == 2:
+            check_paired_rows(np.size(x), np.shape(Z)[0])
+        Z = self._centred(Z)
         # Below the support (a negative time for a positive distribution)
         # nothing has happened yet: survival 1, and 0 for the others. The
         # distribution functions gave nan there, with a RuntimeWarning, and
@@ -537,11 +779,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             inside = lower + 1.0 if np.isfinite(lower) else 0.0
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
-            out = fn(x, Z, *self.params)
+            out = fn(x, Z, *self._eval_params())
         if self.kind == "Additive Hazard":
             self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)
+        if shape is not None:
+            out = np.asarray(out, dtype=float).reshape(shape)
         return out
 
     def _warn_if_hazard_negative(
@@ -563,8 +807,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         this warning.
         """
         with np.errstate(all="ignore"):
-            h = np.asarray(self.model.hf(x, Z, *self.params), dtype=float)
-            H = np.asarray(self.model.Hf(x, Z, *self.params), dtype=float)
+            params = self._eval_params()
+            h = np.asarray(self.model.hf(x, Z, *params), dtype=float)
+            H = np.asarray(self.model.Hf(x, Z, *params), dtype=float)
         valid = np.broadcast_to(valid, h.shape)
         neg_h = valid & (h < 0)
         neg_H = valid & (H < 0)
@@ -601,7 +846,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         Survival (or Reliability) function for a distribution using the
@@ -618,7 +867,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -641,7 +896,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        return self._eval(self.model.sf, x, Z, 1.0)
+        return self._eval(self.model.sf, x, Z, 1.0, grid)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional hazards, additive hazards and proportional
@@ -1007,7 +1262,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         from .tvc_path import _NODES
 
-        M, params = self.model, self.params
+        M, params = self.model, self._eval_params()
         beta = params[self.k_dist :]
         aft = self.kind == "Accelerated Failure Time"
         additive = self.kind == "Additive Hazard"
@@ -1077,7 +1332,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             # H = 0; that is not worth a warning.
             with np.errstate(divide="ignore"):
                 hi = np.asarray(
-                    self.model.Hf(upper, zrow, *self.params), dtype=float
+                    self.model.Hf(upper, zrow, *self._eval_params()),
+                    dtype=float,
                 ).ravel()
                 # The first segment runs from the bottom of the support,
                 # where H = 0. Subtracting H(0, z) instead would, for a
@@ -1087,7 +1343,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     lo = np.zeros(1)
                 else:
                     lo = np.asarray(
-                        self.model.Hf(np.array([a]), zrow, *self.params),
+                        self.model.Hf(
+                            np.array([a]), zrow, *self._eval_params()
+                        ),
                         dtype=float,
                     ).ravel()
             if falls is not None and self.kind == "Additive Hazard":
@@ -1114,7 +1372,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         reduces to ``Hf(x, Z)`` for a single constant segment.
         """
         dist_params = self.params[: self.k_dist]
-        phi_params = self.params[self.k_dist :]
+        phi_params = self._eval_params()[self.k_dist :]
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
@@ -1237,7 +1495,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The cumulative distribution function, or failure function, for a
@@ -1254,7 +1516,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1278,11 +1546,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        return self._eval(self.model.ff, x, Z, 0.0)
+        return self._eval(self.model.ff, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The density function for a distribution using the parameters found in
@@ -1299,7 +1571,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1323,11 +1601,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        return self._eval(self.model.df, x, Z, 0.0)
+        return self._eval(self.model.df, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The instantaneous hazard function for a distribution using the
@@ -1344,7 +1626,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1369,11 +1657,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        return self._eval(self.model.hf, x, Z, 0.0)
+        return self._eval(self.model.hf, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
 
@@ -1391,7 +1683,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1416,7 +1714,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        return self._eval(self.model.Hf, x, Z, 0.0)
+        return self._eval(self.model.Hf, x, Z, 0.0, grid)
 
     def random(
         self,
@@ -1483,12 +1781,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if hasattr(self.model, "random"):
             if not self._has_center():
                 return self.model.random(
-                    size, Z, *self.params, random_state=random_state
+                    size, Z, *self._eval_params(), random_state=random_state
                 )
             # A baseline at the covariate means (#463): draw at Z - center
             # and report the rows as given.
             x, Z_out = self.model.random(
-                size, self._centred(Z), *self.params, random_state=random_state
+                size,
+                self._centred(Z),
+                *self._eval_params(),
+                random_state=random_state,
             )
             return x, Z_out + self.center
         raise NotImplementedError(
@@ -1552,6 +1853,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "data; from_params models carry no likelihood."
             )
 
+    @property
+    def param_names(self) -> list[str]:
+        """
+        Names of ``params``, in order: the distribution's parameters, then
+        the covariate coefficients (or life-model parameters). The same as
+        :meth:`parameter_names`. In an accelerated life model the slot
+        named by ``life_parameter`` is a placeholder, not a fitted value.
+        """
+        return self.parameter_names()
+
     def parameter_names(self) -> list[str]:
         """
         Names of the fitted parameters in ``.params`` order: the distribution's
@@ -1594,6 +1905,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if self._fit_centring is not None:
             J = self._fit_centring[2]
             cov = J @ cov @ J.T
+        if self.aliased.size:
+            # No variance for a coefficient that was not estimated (#476).
+            cov = np.array(cov, dtype=float)
+            cov[self.k_dist + self.aliased, :] = np.nan
+            cov[:, self.k_dist + self.aliased] = np.nan
         return cov
 
     def _inference_state(
@@ -1606,11 +1922,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         model's own."""
         restored = getattr(self, "_restored_covariance", None)
         if restored is not None:
-            return np.asarray(self.params, dtype=float), self.center, restored
+            return (
+                np.asarray(self._eval_params(), dtype=float),
+                self.center,
+                restored,
+            )
         if self._fit_centring is not None:
             params, center = self._fit_centring[:2]
         else:
-            params, center = self.params, self.center
+            params, center = self._eval_params(), self.center
         p_hat = np.asarray(params, dtype=float)
         return p_hat, center, self._observed_covariance(p_hat, center)
 
@@ -1627,7 +1947,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if cached is not None and _same_point(cached[0], point):
             return cached[1].copy()
         names = self.parameter_names()
-        free = [i for i, nm in enumerate(names) if nm not in self.fixed]
+        held = self._held()
+        free = [i for i, nm in enumerate(names) if nm not in held]
         n = len(names)
         cov = np.zeros((n, n))
         if not free:
@@ -1775,6 +2096,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     name, names
                 )
             )
+        if name == self.life_parameter:
+            raise ValueError(
+                "{!r} is not a parameter of this accelerated life model: it "
+                "is {} at each stress. Bound the life-model parameters "
+                "({}) instead, or the predictions with cb().".format(
+                    name,
+                    self._life_relation(),
+                    ", ".join(names[self.k_dist :]),
+                )
+            )
         idx = names.index(name)
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
@@ -1837,6 +2168,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there
         # the coefficients are not nearly collinear with the baseline.
+        if np.ndim(self._prepare_Z(Z)) == 2:
+            # Rows and times paired, as for sf (#488).
+            check_paired_rows(
+                np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
+            )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self.kind == "Additive Hazard":

@@ -24,6 +24,8 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np

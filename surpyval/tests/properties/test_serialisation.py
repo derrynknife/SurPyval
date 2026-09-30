@@ -55,7 +55,7 @@ def test_cox(data):
         sp.CoxPH.fit, **{k: data[k] for k in ("x", "Z", "c", "n")}
     )
     # A generated column can be constant within every risk set, which Cox
-    # (no intercept) refuses (#409); any other refusal is a failure.
+    # (no intercept) aliases (#476); a refusal is a failure.
     assume(not (status == "ValueError" and "risk set" in model))
     assert status == "ok", model
     x = np.linspace(0.0, np.max(data["x"]) + 1.0, len(data["Z"]))
