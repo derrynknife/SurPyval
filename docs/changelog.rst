@@ -83,6 +83,27 @@ have no finite maximum warn "No finite maximum".
   classic log-rank scores, so the split chooses as the log-rank split does.
   Truncation combined with left or interval censoring, and right
   truncation, still raise (stage 2).
+- **Added: random_state for SurvivalTree and RandomSurvivalForest
+  (#471).** The bootstrap samples and each split's candidate features
+  were drawn from numpy's global stream, so a forest could only be
+  reproduced by seeding numpy globally, and fitting one disturbed the
+  global stream. ``random_state=None`` still draws from the global
+  stream exactly as before, so forests under ``np.random.seed`` are
+  identical. An int or ``Generator`` gives the forest its own stream,
+  with a child stream per tree, and leaves the global one alone.
+- **Added: conditional-inference trees, selection="ctree" (#188).**
+  Greedy search prefers covariates with many values and always splits:
+  in 60 simulated data sets it chose a noise covariate 47% of the time
+  over a two-valued covariate with a real effect. With
+  ``selection="ctree"`` each node chooses its covariate by the
+  Bonferroni-adjusted p-value of its maximally selected score statistic,
+  and splits only if that p is below ``alpha_split`` (0.05). The scores
+  are log-rank for ``"non-parametric"``, and the working model's score
+  contributions for ``"exponential"`` and ``"weibull"``. The p-value is
+  exact for the statistic's asymptotic chain. Noise is then chosen 10% of
+  the time, and on null data 96% of trees stay a single leaf, where
+  greedy search always splits. It works for every kind and every
+  censoring type; the default is unchanged.
 - **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
   ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
   was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.
