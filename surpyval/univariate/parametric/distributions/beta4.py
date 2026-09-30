@@ -14,6 +14,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
 from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -43,6 +44,18 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     neither bound is zero — the case where ``Beta(..., offset=True)``
     would (deliberately) refuse, since a one-sided offset cannot move the
     lower bound while keeping the upper bound pinned at 1.
+
+    .. note::
+       Fit it with ``how="MPS"`` (maximum product of spacings). Its
+       likelihood is unbounded: with a shape below 1 the density is
+       infinite at a support end, so a maximum-likelihood fit can run
+       an end onto the smallest or largest observation, where there is no
+       maximum, and its answer then depends on the data's units. Such a fit
+       warns "No finite maximum". MPS scores an end gap of zero as minus
+       infinity, so its estimates are finite, consistent (Cheng & Amin,
+       1983) and the same in any units. MLE stays the default, as for
+       every distribution, and is fine when the data put both shapes above
+       1.
     """
 
     def __init__(self, name: str) -> None:
@@ -70,6 +83,66 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
                 f"{self.name} needs a < b; got a = {params[2]}, "
                 f"b = {params[3]}"
             )
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn when the fit ran a support end onto an observation with its
+        shape below 1, where the likelihood is unbounded (#385, #392).
+
+        With ``alpha < 1`` the density grows without bound at ``a``, so
+        moving ``a`` onto the smallest exactly observed value makes the
+        likelihood infinite: the four-parameter Beta has no maximum
+        likelihood estimate there (Smith, 1985; ``beta < 1`` at ``b``
+        likewise). The fit then stops wherever its search gave up, and the
+        answer depends on the data's units: shapes of 1.00 and 1.19 on
+        the registry's fixture, 0.18 and 0.18 on the same data times 7.3.
+        The criterion is that end resting on the extreme observation to
+        half the digits of the support's width (``sqrt(eps)``), which a
+        fit with an interior maximum -- the end strictly outside the data,
+        where the density at the extreme is finite -- does not reach.
+        Maximum product of spacings has no such limit: an end gap of zero
+        scores minus infinity, and its fit is the same in any units.
+        """
+        params = np.asarray(results.get("params", []), dtype=float)
+        if params.size != 4 or not np.all(np.isfinite(params)):
+            return False
+        alpha, beta, a, b = params
+        x = np.asarray(surv_data.x, dtype=float)
+        if x.ndim != 1:
+            return False
+        exact = x[np.asarray(surv_data.c) == 0]
+        if exact.size == 0 or not b > a:
+            return False
+        close = np.sqrt(np.finfo(float).eps) * (b - a)
+        ends = []
+        if alpha < 1 and exact.min() - a <= close:
+            ends.append(
+                f"a = {a:.6g} on the smallest observation "
+                f"{exact.min():.6g} with alpha = {alpha:.4g}"
+            )
+        if beta < 1 and b - exact.max() <= close:
+            ends.append(
+                f"b = {b:.6g} on the largest observation "
+                f"{exact.max():.6g} with beta = {beta:.4g}"
+            )
+        if not ends:
+            return False
+        warn_no_maximum(
+            "the Beta4 likelihood is unbounded: a shape below 1 makes the "
+            "density infinite at a support end, and the fit ran "
+            + " and ".join(ends),
+            "The reported parameters are where the search stopped (they "
+            "change with the data's units), and their standard errors and "
+            "bounds are meaningless",
+            "fit with how='MPS' (maximum product of spacings), which is "
+            "finite here and the same in any units",
+        )
+        return True
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

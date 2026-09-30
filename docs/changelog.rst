@@ -104,6 +104,16 @@ have no finite maximum warn "No finite maximum".
   the time, and on null data 96% of trees stay a single leaf, where
   greedy search always splits. It works for every kind and every
   censoring type; the default is unchanged.
+- **Beta4: a fit with no maximum says so, and MPS is recommended (#385).**
+  The four-parameter Beta's likelihood is unbounded: a shape below 1 makes
+  the density infinite at a support end. So a maximum-likelihood fit could
+  run an end onto the smallest or largest observation and stop wherever
+  its search gave up. The answer depended on the data's units: shapes
+  1.00, 1.19 on a fixture, and 0.18, 0.18 on the same data times 7.3.
+  Such a fit now warns "No finite maximum" and recommends
+  ``how="MPS"``. Maximum product of spacings scores an end gap of zero as
+  minus infinity, so its estimates are finite and the same in any units.
+  MLE stays the default; the class docstring explains when to prefer MPS.
 - **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
   ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
   was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.

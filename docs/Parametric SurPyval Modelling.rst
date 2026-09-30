@@ -760,6 +760,14 @@ Offsets only make sense for distributions supported on the half real line ``[0, 
     model = surv.Beta4.fit(x)
     print(model)
 
+With both shapes above 1, as here, maximum likelihood is fine. The
+Beta4's likelihood is unbounded when a shape is below 1, though: the
+density is infinite at that end of the support, so the fit can run the end
+onto the smallest or largest observation and stop wherever its search
+gave up. Such a fit warns "No finite maximum". Fit with ``how="MPS"``
+instead: maximum product of spacings has no such limit, and its estimates
+are the same whatever the units of the data.
+
 A caution: offset parameters can be unidentifiable
 --------------------------------------------------
 
