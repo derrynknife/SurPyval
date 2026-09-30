@@ -2677,7 +2677,7 @@ class Parametric(
                             "jac": lambda u: -_central_gradient(dev_u, u),
                         }
                     ],
-                    options={"ftol": 1e-12, "maxiter": 100},
+                    options={"ftol": 1e-10, "maxiter": 100},
                 )
             except (ValueError, np.linalg.LinAlgError):
                 return None
