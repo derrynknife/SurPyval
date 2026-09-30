@@ -33,7 +33,10 @@ the others already account for gets a ``nan`` coefficient and a warning,
 as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``. The bundled
 Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
-only when it is significant. ``qf`` outside [0, 1] is ``nan``.
+only when it is significant. ``qf`` outside [0, 1] is ``nan``. Durations
+and dates are refused. Probability plots show failures only. ``fit_best``
+no longer considers the Uniform and Beta4 by default. Small-sample Wald
+bands change (#477).
 
 - **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
   (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
@@ -477,6 +480,53 @@ only when it is significant. ``qf`` outside [0, 1] is ``nan``.
   print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
 - **The bundled Claude Code skill matches 0.22, and its code is tested
   (#491).** Every code block in it runs as a test.
+- **Offset fits with no maximum warn (#487).** With a shape below 1 the
+  density is infinite at the offset, so the likelihood grows without
+  bound as ``gamma`` runs onto the first failure. Such a fit returned a
+  degenerate model silently or behind "MLE Failed": the 3-parameter
+  Weibull on [55, ..., 140] reached a shape of 0.09. Every offset family
+  now warns "No finite maximum" and recommends ``how="MPS"``, and returns
+  the point its search reached. The Exponential's genuine maximum at the
+  first failure is unchanged.
+- **Changed: durations and dates are refused (#480).** ``timedelta64``
+  and ``datetime64`` input was fitted in its storage ticks (a scale of
+  5.0e5 for durations of days held in seconds, 6.9e14 in nanoseconds),
+  and predictions raised numpy's ``TypeError``. SurPyval has no time
+  unit, so such values now raise a ``ValueError`` wherever a time is
+  accepted, with the conversion to use (``x / pd.Timedelta(days=1)``).
+- **Changed: suspensions are not plotted (#478).** A probability plot
+  drew each suspension at the ``F`` of the failure before it, where it
+  looked like one more failure. The points are now the failures only,
+  as in Abernethy's *New Weibull Handbook* and Weibull++. ``get_plot_data``'s
+  ``x_`` and ``F`` hold failures only and its new ``x_censored`` the
+  suspension times, which ``plot(show_censored=True)`` marks on the time
+  axis.
+- **weibayes (#493).** ``surpyval.weibayes(x, c, n, beta)`` gives the
+  Weibayes lower confidence bound on a Weibull's scale of known shape
+  from few or no failures (Nelson 1985; Abernethy), as a Weibull model:
+  ten units run 500 hours with no failure and a shape of 2 give a 95%
+  lower bound on the scale of 913.5 hours. ``fit`` still refuses data
+  with no failures, and now points to it.
+- **Changed: fit_best ranks regular maxima only (#492).** AIC and BIC
+  assume a regular maximum. The Uniform and Beta4, whose support ends are
+  parameters, are no longer default candidates (``include=`` still
+  tries them), and a fit with no finite maximum or an unverified one is
+  ranked only when no regular candidate fits, with one warning naming it.
+  The Beta4 no longer "wins" on [1, ..., 7], nor the Uniform on 50
+  Weibull draws.
+- **Changed: Wald bands are monotone (#477).** Wald bounds on ``sf``,
+  ``ff`` and ``Hf`` were formed on the logit of ``sf`` for every family,
+  and on small samples turned back: the issue's lower bound on ``F`` fell
+  from 0.39 to 0.00004 as time went on. They are now formed on each
+  family's probability-plot scale (``log(-log S)`` for the Weibull, the
+  normal quantile for the Normal and LogNormal), where they are monotone
+  whenever the shape's own interval excludes 0; that bound is now 0.83.
+  Large samples are unchanged to 2e-4. ``plot`` and ``get_plot_data``
+  take ``method=`` to draw the likelihood-ratio band.
+- **quantile_cb and mean_cb (#494).** Parametric models give confidence
+  bounds on a quantile (a B-life) and on the mean, by Wald (matching R's
+  ``survreg`` to 1e-7) or likelihood ratio (``method="lr"``, better on
+  small samples), with ``bound=`` and ``alpha_ci`` as on ``cb``.
 - **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
   built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
   to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each
