@@ -78,8 +78,11 @@ through each property that applies to it:
   ``from_params``, ``fit_tvc`` ...) agree with ``fit``;
 - every option of every confidence bound, ``interp=`` value and estimation
   option (``test_options.py``), behaviour outside the data
-  (``test_outside_data.py``), and that a fit which cannot converge says
-  so (``test_convergence.py``);
+  (``test_outside_data.py``), that a fit which cannot converge says
+  so (``test_convergence.py``), and that a covariate column the data
+  cannot determine is aliased, not given an arbitrary coefficient
+  (``test_aliasing.py``; a model with covariates declares its
+  ``coefficients``);
 - that no raw numpy, scipy or autograd warning escapes the package, and
   each deliberate warning appears once (``test_warnings.py``).
 
