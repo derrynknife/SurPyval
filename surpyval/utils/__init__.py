@@ -127,29 +127,6 @@ def validate_1d(arr: npt.ArrayLike, name: str) -> npt.NDArray:
     return out
 
 
-def _group_ids(key: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
-    """Group id per row, plus the row at which each group first appears.
-
-    ``np.lexsort`` rather than ``np.unique(axis=0)``: the latter takes a
-    structured-void view of the array, which is several times slower.
-    Because lexsort is stable, the first row of each run in sorted order
-    is also the group's earliest row in the original ordering, which is
-    what the caller needs. Rows containing ``nan`` never compare equal
-    and so stay in their own groups -- matching the dictionary keying
-    this replaced, where a ``nan`` key never matched another.
-    """
-    order = np.lexsort(key.T[::-1])
-    ordered = key[order]
-    starts = np.empty(len(ordered), dtype=bool)
-    if len(ordered) > 0:
-        starts[0] = True
-    if len(ordered) > 1:
-        starts[1:] = (ordered[1:] != ordered[:-1]).any(axis=1)
-    group = np.empty(len(ordered), dtype=np.intp)
-    group[order] = np.cumsum(starts) - 1
-    return group, order[starts]
-
-
 def group_xcnt(
     x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, t: npt.NDArray
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
@@ -185,7 +162,7 @@ def group_xcnt(
     # group, and since the ordering is x-major and each x occurs once,
     # that order *is* the input order. So the answer is the input,
     # untouched. Establishing this costs one sort of a single column,
-    # against three sorts of the full key -- and it is the common case,
+    # against a sort of the full key -- and it is the common case,
     # since only tied (rounded, discrete, or heavily weighted) data
     # groups at all. Distinct values in the first column are enough:
     # they make whole rows distinct whatever c and t hold. Empty input
@@ -195,22 +172,57 @@ def group_xcnt(
         return x, c, n, t
 
     x_columns = x.reshape(-1, 1) if x.ndim == 1 else x
-    group, first_full = _group_ids(np.column_stack([x_columns, c, t]))
-    by_x, first_x = _group_ids(x_columns)
-    by_xc, first_xc = _group_ids(np.column_stack([x_columns, c]))
+    width = x_columns.shape[1]
+    # The key's columns, x first, then c, then the truncation bounds.
+    columns = [x_columns[:, j] for j in range(width)] + [c, t[:, 0], t[:, 1]]
+    # One sort on the full key. The x and (x, c) groups are prefixes of
+    # it, so they are runs of the same order: three lexsorts (seven sort
+    # passes) were 36% of a tied Weibull fit at 1e5 (#515). A column
+    # holding one value throughout (no truncation, all observed) cannot
+    # change the order and is left out; one with a NaN is never constant,
+    # since NaN != NaN. The sort need not be stable, as the first row of
+    # each group is found as the minimum over the group, so with a single
+    # varying column numpy's (much faster) default argsort does.
+    varying = [j for j, col in enumerate(columns) if (col != col[0]).any()]
+    if len(varying) == 1:
+        order = np.argsort(columns[varying[0]])
+    elif varying:
+        order = np.lexsort([columns[j] for j in reversed(varying)])
+    else:
+        order = np.arange(len(x))
+
+    # Where each level's run starts in sorted order: a change in x starts
+    # an x run, a change in c as well an (x, c) run, and a change in t as
+    # well a full-key run. Rows containing NaN never compare equal, so
+    # they stay in runs of their own, as under the dictionary keying this
+    # replaced.
+    changed = [np.zeros(len(x) - 1, dtype=bool) for _ in range(3)]
+    for j in varying:
+        level = 0 if j < width else 1 if j == width else 2
+        ordered = columns[j][order]
+        changed[level] |= ordered[1:] != ordered[:-1]
+    new_x = np.concatenate([[True], changed[0]])
+    new_xc = new_x | np.concatenate([[False], changed[1]])
+    new_full = new_xc | np.concatenate([[False], changed[2]])
+
+    def first_rows(starts: npt.NDArray) -> npt.NDArray:
+        # The earliest original row of each run, per full-key run.
+        first = np.minimum.reduceat(order, np.flatnonzero(starts))
+        return first[np.cumsum(starts)[new_full] - 1]
+
+    # For each full group (in sorted order): its earliest row, and those
+    # of its (x, c) and x groups.
+    first_full = np.minimum.reduceat(order, np.flatnonzero(new_full))
+    first_xc = first_rows(new_xc)
+    first_x = first_rows(new_x)
+    group = np.empty(len(order), dtype=np.intp)
+    group[order] = np.cumsum(new_full) - 1
 
     # One representative row per group: the row it first appeared at.
-    representative = first_full
     # np.lexsort takes its *last* key as primary, so this orders by first
     # appearance of x, then of (x, c), then of the whole key.
-    order = np.lexsort(
-        (
-            first_full,
-            first_xc[by_xc[representative]],
-            first_x[by_x[representative]],
-        )
-    )
-    representative = representative[order]
+    order = np.lexsort((first_full, first_xc, first_x))
+    representative = first_full[order]
 
     totals = np.bincount(group, weights=n, minlength=first_full.size)[order]
     # ``bincount`` always returns float64; the counts were integers going
