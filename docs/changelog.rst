@@ -39,6 +39,20 @@ and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
 
+- **Faster Efron Cox fits with tied times (#515).** The Efron score was
+  computed on a masked (times x largest tie x covariates) array: one
+  51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
+  tied deaths is now factored and stored per death: 1.4 s. Time-varying
+  Cox fits on 40,000 rows take 0.53 s (was 8.3 s). Untied and Breslow
+  fits are bit-identical; tied Efron fits agree to the last digits.
+- **Frailty and parametric additive hazards fits use the gradient
+  (#515).** They began with thousands of Nelder-Mead evaluations. They now
+  run a gradient search first and keep its answer when it is a verified
+  maximum, falling back to the old search otherwise (the #376 and #392
+  warnings are unchanged). At 10,000 rows: WeibullFrailty 2.2 s to 0.13 s,
+  GammaFrailty 23 s to 1.4 s, WeibullAH 1.0 s to 0.21 s. On some data the
+  old frailty search stopped with the variance at 0, up to 0.1
+  log-likelihood units short of an interior maximum the new one finds.
 - **Faster log-rank test, Turnbull, Fleming-Harrington and
   competing-risks fits (#515).** Results are bit-identical. ``logrank``
   built an at-risk array of rows by event times: 13 s and 2 GB for 30,000
