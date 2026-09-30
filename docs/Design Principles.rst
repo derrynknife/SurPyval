@@ -162,8 +162,8 @@ Estimation
     constant one where it has an intercept, and requires the aliasing and
     otherwise the fit without the column; the time-varying fits are
     checked in ``univariate/regression/test_aliasing.py``. Known gaps:
-    the proportional-intensity recurrent regressions (#NEW1) and the
-    dual-stress life models (#NEW2).
+    the proportional-intensity recurrent regressions (#502) and the
+    dual-stress life models (#503).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.

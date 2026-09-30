@@ -2845,9 +2845,9 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
 for _name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),
-        "aliasing": "#NEW1: a repeated covariate column is not aliased; "
+        "aliasing": "#502: a repeated covariate column is not aliased; "
         "the fit splits its coefficient between the two columns, silently",
-        "aliasing_constant": "#NEW1: a constant covariate column is not "
+        "aliasing_constant": "#502: a constant covariate column is not "
         "aliased; it takes part of the baseline rate, silently",
     }
 

@@ -361,7 +361,7 @@ def test_lin_ying_and_buckley_james(fitter, kind):
 
 @pytest.mark.xfail(
     strict=True,
-    reason="#NEW2: a dual-stress life model with equal stress columns "
+    reason="#503: a dual-stress life model with equal stress columns "
     "splits the stress exponent between them silently",
 )
 @pytest.mark.parametrize(
