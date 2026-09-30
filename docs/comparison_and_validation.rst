@@ -59,3 +59,8 @@ forest.
 
 .. automodule:: surpyval.metrics.validation
    :members:
+
+Harrell's concordance index of any risk score (every regression model also
+has a ``concordance`` method that picks its family's score):
+
+.. autofunction:: surpyval.metrics.concordance.concordance_index

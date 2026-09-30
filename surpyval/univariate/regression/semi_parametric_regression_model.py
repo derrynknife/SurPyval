@@ -19,6 +19,7 @@ from surpyval.utils.shapes import (
     keeps_query_shape,
 )
 
+from ._concordance import ConcordanceMixin
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -34,7 +35,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-class SemiParametricRegressionModel(SerialisableMixin):
+class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
     ``fit_from_df``, ``fit_tvc`` and ``fit_tvc_timeline``.
@@ -206,6 +207,23 @@ class SemiParametricRegressionModel(SerialisableMixin):
         """
         with np.errstate(over="ignore"):
             return np.exp(self._log_phi(Z))
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        if getattr(self, "is_stratified", False):
+            raise ValueError(
+                "concordance is not available for a stratified Cox model: "
+                "its strata have separate baselines, so risk scores rank "
+                "subjects only within a stratum. Score each stratum's rows "
+                "with surpyval.metrics.concordance_index."
+            )
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        return self._log_risk(Z_arr.reshape(x.size, -1))
+
+    def _concordance_data(self) -> "tuple | None":
+        data = getattr(self, "_fit_data", None)
+        if data is None or self.is_tvc:
+            return None
+        return data["x"], data["c"], data["n"], data["Z"]
 
     def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """The log of :meth:`phi`."""

@@ -5,6 +5,7 @@ import numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
+from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.deprecation import (
     RenamedAttribute,
     renamed_class_attribute,
@@ -18,7 +19,7 @@ from surpyval.utils.deprecation import (
 Boxable = npt.NDArray | float | ArrayBox
 
 
-class CountingProcess(ABC):
+class CountingProcess(RecurrentDataFrameMixin, ABC):
     """
     Abstract base class for parametric counting-process intensity models.
 

@@ -140,9 +140,13 @@ class ARI(RenewalFitMixin):
 
     so each repair subtracts a fraction ``rho`` of (a memory-weighted sum of)
     the past failure intensities. ``rho = 0`` recovers the plain NHPP defined
-    by the baseline intensity. The baseline is any of the recurrent intensity
-    models (``CrowAMSAA``, ``Duane``, ``CoxLewis``); ``CrowAMSAA`` (power law)
-    is the default.
+    by the baseline intensity (minimal repair) and ``rho = 1`` removes the
+    most intensity a repair can. The fitted model prints ``rho`` with its
+    standard error and Wald interval, says when that interval covers both
+    ``rho <= 0.25`` and ``rho >= 0.75`` (not determined by the data), and
+    its ``repair_test()`` tests it against minimal repair. The baseline is
+    any of the recurrent intensity models (``CrowAMSAA``, ``Duane``,
+    ``CoxLewis``); ``CrowAMSAA`` (power law) is the default.
 
     There is no closed-form marginal intensity, so the mean cumulative function
     is obtained by simulation (see ``mcf`` and ``plot``).

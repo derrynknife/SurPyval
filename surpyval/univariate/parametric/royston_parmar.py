@@ -51,6 +51,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -447,7 +448,7 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
-class RoystonParmar_:
+class RoystonParmar_(UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
 

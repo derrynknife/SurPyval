@@ -13,6 +13,7 @@ age. The fit returns a :doc:`Renewal Model <renewal_model>`.
 
    .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit
    .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit_from_df
    .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.fit_from_parameters
    .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.kijima_i
    .. automethod:: surpyval.recurrent.renewal.generalized_renewal.GeneralizedRenewal.kijima_ii

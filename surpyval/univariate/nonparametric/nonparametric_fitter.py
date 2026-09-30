@@ -9,9 +9,10 @@ import numpy.typing as npt
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 
 
-class NonParametricFitter:
+class NonParametricFitter(UnivariateDataFrameMixin):
     how: str
     # Provided by the Turnbull estimator subclass; only called on the
     # ``how == "Turnbull"`` path.

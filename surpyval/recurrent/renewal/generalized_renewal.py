@@ -133,6 +133,33 @@ class GeneralizedRenewal(RenewalFitMixin):
     fitted to a ``NonParametricCounting`` model. This model can then be used
     to calculate the cumulative intensity function.
 
+    **The restoration factor q.** Each repair sets the system's *virtual
+    age* -- the age its next failure time is drawn at, conditional on
+    surviving to it -- from its real age:
+
+    - ``q = 0``: as good as new (every repair is a renewal);
+    - ``0 < q < 1``: better than old but worse than new;
+    - ``q = 1``: as bad as old (minimal repair): the virtual age is the
+      real age, and the process is the non-homogeneous Poisson process
+      whose cumulative intensity is the distribution's cumulative hazard
+      (for a Weibull, the Crow-AMSAA power law);
+    - ``q > 1``: worse than old: each repair ages the system further.
+
+    The Kijima type says what a repair acts on. Kijima I (``kijima="i"``)
+    removes a fraction ``1 - q`` of the age gained since the last repair,
+    ``v_n = v_{n-1} + q x_n``: damage from before is never repaired.
+    Kijima II (``kijima="ii"``) removes that fraction of the whole
+    accumulated age, ``v_n = q (v_{n-1} + x_n)``.
+
+    ``q`` is often poorly determined: only the order and spacing of each
+    system's failures carry information about it, and a few failures per
+    system leave a wide interval. The fitted model prints ``q`` with its
+    standard error and Wald interval, and says so when the interval covers
+    repairs of opposite kinds (both ``q <= 0.5`` and ``q >= 2``);
+    :meth:`RenewalModel.repair_test
+    <surpyval.recurrent.renewal.renewal_model.RenewalModel.repair_test>`
+    tests the fit against minimal repair.
+
     Examples
     --------
     >>> from surpyval import Weibull
@@ -149,9 +176,11 @@ class GeneralizedRenewal(RenewalFitMixin):
     Fitted by           : MLE
     Kijima Type         : i
     Restoration Factor  : 0.15732122999163628
-    Parameters          :
-         alpha: 1.261337933121844
-          beta: 8.93902321971521
+    Parameters          : Wald 95% intervals
+               estimate      se  lower 95%  upper 95%
+        q        0.1573 0.03311     0.1041     0.2376
+        alpha     1.261  0.1238      1.041      1.529
+        beta      8.939   2.499      5.168      15.46
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -300,7 +329,9 @@ class GeneralizedRenewal(RenewalFitMixin):
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
-            Type of Kijima model to use, either "i" or "ii". Default is "i".
+            Type of Kijima model to use, either "i" (a repair acts on the
+            age gained since the last one) or "ii" (on the whole
+            accumulated age). Default is "i".
         init : list, optional
             Initial parameters for the optimization algorithm.
 
@@ -308,7 +339,13 @@ class GeneralizedRenewal(RenewalFitMixin):
         -------
 
         RenewalModel
-            A fitted renewal model.
+            A fitted renewal model. Its restoration factor ``q`` is 0 for
+            a repair as good as new, 1 for one as bad as old (minimal
+            repair, the non-homogeneous Poisson process) and above 1 for
+            one that leaves the system worse than before it failed (see the
+            class docstring); the model prints it with its standard error
+            and Wald interval, and ``repair_test()`` tests it against
+            minimal repair.
 
         Example
         -------
@@ -330,10 +367,15 @@ class GeneralizedRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Kijima Type         : i
-        Restoration Factor  : 1.3316262291443964e-16
-        Parameters          :
-             alpha: 2.399029668688425
-              beta: 2.753920042066547
+        Restoration Factor  : 7.274462742318132e-17
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q     7.274e-17    nan        nan        nan
+            alpha     2.399  0.509      1.583      3.636
+            beta      2.754 0.6533       1.73      4.384
+        Note: q = 7.274e-17 is at the edge of its range, so it has no standard
+              error or interval; repair_test() says whether the data support
+              it over minimal repair.
         """
         # Resolving the Kijima type first gives the clear error for an
         # unknown one (it used to surface as a NameError from inside the
@@ -398,7 +440,9 @@ class GeneralizedRenewal(RenewalFitMixin):
         dist : object, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
-            Type of Kijima model to use, either "i" or "ii". Default is "i".
+            Type of Kijima model to use, either "i" (a repair acts on the
+            age gained since the last one) or "ii" (on the whole
+            accumulated age). Default is "i".
         init : list, optional
             Initial parameters for the optimization algorithm.
 
@@ -406,7 +450,13 @@ class GeneralizedRenewal(RenewalFitMixin):
         -------
 
         RenewalModel
-            A fitted renewal model.
+            A fitted renewal model. Its restoration factor ``q`` is 0 for
+            a repair as good as new, 1 for one as bad as old (minimal
+            repair, the non-homogeneous Poisson process) and above 1 for
+            one that leaves the system worse than before it failed (see the
+            class docstring); the model prints it with its standard error
+            and Wald interval, and ``repair_test()`` tests it against
+            minimal repair.
 
         Example
         -------
@@ -426,10 +476,15 @@ class GeneralizedRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Kijima Type         : i
-        Restoration Factor  : 1.3316262291443964e-16
-        Parameters          :
-             alpha: 2.399029668688425
-              beta: 2.753920042066547
+        Restoration Factor  : 7.274462742318132e-17
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q     7.274e-17    nan        nan        nan
+            alpha     2.399  0.509      1.583      3.636
+            beta      2.754 0.6533       1.73      4.384
+        Note: q = 7.274e-17 is at the edge of its range, so it has no standard
+              error or interval; repair_test() says whether the data support
+              it over minimal repair.
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)

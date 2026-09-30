@@ -17,6 +17,7 @@ below.
 
    .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.fit
    .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.fit_from_df
    .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.from_xrd
    .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.mcf
    .. automethod:: surpyval.recurrent.nonparametric.mcf.NonParametricCounting.mcf_cb

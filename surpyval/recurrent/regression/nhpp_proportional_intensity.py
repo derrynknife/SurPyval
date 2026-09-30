@@ -12,6 +12,7 @@ from surpyval.recurrent._convergence import better_result, warn_unconverged
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
@@ -19,7 +20,7 @@ from .proportional_intensity import ProportionalIntensityModel
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP:
+class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity

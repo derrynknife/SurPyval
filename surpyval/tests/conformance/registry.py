@@ -2061,6 +2061,144 @@ CASES = [replace(c, rtol=1e-3) if c.name in _LOOSE else c for c in CASES]
 
 
 # ---------------------------------------------------------------------------
+# fit_from_df paths (#511): every fitter reads a DataFrame, and gives the
+# model its fit gives on the same arrays. Each family names the columns as
+# its fit_from_df does (utils/dataframe.py).
+# ---------------------------------------------------------------------------
+def _frame(d, keys):
+    """The per-row entries ``keys`` of a fixture as DataFrame columns (a
+    2-D entry as columns ``<key>0``, ``<key>1``, ...), and the rest."""
+    cols, rest = {}, {}
+    for key, value in d.items():
+        if key not in keys:
+            rest[key] = value
+            continue
+        value = np.asarray(value)
+        if value.ndim == 2:
+            for k in range(value.shape[1]):
+                cols[f"{key}{k}"] = value[:, k]
+        else:
+            cols[key] = value
+    return pd.DataFrame(cols), rest
+
+
+def _column_names(df, key):
+    return [k for k in df.columns if k[: len(key)] == key and k != key]
+
+
+def _uni_df(fitter, **fixed):
+    """``x``, ``c``, ``n``, ``tl`` (and ``xl`` / ``xr`` for interval
+    rows), named as the univariate fit_from_df names them."""
+
+    def run(d):
+        df, rest = _frame(d, ("x", "c", "n", "tl", "tr"))
+        if "x" in df:
+            names = {"x": "x"}
+        else:
+            df = df.rename(columns={"x0": "xl", "x1": "xr"})
+            names = {"xl": "xl", "xr": "xr"}
+        names |= {k: k for k in ("c", "n", "tl", "tr") if k in df}
+        return fitter.fit_from_df(df, **names, **fixed, **rest)
+
+    return run
+
+
+def _col_df(fitter, keys=("x", "i", "c", "n", "e"), **fixed):
+    """The ``<key>_col`` names (and ``Z_cols``) of the recurrent,
+    regression and competing-risks fit_from_df."""
+
+    def run(d):
+        df, rest = _frame(d, keys + ("Z",))
+        names = {f"{k}_col": k for k in keys if k in df}
+        if "Z" in d:
+            names["Z_cols"] = _column_names(df, "Z")
+        return fitter.fit_from_df(df, **names, **fixed, **rest)
+
+    return run
+
+
+def _copula_df(fitter, **fixed):
+    def run(d):
+        df, rest = _frame(d, ("x", "n"))
+        return fitter.fit_from_df(
+            df, x=_column_names(df, "x"), n="n", **fixed, **rest
+        )
+
+    return run
+
+
+def _df_paths():
+    """Case name -> its fit_from_df path, for the cases that had none."""
+    paths = {
+        name: _uni_df(getattr(sp, name))
+        for name in ("KaplanMeier", "NelsonAalen", "FlemingHarrington")
+    }
+    paths["Turnbull"] = _uni_df(sp.Turnbull)
+    paths["Weibull[xcnt]"] = _uni_df(sp.Weibull)
+    paths["RoystonParmar"] = _uni_df(sp.RoystonParmar)
+    paths["MixtureModel"] = _uni_df(sp.MixtureModel, dist=sp.Weibull, m=2)
+    paths["Binomial"] = _uni_df(sp.Binomial, n_trials=5)
+    for name in ("Bernoulli", "FixedEventProbability", "ExactEventTime"):
+        paths[name] = _uni_df(getattr(sp, name))
+    for kind in ("weibull", "exponential", "non-parametric"):
+        paths[f"SurvivalTree[{kind}]"] = _seeded(
+            _col_df(ml.SurvivalTree, ("x", "c", "n"), kind=kind)
+        )
+    paths["RandomSurvivalForest"] = _seeded(
+        _col_df(ml.RandomSurvivalForest, ("x", "c", "n"), n_trees=3)
+    )
+    paths["CoxPH[strata]"] = _col_df(
+        sp.CoxPH, ("x", "c", "n", "strata"), tie_method="efron"
+    )
+    paths["CompetingRisks[Kaplan-Meier]"] = _col_df(
+        cr.CompetingRisks, ("x", "e", "n"), how="Kaplan-Meier"
+    )
+    paths["FineGray"] = _col_df(cr.FineGray, ("x", "e", "n"), event="a")
+    for name in ("HPP", "CrowAMSAA", "Duane", "CoxLewis"):
+        paths[name] = _col_df(getattr(rc, name))
+    paths["NonParametricCounting"] = _col_df(rc.NonParametricCounting)
+    for name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
+        paths[name] = _col_df(getattr(rc, name))
+    paths["GeneralizedRenewal"] = _col_df(rc.GeneralizedRenewal)
+    paths["GeneralizedRenewal[kijima ii]"] = _col_df(
+        rc.GeneralizedRenewal, kijima="ii"
+    )
+    paths["GeneralizedOneRenewal"] = _col_df(rc.GeneralizedOneRenewal)
+    paths["ARA"] = _col_df(rc.ARA, m=1)
+    paths["ARI"] = _col_df(rc.ARI, m=1)
+    paths["CauseSpecificMCF"] = _col_df(rc.CauseSpecificMCF)
+    paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
+    paths["DestructiveDegradation"] = lambda d: (
+        dg.DestructiveDegradation.fit_from_df(
+            pd.DataFrame(d), x="x", y="y", threshold=20.0
+        )
+    )
+    for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
+        paths[f"{name}Copula"] = _copula_df(
+            getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
+        )
+    return paths
+
+
+def _add_df_path(case, paths=_df_paths()):
+    if case.name not in paths:
+        return case
+    assert "fit_from_df" not in case.paths, case.name
+    return replace(case, paths={**case.paths, "fit_from_df": paths[case.name]})
+
+
+CASES = [_add_df_path(c) for c in CASES]
+
+# Cases with no fit_from_df path, and why (checked by test_fit_paths.py).
+NO_DF_PATH: dict[str, str] = {
+    "Hypoexponential": "built from its parameters: its fit refuses data",
+    "NeverOccurs": "a fixed model, not fitted",
+    "InstantlyOccurs": "a fixed model, not fitted",
+    "InducedFailureDistribution": "derived from a fitted degradation model",
+}
+
+
+# ---------------------------------------------------------------------------
 # Options (test_options.py): the uncertainty methods of each case, the
 # values its interp= takes and the estimation options of its fit
 # ---------------------------------------------------------------------------
@@ -3044,6 +3182,7 @@ for _fn in (
     "gray_test",
     "auc_td",
     "brier_score",
+    "concordance_index",
     "integrated_brier_score",
     "survival_probability",
 ):

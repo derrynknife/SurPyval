@@ -29,6 +29,7 @@ from surpyval.utils.shapes import (
 )
 
 from ._bounds import logit_sf_bound
+from ._concordance import ConcordanceMixin
 from .regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -63,7 +64,9 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
+class ParametricRegressionModel(
+    ConcordanceMixin, InformationCriteriaMixin, SerialisableMixin
+):
     """
     The fitted model returned by every parametric regression fitter: the
     proportional hazards (``WeibullPH``, ``PH(dist)``), accelerated failure
@@ -763,6 +766,23 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "exp(coef) is {}; ".format(meaning) if meaning else ""
             ) + coefficient_repr(table.loc["coefficients"])
         return out
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        # H(t* | Z) at the median time scored: for a family acting through
+        # a linear predictor it ranks the rows as that predictor does, with
+        # the sign of a higher risk, at every t* (see ``concordance``).
+        t = np.full(x.size, np.nanmedian(x))
+        with warnings.catch_warnings():
+            # An additive model's negative hazard at t* does not change
+            # the ranking.
+            warnings.filterwarnings("ignore", message="The additive hazard")
+            return np.asarray(self.Hf(t, Z), dtype=float)
+
+    def _concordance_data(self) -> "tuple | None":
+        data = getattr(self, "data", None)
+        if data is None or getattr(self, "is_tvc", False):
+            return None
+        return data.x, data.c, data.n, data.Z
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)

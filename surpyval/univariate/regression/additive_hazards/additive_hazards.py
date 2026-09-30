@@ -69,6 +69,7 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
     check_finite_event_times,
     design_matrix_from_df,
@@ -151,7 +152,7 @@ def _aliased(
     return aliased_columns(A, Z.shape[0], constant_columns(Z), spread)
 
 
-class AdditiveHazardsModel(SerialisableMixin):
+class AdditiveHazardsModel(ConcordanceMixin, SerialisableMixin):
     """
     A fitted Lin & Ying additive hazards model, returned by
     :meth:`AdditiveHazards.fit`.
@@ -206,10 +207,19 @@ class AdditiveHazardsModel(SerialisableMixin):
     drift: "npt.NDArray | None" = None
     _A: npt.NDArray
     _b: npt.NDArray
+    #: The rows fitted ``(x, c, n, Z)``, for ``concordance``; not saved.
+    _fit_data: "tuple | None" = None
 
     def __init__(self) -> None:
         self.kind = "Additive Hazards"
         self.parameterization = "Semi-Parametric"
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        return Z_arr.reshape(x.size, -1) @ self._coef()
+
+    def _concordance_data(self) -> "tuple | None":
+        return getattr(self, "_fit_data", None)
 
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = prepare_Z(Z, self.feature_names, self._model_spec)
@@ -656,6 +666,8 @@ class AdditiveHazards_:
         model.drift = drift
         model._A = A
         model._b = b
+        # The rows fitted, for ``concordance`` (#512).
+        model._fit_data = (x, c, n, Z)
         return model
 
     def fit_from_df(
