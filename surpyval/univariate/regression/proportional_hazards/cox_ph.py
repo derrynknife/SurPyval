@@ -12,7 +12,6 @@ from copy import copy
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
-import numpy.ma as ma
 import numpy.typing as npt
 from numpy.linalg import inv, pinv
 from pandas import isna
@@ -130,24 +129,37 @@ class _GroupBy:
         return self.unique, result
 
 
-def _efron_tie_weights(n_d: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
-    """``c = j / d`` for every tied death, with a mask marking the entries
-    that only exist to square off the ragged ``j < d`` ranges.
+def _efron_tie_terms(n_d: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
+    """The Efron terms of every event time, stored raggedly: for each of
+    the ``int(d)`` tied deaths at time ``i``, the time's index and its
+    weight ``c = j / d``, ``j = 0, ..., int(d) - 1``.
 
     The count ``d`` can be fractional -- ``n`` is a weight, not necessarily
     an integer -- and the loop this replaces ran ``range(int(d))`` while
-    dividing by the unrounded ``d``. The mask therefore truncates and the
-    weights do not; getting that backwards would silently change the
-    Efron correction for weighted data.
+    dividing by the unrounded ``d``. The number of terms therefore
+    truncates and the weights do not; getting that backwards would
+    silently change the Efron correction for weighted data.
 
-    Shared by the log-likelihood denominator and the hessian so the two
-    agree on the ragged-edge convention by construction.
+    There are as many terms as deaths, so a per-time sum over them is a
+    ``bincount`` of O(deaths) work. A dense ``(times x largest tie)``
+    array padded with a mask, as used before, cost 1.5 million entries for
+    one 51-way tie among 30 000 times, and ``(times x largest tie x p)``
+    in the score (#515).
+
+    Shared by the log-likelihood denominator, the score and the hessian so
+    the three agree on the convention by construction.
     """
-    counts = n_d.astype(int)
-    j = np.arange(int(counts.max()) if counts.size else 0)
-    valid = j[None, :] < counts[:, None]
-    weights = np.where(valid, j[None, :] / n_d[:, None], 0.0)
-    return weights, valid
+    n_d = np.asarray(n_d, dtype=float).reshape(-1)
+    counts = np.where(n_d >= 1, n_d, 0).astype(int)
+    idx = np.repeat(np.arange(len(n_d)), counts)
+    first = np.cumsum(counts) - counts
+    j = np.arange(idx.size) - first[idx]
+    return idx, j / n_d[idx]
+
+
+def _per_time(idx: npt.NDArray, values: npt.NDArray, m: int) -> npt.NDArray:
+    """Sum the ragged per-death ``values`` to their ``m`` event times."""
+    return np.bincount(idx, weights=values, minlength=m)
 
 
 def efron_log_denominator(
@@ -161,46 +173,52 @@ def efron_log_denominator(
     Breslow fits agree digit for digit there; splitting the two cases out
     means that agreement no longer costs a Python loop (#329).
     """
-    out = np.zeros(len(n_d))
-    R = np.asarray(Ri).reshape(len(n_d))
-    D = np.asarray(Di).reshape(len(n_d))
-
-    active = n_d >= 1
-    if not active.any():
-        return out
-
-    weights, valid = _efron_tie_weights(n_d[active])
-    v = R[active][:, None] - weights * D[active][:, None]
-    out[active] = np.where(valid, np.log(v), 0.0).sum(axis=1)
-    return out
+    m = len(n_d)
+    R = np.asarray(Ri).reshape(m)
+    D = np.asarray(Di).reshape(m)
+    idx, c = _efron_tie_terms(n_d)
+    return _per_time(idx, np.log(R[idx] - c * D[idx]), m)
 
 
-# @njit
 def efron_jac(
     n_d: npt.NDArray,
     Ri: npt.NDArray,
     ZRi: npt.NDArray,
     Di: npt.NDArray,
     ZDi: npt.NDArray,
-    masked_array: npt.NDArray,
 ) -> npt.NDArray:
-    # Vectorised implementation of term two of the efron ll
-    # jacobian.
+    """Per event time, the expected covariate sum of the Efron score,
+    ``sum_j (ZR - c ZD) / (R - c D)`` over the ``d`` tied deaths.
 
-    # This implementation runs the risk of large memory usage
-    # given the 3D array that is created.
+    As in :func:`efron_hess`, only ``c`` depends on ``j``, so with
+    ``u = 1 / (R - c D)`` the sum factors into two scalars per time:
 
-    r = masked_array / n_d
+        sum_j (ZR - c ZD) u  =  (sum u) ZR - (sum c u) ZD.
 
-    denom = Ri - Di * r
-    denom = np.expand_dims(denom, axis=-1)
+    This used to be evaluated on a ``numpy.ma`` masked array of shape
+    ``(times x largest tie x p)``: 12.9 s of fitting for 30 000 rows with
+    one 51-way tie, against 1.15 s with none (#515). A time with a single
+    death (c = 0) is ``ZR / R`` exactly as before, so untied data give the
+    same score to the last bit; a time with no deaths contributes 0.
+    """
+    m = len(n_d)
+    R = np.asarray(Ri).reshape(m)
+    D = np.asarray(Di).reshape(m)
+    ZR = np.asarray(ZRi)
+    ZD = np.asarray(ZDi)
+    out = np.zeros(ZR.shape)
 
-    r = np.expand_dims(r, axis=-1)
-    numer = np.expand_dims(ZDi, axis=1) * r
-    numer = np.expand_dims(ZRi, axis=1) - numer
+    idx, c = _efron_tie_terms(n_d)
+    counts = np.bincount(idx, minlength=m)
+    one = counts == 1
+    out[one] = ZR[one] / R[one, None]
 
-    out = numer / denom
-    out = out.sum(axis=1)
+    tied = counts > 1
+    if tied.any():
+        u = 1.0 / (R[idx] - c * D[idx])
+        s_u = _per_time(idx, u, m)[tied, None]
+        s_cu = _per_time(idx, c * u, m)[tied, None]
+        out[tied] = s_u * ZR[tied] - s_cu * ZD[tied]
     return out
 
 
@@ -252,18 +270,21 @@ def efron_hess(
     if not active.any():
         return out
 
-    weights, valid = _efron_tie_weights(n_d[active])
-    R = np.asarray(Ri).reshape(m)[active][:, None]
-    D = np.asarray(Di).reshape(m)[active][:, None]
+    idx, c = _efron_tie_terms(n_d)
+    R = np.asarray(Ri).reshape(m)
+    D = np.asarray(Di).reshape(m)
 
-    u = np.where(valid, 1.0 / (R - weights * D), 0.0)
+    u = 1.0 / (R[idx] - c * D[idx])
     u2 = u**2
 
-    s_u = u.sum(axis=1)[:, None, None]
-    s_cu = (weights * u).sum(axis=1)[:, None, None]
-    s_u2 = u2.sum(axis=1)[:, None, None]
-    s_cu2 = (weights * u2).sum(axis=1)[:, None, None]
-    s_c2u2 = (weights**2 * u2).sum(axis=1)[:, None, None]
+    def per_time(values: npt.NDArray) -> npt.NDArray:
+        return _per_time(idx, values, m)[active][:, None, None]
+
+    s_u = per_time(u)
+    s_cu = per_time(c * u)
+    s_u2 = per_time(u2)
+    s_cu2 = per_time(c * u2)
+    s_c2u2 = per_time(c**2 * u2)
 
     ZR = ZRi[active]
     ZD = ZDi[active]
@@ -976,8 +997,6 @@ class CoxPH_:
         n_d_x = n_d_x.reshape(-1, 1)
         n = n.reshape(-1, 1)
 
-        max_n = n_d.max()
-
         x_ = gb_x.unique
         x_tl = gb_tl.unique
         # For each unique event time, how many unique entry times precede it:
@@ -1005,11 +1024,6 @@ class CoxPH_:
             return -like
 
         S_d = gb_x.sum(n_d_x * Z)[1]
-
-        arr = np.repeat([np.arange(max_n)], len(n_d), axis=0)
-        mask = 1 - (arr < n_d.reshape(-1, 1)).astype(int)
-
-        masked_array = ma.array(arr, mask=mask)
 
         # Z is fixed for the life of the fit, so its outer product is too.
         # It used to be rebuilt inside ``jac_hess`` -- an (n, p, p) einsum
@@ -1043,10 +1057,7 @@ class CoxPH_:
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
 
-            expected_S_d = np.zeros_like(S_d)
-            expected_S_d = efron_jac(
-                n_d.reshape(-1, 1), Ri, ZRi, Di, ZDi, masked_array
-            )
+            expected_S_d = efron_jac(n_d, Ri, ZRi, Di, ZDi)
 
             diff = S_d - expected_S_d
             jacobian = -diff.sum(axis=0)
