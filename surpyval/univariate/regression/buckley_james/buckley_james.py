@@ -517,6 +517,15 @@ class BuckleyJames_:
         """
         Fit the Buckley-James AFT model.
 
+        Rows with a missing or infinite covariate are dropped, with a
+        warning. A column that is constant across the observations (or a
+        single observation) cannot be separated from the intercept, nor
+        one that is a linear combination of the others from them: such a
+        column is aliased, as in :class:`~surpyval.CoxPH`. Its coefficient
+        is ``nan`` (``model.aliased`` lists it), the others are those of
+        the fit without it, predictions take it as 0, and one warning
+        names it.
+
         Parameters
         ----------
         x : array_like
@@ -528,15 +537,6 @@ class BuckleyJames_:
             censoring are not supported. Defaults to all observed.
         n : array_like, optional
             Counts per row (frequency weights). Defaults to 1.
-
-        Rows with a missing or infinite covariate are dropped, with a
-        warning. A column that is constant across the observations (or a
-        single observation) cannot be separated from the intercept, nor
-        one that is a linear combination of the others from them: such a
-        column is aliased, as in :class:`~surpyval.CoxPH`. Its coefficient
-        is ``nan`` (``model.aliased`` lists it), the others are those of
-        the fit without it, predictions take it as 0, and one warning
-        names it.
         tol : float, optional
             Convergence tolerance on the coefficient step. Default 1e-5.
         max_iter : int, optional

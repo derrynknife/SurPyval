@@ -313,6 +313,8 @@ class RenewalModel(
         (e.g. ``(0, 1)`` for ARA/ARI's ``rho``), used by ``param_cb`` to pick
         a transform that keeps its confidence bounds inside the support.
 
+    Notes
+    -----
     ``params`` is every parameter of the model in one vector, in the order
     of ``param_names``: the restoration parameter (``q`` or ``rho``) first,
     then the lifetime distribution's parameters (for ARI, the baseline
