@@ -211,7 +211,10 @@ the CDF, so ``model.qf(0.1)`` is the "B10 life" by which 10% have failed), the
 conditional survival ``cs(x, X)`` (the probability of surviving a further
 ``x`` given survival to ``X``, the ratio :math:`R(X + x)/R(X)` of the model's
 own survival function, so it counts any never-failing or zero-inflated
-proportion and any offset), and the summary statistics:
+proportion and any offset), which ``sf(x, given=X)`` gives at the age ``x``
+instead of the further time (``cs(5, 25)`` is ``sf(30, given=25)``; ``ff``
+takes ``given`` too, as do the non-parametric estimates and the regression
+models' ``sf_tvc``), and the summary statistics:
 
 .. jupyter-execute::
 
@@ -223,6 +226,7 @@ proportion and any offset), and the summary statistics:
     print("B10    :", model.qf(0.1))
     print("median :", model.qf(0.5))
     print("P(survive 5 more | survived 25):", model.cs(5, 25))
+    print("P(survive to 30 | survived 25) :", model.sf(30, given=25))
     print("mean, variance :", model.mean(), model.var())
     print("E[X^2], entropy:", model.moment(2), model.entropy())
 
