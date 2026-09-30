@@ -85,8 +85,10 @@ def design_matrix_from_df(
         implicit intercept so categoricals get reference-level
         (reduced-rank) coding, and the intercept column is then dropped —
         the baseline distribution provides the intercept, and a full
-        one-hot encoding would be exactly collinear with it (#252). Pass an
-        explicit ``"0 + ..."`` to opt out and keep full-rank coding.
+        one-hot encoding would be exactly collinear with it (#252). An
+        explicit ``"0 + ..."`` opts out and keeps every level's column;
+        with the baseline as the intercept, the fit then aliases the last
+        level (#476).
 
     Returns
     -------

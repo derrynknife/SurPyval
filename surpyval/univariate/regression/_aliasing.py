@@ -143,8 +143,8 @@ def aliased_columns(
     scale = np.diag(gram) if spread is None else np.asarray(spread, float)
     scale = scale[rest]
     good = np.isfinite(scale) & (scale > 0)
-    aliased = list(np.flatnonzero(constant))
-    aliased += list(rest[~good])
+    aliased: list[int] = np.flatnonzero(constant).tolist()
+    aliased += rest[~good].tolist()
     rest = rest[good]
     if rest.size == 0:
         return np.array(sorted(aliased), dtype=int)
@@ -153,11 +153,12 @@ def aliased_columns(
     if not np.all(np.isfinite(G)):
         return np.array(sorted(aliased), dtype=int)
     G = 0.5 * (G + G.T)
-    top = float(np.max(np.linalg.eigvalsh(G)))
-    tol = top * max(G.shape[0], int(n_rows)) * _EPS
+    eig = np.linalg.eigvalsh(G)
+    top = float(eig[-1])
     if top <= 0:
-        return np.array(sorted(aliased + list(rest)), dtype=int)
-    if np.min(np.linalg.eigvalsh(G)) > tol:
+        return np.array(sorted(aliased + rest.tolist()), dtype=int)
+    tol = top * max(G.shape[0], int(n_rows)) * _EPS
+    if eig[0] > tol:
         return np.array(sorted(aliased), dtype=int)
     kept: list[int] = []
     for k in range(rest.size):

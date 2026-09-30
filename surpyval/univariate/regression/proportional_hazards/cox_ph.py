@@ -1348,11 +1348,13 @@ class CoxPH_:
             The covariates of the model, one row per observation. Rows with
             a missing or infinite covariate are dropped, with a warning. A
             column whose coefficient the partial likelihood cannot
-            determine -- a constant column (a Cox model has no intercept)
-            or one constant within each stratum -- raises a
-            ``ValueError`` naming it; collinear columns (every level of a
-            factor, with no intercept) are fitted with a warning that
-            their separate coefficients mean nothing.
+            determine -- a constant column (a Cox model has no
+            intercept), one constant within each stratum, or a linear
+            combination of the others (every level of a factor, with no
+            intercept) -- is aliased, as R's ``coxph`` does: the fit runs
+            on the other columns, its coefficient and p-value are ``nan``
+            (``model.aliased`` lists it), predictions take it as 0, and
+            one warning names it (#476).
         c: array-like, optional
             The censoring indicator. 0 if observed (event),
             1 if right-censored. Defaults to all observed. An exactly

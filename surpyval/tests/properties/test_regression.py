@@ -1,9 +1,9 @@
 """Properties of the regression models on generated data (#379).
 
 Data: exact and right censored times with ties and counts, one or two
-numeric covariates on a coarse grid, sometimes a constant column (which a
-parametric model folds into its scale, and which Cox, having no
-intercept, refuses: it is left out of Cox's data, #409), and, for the
+numeric covariates on a coarse grid, sometimes a constant column (which
+Cox, having no intercept, aliases, #476: it is left out of Cox's data),
+and, for the
 formula path, a categorical label.
 
 - **row order**: permuting the rows does not change the predictions;
@@ -50,15 +50,15 @@ def _separated(data):
     try:
         beta = np.asarray(_fit("CoxPH", data).beta, dtype=float)
     except ValueError:
-        # A column that does not vary within the risk sets: Cox has no
-        # coefficient for it (#409), and nothing runs off.
+        # Cox has no coefficient for a column that does not vary within
+        # the risk sets (#409, #476), and nothing runs off.
         return False
     return bool(np.max(np.abs(data["Z"] @ beta)) > 8)
 
 
 def _for_cox(data, Z):
     """The data and query rows without the constant column, which Cox
-    (no intercept) refuses (#409)."""
+    (no intercept) aliases (#476)."""
     if not _constant(data):
         return data, Z
     return {**data, "Z": data["Z"][:, :-1]}, Z[:, :-1]
@@ -66,8 +66,7 @@ def _for_cox(data, Z):
 
 def _prepared(name, data, Z):
     """``(data, Z)`` for model ``name``: for Cox without the constant
-    column, and assumed to be data Cox can fit -- a generated column can
-    still be constant within every risk set, and Cox refuses that."""
+    column, and assumed to be data Cox can fit."""
     if name != "CoxPH":
         return data, Z
     data, Z = _for_cox(data, Z)
@@ -167,8 +166,7 @@ def test_formula_row_order(name, data):
     try:
         ref = quietly(fitter.fit_from_df, df, **kw)
     except ValueError as e:
-        # Cox refuses a column constant within every risk set (#409); a
-        # parametric fit refuses a baseline at Z = 0 it cannot represent,
+        # A parametric fit refuses a baseline at Z = 0 it cannot represent,
         # as when separated data send the coefficients off (#463).
         assume(name != "CoxPH" and "center=True" not in str(e))
         raise

@@ -636,7 +636,39 @@ encoded exactly as at fit time:
 
 A formula beginning with ``0 +`` asks for the full one-hot coding instead; with
 a baseline distribution in the model that brings back the collinearity above,
-so it is rarely what you want. Wrapped categoricals (``C(site)``, with
+so the last level is aliased (see below) and it is rarely what you want.
+
+A covariate column the data cannot determine -- a constant column (the
+baseline is the intercept: Cox's baseline hazard, or the scale of a family
+whose scale absorbs a constant, as for Weibull PH or any AFT family), one
+constant within each stratum of a stratified Cox fit, or a column that is a
+linear combination of the others -- is **aliased**, as R's ``coxph`` and
+``lm`` do it: the fit runs on the other columns, whose estimates are what they
+are without it, reports its coefficient, standard error and p-value as
+``nan``, lists it in ``model.aliased``, and predicts as though its coefficient
+were 0. One warning names the columns. The columns are taken in order, so of
+two collinear columns it is the later one that is aliased:
+
+.. jupyter-execute::
+
+    import warnings
+
+    doubled = np.column_stack([patients['age'], 2 * patients['age']])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        aliased = CoxPH.fit(patients['time'], doubled, patients['censored'])
+    print(aliased.beta, aliased.aliased)
+    print(str(caught[0].message)[:60])
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _alone = CoxPH.fit(patients['time'], doubled[:, :1], patients['censored'])
+    assert np.isnan(aliased.beta[1]) and list(aliased.aliased) == [1]
+    assert abs(aliased.beta[0] - _alone.beta[0]) < 1e-10
+
+Wrapped categoricals (``C(site)``, with
 ``levels=`` or contrasts such as ``contr.sum``) and data-dependent transforms
 (``scale(x)``, ``center(x)``, ``poly(x, 2)``, ``bs(x, df=3)``) work too, and
 are kept when the model is saved (see `Saving and loading a fitted model`_).
