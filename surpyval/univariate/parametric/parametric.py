@@ -2060,9 +2060,8 @@ class Parametric(
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                # _cb_lr -> cb -> the query-shape and renamed-argument
-                # wrappers -> the caller
-                stacklevel=5,
+                # _cb_lr -> cb -> the query-shape wrapper -> the caller
+                stacklevel=4,
             )
 
         inv = np.argsort(order)
@@ -2224,9 +2223,9 @@ class Parametric(
                 "the parameter covariance is not positive definite (the "
                 "estimate is at or near a boundary of the parameter space, "
                 "or the likelihood is not regular there)",
-                # _cb_sd -> the bound helper -> cb -> the query-shape and
-                # renamed-argument wrappers -> the caller
-                stacklevel=6,
+                # _cb_sd -> the bound helper -> cb -> the query-shape
+                # wrapper -> the caller
+                stacklevel=5,
             )
         return np.sqrt(np.where(bad, np.nan, var))
 
