@@ -568,7 +568,11 @@ class RenewalModel(
         )
 
     def trend_test(
-        self, test: str = "laplace", alternative: str = "two-sided"
+        self,
+        test: str = "laplace",
+        alternative: str = "two-sided",
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Run a trend test on the data this model was fitted to. The null
@@ -583,19 +587,24 @@ class RenewalModel(
             The trend test to run. Default is 'laplace'.
         alternative: {'two-sided', 'increasing', 'decreasing'}, optional
             The alternative hypothesis. Default is 'two-sided'.
+        alpha_ci: float, optional
+            The significance level at which the result's ``trend`` is
+            judged (default 0.05, keyword only): a trend is named only when
+            ``p_value < alpha_ci``.
 
         Returns
         -------
 
         TrendTestResult
-            The test result, carrying the statistic, p-value and suggested
-            trend direction.
+            The test result, carrying the statistic, p-value, the
+            direction of the statistic and the trend concluded at
+            ``alpha_ci``.
         """
         self._check_has_data("trend_test")
         from surpyval.recurrent import diagnostics
 
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative
+            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
         )
 
     def cramer_von_mises(

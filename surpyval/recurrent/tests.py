@@ -69,9 +69,16 @@ class TrendTestResult:
     test : str
         The name of the test.
     trend : str
-        The direction of trend suggested by the statistic, independent of the
-        ``alternative`` chosen: one of ``"increasing"``, ``"decreasing"`` or
-        ``"none"``.
+        The conclusion at the ``alpha_ci`` level: ``"increasing"`` or
+        ``"decreasing"`` when the test rejects the no-trend null
+        (``p_value < alpha_ci``), and ``"none"`` otherwise.
+    direction : str
+        The direction the statistic points to, whether or not it is
+        significant: ``"increasing"``, ``"decreasing"`` or ``"none"`` (a
+        statistic exactly at its null centre). It is not evidence of a
+        trend on its own; ``trend`` is.
+    alpha_ci : float
+        The significance level ``trend`` is judged at.
     dof : int or None
         Degrees of freedom (MIL-HDBK-189C only; ``None`` for Laplace).
     n_events : int
@@ -82,14 +89,14 @@ class TrendTestResult:
     Examples
     --------
     :func:`laplace` returns one. The gaps between these failures shrink,
-    so the statistic points to an increasing rate, though with nine
-    events it is not significant:
+    so the statistic points to an increasing rate, but with nine events
+    it is not significant, so no trend is reported:
 
     >>> from surpyval.recurrent.tests import laplace
     >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
     >>> result = laplace(x, T=60)
-    >>> result.trend
-    'increasing'
+    >>> result.direction, result.trend
+    ('increasing', 'none')
     >>> round(result.statistic, 4), round(result.p_value, 4)
     (1.1547, 0.2482)
     """
@@ -100,16 +107,21 @@ class TrendTestResult:
         p_value: float,
         alternative: str,
         test: str,
-        trend: str,
+        direction: str,
         n_events: int,
         n_systems: int,
         dof: int | None = None,
+        alpha_ci: float = 0.05,
     ) -> None:
         self.statistic = statistic
         self.p_value = p_value
         self.alternative = alternative
         self.test = test
-        self.trend = trend
+        self.direction = direction
+        self.alpha_ci = alpha_ci
+        # A one-sided test that rejects always rejects towards its own
+        # alternative, so the direction is the conclusion when significant.
+        self.trend = direction if p_value < alpha_ci else "none"
         self.n_events = n_events
         self.n_systems = n_systems
         self.dof = dof
@@ -125,16 +137,34 @@ class TrendTestResult:
         if self.dof is not None:
             lines.append("DoF              : {d}".format(d=self.dof))
         lines.append("p-value          : {p:.6g}".format(p=self.p_value))
-        lines.append("Suggested trend  : {t}".format(t=self.trend))
+        lines.append("Direction        : {d}".format(d=self.direction))
+        if self.trend == "none":
+            conclusion = "no trend detected (p >= {a:g})".format(
+                a=self.alpha_ci
+            )
+        else:
+            conclusion = "{t} (p < {a:g})".format(
+                t=self.trend, a=self.alpha_ci
+            )
+        lines.append("Trend            : {c}".format(c=conclusion))
         return "\n".join(lines)
 
 
-def _validate_alternative(alternative: str) -> None:
+def _validate_alternative(alternative: str, alpha_ci: float) -> None:
     if alternative not in _ALTERNATIVES:
         raise ValueError(
             "`alternative` must be one of {}; got {!r}".format(
                 list(_ALTERNATIVES), alternative
             )
+        )
+    if not (
+        isinstance(alpha_ci, (int, float, np.integer, np.floating))
+        and not isinstance(alpha_ci, bool)
+        and 0 < alpha_ci < 1
+    ):
+        raise ValueError(
+            "`alpha_ci`, the significance level, must be a number strictly "
+            "between 0 and 1; got {!r}".format(alpha_ci)
         )
 
 
@@ -238,6 +268,8 @@ def laplace(
     i: npt.ArrayLike | None = None,
     T: npt.ArrayLike | dict | None = None,
     alternative: str = "two-sided",
+    *,
+    alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
     The Laplace (centroid) trend test for recurrent-event data.
@@ -273,12 +305,17 @@ def laplace(
         Direction of the alternative hypothesis: ``"two-sided"`` (default),
         ``"increasing"`` (upper tail; deterioration) or ``"decreasing"``
         (lower tail; reliability growth).
+    alpha_ci : float, optional
+        The significance level at which ``trend`` is judged (default
+        0.05, keyword only): the result names a trend only when
+        ``p_value < alpha_ci``.
 
     Returns
     -------
     TrendTestResult
         Object carrying the ``statistic`` (the z-score ``U``), the
-        ``p_value`` and the suggested ``trend``.
+        ``p_value``, the ``direction`` of the statistic and the ``trend``
+        concluded at ``alpha_ci``.
 
     Examples
     --------
@@ -288,10 +325,14 @@ def laplace(
     >>> res = laplace(x, T=60)
     >>> bool(res.statistic > 0)
     True
-    >>> res.trend
+    >>> res.direction, round(res.p_value, 3)
+    ('increasing', 0.248)
+    >>> res.trend  # not significant at the default alpha_ci = 0.05
+    'none'
+    >>> laplace(x, T=60, alternative="increasing", alpha_ci=0.2).trend
     'increasing'
     """
-    _validate_alternative(alternative)
+    _validate_alternative(alternative, alpha_ci)
     systems, n_used, n_systems = _prepare(x, i, T)
 
     total = 0.0
@@ -323,9 +364,10 @@ def laplace(
         p_value=p_value,
         alternative=alternative,
         test="Laplace Trend Test",
-        trend=_trend_from_sign(u),
+        direction=_trend_from_sign(u),
         n_events=n_used,
         n_systems=n_systems,
+        alpha_ci=alpha_ci,
     )
 
 
@@ -334,6 +376,8 @@ def mil_hdbk_189c(
     i: npt.ArrayLike | None = None,
     T: npt.ArrayLike | dict | None = None,
     alternative: str = "two-sided",
+    *,
+    alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
     The Military Handbook (MIL-HDBK-189C) trend test for recurrent-event data.
@@ -369,12 +413,17 @@ def mil_hdbk_189c(
         Direction of the alternative hypothesis: ``"two-sided"`` (default),
         ``"increasing"`` (deterioration; lower tail of the chi-squared) or
         ``"decreasing"`` (reliability growth; upper tail).
+    alpha_ci : float, optional
+        The significance level at which ``trend`` is judged (default
+        0.05, keyword only): the result names a trend only when
+        ``p_value < alpha_ci``.
 
     Returns
     -------
     TrendTestResult
         Object carrying the chi-squared ``statistic``, its ``dof``, the
-        ``p_value`` and the suggested ``trend``.
+        ``p_value``, the ``direction`` of the statistic and the ``trend``
+        concluded at ``alpha_ci``.
 
     Examples
     --------
@@ -383,10 +432,10 @@ def mil_hdbk_189c(
     >>> res = mil_hdbk_189c(x, T=60)
     >>> res.dof
     18
-    >>> res.trend
-    'increasing'
+    >>> res.direction, res.trend, round(res.p_value, 3)
+    ('increasing', 'none', 0.203)
     """
-    _validate_alternative(alternative)
+    _validate_alternative(alternative, alpha_ci)
     systems, n_used, n_systems = _prepare(x, i, T)
 
     statistic = 0.0
@@ -398,11 +447,11 @@ def mil_hdbk_189c(
     # Mean of a chi-squared is its dof; departures below indicate an
     # increasing intensity, above a decreasing one.
     if statistic < dof:
-        trend = "increasing"
+        direction = "increasing"
     elif statistic > dof:
-        trend = "decreasing"
+        direction = "decreasing"
     else:
-        trend = "none"
+        direction = "none"
 
     lower = float(chi2.cdf(statistic, dof))
     upper = float(chi2.sf(statistic, dof))
@@ -418,10 +467,11 @@ def mil_hdbk_189c(
         p_value=p_value,
         alternative=alternative,
         test="MIL-HDBK-189C Trend Test",
-        trend=trend,
+        direction=direction,
         n_events=n_used,
         n_systems=n_systems,
         dof=dof,
+        alpha_ci=alpha_ci,
     )
 
 
