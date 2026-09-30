@@ -30,6 +30,23 @@ Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 ``P(X > x)``, as for every other discrete distribution. Fits whose data
 have no finite maximum warn "No finite maximum".
 
+- **Likelihood-ratio bounds at the edge, and along valleys (#421).**
+  Profiles are now searched on the log or logit scale of each parameter,
+  each point starting from the ones already solved. The old search on raw
+  parameters, restarted from the fit every time, overstated the profiles:
+  ExpoWeibull 42.4 for 0.29 at mu = 1e-4, NegativeBinomial 3.05 for 2.35
+  at p = 0.999999. Where a profile levels off below the critical value,
+  the bound is the edge of the parameter's space. A NegativeBinomial
+  ``r`` tends to a shifted Poisson with deviance 2.345, so its 95% upper
+  bound is ``inf``, not 1.7e16, and its 80% bound (36.2) is finite.
+  ExpoWeibull ``beta`` is now [0.053, inf] at 95% and [0.486, inf] at 80%;
+  the old [0.171, 367.5] and [0.486, 372.0] were not nested. A band is
+  where the function's own profile reaches the critical value, and
+  ``sf``, ``ff`` and ``Hf`` share one band. NegativeBinomial ``hf(2)`` at
+  95% is now 0.305 (was 0.207), and the ExpoWeibull bands that were
+  ``nan`` are found. The NegativeBinomial sweep no longer leaks over
+  14,000 raw numpy warnings. Likelihood-ratio bounds are slower for the
+  simple families (a Weibull ``cb`` went from about 0.06 to 0.2-0.5 s).
 - **Continuously varying covariates: CovariatePath (#172, phase 1).**
   ``sf_tvc`` and ``Hf_tvc`` accepted only step schedules, so a ramp-stress
   profile or a thermal cycle had to be cut into steps. That was slow (150
