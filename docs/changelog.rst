@@ -30,6 +30,26 @@ Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 ``P(X > x)``, as for every other discrete distribution. Fits whose data
 have no finite maximum warn "No finite maximum".
 
+- **Out-of-bag log-likelihood and permutation importance for the random
+  survival forest (#186).** The forest could only be scored by
+  concordance, which needs right-censored data.
+  ``RandomSurvivalForest.oob_log_likelihood()`` now scores every training
+  row by its full likelihood (density, S, F or interval probability, over
+  the truncation probability) under the trees that did not see it, for
+  every censoring type and truncation. ``feature_importances(n_repeats=5,
+  random_state=None)`` reports how much that score drops when a feature is
+  shuffled among each tree's out-of-bag rows. For this score a
+  non-parametric leaf is read as a continuous distribution (linear between
+  its drops, exponential after the last). On the docs example the score
+  rises from -2.644 without splits to -2.484 with them.
+- **Non-parametric survival trees on left- and interval-censored data
+  (#188, stage 1).** ``kind="non-parametric"`` raised on such data. It now
+  splits on the log-rank scores of the node's pooled Turnbull estimate
+  (the standardised left-child sum, with its permutation variance), with
+  Turnbull leaves. On right-censored data the scores are exactly the
+  classic log-rank scores, so the split chooses as the log-rank split does.
+  Truncation combined with left or interval censoring, and right
+  truncation, still raise (stage 2).
 - **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
   ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
   was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.
