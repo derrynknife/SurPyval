@@ -66,6 +66,20 @@ _LR_NOISE = 1e-6
 # reachable, and reads as this deviance, above any critical value.
 _LR_UNREACHABLE = 1e6
 
+# The values of ``Parametric.maximum``: whether the log-likelihood a model
+# reports is at a maximum (principles 12 and 13). The first three are what
+# a maximum-likelihood fit reached, and agree with its warnings: a fit
+# that warns "No finite maximum" is ``"no finite maximum"``, one that
+# warns its search did not reach a verified maximum is ``"unverified"``,
+# and a fit that warns neither is ``"verified"``.
+MAXIMUM_STATES = (
+    "verified",
+    "unverified",
+    "no finite maximum",
+    "not applicable",
+    "unknown",
+)
+
 
 class _LRCoord:
     """The coordinate a likelihood-ratio search moves one parameter in.
@@ -392,6 +406,33 @@ class Parametric(
     functions of a distribution for plotting, optimizations, monte carlo
     analysis and numeric integration.
 
+    Attributes
+    ----------
+    maximum : str
+        Whether the fit's answer is a maximum of the likelihood, and so
+        whether its log-likelihood, ``aic``, ``bic`` and ``aic_c`` and its
+        standard errors mean what they say (principles 12 and 13):
+
+        - ``"verified"``: a maximum-likelihood fit whose answer is
+          verifiably a maximum (a zero gradient and a positive-definite
+          Hessian), or exact (a closed form);
+        - ``"unverified"``: a maximum-likelihood fit whose search did not
+          reach a verified maximum; the parameters are the best point it
+          found, and the fit warned so;
+        - ``"no finite maximum"``: a maximum-likelihood fit to data on
+          which the likelihood has no finite maximum (a parameter runs
+          off to a limit of its range); the fit warned "No finite
+          maximum", and the parameters are where the search stopped;
+        - ``"not applicable"``: the parameters do not come from
+          maximising the likelihood -- a fit by ``how="MPS"``, ``"MSE"``,
+          ``"MPP"`` or ``"MOM"``, ``fit_from_ecdf``, or a model built
+          with ``from_params``;
+        - ``"unknown"``: a maximum-likelihood fit restored from a
+          dictionary saved before the attribute existed.
+
+        :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
+        only when this is ``"verified"``, unless nothing else fitted.
+
     Examples
     --------
     >>> import surpyval as surv
@@ -402,6 +443,8 @@ class Parametric(
     array([20.881,  2.931])
     >>> model.sf([10, 20]).round(4)
     array([0.8909, 0.4143])
+    >>> model.maximum
+    'verified'
 
     A model built from parameters has the same functions. With a limited
     failure population, one unit in ten never fails, so the mean life is
@@ -410,6 +453,8 @@ class Parametric(
     >>> lfp = surv.Weibull.from_params([20, 3], p=0.9)
     >>> float(lfp.sf(1000.0).round(4)), lfp.mean(), lfp.extras
     (0.1, inf, {'p': 0.9})
+    >>> lfp.maximum
+    'not applicable'
     """
 
     # Attributes populated after construction (by ``fit``, ``from_dict``
@@ -426,6 +471,7 @@ class Parametric(
     surv_data: "SurpyvalData"
     fitting_info: dict[str, Any]
     optimizer: str
+    maximum: str
     tl: Any
     tr: Any
     lfp_name: str
@@ -451,6 +497,9 @@ class Parametric(
         self.offset = offset
         self.lfp = lfp
         self.zi = zi
+        # Only a maximum-likelihood fit has a maximum to report; it sets
+        # the status it reached (see ``MAXIMUM_STATES``).
+        self.maximum = "unknown" if method == "MLE" else "not applicable"
 
         bounds = deepcopy(dist.bounds)
         param_map = dist.param_map.copy()
@@ -593,6 +642,18 @@ class Parametric(
 
         out.params = np.array(model_dict["params"])
 
+        # Dicts written before ``"maximum"`` existed keep the constructor's
+        # value: "unknown" for a maximum-likelihood fit, "not applicable"
+        # for any other.
+        if "maximum" in model_dict:
+            maximum = model_dict["maximum"]
+            if maximum not in MAXIMUM_STATES:
+                raise ValueError(
+                    f"The dictionary's 'maximum' is {maximum!r}; it must be "
+                    f"one of {list(MAXIMUM_STATES)}."
+                )
+            out.maximum = maximum
+
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
         dist._set_support(out, offset)
@@ -605,7 +666,9 @@ class Parametric(
 
         The dictionary holds the distribution name, the parameters, the
         offset / LFP / ZI settings, the names of any parameters fixed at fit
-        time (``"fixed"``) and, if available, the parameter covariance,
+        time (``"fixed"``), whether the fit reached a maximum of the
+        likelihood (``"maximum"``, see :class:`Parametric`) and, if
+        available, the parameter covariance,
         fitted negative log-likelihood and the sample size of BIC and
         AIC_c (``"ic_n"``), so a restored model can compute confidence
         bounds, ``aic``, ``bic`` and ``aic_c``. Restore it with
@@ -681,6 +744,9 @@ class Parametric(
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
+        # Informational: a reader that predates it ignores it and restores
+        # the same model, so it needs no newer schema.
+        out["maximum"] = self.maximum
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n

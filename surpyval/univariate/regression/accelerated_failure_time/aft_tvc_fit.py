@@ -43,7 +43,9 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._aliasing import covariate_columns
 from ..parametric_regression_model import ParametricRegressionModel
+from ..regression_data import design_matrix_from_df
 
 
 def _validate_full_coverage(
@@ -258,29 +260,37 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: "str | list[str]",
+        Z_cols: "str | list[str] | None" = None,
         n_col: "str | None" = None,
         fixed: "dict[str, float] | None" = None,
         center: bool = False,
+        formula: "str | None" = None,
     ) -> ParametricRegressionModel:
         """
-        ``fit_tvc`` from a start-stop ``DataFrame``. ``Z_cols`` may be a single
-        column name or a list; ``feature_names`` is recorded on the model.
-        ``fixed`` and ``center`` are as for :meth:`fit_tvc`.
+        ``fit_tvc`` from a start-stop ``DataFrame``. The covariates are
+        ``Z_cols``, a single column name or a list, or instead ``formula``,
+        a ``formulaic`` formula as in ``fit_from_df``, which codes
+        categorical columns; give exactly one. ``feature_names`` (and the
+        ``formula`` and its encoding) are recorded on the model, so it
+        predicts from a DataFrame with the same design. ``fixed`` and
+        ``center`` are as for :meth:`fit_tvc`.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
         n = None if n_col is None else df[n_col].values
-        model = self.fit_tvc(
-            df[i_col].values,
-            df[xl_col].values,
-            df[xr_col].values,
-            df[c_col].values,
-            df[cols].values,
-            n=n,
-            fixed=fixed,
-            center=center,
-        )
-        model.feature_names = cols
+        with covariate_columns(names, Z, spec):
+            model = self.fit_tvc(
+                df[i_col].values,
+                df[xl_col].values,
+                df[xr_col].values,
+                df[c_col].values,
+                Z,
+                n=n,
+                fixed=fixed,
+                center=center,
+            )
+        model.feature_names = names
+        model.formula = formula
+        model._model_spec = spec
         return model
 
     def _fit_tvc_arrays(

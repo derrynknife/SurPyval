@@ -102,6 +102,8 @@ class SingleProbabilityMixin:
             raise ValueError("'n' must be the same length as 'x'")
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The proportion is the exact maximum
+        model.maximum = "verified"
         p = (x_arr * n_arr).sum() / n_arr.sum()
         model.params = np.array([p])
         # As from_dict sets it, so a fitted and a restored model agree.

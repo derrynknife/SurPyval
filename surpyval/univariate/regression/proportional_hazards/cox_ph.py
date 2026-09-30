@@ -32,9 +32,7 @@ from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
-    formula_model_matrix,
     is_missing_event,
-    numeric_columns,
     validate_coxph,
     validate_coxph_df_inputs,
 )
@@ -46,7 +44,10 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
-from ..regression_data import check_finite_event_times
+from ..regression_data import (
+    check_finite_event_times,
+    design_matrix_from_df,
+)
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .tvc import handle_tvc, handle_tvc_timeline
 
@@ -2003,28 +2004,13 @@ def _df_covariates(
 ) -> tuple:
     """The covariates of the TVC ``*_from_df`` fits, from ``Z_cols`` or a
     ``formula`` (#485), with every row kept: a TVC fit refuses a missing
-    covariate rather than dropping part of a subject's path."""
+    covariate rather than dropping part of a subject's path. The design is
+    the parametric regressions' (``design_matrix_from_df``, which their
+    TVC fits use too); Cox keeps its formula as a ``Formula``."""
     from formulaic import Formula
 
-    from ..regression_data import drop_intercept
-
-    if (Z_cols is None) == (formula is None):
-        raise ValueError("Give exactly one of 'Z_cols' or 'formula'")
-    if formula is not None:
-        matrix, spec = formula_model_matrix(formula, df)
-        matrix = drop_intercept(matrix)
-        return (
-            np.asarray(matrix, dtype=float),
-            Formula(formula),
-            list(matrix.columns),
-            spec,
-        )
-    assert Z_cols is not None  # exactly one of the two, checked above
-    cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-    unknown = [col for col in cols if col not in df.columns]
-    if unknown:
-        raise ValueError("{} not in dataframe columns".format(unknown))
-    return numeric_columns(df, cols), None, cols, None
+    Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
+    return Z, None if formula is None else Formula(formula), names, spec
 
 
 CoxPH = CoxPH_()

@@ -26,6 +26,7 @@ from surpyval.univariate.parametric import (
 from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
+from surpyval.utils.no_maximum import quiet_maximum_warnings
 
 # Typed as OptimisedFitMixin, not ParametricFitter: every entry has
 # `.fit(x, c, n, t)` called on it below, and Bernoulli, Binomial and
@@ -48,17 +49,6 @@ distributions: list[OptimisedFitMixin] = [
 ]
 
 METRICS = ["aic", "aic_c", "bic", "neg_ll"]
-
-# The start of the message every fit with no finite maximum gives
-# (surpyval.utils.no_maximum), and of those a maximum-likelihood fit
-# gives when its answer is not a verified maximum (``_UNVERIFIED_MLE`` in
-# parametric_fitter, and the two of fitters/mle.py).
-_NO_MAXIMUM = "No finite maximum"
-_UNVERIFIED = (
-    "The maximum-likelihood search did not reach a verified maximum",
-    "MLE Failed",
-    "Precision was lost",
-)
 
 
 def _non_regular(dist: OptimisedFitMixin) -> bool:
@@ -136,17 +126,19 @@ def fit_best(
       where the ``2k`` penalty undercounts: on 50 Weibull(100, 2) draws
       the Uniform's AIC beat the Weibull's by 14. These are left out of
       the default candidates and tried only when named in ``include``;
-    - a fit that is not a maximum: one that warns "No finite maximum" (a
-      Beta4 whose shape falls below 1, say), whose likelihood has no
-      maximum, so its value, and every criterion made from it, means
-      nothing -- on ``[1, ..., 7]`` the Beta4 "won" with a log-likelihood
-      of +24.8 against the Weibull's -14.6 -- or one that warns its
-      search did not reach a verified maximum (an ExpoWeibull running
-      towards a limit of its shapes, say), whose value is only where the
-      search stopped.
+    - a fit that is not a verified maximum, as its ``maximum`` attribute
+      records (see :class:`~surpyval.univariate.parametric.parametric.\
+Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
+      1, say), whose likelihood has no maximum, so its value, and every
+      criterion made from it, means nothing -- on ``[1, ..., 7]`` the
+      Beta4 "won" with a log-likelihood of +24.8 against the Weibull's
+      -14.6 -- or ``"unverified"``, a search that did not reach a
+      verified maximum (an ExpoWeibull running towards a limit of its
+      shapes, say), whose value is only where the search stopped.
 
     When a candidate is set aside, one warning names it and says why; the
-    warning of its own fit is replaced by that one.
+    warning its own fit would give that it is not a verified maximum is
+    held back, replaced by that one.
 
     Parameters
     ----------
@@ -232,7 +224,13 @@ def fit_best(
     failed: list[str] = []
     for dist in candidates:
         failure = None
-        with warnings.catch_warnings(record=True) as caught:
+        # A candidate's own warning that its fit is not a verified maximum
+        # is held back: the fitted model records it (``maximum``), and the
+        # one warning below says it for every candidate set aside.
+        with (
+            warnings.catch_warnings(record=True) as caught,
+            quiet_maximum_warnings(),
+        ):
             warnings.simplefilter("always")
             try:
                 temp_model = dist.fit(x, c, n, t)
@@ -243,25 +241,19 @@ def fit_best(
                 continue
             except Exception as e:
                 failure = str(e)
-        no_maximum = unverified = False
-        for w in caught:
-            if str(w.message).startswith(_NO_MAXIMUM):
-                no_maximum = True
-            elif str(w.message).startswith(_UNVERIFIED):
-                unverified = True
-            elif failure is None:
-                warnings.warn_explicit(
-                    w.message, w.category, w.filename, w.lineno
-                )
         if failure is not None:
+            # A failed candidate's other warnings go with it
             failed.append(f"{dist.name} ({failure})")
             continue
+        for w in caught:
+            warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
         n_fitted += 1
-        if no_maximum:
+        maximum = temp_model.maximum
+        if maximum == "no finite maximum":
             set_aside.append(
                 f"{dist.name} (its likelihood has no finite maximum)"
             )
-        elif unverified:
+        elif maximum != "verified":
             set_aside.append(
                 f"{dist.name} (its fit is not a verified maximum)"
             )
@@ -270,7 +262,7 @@ def fit_best(
                 f"{dist.name} (its support ends are parameters, fitted "
                 "on the extreme observations)"
             )
-        regular = not (no_maximum or unverified or _non_regular(dist))
+        regular = maximum == "verified" and not _non_regular(dist)
         if tmp_measure < best[regular][0]:
             best[regular] = (tmp_measure, temp_model)
     model = best[True][1]

@@ -14,6 +14,7 @@ from scipy.integrate import quad
 import surpyval
 from surpyval import np
 from surpyval.utils import _check_x_not_empty, refuse_time_values
+from surpyval.utils.no_maximum import maximum_warnings_quiet
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
@@ -2443,9 +2444,15 @@ turnbull_estimator
         # verifiably a maximum is never returned in silence (principle 13).
         # A family whose only parameters are its support's end points (the
         # Uniform) has its maximum on the data's extremes, an edge where
-        # the gradient does not vanish: there is nothing to verify.
+        # the gradient does not vanish: there is nothing to verify. Its
+        # support is declared data-dependent (NaN): ``support_param_index``
+        # alone defaults to (0, 1) for every family, and so exempted every
+        # two-parameter family (the Weibull, the Gamma, ...) from this
+        # warning.
         warning = results.pop("_warning", None)
-        edges_only = getattr(self, "support_param_index", None) == tuple(
+        edges_only = bool(
+            np.isnan(np.asarray(self.support, dtype=float)).all()
+        ) and getattr(self, "support_param_index", None) == tuple(
             range(self.k)
         )
         if (
@@ -2455,6 +2462,11 @@ turnbull_estimator
         ):
             warning = _UNVERIFIED_MLE
         results.pop("_verified", None)
+        # What the fit reached, recorded as ``model.maximum`` so that a
+        # caller (``fit_best``) need not read it from the warnings; it
+        # follows them exactly. An answer with nothing to verify (a closed
+        # form, a Uniform's extreme observations) is a maximum.
+        maximum = "verified" if warning is None else "unverified"
         # A family whose likelihood can be highest in a limit of its
         # parameters says so instead (one warning per fit).
         if (
@@ -2463,6 +2475,7 @@ turnbull_estimator
             and self._warn_if_at_limit(surv_data, results, zi, lfp)
         ):
             warning = None
+            maximum = "no finite maximum"
         # So does an offset fit that ran its offset onto the first
         # failure, whatever the family (#487).
         if (
@@ -2473,8 +2486,11 @@ turnbull_estimator
             )
         ):
             warning = None
-        if warning is not None:
+            maximum = "no finite maximum"
+        if warning is not None and not maximum_warnings_quiet():
             warnings.warn(warning, stacklevel=3)
+        # Only maximum likelihood seeks a maximum of the likelihood
+        model.maximum = maximum if how == "MLE" else "not applicable"
 
         for k, v in results.items():
             setattr(model, k, v)

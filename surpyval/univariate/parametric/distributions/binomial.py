@@ -468,6 +468,8 @@ class Binomial_(DiscreteParametricFitter):
         n = np.atleast_1d(np.asarray(n))
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The proportion is the exact maximum
+        model.maximum = "verified"
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
         self._set_support(model, False)

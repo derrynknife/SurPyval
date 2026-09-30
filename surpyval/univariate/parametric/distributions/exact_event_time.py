@@ -245,6 +245,8 @@ class ExactEventTime_(ParametricFitter):
         T = (max_r + min_l) / 2.0
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The likelihood is at its maximum across the whole bracket
+        model.maximum = "verified"
         model.params = np.array([T])
         self._set_support(model, False)
         return model
