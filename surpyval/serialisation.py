@@ -716,13 +716,18 @@ class SerialisableMixin:
         @classmethod
         def from_dict(cls, model_dict: dict) -> Any: ...
 
-    def to_json(self, fp: str | os.PathLike, with_data: bool = False) -> None:
+    def to_json(
+        self,
+        fp: str | os.PathLike | None = None,
+        with_data: bool = False,
+    ) -> str | None:
         """Write :meth:`to_dict` to ``fp`` as strict JSON.
 
         Parameters
         ----------
-        fp : str or os.PathLike
-            The file to write.
+        fp : str or os.PathLike, optional
+            The file to write. If omitted, the JSON string is returned
+            instead of being written to disk.
         with_data : bool, optional
             Write ``to_dict(with_data=True)``, which also stores the fitted
             data, for the models whose ``to_dict`` takes ``with_data``
@@ -743,14 +748,17 @@ class SerialisableMixin:
             model_dict = to_dict()
         # ``to_dict`` already wrote non-finite floats as null;
         # ``allow_nan=False`` guarantees the file is strict JSON.
+        payload = json.dumps(model_dict, allow_nan=False)
+        if fp is None:
+            return payload
         with open(fp, "w+") as f:
-            json.dump(model_dict, f, allow_nan=False)
+            f.write(payload)
+        return None
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> Any:
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            model_dict = json.load(f)
+        """Load a model from a JSON file or JSON string written by :meth:`to_json`."""
+        model_dict = _load_json_source(fp)
         if not isinstance(model_dict, dict):
             raise ValueError(
                 "Expected a serialised model dict, got "
@@ -846,6 +854,16 @@ def from_dict(model_dict: dict) -> Any:
     )
 
 
+def _load_json_source(fp: str | Path | os.PathLike) -> Any:
+    """Load JSON from a file path or a JSON text string."""
+    if isinstance(fp, str):
+        stripped = fp.lstrip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            return json.loads(fp)
+    with open(fp, "r") as f:
+        return json.load(f)
+
+
 def from_json(fp: str | Path) -> Any:
     """
     Restore any serialised SurPyval model from a JSON file.
@@ -874,5 +892,4 @@ def from_json(fp: str | Path) -> Any:
     >>> restored.params
     array([5.53092634, 4.04187535])
     """
-    with open(fp, "r") as f:
-        return from_dict(json.load(f))
+    return from_dict(_load_json_source(fp))

@@ -1239,6 +1239,7 @@ class Parametric(
         u = np.asarray(p, dtype=float)
         scalar = u.ndim == 0
         u = np.atleast_1d(u)
+        out_of_unit = (u < 0.0) | (u > 1.0)
 
         # Invert the mixture failure function
         #   F(x) = f0 + (p - f0) F0(x - gamma):
@@ -1255,6 +1256,7 @@ class Parametric(
         # x == 0), ff(0) = f0 and the likelihood — not at the offset (#256).
         q = np.where(u <= self.f0, 0.0, q)
         q = np.where(u >= self.p, np.inf, q)
+        q = np.where(out_of_unit, np.nan, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 

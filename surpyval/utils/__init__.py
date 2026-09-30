@@ -552,6 +552,9 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
                 "Variable 'x' must be numbers, or [left, right] pairs of"
                 " numbers"
             )
+        # A pandas single-column selection is (n, 1); treat it as 1-d.
+        if x.ndim == 2 and x.shape[1] == 1:
+            x = x.reshape(-1)
 
     if x.ndim > 2:
         raise ValueError("Variable 'x' array must be one or two dimensional")
@@ -1248,8 +1251,9 @@ def xcnt_to_xrd(
 
     if ((c != 1) & (c != 0)).any():
         raise ValueError(
-            "xrd format can't be used with left (c=-1) or interval (c=2)"
-            + " censoring"
+            "Kaplan-Meier can't handle left/interval censoring; use Turnbull. "
+            "xrd format can't be used with left (c=-1) or interval (c=2) "
+            "censoring"
         )
 
     tl = t[:, 0]

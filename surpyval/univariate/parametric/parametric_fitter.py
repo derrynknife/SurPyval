@@ -1514,6 +1514,8 @@ class OptimisedFitMixin:
               beta: 3.78688602908912
         """
 
+        if isinstance(how, str):
+            how = how.upper()
         surv_data = SurpyvalData(
             x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
         )
