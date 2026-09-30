@@ -12,6 +12,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import is_missing_event
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -210,6 +211,33 @@ class SemiParametricRegressionModel(SerialisableMixin):
             Z_arr = Z_arr.reshape(1)
         return self._log_risk(Z_arr)
 
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and left
+        truncation. Empty for a model restored without its data."""
+        data = getattr(self, "_fit_data", None)
+        if not isinstance(data, dict) or "c" not in data:
+            return ""
+        ids = getattr(self, "tvc_subject_ids", None)
+        if getattr(self, "is_tvc", False) and ids is not None:
+            # Start-stop rows are intervals of a unit, not units.
+            c = np.asarray(data["c"])
+            n = np.asarray(data.get("n", np.ones(len(c))))
+            k = int(np.sum(n[c == 0]))
+            units = len(np.unique(np.asarray(ids)))
+            return "{} unit{} in {} start-stop intervals: {} failure{}".format(
+                units,
+                "" if units == 1 else "s",
+                len(c),
+                k,
+                "" if k == 1 else "s",
+            )
+        tl = data.get("tl")
+        if tl is None:
+            return data_summary(data["c"], data.get("n"))
+        # Times are non-negative, where an entry at 0 truncates nothing.
+        return data_summary(data["c"], data.get("n"), tl=tl, lower=0.0)
+
     def __repr__(self) -> str:
         out = (
             "Semi-Parametric Regression SurPyval Model"
@@ -218,6 +246,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
             + "\nKind                : {kind}"
             + "\nParameterization    : {parameterization}"
         ).format(kind=self.kind, parameterization=self.parameterization)
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
         if np.any(self._center()):
             out += (
                 "\nBaseline at         : the covariate means, Z = {}".format(

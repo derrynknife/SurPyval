@@ -175,6 +175,8 @@ This convention gives an intuitive feel for the placement of the data on a timel
 
 The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored. The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
 
+``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 failures, 51 right censored``: if you had 51 failures, the flag was read backwards.
+
 Truncation conventions
 ~~~~~~~~~~~~~~~~~~~~~~
 

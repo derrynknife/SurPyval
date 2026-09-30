@@ -47,7 +47,9 @@ def _points(ax):
 
 
 def _rug(ax):
-    return [ln for ln in ax.get_lines() if ln.get_label() == "suspensions"]
+    # The rug's label starts with "_" so that it stays out of a legend
+    # (#510): the legend is for the models' labelled fitted lines.
+    return [ln for ln in ax.get_lines() if ln.get_label() == "_suspensions"]
 
 
 def test_get_plot_data_keeps_every_row_and_marks_the_failures():

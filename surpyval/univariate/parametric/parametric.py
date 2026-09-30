@@ -25,6 +25,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -868,6 +869,9 @@ class Parametric(
                 f"\nDistribution        : {self.dist.name}"
                 f"\nFitted by           : {self.method}"
             )
+            data_line = self._data_repr()
+            if data_line:
+                out += f"\nData                : {data_line}"
             if self.offset:
                 out += f"\nOffset (gamma)      : {self.gamma}"
 
@@ -883,6 +887,21 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and
+        truncation. Empty for a model built from parameters."""
+        data = getattr(self, "data", None)
+        if not isinstance(data, dict) or "c" not in data:
+            return ""
+        t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
+        lower, upper = np.asarray(self.support, dtype=float)
+        if t.size == 0:
+            return data_summary(data["c"], data.get("n"))
+        return data_summary(
+            data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper
+        )
 
     def param_cb(
         self,
@@ -3752,7 +3771,10 @@ class Parametric(
         ax: "Axes | None" = None,
         show_censored: bool = False,
         method: str = "wald",
-    ) -> list:
+        color: Any = None,
+        label: "str | None" = None,
+        **kwargs: Any,
+    ) -> Axes:
         """
         A method to do a probability plot.
 
@@ -3800,11 +3822,25 @@ class Parametric(
             to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
             but better in small samples, and always monotone.
 
+        color : matplotlib color, optional
+            The colour of the points, the fitted line and its bounds. By
+            default the next colour of the axes' colour cycle, so that
+            models plotted on the same axes differ.
+
+        label : str, optional
+            The legend label of the fitted line.
+
+        **kwargs
+            Other keyword arguments for the fitted line (a
+            ``matplotlib.lines.Line2D``: ``linestyle``, ``linewidth``, ...).
+
         Returns
         -------
 
         plot : matplotlib.axes.Axes
-            the axes the probability plot was drawn onto
+            the axes the probability plot was drawn onto. The x label is
+            "Time" unless the axes already have one; change it with
+            ``ax.set_xlabel``.
 
         Examples
         --------
@@ -3815,7 +3851,21 @@ class Parametric(
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.plot()
-        <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
+        <Axes: title={'center': 'Weibull Probability Plot'}, xlabel='Time',
+        ylabel='CDF'>
+
+        Two populations on one plot, each in its own colour, with a
+        legend:
+
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax = plt.subplots()
+        >>> north = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> south = Weibull.fit(Weibull.random(30, 20, 2))
+        >>> ax = north.plot(ax=ax, label="North")
+        >>> ax = south.plot(ax=ax, label="South")
+        >>> legend = ax.legend()
+        >>> [text.get_text() for text in legend.get_texts()]
+        ['North', 'South']
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -3856,4 +3906,7 @@ class Parametric(
             title=f"{self.dist.name} Probability Plot",
             plot_bounds=plot_bounds,
             show_censored=show_censored,
+            color=color,
+            label=label,
+            **kwargs,
         )

@@ -411,7 +411,9 @@ class CompetingRisks(SerialisableMixin):
             for cif, label in zip(cifs, labels):
                 ax.step(x, cif, where="post", label=label)
         ax.set_ylim(0, 1)
-        ax.set_xlabel("x")
+        if not ax.get_xlabel():
+            # "Time", as the other estimates' plots (#514)
+            ax.set_xlabel("Time")
         ax.set_ylabel("Cumulative incidence")
         ax.set_title(
             "Cumulative incidence by cause" + (" (stacked)" if stacked else "")
