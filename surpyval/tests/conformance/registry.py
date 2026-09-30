@@ -1082,9 +1082,10 @@ def _trees():
             model_class="surpyval.beta.ml.SurvivalTree",
             interface=REGRESSION,
             data=reg_data,
-            # A tree draws the features it considers at each split from the
-            # global stream (n_features_split="sqrt"), so it is fitted
-            # under a fixed global seed, as the forest is.
+            # A tree draws the features it considers at each split
+            # (n_features_split="sqrt"); with random_state=None from the
+            # global stream, so it is fitted under a fixed global seed, as
+            # the forest is.
             fit=_seeded(_fit(ml.SurvivalTree, kind=kind)),
             functions=UNI_FUNCTIONS,
             x=X_REG,
@@ -1094,9 +1095,10 @@ def _trees():
             z_style="grid",
             jump_functions=("hf", "df") if kind == "non-parametric" else (),
             # The draw is the fit itself: two fits under one seed agree.
-            draw=lambda m, s: ml.SurvivalTree.fit(**reg_data(), kind=kind).sf(
-                X_REG, Z_REG
-            ),
+            draw=lambda m, s: ml.SurvivalTree.fit(
+                **reg_data(), kind=kind, random_state=s
+            ).sf(X_REG, Z_REG),
+            explicit_seed=True,
             exclude=(
                 {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
                 if kind == "non-parametric"
@@ -1110,8 +1112,8 @@ def _trees():
         model_class="surpyval.beta.ml.RandomSurvivalForest",
         interface=REGRESSION,
         data=reg_data,
-        # The forest bootstraps from the global stream (it has no seed
-        # argument), so the registry fits it under a fixed global seed.
+        # With random_state=None the forest bootstraps from the global
+        # stream, so the registry fits it under a fixed global seed.
         fit=_seeded(_fit(ml.RandomSurvivalForest, n_trees=3)),
         functions=UNI_FUNCTIONS,
         x=X_REG,
@@ -1122,9 +1124,10 @@ def _trees():
         # Each refit grows every tree again: left to the full suite.
         slow=REFIT_PROPERTIES,
         # The draw is the fit itself: two seeded fits must agree.
-        draw=lambda m, s: m.__class__.fit(**reg_data(), n_trees=2).sf(
-            X_REG, Z_REG
-        ),
+        draw=lambda m, s: m.__class__.fit(
+            **reg_data(), n_trees=2, random_state=s
+        ).sf(X_REG, Z_REG),
+        explicit_seed=True,
         exclude={
             "row_order": "the bootstrap draws rows by position, so a "
             "permutation changes which rows each tree sees",

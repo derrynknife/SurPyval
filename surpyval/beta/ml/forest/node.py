@@ -64,6 +64,7 @@ class IntermediateNode(Node):
         split_feature_value: float,
         feature_indices_in: NDArray,
         kind: str = "weibull",
+        rng: Any = None,
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -86,6 +87,7 @@ class IntermediateNode(Node):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
             kind=kind,
+            rng=rng,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -96,6 +98,7 @@ class IntermediateNode(Node):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features_split,
             kind=kind,
+            rng=rng,
         )
 
     def apply_model_function(
@@ -309,6 +312,7 @@ def build_tree(
     min_leaf_failures: int,
     n_features_split: int,
     kind: str = "weibull",
+    rng: Any = None,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -322,7 +326,14 @@ def build_tree(
     (optionally left truncated), and the Turnbull-score split with
     Turnbull leaves at a node with left- or interval-censored rows
     (untruncated).
+
+    ``rng`` draws the features considered at each split: numpy's global
+    generator when ``None`` (see
+    :func:`~surpyval.beta.ml.forest.tree.resolve_random_state`).
     """
+    if rng is None:
+        rng = np.random.mtrand._rand
+
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
         return TerminalNode(data, kind)
@@ -330,7 +341,7 @@ def build_tree(
     # Choose the random n_features_split subset of features, without
     # replacement
     feature_indices_in = np.unique(
-        np.random.choice(Z.shape[1], size=n_features_split, replace=False)
+        rng.choice(Z.shape[1], size=n_features_split, replace=False)
     )
 
     # Figure out best feature-value split
@@ -372,4 +383,5 @@ def build_tree(
         split_feature_value=split_feature_value,
         feature_indices_in=feature_indices_in,
         kind=kind,
+        rng=rng,
     )

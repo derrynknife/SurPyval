@@ -1,4 +1,5 @@
 from math import log2, sqrt
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -10,8 +11,26 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import check_covariate_rows, finite_covariate_mask
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+
+Random = np.random.Generator | np.random.RandomState
+
+
+def resolve_random_state(random_state: Any = None) -> Random:
+    """The random stream a tree or forest draws from.
+
+    ``None`` is numpy's global generator itself, drawn from directly, so
+    ``np.random.seed`` reproduces a fit exactly as it did before trees and
+    forests took a ``random_state``. Anything else goes through
+    :func:`~surpyval.utils.rng.as_generator`: a seed or ``Generator``
+    gives a stream of its own, which neither depends on nor advances the
+    global one.
+    """
+    if random_state is None:
+        return np.random.mtrand._rand
+    return as_generator(random_state)
 
 
 def drop_missing_covariate_rows(
@@ -75,6 +94,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
+        random_state: Any = None,
     ) -> None:
         self.data, self.Z = drop_missing_covariate_rows(data, Z)
 
@@ -95,6 +115,7 @@ class SurvivalTree(SerialisableMixin):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features,
             kind=self.kind,
+            rng=resolve_random_state(random_state),
         )
 
     @classmethod
@@ -114,6 +135,7 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
+        random_state: Any = None,
     ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
@@ -160,6 +182,13 @@ class SurvivalTree(SerialisableMixin):
         kind : str, optional
             ``"weibull"`` (the default), ``"exponential"`` or
             ``"non-parametric"``; see the class docstring.
+        random_state : None, int or numpy.random.Generator, optional
+            Seeds the features drawn for each split (when
+            ``n_features_split`` is less than the number of features).
+            ``None`` (the default) draws from NumPy's global random state,
+            so ``np.random.seed`` reproduces the tree; a seed or
+            ``Generator`` gives a stream of its own and leaves the global
+            one alone.
 
         Returns
         -------
@@ -209,6 +238,7 @@ class SurvivalTree(SerialisableMixin):
             min_leaf_failures,
             n_features_split,
             kind,
+            random_state,
         )
 
     def apply_model_function(

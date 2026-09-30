@@ -285,7 +285,7 @@ An infinite covariate is not missing: it is dropped at fit time along with the m
 Random draws and seeds
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, and the bootstraps behind confidence bounds such as ``bootstrap_cb()`` -- takes its seed as ``random_state`` and follows one rule for it:
+Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, the bootstraps behind confidence bounds such as ``bootstrap_cb()``, and the fit of a survival tree or random survival forest (its bootstrap samples and the features drawn for each split) -- takes its seed as ``random_state`` and follows one rule for it:
 
 - ``None``, the default, draws from numpy's global random number generator, so ``np.random.seed(...)`` makes every draw reproducible, parametric or not.
 - An int, or a ``numpy.random.Generator``, gives a stream of its own (``numpy.random.default_rng(seed)``) that neither depends on nor advances the global one.
