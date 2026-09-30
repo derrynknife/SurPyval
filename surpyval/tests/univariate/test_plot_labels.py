@@ -36,7 +36,9 @@ def two_fits():
 def _colours(ax):
     """The distinct colours of every line and point collection."""
     lines = {to_rgba(ln.get_color()) for ln in ax.get_lines()}
-    points = {tuple(c) for coll in ax.collections for c in coll.get_facecolor()}
+    points = {
+        tuple(c) for coll in ax.collections for c in coll.get_facecolor()
+    }
     return lines, points
 
 

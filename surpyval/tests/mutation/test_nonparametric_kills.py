@@ -746,10 +746,12 @@ def test_cb_aliases_agree_with_a_support_set():
 def test_repr_names_the_estimator():
     # Kills nonparametric.py:198-208 (28 mutants of __repr__).
     head = "Non-Parametric SurPyval Model\n" + "=" * 29 + "\n"
-    assert repr(_fit()) == head + "Model            : Kaplan-Meier"
+    # and the data it was fitted to (#508)
+    data = "\nData             : 10 units: 7 failures, 3 right censored"
+    assert repr(_fit()) == head + "Model            : Kaplan-Meier" + data
     assert repr(sp.Turnbull.fit(X, c=C)) == (
         head + "Model            : Turnbull\n"
-        "Estimator        : Fleming-Harrington"
+        "Estimator        : Fleming-Harrington" + data
     )
 
 

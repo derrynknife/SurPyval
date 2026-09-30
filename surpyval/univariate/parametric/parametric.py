@@ -474,6 +474,9 @@ class Parametric(
     optimizer: str
     maximum: str
     tl: Any
+    # The printout's "Data" line of a model restored without its
+    # data (#508)
+    _data_summary: "str | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -654,6 +657,7 @@ class Parametric(
                     f"one of {list(MAXIMUM_STATES)}."
                 )
             out.maximum = maximum
+        out._data_summary = model_dict.get("data_summary")
 
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
@@ -748,6 +752,10 @@ class Parametric(
         # Informational: a reader that predates it ignores it and restores
         # the same model, so it needs no newer schema.
         out["maximum"] = self.maximum
+        # The printout's "Data" line (#508), informational like "maximum",
+        # so a model restored without its data prints the same.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
@@ -891,10 +899,11 @@ class Parametric(
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
         (#508): units weighted by ``n``, by kind of censoring and
-        truncation. Empty for a model built from parameters."""
+        truncation. Empty for a model built from parameters; a model
+        restored without its data gives the line it was saved with."""
         data = getattr(self, "data", None)
         if not isinstance(data, dict) or "c" not in data:
-            return ""
+            return getattr(self, "_data_summary", None) or ""
         t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
         lower, upper = np.asarray(self.support, dtype=float)
         if t.size == 0:

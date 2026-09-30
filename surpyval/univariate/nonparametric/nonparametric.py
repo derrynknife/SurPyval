@@ -267,6 +267,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     # The sample size of ``band`` as ``to_dict`` stored it ("band_n"), for
     # a model restored without its data; see ``_band_sample_size``.
     _band_n: "float | None" = None
+    # The printout's "Data" line of a model restored without its data
+    # (#508).
+    _data_summary: "str | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -289,10 +292,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     def _data_repr(self) -> str:
         """The data the estimate was fitted to, in one line, for the
         printout (#508): units weighted by ``n``, by kind of censoring and
-        truncation. Empty for a model restored without its data."""
+        truncation. A model restored without its data gives the line it
+        was saved with."""
         data = getattr(self, "data", None)
         if not isinstance(data, dict) or "c" not in data or "x" not in data:
-            return ""
+            return self._data_summary or ""
         x = np.asarray(data["x"], dtype=float)
         t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
         # Times are non-negative in practice, where a truncation at 0
@@ -2470,6 +2474,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     None if value is None else np.asarray(value).tolist()
                 )
             out["data"] = data_dict
+        # The printout's "Data" line (#508), so a model restored without
+        # its data prints the same.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
 
         return stamp_schema(out)
 
@@ -2541,6 +2549,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     "{!r}.".format(band_n)
                 )
             out._band_n = float(band_n)
+        out._data_summary = model_dict.get("data_summary")
 
         support = _support_from_dict(model_dict)
         if support is not None:

@@ -129,3 +129,18 @@ def test_mixture_printout_has_the_data_line():
 def test_data_summary_singular_and_plural():
     assert data_summary([0]) == "1 unit: 1 failure"
     assert data_summary([1, 1]) == "2 units: 0 failures, 2 right censored"
+
+
+def test_a_restored_model_prints_the_same_data_line(rossi):
+    # Principle 20: a model saved without its data still prints the line.
+    x, Z, c = rossi
+    models = [
+        sp.Weibull.fit(x, c),
+        sp.KaplanMeier.fit(x, c),
+        sp.CoxPH.fit(x, Z, c),
+        sp.WeibullPH.fit(x, Z, c),
+    ]
+    for model in models:
+        back = sp.from_dict(model.to_dict())
+        assert "432 units: 114 failures, 318 right censored" in repr(back)
+        assert repr(back).count("Data  ") == 1
