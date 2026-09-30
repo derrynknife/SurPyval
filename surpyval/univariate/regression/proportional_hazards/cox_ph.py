@@ -35,7 +35,6 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
-from surpyval.utils.deprecation import renamed_arguments
 
 from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
@@ -1304,7 +1303,6 @@ class CoxPH_:
             )
         return generators[tie_method]
 
-    @renamed_arguments(method="tie_method")
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1626,7 +1624,6 @@ class CoxPH_:
 
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -1713,7 +1710,6 @@ class CoxPH_:
 
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -1809,7 +1805,6 @@ class CoxPH_:
         )
         return model
 
-    @renamed_arguments(id_col="i_col", method="tie_method")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
@@ -1843,7 +1838,6 @@ class CoxPH_:
         model.feature_names = cols
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -1912,7 +1906,6 @@ class CoxPH_:
             center=center,
         )
 
-    @renamed_arguments(id_col="i_col", time_col="x_col", method="tie_method")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",

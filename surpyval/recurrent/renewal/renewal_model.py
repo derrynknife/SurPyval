@@ -9,7 +9,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 
 #: Below this cumulative hazard the quantile function is accurate enough to
 #: invert it: ``1 - p = exp(-H)`` then carries a relative error of about
@@ -599,7 +598,6 @@ class RenewalModel(
             self.data, test=test, alternative=alternative
         )
 
-    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
         self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:

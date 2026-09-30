@@ -45,7 +45,7 @@ from surpyval.utils import (
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.shapes import keeps_query_shape
 
 
@@ -376,7 +376,6 @@ class CompetingRisks(SerialisableMixin):
         return [name for name in super().__dir__() if name != "method"]
 
     @classmethod
-    @renamed_arguments(method="how")
     def fit_from_df(
         cls,
         df: Any,
@@ -418,7 +417,6 @@ class CompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
-    @renamed_arguments(method="how")
     def fit(
         cls,
         x: npt.ArrayLike,

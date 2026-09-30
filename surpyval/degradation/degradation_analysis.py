@@ -42,7 +42,6 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     psd_precision,
     psd_project,
@@ -52,7 +51,6 @@ from surpyval.utils.linalg import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
-from ._argument_order import always_old, cb_is_old, old_order
 from ._bounds import (
     analytic_cb,
     bootstrap_cb,
@@ -1278,11 +1276,6 @@ class DegradationModel(SerialisableMixin):
             x_arr, y_arr, Z=Z, Z_future=Z_future
         ) - float(x_arr.max())
 
-    @old_order(
-        ("alpha_ci", "n_samples", "random_state", "Z", "Z_future"),
-        always_old,
-        leading=2,
-    )
     def predict_rul(
         self,
         x: npt.ArrayLike,
@@ -1745,7 +1738,6 @@ class DegradationModel(SerialisableMixin):
         u = rng.uniform(size=size)
         return np.asarray(self.life_model.qf(u), dtype=float)
 
-    @old_order(("random_state", "Z"), always_old)
     def induced_life(
         self,
         n_samples: int = 10_000,
@@ -2007,20 +1999,6 @@ class DegradationModel(SerialisableMixin):
             )
         return life_parameter_covariance(self, method=method)
 
-    @renamed_arguments(seed="random_state")
-    @old_order(
-        (
-            "on",
-            "alpha_ci",
-            "bound",
-            "method",
-            "n_boot",
-            "random_state",
-            "Z",
-        ),
-        cb_is_old,
-        stacklevel=3,  # under renamed_arguments
-    )
     @keeps_query_shape
     def cb(
         self,
@@ -2086,12 +2064,6 @@ class DegradationModel(SerialisableMixin):
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
-
-        Notes
-        -----
-        ``Z`` used to come last. Until v0.22.0 a call by position in the old
-        order (``cb(x, 'sf', ...)``, told by the string second argument)
-        still works, with a ``DeprecationWarning``.
         """
         valid = ("sf", "R", "ff", "F", "Hf")
         if on not in valid:

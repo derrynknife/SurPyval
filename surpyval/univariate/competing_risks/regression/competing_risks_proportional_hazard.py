@@ -38,7 +38,7 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
 )
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -518,7 +518,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return before * -np.expm1(-total) * share
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit_from_df(
         cls,
         df: Any,
@@ -633,7 +632,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return fitted
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit(
         cls,
         x: npt.ArrayLike,

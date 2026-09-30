@@ -50,7 +50,6 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     xcnt_handler,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -396,7 +395,6 @@ class BuckleyJamesModel(SerialisableMixin):
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
-    @renamed_arguments(seed="random_state")
     def bootstrap_ci(
         self,
         alpha_ci: float = 0.05,

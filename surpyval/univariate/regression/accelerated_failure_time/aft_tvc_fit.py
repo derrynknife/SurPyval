@@ -39,7 +39,6 @@ import numpy.typing as npt
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..parametric_regression_model import ParametricRegressionModel
@@ -249,7 +248,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             i2, xl, xr, c2, Z2, n=n2, fixed=fixed, center=center
         )
 
-    @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
         self,
         df: Any,

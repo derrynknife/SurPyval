@@ -23,7 +23,6 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -1770,7 +1769,6 @@ class Parametric(
             "failure)."
         )
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,

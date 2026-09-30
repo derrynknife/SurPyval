@@ -32,7 +32,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.deprecation import renamed_arguments
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -210,7 +209,6 @@ class TVCFitMixin:
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
         return self.fit_tvc(i_ss, xl, xr, c_ss, Z_ss, n_ss, **kwargs)
 
-    @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
@@ -244,7 +242,6 @@ class TVCFitMixin:
         model.feature_names = cols
         return model
 
-    @renamed_arguments(id_col="i_col", time_col="x_col")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",

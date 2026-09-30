@@ -51,7 +51,6 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -197,7 +196,6 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- distribution functions -------------------------------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: Any) -> np.ndarray:
         """Survival function at ``x``: 1 at and before time 0 (the spline
@@ -209,26 +207,22 @@ class RoystonParmarModel(SerialisableMixin):
         out = np.where(x <= 0.0, 1.0, out)
         return np.where(np.isposinf(x), 0.0, out)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: Any) -> np.ndarray:
         """Failure (CDF) function ``1 - sf(x)``."""
         return 1.0 - self.sf(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(x)``."""
         # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
         return -np.log(self.sf(x)) + 0.0
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def hf(self, x: Any) -> np.ndarray:
         """Hazard rate ``df(x) / sf(x)``."""
         return self.df(x) / self.sf(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: Any) -> np.ndarray:
         """Density at ``x``, from the derivative of the spline."""
@@ -242,7 +236,6 @@ class RoystonParmarModel(SerialisableMixin):
         # infinity; with sf = 1 there, hf and Hf are 0 too.
         return np.where((x <= 0.0) | np.isposinf(x), 0.0, out)
 
-    @renamed_arguments(q="p")
     @keeps_query_shape
     def qf(self, p: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(x) = p``."""
@@ -290,7 +283,6 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- confidence bounds -------------------------------------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,
