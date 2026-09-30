@@ -31,7 +31,9 @@ Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 have no finite maximum warn "No finite maximum". A covariate column
 the others already account for gets a ``nan`` coefficient and a warning,
 as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
-that cannot be paired with the times raise ``ValueError``.
+that cannot be paired with the times raise ``ValueError``. The bundled
+Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
+only when it is significant. ``qf`` outside [0, 1] is ``nan``.
 
 - **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
   (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
@@ -413,6 +415,60 @@ that cannot be paired with the times raise ``ValueError``.
   survival curve per subject, the Cox and parametric regression
   functions take ``grid=True``, which gives every row at every time,
   shape ``(len(Z),) + x.shape``, as the survival tree and forest do.
+- **Changed: load_rossi_static()'s arrest means an arrest (#479).** It
+  stored the censoring flag (1 = not arrested) as a float under the name
+  ``arrest``, so ``c = 1 - df["arrest"]``, the natural call coming from R
+  or lifelines, fitted the complement without complaint (a Cox
+  coefficient of -0.001 for age instead of -0.057). ``arrest`` is now an
+  integer, 1 for an arrest, as in R's ``carData::Rossi`` and lifelines.
+  Code that passed ``c=df["arrest"]`` must pass ``c=1 - df["arrest"]``.
+  The bundled rossi, heart and lung data also lose their saved row-index
+  columns (``Unnamed: 0``).
+- **Changed: trend tests name a trend only when it is significant (#481).**
+  ``laplace`` and ``mil_hdbk_189c`` printed "Suggested trend: increasing"
+  at p = 0.25. ``trend`` is now the conclusion at a keyword-only
+  ``alpha_ci=0.05`` (``"none"`` unless p < ``alpha_ci``) and the new
+  ``direction`` is the sign of the statistic. The models' ``trend_test()``
+  take ``alpha_ci``, and the tests take ``c=`` by keyword only.
+- **MixtureModel.fit returns the model (#482).** It returned ``None``.
+  ``MixtureModel.fit(x, dist=Weibull, m=2)`` also builds and fits in one
+  call. An unfitted model's ``repr`` names it, and a truncated fit reports
+  "Fitted by: MLE", which it is, not "EM".
+- **params and param_names on FrailtyModel and RenewalModel (#483).**
+  Frailty: the baseline, the coefficients, then ``theta``. Renewal: ``q``
+  or ``rho``, then the distribution's parameters, the order of
+  ``standard_errors``.
+- **AcceleratedLife reports its life parameter as the life model's
+  (#489).** It printed "alpha: 1.0", a placeholder, as if fitted; it now
+  prints ``alpha: L(Z) of the Power life model``, ``param_cb`` refuses
+  that parameter, and the model has ``life_parameter``. Every parametric
+  regression model has ``param_names``. Data at one stress level raise
+  "needs at least two distinct stress levels", and too few levels with
+  ``init`` warn that the life-stress relationship cannot be identified.
+- **The repair models say which kind of dist they take (#495).** A
+  lifetime distribution passed to ``ARI`` (an ``AttributeError``) and an
+  intensity model passed to ``ARA``, ``GeneralizedRenewal`` or
+  ``GeneralizedOneRenewal`` ("more than one right censored time") raise a
+  ``ValueError`` naming the right fitter.
+- **API papercuts (#485).** ``to_json()`` without a path returns the
+  JSON text, and ``from_json`` reads it. A model with no data (from
+  ``from_params``, or loaded) plots its CDF. ``how`` is case-insensitive.
+  ``x``, ``c`` and ``n`` given as (n, 1) columns are read as one value per
+  row. **Changed:** ``qf`` outside [0, 1] is ``nan`` (it was ``inf`` or
+  0), a continuous distribution's ``qf(0)`` is the start of its support (a
+  Normal's ``-inf``, not 0), and a bounded one's ``qf(1)`` its end
+  (``Uniform(2, 5)``: 5, not ``inf``). Kaplan-Meier, Nelson-Aalen and
+  Fleming-Harrington given left- or interval-censored or right-truncated
+  data point to Turnbull. ``logrank`` warns when most groups have one
+  member. ``fit_best`` passes over candidates whose support excludes the
+  data quietly and reports other failures once. The MPP heuristic error
+  lists the valid names, and ``sp.CrowAMSAA`` and the like say which
+  subpackage to import from. ``CoxPH.fit_tvc_from_df`` and
+  ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
+  ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
+  print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **The bundled Claude Code skill matches 0.22, and its code is tested
+  (#491).** Every code block in it runs as a test.
 - **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
   built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
   to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each
