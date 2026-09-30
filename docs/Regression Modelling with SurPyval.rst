@@ -3145,6 +3145,122 @@ importance falls on :math:`z_0` alone.
     assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
         importance_ic
 
+Both the tree and the forest take ``random_state``: ``None`` (the default)
+draws the bootstrap samples and the candidate covariates from NumPy's global
+generator, so ``np.random.seed`` reproduces them as above, while a seed gives
+the fit a stream of its own that leaves the global one alone.
+
+Conditional-inference trees
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default a node takes the best cut over every covariate it considers
+(``selection='greedy'``). A continuous covariate offers a cut between every
+pair of its values where a two-valued one offers one, so by chance alone its
+best cut tends to look better: greedy search prefers covariates with many
+values whether or not they matter, and it always finds a split to make.
+``selection='ctree'`` chooses the covariate first, by a p-value that allows
+for the number of cuts each covariate had to choose from, and splits only if
+the smallest p-value, multiplied by the number of covariates tested
+(Bonferroni), is below ``alpha_split`` (0.05 by default); the cut on that
+covariate is then chosen as usual. The theory is in
+:doc:`regression analysis`. It works with every ``kind`` and every kind of
+censoring.
+
+Below, a two-valued covariate :math:`z_0` shortens life by 30% and three
+continuous covariates are noise. Over 40 simulated data sets, each tree
+makes one split (``max_depth=1``); then the same again with no effect at
+all:
+
+.. jupyter-execute::
+
+    def make_mixed_data(seed, effect, n=150):
+        r = np.random.default_rng(seed)
+        Z = np.column_stack([r.integers(0, 2, n), r.uniform(0, 1, (n, 3))])
+        t = 10 * r.weibull(1.5, n) * np.where(Z[:, 0] == 1, effect, 1.0)
+        cens = r.uniform(3, 25, n)
+        return np.minimum(t, cens), (cens < t).astype(int), Z
+
+    tallies = {}
+    for effect in [0.7, 1.0]:
+        tally = {'greedy': [0, 0, 0], 'ctree': [0, 0, 0]}
+        for seed in range(40):
+            xm, cm, Zm = make_mixed_data(seed, effect)
+            for selection in tally:
+                tm = SurvivalTree.fit(x=xm, Z=Zm, c=cm, max_depth=1,
+                                      kind='non-parametric',
+                                      n_features_split='all',
+                                      selection=selection)
+                j = getattr(tm._root, 'split_feature_index', None)
+                tally[selection][2 if j is None else int(j > 0)] += 1
+        tallies[effect] = tally
+        print(f'effect {effect}:')
+        for selection, (on_z0, on_noise, none) in tally.items():
+            print(f'  {selection:6s}  split on z0: {on_z0:2d}   on noise: '
+                  f'{on_noise:2d}   no split: {none:2d}')
+
+With the effect, greedy search splits on a noise covariate in 18 of the 40
+data sets, ctree in 3; ctree declines to split in 15, where the evidence
+does not reach the 5% level. Without an effect, greedy search always splits
+(39 times on noise), while ctree leaves 38 of the 40 trees as a single leaf,
+close to the 95% its level promises.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert tallies[0.7]['greedy'] == [22, 18, 0], tallies
+    assert tallies[0.7]['ctree'] == [22, 3, 15], tallies
+    assert tallies[1.0]['greedy'][2] == 0 and tallies[1.0]['greedy'][1] == 39
+    assert tallies[1.0]['ctree'][2] == 38, tallies
+
+A conditional-inference tree also needs no depth limit: it stops where the
+data show no further effect. On the interaction data from above it grows
+exactly the two splits of the interaction, and each split keeps the
+adjusted p-value that chose it (``p_value``). In a forest, stopping early
+keeps the trees from fitting noise:
+
+.. jupyter-execute::
+
+    ctree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, kind='non-parametric',
+                             n_features_split='all', selection='ctree')
+
+    def show(node, depth=0):
+        if hasattr(node, 'split_feature_index'):
+            print('  ' * depth + f'z{node.split_feature_index} <= '
+                  f'{node.split_feature_value:.2f}   (p = {node.p_value:.1e})')
+            show(node.left_child, depth + 1)
+            show(node.right_child, depth + 1)
+        else:
+            print('  ' * depth + f'leaf: {len(node.data)} units')
+
+    show(ctree._root)
+
+    oob_sel = {}
+    for selection in ['greedy', 'ctree']:
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_sel = RandomSurvivalForest.fit(
+                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, n_features_split=2,
+                kind='non-parametric', selection=selection, random_state=0)
+        oob_sel[selection] = rsf_sel.oob_log_likelihood()
+        print(f'{selection:6s} forest: OOB log-likelihood '
+              f'{oob_sel[selection]:.3f}')
+
+The unrestricted greedy trees grow until their leaves are too small to
+split, and the forest built from them scores a little lower out of bag than
+the one built from conditional-inference trees.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    root = ctree._root
+    assert root.split_feature_index == 0 and root.p_value < 0.05
+    assert root.right_child.split_feature_index == 1
+    assert not hasattr(root.left_child, 'split_feature_index')
+    assert not hasattr(root.right_child.left_child, 'split_feature_index')
+    assert not hasattr(root.right_child.right_child, 'split_feature_index')
+    assert oob_sel['ctree'] > oob_sel['greedy'], oob_sel
+
 Saving and loading a fitted model
 ---------------------------------
 

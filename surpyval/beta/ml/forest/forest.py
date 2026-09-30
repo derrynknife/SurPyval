@@ -5,6 +5,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
+from surpyval.beta.ml.forest.conditional_inference import parse_selection
 from surpyval.beta.ml.forest.oob import (
     RowTerms,
     add_tree_terms,
@@ -15,6 +16,7 @@ from surpyval.beta.ml.forest.oob import (
 from surpyval.beta.ml.forest.tree import (
     SurvivalTree,
     drop_missing_covariate_rows,
+    resolve_random_state,
 )
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -58,7 +60,12 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
+        random_state: Any = None,
     ) -> None:
+        self.selection = parse_selection(selection, alpha_split)
+        self.alpha_split = float(alpha_split)
         # Rows with a missing covariate are dropped once, here, with the
         # standard warning, so no bootstrap sample can draw one.
         self.data: SurpyvalData
@@ -68,13 +75,24 @@ class RandomSurvivalForest(SerialisableMixin):
         self.bootstrap = bootstrap
         self.kind = kind
 
+        # With random_state=None every draw is from numpy's global stream,
+        # in the order it always was: the bootstraps, then each tree's
+        # feature draws in turn. A seed gives the forest its own stream,
+        # and each tree a child stream of it, so a tree's draws do not
+        # depend on the order the trees are grown in.
+        rng = resolve_random_state(random_state)
+        tree_states: list[Any]
+        if random_state is None:
+            tree_states = [None] * self.n_trees
+        else:
+            assert isinstance(rng, np.random.Generator)
+            tree_states = list(rng.spawn(self.n_trees))
+
         # Create Trees
         bootstrap_indices: list[NDArray]
         if self.bootstrap:
             bootstrap_indices = [
-                np.random.choice(
-                    len(self.data.x), len(self.data.x), replace=True
-                )
+                rng.choice(len(self.data.x), len(self.data.x), replace=True)
                 for _ in range(self.n_trees)
             ]
         else:
@@ -93,6 +111,9 @@ class RandomSurvivalForest(SerialisableMixin):
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,
                 kind=kind,
+                selection=selection,
+                alpha_split=alpha_split,
+                random_state=tree_states[i],
             )
             for i in range(self.n_trees)
         )
@@ -116,6 +137,9 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
+        random_state: Any = None,
     ) -> "RandomSurvivalForest":
         """
         Fit a random survival forest.
@@ -155,13 +179,26 @@ class RandomSurvivalForest(SerialisableMixin):
             The number of trees. Defaults to 100.
         bootstrap : bool, optional
             Fit each tree to a bootstrap resample of the data (the
-            default); otherwise every tree sees all of it. Resampling uses
-            NumPy's global random state, so seed it with
-            ``np.random.seed`` for a reproducible forest.
+            default); otherwise every tree sees all of it.
         kind : str, optional
             The tree type, ``"weibull"`` (the default), ``"exponential"``
             or ``"non-parametric"``; see
             :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+        selection : str, optional
+            How each node chooses its feature: ``"greedy"`` (the default)
+            or ``"ctree"`` (conditional inference, which also stops a
+            tree where the data show no effect); see
+            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+        alpha_split : float, optional
+            With ``selection="ctree"``, a node splits only if the
+            Bonferroni-adjusted p-value of its chosen feature is below
+            ``alpha_split``. Defaults to 0.05.
+        random_state : None, int or numpy.random.Generator, optional
+            Seeds the bootstrap resamples and the features drawn for each
+            split. ``None`` (the default) draws from NumPy's global random
+            state, so ``np.random.seed`` reproduces the forest; a seed or
+            ``Generator`` gives the forest a stream of its own (and each
+            tree a child stream of it) and leaves the global one alone.
 
         Returns
         -------
@@ -183,6 +220,20 @@ class RandomSurvivalForest(SerialisableMixin):
         ... )
         >>> forest.sf(5, [[0.2, 0.5], [0.8, 0.5]]).round(3)
         array([0.561, 0.396])
+
+        A seed of its own reproduces the forest without touching NumPy's
+        global state:
+
+        >>> a = RandomSurvivalForest.fit(
+        ...     x, Z, c=c, n_trees=5, max_depth=1, kind="exponential",
+        ...     random_state=1,
+        ... )
+        >>> b = RandomSurvivalForest.fit(
+        ...     x, Z, c=c, n_trees=5, max_depth=1, kind="exponential",
+        ...     random_state=1,
+        ... )
+        >>> bool(np.array_equal(a.sf(5, Z[:3]), b.sf(5, Z[:3])))
+        True
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -199,6 +250,9 @@ class RandomSurvivalForest(SerialisableMixin):
             n_features_split,
             bootstrap,
             kind,
+            selection,
+            alpha_split,
+            random_state,
         )
 
     def sf(
@@ -544,6 +598,8 @@ class RandomSurvivalForest(SerialisableMixin):
                 "kind": self.kind,
                 "n_trees": int(self.n_trees),
                 "bootstrap": bool(self.bootstrap),
+                "selection": self.selection,
+                "alpha_split": float(self.alpha_split),
                 "trees": [tree.to_dict() for tree in self.trees],
             }
         )
@@ -558,6 +614,9 @@ class RandomSurvivalForest(SerialisableMixin):
         forest.kind = model_dict["kind"]
         forest.n_trees = model_dict["n_trees"]
         forest.bootstrap = model_dict["bootstrap"]
+        # Forests saved before selection existed were grown greedily.
+        forest.selection = model_dict.get("selection", "greedy")
+        forest.alpha_split = model_dict.get("alpha_split", 0.05)
         # A restored forest predicts but is not re-fittable; it holds no data.
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]
