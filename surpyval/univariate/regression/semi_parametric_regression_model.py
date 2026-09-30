@@ -10,7 +10,11 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import is_missing_event
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
 from ._summary import (
     coefficient_names,
@@ -458,12 +462,36 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out = np.where(idx >= 0, values[np.maximum(idx, 0)], before)
         return np.where(np.isnan(x), np.nan, out)
 
+    def _scaled_step(
+        self,
+        values: npt.NDArray,
+        bx: npt.NDArray,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        grid: bool,
+    ) -> npt.NDArray:
+        """The baseline step function ``values`` at ``x`` times ``phi(Z)``:
+        paired (row ``i`` of ``Z`` with ``x[i]``, or one of them single),
+        or on the grid of every row by every time, ``(len(Z), len(x))``."""
+        base = self._baseline_step(bx, values, x)
+        if grid:
+            rows = covariate_rows(
+                self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+            )
+            log_risk = self._log_risk(rows)
+            return self._times_risk(base[None, :], log_risk[:, None])
+        log_risk = self._log_phi(Z)
+        check_paired_rows(base.size, np.size(log_risk))
+        return self._times_risk(base, log_risk)
+
     @keeps_query_shape
     def hf(
         self,
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Hazard at ``x`` for covariates ``Z``: the baseline hazard
@@ -472,11 +500,15 @@ class SemiParametricRegressionModel(SerialisableMixin):
         baseline times ``self.x`` include the censoring times, where the
         increment is 0. ``Z`` is one row (used for every ``x``) or one row
         per ``x``, paired in the order given.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
         """
         bx, bh0, _ = self._baseline_arrays(stratum)
-        return self._times_risk(
-            self._baseline_step(bx, bh0, x), self._log_phi(Z)
-        )
+        return self._scaled_step(bh0, bx, x, Z, grid)
 
     @keeps_query_shape
     def Hf(
@@ -484,17 +516,23 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Cumulative hazard at ``x`` for covariates ``Z``: the baseline
         ``H0(x)`` (0 before the first event time) times
         ``phi(Z)``. ``Z`` is one row (used for every ``x``) or one row per
         ``x``, paired in the order given.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
         """
         bx, _, bH0 = self._baseline_arrays(stratum)
-        return self._times_risk(
-            self._baseline_step(bx, bH0, x), self._log_phi(Z)
-        )
+        return self._scaled_step(bH0, bx, x, Z, grid)
 
     @keeps_query_shape
     def sf(
@@ -502,14 +540,35 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Survival :math:`e^{-H_0(x) e^{\\beta' Z}}` at ``x`` for covariates
         ``Z`` (one row, or one row per ``x``); ``stratum`` selects the
         baseline of a stratified fit. A missing (``NaN``) time, covariate
         or stratum label gives ``nan`` in its place.
+        With ``grid=True`` every time is evaluated for every row of ``Z``
+        (a survival curve per subject, lifelines'
+        ``predict_survival_function``): the result has shape ``(len(Z),) +
+        x.shape``, row ``i`` for row ``i`` of ``Z``, as a survival
+        forest's. Without, rows and times of different counts (neither
+        one) are refused (#488).
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, df["arrest"].values
+        >>> model = CoxPH.fit(x, df[["fin", "age"]].values, c=c)
+        >>> subjects = [[0, 20], [1, 20], [0, 40]]
+        >>> model.sf([10, 30, 50], subjects, grid=True).round(3)
+        array([[0.949, 0.8  , 0.641],
+               [0.963, 0.851, 0.726],
+               [0.987, 0.948, 0.899]])
         """
-        return np.exp(-self.Hf(x, Z, stratum))
+        return np.exp(-self.Hf(x, Z, stratum, grid=grid))
 
     @keeps_query_shape
     def ff(
@@ -517,12 +576,14 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         Failure probability ``1 - sf`` at ``x`` for covariates ``Z``;
         arguments as for :meth:`sf`.
         """
-        return -np.expm1(-self.Hf(x, Z, stratum))
+        return -np.expm1(-self.Hf(x, Z, stratum, grid=grid))
 
     @keeps_query_shape
     def df(
@@ -530,13 +591,17 @@ class SemiParametricRegressionModel(SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         stratum: Any = None,
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         """
         ``hf * sf`` at ``x`` for covariates ``Z``: the probability mass at
         each baseline event time (the baseline is a step function);
         arguments as for :meth:`sf`.
         """
-        return self.hf(x, Z, stratum) * self.sf(x, Z, stratum)
+        return self.hf(x, Z, stratum, grid=grid) * self.sf(
+            x, Z, stratum, grid=grid
+        )
 
     def compute_residuals(self, kind: str = "martingale") -> npt.NDArray:
         """

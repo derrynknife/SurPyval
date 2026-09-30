@@ -266,11 +266,12 @@ Each family also has a ``fit_from_df`` that names DataFrame columns instead
 Predictions — ``sf``, ``ff``, ``df``, ``hf`` and ``Hf`` — take times and
 covariates. Given **one** covariate row they return the curve over all the
 times; given ``n`` rows and ``n`` times they pair them **element-wise**, one
-time per row, which is what you want for scoring a data set but not for drawing
-several curves. To draw curves for several covariate values, call once per
-value. (The survival tree and forest return a full grid instead; see their
-section.)
-A small simulated data set shows both forms:
+time per row, which is what you want for scoring a data set; any other number
+of rows is refused with a ``ValueError``. For a curve per covariate row --
+every time for every row, lifelines' ``predict_survival_function`` -- pass
+``grid=True``: the result has shape ``(len(Z),) + x.shape``, row ``i`` for
+row ``i`` of ``Z``, as the survival tree and forest return it.
+A small simulated data set shows the three forms:
 
 .. jupyter-execute::
 
@@ -285,6 +286,16 @@ A small simulated data set shows both forms:
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
+    print('two rows, a grid     :')
+    print(demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _g = demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True)
+    assert _g.shape == (2, 3)
+    assert np.allclose(_g[1], demo.sf([5.0, 10.0, 15.0], Z=[1.0]))
 
 The regression models do not have a quantile function (``qf``). A quantile at a
 given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a

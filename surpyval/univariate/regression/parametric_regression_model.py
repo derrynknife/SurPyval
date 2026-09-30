@@ -18,7 +18,11 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
-from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 
 from ._bounds import logit_sf_bound
 from .regression_data import (
@@ -449,6 +453,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             names[self.k_dist + j] for j in self.aliased.tolist()
         }
 
+    def _n_covariates(self) -> int:
+        """The number of columns of ``Z``: that of the fitted data where
+        the model has it, else one per coefficient (an accelerated-life
+        model's life-model parameters are not one per column)."""
+        data = getattr(self, "data", None)
+        Z = getattr(data, "Z", None)
+        if Z is not None and np.ndim(Z) == 2:
+            return int(np.shape(Z)[1])
+        return len(self.params) - self.k_dist
+
     def _has_center(self) -> bool:
         """Whether the baseline is at a nonzero covariate ``center``."""
         return self.center is not None and bool(np.any(self.center))
@@ -704,6 +718,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         below_support: float,
+        grid: bool = False,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -711,7 +726,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # named method carried this verbatim.
         if isinstance(x, list):
             x = np.array(x)
-        Z = self._centred(self._prepare_Z(Z))
+        Z = self._prepare_Z(Z)
+        shape = None
+        if grid:
+            # Every time for every row (#488): the pairs, then reshaped.
+            rows = covariate_rows(Z, self._n_covariates())
+            shape = (rows.shape[0], np.size(x))
+            x = np.tile(np.asarray(x, dtype=float).reshape(-1), shape[0])
+            Z = np.repeat(rows, shape[1], axis=0)
+        elif np.ndim(Z) == 2:
+            check_paired_rows(np.size(x), np.shape(Z)[0])
+        Z = self._centred(Z)
         # Below the support (a negative time for a positive distribution)
         # nothing has happened yet: survival 1, and 0 for the others. The
         # distribution functions gave nan there, with a RuntimeWarning, and
@@ -728,6 +753,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)
+        if shape is not None:
+            out = np.asarray(out, dtype=float).reshape(shape)
         return out
 
     def _warn_if_hazard_negative(
@@ -788,7 +815,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         Survival (or Reliability) function for a distribution using the
@@ -805,7 +836,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -828,7 +865,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        return self._eval(self.model.sf, x, Z, 1.0)
+        return self._eval(self.model.sf, x, Z, 1.0, grid)
 
     # Families whose survival along a step-valued covariate path has an exact
     # closed form. Proportional hazards, additive hazards and proportional
@@ -1427,7 +1464,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The cumulative distribution function, or failure function, for a
@@ -1444,7 +1485,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1468,11 +1515,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        return self._eval(self.model.ff, x, Z, 0.0)
+        return self._eval(self.model.ff, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The density function for a distribution using the parameters found in
@@ -1489,7 +1540,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1513,11 +1570,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        return self._eval(self.model.df, x, Z, 0.0)
+        return self._eval(self.model.df, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The instantaneous hazard function for a distribution using the
@@ -1534,7 +1595,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1559,11 +1626,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        return self._eval(self.model.hf, x, Z, 0.0)
+        return self._eval(self.model.hf, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
 
@@ -1581,7 +1652,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -1606,7 +1683,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        return self._eval(self.model.Hf, x, Z, 0.0)
+        return self._eval(self.model.Hf, x, Z, 0.0, grid)
 
     def random(
         self,
@@ -2040,6 +2117,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there
         # the coefficients are not nearly collinear with the baseline.
+        if np.ndim(self._prepare_Z(Z)) == 2:
+            # Rows and times paired, as for sf (#488).
+            check_paired_rows(
+                np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
+            )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self.kind == "Additive Hazard":
