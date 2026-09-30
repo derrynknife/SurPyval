@@ -152,9 +152,11 @@ def keeps_query_shape(
             if x is None:
                 # A query left to its default (the fitted times, say).
                 return method(self, x, *args, **kwargs)
-            if kwargs.get("given") is not None and not point_ndim:
+            given = kwargs.get("given")
+            if given is not None and np.ndim(given) > 0 and not point_ndim:
                 # A conditioning time per point (#514): broadcast against
-                # the query first, so that both flatten alike.
+                # the query first, so that both flatten alike. (A scalar
+                # is passed as it is: sf_tvc takes only a scalar.)
                 from surpyval.utils.conditional import broadcast_given
 
                 x, given = broadcast_given(x, kwargs["given"])
