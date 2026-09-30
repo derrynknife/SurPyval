@@ -44,9 +44,11 @@ from surpyval.utils.linalg import numerical_hessian
 
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import (
+    _gradient,
     alias_coefficients,
     finish_search,
     natural_information,
+    optimise_ph,
     require_finite_fit,
 )
 from ..proportional_hazards.cox_ph import _strata_labels
@@ -181,6 +183,36 @@ def _group_frailty_ll(
 
 
 _EPS = float(np.finfo(float).eps)
+
+
+def _settle_on_zero_variance(fun: Callable, res: Any) -> Any:
+    """Carry a frailty variance that the gradient search left on its way to
+    the boundary at 0 the rest of the way there.
+
+    ``theta`` is searched as ``log theta``, whose boundary is at minus
+    infinity, and the gradient in ``log theta`` is ``theta`` times the one
+    in ``theta``: on data with no detectable frailty BFGS stops at a small
+    ``theta`` (1e-7 to 1e-6) once that product is below its tolerance,
+    with the likelihood still rising towards ``theta = 0`` by about
+    ``theta`` times its slope there (up to 1e-5 nats). Nelder-Mead, used
+    before (#515), kept going to ``theta`` of 1e-9 or less. Steps of a
+    factor ``e^10`` in ``theta`` carry on while the likelihood rises; once
+    ``theta`` is small enough for every group term to be its no-frailty
+    limit (``_group_frailty_ll``) nothing changes and the steps stop. A
+    ``theta`` at an interior maximum is left where it is, since the first
+    step lowers the likelihood.
+    """
+    u = np.array(res.x, dtype=float)
+    best = float(res.fun)
+    for _ in range(10):
+        trial = u.copy()
+        trial[-1] -= 10.0
+        f = float(fun(trial))
+        if not (np.isfinite(f) and f < best):
+            break
+        u, best = trial, f
+    res.x, res.fun = u, best
+    return res
 
 
 @primitive
@@ -463,33 +495,48 @@ class FrailtyFitter:
             nat = to_nat(u, n_beta)
             return self._neg_ll_natural(nat, x, c, w, Zc, inv, n_beta)
 
-        u0 = to_unc(init_nat, n_beta)
-        with np.errstate(all="ignore"):
-            res = minimize(
-                obj_unc,
-                u0,
-                method="Nelder-Mead",
-                options={"maxiter": 10000, "xatol": 1e-8, "fatol": 1e-8},
-            )
-            polished = minimize(obj_unc, res.x, method="BFGS")
-        # BFGS often stops on "precision loss" at the optimum Nelder-Mead
-        # already found; keep whichever is better, and say so only if
-        # neither converged.
-        converged = bool(res.success or polished.success)
-        if np.isfinite(polished.fun) and (
-            polished.fun <= res.fun or not np.isfinite(res.fun)
-        ):
-            res = polished
-        require_finite_fit(float(res.fun))
-        # One warning: a coefficient with no finite maximum (a level with no
-        # events, #392), or else a search that did not converge.
-        res.stopped_short = not converged
-
         def obj_traced(u: npt.NDArray) -> Any:
             nat = to_nat(u, n_beta, _AUTOGRAD)
             return self._neg_ll_natural(
                 nat, x, c, w, Zc, inv, n_beta, _AUTOGRAD
             )
+
+        u0 = to_unc(init_nat, n_beta)
+        res = None
+        with np.errstate(all="ignore"):
+            # The gradient ladder first, on the likelihood's exact gradient,
+            # as for the AFT and PO fits (#499): Nelder-Mead took 1800 to
+            # 4000 evaluations and BFGS then differenced the gradient, 44.6 s
+            # for a gamma baseline at 10 000 rows (#515). Its answer is kept
+            # when it is a verified optimum; otherwise the derivative-free
+            # search below runs as before.
+            if _gradient(obj_traced, u0) is not None:
+                fast = optimise_ph(obj_traced, u0, quiet=True)
+                if np.isfinite(fast.fun) and not getattr(
+                    fast, "stopped_short", False
+                ):
+                    res = _settle_on_zero_variance(obj_unc, fast)
+                    converged = True
+            if res is None:
+                res = minimize(
+                    obj_unc,
+                    u0,
+                    method="Nelder-Mead",
+                    options={"maxiter": 10000, "xatol": 1e-8, "fatol": 1e-8},
+                )
+                polished = minimize(obj_unc, res.x, method="BFGS")
+                # BFGS often stops on "precision loss" at the optimum
+                # Nelder-Mead already found; keep whichever is better, and
+                # say so only if neither converged.
+                converged = bool(res.success or polished.success)
+                if np.isfinite(polished.fun) and (
+                    polished.fun <= res.fun or not np.isfinite(res.fun)
+                ):
+                    res = polished
+        require_finite_fit(float(res.fun))
+        # One warning: a coefficient with no finite maximum (a level with no
+        # events, #392), or else a search that did not converge.
+        res.stopped_short = not converged
 
         no_maximum, derivatives = finish_search(
             obj_traced,

@@ -44,9 +44,14 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from autograd import hessian, jacobian
 from scipy.optimize import minimize
 
-from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.parametric.fitters import (
+    is_local_minimum,
+    preconditioned_bfgs,
+    verify_or_polish,
+)
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -58,6 +63,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
+    _gradient,
     assemble_regression_model,
     finish_search,
     free_coefficients,
@@ -71,6 +77,10 @@ from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
+
+
+class _OverBudget(Exception):
+    """The search on the exact gradient ran out of its budget."""
 
 
 class _AdditiveReg:
@@ -267,6 +277,9 @@ class AdditiveHazardsFitter(
     #: ``_warn_if_on_positivity_boundary``).
     BOUNDARY_INFORMATION_SHARE = 0.5
     BOUNDARY_HAZARD_FRACTION = 0.25
+    #: Gradients the search on the exact gradient may take before the fit
+    #: falls back to its derivative-free search (see ``_gradient_first``).
+    GRADIENT_FIRST_BUDGET = 400
 
     def _warn_if_on_positivity_boundary(
         self, data: SurpyvalData, params: npt.NDArray
@@ -327,6 +340,76 @@ class AdditiveHazardsFitter(
             stacklevel=3,
         )
         return True
+
+    @staticmethod
+    def _gradient_first(
+        fun: Any, true_neg_ll: Any, init: npt.ArrayLike, n_obs: float
+    ) -> tuple[Any, bool]:
+        """A search on the likelihood's exact gradient first, as the AFT
+        and PO fits do (#499), and whether its answer is a verified
+        maximum of the likelihood.
+
+        The fit began with Nelder-Mead and then TNC on finite differences,
+        2.3 s for a WeibullAH at 10 000 rows against 0.36 s for the
+        WeibullPH, whose search uses the exact gradient (#515). This runs
+        the first rung of the proportional hazards ladder, BFGS in the
+        units maximum likelihood searches in (``preconditioned_bfgs``),
+        from ``init``, inside the valid region (the default, ``beta = 0``,
+        is the baseline alone, whose hazard is positive): the penalty in
+        ``fun`` keeps every accepted step there, as the line search backs
+        off a step that crosses the barrier. The answer is kept only when
+        it is a verified maximum -- zero gradient and positive-definite
+        Hessian of the unpenalised likelihood (``is_local_minimum``). A
+        fit that ends on the positivity boundary, or whose likelihood has
+        no maximum, is neither, and the caller runs its derivative-free
+        search as before; the later rungs of the ladder are not run, as
+        they only cost time there.
+
+        The search has a budget of ``GRADIENT_FIRST_BUDGET`` gradients.
+        An ordinary fit takes 10 to 85; on a likelihood with no maximum
+        the line searches chase the runaway coefficient with thousands
+        (3500 on 70 rows, ten times the whole old fit), and the answer
+        could never be verified anyway.
+        """
+        start: npt.NDArray = np.asarray(init, dtype=float)
+        if (
+            not np.isfinite(true_neg_ll(start))
+            or _gradient(fun, start) is None
+        ):
+            return None, False
+        grad = jacobian(fun)
+        spent = [0]
+
+        def budgeted(u: npt.NDArray) -> Any:
+            spent[0] += 1
+            if spent[0] > AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET:
+                raise _OverBudget
+            return grad(u)
+
+        with warnings.catch_warnings():
+            # The penalty is constant outside the valid region, and
+            # autograd says so for any gradient taken there.
+            warnings.filterwarnings("ignore", "Output seems independent")
+            try:
+                res = preconditioned_bfgs(
+                    fun,
+                    start,
+                    jac=budgeted,
+                    options={"maxiter": 1000},
+                    obj_scale=n_obs,
+                )
+            except _OverBudget:
+                return None, False
+            if not np.isfinite(res.fun):
+                return None, False
+            verified = is_local_minimum(
+                true_neg_ll,
+                jacobian(true_neg_ll),
+                hessian(true_neg_ll),
+                res.x,
+                obj_scale=n_obs,
+            )
+        return (res, True) if verified else (None, False)
 
     # -- factory ----------------------------------------------------------
 
@@ -443,20 +526,24 @@ class AdditiveHazardsFitter(
             def fun(params: npt.NDArray) -> Boxable:
                 # Where the additive hazard goes non-positive the log-
                 # likelihood is genuinely -inf; return a large finite penalty
-                # (not a solver constraint) so the derivative-free optimiser
-                # stays in the region where the model is valid rather than
+                # (not a solver constraint) so the optimisers, the gradient
+                # search too, stay where the model is valid rather than
                 # stalling on nan gradients. The initial guess (beta = 0) has
                 # the strictly-positive baseline hazard, so it is valid.
                 val = true_neg_ll(params)
                 return val if np.isfinite(val) else 1e15
 
-            res = minimize(fun, init, method="Nelder-Mead")
-            res = minimize(fun, res.x, method="TNC")
-            # TNC's result was never checked: a Gamma baseline stopped at
-            # alpha ~ 1e-282 on a "linear search failed", silently (#427).
-            res, converged = verify_or_polish(
-                fun, res, float(np.sum(data.n)), true_neg_ll
+            n_obs = float(np.sum(data.n))
+            res, converged = self._gradient_first(
+                fun, true_neg_ll, init, n_obs
             )
+            if not converged:
+                res = minimize(fun, init, method="Nelder-Mead")
+                res = minimize(fun, res.x, method="TNC")
+                # TNC's result was never checked: a Gamma baseline stopped
+                # at alpha ~ 1e-282 on a "linear search failed", silently
+                # (#427).
+                res, converged = verify_or_polish(fun, res, n_obs, true_neg_ll)
 
             params = inv_trans(const(res.x))
 
