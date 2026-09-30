@@ -62,6 +62,8 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "summary": "a table of the parameters' Wald intervals (param_cb's for "
+    "the baseline; checked in regression/test_summary.py, #484)",
 }
 # "confidence" was the recurrent models' level until v0.22.0; a method
 # that took it again would be an unswept uncertainty method.
