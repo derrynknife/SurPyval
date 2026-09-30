@@ -245,6 +245,14 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         """The estimated frailty variance :math:`\\hat\\theta`."""
         return float(self.theta)
 
+    @property
+    def aliased(self) -> np.ndarray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column where the baseline's scale is
+        the intercept, or a linear combination of the others. Their
+        ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
         if self.covariance is None:

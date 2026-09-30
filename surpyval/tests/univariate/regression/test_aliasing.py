@@ -203,6 +203,7 @@ def test_fine_gray_and_competing_risks():
         assert len(messages) == 1 and messages[0].startswith(_aliased(2))
         assert caught[0].filename == __file__
         assert np.isnan(model.betas[:, 2]).all()
+        np.testing.assert_array_equal(model.aliased, [2])
         np.testing.assert_allclose(
             model.cif([0.5, 1.0], Z3[:1], "a"),
             ref.cif([0.5, 1.0], Z[:1], "a"),
@@ -226,6 +227,8 @@ def test_frailty():
     np.testing.assert_allclose(model.dist_params, ref.dist_params, rtol=1e-5)
     np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-5)
     assert np.isnan(model.beta[2])
+    np.testing.assert_array_equal(model.aliased, [2])
+    assert ref.aliased.size == 0
     np.testing.assert_allclose(
         model.sf([0.5], [0.1, 0.2, 1.0]), ref.sf([0.5], [0.1, 0.2]), rtol=1e-5
     )
