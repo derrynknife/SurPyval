@@ -821,7 +821,21 @@ The underlying caution still stands, though, and it is worth keeping in mind for
 
 - **Judge an offset fit by what it predicts, not only by the printed parameters.** Plot it against the non-parametric estimate, or compare the survival function, quantiles, mean and variance. Two parameter tuples that look very different can imply nearly the same distribution.
 - **If you need ``gamma`` itself to be meaningful** - you are interpreting it as a guaranteed minimum life, say - prefer ``MLE``, which remains the most accurate on the parameters, and treat a single point estimate of a threshold with care regardless of method. Note that ``gamma`` has no standard error, so ``param_cb`` cannot give an interval for it (see :doc:`Parametric Estimation`).
-- **If the MLE struggles** - a small sample, or a shape that puts an infinite density at the threshold - try ``how='MPS'``, which was designed for exactly this case (see the section on alternate estimation methods below).
+- **If the MLE struggles** - a small sample, or a shape that puts an infinite density at the threshold - try ``how='MPS'``, which was designed for exactly this case (see the section on alternate estimation methods below). The likelihood of an offset fit has no finite maximum when ``gamma`` can run onto the first failure: with a Weibull, Gamma or LogLogistic shape below 1 the density there is infinite (for the LogNormal, the scale grows without bound on the way). Such a fit warns "No finite maximum", returns where its search stopped, with ``gamma`` on the smallest observation, and recommends ``how='MPS'``, whose spacings have no such limit. On the seven failures ``[55, 60, 70, 80, 95, 120, 140]`` the three-parameter Weibull does this (its shape falls to 0.09), while its MPS fit puts ``gamma`` at 49.8, with a shape of 0.95. The two-parameter Exponential is the exception: its density is finite at the threshold, so its maximum at ``gamma`` equal to the first failure is a genuine one.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    import warnings
+    _x = [55, 60, 70, 80, 95, 120, 140]
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.Weibull.fit(_x, offset=True)
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert abs(_m.gamma - 55) < 1e-5 and round(_m.params[1], 2) == 0.09
+    _m = surv.Weibull.fit(_x, offset=True, how="MPS")
+    assert round(_m.gamma, 1) == 49.8 and round(_m.params[1], 2) == 0.95
 
 ``test_offset_divergence.py`` in the test suite pins this down for offset Gamma and Rayleigh fits with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, and ``MOM`` (on the Rayleigh) to 10%, with the implied distributions essentially identical either way.
 
