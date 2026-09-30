@@ -131,8 +131,10 @@ def test_empty_declared_level_raises_at_prediction(family, restored):
 def test_empty_declared_level_old_answer_was_the_reference_level():
     # The numbers of the issue: WeibullPH left the coefficient of 'd' at
     # its start value 0, so 'd' predicted exactly as the reference 'a'.
+    # Nothing estimates it: it is aliased now (#476), reported as nan and
+    # predicted with as 0.
     model = _fit_quietly("WeibullPH", "z + " + LEVELS, _df())
-    assert model.params[-1] == 0.0
+    assert np.isnan(model.params[-1])
     assert model.feature_names[-1] == LEVELS + "[T.d]"
     Z_a = np.array([[2.0, 0.0, 0.0, 0.0]])
     Z_d = np.array([[2.0, 0.0, 0.0, 1.0]])

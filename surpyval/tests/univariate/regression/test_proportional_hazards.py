@@ -510,9 +510,11 @@ def test_exact_handles_large_tie_sets():
         x, Z, c, np.ones(n), np.full(n, -np.inf)
     )
     assert neg_ll(np.array([0.7])) == pytest.approx(0.0, abs=1e-12)
-    # A flat likelihood determines no coefficient: the fit says so (#409).
-    with pytest.raises(ValueError, match="partial likelihood does not"):
-        CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
+    # A flat likelihood determines no coefficient: the fit says so, and
+    # reports it as nan (#409, #476).
+    with pytest.warns(UserWarning, match="partial likelihood does not"):
+        model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
+    assert np.isnan(model.beta).all()
 
 
 def test_kp_handles_heavy_ties():

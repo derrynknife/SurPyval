@@ -28,6 +28,7 @@ from surpyval.univariate.nonparametric.nonparametric import _check_option
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
+    covariate_columns,
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import (
@@ -606,16 +607,17 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        fitted = cls.fit(
-            x,
-            Z,
-            e,
-            c=c,
-            n=n,
-            model=model,
-            tie_method=tie_method,
-            center=center,
-        )
+        with covariate_columns(feature_names, Z, model_spec):
+            fitted = cls.fit(
+                x,
+                Z,
+                e,
+                c=c,
+                n=n,
+                model=model,
+                tie_method=tie_method,
+                center=center,
+            )
         fitted.formula = form
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec

@@ -164,7 +164,7 @@ def _fit_cause(
     p = Z.shape[1]
     neg_ll = partial_neg_ll(Z)
     aliased = aliased_columns(
-        hessian(neg_ll)(np.zeros(p)),
+        _information_at_zero(Z, W, n, is_event),
         Z.shape[0],
         constant_columns(Z_raw),
         float(n_event.sum()) * (n @ Z**2) / n.sum(),
@@ -248,6 +248,22 @@ def _fit_cause(
         "res": res,
         "runaway": runaway,
     }
+
+
+def _information_at_zero(
+    Z: npt.NDArray, W: npt.NDArray, n: npt.NDArray, is_event: npt.NDArray
+) -> npt.NDArray:
+    """The information of the subdistribution partial likelihood at
+    ``beta = 0``: over the events, the covariance of ``Z`` in the risk set
+    weighted by ``W * n``, ``sum_j d_j (sum_i w_ji Z_i Z_i' / S0_j - m_j
+    m_j')``, ``m_j`` the weighted mean. It is what the aliasing check
+    (#476) judges the columns by."""
+    Wn = W * n
+    S0 = Wn.sum(axis=1)
+    d_over = n[is_event] / S0
+    M = (Wn @ Z) / S0[:, None]
+    a = d_over @ Wn
+    return Z.T @ (a[:, None] * Z) - M.T @ (n[is_event][:, None] * M)
 
 
 def _warn_if_monotone(fits: list) -> None:

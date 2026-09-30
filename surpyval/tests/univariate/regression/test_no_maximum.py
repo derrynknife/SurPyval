@@ -187,16 +187,23 @@ def test_collinear_covariates_are_not_taken_for_a_runaway():
     # Every level of a factor coded (as "0 + C(g)" does): the likelihood
     # does not depend on their sum at all, so along it the derivatives are
     # rounding, and the Fine-Gray fit warned of a monotone likelihood. The
-    # direction is flat at the start too, which a runaway's is not.
+    # direction is flat at the start too, which a runaway's is not. The
+    # last level is aliased (#476): that is the one warning.
     d = reg_data()
     g = np.arange(30) // 10  # each level has events of both causes
     Z = np.column_stack([g == 0, g == 1, g == 2, d["Z"][:, 1]]).astype(float)
     e = _competing(d)["e"]
     _, w = _fit(lambda: FineGray.fit(d["x"], Z, e, n=d["n"], event="a"))
-    assert not w, [str(x.message) for x in w]
-    for fitter in (sp.WeibullPH, sp.LogNormalAFT, sp.WeibullPO):
+    aliased = "Covariate column(s) 2 of Z cannot be estimated"
+    assert [str(x.message)[:46] for x in w] == [aliased]
+    for fitter in (sp.WeibullPH, sp.LogNormalAFT):
         _, w = _fit(lambda: fitter.fit(x=d["x"], Z=Z, c=d["c"], n=d["n"]))
-        assert not w, [str(x.message) for x in w]
+        assert [str(x.message)[:46] for x in w] == [aliased]
+    # Scaling a Weibull's survival odds leaves the Weibull family, so the
+    # proportional odds model has no intercept to alias the sum with: the
+    # coefficients are identified (weakly), and nothing is said.
+    _, w = _fit(lambda: sp.WeibullPO.fit(x=d["x"], Z=Z, c=d["c"], n=d["n"]))
+    assert not w, [str(x.message) for x in w]
 
 
 # -- the criterion itself -----------------------------------------------------
@@ -274,7 +281,11 @@ def test_collinear_fine_gray_formula_does_not_warn():
             model="Fine-Gray",
         )
     )
-    assert not w, [str(x.message) for x in w]
+    # The last level is aliased (#476), once for both causes, by name.
+    assert len(w) == 1, [str(x.message) for x in w]
+    assert str(w[0].message).startswith(
+        "Covariate column(s) 2 ('C(g)[c]') of Z cannot be estimated"
+    )
 
 
 # -- the gate: profiles are read only where Newton has not converged ----------

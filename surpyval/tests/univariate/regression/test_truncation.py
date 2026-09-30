@@ -31,11 +31,12 @@ def test_left_truncation_matches_baseline(fitter):
     # phi(0) = 1, so the regression fit must equal the truncated baseline.
     x, Z, t, tl = _left_truncated_data()
     baseline = Weibull.fit(x=x, tl=tl)
-    model = fitter.fit(x=x, Z=Z, t=t)
+    # A column of zeros determines no coefficient: it is aliased (#476).
+    with pytest.warns(UserWarning, match=r"column\(s\) 0 of Z cannot"):
+        model = fitter.fit(x=x, Z=Z, t=t)
 
     assert np.allclose(model.params[:2], baseline.params, atol=1e-2)
-    # The regression coefficient should be ~0 for a constant covariate.
-    assert np.allclose(model.params[2:], 0.0, atol=1e-2)
+    assert np.isnan(model.params[2:]).all()
 
 
 @pytest.mark.parametrize("fitter", [WeibullPH, WeibullPO, AFT(Weibull)])
