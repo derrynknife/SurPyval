@@ -140,7 +140,11 @@ Estimation
 
 12. **A fit returns what it claims:** the optimum of its stated estimator.
     If the estimator has no optimum on the data, the fit refuses or warns;
-    it never returns a silent degenerate answer.
+    it never returns a silent degenerate answer. Where the data do not
+    determine a coefficient -- a covariate column that is constant where
+    the model has an intercept, or a combination of the others -- the fit
+    says so: the coefficient is ``nan`` and listed in ``aliased``, with
+    one warning naming the column, rather than an arbitrary value.
 
     *Partly checked.* The property tests check that parametric fits, on
     generated data with every kind of censoring and truncation, are local
@@ -153,7 +157,13 @@ Estimation
     Fine-Gray, copula, mixture and degradation fits warn "No finite
     maximum" (#392); known gaps: the AFT ``fit_tvc`` path, and abutting
     intervals such as (1, 3] and (3, 5], whose likelihood has a flat
-    ridge.
+    ridge. ``conformance/test_aliasing.py`` refits every registered model
+    that has coefficients with a repeated covariate column, and with a
+    constant one where it has an intercept, and requires the aliasing and
+    otherwise the fit without the column; the time-varying fits are
+    checked in ``univariate/regression/test_aliasing.py``. Known gaps:
+    the proportional-intensity recurrent regressions (#NEW1) and the
+    dual-stress life models (#NEW2).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.

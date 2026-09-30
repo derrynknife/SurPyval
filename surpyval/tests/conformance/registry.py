@@ -54,6 +54,7 @@ from surpyval import recurrent as rc
 from surpyval.beta import ml
 from surpyval.tests.conformance.leaks import quiet
 from surpyval.univariate import competing_risks as cr
+from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
 # ---------------------------------------------------------------------------
 # Interfaces: how a model's functions are called
@@ -157,6 +158,17 @@ PROPERTIES: dict[str, str] = {
         "a fit that cannot converge warns or raises ValueError, never "
         "returns silently; a fit does not return its initial guess"
     ),
+    # test_aliasing.py, over each case's ``coefficients``.
+    "aliasing": (
+        "a covariate column repeating another is aliased: its coefficient "
+        "nan and listed in ``aliased``, one warning naming it, and the "
+        "other coefficients and every prediction those of the fit "
+        "without it"
+    ),
+    "aliasing_constant": (
+        "a constant covariate column is aliased, the same way, where the "
+        "model has an intercept"
+    ),
 }
 
 # Properties that refit the model (the slow ones).
@@ -169,6 +181,8 @@ REFIT_PROPERTIES = frozenset(
         "fit_paths",
         "warn_once",
         "convergence",
+        "aliasing",
+        "aliasing_constant",
     }
 )
 
@@ -197,6 +211,8 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "row_independence": frozenset(WITH_COVARIATES),
     "missing_covariate": frozenset(WITH_COVARIATES),
     "outside_data": _EVERY - {BIVARIATE},
+    "aliasing": frozenset(WITH_COVARIATES),
+    "aliasing_constant": frozenset(WITH_COVARIATES),
 }
 for _prop in PROPERTIES:
     _APPLICABLE.setdefault(_prop, _EVERY)
@@ -253,6 +269,15 @@ class Case:
     # Relative tolerance of the refit comparisons (an optimiser's answer
     # moves with its starting point; exact estimators get 1e-9).
     rtol: float = 1e-4
+    # The fitted model's covariate coefficients, one per column of Z (a
+    # row per cause for a model fitted cause by cause), for
+    # test_aliasing.py. A model with covariates must give them, or
+    # exclude "aliasing" with the reason it has none.
+    coefficients: Callable[[Any], Any] | None = None
+    # Whether a constant covariate column is aliased: the model has an
+    # intercept that absorbs it (a Cox-type baseline hazard, a scale
+    # that a constant in the linear predictor moves).
+    intercept: bool = False
     exclude: dict[str, str] = field(default_factory=dict)
     # Filled from KNOWN_FAILURES.
     xfail: dict[str, str] = field(default_factory=dict)
@@ -288,6 +313,8 @@ class Case:
         if prop == "estimators_agree" and self.large is None:
             return False
         if prop == "convergence" and self.starve is None:
+            return False
+        if prop == "aliasing_constant" and not self.intercept:
             return False
         return self.interface in _APPLICABLE[prop] and prop not in (
             self.exclude
@@ -867,8 +894,18 @@ def regression(name, fitter, data=reg_data, x=X_REG, Z=Z_REG, **kw):
         paths=kw.pop("paths", paths),
         rows=kw.pop("rows", ("x", "Z", "c", "n")),
         covariates="Z",
+        coefficients=kw.pop("coefficients", _phi),
         **kw,
     )
+
+
+def _phi(model):
+    """A parametric regression's covariate coefficients."""
+    return np.asarray(model.params, dtype=float)[model.k_dist :]
+
+
+def _beta(model):
+    return model.beta
 
 
 # Parametric regression: every kind with every baseline is registered, and
@@ -881,6 +918,17 @@ BASELINES: tuple[str, ...] = ("Weibull", "LogNormal", "Exponential")
 BASELINES += ("Gamma", "Normal", "Gumbel", "Logistic")
 FAST_REGRESSIONS: tuple[str, ...] = ("WeibullPH", "WeibullAFT", "WeibullPO")
 FAST_REGRESSIONS += ("WeibullAH", "LogNormalAFT")
+
+
+# A constant column is aliased where the family has an intercept: where a
+# constant in the linear predictor moves the baseline's parameters and
+# nothing else (ORIGIN_MAPS, as the fit decides it).
+_KINDS = {
+    "PH": "Proportional Hazard",
+    "AFT": "Accelerated Failure Time",
+    "PO": "Proportional Odds",
+    "AH": "Additive Hazards",
+}
 
 
 def _regression_family():
@@ -898,7 +946,13 @@ def _regression_family():
                     "between the observed times, so sf can exceed 1"
                 )
             out.append(
-                regression(name, getattr(sp, name), slow=slow, exclude=exclude)
+                regression(
+                    name,
+                    getattr(sp, name),
+                    slow=slow,
+                    exclude=exclude,
+                    intercept=(_KINDS[kind], base) in ORIGIN_MAPS,
+                )
             )
     return out
 
@@ -930,6 +984,14 @@ def _accelerated_life_family():
                 fitters=(f"surpyval.{lm}",)
                 + (("surpyval.AcceleratedLife",) if lm == "Power" else ()),
                 slow=frozenset() if lm == "Power" else REFIT_PROPERTIES,
+                coefficients=None,
+                exclude={
+                    "aliasing": "a life model takes a fixed number of "
+                    "stress columns (another raises a ValueError naming "
+                    "it), and its parameters are not one per column; the "
+                    "dual-stress models' equal columns are "
+                    "tests/univariate/regression/test_aliasing.py's"
+                },
             )
         )
     return out
@@ -965,6 +1027,8 @@ def _frailty_family():
                 labels=("groups",),
                 paths={"fit_from_df": from_df},
                 slow=frozenset() if base == "Weibull" else REFIT_PROPERTIES,
+                coefficients=_beta,
+                intercept=("Proportional Hazard", base) in ORIGIN_MAPS,
             )
         )
     return out
@@ -1004,6 +1068,8 @@ def _semi_parametric():
         jump_functions=("hf", "df"),
         exclude={"df_hf_sf": step},
         rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
     )
     strat = regression(
         "CoxPH[strata]",
@@ -1022,6 +1088,8 @@ def _semi_parametric():
             " in Conventions, 'Saving and Loading Models')",
         },
         rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
     )
     ah = regression(
         "AdditiveHazards",
@@ -1043,6 +1111,8 @@ def _semi_parametric():
             "df_hf_sf": step,
         },
         rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
     )
     bj = regression(
         "BuckleyJames",
@@ -1068,8 +1138,16 @@ def _semi_parametric():
             "row_independence": "documented to take one covariate vector "
             "per call, so there are no rows to mix up",
         },
+        coefficients=_beta,
+        intercept=True,
     )
     return [cox, strat, ah, bj]
+
+
+_NO_COEFFICIENTS = (
+    "no coefficients: a tree splits on the columns, and a repeated column "
+    "only offers the same splits again"
+)
 
 
 def _trees():
@@ -1099,11 +1177,14 @@ def _trees():
                 **reg_data(), kind=kind, random_state=s
             ).sf(X_REG, Z_REG),
             explicit_seed=True,
-            exclude=(
-                {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
-                if kind == "non-parametric"
-                else {}
-            ),
+            exclude={
+                "aliasing": _NO_COEFFICIENTS,
+                **(
+                    {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
+                    if kind == "non-parametric"
+                    else {}
+                ),
+            },
         )
 
     forest = Case(
@@ -1138,6 +1219,7 @@ def _trees():
             "hazard of the average sf",
             "Hf_sf": "Hf is documented as the trees' average Hf, not -log "
             "of the average sf (sf(ensemble_method='Hf') is exp(-Hf))",
+            "aliasing": _NO_COEFFICIENTS,
         },
     )
     return [
@@ -1611,6 +1693,8 @@ def _competing_risks():
                     "fit_from_df": functools.partial(crph_from_df, how=how)
                 },
                 rtol=1e-6,
+                coefficients=lambda m: m.betas,
+                intercept=True,
                 exclude=(
                     {
                         "cif_sum": "Fine-Gray models each cause's "
@@ -1639,6 +1723,8 @@ def _competing_risks():
             rows=("x", "Z", "e", "n"),
             covariates="Z",
             rtol=1e-6,
+            coefficients=_beta,
+            intercept=True,
             exclude={
                 "cif_sum": "one cause of interest: sf is 1 - cif by "
                 "definition, checked by sf_ff instead",
@@ -1734,6 +1820,10 @@ def _recurrent():
                 rows=("x", "Z", "i", "c", "n"),
                 covariates="Z",
                 drops_missing_covariate=False,
+                coefficients=lambda m: m.coeffs,
+                # The baseline rate (HPP) or the Duane scale b absorbs a
+                # constant.
+                intercept=True,
                 draw=lambda m, s: m.count_terminated_simulation(
                     3, items=2, random_state=s, Z=[0.5]
                 ),
@@ -2744,6 +2834,21 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),
         "convergence": f"{_CONVERGENCE_ISSUES[_group]}: {_reason}",
+    }
+
+
+# -- aliasing (test_aliasing.py) --------------------------------------------
+# The proportional-intensity fits split a repeated column's effect between
+# the two columns wherever BFGS stopped (HPP: -0.231 as -0.116 and -0.116;
+# NHPP: -0.1155 and -0.1158), and a constant column took 0.056 from the
+# baseline (HPP rate 0.0807 -> 0.0764), silently.
+for _name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
+    KNOWN_FAILURES[_name] = {
+        **KNOWN_FAILURES.get(_name, {}),
+        "aliasing": "#NEW1: a repeated covariate column is not aliased; "
+        "the fit splits its coefficient between the two columns, silently",
+        "aliasing_constant": "#NEW1: a constant covariate column is not "
+        "aliased; it takes part of the baseline rate, silently",
     }
 
 

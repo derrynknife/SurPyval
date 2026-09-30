@@ -357,3 +357,36 @@ def test_lin_ying_and_buckley_james(fitter, kind):
         ref_ci = ref.bootstrap_ci(n_boot=10, random_state=0)
         np.testing.assert_allclose(ci[:3], ref_ci, rtol=1e-10)
         assert np.isnan(ci[3]).all()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#NEW2: a dual-stress life model with equal stress columns "
+    "splits the stress exponent between them silently",
+)
+@pytest.mark.parametrize(
+    "dual, single",
+    [("DualPower", "Power"), ("DualExponential", "Exponential")],
+)
+def test_dual_stress_life_model_with_equal_stresses(dual, single):
+    # With s1 == s2, DualPower's c s1^m s2^n is Power's c s^(m + n), and
+    # DualExponential's c exp(a / s1 + b / s2) is c exp((a + b) / s): only
+    # the sum is determined. DualPower split Power's exponent -1.174 into
+    # -0.568 and -0.605, DualExponential Exponential's 1.877 into 0.912
+    # and 0.965, silently.
+    s = np.repeat([1.0, 2.0, 3.0], 10)
+    u = (np.arange(1, 31) - 0.3) / 30.4
+    life = (-np.log1p(-u)) ** 0.5
+    x = np.round(30.0 * s**-1.2 * life[(np.arange(30) * 7 + 3) % 30], 3)
+    lm = "ExponentialLifeModel" if single == "Exponential" else single
+    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp, lm)).fit(x, Z=s)
+    F = sp.AcceleratedLife(sp.Weibull, getattr(sp, dual))
+    model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
+    aliased = [m for m in messages if "cannot be estimated" in m]
+    assert len(aliased) == 1
+    assert np.isnan(model.params).sum() == 1
+    np.testing.assert_allclose(
+        model.sf([5.0, 10.0], [[1.5, 1.5], [2.5, 2.5]]),
+        ref.sf([5.0, 10.0], [1.5, 2.5]),
+        rtol=1e-4,
+    )

@@ -405,7 +405,9 @@ class AdditiveHazardsModel(SerialisableMixin):
         """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         H_star, H = self._cumulative_hazard(x, Z)
-        rate = self._h0_rate(x, bandwidth) + (self._prepare_Z(Z) @ self._coef())
+        rate = self._h0_rate(x, bandwidth) + (
+            self._prepare_Z(Z) @ self._coef()
+        )
         # A negative rate is not a hazard; nor is one where Hf is held.
         rate = np.where((rate < 0) | (H < H_star), 0.0, rate)
         # A NaN time is 0 in no kernel, so the rate would be beta'Z there.
@@ -613,9 +615,7 @@ class AdditiveHazards_:
         with np.errstate(invalid="ignore", divide="ignore"):
             se_k = np.sqrt(np.diag(cov_k))
             z_score = beta_k / se_k
-            p_values = expand(
-                2.0 * (1.0 - norm.cdf(np.abs(z_score))), kept, p
-            )
+            p_values = expand(2.0 * (1.0 - norm.cdf(np.abs(z_score))), kept, p)
         beta = expand(beta_k, kept, p)
         se = expand(se_k, kept, p)
         cov = np.full((p, p), np.nan)
