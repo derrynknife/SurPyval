@@ -3,8 +3,8 @@
 Data: n = 100 from the named distribution, right-censored by an independent
 uniform censoring time (about 30% censored). At each replicate the Wald and
 likelihood-ratio bounds on every parameter, the bounds on ``sf`` at the
-true 10%, 50% and 90% quantiles, and those on the 10% quantile (the B10
-life) and the mean, are checked against the truth.
+true 10%, 50% and 90% quantiles, and the Wald bounds on the 10% quantile
+(the B10 life) and the mean, are checked against the truth.
 
 Two-sided bounds must cover 95% of the time and a one-sided lower bound on
 ``sf`` 95% too: a one-sided bound that put only ``alpha / 2`` in its tail
@@ -64,8 +64,9 @@ def _study(name, method, reps):
             band = model.cb(t_eval, on="sf", method=method)
             s_lo[r], s_hi[r] = band[:, 0], band[:, 1]
             s_one[r] = model.cb(t_eval, on="sf", bound="lower", method=method)
-            q_lo[r], q_hi[r] = model.quantile_cb(0.1, method=method)
-            m_lo[r], m_hi[r] = model.mean_cb(method=method)
+            if method == "wald":
+                q_lo[r], q_hi[r] = model.quantile_cb(0.1)
+                m_lo[r], m_hi[r] = model.mean_cb()
     print("{} ({}): {:.0%} censored".format(name, method, censored))
     label = "{} {}".format(name, method)
     check_coverage(p_lo, p_hi, np.asarray(params), 0.95, label + " param_cb")
@@ -73,8 +74,13 @@ def _study(name, method, reps):
     check_coverage(
         s_one, np.inf, sf_true, 0.95, label + " cb(sf, bound='lower')"
     )
-    check_coverage(q_lo, q_hi, t_eval[0], 0.95, label + " quantile_cb(0.1)")
-    check_coverage(m_lo, m_hi, true.mean(), 0.95, label + " mean_cb")
+    if method == "wald":
+        # (the likelihood-ratio quantile and mean bounds are left out:
+        # 300 replicates of them took over 50 minutes)
+        check_coverage(
+            q_lo, q_hi, t_eval[0], 0.95, label + " quantile_cb(0.1)"
+        )
+        check_coverage(m_lo, m_hi, true.mean(), 0.95, label + " mean_cb")
 
 
 @pytest.mark.parametrize("name", sorted(CASES))

@@ -148,4 +148,4 @@ def test_only_mle_has_bounds():
 
 
 # Coverage: calibration/test_coverage_parametric.py (nightly) checks the
-# Wald and likelihood-ratio quantile_cb(0.1) and mean_cb at n = 100.
+# Wald quantile_cb(0.1) and mean_cb at n = 100 (the LR ones are too slow).
