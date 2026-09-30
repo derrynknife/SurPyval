@@ -151,7 +151,11 @@ def plotting_positions(
     x, c, n, t = xcnt_handler(x, c, n, t)
 
     if heuristic not in nonp.PLOTTING_METHODS:
-        raise ValueError("Must use available heuristic")
+        raise ValueError(
+            "Unknown heuristic {!r}; use one of {}.".format(
+                heuristic, ", ".join(nonp.PLOTTING_METHODS)
+            )
+        )
 
     if ((-1 in c) or (2 in c)) & (heuristic != "Turnbull"):
         raise ValueError(

@@ -21,6 +21,9 @@ from surpyval.univariate.parametric import (
     Uniform,
     Weibull,
 )
+from surpyval.univariate.parametric.parametric_fitter import (
+    OutsideSupportError,
+)
 
 # Typed as OptimisedFitMixin, not ParametricFitter: every entry has
 # `.fit(x, c, n, t)` called on it below, and Bernoulli, Binomial and
@@ -86,8 +89,10 @@ def fit_best(
     The candidates are the fittable continuous univariate distributions
     (Beta, Beta4, Exponential, ExpoWeibull, Gamma, Gumbel, Logistic,
     LogLogistic, LogNormal, Normal, Rayleigh, Uniform and Weibull).
-    Distributions whose fit fails or does not converge are skipped with
-    a warning; if every candidate fails, ``None`` is returned.
+    A candidate the data lie outside the support of (a Beta for data
+    outside (0, 1)) is passed over quietly; candidates whose fit fails are
+    skipped and named in one warning. If every candidate fails, ``None``
+    is returned.
 
     Parameters
     ----------
@@ -138,7 +143,7 @@ def fit_best(
 
     if metric not in METRICS:
         raise ValueError(
-            '`metric` must be on of "{}"'.format('", "'.join(METRICS))
+            '`metric` must be one of "{}"'.format('", "'.join(METRICS))
         )
 
     if (len(include_set) > 0) and (len(exclude_set) > 0):
@@ -160,18 +165,30 @@ def fit_best(
     measure = np.inf
     model: Parametric | None = None
     n_fitted = 0
+    failed: list[str] = []
     for dist in candidates:
         try:
             temp_model = dist.fit(x, c, n, t)
             tmp_measure = getattr(temp_model, metric)()
+        except OutsideSupportError:
+            # A candidate that cannot describe the data (a Beta for data
+            # outside (0, 1)) is not a failure to report (#485).
+            continue
         except Exception as e:
-            warnings.warn(str(e))
-            warnings.warn(f"{dist.name} distribution failed to fit")
+            failed.append(f"{dist.name} ({e})")
             continue
         n_fitted += 1
         if tmp_measure < measure:
             measure = tmp_measure
             model = temp_model
+    if failed:
+        # One warning for all of them, with the count (principle 22); it
+        # was two warnings per candidate.
+        warnings.warn(
+            f"fit_best skipped {len(failed)} candidate(s) that failed to "
+            "fit: " + "; ".join(failed),
+            stacklevel=2,
+        )
     if model is None and n_fitted > 0:
         # Every candidate fitted but none has a finite value of the
         # metric: AIC_c is undefined (nan) once the sample size d is at

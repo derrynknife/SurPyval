@@ -1683,7 +1683,8 @@ class Parametric(
         function only reaches ``p`` in the limit, so any quantile at or above
         ``p`` is infinite (that proportion of the population never fails). For
         a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
-        so quantiles at or below ``f0`` return 0.
+        so quantiles at or below ``f0`` return 0. A probability outside
+        [0, 1] gives NaN, as scipy's ``ppf`` does.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -1704,8 +1705,19 @@ class Parametric(
             q = self.gamma + self.dist.qf(base, *self.params)
         # The zero-inflation mass sits at 0 — consistent with df (mass at
         # x == 0), ff(0) = f0 and the likelihood — not at the offset (#256).
-        q = np.where(u <= self.f0, 0.0, q)
-        q = np.where(u >= self.p, np.inf, q)
+        # Only where there is such a mass: with none, a continuous
+        # distribution's qf(0) is the start of its support (a Normal's
+        # -inf; it was 0). A discrete one keeps 0 (Poisson's own qf(0) is
+        # scipy's -1).
+        at_zero = (self.f0 > 0) or getattr(self.dist, "discrete", False)
+        q = np.where(at_zero & (u <= self.f0), 0.0, q)
+        # Only with a cure fraction: otherwise qf(1) is the end of the
+        # support (a Uniform's upper bound; it was inf).
+        q = np.where((self.p < 1) & (u >= self.p), np.inf, q)
+        # A probability outside [0, 1] has no quantile: NaN, as scipy's
+        # ``ppf`` and ``CustomDistribution.qf`` (#437) give. It was inf
+        # above 1 and 0 below 0, even for a Normal (#485).
+        q = np.where((u < 0) | (u > 1), np.nan, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 

@@ -553,6 +553,10 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
                 " numbers"
             )
 
+    if x.ndim == 2 and x.shape[1] == 1:
+        # A single column, e.g. ``df[["t"]].to_numpy()``: one observation
+        # per row, as sklearn reads a column vector ``y`` (#485).
+        x = x[:, 0]
     if x.ndim > 2:
         raise ValueError("Variable 'x' array must be one or two dimensional")
     # Before the ordering check, which NaN would fail with a misleading
@@ -892,6 +896,9 @@ def xcnt_handler(
     # logic for censoring flag
     if c is not None:
         c = np.atleast_1d(np.array(c))
+        if c.ndim == 2 and c.shape[1] == 1:
+            # A single column, as for ``x`` (#485)
+            c = c[:, 0]
         if c.ndim != 1:
             raise ValueError("Censoring flag array must be one dimensional")
 
@@ -947,6 +954,8 @@ def xcnt_handler(
             n = np.atleast_1d(np.array(n, dtype=float))
         except (ValueError, TypeError):
             raise ValueError("Count array 'n' must contain integer values")
+        if n.ndim == 2 and n.shape[1] == 1:
+            n = n[:, 0]
         if n.ndim != 1:
             raise ValueError("Count array must be one dimensional")
         if n.shape[0] != x.shape[0]:

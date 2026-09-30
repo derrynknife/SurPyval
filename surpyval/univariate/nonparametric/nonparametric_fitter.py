@@ -282,6 +282,24 @@ class NonParametricFitter:
             return out
 
         else:
+            # Name the estimator and the one that handles the data: the
+            # conversion below said only "xrd format can't be used with
+            # left (c=-1) or interval (c=2) censoring" (#485).
+            c_arr = np.asarray(c)
+            unsupported = []
+            if (c_arr == -1).any():
+                unsupported.append("left (c=-1)")
+            if (c_arr == 2).any():
+                unsupported.append("interval (c=2)")
+            if np.isfinite(np.asarray(t, dtype=float)[:, 1]).any():
+                unsupported.append("right-truncated (tr)")
+            if unsupported:
+                raise ValueError(
+                    "{} can't handle {} data; use Turnbull, which can "
+                    "(surpyval.Turnbull.fit takes the same arguments).".format(
+                        self.how, " or ".join(unsupported)
+                    )
+                )
             x, r, d = xcnt_to_xrd(x, c, n, t)
             estimator = self.how
 
