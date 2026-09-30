@@ -2382,55 +2382,39 @@ class Parametric(
                 ends = (_LN_TINY, _LN_MAX)
                 value = np.exp
 
-        # The searches run inside the box the parameters' own intervals
-        # at this level make: the region's extent in each parameter is
-        # that parameter's likelihood-ratio interval, so the box holds
-        # every point the band can come from, and keeps a search for a
-        # value the function never takes from wandering off to where the
-        # likelihood is slow or not defined (a NegativeBinomial r of
-        # 1e-308, whose incomplete beta took 4.5 s a call).
-        coords, limits = self._lr_coords()
-        free_coords = [coords[j] for j in free]
-        box = self._lr_box(free_coords, [limits[j] for j in free])
-        with np.errstate(all="ignore"):
-            for k, j in enumerate(free):
-                b_lo, b_hi = box[k]
-                lo_j = coords[j].to_u(self._lr_param_side(j, crit, -1))
-                hi_j = coords[j].to_u(self._lr_param_side(j, crit, 1))
-                if np.isfinite(lo_j):
-                    b_lo = lo_j if b_lo is None else max(b_lo, lo_j)
-                if np.isfinite(hi_j):
-                    b_hi = hi_j if b_hi is None else min(b_hi, hi_j)
-                box[k] = (b_lo, b_hi)
-        # ... and start from the points of the region those intervals'
-        # walks passed through: they reach its far corners (an
-        # ExpoWeibull's beta running off to infinity with alpha at the
-        # largest observation), which a search from the estimate does
-        # not find.
-        seeds = [
-            np.array([coords[i].to_u(theta[i]) for i in free])
-            for j in free
-            for d in (-1.0, 1.0)
-            for theta in self.__dict__.get("_lr_points", {}).get(
-                self._lr_key(j, crit, d), []
-            )
-        ]
-
+        # A bound is solved once per function, time, level and side, and
+        # kept: the sf, ff and Hf bands are one band, and a one-sided
+        # bound at alpha is an end of the two-sided one at 2 alpha.
+        kind = "survival" if survival else on
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        region: list = []
         lower = np.full(t.shape, np.nan)
         upper = np.full(t.shape, np.nan)
         failed: list[float] = []
         with np.errstate(all="ignore"):
             for i, time in enumerate(t):
-                lo, hi = self._cb_lr_psi_bounds(
-                    lambda theta: psi_of(time, theta),
-                    free,
-                    crit,
-                    want_lower,
-                    want_upper,
-                    ends,
-                    box,
-                    seeds,
-                )
+                key_lo = (kind, float(time), *self._lr_key(-1, crit, -1))
+                key_hi = (kind, float(time), *self._lr_key(-1, crit, 1))
+                need_lo = want_lower and key_lo not in cache
+                need_hi = want_upper and key_hi not in cache
+                if need_lo or need_hi:
+                    if not region:
+                        region.extend(self._lr_region(free, crit))
+                    lo, hi = self._cb_lr_psi_bounds(
+                        lambda theta: psi_of(time, theta),
+                        free,
+                        crit,
+                        need_lo,
+                        need_hi,
+                        ends,
+                        *region,
+                    )
+                    if need_lo:
+                        cache[key_lo] = lo
+                    if need_hi:
+                        cache[key_hi] = hi
+                lo = cache[key_lo] if want_lower else np.nan
+                hi = cache[key_hi] if want_upper else np.nan
                 if (want_lower and np.isnan(lo)) or (
                     want_upper and np.isnan(hi)
                 ):
@@ -2456,6 +2440,47 @@ class Parametric(
             return lower
         else:
             return upper
+
+    def _lr_region(
+        self, free: list[int], crit: float
+    ) -> tuple[list[tuple[Any, Any]], list[npt.NDArray]]:
+        """The box a likelihood-ratio band's searches run in, and the
+        points they may start from, at the critical value ``crit``.
+
+        The box is the one the parameters' own intervals at this level
+        make: the region's extent in each parameter is that parameter's
+        likelihood-ratio interval, so the box holds every point the band
+        can come from, and it keeps a search for a value the function
+        never takes from wandering off to where the likelihood is slow or
+        not defined (a NegativeBinomial ``r`` of 1e-308, whose incomplete
+        beta took 4.5 s a call). The points are those of the region that
+        the intervals' walks passed through: they reach its far corners
+        (an ExpoWeibull ``beta`` running off to infinity with ``alpha`` at
+        the largest observation), which a search from the estimate does
+        not find.
+        """
+        coords, limits = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        box = self._lr_box(free_coords, [limits[j] for j in free])
+        with np.errstate(all="ignore"):
+            for k, j in enumerate(free):
+                b_lo, b_hi = box[k]
+                lo_j = coords[j].to_u(self._lr_param_side(j, crit, -1))
+                hi_j = coords[j].to_u(self._lr_param_side(j, crit, 1))
+                if np.isfinite(lo_j):
+                    b_lo = lo_j if b_lo is None else max(b_lo, lo_j)
+                if np.isfinite(hi_j):
+                    b_hi = hi_j if b_hi is None else min(b_hi, hi_j)
+                box[k] = (b_lo, b_hi)
+            seeds = [
+                np.array([coords[i].to_u(theta[i]) for i in free])
+                for j in free
+                for d in (-1.0, 1.0)
+                for theta in self.__dict__.get("_lr_points", {}).get(
+                    self._lr_key(j, crit, d), []
+                )
+            ]
+        return box, seeds
 
     def _cb_lr_psi_bounds(
         self,
@@ -2600,7 +2625,7 @@ class Parametric(
                 return None
             known.append((psi_star, np.asarray(res.x)))
             beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-            nll, u = solve(beyond, [np.asarray(res.x), start, u_hat])
+            nll, u = solve(beyond, [np.asarray(res.x), u_hat])
             if u is not None and 2.0 * (nll - nll_hat) < crit:
                 return None
             return psi_star
