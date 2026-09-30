@@ -671,8 +671,9 @@ a baseline distribution in the model that brings back the collinearity above,
 so the last level is aliased (see below) and it is rarely what you want.
 
 A covariate column the data cannot determine -- a constant column (the
-baseline is the intercept: Cox's baseline hazard, or the scale of a family
-whose scale absorbs a constant, as for Weibull PH or any AFT family), one
+baseline is the intercept: Cox's or Lin-Ying's baseline hazard, the
+Buckley-James intercept, or the scale of a family whose scale absorbs a
+constant, as for Weibull PH or any AFT family), one
 constant within each stratum of a stratified Cox fit, or a column that is a
 linear combination of the others -- is **aliased**, as R's ``coxph`` and
 ``lm`` do it: the fit runs on the other columns, whose estimates are what they
@@ -711,8 +712,8 @@ and the level. So does a level declared with ``C(site, levels=[...])`` (or
 an unused category of a ``pd.Categorical`` column) that the fitted data has
 no rows of: declaring the full list keeps the columns the same across data
 splits, but nothing estimates that level's coefficient, so the fit warns,
-naming the level, and a prediction for it raises. (``AdditiveHazards`` and
-``BuckleyJames`` refuse such a fit, as the level's column is constant.) A
+naming the level, and a prediction for it raises. (The level's column is
+all zeros, so it is aliased, without a second warning.) A
 missing value is not a level: that row predicts ``nan``, as for a missing
 numeric covariate. This holds for every family that takes a ``formula``,
 before and after saving:

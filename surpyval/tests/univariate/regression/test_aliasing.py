@@ -324,3 +324,36 @@ def test_fit_tvc(fitter, kind):
     np.testing.assert_allclose(
         model.cb([1.0], q[:1]), ref.cb([1.0], [q[0][:2]]), rtol=1e-4
     )
+
+
+@pytest.mark.parametrize("fitter", ["AdditiveHazards", "BuckleyJames"])
+@pytest.mark.parametrize("kind", ["constant", "collinear"])
+def test_lin_ying_and_buckley_james(fitter, kind):
+    # Both refused such a column with a ValueError, where every other
+    # regression aliases it; the baseline hazard (Lin-Ying) and the
+    # profiled-out intercept (Buckley-James) absorb a constant.
+    x, Z, c = _rossi()
+    Z = Z[:, [0, 1, 6]]  # fin, age, prio
+    F = getattr(sp, fitter)
+    ref = F.fit(x, Z, c=c)
+    model, messages, caught = _fit(lambda: F.fit(x, _extra(Z, kind), c=c))
+    assert len(messages) == 1 and messages[0].startswith(_aliased(3))
+    assert caught[0].filename == __file__
+    np.testing.assert_allclose(model.beta[:3], ref.beta, rtol=1e-10)
+    assert np.isnan(model.beta[3])
+    np.testing.assert_array_equal(model.aliased, [3])
+    q = _extra(Z[:3], kind)
+    for k in range(3):
+        np.testing.assert_allclose(
+            model.sf([20, 40, 52], q[k]),
+            ref.sf([20, 40, 52], Z[k]),
+            rtol=1e-10,
+        )
+    if fitter == "AdditiveHazards":
+        np.testing.assert_allclose(model.se[:3], ref.se, rtol=1e-10)
+        assert np.isnan(model.se[3]) and np.isnan(model.p_values[3])
+    else:
+        ci = model.bootstrap_ci(n_boot=10, random_state=0)
+        ref_ci = ref.bootstrap_ci(n_boot=10, random_state=0)
+        np.testing.assert_allclose(ci[:3], ref_ci, rtol=1e-10)
+        assert np.isnan(ci[3]).all()

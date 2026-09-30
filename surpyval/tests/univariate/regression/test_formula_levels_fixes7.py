@@ -241,14 +241,19 @@ def test_accelerated_life_empty_level():
 
 
 @pytest.mark.parametrize("name", ["AdditiveHazards", "BuckleyJames"])
-def test_semi_parametric_fits_refuse_the_empty_column(name):
-    # Lin-Ying and Buckley-James refuse a covariate that does not vary,
-    # which the empty level's column is; the warning names the level.
-    with pytest.warns(UserWarning, match=r"no rows at the level\(s\) \['d'\]"):
-        with pytest.raises(ValueError, match="Covariate"):
-            getattr(surpyval, name).fit_from_df(
-                _df(), x_col="t", c_col="c", formula="z + " + LEVELS
-            )
+def test_semi_parametric_fits_alias_the_empty_column(name):
+    # Lin-Ying and Buckley-James refused the empty level's column, which
+    # does not vary; it is aliased now (#476), as in the other fits, and
+    # the one warning is the empty level's.
+    with pytest.warns(UserWarning) as record:
+        model = getattr(surpyval, name).fit_from_df(
+            _df(), x_col="t", c_col="c", formula="z + " + LEVELS
+        )
+    assert len(record) == 1
+    assert "no rows at the level(s) ['d']" in str(record[0].message)
+    np.testing.assert_array_equal(model.aliased, [3])
+    with pytest.raises(ValueError, match="not fitted with"):
+        model.sf([5.0], pd.DataFrame({"z": [2.0], "g": ["d"]}))
 
 
 # -- #375 8b: None in list covariates -------------------------------------
