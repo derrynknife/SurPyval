@@ -2266,6 +2266,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         ('Kaplan-Meier estimate', 'Time', 'Survival probability')
         >>> ax.get_legend_handles_labels()[1]
         ['A', 'B']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt

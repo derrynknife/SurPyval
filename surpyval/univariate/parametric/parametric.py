@@ -3903,6 +3903,7 @@ class Parametric(
         >>> legend = ax.legend()
         >>> [text.get_text() for text in legend.get_texts()]
         ['North', 'South']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt

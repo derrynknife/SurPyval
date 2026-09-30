@@ -893,9 +893,12 @@ class MixtureModel(SerialisableMixin, Distribution):
         >>> import surpyval as surv
         >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
         >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
-        >>> ax = wmm.plot(label="two Weibulls")
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax = plt.subplots()
+        >>> ax = wmm.plot(ax=ax, label="two Weibulls")
         >>> ax.get_legend_handles_labels()[1]
         ['two Weibulls']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt

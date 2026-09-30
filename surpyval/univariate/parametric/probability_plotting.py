@@ -16,6 +16,7 @@ from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.utils import _round_vals
 
+
 def adjust_heuristic(
     c: npt.NDArray, t: npt.NDArray | None, heuristic: str
 ) -> str:
