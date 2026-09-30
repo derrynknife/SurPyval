@@ -7,7 +7,6 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
-import warnings
 from typing import Any
 
 import numpy as np
@@ -38,7 +37,6 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
     wrangle_and_check_form_and_Z_cols,
 )
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -105,23 +103,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     feature_names: "list | None" = None
     formula: Any = None
     _model_spec: Any = None
-
-    @property
-    def how(self) -> str:
-        """Deprecated: ``model``, the model fitted (``"Cox"`` or
-        ``"Fine-Gray"``), under its old name."""
-        warnings.warn(
-            "CompetingRisksProportionalHazards.how is deprecated and will "
-            "be removed in v{}; use .model.".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.model
-
-    def __dir__(self) -> list[str]:
-        # The deprecated alias is left out of listings (tab completion,
-        # anything that walks ``dir``), which would otherwise warn.
-        return [name for name in super().__dir__() if name != "how"]
 
     # -- serialisation -----------------------------------------------------
 
@@ -518,7 +499,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return before * -np.expm1(-total) * share
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit_from_df(
         cls,
         df: Any,
@@ -633,7 +613,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return fitted
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit(
         cls,
         x: npt.ArrayLike,

@@ -1,8 +1,22 @@
 Changelog
 =========
 
-v0.21.1 (unreleased)
+v0.22.0 (unreleased)
 --------------------
+
+**Removed.** The names 0.21 deprecated (#422) are gone. An old argument
+name (``seed``, ``confidence``, ``B``, ``t``, ``q``, ``u``, CoxPH's
+``method``, ``id_col``, ``time_col``, the competing-risks ``how`` and
+``cause``, ``CompetingRisks``' ``method``) is now an unknown argument and
+raises ``TypeError``. The degradation calls in the old positional order
+(``Z`` last) are no longer recognised and raise, except that a process
+model fitted with stress now reads ``random(size, a, b)`` as ``Z=a,
+random_state=b``. Also removed: the fitted ``CompetingRisks.method`` and
+``CompetingRisksProportionalHazards.how`` aliases (use ``.how`` and
+``.model``), the ``surpyval.experimental`` alias (use ``surpyval.beta.ml``)
+and ``band``'s unused ``n_sims`` and ``random_state``. Saved models still
+load. On 0.21, run your code or tests with ``python -W
+error::DeprecationWarning`` first to find the calls to update.
 
 **Behaviour changes.** Fits accept an optimiser's answer only when it is a
 verified maximum, and a fit given ``init`` is also started from the default

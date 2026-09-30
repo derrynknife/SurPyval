@@ -12,7 +12,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -304,7 +303,6 @@ class ParametricRecurrenceModel(
             self.data, test=test, alternative=alternative
         )
 
-    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
         self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
@@ -391,7 +389,6 @@ class ParametricRecurrenceModel(
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
     # Narrows the mixin plot (bounds options) -- same known divergence.
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,

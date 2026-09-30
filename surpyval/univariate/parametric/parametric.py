@@ -23,7 +23,6 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -1770,7 +1769,6 @@ class Parametric(
             "failure)."
         )
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,
@@ -2062,9 +2060,8 @@ class Parametric(
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
-                # _cb_lr -> cb -> the query-shape and renamed-argument
-                # wrappers -> the caller
-                stacklevel=5,
+                # _cb_lr -> cb -> the query-shape wrapper -> the caller
+                stacklevel=4,
             )
 
         inv = np.argsort(order)
@@ -2226,9 +2223,9 @@ class Parametric(
                 "the parameter covariance is not positive definite (the "
                 "estimate is at or near a boundary of the parameter space, "
                 "or the likelihood is not regular there)",
-                # _cb_sd -> the bound helper -> cb -> the query-shape and
-                # renamed-argument wrappers -> the caller
-                stacklevel=6,
+                # _cb_sd -> the bound helper -> cb -> the query-shape
+                # wrapper -> the caller
+                stacklevel=5,
             )
         return np.sqrt(np.where(bad, np.nan, var))
 

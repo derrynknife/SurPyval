@@ -41,7 +41,6 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import handle_xicn
 
 
@@ -349,21 +348,18 @@ class CauseSpecificNHPP(SerialisableMixin):
                 )
             )
 
-    @renamed_arguments(cause="event")
     def cif(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific cumulative intensity: the expected count of
         events of type ``event``."""
         self._check_cause(event)
         return self.models[event].cif(x)
 
-    @renamed_arguments(cause="event")
     def iif(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific instantaneous intensity of events of type
         ``event``."""
         self._check_cause(event)
         return self.models[event].iif(x)
 
-    @renamed_arguments(cause="event")
     def mcf(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific mean cumulative function (alias of :meth:`cif`)."""
         return self.cif(x, event)

@@ -187,7 +187,7 @@ silently wrong numbers, not errors.
 | **ML (beta, pre-stable)** | `surpyval.beta.ml` | `SurvivalTree`, `RandomSurvivalForest` (full data model; coupled `kind="weibull"/"exponential"/"non-parametric"`) |
 | **System models (alpha)** | `surpyval.alpha` | `SeriesModel`, `ParallelModel` |
 
-> `surpyval.experimental` is a deprecated re-export of `alpha` + `beta.ml` (warns on import). Pre-stable tiers: `alpha` = exploratory, `beta` = complete but interface not yet frozen.
+> Pre-stable tiers: `alpha` = exploratory, `beta` = complete but interface not yet frozen. (The old `surpyval.experimental` alias was removed in v0.22.0; import from `surpyval.beta.ml`.)
 
 ## Regression example
 

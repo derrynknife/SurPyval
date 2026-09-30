@@ -6,7 +6,6 @@ from numpy.typing import ArrayLike
 
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -319,7 +318,6 @@ class RecurrenceSimulationMixin:
             warnings.warn(MAX_EVENTS_WARNING.format(max_events))
         return run.xicn()
 
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation_data(
         self, events: int, items: int = 1, random_state: "int | None" = None
     ) -> Any:
@@ -377,7 +375,6 @@ class RecurrenceSimulationMixin:
         xicn = self._simulate_count_xicn(events, items, random_state)
         return handle_xicn(**xicn)
 
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation_data(
         self,
         T: float,
@@ -423,7 +420,6 @@ class RecurrenceSimulationMixin:
         )
         return handle_xicn(**xicn)
 
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation(
         self, events: int, items: int = 1, random_state: "int | None" = None
     ) -> Any:
@@ -468,7 +464,6 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation(
         self,
         T: float,
@@ -522,7 +517,6 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
-    @renamed_arguments(seed="random_state")
     @keeps_query_shape
     def mcf(
         self,
@@ -569,7 +563,6 @@ class RecurrenceSimulationMixin:
         )
         return np_model.mcf(x)
 
-    @renamed_arguments(seed="random_state")
     def plot(
         self,
         ax: Any = None,

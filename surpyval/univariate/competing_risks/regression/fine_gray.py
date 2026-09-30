@@ -69,7 +69,6 @@ from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
 )
 from surpyval.utils import validate_fine_gray_inputs
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
@@ -451,7 +450,6 @@ class FineGray_:
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
 
-    @renamed_arguments(cause="event")
     def fit(
         self,
         x: npt.ArrayLike,

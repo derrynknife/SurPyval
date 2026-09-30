@@ -38,7 +38,6 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _support_from_dict,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
@@ -218,7 +217,6 @@ class CauseSpecificMCF(SerialisableMixin):
         self.support = support
         return self
 
-    @renamed_arguments(cause="event")
     def mcf(
         self, x: ArrayLike, event: Any, interp: str = "step"
     ) -> np.ndarray:
@@ -227,14 +225,12 @@ class CauseSpecificMCF(SerialisableMixin):
         :meth:`set_support` for its values outside the data)."""
         return self.models[event].mcf(x, interp=interp)
 
-    @renamed_arguments(cause="event", confidence=("alpha_ci", lambda c: 1 - c))
     def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
         """Confidence bounds on the cause-specific MCF for the event type
         ``event``; ``kwargs`` are those of
         ``NonParametricCounting.mcf_cb``."""
         return self.models[event].mcf_cb(x, **kwargs)
 
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
         *,

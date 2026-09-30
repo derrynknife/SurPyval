@@ -54,7 +54,6 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -195,7 +194,6 @@ class DestructiveDegradationModel(SerialisableMixin):
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
-    @renamed_arguments(q="p", t="x")
     def degradation_quantile(
         self, p: npt.ArrayLike, x: npt.ArrayLike
     ) -> npt.NDArray:
@@ -215,14 +213,12 @@ class DestructiveDegradationModel(SerialisableMixin):
         out = np.asarray(self.distribution.qf(p, loc, self.sigma), dtype=float)
         return out[0] if np.ndim(x) == 0 else out
 
-    @renamed_arguments(t="x")
     def median_degradation(self, x: npt.ArrayLike) -> npt.NDArray:
         """Median destructive measurement at time ``x``."""
         return self.degradation_quantile(0.5, x)
 
     # -- induced lifetime distribution at the threshold -------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
@@ -239,19 +235,16 @@ class DestructiveDegradationModel(SerialisableMixin):
             )
         return out
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
         return 1.0 - self.ff(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
         return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -264,7 +257,6 @@ class DestructiveDegradationModel(SerialisableMixin):
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
-    @renamed_arguments(t="x", seed="random_state")
     @keeps_query_shape
     def cb(
         self,

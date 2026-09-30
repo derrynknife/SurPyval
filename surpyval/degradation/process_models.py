@@ -52,12 +52,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
-from ._argument_order import always_old, old_order, random_is_old
 from ._clock import StressClock, covariates_by_name, stress_row
 
 __all__ = [
@@ -642,7 +640,6 @@ class FirstPassageProcessModel(SerialisableMixin):
 
     # -- the failure-time distribution --------------------------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
@@ -661,7 +658,6 @@ class FirstPassageProcessModel(SerialisableMixin):
         res = self._missing(self._ff_distance(tt, self.threshold), t_in, tt)
         return res
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Survival function of the first-passage time."""
@@ -671,7 +667,6 @@ class FirstPassageProcessModel(SerialisableMixin):
         res = self._missing(self._sf_distance(tt, self.threshold), t_in, tt)
         return res
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """
@@ -688,7 +683,6 @@ class FirstPassageProcessModel(SerialisableMixin):
             res = self._missing(self._df0(tau) * clock.rate_at(tt), tt, tau)
         return res
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Hazard function of the first-passage time."""
@@ -714,7 +708,6 @@ class FirstPassageProcessModel(SerialisableMixin):
         res = self._missing(res, tt, tau)
         return res
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: Any = None) -> npt.NDArray:
         """Cumulative hazard of the first-passage time."""
@@ -776,7 +769,6 @@ class FirstPassageProcessModel(SerialisableMixin):
             total += val
         return float(total)
 
-    @old_order(("random_state", "Z"), random_is_old)
     def random(
         self,
         size: int,
@@ -797,16 +789,6 @@ class FirstPassageProcessModel(SerialisableMixin):
         random_state : int or numpy.random.Generator, optional
             Seed or generator for reproducible draws. ``None`` (the default)
             seeds from numpy's global RNG, so ``np.random.seed`` controls it.
-
-        Notes
-        -----
-        The order used to be ``random(size, random_state, Z)``. Until
-        v0.22.0 a call by position in that order still works, with a
-        ``DeprecationWarning``: two positional arguments after ``size``
-        are read as ``(random_state, Z)``, and so is a lone one that can
-        only be a seed (a numpy ``Generator``; an int, for a model fitted
-        without stress; anything, when ``Z`` is passed by name). Pass
-        ``random_state`` by name.
         """
         clock = self._clock(Z)
         rng = as_generator(random_state)
@@ -840,7 +822,6 @@ class FirstPassageProcessModel(SerialisableMixin):
             hi,
         )
 
-    @old_order(("alpha_ci", "Z"), always_old)
     def predict_rul(
         self,
         current_degradation: float,
