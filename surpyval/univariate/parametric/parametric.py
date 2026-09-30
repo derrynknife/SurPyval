@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy.typing as npt
 from autograd import jacobian
 from scipy.optimize import (
-    NonlinearConstraint,
     brentq,
     minimize,
     minimize_scalar,
@@ -253,7 +252,7 @@ def _lr_walk(
         step *= 1.6
         at_stop = stop is not None and direction * (w - stop) >= 0
         at_end = direction * (w - end) >= 0
-        if at_stop and direction * (stop - end) <= 0:
+        if stop is not None and at_stop and direction * (stop - end) <= 0:
             # The data's limit comes before the end of the coordinate.
             w, at_end = float(stop), False
         elif at_end:
@@ -821,8 +820,13 @@ class Parametric(
           respects the parameter's boundary, and need not be symmetric about
           the estimate -- usually better small-sample coverage than Wald, and
           the reliability-engineering default. Aliases: ``"likelihood"``,
-          ``"likelihood-ratio"``, ``"profile"``. A side whose bound cannot
-          be found is ``nan``, with a warning.
+          ``"likelihood-ratio"``, ``"profile"``. The interval is the
+          stretch around the estimate where the deviance stays below the
+          critical value; where it stays below it out to the edge of the
+          parameter's space (levelling off there, as a NegativeBinomial's
+          ``r`` does as the model tends to a Poisson), the bound is that
+          edge: 0, 1 or ``inf``. A side whose bound cannot be found is
+          ``nan``, with a warning.
 
         A parameter fixed at fit time is known, so both methods give the
         degenerate interval at its value. A Wald bound does not exist
@@ -1032,11 +1036,13 @@ class Parametric(
         finite (a search that has stepped off to nan; some likelihoods
         iterate to their limit on nan, a NegativeBinomial's incomplete
         beta for 2 s a call), and below the fit's own minimum by more
-        than ``_LR_NOISE`` in deviance. The fit is the maximum, so a
-        likelihood above it is the likelihood failing at extreme
-        parameters: an ExpoWeibull's at ``beta`` = 1e14 and ``mu`` =
-        1e-14 is a deviance of -1e21, and a search that reached it took
-        it for the best point there.
+        than the fit's precision (``_LR_NOISE`` in deviance, or 1e-8 of
+        the log-likelihood; the registry's fits are within 2e-11 of
+        their profiles' minima). The fit is the maximum, so a likelihood
+        above it is the likelihood failing at extreme parameters: an
+        ExpoWeibull's at ``beta`` = 1e14 and ``mu`` = 1e-14 is a
+        deviance of -1e21, and a search that reached it took it for the
+        best point there.
         """
         if not np.all(np.isfinite(theta)):
             return np.nan
@@ -1046,7 +1052,8 @@ class Parametric(
         if kept is None or kept[0] != params.tobytes():
             kept = (params.tobytes(), self._lr_raw_neg_ll(params))
             self.__dict__["_lr_nll_hat"] = kept
-        if 2.0 * (nll - kept[1]) < -_LR_NOISE:
+        slack = max(_LR_NOISE, 2e-8 * abs(kept[1]))
+        if 2.0 * (nll - kept[1]) < -slack:
             return np.nan
         return nll
 
@@ -1364,7 +1371,9 @@ class Parametric(
         # searches to start from (see ``_cb_lr``).
         user_fixed = self._user_fixed_idx()
         free = [
-            j for j in range(len(self.params)) if j != idx and j not in user_fixed
+            j
+            for j in range(len(self.params))
+            if j != idx and j not in user_fixed
         ]
         points = []
         for w_i, u_i, f_i in zip(path.w, path.u, path.f):
@@ -2195,7 +2204,12 @@ class Parametric(
             the ``on`` function by the delta method. ``"lr"`` gives a
             profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
-            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
+            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``
+            (the piece of it around the estimate), which is where the
+            function's own profile deviance reaches ``chi2``; a band whose
+            region reaches the edge of the function's range (0 or 1 for
+            ``sf``) is that edge. The ``sf``, ``ff`` and ``Hf`` bands are
+            one band, so they agree exactly.
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (the reliability-engineering default), but it is computed
@@ -2317,20 +2331,29 @@ class Parametric(
         deviance(theta) <= crit}`` -- the piece of it that contains the
         estimate. It is found as ``param_cb`` finds a parameter's bound,
         with the function's value ``psi`` in the parameter's place: the
-        function's own profile deviance, ``2[min{nll(theta) : g(x, theta)
-        = psi} - nll_hat]``, is walked out from the estimate until it
-        reaches ``crit`` (``_lr_walk``), each point solved from the ones
-        before it. ``psi`` is on the scale the Wald band uses -- the
-        logit of ``sf`` (from which the ``sf``, ``ff`` and ``Hf`` bands
-        all come, so they agree exactly), the log of a continuous hazard
-        or density, the logit of a discrete one -- and where the deviance
-        stays below ``crit``, or levels off below it, to the end of that
-        scale the band reaches the edge of the function's range.
+        bound is where the function's own profile deviance, ``2[min{
+        nll(theta) : g(x, theta) = psi} - nll_hat]``, first reaches
+        ``crit``. ``psi`` is on the scale the Wald band uses -- the logit
+        of ``sf`` (from which the ``sf``, ``ff`` and ``Hf`` bands all
+        come, so they agree exactly), the log of a continuous hazard or
+        density, the logit of a discrete one.
 
-        A search for the extreme itself (SLSQP, from a warm start) stopped
-        wherever it first met the region's boundary: ExpoWeibull and
-        NegativeBinomial bands that were ``nan`` where a search failed,
-        and 95% and 80% bands that were not nested (#421).
+        Each side is sought first directly (the extreme of ``psi`` over
+        the region, by SLSQP, from the estimate and then from the points
+        of the region farther out that the parameters' own walks found),
+        and a result is taken only if it checks out as that crossing and
+        is at least as far out as every point of the region known. Failing
+        that, the profile of ``psi`` is walked out from the farthest point
+        known (``_lr_walk``); where it stays below ``crit``, or levels off
+        below it, to the end of the scale, the band reaches the edge of
+        the function's range. Each end is solved once per level and kept.
+
+        The search for the extreme from a warm start alone stopped wherever
+        it first met the region's boundary: ExpoWeibull and
+        NegativeBinomial bands that were ``nan`` where a search failed, or
+        short of the region's far corners (a NegativeBinomial ``sf(8)``
+        lower bound of 0.00918 for 0.00587), and 95% and 80% bands that
+        were not nested (#421).
         """
         self._ensure_surv_data()
         if self.offset or self.lfp or self.zi:
@@ -2354,6 +2377,14 @@ class Parametric(
         theta_hat = np.array(self.params, dtype=float)
         user_fixed = self._user_fixed_idx()
         free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        if not free:
+            # Every parameter was fixed at fit time: the region is the
+            # estimate, and so is the band.
+            g = self._cb_lr_on_func(on)
+            at = np.array([g(time, theta_hat) for time in t], dtype=float)
+            if bound == "two-sided":
+                return np.column_stack([at, at])
+            return at
         if len(free) == 1:
             band = self._cb_lr_one_param(
                 t, self._cb_lr_on_func(on), free[0], alpha_ci, bound

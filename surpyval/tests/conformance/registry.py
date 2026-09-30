@@ -2035,7 +2035,10 @@ _NO_COVARIANCE = (
 # The likelihood-ratio search runs pointwise, so it is swept at three
 # times, and only in the full suite. Rayleigh, Geometric and Uniform
 # joined in #421 (a df bound stalled on the far side of the estimate;
-# the Uniform's search stalled at the support's edge).
+# the Uniform's search stalled at the support's edge), then
+# NegativeBinomial and ExpoWeibull (profiles that did not follow their
+# valleys, bounds that were rounding noise where they are infinite, and
+# bands that were not nested). Beta4 waits on #385.
 _LR_X = {
     "Weibull": np.array([4.0, 8.0, 13.0]),
     "Rayleigh": np.array([3.2, 8.0, 14.6]),
@@ -2065,9 +2068,9 @@ def _parametric_bounds(case):
                 label="param_cb[wald]",
             ),
         ]
-    # The likelihood-ratio search is swept on the fast cases only: it
-    # takes minutes a distribution elsewhere (ExpoWeibull's param_cb
-    # sweep took 420 s; see #421 for the others).
+    # The likelihood-ratio search is swept on the cases in _LR_X only:
+    # the sweep of the six takes about five minutes on four cores, most
+    # of it the ExpoWeibull's and NegativeBinomial's bands.
     # (Documented: it is not available for offset, limited-failure or
     # zero-inflated models.)
     if case.name not in _LR_X:
