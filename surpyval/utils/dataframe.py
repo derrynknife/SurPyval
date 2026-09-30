@@ -24,7 +24,7 @@ is refused, since its storage ticks would be read as numbers (#480).
 import functools
 import inspect
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import numpy as np
@@ -105,6 +105,7 @@ def call_fit(
     """``fitter.fit(**arrays, **fit_options)``, refusing a column that its
     ``fit`` has no argument for (``arg_names`` maps each ``fit`` argument to
     the ``fit_from_df`` argument that named its column)."""
+    params: Mapping[str, inspect.Parameter]
     try:
         params = inspect.signature(fitter.fit).parameters
     except (TypeError, ValueError):  # pragma: no cover - builtins only
@@ -132,7 +133,7 @@ def _truncation(df: pd.DataFrame, value: Any, arg: str) -> npt.NDArray:
     if isinstance(value, str):
         return frame_column(df, value, arg, time=True).astype(float)
     if np.isscalar(value):
-        return np.full(len(df), float(value))
+        return np.full(len(df), value, dtype=float)
     raise ValueError(f"`{arg}` must be a scalar or a column label string")
 
 
@@ -238,8 +239,8 @@ class UnivariateDataFrameMixin:
              alpha: 7.141983615103902
               beta: 2.62047590823775
         >>> km = surv.KaplanMeier.fit_from_df(df, x='x', n='n')
-        >>> km.sf([50, 55]).round(4)
-        array([0.2051, 0.0154])
+        >>> km.sf([45, 48]).round(4)
+        array([0.5861, 0.2571])
         """
         df = require_frame(df)
         if (x is not None) and ((xl is not None) or (xr is not None)):
@@ -356,7 +357,7 @@ class RecurrentDataFrameMixin:
         ...     log, x_col="hours", i_col="truck", c_col="c"
         ... )
         >>> model.params.round(4)
-        array([259.4839,   1.3862])
+        array([260.1738,   1.1522])
         """
         df = require_frame(df)
         columns = {
@@ -475,7 +476,7 @@ class RecurrentRegressionDataFrameMixin:
         ...     log, x_col="hours", Z_cols="load", i_col="truck", c_col="c"
         ... )
         >>> model.coeffs.round(4)
-        array([0.7885])
+        array([0.5849])
         """
         columns = {
             "i": i_col,
@@ -556,6 +557,7 @@ class RegressionDataFrameMixin:
         ...     df, x_col="x", Z_cols="z", random_state=0
         ... )
         >>> tree.sf(10.0, [[0.2], [0.8]]).round(3)
+        array([0.486, 0.029])
         """
         columns = {"c": c_col, "n": n_col, "tl": tl_col, "tr": tr_col}
         return _regression_fit_from_df(

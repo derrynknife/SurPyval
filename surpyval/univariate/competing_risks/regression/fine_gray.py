@@ -78,11 +78,11 @@ from surpyval.univariate.regression.regression_data import (
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.dataframe import (
-    require_frame,
     call_fit,
     cause_column,
     frame_column,
     frame_columns,
+    require_frame,
 )
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
@@ -600,6 +600,7 @@ class FineGray_:
         ...     df, x_col="time", e_col="cause", Z_cols="z", event="a"
         ... )
         >>> model.beta.round(3)
+        array([0.663])
         """
         df = require_frame(df)
         arrays = {

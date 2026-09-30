@@ -2184,9 +2184,7 @@ def _add_df_path(case, paths=_df_paths()):
     if case.name not in paths:
         return case
     assert "fit_from_df" not in case.paths, case.name
-    return replace(
-        case, paths={**case.paths, "fit_from_df": paths[case.name]}
-    )
+    return replace(case, paths={**case.paths, "fit_from_df": paths[case.name]})
 
 
 CASES = [_add_df_path(c) for c in CASES]
