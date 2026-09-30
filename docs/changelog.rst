@@ -39,6 +39,19 @@ and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
 
+- **Faster log-rank test, Turnbull, Fleming-Harrington and
+  competing-risks fits (#515).** Results are bit-identical. ``logrank``
+  built an at-risk array of rows by event times: 13 s and 2 GB for 30,000
+  rows in three groups, and out of memory at 100,000; with running totals
+  it takes 0.02 s and 0.06 s. The Fleming-Harrington estimator,
+  ``Turnbull``'s default, summed each step's tied events in a Python loop
+  on every EM iteration: a Turnbull fit to 1,000 random intervals takes
+  0.22 s (was 7.9 s) and ``FlemingHarrington.fit`` on 100,000 rows 0.05 s
+  (was 0.74 s). ``CompetingRisks.fit`` searched the distinct times for
+  every row: 0.07 s at 100,000 rows (was 1.65 s); the new
+  ``surpyval.utils.missing_events`` finds the censored rows in one pass.
+  Grouping tied rows sorts the data once instead of three times, halving
+  a tied 100,000-row Weibull fit.
 - **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
   (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
   ``d / r`` to a whole number in a Python loop, most of a large fit;
