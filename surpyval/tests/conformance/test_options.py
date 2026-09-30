@@ -63,6 +63,8 @@ NOT_SWEPT = {
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
 }
+# "confidence" was the recurrent models' level until v0.22.0; a method
+# that took it again would be an unswept uncertainty method.
 _LEVEL_NAMES = ("alpha_ci", "confidence")
 
 
@@ -118,7 +120,7 @@ def _query(case, spec):
 
 
 def _level(spec, alpha):
-    return {spec.level: 1.0 - alpha if spec.level == "confidence" else alpha}
+    return {spec.level: alpha}
 
 
 def _parameters(model):

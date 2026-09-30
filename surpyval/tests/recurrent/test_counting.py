@@ -280,7 +280,7 @@ def test_simulation_seed_is_reproducible():
 
 
 def test_seed_none_defers_to_global_rng():
-    # seed=None must keep honouring np.random.seed (backward compatible with
+    # random_state=None must keep honouring np.random.seed (backward compatible with
     # the documented examples).
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
     model = GeneralizedOneRenewal.fit(x, dist=Weibull)

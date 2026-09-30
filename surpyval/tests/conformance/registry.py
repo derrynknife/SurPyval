@@ -1986,7 +1986,7 @@ class Bound:
     kwargs: dict = field(default_factory=dict)
     # Takes bound= ("two-sided", "lower", "upper").
     sides: bool = True
-    # The level argument; "confidence" takes 1 - alpha.
+    # The level argument, which takes alpha (the tail probability).
     level: str = "alpha_ci"
     # A transformed Wald (delta-method) bound, which closes onto the
     # estimate as alpha_ci -> 1; a percentile bootstrap or a
