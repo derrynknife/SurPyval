@@ -478,6 +478,26 @@ bands change (#477).
   ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
   ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
   print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **Fits record whether they reached a maximum.** A parametric model has
+  ``maximum``: ``"verified"`` (zero gradient and a positive-definite
+  Hessian, or an exact estimator), ``"unverified"``, ``"no finite
+  maximum"``, ``"not applicable"`` (not a maximum-likelihood fit, or
+  ``from_params``) or ``"unknown"`` (loaded from an older save). It
+  matches the fit's warnings and is saved by ``to_dict``. ``fit_best``
+  sets candidates aside by it rather than by the text of their warnings
+  (#492).
+- **Changed: two-parameter fits no longer hide an unverified maximum.** A
+  maximum-likelihood fit that did not reach a verified maximum warned
+  only for families with more than two parameters: the exemption meant
+  for the Uniform, whose support ends are parameters, matched every
+  two-parameter family (Weibull, Gamma, LogNormal, ...). Such fits now
+  warn.
+- **formula= for the parametric time-varying fits.** ``fit_tvc_from_df``
+  (PH, AH, PO, AFT) and ``fit_tvc_timeline_from_df`` (PH, AH, PO) take a
+  formula instead of ``Z_cols``, as ``CoxPH``'s do (#485): categorical
+  columns are coded, the model predicts from a ``DataFrame`` with the
+  same coding, and an aliased column is named. ``Z_cols`` now defaults to
+  ``None``.
 - **The recurrent-event, competing-risks and degradation models are
   importable from surpyval.** ``sp.CrowAMSAA``, ``sp.ARA``,
   ``sp.FineGray``, ``sp.CompetingRisks``, ``sp.DegradationAnalysis`` and
