@@ -138,7 +138,7 @@ def fit_best(
 
     if metric not in METRICS:
         raise ValueError(
-            '`metric` must be on of "{}"'.format('", "'.join(METRICS))
+            '`metric` must be one of "{}"'.format('", "'.join(METRICS))
         )
 
     if (len(include_set) > 0) and (len(exclude_set) > 0):

@@ -2042,6 +2042,13 @@ turnbull_estimator
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t)
 
+        # The estimation method is a short string that is often typed by
+        # hand, so accept it in any case ("mle", "Mpp") and normalise to
+        # the canonical spelling. The comparisons below and in the
+        # fitters are case-sensitive.
+        if isinstance(how, str) and how.upper() in PARA_METHODS:
+            how = how.upper()
+
         # Validate inputs
         heuristic = self._validate_fit_inputs(
             surv_data,
