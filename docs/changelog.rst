@@ -33,7 +33,8 @@ the others already account for gets a ``nan`` coefficient and a warning,
 as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``. The bundled
 Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
-only when it is significant. ``qf`` outside [0, 1] is ``nan``. Durations
+only when it is significant. ``qf`` outside [0, 1] is ``nan``.
+``param_names`` is deprecated in favour of ``parameter_names``. Durations
 and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
@@ -478,6 +479,24 @@ bands change (#477).
   ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
   ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
   print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **Changed / deprecated: one name for parameter names, parameter_names
+  (principle 21).** A model's parameter names were spelt three ways:
+  ``param_names``, the regression models' ``parameter_names()`` method
+  and the recurrent models' ``parameter_names`` property (which a model
+  built with ``from_params`` refused). Every distribution and every model
+  with ``params`` now has ``parameter_names``, a list naming ``params``
+  entry by entry (``Weibull.fit(x).parameter_names`` is ``['alpha',
+  'beta']``, ``WeibullPH``'s ``['alpha', 'beta', 'beta_0']``), including
+  models that had none (``CoxPH``, ``AdditiveHazards``, ``BuckleyJames``,
+  ``RoystonParmar``, ``MixtureModel``, ``CopulaModel``). A
+  ``ProportionalIntensityModel`` names ``params`` then ``coeffs``, the
+  order of its ``covariance``. Until v0.23 the old spellings work with a
+  ``DeprecationWarning``: the ``param_names`` attribute, calling
+  ``parameter_names()``, the ``param_names=`` keyword of
+  ``CustomDistribution``, and a ``param_names`` class attribute on your
+  own ``PathModel``, ``Copula`` or ``CountingProcess`` subclass. ``params``
+  is unchanged, and saved files keep the key ``"param_names"``, so they
+  move both ways between 0.21 and 0.22.
 - **Fits record whether they reached a maximum.** A parametric model has
   ``maximum``: ``"verified"`` (zero gradient and a positive-definite
   Hessian, or an exact estimator), ``"unverified"``, ``"no finite
