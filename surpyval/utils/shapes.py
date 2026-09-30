@@ -78,6 +78,10 @@ def flatten_query(
     >>> restore(np.array([[0.1, 0.9]]))  # a two-sided bound at one point
     array([0.1, 0.9])
     """
+    # A duration would be read in its storage ticks (#480)
+    from surpyval.utils import refuse_time_values
+
+    refuse_time_values(x, "x")
     arr = np.asarray(x, dtype=float)
     if point_ndim:
         shape = arr.shape[: arr.ndim - point_ndim]

@@ -20,7 +20,11 @@ import pandas as pd
 from formulaic import Formula, ModelSpec
 from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
-from surpyval.utils import _caller_stacklevel, formula_model_matrix
+from surpyval.utils import (
+    _caller_stacklevel,
+    formula_model_matrix,
+    refuse_time_values,
+)
 
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
@@ -805,6 +809,9 @@ class DataFrameRegressionMixin:
             t = None
         else:
             n_rows = len(df)
+            for name, col in (("tl", tl_col), ("tr", tr_col)):
+                if col is not None:
+                    refuse_time_values(df[col], name)  # (#480)
             tl = (
                 np.full(n_rows, -np.inf)
                 if tl_col is None

@@ -108,6 +108,20 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
 
+Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    import surpyval as surv
+
+    installed = pd.to_datetime(["2023-01-01", "2023-01-05", "2023-02-01"])
+    failed = pd.to_datetime(["2023-03-01", "2023-06-17", "2023-04-11"])
+    days = (failed - installed) / pd.Timedelta(days=1)
+    print(days.to_numpy())
+    print(surv.Weibull.fit(days).params)
+
 ``x`` cannot be combined with ``xl``/``xr``, and ``t`` cannot be combined with ``tl``/``tr``. ``tl`` and ``tr`` can each be used alone.
 
 Non-parametric models are better defined in the "xrd" format. These are taken to mean:

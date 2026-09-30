@@ -11,7 +11,7 @@ from scipy.integrate import quad
 
 import surpyval
 from surpyval import np
-from surpyval.utils import _check_x_not_empty
+from surpyval.utils import _check_x_not_empty, refuse_time_values
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
@@ -1872,6 +1872,13 @@ class OptimisedFitMixin:
         if (x is not None) and ((xl is not None) or (xr is not None)):
             raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
 
+        # A duration column would be read in its storage ticks (#480)
+        for name, col in (("x", x), ("xl", xl), ("xr", xr)):
+            if col is not None:
+                refuse_time_values(df[col], name)
+        for name, col in (("tl", tl), ("tr", tr)):
+            if isinstance(col, str):
+                refuse_time_values(df[col], name)
         if x is not None:
             x = df[x].astype(float)
         else:

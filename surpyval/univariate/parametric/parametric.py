@@ -22,7 +22,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
-from surpyval.utils import fsli_to_xcnt
+from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -1419,6 +1419,7 @@ class Parametric(
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_sf = self.dist.sf(xg, *self.params)
@@ -1466,6 +1467,7 @@ class Parametric(
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_ff = self.dist.ff(xg, *self.params)
@@ -1537,6 +1539,7 @@ class Parametric(
         ``f0 * dx / 2`` (trapezoidal rule); use ``continuous=True`` for
         that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_df = self.dist.df(xg, *self.params)
@@ -1586,6 +1589,7 @@ class Parametric(
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
@@ -1636,6 +1640,7 @@ class Parametric(
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
 
         if (self.p == 1) and (self.f0 == 0):
