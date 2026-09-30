@@ -38,8 +38,11 @@ FAMILIES = [
 #: exact ones, by their own rounding error: coefficients near 0 (-0.13 and
 #: 0.07) get the step's floor, eps^(1/3) * 1e-2, at which rounding in the
 #: likelihood (about 84) reaches the fourth digit. Ten times the step
-#: agrees with the exact values to 1.5e-5 and 3.3e-7.
-OLD_ROUNDING = {"ExponentialPO": 5e-4, "ExponentialAH": 2e-4}
+#: agrees with the exact values to 1.5e-5 and 3.3e-7. How far the default
+#: step lands depends on the point: at the ExponentialPO fit the gradient
+#: ladder reaches (#499; neg_ll 4e-9 lower) it is 1.8e-3, while ten times
+#: the step still agrees to 1.3e-5, and the exact values move by 1e-6.
+OLD_ROUNDING = {"ExponentialPO": 2e-3, "ExponentialAH": 2e-4}
 
 
 def _fit(fit):

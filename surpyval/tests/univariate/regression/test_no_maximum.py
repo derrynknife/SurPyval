@@ -77,9 +77,12 @@ def test_a_level_with_no_events_warns_once(name):
     assert message.startswith(NO_MAXIMUM)
     assert "coefficient(s) [0]" in message
     assert w[0].filename == __file__
-    # The fit still returns what it reached: a large coefficient.
+    # The fit still returns what it reached: a large coefficient. There
+    # is no optimum, so where the search stops is arbitrary; the gradient
+    # ladder AFT and PO take first (#499) stops sooner along LogNormal
+    # AFT's Gaussian tail (-3.7, was -4.8), well out on the runaway.
     assert np.all(np.isfinite(model.params))
-    assert abs(model.phi_params[0]) > 4
+    assert abs(model.phi_params[0]) > 3
 
 
 @pytest.mark.parametrize("name", PARAMETRIC)

@@ -33,6 +33,20 @@ the others already account for gets a ``nan`` coefficient and a warning,
 as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``.
 
+- **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
+  (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
+  ``d / r`` to a whole number in a Python loop, most of a large fit;
+  vectorised, a 100,000-row Kaplan-Meier fit takes 50 ms instead of 207
+  ms (Nelson-Aalen 53 ms, was 228), with bit-identical variances and
+  bounds. AFT and PO fits started with Nelder-Mead, hundreds of
+  derivative-free evaluations; with a differentiable likelihood they now
+  take the gradient ladder the PH models use first, and fall back to the
+  old ladder only when that cannot verify its optimum. At 100,000 rows and
+  5 covariates a WeibullAFT fit takes 0.48 s (was 2.0 s) and WeibullPO
+  0.64 s (3.9 s); at 1,000 rows AFT and PO fits are 4-6 times faster. They
+  reach the same maximum to 1e-6 in the log-likelihood, or a slightly
+  higher one. The time-varying AFT likelihood is not differentiable and
+  keeps Nelder-Mead.
 - **Likelihood-ratio bounds at the edge, and along valleys (#421).**
   Profiles are now searched on the log or logit scale of each parameter,
   each point starting from the ones already solved. The old search on raw
