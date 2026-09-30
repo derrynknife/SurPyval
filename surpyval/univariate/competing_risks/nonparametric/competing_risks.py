@@ -524,15 +524,20 @@ class CompetingRisks(SerialisableMixin):
         # Get the x, r, d format agnostic of event.
         unique_x, r, d = surv.xcnt_to_xrd(x, c, n)
 
-        # empty count array of occurrence (e) of amount (d) at time (x)
+        # The count of events (d) of each cause (e) at each time (x). Every
+        # x is one of unique_x, so its column is found with searchsorted;
+        # np.add.at sums the counts in row order, as the per-row loop with
+        # ``np.where(unique_x == x_i)`` did (O(n * m): 3.6 s at 1e5, #515).
         d_e = np.zeros((n_event_types, len(unique_x)))
-
-        # Counter for each occurrence
-        for i, x_i in enumerate(x):
-            if c[i] == 1:
-                continue
-            j = event_idx_map[e[i]]
-            d_e[j, np.where(unique_x == x_i)] += n[i]
+        events = c != 1
+        cause = np.fromiter(
+            (event_idx_map[label] for label in e[events]),
+            dtype=np.intp,
+            count=int(events.sum()),
+        )
+        np.add.at(
+            d_e, (cause, np.searchsorted(unique_x, x[events])), n[events]
+        )
 
         if how == "Nelson-Aalen":
             S = na(r, d)
