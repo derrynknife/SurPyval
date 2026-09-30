@@ -14,6 +14,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import CallableList, RenamedAttribute
 from surpyval.utils.linalg import (
     delta_method_se,
@@ -108,6 +109,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     _restored_covariance: "npt.NDArray | None" = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
+    #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
+    #: (#508).
+    _data_summary: "str | None" = None
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
     #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
@@ -280,6 +284,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # The printout's "Data" line (#508), so the restored model prints
+        # the same; the data themselves are not stored.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         return stamp_schema(out)
 
     @classmethod
@@ -394,6 +402,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # full parameter-vector length.
         out.k = len(params) - len(out.fixed)
         out._restored = True
+        out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -653,6 +662,28 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
         return table
 
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and
+        truncation. Empty for a model built from parameters; a restored
+        model gives the line it was saved with."""
+        data = getattr(self, "data", None)
+        if data is None:
+            return self._data_summary or ""
+        if isinstance(data, dict):
+            c, n, t = data.get("c"), data.get("n"), data.get("t")
+        else:
+            c = getattr(data, "c", None)
+            n = getattr(data, "n", None)
+            t = getattr(data, "t", None)
+        if c is None:
+            return ""
+        lower, upper = getattr(self.distribution, "support", (-np.inf, np.inf))
+        t = None if t is None else np.asarray(t, dtype=float)
+        if t is None or t.ndim != 2 or len(t) != len(np.asarray(c)):
+            return data_summary(c, n)
+        return data_summary(c, n, t[:, 0], t[:, 1], lower, upper)
+
     def __repr__(self) -> str:
         if not hasattr(self, "params"):
             return "Unable to fit values"
@@ -670,6 +701,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             dist=self.distribution.name,
             reg_model=self.reg_model.name,
         )
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
         if self._has_center():
             # A fit with center=True (#463): say where the baseline
             # parameters are.

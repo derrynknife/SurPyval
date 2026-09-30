@@ -189,8 +189,8 @@ def test_delayed_entry_and_residuals(offset, center):
             model.robust_covariance(), ref.robust_covariance(), rtol=1e-6
         )
         np.testing.assert_allclose(
-            model.check_ph()["global"]["statistic"],
-            ref.check_ph()["global"]["statistic"],
+            model.check_ph().loc["GLOBAL", "statistic"],
+            ref.check_ph().loc["GLOBAL", "statistic"],
             rtol=1e-6,
         )
 

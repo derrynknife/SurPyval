@@ -52,6 +52,7 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     xcnt_handler,
 )
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -486,6 +487,16 @@ class BuckleyJamesModel(SerialisableMixin):
             "================================",
             "Kind                : Semi-Parametric AFT",
             f"Converged           : {self.converged} ({self.n_iter} iters)",
+        ]
+        if self._data is not None:
+            # The data line (#508); the fit keeps the event flag, 1 for a
+            # failure, and the counts.
+            _, delta, _, w = self._data
+            lines.append(
+                "Data                : "
+                + data_summary(1 - np.asarray(delta, dtype=int), w)
+            )
+        lines += [
             "Coefficients (positive => accelerates failure):",
         ]
         names = self.feature_names or [

@@ -47,7 +47,7 @@ def test_coxph_against_r_lung_1():
 
     lung = load_lung()
     x = lung["time"].values
-    c = lung["status"].values
+    c = 1 - lung["status"].values
     Z = lung[["sex"]].values
 
     model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
@@ -58,11 +58,11 @@ def test_coxph_against_r_lung_1():
 def test_coxph_against_r_lung_2():
     r_answer = np.array([0.01106676, -0.55261240, 0.46372848])
 
-    lung = load_lung()
+    lung = load_lung().assign(c=lambda d: 1 - d["status"])
     model = CoxPH.fit_from_df(
         lung,
         x_col="time",
-        c_col="status",
+        c_col="c",
         Z_cols=["age", "sex", "ph.ecog"],
         tie_method="efron",
     )

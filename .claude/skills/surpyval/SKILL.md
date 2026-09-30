@@ -81,9 +81,10 @@ sp.Weibull.fit(xl=[1, 2, 3], xr=[2, 4, 5])
 ```
 
 **Mind the direction of `c`:** 1 means *censored*, the opposite of an "event"
-or "status" column in R or lifelines. Pass `c = 1 - event`. The bundled Rossi
-data keeps R's coding (**0.22:** `arrest` is 1 for an arrest), so it is
-`c = 1 - df["arrest"]`.
+or "status" column in R or lifelines. Pass `c = 1 - event`. The bundled data
+keep that coding (**0.22:** Rossi's `arrest` is 1 for an arrest and lung's
+`status` 1 for a death), so it is `c = 1 - df["arrest"]` and
+`c = 1 - df["status"]`.
 
 Kaplan-Meier, Nelson-Aalen and Fleming-Harrington take observed and
 right-censored data, optionally left truncated; left or interval censoring or

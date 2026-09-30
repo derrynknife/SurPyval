@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import functools
 import warnings
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy.typing as npt
 from scipy.optimize import minimize
@@ -14,6 +14,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.conditional import conditional_ff, conditional_sf
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -24,6 +26,9 @@ from .probability_plotting import (
     draw_probability_plot,
     probability_plot_data,
 )
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
 
 # The log-likelihood floor of one observation under one component: far
 # below any log-likelihood an observation the component can explain has,
@@ -215,6 +220,7 @@ class MixtureModel(SerialisableMixin, Distribution):
                 f"\nDistribution        : {self.dist.name}"
                 f"\nSub-Distributions   : {self.m}"
                 f"\nFitted by           : {fitted_by}"
+                f"{self._data_repr()}"
                 f"\nWeights             : \n\t{weight_string}"
                 f"\nParameters          :\n{param_string}"
             )
@@ -225,6 +231,18 @@ class MixtureModel(SerialisableMixin, Distribution):
                 "Unfitted Parametric Mixture SurPyval Model "
                 f"({self.dist.name}, m = {self.m})"
             )
+
+    def _data_repr(self) -> str:
+        """The "Data" line of the printout (#508): the units the model was
+        fitted to, weighted by ``n``, by kind of censoring and truncation;
+        nothing for a model restored without its data."""
+        data = self.data
+        if data is None or getattr(data, "c", None) is None:
+            return ""
+        lower, upper = self.dist.support
+        return "\nData                : " + data_summary(
+            data.c, data.n, data.tl, data.tr, lower, upper
+        )
 
     def likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
@@ -489,6 +507,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         Distribution        : Weibull
         Sub-Distributions   : 2
         Fitted by           : EM
+        Data                : 17 units: 17 failures
         Weights             :
                 0.6184891886499861,
                 0.381510811350014
@@ -699,7 +718,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         return df
 
     @keeps_query_shape
-    def ff(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+    def ff(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
         """
         The cumulative density function of the fitted model.
 
@@ -710,19 +729,25 @@ class MixtureModel(SerialisableMixin, Distribution):
             The values at which the cumulative density function will be
             evaluated.
 
+        given : array like or scalar, optional
+            The conditional failure probability, ``1 - sf(x,
+            given=given)``, of a unit known to have survived to ``given``.
+
         Returns
         -------
 
         array like
             The cumulative density function evaluated at x.
         """
+        if given is not None:
+            return conditional_ff(self.ff, self.sf, x, given)
         F = np.zeros_like(x)
         for i in range(self.m):
             F = F + self.w[i] * self.dist.ff(x, *self.params[i])
         return F
 
     @keeps_query_shape
-    def sf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
+    def sf(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
         """
         The survival function of the fitted model.
 
@@ -732,12 +757,20 @@ class MixtureModel(SerialisableMixin, Distribution):
         x : array like
             The values at which the survival function will be evaluated.
 
+        given : array like or scalar, optional
+            The conditional survival: the probability of surviving to
+            ``x`` for a unit known to have survived to ``given``,
+            ``S(x) / S(given)``, and 1 for ``x <= given``. A scalar, or an
+            array that broadcasts against ``x``.
+
         Returns
         -------
 
         array like
             The survival function evaluated at x.
         """
+        if given is not None:
+            return conditional_sf(self.sf, x, given)
         return 1 - self.ff(x)
 
     def cs(self, x: Any, X: Any, *args: Any, **kwargs: Any) -> Any:
@@ -809,7 +842,10 @@ class MixtureModel(SerialisableMixin, Distribution):
         heuristic: str = "Nelson-Aalen",
         ax: Any = None,
         show_censored: bool = False,
-    ) -> Any:
+        color: Any = None,
+        label: "str | None" = None,
+        **kwargs: Any,
+    ) -> Axes:
         """
         A method to do a probability plot.
 
@@ -834,11 +870,35 @@ class MixtureModel(SerialisableMixin, Distribution):
             Mark the suspension (right-censored) times with ticks along
             the time axis. Defaults to False.
 
+        color : matplotlib color, optional
+            The colour of the points and the fitted line. By default the
+            next colour of the axes' colour cycle, so that models plotted
+            on the same axes differ.
+
+        label : str, optional
+            The legend label of the fitted line.
+
+        **kwargs
+            Other keyword arguments for the fitted line (a
+            ``matplotlib.lines.Line2D``).
+
         Returns
         -------
         matplotlib.axes.Axes
-            a matplotlib axes containing the plot
+            a matplotlib axes containing the plot; the x label is "Time"
+            unless the axes already have one.
 
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax = plt.subplots()
+        >>> ax = wmm.plot(ax=ax, label="two Weibulls")
+        >>> ax.get_legend_handles_labels()[1]
+        ['two Weibulls']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -860,4 +920,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
             title=f"{self.dist.name} Mixture Probability Plot",
             show_censored=show_censored,
+            color=color,
+            label=label,
+            **kwargs,
         )

@@ -11,6 +11,8 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
+from surpyval.utils.conditional import conditional_ff, conditional_sf
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -240,6 +242,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     Non-Parametric SurPyval Model
     =============================
     Model            : Kaplan-Meier
+    Data             : 10 units: 8 failures, 2 right censored
     >>> model.sf([2.5, 6]).round(4)
     array([0.8   , 0.4571])
     >>> model.cb([2.5, 6]).round(4)
@@ -265,6 +268,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     # The sample size of ``band`` as ``to_dict`` stored it ("band_n"), for
     # a model restored without its data; see ``_band_sample_size``.
     _band_n: "float | None" = None
+    # The printout's "Data" line of a model restored without its data
+    # (#508).
+    _data_summary: "str | None" = None
 
     def __repr__(self) -> str:
         out = (
@@ -278,8 +284,31 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 out += "\nEstimator        : {turnbull}".format(
                     turnbull=self.data["estimator"]
                 )
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData             : " + data_line
 
         return out
+
+    def _data_repr(self) -> str:
+        """The data the estimate was fitted to, in one line, for the
+        printout (#508): units weighted by ``n``, by kind of censoring and
+        truncation. A model restored without its data gives the line it
+        was saved with."""
+        data = getattr(self, "data", None)
+        if not isinstance(data, dict) or "c" not in data or "x" not in data:
+            return self._data_summary or ""
+        x = np.asarray(data["x"], dtype=float)
+        t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
+        # Times are non-negative in practice, where a truncation at 0
+        # truncates nothing (as for a parametric model on (0, inf)).
+        finite = x[np.isfinite(x)]
+        lower = 0.0 if finite.size and finite.min() >= 0 else -np.inf
+        if t.ndim != 2 or len(t) != len(np.asarray(data["c"])):
+            return data_summary(data["c"], data.get("n"))
+        return data_summary(
+            data["c"], data.get("n"), t[:, 0], t[:, 1], lower=lower
+        )
 
     def set_support(self, lower: float, upper: float) -> "NonParametric":
         r"""
@@ -396,7 +425,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return float(np.max(self.r))
 
     @keeps_query_shape
-    def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
+    def sf(
+        self,
+        x: npt.ArrayLike,
+        interp: str = "step",
+        *,
+        given: "npt.ArrayLike | None" = None,
+    ) -> npt.NDArray:
         r"""
 
         Survival (or Reliability) function with the
@@ -420,6 +455,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             outside the range of the data, unless the model has bounds
             (see ``set_support``).
 
+        given : array like or scalar, optional
+            The conditional survival: the probability of surviving to
+            ``x`` for a unit known to have survived to ``given``,
+            :math:`S(x) / S(given)`, and 1 for ``x <= given`` (as the
+            regression models' ``sf_tvc(..., given=)``). A scalar, or an
+            array that broadcasts against ``x``; ``nan`` where the
+            estimate has reached 0 by ``given``.
+
         Returns
         -------
 
@@ -436,8 +479,17 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         np.float64(0.6376281516217733)
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
+
+        Survival to 4 of a unit known to have survived to 2:
+
+        >>> model.sf(4, given=2).round(4)
+        np.float64(0.4346)
         """
         _check_interp(interp)
+        if given is not None:
+            return conditional_sf(
+                lambda q: self.sf(q, interp=interp), x, given
+            )
         return self._within_support(x, lambda q: self._sf(q, interp), 1.0)
 
     def _sf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -460,7 +512,13 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return R
 
     @keeps_query_shape
-    def ff(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
+    def ff(
+        self,
+        x: npt.ArrayLike,
+        interp: str = "step",
+        *,
+        given: "npt.ArrayLike | None" = None,
+    ) -> npt.NDArray:
         r"""
 
         CDF (failure or unreliability) function with the
@@ -484,6 +542,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             outside the range of the data, unless the model has bounds
             (see ``set_support``).
 
+        given : array like or scalar, optional
+            The conditional failure probability, :math:`1 -` ``sf(x,
+            given=given)``: the probability that a unit known to have
+            survived to ``given`` fails by ``x``.
+
         Returns
         -------
 
@@ -501,6 +564,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.ff([1., 1.5, 2., 2.5])
         array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
         """
+        if given is not None:
+            _check_interp(interp)
+            return conditional_ff(
+                lambda q: self.ff(q, interp=interp),
+                lambda q: self.sf(q, interp=interp),
+                x,
+                given,
+            )
         return 1 - self.sf(x, interp=interp)
 
     @keeps_query_shape
@@ -2140,7 +2211,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "failed": failed,
         }
 
-    def plot(self, ax: "Axes | None" = None, **kwargs: Any) -> Any:
+    def plot(self, ax: Axes | None = None, **kwargs: Any) -> Axes:
         r"""
         Creates a plot of the survival function.
 
@@ -2148,7 +2219,14 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         same colour as the survival curve, and right censored
         observations are marked with ticks on the curve. Any keyword
         arguments not listed below (e.g. ``color`` or ``label``) are
-        passed to the matplotlib plotting call for the survival curve.
+        passed to the matplotlib plotting call for the survival curve;
+        without ``color`` each call takes the next colour of the axes'
+        colour cycle, so that several estimates on one axes differ.
+
+        The axes are titled with the estimator (e.g. "Kaplan-Meier
+        estimate"), the y axis is labelled "Survival probability", and the
+        x axis "Time" unless it already has a label; change any of them
+        with ``ax.set_title``, ``ax.set_ylabel`` or ``ax.set_xlabel``.
 
         Parameters
         ----------
@@ -2174,6 +2252,21 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         -------
 
         ax : matplotlib axis
+
+        Examples
+        --------
+        >>> import matplotlib.pyplot as plt
+        >>> from surpyval import KaplanMeier
+        >>> fig, ax = plt.subplots()
+        >>> ax = KaplanMeier.fit([1, 2, 3, 5, 8], c=[0, 1, 0, 0, 1]).plot(
+        ...     ax=ax, label="A"
+        ... )
+        >>> ax = KaplanMeier.fit([2, 4, 6, 9, 12]).plot(ax=ax, label="B")
+        >>> ax.get_title(), ax.get_xlabel(), ax.get_ylabel()
+        ('Kaplan-Meier estimate', 'Time', 'Survival probability')
+        >>> ax.get_legend_handles_labels()[1]
+        ['A', 'B']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -2217,9 +2310,15 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         # Set the y limits
         ax.set_ylim((d["y_scale_min"], d["y_scale_max"]))
 
-        # Label it
-        ax.set_title("Model Survival Plot")
-        ax.set_ylabel("R")
+        # Label it (#514): the estimator, and the axes' quantities
+        ax.set_title(
+            "Survival estimate"
+            if self.model == "from_ecdf"
+            else f"{self.model} estimate"
+        )
+        ax.set_ylabel("Survival probability")
+        if not ax.get_xlabel():
+            ax.set_xlabel("Time")
         if interp != "step":
             (line,) = ax.plot(d["x_"], d["R"], **kwargs)
         else:
@@ -2419,6 +2518,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     None if value is None else np.asarray(value).tolist()
                 )
             out["data"] = data_dict
+        # The printout's "Data" line (#508), so a model restored without
+        # its data prints the same.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
 
         return stamp_schema(out)
 
@@ -2490,6 +2593,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                     "{!r}.".format(band_n)
                 )
             out._band_n = float(band_n)
+        out._data_summary = model_dict.get("data_summary")
 
         support = _support_from_dict(model_dict)
         if support is not None:

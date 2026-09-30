@@ -1581,6 +1581,15 @@ class OptimisedFitMixin:
                     | ((x_sd >= upper) & (c_sd == 1))
                 )
             if bad.any():
+                # A failure at exactly 0 is a unit dead on arrival, which
+                # the zero-inflated model is for; a new user will not know
+                # the option exists (#514). It needs a support from 0.
+                at_zero = (x_sd if x_sd.ndim == 1 else x_sd.max(axis=1)) == 0
+                if lower == 0 and (bad & at_zero & (c_sd == 0)).any():
+                    detail += (
+                        " For units that failed at time 0 (dead on "
+                        "arrival), fit with `zi=True`."
+                    )
                 raise OutsideSupportError(detail)
 
         if how == "MPS" and (surv_data.c == 2).any():
@@ -1763,6 +1772,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 100 units: 100 failures
         Parameters          :
              alpha: 9.815018791049368
               beta: 3.798740470368033
@@ -1771,6 +1781,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPS
+        Data                : 100 units: 100 failures
         Parameters          :
              alpha: 10.0
               beta: 3.670796510564323
@@ -1780,6 +1791,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
+        Data                : 100 units: 0 failures, 100 interval censored
         Parameters          :
              alpha: 9.834445729732789
               beta: 3.2602770099790424
@@ -1793,6 +1805,8 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 86 units: 80 failures, 6 right censored;
+                              86 left truncated
         Parameters          :
              alpha: 9.893584496413128
               beta: 3.78688602908912
@@ -1897,6 +1911,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 389 units: 389 failures
         Offset (gamma)      : 39.76557772434183
         Parameters          :
              alpha: 7.141983615103902

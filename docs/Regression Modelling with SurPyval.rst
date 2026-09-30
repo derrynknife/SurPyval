@@ -904,8 +904,9 @@ the effect entirely.
 The standard check is the **Grambsch-Therneau test**, built on the scaled
 Schoenfeld residuals. A fitted model exposes it through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
-It returns a joint ``global`` test and a ``per_covariate`` breakdown; a *small*
-``p``-value is evidence *against* proportional hazards. We fit the tires model
+It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
+covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
+evidence *against* proportional hazards. We fit the tires model
 with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
@@ -916,9 +917,7 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
                               c_col='Censoring')
 
     ph = model.check_ph()
-    print('global p-value:', round(ph['global']['p_value'], 3))
-    for row in ph['per_covariate']:
-        print(f"  {row['covariate']:24s} p = {row['p_value']:.3f}")
+    ph.round(3)
 
 Here every ``p``-value is large, so there is no evidence against proportional
 hazards — the Cox coefficients can be read as constant hazard ratios. (With 11
@@ -930,8 +929,7 @@ including under Efron ties.
     :hide-code:
     :hide-output:
 
-    assert ph['global']['p_value'] > 0.4
-    assert all(r['p_value'] > 0.4 for r in ph['per_covariate'])
+    assert (ph['p'] > 0.4).all()
     assert (tires['Censoring'] == 0).sum() == 11
 
 To see what a violation looks like, simulate a covariate whose effect
@@ -955,7 +953,7 @@ the effect falling over time:
     m_rev = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c')
     print('averaged beta :', m_rev.beta.round(3))
     for transform in ['km', 'rank', 'identity', 'log']:
-        p = m_rev.check_ph(transform=transform)['global']['p_value']
+        p = m_rev.check_ph(transform=transform).loc['GLOBAL', 'p']
         print(f'check_ph(transform={transform!r:10s}) p = {p:.1e}')
 
     scaled = m_rev.compute_residuals('scaled_schoenfeld')[:, 0]
@@ -981,7 +979,7 @@ stratification (below), a time-varying covariate, or a different family.
     _late = scaled[event_times >= 0.5].mean()
     assert _early > m_rev.beta[0] > _late, (_early, _late)
     for _tr in ['km', 'rank', 'identity', 'log']:
-        assert m_rev.check_ph(transform=_tr)['global']['p_value'] < 1e-10
+        assert m_rev.check_ph(transform=_tr).loc['GLOBAL', 'p'] < 1e-10
 
 The residuals underlying the test (and several others) are available directly
 through

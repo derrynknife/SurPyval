@@ -175,6 +175,8 @@ This convention gives an intuitive feel for the placement of the data on a timel
 
 The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored. The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
 
+``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 failures, 51 right censored``: if you had 51 failures, the flag was read backwards.
+
 Truncation conventions
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -203,7 +205,7 @@ A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are t
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)` (also ``sf(x + X, given=X)``, which the non-parametric models take too), ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
