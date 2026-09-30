@@ -109,6 +109,17 @@ Define a new distribution from its cumulative hazard function alone.
 
    univariate/custom
 
+Zero-Failure Analysis (Weibayes)
+--------------------------------
+
+The bound on a Weibull scale of known shape when there are too few
+failures to fit one, including none.
+
+.. toctree::
+   :maxdepth: 1
+
+   univariate/weibayes
+
 Mixture Modelling
 -----------------
 

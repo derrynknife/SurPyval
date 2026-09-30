@@ -13,7 +13,7 @@ from scipy.integrate import quad
 
 import surpyval
 from surpyval import np
-from surpyval.utils import _check_x_not_empty
+from surpyval.utils import _check_x_not_empty, refuse_time_values
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
@@ -1497,7 +1497,16 @@ class OptimisedFitMixin:
             raise ValueError(detail)
 
         if (surv_data.c == 1).all():
-            raise ValueError("Cannot have only right censored data")
+            # No failure: the likelihood keeps rising as the distribution
+            # moves out past every suspension, with a shape fixed or not.
+            raise ValueError(
+                "Cannot have only right censored data: with no failure the "
+                "likelihood has no maximum (it keeps rising as the "
+                "distribution moves out past every suspension). For a "
+                "zero-failure analysis of a Weibull or Exponential with a "
+                "known shape, surpyval.weibayes(x, c, n, beta=...) gives the "
+                "standard lower bound on the scale"
+            )
 
         if (surv_data.c == -1).all():
             raise ValueError("Cannot have only left censored data")
@@ -1895,6 +1904,18 @@ class OptimisedFitMixin:
         if (x is not None) and ((xl is not None) or (xr is not None)):
             raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
 
+        # A duration column would be read in its storage ticks (#480)
+        columns: list[tuple[str, Any]] = [
+            ("x", x),
+            ("xl", xl),
+            ("xr", xr),
+            ("tl", tl),
+            ("tr", tr),
+        ]
+        for name, col in columns:
+            # tl and tr may be scalars rather than column labels
+            if col is not None and (name[0] == "x" or isinstance(col, str)):
+                refuse_time_values(df[col], name)
         if x is not None:
             x = df[x].astype(float)
         else:
@@ -2442,6 +2463,16 @@ turnbull_estimator
             and self._warn_if_at_limit(surv_data, results, zi, lfp)
         ):
             warning = None
+        # So does an offset fit that ran its offset onto the first
+        # failure, whatever the family (#487).
+        if (
+            how == "MLE"
+            and offset
+            and self._warn_if_offset_at_limit(
+                surv_data, results, model.fitting_info, zi, lfp
+            )
+        ):
+            warning = None
         if warning is not None:
             warnings.warn(warning, stacklevel=3)
 
@@ -2526,6 +2557,119 @@ turnbull_estimator
         no finite maximum (#392). None does here; a family that contains
         another as a limit overrides this (see ``BetaGeometric``)."""
         return False
+
+    def _warn_if_offset_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        fitting_info: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn, and return ``True``, when an offset maximum-likelihood fit
+        ran its offset onto the smallest exact observation, where the
+        likelihood has no finite maximum (#487, #392).
+
+        As the offset ``gamma`` approaches the first failure ``x(1)``, that
+        failure's density term is the base density at ``x(1) - gamma -> 0``.
+        Where the density is infinite at its origin -- a Weibull, Gamma,
+        LogLogistic or ExpoWeibull shape below 1 -- the likelihood grows
+        without bound (Smith, 1985); where it is 0 at the origin (the
+        LogNormal, a shape above 1) the fit only gets there along a path on
+        which the likelihood also grows without bound (Hill, 1963). Either
+        way the "estimate" is where the search stopped. A density finite and
+        positive at its origin (the Exponential, a Weibull shape of exactly
+        1) gives a genuine maximum at ``gamma = x(1)``, which is not
+        flagged.
+
+        The criterion is the offset resting on ``x(1)`` to half the digits
+        of the data's spread (``sqrt(eps)`` of it, as ``Beta4`` uses for its
+        support ends), which an interior maximum -- where the density of
+        the first failure is finite and positive -- does not reach, and a
+        base density at its origin that is not finite and positive. It is
+        checked at the answer and, when the search failed and the answer is
+        its start, at the point the search reached; that point is then the
+        answer, as it is whenever the search stops in that corner (with no
+        covariance: its Hessian there is not computed, and would be
+        meaningless). Maximum product of spacings has no such corner: a
+        spacing of zero scores minus infinity (Cheng and Amin, 1983).
+        """
+        from surpyval.utils.no_maximum import warn_no_maximum
+
+        x = np.asarray(surv_data.x, dtype=float)
+        c = np.asarray(surv_data.c)
+        if x.ndim != 1 or not np.any(c == 0):
+            return False
+        x1 = float(x[c == 0].min())
+        finite = x[np.isfinite(x)]
+        spread = float(np.ptp(finite)) if finite.size else 0.0
+        if spread <= 0:
+            spread = max(abs(x1), 1.0)
+        close = np.sqrt(np.finfo(float).eps) * spread
+
+        def at_corner(gamma: float, core: npt.NDArray) -> str | None:
+            if not (np.isfinite(gamma) and np.all(np.isfinite(core))):
+                return None
+            if not 0 <= x1 - gamma <= close:
+                return None
+            with np.errstate(all="ignore"):
+                f0 = float(np.asarray(self.df(np.array([0.0]), *core))[0])
+            if np.isfinite(f0) and f0 > 0:
+                return None
+            return "infinite" if f0 > 0 else "zero"
+
+        k = len(np.atleast_1d(results.get("params", [])))
+        core = np.asarray(results.get("params", []), dtype=float)
+        gamma = float(results.get("gamma", np.nan))
+        origin = at_corner(gamma, core)
+        res = results.get("res")
+        if origin is None and res is not None and "inv_trans" in fitting_info:
+            # The search failed and the answer is its start: check where
+            # the search itself went.
+            with np.errstate(all="ignore"):
+                try:
+                    reached = np.asarray(
+                        fitting_info["inv_trans"](
+                            fitting_info["const"](np.asarray(res.x))
+                        ),
+                        dtype=float,
+                    )
+                    neg_ll = float(res.fun)
+                except Exception:
+                    return False
+            origin = at_corner(float(reached[0]), reached[1 : 1 + k])
+            if origin is None:
+                return False
+            gamma, core = float(reached[0]), reached[1 : 1 + k]
+            rest = list(reached[1 + k :])
+            results["gamma"] = gamma
+            results["params"] = core
+            if zi:
+                results["f0"] = rest.pop()
+            if lfp:
+                results["p"] = rest.pop()
+            results["_neg_ll"] = neg_ll
+            results["log_likelihood"] = -neg_ll
+            results["cov_matrix"] = None
+            results["hess_inv"] = None
+        if origin is None:
+            return False
+        shape = ", ".join(
+            f"{name} = {value:.4g}"
+            for name, value in zip(self.param_names, core)
+        )
+        warn_no_maximum(
+            f"the offset gamma = {gamma:.6g} ran onto the smallest "
+            f"observation {x1:.6g} ({shape}), where the {self.name} "
+            f"density is {origin} at its origin: the likelihood of an "
+            "offset fit grows without bound as gamma approaches the first "
+            "failure, and this data has no interior maximum short of it",
+            "The reported gamma and parameters are where the search stopped, "
+            "and their standard errors and bounds are meaningless",
+            "fit with how='MPS' (maximum product of spacings, the standard "
+            "remedy for an offset fit), or without an offset",
+        )
+        return True
 
     def _check_fixed_and_init(
         self, model: Parametric, fixed: Any, init: Any, how: str

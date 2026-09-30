@@ -23,8 +23,8 @@ from .distributions import (
     Discretize,
     DiscretizedFitter,
     ExactEventTime,
-    ExpoWeibull,
     Exponential,
+    ExpoWeibull,
     FixedEventProbability,
     Galton,
     Gamma,
@@ -49,3 +49,4 @@ from .mixture_model import MixtureModel
 from .parametric import Parametric
 from .parametric_fitter import OptimisedFitMixin, ParametricFitter
 from .royston_parmar import RoystonParmar, RoystonParmarModel
+from .weibayes import weibayes

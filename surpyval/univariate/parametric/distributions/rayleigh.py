@@ -23,6 +23,11 @@ _LOG2 = float(np.log(2.0))
 
 
 class Rayleigh_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # log(-log sf), on which this family is a straight line in
+    # log time (#477).
+    _cb_link = "loglog"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,

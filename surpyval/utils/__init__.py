@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as _dt
 import warnings
 from collections import defaultdict
 from numbers import Number
@@ -507,6 +508,96 @@ def xrd_handler(
     return x, r, d
 
 
+def _time_kind(value: Any) -> "str | None":
+    """``"m"`` if ``value`` holds durations (``timedelta64``, pandas
+    ``Timedelta``, ``datetime.timedelta``), ``"M"`` if it holds dates or
+    times (``datetime64``, pandas ``Timestamp``, ``datetime``), else
+    ``None``. Looks into lists and tuples (interval pairs included)."""
+    if isinstance(value, (np.timedelta64, _dt.timedelta)):
+        # pandas Timedelta is a datetime.timedelta
+        return "m"
+    if isinstance(value, (np.datetime64, _dt.date)):
+        # pandas Timestamp and datetime.datetime are datetime.date
+        return "M"
+    if isinstance(value, (list, tuple)):
+        # numpy infers a list's dtype in C; only a list of objects (pandas
+        # Timedelta, say) or a ragged one (pairs among scalars) is looked
+        # into element by element
+        try:
+            value = np.asarray(value)
+        except (ValueError, TypeError):
+            for v in value:
+                kind = _time_kind(v)
+                if kind is not None:
+                    return kind
+            return None
+    kind = getattr(getattr(value, "dtype", None), "kind", None)
+    if kind in ("m", "M"):
+        return str(kind)
+    if kind == "O":
+        for v in np.asarray(value).flat:
+            kind = _time_kind(v)
+            if kind is not None:
+                return kind
+    return None
+
+
+def refuse_time_values(value: Any, name: str) -> None:
+    """Refuse durations or dates given where SurPyval needs numbers (#480).
+
+    A ``timedelta64`` array converts to a float array silently, in its
+    storage ticks: seconds for ``timedelta64[s]``, nanoseconds for
+    ``timedelta64[ns]``, whichever pandas happened to pick, so a fit to
+    six durations in days came back with a scale of 5.0e5 (seconds) or,
+    after multiplying the input by 1.37, 6.9e14 (nanoseconds), without a
+    word. SurPyval has no unit of time -- every model is in the units of
+    the numbers it is given -- so the unit is the caller's to choose:
+    this raises a ``ValueError`` naming the argument and saying how to
+    convert, rather than choosing one.
+
+    Parameters
+    ----------
+    value : any
+        The argument as given.
+    name : str
+        Its name, for the message.
+
+    Raises
+    ------
+    ValueError
+        If ``value`` holds durations or dates.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils import refuse_time_values
+    >>> refuse_time_values([1.0, 2.0], "x")
+    >>> days = np.array([1, 2], dtype="timedelta64[D]")
+    >>> refuse_time_values(days, "x")  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: 'x' holds durations (timedelta64 or pandas Timedelta)...
+    """
+    kind = _time_kind(value)
+    if kind == "m":
+        raise ValueError(
+            f"'{name}' holds durations (timedelta64 or pandas Timedelta), "
+            "which would be read in their storage ticks -- seconds or "
+            "nanoseconds, depending on the dtype. SurPyval works in the "
+            "units of the numbers it is given, so convert them to numbers "
+            f"in the unit you want first: e.g. {name} / pd.Timedelta(days=1) "
+            f"(or {name} / np.timedelta64(1, 'D')) for days, or "
+            f"{name}.dt.total_seconds() for a pandas Series in seconds"
+        )
+    if kind == "M":
+        raise ValueError(
+            f"'{name}' holds dates or times (datetime64 or pandas "
+            "Timestamp); SurPyval needs durations as numbers. Subtract "
+            "each unit's start and convert to the unit you want: e.g. "
+            f"({name} - start) / pd.Timedelta(days=1) for days"
+        )
+
+
 def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     """
     Coerce the ``x`` variable of xcnt-format data into a float numpy array.
@@ -518,7 +609,9 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     Validates dimensionality, the absence of NaNs and the interval
     ordering (``left <= right``). Shared by the univariate
     (``xcnt_handler``) and recurrent (``handle_xicn``) handlers.
+    Durations and dates are refused (see ``refuse_time_values``).
     """
+    refuse_time_values(x, "x")
     if isinstance(x, (list, tuple)) and any(
         isinstance(v, (list, tuple, np.ndarray)) and np.ndim(v) > 0 for v in x
     ):
@@ -592,6 +685,8 @@ def format_truncation(
     ``[-inf, inf]``. NaN bounds are refused. Shared by ``xcnt_handler`` and
     ``handle_xicn``.
     """
+    for value, name in ((t, "t"), (tl, "tl"), (tr, "tr")):
+        refuse_time_values(value, name)
     if t is not None and ((tl is not None) or (tr is not None)):
         raise ValueError(
             "Cannot use 't' with 'tl' or 'tr'. Use either 't' or any"
@@ -874,6 +969,8 @@ def xcnt_handler(
         raise ValueError("Must use either 'x' or both 'xl and 'xr'")
 
     if x is None:
+        refuse_time_values(xl, "xl")
+        refuse_time_values(xr, "xr")
         try:
             xl = np.array(xl, dtype=np.float64)
             xr = np.array(xr, dtype=np.float64)

@@ -13,9 +13,9 @@ from scipy.optimize import (
     minimize,
     minimize_scalar,
 )
-from scipy.special import expit
+from scipy.special import expit, ndtr
 from scipy.special import ndtri as z
-from scipy.stats import uniform
+from scipy.stats import norm, uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution, np
@@ -24,7 +24,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
-from surpyval.utils import fsli_to_xcnt
+from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -1422,6 +1422,7 @@ class Parametric(
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_sf = self.dist.sf(xg, *self.params)
@@ -1469,6 +1470,7 @@ class Parametric(
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_ff = self.dist.ff(xg, *self.params)
@@ -1540,6 +1542,7 @@ class Parametric(
         ``f0 * dx / 2`` (trapezoidal rule); use ``continuous=True`` for
         that, and add the mass ``f0`` at 0 separately if it is wanted.
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
         base_df = self.dist.df(xg, *self.params)
@@ -1589,6 +1592,7 @@ class Parametric(
         >>> model.hf([1, 2, 3, 4, 5])
         array([0.003, 0.012, 0.027, 0.048, 0.075])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
         if (self.p == 1) and (self.f0 == 0):
             xg = x - self.gamma  # type: ignore[operator]
@@ -1639,6 +1643,7 @@ class Parametric(
         >>> model.Hf([1, 2, 3, 4, 5])
         array([0.001, 0.008, 0.027, 0.064, 0.125])
         """
+        refuse_time_values(x, "x")
         x = np.asarray(x)
 
         if (self.p == 1) and (self.f0 == 0):
@@ -2207,11 +2212,18 @@ class Parametric(
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
             The function on which the confidence bound will be calculated.
             The Wald bounds on ``sf``, ``ff`` and ``Hf`` come from one bound
-            on the logit of ``sf``; those on ``hf`` and ``df`` are on the log
-            scale (the logit scale for a discrete distribution, whose hazard
-            and mass are probabilities), and are 0 where the rate is 0. Where
-            the delta-method variance is negative (the covariance is not
+            on the log cumulative hazard, ``log Hf = log(-log sf)`` (the
+            "log-log" transform, on which a Weibull is a straight line in
+            log time); those on ``hf`` and ``df`` are on the log scale (the
+            logit scale for a discrete distribution, whose hazard and mass
+            are probabilities), and are 0 where the rate is 0. Where the
+            delta-method variance is negative (the covariance is not
             positive definite) a Wald bound is ``nan``, with a warning.
+            The Wald band on ``sf`` and ``ff`` rises (or falls) with ``x``
+            as the function does whenever the shape's own Wald interval
+            excludes 0; with fewer failures than that it can turn back in a
+            tail, and the likelihood-ratio band (``method="lr"``), which is
+            always monotone, is the one to use.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
@@ -2230,7 +2242,7 @@ class Parametric(
             one band, so they agree exactly.
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
-            samples (the reliability-engineering default), but it is computed
+            samples (Meeker and Escobar recommend it there), but it is computed
             pointwise and so is slower, needs the original data (a model
             restored from ``to_dict(with_data=True)`` has it; one saved
             without it raises), and is not yet available for offset / LFP /
@@ -2253,10 +2265,10 @@ class Parametric(
         >>> x = Weibull.random(30, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.cb([5, 10], on="sf")
-        array([[0.65821001, 0.89149672],
-               [0.17231083, 0.4256438 ]])
+        array([[0.65083522, 0.88949979],
+               [0.1629223 , 0.41352719]])
         >>> model.cb([5, 10], on="sf", bound="lower")
-        array([0.68394304, 0.18735771])
+        array([0.67916426, 0.18042915])
         """
         t = np.atleast_1d(x)
         if self.method != "MLE":
@@ -2315,6 +2327,435 @@ class Parametric(
             np.seterr(**old_err_state)
 
         return cb
+
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
+        (the B10 life is ``p = 0.1``), the time by which a fraction ``p``
+        has failed.
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) is the delta method on the log of the
+            quantile above the support's start (``log t_p`` for a lifetime,
+            ``log(t_p - gamma)`` with an offset; the quantile itself for a
+            distribution on the whole line), from the gradient of ``t_p``
+            with respect to the parameters, ``-dF/dtheta / f`` at ``t_p``;
+            for the Weibull, :math:`\log t_p = \log\alpha +
+            \log(-\log(1 - p))/\beta`, the "Fisher matrix" bound on time
+            of Nelson (1982) and of Meeker and Escobar (1998). ``"lr"`` is
+            the likelihood-ratio bound: the extreme of ``qf(p)`` over the
+            parameters' likelihood region, as ``cb(method="lr")`` is for
+            a function of time. It is invariant to the parameterisation
+            and better in small samples, slower, and, like ``cb``'s, not
+            available for offset, limited-failure or zero-inflated models.
+
+        Returns
+        -------
+
+        cb : scalar or numpy array
+            The bound(s), shaped as ``p``; a two-sided bound adds a last
+            ``[lower, upper]`` axis.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.qf(0.1).round(3)
+        np.float64(3.695)
+        >>> model.quantile_cb(0.1).round(3)
+        array([2.638, 5.175])
+        >>> model.quantile_cb(0.1, bound="lower", method="lr").round(3)
+        np.float64(2.648)
+
+        Notes
+        -----
+        The nonparametric models' ``quantile_cb`` is the same bound for a
+        step estimate (Brookmeyer and Crowley); :meth:`mean_cb` bounds the
+        mean.
+        """
+        probs = np.asarray(p, dtype=float)
+        self._check_summary_cb(alpha_ci, bound)
+        if probs.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        if not np.all((probs > 0) & (probs < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        if self.dist.discrete:
+            self._is_lr(method)  # checks the name
+            return self._quantile_cb_discrete(probs, alpha_ci, bound, method)
+        if self._is_lr(method):
+            fns = [
+                lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
+                for p_i in probs
+            ]
+            return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
+        return self._quantile_cb_wald(probs, alpha_ci, bound)
+
+    def mean_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> Any:
+        r"""
+        Confidence bounds on the mean, :meth:`mean`.
+
+        Parameters
+        ----------
+
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) is the delta method on the log of the mean
+            above the support's start (on the mean itself for a
+            distribution on the whole line); ``"lr"`` is the
+            likelihood-ratio bound, the extreme of the mean over the
+            parameters' likelihood region (not available for offset,
+            limited-failure or zero-inflated models).
+
+        Returns
+        -------
+
+        cb : numpy array or scalar
+            The ``[lower, upper]`` interval, or the one bound asked for.
+            With a limited failure population (``p < 1``) the mean is
+            infinite, and so are its bounds.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.mean().round(3)
+        np.float64(8.073)
+        >>> model.mean_cb().round(3)
+        array([6.935, 9.398])
+
+        Notes
+        -----
+        The nonparametric models' ``mean_cb`` bounds their (restricted)
+        mean; :meth:`quantile_cb` bounds a quantile.
+        """
+        self._check_summary_cb(alpha_ci, bound)
+        if self.p < 1:
+            # A fraction 1 - p never fails: E[T] is infinite (#404).
+            inf = np.inf
+            return np.array([inf, inf]) if bound == "two-sided" else inf
+        if self._is_lr(method):
+            fns = [lambda theta: self.dist.mean(*theta)]
+            out = self._summary_cb_lr(fns, alpha_ci, bound, "mean")
+            return out[0]
+        ctx = self._cb_context()
+
+        def mean_of(phi: npt.NDArray) -> Any:
+            core, p, f0 = self._cb_unpack(phi, ctx)
+            return (p - f0) * (self.dist.mean(*core) + self.gamma)
+
+        with np.errstate(all="ignore"):
+            grad = _central_gradient(mean_of, ctx.phi_hat)
+            var = np.atleast_1d(grad @ ctx.cov @ grad)
+            value = np.atleast_1d(mean_of(ctx.phi_hat))
+        # The mass f0 at 0 of a zero-inflated model is below any offset
+        scale = self._summary_scale(zero_floor=bool(self.zi))
+        out = self._summary_wald(value, var, scale, alpha_ci, bound, "mean")
+        return out[0]
+
+    @staticmethod
+    def _is_lr(method: str) -> bool:
+        m = method.lower()
+        if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
+            return True
+        if m != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
+        return False
+
+    def _check_summary_cb(self, alpha_ci: float, bound: str) -> None:
+        if self.method != "MLE":
+            raise ValueError("Only MLE has confidence bounds")
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
+        if not 0 < alpha_ci < 1:
+            raise ValueError(f"'alpha_ci' must be in (0, 1); got {alpha_ci}")
+
+    def _summary_scale(self, zero_floor: bool = False) -> tuple:
+        """The scale a quantile or the mean is bounded on, from the
+        model's support ``(lo, hi)``: the logit of its position in the
+        support when both ends are finite, the log of its distance above
+        ``lo`` when only that end is, and its own scale otherwise (a
+        distribution on the whole line, or one whose support ends are
+        parameters). Returns ``(to_psi, from_psi, slope, ends)``: the
+        transform, its inverse, its derivative and the ends of its range.
+        ``zero_floor`` puts ``lo`` at 0 (the mean of a zero-inflated
+        model, whose mass at 0 is below any offset).
+        """
+        s0, s1 = (float(v) for v in getattr(self.dist, "support", (0, 0)))
+        lo = 0.0 if zero_floor else s0 + self.gamma
+        hi = s1 + self.gamma
+        if np.isfinite(lo) and np.isfinite(hi):
+            width = hi - lo
+
+            def to_psi(v: Any) -> Any:
+                return np.log(v - lo) - np.log(hi - v)
+
+            def from_psi(u: Any) -> Any:
+                return lo + width * expit(u)
+
+            def slope(v: Any) -> Any:
+                return 1 / (v - lo) + 1 / (hi - v)
+
+            return to_psi, from_psi, slope, (_LN_TINY, -_LN_TINY)
+        if np.isfinite(lo):
+            return (
+                lambda v: np.log(v - lo),
+                lambda u: lo + np.exp(u),
+                lambda v: 1 / (v - lo),
+                (_LN_TINY, _LN_MAX),
+            )
+        return (
+            lambda v: v,
+            lambda u: u,
+            lambda v: np.ones_like(v),
+            (-1e300, 1e300),
+        )
+
+    def _summary_wald(
+        self,
+        value: npt.NDArray,
+        var: npt.NDArray,
+        scale: tuple,
+        alpha_ci: float,
+        bound: str,
+        what: str,
+    ) -> npt.NDArray:
+        """The Wald bound on ``value`` with delta-method variance ``var``,
+        on the ``scale`` of ``_summary_scale``."""
+        to_psi, from_psi, slope, _ = scale
+        sd = self._cb_sd(var, value, what)
+        if bound == "two-sided":
+            k = z(1 - alpha_ci / 2) * np.array([-1.0, 1.0])
+        elif bound == "lower":
+            k = np.array([-z(1 - alpha_ci)])
+        else:
+            k = np.array([z(1 - alpha_ci)])
+        with np.errstate(all="ignore"):
+            psi = to_psi(value)
+            se = sd * np.abs(slope(value))
+            out = from_psi(psi[:, None] + k * se[:, None])
+            # A value that is infinite (a quantile past a limited failure
+            # population's p) or at an end of the scale is its own bound.
+            edge = ~np.isfinite(psi) | (sd == 0)
+        out = np.where(edge[:, None], value[:, None], out)
+        return out if bound == "two-sided" else out[:, 0]
+
+    def _quantile_cb_wald(
+        self, p: npt.NDArray, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """The delta-method bound on ``qf(p)``. The gradient of the
+        quantile ``t`` is implicit, from ``F(t; theta) = p``:
+        ``dt/dtheta = -(dF/dtheta) / f(t)``, which needs only the
+        distribution function, not a differentiable ``qf``."""
+        ctx = self._cb_context()
+        t = np.atleast_1d(np.asarray(self.qf(p), dtype=float))
+        core, p_lfp, f0 = self._cb_unpack(ctx.phi_hat, ctx)
+        finite = np.isfinite(t)
+        t_eval = np.where(finite, t, self.gamma + 1.0)
+        with np.errstate(all="ignore"):
+            jac = np.atleast_2d(
+                jacobian(lambda phi: self._cb_full_ff(t_eval, phi, ctx))(
+                    ctx.phi_hat
+                )
+            )
+            dens = (p_lfp - f0) * np.asarray(
+                self.dist.df(t_eval - self.gamma, *core), dtype=float
+            )
+            grad = -jac / dens[:, None]
+            var = np.einsum("ij,jk,ik->i", grad, ctx.cov, grad)
+        var = np.where(finite, var, 0.0)
+        return self._summary_wald(
+            t, var, self._summary_scale(), alpha_ci, bound, "qf"
+        )
+
+    def _quantile_cb_discrete(
+        self, p: npt.NDArray, alpha_ci: float, bound: str, method: str
+    ) -> npt.NDArray:
+        """The bound on a discrete quantile, the smallest ``k`` with
+        ``F(k) >= p``: that ``k`` from the band on ``F`` instead of from
+        ``F`` -- from its upper end for the lower bound on the quantile,
+        and its lower end for the upper -- as the nonparametric
+        ``quantile_cb`` inverts its band (Brookmeyer and Crowley). A
+        discrete quantile is a step, with no gradient for the delta
+        method. Each ``k`` is found by doubling and then bisection, so a
+        heavy tail costs a few dozen evaluations of the band, not one per
+        count; ``inf`` where the band does not reach ``p`` by ``2**40``.
+        """
+        start = float(getattr(self.dist, "support", (0, np.inf))[0])
+        start = 0.0 if not np.isfinite(start) else start
+
+        def band_end(k: float, end: str) -> float:
+            # "upper" or "lower" end of the band on F at k: the one-sided
+            # bound at alpha_ci for a one-sided bound on the quantile, the
+            # end of the two-sided band otherwise
+            if bound == "two-sided":
+                b = self.cb(k, on="ff", alpha_ci=alpha_ci, method=method)
+                value = b[1] if end == "upper" else b[0]
+            else:
+                value = self.cb(
+                    k, on="ff", alpha_ci=alpha_ci, bound=end, method=method
+                )
+            value = float(value)
+            return value if np.isfinite(value) else 0.0
+
+        def first(level: float, end: str) -> float:
+            # The smallest count at which the band's end reaches level
+            if band_end(start, end) >= level:
+                return start
+            lo, step = start, 1.0
+            while band_end(start + step, end) < level:
+                lo = start + step
+                step *= 2
+                if step > 2.0**40:
+                    return np.inf
+            hi = start + step
+            while hi - lo > 1:
+                mid = np.floor((lo + hi) / 2)
+                if band_end(mid, end) >= level:
+                    hi = mid
+                else:
+                    lo = mid
+            return hi
+
+        with warnings.catch_warnings():
+            # a warning of the band's is given once, not once per count
+            warnings.simplefilter("ignore")
+            lower = np.full(len(p), np.nan)
+            upper = np.full(len(p), np.nan)
+            if bound in ("two-sided", "lower"):
+                lower = np.array([first(p_i, "upper") for p_i in p])
+            if bound in ("two-sided", "upper"):
+                upper = np.array([first(p_i, "lower") for p_i in p])
+        if bound == "two-sided":
+            return np.column_stack([lower, upper])
+        return lower if bound == "lower" else upper
+
+    def _summary_cb_lr(
+        self,
+        fns: list,
+        alpha_ci: float,
+        bound: str,
+        what: str,
+    ) -> npt.NDArray:
+        """Likelihood-ratio bounds on the functions ``fns`` of the core
+        parameters (a quantile, the mean): the extreme of each over the
+        parameters' likelihood region, searched as ``_cb_lr`` searches for
+        a function of time, on the scale of ``_summary_scale``."""
+        self._ensure_surv_data()
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio confidence bounds are not yet available "
+                "for offset, limited-failure-population or zero-inflated "
+                "models; use method='wald'."
+            )
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        else:
+            crit = z(1.0 - alpha_ci) ** 2
+        want_lower = bound in ("two-sided", "lower")
+        want_upper = bound in ("two-sided", "upper")
+        theta_hat = np.array(self.params, dtype=float)
+        user_fixed = self._user_fixed_idx()
+        free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        n = len(fns)
+
+        def shape(lower: npt.NDArray, upper: npt.NDArray) -> npt.NDArray:
+            if bound == "two-sided":
+                return np.column_stack([lower, upper])
+            return lower if bound == "lower" else upper
+
+        if not free:
+            at = np.array([f(theta_hat) for f in fns], dtype=float)
+            return shape(at, at)
+        if len(free) == 1:
+            band = self._cb_lr_one_param(
+                np.arange(n, dtype=float),
+                lambda i, theta: fns[int(i)](theta),
+                free[0],
+                alpha_ci,
+                bound,
+            )
+            if band is not None:
+                return band
+
+        to_psi_, to_value, _, ends = self._summary_scale()
+
+        def to_psi(v: Any) -> float:
+            return float(to_psi_(v))
+
+        lower = np.full(n, np.nan)
+        upper = np.full(n, np.nan)
+        failed = []
+        with np.errstate(all="ignore"):
+            region = self._lr_region(free, crit)
+            for i, f in enumerate(fns):
+
+                def psi(theta: npt.NDArray, f: Callable = f) -> float:
+                    return to_psi(f(theta))
+
+                lo, hi = self._cb_lr_psi_bounds(
+                    psi,
+                    free,
+                    crit,
+                    want_lower,
+                    want_upper,
+                    ends,
+                    *region,
+                )
+                if (want_lower and np.isnan(lo)) or (
+                    want_upper and np.isnan(hi)
+                ):
+                    failed.append(i)
+                lower[i], upper[i] = to_value(lo), to_value(hi)
+        if failed:
+            warnings.warn(
+                f"The likelihood-ratio bound on {what} could not be found "
+                f"for {len(failed)} of {n} value(s) (the constrained "
+                "optimiser failed from every start); nan is returned there. "
+                "method='wald' gives a bound in its place.",
+                RuntimeWarning,
+                stacklevel=4,
+            )
+        return shape(lower, upper)
 
     def _cb_lr_on_func(self, on: str) -> Any:
         """Return ``g(t, theta)`` for the requested ``on`` function.
@@ -2919,6 +3360,22 @@ class Parametric(
             out = np.where(x < 0, 1.0, out)
         return out
 
+    def _cb_full_ff(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """``1 - _cb_full_sf``, from the base ``ff``, so that it is
+        accurate where it is small (in the left tail, where ``1 - sf``
+        is not): ``f0 + (p - f0) F``."""
+        core, p, f0 = self._cb_unpack(phi, ctx)
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = x - self.gamma
+        below = xg < s0
+        if np.any(below):
+            xg = np.where(below, s0 + 1e-10, xg)
+        base_ff = np.where(below, 0.0, self.dist.ff(xg, *core))
+        out = f0 + (p - f0) * base_ff
+        if self.zi:
+            out = np.where(x < 0, 0.0, out)
+        return out
+
     def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
@@ -2952,18 +3409,48 @@ class Parametric(
     def _cb_sf_bound(
         self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
     ) -> Any:
-        """Confidence bound on the survival function via a logit transform.
+        """Confidence bound on the survival function: a Wald bound on the
+        scale on which the family is a straight line in (log) time -- its
+        probability-plot scale -- mapped back to ``R``.
 
-        Working on the logit of R keeps the bound within ``(0, 1)``. The
-        returned array is the transpose of the per-point bounds, matching the
-        layout the public ``cb`` method expects.
+        The scale is the distribution's ``_cb_link``: ``log(-log R)`` (the
+        log cumulative hazard) for the Weibull, Exponential, Rayleigh and
+        Gumbel, the normal quantile of ``F`` for the Normal and LogNormal,
+        and the logit for the Logistic and LogLogistic, and for every other
+        family, which has no such scale. Each keeps the bound within
+        ``(0, 1)``. On a family's straight-line scale the function is
+        ``a s - b`` in ``s`` = (log) time, so the pointwise band is the
+        envelope of the lines of the Wald ellipsoid for ``(a, b)``: it
+        rises with ``s`` whenever the slope's (the shape's) own Wald
+        interval excludes 0. The logit band used for every family before
+        (#477) has no such property: on small samples it turned back in a
+        tail for most Weibull, LogNormal and Normal fits -- a lower bound on
+        ``F(10)`` of 0.00004 under one on ``F(5)`` of 0.39 -- where this one
+        does only when the shape's interval reaches 0. The scales agree to
+        first order, so large-sample bounds are essentially unchanged. The
+        returned array is the transpose of the per-point bounds, matching
+        the layout the public ``cb`` method expects.
         """
 
-        def sf_func(phi: npt.NDArray) -> Any:
-            return self._cb_full_sf(x, phi, ctx)
-
-        sd_R = self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
         R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
+        F_hat = self._cb_full_ff(x, ctx.phi_hat, ctx)
+        # The smaller of R and F, each accurate where it is small (1 - R
+        # is not): the scales below are taken from it in each tail, and so
+        # is the variance (Var R = Var F), relative to it, since its square
+        # can underflow and the derivative of R where R is near 1 has lost
+        # the digits that F's keeps.
+        left = F_hat < 0.5
+        small = np.where(left, F_hat, R_hat)
+        unit = np.where(small > 0, small, 1.0)
+
+        def sf_func(phi: npt.NDArray) -> Any:
+            R = self._cb_full_sf(x, phi, ctx)
+            F = self._cb_full_ff(x, phi, ctx)
+            return np.where(left, -F, R) / unit
+
+        sd_R = unit * self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
+        # ``diff`` moves the scale by z standard errors, in the direction
+        # that raises ``R`` when it is negative (the upper bound on R).
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * sd_R * np.array([1.0, -1.0]).reshape(2, 1)
         elif bound == "upper":
@@ -2971,13 +3458,28 @@ class Parametric(
         else:
             diff = -z(alpha_ci) * sd_R
 
+        link = getattr(self.dist, "_cb_link", "logit")
         with np.errstate(all="ignore"):
-            exponent = diff / (R_hat * (1 - R_hat))
-            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        # At the boundary (R = 0 or 1, e.g. t <= gamma) the logit transform
+            if link == "loglog":
+                # v = log H, dv/dR = -1 / (R H): se(v) = sd_R / (R H)
+                H_hat = np.where(
+                    F_hat < 0.5, -np.log1p(-F_hat), -np.log(R_hat)
+                )
+                R_cb = np.exp(-H_hat * np.exp(diff / (R_hat * H_hat)))
+            elif link == "probit":
+                # q = Phi^-1(F), dq/dR = -1 / phi(q): se(q) = sd_R / phi(q)
+                q = np.where(F_hat < 0.5, z(F_hat), -z(R_hat))
+                R_cb = ndtr(-(q + diff / norm.pdf(q)))
+            else:
+                # logit R, d/dR = 1 / (R F)
+                exponent = diff / (R_hat * F_hat)
+                R_cb = R_hat / (R_hat + F_hat * np.exp(exponent))
+        # At the boundary (R = 0 or 1, e.g. t <= gamma) the transform
         # degenerates to 0/0; the bound there is the boundary itself (#256).
-        R_cb = np.where(np.broadcast_to(R_hat == 1.0, R_cb.shape), 1.0, R_cb)
-        R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
+        # So it is within a subnormal of it, where the variance is noise.
+        tiny = np.finfo(float).tiny
+        R_cb = np.where(np.broadcast_to(F_hat < tiny, R_cb.shape), 1.0, R_cb)
+        R_cb = np.where(np.broadcast_to(R_hat < tiny, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
     def _cb_rate_bound(
@@ -3073,7 +3575,10 @@ class Parametric(
         return ic_sample_size(self.data["c"], self.data["n"])
 
     def get_plot_data(
-        self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05
+        self,
+        heuristic: str = "Nelson-Aalen",
+        alpha_ci: float = 0.05,
+        method: str = "wald",
     ) -> dict:
         """
 
@@ -3093,11 +3598,20 @@ class Parametric(
             The level of significance at which the confidence bounds, if
             able, will be calculated. Defaults to 0.05.
 
+        method : ('wald', 'lr'), str, optional
+            The method of the confidence band, as for :meth:`cb`. Defaults
+            to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
+            but better in small samples, and always monotone.
+
         Returns
         -------
 
         data : dict
             Returns dictionary containing the data needed to do a plot.
+            ``x_`` and ``F`` are the failures and their plotting
+            positions (suspensions are not plotted points; before v0.22
+            they were included, at the ``F`` of the failure before them),
+            and ``x_censored`` the suspension times.
 
         Examples
         --------
@@ -3115,7 +3629,9 @@ class Parametric(
         ):
 
             def _cb_func(x_model: npt.NDArray) -> Any:
-                return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
+                return self.cb(
+                    x_model, on="ff", alpha_ci=alpha_ci, method=method
+                )
 
             cb_func = _cb_func
         else:
@@ -3140,9 +3656,17 @@ class Parametric(
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
         ax: "Axes | None" = None,
+        show_censored: bool = False,
+        method: str = "wald",
     ) -> list:
         """
-        A method to do a probability plot
+        A method to do a probability plot.
+
+        The points are the failures, at their plotting positions. A
+        suspension (right-censored unit) moves the plotting positions of
+        the failures after it but has no point of its own (Abernethy's
+        *New Weibull Handbook*, Weibull++); ``show_censored=True`` marks
+        each suspension time with a tick on the time axis.
 
         A model without data (built with ``from_params``, or restored from
         a dict saved without its data) draws its CDF alone on the same
@@ -3170,6 +3694,15 @@ class Parametric(
         ax: matplotlib.axes.Axes, optional
             The axis onto which the plot will be created. Optional, if not
             provided a new axes will be created.
+
+        show_censored : bool, optional
+            Mark the suspension (right-censored) times with ticks along
+            the time axis. Defaults to False.
+
+        method : ('wald', 'lr'), str, optional
+            The method of the confidence band, as for :meth:`cb`. Defaults
+            to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
+            but better in small samples, and always monotone.
 
         Returns
         -------
@@ -3215,7 +3748,9 @@ class Parametric(
             heuristic = adjust_heuristic(
                 self.data["c"], self.data["t"], heuristic
             )
-            d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
+            d = self.get_plot_data(
+                heuristic=heuristic, alpha_ci=alpha_ci, method=method
+            )
 
         return draw_probability_plot(
             ax,
@@ -3224,4 +3759,5 @@ class Parametric(
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
             title=f"{self.dist.name} Probability Plot",
             plot_bounds=plot_bounds,
+            show_censored=show_censored,
         )

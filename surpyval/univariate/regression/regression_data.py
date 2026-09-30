@@ -26,6 +26,7 @@ from surpyval.utils import (
     _caller_stacklevel,
     formula_model_matrix,
     numeric_columns,
+    refuse_time_values,
 )
 
 from ._aliasing import covariate_columns
@@ -815,6 +816,9 @@ class DataFrameRegressionMixin:
             t = None
         else:
             n_rows = len(df)
+            for name, col in (("tl", tl_col), ("tr", tr_col)):
+                if col is not None:
+                    refuse_time_values(df[col], name)  # (#480)
             tl = (
                 np.full(n_rows, -np.inf)
                 if tl_col is None
