@@ -22,7 +22,10 @@ none guards a regression that the default run would miss quickly:
     of confidence intervals, test size and power, estimator bias. They
     check that the answers are statistically right rather than that the
     code runs, take ten to twenty minutes on four cores, and run nightly
-    (.github/workflows/nightly.yml), not on pull requests.
+    (.github/workflows/nightly.yml), not on pull requests. A test
+    elsewhere joins them by carrying the ``calibration`` mark: the
+    likelihood-ratio option sweeps of the slow families
+    (conformance/registry.py, ``Bound.nightly``).
 
 Continuous integration passes ``--run-ml`` only, so its coverage is
 unchanged. The invariant sweep is deliberately *not* run there: it is a
@@ -218,7 +221,9 @@ def pytest_collection_modifyitems(config, items):
         wanted = config.getoption(flag)
         for item in items:
             location = str(item.fspath).replace("\\", "/")
-            if path not in location:
+            # A test outside the path opts in by carrying the mark (the
+            # conformance sweeps that run nightly).
+            if path not in location and item.get_closest_marker(mark) is None:
                 continue
             item.add_marker(getattr(pytest.mark, mark))
             if not wanted:

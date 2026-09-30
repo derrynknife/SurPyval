@@ -128,6 +128,11 @@ jobs:
           python -m pytest -n auto -rP --durations=0 --run-calibration
           surpyval/tests/calibration
 
+      - name: slow likelihood-ratio sweeps (conformance, marked calibration)
+        run:
+          python -m pytest -n auto --durations=10 --run-calibration
+          -m calibration surpyval/tests/conformance/test_options.py
+
   # The property-based tests (surpyval/tests/properties) run a small,
   # derandomized search on every full test run -- about 40 seconds on one
   # core. Here they search thoroughly: hundreds of generated data sets per

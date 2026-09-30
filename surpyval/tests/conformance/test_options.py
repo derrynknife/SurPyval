@@ -91,6 +91,9 @@ def _bound_params(prop, where=None):
                 marks.append(pytest.mark.xfail(strict=strict, reason=reason))
             if spec.slow:
                 marks.append(pytest.mark.slow)
+            if spec.nightly:
+                # Opt in with --run-calibration (the root conftest).
+                marks.append(pytest.mark.calibration)
             params.append(
                 pytest.param(
                     case, spec, id=f"{case.name}-{spec.name}", marks=marks

@@ -2015,6 +2015,10 @@ class Bound:
     # Relative tolerance of the equalities (a search's own tolerance).
     rtol: float = 1e-8
     slow: bool = False
+    # Run only in the nightly calibration job (``--run-calibration``):
+    # a sweep that takes minutes, where a faster family already sweeps
+    # the same method in every run.
+    nightly: bool = False
     label: str = ""
 
     @property
@@ -2053,6 +2057,7 @@ _LR_X = {
     # tail (13) is where its bands were hardest (the hf nesting in #421).
     "ExpoWeibull": np.array([13.0]),
 }
+_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
 
 
 # Fits with no parameter covariance by design, so no Wald bounds: the
@@ -2074,15 +2079,24 @@ def _parametric_bounds(case):
                 label="param_cb[wald]",
             ),
         ]
-    # The likelihood-ratio search is swept on the cases in _LR_X only:
-    # the sweep of the six takes about five minutes on four cores, most
-    # of it the ExpoWeibull's and NegativeBinomial's bands.
+    # The likelihood-ratio search is swept on the cases in _LR_X only.
+    # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
+    # multi-parameter valleys, seconds each) took about ten minutes on
+    # four cores, so they run nightly, with the calibration studies; the
+    # other four sweep in every run, and test_likelihood_ratio_edges.py
+    # checks those two families' edges and valleys directly (#421).
     # (Documented: it is not available for offset, limited-failure or
     # zero-inflated models.)
     if case.name not in _LR_X:
         return tuple(out)
     x = _LR_X[case.name]
-    lr = dict(wald=False, nan_ok=True, rtol=1e-3, slow=True)
+    lr = dict(
+        wald=False,
+        nan_ok=True,
+        rtol=1e-3,
+        slow=True,
+        nightly=case.name in _LR_NIGHTLY,
+    )
     out.append(
         Bound(
             "cb",
