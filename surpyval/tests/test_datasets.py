@@ -56,3 +56,19 @@ def test_rossi_static_arrest_has_the_original_coding():
     # the static copy agrees with the time-varying one
     tv = datasets.load_rossi_time_varying().groupby("id").first()
     assert (tv["arrest"].to_numpy() == df["arrest"].to_numpy()).all()
+
+
+def test_lung_status_has_the_lifelines_coding():
+    # #509: ``status`` was stored as SurPyval's censoring flag (0 = death),
+    # the opposite of lifelines' load_lung, so ``c = 1 - status`` (the
+    # lifelines habit) silently fitted the complement: median 588 days
+    # instead of 310. It is now 1 = death, as in lifelines (R codes 2/1).
+    import surpyval
+
+    df = datasets.load_lung()
+    assert df["status"].dtype.kind == "i"
+    assert df["status"].sum() == 165 and len(df) == 228
+    # row 0 (time 306) is a death, as in lifelines and R
+    assert df.loc[0, "time"] == 306 and df.loc[0, "status"] == 1
+    km = surpyval.KaplanMeier.fit(df["time"], c=1 - df["status"])
+    assert km.qf(0.5) == 310.0
