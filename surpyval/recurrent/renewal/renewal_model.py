@@ -225,6 +225,45 @@ def _invert_cumulative_hazard(
     return out
 
 
+def event_positions(item: np.ndarray) -> np.ndarray:
+    """
+    The position of each row within its own item: 0 for an item's first row,
+    1 for its second, and so on, in the order the rows appear.
+
+    The imperfect-repair likelihoods need it to evaluate their per-item
+    recursions for all the items at once, one event position at a time,
+    rather than one item and one event at a time.
+    """
+    item = np.asarray(item)
+    if item.size == 0:
+        return np.zeros(0, dtype=int)
+    order = np.argsort(item, kind="stable")
+    ordered = item[order]
+    new_item = np.empty(item.size, dtype=bool)
+    new_item[0] = True
+    new_item[1:] = ordered[1:] != ordered[:-1]
+    first = np.flatnonzero(new_item)
+    counts = np.diff(np.append(first, item.size))
+    position = np.empty(item.size, dtype=int)
+    position[order] = np.arange(item.size) - np.repeat(first, counts)
+    return position
+
+
+def rows_by_position(position: np.ndarray) -> "list[np.ndarray]":
+    """
+    The row indices at each event position (see ``event_positions``):
+    element ``k`` holds, in row order, the rows that are the ``k``-th of
+    their item. With the rows grouped by item, ``rows - 1`` are then the
+    same items' rows at position ``k - 1``.
+    """
+    position = np.asarray(position, dtype=int)
+    if position.size == 0:
+        return []
+    order = np.argsort(position, kind="stable")
+    counts = np.bincount(position)
+    return np.split(order, np.cumsum(counts)[:-1])
+
+
 class DiscountedMemory:
     """
     For sequences simulated together, the discounted sum

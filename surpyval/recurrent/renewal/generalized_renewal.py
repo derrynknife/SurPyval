@@ -10,6 +10,8 @@ from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
     conditional_gaps,
+    event_positions,
+    rows_by_position,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
@@ -21,6 +23,16 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_times,
     validate_restoration,
 )
+
+
+def _previous_in_item(values: np.ndarray, item: np.ndarray) -> np.ndarray:
+    """Each row's previous value within its item, 0 at an item's first row
+    (rows grouped by item)."""
+    values = np.asarray(values)
+    previous = np.zeros(values.size, dtype=np.result_type(values, 0))
+    previous[1:] = values[:-1]
+    previous[event_positions(item) == 0] = 0
+    return previous
 
 
 def kijima_ii_from_prev_interarrival(
@@ -42,6 +54,70 @@ def kijima_ii_from_prev_interarrival(
     return np.array(
         [v := q * (v + x) for x in previous_interarrival_times]  # noqa
     )
+
+
+class KijimaIIVirtualAges:
+    """
+    The Kijima-II virtual ages ``V_k = q * (V_{k-1} + X_k)`` for many items
+    at once, as ``kijima_ii_from_prev_interarrival`` gives them for one.
+
+    ``previous_interarrival`` holds each row's previous interarrival time
+    (0 at an item's first row) with the rows grouped by item (``item``), as
+    ``handle_xicn`` leaves them. The layout depends only on the data, so it
+    is worked out once here and the likelihood then calls the object with
+    each trial ``q``.
+
+    The recursion runs along the event positions, each one a single array
+    step across every item that has an event there, instead of a Python
+    step per item and per event (#515). Once fewer than ``_MIN_VECTOR``
+    items are left (the long tail of a few long items, or a single system)
+    their remaining events are stepped one at a time, where a scalar step
+    is the cheaper one. Both do the same arithmetic in the same order as
+    the one-item loop, so the ages are bit-for-bit the same.
+    """
+
+    #: Fewest items at an event position for a whole-array step there.
+    _MIN_VECTOR = 8
+
+    def __init__(
+        self, previous_interarrival: np.ndarray, item: np.ndarray
+    ) -> None:
+        self.x = np.asarray(previous_interarrival, dtype=float)
+        position = event_positions(item)
+        by_position = rows_by_position(position)
+        n_vector = 0
+        while (
+            n_vector < len(by_position)
+            and by_position[n_vector].size >= self._MIN_VECTOR
+        ):
+            n_vector += 1
+        self.vector_steps = by_position[:n_vector]
+        # The items still running after those positions, from the row at
+        # position ``n_vector`` to the item's last row.
+        self.scalar_runs: list = []
+        if n_vector < len(by_position):
+            first_rows = np.flatnonzero(position == 0)
+            ends = np.append(first_rows[1:], position.size)
+            for start in by_position[n_vector]:
+                end = ends[np.searchsorted(first_rows, start, "right") - 1]
+                self.scalar_runs.append((int(start), int(end)))
+        self.from_start = n_vector == 0
+
+    def __call__(self, q: float) -> np.ndarray:
+        x = self.x
+        v = np.empty(x.size)
+        for k, rows in enumerate(self.vector_steps):
+            before = 0.0 if k == 0 else v[rows - 1]
+            v[rows] = q * (before + x[rows])
+        q_scalar = float(q)
+        for start, end in self.scalar_runs:
+            age = 0.0 if self.from_start else float(v[start - 1])
+            ages = []
+            for gap in x[start:end].tolist():
+                age = q_scalar * (age + gap)
+                ages.append(age)
+            v[start:end] = ages
+        return v
 
 
 @singleton_fitter
@@ -140,27 +216,13 @@ class GeneralizedRenewal(RenewalFitMixin):
         observed intervals under the fitted model.
         """
         q = model.q
-        _, idx = np.unique(data.i, return_index=True)
         interarrival = data.get_interarrival_times()
         if model.kijima_type == "i":
-            arrival_times = np.split(data.x, idx)[1:]
-            cumulative_previous = np.concatenate(
-                [np.concatenate([[0], arr[:-1]]) for arr in arrival_times]
-            )
-            virtual_ages = q * cumulative_previous
+            virtual_ages = q * _previous_in_item(data.x, data.i)
         else:
-            prev_x_interarrival = np.concatenate(
-                [
-                    np.concatenate([[0], np.atleast_1d(arr)])[:-1]
-                    for arr in np.split(interarrival, idx)[1:]
-                ]
-            )
-            virtual_ages = np.concatenate(
-                [
-                    kijima_ii_from_prev_interarrival(arr, q)
-                    for arr in np.split(prev_x_interarrival, idx)[1:]
-                ]
-            )
+            virtual_ages = KijimaIIVirtualAges(
+                _previous_in_item(interarrival, data.i), data.i
+            )(q)
         x_new = interarrival + virtual_ages
         # H(0) = 0 exactly, but some distributions take log(0) on the way.
         with np.errstate(divide="ignore"):
@@ -180,22 +242,14 @@ class GeneralizedRenewal(RenewalFitMixin):
     def create_negll_func(
         self, data: Any, dist: Any, kijima: str = "i"
     ) -> Callable:
-        _, idx = np.unique(data.i, return_index=True)
         c = data.c
         x_interarrival = data.get_interarrival_times()
 
         if kijima == "i":
-            arrival_times = np.split(data.x, idx)[1:]
-            cumulative_previous = np.concatenate(
-                [np.concatenate([[0], arr[:-1]]) for arr in arrival_times]
-            )
-
+            cumulative_previous = _previous_in_item(data.x, data.i)
         elif kijima == "ii":
-            prev_x_interarrival = np.concatenate(
-                [
-                    np.concatenate([[0], np.atleast_1d(arr)])[:-1]
-                    for arr in np.split(x_interarrival, idx)[1:]
-                ]
+            kijima_ii_ages = KijimaIIVirtualAges(
+                _previous_in_item(x_interarrival, data.i), data.i
             )
 
         def negll_func(params: np.ndarray) -> float:
@@ -210,12 +264,7 @@ class GeneralizedRenewal(RenewalFitMixin):
                 # Kijima-I is much simpler to implement than Kijima-II
                 virtual_ages = q * cumulative_previous
             else:
-                virtual_ages = np.concatenate(
-                    [
-                        kijima_ii_from_prev_interarrival(arr, q)
-                        for arr in np.split(prev_x_interarrival, idx)[1:]
-                    ]
-                )
+                virtual_ages = kijima_ii_ages(q)
 
             x_new = x_interarrival + virtual_ages
 
