@@ -2651,7 +2651,9 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name.
+errors of every parameter as a dictionary keyed by name. Every estimate is
+also in one vector, ``model.params``, in the order of ``model.param_names``:
+the baseline's parameters, the coefficients, then ``theta``.
 
 .. jupyter-execute::
     :hide-code:

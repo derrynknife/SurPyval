@@ -1232,12 +1232,13 @@ Checking a renewal model
 
 The renewal models carry the same likelihood inference as the intensity
 models. The parameter list starts with the repair parameter (``q`` or
-``rho``) followed by the lifetime (or baseline) parameters, and the interval
-on ``rho`` is computed on the logit scale so it stays inside (0, 1):
+``rho``) followed by the lifetime (or baseline) parameters -- the order of
+``params`` and ``param_names`` too -- and the interval on ``rho`` is
+computed on the logit scale so it stays inside (0, 1):
 
 .. jupyter-execute::
 
-    print("parameters :", ari.parameter_names)
+    print("parameters :", ari.param_names, ari.params.round(3))
     print("std errors :", ari.standard_errors().round(3))
     print("rho 95% CI :", ari.param_cb("rho").round(3))
 

@@ -77,6 +77,13 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     with the proportional-hazards fit (``WeibullPH`` for ``WeibullFrailty``)
     of the same data -- the model it reduces to at ``theta = 0``.
 
+    ``params`` is every estimated parameter in one vector, in the order of
+    ``param_names``: the baseline distribution's parameters, then the
+    covariate coefficients ``beta_0``, ``beta_1``, ..., then the frailty
+    variance ``theta`` -- the order of :meth:`standard_errors` and of the
+    stored ``covariance``. ``dist_params``, ``beta`` and ``theta`` hold the
+    same values by part.
+
     Examples
     --------
     Thirty groups of six units, each group sharing a gamma frailty:
@@ -92,6 +99,10 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
     >>> round(model.theta, 3)
     0.432
+    >>> model.param_names
+    ['alpha', 'beta', 'beta_0', 'theta']
+    >>> model.params.round(3)
+    array([10.442,  1.962,  0.399,  0.432])
 
     The population curve, and the curve for group 0 given its posterior
     frailty:
@@ -299,8 +310,16 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
                 return est * np.exp(signs * q * se / est)
         return est + signs * q * se
 
+    @property
+    def params(self) -> np.ndarray:
+        """Every estimated parameter, in the order of ``param_names``: the
+        baseline's parameters, the coefficients, then ``theta``."""
+        return self._param_vector()
+
     def _param_vector(self) -> np.ndarray:
-        return np.concatenate([self.dist_params, self.beta, [self.theta]])
+        return np.concatenate(
+            [self.dist_params, self.beta, [self.theta]]
+        ).astype(float)
 
     def summary(self) -> str:
         """A short text summary of the fit."""
