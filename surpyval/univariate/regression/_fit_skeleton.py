@@ -16,7 +16,13 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian, jacobian, value_and_grad
+from autograd import (
+    elementwise_grad,
+    grad,
+    hessian,
+    jacobian,
+    value_and_grad,
+)
 from autograd.differential_operators import make_hvp
 from scipy.optimize import minimize
 
@@ -880,11 +886,30 @@ def warn_if_not_converged(res: Any) -> None:
 # which only costs time.
 
 
+def search_derivatives(
+    neg_ll: Callable, x: npt.ArrayLike
+) -> "tuple[npt.NDArray, npt.NDArray] | None":
+    """``(H, g)``, the Hessian and gradient of ``neg_ll`` at ``x`` by
+    autograd, from one trace; ``None`` for an objective autograd cannot
+    differentiate. The no-maximum check reads them, and the fitted model
+    keeps the Hessian for its covariance (:func:`keep_information`)."""
+    at = np.asarray(x, dtype=float)
+    try:
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            hvp, g = make_hvp(neg_ll)(at)
+            H = np.array([hvp(e) for e in np.eye(at.size)], dtype=float)
+            return H, np.asarray(g, dtype=float)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+
+
 def runaway_coefficients(
     neg_ll: Callable,
     x: npt.ArrayLike,
     coefs: "list[int]",
     start: "npt.ArrayLike | None" = None,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
 ) -> "list[int]":
     """The positions in ``coefs`` of the parameters along which the
     likelihood has no finite maximum near ``x``.
@@ -910,18 +935,15 @@ def runaway_coefficients(
     or, with ``start``, at the start either (see
     :func:`_flat_at_start`), as it does not along a combination of
     collinear covariates, whose coefficients are not identified rather than
-    infinite.
+    infinite. ``derivatives`` are those of :func:`search_derivatives` at
+    ``x``, if the caller has them.
     """
     at = np.asarray(x, dtype=float)
-    try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
-            # The gradient comes with the Hessian, from one trace.
-            hvp, g = make_hvp(neg_ll)(at)
-            H = np.array([hvp(e) for e in np.eye(at.size)], dtype=float)
-            g = np.asarray(g, dtype=float)
-    except (TypeError, ValueError, ArithmeticError):
+    if derivatives is None:
+        derivatives = search_derivatives(neg_ll, at)
+    if derivatives is None:
         return []
+    H, g = derivatives
     cleared = _cleared(at, H, g)
     out = []
     for k, j in enumerate(coefs):
@@ -1133,25 +1155,99 @@ def finish_search(
     res: Any,
     coefs: "list[tuple[int, int]]",
     start: "npt.ArrayLike | None" = None,
-) -> bool:
+) -> "tuple[bool, tuple[npt.NDArray, npt.NDArray] | None]":
     """Warn, once, of anything wrong with the optimiser's answer ``res``
     for the objective ``fun`` from ``start``: a likelihood with no finite
     maximum in a coefficient (``coefs`` as :func:`free_coefficients` gives
     them; see :func:`runaway_coefficients`), or else a search that stopped
     short (as :func:`optimise_ph` and :func:`optimise_nm_tnc` flag it with
-    ``quiet=True``). Returns whether the likelihood had no maximum."""
+    ``quiet=True``). Returns whether the likelihood had no maximum, and the
+    Hessian and gradient of ``fun`` at ``res.x`` (``None`` where autograd
+    cannot take them), for :func:`keep_information`."""
+    derivatives = search_derivatives(fun, res.x)
     positions = [pos for pos, _ in coefs]
-    runaway = runaway_coefficients(fun, res.x, positions, start)
+    runaway = runaway_coefficients(fun, res.x, positions, start, derivatives)
     if runaway:
         warn_no_maximum(
             NO_MAXIMUM_WHAT.format([coefs[k][1] for k in runaway]),
             NO_MAXIMUM_CONSEQUENCE,
             NO_MAXIMUM_ADVICE,
         )
-        return True
+        return True, derivatives
     if getattr(res, "stopped_short", False):
         warn_if_not_converged(res)
-    return False
+    return False, derivatives
+
+
+def natural_information(
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
+    to_natural: Callable,
+    t: npt.ArrayLike,
+) -> "npt.NDArray | None":
+    """The Hessian of the negative log-likelihood in the natural
+    parameters, from its Hessian ``H_t`` and gradient ``g_t`` in the
+    search space (``derivatives``, at ``t``), where ``to_natural`` maps the
+    search vector to the natural free parameters one coordinate at a time,
+    ``p = phi(t)``. By the chain rule ``g_t = phi' g_p`` and ``H_t = D H_p D
+    + diag(g_p phi'')``, ``D = diag(phi')``, which is inverted exactly (to
+    rounding).
+
+    ``None`` where it cannot serve as an observed information: not finite,
+    or not positive definite -- a parameter the likelihood does not depend
+    on (a frailty variance at its limit of 0), or a flat direction -- so
+    that the covariance is computed as before, from a numerical Hessian."""
+    if derivatives is None:
+        return None
+    H_t, g_t = derivatives
+    t = np.asarray(t, dtype=float)
+    try:
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            d1_fun = elementwise_grad(to_natural)
+            d1 = np.asarray(d1_fun(t), dtype=float)
+            d2 = np.asarray(elementwise_grad(d1_fun)(t), dtype=float)
+            g_p = g_t / d1
+            H_p = (H_t - np.diag(g_p * d2)) / np.outer(d1, d1)
+        if not np.all(np.isfinite(H_p)):
+            return None
+        H_p = 0.5 * (H_p + H_p.T)
+        np.linalg.cholesky(H_p)
+    except (TypeError, ValueError, ArithmeticError, np.linalg.LinAlgError):
+        return None
+    return H_p
+
+
+def keep_information(
+    model: Any,
+    no_maximum: bool,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
+    inv_trans: Callable,
+    const: Callable,
+    t: npt.ArrayLike,
+    centring: "Centring | None",
+) -> None:
+    """Give ``model`` the exact observed information of its fit: the
+    natural-space Hessian of the free parameters (:func:`natural_information`)
+    at the parameters and covariate centre its covariance is computed at
+    (``ParametricRegressionModel._inference_state``), which
+    ``_observed_covariance`` then uses instead of a numerical Hessian. Not
+    for a fit whose likelihood has no maximum (``no_maximum``), whose
+    covariance stays as it was."""
+    if no_maximum:
+        return
+    names = model.parameter_names()
+    free = [i for i, name in enumerate(names) if name not in model.fixed]
+    H_p = natural_information(
+        derivatives, lambda u: inv_trans(const(u))[np.array(free)], t
+    )
+    if H_p is None:
+        return
+    if model._fit_centring is not None:
+        p_hat = model._fit_centring[0]
+    else:
+        p_hat = model.params
+    center = None if centring is None else centring.center
+    model._information = (np.array(p_hat, dtype=float), center, H_p)
 
 
 def optimise_nm_tnc(

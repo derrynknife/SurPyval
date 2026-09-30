@@ -59,6 +59,7 @@ from .._fit_skeleton import (
     assemble_regression_model,
     finish_search,
     free_coefficients,
+    keep_information,
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
@@ -477,8 +478,9 @@ class AdditiveHazardsFitter(
         # boundary is no stationary point, and its warning says why; any
         # other that is not a maximum says so.
         coefs = free_coefficients(self, fixed, pmap)
+        no_maximum, derivatives = finish_search(true_neg_ll, res, coefs, init)
         if not (
-            finish_search(true_neg_ll, res, coefs, init)
+            no_maximum
             or self._warn_if_on_positivity_boundary(data, params)
             or converged
         ):
@@ -494,7 +496,7 @@ class AdditiveHazardsFitter(
         reg_model.name = "Additive [beta'Z]"
         reg_model.phi_param_map = pmap
 
-        return assemble_regression_model(
+        model = assemble_regression_model(
             self,
             "Additive Hazard",
             reg_model,
@@ -507,3 +509,8 @@ class AdditiveHazardsFitter(
             neg_ll=final_neg_ll,
             centring=centring,
         )
+        # The exact information for the model's covariance (#392).
+        keep_information(
+            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+        )
+        return model

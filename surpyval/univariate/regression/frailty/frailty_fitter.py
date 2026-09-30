@@ -42,7 +42,11 @@ from surpyval.utils import (
 )
 from surpyval.utils.linalg import numerical_hessian
 
-from .._fit_skeleton import finish_search, require_finite_fit
+from .._fit_skeleton import (
+    finish_search,
+    natural_information,
+    require_finite_fit,
+)
 from ..proportional_hazards.cox_ph import _strata_labels
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
@@ -453,7 +457,7 @@ class FrailtyFitter:
                 nat, x, c, w, Zc, inv, n_beta, _AUTOGRAD
             )
 
-        finish_search(
+        no_maximum, derivatives = finish_search(
             obj_traced,
             res,
             [(self.k_dist + i, i) for i in range(n_beta)],
@@ -474,7 +478,11 @@ class FrailtyFitter:
         # to 1) as theta -> 0
         post = (1.0 + D * theta) / (1.0 + H * theta)
 
-        # Covariance of the natural parameters via a numerical Hessian.
+        # Covariance of the natural parameters: the inverse of the exact
+        # Hessian the check computed (#392), converted from the search
+        # space; a numerical one where there is none (no maximum, or a
+        # Hessian that is not positive definite, as with the variance at
+        # its limit of 0).
         param_names = list(self.dist.param_names)
         param_names += [f"beta_{i}" for i in range(n_beta)]
         param_names += ["theta"]
@@ -482,11 +490,19 @@ class FrailtyFitter:
         def nll_nat(v: npt.NDArray) -> float:
             return self._neg_ll_natural(v, x, c, w, Zc, inv, n_beta)
 
+        exact = None
+        if not no_maximum:
+            exact = natural_information(
+                derivatives, lambda u: to_nat(u, n_beta, _AUTOGRAD), res.x
+            )
         covariance = None
         with np.errstate(all="ignore"):
             try:
-                steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
-                Hmat = numerical_hessian(nll_nat, nat, step=steps)
+                if exact is not None:
+                    Hmat = exact
+                else:
+                    steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
+                    Hmat = numerical_hessian(nll_nat, nat, step=steps)
                 cov = np.linalg.inv(Hmat)
                 if np.all(np.isfinite(cov)):
                     covariance = cov

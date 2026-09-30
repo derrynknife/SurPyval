@@ -20,6 +20,7 @@ from .._fit_skeleton import (
     assemble_regression_model,
     finish_search,
     free_coefficients,
+    keep_information,
     make_objective,
     mirror_distribution,
     optimise_ph,
@@ -445,5 +446,11 @@ class ProportionalHazardsFitter(
         )
         # After the model is built (which may refuse the data), one
         # warning for what the search found (#392).
-        finish_search(fun, res, free_coefficients(self, fixed, pmap), init_t)
+        no_maximum, derivatives = finish_search(
+            fun, res, free_coefficients(self, fixed, pmap), init_t
+        )
+        # The exact information for the model's covariance (#392).
+        keep_information(
+            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+        )
         return model

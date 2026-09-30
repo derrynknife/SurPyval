@@ -60,6 +60,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.univariate.regression._fit_skeleton import (
     runaway_coefficients,
+    search_derivatives,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
@@ -154,10 +155,14 @@ def _fit_cause(
     # stops where the rise is below its tolerance and reports success
     # (-12.9 on such data). Newton's method cannot converge from there,
     # which is what the check finds (#392).
-    runaway = runaway_coefficients(neg_ll, beta, list(range(beta.size)), beta0)
+    derivatives = search_derivatives(neg_ll, beta)
+    runaway = runaway_coefficients(
+        neg_ll, beta, list(range(beta.size)), beta0, derivatives
+    )
 
-    # Standard errors from the inverse observed information.
-    H = hessian(neg_ll)(beta)
+    # Standard errors from the inverse observed information, the Hessian
+    # the check just took.
+    H = hessian(neg_ll)(beta) if derivatives is None else derivatives[0]
     cov = safe_inv(H)
     var = np.diag(cov)
     with np.errstate(invalid="ignore"):

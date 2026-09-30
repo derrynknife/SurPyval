@@ -109,6 +109,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     #: well conditioned, and carried to ``params`` by the jacobian of the
     #: map.
     _fit_centring: "tuple | None" = None
+    #: ``(params, center, H)``: the exact (autograd) Hessian of the negative
+    #: log-likelihood in the free natural parameters at ``params``, the
+    #: covariates centred at ``center`` (``None`` for none), kept by the fit
+    #: (``_fit_skeleton.keep_information``) for ``_observed_covariance``.
+    _information: "tuple | None" = None
+    #: ``(params, center, covariance)`` of the last covariance computed.
+    _covariance_cache: "tuple | None" = None
 
     # Attributes populated after construction (by ``fit`` / ``from_params``).
     # Declared here so static type checkers know their types.
@@ -1294,9 +1301,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def covariance(self) -> npt.NDArray:
         """
         Approximate covariance matrix of the fitted parameters, ordered to
-        match :meth:`parameter_names`. Computed as the inverse of the numerical
-        Hessian of the negative log-likelihood at the MLE (the observed
-        information). Fixed parameters get a zero row/column.
+        match :meth:`parameter_names`. Computed as the inverse of the Hessian
+        of the negative log-likelihood at the MLE (the observed
+        information): the exact one the fit computed with autograd, or,
+        where it has none (a model whose objective autograd cannot
+        differentiate, such as an accelerated-life or AFT time-varying fit,
+        or one whose Hessian there is not positive definite), a numerical
+        one. Fixed parameters get a zero row/column. It is computed once
+        and kept.
 
         A parameter driven to a boundary breaks the Wald approximation; the
         covariance is then returned filled with ``nan`` (with a warning).
@@ -1336,27 +1348,26 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def _observed_covariance(
         self, p_hat: npt.NDArray, center: "npt.NDArray | None"
     ) -> npt.NDArray:
-        """The inverse of the numerical Hessian of the negative
-        log-likelihood at ``p_hat``, the baseline at ``center``."""
+        """The inverse of the Hessian of the negative log-likelihood at
+        ``p_hat``, the baseline at ``center``: the exact one the fit kept
+        (``_information``) if it was computed there, else a numerical one.
+        A covariance computed is kept for the same ``p_hat`` and
+        ``center``."""
+        cached = self._covariance_cache
+        if cached is not None and _same_point(cached[:2], (p_hat, center)):
+            return cached[2].copy()
         names = self.parameter_names()
         free = [i for i, nm in enumerate(names) if nm not in self.fixed]
         n = len(names)
         cov = np.zeros((n, n))
         if not free:
             return cov
-        data = self.data
-        if center is not None and np.any(center):
-            from ._fit_skeleton import centred_copy
-
-            data = centred_copy(data, center)
-
-        def neg_ll_free(free_vals: npt.NDArray) -> float:
-            full = p_hat.copy()
-            full[free] = free_vals
-            return self.model.neg_ll(data, *full)
-
         step = self._hessian_step(p_hat)[free]
-        H = numerical_hessian(neg_ll_free, p_hat[free], step)
+        info = self._information
+        if info is not None and _same_point(info[:2], (p_hat, center)):
+            H = info[2]
+        else:
+            H = self._numerical_information(p_hat, center, free, step)
         bad = not np.all(np.isfinite(H))
         if not bad:
             # Invert in step-scaled coordinates: with a parameter many
@@ -1376,7 +1387,34 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
+        self._covariance_cache = (
+            np.array(p_hat, dtype=float),
+            None if center is None else np.array(center, dtype=float),
+            cov.copy(),
+        )
         return cov
+
+    def _numerical_information(
+        self,
+        p_hat: npt.NDArray,
+        center: "npt.NDArray | None",
+        free: list,
+        step: npt.NDArray,
+    ) -> npt.NDArray:
+        """The numerical Hessian of the negative log-likelihood in the free
+        parameters at ``p_hat``, the baseline at ``center``."""
+        data = self.data
+        if center is not None and np.any(center):
+            from ._fit_skeleton import centred_copy
+
+            data = centred_copy(data, center)
+
+        def neg_ll_free(free_vals: npt.NDArray) -> float:
+            full = p_hat.copy()
+            full[free] = free_vals
+            return self.model.neg_ll(data, *full)
+
+        return numerical_hessian(neg_ll_free, p_hat[free], step)
 
     def _parameter_bounds(self) -> list:
         """``(lower, upper)`` for every entry of ``params``: the
@@ -1639,3 +1677,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 label=f"{(1 - alpha_ci) * 100:g}% Confidence Band",
             )
         return ax
+
+
+def _same_point(a: tuple, b: tuple) -> bool:
+    """Whether ``(params, center)`` pairs ``a`` and ``b`` are the same
+    point: equal parameters, and the same centring (``None`` or a centre of
+    zeros being none)."""
+    if not np.array_equal(np.asarray(a[0]), np.asarray(b[0])):
+        return False
+    ca, cb = a[1], b[1]
+    none_a = ca is None or not np.any(ca)
+    none_b = cb is None or not np.any(cb)
+    if none_a or none_b:
+        return none_a and none_b
+    return bool(np.array_equal(np.asarray(ca), np.asarray(cb)))
