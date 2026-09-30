@@ -1715,6 +1715,25 @@ def is_missing_event(value: Any) -> bool:
         return False
 
 
+def missing_events(values: npt.NDArray) -> npt.NDArray:
+    """:func:`is_missing_event` of each element of a 1-D object array.
+
+    A per-element loop over ``is_missing_event`` was a noticeable part of
+    a competing-risks fit at 1e5 rows (#515). ``pandas.isna`` of an object
+    array checks each element as ``isna`` checks a scalar, and so agrees
+    with ``is_missing_event`` for every label type -- except an object
+    that is array-like without being a numpy scalar, which the scalar
+    ``isna`` converts to an array first. Such labels take the loop.
+    """
+    types = {type(v) for v in values}
+    if values.ndim != 1 or any(
+        hasattr(t, "__array__") and not issubclass(t, np.generic)
+        for t in types
+    ):
+        return np.array([is_missing_event(v) for v in values], dtype=bool)
+    return np.asarray(isna(values), dtype=bool)
+
+
 def resolve_cr_censoring(
     e: npt.ArrayLike, c: "npt.ArrayLike | None"
 ) -> tuple[npt.NDArray, npt.NDArray]:
@@ -1747,7 +1766,7 @@ def resolve_cr_censoring(
             e[i] = v
     else:
         e = np.asarray(e, dtype=object)
-    missing = np.array([is_missing_event(v) for v in e], dtype=bool)
+    missing = missing_events(e)
     e = e.copy()
     e[missing] = None
     if c is None:
