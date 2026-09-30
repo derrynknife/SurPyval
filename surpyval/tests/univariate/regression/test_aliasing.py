@@ -264,3 +264,60 @@ def test_full_rank_fits_do_not_warn():
             warnings.simplefilter("error")
             model = fitter.fit(x, Z, c)
         assert model.aliased.size == 0
+
+
+def _tvc_data(n=120):
+    # Start-stop rows: a stress switches on at a random time (column 0)
+    # and a fixed covariate acts throughout (column 1).
+    rng = np.random.default_rng(0)
+    switch = rng.uniform(0.3, 1.5, n)
+    z = rng.normal(size=n)
+    t_low = rng.exponential(2.0, n) * np.exp(-0.3 * z)
+    t_high = switch + rng.exponential(2.0 / np.e, n) * np.exp(-0.3 * z)
+    T = np.where(t_low > switch, t_high, t_low)
+    one = T <= switch
+    i = np.r_[np.arange(n), np.flatnonzero(~one)]
+    xl = np.r_[np.zeros(n), switch[~one]]
+    xr = np.r_[np.where(one, T, switch), T[~one]]
+    c = np.r_[np.where(one, 0, 1), np.zeros((~one).sum(), dtype=int)]
+    Z = np.c_[np.r_[np.zeros(n), np.ones((~one).sum())], np.r_[z, z[~one]]]
+    return i, xl, xr, c, Z
+
+
+# (A constant column is identified in a Weibull PO model: no intercept.)
+_TVC = [
+    (fitter, kind)
+    for fitter in ("WeibullPH", "WeibullPO", "WeibullAFT", "LogNormalAFT")
+    for kind in ("constant", "collinear")
+    if (fitter, kind) != ("WeibullPO", "constant")
+]
+
+
+@pytest.mark.parametrize("fitter, kind", _TVC)
+def test_fit_tvc(fitter, kind):
+    # The AFT fit_tvc has its own likelihood and did not alias: a repeated
+    # column split WeibullAFT's 0.338 into 1.685 and -1.346, and a constant
+    # one moved alpha from 2.33 to 0.79 (to -0.195 for LogNormalAFT's mu),
+    # silently. The PH / PO fit_tvc refits through ``fit`` and aliased.
+    i, xl, xr, c, Z = _tvc_data()
+    F = getattr(sp, fitter)
+    ref = F.fit_tvc(i, xl, xr, c, Z)
+    extra = np.ones(len(i)) if kind == "constant" else Z[:, 1]
+    model, messages, caught = _fit(
+        lambda: F.fit_tvc(i, xl, xr, c, np.c_[Z, extra])
+    )
+    assert len(messages) == 1 and messages[0].startswith(_aliased(2))
+    assert caught[0].filename == __file__
+    np.testing.assert_allclose(model.params[:-1], ref.params, rtol=1e-6)
+    assert np.isnan(model.params[-1])
+    np.testing.assert_array_equal(model.aliased, [2])
+    assert model.k == ref.k
+    q = [[0.0, 0.3, 5.0], [1.0, 0.3, -2.0]]
+    np.testing.assert_allclose(
+        model.sf_tvc([1.0, 2.0], q, xl=[0.0, 1.0]),
+        ref.sf_tvc([1.0, 2.0], [r[:2] for r in q], xl=[0.0, 1.0]),
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        model.cb([1.0], q[:1]), ref.cb([1.0], [q[0][:2]]), rtol=1e-4
+    )

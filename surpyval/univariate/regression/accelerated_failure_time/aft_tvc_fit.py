@@ -162,6 +162,7 @@ from .._fit_skeleton import (  # noqa: E402
     Centring,
     LogLinearPhi,
     MirroredDistributionAttrs,
+    alias_coefficients,
     check_fixed_and_init,
     optimise_nm_tnc,
     require_finite_fit,
@@ -300,6 +301,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         p = Z.shape[1]
         _validate_full_coverage(x, tl, ident)
         grp = _grouped_episodes(x, c, n, tl, ident)
+        phi_param_map = {"beta_" + str(j): j for j in range(p)}
+        # A column the data cannot determine is held at 0 and reported as
+        # nan, with one warning, as by the ordinary fit (#476).
+        fixed = alias_coefficients(
+            self, "Accelerated Failure Time", Z, n, fixed, phi_param_map
+        )
+        aliased = getattr(fixed, "aliased", ())
 
         # Centred on the interval rows' means, as the ordinary AFT fit
         # (#463): exp(beta'z) on a covariate far from 0 overflows.
@@ -323,7 +331,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         ps = self.dist.fit_from_surpyval_data(init_data).params
         init = np.array([*ps, *np.zeros(p)])
 
-        phi_param_map = {"beta_" + str(j): j for j in range(p)}
         bounds = (*self.bounds, *(((None, None),) * p))
         param_map = {
             **self.param_map,
@@ -365,6 +372,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             )
             if J is not None:
                 fit_centring = (params_c, centring.center, J)
+        params = np.array(params, dtype=float)
+        if aliased:
+            # Reported as nan, R's NA (#476); the model predicts with 0.
+            params[[self.k_dist + phi_param_map[a] for a in aliased]] = np.nan
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -387,9 +398,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         model.phi_params = np.array(params[self.k_dist :])
         model.res = res
         model._neg_ll = res.fun
-        model.fixed = fixed
+        model.fixed = {k: v for k, v in fixed.items() if k not in aliased}
         model.k_dist = self.k_dist
-        # Estimated parameters only; see ``assemble_regression_model``.
+        # Estimated parameters only (an aliased coefficient is among
+        # ``fixed`` here); see ``assemble_regression_model``.
         model.k = len(bounds) - len(fixed or {})
         model.data = edata
         model.center = center_out
