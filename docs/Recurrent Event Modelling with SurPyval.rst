@@ -1080,6 +1080,61 @@ given time.
 
     assert model_ii.aic > model.aic and model_ii.q < 1e-3
 
+How well do the data determine q?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The restoration factor reads on one scale: ``q = 0`` is a repair as good as
+new, ``q = 1`` one as bad as old (minimal repair: the process is then the
+non-homogeneous Poisson process of the distribution's cumulative hazard, the
+Crow-AMSAA power law for a Weibull), and ``q > 1`` a repair that leaves the
+system worse than just before it failed. Only the order and spacing of each
+system's failures tell the model about ``q``, so it is often poorly
+determined, and the printed model gives every parameter's standard error and
+Wald 95% interval (``model.summary()`` returns the table). Here eight haul
+trucks are simulated under minimal repair, so the true ``q`` is 1:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(8)
+    rows = []
+    for k in range(8):
+        T = rng.uniform(6000, 12000)
+        N = rng.poisson(2e-4 * T**1.35)
+        ts = np.sort(T * rng.random(N) ** (1 / 1.35))
+        rows += [(h, k, 0) for h in ts] + [(T, k, 1)]
+    hours, truck, c_trucks = map(np.array, zip(*rows))
+
+    trucks = GeneralizedRenewal.fit(hours, truck, c_trucks)
+    trucks
+
+The estimate, 2.63, would say every repair makes the truck worse, but its
+interval runs from 0.09 (almost as good as new) to 73, and the model says
+the data do not determine it: it flags an interval that covers both
+``q = 0.5`` and ``q = 2``, repairs of opposite kinds. ``repair_test()``
+answers the question the data can answer -- does repair quality matter here?
+-- with the likelihood-ratio test of the fit against the same model with
+``q = 1``:
+
+.. jupyter-execute::
+
+    test = trucks.repair_test()
+    print(f"LR = {test.statistic:.2f}, p = {test.p_value:.2f}")
+
+With a p-value of 0.53 the trucks are consistent with minimal repair: the
+Crow-AMSAA model, one parameter simpler, describes them as well. (``ARA`` and
+``ARI`` test ``rho = 0``, the edge of their range, where the p-value is
+halved.)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(trucks.q, 2) == 2.63
+    assert "q is not determined by these data" in " ".join(repr(trucks).split())
+    lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
+    assert round(lo_q, 2) == 0.09 and round(hi_q) == 73
+    assert round(test.p_value, 2) == 0.53
+
 G1 Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

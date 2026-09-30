@@ -68,10 +68,12 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.1730184624683848
-    Parameters          :
-         alpha: 1.3919045968817332
-          beta: 5.008861189641614
+    Restoration Factor  : -0.17301847850518184
+    Parameters          : Wald 95% intervals
+               estimate      se  lower 95%  upper 95%
+        q        -0.173 0.02645    -0.2233    -0.1195
+        alpha     1.392  0.2045      1.044      1.856
+        beta      5.009   1.314      2.996      8.375
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -248,9 +250,11 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Restoration Factor  : 0.3402789091696592
-        Parameters          :
-             alpha: 1.4115217370254167
-              beta: 3.5499343659245564
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q        0.3403 0.1398    0.09251     0.6442
+            alpha     1.412 0.2624     0.9805      2.032
+            beta      3.55 0.8432      2.229      5.655
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -358,9 +362,11 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Restoration Factor  : 0.3402789091696592
-        Parameters          :
-             alpha: 1.4115217370254167
-              beta: 3.5499343659245564
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q        0.3403 0.1398    0.09251     0.6442
+            alpha     1.412 0.2624     0.9805      2.032
+            beta      3.55 0.8432      2.229      5.655
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)

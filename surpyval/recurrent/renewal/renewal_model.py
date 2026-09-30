@@ -1,6 +1,12 @@
+import textwrap
+import warnings
+from dataclasses import dataclass
 from typing import Any, Callable
 
 import numpy as np
+import pandas as pd
+from scipy.optimize import minimize
+from scipy.stats import chi2
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
 from surpyval.recurrent.simulation import RecurrenceSimulationMixin
@@ -9,6 +15,53 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.regression._summary import format_table
+from surpyval.utils.linalg import wald_bound_on_support
+
+#: For each restoration parameter with an "as bad as old" (minimal repair)
+#: value: that value, whether it is on the boundary of the parameter's
+#: range, and the two values an interval must cover to be called "not
+#: determined by these data" (#513). For the Kijima ``q`` (0 as good as
+#: new, 1 as bad as old), an interval reaching from a repair that removes
+#: at least half the age (q <= 0.5) to one that at least doubles it
+#: (q >= 2); for the ARA / ARI ``rho`` (1 as good as new, 0 as bad as old),
+#: one reaching from mostly as bad as old (rho <= 0.25) to mostly as good
+#: as new (rho >= 0.75).
+_RESTORATION_SCALES: dict[str, dict[str, Any]] = {
+    "Generalized Renewal": {"minimal": 1.0, "edge": False, "span": (0.5, 2)},
+    "ARA Renewal": {"minimal": 0.0, "edge": True, "span": (0.25, 0.75)},
+    "ARI Recurrence": {"minimal": 0.0, "edge": True, "span": (0.25, 0.75)},
+}
+
+
+@dataclass(frozen=True)
+class RepairTest:
+    """The likelihood-ratio test of an imperfect-repair model against
+    minimal repair (:meth:`RenewalModel.repair_test`).
+
+    Attributes
+    ----------
+    statistic : float
+        ``2 * (log_likelihood - log_likelihood_minimal)``.
+    p_value : float
+        Its p-value: chi-squared with one degree of freedom, halved where
+        minimal repair is at the edge of the parameter's range (``rho = 0``
+        of ARA / ARI; Self and Liang, 1987).
+    log_likelihood : float
+        The fitted model's.
+    log_likelihood_minimal : float
+        The same model's maximum with the restoration parameter held at
+        minimal repair.
+    minimal : float
+        That value (``q = 1``, ``rho = 0``).
+    """
+
+    statistic: float
+    p_value: float
+    log_likelihood: float
+    log_likelihood_minimal: float
+    minimal: float
+
 
 #: Below this cumulative hazard the quantile function is accurate enough to
 #: invert it: ``1 - p = exp(-H)`` then carries a relative error of about
@@ -693,11 +746,224 @@ class RenewalModel(
         lines.append(
             "{:<20}: {}".format(self._restoration_label, self.restoration)
         )
-
-        param_string = "\n".join(
-            "{:>10}".format(name) + ": " + str(p)
-            for p, name in zip(
-                self.model.params, self.model.dist.parameter_names
+        if not hasattr(self, "_neg_ll"):
+            # Built from parameters (or restored): no standard errors.
+            param_string = "\n".join(
+                "{:>10}".format(name) + ": " + str(p)
+                for p, name in zip(
+                    self.model.params, self.model.dist.parameter_names
+                )
             )
+            return (
+                "\n".join(lines) + "\nParameters          :\n" + param_string
+            )
+        table = self.summary()
+        lines.append("Parameters          : Wald 95% intervals")
+        lines.append(format_table(table, list(table.columns)))
+        note = self._undetermined_note(table)
+        if note:
+            lines.append(note)
+        return "\n".join(lines)
+
+    def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
+        """
+        The fitted parameters with their standard errors and Wald
+        intervals, one row per entry of ``parameter_names``.
+
+        The intervals are those of :meth:`param_cb`: on the log scale for
+        a parameter bounded below (the Kijima ``q``, a positive scale), on
+        the logit scale for one bounded on both sides (``rho`` of ARA and
+        ARI), so they stay inside the parameter's range. A parameter at
+        the edge of its range (a ``q`` driven to 0) has no standard error
+        or interval: ``nan``.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``estimate``, ``se``, ``lower <level>`` and
+            ``upper <level>``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>> model = GeneralizedRenewal.fit(x, i, c)
+        >>> model.summary().round(3)
+               estimate     se  lower 95%  upper 95%
+        q         0.000    NaN        NaN        NaN
+        alpha     2.399  0.509      1.583      3.636
+        beta      2.754  0.653      1.730      4.384
+        """
+        self._check_fitted()
+        with warnings.catch_warnings():
+            # The boundary is reported in the table (nan), not warned.
+            warnings.simplefilter("ignore")
+            cov = self.covariance()
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        rows = []
+        for k, (value, (lo, hi)) in enumerate(
+            zip(self._mle, self._parameter_bounds())
+        ):
+            var = float(cov[k, k])
+            if not var > 0 or (k == 0 and self._restoration_at_edge()):
+                rows.append([value, np.nan, np.nan, np.nan])
+                continue
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                cb = wald_bound_on_support(
+                    float(value), var, lo, hi, alpha_ci, "two-sided"
+                )
+            rows.append([value, np.sqrt(var), cb[0], cb[1]])
+        return pd.DataFrame(
+            rows,
+            index=self.parameter_names,
+            columns=["estimate", "se", f"lower {level}", f"upper {level}"],
+            dtype=float,
         )
-        return "\n".join(lines) + "\nParameters          :\n" + param_string
+
+    def _restoration_at_edge(self) -> bool:
+        """Whether the restoration parameter sits on a bound of its range
+        (a ``q`` driven to 0), where a Wald interval does not hold."""
+        edges = [b for b in self._restoration_bounds if b is not None]
+        return any(abs(self.restoration - b) < 1e-6 for b in edges)
+
+    def _undetermined_note(self, table: pd.DataFrame) -> str:
+        """A warning line when the restoration parameter's interval covers
+        repairs of opposite kinds (see ``_RESTORATION_SCALES``)."""
+        scale = _RESTORATION_SCALES.get(self.kind)
+        if scale is None:
+            return ""
+        name = self._restoration_param_name
+        est, se, lower, upper = table.loc[name].to_numpy()
+        low, high = scale["span"]
+        if not np.isfinite(se):
+            where = (
+                "at the edge of its range"
+                if self._restoration_at_edge()
+                else "where the likelihood's curvature is lost"
+            )
+            note = (
+                f"Note: {name} = {est:.4g} is {where}, so it has no "
+                "standard error or interval; repair_test() says whether "
+                "the data support it over minimal repair."
+            )
+        elif lower <= low and upper >= high:
+            note = (
+                f"Note: {name} is not determined by these data: its 95% "
+                f"interval [{lower:.4g}, {upper:.4g}] covers both {low:g} "
+                f"and {high:g}, repairs of opposite kinds. Do not read a "
+                "repair quality from it; repair_test() compares the fit "
+                "with minimal repair."
+            )
+        else:
+            return ""
+        return textwrap.fill(note, width=70, subsequent_indent="      ")
+
+    def repair_test(self) -> RepairTest:
+        """
+        The likelihood-ratio test of the fitted repair quality against
+        minimal repair ("as bad as old": ``q = 1`` for the generalized
+        renewal process, ``rho = 0`` for ARA and ARI).
+
+        Under minimal repair the process is the non-homogeneous Poisson
+        process whose cumulative intensity is the lifetime distribution's
+        cumulative hazard (the Crow-AMSAA power law for a Weibull), so the
+        test answers "does repair quality matter here?". The same
+        likelihood is maximised with the restoration parameter held at
+        minimal repair, and twice the difference in log-likelihood is
+        referred to a chi-squared distribution with one degree of freedom
+        -- halved for ``rho = 0``, the edge of its range (Self and Liang,
+        1987).
+
+        Returns
+        -------
+        RepairTest
+            The statistic, its p-value and the two log-likelihoods.
+
+        Raises
+        ------
+        ValueError
+            For a model with no likelihood (built from parameters), or the
+            G1 renewal process, which has no minimal-repair value (its
+            ``q = 0`` is an ordinary renewal process).
+
+        Examples
+        --------
+        Eight systems simulated under minimal repair: the fitted ``q`` is
+        far from 1, but the test finds no evidence against minimal
+        repair:
+
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> rng = np.random.default_rng(8)
+        >>> rows = []
+        >>> for k in range(8):
+        ...     T = rng.uniform(6000, 12000)
+        ...     N = rng.poisson(2e-4 * T**1.35)
+        ...     ts = np.sort(T * rng.random(N) ** (1 / 1.35))
+        ...     rows += [(h, k, 0) for h in ts] + [(T, k, 1)]
+        >>> x, i, c = map(np.array, zip(*rows))
+        >>> model = GeneralizedRenewal.fit(x, i, c)
+        >>> round(float(model.q), 2)
+        2.63
+        >>> test = model.repair_test()
+        >>> round(test.statistic, 3), round(test.p_value, 3)
+        (0.398, 0.528)
+        """
+        self._check_fitted()
+        scale = _RESTORATION_SCALES.get(self.kind)
+        if scale is None:
+            raise ValueError(
+                f"The {self.kind} model has no minimal-repair value to test "
+                "against."
+            )
+        minimal = scale["minimal"]
+        mle = np.asarray(self._mle, dtype=float)
+        bounds = self._parameter_bounds()[1:]
+
+        def to_free(p: np.ndarray) -> np.ndarray:
+            out = np.array(p, dtype=float)
+            for k, (lo, hi) in enumerate(bounds):
+                if lo is not None and hi is not None:
+                    u = (out[k] - lo) / (hi - lo)
+                    out[k] = np.log(u / (1 - u))
+                elif lo is not None:
+                    out[k] = np.log(out[k] - lo)
+            return out
+
+        def from_free(z: np.ndarray) -> np.ndarray:
+            out = np.array(z, dtype=float)
+            for k, (lo, hi) in enumerate(bounds):
+                if lo is not None and hi is not None:
+                    out[k] = lo + (hi - lo) / (1 + np.exp(-out[k]))
+                elif lo is not None:
+                    out[k] = lo + np.exp(out[k])
+            return out
+
+        def restricted(z: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = float(self._neg_ll(np.r_[minimal, from_free(z)]))
+            return value if np.isfinite(value) else np.inf
+
+        start = to_free(mle[1:])
+        best = minimize(restricted, start, method="Nelder-Mead")
+        polish = minimize(restricted, best.x, method="BFGS")
+        if polish.fun < best.fun:
+            best = polish
+        ll_full = -float(self._neg_ll(mle))
+        ll_min = -float(best.fun)
+        # The restricted model is nested: its maximum cannot exceed the
+        # full one's except by the optimisers' tolerance.
+        stat = max(2.0 * (ll_full - ll_min), 0.0)
+        p = float(chi2.sf(stat, 1))
+        if scale["edge"]:
+            p = 0.5 * p if stat > 0 else 1.0
+        return RepairTest(stat, p, ll_full, ll_min, minimal)
