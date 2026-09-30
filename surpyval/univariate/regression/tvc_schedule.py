@@ -28,6 +28,11 @@ owns the step-valued guarantee two ways:
 Whatever the construction, the one thing the family math consumes is
 :meth:`~StepSchedule.segments`, which materialises the schedule up to a horizon
 into concrete ``(start, end, Z)`` triples.
+
+A covariate that does vary continuously is described by a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` instead, along
+which ``sf_tvc`` integrates the hazard (#172); the type of the path chooses the
+method.
 """
 
 import ast
