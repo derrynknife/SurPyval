@@ -2699,7 +2699,7 @@ label per observation (see :doc:`regression/frailty`):
         x=np.array(rows_x), c=np.array(rows_c),
         Z=np.array(rows_z).reshape(-1, 1), groups=np.array(rows_g),
     )
-    print(model.summary())
+    print(model)
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
     print("theta standard error: %.3f" % model.standard_errors()["theta"])
 

@@ -25,7 +25,8 @@ comes in two flavours:
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
 
-from typing import Any
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.special import ndtri as _z
@@ -47,6 +48,9 @@ from ..regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _standard_error(variance: Any) -> np.ndarray:
@@ -303,28 +307,152 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     def _param_vector(self) -> np.ndarray:
         return np.concatenate([self.dist_params, self.beta, [self.theta]])
 
-    def summary(self) -> str:
-        """A short text summary of the fit."""
-        lines = [
-            "Shared-Frailty Regression SurPyval Model",
-            "========================================",
-            f"Distribution        : {self.dist.name}",
-            f"Frailty             : {self.family}",
-            f"Groups              : {self.n_groups}"
-            f"  (observations {self.n_obs}, events {self.n_events})",
-            "Baseline            :",
-        ]
-        for name, val in zip(self.dist.param_names, self.dist_params):
-            lines.append(f"    {name:>8} : {val:.6g}")
-        if self.beta.size:
-            lines.append("Coefficients        :")
-            for i, b in enumerate(self.beta):
-                lines.append(f"    beta_{i:<4}: {b:.6g}")
-        lines.append(f"Frailty variance    : theta = {self.theta:.6g}")
-        return "\n".join(lines)
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The parameter table, in the layout of the parametric regression
+        models' :meth:`summary` (#484): the baseline distribution's
+        parameters, the regression coefficients and the frailty variance
+        ``theta``, each with its standard error and a two-sided
+        ``1 - alpha_ci`` Wald interval; for the coefficients also the
+        hazard ratio ``exp(coef)`` (conditional on the frailty), the Wald
+        statistic ``z`` and its two-sided p-value. The coefficients are
+        named by ``feature_names`` for a model fitted with ``fit_from_df``.
+
+        The baseline parameters' and ``theta``'s intervals are those of
+        :meth:`param_cb`, which stay in the parameter's support. Without a
+        stored covariance there are no standard errors or intervals
+        (``nan``), nor for an aliased coefficient (#476), whose value is
+        ``nan`` too.
+
+        .. versionchanged:: 0.22.0
+           Returns a ``DataFrame``; it returned the text ``repr`` prints.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Indexed by ``(part, name)``, ``part`` one of ``"baseline"``,
+            ``"coefficients"`` or ``"frailty"``, with the columns of
+            ``CoxPH``'s :meth:`summary`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(0)
+        >>> g = np.repeat(np.arange(30), 5)
+        >>> z = rng.normal(size=g.size)
+        >>> u = rng.gamma(2.0, 0.5, 30)[g]
+        >>> x = 10 * rng.exponential(size=g.size) / (u * np.exp(0.5 * z))
+        >>> model = WeibullFrailty.fit(x=x, Z=z[:, None], groups=g)
+        >>> list(model.summary().index)  # doctest: +NORMALIZE_WHITESPACE
+        [('baseline', 'alpha'), ('baseline', 'beta'),
+         ('coefficients', 'beta_0'), ('frailty', 'theta')]
+        """
+        import pandas as pd
+
+        from .._summary import coefficient_names, coefficient_table
+
+        params = self._param_vector()
+        k = self.k_dist
+        n_beta = self.beta.size
+        se = np.full(params.shape, np.nan)
+        if self.covariance is not None:
+            with np.errstate(all="ignore"):
+                se = np.asarray(
+                    _standard_error(np.diag(self.covariance)), dtype=float
+                )
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        columns = list(coefficient_table([], [], [], alpha_ci).columns)
+
+        def others(indices: "list[int]") -> pd.DataFrame:
+            # A parameter with a support: its estimate, standard error and
+            # the support-respecting interval of ``param_cb``.
+            rows = []
+            for i in indices:
+                bounds = np.full(2, np.nan)
+                if np.isfinite(se[i]):
+                    try:
+                        with (
+                            warnings.catch_warnings(),
+                            np.errstate(all="ignore"),
+                        ):
+                            warnings.simplefilter("ignore")
+                            bounds = np.asarray(
+                                self.param_cb(self.param_names[i], alpha_ci),
+                                dtype=float,
+                            ).ravel()
+                    except (ValueError, ArithmeticError):
+                        pass
+                rows.append(
+                    {
+                        "coef": params[i],
+                        "se(coef)": se[i],
+                        "coef lower " + level: bounds[0],
+                        "coef upper " + level: bounds[-1],
+                    }
+                )
+            return pd.DataFrame(rows, columns=columns)
+
+        names = coefficient_names(self, n_beta)
+        coef = slice(k, k + n_beta)
+        coefs = coefficient_table(names, params[coef], se[coef], alpha_ci)
+        table = pd.concat(
+            [
+                others(list(range(k))),
+                coefs.reset_index(drop=True),
+                others([k + n_beta]),
+            ]
+        )
+        index = (
+            [("baseline", name) for name in self.dist.param_names]
+            + [("coefficients", name) for name in names]
+            + [("frailty", "theta")]
+        )
+        table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
+        return table
 
     def __repr__(self) -> str:
-        return self.summary()
+        from .._summary import coefficient_repr, format_table
+
+        out = (
+            "Shared-Frailty Regression SurPyval Model"
+            "\n========================================"
+            f"\nDistribution        : {self.dist.name}"
+            f"\nFrailty             : {self.family}"
+            f"\nGroups              : {self.n_groups}"
+            f"  (observations {self.n_obs}, events {self.n_events})"
+        )
+        if self.dist is None or not self.param_names:
+            return out
+        table = self.summary()
+        estimates = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
+
+        def block(part: str) -> str:
+            rows = table.loc[part].rename(columns=estimates)
+            rows.index.name = None
+            return format_table(rows, list(estimates.values()))
+
+        out += (
+            "\nBaseline            : {} parameters; Wald 95% "
+            "intervals\n".format(self.dist.name)
+        ) + block("baseline")
+        if self.beta.size:
+            out += (
+                "\nCoefficients        : exp(coef) is the hazard ratio "
+                "given the frailty; Wald 95% intervals\n"
+            ) + coefficient_repr(table.loc["coefficients"])
+        out += "\nFrailty variance    : Wald 95% interval\n" + block("frailty")
+        return out
 
     # -- serialisation -----------------------------------------------------
 

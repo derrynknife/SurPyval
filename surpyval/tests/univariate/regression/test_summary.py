@@ -189,3 +189,55 @@ def test_fixed_and_aliased_parameters():
             x, np.c_[df[["fin"]].to_numpy(), np.ones(len(x))], c
         )
     assert aliased.summary().loc[("coefficients", "beta_1")].isna().all()
+
+
+def _frailty():
+    df = load_rossi_static()
+    df["grp"] = np.arange(len(df)) % 40
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sp.WeibullFrailty.fit_from_df(
+            df,
+            x_col="week",
+            c_col="arrest",
+            Z_cols=["fin", "age"],
+            group_col="grp",
+        )
+
+
+def test_frailty_summary_is_a_table():
+    # FrailtyModel.summary() returned the text of its repr; it is now the
+    # table the other regression models give.
+    model = _frailty()
+    table = model.summary()
+    assert list(table.columns) == COLUMNS
+    assert list(table.index) == [
+        ("baseline", "alpha"),
+        ("baseline", "beta"),
+        ("coefficients", "fin"),
+        ("coefficients", "age"),
+        ("frailty", "theta"),
+    ]
+    se = model.standard_errors()
+    np.testing.assert_allclose(
+        table["se(coef)"], [se[n] for n in model.param_names]
+    )
+    np.testing.assert_allclose(
+        table["coef"],
+        np.concatenate([model.dist_params, model.beta, [model.theta]]),
+    )
+    # The baseline's intervals are param_cb's, which stay positive.
+    np.testing.assert_allclose(
+        table.loc[("baseline", "alpha"), ["coef lower 95%", "coef upper 95%"]],
+        model.param_cb("alpha"),
+    )
+    assert "fin" in repr(model) and "Frailty variance" in repr(model)
+
+
+def test_frailty_summary_without_covariance():
+    model = _frailty()
+    model.covariance = None
+    table = model.summary()
+    assert table["se(coef)"].isna().all()
+    assert np.isfinite(table["coef"]).all()
+    repr(model)

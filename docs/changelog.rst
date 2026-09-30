@@ -28,7 +28,10 @@ Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 match R. Unknown option values raise ``ValueError`` everywhere. The
 Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
 ``P(X > x)``, as for every other discrete distribution. Fits whose data
-have no finite maximum warn "No finite maximum".
+have no finite maximum warn "No finite maximum". A covariate column
+the others already account for gets a ``nan`` coefficient and a warning,
+as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
+that cannot be paired with the times raise ``ValueError``.
 
 - **Likelihood-ratio bounds at the edge, and along valleys (#421).**
   Profiles are now searched on the log or logit scale of each parameter,
@@ -351,11 +354,51 @@ have no finite maximum warn "No finite maximum".
   label was a group of its own (9 groups instead of 8) and ``None`` raised
   ``TypeError``; such rows are dropped with one "Dropped k of n rows"
   warning, and ``group=nan`` predicts ``nan``.
-- **Cox refuses a coefficient it cannot estimate (#409).** A constant
-  column on separated data got a coefficient of 3.1e14, an all-NaN baseline
-  and a dozen raw numpy warnings. ``CoxPH`` refuses a column that does not
-  vary within any risk set at an event time, naming it, and warns of
-  collinear columns.
+- **Coefficients the data cannot separate are NaN, as in R (#476, #409).**
+  A covariate column that adds nothing to the others -- a constant column
+  where the baseline already has a scale, a duplicated column, dummy
+  columns that add up to another column -- has no estimate of its own:
+  shifting weight between it and the columns it repeats fits the data
+  equally well. The fit used to return whichever split its search stopped
+  at. A constant column moved WeibullAFT's ``alpha`` from 54.06 to 51.02,
+  a repeated column split a Cox effect into 0.148 and -0.264, and
+  a constant column on separated data got 3.1e14 with an all-NaN baseline.
+  Now the fit leaves such columns out, as R's ``coxph`` and ``survreg``
+  do: their coefficients are ``nan``, with ``nan`` standard error and
+  p-value, ``model.aliased`` lists them, and one warning names them. The
+  other coefficients and the predictions are those of the fit without the
+  column. This covers ``CoxPH`` (with strata and time-varying
+  covariates), the parametric proportional hazards, AFT, proportional odds
+  and additive hazards models, Fine-Gray, the competing-risks Cox model
+  and the frailty models; fits without such a column are unchanged.
+- **Regression models print a coefficient table: summary() (#484).** The
+  Cox and parametric regression models' ``summary()`` returns a
+  ``DataFrame`` in the layout of R's ``summary(coxph)`` and lifelines:
+  ``coef``, ``exp(coef)``, ``se(coef)``, Wald intervals for both, ``z``
+  and ``p``, one row per covariate, named from the ``DataFrame`` columns
+  for ``fit_from_df``. On the Rossi data it matches R (``fin``: coef
+  -0.37942, se 0.19138, p 0.04742). The parametric models add the
+  baseline's parameters, with the intervals of ``param_cb``, so the
+  Weibull shape ``beta`` is no longer printed among the coefficients
+  ``beta_0``, ``beta_1``, .... The models' ``repr`` prints the table.
+- **Changed: FrailtyModel.summary() returns the table (#484).** It
+  returned the text its ``repr`` prints; it now returns the same
+  ``DataFrame`` as the parametric models, with a ``frailty`` row for
+  ``theta``. ``print(model)`` gives the text.
+- **A cause label 0 with no censoring warns (#486).** lifelines,
+  scikit-survival and R's ``cmprsk`` code a censored row as cause 0;
+  SurPyval codes it as a missing cause (``None`` or ``NaN``), or with
+  ``c``. Data coded the other way fitted without complaint as a model with
+  an extra cause "0" and no censoring. Numeric cause labels that include
+  0, with none missing and no ``c``, now warn and give the one-line
+  conversion; passing ``c`` says 0 really is a cause and silences it.
+- **Covariate rows and times that cannot be paired raise (#488).** A
+  regression model pairs row ``i`` of ``Z`` with time ``x[i]`` (one row
+  for every time, or one time for every row). Any other count was a raw
+  numpy broadcast error; it is now a ``ValueError`` saying so. For a
+  survival curve per subject, the Cox and parametric regression
+  functions take ``grid=True``, which gives every row at every time,
+  shape ``(len(Z),) + x.shape``, as the survival tree and forest do.
 - **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
   built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
   to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each

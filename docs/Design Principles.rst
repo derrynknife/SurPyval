@@ -78,10 +78,13 @@ Outputs
 7. **Shape in, shape out.** A scalar query gives a numpy scalar, a 1-D or
    2-D query a result of its shape, and an empty query an empty result of
    its shape; a two-sided confidence bound adds a last ``[lower, upper]``
-   axis. With covariates the shape is that of the times. The documented
-   exception is the survival tree and forest's row-by-time grid,
-   ``(n_rows,) + x.shape``. ``surpyval.utils.shapes`` applies the rule at
-   every model's public methods.
+   axis. With covariates the shape is that of the times, rows and times
+   paired: one row for every time, or one time for every row; other
+   counts raise. ``grid=True`` on the Cox and parametric regression
+   functions gives the row-by-time grid, ``(n_rows,) + x.shape``, which
+   the survival tree and forest return by default.
+   ``surpyval.utils.shapes`` applies the rule at every model's public
+   methods.
 
    *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
    ``conformance/test_options.py``, for every registered model, and for
