@@ -85,11 +85,14 @@ _W_GAUSS[[1, 3, 5]] = _WG[:3]
 _W_GAUSS[[13, 11, 9]] = _WG[:3]
 _W_GAUSS[7] = _WG[3]
 
-#: More panels than this raise a ``ValueError``: the path varies too fast
-#: (or repeats too often) for the horizon asked.
+#: A path whose knots and query times need more panels than this raises a
+#: ``ValueError`` (it repeats too often for the horizon asked); refinement
+#: stops before passing it, and warns.
 _PANEL_CAP = 10**6
 #: Rounds of bisection before the accuracy target is declared missed.
-_MAX_ROUNDS = 30
+#: Each halves the panels near an undeclared jump, so 50 rounds close in
+#: on one to rounding error.
+_MAX_ROUNDS = 50
 #: Geometric panels ``e_1 2^{-k}`` towards 0, for hazards singular there
 #: (a Weibull shape below 1, say).
 _GRADING = 40
@@ -458,8 +461,10 @@ class CovariatePath:
         ``t_max``, without building them."""
         if self.period is None:
             return int(np.sum((self._knots > 0) & (self._knots < t_max)))
-        reps = math.ceil(t_max / self.period) + 1
-        return reps * (self._knots.size + 1)
+        per_period = np.unique(
+            np.mod(np.concatenate([[0.0], self._knots]), self.period)
+        ).size
+        return math.ceil(t_max / self.period) * per_period
 
     def breakpoints(self, t_max: float) -> npt.NDArray:
         """
@@ -517,24 +522,6 @@ def _evaluate_panels(
     return exact + kronrod, err, noise, flag
 
 
-def _panel_cap_error(t_max: float, period: "float | None", why: str) -> None:
-    raise ValueError(
-        "evaluating this CovariatePath up to t = {:g} needs more than {:,} "
-        "quadrature panels ({}{}). Ask for a shorter horizon, or describe a "
-        "path that changes this often by its average (a StepSchedule of "
-        "the mean over each period, say).".format(
-            t_max,
-            _PANEL_CAP,
-            why,
-            (
-                "; the path repeats every {:g}".format(period)
-                if period is not None
-                else ""
-            ),
-        )
-    )
-
-
 def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
     """
     The starting panel edges for integrating ``path`` up to the largest of
@@ -543,11 +530,22 @@ def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
     towards 0.
     """
     t_max = float(np.max(points))
-    if path._n_breakpoints(t_max) + points.size + _GRADING > _PANEL_CAP:
-        _panel_cap_error(
-            t_max,
-            path.period,
-            "{:,} breakpoints".format(path._n_breakpoints(t_max)),
+    count = path._n_breakpoints(t_max) + points.size + _GRADING
+    if count > _PANEL_CAP:
+        raise ValueError(
+            "evaluating this CovariatePath up to t = {:g} needs about {:,} "
+            "quadrature panels, more than the limit of {:,}{}. Ask for "
+            "fewer or earlier times, or describe a path that changes this "
+            "often by its average over a period.".format(
+                t_max,
+                count,
+                _PANEL_CAP,
+                (
+                    " (the path repeats every {:g})".format(path.period)
+                    if path.period is not None
+                    else ""
+                ),
+            )
         )
     edges = np.unique(
         np.concatenate([[0.0], path.breakpoints(t_max), points])
@@ -556,39 +554,68 @@ def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
     return np.unique(np.concatenate([edges, grading]))
 
 
+def _missed(
+    value: npt.NDArray,
+    err: npt.NDArray,
+    noise: npt.NDArray,
+    rtol: float,
+) -> npt.NDArray:
+    """Per panel end: whether the error estimate accumulated from 0
+    exceeds ``rtol`` of the integral of ``|h|`` from 0 (and the rounding
+    floor accumulated with it)."""
+    with np.errstate(invalid="ignore", over="ignore"):
+        allowed = np.maximum(
+            rtol * np.cumsum(np.abs(value)), np.cumsum(noise)
+        )
+        return np.cumsum(err) > allowed
+
+
 def integrate_panels(
     panel_terms: Callable,
     edges: npt.NDArray,
     rtol: float,
-    period: "float | None" = None,
-    max_rounds: int = _MAX_ROUNDS,
-) -> "dict[str, npt.NDArray]":
+    max_rounds: "int | None" = None,
+) -> "dict[str, Any]":
     """
-    Integrate over the panels between ``edges``, bisecting a panel while
-    its error estimate ``|K15 - G7|`` exceeds ``rtol`` times the larger of
-    its own increment and its share of the cumulative integral (and the
-    rounding floor), for at most ``max_rounds`` rounds.
+    Integrate over the panels between ``edges``, refining until the error
+    estimate accumulated from 0 is within ``rtol`` of the integral at every
+    panel end.
+
+    Each round bisects every panel whose error estimate ``|K15 - G7|``
+    exceeds ``rtol`` times the larger of its own increment and its share of
+    the cumulative integral (and the rounding floor), among the panels
+    before the last panel end where the accumulated target is missed; if
+    none does, every panel there above the rounding floor. The share is
+    ``cumulative * width / end``, so the panels graded towards 0 get
+    their proportion. Refinement stops after ``max_rounds`` rounds
+    (default ``_MAX_ROUNDS``) or before it would pass ``_PANEL_CAP``
+    panels; ``limit`` then says which, for the warning.
 
     Returns the final ``edges`` and, per panel, the integral ``value``, the
-    error estimate ``err``, the ``flag`` from ``panel_terms`` and whether it
-    is still ``bad`` (missed the target).
+    error estimate ``err``, the rounding floor ``noise`` and the ``flag``
+    from ``panel_terms``.
     """
+    rounds = _MAX_ROUNDS if max_rounds is None else max_rounds
     a, b = edges[:-1], edges[1:]
     value, err, noise, flag = _evaluate_panels(panel_terms, a, b)
-    bad = np.zeros(a.shape, dtype=bool)
-    for round_ in range(max_rounds + 1):
+    limit = "rounds"
+    for _ in range(rounds):
+        missed = _missed(value, err, noise, rtol)
+        if not missed.any():
+            break
+        # The panels up to the last end that misses the target.
+        before = np.arange(a.size) <= np.flatnonzero(missed)[-1]
         with np.errstate(invalid="ignore", over="ignore"):
             share = np.cumsum(np.abs(value)) * (b - a) / b
             allowed = rtol * np.maximum(np.abs(value), share)
-            bad = err > np.maximum(allowed, noise)
-        if not bad.any() or round_ == max_rounds:
+            bad = before & (err > np.maximum(allowed, noise))
+            if not bad.any():
+                bad = before & (err > noise)
+        if not bad.any():
             break
         if a.size + int(bad.sum()) > _PANEL_CAP:
-            _panel_cap_error(
-                float(b[-1]),
-                period,
-                "the path varies too fast to reach the accuracy target",
-            )
+            limit = "panels"
+            break
         mid = 0.5 * (a[bad] + b[bad])
         new_a = np.concatenate([a[bad], mid])
         new_b = np.concatenate([mid, b[bad]])
@@ -596,26 +623,20 @@ def integrate_panels(
             panel_terms, new_a, new_b
         )
         keep = ~bad
-        a = np.concatenate([a[keep], new_a])
-        b = np.concatenate([b[keep], new_b])
-        value = np.concatenate([value[keep], n_value])
-        err = np.concatenate([err[keep], n_err])
-        noise = np.concatenate([noise[keep], n_noise])
-        flag = np.concatenate([flag[keep], n_flag])
-        order = np.argsort(a, kind="stable")
-        a, b = a[order], b[order]
-        value, err, noise, flag = (
-            value[order],
-            err[order],
-            noise[order],
-            flag[order],
-        )
+        order = np.argsort(np.concatenate([a[keep], new_a]), kind="stable")
+        a = np.concatenate([a[keep], new_a])[order]
+        b = np.concatenate([b[keep], new_b])[order]
+        value = np.concatenate([value[keep], n_value])[order]
+        err = np.concatenate([err[keep], n_err])[order]
+        noise = np.concatenate([noise[keep], n_noise])[order]
+        flag = np.concatenate([flag[keep], n_flag])[order]
     return {
         "edges": np.concatenate([a, b[-1:]]),
         "value": value,
         "err": err,
+        "noise": noise,
         "flag": flag,
-        "bad": bad,
+        "limit": limit,
     }
 
 
@@ -647,22 +668,62 @@ def sum_between(
     return out
 
 
+def missed_target(
+    res: "dict[str, Any]",
+    origin: float,
+    reach: npt.NDArray,
+    rtol: float,
+    missing: npt.NDArray,
+) -> "tuple[int, int, float, str] | None":
+    """
+    ``(missed, total, worst, limit)``: how many of the (non-missing) query times,
+    whose values sum the panels from ``origin`` to ``reach``, have an error
+    estimate above ``rtol`` of the integral of ``|h|`` from 0 (and the
+    rounding floor), of how many, and the worst estimated relative error;
+    ``None`` when none missed. The last entry says which refinement
+    limit was reached.
+    """
+    edges = res["edges"]
+    est = sum_between(edges, res["err"], origin, reach, signed=False)
+    floor = sum_between(edges, res["noise"], origin, reach, signed=False)
+    size = sum_between(
+        edges, np.abs(res["value"]), 0.0, np.maximum(reach, origin), False
+    )
+    with np.errstate(invalid="ignore", over="ignore"):
+        missed = (est > np.maximum(rtol * size, floor)) & ~missing
+    if not missed.any():
+        return None
+    with np.errstate(divide="ignore", invalid="ignore"):
+        rel = est[missed] / size[missed]
+    worst = float(np.nanmax(rel)) if np.isfinite(rel).any() else np.inf
+    return int(missed.sum()), int((~missing).sum()), worst, res["limit"]
+
+
 def warn_missed_target(
-    missed: int, total: int, worst: float, rtol: float, stacklevel: int
+    missed: int,
+    total: int,
+    worst: float,
+    limit: str,
+    rtol: float,
+    stacklevel: int,
 ) -> None:
     """One warning for the query times whose quadrature missed ``rtol``."""
     import warnings
 
+    stopped = (
+        "{} rounds of refinement".format(_MAX_ROUNDS)
+        if limit == "rounds"
+        else "reaching the limit of {:,} panels".format(_PANEL_CAP)
+    )
     warnings.warn(
         "The quadrature along the CovariatePath missed its {:.0e} "
-        "relative accuracy target at {} of the {} query time(s) (worst "
-        "estimated relative error {:.2g}) after {} rounds of refinement. "
-        "The path probably has kinks or jumps the panels do not line up "
-        "with: pass them as CovariatePath.from_callable(..., "
-        "breakpoints=[...]), or describe the path with "
-        "CovariatePath.from_points.".format(
-            rtol, missed, total, worst, _MAX_ROUNDS
-        ),
+        "relative accuracy target on the cumulative hazard at {} of the "
+        "{} query time(s) (worst estimated relative error {:.2g}) after "
+        "{}. The values are returned as computed. If the path has kinks "
+        "or jumps, pass their times as CovariatePath.from_callable(..., "
+        "breakpoints=[...]) or build it with CovariatePath.from_points; a "
+        "path that oscillates without limit cannot be integrated to the "
+        "target.".format(rtol, missed, total, worst, stopped),
         RuntimeWarning,
         stacklevel=stacklevel,
     )

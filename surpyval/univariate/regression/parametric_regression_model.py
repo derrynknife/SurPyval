@@ -898,7 +898,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         summed outward from ``given`` (or 0): nothing is subtracted for a
         baseline that starts at 0.
         """
-        from .tvc_path import integrate_panels, path_mesh, sum_between
+        from .tvc_path import (
+            integrate_panels,
+            missed_target,
+            path_mesh,
+            sum_between,
+        )
 
         aft = self.kind == "Accelerated Failure Time"
         missing = np.isnan(xq)
@@ -934,7 +939,6 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 self._path_panel_terms(path),
                 path_mesh(path, np.unique(points)),
                 self._tvc_rtol,
-                path.period,
             )
             edges, value = res["edges"], res["value"]
             from_0 = sum_between(edges, value, 0.0, ex)
@@ -969,7 +973,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                         edges, res["flag"], 0.0, ex, signed=False
                     )
                     falls |= fell > 0
-            accuracy = self._path_accuracy(res, origin, reach, missing)
+            accuracy = missed_target(
+                res, origin, reach, self._tvc_rtol, missing
+            )
         if self.kind == "Additive Hazard":
             falls |= H_full < 0
         falls &= ~missing
@@ -986,32 +992,6 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 ),
                 dtype=float,
             ).ravel()
-
-    @staticmethod
-    def _path_accuracy(
-        res: dict, origin: float, reach: npt.NDArray, missing: npt.NDArray
-    ) -> "tuple | None":
-        """``(missed, total, worst)`` for the query times whose value used
-        a panel that missed the accuracy target, else ``None``."""
-        from .tvc_path import sum_between
-
-        edges = res["edges"]
-        bad = sum_between(edges, res["bad"], origin, reach, signed=False)
-        missed = (bad > 0) & ~missing
-        if not missed.any():
-            return None
-        est = sum_between(edges, res["err"], origin, reach, signed=False)
-        size = sum_between(
-            edges,
-            np.abs(res["value"]),
-            0.0,
-            np.maximum(reach, origin),
-            signed=False,
-        )
-        with np.errstate(divide="ignore", invalid="ignore"):
-            rel = est[missed] / size[missed]
-        worst = float(np.nanmax(rel)) if np.isfinite(rel).any() else np.inf
-        return int(missed.sum()), int((~missing).sum()), worst
 
     def _path_panel_terms(self, path: Any) -> Any:
         """
