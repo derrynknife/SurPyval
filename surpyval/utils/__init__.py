@@ -1621,6 +1621,14 @@ def resolve_cr_censoring(
 
     Returns the canonicalised event array (object dtype, ``None`` for censored)
     and the censoring flag (unchanged if supplied, otherwise derived).
+
+    lifelines, scikit-survival and R's ``cmprsk`` code competing-risks data
+    as one integer column with 0 for a censored row. Such data read here
+    as a cause called 0 and no censoring at all, and every incidence is
+    wrong, silently (#486). So where ``c`` is not given, no label is
+    missing and the labels are numbers including 0, this warns, saying how
+    to convert the data; passing ``c`` says which rows are censored and
+    silences it.
     """
     if isinstance(e, (list, tuple)):
         # One element per row, whatever it is: ``np.asarray`` would split a
@@ -1635,8 +1643,35 @@ def resolve_cr_censoring(
     e = e.copy()
     e[missing] = None
     if c is None:
+        if _zero_coded(e, missing):
+            warnings.warn(
+                "Cause label 0 is taken as a cause, and no row is censored "
+                "(a censored row has no cause: None or NaN). lifelines, "
+                "scikit-survival and R's cmprsk code a censored row as 0; "
+                "if 0 means censored here, pass e=np.where(np.asarray(e) "
+                "== 0, None, e). If 0 is a cause and no row is censored, pass "
+                "c=np.zeros(len(e)) to say so, which silences this "
+                "warning.",
+                UserWarning,
+                stacklevel=_caller_stacklevel(),
+            )
         c = np.where(missing, 1, 0)
     return e, np.asarray(c)
+
+
+def _zero_coded(e: npt.NDArray, missing: npt.NDArray) -> bool:
+    """Whether the cause labels ``e`` look like the 0-for-censored coding
+    of other packages (#486): no label missing, every label a number (not
+    a bool), and 0 among them."""
+    if missing.any() or e.size == 0:
+        return False
+    numbers = [
+        v
+        for v in e
+        if isinstance(v, (Number, np.number))
+        and not isinstance(v, (bool, np.bool_))
+    ]
+    return len(numbers) == e.size and any(v == 0 for v in numbers)
 
 
 def check_covariate_rows(Z: npt.ArrayLike, n_rows: int) -> None:
