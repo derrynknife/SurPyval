@@ -234,6 +234,7 @@ class UnivariateDataFrameMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 389 units: 389 events at 10 unique times
         Offset (gamma)      : 39.76557772434183
         Parameters          :
              alpha: 7.141983615103902

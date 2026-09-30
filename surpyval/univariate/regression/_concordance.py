@@ -96,8 +96,9 @@ class ConcordanceMixin:
         >>> import surpyval as sp
         >>> from surpyval.datasets import load_lung
         >>> lung = load_lung().dropna(subset=["ph.ecog"])
+        >>> lung["censored"] = 1 - lung["status"]  # status 1 is a death
         >>> model = sp.CoxPH.fit_from_df(
-        ...     lung, x_col="time", c_col="status",
+        ...     lung, x_col="time", c_col="censored",
         ...     Z_cols=["age", "sex", "ph.ecog"],
         ... )
         >>> round(model.concordance(), 4)

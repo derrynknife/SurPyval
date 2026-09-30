@@ -115,14 +115,16 @@ def test_lifelines_agrees_without_tied_times():
     # lifelines 0.30.3, concordance_index(x, -risk, 1 - c), on the lung
     # Cox model (age, sex, ph.ecog) with the time ties broken; it counts
     # tied event times differently (0.637135 against 0.636942 with them).
+    # ``status`` is 1 for a death (#509): the censoring flag is 1 - status.
     lung = load_lung().dropna(subset=["ph.ecog"])
+    lung["censored"] = 1 - lung["status"]
     cols = ["age", "sex", "ph.ecog"]
     model = sp.CoxPH.fit_from_df(
-        lung, x_col="time", c_col="status", Z_cols=cols
+        lung, x_col="time", c_col="censored", Z_cols=cols
     )
     x = lung["time"].to_numpy() + np.arange(len(lung)) * 1e-6
     risk = lung[cols].to_numpy() @ model.beta
-    c = lung["status"].to_numpy()
+    c = lung["censored"].to_numpy()
     assert concordance_index(x, c, risk) == pytest.approx(
         0.6368729181, abs=1e-10
     )
