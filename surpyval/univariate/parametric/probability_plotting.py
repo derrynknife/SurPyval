@@ -67,15 +67,17 @@ def probability_plot_data(
     is called with the model x values to compute confidence bounds on
     the CDF.
 
-    The plotted points (``x_``, ``F``) are the failures only: the times
-    at which the plotting-position estimator records a failure (``d >
-    0``). A suspension (a right-censored unit) changes the plotting
-    positions of the failures after it, but is not itself a point on the
-    plot: drawn at the ``F`` of the failure before it, as it used to be,
-    it looked like one more failure (#478). This is the convention of
-    Abernethy's *New Weibull Handbook* and of Weibull++. The suspension
-    times are returned separately, as ``x_censored``, for a plot that
-    wants to mark them.
+    ``x_`` and ``F`` are every row of the plotting-position estimator
+    (with a finite ``x``), and ``failed`` is a boolean mask over them,
+    True where the estimator records a failure (``d > 0``). Only those
+    rows are points on the plot: a suspension (a right-censored unit)
+    changes the plotting positions of the failures after it, but has no
+    position of its own -- its row carries the ``F`` of the failure
+    before it, where drawn it looked like one more failure (#478). This
+    is the convention of Abernethy's *New Weibull Handbook* and of
+    Weibull++. The Turnbull rows where the estimate puts no mass are not
+    failures either. ``x_censored`` holds the suspension times, for a
+    plot that wants to mark them.
     """
     x_, r, d, F = plotting_positions(
         x=x,
@@ -85,10 +87,9 @@ def probability_plot_data(
         heuristic=heuristic,
     )
 
-    mask = np.isfinite(x_) & (d > 0)
+    mask = np.isfinite(x_)
     x_ = x_[mask] - gamma
-    r = r[mask]
-    d = d[mask]
+    failed = d[mask] > 0
     F = F[mask]
 
     x_arr = np.asarray(x, dtype=float)
@@ -113,7 +114,9 @@ def probability_plot_data(
     # Adjust the plotting points due to truncation
     F = Ftl + F * (Ftr - Ftl)
 
-    return _axes_data(dist, ff, x_, F, gamma, params, cb_func, x_censored)
+    out = _axes_data(dist, ff, x_, F, gamma, params, cb_func, x_censored)
+    out["failed"] = failed
+    return out
 
 
 def curve_plot_data(
@@ -143,6 +146,7 @@ def curve_plot_data(
     # The quantiles only placed the axes; nothing was observed.
     out["x_"] = np.array([])
     out["F"] = np.array([])
+    out["failed"] = np.array([], dtype=bool)
     return out
 
 
@@ -156,12 +160,12 @@ def _axes_data(
     cb_func: Callable[..., Any] | None,
     x_censored: npt.NDArray | None = None,
 ) -> Any:
-    """The axes, ticks and model curve of a probability plot through the
-    points ``(x_, F)``, with the suspension times ``x_censored``."""
+    """The axes, ticks and model curve of a probability plot of the rows
+    ``(x_, F)``, with the suspension times ``x_censored``."""
     if x_censored is None:
         x_censored = np.array([])
-    # The time axis spans every time, suspensions included, as it did
-    # when they were plotted.
+    # The time axis spans every time, suspensions included, although only
+    # the failures are drawn as points.
     x_axis = np.concatenate([x_, x_censored])
 
     # x-axis
@@ -197,8 +201,9 @@ def _axes_data(
 
     cdf = ff(x_model + gamma)
 
-    # The probability axis spans the points, or with no failure to plot
-    # (a zero-failure fit) the fitted curve.
+    # The probability axis spans the points (a suspension's row repeats
+    # the F of a failure, or is 0 before the first), or with no failure
+    # to plot (a zero-failure fit) the fitted curve.
     inside = F[(F > 0) & (F < 1)]
     if inside.size == 0:
         inside = cdf[(cdf > 0) & (cdf < 1)]
@@ -265,9 +270,10 @@ def draw_probability_plot(
 ) -> Any:
     """
     Draw the probability plot described by the ``probability_plot_data``
-    dictionary ``d`` onto the matplotlib axes ``ax``. With
-    ``show_censored``, each suspension time is marked by a tick on the
-    time axis (they have no plotting position of their own).
+    dictionary ``d`` onto the matplotlib axes ``ax``. The points are the
+    rows ``d["failed"]`` selects, the failures; with ``show_censored``,
+    each suspension time is marked by a tick on the time axis (they have
+    no plotting position of their own).
     """
     from matplotlib.ticker import FixedLocator
 
@@ -290,7 +296,8 @@ def draw_probability_plot(
 
     ax.set_title(title)
     ax.set_ylabel("CDF")
-    ax.scatter(d["x_"], d["F"])
+    failed = d["failed"]
+    ax.scatter(d["x_"][failed], d["F"][failed])
 
     if show_censored and len(d.get("x_censored", [])) != 0:
         # A rug of suspension times along the bottom of the axes

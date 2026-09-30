@@ -2101,6 +2101,11 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         ``plot_bounds=False`` the bounds are not computed and ``cbs`` is
         None, which is what a model without a variance estimate
         (``fit_from_ecdf``) needs.
+
+        ``failed`` is a boolean mask over ``x_``, True where a failure is
+        recorded (``d > 0``, or for a model from ``fit_from_ecdf``, which
+        has no ``d``, where ``F`` steps up), as in a parametric model's
+        ``get_plot_data``. ``plot`` draws the curve through every row.
         """
         y_scale_min = 0
         y_scale_max = 1
@@ -2117,6 +2122,12 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         # variance, and ``plot(plot_bounds=False)`` used to raise on it.
         cbs = self.R_cb(self.x, **kwargs) if plot_bounds else None
 
+        d = getattr(self, "d", None)
+        if d is not None:
+            failed = np.asarray(d) > 0
+        else:
+            failed = np.diff(np.asarray(self.F, dtype=float), prepend=0) > 0
+
         return {
             "x_scale_min": x_scale_min,
             "x_scale_max": x_scale_max,
@@ -2126,6 +2137,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             "x_": self.x,
             "R": self.R,
             "F": self.F,
+            "failed": failed,
         }
 
     def plot(self, ax: "Axes | None" = None, **kwargs: Any) -> Any:
