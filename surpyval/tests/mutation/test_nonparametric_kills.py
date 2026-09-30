@@ -589,26 +589,16 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
         sp.from_dict(old)
 
 
-def test_band_warns_only_for_its_retired_arguments():
-    # No warning by default; a DeprecationWarning for n_sims or
-    # random_state, attributed outside the module. Kills band's
-    # 'random_state is not None' -> 'is None' and its stacklevel dropped.
+def test_band_does_not_warn_and_its_retired_arguments_are_gone():
+    # No warning by default; n_sims and random_state, unused since the
+    # critical value stopped being simulated, were removed in v0.22.0.
     model = _fit()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model.band([3, 6])
     for kw in ({"n_sims": 100}, {"random_state": 1}):
-        with pytest.warns(DeprecationWarning) as record:
+        with pytest.raises(TypeError, match="unexpected keyword"):
             model.band([3, 6], **kw)
-        assert not record[0].filename.endswith("nonparametric.py")
-
-
-def test_band_deprecation_points_at_the_caller():
-    # band is wrapped by the query-shape helper, one frame more between
-    # the warning and the caller than before 9e7d0fb.
-    with pytest.warns(DeprecationWarning) as record:
-        _fit().band([3, 6], n_sims=100)
-    assert record[0].filename == __file__
 
 
 # --- smoothed_hf -------------------------------------------------------------

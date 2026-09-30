@@ -37,7 +37,6 @@ from surpyval.utils import (
     is_missing_event,
     resolve_cr_censoring,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import safe_quadform
 
 
@@ -49,7 +48,6 @@ class GrayTestResult(NamedTuple):
     groups: list
 
 
-@renamed_arguments(cause="event")
 def gray_test(
     x: npt.ArrayLike,
     e: npt.ArrayLike,

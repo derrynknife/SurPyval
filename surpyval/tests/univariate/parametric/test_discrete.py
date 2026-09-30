@@ -9,6 +9,7 @@ and zero-inflation.
 
 import numpy as np
 import pytest
+import scipy.stats as st
 from scipy.stats import geom, nbinom, poisson
 
 from surpyval import (
@@ -429,11 +430,21 @@ P_BERN = 0.3
 
 def test_bernoulli_functions_at_the_two_outcomes():
     x = np.array([0, 1])
-    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [1.0, P_BERN])
-    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [0.0, 1 - P_BERN])
+    # R(x) = P(X > x), the package's discrete convention (#344).
+    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [P_BERN, 0.0])
+    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [1 - P_BERN, 1.0])
     np.testing.assert_allclose(Bernoulli.df(x, P_BERN), [1 - P_BERN, P_BERN])
     np.testing.assert_allclose(Bernoulli.hf(x, P_BERN), [1 - P_BERN, 1.0])
-    np.testing.assert_allclose(Bernoulli.Hf(x, P_BERN), [0.0, -np.log(P_BERN)])
+    np.testing.assert_allclose(
+        Bernoulli.Hf(x, P_BERN), [-np.log(P_BERN), np.inf]
+    )
+    # scipy agrees.
+    np.testing.assert_allclose(
+        Bernoulli.sf(x, P_BERN), st.bernoulli.sf(x, P_BERN)
+    )
+    np.testing.assert_allclose(
+        Bernoulli.ff(x, P_BERN), st.bernoulli.cdf(x, P_BERN)
+    )
 
 
 def test_bernoulli_rejects_anything_but_zero_and_one():
@@ -462,8 +473,11 @@ def test_bernoulli_internal_identities():
 
     np.testing.assert_allclose(sf + ff, 1.0)
     np.testing.assert_allclose(df.sum(), 1.0)
-    np.testing.assert_allclose(hf, df / sf)
-    np.testing.assert_allclose(Hf, -np.log(sf))
+    # The discrete hazard: the mass over those still at risk, R(x - 1),
+    # with R(-1) = 1.
+    np.testing.assert_allclose(hf, df / np.r_[1.0, sf[:-1]])
+    with np.errstate(divide="ignore"):
+        np.testing.assert_allclose(Hf, -np.log(sf))
     np.testing.assert_allclose(np.exp(log_df), df)
     # E[X] from the mass equals the parameter, and equals mean/moment.
     np.testing.assert_allclose((x * df).sum(), P_BERN)
@@ -474,23 +488,16 @@ def test_bernoulli_internal_identities():
         np.testing.assert_allclose(Bernoulli.moment(m, P_BERN), P_BERN)
 
 
-def test_bernoulli_log_df_needs_its_own_relation():
-    # DiscreteParametricFitter.log_df is f(k) = h(k) R(k - 1), which
-    # assumes R(k) = P(X > k). Bernoulli's R is P(X >= x), so the
-    # at-risk set at x is R(x) itself. Inheriting the discrete relation
-    # would give df(1) = 1 instead of p.
+def test_bernoulli_log_df_is_the_log_of_its_mass():
     x = np.array([0, 1])
     np.testing.assert_allclose(
         np.exp(np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)),
         np.asarray(Bernoulli.df(x, P_BERN), dtype=float),
     )
-    # At x = 1 the discrete relation would read h(1) * R(0) = 1 * 1 = 1,
-    # where the mass is p. (R(-1) is not even askable here, which is the
-    # other half of why that relation does not transfer.)
-    h1 = float(np.ravel(Bernoulli.hf(1, P_BERN))[0])
+    # and the discrete relation f(k) = h(k) R(k - 1) holds (R(-1) = 1).
+    h = np.asarray(Bernoulli.hf(x, P_BERN), dtype=float)
     R0 = float(np.ravel(Bernoulli.sf(0, P_BERN))[0])
-    assert np.isclose(h1 * R0, 1.0)
-    assert not np.isclose(h1 * R0, P_BERN)
+    np.testing.assert_allclose(h * [1.0, R0], [1 - P_BERN, P_BERN])
     with pytest.raises(ValueError):
         Bernoulli.sf(-1, P_BERN)
 
@@ -585,18 +592,17 @@ def test_bernoulli_qf_drives_inverse_transform_sampling():
     assert np.isclose(draws.mean(), P_BERN, atol=0.005)
 
 
-def test_bernoulli_qf_does_not_invert_this_ff_and_says_so():
-    # Documented consequence of R(x) = P(X >= x): the failure function is
-    # P(X < x), which never exceeds 1 - p on {0, 1}, so the usual
-    # discrete check ff(qf(u)) >= u cannot hold once u passes 1 - p. The
-    # other discrete distributions, whose R(k) is P(X > k), are fine.
-    u = 0.9  # above 1 - p = 0.7
-    k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
-    assert k == 1.0
-    assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) < u
-    # Whereas for a distribution using the package's R(k) = P(X > k):
-    k_pois = float(np.ravel(Poisson.qf(u, 3.0))[0])
-    assert float(np.ravel(Poisson.ff(k_pois, 3.0))[0]) >= u - 1e-9
+def test_bernoulli_qf_inverts_its_ff():
+    # (#344) With R(x) = P(X >= x), ff was P(X < x), which never exceeds
+    # 1 - p on {0, 1}, so ff(qf(u)) >= u failed once u passed 1 - p. Now
+    # ff is P(X <= x) and qf is its inverse, as for every other discrete
+    # distribution.
+    for u in (0.1, 0.5, 0.7, 0.75, 0.9, 0.999):
+        k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
+        assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) >= u - 1e-12
+        if k > 0:
+            below = float(np.ravel(Bernoulli.ff(k - 1, P_BERN))[0])
+            assert below < u
 
 
 @pytest.mark.parametrize("p", [0.0, 1.0])

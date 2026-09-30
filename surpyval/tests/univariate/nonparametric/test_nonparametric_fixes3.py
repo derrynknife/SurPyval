@@ -236,8 +236,8 @@ def test_band_on_a_narrow_range_does_not_crash():
     assert np.isfinite(band[:3]).all()
 
 
-def test_band_sim_arguments_are_deprecated():
-    with pytest.warns(DeprecationWarning, match="n_sims"):
+def test_band_sim_arguments_are_removed():
+    with pytest.raises(TypeError, match="n_sims"):
         _km().band(n_sims=100)
 
 

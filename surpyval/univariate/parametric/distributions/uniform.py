@@ -1,9 +1,6 @@
-from typing import Any, Callable
+from typing import Any
 
-import numpy as onp
 import numpy.typing as npt
-from autograd import grad
-from scipy.optimize import brentq
 
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -437,130 +434,28 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         return np.log(b - a)
 
     def _closed_form_mle(self, data: SurpyvalData) -> npt.NDArray | None:
-        if np.asarray(data.x).ndim == 2 or (data.c == 2).any():
-            # The closed-form min/max estimator is not the MLE with
-            # interval-censored rows (an interval term favours shrinking
-            # the range), and the masks below assume 1-D x -- interval
-            # input used to die with a cryptic IndexError (#280).
+        # Only exactly observed values: the MLE is then (min, max), and
+        # truncation does not change that (each term
+        # 1 / (min(b, tr) - max(a, tl)) only improves as the range shrinks
+        # onto the data). With censored values the MLE still exists but
+        # sits on a wall of the likelihood (the smallest or largest value),
+        # where the Hessian says nothing about its uncertainty: a censored
+        # fit carried a covariance that was not positive definite, and its
+        # Wald bounds were NaN or silently several times too wide (#460).
+        # So censored data are refused; MPS, MPP and MSE take them.
+        if np.asarray(data.x).ndim == 2 or (data.c != 0).any():
             raise ValueError(
-                "Uniform distribution MLE does not support "
-                "interval-censored observations."
+                "Uniform distribution MLE does not support censored "
+                "observations: its estimates sit on the edge of the data, "
+                "where the likelihood gives no usable measure of their "
+                "uncertainty. Fit with how='MPS' (or 'MPP' or 'MSE') "
+                "instead."
             )
-
-        # The MLE exists whenever at least one value is exactly observed:
-        # the likelihood then carries a factor (b - a)^-m that shrinks the
-        # range, while censored values can only pull a bound outwards (a
-        # value right censored at r contributes (b - r)/(b - a), so with a
-        # the smallest failure, N units and k of them censored at r, the
-        # MLE is b = (N r - k a)/(N - k) -- see ``_censored_mle``). These
-        # cases -- the largest value right censored, the smallest left
-        # censored, the extreme values truncated -- used to be refused
-        # outright. Without an exact value no MLE exists: any range that
-        # contains the censoring points explains them with probability 1.
-        if not (data.c == 0).any():
-            raise ValueError(
-                "Uniform distribution cannot be estimated using MLE "
-                "without at least one exactly observed value: censored "
-                "values alone are explained equally well by any range "
-                "that contains them."
-            )
-
-        tl = data.t[:, 0]
-        tr = data.t[:, 1]
-
-        if (data.c != 0).any():
-            params = self._censored_mle(data)
-            if params is None:
-                return None
-            # Truncated to (tl, tr) the data only see the range inside the
-            # window, so a bound that the censored values pull to or past
-            # a truncation point is not identified: the likelihood is flat
-            # from there on.
-            tr_min = np.min(tr[np.isfinite(tr)], initial=np.inf)
-            tl_max = np.max(tl[np.isfinite(tl)], initial=-np.inf)
-            if params[1] >= tr_min or params[0] <= tl_max:
-                raise ValueError(
-                    "Uniform distribution has no unique MLE here: the "
-                    "censored values pull a bound of the range to the "
-                    "truncation point, beyond which the truncated "
-                    "likelihood is flat."
-                )
-            return params
-
-        # With every observation exact, (min, max) is the MLE. Truncation
-        # does not change that: each term 1 / (min(b, tr) - max(a, tl))
-        # only improves as the range shrinks onto the data.
         return np.array([np.min(data.x), np.max(data.x)])
 
     def _closed_form_optimizer(self, data: SurpyvalData) -> str:
         """How ``_closed_form_mle`` solved this data, for ``optimizer``."""
-        if (data.c != 0).any():
-            return "brentq (censored Uniform MLE)"
         return "closed-form"
-
-    def _censored_mle(self, data: SurpyvalData) -> npt.NDArray | None:
-        """The MLE with right- and/or left-censored observations.
-
-        (min, max) is *not* the MLE here, and returning it was wrong: a
-        right-censored value ``r`` contributes ``(b - r) / (b - a)``, which
-        grows with ``b``, so it pulls ``b`` beyond the largest value --
-        three units censored at 9.9 next to failures at 0 and 10 put the
-        MLE at ``b = 24.75``, not 10 (neg_ll 7.95 against 18.42). A
-        left-censored value pulls ``a`` below the smallest the same way.
-
-        There is no general closed form, but nor is the generic optimiser
-        the right tool: the likelihood drops to zero the moment ``a``
-        passes the smallest exact (or left-censored) value or ``b`` the
-        largest exact (or right-censored) one, and the MLE usually sits on
-        one of those walls. The generic path searches an unbounded
-        transform of ``(a, b)``, so its gradient methods fail at the wall
-        and it ends on Nelder-Mead, which stopped up to 0.5% short. Bounded
-        quasi-Newton searches (L-BFGS-B, TNC) were tried next, and stopped
-        short too, up to 1% (declaring convergence with ``a`` against its
-        wall and a large gradient there).
-
-        The structure is simpler than a general 2-D search admits. Without
-        left censoring the likelihood only improves as ``a`` rises, so
-        ``a`` is on its wall (the smallest value) and only ``b`` is
-        searched; without right censoring, symmetrically. That 1-D search
-        is a root of the derivative, bracketed and found by ``brentq``, so
-        it reaches the optimum to rounding -- with
-        ``N`` units, ``k`` of them censored at ``r`` above every failure, it
-        is the closed form ``b = (N r - k a)/(N - k)``. With both kinds of
-        censoring ``b`` is profiled out and ``a`` searched the same way.
-        Returns ``None`` (use the generic optimiser) if the search does
-        not produce a finite likelihood.
-        """
-        x = np.asarray(data.x, dtype=float)
-        c = np.asarray(data.c)
-        a_max = float(np.min(x[(c == 0) | (c == -1)]))
-        b_min = float(np.max(x[(c == 0) | (c == 1)]))
-        span = max(b_min - a_max, np.finfo(float).tiny)
-
-        def neg_ll(a: Any, b: Any) -> Any:
-            return self._neg_ll_func(data, a, b, 0.0, 0.0, 1.0)
-
-        d_da = grad(neg_ll, 0)
-        d_db = grad(neg_ll, 1)
-
-        def best_b(a: float) -> float:
-            if not (c == 1).any():
-                return b_min
-            return _descend_from_wall(lambda b: d_db(a, b), b_min, 1, span)
-
-        if (c == -1).any():
-            # With b profiled out, the profile's slope in a is the partial
-            # derivative at (a, b(a)) (the envelope theorem).
-            a_hat = _descend_from_wall(
-                lambda a: d_da(a, best_b(a)), a_max, -1, span
-            )
-        else:
-            a_hat = a_max
-        b_hat = best_b(a_hat)
-        with onp.errstate(all="ignore"):
-            if not onp.isfinite(float(neg_ll(a_hat, b_hat))):
-                return None
-        return onp.array([a_hat, b_hat], dtype=float)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x
@@ -596,45 +491,6 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
         self, x: npt.NDArray, params: npt.NDArray
     ) -> tuple[float, float] | None:
         return float(np.min(params)), float(np.max(params))
-
-
-def _descend_from_wall(
-    derivative: Callable[[float], Any],
-    wall: float,
-    direction: int,
-    span: float,
-) -> float:
-    """Where an objective that is unimodal on the half-line from ``wall``
-    (running in ``direction``, +1 or -1) is least, given its derivative.
-
-    The wall itself when the objective rises from it; otherwise the root
-    of the derivative, bracketed by doubling the distance from the wall
-    and found by ``brentq`` to within rounding, so the result is as exact
-    as the closed forms at any scale.
-    """
-
-    def slope(t: float) -> float:
-        # d/dt of the objective at wall + direction * t, sign-preserving
-        # where it is not finite (it is -inf at a wall tied with a
-        # censored value, where the likelihood is 0)
-        with onp.errstate(all="ignore"):
-            value = direction * float(derivative(wall + direction * t))
-        if onp.isnan(value):
-            return 1e300
-        return float(onp.clip(value, -1e300, 1e300))
-
-    near = 1e-12 * span
-    if slope(near) >= 0:
-        return wall
-    far = span
-    for _ in range(2000):
-        if slope(far) > 0:
-            break
-        near, far = far, 2.0 * far
-    else:
-        return wall + direction * far
-    t = brentq(slope, near, far, xtol=1e-300, rtol=4 * onp.finfo(float).eps)
-    return float(wall + direction * t)
 
 
 Uniform: Uniform_ = Uniform_("Uniform")

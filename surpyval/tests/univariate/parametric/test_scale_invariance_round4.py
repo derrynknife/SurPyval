@@ -64,6 +64,8 @@ def _cases() -> list[Any]:
             for censored in (False, True):
                 if how == "MOM" and censored:
                     continue  # MOM takes complete data only
+                if name == "Uniform" and how == "MLE" and censored:
+                    continue  # the Uniform MLE refuses censored data (#460)
                 label = f"{name}-{how}-{'cens' if censored else 'cplt'}"
                 cases.append(pytest.param(name, how, censored, id=label))
     return cases
@@ -221,6 +223,8 @@ def _offset_cases() -> list[Any]:
             for censored in (False, True):
                 if how == "MOM" and censored:
                     continue  # MOM takes complete data only
+                if name == "Uniform" and how == "MLE" and censored:
+                    continue  # the Uniform MLE refuses censored data (#460)
                 if name == "ExpoWeibull" and censored and how != "MLE":
                     # Ill posed on this sample: the MPS and MSE optima lie
                     # at mu -> inf, along a ridge flat to the last digit

@@ -251,6 +251,15 @@ change a subject's history, so they refuse a missing covariate instead.)
 Predicting from a DataFrame row with a missing covariate -- numeric or
 categorical -- gives ``nan`` for that row, in its place.
 
+A covariate that separates the events from the survivors -- a level of a
+factor with no events, say -- has no finite estimate: the likelihood keeps
+increasing as its coefficient grows. Every fitter says so with one warning
+naming the coefficient (``CoxPH`` and ``FineGray`` as a "monotone partial
+likelihood"; the parametric, additive-hazards and frailty fits as "no finite
+maximum") and returns the model where the search stopped, whose value for that
+coefficient, its standard error and its bounds mean nothing. Remove or coarsen
+the covariate (merge the level with another), or fit a penalised model.
+
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
 
@@ -1199,8 +1208,9 @@ for it.
    or you are outside the range where it is well behaved. When covariate
    effects are strongly protective, a proportional-hazards model — whose
    exponential form keeps the hazard positive — is often the safer choice.
-   The parametric ``AH`` models below do not hold their cumulative hazard
-   yet: their survival can still exceed 1 where the hazard is negative.
+   The parametric ``AH`` models below keep their own values where the
+   hazard is negative (survival above 1, a negative density), and every
+   prediction there warns once that it is so.
 
 Just as Cox has parametric proportional-hazards counterparts (the next
 section), there is also a *parametric* additive-hazards model — a parametric
@@ -1676,9 +1686,13 @@ Confidence Bounds
 
 A point estimate is only half the story. The parametric regression models (PH,
 AFT, PO, AH and AL) carry the full parameter covariance — the inverse of the
-numerical Hessian of the negative log-likelihood — so every coefficient and every
-predicted curve comes with an interval. After a fit, the parameter covariance
-(``covariance()``) and standard errors are available directly:
+Hessian of the negative log-likelihood at the fit — so every coefficient and every
+predicted curve comes with an interval. The Hessian is the exact one the fit
+computes (with autograd) to check that it reached a maximum; a model without one
+(an accelerated-life fit, an AFT time-varying fit, a fit with no finite maximum,
+or one whose Hessian is not positive definite there) uses a numerical Hessian
+instead. After a fit, the parameter covariance (``covariance()``) and standard
+errors are available directly, and are computed once:
 
 .. jupyter-execute::
 
@@ -2249,7 +2263,8 @@ before it is ever evaluated: ``t`` may reach the value only through a quantizer
 (``floor``, ``ceil``, ``round``, ``trunc``, ``//``) or a comparison. A genuinely continuous covariate
 (``0.3 + 1e-4 * t``, ``sin(t)``) is rejected with ``StepValuedError`` rather
 than silently returning a wrong answer — a covariate that varies continuously
-would break the exactness of the segment sum. (surpyval owns only this
+would break the exactness of the segment sum; describe one with a
+``CovariatePath`` instead (see :ref:`tvc-continuous`). (surpyval owns only this
 step-valued guarantee; sandboxing an *untrusted* expression string is the
 calling application's responsibility.) The expression is sampled on a grid of
 spacing ``resolution`` (default 1) up to ``horizon``, so the resolution must be
@@ -2308,6 +2323,144 @@ Conditional survival is only meaningful at times at or after ``given``:
 
     assert np.allclose(ph.sf_tvc(at, **pulse, given=1.0),
                        ph.sf_tvc(at, **pulse) / ph.sf_tvc([1.0], **pulse))
+
+
+.. _tvc-continuous:
+
+Continuously varying covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Many stress profiles are not steps. A ramp-stress test raises the load
+steadily, a thermal cycle rises and falls every day, and a measured load is
+sampled densely. Describe such a path with a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` and pass it to
+the same ``sf_tvc`` / ``Hf_tvc``:
+
+- ``CovariatePath.from_points(times, values, period=None)`` draws straight
+  lines between ``(time, value)`` points. A time given twice is a jump.
+- ``CovariatePath.from_callable(func, p=1, breakpoints=None, period=None)``
+  wraps a vectorised function of time. List any kinks or jumps in
+  ``breakpoints`` so the integration lines up with them.
+
+With ``period`` either one repeats. The type of ``Z`` picks the method: a
+``StepSchedule`` is still summed exactly, and along a ``CovariatePath`` the
+model's hazard is integrated,
+:math:`H(t) = \int_0^t h\bigl(u \mid Z(u)\bigr)\, du`, by adaptive
+Gauss-Kronrod quadrature to a relative error of about :math:`10^{-10}` on
+:math:`H`. If that target is missed (a path that oscillates without limit,
+say), one ``RuntimeWarning`` says at how many of the query times. A path
+that would need more than a million quadrature panels, such as a fast cycle
+over a long horizon, raises a ``ValueError``. Cox needs no quadrature: its
+baseline hazard is a step function, so only the covariate just before each
+baseline jump counts, and the result is exact.
+
+Here the fitted ``ph`` model is evaluated along a ramp-stress profile: the
+stress rises from 0 to 1 over the first time unit and then steps down to
+0.5 and holds there.
+
+.. jupyter-execute::
+
+    from surpyval import CovariatePath
+
+    ramp = CovariatePath.from_points([0.0, 1.0, 1.0], [0.0, 1.0, 0.5])
+    t = np.array([0.5, 1.0, 2.0, 3.0])
+    print('ramp, then hold at 0.5:', ph.sf_tvc(t, ramp).round(4))
+    print('never stressed       :', ph.sf(t, [0.0]).round(4))
+    print('stressed at 1 always :', ph.sf(t, [1.0]).round(4))
+
+Before the step the survival is that of a stress that has been climbing:
+between the two constant curves, and closer to the unstressed one early on.
+Approximating the ramp by a ``StepSchedule`` works too, but only in the
+limit. With each step at the ramp's midpoint value the error falls as the
+square of the step width, while the path gives the limit directly:
+
+.. jupyter-execute::
+
+    def midpoint_steps(n_steps):
+        e = np.linspace(0.0, 1.0, n_steps + 1)
+        mid = ramp(0.5 * (e[:-1] + e[1:])).ravel()
+        return StepSchedule.from_changepoints(np.r_[e[:-1], 1.0],
+                                              np.r_[mid, 0.5])
+
+    for n_steps in (10, 100, 1000):
+        err = np.max(np.abs(ph.sf_tvc(t, midpoint_steps(n_steps))
+                            - ph.sf_tvc(t, ramp)))
+        print(f'{n_steps:5d} steps: largest error in S(t) {err:.1e}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _S = ph.sf_tvc(t, ramp)
+    _S0, _S1 = ph.sf(t, [0.0]), ph.sf(t, [1.0])
+    assert np.all(_S1 < _S) and np.all(_S < _S0)
+    assert _S0[0] - _S[0] < _S[0] - _S1[0]
+    _err = [np.max(np.abs(ph.sf_tvc(t, midpoint_steps(n)) - _S))
+            for n in (10, 100, 1000)]
+    assert _err[0] > 50 * _err[1] > 2500 * _err[2], _err
+    assert _err[2] < 1e-6, _err
+
+``given=`` conditions on survival to an age along the same path, here the
+end of the ramp. The hazard is integrated from ``given`` on, so nothing is
+subtracted:
+
+.. jupyter-execute::
+
+    print('S(t | survived the ramp):', ph.sf_tvc(t[1:], ramp, given=1.0).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ph.sf_tvc(t[1:], ramp, given=1.0),
+                       ph.sf_tvc(t[1:], ramp) / ph.sf_tvc(1.0, ramp),
+                       rtol=1e-12)
+
+A callable describes a smooth cycle. Over one time unit the stress rises
+from 0 to 1 and falls back, and ``period=1`` repeats it. The survival is
+lower than at a constant stress of 0.5, the cycle's average. This is
+because the hazard multiplier :math:`e^{\beta z}` is convex, so the hours at
+high stress cost more than the hours at low stress save:
+
+.. jupyter-execute::
+
+    cycle = CovariatePath.from_callable(
+        lambda u: 0.5 - 0.5 * np.cos(2 * np.pi * u), period=1.0)
+    print('daily cycle       :', ph.sf_tvc(t, cycle).round(4))
+    print('constant 0.5      :', ph.sf(t, [0.5]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(ph.sf_tvc(t, cycle) < ph.sf(t, [0.5]))
+
+**What the path means depends on the family**, just as for steps.
+Proportional hazards, additive hazards and proportional odds take the
+hazard at time :math:`t` to be that of the covariate at :math:`t`. For
+proportional odds this is
+:math:`h_0(t) / (F_0(t) + \phi(Z(t))\, S_0(t))`, the limit of the step sum
+and the model ``fit_tvc`` fits. Accelerated failure time follows Nelson's
+cumulative-exposure model: the path accumulates an accelerated age
+:math:`\psi(t) = \int_0^t e^{\beta' Z(u)}\, du`, and
+:math:`S(t) = S_0(\psi(t))`. A model fitted on fixed covariates and
+evaluated along a path assumes its family's time-varying form is right, and
+for the same ramp the two forms give different answers unless the baseline
+is exponential. Accelerated life models refuse a path, as they refuse a
+step schedule.
+
+.. note::
+
+   **A** ``CovariatePath`` **evaluates a known, external path only.** For
+   now it evaluates an already-fitted model along a path you supply: a
+   planned load, a test profile, ambient conditions. For the result to be
+   a survival probability, the path must not depend on the unit's own
+   failure process (an *external* covariate). Fitting still uses steps. A
+   measured covariate is known only at its sample times, so fit it in
+   start-stop form with ``fit_tvc``, as above; the step approximation's
+   error shrinks with the square of the step width. A covariate driven by
+   the unit itself, such as a degradation signal read from it, needs a
+   joint longitudinal-survival model, which SurPyval does not provide.
 
 
 Worked example: forecasting equipment on a duty cycle
@@ -2803,10 +2956,12 @@ fail faster only when :math:`z_0 > 0.5` **and** :math:`z_1 < 0.5`; the third
 covariate is noise. A single shallow tree, allowed to consider every covariate
 at each split (``n_features_split='all'``), finds the interaction on its own.
 The tree ``kind`` couples the split rule with the leaf model:
-``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves (for
-observed, right-censored and left-truncated data); ``'weibull'`` (the default)
-and ``'exponential'`` use a likelihood split and parametric leaves and accept
-every kind of censoring and truncation, at a higher computational cost:
+``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves for
+observed, right-censored and left-truncated data, and its score form under the
+pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
+data (not yet with truncation); ``'weibull'`` (the default) and
+``'exponential'`` use a likelihood split and parametric leaves and accept every
+kind of censoring and truncation, at a higher computational cost:
 
 .. jupyter-execute::
 
@@ -2897,6 +3052,214 @@ forests serialise like every other model (next section).
 
     assert scores['forest'][0] < scores['Cox'][0], scores     # IBS
     assert scores['forest'][1] > scores['Cox'][1], scores     # C
+
+A forest can also be validated without held-out data. Each tree is grown
+without about a third of the rows, so every row can be scored by the trees
+that never saw it. ``oob_log_likelihood()`` does this with the row's full
+likelihood — the density for an observed failure, :math:`S(x)` for a
+right-censored row, :math:`F(x)` for a left-censored one,
+:math:`S(x_l) - S(x_r)` for an interval, each over the truncation
+probability — and returns the mean per observation, so higher is better and
+it works for every kind of censoring and truncation (the concordance needs
+event times that can be ordered). A non-parametric leaf is a step function,
+which puts no probability exactly at a time it did not see, so for this score
+its survival curve is joined linearly between its drops and continued past
+the last one with its average hazard. That makes its density a density per
+unit of time, on the same scale as a parametric leaf's, so forests of different
+``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
+one covariate at a time among the out-of-bag rows and reports how much the
+score drops:
+
+.. jupyter-execute::
+
+    oob = {}
+    for depth in [0, 3]:                  # depth 0: every tree is one leaf
+        np.random.seed(0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_oob = RandomSurvivalForest.fit(
+                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, max_depth=depth,
+                n_features_split=2, kind='non-parametric')
+        oob[depth] = rsf_oob.oob_log_likelihood()
+        print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
+    importance = rsf_oob.feature_importances(random_state=1)
+    print('importance of z0, z1, z2:', importance.round(3))
+
+The splits raise the out-of-bag log-likelihood above that of the pooled
+estimate, and the two covariates of the interaction carry the importance
+while the noise covariate :math:`z_2` has almost none. A row that happens to
+be in every tree's sample has no out-of-bag score; it is left out, with a
+warning giving the count. A restored forest keeps no training data, so these
+methods need the fitted one.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert oob[3] > oob[0] + 0.05, oob
+    assert importance[0] > 0.05 and importance[1] > 0.05, importance
+    assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
+        importance
+
+Because the score is a likelihood, it validates forests on data that
+concordance cannot handle. Below, units are only inspected every two time
+units, so every failure is interval censored (or left censored, before the
+first inspection, or right censored, still running at the last); units with
+:math:`z_0 > 0.5` wear out about twice as fast. A non-parametric forest splits
+such data with the log-rank scores of the pooled Turnbull estimate:
+
+.. jupyter-execute::
+
+    r_ic = np.random.default_rng(5)
+    Z_ic = r_ic.uniform(0, 1, (200, 3))
+    T_ic = 10 * r_ic.weibull(1.5, 200) * np.where(Z_ic[:, 0] > 0.5, 0.5, 1.0)
+    inspections = np.arange(0.0, 22.0, 2.0)
+    k_ic = np.minimum(np.searchsorted(inspections, T_ic),
+                      inspections.size - 1)
+    c_ic = np.where(k_ic == 1, -1, np.where(T_ic > 20, 1, 2))
+    x_ic = [inspections[j] if cj == -1 else 20.0 if cj == 1
+            else [inspections[j - 1], inspections[j]]
+            for j, cj in zip(k_ic, c_ic)]
+
+    oob_ic = {}
+    for depth in [0, 2]:
+        np.random.seed(0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_ic = RandomSurvivalForest.fit(
+                x=x_ic, Z=Z_ic, c=c_ic, n_trees=30, max_depth=depth,
+                n_features_split=2, kind='non-parametric')
+        oob_ic[depth] = rsf_ic.oob_log_likelihood()
+        print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
+    importance_ic = rsf_ic.feature_importances(random_state=1)
+    print('importance of z0, z1, z2:', importance_ic.round(3))
+
+Again the splits beat the pooled Turnbull estimate out of bag, and the
+importance falls on :math:`z_0` alone.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(c_ic) == {-1, 1, 2}
+    assert oob_ic[2] > oob_ic[0] + 0.02, oob_ic
+    assert importance_ic[0] > 0.02, importance_ic
+    assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
+        importance_ic
+
+Both the tree and the forest take ``random_state``: ``None`` (the default)
+draws the bootstrap samples and the candidate covariates from NumPy's global
+generator, so ``np.random.seed`` reproduces them as above, while a seed gives
+the fit a stream of its own that leaves the global one alone.
+
+Conditional-inference trees
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default a node takes the best cut over every covariate it considers
+(``selection='greedy'``). A continuous covariate offers a cut between every
+pair of its values where a two-valued one offers one, so by chance alone its
+best cut tends to look better: greedy search prefers covariates with many
+values whether or not they matter, and it always finds a split to make.
+``selection='ctree'`` chooses the covariate first, by a p-value that allows
+for the number of cuts each covariate had to choose from, and splits only if
+the smallest p-value, multiplied by the number of covariates tested
+(Bonferroni), is below ``alpha_split`` (0.05 by default); the cut on that
+covariate is then chosen as usual. The theory is in
+:doc:`regression analysis`. It works with every ``kind`` and every kind of
+censoring.
+
+Below, a two-valued covariate :math:`z_0` shortens life by 30% and three
+continuous covariates are noise. Over 40 simulated data sets, each tree
+makes one split (``max_depth=1``); then the same again with no effect at
+all:
+
+.. jupyter-execute::
+
+    def make_mixed_data(seed, effect, n=150):
+        r = np.random.default_rng(seed)
+        Z = np.column_stack([r.integers(0, 2, n), r.uniform(0, 1, (n, 3))])
+        t = 10 * r.weibull(1.5, n) * np.where(Z[:, 0] == 1, effect, 1.0)
+        cens = r.uniform(3, 25, n)
+        return np.minimum(t, cens), (cens < t).astype(int), Z
+
+    tallies = {}
+    for effect in [0.7, 1.0]:
+        tally = {'greedy': [0, 0, 0], 'ctree': [0, 0, 0]}
+        for seed in range(40):
+            xm, cm, Zm = make_mixed_data(seed, effect)
+            for selection in tally:
+                tm = SurvivalTree.fit(x=xm, Z=Zm, c=cm, max_depth=1,
+                                      kind='non-parametric',
+                                      n_features_split='all',
+                                      selection=selection)
+                j = getattr(tm._root, 'split_feature_index', None)
+                tally[selection][2 if j is None else int(j > 0)] += 1
+        tallies[effect] = tally
+        print(f'effect {effect}:')
+        for selection, (on_z0, on_noise, none) in tally.items():
+            print(f'  {selection:6s}  split on z0: {on_z0:2d}   on noise: '
+                  f'{on_noise:2d}   no split: {none:2d}')
+
+With the effect, greedy search splits on a noise covariate in 18 of the 40
+data sets, ctree in 3; ctree declines to split in 15, where the evidence
+does not reach the 5% level. Without an effect, greedy search always splits
+(39 times on noise), while ctree leaves 38 of the 40 trees as a single leaf,
+close to the 95% its level promises.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert tallies[0.7]['greedy'] == [22, 18, 0], tallies
+    assert tallies[0.7]['ctree'] == [22, 3, 15], tallies
+    assert tallies[1.0]['greedy'][2] == 0 and tallies[1.0]['greedy'][1] == 39
+    assert tallies[1.0]['ctree'][2] == 38, tallies
+
+A conditional-inference tree also needs no depth limit: it stops where the
+data show no further effect. On the interaction data from above it grows
+exactly the two splits of the interaction, and each split keeps the
+adjusted p-value that chose it (``p_value``). In a forest, stopping early
+keeps the trees from fitting noise:
+
+.. jupyter-execute::
+
+    ctree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, kind='non-parametric',
+                             n_features_split='all', selection='ctree')
+
+    def show(node, depth=0):
+        if hasattr(node, 'split_feature_index'):
+            print('  ' * depth + f'z{node.split_feature_index} <= '
+                  f'{node.split_feature_value:.2f}   (p = {node.p_value:.1e})')
+            show(node.left_child, depth + 1)
+            show(node.right_child, depth + 1)
+        else:
+            print('  ' * depth + f'leaf: {len(node.data)} units')
+
+    show(ctree._root)
+
+    oob_sel = {}
+    for selection in ['greedy', 'ctree']:
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_sel = RandomSurvivalForest.fit(
+                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, n_features_split=2,
+                kind='non-parametric', selection=selection, random_state=0)
+        oob_sel[selection] = rsf_sel.oob_log_likelihood()
+        print(f'{selection:6s} forest: OOB log-likelihood '
+              f'{oob_sel[selection]:.3f}')
+
+The unrestricted greedy trees grow until their leaves are too small to
+split, and the forest built from them scores a little lower out of bag than
+the one built from conditional-inference trees.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    root = ctree._root
+    assert root.split_feature_index == 0 and root.p_value < 0.05
+    assert root.right_child.split_feature_index == 1
+    assert not hasattr(root.left_child, 'split_feature_index')
+    assert not hasattr(root.right_child.left_child, 'split_feature_index')
+    assert not hasattr(root.right_child.right_child, 'split_feature_index')
+    assert oob_sel['ctree'] > oob_sel['greedy'], oob_sel
 
 Saving and loading a fitted model
 ---------------------------------

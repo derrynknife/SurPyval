@@ -35,7 +35,6 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
-from surpyval.utils.deprecation import renamed_arguments
 
 from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
@@ -701,15 +700,22 @@ def _warn_if_monotone(info: npt.NDArray, info_at_start: npt.NDArray) -> None:
         (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
     )
     if diverged.size:
-        warnings.warn(
-            "Monotone partial likelihood: it keeps increasing as coefficient"
-            "(s) {} grow without bound, so the estimate is infinite (the "
-            "covariate separates the events from the survivors). The "
-            "reported value, its standard error and its p-value are "
-            "meaningless; consider removing or coarsening the covariate, "
-            "or a penalised fit.".format(diverged.tolist()),
-            stacklevel=_caller_stacklevel(),
-        )
+        warn_monotone(str(diverged.tolist()))
+
+
+def warn_monotone(which: str) -> None:
+    """Warn that the partial likelihood has no finite maximum in the
+    coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
+    shared with the Fine-Gray fit, a weighted partial likelihood (#392)."""
+    warnings.warn(
+        "Monotone partial likelihood: it keeps increasing as coefficient"
+        "(s) {} grow without bound, so the estimate is infinite (the "
+        "covariate separates the events from the survivors). The "
+        "reported value, its standard error and its p-value are "
+        "meaningless; consider removing or coarsening the covariate, "
+        "or a penalised fit.".format(which),
+        stacklevel=_caller_stacklevel(),
+    )
 
 
 def _combine_generators(gens: list) -> tuple[Callable, Callable]:
@@ -1297,7 +1303,6 @@ class CoxPH_:
             )
         return generators[tie_method]
 
-    @renamed_arguments(method="tie_method")
     def fit(
         self,
         x: npt.ArrayLike,
@@ -1619,7 +1624,6 @@ class CoxPH_:
 
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_from_df(
         self,
         df: "pd.DataFrame",
@@ -1706,7 +1710,6 @@ class CoxPH_:
 
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_tvc(
         self,
         i: npt.ArrayLike,
@@ -1802,7 +1805,6 @@ class CoxPH_:
         )
         return model
 
-    @renamed_arguments(id_col="i_col", method="tie_method")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
@@ -1836,7 +1838,6 @@ class CoxPH_:
         model.feature_names = cols
         return model
 
-    @renamed_arguments(method="tie_method")
     def fit_tvc_timeline(
         self,
         i: npt.ArrayLike,
@@ -1905,7 +1906,6 @@ class CoxPH_:
             center=center,
         )
 
-    @renamed_arguments(id_col="i_col", time_col="x_col", method="tie_method")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",

@@ -16,7 +16,6 @@ from surpyval.univariate.nonparametric.nonparametric import (
     _on_support,
     _support_from_dict,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import (
@@ -286,7 +285,6 @@ class NonParametricCounting(SerialisableMixin):
             )
         return np.asarray(self.x, dtype=float), values
 
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     @keeps_query_shape
     def mcf_cb(
         self,
@@ -449,7 +447,6 @@ class NonParametricCounting(SerialisableMixin):
             mcf_cb[invalid] = np.nan
         return mcf_cb
 
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(
         self,
         *,

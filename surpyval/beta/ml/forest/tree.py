@@ -1,11 +1,10 @@
 from math import log2, sqrt
+from typing import Any
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.deviance_split import (
-    needs_full_likelihood_split,
-)
+from surpyval.beta.ml.forest.conditional_inference import parse_selection
 from surpyval.beta.ml.forest.node import build_tree, node_from_dict
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -13,8 +12,26 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import check_covariate_rows, finite_covariate_mask
+from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+
+Random = np.random.Generator | np.random.RandomState
+
+
+def resolve_random_state(random_state: Any = None) -> Random:
+    """The random stream a tree or forest draws from.
+
+    ``None`` is numpy's global generator itself, drawn from directly, so
+    ``np.random.seed`` reproduces a fit exactly as it did before trees and
+    forests took a ``random_state``. Anything else goes through
+    :func:`~surpyval.utils.rng.as_generator`: a seed or ``Generator``
+    gives a stream of its own, which neither depends on nor advances the
+    global one.
+    """
+    if random_state is None:
+        return np.random.mtrand._rand
+    return as_generator(random_state)
 
 
 def drop_missing_covariate_rows(
@@ -57,12 +74,35 @@ class SurvivalTree(SerialisableMixin):
     - ``"exponential"``: exponential deviance split (Davis & Anderson,
       1989; 1-d.f., splits on rate) with Exponential MLE leaves.
       Supports the full data model.
-    - ``"non-parametric"``: risk-set log-rank split with Nelson-Aalen
-      leaves. Only defined for observed / right-censored data
-      (optionally left-truncated); raises ``ValueError`` otherwise --
-      left/interval censoring and right truncation carry their event
-      information as interval probabilities, for which no risk-set
-      statistic exists.
+    - ``"non-parametric"``: for observed / right-censored data
+      (optionally left-truncated), the risk-set log-rank split with
+      Nelson-Aalen leaves. For data with left or interval censoring,
+      the Turnbull-score split -- the standardised sum of each child's
+      log-rank scores under the node's pooled Turnbull estimate
+      (Finkelstein, 1986), which reduces to the log-rank scores on
+      right-censored data -- with Turnbull leaves. Raises
+      ``ValueError`` for right truncation, or for truncation together
+      with left or interval censoring: the scores would have to come
+      from the truncation-conditioned likelihood (issue #188).
+
+    ``selection`` decides how a node chooses the feature it splits on:
+
+    - ``"greedy"`` (default): the best cut of the kind's criterion over
+      every feature drawn for the split. A feature with many distinct
+      values offers more cuts, so it is favoured even when it carries no
+      information, and a node always splits if some cut is allowed.
+    - ``"ctree"``: conditional inference (Hothorn, Hornik and Zeileis,
+      2006). Each feature is tested for association with the scores of
+      the kind's split statistic (the log-rank scores for
+      ``"non-parametric"``; the working model's score contributions for
+      ``"exponential"`` and ``"weibull"``), by its maximally selected
+      statistic over its cuts, whose p-value allows for the number of
+      cuts. The feature with the smallest p-value is chosen, and the node
+      splits only if that p-value, Bonferroni-adjusted for the number of
+      features tested, is below ``alpha_split``; its cut is then chosen by
+      the kind's criterion. This removes the preference for features with
+      many values and stops the tree where the data show no effect. See
+      :mod:`~surpyval.beta.ml.forest.conditional_inference`.
     """
 
     def __init__(
@@ -74,7 +114,12 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
+        random_state: Any = None,
     ) -> None:
+        self.selection = parse_selection(selection, alpha_split)
+        self.alpha_split = float(alpha_split)
         self.data, self.Z = drop_missing_covariate_rows(data, Z)
 
         n_features: int = parse_n_features_split(
@@ -94,6 +139,9 @@ class SurvivalTree(SerialisableMixin):
             min_leaf_failures=min_leaf_failures,
             n_features_split=n_features,
             kind=self.kind,
+            rng=resolve_random_state(random_state),
+            selection=self.selection,
+            alpha_split=self.alpha_split,
         )
 
     @classmethod
@@ -113,6 +161,9 @@ class SurvivalTree(SerialisableMixin):
         min_leaf_failures: int = 2,
         n_features_split: int | float | str = "sqrt",
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
+        random_state: Any = None,
     ) -> "SurvivalTree":
         """
         Fit a survival tree from data in the full xcnt(+truncation) data
@@ -159,6 +210,22 @@ class SurvivalTree(SerialisableMixin):
         kind : str, optional
             ``"weibull"`` (the default), ``"exponential"`` or
             ``"non-parametric"``; see the class docstring.
+        selection : str, optional
+            How a node chooses its feature: ``"greedy"`` (the default),
+            the best cut over every feature, or ``"ctree"``, conditional
+            inference; see the class docstring.
+        alpha_split : float, optional
+            With ``selection="ctree"``, a node splits only if the
+            Bonferroni-adjusted p-value of its chosen feature is below
+            ``alpha_split``, the size of the test of no association.
+            Defaults to 0.05. Ignored by ``"greedy"``.
+        random_state : None, int or numpy.random.Generator, optional
+            Seeds the features drawn for each split (when
+            ``n_features_split`` is less than the number of features).
+            ``None`` (the default) draws from NumPy's global random state,
+            so ``np.random.seed`` reproduces the tree; a seed or
+            ``Generator`` gives a stream of its own and leaves the global
+            one alone.
 
         Returns
         -------
@@ -190,6 +257,25 @@ class SurvivalTree(SerialisableMixin):
         >>> tree.sf([2, 5], [[0.2, 0.5], [0.8, 0.5]]).round(4)
         array([[0.9897, 0.8831],
                [0.8062, 0.3168]])
+
+        With conditional-inference selection, a tree grown on the same
+        data without the effect does not split at all, where greedy
+        search always does:
+
+        >>> x0 = rng.weibull(2.0, 200) * 10.0
+        >>> ctree = SurvivalTree.fit(
+        ...     x0, Z, kind="non-parametric", n_features_split="all",
+        ...     selection="ctree",
+        ... )
+        >>> type(ctree._root).__name__
+        'TerminalNode'
+        >>> ctree = SurvivalTree.fit(
+        ...     x, Z, c=c, kind="non-parametric", n_features_split="all",
+        ...     selection="ctree", max_depth=1,
+        ... )
+        >>> root = ctree._root
+        >>> int(root.split_feature_index), bool(root.p_value < 1e-10)
+        (0, True)
         """
         if Z is None:
             raise ValueError("The covariate matrix Z is required")
@@ -208,6 +294,9 @@ class SurvivalTree(SerialisableMixin):
             min_leaf_failures,
             n_features_split,
             kind,
+            selection,
+            alpha_split,
+            random_state,
         )
 
     def apply_model_function(
@@ -326,9 +415,11 @@ class SurvivalTree(SerialisableMixin):
         """Serialise the fitted tree to a plain, JSON/BSON-safe dictionary.
 
         Only what prediction needs is stored -- the tree ``kind``, the
-        resolved ``n_features_split`` and the recursive node structure with
-        its fitted leaf models. The training data and covariate matrix are
-        not persisted: a restored tree is a predictor, not a re-fittable
+        resolved ``n_features_split``, the ``selection`` and
+        ``alpha_split`` it was grown with, and the recursive node structure
+        with its fitted leaf models (and, for ``selection="ctree"``, each
+        split's p-value). The training data and covariate matrix are not
+        persisted: a restored tree is a predictor, not a re-fittable
         object.
         """
         return stamp_schema(
@@ -336,6 +427,8 @@ class SurvivalTree(SerialisableMixin):
                 "model": "SurvivalTree",
                 "kind": self.kind,
                 "n_features_split": int(self.n_features_split),
+                "selection": self.selection,
+                "alpha_split": float(self.alpha_split),
                 "root": self._root.to_dict(),
             }
         )
@@ -347,6 +440,9 @@ class SurvivalTree(SerialisableMixin):
         tree = cls.__new__(cls)
         tree.kind = model_dict["kind"]
         tree.n_features_split = model_dict["n_features_split"]
+        # Trees saved before selection existed were grown greedily.
+        tree.selection = model_dict.get("selection", "greedy")
+        tree.alpha_split = model_dict.get("alpha_split", 0.05)
         # A restored tree predicts but is not re-fittable; it holds no data.
         tree.data = None  # type: ignore[assignment]
         tree.Z = None  # type: ignore[assignment]
@@ -377,22 +473,28 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     Resolve and validate the tree ``kind`` against the data.
 
     The parametric kinds (``"weibull"``, ``"exponential"``) support the
-    full data model. The non-parametric kind's split (the risk-set
-    log-rank) is undefined for left/interval censoring and right
-    truncation, so it is rejected for such data.
+    full data model. The non-parametric kind splits observed and
+    right-censored data (optionally left truncated) by the risk-set
+    log-rank, and left- and interval-censored data by the Turnbull
+    scores; neither is defined for right truncation, or for truncation
+    with left or interval censoring, so such data are rejected.
     """
     resolved = kind.lower().replace("_", "-")
     if resolved in ("weibull", "exponential"):
         return resolved
     if resolved == "non-parametric":
-        if needs_full_likelihood_split(data):
+        right_truncated = bool(np.isfinite(data.t[:, 1]).any())
+        left_truncated = bool(np.isfinite(data.t[:, 0]).any())
+        interval_like = bool(((data.c == 2) | (data.c == -1)).any())
+        if right_truncated or (left_truncated and interval_like):
             raise ValueError(
-                "kind='non-parametric' is undefined for data with left "
-                "censoring, interval censoring, or right truncation: its "
-                "risk-set log-rank split has no risk-set formulation for "
-                "interval-probability observations. Use kind='weibull' or "
-                "kind='exponential' for this data (a Turnbull-score split "
-                "is planned; see issue #188)."
+                "kind='non-parametric' does not support right truncation, "
+                "or truncation together with left or interval censoring: "
+                "its splits (the risk-set log-rank, and the Turnbull "
+                "scores for left and interval censoring) would need "
+                "scores from the truncation-conditioned likelihood, which "
+                "are not implemented yet (issue #188). Use kind='weibull' "
+                "or kind='exponential' for this data."
             )
         return "non-parametric"
     raise ValueError(

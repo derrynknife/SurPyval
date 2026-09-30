@@ -1187,6 +1187,16 @@ cost more (every bound is an optimisation), they need the original data, and
 they are not yet available for offset, limited-failure-population or
 zero-inflated models.
 
+The interval is the stretch of values around the estimate whose deviance
+stays below the critical value. Where the profile levels off below it on
+the way to the edge of the parameter's space, no value out to the edge is
+excluded, and the bound is the edge itself: 0, 1 or ``inf``. This happens
+when the model tends to a simpler one at that edge. A NegativeBinomial
+tends to a (shifted) Poisson as :math:`r \to \infty`; if the Poisson's
+deviance from the fit is below the critical value, the upper bound on
+:math:`r` is ``inf``. A band likewise reaches the edge of the function's
+range (0 or 1 for :math:`R`) when the region reaches that far.
+
 .. _information-criteria:
 
 Comparing models: information criteria

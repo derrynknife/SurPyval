@@ -1909,8 +1909,9 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
 
 - ``Bernoulli``: one pass/fail outcome, ``x`` is 0 or 1 and :math:`P(X = 1) = p`.
   Read as a one-shot device, ``p`` is the probability it works on demand. Its
-  survival follows the convention :math:`R(x) = P(X \geq x)`, so ``R(0) = 1``
-  and ``R(1) = p``. Fitted from 0/1 outcomes (and optional counts ``n``).
+  survival follows the package's discrete convention :math:`R(x) = P(X > x)`,
+  as ``Binomial`` and scipy do, so ``R(0) = p`` (it survives the demand) and
+  ``R(1) = 0``. Fitted from 0/1 outcomes (and optional counts ``n``).
 - ``FixedEventProbability``: a proportion ``p`` of units experience the event
   and the rest never do, with nothing said about *when*: ``F(x) = p`` at
   every ``x``.
@@ -1930,7 +1931,7 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
     # 17 of 20 demands succeeded
     print("Bernoulli p :", surv.Bernoulli.fit([0, 1], n=[3, 17]).params)
     switch = surv.Bernoulli.from_params(0.85)
-    print("R(0), R(1)  :", switch.sf([0, 1]))
+    print("R(0), R(1)  :", switch.sf([0, 1]))  # survives the demand: R(0)
 
     # 3 of 5 units had the event at some point
     print("Fixed p     :", surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params)
@@ -1949,7 +1950,7 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
     :hide-output:
 
     assert np.isclose(surv.Bernoulli.fit([0, 1], n=[3, 17]).params[0], 0.85)
-    assert np.allclose(switch.sf([0, 1]), [1, 0.85])
+    assert np.allclose(switch.sf([0, 1]), [0.85, 0])
     assert np.isclose(
         surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params[0], 0.6)
     assert np.isclose(event.params[0], (3 + 4) / 2)

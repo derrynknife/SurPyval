@@ -54,7 +54,7 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -92,6 +92,46 @@ def _transform_ok(transform: str, x: npt.NDArray) -> bool:
     """Whether the time transform is finite at every time in ``x``."""
     with np.errstate(all="ignore"):
         return bool(np.isfinite(_TRANSFORMS[transform][0](x)).all())
+
+
+def _warn_if_noise_free(model: Any, x: npt.NDArray) -> None:
+    """Warn when the fitted spread has collapsed onto the path (#392).
+
+    Measurements that lie exactly on a path ``loc(t)`` (noise-free
+    readings, and censored ones on the right side of it) leave the
+    likelihood without a finite maximum: it keeps increasing as ``sigma``
+    shrinks, and the fit stopped where rounding error in the residuals
+    finally stood in for noise (``sigma = 9.9e-16`` on ``y = exp(4 - 0.02
+    x)``), in silence.
+
+    The criterion: at every measurement time the fitted distribution's
+    interquartile range is below ``sqrt(eps)`` (1.5e-8) of its median's
+    size. A maximum of the likelihood fixes a parameter to only half the
+    digits of a double (the log-likelihood is quadratic there, so a
+    relative change ``d`` moves it by about ``d**2``), so a spread that
+    small is 0 to the precision of the fit: the readings are on the path.
+    Any real measurement noise is orders of magnitude larger.
+    """
+    times = np.unique(x)
+    with np.errstate(all="ignore"):
+        low = model.degradation_quantile(0.25, times)
+        high = model.degradation_quantile(0.75, times)
+        mid = np.abs(model.degradation_quantile(0.5, times))
+        tight = np.abs(high - low) <= np.sqrt(np.finfo(float).eps) * mid
+    if not np.all(tight):
+        return
+    b0, b1 = model.beta
+    path = f"{b0:.6g} + {b1:.6g}*{_TRANSFORMS[model.transform][1]}"
+    warn_no_maximum(
+        f"every measurement lies on the fitted path, location {path} "
+        "(noise-free readings), so the likelihood keeps increasing as the "
+        "scale sigma shrinks",
+        f"The reported sigma = {model.sigma:.4g} (where the search "
+        "stopped), its standard error and the bounds are meaningless",
+        "the degradation is deterministic, every unit crossing the "
+        "threshold at the same time; model it as such rather than with a "
+        "response distribution",
+    )
 
 
 class DestructiveDegradationModel(SerialisableMixin):
@@ -154,7 +194,6 @@ class DestructiveDegradationModel(SerialisableMixin):
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
-    @renamed_arguments(q="p", t="x")
     def degradation_quantile(
         self, p: npt.ArrayLike, x: npt.ArrayLike
     ) -> npt.NDArray:
@@ -174,14 +213,12 @@ class DestructiveDegradationModel(SerialisableMixin):
         out = np.asarray(self.distribution.qf(p, loc, self.sigma), dtype=float)
         return out[0] if np.ndim(x) == 0 else out
 
-    @renamed_arguments(t="x")
     def median_degradation(self, x: npt.ArrayLike) -> npt.NDArray:
         """Median destructive measurement at time ``x``."""
         return self.degradation_quantile(0.5, x)
 
     # -- induced lifetime distribution at the threshold -------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
@@ -198,19 +235,16 @@ class DestructiveDegradationModel(SerialisableMixin):
             )
         return out
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
         return 1.0 - self.ff(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
         return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -223,7 +257,6 @@ class DestructiveDegradationModel(SerialisableMixin):
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
-    @renamed_arguments(t="x", seed="random_state")
     @keeps_query_shape
     def cb(
         self,
@@ -526,6 +559,13 @@ class DestructiveDegradation_:
             ``ff``, ...) give the probability of having crossed
             ``threshold`` by each time.
 
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when every measurement lies on the fitted
+            path (noise-free readings): the fitted spread is then 0 to the
+            precision of the fit, and ``sigma`` is meaningless.
+
         Examples
         --------
         Six units broken at each of four ages; strength falls
@@ -638,7 +678,7 @@ class DestructiveDegradation_:
             beta, sigma, nll = self._fit_one(dist, transform, x, y, c)
             transform_scores = None
 
-        return DestructiveDegradationModel(
+        model = DestructiveDegradationModel(
             distribution=dist,
             transform=transform,
             direction=direction,
@@ -649,6 +689,8 @@ class DestructiveDegradation_:
             neg_ll=nll,
             transform_scores=transform_scores,
         )
+        _warn_if_noise_free(model, x)
+        return model
 
 
 #: Singleton fitter -- call ``DestructiveDegradation.fit(...)``.

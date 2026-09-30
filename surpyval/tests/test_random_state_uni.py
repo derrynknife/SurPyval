@@ -1,12 +1,9 @@
 """
-#422 in the univariate models: one name per option (principle 21), and
-#389: every ``random`` takes ``random_state`` (principle 19).
-
-Each renamed argument still works under its old name until v0.22.0, with a
-``DeprecationWarning`` pointing at the caller, and gives the answer the new
-name gives. Every ``random`` of a univariate model or distribution takes a
-keyword ``random_state``: ``None`` is numpy's global stream, as before, and
-an int or a generator is a stream of its own.
+#389: every ``random`` of a univariate model or distribution takes a
+keyword ``random_state`` (principle 19): ``None`` is numpy's global
+stream, as before, and an int or a generator is a stream of its own.
+Also, the positional form of the query methods renamed in #422 (their
+old names were removed in v0.22.0; see test_removed_arguments.py).
 """
 
 import warnings
@@ -19,19 +16,6 @@ import surpyval as sp
 from surpyval.tests.conformance.registry import CASE_BY_NAME, CASES, fitted
 
 X = np.array([5.0, 10.0, 20.0])
-P = np.array([0.1, 0.5, 0.9])
-
-
-def _deprecated(call, old):
-    """``call()``, checking it warns about ``old`` from this file."""
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        out = call()
-    hits = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-    assert len(hits) == 1, [str(w.message) for w in caught]
-    assert old in str(hits[0].message)
-    assert hits[0].filename == __file__  # points at the caller
-    return out
 
 
 def _quiet(call):
@@ -43,77 +27,6 @@ def _quiet(call):
 
 def _model(name):
     return fitted(CASE_BY_NAME[name])
-
-
-# (label, case, old call, new call, old name)
-RENAMES = [
-    (
-        "Parametric.cb(t=)",
-        "Weibull",
-        lambda m: m.cb(t=X, on="Hf", bound="lower"),
-        lambda m: m.cb(x=X, on="Hf", bound="lower"),
-        "'t'",
-    ),
-    *[
-        (
-            f"RoystonParmarModel.{fn}(t=)",
-            "RoystonParmar",
-            lambda m, fn=fn: getattr(m, fn)(t=X),
-            lambda m, fn=fn: getattr(m, fn)(x=X),
-            "'t'",
-        )
-        for fn in ("sf", "ff", "df", "hf", "Hf", "cb")
-    ],
-    (
-        "RoystonParmarModel.qf(q=)",
-        "RoystonParmar",
-        lambda m: m.qf(q=P),
-        lambda m: m.qf(p=P),
-        "'q'",
-    ),
-    (
-        "NeverOccurs.qf(u=)",
-        "NeverOccurs",
-        lambda m: m.qf(u=P),
-        lambda m: m.qf(p=P),
-        "'u'",
-    ),
-    (
-        "InstantlyOccurs.qf(u=)",
-        "InstantlyOccurs",
-        lambda m: m.qf(u=P),
-        lambda m: m.qf(p=P),
-        "'u'",
-    ),
-    *[
-        (
-            f"{case}.bootstrap_cb(B=)",
-            case,
-            lambda m: m.bootstrap_cb(X, B=20, random_state=1),
-            lambda m: m.bootstrap_cb(X, n_boot=20, random_state=1),
-            "'B'",
-        )
-        for case in ("KaplanMeier", "Turnbull")
-    ],
-]
-
-
-@pytest.mark.parametrize(
-    "case, old, new, name",
-    [pytest.param(*row[1:], id=row[0]) for row in RENAMES],
-)
-def test_old_name_warns_and_agrees(case, old, new, name):
-    model = _model(case)
-    got = _deprecated(lambda: old(model), name)
-    np.testing.assert_array_equal(got, _quiet(lambda: new(model)))
-
-
-def test_both_names_is_an_error():
-    model = _model("Weibull")
-    with pytest.raises(ValueError, match="pass 'x' only"):
-        model.cb(t=X, x=X)
-    with pytest.raises(ValueError, match="pass 'n_boot' only"):
-        _model("KaplanMeier").bootstrap_cb(X, B=5, n_boot=5)
 
 
 def test_positional_calls_are_unchanged():

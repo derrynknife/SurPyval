@@ -21,6 +21,7 @@ survival bound, which is its own.
 
 import numpy as np
 import numpy.typing as npt
+from scipy.special import expit
 from scipy.stats import norm
 
 
@@ -40,4 +41,7 @@ def logit_sf_bound(
     logit = np.log(est / (1.0 - est))
     with np.errstate(divide="ignore", invalid="ignore"):
         se_logit = np.asarray(se, dtype=float) / (est * (1.0 - est))
-    return 1.0 / (1.0 + np.exp(-(logit + sign * z * se_logit)))
+    # expit, not 1 / (1 + exp(-t)): where the fitted H is negative (an
+    # additive hazard below zero) t is hugely negative, and exp overflowed
+    # with numpy's raw warning on the way to the right answer, 0 (#465).
+    return expit(logit + sign * z * se_logit)

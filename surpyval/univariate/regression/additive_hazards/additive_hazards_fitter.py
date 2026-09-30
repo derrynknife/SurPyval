@@ -28,9 +28,13 @@ strongly protective covariate -- the fit ends pressed against that barrier,
 with the hazard nearly zero at one failure, ``beta`` held there and the
 baseline distorted to compensate. Such a fit is returned with a warning (the
 fit raises only if the optimiser cannot end at a finite likelihood at all).
-Positivity is not checked between the observed times. When covariate effects
-are strongly protective a proportional hazards model, whose exponential form
-keeps the hazard positive by construction, is the safer choice.
+Positivity is not enforced between the observed times or at other covariate
+rows: a prediction (``sf``, ``Hf``, ``cb``, the time-varying ``sf_tvc``, ...)
+where the hazard is negative returns the model's values -- ``sf`` above 1,
+``ff`` and ``df`` negative -- with one ``RuntimeWarning`` saying so (#376).
+When covariate effects are strongly protective a proportional hazards model,
+whose exponential form keeps the hazard positive by construction, is the
+safer choice.
 """
 
 import warnings
@@ -53,6 +57,9 @@ from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    finish_search,
+    free_coefficients,
+    keep_information,
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
@@ -464,10 +471,19 @@ class AdditiveHazardsFitter(
                 "positive by construction and may be more appropriate for "
                 "this data.".format(self.dist.name)
             )
-        # A fit held at the positivity boundary is no stationary point, and
-        # its warning says why; any other that is not a maximum says so.
-        on_boundary = self._warn_if_on_positivity_boundary(data, params)
-        if not (converged or on_boundary):
+        # One warning: a likelihood with no finite maximum in a coefficient
+        # (a level with no events drives it to -inf, the likelihood rising
+        # linearly, #392) says so, and that is why the fit also ends on the
+        # boundary or unverified. Otherwise a fit held at the positivity
+        # boundary is no stationary point, and its warning says why; any
+        # other that is not a maximum says so.
+        coefs = free_coefficients(self, fixed, pmap)
+        no_maximum, derivatives = finish_search(true_neg_ll, res, coefs, init)
+        if not (
+            no_maximum
+            or self._warn_if_on_positivity_boundary(data, params)
+            or converged
+        ):
             warnings.warn(
                 "The additive hazards fit did not reach a verified maximum "
                 "of the likelihood (a zero gradient, curving down in every "
@@ -480,7 +496,7 @@ class AdditiveHazardsFitter(
         reg_model.name = "Additive [beta'Z]"
         reg_model.phi_param_map = pmap
 
-        return assemble_regression_model(
+        model = assemble_regression_model(
             self,
             "Additive Hazard",
             reg_model,
@@ -493,3 +509,8 @@ class AdditiveHazardsFitter(
             neg_ll=final_neg_ll,
             centring=centring,
         )
+        # The exact information for the model's covariance (#392).
+        keep_information(
+            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+        )
+        return model

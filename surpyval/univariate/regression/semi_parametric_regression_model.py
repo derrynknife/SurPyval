@@ -624,27 +624,33 @@ class SemiParametricRegressionModel(SerialisableMixin):
         stratum: Any = None,
     ) -> npt.NDArray:
         r"""
-        Cumulative hazard for a covariate following a step schedule ``Z(t)``.
+        Cumulative hazard for a covariate following a path ``Z(t)``: a step
+        schedule, or a continuously varying path.
 
         The Cox analogue of :meth:`predict_tvc` written to the shared
         time-varying-covariate convention used by the parametric families:
-        ``Z`` is either a
-        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` or
+        ``Z`` is a
+        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+        a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`, or
         an array of per-segment covariate rows with ``xl`` giving the segment
         start times. The cumulative hazard sums the fitted baseline-hazard
         jumps weighted by the covariate active at each jump (see
-        :meth:`_tvc_cumhaz`). The path is measured from time zero (a
-        schedule starting after zero has its first value held back to zero;
-        the part before zero is ignored), and any time is a valid query:
-        ``H`` is ``0`` up to the first baseline jump.
+        :meth:`_tvc_cumhaz`). The baseline is a step function, so along a
+        continuously varying path this is still exact, with no quadrature:
+        only the covariate just before each jump time counts (the value
+        before a jump in the path, as for ``(start, stop]`` rows). The path
+        is measured from time zero (a path starting after zero has its first
+        value held back to zero; the part before zero is ignored), and any
+        time is a valid query: ``H`` is ``0`` up to the first baseline jump.
 
         Parameters
         ----------
         x : array_like
             Times at which to evaluate the cumulative hazard.
-        Z : StepSchedule or array_like
+        Z : StepSchedule, CovariatePath or array_like
             The covariate path -- a
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
+            a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`,
             or per-segment covariate rows (with ``xl`` giving the segment start
             times).
         xl : array_like, optional
@@ -652,27 +658,112 @@ class SemiParametricRegressionModel(SerialisableMixin):
         stratum : optional
             For a stratified fit, the stratum whose baseline hazard to use
             (required there, as for :meth:`sf`).
-        """
-        base_t, base_h0, _ = self._baseline_arrays(stratum)
-        from .tvc_schedule import as_step_schedule, segments_from_origin
 
-        schedule = as_step_schedule(Z, xl)
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH, CovariatePath
+        >>> x = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        >>> Z = np.array([[0.0], [1.0], [0.0], [1.0], [0.0], [1.0]])
+        >>> model = CoxPH.fit(x, Z)
+        >>> ramp = CovariatePath.from_points([0, 6], [0.0, 1.0])
+        >>> H = model.Hf_tvc([2.5, 6.0], ramp)
+
+        The same as the baseline jumps weighted by the ramp at each jump:
+
+        >>> w = model.h0 * np.exp(model.beta[0] * model.x / 6)
+        >>> bool(np.allclose(H, [w[model.x <= 2.5].sum(), w.sum()]))
+        True
+        """
+        return self._hf_tvc(x, Z, xl, stratum)
+
+    def _hf_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: Any,
+        xl: "npt.ArrayLike | None",
+        stratum: Any,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
+        """:meth:`Hf_tvc`, less its value at ``given`` for a
+        ``CovariatePath`` given one (summed from ``given`` on)."""
+        base_t, base_h0, _ = self._baseline_arrays(stratum)
+        from .tvc_path import CovariatePath
+        from .tvc_schedule import as_covariate_path, segments_from_origin
+
+        schedule = as_covariate_path(Z, xl)
         n_cov = np.asarray(self.beta).shape[0]
         if schedule.p != n_cov:
             raise ValueError(
-                "the schedule has {} covariate(s) but the model was fit with "
-                "{}".format(schedule.p, n_cov)
+                "the {} has {} covariate(s) but the model was fit with "
+                "{}".format(
+                    (
+                        "path"
+                        if isinstance(schedule, CovariatePath)
+                        else "schedule"
+                    ),
+                    schedule.p,
+                    n_cov,
+                )
             )
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         if np.isnan(xq).all():
             # Nothing to evaluate: a missing time is nan (the schedule
             # cannot be materialised to a nan horizon).
             return np.full(xq.shape, np.nan)
+        if isinstance(schedule, CovariatePath):
+            return self._tvc_cumhaz_path(xq, schedule, base_t, base_h0, given)
         # A horizon at or below 0 materialises the segment in force at 0
         # (H is 0 there, before the first baseline jump).
         t_max = float(np.nanmax(xq))
         starts, _, Zseg = segments_from_origin(schedule, t_max)
         return self._tvc_cumhaz(xq, starts, Zseg, base_t, base_h0)
+
+    def _tvc_cumhaz_path(
+        self,
+        query: npt.NDArray,
+        path: Any,
+        base_t: npt.NDArray,
+        base_h0: npt.NDArray,
+        given: "float | None" = None,
+    ) -> npt.NDArray:
+        r"""
+        :meth:`_tvc_cumhaz` along a continuously varying ``path`` (#172):
+
+        .. math::
+            H(t) = \sum_{u_j \le t} h_0(u_j)\, e^{\beta' (Z(u_j-) - c)},
+
+        exact, with the path's value just before each jump time (its value
+        at 0 for a jump at or before 0, where the path is held back to).
+        With ``given`` the jumps in ``(given, t]`` are summed (negated for
+        ``t < given``).
+        """
+        from .tvc_path import sum_between
+
+        Z_at = np.asarray(path._values(np.maximum(base_t, 0.0)), dtype=float)
+        at0 = base_t <= 0
+        if at0.any():
+            Z_at[at0] = path._values(np.zeros(1), left=False)[0]
+        weight = self._times_risk(base_h0, self._log_risk(Z_at))
+        # The jumps between baseline times: panel i is (t_{i-1}, t_i], so
+        # a time's cumulative sum is that of the last baseline time at or
+        # before it.
+        edges = np.concatenate([[-np.inf], base_t])
+        origin = -np.inf if given is None else float(given)
+
+        def at_edge(t: npt.NDArray) -> npt.NDArray:
+            # The last baseline time at or before t (-inf before the first).
+            idx = np.searchsorted(base_t, t, side="right") - 1
+            return np.where(idx >= 0, base_t[np.clip(idx, 0, None)], -np.inf)
+
+        out = sum_between(
+            edges,
+            weight,
+            float(at_edge(np.array([origin]))[0]),
+            at_edge(np.where(np.isnan(query), -np.inf, query)),
+        )
+        # A missing query time is nan, not the value after the last jump.
+        return np.where(np.isnan(query), np.nan, out)
 
     @keeps_query_shape
     def sf_tvc(
@@ -684,8 +775,8 @@ class SemiParametricRegressionModel(SerialisableMixin):
         stratum: Any = None,
     ) -> npt.NDArray:
         r"""
-        Survival for a covariate following a step (piecewise-constant) schedule
-        ``Z(t)``.
+        Survival for a covariate following a path ``Z(t)``: a step
+        (piecewise-constant) schedule, or a continuously varying path.
 
         The Cox counterpart of the parametric ``sf_tvc``: ``S(x) = exp(-H(x))``
         with ``H`` the baseline-jump sum of :meth:`Hf_tvc`, so every regression
@@ -698,18 +789,23 @@ class SemiParametricRegressionModel(SerialisableMixin):
         ----------
         x : array_like
             Times at which to evaluate survival.
-        Z : StepSchedule or array_like
-            The covariate path. Either a
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path. A
             :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
             (change-points, intervals, a cyclic pattern, or a step-valued
-            expression) or an array of per-segment covariate rows with ``xl``
-            giving the segment start times.
+            expression), a
+            :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+            (a covariate that changes continuously; exact for Cox, see
+            :meth:`Hf_tvc`), or an array of per-segment covariate rows with
+            ``xl`` giving the segment start times.
         xl : array_like, optional
             Segment start times, required only when ``Z`` is an array.
         given : float, optional
             If supplied, return the *conditional* survival given the item has
             survived to age ``given``:
-            ``S(x | given) = exp(-(H(x) - H(given)))``.
+            ``S(x | given) = exp(-(H(x) - H(given)))``. Along a
+            ``CovariatePath`` the baseline jumps after ``given`` are summed,
+            so nothing is subtracted.
         stratum : optional
             For a stratified fit, the stratum whose baseline hazard to use
             (required there, as for :meth:`sf`).
@@ -718,13 +814,35 @@ class SemiParametricRegressionModel(SerialisableMixin):
         -------
         ndarray
             Survival at each ``x`` (conditional on ``given`` when supplied).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import CoxPH, CovariatePath
+        >>> x = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+        >>> Z = np.array([[0.0], [1.0], [0.0], [1.0], [0.0], [1.0]])
+        >>> model = CoxPH.fit(x, Z)
+        >>> ramp = CovariatePath.from_points([0, 6], [0.0, 1.0])
+        >>> S = model.sf_tvc([2.5, 4.5], ramp)
+        >>> S_given = model.sf_tvc([2.5, 4.5], ramp, given=2.5)
+        >>> bool(np.allclose(S_given, S / S[0]))
+        True
         """
-        H = self.Hf_tvc(x, Z, xl, stratum=stratum)
+        from .tvc_path import CovariatePath
+
+        if (
+            isinstance(Z, CovariatePath)
+            and given is not None
+            and not np.isnan(float(given))
+        ):
+            # Summed from given on.
+            return np.exp(-self._hf_tvc(x, Z, xl, stratum, given=float(given)))
+        H = self._hf_tvc(x, Z, xl, stratum)
         if given is not None:
             given = float(given)
             if np.isnan(given):
                 # A missing conditioning age: nothing is known.
                 H = np.full(np.shape(H), np.nan)
             else:
-                H = H - self.Hf_tvc(given, Z, xl, stratum=stratum)
+                H = H - self._hf_tvc(given, Z, xl, stratum)
         return np.exp(-H)

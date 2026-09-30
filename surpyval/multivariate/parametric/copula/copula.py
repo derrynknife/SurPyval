@@ -26,6 +26,7 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval import np
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
@@ -48,6 +49,12 @@ class Copula:
     # fitters use, so ``bounds_convert`` can map them to unbounded space.
     bounds: tuple = ((0, None),)
     param_names: tuple = ("theta",)
+    #: The Frechet bounds the family reaches only as its parameter runs to
+    #: a limit: ``+1`` the comonotone copula (perfect positive dependence),
+    #: ``-1`` the countermonotone one, each mapped to that limit as the
+    #: fit's warning names it (see :meth:`_warn_if_perfectly_dependent`).
+    #: Empty for a family that is not known to reach either.
+    dependence_limits: dict = {}
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
@@ -366,6 +373,14 @@ class Copula:
             sampling, dependence measures and the likelihood-based
             ``log_likelihood``/``neg_ll``/``aic``/``bic``.
 
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when the rows observed in both dimensions
+            are perfectly dependent (Kendall's tau of +-1) and the family
+            reaches that dependence only as its parameter runs to a limit:
+            the returned parameter is then meaningless.
+
         Examples
         --------
         Simulate from a Clayton copula with Weibull margins, then recover
@@ -428,7 +443,59 @@ class Copula:
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
+        self._warn_if_perfectly_dependent(data, theta)
         return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
+
+    def _warn_if_perfectly_dependent(
+        self, data: Any, theta: npt.NDArray
+    ) -> None:
+        """Warn when the data sit at a Frechet bound the family reaches
+        only in the limit of its parameter (#392).
+
+        The criterion is on the data, not on the estimate: the rows
+        observed in both dimensions are perfectly concordant (Kendall's
+        tau of 1: one coordinate is an increasing function of the other,
+        the comonotone copula) or perfectly discordant (-1). No member of
+        a family such as the Clayton, with a finite parameter, has that
+        dependence. With margins that map one coordinate exactly onto the
+        other (the non-parametric margins, or parametric ones on data
+        such as ``x2 = x1 / 2``) the likelihood keeps increasing towards
+        the limit and the search stops wherever it gives up: Clayton
+        theta 3.2e6, Frank 1.2e7, Gumbel 105.5 with a log-likelihood of
+        inf, Gaussian rho at its cap of 0.9999. Otherwise the peak is set
+        only by how far the fitted margins are from that map (Clayton 60
+        on ``x2 = log(x1)``). Either way the estimate says nothing about
+        the dependence. Data with even one discordant pair (or a tie in
+        one coordinate only) are never flagged, so a fit to data drawn
+        from any member of the family is silent unless the sample itself
+        is perfectly dependent.
+        """
+        sign, rows = _perfect_dependence(data)
+        limit = self.dependence_limits.get(sign)
+        if limit is None:
+            return
+        bound, kind, relation = (
+            ("1", "comonotone", "increasing")
+            if sign > 0
+            else ("-1", "countermonotone", "decreasing")
+        )
+        params = ", ".join(
+            f"{name} = {value:.4g}"
+            for name, value in zip(self.param_names, theta)
+        )
+        warn_no_maximum(
+            f"the {rows} rows observed in both dimensions are perfectly "
+            f"{'concordant' if sign > 0 else 'discordant'} (Kendall's tau "
+            f"= {bound}), the {kind} copula (a Frechet bound), which the "
+            f"{self.name} family reaches only as {limit}; the likelihood "
+            "keeps increasing towards it, or peaks only where the fitted "
+            "margins stop mapping one coordinate exactly onto the other",
+            f"The reported {params} and the dependence measures derived "
+            "from it are meaningless",
+            f"the data are perfectly dependent (one variable is an "
+            f"{relation} function of the other): model that relationship "
+            "directly rather than with a copula",
+        )
 
     def from_params(self, params: Any, margins: Any) -> Any:
         """
@@ -582,7 +649,12 @@ class Copula:
                 f"{self.name} copula is not strictly inside its bounds "
                 f"{self.bounds}; pass `init` to fit."
             )
-        res = minimize(obj, start, method="Nelder-Mead")
+        # Towards a limit of the family (see
+        # ``_warn_if_perfectly_dependent``) the likelihood overflows; the
+        # search reads inf and nan correctly, so numpy's warnings about
+        # them are noise (they were 230 raw warnings from a Gumbel fit).
+        with onp.errstate(all="ignore"):
+            res = minimize(obj, start, method="Nelder-Mead")
         return onp.asarray(to_bounded(res.x), dtype=float)
 
     def _fit_joint(
@@ -624,12 +696,13 @@ class Copula:
         start = onp.concatenate(
             [to_unbounded(theta0)] + [j.start for j in joint]
         )
-        res = minimize(
-            obj,
-            start,
-            method="Nelder-Mead",
-            options={"xatol": 1e-6, "fatol": 1e-6},
-        )
+        with onp.errstate(all="ignore"):  # as in ``_fit_theta``
+            res = minimize(
+                obj,
+                start,
+                method="Nelder-Mead",
+                options={"xatol": 1e-6, "fatol": 1e-6},
+            )
         theta, models = unpack(res.x)
         return onp.asarray(theta, dtype=float), models
 
@@ -806,6 +879,33 @@ def _broadcast_pair(u: Any, v: Any) -> tuple:
     """
     zeros = onp.zeros(onp.broadcast_shapes(onp.shape(u), onp.shape(v)))
     return u + zeros, v + zeros
+
+
+def _perfect_dependence(data: Any) -> tuple[int, int]:
+    """Whether the rows observed in every dimension are perfectly
+    dependent: ``(1, rows)`` if perfectly concordant, ``(-1, rows)`` if
+    perfectly discordant, else ``(0, rows)``, with ``rows`` their count.
+
+    This is Kendall's tau-b of those rows at +-1, decided exactly rather
+    than in floating point: among the distinct pairs, no value of either
+    coordinate repeats (a tie in one coordinate only lowers tau-b; a
+    repeated row is tied in both and does not count) and the second
+    coordinate, in the order of the first, only rises (or only falls).
+    It takes two distinct pairs.
+    """
+    both = onp.all(data.c == 0, axis=1) & (data.n > 0)
+    rows = int(onp.sum(data.n[both]))
+    # Sorted by the first coordinate (then the second)
+    pairs = onp.unique(data.x[both], axis=0)
+    m = pairs.shape[0]
+    if m < 2 or any(onp.unique(pairs[:, d]).size < m for d in (0, 1)):
+        return 0, rows
+    step = onp.diff(pairs[:, 1])
+    if onp.all(step > 0):
+        return 1, rows
+    if onp.all(step < 0):
+        return -1, rows
+    return 0, rows
 
 
 def _is_nonparametric(margin: Any) -> bool:

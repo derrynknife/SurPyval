@@ -28,7 +28,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.shapes import keeps_query_shape
 
 # The serialisation of the two classes. They are the model themselves
@@ -125,7 +124,6 @@ class NeverOccurs(Distribution):
         return _constant(x, 0.0)
 
     @classmethod
-    @renamed_arguments(u="p")
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return _constant(p, np.inf)
@@ -212,7 +210,6 @@ class InstantlyOccurs(Distribution):
         return _constant(x, np.inf)
 
     @classmethod
-    @renamed_arguments(u="p")
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
         return _constant(p, 0.0)

@@ -12,7 +12,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -285,7 +284,6 @@ class ProportionalIntensityModel(
             self.data, test=test, alternative=alternative
         )
 
-    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
         self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
@@ -373,7 +371,6 @@ class ProportionalIntensityModel(
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
     # Extends the mixin plot with covariates -- same known divergence.
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,
@@ -493,7 +490,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation(  # type: ignore[override]
         self,
         events: int,
@@ -531,7 +527,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation(  # type: ignore[override]
         self,
         T: float,
@@ -588,7 +583,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation_data(  # type: ignore[override]
         self,
         events: int,
@@ -608,7 +602,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation_data(  # type: ignore[override]
         self,
         T: float,
@@ -634,7 +627,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     @keeps_query_shape
     def mcf(  # type: ignore[override]
         self,

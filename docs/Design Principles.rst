@@ -143,8 +143,12 @@ Estimation
     model's functions (``properties/test_parametric.py``), and the
     reference tests compare fits with R, lifelines and scikit-survival;
     ``calibration/test_refit_registry.py`` refits every registered model
-    to data drawn from itself (nightly); known gap #392 (outside the
-    univariate fits).
+    to data drawn from itself (nightly). Where the likelihood has no
+    finite maximum, univariate MLE refuses and the regression, frailty,
+    Fine-Gray, copula, mixture and degradation fits warn "No finite
+    maximum" (#392); known gaps: the AFT ``fit_tvc`` path, and abutting
+    intervals such as (1, 3] and (3, 5], whose likelihood has a flat
+    ridge.
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
@@ -155,9 +159,8 @@ Estimation
     the maximum; a closed-form or exact estimator is excluded, with the
     reason. A fit accepts an optimiser's answer only when it is a
     verified maximum (zero gradient, positive-definite Hessian), and a fit
-    given ``init`` is also started from the default start. Known gap: the
-    regression, Fine-Gray, copula, mixture and degradation fits return a
-    finite answer silently where the likelihood has no maximum (#392).
+    given ``init`` is also started from the default start. A likelihood
+    with no finite maximum warns so (#392), whatever the model.
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.

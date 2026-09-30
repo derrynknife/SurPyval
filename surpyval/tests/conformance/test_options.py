@@ -63,6 +63,8 @@ NOT_SWEPT = {
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
 }
+# "confidence" was the recurrent models' level until v0.22.0; a method
+# that took it again would be an unswept uncertainty method.
 _LEVEL_NAMES = ("alpha_ci", "confidence")
 
 
@@ -89,6 +91,9 @@ def _bound_params(prop, where=None):
                 marks.append(pytest.mark.xfail(strict=strict, reason=reason))
             if spec.slow:
                 marks.append(pytest.mark.slow)
+            if spec.nightly:
+                # Opt in with --run-calibration (the root conftest).
+                marks.append(pytest.mark.calibration)
             params.append(
                 pytest.param(
                     case, spec, id=f"{case.name}-{spec.name}", marks=marks
@@ -118,7 +123,7 @@ def _query(case, spec):
 
 
 def _level(spec, alpha):
-    return {spec.level: 1.0 - alpha if spec.level == "confidence" else alpha}
+    return {spec.level: alpha}
 
 
 def _parameters(model):

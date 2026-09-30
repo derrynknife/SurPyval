@@ -1,8 +1,22 @@
 Changelog
 =========
 
-v0.21.1 (unreleased)
+v0.22.0 (unreleased)
 --------------------
+
+**Removed.** The names 0.21 deprecated (#422) are gone. An old argument
+name (``seed``, ``confidence``, ``B``, ``t``, ``q``, ``u``, CoxPH's
+``method``, ``id_col``, ``time_col``, the competing-risks ``how`` and
+``cause``, ``CompetingRisks``' ``method``) is now an unknown argument and
+raises ``TypeError``. The degradation calls in the old positional order
+(``Z`` last) are no longer recognised and raise, except that a process
+model fitted with stress now reads ``random(size, a, b)`` as ``Z=a,
+random_state=b``. Also removed: the fitted ``CompetingRisks.method`` and
+``CompetingRisksProportionalHazards.how`` aliases (use ``.how`` and
+``.model``), the ``surpyval.experimental`` alias (use ``surpyval.beta.ml``)
+and ``band``'s unused ``n_sims`` and ``random_state``. Saved models still
+load. On 0.21, run your code or tests with ``python -W
+error::DeprecationWarning`` first to find the calls to update.
 
 **Behaviour changes.** Fits accept an optimiser's answer only when it is a
 verified maximum, and a fit given ``init`` is also started from the default
@@ -11,8 +25,164 @@ maximum or warn; data with no maximum raise ``ValueError``. A
 non-parametric ``df`` is the probability of each step. Kaplan-Meier and
 Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 ``survfit`` does. Gray's test and the competing-risks Cox incidences now
-match R. Unknown option values raise ``ValueError`` everywhere.
+match R. Unknown option values raise ``ValueError`` everywhere. The
+Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
+``P(X > x)``, as for every other discrete distribution. Fits whose data
+have no finite maximum warn "No finite maximum".
 
+- **Likelihood-ratio bounds at the edge, and along valleys (#421).**
+  Profiles are now searched on the log or logit scale of each parameter,
+  each point starting from the ones already solved. The old search on raw
+  parameters, restarted from the fit every time, overstated the profiles:
+  ExpoWeibull 42.4 for 0.29 at mu = 1e-4, NegativeBinomial 3.05 for 2.35
+  at p = 0.999999. Where a profile levels off below the critical value,
+  the bound is the edge of the parameter's space. A NegativeBinomial
+  ``r`` tends to a shifted Poisson with deviance 2.345, so its 95% upper
+  bound is ``inf``, not 1.7e16, and its 80% bound (36.2) is finite.
+  ExpoWeibull ``beta`` is now [0.053, inf] at 95% and [0.486, inf] at 80%;
+  the old [0.171, 367.5] and [0.486, 372.0] were not nested. A band is
+  where the function's own profile reaches the critical value, and
+  ``sf``, ``ff`` and ``Hf`` share one band. NegativeBinomial ``hf(2)`` at
+  95% is now 0.305 (was 0.207), and the ExpoWeibull bands that were
+  ``nan`` are found. The NegativeBinomial sweep no longer leaks over
+  14,000 raw numpy warnings. Likelihood-ratio bounds are slower for the
+  simple families (a Weibull ``cb`` went from about 0.06 to 0.2-0.5 s).
+- **Continuously varying covariates: CovariatePath (#172, phase 1).**
+  ``sf_tvc`` and ``Hf_tvc`` accepted only step schedules, so a ramp-stress
+  profile or a thermal cycle had to be cut into steps. That was slow (150
+  ms for 1000 steps), and only accurate to the square of the step width,
+  with no error reported. ``CovariatePath.from_points(times, values,
+  period=None)`` (straight lines; a repeated time is a jump) and
+  ``CovariatePath.from_callable(func, p=1, breakpoints=None, period=None)``
+  now describe the path. PH, AH, PO and AFT integrate the hazard (AFT the
+  accelerated age, Nelson's cumulative exposure) by adaptive Gauss-Kronrod
+  quadrature to 1e-10 relative error on H, with one ``RuntimeWarning`` if
+  that is missed. Cox sums its baseline jumps along the path exactly. The
+  error against closed forms is 5e-16 to 9e-14, in about 2 ms for 200
+  times. ``given=`` integrates from the conditioning age. A step schedule
+  is still summed exactly, and a flat path gives the same result to
+  rounding. A path evaluates a fitted model only: fitting still uses steps
+  (``fit_tvc``).
+- **Out-of-bag log-likelihood and permutation importance for the random
+  survival forest (#186).** The forest could only be scored by
+  concordance, which needs right-censored data.
+  ``RandomSurvivalForest.oob_log_likelihood()`` now scores every training
+  row by its full likelihood (density, S, F or interval probability, over
+  the truncation probability) under the trees that did not see it, for
+  every censoring type and truncation. ``feature_importances(n_repeats=5,
+  random_state=None)`` reports how much that score drops when a feature is
+  shuffled among each tree's out-of-bag rows. For this score a
+  non-parametric leaf is read as a continuous distribution (linear between
+  its drops, exponential after the last). On the docs example the score
+  rises from -2.644 without splits to -2.484 with them.
+- **Non-parametric survival trees on left- and interval-censored data
+  (#188, stage 1).** ``kind="non-parametric"`` raised on such data. It now
+  splits on the log-rank scores of the node's pooled Turnbull estimate
+  (the standardised left-child sum, with its permutation variance), with
+  Turnbull leaves. On right-censored data the scores are exactly the
+  classic log-rank scores, so the split chooses as the log-rank split does.
+  Truncation combined with left or interval censoring, and right
+  truncation, still raise (stage 2).
+- **Added: random_state for SurvivalTree and RandomSurvivalForest
+  (#471).** The bootstrap samples and each split's candidate features
+  were drawn from numpy's global stream, so a forest could only be
+  reproduced by seeding numpy globally, and fitting one disturbed the
+  global stream. ``random_state=None`` still draws from the global
+  stream exactly as before, so forests under ``np.random.seed`` are
+  identical. An int or ``Generator`` gives the forest its own stream,
+  with a child stream per tree, and leaves the global one alone.
+- **Added: conditional-inference trees, selection="ctree" (#188).**
+  Greedy search prefers covariates with many values and always splits:
+  in 60 simulated data sets it chose a noise covariate 47% of the time
+  over a two-valued covariate with a real effect. With
+  ``selection="ctree"`` each node chooses its covariate by the
+  Bonferroni-adjusted p-value of its maximally selected score statistic,
+  and splits only if that p is below ``alpha_split`` (0.05). The scores
+  are log-rank for ``"non-parametric"``, and the working model's score
+  contributions for ``"exponential"`` and ``"weibull"``. The p-value is
+  exact for the statistic's asymptotic chain. Noise is then chosen 10% of
+  the time, and on null data 96% of trees stay a single leaf, where
+  greedy search always splits. It works for every kind and every
+  censoring type; the default is unchanged.
+- **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
+  ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
+  was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.
+  ``sf`` is now [p, 0] and ``ff`` [1 - p, 1], as for ``Binomial`` with
+  ``n = 1``, ``scipy.stats.bernoulli`` and every other discrete
+  distribution in the package. ``Hf`` is [-log p, inf]; ``df``, ``hf``,
+  ``qf``, ``mean``, ``random`` and the fitted ``p`` are unchanged. Code
+  that read the probability of the ``1`` outcome (a one-shot device
+  working on demand) as ``sf(1)`` wants ``sf(0)``, or ``p`` itself.
+- **The Uniform's MLE refuses censored data again (#460).** 0.21.0 fitted
+  right- and left-censored data by maximum likelihood. The estimates were
+  right, but they sit on a wall of the likelihood (the smallest or largest
+  observation), where its curvature says nothing about their uncertainty.
+  The covariance it reported was not positive definite, so Wald bounds
+  were NaN or silently several times too wide: an ``sf`` bound of [0.25,
+  0.98] where the likelihood-ratio bound is [0.72, 0.85]. ``Uniform.fit``
+  now raises ``ValueError`` on any censored value, as it always did for
+  interval-censored ones, and names the methods that take censored data
+  (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
+  or not, fit as before, still with no covariance.
+- **Fits with no finite maximum warn instead of returning silently
+  (#392).** Some data leave the likelihood with no maximum: a covariate
+  level with no events, perfectly dependent pairs, a mixture component on
+  a point mass, noise-free degradation readings. These fits returned
+  wherever their optimiser stopped, silently:
+
+  - a WeibullPH coefficient of -14.7 (+32 to +36 for the PO models, about
+    -32 for most frailty models);
+  - Fine-Gray -12.9, with BFGS reporting success;
+  - copula dependence of Clayton theta 3.2e6, Frank 1.2e7, Gumbel 105.5
+    (log-likelihood inf) and Gaussian rho at its 0.9999 cap;
+  - a mixture component with beta 9100;
+  - GammaProcess alpha at the end of its search range (1e6), and
+    DestructiveDegradation sigma 9.9e-16;
+  - BetaGeometric in its Geometric limit (a, b about 1e5, 3.5e5).
+
+  Each now gives one ``UserWarning`` starting "No finite maximum" at the
+  caller's line. It names the parameter that runs away and what to do
+  instead (for example "use Geometric"), and the fit still returns the
+  model it reached. Fine-Gray and ``CompetingRisksProportionalHazards``
+  (Fine-Gray) use CoxPH's "Monotone partial likelihood" warning.
+
+  The regression test is Newton's. Along each coefficient's profile,
+  Kantorovich's ``h = |f'''| |f'| / f''^2`` is 1 on the way to a supremum,
+  however far the optimiser went. At the maximum of an ordinary fit it is
+  at most 2e-4, over the test registry and 1360 calibration refits. It
+  costs one Hessian at the fitted values, and a coefficient's profile is
+  read only when its Newton step there exceeds 1/709.8 of its value (the
+  log of the largest double): every coefficient running off to infinity
+  exceeds it and a converged one does not. That Hessian is kept:
+  ``covariance()``, ``standard_errors()``, ``cb()`` and ``param_cb()`` of
+  the PH, AFT, PO, AH, frailty and Fine-Gray fits invert it instead of
+  computing a numerical Hessian on every call, so a PH fit followed by
+  its standard errors and a band is 8-42% faster than before, and the
+  standard errors move by at most 5e-4 relative (rounding in the
+  numerical Hessian). The numerical Hessian is still used for reloaded
+  models, accelerated-life and AFT ``fit_tvc`` fits, fits with no finite
+  maximum, and Hessians that are not positive definite. The
+  additive-hazards models, whose likelihood rises without bound on such
+  data, now say so instead of reporting a positivity boundary (all except
+  GammaAH). The Gumbel copula no longer leaks about 230 raw numpy overflow
+  warnings. Univariate MLE now also refuses a point mass at the edge of a
+  truncation window (Weibull beta 455.6, Normal sigma 0.037, silently).
+- **Parametric additive hazards warn where their hazard is negative
+  (#376).** ``h_0(x) + beta'Z`` has nothing keeping it positive away from
+  the observed failures, so for a protective covariate row the cumulative
+  hazard falls: ``sf`` exceeded 1 (1.03 for a ``WeibullAH``) and ``ff``
+  and ``df`` went negative, silently. The values are still the model's,
+  but ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``cb``, ``sf_tvc`` and
+  ``Hf_tvc`` now give one ``RuntimeWarning`` per call naming how many
+  queried points have a negative hazard and how far ``sf`` exceeds 1. (The
+  semi-parametric ``AdditiveHazards`` already predicts with the running
+  maximum of its cumulative hazard, since #462.)
+- **Additive hazards bounds no longer leak a numpy overflow warning
+  (#465).** Where the fitted cumulative hazard is negative, the
+  logit-scale ``sf`` bound computed ``1 / (1 + exp(-t))`` with ``t``
+  hugely negative, and numpy warned "overflow encountered in exp" on the
+  way to the right answer, 0. It now uses ``scipy.special.expit``; the
+  bounds are unchanged.
 - **Cox models no longer break on a covariate far from zero (#459).**
   ``CoxPH`` fitted on the raw covariates, so a column such as a year or a
   date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)

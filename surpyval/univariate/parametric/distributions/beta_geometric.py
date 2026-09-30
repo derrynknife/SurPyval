@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import numpy.typing as npt
@@ -16,6 +17,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._discrete_tails import log_gamma_ratio
@@ -41,6 +43,12 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
     and is widely used for customer-retention ("shifted Beta-Geometric")
     modelling.
 
+    As ``a`` and ``b`` grow with ``a / (a + b)`` fixed it tends to a
+    Geometric. On data no more dispersed than a Geometric the maximum
+    likelihood fit runs towards that limit, which it never reaches, and
+    warns ("No finite maximum", suggesting ``Geometric``); its ``a`` and
+    ``b`` and their bounds are then meaningless.
+
     .. code:: python
 
         from surpyval import BetaGeometric
@@ -65,6 +73,62 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # A neutral, proper starting point; the Beta(1, 1) mixing is the
         # uniform prior over p, i.e. a diffuse heterogeneity.
         return np.array([1.0, 1.0])
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn when the likelihood is highest in the Geometric limit.
+
+        As ``a`` and ``b`` grow with ``a / (a + b)`` fixed the Beta mixing
+        law concentrates on one ``p`` and the BetaGeometric becomes a
+        Geometric. On data that show no more heterogeneity than a single
+        Geometric, the likelihood keeps rising towards that limit, which
+        it never reaches: the fit to 12 rows from the registry ran to
+        ``a, b = 9.8e4, 3.5e5``, in silence, and every bound was then nan.
+
+        The criterion compares the fit with its limit: the Geometric fit
+        to the same data (with the same zero inflation or limited failure
+        population) is at least as likely, allowing the margin within
+        which the fitter itself treats two starts' answers as equal. An
+        interior maximum is strictly more likely than the limit it
+        contains, so an ordinary fit is never flagged: on data drawn from
+        a Geometric one sample in five was more dispersed by chance, and
+        its fit (a, b = 49, 113) stands.
+        """
+        from .geometric import Geometric
+
+        neg_ll = results.get("_neg_ll")
+        params = np.asarray(results.get("params", []), dtype=float)
+        if neg_ll is None or not np.all(np.isfinite(params)):
+            return False
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                limit = Geometric.fit_from_surpyval_data(
+                    surv_data, zi=zi, lfp=lfp
+                )
+        except ValueError:
+            return False
+        margin = 1e-9 * max(1.0, abs(limit._neg_ll))
+        if neg_ll < limit._neg_ll - margin:
+            return False
+        a, b = params
+        warn_no_maximum(
+            "the BetaGeometric likelihood keeps increasing towards its "
+            "Geometric limit (a and b growing without bound, a / (a + b) "
+            "fixed), which the Geometric fit to the same data reaches "
+            f"(p = {limit.params[0]:.4g}, log-likelihood "
+            f"{-limit._neg_ll:.6g} against {-neg_ll:.6g}): the data show no "
+            "variation in the per-cycle failure probability between units",
+            f"The reported a = {a:.4g} and b = {b:.4g}, their standard "
+            "errors and their bounds are meaningless",
+            "use Geometric",
+        )
+        return True
 
     def _log_beta(self, a: Boxable, b: Boxable) -> Boxable:
         return gammaln(a) + gammaln(b) - gammaln(a + b)

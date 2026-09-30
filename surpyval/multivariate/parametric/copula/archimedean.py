@@ -120,6 +120,7 @@ class ClaytonCopula(Copula):
     name = "Clayton"
     bounds = ((0, None),)
     param_names = ("theta",)
+    dependence_limits = {1: "theta grows without bound"}
 
     # Everything is computed through ``log(base)``, ``base = u ** -theta +
     # v ** -theta - 1``. For moderate exponents ``base - 1 =
@@ -188,6 +189,7 @@ class GumbelCopula(Copula):
     bounds = ((1, None),)
     param_names = ("theta",)
     closed_bounds = ("theta",)
+    dependence_limits = {1: "theta grows without bound"}
 
     # Named single parameter narrows the variadic base contract.
     def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
@@ -223,6 +225,10 @@ class FrankCopula(Copula):
     name = "Frank"
     bounds = ((None, None),)
     param_names = ("theta",)
+    dependence_limits = {
+        1: "theta grows without bound",
+        -1: "theta falls without bound",
+    }
 
     # Named single parameter narrows the variadic base contract.
     def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]

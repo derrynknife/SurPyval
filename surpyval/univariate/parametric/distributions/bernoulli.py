@@ -19,9 +19,11 @@ class Bernoulli_(  # type: ignore[misc]
 
     ``x`` is the outcome, not a time, so 0 and 1 are the only values any
     of these functions accept and anything else raises. The survival
-    function is :math:`R(x) = P(X \geq x)`, giving ``R(0) = 1`` and
-    ``R(1) = p``: read as a one-shot device, ``p`` is the probability it
-    works when demanded.
+    function follows the package's discrete convention,
+    :math:`R(x) = P(X > x)`, giving ``R(0) = p`` and ``R(1) = 0``: read as
+    a one-shot device, ``p`` is the probability it works when demanded
+    (``df(1)``, or the parameter itself), and ``R(0)`` the probability it
+    survives that demand.
 
     .. note::
        ``p`` is the probability of the ``1`` outcome. Before 0.20.0 this
@@ -32,11 +34,13 @@ class Bernoulli_(  # type: ignore[misc]
        wants ``1 - p``. The flat model itself is unchanged and still
        available as :data:`FixedEventProbability`.
 
-    Note also that this is not ``Binomial`` with ``n = 1`` evaluated at
-    the same points. Binomial follows the package's discrete convention
-    :math:`R(k) = P(X > k)`; this one uses :math:`P(X \geq x)`, so the
-    two are offset by one: ``Bernoulli.sf(x, p) == Binomial.sf(x - 1,
-    1, p)``.
+    .. versionchanged:: 0.22.0
+       ``R(x)`` was :math:`P(X \geq x)` (``R(0) = 1``, ``R(1) = p``),
+       with ``F(x) = P(X < x)``, which never reached 1, so ``qf`` could
+       not invert ``ff`` (#344). Every function now equals ``Binomial``
+       with ``n = 1`` and ``scipy.stats.bernoulli``: code that read the
+       probability of the ``1`` outcome as ``sf(1)`` wants ``sf(0)``, or
+       ``p``.
 
     Examples
     --------
@@ -47,7 +51,7 @@ class Bernoulli_(  # type: ignore[misc]
     >>> model.params
     array([0.8])
     >>> model.sf([0, 1])
-    array([1. , 0.8])
+    array([0.8, 0. ])
     """
 
     @staticmethod
@@ -84,9 +88,9 @@ class Bernoulli_(  # type: ignore[misc]
         Survival function for the Bernoulli Distribution:
 
         .. math::
-            R(x) = P(X \geq x)
+            R(x) = P(X > x)
 
-        which is 1 at ``x = 0`` and ``p`` at ``x = 1``.
+        which is ``p`` at ``x = 0`` and 0 at ``x = 1``.
 
         Parameters
         ----------
@@ -108,10 +112,10 @@ class Bernoulli_(  # type: ignore[misc]
         >>> import numpy as np
         >>> from surpyval import Bernoulli
         >>> Bernoulli.sf(np.array([0, 1]), 0.3)
-        array([1. , 0.3])
+        array([0.3, 0. ])
         """
         x_arr = self._check_x(x)
-        return self._shaped(np.where(x_arr == 0.0, 1.0, p))
+        return self._shaped(np.where(x_arr == 0.0, p, 0.0))
 
     def ff(self, x: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -119,12 +123,9 @@ class Bernoulli_(  # type: ignore[misc]
         Failure (CDF) function for the Bernoulli Distribution:
 
         .. math::
-            F(x) = P(X < x)
+            F(x) = P(X \leq x)
 
-        which is 0 at ``x = 0`` and ``1 - p`` at ``x = 1``. This is
-        ``P(X < x)`` rather than the more usual ``P(X \leq x)`` because
-        the package's survival and failure functions sum to one, and
-        ``R(x)`` here is ``P(X \geq x)``.
+        which is ``1 - p`` at ``x = 0`` and 1 at ``x = 1``.
 
         Parameters
         ----------
@@ -146,7 +147,7 @@ class Bernoulli_(  # type: ignore[misc]
         >>> import numpy as np
         >>> from surpyval import Bernoulli
         >>> Bernoulli.ff(np.array([0, 1]), 0.3)
-        array([0. , 0.7])
+        array([0.7, 1. ])
         """
         return 1.0 - self.sf(x, p)
 
@@ -189,7 +190,7 @@ class Bernoulli_(  # type: ignore[misc]
         Hazard rate for the Bernoulli Distribution:
 
         .. math::
-            h(x) = \frac{f(x)}{P(X \geq x)}
+            h(x) = \frac{f(x)}{P(X \geq x)} = \frac{f(x)}{R(x - 1)}
 
         which is ``1 - p`` at ``x = 0`` and 1 at ``x = 1``: everything
         still at risk at the last outcome fails there.
@@ -227,7 +228,8 @@ class Bernoulli_(  # type: ignore[misc]
         .. math::
             H(x) = -\ln R(x)
 
-        which is 0 at ``x = 0`` and :math:`-\ln p` at ``x = 1``.
+        which is :math:`-\ln p` at ``x = 0`` and infinite at ``x = 1``,
+        where nothing survives.
 
         Parameters
         ----------
@@ -249,10 +251,10 @@ class Bernoulli_(  # type: ignore[misc]
         >>> import numpy as np
         >>> from surpyval import Bernoulli
         >>> Bernoulli.Hf(np.array([0, 1]), 0.3)
-        array([0.       , 1.2039728])
+        array([1.2039728,       inf])
         """
         x_arr = self._check_x(x)
-        return self._shaped(np.where(x_arr == 0.0, 0.0, -np.log(p)))
+        return self._shaped(np.where(x_arr == 0.0, -np.log(p), np.inf))
 
     def qf(self, u: Numeric, p: Boxable) -> Boxable:
         r"""
@@ -265,23 +267,12 @@ class Bernoulli_(  # type: ignore[misc]
                 1 & u > 1 - p
             \end{cases}
 
-        This inverts :math:`P(X \leq x)`, the ordinary CDF, which is the
-        standard quantile and the one that makes inverse-transform
-        sampling work: ``qf(U)`` for uniform ``U`` is 1 with probability
-        ``p``. On the open interval it agrees exactly with
+        This inverts ``ff``, :math:`P(X \leq x)`: the smallest outcome
+        with ``ff(x) >= u``, so ``qf(U)`` for uniform ``U`` is 1 with
+        probability ``p``. On the open interval it agrees exactly with
         ``Binomial.qf(u, 1, p)`` and with ``scipy.stats.binom.ppf``. At
         ``u = 0`` those return ``-1``, one below the support, where this
         returns 0 -- the smallest outcome there is.
-
-        .. note::
-           It is *not* the inverse of this class's ``ff``. That is a
-           consequence of the survival convention rather than an
-           oversight: ``R(x) = P(X \geq x)`` forces ``F(x) = P(X < x)``
-           if the two are to sum to one, and ``P(X < x)`` never exceeds
-           ``1 - p`` anywhere on ``{0, 1}`` -- so no ``x`` in the support
-           satisfies ``F(x) >= u`` once ``u`` passes ``1 - p``. The other
-           discrete distributions, whose ``R(k)`` is ``P(X > k)``, do not
-           have this split.
 
         Parameters
         ----------
@@ -309,11 +300,8 @@ class Bernoulli_(  # type: ignore[misc]
         return np.where(u_arr <= 1.0 - p, 0.0, 1.0)
 
     def log_df(self, x: Numeric, p: Boxable) -> Boxable:
-        # Neither inherited relation fits. DiscreteParametricFitter uses
-        # f(k) = h(k) R(k - 1), which assumes R(k) = P(X > k); here R is
-        # P(X >= x), so the at-risk set at x is R(x) itself and the
-        # mass is f(x) = h(x) R(x) -- the continuous form. Taking the
-        # log of the pmf directly sidesteps the choice.
+        # The log of the pmf directly: exact at p near 0 or 1, where
+        # log(h(k) R(k - 1)) would lose digits.
         x_arr = self._check_x(x)
         return self._shaped(np.where(x_arr == 0.0, np.log1p(-p), np.log(p)))
 

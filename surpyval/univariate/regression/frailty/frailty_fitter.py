@@ -22,11 +22,15 @@ maximises its own marginal likelihood on a fresh optimiser.
 """
 
 import warnings
+from types import SimpleNamespace
 from typing import Any, Callable
 
+import autograd.numpy as anp
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
+from autograd.extend import defvjp, primitive
+from autograd.scipy.special import gammaln as _ad_gammaln
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
@@ -38,7 +42,11 @@ from surpyval.utils import (
 )
 from surpyval.utils.linalg import numerical_hessian
 
-from .._fit_skeleton import require_finite_fit, warn_if_not_converged
+from .._fit_skeleton import (
+    finish_search,
+    natural_information,
+    require_finite_fit,
+)
 from ..proportional_hazards.cox_ph import _strata_labels
 from ..regression_data import design_matrix_from_df
 from .frailty_model import FrailtyModel
@@ -46,7 +54,7 @@ from .frailty_model import FrailtyModel
 
 def _make_transforms(dist: Any, k_dist: int) -> tuple[
     Callable[[npt.NDArray, int], npt.NDArray],
-    Callable[[npt.NDArray, int], npt.NDArray],
+    Callable[..., npt.NDArray],
 ]:
     """Per-parameter (natural <-> unconstrained) maps for the optimiser.
 
@@ -77,24 +85,28 @@ def _make_transforms(dist: Any, k_dist: int) -> tuple[
         out.append(np.log(nat[-1]))  # theta: log
         return np.array(out, dtype=float)
 
-    def to_nat(unc: npt.NDArray, n_beta: int) -> npt.NDArray:
+    def to_nat(unc: npt.NDArray, n_beta: int, ops: Any = None) -> npt.NDArray:
+        # ``ops`` as for ``_neg_ll_natural``.
+        xp = (ops or _NUMPY).np
         out = []
         for i, f in enumerate(forms):
             v = unc[i]
             if f == "log":
-                out.append(np.exp(v))
+                out.append(xp.exp(v))
             elif f == "logit":
-                out.append(1.0 / (1.0 + np.exp(-v)))
+                out.append(1.0 / (1.0 + xp.exp(-v)))
             else:
                 out.append(v)
-        out.extend(unc[k_dist : k_dist + n_beta])
-        out.append(np.exp(unc[-1]))
-        return np.array(out, dtype=float)
+        out.extend(unc[k_dist + i] for i in range(n_beta))
+        out.append(xp.exp(unc[-1]))
+        return xp.array(out)
 
     return to_unc, to_nat
 
 
-def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
+def _log_rising_ratio(
+    D: npt.NDArray, theta: float, ops: Any = None
+) -> npt.NDArray:
     """
     ``log Gamma(D + 1/theta) - log Gamma(1/theta) - D log(1/theta)``,
     computed without cancellation.
@@ -105,35 +117,40 @@ def _log_rising_ratio(D: npt.NDArray, theta: float) -> npt.NDArray:
     an integer ``D`` the ratio is the product ``prod_{k<D} (1 + k theta)``,
     so its log is a sum of ``log1p`` terms; a non-integer ``D`` (fractional
     weights) uses the gamma functions, or their Stirling series once
-    ``theta`` is small enough for the gamma functions to cancel.
+    ``theta`` is small enough for the gamma functions to cancel. ``ops`` as
+    for ``FrailtyFitter._neg_ll_natural``.
     """
+    ops = ops or _NUMPY
+    xp = ops.np
     D = np.asarray(D, dtype=float)
     integer = np.isclose(D, np.round(D), rtol=0.0, atol=1e-9)
-    out = np.empty_like(D)
-    if integer.any():
-        d_int = np.round(D[integer]).astype(int)
-        k = np.arange(max(int(d_int.max()), 0), dtype=float)
-        cumulative = np.concatenate([[0.0], np.cumsum(np.log1p(k * theta))])
-        out[integer] = cumulative[d_int]
+    # Written without assignment into an array, so that autograd can
+    # differentiate it in theta: each form is evaluated where it is used
+    # (the integer one at 0 on the other rows), and the rows pick theirs.
+    d_int = np.where(integer, np.round(D), 0.0).astype(int)
+    k = np.arange(max(int(d_int.max(initial=0)), 0), dtype=float)
+    cumulative = xp.concatenate([np.zeros(1), xp.cumsum(xp.log1p(k * theta))])
+    out = cumulative[d_int]
     if (~integer).any():
-        d = D[~integer]
+        d = D
         if theta < 1e-6:
             # the Stirling series in theta = 1/a (Bernoulli polynomials),
             # where the gamma functions below would cancel
             d2 = d * (d - 1.0)
-            out[~integer] = (
+            other = (
                 d2 / 2.0 * theta
                 - d2 * (2.0 * d - 1.0) / 12.0 * theta**2
                 + d2**2 / 12.0 * theta**3
             )
         else:
             it = 1.0 / theta
-            out[~integer] = gammaln(d + it) - gammaln(it) - d * np.log(it)
+            other = ops.gammaln(d + it) - ops.gammaln(it) - d * xp.log(it)
+        out = xp.where(integer, out, other)
     return out
 
 
 def _group_frailty_ll(
-    D: npt.NDArray, H: npt.NDArray, theta: float
+    D: npt.NDArray, H: npt.NDArray, theta: float, ops: Any = None
 ) -> npt.NDArray:
     """
     Each group's gamma-frailty term of the marginal log-likelihood,
@@ -146,13 +163,47 @@ def _group_frailty_ll(
     rearranged so that it stays accurate as ``theta -> 0``: it equals
     ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
     tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
+    ``ops`` as for ``FrailtyFitter._neg_ll_natural``.
     """
-    if theta <= 0.0:
-        # the limit itself (theta underflowed): no frailty
-        return -np.asarray(H, dtype=float)
-    return _log_rising_ratio(D, theta) - (
-        D * np.log1p(H * theta) + np.log1p(H * theta) / theta
+    xp = (ops or _NUMPY).np
+    if theta * max(xp.max(H), np.max(D), 1.0) ** 2 < _EPS:
+        # theta is too small to change any group's term by more than
+        # rounding (each correction to the no-frailty value -H is of order
+        # theta H^2, theta D H or theta D^2), and the terms below divide by
+        # it: the limit itself. (Its derivatives in beta must stay finite
+        # there too, for the fit's check of its answer, #392.)
+        return -1.0 * H
+    return _log_rising_ratio(D, theta, ops) - (
+        D * xp.log1p(H * theta) + xp.log1p(H * theta) / theta
     )
+
+
+_EPS = float(np.finfo(float).eps)
+
+
+@primitive
+def _group_sum(
+    values: npt.NDArray, inv: npt.NDArray, n_groups: int
+) -> npt.NDArray:
+    """Each group's sum of ``values`` (``inv`` the group of each), as
+    ``np.bincount``, which autograd cannot differentiate on its own."""
+    return np.bincount(inv, weights=values, minlength=n_groups)
+
+
+# The derivative of a group's sum in each of its values is 1: a gradient
+# with respect to the sums spreads back to each value from its group.
+defvjp(_group_sum, lambda ans, values, inv, n_groups: lambda g: g[inv])
+
+# The functions the likelihood is written in: numpy's for the search, which
+# evaluates it thousands of times, and autograd's, for the fit's check of
+# its answer (#392), which differentiates it. They compute the same values;
+# autograd's wrappers only cost time where nothing is differentiated.
+_NUMPY = SimpleNamespace(
+    np=np,
+    gammaln=gammaln,
+    group_sum=lambda v, inv, n: np.bincount(inv, weights=v, minlength=n),
+)
+_AUTOGRAD = SimpleNamespace(np=anp, gammaln=_ad_gammaln, group_sum=_group_sum)
 
 
 class FrailtyFitter:
@@ -186,27 +237,32 @@ class FrailtyFitter:
         eta_Z: npt.NDArray,
         inv: npt.NDArray,
         n_beta: int,
+        ops: Any = None,
     ) -> float:
         """Marginal negative log-likelihood in natural parameters.
 
         ``eta_Z`` is the covariate matrix (n_obs x n_beta); ``inv`` maps each
         observation to its group index; ``w`` are observation weights.
+        ``ops`` holds the functions it is computed with: numpy's (the
+        default) or, to be differentiated, autograd's (``_AUTOGRAD``).
         """
+        ops = ops or _NUMPY
+        xp = ops.np
         dist_params = nat[: self.k_dist]
         beta = nat[self.k_dist : self.k_dist + n_beta]
         theta = nat[-1]
 
         H0 = self.dist.Hf(x, *dist_params)
         h0 = self.dist.hf(x, *dist_params)
-        eta = np.exp(eta_Z @ beta) if n_beta else np.ones_like(x)
+        eta = xp.exp(xp.dot(eta_Z, beta)) if n_beta else np.ones_like(x)
 
         event = c == 0
-        ll = np.sum(w[event] * (np.log(h0[event]) + np.log(eta[event])))
+        ll = xp.sum(w[event] * (xp.log(h0[event]) + xp.log(eta[event])))
 
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
-        H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        ll += np.sum(_group_frailty_ll(D, H, theta))
+        H = ops.group_sum(w * eta * H0, inv, n_groups)
+        ll = ll + xp.sum(_group_frailty_ll(D, H, theta, ops))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -391,8 +447,22 @@ class FrailtyFitter:
         ):
             res = polished
         require_finite_fit(float(res.fun))
-        if not converged:
-            warn_if_not_converged(res)
+        # One warning: a coefficient with no finite maximum (a level with no
+        # events, #392), or else a search that did not converge.
+        res.stopped_short = not converged
+
+        def obj_traced(u: npt.NDArray) -> Any:
+            nat = to_nat(u, n_beta, _AUTOGRAD)
+            return self._neg_ll_natural(
+                nat, x, c, w, Zc, inv, n_beta, _AUTOGRAD
+            )
+
+        no_maximum, derivatives = finish_search(
+            obj_traced,
+            res,
+            [(self.k_dist + i, i) for i in range(n_beta)],
+            u0,
+        )
         nat = to_nat(res.x, n_beta)
 
         dist_params = nat[: self.k_dist]
@@ -408,7 +478,11 @@ class FrailtyFitter:
         # to 1) as theta -> 0
         post = (1.0 + D * theta) / (1.0 + H * theta)
 
-        # Covariance of the natural parameters via a numerical Hessian.
+        # Covariance of the natural parameters: the inverse of the exact
+        # Hessian the check computed (#392), converted from the search
+        # space; a numerical one where there is none (no maximum, or a
+        # Hessian that is not positive definite, as with the variance at
+        # its limit of 0).
         param_names = list(self.dist.param_names)
         param_names += [f"beta_{i}" for i in range(n_beta)]
         param_names += ["theta"]
@@ -416,11 +490,19 @@ class FrailtyFitter:
         def nll_nat(v: npt.NDArray) -> float:
             return self._neg_ll_natural(v, x, c, w, Zc, inv, n_beta)
 
+        exact = None
+        if not no_maximum:
+            exact = natural_information(
+                derivatives, lambda u: to_nat(u, n_beta, _AUTOGRAD), res.x
+            )
         covariance = None
         with np.errstate(all="ignore"):
             try:
-                steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
-                Hmat = numerical_hessian(nll_nat, nat, step=steps)
+                if exact is not None:
+                    Hmat = exact
+                else:
+                    steps = 1e-5 * np.maximum(np.abs(nat), 1.0)
+                    Hmat = numerical_hessian(nll_nat, nat, step=steps)
                 cov = np.linalg.inv(Hmat)
                 if np.all(np.isfinite(cov)):
                     covariance = cov

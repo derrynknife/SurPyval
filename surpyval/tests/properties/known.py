@@ -29,11 +29,14 @@ def point_mass_supremum(data):
       start (given ``X > tl``, a spike below ``tl`` leaves its tail just
       above ``tl``), or the mirror image below ``v``.
 
-    The maximum-likelihood fits refuse such data where no row is
-    truncated (``ParametricFitter._point_mass_region``, #392): an exact
-    value at 0.5 and a left censored one at 1 gave a Weibull ``beta`` of
-    395.7 with no warning. The truncation cases above (a spike at a
-    window's edge) are not caught yet.
+    The maximum-likelihood fits refuse such data
+    (``ParametricFitter._point_mass_region``, #392): an exact value at 0.5
+    and a left censored one at 1 gave a Weibull ``beta`` of 395.7 with no
+    warning, and the truncation cases above (a spike at a window's edge)
+    are refused too. The refusal takes a set's end as open or closed as
+    the likelihood does, where this takes every set's closure, so a few
+    data this flags (an interval ending where the next begins) are still
+    fitted; the properties keep assuming them away.
     """
     x = np.asarray(data["x"], dtype=float)
     xl = x if x.ndim == 1 else x[:, 0]

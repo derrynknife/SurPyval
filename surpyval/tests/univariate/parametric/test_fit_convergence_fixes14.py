@@ -217,11 +217,12 @@ def test_an_accelerated_life_fit_from_a_far_start(life_model):
 def test_an_additive_hazards_fit_with_no_maximum_says_so():
     # A covariate that is 1 on exactly the censored rows: that group has
     # no events and its coefficient no finite value. LogNormalAH returned
-    # a coefficient of -6.2e8 (sf(2) inf) in silence.
+    # a coefficient of -6.2e8 (sf(2) inf) in silence. It now says the
+    # likelihood has no finite maximum (#392).
     data = reg_data()
     data["Z"] = np.array(data["Z"], dtype=float)
     data["Z"][:, 0] = np.asarray(data["c"]) == 1
-    with pytest.warns(UserWarning, match=UNVERIFIED):
+    with pytest.warns(UserWarning, match="No finite maximum"):
         sp.LogNormalAH.fit(**data)
 
 

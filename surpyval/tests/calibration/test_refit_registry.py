@@ -917,7 +917,13 @@ for _name in (
 PLANS["ConformanceGompertz"] = Plan(
     _uni_censored, 300, 40, params=_parametric_params
 )
-PLANS["Uniform"] = Plan(_uni_censored, 300, 100, note=_ENDPOINTS)
+PLANS["Uniform"] = Plan(
+    _uni_plain,
+    300,
+    100,
+    note=_ENDPOINTS
+    + " (complete data: the MLE refuses censored values, #460)",
+)
 PLANS["Beta4"] = Plan(
     _uni_censored,
     300,
@@ -926,14 +932,7 @@ PLANS["Beta4"] = Plan(
     "1 (a density positive at a), so alpha and beta are estimated jointly "
     "with a and inherit their bias (1.5 and 1.2 sd at n = 300)",
 )
-PLANS["BetaGeometric"] = Plan(
-    _uni_censored,
-    300,
-    100,
-    note="the fixture's fit is at the geometric limit (alpha, beta ~ 1e5 "
-    "with a fixed ratio), where only the ratio is identified: the curve "
-    "only",
-)
+PLANS["BetaGeometric"] = Plan(_uni_censored, 300, 100)
 for _name in ("Binomial", "Bernoulli", "FixedEventProbability"):
     PLANS[_name] = Plan(_uni_plain, 300, 100, params=_parametric_params)
 PLANS["ExactEventTime"] = Plan(_inspected, 300, 100, params=_parametric_params)

@@ -463,6 +463,14 @@ def uni_data():
     return {"x": x, "c": c, "n": n}
 
 
+def uni_exact_data():
+    """``uni_data`` with every value exactly observed: the Uniform's MLE
+    refuses censored values (#460)."""
+    data = uni_data()
+    data["c"] = np.zeros_like(data["c"])
+    return data
+
+
 def xcnt_data():
     """Every censoring type, with left truncation: the full data model."""
     x = np.array(
@@ -526,6 +534,19 @@ def discrete_data(start=0):
     n = np.ones(12, int)
     n[[2, 7]] = [2, 3]
     return {"x": x, "c": c, "n": n}
+
+
+def beta_geometric_data():
+    """40 draws from BetaGeometric(3, 5), right censored above 8: more
+    dispersed than a Geometric, so the fit has an interior maximum (a, b =
+    1.72, 3.01). ``discrete_data`` is under-dispersed for it: its fit runs
+    to the geometric limit, where the likelihood has no finite maximum
+    (#392), and no bound can be tested there."""
+    return {
+        "x": np.array([1, 2, 3, 4, 6, 7, 8]),
+        "c": np.array([0, 0, 0, 0, 0, 0, 1]),
+        "n": np.array([14, 9, 4, 3, 4, 1, 5]),
+    }
 
 
 def binary_data():
@@ -798,7 +819,7 @@ def discrete(name, fitter=None, start=0, **kw):
         fitters=kw.pop("fitters", (f"surpyval.{name}",)),
         model_class="surpyval.Parametric",
         interface=UNIVARIATE,
-        data=functools.partial(discrete_data, start),
+        data=kw.pop("data", functools.partial(discrete_data, start)),
         fit=_fit(fitter),
         functions=UNI_FUNCTIONS + ("qf",),
         x=X_DISC,
@@ -1061,9 +1082,10 @@ def _trees():
             model_class="surpyval.beta.ml.SurvivalTree",
             interface=REGRESSION,
             data=reg_data,
-            # A tree draws the features it considers at each split from the
-            # global stream (n_features_split="sqrt"), so it is fitted
-            # under a fixed global seed, as the forest is.
+            # A tree draws the features it considers at each split
+            # (n_features_split="sqrt"); with random_state=None from the
+            # global stream, so it is fitted under a fixed global seed, as
+            # the forest is.
             fit=_seeded(_fit(ml.SurvivalTree, kind=kind)),
             functions=UNI_FUNCTIONS,
             x=X_REG,
@@ -1073,9 +1095,10 @@ def _trees():
             z_style="grid",
             jump_functions=("hf", "df") if kind == "non-parametric" else (),
             # The draw is the fit itself: two fits under one seed agree.
-            draw=lambda m, s: ml.SurvivalTree.fit(**reg_data(), kind=kind).sf(
-                X_REG, Z_REG
-            ),
+            draw=lambda m, s: ml.SurvivalTree.fit(
+                **reg_data(), kind=kind, random_state=s
+            ).sf(X_REG, Z_REG),
+            explicit_seed=True,
             exclude=(
                 {"df_hf_sf": "non-parametric leaves: hf and df are jumps"}
                 if kind == "non-parametric"
@@ -1089,8 +1112,8 @@ def _trees():
         model_class="surpyval.beta.ml.RandomSurvivalForest",
         interface=REGRESSION,
         data=reg_data,
-        # The forest bootstraps from the global stream (it has no seed
-        # argument), so the registry fits it under a fixed global seed.
+        # With random_state=None the forest bootstraps from the global
+        # stream, so the registry fits it under a fixed global seed.
         fit=_seeded(_fit(ml.RandomSurvivalForest, n_trees=3)),
         functions=UNI_FUNCTIONS,
         x=X_REG,
@@ -1101,9 +1124,10 @@ def _trees():
         # Each refit grows every tree again: left to the full suite.
         slow=REFIT_PROPERTIES,
         # The draw is the fit itself: two seeded fits must agree.
-        draw=lambda m, s: m.__class__.fit(**reg_data(), n_trees=2).sf(
-            X_REG, Z_REG
-        ),
+        draw=lambda m, s: m.__class__.fit(
+            **reg_data(), n_trees=2, random_state=s
+        ).sf(X_REG, Z_REG),
+        explicit_seed=True,
         exclude={
             "row_order": "the bootstrap draws rows by position, so a "
             "permutation changes which rows each tree sees",
@@ -1197,7 +1221,7 @@ def _univariate():
         if name in alias:
             fitters += (f"surpyval.{alias[name]}",)
         out.append(continuous(name, fitters=fitters))
-    out.append(continuous("Uniform"))
+    out.append(continuous("Uniform", data=uni_exact_data))
     out.append(
         continuous(
             "Beta",
@@ -1268,6 +1292,7 @@ def _univariate():
         discrete(
             "BetaGeometric",
             start=1,
+            data=beta_geometric_data,
         )
     )
     discretized = sp.Discretize(sp.Weibull)
@@ -1317,7 +1342,13 @@ def _univariate():
                 interface=UNIVARIATE,
                 data=binary_data,
                 fit=_fit(fitter),
-                functions=("sf", "ff", "Hf"),
+                # Bernoulli's qf inverts its ff since #344; the flat
+                # FixedEventProbability has no quantile to test.
+                functions=(
+                    ("sf", "ff", "Hf", "qf")
+                    if name == "Bernoulli"
+                    else ("sf", "ff", "Hf")
+                ),
                 # Bernoulli is defined at the outcomes 0 and 1 only.
                 x=(
                     np.array([0.0, 1.0])
@@ -1964,7 +1995,7 @@ class Bound:
     kwargs: dict = field(default_factory=dict)
     # Takes bound= ("two-sided", "lower", "upper").
     sides: bool = True
-    # The level argument; "confidence" takes 1 - alpha.
+    # The level argument, which takes alpha (the tail probability).
     level: str = "alpha_ci"
     # A transformed Wald (delta-method) bound, which closes onto the
     # estimate as alpha_ci -> 1; a percentile bootstrap or a
@@ -1984,6 +2015,10 @@ class Bound:
     # Relative tolerance of the equalities (a search's own tolerance).
     rtol: float = 1e-8
     slow: bool = False
+    # Run only in the nightly calibration job (``--run-calibration``):
+    # a sweep that takes minutes, where a faster family already sweeps
+    # the same method in every run.
+    nightly: bool = False
     label: str = ""
 
     @property
@@ -2007,35 +2042,61 @@ _NO_COVARIANCE = (
 # The likelihood-ratio search runs pointwise, so it is swept at three
 # times, and only in the full suite. Rayleigh, Geometric and Uniform
 # joined in #421 (a df bound stalled on the far side of the estimate;
-# the Uniform's search stalled at the support's edge).
+# the Uniform's search stalled at the support's edge), then
+# NegativeBinomial and ExpoWeibull (profiles that did not follow their
+# valleys, bounds that were rounding noise where they are infinite, and
+# bands that were not nested). Beta4 waits on #385.
 _LR_X = {
     "Weibull": np.array([4.0, 8.0, 13.0]),
     "Rayleigh": np.array([3.2, 8.0, 14.6]),
     "Geometric": np.array([2.0, 5.0, 8.0]),
     "Uniform": np.array([3.2, 8.0, 14.6]),
+    "NegativeBinomial": np.array([2.0, 5.0, 8.0]),
+    # One time for ExpoWeibull: its searches in a three-parameter valley
+    # take seconds each, and three times tripled a 17-minute sweep. The
+    # tail (13) is where its bands were hardest (the hf nesting in #421).
+    "ExpoWeibull": np.array([13.0]),
 }
+_LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
+
+
+# Fits with no parameter covariance by design, so no Wald bounds: the
+# Uniform's MLE sits on the sample extremes, where the likelihood's
+# curvature says nothing about its uncertainty (#460).
+_NO_WALD = {"Uniform"}
 
 
 def _parametric_bounds(case):
     on = tuple(f for f in _ON_ALL if f in case.functions)
-    out = [
-        Bound("cb", on=on, kwargs={"method": "wald"}, label="cb[wald]"),
-        Bound(
-            "param_cb",
-            kind="param",
-            kwargs={"method": "wald"},
-            label="param_cb[wald]",
-        ),
-    ]
-    # The likelihood-ratio search is swept on the fast cases only: it
-    # takes minutes a distribution elsewhere (ExpoWeibull's param_cb
-    # sweep took 420 s; see #421 for the others).
+    out = []
+    if case.name not in _NO_WALD:
+        out += [
+            Bound("cb", on=on, kwargs={"method": "wald"}, label="cb[wald]"),
+            Bound(
+                "param_cb",
+                kind="param",
+                kwargs={"method": "wald"},
+                label="param_cb[wald]",
+            ),
+        ]
+    # The likelihood-ratio search is swept on the cases in _LR_X only.
+    # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
+    # multi-parameter valleys, seconds each) took about ten minutes on
+    # four cores, so they run nightly, with the calibration studies; the
+    # other four sweep in every run, and test_likelihood_ratio_edges.py
+    # checks those two families' edges and valleys directly (#421).
     # (Documented: it is not available for offset, limited-failure or
     # zero-inflated models.)
     if case.name not in _LR_X:
         return tuple(out)
     x = _LR_X[case.name]
-    lr = dict(wald=False, nan_ok=True, rtol=1e-3, slow=True)
+    lr = dict(
+        wald=False,
+        nan_ok=True,
+        rtol=1e-3,
+        slow=True,
+        nightly=case.name in _LR_NIGHTLY,
+    )
     out.append(
         Bound(
             "cb",
@@ -2618,16 +2679,6 @@ _NEGATIVE_VARIANCE = (
     "negative variance (covariance diagonal"
 )
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
-    # A. an invalid covariance
-    "Uniform": _each(
-        ("cb_contains",),
-        "cb[wald]",
-        "the censored fixture's covariance is not positive definite (the "
-        "MLE sits on the edge of the support; a complete sample gets no "
-        "covariance at all): the delta-method variance of df = 1/(b - a) "
-        "is negative, so the df bounds are nan, with a warning, inside the "
-        "support (df(5) = 0.0688)",
-    ),
     # H. boundary estimates with a non-positive variance
     "GeneralizedRenewal": _each(
         ("cb_contains",),
@@ -2654,27 +2705,14 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
         _NEGATIVE_VARIANCE + " -8.4e-5 for alpha = 1.00008, whose fit "
         "runs to the edge)",
     ),
-    # I. BetaGeometric's degenerate fit (non-strict: see NON_STRICT)
-    "BetaGeometric": {
-        **{
-            f"{prop}[{name}]": "the fit runs, silently, towards the "
-            "geometric limit (alpha, beta ~ 1e5, 3.5e5, where the likelihood "
-            "has no maximum): the covariance is near singular, so the Wald "
-            "bounds are NaN or not centred on the estimate"
-            for prop in ("cb_contains", "cb_centre")
-            for name in ("cb[wald]", "param_cb[wald]")
-        },
-    },
 }
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "Uniform": "#460",
     "GeneralizedRenewal": "#461",
     "ARA": "#461",
     "ARI": "#461",
     "Beta4": "#385",
-    "BetaGeometric": "#392",
 }
 for _name, _failures in _OPTION_FAILURES.items():
     _issue = _OPTION_ISSUES[_name]
@@ -2696,83 +2734,9 @@ _CONVERGENCE_ISSUES = {
     # whose likelihood has no maximum (the #392 class, outside univariate)
     "no maximum": "#392",
 }
-_NO_EVENTS = (
-    "a covariate that is 1 on exactly the censored rows (a group with no "
-    "events, so no finite coefficient; CoxPH warns 'Monotone partial "
-    "likelihood' on such data) gets a coefficient of "
-)
-_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {
-    "FineGray": (
-        "no maximum",
-        _NO_EVENTS + "-12.87 (BFGS reports success); sf(30) 1.0",
-    ),
-    "CompetingRisksProportionalHazards[Fine-Gray]": (
-        "no maximum",
-        _NO_EVENTS + "-12.87 and -12.12 (causes a and b)",
-    ),
-    "MixtureModel": (
-        "no maximum",
-        "with 10 of the 20 rows at 3.0 (a point mass, so no maximum) the "
-        "first component comes back as alpha, beta 3.0, 8955",
-    ),
-    "GammaProcess": (
-        "no maximum",
-        "noise-free readings (y = t / 2: every increment 5) have no "
-        "maximum; the fit returns alpha, beta 1.0e6, 2.0e6 where "
-        "WienerProcess raises ValueError ('the fitted diffusion sigma is 0')",
-    ),
-    "DestructiveDegradation": (
-        "no maximum",
-        "noise-free readings (y = exp(4 - 0.02 x) exactly) have no maximum; "
-        "the fit returns sigma = 9.9e-16",
-    ),
-    "ClaytonCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 3.16e6",
-    ),
-    "GumbelCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 105.5, "
-        "with a log-likelihood of inf",
-    ),
-    "FrankCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: no finite theta) give theta 1.24e7",
-    ),
-    "GaussianCopula": (
-        "no maximum",
-        "comonotone data (x2 = x1 / 2: rho -> 1) give rho 0.9999",
-    ),
-}
-_REGRESSION_NO_EVENTS = {
-    "WeibullPH": -16.31,
-    "LogNormalPH": -19.38,
-    "ExponentialPH": -18.55,
-    "GammaPH": -18.47,
-    "NormalPH": -20.41,
-    "GumbelPH": -19.96,
-    "LogisticPH": -18.28,
-    "WeibullAFT": -16.77,
-    "LogNormalAFT": -4.75,
-    "ExponentialAFT": -31.58,
-    "GammaAFT": -10.61,
-    "NormalAFT": -31.27,
-    "GumbelAFT": -31.57,
-    "LogisticAFT": -29.60,
-    "WeibullPO": 33.63,
-    "LogNormalPO": 34.71,
-    "ExponentialPO": 33.60,
-    "GammaPO": 33.33,
-    "NormalPO": 33.77,
-    "GumbelPO": 32.01,
-    "LogisticPO": 33.48,
-    "WeibullFrailty": -9.22,
-    "ExponentialFrailty": -33.62,
-    "GammaFrailty": -32.60,
-    "LogNormalFrailty": -31.46,
-}
-for _name, _coef in _REGRESSION_NO_EVENTS.items():
-    _CONVERGENCE_FAILURES[_name] = ("no maximum", _NO_EVENTS + f"{_coef}")
+# (The regression, frailty and Fine-Gray fits of a covariate level with no
+# events now warn that the likelihood has no finite maximum, #392.)
+_CONVERGENCE_FAILURES: dict[str, tuple[str, str]] = {}
 for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),
@@ -2784,15 +2748,7 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say
 # they did not, on every build.
-NON_STRICT: dict[str, frozenset[str]] = {
-    # Where on the plateau towards its geometric limit the search stops
-    # (#392) depends on the build, and with it which bounds fail
-    "BetaGeometric": frozenset(
-        f"{prop}[{name}]"
-        for prop in ("cb_contains", "cb_centre")
-        for name in ("cb[wald]", "param_cb[wald]")
-    ),
-}
+NON_STRICT: dict[str, frozenset[str]] = {}
 
 
 # The issue that tracks each kind of known failure; its number leads the
@@ -2885,6 +2841,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.RecurrentEventData": _DATA,
     "surpyval.multivariate.MultivariateSurpyvalData": _DATA,
     "surpyval.StepSchedule": _DATA,
+    "surpyval.CovariatePath": _DATA,
     "surpyval.StepValuedError": "an exception type",
     "surpyval.LogRankResult": _RESULT,
     "surpyval.recurrent.TrendTestResult": _RESULT,

@@ -13,6 +13,9 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     assemble_regression_model,
+    finish_search,
+    free_coefficients,
+    keep_information,
     make_objective,
     mirror_distribution,
     optimise_nm_tnc,
@@ -176,7 +179,7 @@ class AFTFitter(
 
             fun = make_objective(self, data, inv_trans, const)
 
-            res = optimise_nm_tnc(fun, init_t)
+            res = optimise_nm_tnc(fun, init_t, quiet=True)
 
         params = inv_trans(const(res.x))
         reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
@@ -192,6 +195,15 @@ class AFTFitter(
             pmap,
             fixed,
             centring=centring,
+        )
+        # After the model is built (which may refuse the data), one
+        # warning for what the search found (#392).
+        no_maximum, derivatives = finish_search(
+            fun, res, free_coefficients(self, fixed, pmap), init_t
+        )
+        # The exact information for the model's covariance (#392).
+        keep_information(
+            model, no_maximum, derivatives, inv_trans, const, res.x, centring
         )
         return model
 

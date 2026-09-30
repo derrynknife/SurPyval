@@ -29,7 +29,6 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 
 
@@ -414,7 +413,6 @@ def _simulate_window(
     return times, close
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -467,7 +465,6 @@ def cramer_von_mises(
     return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, random_state)
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises_regression(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -540,7 +537,6 @@ def cramer_von_mises_regression(
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, random_state)
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises_renewal(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
