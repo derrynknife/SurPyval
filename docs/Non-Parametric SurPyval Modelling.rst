@@ -272,7 +272,7 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(np.isnan(model.cb([0.5, 9])))
 
-``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``:
+``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``. The axes are titled with the estimator ("Kaplan-Meier estimate"), the y axis is "Survival probability" and the x axis "Time" unless it already has a label:
 
 .. jupyter-execute::
 

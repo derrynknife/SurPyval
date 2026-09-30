@@ -177,6 +177,22 @@ To visualise the outcome of this fit we can inspect the results on a probability
 
     model.plot()
 
+The points, the fitted line and its confidence bounds are drawn in one colour,
+the next of the axes' colour cycle, so several models can share one plot;
+``label=`` names the fitted line in a legend, ``color=`` sets the colour, and
+other keyword arguments (``linestyle``, ``linewidth``, ...) go to the fitted
+line. To compare two populations:
+
+.. jupyter-execute::
+
+    from matplotlib import pyplot as plt
+
+    other = surv.Weibull.fit(surv.Weibull.random(50, 40., 5.))
+    fig, ax = plt.subplots()
+    model.plot(ax=ax, label="first")
+    other.plot(ax=ax, label="second")
+    ax.legend();
+
 The :code:`model` object from the above example can be used to calculate the density of the distribution with the parameters found with the best fit from above. This is very easy to do:
 
 .. jupyter-execute::
