@@ -69,6 +69,19 @@ bands change (#477).
   already labelled; non-parametric plots say "Survival probability" and
   "Kaplan-Meier estimate" (etc.), not "R" and "Model Survival Plot". A
   failure at exactly 0 now points to ``zi=True``.
+- **Imperfect-repair fits are 10-270 times faster (#515).** The ARA,
+  Kijima-II and G1 renewal likelihoods took a Python step per item and
+  per event on every evaluation; they now step through event positions
+  across all items at once, with the same virtual ages bit for bit (G1's
+  likelihood to the last digit). ``ARA.fit`` on 100 items went from
+  10-16 s to 0.45-0.7 s and on 1000 items from 73 s to 2.4 s;
+  ``GeneralizedRenewal(kijima="ii")`` on 1000 items from 16.5 s to 1.8 s;
+  ``GeneralizedOneRenewal`` on 100 items from 44 s to 0.16 s.
+- **Faster saving and loading (#515).** ``to_dict`` and ``from_dict``
+  visited every number of a model's arrays one at a time; number arrays
+  now go through in one pass. The saved documents are byte-identical. A
+  Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
+  1.22 s).
 - **Faster Efron Cox fits with tied times (#515).** The Efron score was
   computed on a masked (times x largest tie x covariates) array: one
   51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
