@@ -614,7 +614,7 @@ surpyval's trees couple the split rule with the leaf model (``kind=``):
   summed over the pooled distinct times, with :math:`d` deaths and :math:`Y` numbers at risk (left child and total). The at-risk counts use the same ``(entry, exit]`` convention as everywhere else, so left truncation is handled; the leaves are Nelson-Aalen estimates. A risk-set statistic only exists for observed and right-censored data, so this kind rejects left and interval censoring and right truncation.
 - ``"weibull"`` (the default) and ``"exponential"`` score a split by the gain in the maximised full log-likelihood of a Weibull (or exponential [DavisAnderson1989reg]_) model in each child. Because it uses the full likelihood of the proportional hazards section, this works for every kind of censoring and truncation; the leaves are the fitted Weibull or exponential models.
 
-A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. In surpyval both live in ``surpyval.beta.ml`` — tested and usable, but with an interface that may still change (see :doc:`surpyval.beta`).
+A **random survival forest** [Ishwaran2008reg]_ averages many trees, each grown on a bootstrap resample of the data and allowed to consider only a random subset of the covariates at each split. The averaging trades the high variance of a single deep tree for a little bias, and usually predicts much better. The forest's survival curve is the average of the trees' leaf survival curves (or, optionally, the survival implied by their averaged cumulative hazards), and its risk score for concordance is the leaf cumulative hazard summed over the evaluation times. Because every tree is grown without about a third of the rows, each row can be scored by the trees that never saw it: the forest's out-of-bag log-likelihood is the mean of those rows' full likelihoods (density, survival, failure or interval probability, over the truncation probability), an estimate of how well it predicts new data for every kind of censoring, and shuffling one covariate among the out-of-bag rows and measuring the drop gives its permutation importance [Breiman2001reg]_. In surpyval both live in ``surpyval.beta.ml`` — tested and usable, but with an interface that may still change (see :doc:`surpyval.beta`).
 
 Choosing a model
 ^^^^^^^^^^^^^^^^
@@ -663,6 +663,8 @@ Whatever the choice, check it: residuals and the PH test for the assumption, inf
 .. [Harrell1982reg] Harrell, F.E., Califf, R.M., Pryor, D.B., Lee, K.L. and Rosati, R.A., 1982. Evaluating the yield of medical tests. *JAMA*, 247(18), pp.2543-2546.
 
 .. [LeBlancCrowley1993reg] LeBlanc, M. and Crowley, J., 1993. Survival trees by goodness of split. *Journal of the American Statistical Association*, 88(422), pp.457-467.
+
+.. [Breiman2001reg] Breiman, L., 2001. Random forests. *Machine Learning*, 45(1), pp.5-32.
 
 .. [DavisAnderson1989reg] Davis, R.B. and Anderson, J.R., 1989. Exponential survival trees. *Statistics in Medicine*, 8(8), pp.947-961.
 

@@ -2912,6 +2912,53 @@ forests serialise like every other model (next section).
     assert scores['forest'][0] < scores['Cox'][0], scores     # IBS
     assert scores['forest'][1] > scores['Cox'][1], scores     # C
 
+A forest can also be validated without held-out data. Each tree is grown
+without about a third of the rows, so every row can be scored by the trees
+that never saw it. ``oob_log_likelihood()`` does this with the row's full
+likelihood — the density for an observed failure, :math:`S(x)` for a
+right-censored row, :math:`F(x)` for a left-censored one,
+:math:`S(x_l) - S(x_r)` for an interval, each over the truncation
+probability — and returns the mean per observation, so higher is better and
+it works for every kind of censoring and truncation (the concordance needs
+event times that can be ordered). A non-parametric leaf is a step function,
+which puts no probability exactly at a time it did not see, so for this score
+its survival curve is joined linearly between its drops and continued past
+the last one with its average hazard. That makes its density a density per
+unit of time, on the same scale as a parametric leaf's, so forests of different
+``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
+one covariate at a time among the out-of-bag rows and reports how much the
+score drops:
+
+.. jupyter-execute::
+
+    oob = {}
+    for depth in [0, 3]:                  # depth 0: every tree is one leaf
+        np.random.seed(0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_oob = RandomSurvivalForest.fit(
+                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, max_depth=depth,
+                n_features_split=2, kind='non-parametric')
+        oob[depth] = rsf_oob.oob_log_likelihood()
+        print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
+    importance = rsf_oob.feature_importances(random_state=1)
+    print('importance of z0, z1, z2:', importance.round(3))
+
+The splits raise the out-of-bag log-likelihood above that of the pooled
+estimate, and the two covariates of the interaction carry the importance
+while the noise covariate :math:`z_2` has almost none. A row that happens to
+be in every tree's sample has no out-of-bag score; it is left out, with a
+warning giving the count. A restored forest keeps no training data, so these
+methods need the fitted one.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert oob[3] > oob[0] + 0.05, oob
+    assert importance[0] > 0.05 and importance[1] > 0.05, importance
+    assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
+        importance
+
 Saving and loading a fitted model
 ---------------------------------
 

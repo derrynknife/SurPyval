@@ -262,6 +262,30 @@ class TerminalNode(Node):
         return node
 
 
+def route_to_leaves(
+    node: Node, Z: NDArray
+) -> list[tuple["TerminalNode", NDArray]]:
+    """The leaf each row of the covariate matrix ``Z`` reaches, grouped:
+    a list of ``(leaf, row indices)`` pairs, one per leaf reached. Rows
+    are routed as :meth:`Node.apply_model_function` routes them."""
+    out: list[tuple[TerminalNode, NDArray]] = []
+    stack: list[tuple[Node, NDArray]] = [(node, np.arange(Z.shape[0]))]
+    while stack:
+        current, idx = stack.pop()
+        if idx.size == 0:
+            continue
+        if isinstance(current, TerminalNode):
+            out.append((current, idx))
+            continue
+        assert isinstance(current, IntermediateNode)
+        goes_left = (
+            Z[idx, current.split_feature_index] <= current.split_feature_value
+        )
+        stack.append((current.left_child, idx[goes_left]))
+        stack.append((current.right_child, idx[~goes_left]))
+    return out
+
+
 def node_from_dict(node_dict: dict) -> Node:
     """Restore an ``IntermediateNode`` or ``TerminalNode`` from its dict."""
     kind = node_dict.get("node")

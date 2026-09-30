@@ -1,7 +1,17 @@
+import warnings
+from typing import Any
+
 import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
+from surpyval.beta.ml.forest.oob import (
+    RowTerms,
+    add_tree_terms,
+    row_log_likelihood,
+    time_origin,
+    weighted_mean,
+)
 from surpyval.beta.ml.forest.tree import (
     SurvivalTree,
     drop_missing_covariate_rows,
@@ -11,6 +21,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils import _caller_stacklevel
+from surpyval.utils.rng import as_generator
 from surpyval.utils.score import score
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -27,7 +39,12 @@ class RandomSurvivalForest(SerialisableMixin):
     their leaves return, which trades the variance of one deep tree for
     the bias of an average.
 
-    Constructed by :meth:`fit` rather than directly.
+    Constructed by :meth:`fit` rather than directly. A fitted forest keeps
+    its training data (``data`` and ``Z``, after dropping rows with a
+    missing covariate) and ``bootstrap_indices``, the rows of ``data`` each
+    tree was grown on (with repeats); :meth:`oob_log_likelihood` and
+    :meth:`feature_importances` use them to score every row with the trees
+    that did not see it.
     """
 
     def __init__(
@@ -52,6 +69,7 @@ class RandomSurvivalForest(SerialisableMixin):
         self.kind = kind
 
         # Create Trees
+        bootstrap_indices: list[NDArray]
         if self.bootstrap:
             bootstrap_indices = [
                 np.random.choice(
@@ -63,6 +81,8 @@ class RandomSurvivalForest(SerialisableMixin):
             bootstrap_indices = [
                 np.array(range(len(self.data.x)))
             ] * self.n_trees
+        # Kept for the out-of-bag methods: the rows each tree did not see.
+        self.bootstrap_indices: list[NDArray] | None = bootstrap_indices
 
         self.trees: list[SurvivalTree] = Parallel(prefer="threads", verbose=1)(
             delayed(SurvivalTree)(
@@ -293,6 +313,227 @@ class RandomSurvivalForest(SerialisableMixin):
             return float("nan")
         return score(x, c, scores, tie_tol)
 
+    def _oob_setup(self) -> tuple[list[NDArray], RowTerms, float, NDArray]:
+        # The rows each tree left out, the likelihood's view of every row,
+        # the time origin of the step-function leaves, and how many trees
+        # left each row out. A restored forest has no data to score.
+        if self.data is None or self.bootstrap_indices is None:
+            raise ValueError(
+                "The out-of-bag methods need the training data and the "
+                "bootstrap samples, which a forest restored with from_dict "
+                "does not keep; call them on the fitted forest."
+            )
+        n_rows = len(self.data)
+        oob = [
+            np.setdiff1d(np.arange(n_rows), idx)
+            for idx in self.bootstrap_indices
+        ]
+        n_oob = np.zeros(n_rows)
+        for rows in oob:
+            n_oob[rows] += 1
+        missing = int((n_oob == 0).sum())
+        if missing:
+            reason = (
+                "bootstrap=False grows every tree on every row"
+                if not self.bootstrap
+                else "grow more trees to cover them"
+            )
+            warnings.warn(
+                f"{missing} of {n_rows} rows were in the sample of every "
+                f"tree, so no tree can score them out of bag; they are "
+                f"left out of the out-of-bag log-likelihood ({reason}).",
+                UserWarning,
+                stacklevel=_caller_stacklevel(),
+            )
+        return oob, RowTerms(self.data), time_origin(self.data), n_oob
+
+    def _oob_rows_log_likelihood(
+        self,
+        oob: list[NDArray],
+        terms: RowTerms,
+        origin: float,
+        n_oob: NDArray,
+        curves: dict,
+        permute: tuple[int, Any] | None = None,
+    ) -> NDArray:
+        # Each row's log-likelihood under the trees that left it out. With
+        # ``permute=(j, rng)``, feature j is first shuffled among each
+        # tree's out-of-bag rows.
+        numerator = np.zeros(len(terms))
+        denominator = np.zeros(len(terms))
+        for tree, rows in zip(self.trees, oob):
+            if rows.size == 0:
+                continue
+            Z = self.Z[rows]
+            if permute is not None:
+                j, rng = permute
+                Z = Z.copy()
+                Z[:, j] = Z[rng.permutation(rows.size), j]
+            add_tree_terms(
+                tree._root,
+                Z,
+                rows,
+                terms,
+                curves,
+                origin,
+                numerator,
+                denominator,
+            )
+        return row_log_likelihood(numerator, denominator, n_oob)
+
+    def oob_log_likelihood(self) -> float:
+        r"""The mean out-of-bag log-likelihood per observation.
+
+        Each row of the training data is scored by the ensemble of the
+        trees whose bootstrap sample left it out, so by trees that never
+        saw it: its contribution is the log of
+
+        - the density :math:`f(x)` if it was observed at :math:`x`,
+        - :math:`S(x)` if right censored at :math:`x`,
+        - :math:`1 - S(x)` if left censored at :math:`x`,
+        - :math:`S(x_l) - S(x_r)` if interval censored in
+          :math:`(x_l, x_r]`,
+
+        divided by :math:`S(t_l) - S(t_r)` if it is truncated to
+        :math:`(t_l, t_r]`, where :math:`S` and :math:`f` are the averages
+        of the out-of-bag trees' leaf survival functions and densities. A
+        censored row's interval is first cut to its truncation window, as
+        in the fitters' likelihoods. The result is the count-weighted mean
+        over the rows, so higher is better and it estimates the expected
+        log-likelihood of a new observation; it works for every censoring
+        type and truncation, where the concordance of :meth:`score` needs
+        orderable event times.
+
+        A non-parametric leaf is a step function, which puts no
+        probability at an out-of-bag event time unless the tree saw a
+        tied one, so for this score it is read as a continuous
+        distribution: its survival curve is joined linearly between the
+        points where it drops, from 1 at time 0 (or at the smallest time,
+        if it is negative), and continued past its last drop with the
+        constant hazard it averaged up to there (Brown, Hollander and
+        Korwar's exponential tail). Its density is then per unit of time,
+        on the same scale as a parametric leaf's, so forests of different
+        ``kind`` can be compared by this score.
+
+        A row that is in the bootstrap sample of every tree has no
+        out-of-bag prediction; it is left out of the mean, with one
+        warning giving the count (every row, and a NaN result, with
+        ``bootstrap=False``). A row the ensemble gives zero probability
+        makes the mean ``-inf``.
+
+        Returns
+        -------
+        float
+            The mean out-of-bag log-likelihood per observation.
+
+        Raises
+        ------
+        ValueError
+            On a forest restored with ``from_dict``, which keeps neither
+            the training data nor the bootstrap samples.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> c = (x > 12).astype(int)
+        >>> x = np.minimum(x, 12)
+        >>> np.random.seed(0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, c=c, n_trees=20, max_depth=1, kind="exponential"
+        ... )
+        >>> round(forest.oob_log_likelihood(), 3)
+        -2.518
+        """
+        oob, terms, origin, n_oob = self._oob_setup()
+        ll = self._oob_rows_log_likelihood(oob, terms, origin, n_oob, {})
+        return weighted_mean(ll, terms.n)
+
+    def feature_importances(
+        self, n_repeats: int = 5, random_state: Any = None
+    ) -> NDArray:
+        r"""Permutation importance of each feature, by out-of-bag
+        log-likelihood.
+
+        For each feature, its values are shuffled among each tree's
+        out-of-bag rows (Breiman, 2001), which breaks its link with the
+        outcome while keeping its distribution, and the out-of-bag
+        log-likelihood (see :meth:`oob_log_likelihood`) is computed again.
+        A feature's importance is the drop from the unshuffled value,
+        averaged over ``n_repeats`` shuffles: about zero for a feature the
+        forest does not use, positive for one it relies on, and on the
+        scale of the log-likelihood per observation.
+
+        Parameters
+        ----------
+        n_repeats : int, optional
+            The number of shuffles averaged for each feature. Defaults
+            to 5.
+        random_state : None, int or numpy.random.Generator, optional
+            Seeds the shuffles. ``None`` (the default) draws from NumPy's
+            global random state, so ``np.random.seed`` reproduces it; a
+            seed or ``Generator`` gives its own stream.
+
+        Returns
+        -------
+        numpy.ndarray
+            One importance per column of ``Z``.
+
+        Raises
+        ------
+        ValueError
+            If ``n_repeats`` is not a positive integer, or on a forest
+            restored with ``from_dict`` (see :meth:`oob_log_likelihood`).
+
+        Examples
+        --------
+        Only the first feature matters; the second is noise:
+
+        >>> import numpy as np
+        >>> from surpyval.beta.ml import RandomSurvivalForest
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 2))
+        >>> x = rng.weibull(2.0, 200) * np.where(Z[:, 0] > 0.5, 5.0, 10.0)
+        >>> np.random.seed(0)
+        >>> forest = RandomSurvivalForest.fit(
+        ...     x, Z, n_trees=20, max_depth=1, kind="exponential"
+        ... )
+        >>> forest.feature_importances(random_state=1).round(3)
+        array([ 0.093, -0.001])
+        """
+        if (
+            isinstance(n_repeats, bool)
+            or not isinstance(n_repeats, (int, np.integer))
+            or n_repeats < 1
+        ):
+            raise ValueError(
+                f"n_repeats must be a positive integer, got {n_repeats!r}"
+            )
+        rng = as_generator(random_state)
+        oob, terms, origin, n_oob = self._oob_setup()
+        curves: dict = {}
+        baseline = weighted_mean(
+            self._oob_rows_log_likelihood(oob, terms, origin, n_oob, curves),
+            terms.n,
+        )
+        importances = np.zeros(self.Z.shape[1])
+        for j in range(self.Z.shape[1]):
+            drops = [
+                baseline
+                - weighted_mean(
+                    self._oob_rows_log_likelihood(
+                        oob, terms, origin, n_oob, curves, permute=(j, rng)
+                    ),
+                    terms.n,
+                )
+                for _ in range(int(n_repeats))
+            ]
+            importances[j] = np.mean(drops)
+        return importances
+
     def to_dict(self) -> dict:
         """Serialise the fitted forest to a plain, JSON/BSON-safe dictionary:
         the ensemble settings and every fitted tree. The training data is not
@@ -320,6 +561,7 @@ class RandomSurvivalForest(SerialisableMixin):
         # A restored forest predicts but is not re-fittable; it holds no data.
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]
+        forest.bootstrap_indices = None
         forest.trees = [
             SurvivalTree.from_dict(tree_dict)
             for tree_dict in model_dict["trees"]
