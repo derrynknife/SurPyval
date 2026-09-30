@@ -2313,6 +2313,420 @@ class Parametric(
 
         return cb
 
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the quantile ``qf(p)``: the B-life at ``p``
+        (the B10 life is ``p = 0.1``), the time by which a fraction ``p``
+        has failed.
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded.
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) is the delta method on the log of the
+            quantile above the support's start (``log t_p`` for a lifetime,
+            ``log(t_p - gamma)`` with an offset; the quantile itself for a
+            distribution on the whole line), from the gradient of ``t_p``
+            with respect to the parameters, ``-dF/dtheta / f`` at ``t_p``;
+            for the Weibull, :math:`\log t_p = \log\alpha +
+            \log(-\log(1 - p))/\beta`, the "Fisher matrix" bound on time
+            of Nelson (1982) and of Meeker and Escobar (1998). ``"lr"`` is
+            the likelihood-ratio bound: the extreme of ``qf(p)`` over the
+            parameters' likelihood region, as ``cb(method="lr")`` is for
+            a function of time. It is invariant to the parameterisation
+            and better in small samples, slower, and, like ``cb``'s, not
+            available for offset, limited-failure or zero-inflated models.
+
+        Returns
+        -------
+
+        cb : scalar or numpy array
+            The bound(s), shaped as ``p``; a two-sided bound adds a last
+            ``[lower, upper]`` axis.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.qf(0.1).round(3)
+        np.float64(3.695)
+        >>> model.quantile_cb(0.1).round(3)
+        array([2.638, 5.175])
+        >>> model.quantile_cb(0.1, bound="lower", method="lr").round(3)
+        np.float64(2.648)
+
+        Notes
+        -----
+        The nonparametric models' ``quantile_cb`` is the same bound for a
+        step estimate (Brookmeyer and Crowley); :meth:`mean_cb` bounds the
+        mean.
+        """
+        p = np.asarray(p, dtype=float)
+        self._check_summary_cb(alpha_ci, bound)
+        if p.size == 0:
+            return np.empty((0, 2) if bound == "two-sided" else (0,))
+        if not np.all((p > 0) & (p < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {p.tolist()}")
+        if self.dist.discrete:
+            self._is_lr(method)  # checks the name
+            return self._quantile_cb_discrete(p, alpha_ci, bound, method)
+        if self._is_lr(method):
+            fns = [
+                lambda theta, p_i=p_i: self.dist.qf(np.array([p_i]), *theta)[0]
+                for p_i in p
+            ]
+            return self._summary_cb_lr(fns, alpha_ci, bound, "qf")
+        return self._quantile_cb_wald(p, alpha_ci, bound)
+
+    def mean_cb(
+        self,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> Any:
+        r"""
+        Confidence bounds on the mean, :meth:`mean`.
+
+        Parameters
+        ----------
+
+        alpha_ci : scalar, optional
+            The level of significance at which the bound will be computed.
+            Defaults to 0.05.
+        bound : ('two-sided', 'upper', 'lower'), str, optional
+            Compute either the two-sided, upper or lower confidence bound(s).
+            Defaults to two-sided.
+        method : ('wald', 'lr'), str, optional
+            ``"wald"`` (default) is the delta method on the log of the mean
+            above the support's start (on the mean itself for a
+            distribution on the whole line); ``"lr"`` is the
+            likelihood-ratio bound, the extreme of the mean over the
+            parameters' likelihood region (not available for offset,
+            limited-failure or zero-inflated models).
+
+        Returns
+        -------
+
+        cb : numpy array or scalar
+            The ``[lower, upper]`` interval, or the one bound asked for.
+            With a limited failure population (``p < 1``) the mean is
+            infinite, and so are its bounds.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> x = Weibull.random(30, 10, 3)
+        >>> model = Weibull.fit(x)
+        >>> model.mean().round(3)
+        np.float64(8.073)
+        >>> model.mean_cb().round(3)
+        array([6.935, 9.398])
+
+        Notes
+        -----
+        The nonparametric models' ``mean_cb`` bounds their (restricted)
+        mean; :meth:`quantile_cb` bounds a quantile.
+        """
+        self._check_summary_cb(alpha_ci, bound)
+        if self.p < 1:
+            # A fraction 1 - p never fails: E[T] is infinite (#404).
+            inf = np.inf
+            return np.array([inf, inf]) if bound == "two-sided" else inf
+        if self._is_lr(method):
+            fns = [lambda theta: self.dist.mean(*theta)]
+            out = self._summary_cb_lr(fns, alpha_ci, bound, "mean")
+            return out[0]
+        ctx = self._cb_context()
+
+        def mean_of(phi: npt.NDArray) -> Any:
+            core, p, f0 = self._cb_unpack(phi, ctx)
+            return (p - f0) * (self.dist.mean(*core) + self.gamma)
+
+        with np.errstate(all="ignore"):
+            grad = _central_gradient(mean_of, ctx.phi_hat)
+            var = np.atleast_1d(grad @ ctx.cov @ grad)
+            value = np.atleast_1d(mean_of(ctx.phi_hat))
+        # The mass f0 at 0 of a zero-inflated model is below any offset
+        scale = self._summary_scale(zero_floor=bool(self.zi))
+        out = self._summary_wald(value, var, scale, alpha_ci, bound, "mean")
+        return out[0]
+
+    @staticmethod
+    def _is_lr(method: str) -> bool:
+        m = method.lower()
+        if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
+            return True
+        if m != "wald":
+            raise ValueError(
+                f"Unknown confidence-bound method '{method}'; "
+                "use 'wald' or 'lr'."
+            )
+        return False
+
+    def _check_summary_cb(self, alpha_ci: float, bound: str) -> None:
+        if self.method != "MLE":
+            raise ValueError("Only MLE has confidence bounds")
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError(
+                "bound must be 'two-sided', 'lower' or 'upper'; got "
+                f"{bound!r}"
+            )
+        if not 0 < alpha_ci < 1:
+            raise ValueError(f"'alpha_ci' must be in (0, 1); got {alpha_ci}")
+
+    def _summary_scale(self, zero_floor: bool = False) -> tuple:
+        """The scale a quantile or the mean is bounded on, from the
+        model's support ``(lo, hi)``: the logit of its position in the
+        support when both ends are finite, the log of its distance above
+        ``lo`` when only that end is, and its own scale otherwise (a
+        distribution on the whole line, or one whose support ends are
+        parameters). Returns ``(to_psi, from_psi, slope, ends)``: the
+        transform, its inverse, its derivative and the ends of its range.
+        ``zero_floor`` puts ``lo`` at 0 (the mean of a zero-inflated
+        model, whose mass at 0 is below any offset).
+        """
+        s0, s1 = (float(v) for v in getattr(self.dist, "support", (0, 0)))
+        lo = 0.0 if zero_floor else s0 + self.gamma
+        hi = s1 + self.gamma
+        if np.isfinite(lo) and np.isfinite(hi):
+            width = hi - lo
+
+            def to_psi(v: Any) -> Any:
+                return np.log(v - lo) - np.log(hi - v)
+
+            def from_psi(u: Any) -> Any:
+                return lo + width * expit(u)
+
+            def slope(v: Any) -> Any:
+                return 1 / (v - lo) + 1 / (hi - v)
+
+            return to_psi, from_psi, slope, (_LN_TINY, -_LN_TINY)
+        if np.isfinite(lo):
+            return (
+                lambda v: np.log(v - lo),
+                lambda u: lo + np.exp(u),
+                lambda v: 1 / (v - lo),
+                (_LN_TINY, _LN_MAX),
+            )
+        return (
+            lambda v: v,
+            lambda u: u,
+            lambda v: np.ones_like(v),
+            (-1e300, 1e300),
+        )
+
+    def _summary_wald(
+        self,
+        value: npt.NDArray,
+        var: npt.NDArray,
+        scale: tuple,
+        alpha_ci: float,
+        bound: str,
+        what: str,
+    ) -> npt.NDArray:
+        """The Wald bound on ``value`` with delta-method variance ``var``,
+        on the ``scale`` of ``_summary_scale``."""
+        to_psi, from_psi, slope, _ = scale
+        sd = self._cb_sd(var, value, what)
+        if bound == "two-sided":
+            k = z(1 - alpha_ci / 2) * np.array([-1.0, 1.0])
+        elif bound == "lower":
+            k = np.array([-z(1 - alpha_ci)])
+        else:
+            k = np.array([z(1 - alpha_ci)])
+        with np.errstate(all="ignore"):
+            psi = to_psi(value)
+            se = sd * np.abs(slope(value))
+            out = from_psi(psi[:, None] + k * se[:, None])
+            # A value that is infinite (a quantile past a limited failure
+            # population's p) or at an end of the scale is its own bound.
+            edge = ~np.isfinite(psi) | (sd == 0)
+        out = np.where(edge[:, None], value[:, None], out)
+        return out if bound == "two-sided" else out[:, 0]
+
+    def _quantile_cb_wald(
+        self, p: npt.NDArray, alpha_ci: float, bound: str
+    ) -> npt.NDArray:
+        """The delta-method bound on ``qf(p)``. The gradient of the
+        quantile ``t`` is implicit, from ``F(t; theta) = p``:
+        ``dt/dtheta = -(dF/dtheta) / f(t)``, which needs only the
+        distribution function, not a differentiable ``qf``."""
+        ctx = self._cb_context()
+        t = np.atleast_1d(np.asarray(self.qf(p), dtype=float))
+        core, p_lfp, f0 = self._cb_unpack(ctx.phi_hat, ctx)
+        finite = np.isfinite(t)
+        t_eval = np.where(finite, t, self.gamma + 1.0)
+        with np.errstate(all="ignore"):
+            jac = np.atleast_2d(
+                jacobian(lambda phi: self._cb_full_ff(t_eval, phi, ctx))(
+                    ctx.phi_hat
+                )
+            )
+            dens = (p_lfp - f0) * np.asarray(
+                self.dist.df(t_eval - self.gamma, *core), dtype=float
+            )
+            grad = -jac / dens[:, None]
+            var = np.einsum("ij,jk,ik->i", grad, ctx.cov, grad)
+        var = np.where(finite, var, 0.0)
+        return self._summary_wald(
+            t, var, self._summary_scale(), alpha_ci, bound, "qf"
+        )
+
+    def _quantile_cb_discrete(
+        self, p: npt.NDArray, alpha_ci: float, bound: str, method: str
+    ) -> npt.NDArray:
+        """The bound on a discrete quantile, the smallest ``k`` with
+        ``F(k) >= p``: that ``k`` from the band on ``F`` instead of from
+        ``F`` -- from its upper bound for the lower bound on the quantile,
+        and its lower bound for the upper -- as the nonparametric
+        ``quantile_cb`` inverts its band (Brookmeyer and Crowley). A
+        discrete quantile is a step, with no gradient for the delta
+        method. ``inf`` where the band never reaches ``p``.
+        """
+        side = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
+        start = float(getattr(self.dist, "support", (0, np.inf))[0])
+        start = 0.0 if not np.isfinite(start) else start
+        target = np.max(p)
+        # The support up to where the band's lower end reaches every p
+        ks = np.arange(start, start + 64)
+        while True:
+            band = np.asarray(
+                self.cb(
+                    ks,
+                    on="ff",
+                    alpha_ci=alpha_ci,
+                    bound=side[bound],
+                    method=method,
+                ),
+                dtype=float,
+            )
+            band = np.nan_to_num(band, nan=0.0)
+            # The end of the band that reaches p last: its lower end
+            need = band[:, 0] if bound == "two-sided" else band
+            if (need >= target).any() or ks[-1] > start + 1e6:
+                break
+            ks = np.arange(start, 2 * ks[-1] + 2 - start)
+        if bound == "two-sided":
+            f_lo, f_up = band[:, 0], band[:, 1]
+        else:
+            # one end, the one asked for: F's upper for the quantile's
+            # lower bound, F's lower for its upper
+            f_lo = f_up = band
+
+        def first(values: npt.NDArray, level: float) -> float:
+            hit = values >= level
+            return float(ks[np.argmax(hit)]) if hit.any() else np.inf
+
+        lower = np.array([first(f_up, p_i) for p_i in p])
+        upper = np.array([first(f_lo, p_i) for p_i in p])
+        if bound == "two-sided":
+            return np.column_stack([lower, upper])
+        return lower if bound == "lower" else upper
+
+    def _summary_cb_lr(
+        self,
+        fns: list,
+        alpha_ci: float,
+        bound: str,
+        what: str,
+    ) -> npt.NDArray:
+        """Likelihood-ratio bounds on the functions ``fns`` of the core
+        parameters (a quantile, the mean): the extreme of each over the
+        parameters' likelihood region, searched as ``_cb_lr`` searches for
+        a function of time, on the scale of ``_summary_scale``."""
+        self._ensure_surv_data()
+        if self.offset or self.lfp or self.zi:
+            raise NotImplementedError(
+                "Likelihood-ratio confidence bounds are not yet available "
+                "for offset, limited-failure-population or zero-inflated "
+                "models; use method='wald'."
+            )
+        if bound == "two-sided":
+            crit = z(1.0 - alpha_ci / 2.0) ** 2
+        else:
+            crit = z(1.0 - alpha_ci) ** 2
+        want_lower = bound in ("two-sided", "lower")
+        want_upper = bound in ("two-sided", "upper")
+        theta_hat = np.array(self.params, dtype=float)
+        user_fixed = self._user_fixed_idx()
+        free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        n = len(fns)
+
+        def shape(lower: npt.NDArray, upper: npt.NDArray) -> npt.NDArray:
+            if bound == "two-sided":
+                return np.column_stack([lower, upper])
+            return lower if bound == "lower" else upper
+
+        if not free:
+            at = np.array([f(theta_hat) for f in fns], dtype=float)
+            return shape(at, at)
+        if len(free) == 1:
+            band = self._cb_lr_one_param(
+                np.arange(n, dtype=float),
+                lambda i, theta: fns[int(i)](theta),
+                free[0],
+                alpha_ci,
+                bound,
+            )
+            if band is not None:
+                return band
+
+        to_psi_, to_value, _, ends = self._summary_scale()
+
+        def to_psi(v: Any) -> float:
+            return float(to_psi_(v))
+
+        lower = np.full(n, np.nan)
+        upper = np.full(n, np.nan)
+        failed = []
+        with np.errstate(all="ignore"):
+            region = self._lr_region(free, crit)
+            for i, f in enumerate(fns):
+                lo, hi = self._cb_lr_psi_bounds(
+                    lambda theta, f=f: to_psi(f(theta)),
+                    free,
+                    crit,
+                    want_lower,
+                    want_upper,
+                    ends,
+                    *region,
+                )
+                if (want_lower and np.isnan(lo)) or (
+                    want_upper and np.isnan(hi)
+                ):
+                    failed.append(i)
+                lower[i], upper[i] = to_value(lo), to_value(hi)
+        if failed:
+            warnings.warn(
+                f"The likelihood-ratio bound on {what} could not be found "
+                f"for {len(failed)} of {n} value(s) (the constrained "
+                "optimiser failed from every start); nan is returned there. "
+                "method='wald' gives a bound in its place.",
+                RuntimeWarning,
+                stacklevel=4,
+            )
+        return shape(lower, upper)
+
     def _cb_lr_on_func(self, on: str) -> Any:
         """Return ``g(t, theta)`` for the requested ``on`` function.
 

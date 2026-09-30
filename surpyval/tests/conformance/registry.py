@@ -2089,6 +2089,25 @@ def _parametric_bounds(case):
                 label="param_cb[wald]",
             ),
         ]
+        # Bounds on the B-lives and the mean (#494)
+        out += [
+            Bound(
+                "quantile_cb",
+                point="qf",
+                kwargs={"method": "wald"},
+                label="quantile_cb[wald]",
+            ),
+            Bound(
+                "mean_cb",
+                kind="summary",
+                kwargs={"method": "wald"},
+                query=((),),
+                # Documented: with support ends among the parameters the
+                # Wald bound is on the mean's own scale
+                in_range=case.name != "Beta4",
+                label="mean_cb[wald]",
+            ),
+        ]
     # The likelihood-ratio search is swept on the cases in _LR_X only.
     # The ExpoWeibull's and NegativeBinomial's sweeps (searches in
     # multi-parameter valleys, seconds each) took about ten minutes on
@@ -2126,6 +2145,29 @@ def _parametric_bounds(case):
             **lr,
         )
     )
+    if case.continuous:
+        # (a discrete quantile's bound inverts the band on ff at every
+        # count up to it: a likelihood-ratio search at each)
+        out.append(
+            Bound(
+                "quantile_cb",
+                point="qf",
+                kwargs={"method": "lr"},
+                query=(0.1, 0.5, 0.9),
+                label="quantile_cb[lr]",
+                **lr,
+            )
+        )
+        out.append(
+            Bound(
+                "mean_cb",
+                kind="summary",
+                kwargs={"method": "lr"},
+                query=((),),
+                label="mean_cb[lr]",
+                **lr,
+            )
+        )
     return tuple(out)
 
 
