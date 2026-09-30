@@ -672,17 +672,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             return self._data_summary or ""
         if isinstance(data, dict):
             c, n, t = data.get("c"), data.get("n"), data.get("t")
+            x = data.get("x")
         else:
             c = getattr(data, "c", None)
             n = getattr(data, "n", None)
             t = getattr(data, "t", None)
+            x = getattr(data, "x", None)
         if c is None:
             return ""
         lower, upper = getattr(self.distribution, "support", (-np.inf, np.inf))
         t = None if t is None else np.asarray(t, dtype=float)
         if t is None or t.ndim != 2 or len(t) != len(np.asarray(c)):
-            return data_summary(c, n)
-        return data_summary(c, n, t[:, 0], t[:, 1], lower, upper)
+            return data_summary(c, n, x=x)
+        return data_summary(c, n, t[:, 0], t[:, 1], lower, upper, x=x)
 
     def __repr__(self) -> str:
         if not hasattr(self, "params"):

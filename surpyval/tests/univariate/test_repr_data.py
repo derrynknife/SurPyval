@@ -28,18 +28,21 @@ def test_inverted_flag_is_visible_in_the_printout():
     x, failed = _issue_data()
     wrong = repr(sp.Weibull.fit(x, c=failed))
     right = repr(sp.Weibull.fit(x, c=1 - failed))
-    assert "Data                : 60 units: 9 failures, 51 right censored" in (
-        wrong
+    assert (
+        "Data                : 60 units: 9 events at 9 unique times, 51 right censored"
+        in (wrong)
     )
-    assert "Data                : 60 units: 51 failures, 9 right censored" in (
-        right
+    assert (
+        "Data                : 60 units: 51 events at 51 unique times, 9 right censored"
+        in (right)
     )
 
 
 def test_counts_are_units_weighted_by_n():
     model = sp.Weibull.fit([1, 2, 3, 4], c=[0, 0, 1, 0], n=[3, 1, 10, 2])
-    assert "Data                : 16 units: 6 failures, 10 right censored" in (
-        repr(model)
+    assert (
+        "Data                : 16 units: 6 events at 3 unique times, 10 right censored"
+        in (repr(model))
     )
 
 
@@ -51,7 +54,8 @@ def test_every_kind_of_censoring_and_truncation_is_counted():
         tr=[np.inf, np.inf, np.inf, np.inf, 20],
     )
     assert (
-        "Data                : 5 units: 2 failures, 1 right censored, "
+        "Data                : 5 units: 2 events at 2 unique times, "
+        "1 right censored, "
         "1 left censored, 1 interval censored; 2 left truncated, "
         "1 right truncated"
     ) in repr(model)
@@ -70,16 +74,18 @@ def test_a_model_from_parameters_has_no_data_line():
 def test_non_parametric_printout_has_the_data_line():
     x, failed = _issue_data()
     km = sp.KaplanMeier.fit(x, c=failed)
-    assert "Data             : 60 units: 9 failures, 51 right censored" in (
-        repr(km)
+    assert (
+        "Data             : 60 units: 9 events at 9 unique times, 51 right censored"
+        in (repr(km))
     )
     tb = sp.Turnbull.fit(xl=[1, 2, 3], xr=[2, 4, 5])
-    assert "Data             : 3 units: 0 failures, 3 interval censored" in (
+    assert "Data             : 3 units: 0 events, 3 interval censored" in (
         repr(tb)
     )
     na = sp.NelsonAalen.fit([1, 2, 3, 4], tl=[0, 0, 1, 1])
-    assert "Data             : 4 units: 4 failures; 2 left truncated" in (
-        repr(na)
+    assert (
+        "Data             : 4 units: 4 events at 4 unique times; 2 left truncated"
+        in (repr(na))
     )
 
 
@@ -92,7 +98,10 @@ def rossi():
     return df["week"].to_numpy(dtype=float), Z, 1 - df["arrest"].to_numpy()
 
 
-LINE = "Data                : 432 units: 114 failures, 318 right censored"
+LINE = (
+    "Data                : 432 units: 114 events at 49 unique times, "
+    "318 right censored"
+)
 
 
 @pytest.mark.parametrize(
@@ -115,20 +124,22 @@ def test_cox_start_stop_counts_units_and_intervals():
         [0, 1, 0, 0, 1, 0, 0, 1, 1, 0],
     )
     assert (
-        "Data                : 7 units in 10 start-stop intervals: "
-        "5 failures"
+        "Data                : 7 units in 10 start-stop intervals: " "5 events"
     ) in repr(model)
 
 
 def test_mixture_printout_has_the_data_line():
     x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
     model = sp.MixtureModel.fit(x, dist=sp.Weibull, m=2)
-    assert "Data                : 17 units: 17 failures" in repr(model)
+    assert (
+        "Data                : 17 units: 17 events at 15 unique times"
+        in repr(model)
+    )
 
 
 def test_data_summary_singular_and_plural():
-    assert data_summary([0]) == "1 unit: 1 failure"
-    assert data_summary([1, 1]) == "2 units: 0 failures, 2 right censored"
+    assert data_summary([0]) == "1 unit: 1 event"
+    assert data_summary([1, 1]) == "2 units: 0 events, 2 right censored"
 
 
 def test_a_restored_model_prints_the_same_data_line(rossi):
@@ -142,5 +153,5 @@ def test_a_restored_model_prints_the_same_data_line(rossi):
     ]
     for model in models:
         back = sp.from_dict(model.to_dict())
-        assert "432 units: 114 failures, 318 right censored" in repr(back)
+        assert "432 units: 114 events at 49 unique times, 318 right censored" in repr(back)
         assert repr(back).count("Data  ") == 1

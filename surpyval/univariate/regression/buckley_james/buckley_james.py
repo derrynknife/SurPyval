@@ -490,11 +490,12 @@ class BuckleyJamesModel(SerialisableMixin):
         ]
         if self._data is not None:
             # The data line (#508); the fit keeps the event flag, 1 for a
-            # failure, and the counts.
-            _, delta, _, w = self._data
+            # failure, and the counts; Y is the log time, whose distinct
+            # values are the distinct times.
+            Y, delta, _, w = self._data
             lines.append(
                 "Data                : "
-                + data_summary(1 - np.asarray(delta, dtype=int), w)
+                + data_summary(1 - np.asarray(delta, dtype=int), w, x=Y)
             )
         lines += [
             "Coefficients (positive => accelerates failure):",

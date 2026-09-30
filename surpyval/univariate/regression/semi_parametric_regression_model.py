@@ -228,7 +228,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
             n = np.asarray(data.get("n", np.ones(len(c))))
             k = int(np.sum(n[c == 0]))
             units = len(np.unique(np.asarray(ids)))
-            return "{} unit{} in {} start-stop intervals: {} failure{}".format(
+            return "{} unit{} in {} start-stop intervals: {} event{}".format(
                 units,
                 "" if units == 1 else "s",
                 len(c),
@@ -236,10 +236,11 @@ class SemiParametricRegressionModel(SerialisableMixin):
                 "" if k == 1 else "s",
             )
         tl = data.get("tl")
+        x = data.get("x")
         if tl is None:
-            return data_summary(data["c"], data.get("n"))
+            return data_summary(data["c"], data.get("n"), x=x)
         # Times are non-negative, where an entry at 0 truncates nothing.
-        return data_summary(data["c"], data.get("n"), tl=tl, lower=0.0)
+        return data_summary(data["c"], data.get("n"), tl=tl, lower=0.0, x=x)
 
     def __repr__(self) -> str:
         out = (

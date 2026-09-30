@@ -219,13 +219,13 @@ class NonParametricFitter:
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
-        Data             : 6 units: 6 failures
+        Data             : 6 units: 6 events at 5 unique times
         >>> Turnbull.fit([2, 3, 3, 4, 5, 6], turnbull_estimator='Kaplan-Meier')
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
         Estimator        : Kaplan-Meier
-        Data             : 6 units: 6 failures
+        Data             : 6 units: 6 events at 5 unique times
         """
         if self.how == "Turnbull":
             # Imported here as this module is imported by the package

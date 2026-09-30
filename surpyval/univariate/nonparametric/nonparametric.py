@@ -241,7 +241,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
     Non-Parametric SurPyval Model
     =============================
     Model            : Kaplan-Meier
-    Data             : 10 units: 8 failures, 2 right censored
+    Data             : 10 units: 8 events at 8 unique times, 2 right censored
     >>> model.sf([2.5, 6]).round(4)
     array([0.8   , 0.4571])
     >>> model.cb([2.5, 6]).round(4)
@@ -304,9 +304,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         finite = x[np.isfinite(x)]
         lower = 0.0 if finite.size and finite.min() >= 0 else -np.inf
         if t.ndim != 2 or len(t) != len(np.asarray(data["c"])):
-            return data_summary(data["c"], data.get("n"))
+            return data_summary(data["c"], data.get("n"), x=x)
         return data_summary(
-            data["c"], data.get("n"), t[:, 0], t[:, 1], lower=lower
+            data["c"], data.get("n"), t[:, 0], t[:, 1], lower=lower, x=x
         )
 
     def set_support(self, lower: float, upper: float) -> "NonParametric":

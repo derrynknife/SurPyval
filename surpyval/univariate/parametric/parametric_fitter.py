@@ -1778,7 +1778,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Data                : 100 units: 100 failures
+        Data                : 100 units: 100 events at 100 unique times
         Parameters          :
              alpha: 9.815018791049368
               beta: 3.798740470368033
@@ -1787,7 +1787,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPS
-        Data                : 100 units: 100 failures
+        Data                : 100 units: 100 events at 100 unique times
         Parameters          :
              alpha: 10.0
               beta: 3.670796510564323
@@ -1797,7 +1797,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
-        Data                : 100 units: 0 failures, 100 interval censored
+        Data                : 100 units: 0 events, 100 interval censored
         Parameters          :
              alpha: 9.834445729732789
               beta: 3.2602770099790424
@@ -1811,8 +1811,8 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Data                : 86 units: 80 failures, 6 right censored;
-                              86 left truncated
+        Data                : 86 units: 80 events at 80 unique times,
+                              6 right censored; 86 left truncated
         Parameters          :
              alpha: 9.893584496413128
               beta: 3.78688602908912
@@ -1917,7 +1917,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
-        Data                : 389 units: 389 failures
+        Data                : 389 units: 389 events at 10 unique times
         Offset (gamma)      : 39.76557772434183
         Parameters          :
              alpha: 7.141983615103902

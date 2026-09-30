@@ -47,8 +47,9 @@ bands change (#477).
   days instead of 310). ``status`` is now 1 for a death, as in lifelines
   and R; pass ``c = 1 - status``.
 - **A fitted model's printout shows its data (#508).** For example ``Data
-  : 60 units: 9 failures, 51 right censored``, with left, interval and
-  truncated counts when present, counted in units (weighted by ``n``).
+  : 60 units: 9 events at 9 unique times, 51 right censored``, with left,
+  interval and truncated counts when present, counted in units (weighted
+  by ``n``), and the number of distinct event times.
   Parametric, mixture, non-parametric, parametric regression, Cox and
   Buckley-James models print it, and keep it through ``to_dict``. A "1 =
   failed" column passed as ``c`` is now visible at a glance.
@@ -62,9 +63,10 @@ bands change (#477).
   R's ``cox.zph`` prints it: a row per covariate and a ``GLOBAL`` row, with
   ``statistic``, ``df`` and ``p``. The old dictionary is
   ``proportional_hazards.diagnostics.check_ph(model)``.
-- **Conditional survival: sf(x, given=g) and ff(x, given=g) (#514)** on
-  parametric, non-parametric and mixture models, :math:`S(x)/S(g)`, as the
-  regression models' ``sf_tvc(..., given=)``. ``cs`` still works.
+- **Deprecated: cs(x, X) is cs(x, given) (#514).** The time already
+  survived is named ``given``, as in the regression models' ``sf_tvc(...,
+  given=)``; ``X=`` works until v0.23 with a ``DeprecationWarning``. Called
+  by position, nothing changes.
 - **Plots label their axes (#514).** The time axis is "Time" unless it is
   already labelled; non-parametric plots say "Survival probability" and
   "Kaplan-Meier estimate" (etc.), not "R" and "Model Survival Plot". A

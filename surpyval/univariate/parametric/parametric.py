@@ -907,10 +907,11 @@ class Parametric(
             return getattr(self, "_data_summary", None) or ""
         t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
         lower, upper = np.asarray(self.support, dtype=float)
+        x = data.get("x")
         if t.size == 0:
-            return data_summary(data["c"], data.get("n"))
+            return data_summary(data["c"], data.get("n"), x=x)
         return data_summary(
-            data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper
+            data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper, x=x
         )
 
     def param_cb(

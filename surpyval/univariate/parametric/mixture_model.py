@@ -241,7 +241,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             return ""
         lower, upper = self.dist.support
         return "\nData                : " + data_summary(
-            data.c, data.n, data.tl, data.tr, lower, upper
+            data.c, data.n, data.tl, data.tr, lower, upper, x=data.x
         )
 
     def likelihood(self, params: Any) -> Any:
@@ -507,7 +507,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         Distribution        : Weibull
         Sub-Distributions   : 2
         Fitted by           : EM
-        Data                : 17 units: 17 failures
+        Data                : 17 units: 17 events at 15 unique times
         Weights             :
                 0.6184891886499861,
                 0.381510811350014
