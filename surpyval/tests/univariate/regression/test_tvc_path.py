@@ -22,6 +22,7 @@ jump, exactly. These tests check:
 """
 
 import warnings
+from typing import Any
 
 import numpy as np
 import pytest
@@ -29,12 +30,14 @@ from scipy.integrate import quad
 from scipy.special import gamma, gammainc
 
 import surpyval as sp
-from surpyval import CoxPH, CovariatePath, StepSchedule
+from surpyval import CovariatePath, CoxPH, StepSchedule
 from surpyval.univariate.regression import tvc_path
 from surpyval.univariate.regression.accelerated_life import (
     AcceleratedLife,
     Power,
 )
+
+NOT_CALLABLE: Any = 3.0
 
 # The engine's stated target: relative error on H.
 RTOL = 1e-10
@@ -594,7 +597,7 @@ def test_path_call_shapes_and_missing_time():
             "period",
         ),
         (lambda: CovariatePath.from_points([], []), "at least one"),
-        (lambda: CovariatePath.from_callable(3.0), "'func'"),
+        (lambda: CovariatePath.from_callable(NOT_CALLABLE), "'func'"),
         (lambda: CovariatePath.from_callable(np.sin, p=0), "'p'"),
         (
             lambda: CovariatePath.from_callable(np.sin, breakpoints=[np.inf]),

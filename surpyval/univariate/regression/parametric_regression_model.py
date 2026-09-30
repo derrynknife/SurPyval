@@ -802,7 +802,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         self,
         H: npt.NDArray,
         falls: int,
-        accuracy: "tuple | None",
+        accuracy: "tuple[int, int, float, str] | None",
         stacklevel: int,
     ) -> None:
         """The warnings of ``sf_tvc`` / ``Hf_tvc``: a falling additive
@@ -816,8 +816,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if accuracy is not None:
             from .tvc_path import warn_missed_target
 
+            missed, total, worst, limit = accuracy
             warn_missed_target(
-                *accuracy, rtol=self._tvc_rtol, stacklevel=stacklevel
+                missed, total, worst, limit, self._tvc_rtol, stacklevel
             )
 
     @staticmethod
@@ -961,7 +962,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 # value at min(x, 0) (0 for a baseline that starts at 0).
                 A_x = np.where(xe > 0, H_at0, H_x_low)
                 H_full = A_x + from_0
-                origin = given if g_pos else 0.0
+                origin = float(given) if given is not None and g_pos else 0.0
                 H = H_full
                 if given is not None:
                     A_g = H_at0 if g_pos else H_g_low
@@ -982,13 +983,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return np.where(missing, np.nan, H), int(falls.sum()), accuracy
 
     def _aft_H0(self, psi: npt.NDArray) -> npt.NDArray:
-        """The AFT baseline cumulative hazard at accelerated ages ``psi``
-        (positive ones; others give nan, which is not used)."""
-        psi = np.asarray(psi, dtype=float)
-        with np.errstate(divide="ignore", invalid="ignore"):
+        """The AFT baseline cumulative hazard at accelerated ages ``psi``.
+        (An age of 0 makes a log-time baseline evaluate log(0) = -inf on
+        its way to the correct H = 0.)"""
+        with np.errstate(divide="ignore"):
             return np.asarray(
                 self.model.Hf_dist(
-                    np.where(psi > 0, psi, 1.0), *self.params[: self.k_dist]
+                    np.asarray(psi, dtype=float), *self.params[: self.k_dist]
                 ),
                 dtype=float,
             ).ravel()
@@ -1210,9 +1211,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> from surpyval import CovariatePath
         >>> ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
         >>> model.sf_tvc([4, 8, 12], ramp).round(4)
-        array([0.7756, 0.5361, 0.3565])
+        array([0.8195, 0.6331, 0.471 ])
         >>> model.sf_tvc([4, 8, 12], ramp, given=4).round(4)
-        array([1.    , 0.6912, 0.4597])
+        array([1.    , 0.7725, 0.5747])
         """
         from .tvc_path import CovariatePath
 

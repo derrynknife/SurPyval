@@ -192,9 +192,11 @@ class CovariatePath:
     >>> x = 100 * rng.weibull(2, 200) * np.exp(-0.5 * Z[:, 0])
     >>> model = WeibullPH.fit(x, Z)
     >>> model.sf_tvc([40, 80], ramp).round(4)
-    array([0.8079, 0.4059])
+    array([0.771 , 0.3106])
     >>> model.sf(np.array([40, 80]), [0.0]).round(4)
-    array([0.8492, 0.5122])
+    array([0.885, 0.613])
+    >>> model.sf(np.array([40, 80]), [1.0]).round(4)
+    array([0.622 , 0.1493])
     """
 
     def __init__(
@@ -479,7 +481,8 @@ class CovariatePath:
         Examples
         --------
         >>> from surpyval import CovariatePath
-        >>> CovariatePath.from_points([0, 5], [0.0, 1.0], period=8).breakpoints(20)
+        >>> path = CovariatePath.from_points([0, 5], [0.0, 1.0], period=8)
+        >>> path.breakpoints(20)
         array([ 5.,  8., 13., 16.])
         """
         t_max = float(t_max)
@@ -678,12 +681,12 @@ def missed_target(
     missing: npt.NDArray,
 ) -> "tuple[int, int, float, str] | None":
     """
-    ``(missed, total, worst, limit)``: how many of the (non-missing) query times,
-    whose values sum the panels from ``origin`` to ``reach``, have an error
-    estimate above ``rtol`` of the integral of ``|h|`` from 0 (and the
-    rounding floor), of how many, and the worst estimated relative error;
-    ``None`` when none missed. The last entry says which refinement
-    limit was reached.
+    ``(missed, total, worst, limit)``: how many of the (non-missing) query
+    times, whose values sum the panels from ``origin`` to ``reach``, have
+    an error estimate above ``rtol`` of the integral of ``|h|`` from 0
+    (and the rounding floor), of how many, the worst estimated relative
+    error, and which refinement limit was reached; ``None`` when none
+    missed.
     """
     edges = res["edges"]
     est = sum_between(edges, res["err"], origin, reach, signed=False)
