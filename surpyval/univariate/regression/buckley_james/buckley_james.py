@@ -55,6 +55,13 @@ from surpyval.utils import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    covariate_columns,
+    expand,
+    warn_aliased,
+)
 from ..regression_data import (
     check_finite_event_times,
     restore_covariate_meta,
@@ -141,34 +148,22 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
-def _check_design(Z: npt.NDArray, w: npt.NDArray) -> None:
-    """Refuse covariates the least-squares step cannot resolve.
+def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+    """The columns whose coefficients the least-squares step cannot
+    determine (#476), to be aliased (see
+    :mod:`surpyval.univariate.regression._aliasing`).
 
-    The slope is fitted with the intercept profiled out, so a covariate
-    must vary across the observations: a constant covariate (or a single
-    observation) leaves nothing after centring, and collinear covariates
-    leave a singular system. Both used to escape as a bare
-    ``LinAlgError: Singular matrix``.
+    The slope is fitted with the intercept profiled out, so a constant
+    column (or any column of a single observation) is that intercept, and
+    a column that is a linear combination of the others adds nothing to
+    them: the centred Gram matrix is singular in their direction. Such a
+    design escaped as a bare ``LinAlgError: Singular matrix``, and was
+    then refused with a ``ValueError``; it is aliased, as R's ``lm``
+    aliases it.
     """
     Zc = Z - (w[:, None] * Z).sum(axis=0) / w.sum()
-    A = (w[:, None] * Zc).T @ Zc
-    scale = (w[:, None] * Z**2).sum(axis=0)
-    flat = np.diag(A) <= 1e-12 * np.maximum(scale, np.finfo(float).tiny)
-    if np.any(flat):
-        raise ValueError(
-            "Covariate(s) {} are constant across the observations (or there "
-            "are too few observations), so the Buckley-James slope cannot "
-            "be estimated: the intercept is profiled out, and a constant "
-            "covariate is exactly that intercept.".format(
-                np.flatnonzero(flat).tolist()
-            )
-        )
-    d = np.sqrt(np.diag(A))
-    if np.linalg.matrix_rank(A / np.outer(d, d), tol=1e-10) < A.shape[0]:
-        raise ValueError(
-            "The covariates are collinear, so the Buckley-James slope "
-            "cannot be estimated; drop the redundant covariate(s)."
-        )
+    gram = (w[:, None] * Zc).T @ Zc
+    return aliased_columns(gram, Z.shape[0], constant_columns(Z))
 
 
 def _fit_beta(
@@ -252,6 +247,14 @@ class BuckleyJamesModel(SerialisableMixin):
         self.n_iter = n_iter
         self.converged = converged
         self._data = data  # (Y, delta, Z, w) for the bootstrap
+
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column, which is the intercept the
+        fit profiles out, or a linear combination of the others. Their
+        ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(self.beta))
 
     def _prepare_Z(self, Z: Any) -> npt.NDArray:
         from ..regression_data import prepare_Z
@@ -360,7 +363,8 @@ class BuckleyJamesModel(SerialisableMixin):
                     Z_arr.shape[0], x.size
                 )
             )
-        return Z_arr @ self.beta
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        return Z_arr @ np.where(np.isnan(self.beta), 0.0, self.beta)
 
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
@@ -434,6 +438,10 @@ class BuckleyJamesModel(SerialisableMixin):
                 "carry"
             )
         Y, delta, Z, w = self._data
+        p = self.beta.size
+        # The aliased columns (#476) are left out of every refit.
+        kept = np.flatnonzero(~np.isnan(self.beta))
+        Z = Z[:, kept]
         rng = as_generator(random_state)
         # The counts ``w`` are frequency weights: a row with count 3 is
         # three observations, as the fit itself treats it. The bootstrap
@@ -456,7 +464,8 @@ class BuckleyJamesModel(SerialisableMixin):
                 w_b = w[idx] * counts[idx]
             try:
                 g, _, _ = _fit_beta(Y[idx], delta[idx], Z[idx], w_b, 1e-5, 100)
-                boot.append(-g)  # report in the accelerated-failure sign
+                # Report in the accelerated-failure sign.
+                boot.append(expand(-g, kept, p))
             except np.linalg.LinAlgError:
                 continue
         boot_arr = np.asarray(boot)
@@ -521,10 +530,13 @@ class BuckleyJames_:
             Counts per row (frequency weights). Defaults to 1.
 
         Rows with a missing or infinite covariate are dropped, with a
-        warning. A covariate that is constant across the observations (or
-        a single observation) cannot be separated from the intercept, and
-        collinear covariates cannot be separated from each other; both
-        raise a ``ValueError``.
+        warning. A column that is constant across the observations (or a
+        single observation) cannot be separated from the intercept, nor
+        one that is a linear combination of the others from them: such a
+        column is aliased, as in :class:`~surpyval.CoxPH`. Its coefficient
+        is ``nan`` (``model.aliased`` lists it), the others are those of
+        the fit without it, predictions take it as 0, and one warning
+        names it.
         tol : float, optional
             Convergence tolerance on the coefficient step. Default 1e-5.
         max_iter : int, optional
@@ -584,13 +596,29 @@ class BuckleyJames_:
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
-        _check_design(Z_a, n_a)
+        p = Z_a.shape[1]
+        aliased = _aliased(Z_a, n_a)
+        kept = np.setdiff1d(np.arange(p), aliased)
+        if aliased.size:
+            warn_aliased(
+                aliased,
+                "they are constant (the intercept, which the least-squares "
+                "step profiles out) or a linear combination of the other "
+                "columns",
+            )
+        Z_k = Z_a[:, kept]
 
         Y = np.log(x_a)
         delta = (c_a == 0).astype(float)
         # gamma is the textbook ``log T = gamma'Z + eps`` slope; report its
         # negative so a positive coefficient accelerates failure.
-        gamma, n_iter, converged = _fit_beta(Y, delta, Z_a, n_a, tol, max_iter)
+        if kept.size:
+            gamma, n_iter, converged = _fit_beta(
+                Y, delta, Z_k, n_a, tol, max_iter
+            )
+        else:
+            # Every column aliased: nothing to iterate.
+            gamma, n_iter, converged = np.zeros(0), 0, True
         if not converged:
             warnings.warn(
                 "Buckley-James did not converge in {} iterations; returning "
@@ -598,10 +626,15 @@ class BuckleyJames_:
             )
 
         # Final residual distribution used for prediction.
-        resid, resid_surv, _ = _residual_km(Y - Z_a @ gamma, delta, n_a)
+        resid, resid_surv, _ = _residual_km(Y - Z_k @ gamma, delta, n_a)
 
         return BuckleyJamesModel(
-            -gamma, resid, resid_surv, n_iter, converged, (Y, delta, Z_a, n_a)
+            expand(-gamma, kept, p),
+            resid,
+            resid_surv,
+            n_iter,
+            converged,
+            (Y, delta, Z_a, n_a),
         )
 
     def fit_from_df(
@@ -648,7 +681,9 @@ class BuckleyJames_:
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
+        # The aliasing warning (#476) names the columns.
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec

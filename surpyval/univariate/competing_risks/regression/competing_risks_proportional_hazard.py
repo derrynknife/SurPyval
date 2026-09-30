@@ -213,6 +213,17 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         restore_covariate_meta(model, model_dict)
         return model
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine in some cause's fit (#476): a constant column, which
+        the cause's baseline hazard absorbs, or a linear combination of
+        the others. Their coefficients are
+        ``nan`` in that cause's row of ``betas`` (R's ``NA``), and
+        predictions take them as 0."""
+        betas = np.atleast_2d(np.asarray(self.betas, dtype=float))
+        return np.flatnonzero(np.isnan(betas).any(axis=0))
+
     def _finish(
         self,
         betas: npt.NDArray,

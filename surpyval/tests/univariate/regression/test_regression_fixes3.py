@@ -527,16 +527,19 @@ def test_accelerated_life_and_gamma_frailty_accept_ragged_x():
 # -- 11. Degenerate data ------------------------------------------------------
 
 
-def test_degenerate_semiparametric_data_are_refused():
+def test_degenerate_semiparametric_data():
     x, Z = _ph_data()
     c = (x > 12).astype(int)
+    # A constant column, a single observation and collinear columns are
+    # aliased (nan, with one warning; #476), as in the other regressions.
     for fit in (BuckleyJames.fit, AdditiveHazards.fit):
-        with pytest.raises(ValueError, match="constant|vary"):
-            fit(x, np.ones(200), c=c)
-        with pytest.raises(ValueError, match="constant|vary"):
-            fit([3.0], [[1.0]])
-        with pytest.raises(ValueError, match="collinear"):
-            fit(x, np.column_stack([Z, 2 * Z]), c=c)
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            assert np.isnan(fit(x, np.ones(200), c=c).beta).all()
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            assert np.isnan(fit([3.0], [[1.0]]).beta).all()
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            model = fit(x, np.column_stack([Z, 2 * Z]), c=c)
+        np.testing.assert_array_equal(model.aliased, [1])
     with pytest.raises(ValueError, match="at least one event"):
         AdditiveHazards.fit(x, Z, c=np.ones(200))
     with pytest.raises(ValueError, match="non-negative"):

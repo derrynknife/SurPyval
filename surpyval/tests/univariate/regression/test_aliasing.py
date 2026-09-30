@@ -203,6 +203,7 @@ def test_fine_gray_and_competing_risks():
         assert len(messages) == 1 and messages[0].startswith(_aliased(2))
         assert caught[0].filename == __file__
         assert np.isnan(model.betas[:, 2]).all()
+        np.testing.assert_array_equal(model.aliased, [2])
         np.testing.assert_allclose(
             model.cif([0.5, 1.0], Z3[:1], "a"),
             ref.cif([0.5, 1.0], Z[:1], "a"),
@@ -226,6 +227,8 @@ def test_frailty():
     np.testing.assert_allclose(model.dist_params, ref.dist_params, rtol=1e-5)
     np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-5)
     assert np.isnan(model.beta[2])
+    np.testing.assert_array_equal(model.aliased, [2])
+    assert ref.aliased.size == 0
     np.testing.assert_allclose(
         model.sf([0.5], [0.1, 0.2, 1.0]), ref.sf([0.5], [0.1, 0.2]), rtol=1e-5
     )
@@ -264,3 +267,126 @@ def test_full_rank_fits_do_not_warn():
             warnings.simplefilter("error")
             model = fitter.fit(x, Z, c)
         assert model.aliased.size == 0
+
+
+def _tvc_data(n=120):
+    # Start-stop rows: a stress switches on at a random time (column 0)
+    # and a fixed covariate acts throughout (column 1).
+    rng = np.random.default_rng(0)
+    switch = rng.uniform(0.3, 1.5, n)
+    z = rng.normal(size=n)
+    t_low = rng.exponential(2.0, n) * np.exp(-0.3 * z)
+    t_high = switch + rng.exponential(2.0 / np.e, n) * np.exp(-0.3 * z)
+    T = np.where(t_low > switch, t_high, t_low)
+    one = T <= switch
+    i = np.r_[np.arange(n), np.flatnonzero(~one)]
+    xl = np.r_[np.zeros(n), switch[~one]]
+    xr = np.r_[np.where(one, T, switch), T[~one]]
+    c = np.r_[np.where(one, 0, 1), np.zeros((~one).sum(), dtype=int)]
+    Z = np.c_[np.r_[np.zeros(n), np.ones((~one).sum())], np.r_[z, z[~one]]]
+    return i, xl, xr, c, Z
+
+
+# (A constant column is identified in a Weibull PO model: no intercept.)
+_TVC = [
+    (fitter, kind)
+    for fitter in ("WeibullPH", "WeibullPO", "WeibullAFT", "LogNormalAFT")
+    for kind in ("constant", "collinear")
+    if (fitter, kind) != ("WeibullPO", "constant")
+]
+
+
+@pytest.mark.parametrize("fitter, kind", _TVC)
+def test_fit_tvc(fitter, kind):
+    # The AFT fit_tvc has its own likelihood and did not alias: a repeated
+    # column split WeibullAFT's 0.338 into 1.685 and -1.346, and a constant
+    # one moved alpha from 2.33 to 0.79 (to -0.195 for LogNormalAFT's mu),
+    # silently. The PH / PO fit_tvc refits through ``fit`` and aliased.
+    i, xl, xr, c, Z = _tvc_data()
+    F = getattr(sp, fitter)
+    ref = F.fit_tvc(i, xl, xr, c, Z)
+    extra = np.ones(len(i)) if kind == "constant" else Z[:, 1]
+    model, messages, caught = _fit(
+        lambda: F.fit_tvc(i, xl, xr, c, np.c_[Z, extra])
+    )
+    assert len(messages) == 1 and messages[0].startswith(_aliased(2))
+    assert caught[0].filename == __file__
+    np.testing.assert_allclose(model.params[:-1], ref.params, rtol=1e-6)
+    assert np.isnan(model.params[-1])
+    np.testing.assert_array_equal(model.aliased, [2])
+    assert model.k == ref.k
+    q = [[0.0, 0.3, 5.0], [1.0, 0.3, -2.0]]
+    np.testing.assert_allclose(
+        model.sf_tvc([1.0, 2.0], q, xl=[0.0, 1.0]),
+        ref.sf_tvc([1.0, 2.0], [r[:2] for r in q], xl=[0.0, 1.0]),
+        rtol=1e-6,
+    )
+    np.testing.assert_allclose(
+        model.cb([1.0], q[:1]), ref.cb([1.0], [q[0][:2]]), rtol=1e-4
+    )
+
+
+@pytest.mark.parametrize("fitter", ["AdditiveHazards", "BuckleyJames"])
+@pytest.mark.parametrize("kind", ["constant", "collinear"])
+def test_lin_ying_and_buckley_james(fitter, kind):
+    # Both refused such a column with a ValueError, where every other
+    # regression aliases it; the baseline hazard (Lin-Ying) and the
+    # profiled-out intercept (Buckley-James) absorb a constant.
+    x, Z, c = _rossi()
+    Z = Z[:, [0, 1, 6]]  # fin, age, prio
+    F = getattr(sp, fitter)
+    ref = F.fit(x, Z, c=c)
+    model, messages, caught = _fit(lambda: F.fit(x, _extra(Z, kind), c=c))
+    assert len(messages) == 1 and messages[0].startswith(_aliased(3))
+    assert caught[0].filename == __file__
+    np.testing.assert_allclose(model.beta[:3], ref.beta, rtol=1e-10)
+    assert np.isnan(model.beta[3])
+    np.testing.assert_array_equal(model.aliased, [3])
+    q = _extra(Z[:3], kind)
+    for k in range(3):
+        np.testing.assert_allclose(
+            model.sf([20, 40, 52], q[k]),
+            ref.sf([20, 40, 52], Z[k]),
+            rtol=1e-10,
+        )
+    if fitter == "AdditiveHazards":
+        np.testing.assert_allclose(model.se[:3], ref.se, rtol=1e-10)
+        assert np.isnan(model.se[3]) and np.isnan(model.p_values[3])
+    else:
+        ci = model.bootstrap_ci(n_boot=10, random_state=0)
+        ref_ci = ref.bootstrap_ci(n_boot=10, random_state=0)
+        np.testing.assert_allclose(ci[:3], ref_ci, rtol=1e-10)
+        assert np.isnan(ci[3]).all()
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="#503: a dual-stress life model with equal stress columns "
+    "splits the stress exponent between them silently",
+)
+@pytest.mark.parametrize(
+    "dual, single",
+    [("DualPower", "Power"), ("DualExponential", "Exponential")],
+)
+def test_dual_stress_life_model_with_equal_stresses(dual, single):
+    # With s1 == s2, DualPower's c s1^m s2^n is Power's c s^(m + n), and
+    # DualExponential's c exp(a / s1 + b / s2) is c exp((a + b) / s): only
+    # the sum is determined. DualPower split Power's exponent -1.174 into
+    # -0.568 and -0.605, DualExponential Exponential's 1.877 into 0.912
+    # and 0.965, silently.
+    s = np.repeat([1.0, 2.0, 3.0], 10)
+    u = (np.arange(1, 31) - 0.3) / 30.4
+    life = (-np.log1p(-u)) ** 0.5
+    x = np.round(30.0 * s**-1.2 * life[(np.arange(30) * 7 + 3) % 30], 3)
+    lm = "ExponentialLifeModel" if single == "Exponential" else single
+    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp, lm)).fit(x, Z=s)
+    F = sp.AcceleratedLife(sp.Weibull, getattr(sp, dual))
+    model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
+    aliased = [m for m in messages if "cannot be estimated" in m]
+    assert len(aliased) == 1
+    assert np.isnan(model.params).sum() == 1
+    np.testing.assert_allclose(
+        model.sf([5.0, 10.0], [[1.5, 1.5], [2.5, 2.5]]),
+        ref.sf([5.0, 10.0], [1.5, 2.5]),
+        rtol=1e-4,
+    )
