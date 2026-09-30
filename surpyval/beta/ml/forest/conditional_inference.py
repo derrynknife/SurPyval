@@ -21,8 +21,7 @@ separates the two questions. At each node:
    ``kind``.
 
 **Scores.** The non-parametric kind uses the log-rank scores of the
-Turnbull-score split, :func:`~surpyval.beta.ml.forest.turnbull_score_split.
-log_rank_scores` (the Savage scores :math:`\delta_i - \hat H(x_i)` on
+Turnbull-score split (the Savage scores :math:`\delta_i - \hat H(x_i)` on
 right-censored data); with delayed entry, the martingale residuals
 :math:`\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]` of the Nelson-Aalen
 estimate of the delayed-entry risk sets (Fu and Simonoff, 2017), whose sum
@@ -48,8 +47,10 @@ h)^\top` (Hothorn et al., 2006, Theorem 1). The standardised quadratic
 form :math:`Q_m = T_m^\top \Sigma_m^{+} T_m` (the square of the
 Turnbull-score split's statistic for one score) is maximised over the
 feature's admissible cuts, those that leave both children
-``min_leaf_samples`` rows and ``min_leaf_failures`` failures: the
-maximally selected statistic (Lausen and Schumacher, 1992). It is used
+``min_leaf_samples`` rows and ``min_leaf_failures`` failures (thinned to
+64 evenly spaced ones if there are more, as the deviance split thins its
+candidates): the maximally selected statistic (Lausen and Schumacher,
+1992). It is used
 rather than ctree's default linear statistic in the raw feature value
 because a tree splits at a cut: the maximum has power against a threshold
 anywhere, and it depends on the feature only through the order of its
@@ -57,30 +58,35 @@ values, so, like the tree itself, the selection is unchanged by any
 increasing transformation of a feature.
 
 **p-value.** Under the permutation null the standardised statistics at
-successive cuts are asymptotically those of a Brownian bridge: jointly
-normal (:math:`\chi^2_q` for :math:`q` scores, :math:`q` the rank of the
-scores' covariance), and the correlation between cuts :math:`m_1 < m_2` is
-:math:`\sqrt{m_1 (N - m_2) / (m_2 (N - m_1))}`. The p-value of the
-maximum :math:`b` is bounded by the Hunter-Worsley improved Bonferroni
-inequality along the chain of cuts,
+successive cuts are asymptotically those of a Brownian bridge, a
+Gauss-Markov chain: each :math:`Q_k = |W_k|^2 \sim \chi^2_q`, :math:`q` the
+rank of the scores' covariance, with
+:math:`W_k = \rho_k W_{k-1} + \sqrt{1 - \rho_k^2}\, E_k` and
+:math:`\rho_k = \sqrt{m_{k-1} (N - m_k) / (m_k (N - m_{k-1}))}`. The
+p-value of the maximum :math:`b`,
 
 .. math::
 
-    P\left(\max_k Q_k \geq b\right) \leq P(Q_1 \geq b)
-    + \sum_{k \geq 2} P(Q_{k-1} < b \leq Q_k),
+    P\left(\max_k Q_k \geq b\right) = P(Q_1 \geq b)
+    + \sum_{k \geq 2} P(Q_1, \dots, Q_{k-1} < b \leq Q_k),
 
-(Worsley, 1982), which counts the cuts as many only as far as they are
-not correlated: one cut gives the plain :math:`\chi^2_q` p-value, and many
-closely spaced cuts little more than a few independent ones. This is the
-bound of Lausen, Sauerbrei and Schumacher (1994) behind the ``maxstat``
-package (Hothorn and Lausen, 2003), evaluated exactly rather than by a
-Taylor expansion: for one score with Owen's :math:`T` function, and for
-two by quadrature over the non-central :math:`\chi^2` law of
-:math:`Q_k` given :math:`Q_{k-1}`. It is deterministic, costs
-:math:`O(\text{cuts})` per feature, and, being an upper bound, errs on the
-conservative side. A permutation p-value was rejected: it costs a
-thousand passes per feature per node, and a Monte Carlo p-value would make
-the tree depend on the order of the rows and would differ between ``n=2``
+is computed exactly for that chain (Hothorn and Zeileis, 2008, compute
+the same multivariate normal probability by Monte Carlo integration):
+the density of :math:`|W_k|` over the paths that have stayed below
+:math:`\sqrt b` is carried from cut to cut by Gauss-Legendre quadrature,
+through the non-central :math:`\chi` law of :math:`|W_k|` given
+:math:`|W_{k-1}|`. One cut gives the plain :math:`\chi^2_q` p-value, and
+many closely spaced cuts little more than a few independent ones, as they
+should. It is deterministic and costs well under a second per feature.
+Two alternatives were rejected. The Hunter-Worsley (improved Bonferroni)
+bound of the ``maxstat`` package (Worsley, 1982; Lausen, Sauerbrei and
+Schumacher, 1994; Hothorn and Lausen, 2003) counts every up-crossing of
+the chain, and with the many close cuts of a continuous feature it was
+about twice the true p-value at 0.05 (for 200 rows), which would have
+turned the bias against continuous features. A permutation p-value costs
+a thousand passes per feature per node, is coarse when Bonferroni
+multiplies it by the number of features, and, being Monte Carlo, would
+make a tree depend on the order of the rows and differ between ``n=2``
 and two identical rows (Design Principles 4 and 5).
 
 References
@@ -96,6 +102,9 @@ Lausen, B., Sauerbrei, W. and Schumacher, M., 1994. Classification and
 regression trees (CART) used for the exploration of prognostic factors
 measured on different scales. In *Computational Statistics*, pp.483-496.
 Physica, Heidelberg.
+
+Hothorn, T. and Zeileis, A., 2008. Generalized maximally selected
+statistics. *Biometrics*, 64(4), pp.1263-1269.
 
 Worsley, K.J., 1982. An improved Bonferroni inequality and applications.
 *Biometrika*, 69(2), pp.297-302.
@@ -117,12 +126,13 @@ right-censored data, with application to time-varying covariate data.
 *Biostatistics*, 18(2), pp.352-369.
 """
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from functools import lru_cache
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import minimize_scalar
-from scipy.special import i0e, ive
+from scipy.special import i0e, ive, roots_legendre
 from scipy.stats import chi, chi2, ncx2, norm
 
 from surpyval.beta.ml.forest.deviance_split import (
@@ -238,7 +248,12 @@ def _wei_dlog_h(theta: NDArray, x: NDArray) -> NDArray:
     return np.column_stack([np.full(x.size, -beta), 1.0 + log_H])
 
 
-def _interval_score(hazard, theta: NDArray, a: NDArray, b: NDArray) -> NDArray:
+Hazard = Callable[[NDArray, NDArray], tuple[NDArray, NDArray]]
+
+
+def _interval_score(
+    hazard: Hazard, theta: NDArray, a: NDArray, b: NDArray
+) -> NDArray:
     # d/dtheta log(S(a) - S(b)) for a < b (b may be +inf), per row, in
     # the form stable when S(a) is tiny:
     # [-G(a) + exp(-(H(b) - H(a))) G(b)] / [1 - exp(-(H(b) - H(a)))].
@@ -321,6 +336,7 @@ def node_scores(data: SurpyvalData, kind: str) -> NDArray | None:
     """The ``(N, q)`` scores the node of a ``kind`` tree tests its
     features with, or ``None`` if they carry no information (no event
     information, or a score that is not finite)."""
+    scores: NDArray | None
     if kind == "non-parametric":
         scores = nonparametric_scores(data)
     else:
@@ -332,6 +348,13 @@ def node_scores(data: SurpyvalData, kind: str) -> NDArray | None:
 
 # ---------------------------------------------------------------------------
 # The maximally selected statistic and its p-value
+
+
+@lru_cache(maxsize=64)
+def _gauss_legendre(n_nodes: int) -> tuple[NDArray, NDArray]:
+    # scipy's rule is O(n); numpy's leggauss solves an n x n eigenproblem.
+    nodes, weights = roots_legendre(n_nodes)
+    return nodes, weights
 
 
 def _chi_transition(
@@ -354,7 +377,9 @@ def _chi_transition(
     return (t / sigma**2) * (t / a) ** nu * near * ive(nu, x)
 
 
-def _chi_tail(h: float, r: NDArray, rho: float, sigma: float, q: int) -> NDArray:
+def _chi_tail(
+    h: float, r: NDArray, rho: float, sigma: float, q: int
+) -> NDArray:
     # P(|rho w + sigma E| >= h) for |w| = r.
     if q == 1:
         return norm.sf((h - rho * r) / sigma) + norm.sf((h + rho * r) / sigma)
@@ -383,7 +408,7 @@ def max_chain_sf(b: float, rho: NDArray, q: int) -> float:
     sigma = np.sqrt(1.0 - rho**2)
     # Enough nodes to resolve the narrowest step's kernel.
     n_nodes = int(np.clip(np.ceil(6.0 * h / sigma.min()), 48, 800))
-    nodes, weights = np.polynomial.legendre.leggauss(n_nodes)
+    nodes, weights = _gauss_legendre(n_nodes)
     r = 0.5 * h * (nodes + 1.0)
     w = 0.5 * h * weights
     # The density of |W_1| below h
