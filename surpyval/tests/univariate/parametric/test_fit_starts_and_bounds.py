@@ -98,8 +98,10 @@ def test_a_restored_model_keeps_its_likelihood():
     assert restored.aic() == model.aic()
     # the dict stores the criteria's sample size too
     assert restored.bic() == model.bic()
+    # the plotting points need the data; plot() itself draws the curve
+    # alone for a model without data (#485)
     with pytest.raises(ValueError, match="with_data=True"):
-        restored.plot()
+        restored.get_plot_data()
     with_data = surv.from_dict(
         json.loads(json.dumps(model.to_dict(with_data=True)))
     )

@@ -25,6 +25,14 @@ _LIFE_PARAM_MAP = {
     "Gamma": ("beta", lambda x: 1.0 / x, lambda x: 1.0 / x),
 }
 
+# How the life parameter follows from the life model's life L(Z), as the
+# fitted model prints it in place of a value (#489).
+_LIFE_RELATION = {
+    "Exponential": "1 / L(Z)",
+    "LogNormal": "ln L(Z)",
+    "Gamma": "1 / L(Z)",
+}
+
 
 def AcceleratedLife(
     distribution: OptimisedFitMixin, life_model: LifeModel
@@ -75,4 +83,5 @@ def AcceleratedLife(
         life_parameter=life_param,
         param_transform=transform,
         inverse_param_transform=inv_transform,
+        life_relation=_LIFE_RELATION.get(distribution.name, "L(Z)"),
     )

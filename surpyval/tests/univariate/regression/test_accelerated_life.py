@@ -8,6 +8,8 @@ distribution actually calls it ``"failure_rate"``, so the fit raised
 ``KeyError: 'lambda'``).
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -105,3 +107,79 @@ def test_gamma_life_is_the_reciprocal_of_its_rate():
     gamma = AcceleratedLife(Gamma, InversePower).fit(x, Z=stress)
     assert gamma.params[0] == pytest.approx(1.0, abs=0.05)
     assert gamma.params[2:] == pytest.approx(expo.params[1:], rel=0.02)
+
+
+# -- #489: the substituted life parameter, param_names, one stress level ---
+
+
+def _weibull_power(levels=(20.0, 30.0, 40.0)):
+    rng = np.random.default_rng(1)
+    stress = np.repeat(levels, 40)
+    x = 10 * rng.weibull(3, stress.size) * (100.0 / stress)
+    return x, stress
+
+
+def test_repr_does_not_show_the_life_parameter_as_a_fitted_value():
+    # It printed "alpha: 1.0", read as a characteristic life of 1
+    x, stress = _weibull_power()
+    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    text = repr(model)
+    assert "alpha: 1.0" not in text
+    assert "alpha: L(Z) of the Power life model" in text
+    assert "beta: " in text and "n: " in text
+    lognormal = AcceleratedLife(surpyval.LogNormal, Power).fit(x, Z=stress)
+    assert "mu: ln L(Z) of the Power life model" in repr(lognormal)
+    expo = AcceleratedLife(Exponential, Power).fit(x, Z=stress)
+    assert "failure_rate: 1 / L(Z)" in repr(expo)
+
+
+def test_param_names_and_life_parameter():
+    x, stress = _weibull_power()
+    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    assert model.param_names == ["alpha", "beta", "a", "n"]
+    assert len(model.param_names) == model.params.size
+    assert model.life_parameter == "alpha"
+    restored = surpyval.from_dict(model.to_dict())
+    assert restored.param_names == model.param_names
+    assert restored.life_parameter == "alpha"
+    assert "alpha: L(Z)" in repr(restored)
+    # the other regression families have param_names and no life parameter
+    ph = surpyval.WeibullPH.fit(x, stress.reshape(-1, 1))
+    assert ph.param_names == ["alpha", "beta", "beta_0"]
+    assert ph.life_parameter is None
+
+
+def test_param_cb_refuses_the_life_parameter():
+    x, stress = _weibull_power()
+    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    with pytest.raises(ValueError, match="not a parameter.*a, n"):
+        model.param_cb("alpha")
+    lo, hi = model.param_cb("n")
+    assert lo < model.params[3] < hi
+
+
+def test_one_stress_level_says_why():
+    # It said "Insufficient data at separate Z values. Try manually
+    # setting initial guess using 'init'"; no init identifies (a, n).
+    x, stress = _weibull_power(levels=(20.0,))
+    with pytest.raises(ValueError, match="at least two distinct stress"):
+        AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    with pytest.raises(ValueError, match="`init`"):
+        AcceleratedLife(Weibull, Power).fit(x, Z=stress, fixed={"n": -1.0})
+
+
+def test_one_stress_level_with_init_warns_not_identifiable():
+    x, stress = _weibull_power(levels=(20.0,))
+    with pytest.warns(UserWarning, match="not identifiable") as record:
+        AcceleratedLife(Weibull, Power).fit(
+            x, Z=stress, init=[1.0, 3.0, 500.0, -1.0]
+        )
+    assert [w.filename for w in record] == [__file__]
+    # with n fixed, one level identifies a: no warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = AcceleratedLife(Weibull, Power).fit(
+            x, Z=stress, init=[1.0, 3.0, 500.0, -1.0], fixed={"n": -1.0}
+        )
+    # the life at stress 20 is a * 20**n, about 10 * 100 / 20 = 50
+    assert model.params[2] / 20.0 == pytest.approx(50.0, rel=0.1)

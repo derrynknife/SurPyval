@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from collections import namedtuple
 from copy import copy, deepcopy
@@ -34,6 +36,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
     adjust_heuristic,
+    curve_plot_data,
     draw_probability_plot,
     probability_plot_data,
 )
@@ -1683,7 +1686,8 @@ class Parametric(
         function only reaches ``p`` in the limit, so any quantile at or above
         ``p`` is infinite (that proportion of the population never fails). For
         a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
-        so quantiles at or below ``f0`` return 0.
+        so quantiles at or below ``f0`` return 0. A probability outside
+        [0, 1] gives NaN, as scipy's ``ppf`` does.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -1704,8 +1708,19 @@ class Parametric(
             q = self.gamma + self.dist.qf(base, *self.params)
         # The zero-inflation mass sits at 0 — consistent with df (mass at
         # x == 0), ff(0) = f0 and the likelihood — not at the offset (#256).
-        q = np.where(u <= self.f0, 0.0, q)
-        q = np.where(u >= self.p, np.inf, q)
+        # Only where there is such a mass: with none, a continuous
+        # distribution's qf(0) is the start of its support (a Normal's
+        # -inf; it was 0). A discrete one keeps 0 (Poisson's own qf(0) is
+        # scipy's -1).
+        at_zero = (self.f0 > 0) or getattr(self.dist, "discrete", False)
+        q = np.where(at_zero & (u <= self.f0), 0.0, q)
+        # Only with a cure fraction: otherwise qf(1) is the end of the
+        # support (a Uniform's upper bound; it was inf).
+        q = np.where((self.p < 1) & (u >= self.p), np.inf, q)
+        # A probability outside [0, 1] has no quantile: NaN, as scipy's
+        # ``ppf`` and ``CustomDistribution.qf`` (#437) give. It was inf
+        # above 1 and 0 below 0, even for a Normal (#485).
+        q = np.where((u < 0) | (u > 1), np.nan, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
@@ -3129,6 +3144,11 @@ class Parametric(
         """
         A method to do a probability plot
 
+        A model without data (built with ``from_params``, or restored from
+        a dict saved without its data) draws its CDF alone on the same
+        axes, over its 1% to 99% quantiles, with no plotting points or
+        bounds -- for comparing a specification with a fit.
+
         Parameters
         ----------
 
@@ -3176,10 +3196,6 @@ class Parametric(
         if not hasattr(self, "params"):
             raise ValueError("Can't plot model that failed to fit")
 
-        if self.method == "given parameters":
-            detail = "Can't plot model that was given parameters and no data"
-            raise ValueError(detail)
-
         if not (
             hasattr(self.dist, "mpp_y_transform")
             and hasattr(self.dist, "mpp_inv_y_transform")
@@ -3188,10 +3204,18 @@ class Parametric(
                 f"{self.dist.name} does not support probability plotting"
             )
 
-        self._require_data("plot()")
-        heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
-
-        d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
+        if self.data is None:
+            # Built from parameters (or restored without its data): the
+            # model's CDF on the same axes, with no points or bounds, to
+            # compare a specification with a fit (#485).
+            d = curve_plot_data(
+                self.dist, self.ff, self.qf, self.gamma, self.params
+            )
+        else:
+            heuristic = adjust_heuristic(
+                self.data["c"], self.data["t"], heuristic
+            )
+            d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 
         return draw_probability_plot(
             ax,

@@ -33,6 +33,8 @@ Fitting a model on continuous paths is not provided; measured covariates
 are fitted as steps with ``fit_tvc``.
 """
 
+from __future__ import annotations
+
 import math
 from typing import Any, Callable
 

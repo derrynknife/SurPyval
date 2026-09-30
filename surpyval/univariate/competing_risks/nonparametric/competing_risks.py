@@ -7,6 +7,8 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+from __future__ import annotations
+
 import textwrap
 from typing import Any
 
@@ -355,6 +357,67 @@ class CompetingRisks(SerialisableMixin):
         """
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
+
+    def plot(self, stacked: bool = True, ax: Any = None) -> Any:
+        """
+        Plot the cumulative incidence of every cause (#485).
+
+        Parameters
+        ----------
+        stacked : bool, optional
+            Stack the causes' cumulative incidences (the default), so the
+            top of the stack is the all-cause failure probability
+            :math:`1 - S`; ``False`` draws each as its own step curve.
+        ax : matplotlib.axes.Axes, optional
+            The axes to draw on; the current axes by default.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes drawn on.
+
+        Examples
+        --------
+        >>> import matplotlib
+        >>> matplotlib.use("Agg")
+        >>> import matplotlib.pyplot as plt
+        >>> from surpyval.univariate.competing_risks import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
+        >>> e = ["a", "b", "a", "b", "a", None, "a", "b"]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0]
+        >>> model = CompetingRisks.fit(x, e, c=c)
+        >>> fig, ax = plt.subplots()
+        >>> model.plot(ax=ax).get_ylabel()
+        'Cumulative incidence'
+        >>> plt.close(fig)
+        """
+        if ax is None:
+            import matplotlib.pyplot as plt
+
+            ax = plt.gcf().gca()
+        causes = sorted(
+            self.event_idx_map, key=lambda e: self.event_idx_map[e]
+        )
+        # Each CIF is a right-continuous step function from 0 at time 0.
+        x = np.concatenate([[min(0.0, float(self.x[0]))], self.x])
+        cifs = [
+            np.concatenate([[0.0], self.CIF[self.event_idx_map[e]]])
+            for e in causes
+        ]
+        labels = [str(e) for e in causes]
+        if stacked:
+            ax.stackplot(x, *cifs, labels=labels, step="post", alpha=0.7)
+        else:
+            for cif, label in zip(cifs, labels):
+                ax.step(x, cif, where="post", label=label)
+        ax.set_ylim(0, 1)
+        ax.set_xlabel("x")
+        ax.set_ylabel("Cumulative incidence")
+        ax.set_title(
+            "Cumulative incidence by cause" + (" (stacked)" if stacked else "")
+        )
+        ax.legend(title="Cause")
+        return ax
 
     @classmethod
     def fit_from_df(

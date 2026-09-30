@@ -19,6 +19,8 @@ reuses the whole intensity-fitting, inference and diagnostic machinery
 unchanged.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np

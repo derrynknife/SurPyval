@@ -5,6 +5,7 @@
 
 # Copyright 2022 Cartiga LLC
 
+from __future__ import annotations
 
 import warnings
 from copy import copy
@@ -31,7 +32,9 @@ from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
+    formula_model_matrix,
     is_missing_event,
+    numeric_columns,
     validate_coxph,
     validate_coxph_df_inputs,
 )
@@ -1418,14 +1421,14 @@ class CoxPH_:
 
         Examples
         --------
-        In the bundled copy of the Rossi recidivism data ``arrest`` is 1
-        for a subject still free at week 52, so it is already the
-        censoring flag:
+        In the Rossi recidivism data ``arrest`` is 1 for a subject
+        arrested during follow-up, so the censoring flag is
+        ``1 - arrest``:
 
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, df["arrest"].values
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> Z = df[["fin", "age", "prio"]].values
         >>> model = CoxPH.fit(x, Z, c=c)
         >>> model.params.round(4)
@@ -1855,31 +1858,37 @@ class CoxPH_:
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None = None,
         n_col: str | None = None,
         tie_method: str = "efron",
         center: bool = False,
+        formula: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a time-varying-covariate Cox model from a start-stop DataFrame.
 
         See :meth:`fit_tvc`; ``Z_cols`` names the covariate column(s) and the
         remaining arguments name the id / ``xl`` / ``xr`` / ``c`` columns.
-        ``tie_method`` and ``center`` are as for :meth:`fit`.
+        ``tie_method`` and ``center`` are as for :meth:`fit`. Instead of
+        ``Z_cols``, ``formula`` (as in :meth:`fit_from_df`) gives the
+        covariates as a ``formulaic`` formula, which codes categorical
+        (e.g. ``"yes"`` / ``"no"``) columns.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        with covariate_columns(cols):
+        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
             model = self.fit_tvc(
                 i=df[i_col].to_numpy(),
                 xl=df[xl_col].to_numpy(),
                 xr=df[xr_col].to_numpy(),
                 c=df[c_col].to_numpy(),
-                Z=df[cols].to_numpy(),
+                Z=Z,
                 n=None if n_col is None else df[n_col].to_numpy(),
                 tie_method=tie_method,
                 center=center,
             )
-        model.feature_names = cols
+        model.feature_names = names
+        model.formula = form
+        model._model_spec = spec
         return model
 
     def fit_tvc_timeline(
@@ -1955,11 +1964,12 @@ class CoxPH_:
         df: "pd.DataFrame",
         i_col: str,
         x_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None,
         c_col: str,
         n_col: str | None = None,
         tie_method: str = "efron",
         center: bool = False,
+        formula: str | None = None,
     ) -> SemiParametricRegressionModel:
         """
         Fit a timeline TVC Cox model from a DataFrame.
@@ -1967,21 +1977,54 @@ class CoxPH_:
         See :meth:`fit_tvc_timeline`; ``x_col`` names the change-point time
         column (``x``), ``Z_cols`` the covariate column(s) and ``c_col`` the
         terminal event / censoring column (``0`` event, ``1`` censored).
-        ``tie_method`` and ``center`` are as for :meth:`fit`.
+        ``tie_method`` and ``center`` are as for :meth:`fit`. Instead of
+        ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
+        ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        with covariate_columns(cols):
+        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
             model = self.fit_tvc_timeline(
                 i=df[i_col].to_numpy(),
                 x=df[x_col].to_numpy(),
-                Z=df[cols].to_numpy(),
+                Z=Z,
                 c=df[c_col].to_numpy(),
                 n=None if n_col is None else df[n_col].to_numpy(),
                 tie_method=tie_method,
                 center=center,
             )
-        model.feature_names = cols
+        model.feature_names = names
+        model.formula = form
+        model._model_spec = spec
         return model
+
+
+def _df_covariates(
+    df: Any, Z_cols: str | list[str] | None, formula: str | None
+) -> tuple:
+    """The covariates of the TVC ``*_from_df`` fits, from ``Z_cols`` or a
+    ``formula`` (#485), with every row kept: a TVC fit refuses a missing
+    covariate rather than dropping part of a subject's path."""
+    from formulaic import Formula
+
+    from ..regression_data import drop_intercept
+
+    if (Z_cols is None) == (formula is None):
+        raise ValueError("Give exactly one of 'Z_cols' or 'formula'")
+    if formula is not None:
+        matrix, spec = formula_model_matrix(formula, df)
+        matrix = drop_intercept(matrix)
+        return (
+            np.asarray(matrix, dtype=float),
+            Formula(formula),
+            list(matrix.columns),
+            spec,
+        )
+    assert Z_cols is not None  # exactly one of the two, checked above
+    cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+    unknown = [col for col in cols if col not in df.columns]
+    if unknown:
+        raise ValueError("{} not in dataframe columns".format(unknown))
+    return numeric_columns(df, cols), None, cols, None
 
 
 CoxPH = CoxPH_()

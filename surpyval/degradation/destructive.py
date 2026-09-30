@@ -40,6 +40,8 @@ moves), the standard destructive-degradation / degradation-distribution model
 (Meeker & Escobar).
 """
 
+from __future__ import annotations
+
 from numbers import Number
 from typing import Any
 

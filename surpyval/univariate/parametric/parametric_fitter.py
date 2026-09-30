@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import warnings
 from math import comb
@@ -361,6 +363,23 @@ def _optimizer_label(how: str, res: Any) -> str:
 
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
+
+
+def normalise_how(how: Any) -> Any:
+    """``how`` in upper case when it names an estimation method: it is
+    typed by hand, and ``how="mle"`` raised (#485). Anything else is
+    returned as it is, for the caller's own check to refuse."""
+    if isinstance(how, str) and how.upper() in PARA_METHODS:
+        return how.upper()
+    return how
+
+
+class OutsideSupportError(ValueError):
+    """Data outside a distribution's support, so the distribution cannot
+    describe it at all. A ``ValueError``; its own class lets
+    ``fit_best`` pass over such a candidate quietly."""
+
+
 METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
 
 DEFAULT_Y_TICKS = [
@@ -1433,7 +1452,11 @@ class OptimisedFitMixin:
             raise ValueError(detail)
 
         if how not in PARA_METHODS:
-            raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
+            raise ValueError(
+                "`how` must be one of {} (in any case); got {!r}".format(
+                    PARA_METHODS, how
+                )
+            )
 
         if how == "MPP" and not self.supports_mpp:
             detail = (
@@ -1544,7 +1567,7 @@ class OptimisedFitMixin:
                     | ((x_sd >= upper) & (c_sd == 1))
                 )
             if bad.any():
-                raise ValueError(detail)
+                raise OutsideSupportError(detail)
 
         if how == "MPS" and (surv_data.c == 2).any():
             # neg_mean_D has no interval-censored term; without this
@@ -2285,6 +2308,7 @@ turnbull_estimator
         >>> model.params.round(3)
         array([6.022, 1.351])
         """
+        how = normalise_how(how)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t)

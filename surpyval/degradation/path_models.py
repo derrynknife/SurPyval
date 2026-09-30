@@ -25,6 +25,8 @@ with ordinary least squares in closed form; the others
 started from a linearised fit.
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 import numpy as np

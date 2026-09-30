@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
@@ -53,14 +55,14 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
     Examples
     --------
-    Fitted to the Rossi recidivism data, where ``arrest`` is already the
-    censoring flag; ``exp(params)`` are the hazard ratios:
+    Fitted to the Rossi recidivism data, where ``arrest`` is 1 for an
+    arrest (so ``c = 1 - arrest``); ``exp(params)`` are the hazard ratios:
 
     >>> import numpy as np
     >>> from surpyval import CoxPH
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> model = CoxPH.fit(x, Z, c=c)
     >>> np.exp(model.params).round(4)

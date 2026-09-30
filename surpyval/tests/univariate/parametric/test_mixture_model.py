@@ -23,7 +23,10 @@ def test_unfitted_attributes_are_none():
     assert mm.params is None
     assert mm.w is None
     assert mm.data is None
-    assert repr(mm) == "Unable to fit values"
+    # #482: the pre-fit repr said "Unable to fit values"
+    assert repr(mm) == (
+        "Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)"
+    )
 
 
 def test_fit_populates_params_and_weights():
@@ -128,3 +131,63 @@ def test_df_accepts_integer_input():
     mm = _fitted_model()
     vals = mm.df([1, 5, 10])
     assert np.all(np.isfinite(vals)) and np.all(vals >= 0)
+
+
+# -- #482: fit returns the model, and works on the class ------------------
+
+_X482 = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+
+
+def test_fit_on_a_model_returns_that_model():
+    # ``model = mm.fit(x)`` gave None, so ``model.sf`` raised AttributeError
+    mm = sp.MixtureModel(dist=sp.Weibull, m=2)
+    model = mm.fit(_X482)
+    assert model is mm
+    assert np.isfinite(model.sf(10))
+
+
+def test_fit_on_the_class_builds_and_fits():
+    old = sp.MixtureModel(dist=sp.Weibull, m=2)
+    old.fit(_X482)  # the in-place form still works
+    new = sp.MixtureModel.fit(_X482, dist=sp.Weibull, m=2)
+    assert isinstance(new, sp.MixtureModel)
+    assert new.m == 2 and new.dist is sp.Weibull
+    np.testing.assert_allclose(new.params, old.params)
+    np.testing.assert_allclose(new.w, old.w)
+    three = sp.MixtureModel.fit(_X482, dist=sp.Weibull, m=3)
+    assert three.params.shape == (3, 2)
+
+
+def test_fit_on_the_class_passes_every_data_argument():
+    c = [0] * 15 + [1, 1]
+    old = sp.MixtureModel(dist=sp.Weibull, m=2)
+    old.fit(_X482, c, tl=0.5)
+    new = sp.MixtureModel.fit(_X482, c, tl=0.5, dist=sp.Weibull)
+    np.testing.assert_allclose(new.params, old.params)
+    # truncated data is fitted by direct maximisation, and says so
+    assert "Fitted by           : MLE" in repr(new)
+    assert "Fitted by           : EM" in repr(
+        sp.MixtureModel.fit(_X482, dist=sp.Weibull)
+    )
+
+
+def test_fit_on_the_class_needs_dist():
+    with pytest.raises(ValueError, match="dist"):
+        sp.MixtureModel.fit(_X482)
+
+
+def test_unbound_call_with_a_model_still_works():
+    mm = sp.MixtureModel(dist=sp.Weibull, m=2)
+    assert sp.MixtureModel.fit(mm, _X482) is mm
+    assert mm.params is not None
+
+
+def test_fit_signatures():
+    import inspect
+
+    on_class = inspect.signature(sp.MixtureModel.fit).parameters
+    assert list(on_class)[:2] == ["x", "c"]
+    assert on_class["dist"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert on_class["m"].default == 2
+    on_model = inspect.signature(sp.MixtureModel(sp.Weibull).fit).parameters
+    assert "dist" not in on_model and "self" not in on_model

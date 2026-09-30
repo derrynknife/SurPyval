@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from autograd import grad
 from autograd.scipy.special import beta as abeta

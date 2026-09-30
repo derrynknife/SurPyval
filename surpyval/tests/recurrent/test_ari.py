@@ -4,7 +4,16 @@ import pytest
 
 matplotlib.use("Agg")
 
-from surpyval.recurrent import ARI, CrowAMSAA, Duane  # noqa: E402
+import surpyval as sp  # noqa: E402
+from surpyval.recurrent import (  # noqa: E402
+    ARA,
+    ARI,
+    CoxLewis,
+    CrowAMSAA,
+    Duane,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
+)
 from surpyval.recurrent.renewal.ari import ari_reduction  # noqa: E402
 from surpyval.utils.recurrent_utils import handle_xicn  # noqa: E402
 
@@ -198,3 +207,51 @@ def test_fit_scales_to_many_items():
     model = ARI.fit_from_recurrent_data(data, dist=CrowAMSAA, m=1)
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.model.params).all()
+
+
+# -- #495: ARI's dist is an intensity model, ARA's a lifetime distribution --
+
+
+@pytest.mark.parametrize(
+    "dist", [sp.Weibull, sp.Exponential, sp.LogNormal, sp.Gamma]
+)
+def test_ari_refuses_a_lifetime_distribution_clearly(dist):
+    # It failed with AttributeError: 'Weibull_' object has no attribute
+    # 'parameter_initialiser', from inside the fit.
+    with pytest.raises(ValueError, match="baseline intensity model") as err:
+        ARI.fit(X, I, dist=dist)
+    message = str(err.value)
+    assert "CrowAMSAA" in message and "ARA" in message
+    with pytest.raises(ValueError, match="baseline intensity model"):
+        ARI.fit_from_recurrent_data(handle_xicn(X, I), dist=dist)
+    with pytest.raises(ValueError, match="baseline intensity model"):
+        ARI.fit_from_parameters([10.0, 2.0], 0.5, dist=dist)
+
+
+def test_ari_refuses_anything_else_clearly():
+    with pytest.raises(ValueError, match="must be a recurrence intensity"):
+        ARI.fit(X, I, dist="CrowAMSAA")
+
+
+@pytest.mark.parametrize("fitter", [ARA, GeneralizedRenewal])
+def test_lifetime_fitters_refuse_an_intensity_model_clearly(fitter):
+    # ARA.fit(x, i, dist=CrowAMSAA) said "Item 0.0 has more than one
+    # right censored time".
+    with pytest.raises(ValueError, match="not an intensity model.*ARI"):
+        fitter.fit(X, I, dist=CrowAMSAA)
+    with pytest.raises(ValueError, match="not an intensity model"):
+        fitter.fit_from_parameters([10.0, 2.0], 0.5, dist=CrowAMSAA)
+
+
+def test_g1_refuses_an_intensity_model_clearly():
+    with pytest.raises(ValueError, match="not an intensity model"):
+        GeneralizedOneRenewal.fit(X, I, dist=Duane)
+    with pytest.raises(ValueError, match="not an intensity model"):
+        GeneralizedOneRenewal.fit_from_parameters([10.0, 2.0], 0.5, dist=Duane)
+
+
+@pytest.mark.parametrize("dist", [CrowAMSAA, Duane, CoxLewis])
+def test_ari_still_takes_every_intensity_model(dist):
+    model = ARI.fit(X, I, dist=dist)
+    assert model.model.dist is dist
+    assert 0.0 <= model.rho <= 1.0

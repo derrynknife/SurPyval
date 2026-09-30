@@ -759,6 +759,9 @@ naming and the status column ``c`` follows surpyval's censoring convention —
 ``c = 0`` for the terminal event, ``c = 1`` for a right-censored interval end
 (a covariate change or administrative end). A subject may have at most one
 ``c = 0`` row, it must be its last interval, and its intervals must not overlap.
+The covariates are ``Z_cols`` (numeric columns) or, as in ``fit_from_df``, a
+``formula=`` that codes categorical columns such as the ``"yes"`` / ``"no"``
+columns of ``load_rossi_time_varying()``.
 In the example below a covariate
 ``stress`` switches from 0 to 1 at a random time for each unit and genuinely
 raises the hazard once it turns on; units that fail before the switch
@@ -1942,10 +1945,13 @@ Notice that the Weibull shape parameter :math:`\beta` is estimated globally —
 it is the same for all stress levels — while the scale parameter :math:`\alpha`
 varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
-``alpha: 1.0`` in the report is a placeholder: the life parameter is replaced
-by :math:`\phi(Z)`, so it is held fixed and carries no information (it is listed
-in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhenius parameter ``a`` is
-:math:`E_a / k_B`, so the fit estimates the activation energy directly:
+report shows ``alpha`` as ``L(Z)``, not as a value: the life parameter
+(``model_arr.life_parameter``) is replaced by the life model at each stress, so
+it is not estimated. Its slot in ``params`` (named by ``model_arr.param_names``)
+holds a placeholder 1 that carries no information: it is listed in
+``model_arr.fixed``, is not counted as a parameter in the AIC, and ``param_cb``
+refuses it. The Arrhenius parameter ``a`` is :math:`E_a / k_B`, so the fit
+estimates the activation energy directly:
 
 .. jupyter-execute::
 
@@ -1958,6 +1964,9 @@ in ``model_arr.fixed``, and is not counted as a parameter in the AIC). The Arrhe
 
     assert c_al[stress == 358.].sum() > 10          # most of the coolest
     assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
+    assert model_arr.life_parameter == 'alpha'
+    assert model_arr.param_names == ['alpha', 'beta', 'a', 'b']
+    assert 'alpha: L(Z) of the' in repr(model_arr)
     assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
     assert round(model_arr.params[2] * k, 2) == 0.67
     _lo, _hi = model_arr.param_cb('a') * k
@@ -2055,8 +2064,9 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
     model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
         x_2s, Z=np.column_stack([temp, volts]))
-    for name, value in zip(model_2s.parameter_names(), model_2s.params):
-        print(f'{name:5s} = {value:.4g}')
+    for name, value in zip(model_2s.param_names, model_2s.params):
+        if name != model_2s.life_parameter:   # alpha is given by the life model
+            print(f'{name:5s} = {value:.4g}')
     print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
 
 The fit separates the two effects — an activation energy of 0.67 eV against
@@ -2715,7 +2725,9 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name.
+errors of every parameter as a dictionary keyed by name. Every estimate is
+also in one vector, ``model.params``, in the order of ``model.param_names``:
+the baseline's parameters, the coefficients, then ``theta``.
 
 .. jupyter-execute::
     :hide-code:

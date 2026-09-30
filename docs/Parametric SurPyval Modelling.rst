@@ -1256,7 +1256,7 @@ On occasion, it can appear as though there are one, or two different distributio
 
     F(x) = \sum_{j=1}^{m} w_{j} F_{j}(x), \qquad f(x) = \sum_{j=1}^{m} w_{j} f_{j}(x).
 
-SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, and the rounds repeat until it stops changing. A mixture is created with ``MixtureModel(dist, m)`` -- the distribution to use for every component, and the number of components -- and fitted with ``fit``:
+SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, and the rounds repeat until it stops changing. A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
 
 .. jupyter-execute::
 
@@ -1268,8 +1268,7 @@ SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We d
     x_ = np.linspace(np.min(x), np.max(x))
 
     model = surv.Weibull.fit(x)
-    wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-    wmm.fit(x)
+    wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
 
     model.plot(plot_bounds=False)
     plt.plot(x_, wmm.ff(x_), color='red')
@@ -1297,8 +1296,7 @@ SurPyval has incredible flexibility. The number of distributions can be changed 
     x_ = np.linspace(np.min(x), np.max(x))
 
     normal = surv.Normal.fit(x)
-    gmm = surv.MixtureModel(dist=surv.Normal, m=3)
-    gmm.fit(x)
+    gmm = surv.MixtureModel.fit(x, dist=surv.Normal, m=3)
 
     normal.plot(plot_bounds=False)
     plt.plot(x_, gmm.ff(x_), color='red')
@@ -1332,8 +1330,7 @@ A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, 
     c = (x > 22).astype(int)          # right censor anything still running at 22
     x = np.minimum(x, 22)
 
-    wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-    wmm.fit(x, c=c)
+    wmm = surv.MixtureModel.fit(x, c=c, dist=surv.Weibull, m=2)
     print("weights:", wmm.w.round(3))
 
     k_mix = wmm.m * wmm.dist.k + wmm.m - 1

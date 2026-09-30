@@ -31,6 +31,8 @@ the generic confidence-bound path (a finite-difference Hessian of
 code.
 """
 
+from __future__ import annotations
+
 import types
 from typing import Any
 

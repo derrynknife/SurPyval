@@ -379,7 +379,7 @@ def test_lin_ying_predictions_inside_the_data_are_the_estimate():
     model = sp.AdditiveHazards.fit(
         df["week"].values,
         df[["fin", "age", "prio"]].values,
-        c=df["arrest"].values,
+        c=1 - df["arrest"].values,
     )
     np.testing.assert_allclose(
         model.sf([20, 52], [1, 25, 3]), [0.9269, 0.7725], atol=5e-5

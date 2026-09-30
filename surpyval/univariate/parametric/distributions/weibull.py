@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func

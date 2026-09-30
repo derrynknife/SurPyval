@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from collections import defaultdict
 from numbers import Number
@@ -553,6 +555,10 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
                 " numbers"
             )
 
+    if x.ndim == 2 and x.shape[1] == 1:
+        # A single column, e.g. ``df[["t"]].to_numpy()``: one observation
+        # per row, as sklearn reads a column vector ``y`` (#485).
+        x = x[:, 0]
     if x.ndim > 2:
         raise ValueError("Variable 'x' array must be one or two dimensional")
     # Before the ordering check, which NaN would fail with a misleading
@@ -892,6 +898,9 @@ def xcnt_handler(
     # logic for censoring flag
     if c is not None:
         c = np.atleast_1d(np.array(c))
+        if c.ndim == 2 and c.shape[1] == 1:
+            # A single column, as for ``x`` (#485)
+            c = c[:, 0]
         if c.ndim != 1:
             raise ValueError("Censoring flag array must be one dimensional")
 
@@ -947,6 +956,8 @@ def xcnt_handler(
             n = np.atleast_1d(np.array(n, dtype=float))
         except (ValueError, TypeError):
             raise ValueError("Count array 'n' must contain integer values")
+        if n.ndim == 2 and n.shape[1] == 1:
+            n = n[:, 0]
         if n.ndim != 1:
             raise ValueError("Count array must be one dimensional")
         if n.shape[0] != x.shape[0]:
@@ -1800,6 +1811,28 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     return model_matrix, spec
 
 
+def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
+    """``df[cols]`` as a float array. A column that is not numeric (a
+    ``"yes"`` / ``"no"`` column, say) raises a ``ValueError`` that names
+    it and points to ``formula=``, which codes categorical columns; it
+    was numpy's bare "could not convert string to float" (#485)."""
+    try:
+        return np.asarray(df[cols].values, dtype=float)
+    except (ValueError, TypeError):
+        bad = []
+        for col in cols:
+            try:
+                np.asarray(df[col].values, dtype=float)
+            except (ValueError, TypeError):
+                bad.append(col)
+        raise ValueError(
+            "Covariate column(s) {} are not numeric. Encode them as "
+            "numbers, or pass `formula=` instead of `Z_cols` (e.g. "
+            "formula={!r}), which codes a categorical column for "
+            "you.".format(bad, " + ".join(str(c) for c in cols))
+        ) from None
+
+
 def wrangle_and_check_form_and_Z_cols(
     Z_cols: "str | list[str] | None",
     formula: "str | None",
@@ -1819,7 +1852,7 @@ def wrangle_and_check_form_and_Z_cols(
         unknown = [x for x in Z_cols if x not in df.columns]
         if len(unknown) > 0:
             raise ValueError("{} not in dataframe columns".format(unknown))
-        Z = df[Z_cols].values.astype(float)
+        Z = numeric_columns(df, list(Z_cols))
         form = None
         feature_names = list(Z_cols)
         model_spec = None

@@ -27,6 +27,8 @@ which must accumulate an "accelerated age" across intervals; that family has
 its own likelihood (``aft_tvc_fit``).
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 import numpy as np

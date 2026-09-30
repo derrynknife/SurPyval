@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Callable
 
@@ -14,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.utils import _caller_stacklevel
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -70,6 +73,7 @@ class ParameterSubstitutionFitter(
         baseline: list[str] | str | None = None,
         param_transform: Callable[[Boxable], Boxable] | None = None,
         inverse_param_transform: Callable[[Boxable], Boxable] | None = None,
+        life_relation: str = "L(Z)",
     ) -> None:
         if baseline is None:
             baseline = []
@@ -95,6 +99,7 @@ class ParameterSubstitutionFitter(
         self.df_dist = self.dist.df
         self.baseline = baseline
         self.life_parameter = life_parameter
+        self.life_relation = life_relation
         self.fixed = {life_parameter: 1.0}
 
         if param_transform is None:
@@ -280,6 +285,29 @@ class ParameterSubstitutionFitter(
                     )
                 )
 
+    def _one_level_message(self, Z: Any, free_phi: list) -> str:
+        level = np.unique(Z, axis=0)[0]
+        level_text = (
+            str(float(level[0])) if level.size == 1 else str(level.tolist())
+        )
+        out = (
+            "An accelerated life model needs at least two distinct stress "
+            "levels to fit how life changes with stress; Z has one ({}), "
+            "which fixes only the life at that stress. ".format(level_text)
+        )
+        if len(free_phi) > 1:
+            return out + (
+                "Test at more stress levels, fit the distribution alone, or "
+                "fix all but one of the {} life model's parameters ({}) with "
+                "`fixed` and give a start with `init`.".format(
+                    self.life_model.name, ", ".join(free_phi)
+                )
+            )
+        return out + (
+            "With the other life-model parameters fixed, give a start with "
+            "`init` (the distribution's parameters, then the life model's)."
+        )
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -402,10 +430,9 @@ class ParameterSubstitutionFitter(
             stress_data = np.array(stress_data)
 
             if len(params_at_Z) < 2:
-                raise ValueError(
-                    "Insufficient data at separate Z values. Try manually "
-                    "setting initial guess using `init` keyword in `fit`"
-                )
+                # One level identifies the life at that stress, not how it
+                # changes with stress; no ``init`` changes that (#489).
+                raise ValueError(self._one_level_message(data.Z, free_phi))
 
             parameter_data = params_at_Z[:, life_parameter_idx]
 
@@ -423,6 +450,10 @@ class ParameterSubstitutionFitter(
             phi_param_map = self.life_model.phi_param_map(data.Z)
         else:
             phi_param_map = self.life_model.phi_param_map
+        # The life-model parameters the fit estimates, and the distinct
+        # stress levels that identify them: each level pins down one life.
+        free_phi = [k for k in phi_param_map if k not in fixed]
+        n_levels = len(np.unique(data.Z, axis=0))
 
         # Keep the merged map local: assigning it to ``self.param_map``
         # mutated the fitter, so a second ``fit()`` re-merged on top of the
@@ -492,7 +523,26 @@ class ParameterSubstitutionFitter(
                         res, verified = alt, alt_verified
 
         require_finite_fit(float(res.fun))
-        if not verified:
+        if n_levels < len(free_phi):
+            # Fewer levels than free life-model parameters: the likelihood
+            # is flat along a ridge of them, wherever the search stopped.
+            warnings.warn(
+                "The life-stress relationship is not identifiable: {} "
+                "distinct stress level(s) for the {} free parameters of the "
+                "{} life model ({}). The likelihood is flat along a ridge "
+                "of them, so their values, standard errors and bounds are "
+                "meaningless (the predictions at the observed stresses are "
+                "not); test at more stress levels, or fix all but {} of "
+                "them with `fixed`.".format(
+                    n_levels,
+                    len(free_phi),
+                    self.life_model.name,
+                    ", ".join(free_phi),
+                    n_levels,
+                ),
+                stacklevel=_caller_stacklevel(),
+            )
+        elif not verified:
             warnings.warn(
                 "The accelerated life fit did not reach a verified maximum "
                 "of the likelihood (a zero gradient, curving down in every "

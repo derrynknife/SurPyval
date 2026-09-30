@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import types
 import warnings
 from typing import TYPE_CHECKING, Any
@@ -67,7 +69,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     (``AH``) and accelerated life (``AcceleratedLife``) families.
 
     ``params`` holds the distribution parameters followed by the covariate
-    coefficients (``dist_params`` and ``phi_params`` split them). The
+    coefficients (``dist_params`` and ``phi_params`` split them), named in
+    order by ``param_names``. In an accelerated life model the life
+    parameter (``life_parameter``, e.g. the Weibull's ``alpha``) is not
+    estimated: the life model gives it at each stress, and its slot in
+    ``params`` holds a placeholder 1, which the printed model does not show
+    as a value. The
     survival functions take the covariates as a second argument,
     ``sf(x, Z)``; ``sf_tvc`` / ``Hf_tvc`` evaluate them along a
     time-varying covariate path. The model also provides parameter
@@ -484,6 +491,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         "Proportional Odds": "the survival odds ratio",
     }
 
+    @property
+    def life_parameter(self) -> "str | None":
+        """The distribution parameter an accelerated life model replaces by
+        its life model (``None`` for the other families)."""
+        if self.kind != "Accelerated Life":
+            return None
+        return getattr(getattr(self, "model", None), "life_parameter", None)
+
+    def _life_relation(self) -> str:
+        # How the life parameter follows from the life model, e.g.
+        # "L(Z) of the Power life model", for the printed model.
+        relation = getattr(self.model, "life_relation", "L(Z)")
+        return "{} of the {} life model".format(relation, self.reg_model.name)
+
     def _is_linear_predictor(self) -> bool:
         """Whether the covariate parameters are coefficients of a linear
         predictor ``beta'Z`` (one per column of ``Z``), which the
@@ -684,6 +705,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             "\nBaseline            : {} parameters; Wald 95% "
             "intervals\n".format(self.distribution.name)
         ) + block("baseline")
+        if self.life_parameter is not None:
+            # Replaced by the life model, not fitted (#489).
+            out += "\n    {}: {}".format(
+                self.life_parameter, self._life_relation()
+            )
         parts = table.index.get_level_values(0)
         if "life model" in parts:
             out += "\nLife model          : Wald 95% intervals\n" + block(
@@ -1822,6 +1848,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "data; from_params models carry no likelihood."
             )
 
+    @property
+    def param_names(self) -> list[str]:
+        """
+        Names of ``params``, in order: the distribution's parameters, then
+        the covariate coefficients (or life-model parameters). The same as
+        :meth:`parameter_names`. In an accelerated life model the slot
+        named by ``life_parameter`` is a placeholder, not a fitted value.
+        """
+        return self.parameter_names()
+
     def parameter_names(self) -> list[str]:
         """
         Names of the fitted parameters in ``.params`` order: the distribution's
@@ -2053,6 +2089,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
                     name, names
+                )
+            )
+        if name == self.life_parameter:
+            raise ValueError(
+                "{!r} is not a parameter of this accelerated life model: it "
+                "is {} at each stress. Bound the life-model parameters "
+                "({}) instead, or the predictions with cb().".format(
+                    name,
+                    self._life_relation(),
+                    ", ".join(names[self.k_dist :]),
                 )
             )
         idx = names.index(name)

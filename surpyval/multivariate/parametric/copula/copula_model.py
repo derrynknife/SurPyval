@@ -1,5 +1,7 @@
 """The fitted joint model from ``Copula.fit`` / ``Copula.from_params``."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as onp

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from autograd.scipy.stats import norm
 from scipy.stats import norm as scipy_norm

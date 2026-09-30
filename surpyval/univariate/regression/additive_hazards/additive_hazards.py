@@ -40,6 +40,8 @@ Lin, D. Y. and Ying, Z. (1994), "Semiparametric analysis of the additive
 risk model", Biometrika 81, 61-71.
 """
 
+from __future__ import annotations
+
 from copy import copy
 from typing import TYPE_CHECKING, Any
 
@@ -163,7 +165,7 @@ class AdditiveHazardsModel(SerialisableMixin):
     >>> from surpyval import AdditiveHazards
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> model = AdditiveHazards.fit(x, Z, c=c)
     >>> model.beta.round(4)

@@ -742,13 +742,17 @@ class SerialisableMixin:
         @classmethod
         def from_dict(cls, model_dict: dict) -> Any: ...
 
-    def to_json(self, fp: str | os.PathLike, with_data: bool = False) -> None:
-        """Write :meth:`to_dict` to ``fp`` as strict JSON.
+    def to_json(
+        self, fp: str | os.PathLike | None = None, with_data: bool = False
+    ) -> str | None:
+        """Write :meth:`to_dict` to ``fp`` as strict JSON, or return it.
 
         Parameters
         ----------
-        fp : str or os.PathLike
-            The file to write.
+        fp : str or os.PathLike, optional
+            The file to write. Without it the JSON is returned as a
+            string (as ``pandas.DataFrame.to_json`` does), which
+            ``from_json`` also reads.
         with_data : bool, optional
             Write ``to_dict(with_data=True)``, which also stores the fitted
             data, for the models whose ``to_dict`` takes ``with_data``
@@ -767,22 +771,41 @@ class SerialisableMixin:
             model_dict = to_dict(with_data=True)
         else:
             model_dict = to_dict()
-        # ``to_dict`` already wrote non-finite floats as null;
-        # ``allow_nan=False`` guarantees the file is strict JSON.
-        with open(fp, "w+") as f:
-            json.dump(model_dict, f, allow_nan=False)
+        return write_json(model_dict, fp)
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> Any:
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            model_dict = json.load(f)
+        """Load a model from a JSON file written by :meth:`to_json`, or
+        from the JSON text it returned (a string starting with ``{``)."""
+        model_dict = read_json(fp)
         if not isinstance(model_dict, dict):
             raise ValueError(
                 "Expected a serialised model dict, got "
                 f"{type(model_dict).__name__}"
             )
         return read_model_dict(cls, model_dict)
+
+
+def write_json(model_dict: dict, fp: str | os.PathLike | None) -> str | None:
+    """Write a model dict to the file ``fp`` as strict JSON, or return the
+    JSON text when ``fp`` is ``None`` (#485)."""
+    # ``to_dict`` already wrote non-finite floats as null;
+    # ``allow_nan=False`` guarantees the output is strict JSON.
+    if fp is None:
+        return json.dumps(model_dict, allow_nan=False)
+    with open(fp, "w+") as f:
+        json.dump(model_dict, f, allow_nan=False)
+    return None
+
+
+def read_json(fp: str | os.PathLike) -> Any:
+    """Read JSON from the file ``fp``, or parse ``fp`` itself when it is
+    JSON text: a string starting with ``{``, which no model file path does
+    (#485)."""
+    if isinstance(fp, str) and fp.lstrip().startswith("{"):
+        return json.loads(fp)
+    with open(fp, "r") as f:
+        return json.load(f)
 
 
 def from_dict(model_dict: dict) -> Any:
@@ -822,7 +845,9 @@ def from_dict(model_dict: dict) -> Any:
     What a restored model keeps differs by family: in general the
     parameters and whatever predictions need, but not the fitted data,
     so methods that need the data (``plot``, bootstrap and
-    likelihood-ratio bounds, residuals) raise on the restored model.
+    likelihood-ratio bounds, residuals) raise on the restored model --
+    except a univariate parametric model's ``plot``, which draws the
+    model's CDF without data points.
     A fitted univariate parametric, regression or copula model keeps
     the likelihood and sample size of its information criteria, so
     ``aic`` and ``bic`` (and ``aic_c``, where the model has one) work on
@@ -874,15 +899,17 @@ def from_dict(model_dict: dict) -> Any:
 
 def from_json(fp: str | Path) -> Any:
     """
-    Restore any serialised SurPyval model from a JSON file.
+    Restore any serialised SurPyval model from a JSON file or string.
 
-    Reads a file written by any fitted model's ``to_json`` and
-    dispatches to the right class's reader; see :func:`from_dict`.
+    Reads a file written by any fitted model's ``to_json`` (or the JSON
+    text ``to_json()`` returns without a path) and dispatches to the
+    right class's reader; see :func:`from_dict`.
 
     Parameters
     ----------
     fp : str | Path
-        Path to a JSON file written by a SurPyval model's ``to_json``.
+        Path to a JSON file written by a SurPyval model's ``to_json``, or
+        the JSON text itself (a string starting with ``{``).
 
     Returns
     -------
@@ -899,6 +926,7 @@ def from_json(fp: str | Path) -> Any:
     >>> restored = surpyval.from_json(path)
     >>> restored.params
     array([5.53092634, 4.04187535])
+    >>> surpyval.from_json(model.to_json()).params
+    array([5.53092634, 4.04187535])
     """
-    with open(fp, "r") as f:
-        return from_dict(json.load(f))
+    return from_dict(read_json(fp))

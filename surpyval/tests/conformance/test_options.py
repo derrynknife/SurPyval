@@ -64,6 +64,8 @@ NOT_SWEPT = {
     "life_parameter_covariance": "a covariance, not an interval",
     "summary": "a table of the parameters' Wald intervals (param_cb's for "
     "the baseline; checked in regression/test_summary.py, #484)",
+    "trend_test": "a hypothesis test: alpha_ci is the level its trend is "
+    "concluded at (#481), not an interval's",
 }
 # "confidence" was the recurrent models' level until v0.22.0; a method
 # that took it again would be an unswept uncertainty method.
@@ -135,7 +137,19 @@ def _parameters(model):
         names = list(names() if callable(names) else names)
         values = getattr(model, "_mle", None)
         values = model.params if values is None else values
-        return names, np.asarray(values, float), model._parameter_bounds()
+        supports = model._parameter_bounds()
+        # An accelerated life model's life parameter is given by its life
+        # model, not estimated, and param_cb refuses it (#489).
+        keep = [
+            k
+            for k, n in enumerate(names)
+            if n != getattr(model, "life_parameter", None)
+        ]
+        return (
+            [names[k] for k in keep],
+            np.asarray(values, float)[keep],
+            [supports[k] for k in keep],
+        )
     if hasattr(model, "param_names"):  # a frailty model
         names = list(model.param_names)
         dist = list(model.dist.bounds)

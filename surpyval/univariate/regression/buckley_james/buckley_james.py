@@ -33,6 +33,8 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 -- which is detected and resolved by averaging the cycle.
 """
 
+from __future__ import annotations
+
 import warnings
 from typing import Any
 
@@ -211,14 +213,14 @@ class BuckleyJamesModel(SerialisableMixin):
 
     Examples
     --------
-    On the Rossi recidivism data, where ``arrest`` is already the
-    censoring flag, prior convictions (``prio``) shorten the time to
-    arrest and financial aid (``fin``) lengthens it:
+    On the Rossi recidivism data, where ``arrest`` is 1 for an arrest (so
+    the censoring flag is ``1 - arrest``), prior convictions (``prio``)
+    shorten the time to arrest and financial aid (``fin``) lengthens it:
 
     >>> from surpyval import BuckleyJames
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> model = BuckleyJames.fit(x, Z, c=c)
     >>> model.beta.round(4)
