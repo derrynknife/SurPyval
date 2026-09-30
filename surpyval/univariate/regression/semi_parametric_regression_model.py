@@ -135,10 +135,24 @@ class SemiParametricRegressionModel(SerialisableMixin):
             return np.zeros(beta.shape[0])
         return np.asarray(self.center, dtype=float)
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column, one constant within each
+        stratum, or a linear combination of the others. Their ``beta`` is
+        ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+
+    def _coef(self) -> npt.NDArray:
+        """``beta`` with an aliased coefficient as 0, as the predictions
+        use it (R's ``predict.coxph`` does the same)."""
+        beta = np.asarray(self.beta, dtype=float)
+        return np.where(np.isnan(beta), 0.0, beta)
+
     def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
         """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log
         of the multiplier of the baseline."""
-        return (Z - self._center()) @ np.asarray(self.beta, dtype=float)
+        return (Z - self._center()) @ self._coef()
 
     @staticmethod
     def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
