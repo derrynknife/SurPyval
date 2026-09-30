@@ -29,21 +29,21 @@ def test_inverted_flag_is_visible_in_the_printout():
     wrong = repr(sp.Weibull.fit(x, c=failed))
     right = repr(sp.Weibull.fit(x, c=1 - failed))
     assert (
-        "Data                : 60 units: 9 events at 9 unique times, 51 right censored"
-        in (wrong)
-    )
+        "Data                : 60 units: 9 events at 9 unique times, "
+        "51 right censored"
+    ) in (wrong)
     assert (
-        "Data                : 60 units: 51 events at 51 unique times, 9 right censored"
-        in (right)
+        "Data                : 60 units: 51 events at 51 unique times, "
+        "9 right censored" in right
     )
 
 
 def test_counts_are_units_weighted_by_n():
     model = sp.Weibull.fit([1, 2, 3, 4], c=[0, 0, 1, 0], n=[3, 1, 10, 2])
     assert (
-        "Data                : 16 units: 6 events at 3 unique times, 10 right censored"
-        in (repr(model))
-    )
+        "Data                : 16 units: 6 events at 3 unique times, "
+        "10 right censored"
+    ) in (repr(model))
 
 
 def test_every_kind_of_censoring_and_truncation_is_counted():
@@ -75,17 +75,17 @@ def test_non_parametric_printout_has_the_data_line():
     x, failed = _issue_data()
     km = sp.KaplanMeier.fit(x, c=failed)
     assert (
-        "Data             : 60 units: 9 events at 9 unique times, 51 right censored"
-        in (repr(km))
-    )
+        "Data             : 60 units: 9 events at 9 unique times, "
+        "51 right censored"
+    ) in (repr(km))
     tb = sp.Turnbull.fit(xl=[1, 2, 3], xr=[2, 4, 5])
     assert "Data             : 3 units: 0 events, 3 interval censored" in (
         repr(tb)
     )
     na = sp.NelsonAalen.fit([1, 2, 3, 4], tl=[0, 0, 1, 1])
     assert (
-        "Data             : 4 units: 4 events at 4 unique times; 2 left truncated"
-        in (repr(na))
+        "Data             : 4 units: 4 events at 4 unique times; "
+        "2 left truncated" in repr(na)
     )
 
 
@@ -153,5 +153,7 @@ def test_a_restored_model_prints_the_same_data_line(rossi):
     ]
     for model in models:
         back = sp.from_dict(model.to_dict())
-        assert "432 units: 114 events at 49 unique times, 318 right censored" in repr(back)
+        assert (
+            "432 units: 114 events at 49 unique times, " "318 right censored"
+        ) in repr(back)
         assert repr(back).count("Data  ") == 1

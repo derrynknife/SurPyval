@@ -143,9 +143,7 @@ def test_kijima_ii_virtual_ages_bit_identical(seed, n_items, longest):
     x = np.concatenate([np.cumsum(g) for g in gaps])
     previous = _previous_in_item(interarrival, i)
     np.testing.assert_array_equal(previous, _old_previous(interarrival, i))
-    np.testing.assert_array_equal(
-        _previous_in_item(x, i), _old_previous(x, i)
-    )
+    np.testing.assert_array_equal(_previous_in_item(x, i), _old_previous(x, i))
     _, idx = np.unique(i, return_index=True)
     ages = KijimaIIVirtualAges(previous, i)
     for q in (0.0, 1.0, 2.5, 1e-300, 1e300, float(rng.uniform(0, 3))):
@@ -270,8 +268,7 @@ def test_renewal_residuals_unchanged():
     g1 = GeneralizedOneRenewal.fit_from_recurrent_data(data)
     scaled = np.concatenate(
         [
-            np.asarray(arr, dtype=float)
-            / (1.0 + g1.q) ** np.arange(len(arr))
+            np.asarray(arr, dtype=float) / (1.0 + g1.q) ** np.arange(len(arr))
             for arr in np.split(data.get_interarrival_times(), idx)[1:]
         ]
     )
