@@ -2159,6 +2159,9 @@ hazards (``PH``), additive hazards (``AH``) and proportional odds (``PO``)
 families fit start-stop data with the same ``fit_tvc`` / ``fit_tvc_timeline`` (and ``_from_df``) methods and
 the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox. (Keyword arguments
 such as ``fixed=`` and ``init=`` are passed through to the ordinary ``fit``.)
+As for Cox, the ``_from_df`` methods take the covariates as ``Z_cols`` or as a
+``formula=``, which codes categorical columns; the model keeps the formula's
+encoding, so it predicts from a DataFrame with the same design.
 Fitting the truncated likelihood takes a few seconds for these 2,000 subjects,
 noticeably longer than Cox:
 
