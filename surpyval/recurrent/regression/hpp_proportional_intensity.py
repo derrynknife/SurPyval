@@ -324,7 +324,7 @@ class ProportionalIntensityHPP:
         out = ProportionalIntensityModel()
         out.data = data
 
-        out.param_names = ["lambda"]
+        out._rate_names = ["lambda"]
         out.bounds = ((0, None),)
         out.support = (-np.inf, np.inf)
 

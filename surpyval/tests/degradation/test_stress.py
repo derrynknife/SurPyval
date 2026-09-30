@@ -55,7 +55,7 @@ def test_linked_model_matches_base(base, links, theta):
     # chain-rule Jacobian against the base class' finite differences
     analytic = linked.jacobian(x, *eta)
     numeric = PathModel.jacobian(linked, x, *eta)
-    assert analytic.shape == (len(x), len(base.param_names))
+    assert analytic.shape == (len(x), len(base.parameter_names))
     assert np.allclose(analytic, numeric, rtol=1e-4, atol=1e-6)
     # a fit on the link scale is the base fit mapped there
     y = base.path(x, *theta)
@@ -64,7 +64,7 @@ def test_linked_model_matches_base(base, links, theta):
 
 def test_linked_model_names_and_linearity():
     linked = LinkedPathModel(LinearPath, {"b": "log"})
-    assert linked.param_names == ["a", "log(b)"]
+    assert linked.parameter_names == ["a", "log(b)"]
     assert linked.links == {"a": "identity", "b": "log"}
     assert not linked.linear_in_parameters
     assert LinkedPathModel(LinearPath, {"b": "identity"}).linear_in_parameters

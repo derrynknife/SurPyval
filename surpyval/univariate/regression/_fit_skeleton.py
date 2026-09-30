@@ -36,6 +36,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -103,8 +104,11 @@ class MirroredDistributionAttrs:
     k_dist: int
     bounds: tuple
     support: tuple
-    param_names: list
+    parameter_names: list
     param_map: dict
+    # The pre-0.22 name of ``parameter_names``: reads it for one release,
+    # with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
 
 def mirror_distribution(fitter: Any, distribution: Any) -> None:
@@ -112,17 +116,19 @@ def mirror_distribution(fitter: Any, distribution: Any) -> None:
 
     Every parametric regression fitter starts by mirroring the same six
     attributes of its underlying distribution -- ``dist``, ``k_dist``,
-    ``bounds``, ``support``, ``param_names`` and the name-to-index
+    ``bounds``, ``support``, ``parameter_names`` and the name-to-index
     ``param_map`` -- and each family's ``__init__`` carried the block
     verbatim. The ``*_dist`` method aliases stay with each family: which
     ones it needs depends on which identities it implements.
     """
     fitter.dist = distribution
-    fitter.k_dist = len(distribution.param_names)
+    fitter.k_dist = len(distribution.parameter_names)
     fitter.bounds = distribution.bounds
     fitter.support = distribution.support
-    fitter.param_names = distribution.param_names
-    fitter.param_map = {v: i for i, v in enumerate(distribution.param_names)}
+    fitter.parameter_names = distribution.parameter_names
+    fitter.param_map = {
+        v: i for i, v in enumerate(distribution.parameter_names)
+    }
 
 
 class HazardIdentitiesMixin:
@@ -351,7 +357,7 @@ class Centring:
         if entry is None:
             return None
         moved, move = entry
-        if any(fitter.param_names[i] in fixed for i in moved):
+        if any(fitter.parameter_names[i] in fixed for i in moved):
             return None
         mean = covariate_center(Z, n)
         if not np.all(np.isfinite(mean)) or not np.any(mean):
@@ -1374,7 +1380,7 @@ def keep_information(
     at."""
     if no_maximum or derivatives is None:
         return
-    names = model.parameter_names()
+    names = model.parameter_names
     held = model._held()
     free = np.array([i for i, name in enumerate(names) if name not in held])
     if model._fit_centring is not None:

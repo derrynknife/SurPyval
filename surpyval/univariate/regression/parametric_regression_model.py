@@ -14,6 +14,7 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils.deprecation import CallableList, RenamedAttribute
 from surpyval.utils.linalg import (
     delta_method_se,
     log_transformed_cb,
@@ -70,7 +71,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     ``params`` holds the distribution parameters followed by the covariate
     coefficients (``dist_params`` and ``phi_params`` split them), named in
-    order by ``param_names``. In an accelerated life model the life
+    order by ``parameter_names``. In an accelerated life model the life
     parameter (``life_parameter``, e.g. the Weibull's ``alpha``) is not
     estimated: the life model gives it at each stress, and its slot in
     ``params`` holds a placeholder 1, which the printed model does not show
@@ -455,7 +456,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def _held(self) -> set:
         """The names of the parameters that were not estimated: the
         ``fixed`` ones and the aliased coefficients."""
-        names = self.parameter_names()
+        names = self.parameter_names
         return set(self.fixed) | {
             names[self.k_dist + j] for j in self.aliased.tolist()
         }
@@ -539,7 +540,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             se = np.full(n, np.nan)
         if se.shape != (n,):
             se = np.full(n, np.nan)
-        names = self.parameter_names()
+        names = self.parameter_names
         se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
         return se
 
@@ -600,7 +601,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         params = np.asarray(self.params, dtype=float)
         se = self._summary_se()
-        names = self.parameter_names()
+        names = self.parameter_names
         k = self.k_dist
         level = "{:g}%".format(100 * (1 - alpha_ci))
         if self._is_linear_predictor():
@@ -1854,31 +1855,47 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
 
     @property
-    def param_names(self) -> list[str]:
+    def parameter_names(self) -> CallableList:
         """
         Names of ``params``, in order: the distribution's parameters, then
-        the covariate coefficients (or life-model parameters). The same as
-        :meth:`parameter_names`. In an accelerated life model the slot
-        named by ``life_parameter`` is a placeholder, not a fitted value.
-        """
-        return self.parameter_names()
+        the covariate coefficients (or life-model parameters). The list
+        lines up with ``params``, :meth:`covariance` and
+        :meth:`standard_errors` entry by entry, fixed parameters included.
+        In an accelerated life model the slot named by ``life_parameter``
+        is a placeholder, not a fitted value, and is named too.
 
-    def parameter_names(self) -> list[str]:
+        Until v0.22 this was a method; calling it,
+        ``model.parameter_names()``, still returns the list, with a
+        ``DeprecationWarning``, until v0.23.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullPH
+        >>> x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+        >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
+        >>> model = WeibullPH.fit(x=x, Z=Z)
+        >>> model.parameter_names
+        ['alpha', 'beta', 'beta_0']
         """
-        Names of the fitted parameters in ``.params`` order: the distribution's
-        parameters followed by the covariate coefficients.
-        """
-        dist_names = list(self.distribution.param_names)
+        dist_names = list(self.distribution.parameter_names)
         phi_map = self.reg_model.phi_param_map
         phi_names = [
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
-        return dist_names + phi_names
+        return CallableList(
+            dist_names + phi_names,
+            "ParametricRegressionModel.parameter_names",
+        )
+
+    # ``param_names``, the name the model had before v0.22, reads
+    # ``parameter_names`` for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     def covariance(self) -> npt.NDArray:
         """
         Approximate covariance matrix of the fitted parameters, ordered to
-        match :meth:`parameter_names`. Computed as the inverse of the Hessian
+        match :attr:`parameter_names`. Computed as the inverse of the Hessian
         of the negative log-likelihood at the MLE (the observed
         information): the exact one the fit computed with autograd to check
         its answer. It falls back to a numerical Hessian where there is
@@ -1946,7 +1963,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         cached = self._covariance_cache
         if cached is not None and _same_point(cached[0], point):
             return cached[1].copy()
-        names = self.parameter_names()
+        names = self.parameter_names
         held = self._held()
         free = [i for i, nm in enumerate(names) if nm not in held]
         n = len(names)
@@ -2060,7 +2077,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def standard_errors(self) -> npt.NDArray:
         """
         Standard errors of the fitted parameters (square roots of the diagonal
-        of :meth:`covariance`), ordered to match :meth:`parameter_names`.
+        of :meth:`covariance`), ordered to match :attr:`parameter_names`.
         """
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))
@@ -2082,14 +2099,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Parameters
         ----------
         name : str
-            The parameter to bound; one of :meth:`parameter_names`.
+            The parameter to bound; one of :attr:`parameter_names`.
         alpha_ci : float, optional
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
         """
         self._check_inference()
-        names = self.parameter_names()
+        names = self.parameter_names
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

@@ -287,11 +287,11 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
         if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
-            if init.shape != (1 + len(dist.param_names),):
+            if init.shape != (1 + len(dist.parameter_names),):
                 raise ValueError(
                     "init must have {} values ([q, {}]); got {}.".format(
-                        1 + len(dist.param_names),
-                        ", ".join(dist.param_names),
+                        1 + len(dist.parameter_names),
+                        ", ".join(dist.parameter_names),
                         init.size,
                     )
                 )

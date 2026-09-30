@@ -75,7 +75,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
                 (0, None),
             ),
             support=(0, np.inf),
-            param_names=["alpha", "beta", "mu"],
+            parameter_names=["alpha", "beta", "mu"],
             param_map={"alpha": 0, "beta": 1, "mu": 2},
             plot_x_scale="log",
         )

@@ -132,9 +132,8 @@ def _level(spec, alpha):
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
-    if hasattr(model, "parameter_names"):
-        names = model.parameter_names
-        names = list(names() if callable(names) else names)
+    if hasattr(model, "_parameter_bounds"):
+        names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
         values = model.params if values is None else values
         supports = model._parameter_bounds()
@@ -150,8 +149,8 @@ def _parameters(model):
             np.asarray(values, float)[keep],
             [supports[k] for k in keep],
         )
-    if hasattr(model, "param_names"):  # a frailty model
-        names = list(model.param_names)
+    if hasattr(model, "_param_vector"):  # a frailty model
+        names = list(model.parameter_names)
         dist = list(model.dist.bounds)
         supports = [
             (
@@ -162,7 +161,7 @@ def _parameters(model):
             for k, n in enumerate(names)
         ]
         return names, np.asarray(model._param_vector(), float), supports
-    names = list(model.dist.param_names)
+    names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
     if model.lfp:

@@ -43,7 +43,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
             k=2,
             bounds=((None, None), (0, None)),
             support=(-np.inf, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
             y_ticks=[

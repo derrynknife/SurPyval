@@ -42,6 +42,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import is_missing_event
+from surpyval.utils.deprecation import RenamedAttribute
 
 from ..regression_data import (
     prepare_Z,
@@ -82,7 +83,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     of the same data -- the model it reduces to at ``theta = 0``.
 
     ``params`` is every estimated parameter in one vector, in the order of
-    ``param_names``: the baseline distribution's parameters, then the
+    ``parameter_names``: the baseline distribution's parameters, then the
     covariate coefficients ``beta_0``, ``beta_1``, ..., then the frailty
     variance ``theta`` -- the order of :meth:`standard_errors` and of the
     stored ``covariance``. ``dist_params``, ``beta`` and ``theta`` hold the
@@ -103,7 +104,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
     >>> round(model.theta, 3)
     0.432
-    >>> model.param_names
+    >>> model.parameter_names
     ['alpha', 'beta', 'beta_0', 'theta']
     >>> model.params.round(3)
     array([10.442,  1.962,  0.399,  0.432])
@@ -116,6 +117,10 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
     >>> model.sf([5, 10], [1], group=0).round(4)
     array([0.7226, 0.2821])
     """
+
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
+    # sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     def __init__(self) -> None:
         self.kind = "Frailty"
@@ -131,7 +136,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         self.group_labels: list = []
         self.frailties: dict = {}
         self.covariance: "np.ndarray | None" = None
-        self.param_names: "list[str]" = []
+        self.parameter_names: "list[str]" = []
         self.n_obs: int = 0
         self.n_events: int = 0
         self.n_groups: int = 0
@@ -269,7 +274,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         if self.covariance is None:
             raise ValueError("No covariance was stored for this model.")
         se = _standard_error(np.diag(self.covariance))
-        return {name: float(s) for name, s in zip(self.param_names, se)}
+        return {name: float(s) for name, s in zip(self.parameter_names, se)}
 
     def param_cb(
         self,
@@ -285,13 +290,13 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         """
         if self.covariance is None:
             raise ValueError("No covariance was stored for this model.")
-        if name not in self.param_names:
+        if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
-                    name, self.param_names
+                    name, self.parameter_names
                 )
             )
-        idx = self.param_names.index(name)
+        idx = self.parameter_names.index(name)
         est = self._param_vector()[idx]
         se = float(_standard_error(self.covariance[idx, idx]))
         positive = name == "theta" or (
@@ -325,7 +330,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def params(self) -> np.ndarray:
-        """Every estimated parameter, in the order of ``param_names``: the
+        """Every estimated parameter, in the order of ``parameter_names``: the
         baseline's parameters, the coefficients, then ``theta``."""
         return self._param_vector()
 
@@ -410,7 +415,9 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
                         ):
                             warnings.simplefilter("ignore")
                             bounds = np.asarray(
-                                self.param_cb(self.param_names[i], alpha_ci),
+                                self.param_cb(
+                                    self.parameter_names[i], alpha_ci
+                                ),
                                 dtype=float,
                             ).ravel()
                     except (ValueError, ArithmeticError):
@@ -436,7 +443,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             ]
         )
         index = (
-            [("baseline", name) for name in self.dist.param_names]
+            [("baseline", name) for name in self.dist.parameter_names]
             + [("coefficients", name) for name in names]
             + [("frailty", "theta")]
         )
@@ -454,7 +461,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             f"\nGroups              : {self.n_groups}"
             f"  (observations {self.n_obs}, events {self.n_events})"
         )
-        if self.dist is None or not self.param_names:
+        if self.dist is None or not self.parameter_names:
             return out
         table = self.summary()
         estimates = {
@@ -494,7 +501,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             "beta": np.asarray(self.beta, float).tolist(),
             "theta": float(self.theta),
             "k_dist": int(self.k_dist),
-            "param_names": list(self.param_names),
+            "param_names": list(self.parameter_names),
             "group_labels": [str(g) for g in self.group_labels],
             "frailties": {str(k): float(v) for k, v in self.frailties.items()},
             "n_obs": int(self.n_obs),
@@ -532,8 +539,8 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         out.beta = np.array(model_dict["beta"], dtype=float)
         out.theta = float(model_dict["theta"])
         out.k_dist = int(model_dict["k_dist"])
-        out.param_names = list(model_dict["param_names"])
-        out.k = len(out.param_names)
+        out.parameter_names = list(model_dict["param_names"])
+        out.k = len(out.parameter_names)
         out.group_labels = list(model_dict.get("group_labels", []))
         out.frailties = {
             k: float(v) for k, v in model_dict.get("frailties", {}).items()

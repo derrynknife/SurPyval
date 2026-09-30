@@ -145,7 +145,7 @@ def test_parametric_regression_param_cb(name):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = fitter.fit(x=x, Z=Z, c=c)
-            names = model.parameter_names()
+            names = model.parameter_names
             for j, p in enumerate(names):
                 lo[r, j], hi[r, j] = model.param_cb(p)
     check_coverage(lo, hi, truth, 0.95, name + " param_cb")

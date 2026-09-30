@@ -53,7 +53,7 @@ class Duane(NHPPFitter):
 
     def __init__(self) -> None:
         self.name = "Duane"
-        self.param_names = ["alpha", "b"]
+        self.parameter_names = ["alpha", "b"]
         self.bounds = ((0, None), (0, None))
         self.support = (0.0, np.inf)
 

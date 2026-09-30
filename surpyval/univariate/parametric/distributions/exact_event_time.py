@@ -23,7 +23,7 @@ class ExactEventTime_(ParametricFitter):
             k=1,
             bounds=((None, None),),
             support=(-np.inf, np.inf),
-            param_names=["T"],
+            parameter_names=["T"],
             param_map={"T": 0},
             plot_x_scale="linear",
         )

@@ -62,7 +62,7 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
             # 0 so k = 1 passes the interior check and zero-inflation is
             # permitted (structural zeros sit at x = 0).
             support=(0.0, np.inf),
-            param_names=["r", "p"],
+            parameter_names=["r", "p"],
             param_map={"r": 0, "p": 1},
             plot_x_scale="linear",
         )

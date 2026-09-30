@@ -8,6 +8,7 @@ import numpy as np
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 
 
@@ -110,11 +111,15 @@ class LikelihoodInferenceMixin:
     @property
     def parameter_names(self) -> list:
         """
-        The names of the fitted parameters, in the order used by
+        The names of the model's parameters, in the order used by
         :meth:`covariance`, :meth:`standard_errors` and :meth:`param_cb`.
+        A model built from parameters has them too.
         """
-        self._check_fitted()
         return list(self._parameter_names())
+
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
+    # for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     @property
     def log_likelihood(self) -> float:

@@ -101,6 +101,13 @@ class SemiParametricRegressionModel(SerialisableMixin):
     #: diagnostics centre on too; not saved (they need the fitted data).
     _fit_center: "npt.NDArray | None" = None
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients, as in the
+        parametric regression models."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
+
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
     beta: npt.NDArray

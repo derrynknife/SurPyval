@@ -203,7 +203,7 @@ A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are t
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.dist.param_names`` (each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -220,7 +220,7 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
 .. jupyter-execute::
 
     model = surv.Weibull.fit([3, 4, 5, 6, 7, 8, 9, 10])
-    print("parameter names :", model.dist.param_names)
+    print("parameter names :", model.parameter_names)
     print("params          :", model.params)
     print("R(5), F(5)      :", model.sf(5), model.ff(5))
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))

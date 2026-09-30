@@ -140,7 +140,7 @@ def test_from_params_builds_a_variable_arity_model():
     five = Hypoexponential.from_params([1.0, 2.0, 3.0, 4.0, 5.0])
     assert isinstance(two, Parametric)
     assert (two.k, five.k) == (2, 5)
-    assert five.dist.param_names == [
+    assert five.dist.parameter_names == [
         "lambda_1",
         "lambda_2",
         "lambda_3",
@@ -173,7 +173,7 @@ def test_serialisation_round_trip():
     restored = surpyval.from_dict(_rt(d))
     assert isinstance(restored, Parametric)
     assert restored.k == 3
-    assert restored.dist.param_names == model.dist.param_names
+    assert restored.dist.parameter_names == model.dist.parameter_names
     x = np.linspace(0.0, 10.0, 21)
     assert np.array_equal(restored.sf(x), model.sf(x))
     assert np.array_equal(restored.ff(x), model.ff(x))

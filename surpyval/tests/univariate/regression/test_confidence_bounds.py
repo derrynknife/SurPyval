@@ -36,7 +36,7 @@ def _data(seed, N=800, beta=(0.6, -0.3)):
 def test_parameter_names_and_covariance_shape(F):
     x, Z, c = _data(0)
     m = F.fit(x=x, Z=Z, c=c)
-    names = m.parameter_names()
+    names = m.parameter_names
     # distribution params first, then one coefficient per covariate.
     assert names[-2:] == ["beta_0", "beta_1"]
     k = len(names)
@@ -105,7 +105,7 @@ def test_tighter_confidence_gives_wider_bounds():
 def test_param_cb_brackets_and_respects_support():
     x, Z, c = _data(5)
     m = WeibullPH.fit(x=x, Z=Z, c=c)
-    names = m.parameter_names()
+    names = m.parameter_names
     for nm in names:
         idx = names.index(nm)
         lo, hi = m.param_cb(nm)
@@ -123,14 +123,14 @@ def test_param_cb_one_sided():
     # the two-sided [lower, upper] convention).
     lower = np.ravel(m.param_cb("beta_0", bound="lower"))[0]
     upper = np.ravel(m.param_cb("beta_0", bound="upper"))[0]
-    beta0 = m.params[m.parameter_names().index("beta_0")]
+    beta0 = m.params[m.parameter_names.index("beta_0")]
     assert lower <= beta0 <= upper
 
 
 def test_fixed_parameter_has_zero_variance():
     x, Z, c = _data(7)
     m = WeibullAFT.fit(x=x, Z=Z, c=c, fixed={"beta_1": 0.0})
-    names = m.parameter_names()
+    names = m.parameter_names
     j = names.index("beta_1")
     cov = m.covariance()
     assert np.allclose(cov[j, :], 0.0) and np.allclose(cov[:, j], 0.0)

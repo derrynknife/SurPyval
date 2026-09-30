@@ -337,7 +337,7 @@ def test_a_runaway_has_its_profile_read(monkeypatch, name):
     calls = _count_profiles(monkeypatch)
     _, w = _fit(lambda: getattr(sp, name).fit(**_no_events(reg_data())))
     assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
-    k_dist = len(getattr(sp, name).param_names)
+    k_dist = len(getattr(sp, name).parameter_names)
     assert calls == [k_dist]
 
 

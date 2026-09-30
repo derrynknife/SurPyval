@@ -60,7 +60,7 @@ class HPP(CountingProcess):
     """
 
     def __init__(self) -> None:
-        self.param_names = ["lambda"]
+        self.parameter_names = ["lambda"]
         self.bounds = ((0, None),)
         # A constant rate is defined at any time, so an item observed from
         # a negative ``tl`` may have events at negative times (the support
@@ -305,7 +305,6 @@ class HPP(CountingProcess):
         out.dist = self
         out.data = data
 
-        out.param_names = ["lambda"]
         out.bounds = ((0, None),)
         out.support = (-np.inf, np.inf)
         out.name = "Homogeneous Poisson Process"
@@ -456,7 +455,6 @@ class HPP(CountingProcess):
         model = ParametricRecurrenceModel()
         model.params = params
         model.dist = self
-        model.param_names = ["lambda"]
         model.bounds = ((0, None),)
         model.support = (-np.inf, np.inf)
         model.name = "Homogeneous Poisson Process"

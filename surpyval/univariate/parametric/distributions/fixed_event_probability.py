@@ -55,7 +55,7 @@ class FixedEventProbability_(  # type: ignore[misc]
             k=1,
             bounds=((0, 1),),
             support=(0, 1),
-            param_names=["p"],
+            parameter_names=["p"],
             param_map={"p": 0},
             plot_x_scale="linear",
         )

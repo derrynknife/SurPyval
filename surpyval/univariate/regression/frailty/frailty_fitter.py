@@ -220,7 +220,7 @@ class FrailtyFitter:
         self.name = name
         self.dist = dist
         self.family = family
-        self.k_dist = len(dist.param_names)
+        self.k_dist = len(dist.parameter_names)
 
     @staticmethod
     def create(distribution: Any, family: str = "gamma") -> "FrailtyFitter":
@@ -520,9 +520,9 @@ class FrailtyFitter:
         # space; a numerical one where there is none (no maximum, or a
         # Hessian that is not positive definite, as with the variance at
         # its limit of 0).
-        param_names = list(self.dist.param_names)
-        param_names += [f"beta_{i}" for i in range(n_beta)]
-        param_names += ["theta"]
+        parameter_names = list(self.dist.parameter_names)
+        parameter_names += [f"beta_{i}" for i in range(n_beta)]
+        parameter_names += ["theta"]
 
         def nll_nat(v: npt.NDArray) -> float:
             return self._neg_ll_natural(v, x, c, w, Zc, inv, n_beta)
@@ -549,16 +549,16 @@ class FrailtyFitter:
         if len(aliased):
             # Back to one entry per column of Z, nan where aliased.
             beta = expand(beta, kept, p_all)
-            param_names = list(self.dist.param_names)
-            param_names += [f"beta_{i}" for i in range(p_all)]
-            param_names += ["theta"]
+            parameter_names = list(self.dist.parameter_names)
+            parameter_names += [f"beta_{i}" for i in range(p_all)]
+            parameter_names += ["theta"]
             if covariance is not None:
                 where = np.r_[
                     np.arange(self.k_dist),
                     self.k_dist + kept,
                     self.k_dist + p_all,
                 ]
-                full = np.full((len(param_names),) * 2, np.nan)
+                full = np.full((len(parameter_names),) * 2, np.nan)
                 full[np.ix_(where, where)] = covariance
                 covariance = full
 
@@ -573,8 +573,8 @@ class FrailtyFitter:
         model.group_labels = list(labels)
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
         model.covariance = covariance
-        model.param_names = param_names
-        model.k = len(param_names) - len(aliased)
+        model.parameter_names = parameter_names
+        model.k = len(parameter_names) - len(aliased)
         model.n_obs = n_obs
         model.n_events = int((c == 0).sum())
         model.n_events_weighted = float(w[c == 0].sum())

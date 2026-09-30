@@ -226,7 +226,7 @@ def test_frailty_summary_is_a_table():
     ]
     se = model.standard_errors()
     np.testing.assert_allclose(
-        table["se(coef)"], [se[n] for n in model.param_names]
+        table["se(coef)"], [se[n] for n in model.parameter_names]
     )
     np.testing.assert_allclose(
         table["coef"],

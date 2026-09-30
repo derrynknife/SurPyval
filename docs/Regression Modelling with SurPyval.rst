@@ -1358,7 +1358,7 @@ increasing, constant, or decreasing hazard rates.
 
 Notice the coefficients are close to the Cox model's, each within 10% of it —
 this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
-the order ``model.parameter_names()`` gives: the distribution's own parameters
+the order ``model.parameter_names`` gives: the distribution's own parameters
 first, then one ``beta_j`` per covariate column.
 
 .. jupyter-execute::
@@ -1396,7 +1396,7 @@ is excluded from the covariance (its standard error is zero):
 .. jupyter-execute::
 
     fixed_shape = WeibullPH.fit(x=x, Z=Z, c=c, fixed={'beta': 15})
-    print(fixed_shape.parameter_names())
+    print(fixed_shape.parameter_names)
     print(fixed_shape.params.round(3))
     print(fixed_shape.standard_errors().round(3))
 
@@ -1773,7 +1773,7 @@ errors are available directly, and are computed once:
     ) ** (1 / 2.0)
     m_cb = WeibullPH.fit(x=x_cb, Z=Z_cb, c=np.zeros(300, dtype=int))
 
-    print(m_cb.parameter_names())
+    print(m_cb.parameter_names)
     print(m_cb.standard_errors())
 
 ``param_cb`` gives a Wald confidence bound on a single parameter, computed on a
@@ -1948,7 +1948,7 @@ varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
 report shows ``alpha`` as ``L(Z)``, not as a value: the life parameter
 (``model_arr.life_parameter``) is replaced by the life model at each stress, so
-it is not estimated. Its slot in ``params`` (named by ``model_arr.param_names``)
+it is not estimated. Its slot in ``params`` (named by ``model_arr.parameter_names``)
 holds a placeholder 1 that carries no information: it is listed in
 ``model_arr.fixed``, is not counted as a parameter in the AIC, and ``param_cb``
 refuses it. The Arrhenius parameter ``a`` is :math:`E_a / k_B`, so the fit
@@ -1966,7 +1966,7 @@ estimates the activation energy directly:
     assert c_al[stress == 358.].sum() > 10          # most of the coolest
     assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
     assert model_arr.life_parameter == 'alpha'
-    assert model_arr.param_names == ['alpha', 'beta', 'a', 'b']
+    assert model_arr.parameter_names == ['alpha', 'beta', 'a', 'b']
     assert 'alpha: L(Z) of the' in repr(model_arr)
     assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
     assert round(model_arr.params[2] * k, 2) == 0.67
@@ -2065,7 +2065,7 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
     model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
         x_2s, Z=np.column_stack([temp, volts]))
-    for name, value in zip(model_2s.param_names, model_2s.params):
+    for name, value in zip(model_2s.parameter_names, model_2s.params):
         if name != model_2s.life_parameter:   # alpha is given by the life model
             print(f'{name:5s} = {value:.4g}')
     print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
@@ -2080,7 +2080,7 @@ could tell their effects apart.
     :hide-code:
     :hide-output:
 
-    _names = model_2s.parameter_names()
+    _names = model_2s.parameter_names
     _p = dict(zip(_names, model_2s.params))
     assert round(_p['a'] * k, 2) == 0.67 and round(_p['n'], 2) == -1.44, _p
 
@@ -2730,7 +2730,7 @@ The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
 errors of every parameter as a dictionary keyed by name. Every estimate is
-also in one vector, ``model.params``, in the order of ``model.param_names``:
+also in one vector, ``model.params``, in the order of ``model.parameter_names``:
 the baseline's parameters, the coefficients, then ``theta``.
 
 .. jupyter-execute::

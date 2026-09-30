@@ -43,7 +43,7 @@ Every distribution is an object in the ``surpyval`` namespace
    :widths: 18 22 14 16 10 20
 
    * - Distribution
-     - Parameters (``param_names``)
+     - Parameters (``parameter_names``)
      - Support
      - ``offset`` / ``zi``
      - ``how='MPP'``
@@ -196,12 +196,13 @@ trade-offs.
 Working with a fitted model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The fitted parameters are in ``model.params``, in the order given by the
-distribution's ``param_names``, and each is also available by name:
+The fitted parameters are in ``model.params``, in the order given by
+``model.parameter_names`` (the distribution's ``parameter_names``), and each
+is also available by name:
 
 .. jupyter-execute::
 
-    print(model.dist.param_names, model.params)
+    print(model.parameter_names, model.params)
     print("alpha =", model.alpha, " beta =", model.beta)
 
 Every function of the distribution is a method of the model. As well as the
@@ -921,7 +922,7 @@ We have fit only one of the four parameters of an offset exponentiated-Weibull d
     assert model.params[2] == 4
 
 Parameters are fixed by name, using the names in the distribution's
-``param_names`` plus ``gamma`` for the offset. Fixing works with ``MLE``,
+``parameter_names`` plus ``gamma`` for the offset. Fixing works with ``MLE``,
 ``MPS``, ``MSE`` and ``MOM``, but not with probability plotting, which fits
 all of the parameters of its line at once. With ``MOM`` a fixed parameter
 needs no equation of its own, so the method matches one moment per *free*
@@ -969,7 +970,7 @@ exponential zero-failure bound on the mean life.
     assert round(bound.sf(500), 3) == round(surv.success_run(10), 3) == 0.741
 
 Finally, the optimiser can be given a starting point with ``init``: the
-values in the order of ``param_names``, with ``gamma`` first if there is an
+values in the order of ``parameter_names``, with ``gamma`` first if there is an
 offset and ``p`` then ``f0`` last for a limited failure population or zero
 inflation. With ``fixed``, ``init`` may list just the free parameters. You
 rarely need it, but if a fit fails, a starting point near the answer -- a
@@ -2238,10 +2239,10 @@ the names of the parameters, the bounds of the parameters, and the distribution 
     def Hf(x, *params):
         return params[0] * (np.exp(params[1] * x) - 1)
 
-    param_names = ['nu', 'b']
+    parameter_names = ['nu', 'b']
     bounds = ((0, None), (0, None))
     support = (0, np.inf)
-    Gompertz = surv.CustomDistribution(name, Hf, param_names, bounds, support)
+    Gompertz = surv.CustomDistribution(name, Hf, parameter_names, bounds, support)
 
 The cumulative hazard function takes the time and then the parameters, either
 as a star-argument, ``(x, *params)`` (of any name), or one named argument per
@@ -2279,7 +2280,7 @@ would respect it and settle on the edge, compensating with a larger
 .. jupyter-execute::
 
     GompertzCapped = surv.CustomDistribution(
-        'GompertzCapped', Hf, param_names, ((0, None), (0, 1.2)), support)
+        'GompertzCapped', Hf, parameter_names, ((0, None), (0, 1.2)), support)
     print(GompertzCapped.fit(x).params)
 
 .. jupyter-execute::

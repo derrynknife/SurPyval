@@ -25,7 +25,7 @@ import surpyval as sp
 
 model = sp.Weibull.fit(x=[10, 12, 8, 9, 11, 13])   # returns a Parametric model
 model.params        # fitted parameters, e.g. array([alpha, beta])
-model.dist.param_names   # ['alpha', 'beta'], the order of params
+model.parameter_names   # ['alpha', 'beta'], the order of params
 model.sf(10)        # survival / reliability function
 model.ff(10)        # CDF / failure function  (== 1 - sf)
 model.hf(10); model.Hf(10)   # hazard, cumulative hazard
@@ -153,7 +153,7 @@ Renewal / imperfect-repair models: `GeneralizedRenewal`,
 (`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model**
 (`dist=CrowAMSAA`, `Duane`, `CoxLewis`); each refuses the other kind with an
 error naming the right fitter. Their `params` is the repair parameter (`q` or
-`rho`) followed by the distribution's parameters, named by `param_names`.
+`rho`) followed by the distribution's parameters, named by `parameter_names`.
 
 (Sub-namespaces like `surpyval.recurrent`, `surpyval.degradation`,
 `surpyval.multivariate`, `surpyval.beta.ml` are **not** auto-imported by
@@ -238,7 +238,7 @@ silently wrong numbers, not errors.
 | **Parametric distributions** | `sp.<Name>` | Weibull, Exponential, Gamma, LogNormal, Normal, Gumbel, Logistic, LogLogistic, ExpoWeibull, Rayleigh, Beta, Beta4, Uniform, and discrete (Bernoulli, Poisson, Binomial, Geometric, NegativeBinomial, DiscreteWeibull, ...) |
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
 | **Tests** | `sp.logrank`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
-| **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `param_names`. |
+| **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
 | **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying). |
 | **Time-varying covariates** | `sp.StepSchedule`, `sp.CovariatePath` | Evaluate a fitted regression along a covariate path with `sf_tvc` / `Hf_tvc`; `CovariatePath.from_points` / `from_callable` (**0.22**) for ramps and cycles |
 | **Frailty** | `sp.WeibullFrailty`, ... | Shared gamma frailty PH; `params` = baseline, coefficients, `theta` |
@@ -265,7 +265,7 @@ x = 10 * rng.weibull(2, 1000) * np.exp(-0.6 * Z[:, 0] / 2)
 
 model = sp.WeibullPH.fit(x=x, Z=Z)    # proportional hazards
 model.params                          # alpha, beta, then beta_0 (about 0.6)
-model.param_names                     # ['alpha', 'beta', 'beta_0']
+model.parameter_names                 # ['alpha', 'beta', 'beta_0']
 model.sf(5.0, np.array([0.5]))        # survival at t=5 for covariate vector Z=[0.5]
 # Cox when you don't want to assume a baseline shape:
 cox = sp.CoxPH.fit(x=x, Z=Z)

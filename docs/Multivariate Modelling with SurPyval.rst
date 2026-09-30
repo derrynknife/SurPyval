@@ -830,7 +830,7 @@ The five families are instances of classes derived from
 family can be added the same way. The one thing a subclass must supply is the
 copula CDF ``cdf(u, v, theta)``, plus a ``name``, the parameter ``bounds``
 (in the same ``(low, high)`` form as the univariate fitters, ``None`` for
-unbounded) and ``param_names``. Everything else is derived from the CDF:
+unbounded) and ``parameter_names``. Everything else is derived from the CDF:
 ``du``, ``dv`` and ``pdf`` by automatic differentiation (so write the CDF with
 arithmetic operators and the functions of ``surpyval.np``, autograd's numpy),
 sampling by inverting ``du``, and Kendall's tau and Spearman's rho by
@@ -846,7 +846,7 @@ simulation. As an example, the Ali-Mikhail-Haq copula
     class AliMikhailHaq(Copula):
         name = "Ali-Mikhail-Haq"
         bounds = ((-1, 1),)
-        param_names = ("theta",)
+        parameter_names = ["theta"]
 
         def cdf(self, u, v, theta):
             return u * v / (1 - theta * (1 - u) * (1 - v))

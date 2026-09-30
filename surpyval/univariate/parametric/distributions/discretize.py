@@ -59,7 +59,7 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
             # Mass is grouped onto {1, 2, ...}; support lower bound declared
             # as 0 (below the first mass at k = 1) for the interior check.
             support=(0.0, np.inf),
-            param_names=list(distribution.param_names),
+            parameter_names=list(distribution.parameter_names),
             param_map=dict(distribution.param_map),
             plot_x_scale=distribution.plot_x_scale,
         )

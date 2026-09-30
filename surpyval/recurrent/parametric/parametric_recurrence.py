@@ -51,7 +51,6 @@ class ParametricRecurrenceModel(
     # Populated by the fitters; declared for the type checker.
     dist: Any
     params: "np.ndarray"
-    param_names: list
     bounds: tuple
     support: tuple
     name: str
@@ -105,7 +104,7 @@ class ParametricRecurrenceModel(
         return out
 
     def _parameter_names(self) -> list:
-        return list(self.dist.param_names)
+        return list(self.dist.parameter_names)
 
     def _parameter_bounds(self) -> list:
         return list(self.dist.bounds)
@@ -114,7 +113,7 @@ class ParametricRecurrenceModel(
         param_string = "\n".join(
             [
                 "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(self.params, self.dist.param_names)
+                for p, name in zip(self.params, self.dist.parameter_names)
             ]
         )
         return (

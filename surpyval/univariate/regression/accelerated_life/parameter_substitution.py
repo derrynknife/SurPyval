@@ -86,11 +86,13 @@ class ParameterSubstitutionFitter(
         self.kind = kind
         self.dist = distribution
         self.life_model = life_model
-        self.k_dist = len(self.dist.param_names)
+        self.k_dist = len(self.dist.parameter_names)
         self.bounds = self.dist.bounds
         self.support = self.dist.support
-        self.param_names = self.dist.param_names
-        self.param_map = {v: i for i, v in enumerate(self.dist.param_names)}
+        self.parameter_names = self.dist.parameter_names
+        self.param_map = {
+            v: i for i, v in enumerate(self.dist.parameter_names)
+        }
         self.phi = life_model.phi
         self.Hf_dist = self.dist.Hf
         self.hf_dist = self.dist.hf
