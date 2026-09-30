@@ -81,7 +81,9 @@ def test_lr_band_is_nan_with_a_warning_when_every_search_fails(monkeypatch):
 def test_lr_param_bound_is_nan_with_a_warning_when_unsolved(monkeypatch):
     np.random.seed(1)
     model = W.fit(W.random(30, 10, 3))
-    monkeypatch.setattr(model, "_profile_neg_ll", lambda idx, v: np.nan)
+    monkeypatch.setattr(
+        model, "_profile_neg_ll", lambda idx, v, path=None: np.nan
+    )
     with pytest.warns(RuntimeWarning, match="could not be found"):
         bound = model.param_cb("beta", method="lr")
     assert np.isnan(bound).all()
