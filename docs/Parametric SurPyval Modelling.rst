@@ -1203,16 +1203,24 @@ Comparing distributions
 
 To choose a distribution, fit the candidates to the same data and compare an
 information criterion; lower is better. ``fit_best(x, c, n, t)`` does this by
-maximum likelihood for thirteen continuous distributions -- ``Beta``,
-``Beta4``, ``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``,
-``Logistic``, ``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh``,
-``Uniform`` and ``Weibull`` (not ``GumbelLEV``, the discrete distributions or
-offset models) -- and returns the winner (see
-:doc:`comparison_and_validation`). ``metric`` may be ``'aic'`` (the default),
-``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or ``exclude`` (lists
-of names, not both) narrow the candidates. A candidate that cannot be fitted
--- the Beta when the data leave :math:`[0, 1]`, say -- is skipped with a
-warning, and ``None`` is returned if none can.
+maximum likelihood for eleven continuous distributions -- ``Beta``,
+``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
+``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
+``GumbelLEV``, the discrete distributions or offset models) -- and returns the
+winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
+(the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
+``exclude`` (lists of names, not both) narrow the candidates. A candidate that
+cannot be fitted -- the Beta when the data leave :math:`[0, 1]`, say -- is
+skipped with a warning, and ``None`` is returned if none can.
+
+The information criteria assume a *regular* maximum of the likelihood, so two
+kinds of candidate are set aside, and ranked only when no regular candidate
+fitted, with a warning that names them: the ``Uniform`` and ``Beta4``, whose
+support ends are parameters fitted on the extreme observations (they are tried
+only when named in ``include``), and any fit that is not a verified maximum --
+one that warns "No finite maximum", or that its search did not reach a
+maximum. Without that rule a Uniform "won" on 50 draws from a Weibull, and a
+Beta4 with no maximum at all on the seven values 1 to 7.
 
 .. jupyter-execute::
 
