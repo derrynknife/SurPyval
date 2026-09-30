@@ -403,7 +403,21 @@ The plot for this can be seen to be:
 
 .. jupyter-execute::
 
-    model.plot()
+    model.plot(show_censored=True)
+
+The points are the failures only. A suspension (a right-censored unit)
+moves the plotting positions of the failures after it, but has no position
+of its own, so it is not drawn as a point (the convention of Abernethy's
+*New Weibull Handbook* and of Weibull++); ``show_censored=True`` marks the
+suspension times with ticks along the time axis, here the censored units at
+40. ``get_plot_data()`` returns them as ``x_censored``.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _d = model.get_plot_data()
+    assert len(_d["x_"]) == (c == 0).sum() and list(_d["x_censored"]) == [40]
 
 The results from this model are very close to the data we input, and with only 50 samples.
 

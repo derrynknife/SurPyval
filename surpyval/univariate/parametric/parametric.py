@@ -3088,6 +3088,10 @@ class Parametric(
 
         data : dict
             Returns dictionary containing the data needed to do a plot.
+            ``x_`` and ``F`` are the failures and their plotting
+            positions (suspensions are not plotted points; before v0.22
+            they were included, at the ``F`` of the failure before them),
+            and ``x_censored`` the suspension times.
 
         Examples
         --------
@@ -3130,9 +3134,16 @@ class Parametric(
         plot_bounds: bool = True,
         alpha_ci: float = 0.05,
         ax: "Axes | None" = None,
+        show_censored: bool = False,
     ) -> list:
         """
-        A method to do a probability plot
+        A method to do a probability plot.
+
+        The points are the failures, at their plotting positions. A
+        suspension (right-censored unit) moves the plotting positions of
+        the failures after it but has no point of its own (Abernethy's
+        *New Weibull Handbook*, Weibull++); ``show_censored=True`` marks
+        each suspension time with a tick on the time axis.
 
         Parameters
         ----------
@@ -3155,6 +3166,10 @@ class Parametric(
         ax: matplotlib.axes.Axes, optional
             The axis onto which the plot will be created. Optional, if not
             provided a new axes will be created.
+
+        show_censored : bool, optional
+            Mark the suspension (right-censored) times with ticks along
+            the time axis. Defaults to False.
 
         Returns
         -------
@@ -3205,4 +3220,5 @@ class Parametric(
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
             title=f"{self.dist.name} Probability Plot",
             plot_bounds=plot_bounds,
+            show_censored=show_censored,
         )
