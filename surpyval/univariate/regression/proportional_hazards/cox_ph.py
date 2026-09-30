@@ -39,6 +39,7 @@ from surpyval.utils import (
 from .._aliasing import (
     aliased_columns,
     constant_columns,
+    covariate_columns,
     expand,
     warn_aliased,
 )
@@ -1729,16 +1730,17 @@ class CoxPH_:
             )
         )
 
-        model = self.fit(
-            x,
-            Z,
-            c,
-            n,
-            tl=tl,
-            tie_method=tie_method,
-            strata=strata,
-            center=center,
-        )
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(
+                x,
+                Z,
+                c,
+                n,
+                tl=tl,
+                tie_method=tie_method,
+                strata=strata,
+                center=center,
+            )
         model.formula = form
         model.feature_names = feature_names
         model._model_spec = model_spec
@@ -1860,16 +1862,17 @@ class CoxPH_:
         ``tie_method`` and ``center`` are as for :meth:`fit`.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc(
-            i=df[i_col].to_numpy(),
-            xl=df[xl_col].to_numpy(),
-            xr=df[xr_col].to_numpy(),
-            c=df[c_col].to_numpy(),
-            Z=df[cols].to_numpy(),
-            n=None if n_col is None else df[n_col].to_numpy(),
-            tie_method=tie_method,
-            center=center,
-        )
+        with covariate_columns(cols):
+            model = self.fit_tvc(
+                i=df[i_col].to_numpy(),
+                xl=df[xl_col].to_numpy(),
+                xr=df[xr_col].to_numpy(),
+                c=df[c_col].to_numpy(),
+                Z=df[cols].to_numpy(),
+                n=None if n_col is None else df[n_col].to_numpy(),
+                tie_method=tie_method,
+                center=center,
+            )
         model.feature_names = cols
         return model
 
@@ -1961,15 +1964,16 @@ class CoxPH_:
         ``tie_method`` and ``center`` are as for :meth:`fit`.
         """
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc_timeline(
-            i=df[i_col].to_numpy(),
-            x=df[x_col].to_numpy(),
-            Z=df[cols].to_numpy(),
-            c=df[c_col].to_numpy(),
-            n=None if n_col is None else df[n_col].to_numpy(),
-            tie_method=tie_method,
-            center=center,
-        )
+        with covariate_columns(cols):
+            model = self.fit_tvc_timeline(
+                i=df[i_col].to_numpy(),
+                x=df[x_col].to_numpy(),
+                Z=df[cols].to_numpy(),
+                c=df[c_col].to_numpy(),
+                n=None if n_col is None else df[n_col].to_numpy(),
+                tie_method=tie_method,
+                center=center,
+            )
         model.feature_names = cols
         return model
 

@@ -44,7 +44,7 @@ import numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian
 from autograd import numpy as anp
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
 
 from surpyval.serialisation import (
@@ -57,6 +57,12 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
     ordered_labels,
+)
+from surpyval.univariate.regression._aliasing import (
+    aliased_columns,
+    constant_columns,
+    expand,
+    warn_aliased,
 )
 from surpyval.univariate.regression._fit_skeleton import (
     runaway_coefficients,
@@ -136,18 +142,51 @@ def _fit_cause(
     mean = (n @ Z) / n.sum()
     Z = Z - mean
     n_event = n[is_event]
-    Z_event = Z[is_event]
 
-    def neg_ll(beta: Any) -> Any:
-        eta = anp.dot(Z, beta)
-        weighted_exp = n * anp.exp(eta)
-        denom = anp.dot(W, weighted_exp)
-        eta_event = anp.dot(Z_event, beta)
-        ll = anp.sum(n_event * eta_event) - anp.sum(n_event * anp.log(denom))
-        return -ll
+    def partial_neg_ll(Zk: npt.NDArray) -> Any:
+        Zk_event = Zk[is_event]
 
-    beta0 = np.zeros(Z.shape[1])
-    res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
+        def neg_ll(beta: Any) -> Any:
+            eta = anp.dot(Zk, beta)
+            weighted_exp = n * anp.exp(eta)
+            denom = anp.dot(W, weighted_exp)
+            eta_event = anp.dot(Zk_event, beta)
+            ll = anp.sum(n_event * eta_event) - anp.sum(
+                n_event * anp.log(denom)
+            )
+            return -ll
+
+        return neg_ll
+
+    # Coefficients the weighted partial likelihood does not depend on are
+    # aliased, as CoxPH's are (#476): fitted on the other columns, and
+    # reported as nan.
+    p = Z.shape[1]
+    neg_ll = partial_neg_ll(Z)
+    aliased = aliased_columns(
+        hessian(neg_ll)(np.zeros(p)),
+        Z.shape[0],
+        constant_columns(Z_raw),
+        float(n_event.sum()) * (n @ Z**2) / n.sum(),
+    )
+    kept = np.setdiff1d(np.arange(p), aliased)
+    if aliased.size:
+        warn_aliased(
+            aliased,
+            "the partial likelihood does not depend on them (a constant "
+            "column, or a linear combination of the others within the "
+            "risk sets, as the columns of every level of a factor are)",
+        )
+        neg_ll = partial_neg_ll(Z[:, kept])
+
+    beta0 = np.zeros(kept.size)
+    if kept.size:
+        res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
+    else:
+        # Every coefficient aliased: nothing to fit.
+        res = OptimizeResult(
+            x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
+        )
     beta = res.x
     # A covariate that separates the events of interest from the rest (a
     # level with none of them) drives its coefficient to infinity; BFGS
@@ -158,6 +197,7 @@ def _fit_cause(
     runaway = runaway_coefficients(
         neg_ll, beta, list(range(beta.size)), beta0, derivatives
     )
+    runaway = [int(kept[k]) for k in runaway]
 
     # Standard errors from the inverse observed information, the Hessian
     # the check just took.
@@ -168,6 +208,15 @@ def _fit_cause(
         se = np.sqrt(np.where(var > 0, var, np.nan))
         z_score = beta / se
     p_values = 2.0 * (1.0 - norm.cdf(np.abs(z_score)))
+    if aliased.size:
+        # 0 for the baseline and predictions; the model reports nan.
+        beta = expand(beta, kept, p)
+        se = expand(se, kept, p)
+        p_values = expand(p_values, kept, p)
+        full = np.full((p, p), np.nan)
+        full[np.ix_(kept, kept)] = cov
+        cov = full
+        beta = np.where(np.isnan(beta), 0.0, beta)
 
     # Breslow baseline cumulative subdistribution hazard: at each event-of-
     # interest time, dLambda0 = (events there) / (weighted risk set there).
@@ -183,6 +232,9 @@ def _fit_cause(
         baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
         mean = np.zeros_like(mean)
 
+    if aliased.size:
+        beta = np.array(beta, dtype=float)
+        beta[aliased] = np.nan
     return {
         "cause": cause,
         "beta": beta,
@@ -308,6 +360,18 @@ class FineGrayModel(SerialisableMixin):
         self._neg_ll = fit["neg_ll"]
         self.res = fit["res"]
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): their ``beta`` is ``nan``, and predictions take
+        it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+
+    def _coef(self) -> npt.NDArray:
+        """``beta`` with an aliased coefficient as 0."""
+        beta = np.asarray(self.beta, dtype=float)
+        return np.where(np.isnan(beta), 0.0, beta)
+
     # -- serialisation -----------------------------------------------------
 
     def to_dict(self) -> dict:
@@ -383,7 +447,7 @@ class FineGrayModel(SerialisableMixin):
         baseline on the log scale."""
         with np.errstate(over="ignore"):
             return np.exp(
-                (np.asarray(Z, dtype=float) - self.center) @ self.beta
+                (np.asarray(Z, dtype=float) - self.center) @ self._coef()
             )
 
     @keeps_query_shape
@@ -406,7 +470,7 @@ class FineGrayModel(SerialisableMixin):
         # H0 * exp(beta'(Z - center)) on the log scale: a baseline at Z = 0
         # far from the data is tiny and the multiplier huge (#463).
         with np.errstate(divide="ignore", over="ignore"):
-            H = np.exp(np.log(H0) + (rows - self.center) @ self.beta)
+            H = np.exp(np.log(H0) + (rows - self.center) @ self._coef())
         return -np.expm1(-H)
 
     @keeps_query_shape

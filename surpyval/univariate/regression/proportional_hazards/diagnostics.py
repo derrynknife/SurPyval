@@ -69,9 +69,7 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
             "Residuals, the proportional-hazards test and robust standard "
             "errors are not available for a model with aliased "
             "coefficients (column(s) {} of Z, whose coefficients are "
-            "nan, #476). Refit without those columns.".format(
-                aliased.tolist()
-            )
+            "nan, #476). Refit without those columns.".format(aliased.tolist())
         )
     data = model._fit_data
     # The covariates centred as the fit centred them (#459), whichever

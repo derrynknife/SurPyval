@@ -42,7 +42,9 @@ from surpyval.utils import (
 )
 from surpyval.utils.linalg import numerical_hessian
 
+from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import (
+    alias_coefficients,
     finish_search,
     natural_information,
     require_finite_fit,
@@ -405,6 +407,30 @@ class FrailtyFitter:
         else:
             n_beta = Zc.shape[1]
             feature_names = None
+        # Coefficients the data cannot determine are aliased (#476): a
+        # constant column where the baseline's scale is the intercept, or
+        # a linear combination of the others. The fit runs on the other
+        # columns, and the model reports them as nan.
+        p_all = n_beta
+        aliased = getattr(
+            alias_coefficients(
+                self,
+                "Proportional Hazard",
+                Zc,
+                w,
+                {},
+                {"beta_{}".format(j): j for j in range(n_beta)},
+            ),
+            "aliased",
+            (),
+        )
+        kept = np.array(
+            [j for j in range(n_beta) if "beta_{}".format(j) not in aliased],
+            dtype=int,
+        )
+        if len(aliased):
+            Zc = Zc[:, kept]
+            n_beta = kept.size
 
         to_unc, to_nat = _make_transforms(self.dist, self.k_dist)
 
@@ -415,14 +441,22 @@ class FrailtyFitter:
             )
         else:
             init_nat = np.asarray(init, dtype=float).ravel()
-            n_params = self.k_dist + n_beta + 1
+            n_params = self.k_dist + p_all + 1
             if init_nat.shape[0] != n_params:
                 raise ValueError(
                     "`init` has {} value(s) but the model has {} parameters: "
                     "the {} distribution parameter(s), {} coefficient(s) and "
                     "theta, in that order.".format(
-                        init_nat.shape[0], n_params, self.k_dist, n_beta
+                        init_nat.shape[0], n_params, self.k_dist, p_all
                     )
+                )
+            if len(aliased):
+                init_nat = np.concatenate(
+                    [
+                        init_nat[: self.k_dist],
+                        init_nat[self.k_dist + kept],
+                        init_nat[-1:],
+                    ]
                 )
 
         def obj_unc(u: npt.NDArray) -> float:
@@ -460,7 +494,10 @@ class FrailtyFitter:
         no_maximum, derivatives = finish_search(
             obj_traced,
             res,
-            [(self.k_dist + i, i) for i in range(n_beta)],
+            [
+                (self.k_dist + i, int(kept[i]) if len(aliased) else i)
+                for i in range(n_beta)
+            ],
             u0,
         )
         nat = to_nat(res.x, n_beta)
@@ -509,6 +546,22 @@ class FrailtyFitter:
             except np.linalg.LinAlgError:
                 covariance = None
 
+        if len(aliased):
+            # Back to one entry per column of Z, nan where aliased.
+            beta = expand(beta, kept, p_all)
+            param_names = list(self.dist.param_names)
+            param_names += [f"beta_{i}" for i in range(p_all)]
+            param_names += ["theta"]
+            if covariance is not None:
+                where = np.r_[
+                    np.arange(self.k_dist),
+                    self.k_dist + kept,
+                    self.k_dist + p_all,
+                ]
+                full = np.full((len(param_names),) * 2, np.nan)
+                full[np.ix_(where, where)] = covariance
+                covariance = full
+
         model = FrailtyModel()
         model.family = self.family
         model.dist = self.dist
@@ -521,7 +574,7 @@ class FrailtyFitter:
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
         model.covariance = covariance
         model.param_names = param_names
-        model.k = len(param_names)
+        model.k = len(param_names) - len(aliased)
         model.n_obs = n_obs
         model.n_events = int((c == 0).sum())
         model.n_events_weighted = float(w[c == 0].sum())
@@ -586,7 +639,8 @@ class FrailtyFitter:
                 df, Z_cols=Z_cols, formula=formula
             )
 
-        model = self.fit(x, Z=Z, c=c, n=n, groups=groups, init=init)
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(x, Z=Z, c=c, n=n, groups=groups, init=init)
         model.feature_names = feature_names
         model.formula = formula
         model._model_spec = model_spec

@@ -422,6 +422,33 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column where the family has an
+        intercept, or a linear combination of the others. Their
+        coefficients are ``nan`` in ``params`` (R's ``NA``), as are their
+        standard errors, and predictions take them as 0."""
+        phi = np.asarray(self.params, dtype=float)[self.k_dist :]
+        return np.flatnonzero(np.isnan(phi))
+
+    def _eval_params(self) -> npt.NDArray:
+        """``params`` with an aliased coefficient as 0, as the model
+        predicts with it."""
+        if not self.aliased.size:
+            return self.params
+        params = np.array(self.params, dtype=float)
+        params[self.k_dist + self.aliased] = 0.0
+        return params
+
+    def _held(self) -> set:
+        """The names of the parameters that were not estimated: the
+        ``fixed`` ones and the aliased coefficients."""
+        names = self.parameter_names()
+        return set(self.fixed) | {
+            names[self.k_dist + j] for j in self.aliased.tolist()
+        }
+
     def _has_center(self) -> bool:
         """Whether the baseline is at a nonzero covariate ``center``."""
         return self.center is not None and bool(np.any(self.center))
@@ -510,7 +537,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "not a multiplier."
             )
         # Relative to the centre for a baseline kept there (#463).
-        return self.reg_model.phi(self._centred(Z), *self.phi_params)
+        return self.reg_model.phi(
+            self._centred(Z), *self._eval_params()[self.k_dist :]
+        )
 
     def _eval(
         self,
@@ -537,7 +566,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             inside = lower + 1.0 if np.isfinite(lower) else 0.0
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
-            out = fn(x, Z, *self.params)
+            out = fn(x, Z, *self._eval_params())
         if self.kind == "Additive Hazard":
             self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
@@ -563,8 +592,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         this warning.
         """
         with np.errstate(all="ignore"):
-            h = np.asarray(self.model.hf(x, Z, *self.params), dtype=float)
-            H = np.asarray(self.model.Hf(x, Z, *self.params), dtype=float)
+            params = self._eval_params()
+            h = np.asarray(self.model.hf(x, Z, *params), dtype=float)
+            H = np.asarray(self.model.Hf(x, Z, *params), dtype=float)
         valid = np.broadcast_to(valid, h.shape)
         neg_h = valid & (h < 0)
         neg_H = valid & (H < 0)
@@ -1007,7 +1037,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         from .tvc_path import _NODES
 
-        M, params = self.model, self.params
+        M, params = self.model, self._eval_params()
         beta = params[self.k_dist :]
         aft = self.kind == "Accelerated Failure Time"
         additive = self.kind == "Additive Hazard"
@@ -1077,7 +1107,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             # H = 0; that is not worth a warning.
             with np.errstate(divide="ignore"):
                 hi = np.asarray(
-                    self.model.Hf(upper, zrow, *self.params), dtype=float
+                    self.model.Hf(upper, zrow, *self._eval_params()),
+                    dtype=float,
                 ).ravel()
                 # The first segment runs from the bottom of the support,
                 # where H = 0. Subtracting H(0, z) instead would, for a
@@ -1087,7 +1118,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     lo = np.zeros(1)
                 else:
                     lo = np.asarray(
-                        self.model.Hf(np.array([a]), zrow, *self.params),
+                        self.model.Hf(
+                            np.array([a]), zrow, *self._eval_params()
+                        ),
                         dtype=float,
                     ).ravel()
             if falls is not None and self.kind == "Additive Hazard":
@@ -1114,7 +1147,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         reduces to ``Hf(x, Z)`` for a single constant segment.
         """
         dist_params = self.params[: self.k_dist]
-        phi_params = self.params[self.k_dist :]
+        phi_params = self._eval_params()[self.k_dist :]
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
@@ -1483,12 +1516,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if hasattr(self.model, "random"):
             if not self._has_center():
                 return self.model.random(
-                    size, Z, *self.params, random_state=random_state
+                    size, Z, *self._eval_params(), random_state=random_state
                 )
             # A baseline at the covariate means (#463): draw at Z - center
             # and report the rows as given.
             x, Z_out = self.model.random(
-                size, self._centred(Z), *self.params, random_state=random_state
+                size,
+                self._centred(Z),
+                *self._eval_params(),
+                random_state=random_state,
             )
             return x, Z_out + self.center
         raise NotImplementedError(
@@ -1594,6 +1630,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if self._fit_centring is not None:
             J = self._fit_centring[2]
             cov = J @ cov @ J.T
+        if self.aliased.size:
+            # No variance for a coefficient that was not estimated (#476).
+            cov = np.array(cov, dtype=float)
+            cov[self.k_dist + self.aliased, :] = np.nan
+            cov[:, self.k_dist + self.aliased] = np.nan
         return cov
 
     def _inference_state(
@@ -1606,11 +1647,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         model's own."""
         restored = getattr(self, "_restored_covariance", None)
         if restored is not None:
-            return np.asarray(self.params, dtype=float), self.center, restored
+            return (
+                np.asarray(self._eval_params(), dtype=float),
+                self.center,
+                restored,
+            )
         if self._fit_centring is not None:
             params, center = self._fit_centring[:2]
         else:
-            params, center = self.params, self.center
+            params, center = self._eval_params(), self.center
         p_hat = np.asarray(params, dtype=float)
         return p_hat, center, self._observed_covariance(p_hat, center)
 
@@ -1627,7 +1672,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if cached is not None and _same_point(cached[0], point):
             return cached[1].copy()
         names = self.parameter_names()
-        free = [i for i, nm in enumerate(names) if nm not in self.fixed]
+        held = self._held()
+        free = [i for i, nm in enumerate(names) if nm not in held]
         n = len(names)
         cov = np.zeros((n, n))
         if not free:

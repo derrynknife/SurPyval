@@ -34,19 +34,52 @@ _COLUMNS: contextvars.ContextVar = contextvars.ContextVar(
     "surpyval_covariate_columns", default=(None, ())
 )
 
+#: Where set (a list), :func:`warn_aliased` records ``(columns, how)``
+#: there instead of warning: a model fitted as several fits of the same
+#: covariates (one per cause) warns once, for all of them.
+_COLLECT: contextvars.ContextVar = contextvars.ContextVar(
+    "surpyval_aliased_collect", default=None
+)
+
 _EPS = float(np.finfo(float).eps)
 
 
 @contextlib.contextmanager
+def collect_aliased() -> Iterator[list]:
+    """Collect the aliasing warnings of the fits inside the block, to be
+    given as one with :func:`warn_collected`."""
+    found: list = []
+    token = _COLLECT.set(found)
+    try:
+        yield found
+    finally:
+        _COLLECT.reset(token)
+
+
+def warn_collected(found: list, where: str) -> None:
+    """One warning for the aliased columns ``found`` by
+    :func:`collect_aliased` (their union), saying ``where`` (e.g. "in the
+    fits of causes 'a' and 'b'")."""
+    if not found:
+        return
+    columns = sorted({j for cols, _ in found for j in cols})
+    warn_aliased(columns, "{}, {}".format(found[0][1], where))
+
+
+@contextlib.contextmanager
 def covariate_columns(
-    names: "list[str] | None", Z: "npt.ArrayLike | None" = None
+    names: "list[str] | None", Z: Any = None, model_spec: Any = None
 ) -> Iterator[None]:
     """Name the columns of ``Z`` for an aliasing warning raised inside the
-    block (``fit_from_df`` wraps its call to ``fit`` in this). With ``Z``,
-    its all-zero columns are left out of the warning: a formula's declared
-    level with no rows arrives as one, and has been warned of already."""
+    block (``fit_from_df`` wraps its call to ``fit`` in this). Where the
+    formula's ``model_spec`` recorded a declared level with no rows (#377)
+    -- warned of already, and arriving as a column of zeros -- the
+    all-zero columns of ``Z`` are left out of the warning."""
     quiet: tuple = ()
-    if Z is not None:
+    states = getattr(model_spec, "encoder_state", None) or {}
+    if Z is not None and any(
+        "empty_levels" in state for _, state in states.values()
+    ):
         Z_arr = np.asarray(Z, dtype=float)
         if Z_arr.ndim == 2 and Z_arr.shape[0] > 0:
             quiet = tuple(np.flatnonzero(np.all(Z_arr == 0, axis=0)))
@@ -68,7 +101,9 @@ def constant_columns(
     size = np.max(np.abs(Z), axis=0) if Z.size else np.zeros(Z.shape[1])
     tol = max(Z.shape[0], 1) * _EPS * size
     if groups is None:
-        return np.ptp(Z, axis=0) <= tol if Z.size else np.ones(Z.shape[1], bool)
+        return (
+            np.ptp(Z, axis=0) <= tol if Z.size else np.ones(Z.shape[1], bool)
+        )
     groups = np.asarray(groups)
     out = np.ones(Z.shape[1], dtype=bool)
     for g in np.unique(groups):
@@ -152,6 +187,10 @@ def warn_aliased(columns: "npt.ArrayLike", how: str) -> None:
     _, quiet = _COLUMNS.get()
     shown = [j for j in np.asarray(columns, int).tolist() if j not in quiet]
     if not shown:
+        return
+    collector = _COLLECT.get()
+    if collector is not None:
+        collector.append((shown, how))
         return
     warnings.warn(
         "Covariate column(s) {} of Z cannot be estimated: {}. Their "

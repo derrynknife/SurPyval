@@ -22,6 +22,8 @@ from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import _caller_stacklevel, formula_model_matrix
 
+from ._aliasing import covariate_columns
+
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
@@ -828,7 +830,10 @@ class DataFrameRegressionMixin:
                     "not a linear predictor with an origin to move."
                 )
             extra["center"] = True
-        model = self.fit(x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra)
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(
+                x, Z, c=c, n=n, t=t, init=init, fixed=fixed, **extra
+            )
 
         model.feature_names = feature_names
         model.formula = formula
