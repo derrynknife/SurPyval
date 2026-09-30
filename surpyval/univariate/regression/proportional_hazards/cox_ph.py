@@ -1974,6 +1974,7 @@ def _df_covariates(
             list(matrix.columns),
             spec,
         )
+    assert Z_cols is not None  # exactly one of the two, checked above
     cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
     unknown = [col for col in cols if col not in df.columns]
     if unknown:

@@ -241,7 +241,9 @@ def _events_and_windows(
             "`c` must be 0 (an event) or 1 (the end of a system's "
             "observation)"
         )
-    xs, items, windows = [], [], {}
+    xs: list = []
+    items: list = []
+    windows: dict = {}
     for q in np.unique(i_arr):
         mask = i_arr == q
         events = np.sort(x_arr[mask][c_arr[mask] == 0])

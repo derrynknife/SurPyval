@@ -395,7 +395,9 @@ class CompetingRisks(SerialisableMixin):
             import matplotlib.pyplot as plt
 
             ax = plt.gcf().gca()
-        causes = sorted(self.event_idx_map, key=self.event_idx_map.get)
+        causes = sorted(
+            self.event_idx_map, key=lambda e: self.event_idx_map[e]
+        )
         # Each CIF is a right-continuous step function from 0 at time 0.
         x = np.concatenate([[min(0.0, float(self.x[0]))], self.x])
         cifs = [
