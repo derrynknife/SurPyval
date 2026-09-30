@@ -163,7 +163,7 @@ class AdditiveHazardsModel(SerialisableMixin):
     >>> from surpyval import AdditiveHazards
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> model = AdditiveHazards.fit(x, Z, c=c)
     >>> model.beta.round(4)

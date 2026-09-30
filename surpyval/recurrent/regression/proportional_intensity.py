@@ -39,9 +39,9 @@ class ProportionalIntensityModel(
     >>> import numpy as np
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> # in this copy of the data ``arrest`` is 1 for a subject still free
-    >>> # (censored) at week 52, so it is already a censoring flag
-    >>> c = data['arrest'].values
+    >>> # ``arrest`` is 1 for an arrest, so the censoring flag is its
+    >>> # complement (1 for a subject still free at week 52)
+    >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(x))  # one item per subject
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)

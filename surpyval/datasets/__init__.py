@@ -8,6 +8,13 @@ from surpyval.utils import fs_to_xcnt
 data_module = importlib.import_module("surpyval.datasets")
 
 
+def _read_csv(name: str) -> pd.DataFrame:
+    # Read a bundled CSV, dropping the row index that some of the files
+    # were saved with (written by R or pandas as an unnamed first column).
+    df = pd.read_csv(importlib.resources.files(data_module) / name)
+    return df.drop(columns=[c for c in df.columns if c.startswith("Unnamed")])
+
+
 def load_bearing_failures() -> pd.DataFrame:
     """
     Data on the failure of bearings, from [1]_. "Cycles to Failure (millions)"
@@ -100,8 +107,7 @@ def load_bofors_steel() -> pd.DataFrame:
 
     """
 
-    data_path = importlib.resources.files(data_module) / "bofors_steel.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("bofors_steel.csv")
 
 
 def load_boston_housing() -> pd.DataFrame:
@@ -125,8 +131,7 @@ def load_boston_housing() -> pd.DataFrame:
               Economics and Management 5, 81-102.
 
     """
-    data_path = importlib.resources.files(data_module) / "boston.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("boston.csv")
 
 
 def load_g1_kaminskiy_krivtsov() -> pd.DataFrame:
@@ -162,7 +167,7 @@ def load_heart_transplants() -> pd.DataFrame:
     ``c = 1 - event``). There are 172 rows for 103 patients, 75 of whom
     died. ``age`` is the age at acceptance minus 48 years, ``year`` the
     date of acceptance in years after 1 November 1967 and ``surgery`` 1
-    for prior bypass surgery. ``Unnamed: 0`` is a row index.
+    for prior bypass surgery.
 
     References
     ----------
@@ -171,8 +176,7 @@ def load_heart_transplants() -> pd.DataFrame:
            Association, 72, 27-36.
     """
 
-    data_path = importlib.resources.files(data_module) / "heart.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("heart.csv")
 
 
 def load_lung() -> pd.DataFrame:
@@ -186,8 +190,7 @@ def load_lung() -> pd.DataFrame:
     228 patients, 165 of whom died. The other columns are the covariates
     of the original data (``inst``, ``age``, ``sex`` with 1 male and 2
     female, ``ph.ecog``, ``ph.karno``, ``pat.karno``, ``meal.cal`` and
-    ``wt.loss``, several with missing values); ``Unnamed: 0`` is a row
-    index.
+    ``wt.loss``, several with missing values).
 
     Examples
     --------
@@ -208,8 +211,7 @@ def load_lung() -> pd.DataFrame:
            Treatment Group. Journal of Clinical Oncology. 12(3):601-7, 1994.
     """
 
-    data_path = importlib.resources.files(data_module) / "lung.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("lung.csv")
 
 
 def load_mettas_and_zhao() -> pd.DataFrame:
@@ -293,10 +295,24 @@ def load_rossi_static() -> pd.DataFrame:
     ``wexp`` (work experience), ``mar`` (married), ``paro`` (released on
     parole) and ``prio`` (number of prior convictions).
 
-    Note that in this copy ``arrest`` is coded as SurPyval's censoring
-    flag -- 1 for a prisoner *not* arrested (right-censored at week 52),
-    0 for an arrest -- the reverse of the original data. Use it directly
-    as ``c``. (The two leading ``Unnamed`` columns are row indices.)
+    ``arrest`` has the original coding, as in R's ``carData::Rossi`` and
+    lifelines' ``load_rossi``: 1 for a prisoner arrested during follow-up
+    (an observed event at ``week``), 0 for one not arrested (right
+    censored at week 52). SurPyval's censoring flag is its complement, so
+    pass ``c = 1 - arrest``. (Before v0.22 this copy stored ``arrest``
+    already inverted to the censoring flag.) There are 114 arrests.
+
+    Examples
+    --------
+    >>> import surpyval
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> Z_cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
+    >>> model = surpyval.CoxPH.fit(
+    ...     df["week"], df[Z_cols], c=1 - df["arrest"]
+    ... )
+    >>> model.beta.round(3)
+    array([-0.379, -0.057,  0.314, -0.15 , -0.434, -0.085,  0.091])
 
     References
     ----------
@@ -309,8 +325,7 @@ def load_rossi_static() -> pd.DataFrame:
            49(7), 1-32.
     """
 
-    data_path = importlib.resources.files(data_module) / "rossi.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("rossi.csv")
 
 
 def load_rossi_time_varying() -> pd.DataFrame:
@@ -322,8 +337,11 @@ def load_rossi_time_varying() -> pd.DataFrame:
     ``id`` the prisoner, ``start`` and ``stop`` the week's interval,
     ``event`` 1 if the prisoner was arrested at the end of that week (so
     ``c = 1 - event``), and ``employed`` the time-varying covariate. Here
-    ``arrest`` keeps the original coding (1 = arrested during follow-up),
-    unlike :func:`load_rossi_static`.
+    ``arrest`` has the original coding (1 = arrested during follow-up), as
+    in :func:`load_rossi_static`. ``fin``, ``race``, ``wexp``, ``mar``,
+    ``paro`` and ``employed`` are stored as strings (``"yes"`` / ``"no"``
+    and so on), as in R; encode them as numbers, or use a formula, before
+    fitting.
 
     References
     ----------
@@ -336,8 +354,7 @@ def load_rossi_time_varying() -> pd.DataFrame:
            49(7), 1-32.
     """
 
-    data_path = importlib.resources.files(data_module) / "rossi_tv.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("rossi_tv.csv")
 
 
 def load_tires_data() -> pd.DataFrame:
@@ -357,8 +374,7 @@ def load_tires_data() -> pd.DataFrame:
            Reliability Engineering and System Safety, 78(3), 267-273.
     """
 
-    data_path = importlib.resources.files(data_module) / "tires.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("tires.csv")
 
 
 def load_sae() -> pd.DataFrame:
@@ -507,8 +523,7 @@ def load_framingham() -> pd.DataFrame:
            (teaching dataset).
     """
 
-    data_path = importlib.resources.files(data_module) / "framingham.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("framingham.csv")
 
 
 def load_pbc2() -> pd.DataFrame:
@@ -555,8 +570,7 @@ def load_pbc2() -> pd.DataFrame:
            distributed in the R package JM, Rizopoulos, D.)
     """
 
-    data_path = importlib.resources.files(data_module) / "pbc2.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("pbc2.csv")
 
 
 def load_support2() -> pd.DataFrame:
@@ -596,5 +610,4 @@ def load_support2() -> pd.DataFrame:
            122(3), 191-203.
     """
 
-    data_path = importlib.resources.files(data_module) / "support2.csv"
-    return pd.read_csv(data_path)
+    return _read_csv("support2.csv")

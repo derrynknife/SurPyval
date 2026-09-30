@@ -26,11 +26,11 @@ def test_coxph_against_ll_rossi_static():
         ]
     )
 
-    rossi = load_rossi_static()
+    rossi = load_rossi_static().assign(c=lambda d: 1 - d["arrest"])
     model = CoxPH.fit_from_df(
         rossi,
         x_col="week",
-        c_col="arrest",
+        c_col="c",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
         tie_method="efron",
     )
@@ -86,11 +86,11 @@ def test_breslow_betas_rossi():
         ]
     )
 
-    rossi = load_rossi_static()
+    rossi = load_rossi_static().assign(c=lambda d: 1 - d["arrest"])
     model = CoxPH.fit_from_df(
         rossi,
         x_col="week",
-        c_col="arrest",
+        c_col="c",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
         tie_method="breslow",
     )
@@ -100,11 +100,11 @@ def test_breslow_betas_rossi():
 
 def test_breslow_p_values_rossi():
     # Breslow method returns a p_value per covariate; Efron returns None.
-    rossi = load_rossi_static()
+    rossi = load_rossi_static().assign(c=lambda d: 1 - d["arrest"])
     model = CoxPH.fit_from_df(
         rossi,
         x_col="week",
-        c_col="arrest",
+        c_col="c",
         Z_cols=["fin", "age", "race", "wexp", "mar", "paro", "prio"],
         tie_method="breslow",
     )
@@ -118,16 +118,16 @@ def test_formula_interface_matches_Z_cols():
     # fit_from_df with formula= must give the same betas as Z_cols=.
     # Formulaic preserves the order covariates appear in the formula, so
     # the betas can be compared directly.
-    rossi = load_rossi_static()
+    rossi = load_rossi_static().assign(c=lambda d: 1 - d["arrest"])
     Z_cols = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
     model_z = CoxPH.fit_from_df(
-        rossi, x_col="week", c_col="arrest", Z_cols=Z_cols, tie_method="efron"
+        rossi, x_col="week", c_col="c", Z_cols=Z_cols, tie_method="efron"
     )
     model_f = CoxPH.fit_from_df(
         rossi,
         x_col="week",
-        c_col="arrest",
+        c_col="c",
         formula="fin + age + race + wexp + mar + paro + prio",
         tie_method="efron",
     )

@@ -1393,14 +1393,14 @@ class CoxPH_:
 
         Examples
         --------
-        In the bundled copy of the Rossi recidivism data ``arrest`` is 1
-        for a subject still free at week 52, so it is already the
-        censoring flag:
+        In the Rossi recidivism data ``arrest`` is 1 for a subject
+        arrested during follow-up, so the censoring flag is
+        ``1 - arrest``:
 
         >>> from surpyval import CoxPH
         >>> from surpyval.datasets import load_rossi_static
         >>> df = load_rossi_static()
-        >>> x, c = df["week"].values, df["arrest"].values
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> Z = df[["fin", "age", "prio"]].values
         >>> model = CoxPH.fit(x, Z, c=c)
         >>> model.params.round(4)

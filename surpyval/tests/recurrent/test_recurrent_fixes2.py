@@ -116,7 +116,7 @@ def test_from_xrd_more_events_than_at_risk_gives_nan_variance():
 def _rossi():
     data = load_rossi_static()
     x = data["week"].values
-    c = data["arrest"].values
+    c = 1 - data["arrest"].values
     i = np.arange(len(x))
     Z = data[["fin", "age"]].values
     return x, Z, i, c
