@@ -34,7 +34,7 @@ as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``. The bundled
 Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
 only when it is significant. ``qf`` outside [0, 1] is ``nan``. Durations
-and dates are refused. Probability plots show failures only. ``fit_best``
+and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
 
@@ -523,13 +523,16 @@ bands change (#477).
   and predictions raised numpy's ``TypeError``. SurPyval has no time
   unit, so such values now raise a ``ValueError`` wherever a time is
   accepted, with the conversion to use (``x / pd.Timedelta(days=1)``).
-- **Changed: suspensions are not plotted (#478).** A probability plot
-  drew each suspension at the ``F`` of the failure before it, where it
-  looked like one more failure. The points are now the failures only,
-  as in Abernethy's *New Weibull Handbook* and Weibull++. ``get_plot_data``'s
-  ``x_`` and ``F`` hold failures only and its new ``x_censored`` the
-  suspension times, which ``plot(show_censored=True)`` marks on the time
-  axis.
+- **Changed: suspensions are not drawn as points (#478).** A probability
+  plot drew each suspension at the ``F`` of the failure before it, where
+  it looked like one more failure. ``plot()`` now draws the failures
+  only, as in Abernethy's *New Weibull Handbook* and Weibull++, and
+  ``plot(show_censored=True)`` (also on ``MixtureModel.plot``) marks the
+  suspension times with ticks on the time axis, which still spans every
+  time. ``get_plot_data()`` keeps its meaning: ``x_`` and ``F`` hold
+  every row as before, and a new boolean ``failed`` mask selects the
+  failures that are drawn; ``x_censored`` holds the suspension times. The
+  non-parametric ``get_plot_data`` returns ``failed`` too.
 - **weibayes (#493).** ``surpyval.weibayes(x, c, n, beta)`` gives the
   Weibayes lower confidence bound on a Weibull's scale of known shape
   from few or no failures (Nelson 1985; Abernethy), as a Weibull model:
