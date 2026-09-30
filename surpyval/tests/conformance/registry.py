@@ -2893,6 +2893,7 @@ for _fn in (
     "logrank",
     "rmst_diff",
     "success_run",
+    "weibayes",
     "gray_test",
     "auc_td",
     "brier_score",
