@@ -19,6 +19,7 @@ import pytest
 from autograd import grad, hessian
 
 import surpyval as sp
+import surpyval.univariate.competing_risks.regression.fine_gray as fine_gray
 import surpyval.univariate.regression.frailty.frailty_fitter as frailty
 import surpyval.univariate.regression.parametric_regression_model as prm
 from surpyval.tests.conformance.registry import CASE_BY_NAME, reg_data
@@ -290,6 +291,20 @@ def test_serialisation_round_trips_the_covariance():
     np.testing.assert_array_equal(again.covariance(), model.covariance())
 
 
+@pytest.mark.parametrize(
+    "name", ["WeibullPH", "LogNormalPH", "WeibullAFT", "LogisticPO"]
+)
+def test_to_dict_round_trips_unchanged(name):
+    # The kept Hessian and covariance are not part of the dict: it is the
+    # same before and after a covariance call, and after a reload.
+    model = _registry(name)
+    first = model.to_dict()
+    assert "_information" not in first and "_covariance_cache" not in first
+    model.standard_errors()
+    assert model.to_dict() == first
+    assert sp.from_dict(first).to_dict() == first
+
+
 def _frailty_data():
     rng = np.random.default_rng(4)
     groups = np.repeat(np.arange(30), 6)
@@ -320,9 +335,18 @@ def _frailty_direct_hessian(fitter, d, model):
     return np.asarray(hessian(neg_ll)(nat))
 
 
-@pytest.mark.parametrize("name", ["WeibullFrailty", "LogNormalFrailty"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "WeibullFrailty",
+        "ExponentialFrailty",
+        "GammaFrailty",
+        "LogNormalFrailty",
+    ],
+)
 def test_frailty_uses_the_exact_hessian(monkeypatch, name):
-    # A frailty variance inside its range (0.43 and 0.14): exact.
+    # A frailty variance inside its range (0.43, 0.055, 0.29 and 0.14):
+    # exact.
     fitter = getattr(sp, name)
     kept = []
     convert = frailty.natural_information
@@ -335,8 +359,11 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     calls = _count_numerical(monkeypatch, frailty)
     model = _fit(lambda: fitter.fit(**_frailty_data()))
     assert calls == [] and model.covariance is not None
+    # (a Gamma baseline to the accuracy of its shape derivatives, as above)
     _assert_same_hessian(
-        kept[-1], _frailty_direct_hessian(fitter, _frailty_data(), model)
+        kept[-1],
+        _frailty_direct_hessian(fitter, _frailty_data(), model),
+        1e-7 if name.startswith("Gamma") else 1e-10,
     )
     monkeypatch.setattr(frailty, "natural_information", lambda *a: None)
     numerical = _fit(lambda: fitter.fit(**_frailty_data()))
@@ -348,10 +375,46 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     )
 
 
-def test_frailty_variance_at_its_limit_falls_back(monkeypatch):
-    # The variance of these data runs to its limit of 0, where the
-    # likelihood no longer depends on it: the exact Hessian is singular and
-    # the covariance is what it was, from the numerical one.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "WeibullFrailty",
+        "ExponentialFrailty",
+        "GammaFrailty",
+        "LogNormalFrailty",
+    ],
+)
+def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
+    # The variance of the registry's data runs to its limit of 0 (theta
+    # 1e-102 to 1e-23), where the likelihood no longer depends on it: the
+    # exact Hessian is singular and the covariance is what it was, from the
+    # numerical one.
     calls = _count_numerical(monkeypatch, frailty)
-    model = _registry("WeibullFrailty")
-    assert model.theta < 1e-50 and len(calls) == 1
+    model = _registry(name)
+    assert model.theta < 1e-20 and len(calls) == 1
+    assert np.all(np.isfinite(model.covariance))
+
+
+def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
+    # The subdistribution fit's standard errors invert the exact Hessian
+    # the no-maximum check took, rather than taking it again.
+    case = CASE_BY_NAME["FineGray"]
+    calls, seen = [], []
+    original, take = fine_gray.hessian, fine_gray.search_derivatives
+
+    def counted(f):
+        calls.append(1)
+        return original(f)
+
+    def taking(neg_ll, beta):
+        seen.append((neg_ll, np.array(beta)))
+        return take(neg_ll, beta)
+
+    monkeypatch.setattr(fine_gray, "hessian", counted)
+    monkeypatch.setattr(fine_gray, "search_derivatives", taking)
+    model = _fit(lambda: case.fit(case.data()))
+    assert calls == [] and len(seen) == 1
+    neg_ll, beta = seen[0]
+    np.testing.assert_array_equal(beta, model.beta)
+    direct = np.linalg.inv(original(neg_ll)(beta))
+    np.testing.assert_allclose(model.cov, direct, rtol=1e-10, atol=0)
