@@ -7,11 +7,11 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy.typing as npt
 from autograd import jacobian
 from scipy.optimize import (
-    NonlinearConstraint,
     brentq,
     minimize,
     minimize_scalar,
 )
+from scipy.special import expit
 from scipy.special import ndtri as z
 from scipy.stats import uniform
 
@@ -47,6 +47,263 @@ if TYPE_CHECKING:
 # always travel together, so they are bundled to keep the bound helpers'
 # signatures small.
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
+
+# The likelihood-ratio searches (#421) move each parameter in a coordinate
+# that is unbounded over its space (see ``_LRCoord``). These are the
+# coordinates' ends: past them a parameter is no longer a double distinct
+# from the edge of its space.
+_LN_MAX = float(np.log(np.finfo(float).max))  # 709.78: exp overflows
+_LN_TINY = float(np.log(np.finfo(float).tiny))  # -708.40: exp underflows
+_FLOAT_MAX = float(np.finfo(float).max)
+# The profile deviance is solved to about 1e-8 (the searches' tolerances);
+# this is the slack the likelihood-ratio walk allows it (``_lr_walk``).
+_LR_NOISE = 1e-6
+# A deviance that is not finite, or no search reaching the target at all,
+# is a failure; a target beyond a data-derived edge (the Uniform's) is not
+# reachable, and reads as this deviance, above any critical value.
+_LR_UNREACHABLE = 1e6
+
+
+class _LRCoord:
+    """The coordinate a likelihood-ratio search moves one parameter in.
+
+    Unbounded over the parameter's declared space ``(lo, hi)``: the log of
+    its distance from a one-sided bound, the logit of its position within
+    a finite interval, or the parameter itself when it has no bound -- as
+    the fitter searches it, but a plain log throughout, which is the same
+    at every scale. ``ends`` are the coordinate's values beyond which the
+    parameter is no longer a double distinct from the edge of its space.
+    """
+
+    def __init__(self, lo: Any, hi: Any) -> None:
+        self.lo = -np.inf if lo is None else float(lo)
+        self.hi = np.inf if hi is None else float(hi)
+        eps = np.finfo(float).eps
+
+        def floor(edge: float) -> float:
+            # The log of the smallest distance from ``edge`` that is still
+            # a distinct double.
+            return float(np.log(max(np.finfo(float).tiny, eps * abs(edge))))
+
+        if np.isfinite(self.lo) and np.isfinite(self.hi):
+            self.kind = "logit"
+            log_width = float(np.log(self.hi - self.lo))
+            # expit rounds to 1 above -log(eps): 36.04 at most.
+            self.ends = (
+                floor(self.lo) - log_width,
+                min(-float(np.log(eps)), log_width - floor(self.hi)),
+            )
+        elif np.isfinite(self.lo):
+            self.kind = "log"
+            self.ends = (floor(self.lo), _LN_MAX)
+        elif np.isfinite(self.hi):
+            self.kind = "neglog"
+            self.ends = (-_LN_MAX, -floor(self.hi))
+        else:
+            self.kind = "identity"
+            self.ends = (-_FLOAT_MAX, _FLOAT_MAX)
+
+    def to_u(self, theta: float) -> float:
+        with np.errstate(all="ignore"):
+            if self.kind == "log":
+                return float(np.log(theta - self.lo))
+            if self.kind == "neglog":
+                return float(-np.log(self.hi - theta))
+            if self.kind == "logit":
+                return float(np.log(theta - self.lo) - np.log(self.hi - theta))
+        return float(theta)
+
+    def from_u(self, u: float) -> float:
+        with np.errstate(all="ignore"):
+            if self.kind == "log":
+                return float(self.lo + np.exp(u))
+            if self.kind == "neglog":
+                return float(self.hi - np.exp(-u))
+            if self.kind == "logit":
+                return float(self.lo + (self.hi - self.lo) * expit(u))
+        return float(u)
+
+    def slope(self, theta: float) -> float:
+        """d theta / d u at ``theta``."""
+        if self.kind == "log":
+            return float(theta - self.lo)
+        if self.kind == "neglog":
+            return float(self.hi - theta)
+        if self.kind == "logit":
+            return float(
+                (theta - self.lo) * (self.hi - theta) / (self.hi - self.lo)
+            )
+        return 1.0
+
+    def edge(self, direction: float) -> float:
+        """The edge of the space the parameter goes to in ``direction``."""
+        return self.hi if direction > 0 else self.lo
+
+
+class _LRPath:
+    """The points a profile search has solved, for continuation.
+
+    A profile point is started from the solved point nearest to it and
+    from the straight line through the two nearest, as well as from the
+    estimate: the minimising nuisance parameters move along a curved
+    valley (a NegativeBinomial ``p`` of ``1 - lambda / r`` as ``r`` grows;
+    an ExpoWeibull ``alpha`` of 1e-28 at a ``beta`` of 0.05), which a
+    search started from the estimate each time does not follow.
+    """
+
+    def __init__(self) -> None:
+        self.w: list[float] = []
+        self.u: list[npt.NDArray] = []
+        # The minimum at each point (a negative log-likelihood).
+        self.f: list[float] = []
+
+    def add(self, w: float, u: npt.NDArray, f: float = np.nan) -> None:
+        if np.isfinite(w) and np.all(np.isfinite(u)):
+            self.w.append(float(w))
+            self.u.append(np.array(u, dtype=float))
+            self.f.append(float(f))
+
+    def starts(self, w: float) -> list[npt.NDArray]:
+        if not self.w:
+            return []
+        order = np.argsort(np.abs(np.asarray(self.w) - w))
+        near = self.u[order[0]]
+        out = [near]
+        if len(order) > 1:
+            w0, w1 = self.w[order[0]], self.w[order[1]]
+            if w0 != w1:
+                slope = (near - self.u[order[1]]) / (w0 - w1)
+                out.append(near + slope * (w - w0))
+        return out
+
+
+def _lr_walk(
+    deviance: Callable[[float], float],
+    w_hat: float,
+    step: float,
+    direction: float,
+    crit: float,
+    end: float,
+    stop: float | None = None,
+    d_hat: float = 0.0,
+) -> tuple[str, float]:
+    """Walk out from ``w_hat`` to where ``deviance`` first reaches ``crit``.
+
+    Steps of ``step``, growing by 1.6 each time, bracket the crossing; the
+    bracket is walked again in eight equal steps (a long step can lose the
+    valley the profile's minimum follows, and overstate the deviance: an
+    ExpoWeibull ``mu`` bound of 1e-3 where the deviance falls to 0.3 at
+    1e-4), and ``brentq`` solves the first of them to reach ``crit``.
+    Returns ``("root", w)``; ``("stop", stop)`` when the walk reaches
+    ``stop`` (a data-derived limit, beyond which the likelihood is 0)
+    below ``crit``; ``("edge", end)`` when the deviance stays below
+    ``crit`` to ``end`` (the end of the coordinate) or levels off below
+    it; and ``("fail", nan)`` where the deviance is not finite, or the
+    walk runs out of steps. ``d_hat`` is the deviance at ``w_hat``: 0 at
+    the estimate.
+
+    *Levelling off.* The deviance of a parameter that tends to a limiting
+    model at the edge of its space (a NegativeBinomial ``r`` to infinity,
+    the shifted Poisson) converges to that model's deviance. Where that is
+    below ``crit`` no value of the parameter out to the edge is excluded,
+    and the bound is the edge. The walk says so once, over its last three
+    steps, the deviance has risen ever more slowly -- each rise per unit
+    of ``w`` (a fall counting as no rise) no more than the one before, to
+    within ``_LR_NOISE`` -- and a straight line from the latest point, at
+    the latest of those slopes, stays below ``crit`` all the way to
+    ``end``. A deviance rising ever more slowly lies below that line, so
+    it cannot reach ``crit`` before the end of the representable range.
+    A deviance rising at a steady or growing rate (a quadratic one, the
+    usual case) fails the first test, and one rising at a slowing rate
+    that would still reach ``crit`` before ``end`` fails the second: an
+    ExpoWeibull ``alpha`` whose deviance rises by 0.024 per unit of
+    ``log(alpha)`` at ``alpha`` = 7e-11 goes on to cross 3.84 at 5e-28,
+    and the walk finds it there. The one profile the test misreads is one
+    that falls for three steps and later climbs back above ``crit`` (a
+    second, lower mode of the likelihood further out); the bound is then
+    the edge, wider than it need be, never narrower.
+    """
+    ws, ds = [w_hat], [d_hat]
+    # brentq starts from the bracket's ends, which the walk has solved.
+    solved: dict[float, float] = {float(w_hat): float(d_hat)}
+
+    def dev_at(v: float) -> float:
+        v = float(v)
+        if v not in solved:
+            solved[v] = deviance(v)
+        return solved[v]
+
+    def f(v: float) -> float:
+        d = dev_at(v)
+        return (_LR_UNREACHABLE if d == np.inf else d) - crit
+
+    def levels_off() -> bool:
+        if len(ds) < 4:
+            return False
+        with np.errstate(all="ignore"):
+            h = np.abs(np.diff(ws[-4:]))
+            rate = np.maximum(np.diff(ds[-4:]), 0.0) / h
+            slowing = np.all(rate[1:] <= rate[:-1] + _LR_NOISE / h[1:])
+            reach = ds[-1] + rate[-1] * abs(end - ws[-1]) + _LR_NOISE
+        return bool(slowing and reach < crit)
+
+    for _ in range(80):
+        w = ws[-1] + direction * step
+        step *= 1.6
+        at_stop = stop is not None and direction * (w - stop) >= 0
+        at_end = direction * (w - end) >= 0
+        if stop is not None and at_stop and direction * (stop - end) <= 0:
+            # The data's limit comes before the end of the coordinate.
+            w, at_end = float(stop), False
+        elif at_end:
+            w, at_stop = float(end), False
+        dev = dev_at(w)
+        if dev >= crit:
+            # Walk the bracket again, in eight steps from its near end.
+            for v in np.linspace(ws[-1], w, 9)[1:]:
+                dev = dev_at(v)
+                if dev >= crit:
+                    if f(ws[-1]) >= 0:
+                        # A start on the boundary (``d_hat`` at crit).
+                        return "root", float(ws[-1])
+                    a, b = sorted((ws[-1], v))
+                    try:
+                        root = brentq(f, a, b, xtol=1e-9, rtol=1e-9)
+                    except ValueError:
+                        return "fail", np.nan
+                    return "root", float(root)
+                if not np.isfinite(dev):
+                    return "fail", np.nan
+                if v != w:
+                    ws.append(float(v))
+                    ds.append(dev)
+                    if levels_off():
+                        return "edge", float(end)
+            # The far end, solved again from the steps before it, is
+            # below crit after all: the walk goes on from it.
+        if not np.isfinite(dev):
+            return "fail", np.nan
+        if at_stop:
+            return "stop", float(w)
+        if at_end:
+            return "edge", float(end)
+        ws.append(w)
+        ds.append(dev)
+        if levels_off():
+            return "edge", float(end)
+    return "fail", np.nan
+
+
+def _central_gradient(f: Callable[..., Any], u: npt.NDArray) -> npt.NDArray:
+    """Central-difference gradient of ``f`` at ``u``."""
+    grad = np.empty(len(u))
+    for j in range(len(u)):
+        h = 1e-6 * max(1.0, abs(u[j]))
+        up, down = np.array(u, dtype=float), np.array(u, dtype=float)
+        up[j] += h
+        down[j] -= h
+        grad[j] = (f(up) - f(down)) / (2 * h)
+    return grad
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -566,8 +823,13 @@ class Parametric(
           respects the parameter's boundary, and need not be symmetric about
           the estimate -- usually better small-sample coverage than Wald, and
           the reliability-engineering default. Aliases: ``"likelihood"``,
-          ``"likelihood-ratio"``, ``"profile"``. A side whose bound cannot
-          be found is ``nan``, with a warning.
+          ``"likelihood-ratio"``, ``"profile"``. The interval is the
+          stretch around the estimate where the deviance stays below the
+          critical value; where it stays below it out to the edge of the
+          parameter's space (levelling off there, as a NegativeBinomial's
+          ``r`` does as the model tends to a Poisson), the bound is that
+          edge: 0, 1 or ``inf``. A side whose bound cannot be found is
+          ``nan``, with a warning.
 
         A parameter fixed at fit time is known, so both methods give the
         degenerate interval at its value. A Wald bound does not exist
@@ -769,61 +1031,170 @@ class Parametric(
         info = getattr(self, "fitting_info", None) or {}
         return set(info.get("fixed_idx", []) or [])
 
-    def _profile_neg_ll(self, idx: int, value: Any) -> float:
-        """Profile negative log-likelihood with core parameter ``idx`` fixed.
+    def _lr_neg_ll(self, theta: npt.NDArray) -> float:
+        """The negative log-likelihood at core parameters ``theta``, as
+        the likelihood-ratio searches see it.
 
-        Holds the ``idx``-th distribution parameter at ``value`` and minimises
-        the negative log-likelihood over the remaining core parameters (warm
-        started from the fit). ``gamma``, ``f0`` and ``p`` are held at their
-        fitted values -- likelihood-ratio bounds for offset / LFP / ZI models
-        are not yet supported, so the public entry point rejects them before
-        this is reached.
+        ``nan`` where it cannot be right: at parameters that are not
+        finite (a search that has stepped off to nan; some likelihoods
+        iterate to their limit on nan, a NegativeBinomial's incomplete
+        beta for 2 s a call), and below the fit's own minimum by more
+        than the fit's precision (``_LR_NOISE`` in deviance, or 1e-8 of
+        the log-likelihood; the registry's fits are within 2e-11 of
+        their profiles' minima). The fit is the maximum, so a likelihood
+        above it is the likelihood failing at extreme parameters: an
+        ExpoWeibull's at ``beta`` = 1e14 and ``mu`` = 1e-14 is a
+        deviance of -1e21, and a search that reached it took it for the
+        best point there.
         """
-        fixed = np.array(self.params, dtype=float)
-        fixed[idx] = value
-        # Parameters the user fixed at fit time stay fixed during the
-        # profile — re-freeing them makes the profile drop below the fitted
-        # nll and silently inflates the interval (#255).
-        user_fixed = self._user_fixed_idx()
-        free_idx = [
-            j for j in range(len(fixed)) if j != idx and j not in user_fixed
-        ]
+        if not np.all(np.isfinite(theta)):
+            return np.nan
+        nll = self._lr_raw_neg_ll(theta)
+        params = np.asarray(self.params, dtype=float)
+        kept = self.__dict__.get("_lr_nll_hat")
+        if kept is None or kept[0] != params.tobytes():
+            kept = (params.tobytes(), self._lr_raw_neg_ll(params))
+            self.__dict__["_lr_nll_hat"] = kept
+        slack = max(_LR_NOISE, 2e-8 * abs(kept[1]))
+        if 2.0 * (nll - kept[1]) < -slack:
+            return np.nan
+        return nll
 
-        def neg_ll(theta: npt.NDArray) -> Any:
+    def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
+        with np.errstate(all="ignore"):
             return float(
                 self.dist._neg_ll_func(
                     self.surv_data, *theta, self.gamma, self.f0, self.p
                 )
             )
 
-        if not free_idx:
+    def _lr_coords(self) -> tuple[list[_LRCoord], list[tuple[Any, Any]]]:
+        """Each core parameter's likelihood-ratio search coordinate
+        (``_LRCoord``), and its box in that coordinate: the data-derived
+        limits of ``_lr_limits``, ``None`` where the limit is the declared
+        bound (which the coordinate maps to infinity)."""
+        coords, boxes = [], []
+        for (lo, hi), (l_lo, l_hi) in zip(
+            self.dist.bounds, self._lr_limits(), strict=True
+        ):
+            coord = _LRCoord(lo, hi)
+            coords.append(coord)
+            boxes.append(
+                (
+                    None if l_lo == coord.lo else coord.to_u(l_lo),
+                    None if l_hi == coord.hi else coord.to_u(l_hi),
+                )
+            )
+        return coords, boxes
+
+    @staticmethod
+    def _lr_box(coords: list, limits: list) -> list[tuple[Any, Any]]:
+        """The box a likelihood-ratio search runs in: the data-derived
+        limits, and elsewhere the ends of each coordinate, so that a
+        search cannot step off to where the parameter overflows (the
+        identity coordinate's ends are the doubles' own)."""
+        box = []
+        for coord, (b_lo, b_hi) in zip(coords, limits, strict=True):
+            if coord.kind != "identity":
+                b_lo = coord.ends[0] if b_lo is None else b_lo
+                b_hi = coord.ends[1] if b_hi is None else b_hi
+            box.append((b_lo, b_hi))
+        return box
+
+    @staticmethod
+    def _lr_start(x0: npt.NDArray, box: list) -> npt.NDArray:
+        """``x0`` inside ``box``."""
+        x0 = np.array(x0, dtype=float)
+        for k, (b_lo, b_hi) in enumerate(box):
+            if b_lo is not None:
+                x0[k] = max(x0[k], b_lo)
+            if b_hi is not None:
+                x0[k] = min(x0[k], b_hi)
+        return x0
+
+    def _profile_neg_ll(
+        self, idx: int, value: Any, path: _LRPath | None = None
+    ) -> float:
+        """Profile negative log-likelihood with core parameter ``idx`` fixed.
+
+        Holds the ``idx``-th distribution parameter at ``value`` and
+        minimises the negative log-likelihood over the remaining core
+        parameters, each in its unbounded search coordinate
+        (``_LRCoord``). The search starts from the fit and, given the
+        ``path`` of the points already solved, from the nearest of them
+        and the line through the two nearest (continuation); the lowest
+        minimum is kept, and added to ``path``. The raw parameters within
+        box limits, started from the fit every time, did not follow the
+        minimum out along its valley: a NegativeBinomial profile deviance
+        of 3.05 at ``p`` = 0.999999 where it is 2.35, and ExpoWeibull ones
+        of 49 and 42 where they are 3.9 and 0.29 (#421).
+
+        ``nan`` if every search fails; ``inf`` where the likelihood is 0
+        from every start. ``gamma``, ``f0`` and ``p`` are held at their
+        fitted values -- likelihood-ratio bounds for offset / LFP / ZI models
+        are not yet supported, so the public entry point rejects them before
+        this is reached.
+        """
+        theta = np.array(self.params, dtype=float)
+        theta[idx] = value
+        # Parameters the user fixed at fit time stay fixed during the
+        # profile — re-freeing them makes the profile drop below the fitted
+        # nll and silently inflates the interval (#255).
+        user_fixed = self._user_fixed_idx()
+        free = [
+            j for j in range(len(theta)) if j != idx and j not in user_fixed
+        ]
+        if not free:
             # Single-parameter distribution: nothing left to profile over.
-            return neg_ll(fixed)
+            return self._lr_neg_ll(theta)
 
-        def obj(free_vals: npt.NDArray) -> Any:
-            theta = fixed.copy()
-            theta[free_idx] = free_vals
-            return neg_ll(theta)
+        coords, limits = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        box = [limits[j] for j in free]
+        bounds = box if any(b != (None, None) for b in box) else None
+        # Starts are held inside the coordinates' ends as well.
+        start_box = self._lr_box(free_coords, box)
 
-        sci_bounds = []
-        limits = self._lr_limits()
-        for j in free_idx:
-            lo, hi = limits[j]
-            # A hard zero lower bound is nudged up so log-terms stay finite.
-            lo_s = 1e-10 if lo == 0 else lo
-            sci_bounds.append((lo_s, hi))
+        def obj(u: npt.NDArray) -> float:
+            th = theta.copy()
+            th[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
+            nll = self._lr_neg_ll(th)
+            return nll if np.isfinite(nll) else np.inf
 
-        x0 = fixed[free_idx]
-        res = minimize(obj, x0, method="L-BFGS-B", bounds=sci_bounds)
-        best = res.fun if np.isfinite(res.fun) else np.inf
-        if not (res.success and np.isfinite(res.fun)):
-            # A failed profile search overstates the profile likelihood
-            # and so narrows the interval; retry derivative free from the
-            # fit and keep whichever is lower.
-            res2 = minimize(obj, x0, method="Nelder-Mead", bounds=sci_bounds)
-            if np.isfinite(res2.fun) and res2.fun < best:
-                best = res2.fun
-        return float(best)
+        u_hat = np.array([coords[j].to_u(self.params[j]) for j in free])
+        w = coords[idx].to_u(value)
+        starts = [] if path is None else path.starts(w)
+        best, best_u, zero = np.inf, None, False
+        with np.errstate(all="ignore"):
+            for x0 in starts + [u_hat]:
+                res = minimize(
+                    obj,
+                    self._lr_start(x0, start_box),
+                    method="L-BFGS-B",
+                    jac="3-point",
+                    bounds=bounds,
+                    options={"ftol": 1e-13, "gtol": 1e-9, "maxiter": 1000},
+                )
+                zero = zero or res.fun == np.inf
+                if np.isfinite(res.fun) and res.fun < best:
+                    best, best_u = float(res.fun), np.asarray(res.x)
+            if best_u is None:
+                # Every gradient search failed: derivative free from the
+                # fit, as a last resort.
+                res = minimize(
+                    obj,
+                    self._lr_start(u_hat, start_box),
+                    method="Nelder-Mead",
+                    bounds=bounds,
+                )
+                zero = zero or res.fun == np.inf
+                if np.isfinite(res.fun):
+                    best, best_u = float(res.fun), np.asarray(res.x)
+        if best_u is None:
+            return np.inf if zero else np.nan
+        if path is not None:
+            path.add(w, best_u, best)
+        return best
 
     def _lr_limits(self) -> list[tuple[float, float]]:
         """``(lower, upper)`` of each core parameter for the
@@ -859,11 +1230,16 @@ class Parametric(
         The bound(s) solve ``2[nll_p(v) - nll_hat] = c`` where ``nll_p`` is the
         profile negative log-likelihood, ``nll_hat`` the fitted value, and
         ``c`` the chi-squared critical value (``z**2``) at the requested level.
-        The deviance is zero at the estimate and increases away from it, so
-        each side is bracketed by stepping out in units of the Wald standard
-        error and then solved by ``brentq``. A parameter boundary reached
-        before the deviance crosses ``c`` returns the boundary (an interval
-        open at the support edge).
+        The deviance is zero at the estimate, so each side walks out from it
+        in the parameter's search coordinate (``_LRCoord``: its log, or
+        logit, ...), in steps that start at the Wald standard error there,
+        and the first crossing is solved by ``brentq`` (``_lr_walk``). The
+        interval is thus the piece of the likelihood-ratio confidence set
+        that contains the estimate. Where the deviance stays below ``c`` to
+        the edge of the parameter's space, or levels off below it on the
+        way, the bound is that edge (0, 1 or ``inf``): no value up to it is
+        excluded. A data-derived limit (a Uniform's ``a`` at the smallest
+        observation) reached first is the bound.
         """
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
@@ -893,21 +1269,64 @@ class Parametric(
                     "bound must be 'two-sided', 'lower' or 'upper'"
                 )
             return np.array([value])
-        theta_hat = float(self.params[idx])
-        nll_hat = float(
-            self.dist._neg_ll_func(
-                self.surv_data, *self.params, self.gamma, self.f0, self.p
-            )
-        )
-
-        lo_b, hi_b = self._lr_limits()[idx]
-
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
         elif bound in ("lower", "upper"):
             crit = z(1.0 - alpha_ci) ** 2
         else:
             raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+
+        def solve_side(direction: Any) -> Any:
+            value = self._lr_param_side(idx, crit, direction)
+            if np.isnan(value):
+                # Never fall back on the last candidate or the estimate:
+                # an unfound bound is reported as such.
+                side = "upper" if direction > 0 else "lower"
+                warnings.warn(
+                    f"The likelihood-ratio {side} bound on '{name}' could "
+                    "not be found (the profile deviance never crossed the "
+                    "critical value, or was not finite); nan is returned "
+                    "for it. method='wald' gives a bound in its place.",
+                    RuntimeWarning,
+                    stacklevel=4,
+                )
+            return value
+
+        if bound == "two-sided":
+            return np.array([solve_side(-1), solve_side(1)])
+        elif bound == "lower":
+            return np.array([solve_side(-1)])
+        else:
+            return np.array([solve_side(1)])
+
+    def _lr_key(self, idx: int, crit: float, direction: Any) -> tuple:
+        """The key a parameter's likelihood-ratio side is kept under."""
+        return (
+            idx,
+            float(crit),
+            float(np.sign(direction)),
+            np.asarray(self.params, dtype=float).tobytes(),
+            id(self.surv_data),
+        )
+
+    def _lr_param_side(self, idx: int, crit: float, direction: Any) -> float:
+        """One side of the likelihood-ratio interval on core parameter
+        ``idx`` at the critical value ``crit``: the bound, the edge of the
+        parameter's space, or ``nan`` where it cannot be found. See
+        ``_param_cb_lr``.
+
+        Each side has a path of its own, so a bound does not depend on
+        whether the other side was asked for. A side is solved once per
+        critical value and kept (a one-sided bound at ``alpha`` is the end
+        of the two-sided one at ``2 alpha``, and ``cb`` reads the interval
+        of every parameter).
+        """
+        theta_hat = float(self.params[idx])
+        key = self._lr_key(idx, crit, direction)
+        cache = self.__dict__.setdefault("_lr_sides", {})
+        if key in cache:
+            return cache[key]
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
 
         hess_inv = getattr(self, "hess_inv", None)
         if (
@@ -920,73 +1339,54 @@ class Parametric(
         else:
             se = 0.5 * abs(theta_hat) if theta_hat != 0 else 1.0
 
-        def deviance(v: npt.NDArray) -> Any:
-            return 2.0 * (self._profile_neg_ll(idx, v) - nll_hat)
+        coords, limits = self._lr_coords()
+        coord = coords[idx]
+        w_hat = float(np.clip(coord.to_u(theta_hat), *coord.ends))
+        # The first step: the standard error in the search coordinate.
+        with np.errstate(all="ignore"):
+            step = se / coord.slope(theta_hat)
+        if not (np.isfinite(step) and step > 0):
+            step = 1.0
 
-        def unsolved(direction: Any) -> float:
-            # Never fall back on the last candidate or the estimate: an
-            # unfound bound is reported as such.
-            side = "upper" if direction > 0 else "lower"
-            warnings.warn(
-                f"The likelihood-ratio {side} bound on '{name}' could not "
-                "be found (the profile deviance never crossed the critical "
-                "value, or was not finite); nan is returned for it. "
-                "method='wald' gives a bound in its place.",
-                RuntimeWarning,
-                stacklevel=4,
-            )
-            return np.nan
+        path = _LRPath()
 
-        def solve_side(direction: Any) -> Any:
-            edge = hi_b if direction > 0 else lo_b
-            # The likelihood at a bound of 0 or 1 itself is typically nan
-            # (0 * log 0), so it is probed just inside; reaching it still
-            # reports the edge itself below.
-            limit = edge
-            if edge == 0:
-                limit = 1e-10
-            elif edge == 1:
-                limit = 1 - 1e-10
-            below = theta_hat  # deviance(below) ~ 0 < crit
-            step = se
-            for _ in range(80):
-                v = theta_hat + direction * step
-                at_edge = (direction > 0 and v >= limit) or (
-                    direction < 0 and v <= limit
-                )
-                if at_edge:
-                    v = limit
-                dev_v = deviance(v)
-                if dev_v >= crit:
-                    a, b = sorted((below, v))
-                    try:
-                        return float(
-                            brentq(
-                                lambda x: deviance(x) - crit,
-                                a,
-                                b,
-                                xtol=1e-8,
-                                rtol=1e-8,
-                            )
-                        )
-                    except ValueError:
-                        return unsolved(direction)
-                if not np.isfinite(dev_v):
-                    return unsolved(direction)
-                if at_edge:
-                    # Hit the support boundary without crossing: the interval
-                    # is open at the edge.
-                    return float(edge)
-                below = v
-                step *= 1.6
-            return unsolved(direction)
+        def deviance(w: float) -> float:
+            nll = self._profile_neg_ll(idx, coord.from_u(w), path=path)
+            return 2.0 * (nll - nll_hat)
 
-        if bound == "two-sided":
-            return np.array([solve_side(-1), solve_side(1)])
-        elif bound == "lower":
-            return np.array([solve_side(-1)])
+        status, w = _lr_walk(
+            deviance,
+            w_hat,
+            step,
+            direction,
+            crit,
+            end=coord.ends[1] if direction > 0 else coord.ends[0],
+            stop=limits[idx][1] if direction > 0 else limits[idx][0],
+        )
+        if status in ("root", "stop"):
+            value = coord.from_u(w)
+        elif status == "edge":
+            value = float(coord.edge(direction))
         else:
-            return np.array([solve_side(1)])
+            value = np.nan
+        cache[key] = value
+        # The points the walk solved inside the region, for the band's
+        # searches to start from (see ``_cb_lr``).
+        user_fixed = self._user_fixed_idx()
+        free = [
+            j
+            for j in range(len(self.params))
+            if j != idx and j not in user_fixed
+        ]
+        points = []
+        for w_i, u_i, f_i in zip(path.w, path.u, path.f):
+            if 2.0 * (f_i - nll_hat) <= crit:
+                theta = np.array(self.params, dtype=float)
+                theta[idx] = coord.from_u(w_i)
+                theta[free] = [coords[j].from_u(v) for j, v in zip(free, u_i)]
+                points.append(theta)
+        self.__dict__.setdefault("_lr_points", {})[key] = points
+        return value
 
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -1807,7 +2207,12 @@ class Parametric(
             the ``on`` function by the delta method. ``"lr"`` gives a
             profile-likelihood (likelihood-ratio) band: at each ``x`` the bound
             is the extreme value of the ``on`` function over the parameter
-            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``.
+            confidence region ``{theta : 2[nll(theta) - nll_hat] <= chi2}``
+            (the piece of it around the estimate), which is where the
+            function's own profile deviance reaches ``chi2``; a band whose
+            region reaches the edge of the function's range (0 or 1 for
+            ``sf``) is that edge. The ``sf``, ``ff`` and ``Hf`` bands are
+            one band, so they agree exactly.
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (the reliability-engineering default), but it is computed
@@ -1924,12 +2329,34 @@ class Parametric(
     def _cb_lr(self, t: Any, on: str, alpha_ci: float, bound: str) -> Any:
         """Profile-likelihood (likelihood-ratio) band on a model function.
 
-        At each time the bound is the extreme value of the ``on`` function over
-        the parameter confidence region ``{theta : deviance(theta) <= crit}``,
-        found by constrained optimisation (SLSQP). The times are visited in
-        order and each optimiser is warm started from the previous solution,
-        which keeps the pointwise sweep fast. The core MLE path is untouched --
-        this only re-evaluates the stored likelihood on ``surv_data``.
+        At each time ``x`` the bound is the extreme value of the ``on``
+        function over the parameter confidence region ``{theta :
+        deviance(theta) <= crit}`` -- the piece of it that contains the
+        estimate. It is found as ``param_cb`` finds a parameter's bound,
+        with the function's value ``psi`` in the parameter's place: the
+        bound is where the function's own profile deviance, ``2[min{
+        nll(theta) : g(x, theta) = psi} - nll_hat]``, first reaches
+        ``crit``. ``psi`` is on the scale the Wald band uses -- the logit
+        of ``sf`` (from which the ``sf``, ``ff`` and ``Hf`` bands all
+        come, so they agree exactly), the log of a continuous hazard or
+        density, the logit of a discrete one.
+
+        Each side is sought first directly (the extreme of ``psi`` over
+        the region, by SLSQP, from the estimate and then from the points
+        of the region farther out that the parameters' own walks found),
+        and a result is taken only if it checks out as that crossing and
+        is at least as far out as every point of the region known. Failing
+        that, the profile of ``psi`` is walked out from the farthest point
+        known (``_lr_walk``); where it stays below ``crit``, or levels off
+        below it, to the end of the scale, the band reaches the edge of
+        the function's range. Each end is solved once per level and kept.
+
+        The search for the extreme from a warm start alone stopped wherever
+        it first met the region's boundary: ExpoWeibull and
+        NegativeBinomial bands that were ``nan`` where a search failed, or
+        short of the region's far corners (a NegativeBinomial ``sf(8)``
+        lower bound of 0.00918 for 0.00587), and 95% and 80% bands that
+        were not nested (#421).
         """
         self._ensure_surv_data()
         if self.offset or self.lfp or self.zi:
@@ -1940,118 +2367,115 @@ class Parametric(
             )
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
-
-        g = self._cb_lr_on_func(on)
-        theta_hat = np.array(self.params, dtype=float)
-        nll_hat = float(
-            self.dist._neg_ll_func(
-                self.surv_data, *theta_hat, self.gamma, self.f0, self.p
-            )
-        )
-
-        def deviance(theta: npt.NDArray) -> Any:
-            return 2.0 * (
-                float(
-                    self.dist._neg_ll_func(
-                        self.surv_data, *theta, self.gamma, self.f0, self.p
-                    )
-                )
-                - nll_hat
-            )
+        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+        if on not in valid:
+            raise ValueError(f"'on' must be one of {valid}")
 
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
         else:
             crit = z(1.0 - alpha_ci) ** 2
 
-        user_fixed = self._user_fixed_idx()
-        sci_bounds = []
-        for j, (lo, hi) in enumerate(self._lr_limits()):
-            if j in user_fixed:
-                # A parameter the user fixed at fit time is pinned during
-                # the constrained search too (#255).
-                v = float(theta_hat[j])
-                sci_bounds.append((v, v))
-                continue
-            lo_s = 1e-10 if lo == 0 else lo
-            # A finite upper edge is nudged inside for the same reason:
-            # SLSQP steps straight onto it (a Geometric p of 1), where the
-            # likelihood is nan and the search stops.
-            hi_s = hi - 1e-10 if hi == 1 else hi
-            sci_bounds.append((lo_s, hi_s))
-        constraint = NonlinearConstraint(deviance, -np.inf, crit)
-
         t = np.atleast_1d(t).astype(float)
+        theta_hat = np.array(self.params, dtype=float)
+        user_fixed = self._user_fixed_idx()
         free = [j for j in range(len(theta_hat)) if j not in user_fixed]
+        if not free:
+            # Every parameter was fixed at fit time: the region is the
+            # estimate, and so is the band.
+            g = self._cb_lr_on_func(on)
+            at = np.array([g(time, theta_hat) for time in t], dtype=float)
+            if bound == "two-sided":
+                return np.column_stack([at, at])
+            return at
         if len(free) == 1:
-            band = self._cb_lr_one_param(t, g, free[0], alpha_ci, bound)
+            band = self._cb_lr_one_param(
+                t, self._cb_lr_on_func(on), free[0], alpha_ci, bound
+            )
             if band is not None:
                 return band
-        order = np.argsort(t)
-        t_sorted = t[order]
-        failed: list[float] = []
 
-        def feasible(res: Any) -> bool:
-            if not (res.success and np.all(np.isfinite(res.x))):
-                return False
-            dev = deviance(res.x)
-            return bool(np.isfinite(dev) and dev <= crit + 1e-4)
-
-        def extreme(time: Any, sign: Any, warm: Any) -> Any:
-            # sign = +1 minimises g (lower bound); -1 maximises g (upper).
-            #
-            # A failed search used to keep its starting point, which for
-            # the first time is the estimate itself: the band silently
-            # collapsed onto the point estimate on that side (a Geometric
-            # lower bound equal to the fitted sf, 65% coverage). So other
-            # starts and methods are tried in turn, each result is checked
-            # to lie inside the likelihood region, and if none succeeds
-            # the bound is nan, with a warning, rather than a wrong number.
-            #
-            # The estimate is inside the region, so a bound is at least as
-            # extreme as g there. A search that ends short of it has
-            # stopped at a stationary point of g (a density at x peaks in
-            # the scale, and a warm start can sit on the peak): a Rayleigh
-            # df lower bound of 0.0502 above the estimate 0.0359 (#421).
-            # Such a result is passed over for the next start.
-            g_hat = g(time, theta_hat)
-            reach = sign * g_hat + 1e-10 * max(abs(g_hat), 1e-300)
-            attempts = [(warm, "SLSQP")]
-            if not np.array_equal(warm, theta_hat):
-                attempts.append((theta_hat, "SLSQP"))
-            attempts += [(theta_hat, "COBYLA"), (theta_hat, "trust-constr")]
-            for x0, method in attempts:
-                try:
-                    res = minimize(
-                        lambda th: sign * g(time, th),
-                        x0,
-                        method=method,
-                        bounds=sci_bounds,
-                        constraints=[constraint],
-                    )
-                except (ValueError, np.linalg.LinAlgError):
-                    continue
-                if feasible(res) and sign * g(time, res.x) <= reach:
-                    return g(time, res.x), res.x
-            failed.append(float(time))
-            return np.nan, warm
-
+        survival = on in ("sf", "R", "ff", "F", "Hf")
+        # ff and Hf fall as sf rises: their lower bound is sf's upper.
+        falling = on in ("ff", "F", "Hf")
         want_lower = bound in ("two-sided", "lower")
         want_upper = bound in ("two-sided", "upper")
-        lo_vals = np.empty(t_sorted.shape)
-        hi_vals = np.empty(t_sorted.shape)
-        warm_lo = theta_hat.copy()
-        warm_hi = theta_hat.copy()
+        if falling:
+            want_lower, want_upper = want_upper, want_lower
 
-        old_err_state = np.seterr(all="ignore")
-        try:
-            for i, time in enumerate(t_sorted):
-                if want_lower:
-                    lo_vals[i], warm_lo = extreme(time, 1.0, warm_lo)
-                if want_upper:
-                    hi_vals[i], warm_hi = extreme(time, -1.0, warm_hi)
-        finally:
-            np.seterr(**old_err_state)
+        if survival:
+
+            def psi_of(time: Any, theta: npt.NDArray) -> float:
+                x = np.atleast_1d(time) - self.gamma
+                return float(
+                    np.log(self.dist.sf(x, *theta)[0])
+                    - np.log(self.dist.ff(x, *theta)[0])
+                )
+
+            ends = (_LN_TINY, -_LN_TINY)
+            if on in ("sf", "R"):
+                value: Callable[[Any], Any] = expit
+            elif on in ("ff", "F"):
+                value = lambda v: expit(-v)  # noqa: E731
+            else:
+                value = lambda v: np.logaddexp(0.0, -v)  # noqa: E731
+        else:
+            rate = self.dist.hf if on == "hf" else self.dist.df
+            discrete = bool(self.dist.discrete)
+
+            def psi_of(time: Any, theta: npt.NDArray) -> float:
+                g = rate(np.atleast_1d(time) - self.gamma, *theta)[0]
+                if discrete:
+                    # A discrete hazard and mass are probabilities: the
+                    # logit scale, as the Wald band's.
+                    return float(np.log(g) - np.log1p(-g))
+                return float(np.log(g))
+
+            if discrete:
+                ends = (_LN_TINY, -_LN_TINY)
+                value = expit
+            else:
+                ends = (_LN_TINY, _LN_MAX)
+                value = np.exp
+
+        # A bound is solved once per function, time, level and side, and
+        # kept: the sf, ff and Hf bands are one band, and a one-sided
+        # bound at alpha is an end of the two-sided one at 2 alpha.
+        kind = "survival" if survival else on
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        region: list = []
+        lower = np.full(t.shape, np.nan)
+        upper = np.full(t.shape, np.nan)
+        failed: list[float] = []
+        with np.errstate(all="ignore"):
+            for i, time in enumerate(t):
+                key_lo = (kind, float(time), *self._lr_key(-1, crit, -1))
+                key_hi = (kind, float(time), *self._lr_key(-1, crit, 1))
+                need_lo = want_lower and key_lo not in cache
+                need_hi = want_upper and key_hi not in cache
+                if need_lo or need_hi:
+                    if not region:
+                        region.extend(self._lr_region(free, crit))
+                    lo, hi = self._cb_lr_psi_bounds(
+                        lambda theta: psi_of(time, theta),
+                        free,
+                        crit,
+                        need_lo,
+                        need_hi,
+                        ends,
+                        *region,
+                    )
+                    if need_lo:
+                        cache[key_lo] = lo
+                    if need_hi:
+                        cache[key_hi] = hi
+                lo = cache[key_lo] if want_lower else np.nan
+                hi = cache[key_hi] if want_upper else np.nan
+                if (want_lower and np.isnan(lo)) or (
+                    want_upper and np.isnan(hi)
+                ):
+                    failed.append(float(time))
+                lower[i], upper[i] = value(lo), value(hi)
 
         if failed:
             warnings.warn(
@@ -2064,13 +2488,294 @@ class Parametric(
                 stacklevel=4,
             )
 
-        inv = np.argsort(order)
+        if falling:
+            lower, upper = upper, lower
         if bound == "two-sided":
-            return np.column_stack([lo_vals[inv], hi_vals[inv]])
+            return np.column_stack([lower, upper])
         elif bound == "lower":
-            return lo_vals[inv]
+            return lower
         else:
-            return hi_vals[inv]
+            return upper
+
+    def _lr_region(
+        self, free: list[int], crit: float
+    ) -> tuple[list[tuple[Any, Any]], list[list[npt.NDArray]]]:
+        """The box a likelihood-ratio band's searches run in, and the
+        points they may start from (one list per walk), at the critical
+        value ``crit``.
+
+        The box is the one the parameters' own intervals at this level
+        make: the region's extent in each parameter is that parameter's
+        likelihood-ratio interval, so the box holds every point the band
+        can come from, and it keeps a search for a value the function
+        never takes from wandering off to where the likelihood is slow or
+        not defined (a NegativeBinomial ``r`` of 1e-308, whose incomplete
+        beta took 4.5 s a call). The points are those of the region that
+        the intervals' walks passed through: they reach its far corners
+        (an ExpoWeibull ``beta`` running off to infinity with ``alpha`` at
+        the largest observation), which a search from the estimate does
+        not find.
+        """
+        coords, limits = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        box = self._lr_box(free_coords, [limits[j] for j in free])
+        with np.errstate(all="ignore"):
+            for k, j in enumerate(free):
+                b_lo, b_hi = box[k]
+                lo_j = coords[j].to_u(self._lr_param_side(j, crit, -1))
+                hi_j = coords[j].to_u(self._lr_param_side(j, crit, 1))
+                if np.isfinite(lo_j):
+                    b_lo = lo_j if b_lo is None else max(b_lo, lo_j)
+                if np.isfinite(hi_j):
+                    b_hi = hi_j if b_hi is None else min(b_hi, hi_j)
+                box[k] = (b_lo, b_hi)
+            # One list per walk.
+            seeds = [
+                [
+                    np.array([coords[i].to_u(theta[i]) for i in free])
+                    for theta in self.__dict__.get("_lr_points", {}).get(
+                        self._lr_key(j, crit, d), []
+                    )
+                ]
+                for j in free
+                for d in (-1.0, 1.0)
+            ]
+        return box, seeds
+
+    def _cb_lr_psi_bounds(
+        self,
+        psi_of: Callable[[npt.NDArray], float],
+        free: list[int],
+        crit: float,
+        want_lower: bool,
+        want_upper: bool,
+        ends: tuple[float, float],
+        box: list[tuple[Any, Any]],
+        seeds: list[list[npt.NDArray]],
+    ) -> tuple[float, float]:
+        """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
+        the free core parameters, searched in ``box``: ``(lower,
+        upper)``, ``nan`` for a side not asked for or not found, ``-inf``
+        / ``inf`` for one at the edge of the scale. See ``_cb_lr``."""
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = self._lr_neg_ll(theta_hat)
+        coords, _ = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        bounds = box if any(b != (None, None) for b in box) else None
+        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
+
+        def theta_of(u: npt.NDArray) -> npt.NDArray:
+            theta = theta_hat.copy()
+            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
+            return theta
+
+        def nll_of(u: npt.NDArray) -> float:
+            nll = self._lr_neg_ll(theta_of(u))
+            return nll if np.isfinite(nll) else np.inf
+
+        def psi_u(u: npt.NDArray) -> float:
+            if not np.all(np.isfinite(u)):
+                return np.nan
+            # Held to the ends of its scale where the function reaches the
+            # edge of its range (a density that underflows to 0), so that
+            # a search can still step there.
+            return float(np.clip(psi_of(theta_of(u)), *ends))
+
+        psi_hat = psi_of(theta_of(u_hat))
+        if not np.isfinite(psi_hat):
+            # The function is at the edge of its range at the estimate (a
+            # rate of 0 below the support): the bounds are that value.
+            return psi_hat, psi_hat
+
+        def solve(
+            target: float, starts: list[npt.NDArray]
+        ) -> tuple[float, npt.NDArray | None]:
+            # The least negative log-likelihood with psi at ``target``.
+            best, best_u = np.inf, None
+            constraint = {
+                "type": "eq",
+                "fun": lambda u: psi_u(u) - target,
+                "jac": lambda u: _central_gradient(psi_u, u),
+            }
+            for x0 in starts:
+                try:
+                    res = minimize(
+                        nll_of,
+                        self._lr_start(x0, box),
+                        method="SLSQP",
+                        jac=lambda u: _central_gradient(nll_of, u),
+                        bounds=bounds,
+                        constraints=[constraint],
+                        options={"ftol": 1e-10, "maxiter": 60},
+                    )
+                except (ValueError, np.linalg.LinAlgError):
+                    continue
+                if not np.all(np.isfinite(res.x)):
+                    continue
+                gap = abs(psi_u(res.x) - target)
+                nll = nll_of(res.x)
+                if gap <= 1e-7 * max(1.0, abs(target)) and nll < best:
+                    best, best_u = nll, np.asarray(res.x)
+            return best, best_u
+
+        # The search is checked where its answer is known, at the
+        # estimate: if it fails there, it cannot be trusted anywhere.
+        _, u_start = solve(psi_hat, [u_hat])
+        if u_start is None:
+            return np.nan, np.nan
+
+        # The first step: the Wald standard error on the psi scale.
+        hess_inv = getattr(self, "hess_inv", None)
+        step = np.nan
+        if hess_inv is not None and np.ndim(hess_inv) == 2:
+            slopes = np.array(
+                [coords[j].slope(theta_hat[j]) for j in free], dtype=float
+            )
+            cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
+            cov_u = cov_u / np.outer(slopes, slopes)
+            grad = _central_gradient(psi_u, u_hat)
+            step = float(np.sqrt(grad @ cov_u @ grad))
+        if not (np.isfinite(step) and step > 0):
+            step = 1.0
+
+        def dev_u(u: npt.NDArray) -> float:
+            return 2.0 * (nll_of(u) - nll_hat)
+
+        # The points of the region known so far, with their psi, and
+        # those of each walk.
+        known = [(psi_hat, u_start)]
+        walks = []
+        for group in seeds:
+            walk = []
+            for seed in group:
+                seed = self._lr_start(seed, box)
+                psi_seed = psi_u(seed)
+                if np.isfinite(psi_seed) and dev_u(seed) <= crit:
+                    walk.append((psi_seed, seed))
+            known.extend(walk)
+            if walk:
+                walks.append(walk)
+
+        def direct(direction: float, start: npt.NDArray) -> float | None:
+            # The extreme of psi over the region, sought directly (SLSQP),
+            # is taken when it checks out: its deviance at crit or below,
+            # and none with psi a hair further out (1e-6 of it) at crit or
+            # below. That is where the profile of psi crosses crit, which
+            # the walk would find at many times the cost. Otherwise
+            # ``None``.
+            try:
+                res = minimize(
+                    lambda u: -direction * psi_u(u),
+                    start,
+                    method="SLSQP",
+                    jac=lambda u: -direction * _central_gradient(psi_u, u),
+                    bounds=bounds,
+                    constraints=[
+                        {
+                            "type": "ineq",
+                            "fun": lambda u: crit - dev_u(u),
+                            "jac": lambda u: -_central_gradient(dev_u, u),
+                        }
+                    ],
+                    options={"ftol": 1e-10, "maxiter": 100},
+                )
+            except (ValueError, np.linalg.LinAlgError):
+                return None
+            if not np.all(np.isfinite(res.x)):
+                return None
+            psi_star = psi_u(res.x)
+            if not (
+                np.isfinite(psi_star)
+                and dev_u(res.x) <= crit + _LR_NOISE
+                and direction * (psi_star - psi_hat) >= 0
+            ):
+                return None
+            known.append((psi_star, np.asarray(res.x)))
+            beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
+            nll, u = solve(beyond, [np.asarray(res.x), u_hat])
+            if u is not None and 2.0 * (nll - nll_hat) < crit:
+                return None
+            return psi_star
+
+        def solve_side(direction: float) -> float:
+            # The search starts from the estimate and from the farthest
+            # points of the two walks that reach farthest (the region can
+            # have more than one local extreme: an ExpoWeibull hf(13) of
+            # 0.108 on its near boundary at 99%, and 0.102 down the valley
+            # of alpha -> 0, inside the 95% region already), and the most
+            # extreme result that checks out is taken.
+            tips = sorted(
+                (max(walk, key=lambda k: direction * k[0]) for walk in walks),
+                key=lambda k: -direction * k[0],
+            )
+            best = None
+            for start in [u_start] + [k[1] for k in tips[:2]]:
+                quick = direct(direction, start)
+                if quick is not None and (
+                    best is None or direction * quick > direction * best
+                ):
+                    best = quick
+            far = max(direction * k[0] for k in known)
+            if best is not None and direction * best >= far:
+                return best
+            # The bound is at least as far out as every point of the
+            # region known: a search that stops short of one has stopped
+            # at a local extreme, and is tried again from the points
+            # beyond it, farthest first.
+            tried: list[int] = [id(k[1]) for k in tips[:2]]
+            for _ in range(3):
+                beyond = [
+                    k
+                    for k in sorted(known, key=lambda k: -direction * k[0])
+                    if id(k[1]) not in tried and k[1] is not u_start
+                ]
+                if not beyond:
+                    break
+                start = beyond[0][1]
+                tried.append(id(start))
+                quick = direct(direction, start)
+                far = max(direction * k[0] for k in known)
+                if quick is not None and direction * quick >= far:
+                    return quick
+            # Otherwise the profile of psi is walked out from the
+            # farthest point known.
+            far_psi, far_u = max(known, key=lambda k: direction * k[0])
+            path = _LRPath()
+            path.add(far_psi, far_u)
+
+            def deviance(target: float) -> float:
+                nll, u = solve(target, path.starts(target))
+                if u is None:
+                    nll, u = solve(target, [u_hat])
+                if u is None:
+                    # No start reaches the target: the function does not
+                    # take that value near where the walk has come from
+                    # (a NegativeBinomial df(5) above 0.195, its value
+                    # in the Poisson limit; a Uniform hazard above
+                    # 1 / (max(x) - x), which b >= max(x) caps). It reads
+                    # as beyond any critical value.
+                    return np.inf
+                path.add(target, u)
+                return 2.0 * (nll - nll_hat)
+
+            status, w = _lr_walk(
+                deviance,
+                far_psi,
+                step,
+                direction,
+                crit,
+                end=ends[1] if direction > 0 else ends[0],
+                d_hat=dev_u(far_u),
+            )
+            if status == "root":
+                return w
+            if status == "edge":
+                return np.inf if direction > 0 else -np.inf
+            return np.nan
+
+        lower = solve_side(-1.0) if want_lower else np.nan
+        upper = solve_side(1.0) if want_upper else np.nan
+        return lower, upper
 
     def _cb_lr_one_param(
         self, t: Any, g: Any, j: int, alpha_ci: float, bound: str
