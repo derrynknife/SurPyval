@@ -32,7 +32,7 @@ into concrete ``(start, end, Z)`` triples.
 
 import ast
 import math
-from typing import Callable
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -716,6 +716,27 @@ def as_step_schedule(
             "Z (one covariate row per segment); or pass a StepSchedule"
         )
     return StepSchedule.from_changepoints(xl, Z)
+
+
+def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
+    """
+    Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
+    or a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
+
+    A ``CovariatePath`` is passed through (then ``xl`` must be ``None``);
+    anything else is as for :func:`as_step_schedule`. The type decides the
+    method: a schedule is summed exactly, a path is integrated.
+    """
+    from .tvc_path import CovariatePath
+
+    if isinstance(Z, CovariatePath):
+        if xl is not None:
+            raise ValueError(
+                "xl must not be given when Z is a CovariatePath (it gives "
+                "the segment start times of the array form only)"
+            )
+        return Z
+    return as_step_schedule(Z, xl)
 
 
 def segments_from_origin(

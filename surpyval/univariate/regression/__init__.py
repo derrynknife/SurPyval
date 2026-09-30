@@ -72,6 +72,7 @@ from .proportional_odds import (
     WeibullPO,
 )
 from .semi_parametric_regression_model import SemiParametricRegressionModel
+from .tvc_path import CovariatePath
 from .tvc_schedule import StepSchedule, StepValuedError
 
 __all__ = [
@@ -86,8 +87,9 @@ __all__ = [
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty",
-    # Time-varying-covariate step schedule for sf_tvc evaluation
+    # Time-varying-covariate paths for sf_tvc evaluation: steps, continuous
     "StepSchedule",
+    "CovariatePath",
     "StepValuedError",
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
