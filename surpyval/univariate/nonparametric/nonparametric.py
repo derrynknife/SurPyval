@@ -11,7 +11,6 @@ from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-from surpyval.utils.conditional import conditional_ff, conditional_sf
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -425,13 +424,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return float(np.max(self.r))
 
     @keeps_query_shape
-    def sf(
-        self,
-        x: npt.ArrayLike,
-        interp: str = "step",
-        *,
-        given: "npt.ArrayLike | None" = None,
-    ) -> npt.NDArray:
+    def sf(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         Survival (or Reliability) function with the
@@ -455,14 +448,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             outside the range of the data, unless the model has bounds
             (see ``set_support``).
 
-        given : array like or scalar, optional
-            The conditional survival: the probability of surviving to
-            ``x`` for a unit known to have survived to ``given``,
-            :math:`S(x) / S(given)`, and 1 for ``x <= given`` (as the
-            regression models' ``sf_tvc(..., given=)``). A scalar, or an
-            array that broadcasts against ``x``; ``nan`` where the
-            estimate has reached 0 by ``given``.
-
         Returns
         -------
 
@@ -479,17 +464,8 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         np.float64(0.6376281516217733)
         >>> model.sf([1., 1.5, 2., 2.5])
         array([0.81873075, 0.81873075, 0.63762815, 0.63762815])
-
-        Survival to 4 of a unit known to have survived to 2:
-
-        >>> model.sf(4, given=2).round(4)
-        np.float64(0.4346)
         """
         _check_interp(interp)
-        if given is not None:
-            return conditional_sf(
-                lambda q: self.sf(q, interp=interp), x, given
-            )
         return self._within_support(x, lambda q: self._sf(q, interp), 1.0)
 
     def _sf(self, x: npt.ArrayLike, interp: str) -> npt.NDArray:
@@ -512,13 +488,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         return R
 
     @keeps_query_shape
-    def ff(
-        self,
-        x: npt.ArrayLike,
-        interp: str = "step",
-        *,
-        given: "npt.ArrayLike | None" = None,
-    ) -> npt.NDArray:
+    def ff(self, x: npt.ArrayLike, interp: str = "step") -> npt.NDArray:
         r"""
 
         CDF (failure or unreliability) function with the
@@ -542,11 +512,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             outside the range of the data, unless the model has bounds
             (see ``set_support``).
 
-        given : array like or scalar, optional
-            The conditional failure probability, :math:`1 -` ``sf(x,
-            given=given)``: the probability that a unit known to have
-            survived to ``given`` fails by ``x``.
-
         Returns
         -------
 
@@ -564,14 +529,6 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model.ff([1., 1.5, 2., 2.5])
         array([0.18126925, 0.18126925, 0.36237185, 0.36237185])
         """
-        if given is not None:
-            _check_interp(interp)
-            return conditional_ff(
-                lambda q: self.ff(q, interp=interp),
-                lambda q: self.sf(q, interp=interp),
-                x,
-                given,
-            )
         return 1 - self.sf(x, interp=interp)
 
     @keeps_query_shape

@@ -622,27 +622,33 @@ class ParametricFitter:
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    def cs(self, x: Numeric, X: Numeric, *params: Any) -> Any:
+    @renamed_arguments(X="given")
+    def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
         Conditional survival function: the probability of surviving a
-        further ``x`` given survival to ``X`` already.
+        further ``x`` given survival to ``given`` already.
 
         .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
+            R(x, given) = \frac{R(x + given)}{R(given)}
 
         This is the definition for every distribution, so it lives here
         rather than being restated on each one. ``Exponential``
         overrides it because the exponential is memoryless and
-        :math:`R(x, X) = R(x)`, which is both cheaper and free of the
+        :math:`R(x, given) = R(x)`, which is both cheaper and free of the
         cancellation the ratio suffers in the far tail.
+
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The additional time to survive, measured from ``X``
-        X : numpy array or scalar
+            The additional time to survive, measured from ``given``
+        given : numpy array or scalar
             The time already survived
         *params : numpy array like or scalar
             The parameters of the distribution, in the order given by
@@ -663,7 +669,7 @@ class ParametricFitter:
         array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
                5.42544000e-51])
         """
-        return self.sf(x + X, *params) / self.sf(X, *params)
+        return self.sf(x + given, *params) / self.sf(given, *params)
 
     def _plot_x_bounds(self, x: npt.NDArray, params: Any) -> Any:
         """Return (x_scale_min, x_scale_max) for probability plots.

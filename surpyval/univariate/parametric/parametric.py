@@ -25,8 +25,8 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
-from surpyval.utils.conditional import conditional_ff, conditional_sf
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -1502,9 +1502,7 @@ class Parametric(
         self.__dict__.setdefault("_lr_points", {})[key] = points
         return value
 
-    def sf(
-        self, x: npt.ArrayLike, *, given: "npt.ArrayLike | None" = None
-    ) -> npt.NDArray:
+    def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         Survival (or Reliability) function for a distribution using the
@@ -1516,14 +1514,6 @@ class Parametric(
         x : array like or scalar
             The values of the random variables at which the survival
             function will be calculated.
-
-        given : array like or scalar, optional
-            The conditional survival: the probability of surviving to
-            ``x`` for a unit known to have survived to ``given``,
-            :math:`S(x) / S(given)`, and 1 for ``x <= given`` (as the
-            regression models' ``sf_tvc(..., given=)``). A scalar, or an
-            array that broadcasts against ``x``; ``nan`` where the
-            model has reached 0 by ``given``.
 
         Returns
         -------
@@ -1542,15 +1532,7 @@ class Parametric(
         np.float64(0.9920319148370607)
         >>> model.sf([1, 2, 3, 4, 5])
         array([0.9990005 , 0.99203191, 0.97336124, 0.938005  , 0.8824969 ])
-
-        Survival to 12 of a unit known to have survived to 10 (``cs(2,
-        10)`` is the same, in the further time):
-
-        >>> model.sf(12, given=10).round(4)
-        np.float64(0.4829)
         """
-        if given is not None:
-            return conditional_sf(self.sf, x, given)
         refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
@@ -1567,9 +1549,7 @@ class Parametric(
             out = np.where(np.asarray(x) < 0, 1.0, out)[()]
         return out
 
-    def ff(
-        self, x: npt.ArrayLike, *, given: "npt.ArrayLike | None" = None
-    ) -> npt.NDArray:
+    def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The cumulative distribution function, or failure function, for a
@@ -1581,11 +1561,6 @@ class Parametric(
         x : array like or scalar
             The values of the random variables at which the failure function
             (CDF) will be calculated.
-
-        given : array like or scalar, optional
-            The conditional failure probability, :math:`1 -` ``sf(x,
-            given=given)``: the probability that a unit known to have
-            survived to ``given`` fails by ``x``.
 
         Returns
         -------
@@ -1606,8 +1581,6 @@ class Parametric(
         >>> model.ff([1, 2, 3, 4, 5])
         array([0.0009995 , 0.00796809, 0.02663876, 0.061995  , 0.1175031 ])
         """
-        if given is not None:
-            return conditional_ff(self.ff, self.sf, x, given)
         refuse_time_values(x, "x")
         x = np.asarray(x)
         xg = x - self.gamma  # type: ignore[operator]
@@ -1867,14 +1840,20 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    def cs(self, x: npt.ArrayLike, X: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(X="given")
+    def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The conditional survival of the model; that is, the probability
-        that an item that has survived to ``X`` survives a further ``x``:
+        that an item that has survived to ``given`` survives a further ``x``:
 
         .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
+            R(x, given) = \frac{R(x + given)}{R(given)}
+
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
@@ -1882,7 +1861,7 @@ class Parametric(
         x : array like or scalar
             The further durations at which conditional survival is to be
             calculated.
-        X : array like or scalar
+        given : array like or scalar
             The value(s) at which it is known the item has survived
 
         Returns
@@ -1904,31 +1883,31 @@ class Parametric(
         The ratio is taken of the model's own :meth:`sf`, so a
         limited-failure proportion ``p``, a zero-inflation fraction ``f0``
         and an offset ``gamma`` all enter it: the never-failing units
-        still count among the survivors at ``X``, and survival to an
-        ``X`` before the offset is certain. Where :math:`R(X) = 0` the
+        still count among the survivors at ``given``, and survival to an
+        ``given`` before the offset is certain. Where :math:`R(given) = 0` the
         conditional survival is undefined and ``nan`` is returned.
         """
         x_arr = np.asarray(x, dtype=float)
-        X_arr = np.asarray(X, dtype=float)
-        Xg = X_arr - self.gamma
+        given_arr = np.asarray(given, dtype=float)
+        given_g = given_arr - self.gamma
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         with np.errstate(all="ignore"):
-            # The ratio of the model's own sf. Handing the shifted X to
+            # The ratio of the model's own sf. Handing the shifted given to
             # ``dist.cs`` ignored p and f0 entirely (0.29 instead of 0.67
-            # for p = 0.7) and, for an X before the offset, evaluated the
+            # for p = 0.7) and, for a given before the offset, evaluated the
             # base sf at a negative time (1.0 or nan instead of 0.96).
             cs = np.asarray(
-                self.sf(x_arr + X_arr) / self.sf(X_arr), dtype=float
+                self.sf(x_arr + given_arr) / self.sf(given_arr), dtype=float
             )
             if (self.p == 1) and (self.f0 == 0):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
                 # cancels in the far tail (the memoryless Exponential).
-                inside = np.broadcast_to(Xg >= s0, cs.shape)
+                inside = np.broadcast_to(given_g >= s0, cs.shape)
                 if inside.any():
-                    Xg_safe = np.where(Xg >= s0, Xg, s0)
+                    given_g_safe = np.where(given_g >= s0, given_g, s0)
                     own = np.asarray(
-                        self.dist.cs(x_arr, Xg_safe, *self.params),
+                        self.dist.cs(x_arr, given_g_safe, *self.params),
                         dtype=float,
                     )
                     cs = np.where(inside, own, cs)

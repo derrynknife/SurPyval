@@ -14,8 +14,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.conditional import conditional_ff, conditional_sf
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -718,7 +718,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         return df
 
     @keeps_query_shape
-    def ff(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
+    def ff(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The cumulative density function of the fitted model.
 
@@ -729,25 +729,19 @@ class MixtureModel(SerialisableMixin, Distribution):
             The values at which the cumulative density function will be
             evaluated.
 
-        given : array like or scalar, optional
-            The conditional failure probability, ``1 - sf(x,
-            given=given)``, of a unit known to have survived to ``given``.
-
         Returns
         -------
 
         array like
             The cumulative density function evaluated at x.
         """
-        if given is not None:
-            return conditional_ff(self.ff, self.sf, x, given)
         F = np.zeros_like(x)
         for i in range(self.m):
             F = F + self.w[i] * self.dist.ff(x, *self.params[i])
         return F
 
     @keeps_query_shape
-    def sf(self, x: Any, *args: Any, given: Any = None, **kwargs: Any) -> Any:
+    def sf(self, x: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The survival function of the fitted model.
 
@@ -757,25 +751,23 @@ class MixtureModel(SerialisableMixin, Distribution):
         x : array like
             The values at which the survival function will be evaluated.
 
-        given : array like or scalar, optional
-            The conditional survival: the probability of surviving to
-            ``x`` for a unit known to have survived to ``given``,
-            ``S(x) / S(given)``, and 1 for ``x <= given``. A scalar, or an
-            array that broadcasts against ``x``.
-
         Returns
         -------
 
         array like
             The survival function evaluated at x.
         """
-        if given is not None:
-            return conditional_sf(self.sf, x, given)
         return 1 - self.ff(x)
 
-    def cs(self, x: Any, X: Any, *args: Any, **kwargs: Any) -> Any:
+    @renamed_arguments(X="given")
+    def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
+
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
@@ -784,20 +776,20 @@ class MixtureModel(SerialisableMixin, Distribution):
             The values at which the conditional survival function will be
             evaluated.
 
-        X : array like
+        given : array like
             The values at which the item is known to have survived to.
 
         Returns
         -------
 
         array like
-            The conditional survival function evaluated at x given X.
+            The conditional survival function evaluated at x given given.
         """
-        # As arrays: ``x + X`` on a list concatenated (or raised) rather
+        # As arrays: ``x + given`` on a list concatenated (or raised) rather
         # than adding.
         x = np.asarray(x, dtype=float)
-        X = np.asarray(X, dtype=float)
-        return self.sf(x + X) / self.sf(X)
+        given = np.asarray(given, dtype=float)
+        return self.sf(x + given) / self.sf(given)
 
     def _require_fit_data(self, what: str) -> None:
         # The likelihood pieces also run mid-fit, before ``params`` is
