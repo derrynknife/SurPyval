@@ -5,6 +5,7 @@ import numpy as np
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
+from surpyval.beta.ml.forest.conditional_inference import parse_selection
 from surpyval.beta.ml.forest.oob import (
     RowTerms,
     add_tree_terms,
@@ -59,8 +60,12 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
         random_state: Any = None,
     ) -> None:
+        self.selection = parse_selection(selection, alpha_split)
+        self.alpha_split = float(alpha_split)
         # Rows with a missing covariate are dropped once, here, with the
         # standard warning, so no bootstrap sample can draw one.
         self.data: SurpyvalData
@@ -106,6 +111,8 @@ class RandomSurvivalForest(SerialisableMixin):
                 min_leaf_failures=min_leaf_failures,
                 n_features_split=n_features_split,
                 kind=kind,
+                selection=selection,
+                alpha_split=alpha_split,
                 random_state=tree_states[i],
             )
             for i in range(self.n_trees)
@@ -130,6 +137,8 @@ class RandomSurvivalForest(SerialisableMixin):
         n_features_split: int | float | str = "sqrt",
         bootstrap: bool = True,
         kind: str = "weibull",
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
         random_state: Any = None,
     ) -> "RandomSurvivalForest":
         """
@@ -175,6 +184,15 @@ class RandomSurvivalForest(SerialisableMixin):
             The tree type, ``"weibull"`` (the default), ``"exponential"``
             or ``"non-parametric"``; see
             :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+        selection : str, optional
+            How each node chooses its feature: ``"greedy"`` (the default)
+            or ``"ctree"`` (conditional inference, which also stops a
+            tree where the data show no effect); see
+            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.
+        alpha_split : float, optional
+            With ``selection="ctree"``, a node splits only if the
+            Bonferroni-adjusted p-value of its chosen feature is below
+            ``alpha_split``. Defaults to 0.05.
         random_state : None, int or numpy.random.Generator, optional
             Seeds the bootstrap resamples and the features drawn for each
             split. ``None`` (the default) draws from NumPy's global random
@@ -232,6 +250,8 @@ class RandomSurvivalForest(SerialisableMixin):
             n_features_split,
             bootstrap,
             kind,
+            selection,
+            alpha_split,
             random_state,
         )
 
@@ -578,6 +598,8 @@ class RandomSurvivalForest(SerialisableMixin):
                 "kind": self.kind,
                 "n_trees": int(self.n_trees),
                 "bootstrap": bool(self.bootstrap),
+                "selection": self.selection,
+                "alpha_split": float(self.alpha_split),
                 "trees": [tree.to_dict() for tree in self.trees],
             }
         )
@@ -592,6 +614,9 @@ class RandomSurvivalForest(SerialisableMixin):
         forest.kind = model_dict["kind"]
         forest.n_trees = model_dict["n_trees"]
         forest.bootstrap = model_dict["bootstrap"]
+        # Forests saved before selection existed were grown greedily.
+        forest.selection = model_dict.get("selection", "greedy")
+        forest.alpha_split = model_dict.get("alpha_split", 0.05)
         # A restored forest predicts but is not re-fittable; it holds no data.
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]

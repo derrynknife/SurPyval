@@ -7,6 +7,7 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval import Exponential, NelsonAalen, Turnbull, Weibull
+from surpyval.beta.ml.forest.conditional_inference import ctree_select
 from surpyval.beta.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
@@ -48,7 +49,9 @@ class IntermediateNode(Node):
     A split in a survival tree: observations whose feature
     ``split_feature_index`` is at most ``split_feature_value`` go to
     ``left_child``, the rest to ``right_child``. Building one grows the
-    subtree below it.
+    subtree below it. In a tree grown with ``selection="ctree"``,
+    ``p_value`` is the Bonferroni-adjusted p-value that chose the split's
+    feature (``None`` otherwise).
     """
 
     def __init__(
@@ -65,11 +68,15 @@ class IntermediateNode(Node):
         feature_indices_in: NDArray,
         kind: str = "weibull",
         rng: Any = None,
+        selection: str = "greedy",
+        alpha_split: float = 0.05,
+        p_value: float | None = None,
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
         self.split_feature_value = split_feature_value
         self.feature_indices_in = feature_indices_in
+        self.p_value = p_value
 
         # Get left/right indices
         left_indices = (
@@ -88,6 +95,8 @@ class IntermediateNode(Node):
             n_features_split=n_features_split,
             kind=kind,
             rng=rng,
+            selection=selection,
+            alpha_split=alpha_split,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -99,6 +108,8 @@ class IntermediateNode(Node):
             n_features_split=n_features_split,
             kind=kind,
             rng=rng,
+            selection=selection,
+            alpha_split=alpha_split,
         )
 
     def apply_model_function(
@@ -134,7 +145,7 @@ class IntermediateNode(Node):
         """Serialise the split rule and both child subtrees. The training
         data is deliberately not stored -- a restored tree is a predictor,
         rebuilt from its structure and its leaf models, not re-fitted."""
-        return {
+        out = {
             "node": "intermediate",
             "split_feature_index": int(self.split_feature_index),
             "split_feature_value": float(self.split_feature_value),
@@ -142,6 +153,9 @@ class IntermediateNode(Node):
             "left": self.left_child.to_dict(),
             "right": self.right_child.to_dict(),
         }
+        if self.p_value is not None:
+            out["p_value"] = float(self.p_value)
+        return out
 
     @classmethod
     def from_dict(cls, node_dict: dict) -> "IntermediateNode":
@@ -151,6 +165,7 @@ class IntermediateNode(Node):
         node.split_feature_index = node_dict["split_feature_index"]
         node.split_feature_value = node_dict["split_feature_value"]
         node.feature_indices_in = np.asarray(node_dict["feature_indices_in"])
+        node.p_value = node_dict.get("p_value")
         node.left_child = node_from_dict(node_dict["left"])
         node.right_child = node_from_dict(node_dict["right"])
         return node
@@ -313,6 +328,8 @@ def build_tree(
     n_features_split: int,
     kind: str = "weibull",
     rng: Any = None,
+    selection: str = "greedy",
+    alpha_split: float = 0.05,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -330,6 +347,13 @@ def build_tree(
     ``rng`` draws the features considered at each split: numpy's global
     generator when ``None`` (see
     :func:`~surpyval.beta.ml.forest.tree.resolve_random_state`).
+
+    ``selection="greedy"`` takes the best cut of the kind's criterion over
+    every drawn feature. ``selection="ctree"`` first chooses the feature
+    by conditional inference (see
+    :mod:`~surpyval.beta.ml.forest.conditional_inference`), stops if its
+    Bonferroni-adjusted p-value is not below ``alpha_split``, and
+    otherwise cuts that feature by the kind's criterion.
     """
     if rng is None:
         rng = np.random.mtrand._rand
@@ -344,16 +368,28 @@ def build_tree(
         rng.choice(Z.shape[1], size=n_features_split, replace=False)
     )
 
+    # Conditional inference picks the feature, or stops the tree here;
+    # greedy search lets the split criterion consider every drawn feature.
+    candidates = feature_indices_in
+    p_value = None
+    if selection == "ctree":
+        chosen, p_value = ctree_select(
+            data, Z, kind, min_leaf_samples, min_leaf_failures, candidates
+        )
+        if chosen == -1 or not p_value < alpha_split:
+            return TerminalNode(data, kind)
+        candidates = np.array([chosen])
+
     # Figure out best feature-value split
     if kind == "non-parametric" and needs_full_likelihood_split(data):
         # Left or interval censoring (the tree has refused truncation
         # with it): the log-rank scores of the pooled Turnbull estimate.
         split_feature_index, split_feature_value = turnbull_score_split(
-            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+            data, Z, min_leaf_samples, min_leaf_failures, candidates
         )
     elif kind == "non-parametric":
         split_feature_index, split_feature_value = log_rank_split(
-            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+            data, Z, min_leaf_samples, min_leaf_failures, candidates
         )
     else:
         split_feature_index, split_feature_value = deviance_split(
@@ -361,7 +397,7 @@ def build_tree(
             Z,
             min_leaf_samples,
             min_leaf_failures,
-            feature_indices_in,
+            candidates,
             model=kind,
         )
 
@@ -384,4 +420,7 @@ def build_tree(
         feature_indices_in=feature_indices_in,
         kind=kind,
         rng=rng,
+        selection=selection,
+        alpha_split=alpha_split,
+        p_value=p_value,
     )
