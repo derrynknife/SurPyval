@@ -385,8 +385,16 @@ only when it is significant. ``qf`` outside [0, 1] is ``nan``.
   other coefficients and the predictions are those of the fit without the
   column. This covers ``CoxPH`` (with strata and time-varying
   covariates), the parametric proportional hazards, AFT, proportional odds
-  and additive hazards models, Fine-Gray, the competing-risks Cox model
-  and the frailty models; fits without such a column are unchanged.
+  and additive hazards models and their ``fit_tvc`` (the AFT one split a
+  repeated column's 0.338 into 1.685 and -1.346), Fine-Gray, the
+  competing-risks Cox model, the frailty models, and the Lin-Ying
+  ``AdditiveHazards`` and ``BuckleyJames`` models. **Changed:** those two
+  raised ``ValueError`` for a constant column, a single observation or
+  collinear columns; they now fit the other columns and warn. Fits without
+  such a column are unchanged. The proportional-intensity recurrent
+  regressions (#502) and the dual-stress life models (#503) do not alias
+  yet. ``conformance/test_aliasing.py`` checks every registered model
+  (principle 12).
 - **Regression models print a coefficient table: summary() (#484).** The
   Cox and parametric regression models' ``summary()`` returns a
   ``DataFrame`` in the layout of R's ``summary(coxph)`` and lifelines:
