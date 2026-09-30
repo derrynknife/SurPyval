@@ -2041,6 +2041,8 @@ _LR_X = {
     "Rayleigh": np.array([3.2, 8.0, 14.6]),
     "Geometric": np.array([2.0, 5.0, 8.0]),
     "Uniform": np.array([3.2, 8.0, 14.6]),
+    "NegativeBinomial": np.array([2.0, 5.0, 8.0]),
+    "ExpoWeibull": np.array([4.0, 8.0, 13.0]),
 }
 
 
