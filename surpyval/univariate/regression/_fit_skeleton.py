@@ -23,7 +23,7 @@ from autograd import (
     jacobian,
     value_and_grad,
 )
-from autograd.differential_operators import make_hvp
+from autograd.differential_operators import make_hvp, make_vjp
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
@@ -1192,20 +1192,28 @@ def natural_information(
     + diag(g_p phi'')``, ``D = diag(phi')``, which is inverted exactly (to
     rounding).
 
-    ``None`` where it cannot serve as an observed information: not finite,
-    or not positive definite -- a parameter the likelihood does not depend
-    on (a frailty variance at its limit of 0), or a flat direction -- so
-    that the covariance is computed as before, from a numerical Hessian."""
+    ``None`` where it cannot serve as an observed information, so that the
+    covariance is computed as before, from a numerical Hessian: ``H_t`` or
+    ``H_p`` not finite or not positive definite -- a parameter the
+    likelihood does not depend on (a frailty variance at its limit of 0,
+    where ``phi'`` is 0 too), or a flat direction."""
     if derivatives is None:
         return None
     H_t, g_t = derivatives
     t = np.asarray(t, dtype=float)
+    if not (np.all(np.isfinite(H_t)) and np.all(np.isfinite(g_t))):
+        return None
     try:
+        # The search-space Hessian first: where it is not positive
+        # definite the covariance stays as it was.
+        np.linalg.cholesky(H_t)
         with np.errstate(all="ignore"), warnings.catch_warnings():
             warnings.filterwarnings("ignore", "Output seems independent")
-            d1_fun = elementwise_grad(to_natural)
-            d1 = np.asarray(d1_fun(t), dtype=float)
-            d2 = np.asarray(elementwise_grad(d1_fun)(t), dtype=float)
+            # phi' and, from the same trace, phi'' (each coordinate's map
+            # depends on that coordinate alone).
+            vjp, d1 = make_vjp(elementwise_grad(to_natural))(t)
+            d2 = np.asarray(vjp(np.ones_like(t)), dtype=float)
+            d1 = np.asarray(d1, dtype=float)
             g_p = g_t / d1
             H_p = (H_t - np.diag(g_p * d2)) / np.outer(d1, d1)
         if not np.all(np.isfinite(H_p)):
@@ -1230,24 +1238,34 @@ def keep_information(
     natural-space Hessian of the free parameters (:func:`natural_information`)
     at the parameters and covariate centre its covariance is computed at
     (``ParametricRegressionModel._inference_state``), which
-    ``_observed_covariance`` then uses instead of a numerical Hessian. Not
-    for a fit whose likelihood has no maximum (``no_maximum``), whose
-    covariance stays as it was."""
-    if no_maximum:
+    ``_observed_covariance`` then uses instead of a numerical Hessian.
+    ``derivatives`` are those of the search objective at ``t``, whose
+    natural parameters are ``inv_trans(const(t))``, and ``centring`` that
+    of the fit. Not for a fit whose likelihood has no maximum
+    (``no_maximum``), whose covariance stays as it was, nor where those
+    parameters are not exactly the ones the model computes its covariance
+    at."""
+    if no_maximum or derivatives is None:
         return
     names = model.parameter_names()
-    free = [i for i, name in enumerate(names) if name not in model.fixed]
-    H_p = natural_information(
-        derivatives, lambda u: inv_trans(const(u))[np.array(free)], t
+    free = np.array(
+        [i for i, name in enumerate(names) if name not in model.fixed]
     )
-    if H_p is None:
-        return
     if model._fit_centring is not None:
         p_hat = model._fit_centring[0]
     else:
         p_hat = model.params
+    with np.errstate(all="ignore"):
+        at = np.asarray(inv_trans(const(t)), dtype=float)
+    if not np.array_equal(at, np.asarray(p_hat, dtype=float)):
+        return
+    H_p = natural_information(
+        derivatives, lambda u: inv_trans(const(u))[free], t
+    )
+    if H_p is None:
+        return
     center = None if centring is None else centring.center
-    model._information = (np.array(p_hat, dtype=float), center, H_p)
+    model._information = (model._covariance_point(p_hat, center), H_p)
 
 
 def optimise_nm_tnc(

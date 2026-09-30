@@ -1689,10 +1689,10 @@ AFT, PO, AH and AL) carry the full parameter covariance — the inverse of the
 Hessian of the negative log-likelihood at the fit — so every coefficient and every
 predicted curve comes with an interval. The Hessian is the exact one the fit
 computes (with autograd) to check that it reached a maximum; a model without one
-(an accelerated-life fit, an AFT time-varying fit, or one whose Hessian is not
-positive definite there) uses a numerical Hessian instead. After a fit, the
-parameter covariance (``covariance()``) and standard errors are available
-directly, and are computed once:
+(an accelerated-life fit, an AFT time-varying fit, a fit with no finite maximum,
+or one whose Hessian is not positive definite there) uses a numerical Hessian
+instead. After a fit, the parameter covariance (``covariance()``) and standard
+errors are available directly, and are computed once:
 
 .. jupyter-execute::
 
