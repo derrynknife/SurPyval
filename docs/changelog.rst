@@ -14,6 +14,15 @@ Nelson-Aalen keep the estimate over a step with no one at risk, as R's
 match R. Unknown option values raise ``ValueError`` everywhere. The
 Uniform's MLE refuses censored data again.
 
+- **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
+  ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
+  was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.
+  ``sf`` is now [p, 0] and ``ff`` [1 - p, 1], as for ``Binomial`` with
+  ``n = 1``, ``scipy.stats.bernoulli`` and every other discrete
+  distribution in the package. ``Hf`` is [-log p, inf]; ``df``, ``hf``,
+  ``qf``, ``mean``, ``random`` and the fitted ``p`` are unchanged. Code
+  that read the probability of the ``1`` outcome (a one-shot device
+  working on demand) as ``sf(1)`` wants ``sf(0)``, or ``p`` itself.
 - **The Uniform's MLE refuses censored data again (#460).** 0.21.0 fitted
   right- and left-censored data by maximum likelihood. The estimates were
   right, but they sit on a wall of the likelihood (the smallest or largest

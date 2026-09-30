@@ -105,12 +105,17 @@ def test_reduces_to_bernoulli_at_n_one():
         np.asarray(binomial.df([0, 1]), dtype=float),
     )
 
-    # The survival functions are offset by one, and that is a convention
-    # rather than a disagreement. Binomial follows the package's discrete
-    # rule R(k) = P(K > k); Bernoulli uses R(x) = P(X >= x), so that
-    # R(0) = 1 and R(1) = p read as a one-shot device. Hence:
-    for x in (0, 1):
-        assert np.isclose(bernoulli.sf(x), binomial.sf(x - 1))
+    # Since 0.22.0 (#344) Bernoulli follows the package's discrete rule
+    # R(k) = P(K > k) too, so every function agrees, not just the mass
+    # (it used P(X >= x), offset by one from Binomial).
+    for fn in ("sf", "ff", "hf", "Hf"):
+        np.testing.assert_allclose(
+            np.asarray(getattr(bernoulli, fn)([0, 1]), dtype=float),
+            np.asarray(getattr(binomial, fn)([0, 1]), dtype=float),
+            err_msg=fn,
+        )
+    u = np.array([0.1, 0.7, 0.75, 0.99])
+    np.testing.assert_array_equal(bernoulli.qf(u), binomial.qf(u))
 
     # Before 0.20.0 Bernoulli was a flat "fixed event probability" model
     # with F(x) = p at every x, which lined up with neither. That model

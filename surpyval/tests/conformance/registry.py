@@ -1339,7 +1339,13 @@ def _univariate():
                 interface=UNIVARIATE,
                 data=binary_data,
                 fit=_fit(fitter),
-                functions=("sf", "ff", "Hf"),
+                # Bernoulli's qf inverts its ff since #344; the flat
+                # FixedEventProbability has no quantile to test.
+                functions=(
+                    ("sf", "ff", "Hf", "qf")
+                    if name == "Bernoulli"
+                    else ("sf", "ff", "Hf")
+                ),
                 # Bernoulli is defined at the outcomes 0 and 1 only.
                 x=(
                     np.array([0.0, 1.0])
