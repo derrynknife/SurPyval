@@ -2263,7 +2263,8 @@ before it is ever evaluated: ``t`` may reach the value only through a quantizer
 (``floor``, ``ceil``, ``round``, ``trunc``, ``//``) or a comparison. A genuinely continuous covariate
 (``0.3 + 1e-4 * t``, ``sin(t)``) is rejected with ``StepValuedError`` rather
 than silently returning a wrong answer — a covariate that varies continuously
-would break the exactness of the segment sum. (surpyval owns only this
+would break the exactness of the segment sum; describe one with a
+``CovariatePath`` instead (see :ref:`tvc-continuous`). (surpyval owns only this
 step-valued guarantee; sandboxing an *untrusted* expression string is the
 calling application's responsibility.) The expression is sampled on a grid of
 spacing ``resolution`` (default 1) up to ``horizon``, so the resolution must be
@@ -2322,6 +2323,144 @@ Conditional survival is only meaningful at times at or after ``given``:
 
     assert np.allclose(ph.sf_tvc(at, **pulse, given=1.0),
                        ph.sf_tvc(at, **pulse) / ph.sf_tvc([1.0], **pulse))
+
+
+.. _tvc-continuous:
+
+Continuously varying covariates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Many stress profiles are not steps. A ramp-stress test raises the load
+steadily, a thermal cycle rises and falls every day, and a measured load is
+sampled densely. Describe such a path with a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` and pass it to
+the same ``sf_tvc`` / ``Hf_tvc``:
+
+- ``CovariatePath.from_points(times, values, period=None)`` draws straight
+  lines between ``(time, value)`` points. A time given twice is a jump.
+- ``CovariatePath.from_callable(func, p=1, breakpoints=None, period=None)``
+  wraps a vectorised function of time. List any kinks or jumps in
+  ``breakpoints`` so the integration lines up with them.
+
+With ``period`` either one repeats. The type of ``Z`` picks the method: a
+``StepSchedule`` is still summed exactly, and along a ``CovariatePath`` the
+model's hazard is integrated,
+:math:`H(t) = \int_0^t h\bigl(u \mid Z(u)\bigr)\, du`, by adaptive
+Gauss-Kronrod quadrature to a relative error of about :math:`10^{-10}` on
+:math:`H`. If that target is missed (a path that oscillates without limit,
+say), one ``RuntimeWarning`` says at how many of the query times. A path
+that would need more than a million quadrature panels, such as a fast cycle
+over a long horizon, raises a ``ValueError``. Cox needs no quadrature: its
+baseline hazard is a step function, so only the covariate just before each
+baseline jump counts, and the result is exact.
+
+Here the fitted ``ph`` model is evaluated along a ramp-stress profile: the
+stress rises from 0 to 1 over the first time unit and then steps down to
+0.5 and holds there.
+
+.. jupyter-execute::
+
+    from surpyval import CovariatePath
+
+    ramp = CovariatePath.from_points([0.0, 1.0, 1.0], [0.0, 1.0, 0.5])
+    t = np.array([0.5, 1.0, 2.0, 3.0])
+    print('ramp, then hold at 0.5:', ph.sf_tvc(t, ramp).round(4))
+    print('never stressed       :', ph.sf(t, [0.0]).round(4))
+    print('stressed at 1 always :', ph.sf(t, [1.0]).round(4))
+
+Before the step the survival is that of a stress that has been climbing:
+between the two constant curves, and closer to the unstressed one early on.
+Approximating the ramp by a ``StepSchedule`` works too, but only in the
+limit. With each step at the ramp's midpoint value the error falls as the
+square of the step width, while the path gives the limit directly:
+
+.. jupyter-execute::
+
+    def midpoint_steps(n_steps):
+        e = np.linspace(0.0, 1.0, n_steps + 1)
+        mid = ramp(0.5 * (e[:-1] + e[1:])).ravel()
+        return StepSchedule.from_changepoints(np.r_[e[:-1], 1.0],
+                                              np.r_[mid, 0.5])
+
+    for n_steps in (10, 100, 1000):
+        err = np.max(np.abs(ph.sf_tvc(t, midpoint_steps(n_steps))
+                            - ph.sf_tvc(t, ramp)))
+        print(f'{n_steps:5d} steps: largest error in S(t) {err:.1e}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _S = ph.sf_tvc(t, ramp)
+    _S0, _S1 = ph.sf(t, [0.0]), ph.sf(t, [1.0])
+    assert np.all(_S1 < _S) and np.all(_S < _S0)
+    assert _S0[0] - _S[0] < _S[0] - _S1[0]
+    _err = [np.max(np.abs(ph.sf_tvc(t, midpoint_steps(n)) - _S))
+            for n in (10, 100, 1000)]
+    assert _err[0] > 50 * _err[1] > 2500 * _err[2], _err
+    assert _err[2] < 1e-6, _err
+
+``given=`` conditions on survival to an age along the same path, here the
+end of the ramp. The hazard is integrated from ``given`` on, so nothing is
+subtracted:
+
+.. jupyter-execute::
+
+    print('S(t | survived the ramp):', ph.sf_tvc(t[1:], ramp, given=1.0).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(ph.sf_tvc(t[1:], ramp, given=1.0),
+                       ph.sf_tvc(t[1:], ramp) / ph.sf_tvc(1.0, ramp),
+                       rtol=1e-12)
+
+A callable describes a smooth cycle. Over one time unit the stress rises
+from 0 to 1 and falls back, and ``period=1`` repeats it. The survival is
+lower than at a constant stress of 0.5, the cycle's average. This is
+because the hazard multiplier :math:`e^{\beta z}` is convex, so the hours at
+high stress cost more than the hours at low stress save:
+
+.. jupyter-execute::
+
+    cycle = CovariatePath.from_callable(
+        lambda u: 0.5 - 0.5 * np.cos(2 * np.pi * u), period=1.0)
+    print('daily cycle       :', ph.sf_tvc(t, cycle).round(4))
+    print('constant 0.5      :', ph.sf(t, [0.5]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all(ph.sf_tvc(t, cycle) < ph.sf(t, [0.5]))
+
+**What the path means depends on the family**, just as for steps.
+Proportional hazards, additive hazards and proportional odds take the
+hazard at time :math:`t` to be that of the covariate at :math:`t`. For
+proportional odds this is
+:math:`h_0(t) / (F_0(t) + \phi(Z(t))\, S_0(t))`, the limit of the step sum
+and the model ``fit_tvc`` fits. Accelerated failure time follows Nelson's
+cumulative-exposure model: the path accumulates an accelerated age
+:math:`\psi(t) = \int_0^t e^{\beta' Z(u)}\, du`, and
+:math:`S(t) = S_0(\psi(t))`. A model fitted on fixed covariates and
+evaluated along a path assumes its family's time-varying form is right, and
+for the same ramp the two forms give different answers unless the baseline
+is exponential. Accelerated life models refuse a path, as they refuse a
+step schedule.
+
+.. note::
+
+   **A** ``CovariatePath`` **evaluates a known, external path only.** For
+   now it evaluates an already-fitted model along a path you supply: a
+   planned load, a test profile, ambient conditions. For the result to be
+   a survival probability, the path must not depend on the unit's own
+   failure process (an *external* covariate). Fitting still uses steps. A
+   measured covariate is known only at its sample times, so fit it in
+   start-stop form with ``fit_tvc``, as above; the step approximation's
+   error shrinks with the square of the step width. A covariate driven by
+   the unit itself, such as a degradation signal read from it, needs a
+   joint longitudinal-survival model, which SurPyval does not provide.
 
 
 Worked example: forecasting equipment on a duty cycle

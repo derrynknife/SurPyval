@@ -38,10 +38,13 @@ proportional-odds families (``WeibullPH`` / ``PH(dist)``, ``WeibullAH`` /
 time-varying-covariate data with ``fit_tvc`` / ``fit_tvc_timeline``,
 reusing the ordinary maximum-likelihood fit; the AFT family fits it with
 its own accumulated-age likelihood. A fitted PH, AH, AFT or PO model can
-then be *evaluated* along a piecewise-constant covariate path with
-``sf_tvc`` / ``Hf_tvc``, describing the path as a
-:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`. See
-:ref:`tvc-parametric` in the how-to guide.
+then be *evaluated* along a covariate path with ``sf_tvc`` / ``Hf_tvc``:
+a piecewise-constant path described as a
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` is summed
+exactly, and a continuously varying one described as a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` (a ramp, a
+cycle) is integrated by quadrature. See :ref:`tvc-parametric` and
+:ref:`tvc-continuous` in the how-to guide.
 
 
 Proportional Hazards (PH)
@@ -221,6 +224,18 @@ when an expression is not provably step-valued.
 
 .. autoclass:: surpyval.univariate.regression.tvc_schedule.StepValuedError
     :exclude-members: add_note, with_traceback
+
+A ``CovariatePath`` describes a continuously varying covariate path: straight
+lines between points (``from_points``, a repeated time being a jump) or a
+vectorised function of time (``from_callable``), either optionally periodic.
+``sf_tvc`` / ``Hf_tvc`` integrate the model's hazard along it to a relative
+error of about ``1e-10``, and Cox sums its baseline jumps along it exactly.
+It evaluates a fitted model along a known, external path; fitting still
+uses steps. See :ref:`tvc-continuous`.
+
+.. autoclass:: surpyval.univariate.regression.tvc_path.CovariatePath
+    :members: from_points, from_callable, breakpoints, p
+    :special-members: __call__
 
 
 The fitted model
