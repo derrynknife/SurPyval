@@ -774,7 +774,13 @@ class MixtureModel(SerialisableMixin, Distribution):
 
     def get_plot_data(self, heuristic: str = "Nelson-Aalen") -> Any:
         """The plotting positions and fitted curve that :meth:`plot`
-        draws, computed from the fitted data with ``heuristic``."""
+        draws, computed from the fitted data with ``heuristic``.
+
+        As for :meth:`Parametric.get_plot_data`: ``x_`` and ``F`` are
+        every row of the plotting positions, suspensions included,
+        ``failed`` is a boolean mask of the rows that record a failure
+        (the points :meth:`plot` draws), and ``x_censored`` holds the
+        suspension times."""
         self._require_data("get_plot_data()")
         return probability_plot_data(
             dist=self.dist,
@@ -787,9 +793,18 @@ class MixtureModel(SerialisableMixin, Distribution):
             params=self.params,
         )
 
-    def plot(self, heuristic: str = "Nelson-Aalen", ax: Any = None) -> Any:
+    def plot(
+        self,
+        heuristic: str = "Nelson-Aalen",
+        ax: Any = None,
+        show_censored: bool = False,
+    ) -> Any:
         """
-        A method to do a probability plot
+        A method to do a probability plot.
+
+        The points are the failures, at their plotting positions; a
+        suspension (right-censored unit) has no point of its own, as for
+        :meth:`Parametric.plot`.
 
         Parameters
         ----------
@@ -803,6 +818,10 @@ class MixtureModel(SerialisableMixin, Distribution):
         ax: matplotlib.axes.Axes, optional
             The axis onto which the plot will be created. Optional, if not
             provided a new axes will be created.
+
+        show_censored : bool, optional
+            Mark the suspension (right-censored) times with ticks along
+            the time axis. Defaults to False.
 
         Returns
         -------
@@ -829,4 +848,5 @@ class MixtureModel(SerialisableMixin, Distribution):
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
             title=f"{self.dist.name} Mixture Probability Plot",
+            show_censored=show_censored,
         )

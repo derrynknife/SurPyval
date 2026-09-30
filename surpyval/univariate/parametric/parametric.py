@@ -3608,10 +3608,13 @@ class Parametric(
 
         data : dict
             Returns dictionary containing the data needed to do a plot.
-            ``x_`` and ``F`` are the failures and their plotting
-            positions (suspensions are not plotted points; before v0.22
-            they were included, at the ``F`` of the failure before them),
-            and ``x_censored`` the suspension times.
+            ``x_`` and ``F`` are every row of the plotting positions,
+            suspensions included (a suspension's row carries the ``F`` of
+            the failure before it); ``failed`` is a boolean mask of the
+            same length, True where the row records a failure, and
+            ``x_censored`` holds the suspension times. :meth:`plot` draws
+            only the rows ``failed`` selects:
+            ``d["x_"][d["failed"]], d["F"][d["failed"]]``.
 
         Examples
         --------
@@ -3619,6 +3622,15 @@ class Parametric(
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
+
+        With suspensions, the rows to draw are the failures:
+
+        >>> model = Weibull.fit([10, 20, 30, 40, 50, 60], [0, 0, 0, 0, 1, 1])
+        >>> data = model.get_plot_data()
+        >>> data["x_"][data["failed"]]
+        array([10., 20., 30., 40.])
+        >>> data["x_censored"]
+        array([50., 60.])
         """
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
@@ -3662,11 +3674,13 @@ class Parametric(
         """
         A method to do a probability plot.
 
-        The points are the failures, at their plotting positions. A
-        suspension (right-censored unit) moves the plotting positions of
-        the failures after it but has no point of its own (Abernethy's
-        *New Weibull Handbook*, Weibull++); ``show_censored=True`` marks
-        each suspension time with a tick on the time axis.
+        The points are the failures, at their plotting positions (the
+        rows :meth:`get_plot_data` marks ``failed``). A suspension
+        (right-censored unit) moves the plotting positions of the
+        failures after it but has no point of its own (Abernethy's *New
+        Weibull Handbook*, Weibull++); ``show_censored=True`` marks each
+        suspension time with a tick on the time axis. The time axis spans
+        every time, suspensions included.
 
         A model without data (built with ``from_params``, or restored from
         a dict saved without its data) draws its CDF alone on the same
