@@ -3,9 +3,6 @@ from math import log2, sqrt
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from surpyval.beta.ml.forest.deviance_split import (
-    needs_full_likelihood_split,
-)
 from surpyval.beta.ml.forest.node import build_tree, node_from_dict
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -57,12 +54,16 @@ class SurvivalTree(SerialisableMixin):
     - ``"exponential"``: exponential deviance split (Davis & Anderson,
       1989; 1-d.f., splits on rate) with Exponential MLE leaves.
       Supports the full data model.
-    - ``"non-parametric"``: risk-set log-rank split with Nelson-Aalen
-      leaves. Only defined for observed / right-censored data
-      (optionally left-truncated); raises ``ValueError`` otherwise --
-      left/interval censoring and right truncation carry their event
-      information as interval probabilities, for which no risk-set
-      statistic exists.
+    - ``"non-parametric"``: for observed / right-censored data
+      (optionally left-truncated), the risk-set log-rank split with
+      Nelson-Aalen leaves. For data with left or interval censoring,
+      the Turnbull-score split -- the standardised sum of each child's
+      log-rank scores under the node's pooled Turnbull estimate
+      (Finkelstein, 1986), which reduces to the log-rank scores on
+      right-censored data -- with Turnbull leaves. Raises
+      ``ValueError`` for right truncation, or for truncation together
+      with left or interval censoring: the scores would have to come
+      from the truncation-conditioned likelihood (issue #188).
     """
 
     def __init__(
@@ -377,22 +378,28 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     Resolve and validate the tree ``kind`` against the data.
 
     The parametric kinds (``"weibull"``, ``"exponential"``) support the
-    full data model. The non-parametric kind's split (the risk-set
-    log-rank) is undefined for left/interval censoring and right
-    truncation, so it is rejected for such data.
+    full data model. The non-parametric kind splits observed and
+    right-censored data (optionally left truncated) by the risk-set
+    log-rank, and left- and interval-censored data by the Turnbull
+    scores; neither is defined for right truncation, or for truncation
+    with left or interval censoring, so such data are rejected.
     """
     resolved = kind.lower().replace("_", "-")
     if resolved in ("weibull", "exponential"):
         return resolved
     if resolved == "non-parametric":
-        if needs_full_likelihood_split(data):
+        right_truncated = bool(np.isfinite(data.t[:, 1]).any())
+        left_truncated = bool(np.isfinite(data.t[:, 0]).any())
+        interval_like = bool(((data.c == 2) | (data.c == -1)).any())
+        if right_truncated or (left_truncated and interval_like):
             raise ValueError(
-                "kind='non-parametric' is undefined for data with left "
-                "censoring, interval censoring, or right truncation: its "
-                "risk-set log-rank split has no risk-set formulation for "
-                "interval-probability observations. Use kind='weibull' or "
-                "kind='exponential' for this data (a Turnbull-score split "
-                "is planned; see issue #188)."
+                "kind='non-parametric' does not support right truncation, "
+                "or truncation together with left or interval censoring: "
+                "its splits (the risk-set log-rank, and the Turnbull "
+                "scores for left and interval censoring) would need "
+                "scores from the truncation-conditioned likelihood, which "
+                "are not implemented yet (issue #188). Use kind='weibull' "
+                "or kind='exponential' for this data."
             )
         return "non-parametric"
     raise ValueError(

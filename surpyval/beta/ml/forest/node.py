@@ -13,6 +13,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.log_rank_split import log_rank_split
+from surpyval.beta.ml.forest.turnbull_score_split import turnbull_score_split
 from surpyval.serialisation import to_native
 from surpyval.univariate.parametric import NeverOccurs
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -156,9 +157,10 @@ class TerminalNode(Node):
     """
     A leaf of a survival tree. It holds the observations that reach it
     and fits, on first use, the leaf model given by the tree's ``kind``
-    (``model``): a Weibull or Exponential fit, or a Nelson-Aalen estimate
-    for a non-parametric tree (``NeverOccurs`` for a leaf with no
-    failures).
+    (``model``): a Weibull or Exponential fit, or for a non-parametric
+    tree a Nelson-Aalen estimate (a Turnbull estimate if the leaf holds
+    left- or interval-censored rows); ``NeverOccurs`` for a parametric
+    leaf with no failures.
     """
 
     def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
@@ -168,9 +170,8 @@ class TerminalNode(Node):
     def _nonparametric_model(self) -> Any:
         # Nelson-Aalen is a risk-set estimator, so it is only defined for
         # observed / right-censored (optionally left-truncated) data; the
-        # Turnbull NPMLE covers the full data model. The tree entry point
-        # already raises for a non-parametric kind on such data, so the
-        # Turnbull branch is defence in depth for direct build_tree use.
+        # Turnbull estimate covers left and interval censoring, the data
+        # the Turnbull-score split is used on.
         if needs_full_likelihood_split(self.data):
             return Turnbull.fit(
                 self.data.x, self.data.c, self.data.n, self.data.t
@@ -316,8 +317,11 @@ def build_tree(
     ``kind`` couples the split criterion with the matching leaf model:
     ``"weibull"`` (Weibull deviance split, Weibull leaves),
     ``"exponential"`` (exponential deviance split, Exponential leaves)
-    or ``"non-parametric"`` (risk-set log-rank split, Nelson-Aalen
-    leaves; observed / right-censored data, optionally left truncated).
+    or ``"non-parametric"``: the risk-set log-rank split with
+    Nelson-Aalen leaves at a node of observed / right-censored data
+    (optionally left truncated), and the Turnbull-score split with
+    Turnbull leaves at a node with left- or interval-censored rows
+    (untruncated).
     """
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
@@ -330,7 +334,13 @@ def build_tree(
     )
 
     # Figure out best feature-value split
-    if kind == "non-parametric":
+    if kind == "non-parametric" and needs_full_likelihood_split(data):
+        # Left or interval censoring (the tree has refused truncation
+        # with it): the log-rank scores of the pooled Turnbull estimate.
+        split_feature_index, split_feature_value = turnbull_score_split(
+            data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
+        )
+    elif kind == "non-parametric":
         split_feature_index, split_feature_value = log_rank_split(
             data, Z, min_leaf_samples, min_leaf_failures, feature_indices_in
         )

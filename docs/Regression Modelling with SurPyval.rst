@@ -2817,10 +2817,12 @@ fail faster only when :math:`z_0 > 0.5` **and** :math:`z_1 < 0.5`; the third
 covariate is noise. A single shallow tree, allowed to consider every covariate
 at each split (``n_features_split='all'``), finds the interaction on its own.
 The tree ``kind`` couples the split rule with the leaf model:
-``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves (for
-observed, right-censored and left-truncated data); ``'weibull'`` (the default)
-and ``'exponential'`` use a likelihood split and parametric leaves and accept
-every kind of censoring and truncation, at a higher computational cost:
+``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves for
+observed, right-censored and left-truncated data, and its score form under the
+pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
+data (not yet with truncation); ``'weibull'`` (the default) and
+``'exponential'`` use a likelihood split and parametric leaves and accept every
+kind of censoring and truncation, at a higher computational cost:
 
 .. jupyter-execute::
 
@@ -2958,6 +2960,51 @@ methods need the fitted one.
     assert importance[0] > 0.05 and importance[1] > 0.05, importance
     assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
         importance
+
+Because the score is a likelihood, it validates forests on data that
+concordance cannot handle. Below, units are only inspected every two time
+units, so every failure is interval censored (or left censored, before the
+first inspection, or right censored, still running at the last); units with
+:math:`z_0 > 0.5` wear out about twice as fast. A non-parametric forest splits
+such data with the log-rank scores of the pooled Turnbull estimate:
+
+.. jupyter-execute::
+
+    r_ic = np.random.default_rng(5)
+    Z_ic = r_ic.uniform(0, 1, (200, 3))
+    T_ic = 10 * r_ic.weibull(1.5, 200) * np.where(Z_ic[:, 0] > 0.5, 0.5, 1.0)
+    inspections = np.arange(0.0, 22.0, 2.0)
+    k_ic = np.minimum(np.searchsorted(inspections, T_ic),
+                      inspections.size - 1)
+    c_ic = np.where(k_ic == 1, -1, np.where(T_ic > 20, 1, 2))
+    x_ic = [inspections[j] if cj == -1 else 20.0 if cj == 1
+            else [inspections[j - 1], inspections[j]]
+            for j, cj in zip(k_ic, c_ic)]
+
+    oob_ic = {}
+    for depth in [0, 2]:
+        np.random.seed(0)
+        with contextlib.redirect_stderr(io.StringIO()):
+            rsf_ic = RandomSurvivalForest.fit(
+                x=x_ic, Z=Z_ic, c=c_ic, n_trees=30, max_depth=depth,
+                n_features_split=2, kind='non-parametric')
+        oob_ic[depth] = rsf_ic.oob_log_likelihood()
+        print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
+    importance_ic = rsf_ic.feature_importances(random_state=1)
+    print('importance of z0, z1, z2:', importance_ic.round(3))
+
+Again the splits beat the pooled Turnbull estimate out of bag, and the
+importance falls on :math:`z_0` alone.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert set(c_ic) == {-1, 1, 2}
+    assert oob_ic[2] > oob_ic[0] + 0.02, oob_ic
+    assert importance_ic[0] > 0.02, importance_ic
+    assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
+        importance_ic
 
 Saving and loading a fitted model
 ---------------------------------
