@@ -65,7 +65,7 @@ class Binomial_(DiscreteParametricFitter):
             # until the model is built; ``fit`` and ``from_params`` set it
             # to n + 1 for the same reason.
             support=(-1, np.inf),
-            param_names=["n", "p"],
+            parameter_names=["n", "p"],
             param_map={"n": 0, "p": 1},
             plot_x_scale="linear",
         )

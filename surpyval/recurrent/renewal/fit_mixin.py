@@ -85,15 +85,16 @@ class RenewalFitMixin:
 
     @staticmethod
     def _bounds_transform(
-        data_x: np.ndarray, bounds: list, param_names: list
+        data_x: np.ndarray, bounds: list, parameter_names: list
     ) -> tuple[Callable, Callable]:
         """
         Build the (bounded -> unbounded) parameter transforms used by the
         fitters that optimise in an unconstrained space. ``bounds`` are the
         natural-space bounds ``[(restoration bounds), *dist.bounds]`` and
-        ``param_names`` are the names of those parameters, restoration first.
+        ``parameter_names`` are the names of those parameters, restoration
+        first.
         """
-        param_map = {name: k for k, name in enumerate(param_names)}
+        param_map = {name: k for k, name in enumerate(parameter_names)}
         transform, inv_trans, _, _, _ = bounds_convert(
             data_x, bounds, {}, param_map
         )
@@ -230,7 +231,7 @@ class RenewalFitMixin:
         transform, inv_trans = self._bounds_transform(
             data.x,
             [restoration_bounds, *dist.bounds],
-            [restoration_name, *dist.param_names],
+            [restoration_name, *dist.parameter_names],
         )
 
         def objective(p: np.ndarray) -> float:
@@ -259,13 +260,13 @@ class RenewalFitMixin:
                     inits.append([renewal_restoration, *renewal])
         if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
-            expected = 1 + len(dist.param_names)
+            expected = 1 + len(dist.parameter_names)
             if init.shape != (expected,):
                 raise ValueError(
                     "init must have {} values ([{}, {}]); got {}.".format(
                         expected,
                         restoration_name,
-                        ", ".join(dist.param_names),
+                        ", ".join(dist.parameter_names),
                         init.size,
                     )
                 )

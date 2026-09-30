@@ -68,7 +68,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             # The support [a, b] is data-dependent and resolved from the
             # fitted ``a`` (param 2) and ``b`` (param 3) parameters.
             support=(np.nan, np.nan),
-            param_names=["alpha", "beta", "a", "b"],
+            parameter_names=["alpha", "beta", "a", "b"],
             param_map={"alpha": 0, "beta": 1, "a": 2, "b": 3},
             plot_x_scale="linear",
         )

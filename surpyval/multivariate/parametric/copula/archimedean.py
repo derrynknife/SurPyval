@@ -48,7 +48,7 @@ class IndependenceCopula(Copula):
 
     name = "Independence"
     bounds = ()
-    param_names = ()
+    parameter_names: list[str] = []
 
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
         return u * v
@@ -121,7 +121,7 @@ class ClaytonCopula(Copula):
 
     name = "Clayton"
     bounds = ((0, None),)
-    param_names = ("theta",)
+    parameter_names = ["theta"]
     dependence_limits = {1: "theta grows without bound"}
 
     # Everything is computed through ``log(base)``, ``base = u ** -theta +
@@ -189,7 +189,7 @@ class GumbelCopula(Copula):
 
     name = "Gumbel"
     bounds = ((1, None),)
-    param_names = ("theta",)
+    parameter_names = ["theta"]
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}
 
@@ -226,7 +226,7 @@ class FrankCopula(Copula):
 
     name = "Frank"
     bounds = ((None, None),)
-    param_names = ("theta",)
+    parameter_names = ["theta"]
     dependence_limits = {
         1: "theta grows without bound",
         -1: "theta falls without bound",

@@ -14,7 +14,7 @@ class DualExponential_(LifeModel):
     Attributes
     ----------
         name (str): The name of the life model.
-        param_names (dict): A dictionary specifying the parameter names and
+        parameter_names (dict): A dictionary specifying the parameter names and
         their indices in the parameter vector.
         param_bounds (tuple): A tuple specifying the parameter bounds.
 

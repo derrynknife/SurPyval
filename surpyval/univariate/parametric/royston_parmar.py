@@ -182,6 +182,13 @@ class RoystonParmarModel(SerialisableMixin):
         # fit time.
         self._ic_n = 0.0
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: the spline
+        coefficients ``gamma_0``, ``gamma_1``, ..., as the summary prints
+        them."""
+        return ["gamma_{}".format(i) for i in range(len(self.params))]
+
     # -- linear predictor --------------------------------------------------
 
     def _eta(self, t: np.ndarray) -> np.ndarray:

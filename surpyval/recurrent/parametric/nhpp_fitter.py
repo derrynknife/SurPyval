@@ -135,11 +135,11 @@ class NHPPFitter(IntensityModel):
             param_init = default_init
         else:
             param_init = np.atleast_1d(np.asarray(init, dtype=float))
-            if param_init.shape != (len(self.param_names),):
+            if param_init.shape != (len(self.parameter_names),):
                 raise ValueError(
                     "init must have {} values ({}); got {}.".format(
-                        len(self.param_names),
-                        ", ".join(self.param_names),
+                        len(self.parameter_names),
+                        ", ".join(self.parameter_names),
                         param_init.size,
                     )
                 )

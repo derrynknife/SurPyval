@@ -28,6 +28,10 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval import np
+from surpyval.utils.deprecation import (
+    RenamedAttribute,
+    renamed_class_attribute,
+)
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 
@@ -50,13 +54,22 @@ class Copula:
     # Parameter bounds in the same ``(low, high)`` form the univariate
     # fitters use, so ``bounds_convert`` can map them to unbounded space.
     bounds: tuple = ((0, None),)
-    param_names: tuple = ("theta",)
+    parameter_names: list[str] = ["theta"]
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
+    # for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
     #: The Frechet bounds the family reaches only as its parameter runs to
     #: a limit: ``+1`` the comonotone copula (perfect positive dependence),
     #: ``-1`` the countermonotone one, each mapped to that limit as the
     #: fit's warning names it (see :meth:`_warn_if_perfectly_dependent`).
     #: Empty for a family that is not known to reach either.
     dependence_limits: dict = {}
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # A family written against the pre-0.22 name, ``param_names``,
+        # still works until v0.23, with a DeprecationWarning.
+        super().__init_subclass__(**kwargs)
+        renamed_class_attribute(cls, "param_names", "parameter_names")
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
@@ -363,7 +376,7 @@ class Copula:
             ``"MLE"`` jointly optimises copula parameter + margin parameters.
         init : array like, optional
             Starting value of the copula parameter(s) for the search, one per
-            entry of ``param_names``, each strictly inside the family's
+            entry of ``parameter_names``, each strictly inside the family's
             ``bounds``. By default each family starts from its own guess
             (the built-in families match the empirical Kendall's tau).
 
@@ -430,7 +443,7 @@ class Copula:
             # criteria then count the copula's parameters only (and are a
             # pseudo-likelihood's, for comparing copula families with the
             # same margins).
-            k = len(self.param_names) + sum(
+            k = len(self.parameter_names) + sum(
                 len(getattr(m, "params", ()))
                 for m, given in zip(margin_models, margins)
                 if hasattr(given, "fit") and not _is_nonparametric(m)
@@ -441,7 +454,7 @@ class Copula:
             )
             # The joint search re-estimates every free margin parameter,
             # including an offset, cure or zero-inflation proportion.
-            k = len(self.param_names) + sum(
+            k = len(self.parameter_names) + sum(
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
@@ -483,7 +496,7 @@ class Copula:
         )
         params = ", ".join(
             f"{name} = {value:.4g}"
-            for name, value in zip(self.param_names, theta)
+            for name, value in zip(self.parameter_names, theta)
         )
         warn_no_maximum(
             f"the {rows} rows observed in both dimensions are perfectly "
@@ -509,7 +522,7 @@ class Copula:
         ----------
         params : array like
             The copula parameter(s), e.g. ``[theta]`` (empty for the
-            independence copula): one per entry of ``param_names``, each
+            independence copula): one per entry of ``parameter_names``, each
             strictly inside the family's ``bounds`` (Gumbel's ``theta = 1``,
             the independence copula, is allowed too). Anything else raises
             ``ValueError``.
@@ -561,17 +574,17 @@ class Copula:
 
     def _check_params(self, params: npt.ArrayLike) -> npt.NDArray:
         """Validate copula parameters given directly: one finite value per
-        entry of ``param_names``, inside ``bounds``. An unchecked value
+        entry of ``parameter_names``, inside ``bounds``. An unchecked value
         silently gave a non-copula (a Clayton ``theta = -2`` has a negative
         density) or was clipped (a Gaussian ``rho = 1.5``)."""
         params = onp.atleast_1d(onp.asarray(params, dtype=float))
-        if params.shape != (len(self.param_names),):
+        if params.shape != (len(self.parameter_names),):
             raise ValueError(
-                f"The {self.name} copula takes {len(self.param_names)} "
-                f"parameter(s) {self.param_names}, got {params.tolist()}."
+                f"The {self.name} copula takes {len(self.parameter_names)} "
+                f"parameter(s) {self.parameter_names}, got {params.tolist()}."
             )
         for name, value, (low, high) in zip(
-            self.param_names, params, self.bounds
+            self.parameter_names, params, self.bounds
         ):
             closed = name in self.closed_bounds
             above = low is None or value > low or (closed and value == low)
@@ -615,7 +628,7 @@ class Copula:
     def _bounds_transforms(self) -> tuple:
         from surpyval.univariate.parametric.fitters import bounds_convert
 
-        param_map = {n: i for i, n in enumerate(self.param_names)}
+        param_map = {n: i for i, n in enumerate(self.parameter_names)}
         to_unbounded, to_bounded, const, _, _ = bounds_convert(
             None, self.bounds, None, param_map
         )
@@ -676,7 +689,7 @@ class Copula:
             _JointMargin(margin_models[d], data, d) for d in range(data.D)
         ]
         theta0 = self._fit_theta(margin_models, data, init)
-        n_cop = len(self.param_names)
+        n_cop = len(self.parameter_names)
         splits = onp.cumsum([j.n_free for j in joint])[:-1]
         to_unbounded, to_bounded = self._bounds_transforms()
 
@@ -735,13 +748,13 @@ class Copula:
         """Validate a user's ``init``: one value per parameter, each
         strictly inside its bounds (a start on a bound cannot move)."""
         init = onp.atleast_1d(onp.asarray(init, dtype=float))
-        if init.shape != (len(self.param_names),):
+        if init.shape != (len(self.parameter_names),):
             raise ValueError(
                 f"init must have one value per copula parameter "
-                f"{self.param_names}, got {init.tolist()}"
+                f"{self.parameter_names}, got {init.tolist()}"
             )
         for name, value, (low, high) in zip(
-            self.param_names, init, self.bounds
+            self.parameter_names, init, self.bounds
         ):
             inside = (
                 bool(onp.isfinite(value))

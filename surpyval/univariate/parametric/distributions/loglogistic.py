@@ -35,7 +35,7 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             k=2,
             bounds=((0, None), (0, None)),
             support=(0, np.inf),
-            param_names=["alpha", "beta"],
+            parameter_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="log",
         )

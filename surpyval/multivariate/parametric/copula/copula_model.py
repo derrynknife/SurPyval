@@ -77,6 +77,14 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         self._neg_ll: "float | None" = None
         self._n_obs: "float | None" = None
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: the copula family's
+        ``parameter_names`` (``["theta"]``, ``["rho"]``, or ``[]`` for the
+        independence copula). The margins' parameters are on the margins.
+        """
+        return list(self.copula.parameter_names)
+
     # -- internal ---------------------------------------------------------
     def _uv(
         self, x: npt.ArrayLike
@@ -339,8 +347,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
 
     def __repr__(self) -> str:
         param_str = ", ".join(
-            f"{n}={p:.4g}"
-            for n, p in zip(self.copula.param_names, self.params)
+            f"{n}={p:.4g}" for n, p in zip(self.parameter_names, self.params)
         )
         margin_names = [
             getattr(getattr(m, "dist", m), "name", "?") for m in self.margins

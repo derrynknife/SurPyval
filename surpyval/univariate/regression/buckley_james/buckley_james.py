@@ -230,6 +230,13 @@ class BuckleyJamesModel(SerialisableMixin):
     formula = None
     _model_spec = None
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients, as in the
+        parametric regression models."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
+
     def __init__(
         self,
         beta: npt.ArrayLike,

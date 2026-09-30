@@ -54,7 +54,7 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
             # bound is declared as 0 so k = 1 passes the interior check and
             # zero-inflation (structural zeros at x = 0) is permitted.
             support=(0.0, np.inf),
-            param_names=["q", "beta"],
+            parameter_names=["q", "beta"],
             param_map={"q": 0, "beta": 1},
             plot_x_scale="linear",
         )

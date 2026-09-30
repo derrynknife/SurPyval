@@ -569,7 +569,7 @@ def check_parameters(dist: Any, params: Any) -> None:
     ``bounds`` are not checked.
     """
     values = np.atleast_1d(np.asarray(params, dtype=float))
-    names = list(getattr(dist, "param_names", []) or [])
+    names = list(getattr(dist, "parameter_names", []) or [])
     if np.isnan(values).any():
         raise ValueError(
             f"The serialised parameters of '{getattr(dist, 'name', dist)}'"

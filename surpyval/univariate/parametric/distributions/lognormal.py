@@ -43,7 +43,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             # bound made every fit with geometric mean < 1 fail (#257).
             bounds=((None, None), (0, None)),
             support=(0, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="log",
             y_ticks=[

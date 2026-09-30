@@ -643,7 +643,7 @@ class Parametric(
             # from SurPyval's own distributions (see resolve_distribution).
             out["custom"] = True
         out["how"] = self.method
-        out["param_names"] = self.dist.param_names
+        out["param_names"] = self.dist.parameter_names
 
         data_dict: dict[str, Any] = {}
         if with_data:
@@ -693,6 +693,22 @@ class Parametric(
             out["fixed"] = [names[i] for i in fixed_idx]
 
         return stamp_schema(out)
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """
+        The names of ``params``, entry by entry: the distribution's
+        ``parameter_names``. An offset ``gamma``, limited-failure
+        proportion ``p`` and zero-inflation fraction ``f0`` are not in
+        ``params`` and not named here (see :attr:`extras`).
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.from_params([100, 2]).parameter_names
+        ['alpha', 'beta']
+        """
+        return list(self.dist.parameter_names)
 
     @property
     def extras(self) -> dict[str, float]:
@@ -750,7 +766,7 @@ class Parametric(
         ----------
         params : array like
             The distribution's parameters, in the order of
-            ``model.dist.param_names``. They are checked as
+            ``model.dist.parameter_names``. They are checked as
             ``from_params`` checks them.
 
         Returns
@@ -777,7 +793,7 @@ class Parametric(
             param_string = "\n".join(
                 [
                     f"{name:>10}: {p}"
-                    for p, name in zip(self.params, self.dist.param_names)
+                    for p, name in zip(self.params, self.dist.parameter_names)
                 ]
             )
             out = (
@@ -983,7 +999,7 @@ class Parametric(
                 "it is a threshold parameter whose likelihood is not "
                 "regular, so no standard error is estimated for it."
             )
-        valid = list(self.dist.param_names)
+        valid = list(self.dist.parameter_names)
         if self.lfp:
             valid.append(self.lfp_name)
         if self.zi:
@@ -3247,7 +3263,7 @@ class Parametric(
         sweep but 0.0652 queried alone (#421). ``None`` (the general
         search is used instead) where the interval cannot be found.
         """
-        name = self.dist.param_names[j]
+        name = self.dist.parameter_names[j]
         # A one-sided bound at alpha is an end of the two-sided region at
         # 2 alpha: the same chi-squared critical value.
         level = alpha_ci if bound == "two-sided" else 2.0 * alpha_ci

@@ -64,7 +64,7 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
             # See ``Geometric``: true support is {1, 2, 3, ...}; declared as
             # 0 so k = 1 passes the interior check.
             support=(0.0, np.inf),
-            param_names=["a", "b"],
+            parameter_names=["a", "b"],
             param_map={"a": 0, "b": 1},
             plot_x_scale="linear",
         )

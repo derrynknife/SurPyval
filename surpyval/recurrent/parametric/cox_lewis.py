@@ -60,7 +60,7 @@ class CoxLewis(NHPPFitter):
 
     def __init__(self) -> None:
         self.name = "Cox-Lewis"
-        self.param_names = ["alpha", "beta"]
+        self.parameter_names = ["alpha", "beta"]
         # alpha is the *log*-intensity intercept and is legitimately
         # negative whenever the baseline rate is below one event per
         # time unit; the old (0, None) bound silently pinned such fits

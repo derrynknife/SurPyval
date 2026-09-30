@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import numpy as np
@@ -12,6 +13,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -30,6 +32,11 @@ class ProportionalIntensityModel(
     fitted by maximum likelihood it also carries the likelihood-inference
     behaviour (``log_likelihood``, ``aic``, ``bic``, ``standard_errors``) from
     :class:`LikelihoodInferenceMixin`.
+
+    ``params`` holds the base-rate parameters and ``coeffs`` the covariate
+    coefficients; ``parameter_names`` names both, base rate first, the order
+    of :meth:`covariance` and :meth:`standard_errors`, so
+    ``parameter_names[:len(params)]`` names ``params``.
 
     Examples
     --------
@@ -59,7 +66,7 @@ class ProportionalIntensityModel(
     dist: Any
     params: "np.ndarray"
     coeffs: "np.ndarray"
-    param_names: list
+    _rate_names: list
     bounds: tuple
     name: str
     data: Any
@@ -78,7 +85,7 @@ class ProportionalIntensityModel(
         out += f"\nHazard Rate Model   : {self.dist.name}\n"
 
         out = out + "Base Rate Parameters:\n"
-        for i, p in zip(self.param_names, self.params):
+        for i, p in zip(self._rate_names, self.params):
             out += "    {i}  :  {p}\n".format(i=i, p=p)
 
         out = out + "\nCovariate Coefficients:\n"
@@ -109,7 +116,7 @@ class ProportionalIntensityModel(
                 "kind": self.kind,
                 "parameterization": self.parameterization,
                 "dist": self.dist.name,
-                "param_names": list(self.param_names),
+                "param_names": list(self._rate_names),
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
             }
@@ -142,7 +149,7 @@ class ProportionalIntensityModel(
             out.support = (-np.inf, np.inf)
         else:
             out.dist = intensity_dist_by_name(model_dict["dist"])
-        out.param_names = list(model_dict["param_names"])
+        out._rate_names = list(model_dict["param_names"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
         return out
@@ -444,9 +451,24 @@ class ProportionalIntensityModel(
         # The base-rate (intensity) parameters lead ``_mle``, followed by the
         # covariate coefficients.
         return [
-            *self.param_names,
+            *self._rate_names,
             *["beta_{}".format(i) for i in range(len(self.coeffs))],
         ]
+
+    @property
+    def param_names(self) -> list:
+        """The base-rate parameters' names: deprecated, and removed in
+        v0.23. Use ``parameter_names[:len(params)]`` (``parameter_names``
+        also names the coefficients)."""
+        warnings.warn(
+            "ProportionalIntensityModel.param_names is deprecated and will "
+            "be removed in v{}; use 'parameter_names', which names the "
+            "base-rate parameters and then the coefficients "
+            "(parameter_names[:len(params)] names params).".format(REMOVED_IN),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return list(self._rate_names)
 
     def _parameter_bounds(self) -> list:
         # The base-rate bounds come from the intensity model (PI-HPP stores

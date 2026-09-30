@@ -53,7 +53,7 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
             # ``x <= support[0]`` interior check (see ``Geometric`` for the
             # same convention, with its first mass at k = 1).
             support=(-1.0, np.inf),
-            param_names=["mu"],
+            parameter_names=["mu"],
             param_map={"mu": 0},
             plot_x_scale="linear",
         )

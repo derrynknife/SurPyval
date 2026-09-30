@@ -186,7 +186,7 @@ def validate_nhpp_data(data: RecurrentEventData, dist: object) -> None:
             "times.".format(lower, name)
         )
 
-    n_params = len(getattr(dist, "param_names", ()))
+    n_params = len(getattr(dist, "parameter_names", ()))
     events = float(np.asarray(data.n)[c == 0].sum())
     window_closed = np.any(c != 0) or np.any(np.isfinite(tr))
     if n_params >= 2 and events == 1 and not window_closed:

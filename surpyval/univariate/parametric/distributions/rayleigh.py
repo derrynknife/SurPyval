@@ -34,7 +34,7 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
             k=1,
             bounds=((0, None),),
             support=(0, np.inf),
-            param_names=["sigma"],
+            parameter_names=["sigma"],
             param_map={"sigma": 0},
             plot_x_scale="linear",
             y_ticks=[

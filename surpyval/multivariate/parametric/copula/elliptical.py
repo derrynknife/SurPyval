@@ -24,7 +24,7 @@ class GaussianCopula(Copula):
 
     name = "Gaussian"
     bounds = ((-1, 1),)
-    param_names = ("rho",)
+    parameter_names = ["rho"]
     dependence_limits = {1: "rho tends to 1", -1: "rho tends to -1"}
 
     @staticmethod

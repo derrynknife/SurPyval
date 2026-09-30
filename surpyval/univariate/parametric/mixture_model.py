@@ -122,6 +122,13 @@ class MixtureModel(SerialisableMixin, Distribution):
     Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)
     """
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of the columns of ``params``: the component
+        distribution's ``parameter_names``. ``params`` has one row per
+        component (``m`` rows); the weights are ``w``."""
+        return list(self.dist.parameter_names)
+
     def __init__(self, dist: Any, m: int = 2) -> None:
         self.m = m
         self.dist = dist
@@ -191,7 +198,9 @@ class MixtureModel(SerialisableMixin, Distribution):
             param_string = "\n".join(
                 [
                     f"{name:>10}: {p}"
-                    for p, name in zip(self.params.T, self.dist.param_names)
+                    for p, name in zip(
+                        self.params.T, self.dist.parameter_names
+                    )
                 ]
             )
             weight_string = ",\n\t".join([str(w) for w in self.w])
@@ -549,7 +558,9 @@ class MixtureModel(SerialisableMixin, Distribution):
                 continue
             params = ", ".join(
                 f"{name} = {value:.4g}"
-                for name, value in zip(self.dist.param_names, self.params[i])
+                for name, value in zip(
+                    self.dist.parameter_names, self.params[i]
+                )
             )
             explained_rows = int(data.n[rows].sum())
             warn_no_maximum(

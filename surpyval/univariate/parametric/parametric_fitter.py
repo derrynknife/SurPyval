@@ -14,6 +14,7 @@ from scipy.integrate import quad
 import surpyval
 from surpyval import np
 from surpyval.utils import _check_x_not_empty, refuse_time_values
+from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
@@ -465,6 +466,10 @@ class ParametricFitter:
     # validation and callers branch on the trait.
     discrete = False
 
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, still
+    # reads (and sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
+
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
         # base calls -- ``cs`` divides two ``sf``s, ``log_sf`` negates
@@ -524,13 +529,14 @@ class ParametricFitter:
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
         k: int,
         bounds: tuple[tuple[int | float | None, int | float | None], ...],
         support: tuple[int | float, int | float],
-        param_names: list[str],
+        parameter_names: list[str],
         param_map: dict[str, int],
         plot_x_scale: str,
         y_ticks: list[float] | None = None,
@@ -539,7 +545,7 @@ class ParametricFitter:
         self.k = k
         self.bounds = bounds
         self.support = support
-        self.param_names = param_names
+        self.parameter_names = parameter_names
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
@@ -639,7 +645,7 @@ class ParametricFitter:
             The time already survived
         *params : numpy array like or scalar
             The parameters of the distribution, in the order given by
-            its ``param_names``
+            its ``parameter_names``
 
         Returns
         -------
@@ -904,7 +910,7 @@ class ParametricFitter:
         parameters. A distribution whose parameter count is set by the
         parameters themselves (``Hypoexponential``: one rate per stage)
         overrides this to return an instance with the matching ``k``,
-        ``param_names`` and ``bounds``, so a model built from a
+        ``parameter_names`` and ``bounds``, so a model built from a
         serialised dictionary reports the right parameter count.
         """
         return self
@@ -1046,10 +1052,8 @@ class ParametricFitter:
                 upper_limit = upp
 
             if not (lower_limit < params[i] < upper_limit):
-                param_names = ", ".join(self.param_names)
-                detail = (
-                    f"Params {param_names} must be in" f" bounds {self.bounds}"
-                )
+                names = ", ".join(self.parameter_names)
+                detail = f"Params {names} must be in" f" bounds {self.bounds}"
                 raise ValueError(detail)
         self._check_params(params)
         return model
@@ -1108,7 +1112,7 @@ class OptimisedFitMixin:
         k: int
         bounds: tuple[tuple[int | float | None, int | float | None], ...]
         support: tuple[int | float, int | float]
-        param_names: list[str]
+        parameter_names: list[str]
         param_map: dict[str, int]
         discrete: bool
         supports_mpp: bool
@@ -2537,7 +2541,7 @@ turnbull_estimator
         # ``Geometric``, ``NegativeBinomial``); those remain available via
         # ``model.params``.
         reserved = {"gamma", "p", "f0"}
-        for k, v in zip(self.param_names, model.params):
+        for k, v in zip(self.parameter_names, model.params):
             if k not in reserved:
                 setattr(model, k, v)
 
@@ -2656,7 +2660,7 @@ turnbull_estimator
             return False
         shape = ", ".join(
             f"{name} = {value:.4g}"
-            for name, value in zip(self.param_names, core)
+            for name, value in zip(self.parameter_names, core)
         )
         warn_no_maximum(
             f"the offset gamma = {gamma:.6g} ran onto the smallest "
