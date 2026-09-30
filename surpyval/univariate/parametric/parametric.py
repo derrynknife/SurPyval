@@ -11,9 +11,9 @@ from scipy.optimize import (
     minimize,
     minimize_scalar,
 )
-from scipy.special import expit
+from scipy.special import expit, ndtr
 from scipy.special import ndtri as z
-from scipy.stats import uniform
+from scipy.stats import norm, uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution, np
@@ -2197,11 +2197,18 @@ class Parametric(
         on : ('sf', 'ff', 'Hf', 'hf', 'df'), optional
             The function on which the confidence bound will be calculated.
             The Wald bounds on ``sf``, ``ff`` and ``Hf`` come from one bound
-            on the logit of ``sf``; those on ``hf`` and ``df`` are on the log
-            scale (the logit scale for a discrete distribution, whose hazard
-            and mass are probabilities), and are 0 where the rate is 0. Where
-            the delta-method variance is negative (the covariance is not
+            on the log cumulative hazard, ``log Hf = log(-log sf)`` (the
+            "log-log" transform, on which a Weibull is a straight line in
+            log time); those on ``hf`` and ``df`` are on the log scale (the
+            logit scale for a discrete distribution, whose hazard and mass
+            are probabilities), and are 0 where the rate is 0. Where the
+            delta-method variance is negative (the covariance is not
             positive definite) a Wald bound is ``nan``, with a warning.
+            The Wald band on ``sf`` and ``ff`` rises (or falls) with ``x``
+            as the function does whenever the shape's own Wald interval
+            excludes 0; with fewer failures than that it can turn back in a
+            tail, and the likelihood-ratio band (``method="lr"``), which is
+            always monotone, is the one to use.
         bound : ('two-sided', 'upper', 'lower'), str, optional
             Compute either the two-sided, upper or lower confidence bound(s).
             Defaults to two-sided.
@@ -2220,7 +2227,7 @@ class Parametric(
             one band, so they agree exactly.
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
-            samples (the reliability-engineering default), but it is computed
+            samples (Meeker and Escobar recommend it there), but it is computed
             pointwise and so is slower, needs the original data (a model
             restored from ``to_dict(with_data=True)`` has it; one saved
             without it raises), and is not yet available for offset / LFP /
@@ -2243,10 +2250,10 @@ class Parametric(
         >>> x = Weibull.random(30, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.cb([5, 10], on="sf")
-        array([[0.65821001, 0.89149672],
-               [0.17231083, 0.4256438 ]])
+        array([[0.65083522, 0.88949979],
+               [0.1629223 , 0.41352719]])
         >>> model.cb([5, 10], on="sf", bound="lower")
-        array([0.68394304, 0.18735771])
+        array([0.67916426, 0.18042915])
         """
         t = np.atleast_1d(x)
         if self.method != "MLE":
@@ -2909,6 +2916,22 @@ class Parametric(
             out = np.where(x < 0, 1.0, out)
         return out
 
+    def _cb_full_ff(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """``1 - _cb_full_sf``, from the base ``ff``, so that it is
+        accurate where it is small (in the left tail, where ``1 - sf``
+        is not): ``f0 + (p - f0) F``."""
+        core, p, f0 = self._cb_unpack(phi, ctx)
+        s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+        xg = x - self.gamma
+        below = xg < s0
+        if np.any(below):
+            xg = np.where(below, s0 + 1e-10, xg)
+        base_ff = np.where(below, 0.0, self.dist.ff(xg, *core))
+        out = f0 + (p - f0) * base_ff
+        if self.zi:
+            out = np.where(x < 0, 0.0, out)
+        return out
+
     def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
         """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
         jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
@@ -2942,18 +2965,48 @@ class Parametric(
     def _cb_sf_bound(
         self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
     ) -> Any:
-        """Confidence bound on the survival function via a logit transform.
+        """Confidence bound on the survival function: a Wald bound on the
+        scale on which the family is a straight line in (log) time -- its
+        probability-plot scale -- mapped back to ``R``.
 
-        Working on the logit of R keeps the bound within ``(0, 1)``. The
-        returned array is the transpose of the per-point bounds, matching the
-        layout the public ``cb`` method expects.
+        The scale is the distribution's ``_cb_link``: ``log(-log R)`` (the
+        log cumulative hazard) for the Weibull, Exponential, Rayleigh and
+        Gumbel, the normal quantile of ``F`` for the Normal and LogNormal,
+        and the logit for the Logistic and LogLogistic, and for every other
+        family, which has no such scale. Each keeps the bound within
+        ``(0, 1)``. On a family's straight-line scale the function is
+        ``a s - b`` in ``s`` = (log) time, so the pointwise band is the
+        envelope of the lines of the Wald ellipsoid for ``(a, b)``: it
+        rises with ``s`` whenever the slope's (the shape's) own Wald
+        interval excludes 0. The logit band used for every family before
+        (#477) has no such property: on small samples it turned back in a
+        tail for most Weibull, LogNormal and Normal fits -- a lower bound on
+        ``F(10)`` of 0.00004 under one on ``F(5)`` of 0.39 -- where this one
+        does only when the shape's interval reaches 0. The scales agree to
+        first order, so large-sample bounds are essentially unchanged. The
+        returned array is the transpose of the per-point bounds, matching
+        the layout the public ``cb`` method expects.
         """
 
-        def sf_func(phi: npt.NDArray) -> Any:
-            return self._cb_full_sf(x, phi, ctx)
-
-        sd_R = self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
         R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
+        F_hat = self._cb_full_ff(x, ctx.phi_hat, ctx)
+        # The smaller of R and F, each accurate where it is small (1 - R
+        # is not): the scales below are taken from it in each tail, and so
+        # is the variance (Var R = Var F), relative to it, since its square
+        # can underflow and the derivative of R where R is near 1 has lost
+        # the digits that F's keeps.
+        left = F_hat < 0.5
+        small = np.where(left, F_hat, R_hat)
+        unit = np.where(small > 0, small, 1.0)
+
+        def sf_func(phi: npt.NDArray) -> Any:
+            R = self._cb_full_sf(x, phi, ctx)
+            F = self._cb_full_ff(x, phi, ctx)
+            return np.where(left, -F, R) / unit
+
+        sd_R = unit * self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
+        # ``diff`` moves the scale by z standard errors, in the direction
+        # that raises ``R`` when it is negative (the upper bound on R).
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * sd_R * np.array([1.0, -1.0]).reshape(2, 1)
         elif bound == "upper":
@@ -2961,13 +3014,28 @@ class Parametric(
         else:
             diff = -z(alpha_ci) * sd_R
 
+        link = getattr(self.dist, "_cb_link", "logit")
         with np.errstate(all="ignore"):
-            exponent = diff / (R_hat * (1 - R_hat))
-            R_cb = R_hat / (R_hat + (1 - R_hat) * np.exp(exponent))
-        # At the boundary (R = 0 or 1, e.g. t <= gamma) the logit transform
+            if link == "loglog":
+                # v = log H, dv/dR = -1 / (R H): se(v) = sd_R / (R H)
+                H_hat = np.where(
+                    F_hat < 0.5, -np.log1p(-F_hat), -np.log(R_hat)
+                )
+                R_cb = np.exp(-H_hat * np.exp(diff / (R_hat * H_hat)))
+            elif link == "probit":
+                # q = Phi^-1(F), dq/dR = -1 / phi(q): se(q) = sd_R / phi(q)
+                q = np.where(F_hat < 0.5, z(F_hat), -z(R_hat))
+                R_cb = ndtr(-(q + diff / norm.pdf(q)))
+            else:
+                # logit R, d/dR = 1 / (R F)
+                exponent = diff / (R_hat * F_hat)
+                R_cb = R_hat / (R_hat + F_hat * np.exp(exponent))
+        # At the boundary (R = 0 or 1, e.g. t <= gamma) the transform
         # degenerates to 0/0; the bound there is the boundary itself (#256).
-        R_cb = np.where(np.broadcast_to(R_hat == 1.0, R_cb.shape), 1.0, R_cb)
-        R_cb = np.where(np.broadcast_to(R_hat == 0.0, R_cb.shape), 0.0, R_cb)
+        # So it is within a subnormal of it, where the variance is noise.
+        tiny = np.finfo(float).tiny
+        R_cb = np.where(np.broadcast_to(F_hat < tiny, R_cb.shape), 1.0, R_cb)
+        R_cb = np.where(np.broadcast_to(R_hat < tiny, R_cb.shape), 0.0, R_cb)
         return R_cb.T
 
     def _cb_rate_bound(
@@ -3063,7 +3131,10 @@ class Parametric(
         return ic_sample_size(self.data["c"], self.data["n"])
 
     def get_plot_data(
-        self, heuristic: str = "Nelson-Aalen", alpha_ci: float = 0.05
+        self,
+        heuristic: str = "Nelson-Aalen",
+        alpha_ci: float = 0.05,
+        method: str = "wald",
     ) -> dict:
         """
 
@@ -3082,6 +3153,11 @@ class Parametric(
         alpha_ci : float, optional
             The level of significance at which the confidence bounds, if
             able, will be calculated. Defaults to 0.05.
+
+        method : ('wald', 'lr'), str, optional
+            The method of the confidence band, as for :meth:`cb`. Defaults
+            to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
+            but better in small samples, and always monotone.
 
         Returns
         -------
@@ -3109,7 +3185,9 @@ class Parametric(
         ):
 
             def _cb_func(x_model: npt.NDArray) -> Any:
-                return self.cb(x_model, on="ff", alpha_ci=alpha_ci)
+                return self.cb(
+                    x_model, on="ff", alpha_ci=alpha_ci, method=method
+                )
 
             cb_func = _cb_func
         else:
@@ -3135,6 +3213,7 @@ class Parametric(
         alpha_ci: float = 0.05,
         ax: "Axes | None" = None,
         show_censored: bool = False,
+        method: str = "wald",
     ) -> list:
         """
         A method to do a probability plot.
@@ -3170,6 +3249,11 @@ class Parametric(
         show_censored : bool, optional
             Mark the suspension (right-censored) times with ticks along
             the time axis. Defaults to False.
+
+        method : ('wald', 'lr'), str, optional
+            The method of the confidence band, as for :meth:`cb`. Defaults
+            to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
+            but better in small samples, and always monotone.
 
         Returns
         -------
@@ -3211,7 +3295,9 @@ class Parametric(
         self._require_data("plot()")
         heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
 
-        d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
+        d = self.get_plot_data(
+            heuristic=heuristic, alpha_ci=alpha_ci, method=method
+        )
 
         return draw_probability_plot(
             ax,
