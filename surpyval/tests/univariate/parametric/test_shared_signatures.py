@@ -163,7 +163,7 @@ def test_every_distribution_refusing_mpp_raises_the_same_way():
             dist.fit(np.array([1.0, 2.0, 3.0, 4.0]), how="MPP")
 
 
-def _param_names_by_module():
+def _parameter_names_by_module():
     """{module stem: set of that distribution's parameter names}."""
     out = defaultdict(set)
     for name in dir(surpyval):
@@ -186,7 +186,7 @@ def test_no_shared_method_diverges_in_its_data_argument():
     # distributions are. What must agree is everything else -- the x a
     # function is evaluated at, the u a quantile is taken at, the m of a
     # moment.
-    params_by_mod = _param_names_by_module()
+    params_by_mod = _parameter_names_by_module()
     leading = defaultdict(dict)
     for path in sorted(DIST_DIR.glob("*.py")):
         if path.stem in _NOT_PARAMETRIC_FITTERS or path.stem == "__init__":
@@ -278,7 +278,7 @@ def test_distribution_parameters_are_boxable():
     # make the position uncheckable, which is the whole point of naming
     # the box in the first place (see the Numeric/Boxable comment in
     # parametric_fitter).
-    params_by_mod = _param_names_by_module()
+    params_by_mod = _parameter_names_by_module()
     wrong = {}
     for method in ("sf", "ff", "df", "hf", "Hf", "qf"):
         for mod, (args, _) in _annotations(method).items():

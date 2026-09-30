@@ -87,11 +87,11 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
                                 + dist2.Hf(x, *params[2::])), Hf)
         return Hf
     bounds = ((0, 1), (0, None), (0, None), (0, None), (0, None),)
-    param_names = ['knot_frac', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
+    parameter_names = ['knot_frac', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
     name = 'WeibullLogLogisticSpline'
     support = (0, np.inf)
 
-    WeibullLogLogisticSpline = surv.CustomDistribution(name, Hf, param_names, bounds, support)
+    WeibullLogLogisticSpline = surv.CustomDistribution(name, Hf, parameter_names, bounds, support)
 
     model = WeibullLogLogisticSpline.fit(x=x, c=c, n=n, lfp=True)
 
@@ -186,12 +186,12 @@ This can be implemented in surpyval with relative ease: a ``CustomDistribution``
 
     bounds = ((0, None), (0, None), (0, None),)
     support = (0, np.inf)
-    param_names = ['lambda', 'alpha', 'beta']
+    parameter_names = ['lambda', 'alpha', 'beta']
     def Hf(x, *params):
         Hf = params[0] * x + (params[1]/params[2])*(np.exp(params[2]*x) - 1)
         return Hf
 
-    GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, param_names, bounds, support)
+    GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, parameter_names, bounds, support)
 
 We now have a GM distribution object that can be used to fit data. But we need some data:
 

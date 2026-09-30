@@ -240,11 +240,14 @@ Behaviour and API
 21. **Consistent names.** The same option has the same name, meaning and
     default everywhere (``alpha_ci``, ``bound``, ``on``, ``interp``,
     ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
-    ``x`` for the times and ``p`` for a quantile's probability). When a name
+    ``x`` for the times and ``p`` for a quantile's probability), and so
+    does the same attribute: every model's fitted values are ``params``,
+    named entry by entry by the attribute ``parameter_names``. When a name
     changes, the old one keeps working for one release with a
     ``DeprecationWarning`` naming the new one.
 
-    *Checked* by ``conformance/test_options.py``.
+    *Checked* by ``conformance/test_options.py`` and
+    ``conformance/test_params.py``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
     what happened and what to do about it. No raw numpy warning escapes

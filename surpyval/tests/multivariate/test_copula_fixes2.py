@@ -31,7 +31,7 @@ MARGINS = [Weibull.from_params([10.0, 2.0]), LogNormal.from_params([2.5, 0.5])]
 class AliMikhailHaq(Copula):
     name = "Ali-Mikhail-Haq"
     bounds = ((-1, 1),)
-    parameter_names = ("theta",)
+    parameter_names = ["theta"]
 
     def cdf(self, u, v, theta):
         return u * v / (1 - theta * (1 - u) * (1 - v))
@@ -77,7 +77,7 @@ def test_base_init_theta(bounds, expected):
 
     fam = Fam()
     fam.bounds = bounds
-    fam.parameter_names = tuple("p%d" % i for i in range(len(bounds)))
+    fam.parameter_names = ["p%d" % i for i in range(len(bounds))]
     np.testing.assert_array_equal(fam._init_theta([]), expected)
 
 

@@ -16,6 +16,7 @@ such a rename takes:
 import functools
 import sys
 import warnings
+from types import FrameType
 from typing import Any, Callable, TypeVar
 
 __all__ = [
@@ -144,6 +145,11 @@ class RenamedAttribute:
 
     def __get__(self, obj: Any, owner: type | None = None) -> Any:
         owner = type(obj) if owner is None else owner
+        if obj is None and self.new not in dir(owner):
+            # The class of an instance attribute (``ParametricFitter``
+            # itself): nothing to read, and introspection (``help``,
+            # Sphinx) should not warn.
+            return self
         self._warn(owner)
         return getattr(owner if obj is None else obj, self.new)
 
@@ -166,7 +172,8 @@ def renamed_class_attribute(cls: type, old: str, new: str) -> None:
         return
     # Point at the class statement: past this function, the caller's
     # ``__init_subclass__`` and, for an ABC, ``ABCMeta.__new__``.
-    level, frame = 3, sys._getframe(2)
+    level = 3
+    frame: FrameType | None = sys._getframe(2)
     while frame is not None and frame.f_globals.get("__name__") == "abc":
         level, frame = level + 1, frame.f_back
     warnings.warn(

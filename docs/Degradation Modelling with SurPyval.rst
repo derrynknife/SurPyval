@@ -166,7 +166,7 @@ extrapolated well beyond the data.
 
 **A custom path.** When the physics suggests a shape that is not in the list,
 subclass :class:`~surpyval.degradation.path_models.PathModel`: give it a ``name``, its
-``param_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
+``parameter_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
 path reaches a level, ``nan`` or non-positive if it never does). ``fit``
 defaults to nonlinear least squares from an ``_initial_guess`` you supply; a
 path that is linear in its parameters can instead set
@@ -189,7 +189,7 @@ message. The built-in shapes are importable objects too (``LinearPath``,
         """y = a + b * sqrt(x): diffusion-limited growth."""
 
         name = "Square-root"
-        param_names = ["a", "b"]
+        parameter_names = ["a", "b"]
         linear_in_parameters = True
 
         def path(self, x, a, b):
