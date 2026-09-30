@@ -957,11 +957,12 @@ def runaway_coefficients(
                 point, v = _profile(neg_ll, at, H, j)
                 d = _line_derivatives(neg_ll, point, v)
             if d is None:
-                v = axis
-                d = _line_derivatives(neg_ll, at, v)
-        if d is None or d[0] == 0.0:
-            continue
-        if _no_convergence(*d):
+                point, v = at, axis
+                d = _line_derivatives(neg_ll, point, v)
+            if d is None or d[0] == 0.0:
+                continue
+            runaway = _no_convergence(neg_ll, point, v, d, j)
+        if runaway:
             if start is None or not _flat_at_start(neg_ll, start, v):
                 out.append(k)
     return out
@@ -1000,12 +1001,59 @@ def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     return cleared
 
 
-def _no_convergence(d1: float, d2: float, d3: float) -> bool:
-    """Whether Newton's method cannot be shown to converge along a line on
-    which the objective has these derivatives: it has no curvature, or
-    Kantorovich's ``h = |f'''| |f'| / f''^2`` is above 1/2 with the
-    curvature falling the way the likelihood rises (see above)."""
-    return d2 <= 0.0 or d1 * d3 > 0.5 * d2**2
+def _no_convergence(
+    neg_ll: Callable,
+    point: npt.NDArray,
+    v: npt.NDArray,
+    d: "tuple[float, float, float]",
+    j: int,
+) -> bool:
+    """Whether Newton's method cannot be shown to converge along the
+    profile of parameter ``j`` through ``point`` (direction ``v``, with
+    ``v[j] = 1``), where the objective's first derivatives are ``d``: it
+    has no curvature, or Kantorovich's ``h = |f'''| |f'| / f''^2`` is above
+    1/2 with the curvature falling the way the likelihood rises (see
+    above).
+
+    ``f'''`` is the rate of change of the profile's curvature, the Schur
+    complement of the Hessian in ``j``, from the curvature a quarter of a
+    Newton step either side. Autograd's third derivative along the line
+    was rounding noise at a stopped runaway, where the derivatives are
+    near 1e-7: its sign changed with the build, so a WeibullAFT with a
+    fixed coefficient warned on one Python and not on another. The
+    curvature needs second derivatives only, which are well conditioned
+    there. Where it cannot be formed, the line's own third derivative is
+    used."""
+    d1, d2, d3 = d
+    if not d2 > 0.0:
+        return True
+    half = 0.125 * abs(d1 / d2)
+    if half > 0.0:
+        ahead = _profile_curvature(neg_ll, point + half * v, j)
+        behind = _profile_curvature(neg_ll, point - half * v, j)
+        if ahead is not None and behind is not None:
+            d3 = (ahead - behind) / (2.0 * half)
+    return d1 * d3 > 0.5 * d2**2
+
+
+def _profile_curvature(
+    neg_ll: Callable, point: npt.NDArray, j: int
+) -> "float | None":
+    """The curvature of the profile of parameter ``j`` at ``point``: the
+    Schur complement ``H_jj - H_jo H_oo^+ H_oj`` of its Hessian, over the
+    other parameters the likelihood depends on there (a frailty variance
+    held at its limit has a zero row). ``None`` where the Hessian is not
+    finite or cannot be taken."""
+    derivatives = search_derivatives(neg_ll, point)
+    if derivatives is None or not np.all(np.isfinite(derivatives[0])):
+        return None
+    H = derivatives[0]
+    others = [i for i in range(H.shape[0]) if i != j and np.any(H[i] != 0.0)]
+    if not others:
+        return float(H[j, j])
+    H_oo = H[np.ix_(others, others)]
+    H_oj = H[others, j]
+    return float(H[j, j] - H_oj @ np.linalg.pinv(H_oo) @ H_oj)
 
 
 def _flat_at_start(
