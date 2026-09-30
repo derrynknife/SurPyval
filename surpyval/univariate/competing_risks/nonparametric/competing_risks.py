@@ -380,13 +380,16 @@ class CompetingRisks(SerialisableMixin):
         --------
         >>> import matplotlib
         >>> matplotlib.use("Agg")
+        >>> import matplotlib.pyplot as plt
         >>> from surpyval.univariate.competing_risks import CompetingRisks
         >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
         >>> e = ["a", "b", "a", "b", "a", None, "a", "b"]
         >>> c = [0, 0, 0, 0, 0, 1, 0, 0]
         >>> model = CompetingRisks.fit(x, e, c=c)
-        >>> model.plot().get_ylabel()
+        >>> fig, ax = plt.subplots()
+        >>> model.plot(ax=ax).get_ylabel()
         'Cumulative incidence'
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt
