@@ -91,13 +91,17 @@ def test_a_search_that_stops_short_is_unverified():
     assert [m for m in messages if "did not reach a verified" in m]
 
 
-def test_a_starved_search_is_unverified(monkeypatch):
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.Gamma, sp.ExpoWeibull])
+def test_a_starved_search_is_unverified(monkeypatch, dist):
     # No point the search reaches passes the check: every start fails,
-    # and the fit warns and records it.
+    # and the fit warns and records it. A two-parameter family was
+    # silent: the exemption meant for the Uniform (whose parameters are
+    # its support's ends) matched every family with k = 2.
     monkeypatch.setattr(mle_module, "is_local_minimum", lambda *a, **k: False)
-    model, messages = _fit(sp.Weibull.fit, WEIBULL_50)
+    model, messages = _fit(dist.fit, WEIBULL_50)
     assert model.maximum == "unverified"
     assert len(messages) == 1
+    assert "did not reach a verified maximum" in messages[0]
 
 
 def test_the_flag_agrees_with_the_warnings_when_they_are_held_back():

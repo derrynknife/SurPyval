@@ -226,13 +226,17 @@ proportion and any offset), and the summary statistics:
     print("E[X^2], entropy:", model.moment(2), model.entropy())
 
 The model also records how it was made: the estimation method, the optimiser
-that converged (see :doc:`Parametric Estimation`), the support, and, for a
-maximum likelihood fit, the parameter covariance ``hess_inv`` whose diagonal
-holds the squared standard errors:
+that converged (see :doc:`Parametric Estimation`), whether a maximum
+likelihood fit reached a verified maximum (``maximum``: ``'verified'``,
+``'unverified'`` or ``'no finite maximum'``, the last two with a warning; see
+:class:`~surpyval.univariate.parametric.parametric.Parametric`), the support,
+and, for a maximum likelihood fit, the parameter covariance ``hess_inv`` whose
+diagonal holds the squared standard errors:
 
 .. jupyter-execute::
 
     print("fitted by :", model.method, "using", model.optimizer)
+    print("maximum   :", model.maximum)
     print("support   :", model.support)
     print("std errors:", np.sqrt(np.diag(model.hess_inv)))
 
@@ -778,7 +782,8 @@ With both shapes above 1, as here, maximum likelihood is fine. The
 Beta4's likelihood is unbounded when a shape is below 1, though: the
 density is infinite at that end of the support, so the fit can run the end
 onto the smallest or largest observation and stop wherever its search
-gave up. Such a fit warns "No finite maximum". Fit with ``how="MPS"``
+gave up. Such a fit warns "No finite maximum", and records it in
+``model.maximum``. Fit with ``how="MPS"``
 instead: maximum product of spacings has no such limit, and its estimates
 are the same whatever the units of the data.
 
@@ -1218,8 +1223,10 @@ kinds of candidate are set aside, and ranked only when no regular candidate
 fitted, with a warning that names them: the ``Uniform`` and ``Beta4``, whose
 support ends are parameters fitted on the extreme observations (they are tried
 only when named in ``include``), and any fit that is not a verified maximum --
-one that warns "No finite maximum", or that its search did not reach a
-maximum. Without that rule a Uniform "won" on 50 draws from a Weibull, and a
+one whose ``maximum`` is ``'no finite maximum'`` or ``'unverified'`` (it
+warns "No finite maximum", or that its search did not reach a verified
+maximum; ``fit_best`` holds that warning back and gives its own). Without
+that rule a Uniform "won" on 50 draws from a Weibull, and a
 Beta4 with no maximum at all on the seven values 1 to 7.
 
 .. jupyter-execute::

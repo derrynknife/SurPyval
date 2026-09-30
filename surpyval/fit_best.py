@@ -50,6 +50,7 @@ distributions: list[OptimisedFitMixin] = [
 
 METRICS = ["aic", "aic_c", "bic", "neg_ll"]
 
+
 def _non_regular(dist: OptimisedFitMixin) -> bool:
     """Whether the family's support ends are among its parameters.
 
