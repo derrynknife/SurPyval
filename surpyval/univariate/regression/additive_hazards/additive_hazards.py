@@ -40,6 +40,8 @@ Lin, D. Y. and Ying, Z. (1994), "Semiparametric analysis of the additive
 risk model", Biometrika 81, 61-71.
 """
 
+from __future__ import annotations
+
 from copy import copy
 from typing import TYPE_CHECKING, Any
 

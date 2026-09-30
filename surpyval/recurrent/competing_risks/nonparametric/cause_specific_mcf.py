@@ -12,6 +12,8 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np

@@ -97,6 +97,50 @@ def probability_plot_data(
     # Adjust the plotting points due to truncation
     F = Ftl + F * (Ftr - Ftl)
 
+    return _axes_data(dist, ff, x_, F, gamma, params, cb_func)
+
+
+def curve_plot_data(
+    dist: Any,
+    ff: Callable[..., Any],
+    qf: Callable[..., Any],
+    gamma: float = 0.0,
+    params: npt.NDArray | None = None,
+) -> Any:
+    """
+    The probability plot data of a model without data (#485): the axes
+    span the model's 1% to 99% quantiles, and there are no plotting
+    points or confidence bounds -- only the model's CDF.
+    """
+    probs = np.array([0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99])
+    with np.errstate(all="ignore"):
+        x_ = np.asarray(qf(probs), dtype=float) - gamma
+    keep = np.isfinite(x_)
+    if dist.plot_x_scale == "log":
+        keep &= x_ > 0
+    if keep.sum() < 2:
+        raise ValueError(
+            "Can't plot this model: its quantiles are not finite, so there "
+            "is no range of x to plot it over"
+        )
+    out = _axes_data(dist, ff, x_[keep], probs[keep], gamma, params, None)
+    # The quantiles only placed the axes; nothing was observed.
+    out["x_"] = np.array([])
+    out["F"] = np.array([])
+    return out
+
+
+def _axes_data(
+    dist: Any,
+    ff: Callable[..., Any],
+    x_: npt.NDArray,
+    F: npt.NDArray,
+    gamma: float,
+    params: npt.NDArray | None,
+    cb_func: Callable[..., Any] | None,
+) -> Any:
+    """The axes, ticks and model curve of a probability plot through the
+    points ``(x_, F)``."""
     y_scale_min = np.min(F[F > 0]) / 2
     y_scale_max = 1 - (1 - np.max(F[F < 1])) / 10
 

@@ -9,6 +9,8 @@ time so that a DataFrame can be passed to ``sf``, ``ff``, ``df``, ``hf``,
 ``Hf`` and ``random`` and the correct columns will be selected automatically.
 """
 
+from __future__ import annotations
+
 import inspect
 import re
 import warnings
@@ -20,7 +22,11 @@ import pandas as pd
 from formulaic import Formula, ModelSpec
 from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
-from surpyval.utils import _caller_stacklevel, formula_model_matrix
+from surpyval.utils import (
+    _caller_stacklevel,
+    formula_model_matrix,
+    numeric_columns,
+)
 
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
@@ -129,7 +135,7 @@ def design_matrix_from_df(
     if len(unknown) > 0:
         raise ValueError("{} not in dataframe columns".format(unknown))
 
-    Z = df[Z_cols].values.astype(float)
+    Z = numeric_columns(df, Z_cols)
     return Z, Z_cols, None
 
 

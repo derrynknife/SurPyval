@@ -106,3 +106,65 @@ from surpyval.serialisation import from_dict, from_json  # isort: skip
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)
+
+from typing import TYPE_CHECKING, Any  # isort: skip # noqa: E402
+
+# Models that live in a subpackage, not at the top level: asking for one
+# here (``surpyval.CrowAMSAA``) says where it is, rather than only that
+# it is missing (#485). The subpackages are not imported to find out.
+_ELSEWHERE = {
+    **dict.fromkeys(
+        [
+            "ARA",
+            "ARI",
+            "CauseSpecificMCF",
+            "CauseSpecificNHPP",
+            "CoxLewis",
+            "CrowAMSAA",
+            "Duane",
+            "GeneralizedOneRenewal",
+            "GeneralizedRenewal",
+            "HPP",
+            "NonParametricCounting",
+            "ProportionalIntensityHPP",
+            "ProportionalIntensityNHPP",
+            "laplace",
+            "mil_hdbk_189c",
+        ],
+        "surpyval.recurrent",
+    ),
+    **dict.fromkeys(
+        [
+            "CompetingRisks",
+            "CompetingRisksProportionalHazards",
+            "FineGray",
+            "ParametricCompetingRisks",
+        ],
+        "surpyval.univariate.competing_risks",
+    ),
+    **dict.fromkeys(
+        [
+            "DegradationAnalysis",
+            "DestructiveDegradation",
+            "GammaProcess",
+            "WienerProcess",
+        ],
+        "surpyval.degradation",
+    ),
+    **dict.fromkeys(
+        ["Clayton", "Copula", "Frank", "Gaussian", "Independence"],
+        "surpyval.multivariate",
+    ),
+}
+
+if not TYPE_CHECKING:  # keep the type checker's view of the module exact
+
+    def __getattr__(name: str) -> Any:
+        if name in _ELSEWHERE:
+            raise AttributeError(
+                "module 'surpyval' has no attribute {n!r}: it is in "
+                "{m} (from {m} import {n})".format(n=name, m=_ELSEWHERE[name])
+            )
+        raise AttributeError(
+            "module 'surpyval' has no attribute {!r}".format(name)
+        )

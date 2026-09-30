@@ -845,7 +845,9 @@ def from_dict(model_dict: dict) -> Any:
     What a restored model keeps differs by family: in general the
     parameters and whatever predictions need, but not the fitted data,
     so methods that need the data (``plot``, bootstrap and
-    likelihood-ratio bounds, residuals) raise on the restored model.
+    likelihood-ratio bounds, residuals) raise on the restored model --
+    except a univariate parametric model's ``plot``, which draws the
+    model's CDF without data points.
     A fitted univariate parametric, regression or copula model keeps
     the likelihood and sample size of its information criteria, so
     ``aic`` and ``bic`` (and ``aic_c``, where the model has one) work on

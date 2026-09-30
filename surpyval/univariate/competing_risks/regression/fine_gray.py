@@ -38,6 +38,8 @@ Kaplan-Meier, as in ``crr``. With no censoring time equal to an event time
 the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np

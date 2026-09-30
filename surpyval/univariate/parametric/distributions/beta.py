@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import numpy.typing as npt
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, betaln, digamma

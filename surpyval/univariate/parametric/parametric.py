@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from collections import namedtuple
 from copy import copy, deepcopy
@@ -34,6 +36,7 @@ from surpyval.utils.surpyval_data import SurpyvalData
 
 from .probability_plotting import (
     adjust_heuristic,
+    curve_plot_data,
     draw_probability_plot,
     probability_plot_data,
 )
@@ -3141,6 +3144,11 @@ class Parametric(
         """
         A method to do a probability plot
 
+        A model without data (built with ``from_params``, or restored from
+        a dict saved without its data) draws its CDF alone on the same
+        axes, over its 1% to 99% quantiles, with no plotting points or
+        bounds -- for comparing a specification with a fit.
+
         Parameters
         ----------
 
@@ -3188,10 +3196,6 @@ class Parametric(
         if not hasattr(self, "params"):
             raise ValueError("Can't plot model that failed to fit")
 
-        if self.method == "given parameters":
-            detail = "Can't plot model that was given parameters and no data"
-            raise ValueError(detail)
-
         if not (
             hasattr(self.dist, "mpp_y_transform")
             and hasattr(self.dist, "mpp_inv_y_transform")
@@ -3200,10 +3204,18 @@ class Parametric(
                 f"{self.dist.name} does not support probability plotting"
             )
 
-        self._require_data("plot()")
-        heuristic = adjust_heuristic(self.data["c"], self.data["t"], heuristic)
-
-        d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
+        if self.data is None:
+            # Built from parameters (or restored without its data): the
+            # model's CDF on the same axes, with no points or bounds, to
+            # compare a specification with a fit (#485).
+            d = curve_plot_data(
+                self.dist, self.ff, self.qf, self.gamma, self.params
+            )
+        else:
+            heuristic = adjust_heuristic(
+                self.data["c"], self.data["t"], heuristic
+            )
+            d = self.get_plot_data(heuristic=heuristic, alpha_ci=alpha_ci)
 
         return draw_probability_plot(
             ax,

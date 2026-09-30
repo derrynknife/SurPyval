@@ -26,6 +26,8 @@ population model is on the link scale, the random effect of a
 ``log``-linked parameter is log-normal on the natural scale.
 """
 
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np

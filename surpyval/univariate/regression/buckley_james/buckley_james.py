@@ -33,6 +33,8 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 -- which is detected and resolved by averaging the cycle.
 """
 
+from __future__ import annotations
+
 import warnings
 from typing import Any
 

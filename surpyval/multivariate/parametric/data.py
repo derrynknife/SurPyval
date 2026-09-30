@@ -15,6 +15,8 @@ applies to the whole row; the truncation window ``t`` is given per row and
 per dimension.
 """
 
+from __future__ import annotations
+
 import numpy as np
 import numpy.typing as npt
 

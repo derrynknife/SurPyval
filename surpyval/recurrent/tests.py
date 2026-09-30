@@ -200,6 +200,66 @@ def _resolve_truncation(
     return {q: float(T_arr[k]) for k, q in enumerate(unique_i)}
 
 
+def _events_and_windows(
+    x: npt.ArrayLike,
+    i: npt.ArrayLike | None,
+    T: npt.ArrayLike | dict | None,
+    c: npt.ArrayLike | None,
+) -> tuple:
+    """
+    Resolve the fitters' ``c`` into events and windows, and catch a ``c``
+    passed as ``T`` (#485): ``laplace(x, i, c)``, copied from
+    ``CrowAMSAA.fit(x, i, c)``, failed with "array `T` must have one entry
+    per system".
+    """
+    if c is None:
+        if T is not None and not isinstance(T, dict) and np.ndim(T) == 1:
+            T_arr = np.asarray(T, dtype=float)
+            n_rows = np.size(x)
+            n_systems = 1 if i is None else np.unique(np.asarray(i)).size
+            if (
+                T_arr.size == n_rows != n_systems
+                and np.isin(T_arr, [0, 1]).all()
+            ):
+                raise ValueError(
+                    "`T` has one entry per row of `x` ({}), all 0 or 1: it "
+                    "looks like the censoring flags `c` the fitters take "
+                    "third. `T` is each system's observation end ({} "
+                    "systems); pass the flags by keyword instead, "
+                    "c=...".format(n_rows, n_systems)
+                )
+        return x, i, T
+    if T is not None:
+        raise ValueError("Give either `T` or `c`, not both")
+    x_arr = np.asarray(x, dtype=float)
+    c_arr = np.asarray(c)
+    i_arr = np.ones(x_arr.shape[0]) if i is None else np.asarray(i)
+    if not (c_arr.shape == x_arr.shape == i_arr.shape):
+        raise ValueError("`x`, `i` and `c` must have the same length")
+    if not np.isin(c_arr, [0, 1]).all():
+        raise ValueError(
+            "`c` must be 0 (an event) or 1 (the end of a system's "
+            "observation)"
+        )
+    xs, items, windows = [], [], {}
+    for q in np.unique(i_arr):
+        mask = i_arr == q
+        events = np.sort(x_arr[mask][c_arr[mask] == 0])
+        ends = x_arr[mask][c_arr[mask] == 1]
+        if ends.size:
+            windows[q] = float(ends.max())
+        elif events.size:
+            # Failure-truncated: the last event closes the window, and is
+            # not itself counted (as for T=None).
+            windows[q] = float(events[-1])
+            events = events[:-1]
+        else:
+            continue
+        xs.extend(events)
+        items.extend([q] * events.size)
+    return np.asarray(xs), np.asarray(items), windows
+
+
 def _prepare(
     x: npt.ArrayLike, i: npt.ArrayLike | None, T: npt.ArrayLike | dict | None
 ) -> tuple[list[tuple[npt.NDArray, float]], int, int]:
@@ -269,6 +329,7 @@ def laplace(
     T: npt.ArrayLike | dict | None = None,
     alternative: str = "two-sided",
     *,
+    c: npt.ArrayLike | None = None,
     alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
@@ -305,6 +366,11 @@ def laplace(
         Direction of the alternative hypothesis: ``"two-sided"`` (default),
         ``"increasing"`` (upper tail; deterioration) or ``"decreasing"``
         (lower tail; reliability growth).
+    c : array_like, optional
+        Keyword only: censoring flags in the fitters' form (0 an event, 1
+        the end of a system's observation), in place of ``T``, as
+        ``CrowAMSAA.fit(x, i, c)`` takes them. A system with a ``c = 1``
+        row is observed to that time; one without is failure-truncated.
     alpha_ci : float, optional
         The significance level at which ``trend`` is judged (default
         0.05, keyword only): the result names a trend only when
@@ -333,6 +399,7 @@ def laplace(
     'increasing'
     """
     _validate_alternative(alternative, alpha_ci)
+    x, i, T = _events_and_windows(x, i, T, c)
     systems, n_used, n_systems = _prepare(x, i, T)
 
     total = 0.0
@@ -377,6 +444,7 @@ def mil_hdbk_189c(
     T: npt.ArrayLike | dict | None = None,
     alternative: str = "two-sided",
     *,
+    c: npt.ArrayLike | None = None,
     alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
@@ -413,6 +481,11 @@ def mil_hdbk_189c(
         Direction of the alternative hypothesis: ``"two-sided"`` (default),
         ``"increasing"`` (deterioration; lower tail of the chi-squared) or
         ``"decreasing"`` (reliability growth; upper tail).
+    c : array_like, optional
+        Keyword only: censoring flags in the fitters' form (0 an event, 1
+        the end of a system's observation), in place of ``T``, as
+        ``CrowAMSAA.fit(x, i, c)`` takes them. A system with a ``c = 1``
+        row is observed to that time; one without is failure-truncated.
     alpha_ci : float, optional
         The significance level at which ``trend`` is judged (default
         0.05, keyword only): the result names a trend only when
@@ -436,6 +509,7 @@ def mil_hdbk_189c(
     ('increasing', 'none', 0.203)
     """
     _validate_alternative(alternative, alpha_ci)
+    x, i, T = _events_and_windows(x, i, T, c)
     systems, n_used, n_systems = _prepare(x, i, T)
 
     statistic = 0.0

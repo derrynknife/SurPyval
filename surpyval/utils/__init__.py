@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from collections import defaultdict
 from numbers import Number
@@ -1774,6 +1776,28 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     return model_matrix, spec
 
 
+def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
+    """``df[cols]`` as a float array. A column that is not numeric (a
+    ``"yes"`` / ``"no"`` column, say) raises a ``ValueError`` that names
+    it and points to ``formula=``, which codes categorical columns; it
+    was numpy's bare "could not convert string to float" (#485)."""
+    try:
+        return np.asarray(df[cols].values, dtype=float)
+    except (ValueError, TypeError):
+        bad = []
+        for col in cols:
+            try:
+                np.asarray(df[col].values, dtype=float)
+            except (ValueError, TypeError):
+                bad.append(col)
+        raise ValueError(
+            "Covariate column(s) {} are not numeric. Encode them as "
+            "numbers, or pass `formula=` instead of `Z_cols` (e.g. "
+            "formula={!r}), which codes a categorical column for "
+            "you.".format(bad, " + ".join(str(c) for c in cols))
+        ) from None
+
+
 def wrangle_and_check_form_and_Z_cols(
     Z_cols: "str | list[str] | None",
     formula: "str | None",
@@ -1793,7 +1817,7 @@ def wrangle_and_check_form_and_Z_cols(
         unknown = [x for x in Z_cols if x not in df.columns]
         if len(unknown) > 0:
             raise ValueError("{} not in dataframe columns".format(unknown))
-        Z = df[Z_cols].values.astype(float)
+        Z = numeric_columns(df, list(Z_cols))
         form = None
         feature_names = list(Z_cols)
         model_spec = None

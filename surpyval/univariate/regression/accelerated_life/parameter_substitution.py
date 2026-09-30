@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any, Callable
 
@@ -283,7 +285,7 @@ class ParameterSubstitutionFitter(
                     )
                 )
 
-    def _one_level_message(self, Z: npt.NDArray, free_phi: list) -> str:
+    def _one_level_message(self, Z: Any, free_phi: list) -> str:
         level = np.unique(Z, axis=0)[0]
         level_text = (
             str(float(level[0])) if level.size == 1 else str(level.tolist())

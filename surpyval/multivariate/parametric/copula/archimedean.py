@@ -8,6 +8,8 @@ dependence neither overflows nor cancels. Each family converts an empirical
 Kendall's tau into a starting parameter for the optimiser.
 """
 
+from __future__ import annotations
+
 import math
 from typing import Any
 

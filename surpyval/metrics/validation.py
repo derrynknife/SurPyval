@@ -47,6 +47,8 @@ Brier score in general survival models with right-censored event times",
 Biometrical Journal 48, 1029-1040.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np

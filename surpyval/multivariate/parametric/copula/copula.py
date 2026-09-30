@@ -18,6 +18,8 @@ each right/left/interval-censored dimension contributes a difference of
 bookkeeping uniform across all 16 bivariate censoring combinations.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as onp

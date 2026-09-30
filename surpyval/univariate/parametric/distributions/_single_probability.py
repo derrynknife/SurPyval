@@ -12,6 +12,8 @@ supports, the docstrings that state each model's own convention -- stays
 on the classes themselves.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy.typing as npt
