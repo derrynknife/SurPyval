@@ -44,6 +44,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     psd_precision,
     psd_project,
@@ -3132,28 +3133,34 @@ class DegradationAnalysis_:
         )
         return best_model, scores
 
+    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         self,
         df: pd.DataFrame,
-        x: str = "x",
-        y: str = "y",
-        i: str = "i",
+        x_col: str = "x",
+        y_col: str = "y",
+        i_col: str = "i",
         Z_cols: "str | list[str] | None" = None,
         **fit_kwargs: Any,
     ) -> DegradationModel:
         """
         Fit a degradation analysis model from a DataFrame.
 
+        The column arguments end in ``_col`` (``_cols`` for a list), as in
+        every ``fit_from_df`` (principle 21); their v0.21 names ``x``,
+        ``y`` and ``i`` still work, with a ``DeprecationWarning``, until
+        v0.23.
+
         Parameters
         ----------
         df : DataFrame
             DataFrame with the degradation data.
-        x : str, optional
+        x_col : str, optional
             Column of the measurement times. Defaults to ``"x"``.
-        y : str, optional
+        y_col : str, optional
             Column of the degradation measurements. Defaults to
             ``"y"``.
-        i : str, optional
+        i_col : str, optional
             Column of the unit identifiers. Defaults to ``"i"``.
         Z_cols : str or list of str, optional
             Column(s) of the stress covariates for accelerated degradation
@@ -3178,7 +3185,10 @@ class DegradationAnalysis_:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
             fit_kwargs["Z"] = df[cols].to_numpy()
         model = self.fit(
-            df[x].to_numpy(), df[y].to_numpy(), df[i].to_numpy(), **fit_kwargs
+            df[x_col].to_numpy(),
+            df[y_col].to_numpy(),
+            df[i_col].to_numpy(),
+            **fit_kwargs,
         )
         # The names were not kept, so the model refused a DataFrame Z and
         # told the user to fit with fit_from_df -- which they had done.

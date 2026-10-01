@@ -104,7 +104,7 @@ def test_fit_from_df_matches_fit():
     df = pd.DataFrame({"time": x, "measurement": y, "unit": i})
     model = DegradationAnalysis.fit(x, y, i, threshold=150)
     df_model = DegradationAnalysis.fit_from_df(
-        df, x="time", y="measurement", i="unit", threshold=150
+        df, x_col="time", y_col="measurement", i_col="unit", threshold=150
     )
     assert np.allclose(
         model.pseudo_failure_times, df_model.pseudo_failure_times

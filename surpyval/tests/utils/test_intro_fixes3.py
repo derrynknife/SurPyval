@@ -189,7 +189,9 @@ def test_mom_and_converters_accept_two_column_points():
 
 def test_fit_from_df_with_equal_left_and_right_columns():
     df = pd.DataFrame({"xl": x1, "xr": x1, "c": c1})
-    model = Weibull.fit_from_df(df, xl="xl", xr="xr", c="c", how="MPP")
+    model = Weibull.fit_from_df(
+        df, xl_col="xl", xr_col="xr", c_col="c", how="MPP"
+    )
     np.testing.assert_allclose(
         model.params, Weibull.fit(x1, c1, how="MPP").params
     )

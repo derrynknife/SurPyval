@@ -54,7 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -186,9 +186,9 @@ def _stress_design(
 def _fit_from_df(
     fitter: Any,
     df: pd.DataFrame,
-    x: str,
-    y: str,
-    i: str,
+    x_col: str,
+    y_col: str,
+    i_col: str,
     Z_cols: "str | list[str] | None",
     fit_kwargs: dict,
 ) -> Any:
@@ -199,7 +199,10 @@ def _fit_from_df(
         cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
         fit_kwargs["Z"] = df[cols].to_numpy(dtype=float)
     model = fitter.fit(
-        df[x].to_numpy(), df[y].to_numpy(), df[i].to_numpy(), **fit_kwargs
+        df[x_col].to_numpy(),
+        df[y_col].to_numpy(),
+        df[i_col].to_numpy(),
+        **fit_kwargs,
     )
     model.Z_cols = cols
     return model
@@ -1179,12 +1182,13 @@ class WienerProcess:
         )
 
     @classmethod
+    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         cls,
         df: pd.DataFrame,
-        x: str = "x",
-        y: str = "y",
-        i: str = "i",
+        x_col: str = "x",
+        y_col: str = "y",
+        i_col: str = "i",
         Z_cols: "str | list[str] | None" = None,
         **fit_kwargs: Any,
     ) -> "WienerProcessModel":
@@ -1195,9 +1199,12 @@ class WienerProcess:
         ----------
         df : DataFrame
             The degradation data, one row per measurement.
-        x, y, i : str, optional
+        x_col, y_col, i_col : str, optional
             The columns of the measurement times, the measurements and the
-            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``.
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``. Their
+            v0.21 names ``x``, ``y`` and ``i`` still work, with a
+            ``DeprecationWarning``, until v0.23 (every DataFrame entry
+            point names its columns with a ``_col`` suffix, principle 21).
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -1212,7 +1219,7 @@ class WienerProcess:
         WienerProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x, y, i, Z_cols, fit_kwargs)
+        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
 
     @staticmethod
     def _check_noise(
@@ -1622,12 +1629,13 @@ class GammaProcess:
         )
 
     @classmethod
+    @renamed_arguments(x="x_col", y="y_col", i="i_col")
     def fit_from_df(
         cls,
         df: pd.DataFrame,
-        x: str = "x",
-        y: str = "y",
-        i: str = "i",
+        x_col: str = "x",
+        y_col: str = "y",
+        i_col: str = "i",
         Z_cols: "str | list[str] | None" = None,
         **fit_kwargs: Any,
     ) -> "GammaProcessModel":
@@ -1638,9 +1646,12 @@ class GammaProcess:
         ----------
         df : DataFrame
             The degradation data, one row per measurement.
-        x, y, i : str, optional
+        x_col, y_col, i_col : str, optional
             The columns of the measurement times, the measurements and the
-            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``.
+            unit identifiers. Default ``"x"``, ``"y"`` and ``"i"``. Their
+            v0.21 names ``x``, ``y`` and ``i`` still work, with a
+            ``DeprecationWarning``, until v0.23 (every DataFrame entry
+            point names its columns with a ``_col`` suffix, principle 21).
         Z_cols : str or list of str, optional
             The stress column(s), passed to :meth:`fit` as ``Z``. Their
             names are recorded on the model (as ``Z_cols``, kept by
@@ -1655,7 +1666,7 @@ class GammaProcess:
         GammaProcessModel
             The fitted model.
         """
-        return _fit_from_df(cls, df, x, y, i, Z_cols, fit_kwargs)
+        return _fit_from_df(cls, df, x_col, y_col, i_col, Z_cols, fit_kwargs)
 
     @staticmethod
     def _zero_increments(

@@ -8,6 +8,7 @@ predictions from the same data and the default options of each.
 """
 
 import importlib
+import inspect
 from dataclasses import replace
 
 import numpy as np
@@ -70,6 +71,41 @@ def test_every_fitter_reads_a_data_frame(fitter):
     # Principle 14 (#511): every public fitter with a fit has the
     # DataFrame entry point too.
     assert callable(getattr(fitter, "fit_from_df", None))
+
+
+# The names of fit's data arrays: a DataFrame entry point never takes one
+# of these bare, but names the column that fills it ``<name>_col``.
+_DATA_NAMES = {"x", "c", "n", "t", "xl", "xr", "tl", "tr", "i", "e", "y", "Z"}
+
+
+def _from_df_methods():
+    out = []
+    for param in _fitters():
+        fitter = param.values[0]
+        for attr in sorted(dir(fitter)):
+            if attr.endswith("_from_df") and callable(getattr(fitter, attr)):
+                out.append(pytest.param(fitter, attr, id=f"{param.id}.{attr}"))
+    return out
+
+
+@pytest.mark.parametrize("fitter, method", _from_df_methods())
+def test_data_frame_columns_are_named_with_col(fitter, method):
+    # Principle 21: every DataFrame entry point names a column argument
+    # with a ``_col`` suffix (``_cols`` for a list of columns). The other
+    # arguments are the frame, a ``formula``, and options its ``fit`` (or
+    # ``fit_tvc`` / ``fit_tvc_timeline``) takes too and is passed.
+    fit = getattr(fitter, method.removesuffix("_from_df"))
+    fit_options = set(inspect.signature(fit).parameters) - _DATA_NAMES
+    bad = [
+        name
+        for name, p in inspect.signature(
+            getattr(fitter, method)
+        ).parameters.items()
+        if p.kind not in (p.VAR_KEYWORD, p.VAR_POSITIONAL)
+        and not name.endswith(("_col", "_cols"))
+        and name not in {"df", "formula"} | fit_options
+    ]
+    assert not bad, f"{method} names columns without _col: {bad}"
 
 
 @pytest.mark.parametrize("case", CASES, ids=[c.name for c in CASES])

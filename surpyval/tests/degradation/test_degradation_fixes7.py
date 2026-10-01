@@ -129,7 +129,7 @@ def process_models(request, process_frame):
         df["t"], df["y"], df["unit"], threshold=60.0, Z=df["temp"]
     )
     named = fitter.fit_from_df(
-        df, x="t", y="y", i="unit", Z_cols="temp", threshold=60.0
+        df, x_col="t", y_col="y", i_col="unit", Z_cols="temp", threshold=60.0
     )
     return arrays, named
 
@@ -147,7 +147,7 @@ def adt_models(adt_frame):
         df["t"], df["y"], df["unit"], threshold=100.0, Z=df["temp"]
     )
     named = DegradationAnalysis.fit_from_df(
-        df, x="t", y="y", i="unit", Z_cols="temp", threshold=100.0
+        df, x_col="t", y_col="y", i_col="unit", Z_cols="temp", threshold=100.0
     )
     return arrays, named
 
@@ -160,7 +160,7 @@ def linked_models(adt_frame):
         df["t"], df["y"], df["unit"], Z=df["temp"], **kwargs
     )
     named = DegradationAnalysis.fit_from_df(
-        df, x="t", y="y", i="unit", Z_cols=["temp"], **kwargs
+        df, x_col="t", y_col="y", i_col="unit", Z_cols=["temp"], **kwargs
     )
     return arrays, named
 
@@ -172,7 +172,7 @@ def clock_models():
     kwargs = dict(threshold=12.0, acceleration="clock", stress_ref=[0.0])
     arrays = DegradationAnalysis.fit(x, y, i, Z=z, **kwargs)
     named = DegradationAnalysis.fit_from_df(
-        df, x="t", y="y", i="unit", Z_cols="load", **kwargs
+        df, x_col="t", y_col="y", i_col="unit", Z_cols="load", **kwargs
     )
     return arrays, named
 

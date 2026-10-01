@@ -358,8 +358,10 @@ default, passed on to the distribution's ``fit``):
     from surpyval import LogNormal
 
     df = pd.DataFrame({"hours": x, "resistance": y, "unit": i})
-    DegradationAnalysis.fit_from_df(df, x="hours", y="resistance", i="unit",
-                                    threshold=450.0, distribution=LogNormal)
+    DegradationAnalysis.fit_from_df(
+        df, x_col="hours", y_col="resistance", i_col="unit",
+        threshold=450.0, distribution=LogNormal,
+    )
 
 Predicting a new unit's failure time
 ------------------------------------
@@ -872,7 +874,7 @@ and leaves the others alone; the methods that describe a single unit
 
     adt = DegradationAnalysis.fit_from_df(
         pd.DataFrame({"t": xd, "y": yd, "unit": idd, "stress": Zd}),
-        x="t", y="y", i="unit", Z_cols="stress", threshold=100.0)
+        x_col="t", y_col="y", i_col="unit", Z_cols="stress", threshold=100.0)
     use = pd.DataFrame({"stress": [0.0, 0.5, np.nan]})
     adt.qf(0.5, use)             # median life per row; nan where it is missing
 

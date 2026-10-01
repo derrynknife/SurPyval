@@ -70,14 +70,18 @@ def test_dates_are_refused():
         (lambda: sp.WeibullPH.fit(TD_S, Z=np.arange(6.0)), "x"),
         (lambda: sp.handle_xicn(TD_S, i=[1, 1, 1, 2, 2, 2]), "x"),
         (
-            lambda: sp.Weibull.fit_from_df(pd.DataFrame({"x": TD_S}), x="x"),
-            "x",
+            lambda: sp.Weibull.fit_from_df(
+                pd.DataFrame({"x": TD_S}), x_col="x"
+            ),
+            "x_col",
         ),
         (
             lambda: sp.Weibull.fit_from_df(
-                pd.DataFrame({"x": DAYS, "tl": TD_S * 0}), x="x", tl="tl"
+                pd.DataFrame({"x": DAYS, "tl": TD_S * 0}),
+                x_col="x",
+                tl_col="tl",
             ),
-            "tl",
+            "tl_col",
         ),
         (
             lambda: sp.WeibullPH.fit_from_df(
