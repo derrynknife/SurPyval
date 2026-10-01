@@ -34,7 +34,7 @@ from surpyval import CovariatePath, CoxPH, StepSchedule
 from surpyval.univariate.regression import tvc_path
 from surpyval.univariate.regression.accelerated_life import (
     AcceleratedLife,
-    Power,
+    Linear,
 )
 
 NOT_CALLABLE: Any = 3.0
@@ -641,9 +641,11 @@ def test_refusals():
         cox.sf_tvc([1.0], _ramp(0, 1), xl=[0.0])
     with pytest.raises(ValueError, match="the path has 1 covariate"):
         cox.sf_tvc([1.0], _ramp(0, 1))
+    # An accelerated life model whose life parameter is a location (the
+    # Normal's mu) has no accumulated age along a path (#172 phase 2).
     rng = np.random.default_rng(0)
-    stress = rng.uniform(1, 3, 100)
-    x = rng.weibull(2, 100) * 10 / stress
-    al = AcceleratedLife(sp.Weibull, Power).fit(x=x, Z=stress)
-    with pytest.raises(NotImplementedError):
+    stress = np.repeat([1.0, 2.0, 3.0], 40)
+    x = rng.normal(20, 2, 120) / stress
+    al = AcceleratedLife(sp.Normal, Linear).fit(x=x, Z=stress)
+    with pytest.raises(NotImplementedError, match="location"):
         al.sf_tvc([1.0], _ramp(1, 0.1))

@@ -76,7 +76,8 @@ below points straight to the section that answers it.
      - `Semi-Parametric — Additive Hazards`_
    * - use covariates that change during follow-up, or forecast along a
        planned covariate path
-     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, PO, AFT)
+     - ``fit_tvc`` (Cox, PH, AH, PO, AFT); ``sf_tvc``, and ``cb_tvc`` /
+       ``mean_tvc`` for the parametric families
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
      - ``model.check_ph()``
@@ -2306,7 +2307,10 @@ for which the value in force at time 0 is taken to hold before it as well.
 ``fit_tvc`` treats a subject observed from time 0 the same way (its first
 interval is not left-truncated), so for PH, AH and PO a constant covariate
 split into intervals reproduces the ordinary ``fit``.
-Accelerated life models raise ``NotImplementedError``.
+An accelerated life model whose life parameter scales time (Weibull,
+Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
+:math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a
+location (Normal, Gumbel, Logistic) raises ``NotImplementedError``.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2525,8 +2529,8 @@ cumulative-exposure model: the path accumulates an accelerated age
 :math:`S(t) = S_0(\psi(t))`. A model fitted on fixed covariates and
 evaluated along a path assumes its family's time-varying form is right, and
 for the same ramp the two forms give different answers unless the baseline
-is exponential. Accelerated life models refuse a path, as they refuse a
-step schedule.
+is exponential. An accelerated life model follows cumulative exposure as
+AFT does, when its life parameter scales time (below).
 
 .. note::
 
@@ -2540,6 +2544,128 @@ step schedule.
    error shrinks with the square of the step width. A covariate driven by
    the unit itself, such as a degradation signal read from it, needs a
    joint longitudinal-survival model, which SurPyval does not provide.
+
+.. _tvc-bounds-mean:
+
+Bounds, mean life and accelerated life along a path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
+bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
+along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
+carried along the path: a Wald bound on the logit of the survival, with its
+standard error propagated from the fitted covariance by the delta method, so
+a constant path gives ``cb``. (That is the regression ``cb``'s scale. The
+univariate models' Wald bounds are on each family's probability-plot scale,
+and moving the regression bounds there is an open question, #504.) Along a
+``CovariatePath`` the quadrature mesh is adapted once, at the fitted
+parameters, and then held fixed while the parameters are perturbed. The
+function the delta method differentiates is then smooth in the parameters,
+and the cost is :math:`2k + 1` passes along the path for :math:`k`
+parameters.
+
+.. jupyter-execute::
+
+    t2 = np.array([0.5, 1.0, 2.0])
+    print('S(t) along the ramp:', ph.sf_tvc(t2, ramp).round(4))
+    print('95% bounds:')
+    print(ph.cb_tvc(t2, ramp).round(4))
+    print('given the ramp survived:', ph.cb_tvc([2.0], ramp, given=1.0).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b, _s = ph.cb_tvc(t2, ramp), ph.sf_tvc(t2, ramp)
+    assert np.all((_b[:, 0] < _s) & (_s < _b[:, 1]))
+    assert np.allclose(ph.cb_tvc(t2, CovariatePath.from_points([0], [0.5])),
+                       ph.cb(t2, [0.5]), rtol=1e-8)
+
+In a simulation of 1,000 fits each of a ``WeibullPH`` and a ``WeibullAFT``
+model (100 units, censored at a fixed time), the 95% bounds covered the true
+survival in 94.6% to 96.2% of the fits. That held along a ramp, along a step
+schedule, and conditional on survival to an age partway along the ramp.
+
+``mean_tvc(Z, xl=None, given=None)`` is the mean life along a path, and,
+with ``given``, the mean *residual* life of a unit that has survived to that
+age along it. The integral to infinity is adaptive Gauss-Kronrod over panels
+that grow geometrically, and its nodes are simply more query times of
+``sf_tvc``. Each round of refinement is then one pass along the path, not an
+integral for every node, and a mean takes a few milliseconds. A step schedule
+is integrated as the matching piecewise-constant path.
+
+.. jupyter-execute::
+
+    print('mean life, along the ramp      :', round(ph.mean_tvc(ramp), 4))
+    print('mean life, never stressed      :',
+          round(ph.mean_tvc(StepSchedule.constant([0.0])), 4))
+    print('mean remaining life, given 1.0 :', round(ph.mean_tvc(ramp, given=1.0), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy.integrate import quad as _quad
+    _ref = sum(_quad(lambda u: ph.sf_tvc(u, ramp), a, b, epsrel=1e-12,
+                     epsabs=0, limit=200)[0] for a, b in ((0, 1), (1, np.inf)))
+    assert abs(ph.mean_tvc(ramp) / _ref - 1) < 1e-8
+    assert ph.mean_tvc(ramp) < ph.mean_tvc(StepSchedule.constant([0.0]))
+
+A path can stop units failing. If the hazard dies away, for example because
+the stress falls to a level at which nothing fails, the survival levels off
+above 0. A fraction of the units then never fails and the mean is infinite.
+``mean_tvc`` then returns ``inf`` with a warning that gives the survival
+where the integration stopped, as a fitted univariate model's ``mean()`` does
+for a limited-failure population.
+
+**Accelerated life along a path.** An accelerated life model sets a
+distribution's life parameter to :math:`L(V)`, a function of the stress.
+Where that parameter scales time, :math:`S(t \mid V) = S_1(t / L(V))`, with
+:math:`S_1` the distribution at unit life. This holds for the Weibull
+:math:`\alpha`, the Exponential and Gamma rates :math:`1 / L` and the
+LogNormal's :math:`e^{\mu}`. A changing stress then ages the unit by Nelson's
+cumulative exposure,
+
+.. math::
+    S(t) = S_1\!\left(\int_0^t \frac{du}{L(V(u))}\right),
+
+the AFT form with the rate :math:`1 / L(V)`. That is the classical model of a
+step-stress or ramp-stress accelerated test. Here the Arrhenius model fitted
+above is evaluated along a test in which the temperature is ramped from
+85 °C to 125 °C over 4,000 hours:
+
+.. jupyter-execute::
+
+    ramp_T = CovariatePath.from_points([0.0, 4000.0], [358.0, 398.0])
+    t_al = np.array([1000.0, 2000.0, 3000.0, 4000.0])
+    print('S(t), ramped        :', model_arr.sf_tvc(t_al, ramp_T).round(3))
+    print('S(t), held at 85 °C :', model_arr.sf(t_al, [358.0]).round(3))
+    print('S(t), held at 125 °C:', model_arr.sf(t_al, [398.0]).round(3))
+    print('mean life, ramped   : %.0f h' % model_arr.mean_tvc(ramp_T))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _S = model_arr.sf_tvc(t_al, ramp_T)
+    assert np.all(model_arr.sf(t_al, [398.0]) < _S)
+    assert np.all(_S < model_arr.sf(t_al, [358.0]))
+    _flat = model_arr.sf_tvc(t_al, StepSchedule.constant([378.0]))
+    assert np.allclose(_flat, model_arr.sf(t_al, [378.0]), rtol=1e-12)
+
+A step schedule gives a step-stress test the same way. For the location
+families (Normal, Gumbel, Logistic) the life parameter :math:`\mu` shifts the
+distribution rather than rescaling time. A change of stress then carries no
+accumulated age from one level to the next, so those models raise
+``NotImplementedError`` along a path.
+
+A family that rescales time (AFT, and accelerated life) also accumulates the
+same age over every period of a periodic path, so along one it integrates a
+single period, :math:`\psi(t) = k\,\Psi_P + \psi(t - kP)` with
+:math:`k = \lfloor t / P \rfloor`. Ten million cycles then cost no more than
+one. A hazard family has no such shortcut, because its baseline ages from
+one period to the next, so a fast cycle over a long horizon still needs a
+panel per period and raises the ``ValueError`` above.
 
 
 Worked example: forecasting equipment on a duty cycle
