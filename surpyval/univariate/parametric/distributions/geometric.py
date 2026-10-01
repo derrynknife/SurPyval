@@ -44,7 +44,7 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
             # -- whose structural zeros sit at x = 0 -- is permitted (the
             # fitter only allows ``zi`` when ``support[0] == 0``).
             support=(0.0, np.inf),
-            param_names=["p"],
+            parameter_names=["p"],
             param_map={"p": 0},
             plot_x_scale="linear",
         )

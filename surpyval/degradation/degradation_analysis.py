@@ -1114,7 +1114,7 @@ class DegradationModel(SerialisableMixin):
         model, the mean ``D(z) gamma`` and the covariance ``Sigma``."""
         z = self._stress_row(Z, allow_nan)
         assert self.links is not None and self.path_param_fixed is not None
-        design = stress_design(z, self.links, self.path_model.param_names)
+        design = stress_design(z, self.links, self.path_model.parameter_names)
         mean = design @ np.asarray(self.path_param_fixed, dtype=float)
         cov = np.asarray(self.path_param_link_cov, dtype=float)
         return LinkedPathModel(self.path_model, self.links), mean, cov
@@ -1558,7 +1558,7 @@ class DegradationModel(SerialisableMixin):
             )
         if not (np.isfinite(x).all() and np.isfinite(y).all()):
             raise ValueError("x and y must contain only finite values")
-        n_params = len(self.path_model.param_names)
+        n_params = len(self.path_model.parameter_names)
         if len(x) < n_params or len(np.unique(x)) < 2:
             raise ValueError(
                 "The trajectory needs at least {} measurements at 2 or "
@@ -2195,7 +2195,8 @@ class DegradationModel(SerialisableMixin):
             param_string = "\n".join(
                 f"{name:>10}: {p}"
                 for p, name in zip(
-                    self.life_model.params, self.life_model.dist.param_names
+                    self.life_model.params,
+                    self.life_model.dist.parameter_names,
                 )
             )
             return (
@@ -2216,7 +2217,7 @@ class DegradationModel(SerialisableMixin):
                 "\nParameters          :\n" + param_string
             )
         if self.is_accelerated:
-            names = self.life_model.parameter_names()
+            names = self.life_model.parameter_names
             dist_name = self.life_model.distribution.name
             reg_name = self.life_model.reg_model.name
             param_string = "\n".join(
@@ -2240,7 +2241,8 @@ class DegradationModel(SerialisableMixin):
             [
                 f"{name:>10}: {p}"
                 for p, name in zip(
-                    self.life_model.params, self.life_model.dist.param_names
+                    self.life_model.params,
+                    self.life_model.dist.parameter_names,
                 )
             ]
         )
@@ -2509,7 +2511,7 @@ class DegradationAnalysis_:
             links = validate_links(path_model, links)
             linked = LinkedPathModel(path_model, links)
 
-        n_params = len(path_model.param_names)
+        n_params = len(path_model.parameter_names)
         path_params = np.empty((len(units), n_params))
         pseudo = np.empty(len(units))
         last_time = np.empty(len(units))
@@ -2646,8 +2648,8 @@ class DegradationAnalysis_:
                 )
             )
             path_param_fixed_names = fixed_effect_names(
-                linked.param_names,
-                path_model.param_names,
+                linked.parameter_names,
+                path_model.parameter_names,
                 links,
                 Z_units.shape[1],
             )
@@ -3016,7 +3018,8 @@ class DegradationAnalysis_:
         """
         n_units, n_params = link_params.shape
         designs = [
-            stress_design(z, links, linked.base.param_names) for z in Z_units
+            stress_design(z, links, linked.base.parameter_names)
+            for z in Z_units
         ]
         stacked = np.vstack(designs)
         gamma, *_ = np.linalg.lstsq(stacked, link_params.ravel(), rcond=None)
@@ -3088,7 +3091,7 @@ class DegradationAnalysis_:
         rss_floor = n_total * np.finfo(float).eps * float(np.mean(y_arr**2))
         scores: "dict[str, float]" = {}
         for candidate in PATH_MODELS.values():
-            n_params = len(candidate.param_names)
+            n_params = len(candidate.parameter_names)
             k = n_params * len(units) + 1
             if n_total - k - 1 < 1:
                 scores[candidate.name] = np.nan

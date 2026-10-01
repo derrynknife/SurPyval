@@ -52,6 +52,7 @@ from surpyval.utils import (
     wrangle_and_check_form_and_Z_cols,
     xcnt_handler,
 )
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -62,6 +63,7 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
     check_finite_event_times,
     restore_covariate_meta,
@@ -197,7 +199,7 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(SerialisableMixin):
+class BuckleyJamesModel(ConcordanceMixin, SerialisableMixin):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -230,6 +232,13 @@ class BuckleyJamesModel(SerialisableMixin):
     formula = None
     _model_spec = None
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients, as in the
+        parametric regression models."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
+
     def __init__(
         self,
         beta: npt.ArrayLike,
@@ -255,6 +264,17 @@ class BuckleyJamesModel(SerialisableMixin):
         fit profiles out, or a linear combination of the others. Their
         ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
         return np.flatnonzero(np.isnan(self.beta))
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        beta = np.where(np.isnan(self.beta), 0.0, self.beta)
+        return -(Z_arr.reshape(x.size, -1) @ beta)
+
+    def _concordance_data(self) -> "tuple | None":
+        if self._data is None:
+            return None
+        Y, delta, Z, w = self._data
+        return np.exp(Y), (delta == 0).astype(int), w, Z
 
     def _prepare_Z(self, Z: Any) -> npt.NDArray:
         from ..regression_data import prepare_Z
@@ -479,6 +499,17 @@ class BuckleyJamesModel(SerialisableMixin):
             "================================",
             "Kind                : Semi-Parametric AFT",
             f"Converged           : {self.converged} ({self.n_iter} iters)",
+        ]
+        if self._data is not None:
+            # The data line (#508); the fit keeps the event flag, 1 for a
+            # failure, and the counts; Y is the log time, whose distinct
+            # values are the distinct times.
+            Y, delta, _, w = self._data
+            lines.append(
+                "Data                : "
+                + data_summary(1 - np.asarray(delta, dtype=int), w, x=Y)
+            )
+        lines += [
             "Coefficients (positive => accelerates failure):",
         ]
         names = self.feature_names or [

@@ -140,6 +140,35 @@ Other areas of the package add a few more names, always with the same meaning:
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
 
+Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
+``DataFrame`` and the names of its columns in place of these arrays, passes
+every other option to ``fit``, and gives the model ``fit`` gives on the same
+arrays (the conformance suite checks this for every model). The columns are
+named in one of two ways, by family:
+
+- the distributions and estimators of one lifetime per row (parametric,
+  non-parametric, ``RoystonParmar``, ``MixtureModel``), the copulas and the
+  degradation models use the array's own name: ``x='hours'``, ``c=``,
+  ``n=``, ``xl=`` / ``xr=``, ``tl=`` / ``tr=`` (a column or one number),
+  ``y=``, ``i=``;
+- the regression, competing-risks and recurrent-event fitters add
+  ``_col``: ``x_col='hours'``, ``c_col=``, ``n_col=``, ``tl_col=``,
+  ``tr_col=``, ``e_col=``, ``i_col=``, and ``Z_cols=`` for the covariates
+  (or a ``formula``, where the model supports one).
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting
+
+    table = pd.DataFrame({'hours': [5.0, 8, 12, 20, 25, 30],
+                          'failed': [0, 0, 0, 1, 0, 1]})
+    km = surv.KaplanMeier.fit_from_df(table, x='hours', c='failed')
+    log = pd.DataFrame({'hours': [3.0, 9, 20, 5, 12],
+                        'unit': [1, 1, 1, 2, 2], 'end': [0, 0, 1, 0, 1]})
+    mcf = NonParametricCounting.fit_from_df(log, x_col='hours', i_col='unit',
+                                            c_col='end')
+    print(km.sf(10), mcf.mcf(10))
+
 
 Censoring Flag Conventions
 --------------------------
@@ -175,6 +204,8 @@ This convention gives an intuitive feel for the placement of the data on a timel
 
 The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored. The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
 
+``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 events at 9 unique times, 51 right censored``: if you had 51 failures, the flag was read backwards. The counts are weighted by ``n``, and the number of distinct event times shows how far they are aggregated.
+
 Truncation conventions
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -203,7 +234,7 @@ A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are t
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.dist.param_names`` (each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -220,7 +251,7 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
 .. jupyter-execute::
 
     model = surv.Weibull.fit([3, 4, 5, 6, 7, 8, 9, 10])
-    print("parameter names :", model.dist.param_names)
+    print("parameter names :", model.parameter_names)
     print("params          :", model.params)
     print("R(5), F(5)      :", model.sf(5), model.ff(5))
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))

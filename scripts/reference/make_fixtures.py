@@ -95,7 +95,8 @@ def lung():
         "status recoded to SurPyval's flag (c = 2 - status)",
         "columns": {
             "time": _native(df["time"]),
-            "c": _native(df["status"].astype(int)),
+            # load_lung's status is 1 = death (#509)
+            "c": _native(1 - df["status"].astype(int)),
             "age": _native(df["age"]),
             "sex": _native(df["sex"]),
             "ph_ecog": _native(df["ph.ecog"]),

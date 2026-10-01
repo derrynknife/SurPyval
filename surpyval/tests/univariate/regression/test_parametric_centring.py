@@ -139,7 +139,7 @@ def test_center_true_leaves_the_model_unchanged(
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-4, atol=1e-6)
     np.testing.assert_allclose(-model.neg_ll(), -ref.neg_ll(), rtol=1e-7)
     _same_predictions(model, ref, s)
-    for p in model.parameter_names():
+    for p in model.parameter_names:
         np.testing.assert_allclose(
             model.param_cb(p), ref.param_cb(p), rtol=1e-3, atol=1e-5
         )
@@ -279,7 +279,7 @@ def test_bounds_match_those_of_the_uncentred_computation():
         np.testing.assert_allclose(
             cov / np.outer(se, se), cov_old / np.outer(se, se), atol=1e-3
         )
-        for p in model.parameter_names():
+        for p in model.parameter_names:
             np.testing.assert_allclose(
                 model.param_cb(p), old.param_cb(p), rtol=1e-4, err_msg=p
             )
@@ -314,7 +314,7 @@ def test_save_and_load_a_baseline_at_the_means(name):
         np.testing.assert_allclose(
             back.cb(TIMES, zq + s), model.cb(TIMES, zq + s), rtol=1e-12
         )
-    for p in model.parameter_names():
+    for p in model.parameter_names:
         np.testing.assert_allclose(back.param_cb(p), model.param_cb(p))
     assert repr(back) == repr(model)
 

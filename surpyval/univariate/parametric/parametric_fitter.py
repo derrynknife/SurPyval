@@ -7,13 +7,15 @@ from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy.typing as npt
-import pandas as pd
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
 import surpyval
 from surpyval import np
-from surpyval.utils import _check_x_not_empty, refuse_time_values
+from surpyval.utils import _check_x_not_empty
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.no_maximum import maximum_warnings_quiet
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ..nonparametric import plotting_positions as pp
@@ -410,7 +412,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter:
+class ParametricFitter(UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -464,6 +466,10 @@ class ParametricFitter:
     # continuum. ``DiscreteParametricFitter`` overrides this; fit-method
     # validation and callers branch on the trait.
     discrete = False
+
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, still
+    # reads (and sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
@@ -524,13 +530,14 @@ class ParametricFitter:
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
         k: int,
         bounds: tuple[tuple[int | float | None, int | float | None], ...],
         support: tuple[int | float, int | float],
-        param_names: list[str],
+        parameter_names: list[str],
         param_map: dict[str, int],
         plot_x_scale: str,
         y_ticks: list[float] | None = None,
@@ -539,7 +546,7 @@ class ParametricFitter:
         self.k = k
         self.bounds = bounds
         self.support = support
-        self.param_names = param_names
+        self.parameter_names = parameter_names
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
@@ -615,31 +622,37 @@ class ParametricFitter:
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    def cs(self, x: Numeric, X: Numeric, *params: Any) -> Any:
+    @renamed_arguments(X="given")
+    def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
         Conditional survival function: the probability of surviving a
-        further ``x`` given survival to ``X`` already.
+        further ``x`` given survival to ``given`` already.
 
         .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
+            R(x, given) = \frac{R(x + given)}{R(given)}
 
         This is the definition for every distribution, so it lives here
         rather than being restated on each one. ``Exponential``
         overrides it because the exponential is memoryless and
-        :math:`R(x, X) = R(x)`, which is both cheaper and free of the
+        :math:`R(x, given) = R(x)`, which is both cheaper and free of the
         cancellation the ratio suffers in the far tail.
+
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The additional time to survive, measured from ``X``
-        X : numpy array or scalar
+            The additional time to survive, measured from ``given``
+        given : numpy array or scalar
             The time already survived
         *params : numpy array like or scalar
             The parameters of the distribution, in the order given by
-            its ``param_names``
+            its ``parameter_names``
 
         Returns
         -------
@@ -656,7 +669,7 @@ class ParametricFitter:
         array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
                5.42544000e-51])
         """
-        return self.sf(x + X, *params) / self.sf(X, *params)
+        return self.sf(x + given, *params) / self.sf(given, *params)
 
     def _plot_x_bounds(self, x: npt.NDArray, params: Any) -> Any:
         """Return (x_scale_min, x_scale_max) for probability plots.
@@ -904,7 +917,7 @@ class ParametricFitter:
         parameters. A distribution whose parameter count is set by the
         parameters themselves (``Hypoexponential``: one rate per stage)
         overrides this to return an instance with the matching ``k``,
-        ``param_names`` and ``bounds``, so a model built from a
+        ``parameter_names`` and ``bounds``, so a model built from a
         serialised dictionary reports the right parameter count.
         """
         return self
@@ -1046,10 +1059,8 @@ class ParametricFitter:
                 upper_limit = upp
 
             if not (lower_limit < params[i] < upper_limit):
-                param_names = ", ".join(self.param_names)
-                detail = (
-                    f"Params {param_names} must be in" f" bounds {self.bounds}"
-                )
+                names = ", ".join(self.parameter_names)
+                detail = f"Params {names} must be in" f" bounds {self.bounds}"
                 raise ValueError(detail)
         self._check_params(params)
         return model
@@ -1108,7 +1119,7 @@ class OptimisedFitMixin:
         k: int
         bounds: tuple[tuple[int | float | None, int | float | None], ...]
         support: tuple[int | float, int | float]
-        param_names: list[str]
+        parameter_names: list[str]
         param_map: dict[str, int]
         discrete: bool
         supports_mpp: bool
@@ -1576,6 +1587,15 @@ class OptimisedFitMixin:
                     | ((x_sd >= upper) & (c_sd == 1))
                 )
             if bad.any():
+                # A failure at exactly 0 is a unit dead on arrival, which
+                # the zero-inflated model is for; a new user will not know
+                # the option exists (#514). It needs a support from 0.
+                at_zero = (x_sd if x_sd.ndim == 1 else x_sd.max(axis=1)) == 0
+                if lower == 0 and (bad & at_zero & (c_sd == 0)).any():
+                    detail += (
+                        " For units that failed at time 0 (dead on "
+                        "arrival), fit with `zi=True`."
+                    )
                 raise OutsideSupportError(detail)
 
         if how == "MPS" and (surv_data.c == 2).any():
@@ -1758,6 +1778,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 100 units: 100 events at 100 unique times
         Parameters          :
              alpha: 9.815018791049368
               beta: 3.798740470368033
@@ -1766,6 +1787,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPS
+        Data                : 100 units: 100 events at 100 unique times
         Parameters          :
              alpha: 10.0
               beta: 3.670796510564323
@@ -1775,6 +1797,7 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MPP
+        Data                : 100 units: 0 events, 100 interval censored
         Parameters          :
              alpha: 9.834445729732789
               beta: 3.2602770099790424
@@ -1788,6 +1811,8 @@ class OptimisedFitMixin:
         =========================
         Distribution        : Weibull
         Fitted by           : MLE
+        Data                : 86 units: 80 events at 80 unique times,
+                              6 right censored; 86 left truncated
         Parameters          :
              alpha: 9.893584496413128
               beta: 3.78688602908912
@@ -1809,150 +1834,6 @@ class OptimisedFitMixin:
             on_d_is_0=on_d_is_0,
             turnbull_estimator=turnbull_estimator,
         )
-
-    def fit_from_df(
-        self,
-        df: pd.DataFrame,
-        x: str | None = None,
-        c: str | None = None,
-        n: str | None = None,
-        xl: str | None = None,
-        xr: str | None = None,
-        tl: str | float | None = None,
-        tr: str | float | None = None,
-        **fit_options: Any,
-    ) -> Parametric:
-        r"""
-        Fit the distribution to data held in the columns of a
-        :class:`pandas.DataFrame`.
-
-        The column names are passed in place of the arrays :meth:`fit`
-        takes; every other :meth:`fit` option can be passed as a keyword.
-
-        Parameters
-        ----------
-
-        df : DataFrame
-            DataFrame of data to be used to create surpyval model
-
-        x : string, optional
-            column name for the column in df containing the variable data.
-            If not provided must provide both xl and xr.
-
-        c : string, optional
-            column name for the column in df containing the censor flag of x.
-            If not provided assumes all values of x are observed.
-
-        n : string, optional
-            column name in for the column in df containing the counts of x.
-            If not provided assumes each x is one observation.
-
-        tl : string or scalar, optional
-            If string, column name in for the column in df containing the left
-            truncation data. If scalar assumes each x is left truncated by
-            that value. If not provided assumes x is not left truncated.
-
-        tr : string or scalar, optional
-            If string, column name in for the column in df containing the
-            right truncation data. If scalar assumes each x is right truncated
-            by that value. If not provided assumes x is not right truncated.
-
-        xl : string, optional
-            column name for the column in df containing the left interval for
-            interval censored data. If left interval is -Inf, assumes left
-            censored. If xl[i] == xr[i] assumes observed. Cannot be provided
-            with x, must be provided with xr.
-
-        xr : string, optional
-            column name for the column in df containing the right interval
-            for interval censored data. If right interval is Inf, assumes
-            right censored. If xl[i] == xr[i] assumes observed. Cannot be
-            provided with x, must be provided with xl.
-
-        fit_options : dict, optional
-            dictionary of fit options that will be passed to the :code:`fit`
-            method, see that method for options.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the fitted parameters and methods for
-            all functions of the distribution using the fitted parameters.
-
-
-        Examples
-        --------
-        >>> import surpyval as surv
-        >>> from surpyval.datasets import load_bofors_steel
-        >>> df = load_bofors_steel()
-        >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Offset (gamma)      : 39.76557772434183
-        Parameters          :
-             alpha: 7.141983615103902
-              beta: 2.62047590823775
-        """
-
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("df must be a pandas DataFrame")
-
-        if (x is not None) and ((xl is not None) or (xr is not None)):
-            raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
-
-        # A duration column would be read in its storage ticks (#480)
-        columns: list[tuple[str, Any]] = [
-            ("x", x),
-            ("xl", xl),
-            ("xr", xr),
-            ("tl", tl),
-            ("tr", tr),
-        ]
-        for name, col in columns:
-            # tl and tr may be scalars rather than column labels
-            if col is not None and (name[0] == "x" or isinstance(col, str)):
-                refuse_time_values(df[col], name)
-        if x is not None:
-            x = df[x].astype(float)
-        else:
-            xl = df[xl].astype(float)
-            xr = df[xr].astype(float)
-            x = np.vstack([xl, xr]).T
-
-        if c is not None:
-            c = df[c].values.astype(int)
-
-        if n is not None:
-            n = df[n].values.astype(int)
-
-        if tl is not None:
-            if isinstance(tl, str):
-                tl = df[tl].values.astype(float)
-            elif np.isscalar(tl):
-                tl = (np.ones(df.shape[0]) * tl).astype(float)
-            else:
-                raise ValueError("`tl` must be scalar or column label string")
-        else:
-            tl = np.ones(df.shape[0]) * -np.inf
-
-        if tr is not None:
-            if isinstance(tr, str):
-                tr = df[tr].values.astype(float)
-            elif np.isscalar(tr):
-                tr = (np.ones(df.shape[0]) * tr).astype(float)
-            else:
-                detail = "`tr` must be scalar or a column label string"
-                raise ValueError(detail)
-        else:
-            tr = np.ones(df.shape[0]) * np.inf
-
-        t = np.vstack([tl, tr]).T
-
-        return self.fit(x=x, c=c, n=n, t=t, **fit_options)
 
     def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
         r"""
@@ -2443,9 +2324,15 @@ turnbull_estimator
         # verifiably a maximum is never returned in silence (principle 13).
         # A family whose only parameters are its support's end points (the
         # Uniform) has its maximum on the data's extremes, an edge where
-        # the gradient does not vanish: there is nothing to verify.
+        # the gradient does not vanish: there is nothing to verify. Its
+        # support is declared data-dependent (NaN): ``support_param_index``
+        # alone defaults to (0, 1) for every family, and so exempted every
+        # two-parameter family (the Weibull, the Gamma, ...) from this
+        # warning.
         warning = results.pop("_warning", None)
-        edges_only = getattr(self, "support_param_index", None) == tuple(
+        edges_only = bool(
+            np.isnan(np.asarray(self.support, dtype=float)).all()
+        ) and getattr(self, "support_param_index", None) == tuple(
             range(self.k)
         )
         if (
@@ -2455,6 +2342,11 @@ turnbull_estimator
         ):
             warning = _UNVERIFIED_MLE
         results.pop("_verified", None)
+        # What the fit reached, recorded as ``model.maximum`` so that a
+        # caller (``fit_best``) need not read it from the warnings; it
+        # follows them exactly. An answer with nothing to verify (a closed
+        # form, a Uniform's extreme observations) is a maximum.
+        maximum = "verified" if warning is None else "unverified"
         # A family whose likelihood can be highest in a limit of its
         # parameters says so instead (one warning per fit).
         if (
@@ -2463,6 +2355,7 @@ turnbull_estimator
             and self._warn_if_at_limit(surv_data, results, zi, lfp)
         ):
             warning = None
+            maximum = "no finite maximum"
         # So does an offset fit that ran its offset onto the first
         # failure, whatever the family (#487).
         if (
@@ -2473,8 +2366,11 @@ turnbull_estimator
             )
         ):
             warning = None
-        if warning is not None:
+            maximum = "no finite maximum"
+        if warning is not None and not maximum_warnings_quiet():
             warnings.warn(warning, stacklevel=3)
+        # Only maximum likelihood seeks a maximum of the likelihood
+        model.maximum = maximum if how == "MLE" else "not applicable"
 
         for k, v in results.items():
             setattr(model, k, v)
@@ -2537,7 +2433,7 @@ turnbull_estimator
         # ``Geometric``, ``NegativeBinomial``); those remain available via
         # ``model.params``.
         reserved = {"gamma", "p", "f0"}
-        for k, v in zip(self.param_names, model.params):
+        for k, v in zip(self.parameter_names, model.params):
             if k not in reserved:
                 setattr(model, k, v)
 
@@ -2656,7 +2552,7 @@ turnbull_estimator
             return False
         shape = ", ".join(
             f"{name} = {value:.4g}"
-            for name, value in zip(self.param_names, core)
+            for name, value in zip(self.parameter_names, core)
         )
         warn_no_maximum(
             f"the offset gamma = {gamma:.6g} ran onto the smallest "

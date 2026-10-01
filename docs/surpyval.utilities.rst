@@ -71,6 +71,8 @@ Lower-level helpers in ``surpyval.utils``, used by the handlers above:
 
 .. autofunction:: surpyval.utils.is_missing_event
 
+.. autofunction:: surpyval.utils.missing_events
+
 .. autofunction:: surpyval.utils.resolve_cr_censoring
 
 ``surpyval.utils`` also holds the input validators the fitters call

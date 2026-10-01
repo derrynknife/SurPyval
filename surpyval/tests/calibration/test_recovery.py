@@ -238,7 +238,7 @@ def test_frailty_recovery():
             model = sp.WeibullFrailty.fit(x, Z=Z, c=c, groups=groups)
         est[r] = model._param_vector()
         errors = model.standard_errors()
-        se[r] = [errors[p] for p in model.param_names]
+        se[r] = [errors[p] for p in model.parameter_names]
     check_bias(est, truth, "WeibullFrailty", standard_errors=se)
 
 

@@ -54,6 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -439,7 +440,7 @@ class FirstPassageProcessModel(SerialisableMixin):
     starting bracket via ``_quantile_hi0``), ``predict_rul`` (independent
     increments make the remaining passage over the residual distance a
     fresh copy of the same law), and the ``to_dict``/``from_dict`` pair,
-    driven by ``param_names``. The density, the mean, sampling and the
+    driven by ``parameter_names``. The density, the mean, sampling and the
     repr stay on the subclasses: those genuinely differ (closed form
     against numeric derivative, closed form against quadrature, Wald
     sampling against inverse-CDF).
@@ -453,7 +454,10 @@ class FirstPassageProcessModel(SerialisableMixin):
     _model_tag: str
     _human_name: str
 
-    param_names: list
+    parameter_names: list
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
+    # for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
     threshold: float
     #: Stress coefficients and the reference stress, for a model fitted
     #: with ``Z``; both ``None`` otherwise.
@@ -613,7 +617,7 @@ class FirstPassageProcessModel(SerialisableMixin):
     def to_dict(self) -> dict:
         """Serialise this fitted process model to a plain dict."""
         out: dict = {"model": self._model_tag}
-        for name in self.param_names:
+        for name in self.parameter_names:
             out[name] = getattr(self, name)
         out["threshold"] = self.threshold
         if self.gamma is not None and self.stress_ref is not None:
@@ -632,7 +636,7 @@ class FirstPassageProcessModel(SerialisableMixin):
             "a {} model".format(cls._human_name),
         )
         model = cls(
-            *(model_dict[name] for name in cls.param_names),
+            *(model_dict[name] for name in cls.parameter_names),
             model_dict["threshold"],
             gamma=model_dict.get("gamma"),
             stress_ref=model_dict.get("stress_ref"),
@@ -941,7 +945,7 @@ class WienerProcessModel(FirstPassageProcessModel):
 
     _model_tag = "WienerProcessModel"
     _human_name = "Wiener-process"
-    param_names = ["mu", "sigma"]
+    parameter_names = ["mu", "sigma"]
 
     def __init__(
         self,
@@ -1283,7 +1287,7 @@ class GammaProcessModel(FirstPassageProcessModel):
 
     _model_tag = "GammaProcessModel"
     _human_name = "gamma-process"
-    param_names = ["alpha", "beta"]
+    parameter_names = ["alpha", "beta"]
 
     def __init__(
         self,

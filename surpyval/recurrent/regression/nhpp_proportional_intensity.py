@@ -12,6 +12,7 @@ from surpyval.recurrent._convergence import better_result, warn_unconverged
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
@@ -19,7 +20,7 @@ from .proportional_intensity import ProportionalIntensityModel
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP:
+class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -112,8 +113,8 @@ class ProportionalIntensityNHPP:
         # will not occur.
 
         def negll_func(params: np.ndarray) -> float:
-            dist_params = params[: len(dist.param_names)]
-            beta_coeffs = params[len(dist.param_names) :]
+            dist_params = params[: len(dist.parameter_names)]
+            beta_coeffs = params[len(dist.parameter_names) :]
             # ll of directly observed
             phi_exponents_observed = np.dot(Z_o, beta_coeffs)
             delta_cif_o = dist.cif(x_o_prev, *dist_params) - dist.cif(
@@ -181,7 +182,7 @@ class ProportionalIntensityNHPP:
         ignores the covariates is the natural start, with coefficients 0;
         if it fails, the old unit start is used.
         """
-        fallback = np.ones(len(dist.param_names))
+        fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
                 base = dist.fit_from_recurrent_data(data)
@@ -237,7 +238,7 @@ class ProportionalIntensityNHPP:
         out.data = data
 
         num_covariates = data.Z.shape[1]
-        expected = len(dist.param_names) + num_covariates
+        expected = len(dist.parameter_names) + num_covariates
 
         def default_init() -> np.ndarray:
             return np.append(
@@ -254,7 +255,7 @@ class ProportionalIntensityNHPP:
             if init.size != expected:
                 raise ValueError(
                     f"init must have {expected} values "
-                    f"({len(dist.param_names)} baseline parameters + "
+                    f"({len(dist.parameter_names)} baseline parameters + "
                     f"{num_covariates} coefficients); got {init.size}."
                 )
 
@@ -298,12 +299,12 @@ class ProportionalIntensityNHPP:
             warn_unconverged("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res
-        out.params = res.x[: len(dist.param_names)]
-        out.coeffs = res.x[len(dist.param_names) :]
+        out.params = res.x[: len(dist.parameter_names)]
+        out.coeffs = res.x[len(dist.parameter_names) :]
         out.name = "Non-Homogeneous Poisson Process"
         out.kind = "NHPP"
         out.parameterization = "Parametric"
-        out.param_names = dist.param_names
+        out._rate_names = list(dist.parameter_names)
         # Keep a reference to this fitter and the baseline so the Cramer-von
         # Mises bootstrap can refit the full regression model per replicate.
         out._fitter = self

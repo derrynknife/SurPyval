@@ -181,15 +181,62 @@ def test_fit_best_metric_message_is_spelled_right():
 @pytest.mark.parametrize(
     "name, where",
     [
-        ("CrowAMSAA", "surpyval.recurrent"),
-        ("HPP", "surpyval.recurrent"),
-        ("CompetingRisks", "surpyval.univariate.competing_risks"),
+        ("laplace", "surpyval.recurrent"),
+        ("TrendTestResult", "surpyval.recurrent"),
+        ("Gaussian", "surpyval.multivariate"),
     ],
 )
-def test_top_level_names_a_model_s_subpackage(name, where):
+def test_top_level_names_a_helper_s_subpackage(name, where):
     with pytest.raises(AttributeError, match=f"it is in {where}"):
         getattr(sp, name)
     assert not hasattr(sp, name)
+
+
+@pytest.mark.parametrize(
+    "name, where",
+    [
+        (name, "surpyval.recurrent")
+        for name in [
+            "ARA",
+            "ARI",
+            "CauseSpecificMCF",
+            "CauseSpecificNHPP",
+            "CoxLewis",
+            "CrowAMSAA",
+            "Duane",
+            "GeneralizedOneRenewal",
+            "GeneralizedRenewal",
+            "HPP",
+            "NonParametricCounting",
+            "ProportionalIntensityHPP",
+            "ProportionalIntensityNHPP",
+        ]
+    ]
+    + [
+        (name, "surpyval.univariate.competing_risks")
+        for name in [
+            "CompetingRisks",
+            "CompetingRisksProportionalHazards",
+            "FineGray",
+            "ParametricCompetingRisks",
+        ]
+    ]
+    + [
+        (name, "surpyval.degradation")
+        for name in [
+            "DegradationAnalysis",
+            "DestructiveDegradation",
+            "GammaProcess",
+            "WienerProcess",
+        ]
+    ],
+)
+def test_models_are_importable_from_the_top_level(name, where):
+    # The model classes are at the top level, as the regression models
+    # are; the same objects as in their packages.
+    import importlib
+
+    assert getattr(sp, name) is getattr(importlib.import_module(where), name)
 
 
 # -- readable signatures -----------------------------------------------------
@@ -327,3 +374,27 @@ def test_competing_risks_plots_its_cumulative_incidences():
         xs, ys = line.get_data()
         np.testing.assert_allclose(ys, model.cif(xs, cause))
     plt.close("all")
+
+
+# -- cs(x, given) ------------------------------------------------------------
+
+
+def test_cs_takes_given_and_the_old_name_warns():
+    # The time already survived is ``given``, as in the regression models'
+    # sf_tvc(..., given=); ``X`` works until v0.23 with a warning.
+    import warnings
+
+    model = sp.Weibull.from_params([10, 3])
+    expected = model.sf(21) / model.sf(10)
+    np.testing.assert_allclose(model.cs(11, given=10), expected)
+    np.testing.assert_allclose(
+        sp.Weibull.cs(11, 10, 10, 3), model.cs(11, given=10)
+    )
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        old = model.cs(11, X=10)
+    np.testing.assert_allclose(old, expected)
+    assert len(caught) == 1
+    assert issubclass(caught[0].category, DeprecationWarning)
+    assert caught[0].filename == __file__
+    assert "use 'given'" in str(caught[0].message)

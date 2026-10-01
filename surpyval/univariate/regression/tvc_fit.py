@@ -34,6 +34,9 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import numpy.typing as npt
 
+from ._aliasing import covariate_columns
+from .regression_data import design_matrix_from_df
+
 if TYPE_CHECKING:
     import pandas as pd
 
@@ -217,30 +220,56 @@ class TVCFitMixin:
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None = None,
         n_col: str | None = None,
+        formula: str | None = None,
         **kwargs: Any,
     ) -> "ParametricRegressionModel":
         """Fit start-stop time-varying-covariate data from a DataFrame.
 
         ``i_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
         columns passed to :meth:`fit_tvc` as ``i``, ``xl``, ``xr``, ``c`` and
-        ``n``; ``Z_cols`` is a column name or a list of them, recorded on the
-        model as ``feature_names`` so it predicts from a DataFrame. Other
-        keyword arguments go to ``fit`` (``init``, ``fixed``, ``center``).
-        Returns the fitted ``ParametricRegressionModel``.
+        ``n``. The covariates are ``Z_cols``, a column name or a list of
+        them, or instead ``formula``, a ``formulaic`` formula as in
+        ``fit_from_df``, which codes categorical (e.g. ``"yes"`` / ``"no"``)
+        columns; give exactly one. The model records ``feature_names``
+        (and the ``formula`` and its encoding), so it predicts from a
+        DataFrame with the same design. Other keyword arguments go to
+        ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
+        ``ParametricRegressionModel``.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import WeibullPH
+        >>> df = pd.DataFrame({
+        ...     "id": [0, 0, 1, 2, 2, 3, 4, 4, 5, 6],
+        ...     "start": [0, 2, 0, 0, 1, 0, 0, 3, 0, 0],
+        ...     "stop": [2, 5, 3, 1, 4, 6, 3, 7, 2, 8],
+        ...     "c": [1, 0, 0, 1, 0, 1, 1, 0, 0, 1],
+        ...     "dose": ["low", "high", "low", "low", "high", "low", "low",
+        ...              "high", "high", "low"],
+        ... })
+        >>> model = WeibullPH.fit_tvc_from_df(
+        ...     df, "id", "start", "stop", "c", formula="dose"
+        ... )
+        >>> model.feature_names
+        ['dose[T.low]']
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc(
-            df[i_col].to_numpy(),
-            df[xl_col].to_numpy(),
-            df[xr_col].to_numpy(),
-            df[c_col].to_numpy(),
-            df[cols].to_numpy(),
-            None if n_col is None else df[n_col].to_numpy(),
-            **kwargs,
-        )
-        model.feature_names = cols
+        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
+            model = self.fit_tvc(
+                df[i_col].to_numpy(),
+                df[xl_col].to_numpy(),
+                df[xr_col].to_numpy(),
+                df[c_col].to_numpy(),
+                Z,
+                None if n_col is None else df[n_col].to_numpy(),
+                **kwargs,
+            )
+        model.feature_names = names
+        model.formula = formula
+        model._model_spec = spec
         return model
 
     def fit_tvc_timeline_from_df(
@@ -248,28 +277,34 @@ class TVCFitMixin:
         df: "pd.DataFrame",
         i_col: str,
         x_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None,
         c_col: str,
         n_col: str | None = None,
+        formula: str | None = None,
         **kwargs: Any,
     ) -> "ParametricRegressionModel":
         """Fit a covariate timeline from a DataFrame.
 
         ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns
-        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``;
-        ``Z_cols`` is a column name or a list of them, recorded on the model
-        as ``feature_names``. Other keyword arguments go to ``fit``
-        (``init``, ``fixed``, ``center``). Returns the fitted
+        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``.
+        The covariates are ``Z_cols``, a column name or a list of them, or
+        instead (pass ``Z_cols=None``) ``formula``, as for
+        :meth:`fit_tvc_from_df`; the model records ``feature_names`` (and
+        the ``formula`` and its encoding). Other keyword arguments go to
+        ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
         ``ParametricRegressionModel``.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc_timeline(
-            df[i_col].to_numpy(),
-            df[x_col].to_numpy(),
-            df[cols].to_numpy(),
-            df[c_col].to_numpy(),
-            None if n_col is None else df[n_col].to_numpy(),
-            **kwargs,
-        )
-        model.feature_names = cols
+        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
+        with covariate_columns(names, Z, spec):
+            model = self.fit_tvc_timeline(
+                df[i_col].to_numpy(),
+                df[x_col].to_numpy(),
+                Z,
+                df[c_col].to_numpy(),
+                None if n_col is None else df[n_col].to_numpy(),
+                **kwargs,
+            )
+        model.feature_names = names
+        model.formula = formula
+        model._model_spec = spec
         return model

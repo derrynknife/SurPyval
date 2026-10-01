@@ -213,5 +213,5 @@ def test_censored_and_truncated_fits_give_finite_bounds(name):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = dist.fit(x, **kw)
-        for param in dist.param_names:
+        for param in dist.parameter_names:
             assert np.all(np.isfinite(model.param_cb(param))), (kw, param)

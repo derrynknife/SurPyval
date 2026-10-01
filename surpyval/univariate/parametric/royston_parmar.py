@@ -51,6 +51,7 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -181,6 +182,13 @@ class RoystonParmarModel(SerialisableMixin):
         # The sample size of bic() (see ic_sample_size), from the data at
         # fit time.
         self._ic_n = 0.0
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: the spline
+        coefficients ``gamma_0``, ``gamma_1``, ..., as the summary prints
+        them."""
+        return ["gamma_{}".format(i) for i in range(len(self.params))]
 
     # -- linear predictor --------------------------------------------------
 
@@ -440,7 +448,7 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
-class RoystonParmar_:
+class RoystonParmar_(UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
 

@@ -59,7 +59,7 @@ def _study(name, method, reps):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = dist.fit(x, c=c)
-            for j, name_j in enumerate(dist.param_names):
+            for j, name_j in enumerate(dist.parameter_names):
                 p_lo[r, j], p_hi[r, j] = model.param_cb(name_j, method=method)
             band = model.cb(t_eval, on="sf", method=method)
             s_lo[r], s_hi[r] = band[:, 0], band[:, 1]

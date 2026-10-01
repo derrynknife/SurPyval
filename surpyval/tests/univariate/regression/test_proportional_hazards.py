@@ -719,6 +719,152 @@ def test_efron_log_denominator_matches_the_loop_it_replaced(counts):
     np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-12)
 
 
+def _efron_jac_masked_reference(n_d, Ri, ZRi, Di, ZDi):
+    """The ``numpy.ma`` implementation ``efron_jac`` replaced (#515), kept
+    as an oracle: an ``(times x largest tie x p)`` masked array, masked
+    where ``j >= d``, summed over the tie axis. Integer counts only (the
+    fitters require integer ``n``); a time with no deaths is masked out,
+    which is 0 in the score's sum."""
+    import numpy.ma as ma
+
+    n_d = n_d.reshape(-1, 1)
+    arr = np.repeat([np.arange(int(n_d.max()))], len(n_d), axis=0)
+    mask = 1 - (arr < n_d).astype(int)
+    r = ma.array(arr, mask=mask) / n_d
+    denom = np.expand_dims(Ri - Di * r, axis=-1)
+    numer = np.expand_dims(ZRi, axis=1) - np.expand_dims(
+        ZDi, axis=1
+    ) * np.expand_dims(r, axis=-1)
+    return (numer / denom).sum(axis=1).filled(0.0)
+
+
+def _efron_risk_sums(counts, p=4, seed=43):
+    rng = np.random.default_rng(seed)
+    m = len(counts)
+    Ri = rng.uniform(50, 100, (m, 1))
+    Di = rng.uniform(0, 10, (m, 1))
+    ZRi = rng.normal(size=(m, p))
+    ZDi = rng.normal(size=(m, p))
+    return np.array(counts, dtype=float), Ri, ZRi, Di, ZDi
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        [1.0, 1.0, 1.0, 1.0],  # no ties at all -- the continuous case
+        [1.0, 0.0, 3.0, 1.0],  # a time with no deaths mixed in
+        [7.0, 12.0, 1.0, 4.0],  # heavy ties
+        [1.0] * 30 + [51.0] + [0.0] * 5,  # one large tie among many
+        [2.0],  # a single event time
+    ],
+)
+def test_efron_score_matches_the_masked_array_it_replaced(counts):
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_jac,
+    )
+
+    n_d, Ri, ZRi, Di, ZDi = _efron_risk_sums(counts)
+    got = efron_jac(n_d, Ri, ZRi, Di, ZDi)
+    want = _efron_jac_masked_reference(n_d, Ri, ZRi, Di, ZDi)
+    assert got.shape == want.shape
+    np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-14)
+    # A time with one death is ZR / R, bit for bit as before.
+    one = n_d == 1
+    np.testing.assert_array_equal(got[one], want[one])
+
+
+def test_efron_score_takes_int_d_terms_for_fractional_counts():
+    # The convention of efron_log_denominator and efron_hess: range(int(d))
+    # terms with c = j / d, so the score is the derivative of the same
+    # log-likelihood.
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        efron_jac,
+    )
+
+    n_d, Ri, ZRi, Di, ZDi = _efron_risk_sums([2.5, 1.0, 3.5, 0.0, 0.5])
+    want = np.zeros_like(ZRi)
+    for i, d in enumerate(n_d):
+        for j in range(int(d)):
+            k = j / d
+            want[i] += (ZRi[i] - k * ZDi[i]) / (Ri[i] - k * Di[i])
+    got = efron_jac(n_d, Ri, ZRi, Di, ZDi)
+    np.testing.assert_allclose(got, want, rtol=1e-12, atol=1e-14)
+
+
+def test_efron_fit_builds_no_masked_array():
+    # The masked (times x largest tie x p) array made one 51-way tie among
+    # 30 000 times cost 12.9 s against 1.15 s untied (#515).
+    from unittest import mock
+
+    rng = np.random.default_rng(515)
+    x = rng.exponential(1.0, 200)
+    x[:51] = np.median(x)
+    Z = rng.normal(size=(200, 2))
+    with mock.patch("numpy.ma.array", side_effect=AssertionError("ma")):
+        model = CoxPH.fit(x, Z, np.zeros(200), tie_method="efron")
+    assert np.all(np.isfinite(model.beta))
+
+
+def _tied_weighted_truncated_data():
+    rng = np.random.default_rng(515)
+    N = 120
+    Z = rng.normal(size=(N, 2))
+    x = np.round(rng.exponential(3 / np.exp(Z @ [0.5, -0.4])), 1) + 0.1
+    c = (rng.random(N) < 0.25).astype(int)
+    x[:15] = 1.0  # a 15-way tie
+    c[:15] = 0
+    n = rng.integers(1, 4, N)
+    tl = np.where(
+        rng.random(N) < 0.4, np.round(x * rng.uniform(0, 0.8, N), 1), 0.0
+    )
+    strata = rng.integers(0, 2, N)
+    return x, Z, c, n, tl, strata
+
+
+# beta, se and H0 at t = 0.5, 1, 3 computed with the masked-array Efron
+# score (before #515).
+_EFRON_BEFORE_515 = {
+    "plain": (
+        [0.5782139726212264, -0.2972629120131516],
+        [0.12427888727863272, 0.1053039983259275],
+        [0.16991079058102748, 0.4765249269989844, 0.9015016215346601],
+    ),
+    "weighted": (
+        [0.6645107694788093, -0.23918750208182854],
+        [0.09616762502048894, 0.07779164293811058],
+        [0.17943686817959503, 0.4603489994662496, 0.8659552192449375],
+    ),
+    "truncated": (
+        [0.5260180982815772, -0.10550167238643304],
+        [0.12566664271497632, 0.11250267353133918],
+        [0.2470686108848548, 0.6328945355305517, 1.145562987910888],
+    ),
+    "stratified": (
+        [0.6635357859303955, -0.06413378628381788],
+        [0.10045854267463622, 0.08172838981094684],
+        [0.2823723979675468, 0.5797935356723387, 1.0742277199693688],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(_EFRON_BEFORE_515))
+def test_efron_fit_unchanged_by_the_ragged_score(case):
+    x, Z, c, n, tl, strata = _tied_weighted_truncated_data()
+    kw = {
+        "plain": {},
+        "weighted": {"n": n},
+        "truncated": {"tl": tl},
+        "stratified": {"n": n, "tl": tl, "strata": strata},
+    }[case]
+    model = CoxPH.fit(x, Z, c, tie_method="efron", **kw)
+    stratum = {"stratum": 1} if case == "stratified" else {}
+    H = model.Hf([0.5, 1.0, 3.0], np.zeros((3, 2)), **stratum)
+    beta, se, H0 = _EFRON_BEFORE_515[case]
+    np.testing.assert_allclose(model.beta, beta, rtol=1e-12)
+    np.testing.assert_allclose(model.se, se, rtol=1e-12)
+    np.testing.assert_allclose(H, H0, rtol=1e-12)
+
+
 def test_cox_fit_is_unaffected_by_the_order_of_the_rows():
     # ``create_*_ll_jac_hess`` now sorts by event time so ``_GroupBy`` can
     # skip its permutation (#329). Nothing downstream may depend on that,

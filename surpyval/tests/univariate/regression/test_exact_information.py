@@ -101,7 +101,7 @@ def _direct_hessian(model):
     (p_hat, center, data, _), _ = model._information
     free = [
         i
-        for i, name in enumerate(model.parameter_names())
+        for i, name in enumerate(model.parameter_names)
         if name not in model.fixed
     ]
     if center is not None:
@@ -242,7 +242,7 @@ def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
     exact = model.covariance()
     assert calls == []
     for name in options.get("fixed", {}):
-        k = model.parameter_names().index(name)
+        k = model.parameter_names.index(name)
         assert not np.any(exact[k]) and not np.any(exact[:, k])
     np.testing.assert_allclose(
         np.sqrt(np.diag(exact)), _numerical_se(model), rtol=1e-4, atol=0
@@ -388,13 +388,15 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     ],
 )
 def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
-    # The variance of the registry's data runs to its limit of 0 (theta
-    # 1e-102 to 1e-23), where the likelihood no longer depends on it: the
-    # exact Hessian is singular and the covariance is what it was, from the
-    # numerical one.
+    # The variance of the registry's data runs to its limit of 0, where the
+    # likelihood no longer depends on it: the exact Hessian is singular and
+    # the covariance is what it was, from the numerical one. (The search
+    # stops once theta no longer changes the likelihood, 1e-16 to 1e-18
+    # here; Nelder-Mead, the first rung before #515, went on to 1e-102 to
+    # 1e-23.)
     calls = _count_numerical(monkeypatch, frailty)
     model = _registry(name)
-    assert model.theta < 1e-20 and len(calls) == 1
+    assert model.theta < 1e-15 and len(calls) == 1
     assert np.all(np.isfinite(model.covariance))
 
 

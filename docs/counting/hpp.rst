@@ -16,6 +16,7 @@ given rate.
 
    .. automethod:: surpyval.recurrent.parametric.hpp.HPP.fit
    .. automethod:: surpyval.recurrent.parametric.hpp.HPP.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.parametric.hpp.HPP.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.hpp.HPP.from_params
    .. automethod:: surpyval.recurrent.parametric.hpp.HPP.cif
    .. automethod:: surpyval.recurrent.parametric.hpp.HPP.iif

@@ -77,6 +77,25 @@ Note the use of ``n``: rather than typing 389 values, each distinct stress is gi
 
     assert n.sum() == 389
 
+Data held in a pandas ``DataFrame`` can be passed with ``fit_from_df``,
+naming the columns, exactly as for a parametric distribution
+(``x``, ``c``, ``n``, ``xl`` / ``xr`` and ``tl`` / ``tr``); the estimate is
+the one ``fit`` gives on the same arrays:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    bofors = pd.DataFrame({'stress': x, 'broke': n})
+    bofors_df_na = surv.NelsonAalen.fit_from_df(bofors, x='stress', n='broke')
+    print(bofors_df_na.sf([34, 36]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(bofors_df_na.R, bofors_steel_na.R)
+
 So what purpose is this?
 
 With our non-parametric model of the Bofors steel. We can use this model to estimate the reliability in our application. Let's say that our application uses Bofors steel up to 34. What is our estimate of the number of failures?
@@ -272,7 +291,7 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(np.isnan(model.cb([0.5, 9])))
 
-``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``:
+``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``. The axes are titled with the estimator ("Kaplan-Meier estimate"), the y axis is "Survival probability" and the x axis "Time" unless it already has a label:
 
 .. jupyter-execute::
 

@@ -32,7 +32,7 @@ class Logistic_(OptimisedFitMixin, ParametricFitter):
                 (0, None),
             ),
             support=(-np.inf, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
         )

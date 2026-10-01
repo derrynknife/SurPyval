@@ -9,9 +9,10 @@ import numpy.typing as npt
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 
 
-class NonParametricFitter:
+class NonParametricFitter(UnivariateDataFrameMixin):
     how: str
     # Provided by the Turnbull estimator subclass; only called on the
     # ``how == "Turnbull"`` path.
@@ -219,11 +220,13 @@ class NonParametricFitter:
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
+        Data             : 6 units: 6 events at 5 unique times
         >>> Turnbull.fit([2, 3, 3, 4, 5, 6], turnbull_estimator='Kaplan-Meier')
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
         Estimator        : Kaplan-Meier
+        Data             : 6 units: 6 events at 5 unique times
         """
         if self.how == "Turnbull":
             # Imported here as this module is imported by the package

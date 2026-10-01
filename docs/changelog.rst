@@ -33,11 +33,113 @@ the others already account for gets a ``nan`` coefficient and a warning,
 as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
 that cannot be paired with the times raise ``ValueError``. The bundled
 Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
-only when it is significant. ``qf`` outside [0, 1] is ``nan``. Durations
-and dates are refused. Probability plots show failures only. ``fit_best``
+only when it is significant. ``qf`` outside [0, 1] is ``nan``.
+``param_names`` is deprecated in favour of ``parameter_names``. The
+bundled lung data's ``status`` is 1 for a death. ``CoxPH.check_ph()``
+returns a ``DataFrame``. Durations
+and dates are refused. Probability plots draw failures only. ``fit_best``
 no longer considers the Uniform and Beta4 by default. Small-sample Wald
 bands change (#477).
 
+- **Changed: load_lung()'s status means a death (#509).** It was stored as
+  SurPyval's censoring flag (0 = death), the opposite of lifelines, so
+  ``c = 1 - status`` fitted the complement (a Kaplan-Meier median of 588
+  days instead of 310). ``status`` is now 1 for a death, as in lifelines
+  and R; pass ``c = 1 - status``.
+- **A fitted model's printout shows its data (#508).** For example ``Data
+  : 60 units: 9 events at 9 unique times, 51 right censored``, with left,
+  interval and truncated counts when present, counted in units (weighted
+  by ``n``), and the number of distinct event times.
+  Parametric, mixture, non-parametric, parametric regression, Cox and
+  Buckley-James models print it, and keep it through ``to_dict``. A "1 =
+  failed" column passed as ``c`` is now visible at a glance.
+- **Changed: probability plots take label= and color= (#510).**
+  ``Parametric.plot`` and ``MixtureModel.plot`` draw the points, fitted
+  line and bounds in one colour (by default the axes' next colour), with
+  ``label=`` on the fitted line, so fits overlaid on one plot can be told
+  apart. The fitted line is solid and the bounds dashed; they were a black
+  dashed line and red bounds. Overlaid plots keep both ranges in view.
+- **Changed: CoxPH.check_ph() returns a table (#514).** A ``DataFrame`` as
+  R's ``cox.zph`` prints it: a row per covariate and a ``GLOBAL`` row, with
+  ``statistic``, ``df`` and ``p``. The old dictionary is
+  ``proportional_hazards.diagnostics.check_ph(model)``.
+- **Deprecated: cs(x, X) is cs(x, given) (#514).** The time already
+  survived is named ``given``, as in the regression models' ``sf_tvc(...,
+  given=)``; ``X=`` works until v0.23 with a ``DeprecationWarning``. Called
+  by position, nothing changes.
+- **Plots label their axes (#514).** The time axis is "Time" unless it is
+  already labelled; non-parametric plots say "Survival probability" and
+  "Kaplan-Meier estimate" (etc.), not "R" and "Model Survival Plot". A
+  failure at exactly 0 now points to ``zi=True``.
+- **Imperfect-repair fits are 10-270 times faster (#515).** The ARA,
+  Kijima-II and G1 renewal likelihoods took a Python step per item and
+  per event on every evaluation; they now step through event positions
+  across all items at once, with the same virtual ages bit for bit (G1's
+  likelihood to the last digit). ``ARA.fit`` on 100 items went from
+  10-16 s to 0.45-0.7 s and on 1000 items from 73 s to 2.4 s;
+  ``GeneralizedRenewal(kijima="ii")`` on 1000 items from 16.5 s to 1.8 s;
+  ``GeneralizedOneRenewal`` on 100 items from 44 s to 0.16 s.
+- **Faster saving and loading (#515).** ``to_dict`` and ``from_dict``
+  visited every number of a model's arrays one at a time; number arrays
+  now go through in one pass. The saved documents are byte-identical. A
+  Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
+  1.22 s).
+- **fit_from_df on every fitter (#511).** Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull, RoystonParmar, MixtureModel, the
+  closed-form distributions, the copulas, FineGray,
+  DestructiveDegradation, the survival trees and forest, and the recurrent
+  fitters had no ``fit_from_df``. They now take a ``DataFrame``, naming the
+  columns as their family already did (``x=``, ``c=``, ``xl=``, ``tl=``
+  for one lifetime per row; ``x_col=``, ``i_col=``, ``c_col=``,
+  ``Z_cols=`` for recurrent and regression data), and give the model
+  ``fit`` gives on the same arrays, which the conformance suite checks for
+  every registered model. ``Weibull.fit_from_df`` no longer casts ``c`` to
+  an integer, which turned a missing flag into -9.2e18.
+- **The concordance index is fast, and a metric (#512).** Harrell's C was
+  a pairwise Python loop: 2.9 s at 5,000 subjects and about 5 minutes at
+  50,000. A merge sort over the ranked scores gives the same value, with
+  the same tie rules, in 0.01 s and 0.15 s. It is
+  ``sp.metrics.concordance_index(x, c, risk)``, and every regression model
+  has ``concordance()``, scoring its training data by default.
+  ``surpyval.utils.score.score`` is deprecated until v0.23. With tied
+  event times the value differs slightly from R and lifelines (0.6369 vs
+  0.6371 on the lung Cox model), which do not count two events at the same
+  time as a usable pair.
+- **Changed: renewal models print the restoration factor's uncertainty
+  (#513).** A generalized renewal fit to minimal-repair data printed q =
+  2.63 with no sign that its 95% interval was [0.094, 73.4]. The printout
+  now gives each parameter's standard error and Wald interval (also
+  ``summary()``) and says when ``q`` or ``rho`` is not determined by the
+  data or sits at the edge of its range. The docstrings say what ``q`` and
+  ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
+  that data LR = 0.40, p = 0.53).
+- **Faster Efron Cox fits with tied times (#515).** The Efron score was
+  computed on a masked (times x largest tie x covariates) array: one
+  51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
+  tied deaths is now factored and stored per death: 1.4 s. Time-varying
+  Cox fits on 40,000 rows take 0.53 s (was 8.3 s). Untied and Breslow
+  fits are bit-identical; tied Efron fits agree to the last digits.
+- **Frailty and parametric additive hazards fits use the gradient
+  (#515).** They began with thousands of Nelder-Mead evaluations. They now
+  run a gradient search first and keep its answer when it is a verified
+  maximum, falling back to the old search otherwise (the #376 and #392
+  warnings are unchanged). At 10,000 rows: WeibullFrailty 2.2 s to 0.13 s,
+  GammaFrailty 23 s to 1.4 s, WeibullAH 1.0 s to 0.21 s. On some data the
+  old frailty search stopped with the variance at 0, up to 0.1
+  log-likelihood units short of an interior maximum the new one finds.
+- **Faster log-rank test, Turnbull, Fleming-Harrington and
+  competing-risks fits (#515).** Results are bit-identical. ``logrank``
+  built an at-risk array of rows by event times: 13 s and 2 GB for 30,000
+  rows in three groups, and out of memory at 100,000; with running totals
+  it takes 0.02 s and 0.06 s. The Fleming-Harrington estimator,
+  ``Turnbull``'s default, summed each step's tied events in a Python loop
+  on every EM iteration: a Turnbull fit to 1,000 random intervals takes
+  0.22 s (was 7.9 s) and ``FlemingHarrington.fit`` on 100,000 rows 0.05 s
+  (was 0.74 s). ``CompetingRisks.fit`` searched the distinct times for
+  every row: 0.07 s at 100,000 rows (was 1.65 s); the new
+  ``surpyval.utils.missing_events`` finds the censored rows in one pass.
+  Grouping tied rows sorts the data once instead of three times, halving
+  a tied 100,000-row Weibull fit.
 - **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
   (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
   ``d / r`` to a whole number in a Python loop, most of a large fit;
@@ -478,6 +580,53 @@ bands change (#477).
   ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
   ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
   print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **Changed / deprecated: one name for parameter names, parameter_names
+  (principle 21).** A model's parameter names were spelt three ways:
+  ``param_names``, the regression models' ``parameter_names()`` method
+  and the recurrent models' ``parameter_names`` property (which a model
+  built with ``from_params`` refused). Every distribution and every model
+  with ``params`` now has ``parameter_names``, a list naming ``params``
+  entry by entry (``Weibull.fit(x).parameter_names`` is ``['alpha',
+  'beta']``, ``WeibullPH``'s ``['alpha', 'beta', 'beta_0']``), including
+  models that had none (``CoxPH``, ``AdditiveHazards``, ``BuckleyJames``,
+  ``RoystonParmar``, ``MixtureModel``, ``CopulaModel``). A
+  ``ProportionalIntensityModel`` names ``params`` then ``coeffs``, the
+  order of its ``covariance``. Until v0.23 the old spellings work with a
+  ``DeprecationWarning``: the ``param_names`` attribute, calling
+  ``parameter_names()``, the ``param_names=`` keyword of
+  ``CustomDistribution``, and a ``param_names`` class attribute on your
+  own ``PathModel``, ``Copula`` or ``CountingProcess`` subclass. ``params``
+  is unchanged, and saved files keep the key ``"param_names"``, so they
+  move both ways between 0.21 and 0.22.
+- **Fits record whether they reached a maximum.** A parametric model has
+  ``maximum``: ``"verified"`` (zero gradient and a positive-definite
+  Hessian, or an exact estimator), ``"unverified"``, ``"no finite
+  maximum"``, ``"not applicable"`` (not a maximum-likelihood fit, or
+  ``from_params``) or ``"unknown"`` (loaded from an older save). It
+  matches the fit's warnings and is saved by ``to_dict``. ``fit_best``
+  sets candidates aside by it rather than by the text of their warnings
+  (#492).
+- **Changed: two-parameter fits no longer hide an unverified maximum.** A
+  maximum-likelihood fit that did not reach a verified maximum warned
+  only for families with more than two parameters: the exemption meant
+  for the Uniform, whose support ends are parameters, matched every
+  two-parameter family (Weibull, Gamma, LogNormal, ...). Such fits now
+  warn.
+- **formula= for the parametric time-varying fits.** ``fit_tvc_from_df``
+  (PH, AH, PO, AFT) and ``fit_tvc_timeline_from_df`` (PH, AH, PO) take a
+  formula instead of ``Z_cols``, as ``CoxPH``'s do (#485): categorical
+  columns are coded, the model predicts from a ``DataFrame`` with the
+  same coding, and an aliased column is named. ``Z_cols`` now defaults to
+  ``None``.
+- **The recurrent-event, competing-risks and degradation models are
+  importable from surpyval.** ``sp.CrowAMSAA``, ``sp.ARA``,
+  ``sp.FineGray``, ``sp.CompetingRisks``, ``sp.DegradationAnalysis`` and
+  the other model classes are now at the top level, as the regression
+  models already were, and stay in their packages too. Helper functions
+  and result types (``laplace``, ``mil_hdbk_189c``,
+  ``TrendTestResult``) and the generically named copulas (``Gaussian``,
+  ``Frank``, ...) stay in their packages; asking for one at the top level
+  says where it is.
 - **The bundled Claude Code skill matches 0.22, and its code is tested
   (#491).** Every code block in it runs as a test.
 - **Offset fits with no maximum warn (#487).** With a shape below 1 the
@@ -494,13 +643,16 @@ bands change (#477).
   and predictions raised numpy's ``TypeError``. SurPyval has no time
   unit, so such values now raise a ``ValueError`` wherever a time is
   accepted, with the conversion to use (``x / pd.Timedelta(days=1)``).
-- **Changed: suspensions are not plotted (#478).** A probability plot
-  drew each suspension at the ``F`` of the failure before it, where it
-  looked like one more failure. The points are now the failures only,
-  as in Abernethy's *New Weibull Handbook* and Weibull++. ``get_plot_data``'s
-  ``x_`` and ``F`` hold failures only and its new ``x_censored`` the
-  suspension times, which ``plot(show_censored=True)`` marks on the time
-  axis.
+- **Changed: suspensions are not drawn as points (#478).** A probability
+  plot drew each suspension at the ``F`` of the failure before it, where
+  it looked like one more failure. ``plot()`` now draws the failures
+  only, as in Abernethy's *New Weibull Handbook* and Weibull++, and
+  ``plot(show_censored=True)`` (also on ``MixtureModel.plot``) marks the
+  suspension times with ticks on the time axis, which still spans every
+  time. ``get_plot_data()`` keeps its meaning: ``x_`` and ``F`` hold
+  every row as before, and a new boolean ``failed`` mask selects the
+  failures that are drawn; ``x_censored`` holds the suspension times. The
+  non-parametric ``get_plot_data`` returns ``failed`` too.
 - **weibayes (#493).** ``surpyval.weibayes(x, c, n, beta)`` gives the
   Weibayes lower confidence bound on a Weibull's scale of known shape
   from few or no failures (Nelson 1985; Abernethy), as a Weibull model:

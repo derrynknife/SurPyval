@@ -17,6 +17,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import log1mexp, on_support, positive_or_one
@@ -44,7 +45,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
             k=1,
             bounds=((0, None),),
             support=(0, np.inf),
-            param_names=["failure_rate"],
+            parameter_names=["failure_rate"],
             param_map={"failure_rate": 0},
             plot_x_scale="linear",
             y_ticks=[
@@ -149,7 +150,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
-    def cs(self, x: Numeric, X: Numeric, failure_rate: Boxable) -> Boxable:
+    @renamed_arguments(X="given")
+    def cs(self, x: Numeric, given: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Conditional survival function for the Exponential Distribution:
@@ -160,12 +162,17 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         The Exponential distribution is memoryless, and hence is the same as
         the regular survival distribution.
 
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
+
         Parameters
         ----------
 
         x : numpy array or scalar
             The value(s) at which the function will be calculated
-        X : numpy array or scalar
+        given : numpy array or scalar
             The value(s) at which each value(s) in x was known to have survived
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution

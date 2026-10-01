@@ -12,6 +12,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import check_covariate_rows, finite_covariate_mask
+from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -55,7 +56,7 @@ def drop_missing_covariate_rows(
     return data[mask], Z[mask]
 
 
-class SurvivalTree(SerialisableMixin):
+class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
     """
     A Survival Tree, for use in `RandomSurvivalForest`.
 

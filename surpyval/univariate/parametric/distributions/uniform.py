@@ -25,7 +25,7 @@ class Uniform_(OptimisedFitMixin, ParametricFitter):
             # whole real line. Declare it NaN and let support_param_index
             # (default (0, 1) == a, b) resolve it once the params are known.
             support=(np.nan, np.nan),
-            param_names=["a", "b"],
+            parameter_names=["a", "b"],
             param_map={"a": 0, "b": 1},
             plot_x_scale="linear",
             y_ticks=np.linspace(0, 1, 21)[1:-1],

@@ -12,12 +12,14 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import is_missing_event
+from surpyval.utils.data_summary import data_summary
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
     keeps_query_shape,
 )
 
+from ._concordance import ConcordanceMixin
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -33,7 +35,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-class SemiParametricRegressionModel(SerialisableMixin):
+class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
     ``fit_from_df``, ``fit_tvc`` and ``fit_tvc_timeline``.
@@ -101,6 +103,13 @@ class SemiParametricRegressionModel(SerialisableMixin):
     #: diagnostics centre on too; not saved (they need the fitted data).
     _fit_center: "npt.NDArray | None" = None
 
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients, as in the
+        parametric regression models."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
+
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray
     beta: npt.NDArray
@@ -126,6 +135,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
     #: Per-observation training data (``x``/``c``/``n``/``Z``/``tl``) retained
     #: by ``CoxPH.fit`` for residuals and the proportional-hazards test.
     _fit_data: dict
+    #: The printout's "Data" line of a model restored by ``from_dict``
+    #: (#508), which does not hold its data.
+    _data_summary: "str | None" = None
     #: For a TVC (start-stop) fit: subject id per *internal* (sorted) row,
     #: and the permutation from the caller's row order to the internal order
     #: (#259 — used to align user-supplied cluster labels).
@@ -196,12 +208,57 @@ class SemiParametricRegressionModel(SerialisableMixin):
         with np.errstate(over="ignore"):
             return np.exp(self._log_phi(Z))
 
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        if getattr(self, "is_stratified", False):
+            raise ValueError(
+                "concordance is not available for a stratified Cox model: "
+                "its strata have separate baselines, so risk scores rank "
+                "subjects only within a stratum. Score each stratum's rows "
+                "with surpyval.metrics.concordance_index."
+            )
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        return self._log_risk(Z_arr.reshape(x.size, -1))
+
+    def _concordance_data(self) -> "tuple | None":
+        data = getattr(self, "_fit_data", None)
+        if data is None or self.is_tvc:
+            return None
+        return data["x"], data["c"], data["n"], data["Z"]
+
     def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """The log of :meth:`phi`."""
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
         if Z_arr.ndim == 0:
             Z_arr = Z_arr.reshape(1)
         return self._log_risk(Z_arr)
+
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and left
+        truncation. A restored model gives the line it was saved with."""
+        data = getattr(self, "_fit_data", None)
+        if not isinstance(data, dict) or "c" not in data:
+            return getattr(self, "_data_summary", None) or ""
+        ids = getattr(self, "tvc_subject_ids", None)
+        if getattr(self, "is_tvc", False) and ids is not None:
+            # Start-stop rows are intervals of a unit, not units.
+            c = np.asarray(data["c"])
+            n = np.asarray(data.get("n", np.ones(len(c))))
+            k = int(np.sum(n[c == 0]))
+            units = len(np.unique(np.asarray(ids)))
+            return "{} unit{} in {} start-stop intervals: {} event{}".format(
+                units,
+                "" if units == 1 else "s",
+                len(c),
+                k,
+                "" if k == 1 else "s",
+            )
+        tl = data.get("tl")
+        x = data.get("x")
+        if tl is None:
+            return data_summary(data["c"], data.get("n"), x=x)
+        # Times are non-negative, where an entry at 0 truncates nothing.
+        return data_summary(data["c"], data.get("n"), tl=tl, lower=0.0, x=x)
 
     def __repr__(self) -> str:
         out = (
@@ -211,6 +268,9 @@ class SemiParametricRegressionModel(SerialisableMixin):
             + "\nKind                : {kind}"
             + "\nParameterization    : {parameterization}"
         ).format(kind=self.kind, parameterization=self.parameterization)
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
         if np.any(self._center()):
             out += (
                 "\nBaseline at         : the covariate means, Z = {}".format(
@@ -353,6 +413,10 @@ class SemiParametricRegressionModel(SerialisableMixin):
             out["se"] = np.asarray(self.se, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
+        # The printout's "Data" line (#508), so the restored model prints
+        # the same; the data themselves are not stored.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -386,6 +450,7 @@ class SemiParametricRegressionModel(SerialisableMixin):
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
         out.is_tvc = bool(model_dict.get("is_tvc", False))
+        out._data_summary = model_dict.get("data_summary")
         # A bare null (no "non_finite" record) is how schema-1 dicts wrote
         # a row without delayed entry; it still reads as -inf.
         out.tl = (
@@ -619,18 +684,66 @@ class SemiParametricRegressionModel(SerialisableMixin):
 
         return compute_residuals(self, kind)
 
-    def check_ph(self, transform: str = "km") -> dict:
+    def check_ph(self, transform: str = "km") -> "pd.DataFrame":
         """
         Test the proportional-hazards assumption (Grambsch-Therneau).
 
-        Returns a dict with a joint ``global`` test and a ``per_covariate``
-        list; a small ``p_value`` is evidence against proportional hazards.
-        See :func:`~surpyval.univariate.regression.proportional_hazards.
-        diagnostics.check_ph`.
+        The table R's ``cox.zph`` prints (#514): one row per covariate
+        (named as in :meth:`summary`), each a 1-d.f. test of whether its
+        scaled Schoenfeld residuals trend with time, and a last row
+        ``GLOBAL``, the joint test on all of them. A small ``p`` is
+        evidence against proportional hazards.
+
+        Parameters
+        ----------
+        transform : {"km", "rank", "identity", "log"}, optional
+            The function of time to test against; ``"km"`` (the default,
+            as in R) is the scale-free choice. See
+            :func:`~surpyval.univariate.regression.proportional_hazards.
+            diagnostics.check_ph`.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Columns ``statistic`` (chi-squared), ``df`` and ``p``; the
+            transform is in ``attrs["transform"]``. Before v0.22 this was
+            a dict, which :func:`~surpyval.univariate.regression.
+            proportional_hazards.diagnostics.check_ph` (the same test as a
+            function of the model) still returns.
+
+        Examples
+        --------
+        >>> from surpyval import CoxPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
+        >>> model = CoxPH.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
+        ... )
+        >>> model.check_ph().round(4)
+                   statistic  df       p
+        covariate
+        fin           0.0000   1  0.9983
+        age           5.8491   1  0.0156
+        GLOBAL        5.8570   2  0.0535
         """
+        import pandas as pd
+
         from .proportional_hazards.diagnostics import check_ph
 
-        return check_ph(self, transform)
+        res = check_ph(self, transform)
+        rows = res["per_covariate"] + [res["global"]]
+        names = coefficient_names(self, len(res["per_covariate"]))
+        table = pd.DataFrame(
+            {
+                "statistic": [r["statistic"] for r in rows],
+                "df": [int(r["df"]) for r in rows],
+                "p": [r["p_value"] for r in rows],
+            },
+            index=pd.Index(list(names) + ["GLOBAL"], name="covariate"),
+        )
+        table.attrs["transform"] = res["transform"]
+        return table
 
     def robust_covariance(
         self, cluster: "npt.ArrayLike | None" = None

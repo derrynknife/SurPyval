@@ -1,6 +1,7 @@
-"""Tests for the concordance index in ``surpyval.utils.score``.
+"""Tests for the concordance index, ``surpyval.metrics.concordance_index``
+(formerly ``surpyval.utils.score.score``).
 
-``score`` computes Harrell's c-index for mortality-like risk scores: a
+It computes Harrell's c-index for mortality-like risk scores: a
 higher score predicts an earlier event. Pairs are compared with the
 earlier time first, which must not depend on the order the samples are
 passed in.
@@ -9,7 +10,7 @@ passed in.
 import numpy as np
 import pytest
 
-from surpyval.utils.score import score
+from surpyval.metrics import concordance_index as score
 
 
 def test_perfect_concordance_is_one():

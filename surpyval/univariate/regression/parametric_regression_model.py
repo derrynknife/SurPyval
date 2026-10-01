@@ -14,6 +14,8 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import CallableList, RenamedAttribute
 from surpyval.utils.linalg import (
     delta_method_se,
     log_transformed_cb,
@@ -27,6 +29,7 @@ from surpyval.utils.shapes import (
 )
 
 from ._bounds import logit_sf_bound
+from ._concordance import ConcordanceMixin
 from .regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -61,7 +64,9 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
+class ParametricRegressionModel(
+    ConcordanceMixin, InformationCriteriaMixin, SerialisableMixin
+):
     """
     The fitted model returned by every parametric regression fitter: the
     proportional hazards (``WeibullPH``, ``PH(dist)``), accelerated failure
@@ -70,7 +75,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
     ``params`` holds the distribution parameters followed by the covariate
     coefficients (``dist_params`` and ``phi_params`` split them), named in
-    order by ``param_names``. In an accelerated life model the life
+    order by ``parameter_names``. In an accelerated life model the life
     parameter (``life_parameter``, e.g. the Weibull's ``alpha``) is not
     estimated: the life model gives it at each stress, and its slot in
     ``params`` holds a placeholder 1, which the printed model does not show
@@ -107,6 +112,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     _restored_covariance: "npt.NDArray | None" = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
+    #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
+    #: (#508).
+    _data_summary: "str | None" = None
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
     #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
@@ -279,6 +287,10 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # The printout's "Data" line (#508), so the restored model prints
+        # the same; the data themselves are not stored.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         return stamp_schema(out)
 
     @classmethod
@@ -393,6 +405,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # full parameter-vector length.
         out.k = len(params) - len(out.fixed)
         out._restored = True
+        out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
@@ -455,7 +468,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def _held(self) -> set:
         """The names of the parameters that were not estimated: the
         ``fixed`` ones and the aliased coefficients."""
-        names = self.parameter_names()
+        names = self.parameter_names
         return set(self.fixed) | {
             names[self.k_dist + j] for j in self.aliased.tolist()
         }
@@ -539,7 +552,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             se = np.full(n, np.nan)
         if se.shape != (n,):
             se = np.full(n, np.nan)
-        names = self.parameter_names()
+        names = self.parameter_names
         se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
         return se
 
@@ -600,7 +613,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
 
         params = np.asarray(self.params, dtype=float)
         se = self._summary_se()
-        names = self.parameter_names()
+        names = self.parameter_names
         k = self.k_dist
         level = "{:g}%".format(100 * (1 - alpha_ci))
         if self._is_linear_predictor():
@@ -652,6 +665,30 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
         return table
 
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and
+        truncation. Empty for a model built from parameters; a restored
+        model gives the line it was saved with."""
+        data = getattr(self, "data", None)
+        if data is None:
+            return self._data_summary or ""
+        if isinstance(data, dict):
+            c, n, t = data.get("c"), data.get("n"), data.get("t")
+            x = data.get("x")
+        else:
+            c = getattr(data, "c", None)
+            n = getattr(data, "n", None)
+            t = getattr(data, "t", None)
+            x = getattr(data, "x", None)
+        if c is None:
+            return ""
+        lower, upper = getattr(self.distribution, "support", (-np.inf, np.inf))
+        t = None if t is None else np.asarray(t, dtype=float)
+        if t is None or t.ndim != 2 or len(t) != len(np.asarray(c)):
+            return data_summary(c, n, x=x)
+        return data_summary(c, n, t[:, 0], t[:, 1], lower, upper, x=x)
+
     def __repr__(self) -> str:
         if not hasattr(self, "params"):
             return "Unable to fit values"
@@ -669,6 +706,9 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             dist=self.distribution.name,
             reg_model=self.reg_model.name,
         )
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
         if self._has_center():
             # A fit with center=True (#463): say where the baseline
             # parameters are.
@@ -726,6 +766,23 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "exp(coef) is {}; ".format(meaning) if meaning else ""
             ) + coefficient_repr(table.loc["coefficients"])
         return out
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        # H(t* | Z) at the median time scored: for a family acting through
+        # a linear predictor it ranks the rows as that predictor does, with
+        # the sign of a higher risk, at every t* (see ``concordance``).
+        t = np.full(x.size, np.nanmedian(x))
+        with warnings.catch_warnings():
+            # An additive model's negative hazard at t* does not change
+            # the ranking.
+            warnings.filterwarnings("ignore", message="The additive hazard")
+            return np.asarray(self.Hf(t, Z), dtype=float)
+
+    def _concordance_data(self) -> "tuple | None":
+        data = getattr(self, "data", None)
+        if data is None or getattr(self, "is_tvc", False):
+            return None
+        return data.x, data.c, data.n, data.Z
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
@@ -1854,31 +1911,47 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
 
     @property
-    def param_names(self) -> list[str]:
+    def parameter_names(self) -> CallableList:
         """
         Names of ``params``, in order: the distribution's parameters, then
-        the covariate coefficients (or life-model parameters). The same as
-        :meth:`parameter_names`. In an accelerated life model the slot
-        named by ``life_parameter`` is a placeholder, not a fitted value.
-        """
-        return self.parameter_names()
+        the covariate coefficients (or life-model parameters). The list
+        lines up with ``params``, :meth:`covariance` and
+        :meth:`standard_errors` entry by entry, fixed parameters included.
+        In an accelerated life model the slot named by ``life_parameter``
+        is a placeholder, not a fitted value, and is named too.
 
-    def parameter_names(self) -> list[str]:
+        Until v0.22 this was a method; calling it,
+        ``model.parameter_names()``, still returns the list, with a
+        ``DeprecationWarning``, until v0.23.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullPH
+        >>> x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+        >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
+        >>> model = WeibullPH.fit(x=x, Z=Z)
+        >>> model.parameter_names
+        ['alpha', 'beta', 'beta_0']
         """
-        Names of the fitted parameters in ``.params`` order: the distribution's
-        parameters followed by the covariate coefficients.
-        """
-        dist_names = list(self.distribution.param_names)
+        dist_names = list(self.distribution.parameter_names)
         phi_map = self.reg_model.phi_param_map
         phi_names = [
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
-        return dist_names + phi_names
+        return CallableList(
+            dist_names + phi_names,
+            "ParametricRegressionModel.parameter_names",
+        )
+
+    # ``param_names``, the name the model had before v0.22, reads
+    # ``parameter_names`` for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     def covariance(self) -> npt.NDArray:
         """
         Approximate covariance matrix of the fitted parameters, ordered to
-        match :meth:`parameter_names`. Computed as the inverse of the Hessian
+        match :attr:`parameter_names`. Computed as the inverse of the Hessian
         of the negative log-likelihood at the MLE (the observed
         information): the exact one the fit computed with autograd to check
         its answer. It falls back to a numerical Hessian where there is
@@ -1946,7 +2019,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         cached = self._covariance_cache
         if cached is not None and _same_point(cached[0], point):
             return cached[1].copy()
-        names = self.parameter_names()
+        names = self.parameter_names
         held = self._held()
         free = [i for i, nm in enumerate(names) if nm not in held]
         n = len(names)
@@ -2060,7 +2133,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     def standard_errors(self) -> npt.NDArray:
         """
         Standard errors of the fitted parameters (square roots of the diagonal
-        of :meth:`covariance`), ordered to match :meth:`parameter_names`.
+        of :meth:`covariance`), ordered to match :attr:`parameter_names`.
         """
         with np.errstate(invalid="ignore"):
             return np.sqrt(np.diag(self.covariance()))
@@ -2082,14 +2155,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         Parameters
         ----------
         name : str
-            The parameter to bound; one of :meth:`parameter_names`.
+            The parameter to bound; one of :attr:`parameter_names`.
         alpha_ci : float, optional
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
         """
         self._check_inference()
-        names = self.parameter_names()
+        names = self.parameter_names
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

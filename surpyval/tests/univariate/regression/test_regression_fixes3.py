@@ -238,8 +238,8 @@ def test_cox_robust_se_and_rank_test_equal_expanded_data():
     )
     for transform in ("rank", "km", "identity"):
         np.testing.assert_allclose(
-            a.check_ph(transform)["global"]["statistic"],
-            b.check_ph(transform)["global"]["statistic"],
+            a.check_ph(transform).loc["GLOBAL", "statistic"],
+            b.check_ph(transform).loc["GLOBAL", "statistic"],
             rtol=1e-8,
         )
 
@@ -598,7 +598,7 @@ def test_quiet_functions_outside_the_support():
             np.testing.assert_allclose(m.ff([-1.0], [0.0]), [0.0])
             np.testing.assert_allclose(m.Hf([-1.0], [0.0]), [0.0])
             np.testing.assert_allclose(m.df([-1.0], [0.0]), [0.0])
-        assert np.isfinite(cox.check_ph("rank")["global"]["statistic"])
+        assert np.isfinite(cox.check_ph("rank").loc["GLOBAL", "statistic"])
 
 
 # -- 15. aic_c of a time-varying fit counts subjects -------------------------

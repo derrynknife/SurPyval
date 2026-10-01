@@ -58,12 +58,14 @@ def validate_links(path_model: PathModel, links: Any) -> dict[str, str]:
             "links must be a non-empty dict mapping path parameter names "
             "to a link ('identity' or 'log'), e.g. {'b': 'log'}"
         )
-    unknown = [name for name in links if name not in path_model.param_names]
+    unknown = [
+        name for name in links if name not in path_model.parameter_names
+    ]
     if unknown:
         raise ValueError(
             "links names parameter(s) {} that the {} path model does not "
             "have; its parameters are {}".format(
-                unknown, path_model.name, path_model.param_names
+                unknown, path_model.name, path_model.parameter_names
             )
         )
     bad = {name: link for name, link in links.items() if link not in _LINKS}
@@ -75,7 +77,7 @@ def validate_links(path_model: PathModel, links: Any) -> dict[str, str]:
         )
     return {
         name: str(links[name])
-        for name in path_model.param_names
+        for name in path_model.parameter_names
         if name in links
     }
 
@@ -109,7 +111,7 @@ class LinkedPathModel(PathModel):
     >>> import numpy as np
     >>> from surpyval.degradation import LinkedPathModel, get_path_model
     >>> linked = LinkedPathModel(get_path_model("linear"), {"b": "log"})
-    >>> linked.param_names
+    >>> linked.parameter_names
     ['a', 'log(b)']
     >>> eta = linked.to_link([10.0, 0.3])
     >>> eta.round(4)
@@ -121,10 +123,10 @@ class LinkedPathModel(PathModel):
     def __init__(self, base: PathModel, links: dict[str, str]) -> None:
         self.base = base
         self.links = {
-            name: links.get(name, "identity") for name in base.param_names
+            name: links.get(name, "identity") for name in base.parameter_names
         }
         self.name = base.name
-        self.param_names = [
+        self.parameter_names = [
             "log({})".format(name) if link == "log" else name
             for name, link in self.links.items()
         ]
@@ -196,7 +198,7 @@ class LinkedPathModel(PathModel):
 
 
 def stress_design(
-    z: npt.ArrayLike, links: dict[str, str], param_names: list[str]
+    z: npt.ArrayLike, links: dict[str, str], parameter_names: list[str]
 ) -> npt.NDArray:
     """
     The fixed-effects design ``D(z)`` of one unit: a ``(p, m)`` matrix
@@ -211,10 +213,10 @@ def stress_design(
     """
     z_arr = np.atleast_1d(np.asarray(z, dtype=float))
     q = z_arr.shape[0]
-    m = len(param_names) + q * len(links)
-    design = np.zeros((len(param_names), m))
+    m = len(parameter_names) + q * len(links)
+    design = np.zeros((len(parameter_names), m))
     col = 0
-    for row, name in enumerate(param_names):
+    for row, name in enumerate(parameter_names):
         design[row, col] = 1.0
         col += 1
         if name in links:
@@ -224,8 +226,8 @@ def stress_design(
 
 
 def fixed_effect_names(
-    linked_param_names: list[str],
-    param_names: list[str],
+    linked_parameter_names: list[str],
+    parameter_names: list[str],
     links: dict[str, str],
     n_cov: int,
 ) -> list[str]:
@@ -233,7 +235,7 @@ def fixed_effect_names(
     the link-scale parameter name for each intercept and
     ``"<name>:Z<j>"`` for each stress coefficient."""
     names = []
-    for linked_name, name in zip(linked_param_names, param_names):
+    for linked_name, name in zip(linked_parameter_names, parameter_names):
         names.append(linked_name)
         if name in links:
             names.extend("{}:Z{}".format(linked_name, j) for j in range(n_cov))

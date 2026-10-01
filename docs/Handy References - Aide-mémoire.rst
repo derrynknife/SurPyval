@@ -77,7 +77,7 @@ Every fitted univariate distribution and non-parametric estimate in SurPyval has
 Two more quantities follow from these and come up constantly in reliability work:
 
 - **B-lives, or quantiles.** The :math:`B_q` life is the time by which a fraction :math:`q` has failed, :math:`F^{-1}(q)`, given by ``qf(q)``. The B10 life is ``qf(0.1)``, the median is ``qf(0.5)``.
-- **Conditional survival.** The probability that an item that has already survived to :math:`T` survives a further :math:`t` is :math:`R(t + T) / R(T)`, given by ``cs(t, T)``. This is the basis of remaining life calculations.
+- **Conditional survival.** The probability that an item that has already survived to :math:`T` survives a further :math:`t` is :math:`R(t + T) / R(T)`, given by ``cs(t, given=T)``. This is the basis of remaining life calculations.
 
 .. jupyter-execute::
 

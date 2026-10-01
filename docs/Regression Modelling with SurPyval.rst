@@ -904,8 +904,9 @@ the effect entirely.
 The standard check is the **Grambsch-Therneau test**, built on the scaled
 Schoenfeld residuals. A fitted model exposes it through
 :meth:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel.check_ph`.
-It returns a joint ``global`` test and a ``per_covariate`` breakdown; a *small*
-``p``-value is evidence *against* proportional hazards. We fit the tires model
+It returns a table, as R's ``cox.zph`` prints it: a 1-d.f. test for each
+covariate and a joint ``GLOBAL`` test on the last row; a *small* ``p``-value is
+evidence *against* proportional hazards. We fit the tires model
 with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazards.cox_ph.CoxPH_.fit_from_df>` so the report carries the covariate names:
 
 .. jupyter-execute::
@@ -916,9 +917,7 @@ with :meth:`CoxPH.fit_from_df <surpyval.univariate.regression.proportional_hazar
                               c_col='Censoring')
 
     ph = model.check_ph()
-    print('global p-value:', round(ph['global']['p_value'], 3))
-    for row in ph['per_covariate']:
-        print(f"  {row['covariate']:24s} p = {row['p_value']:.3f}")
+    ph.round(3)
 
 Here every ``p``-value is large, so there is no evidence against proportional
 hazards — the Cox coefficients can be read as constant hazard ratios. (With 11
@@ -930,8 +929,7 @@ including under Efron ties.
     :hide-code:
     :hide-output:
 
-    assert ph['global']['p_value'] > 0.4
-    assert all(r['p_value'] > 0.4 for r in ph['per_covariate'])
+    assert (ph['p'] > 0.4).all()
     assert (tires['Censoring'] == 0).sum() == 11
 
 To see what a violation looks like, simulate a covariate whose effect
@@ -955,7 +953,7 @@ the effect falling over time:
     m_rev = CoxPH.fit_from_df(rev, x_col='x', Z_cols='z', c_col='c')
     print('averaged beta :', m_rev.beta.round(3))
     for transform in ['km', 'rank', 'identity', 'log']:
-        p = m_rev.check_ph(transform=transform)['global']['p_value']
+        p = m_rev.check_ph(transform=transform).loc['GLOBAL', 'p']
         print(f'check_ph(transform={transform!r:10s}) p = {p:.1e}')
 
     scaled = m_rev.compute_residuals('scaled_schoenfeld')[:, 0]
@@ -981,7 +979,7 @@ stratification (below), a time-varying covariate, or a different family.
     _late = scaled[event_times >= 0.5].mean()
     assert _early > m_rev.beta[0] > _late, (_early, _late)
     for _tr in ['km', 'rank', 'identity', 'log']:
-        assert m_rev.check_ph(transform=_tr)['global']['p_value'] < 1e-10
+        assert m_rev.check_ph(transform=_tr).loc['GLOBAL', 'p'] < 1e-10
 
 The residuals underlying the test (and several others) are available directly
 through
@@ -1358,7 +1356,7 @@ increasing, constant, or decreasing hazard rates.
 
 Notice the coefficients are close to the Cox model's, each within 10% of it —
 this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
-the order ``model.parameter_names()`` gives: the distribution's own parameters
+the order ``model.parameter_names`` gives: the distribution's own parameters
 first, then one ``beta_j`` per covariate column.
 
 .. jupyter-execute::
@@ -1396,7 +1394,7 @@ is excluded from the covariance (its standard error is zero):
 .. jupyter-execute::
 
     fixed_shape = WeibullPH.fit(x=x, Z=Z, c=c, fixed={'beta': 15})
-    print(fixed_shape.parameter_names())
+    print(fixed_shape.parameter_names)
     print(fixed_shape.params.round(3))
     print(fixed_shape.standard_errors().round(3))
 
@@ -1773,7 +1771,7 @@ errors are available directly, and are computed once:
     ) ** (1 / 2.0)
     m_cb = WeibullPH.fit(x=x_cb, Z=Z_cb, c=np.zeros(300, dtype=int))
 
-    print(m_cb.parameter_names())
+    print(m_cb.parameter_names)
     print(m_cb.standard_errors())
 
 ``param_cb`` gives a Wald confidence bound on a single parameter, computed on a
@@ -1948,7 +1946,7 @@ varies with stress via the Arrhenius relationship. This is the key assumption of
 ALT: the failure mechanism does not change with stress, only the rate. The
 report shows ``alpha`` as ``L(Z)``, not as a value: the life parameter
 (``model_arr.life_parameter``) is replaced by the life model at each stress, so
-it is not estimated. Its slot in ``params`` (named by ``model_arr.param_names``)
+it is not estimated. Its slot in ``params`` (named by ``model_arr.parameter_names``)
 holds a placeholder 1 that carries no information: it is listed in
 ``model_arr.fixed``, is not counted as a parameter in the AIC, and ``param_cb``
 refuses it. The Arrhenius parameter ``a`` is :math:`E_a / k_B`, so the fit
@@ -1966,7 +1964,7 @@ estimates the activation energy directly:
     assert c_al[stress == 358.].sum() > 10          # most of the coolest
     assert 'alpha' in model_arr.fixed and model_arr.params[0] == 1
     assert model_arr.life_parameter == 'alpha'
-    assert model_arr.param_names == ['alpha', 'beta', 'a', 'b']
+    assert model_arr.parameter_names == ['alpha', 'beta', 'a', 'b']
     assert 'alpha: L(Z) of the' in repr(model_arr)
     assert np.isclose(model_arr.aic(), 2 * 3 + 2 * model_arr.neg_ll())
     assert round(model_arr.params[2] * k, 2) == 0.67
@@ -2065,7 +2063,7 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
     model_2s = AcceleratedLife(Weibull, PowerExponential).fit(
         x_2s, Z=np.column_stack([temp, volts]))
-    for name, value in zip(model_2s.param_names, model_2s.params):
+    for name, value in zip(model_2s.parameter_names, model_2s.params):
         if name != model_2s.life_parameter:   # alpha is given by the life model
             print(f'{name:5s} = {value:.4g}')
     print('activation energy (eV): %.3f' % (model_2s.params[3] * k))
@@ -2080,7 +2078,7 @@ could tell their effects apart.
     :hide-code:
     :hide-output:
 
-    _names = model_2s.parameter_names()
+    _names = model_2s.parameter_names
     _p = dict(zip(_names, model_2s.params))
     assert round(_p['a'] * k, 2) == 0.67 and round(_p['n'], 2) == -1.44, _p
 
@@ -2159,6 +2157,9 @@ hazards (``PH``), additive hazards (``AH``) and proportional odds (``PO``)
 families fit start-stop data with the same ``fit_tvc`` / ``fit_tvc_timeline`` (and ``_from_df``) methods and
 the same ``i`` / ``xl`` / ``xr`` / ``c`` convention as Cox. (Keyword arguments
 such as ``fixed=`` and ``init=`` are passed through to the ordinary ``fit``.)
+As for Cox, the ``_from_df`` methods take the covariates as ``Z_cols`` or as a
+``formula=``, which codes categorical columns; the model keeps the formula's
+encoding, so it predicts from a DataFrame with the same design.
 Fitting the truncated likelihood takes a few seconds for these 2,000 subjects,
 noticeably longer than Cox:
 
@@ -2727,7 +2728,7 @@ The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
 errors of every parameter as a dictionary keyed by name. Every estimate is
-also in one vector, ``model.params``, in the order of ``model.param_names``:
+also in one vector, ``model.params``, in the order of ``model.parameter_names``:
 the baseline's parameters, the coefficients, then ``theta``.
 
 .. jupyter-execute::
@@ -2998,24 +2999,42 @@ Concordance
 Harrell's concordance index is the fraction of comparable pairs of subjects
 that a risk score ranks in the right order (the one that failed first has the
 higher score), with 0.5 for chance and 1 for perfect; the pair and tie rules
-are on the :doc:`regression analysis` page. surpyval's implementation is
-``surpyval.utils.score.score(x, c, scores)``, where the scores are
-*mortality-like* — higher means expected to fail earlier. For a proportional
-hazards model the linear predictor :math:`\beta'Z` is exactly such a score:
+are on the :doc:`regression analysis` page. Every regression model has a
+``concordance`` method: with no arguments it scores the data the model was
+fitted to, and given ``x``, ``c`` and ``Z`` it scores those, such as a test
+set. For any other score there is
+:func:`surpyval.metrics.concordance_index(x, c, risk) <surpyval.metrics.concordance.concordance_index>`,
+where the scores are *mortality-like* — higher means expected to fail
+earlier. For a proportional hazards model the linear predictor
+:math:`\beta'Z` is exactly such a score, and it is the one ``CoxPH`` uses:
 
 .. jupyter-execute::
 
-    from surpyval.utils.score import score
+    from surpyval.metrics import concordance_index
 
-    print('C, Cox on the test set  : %.3f' % score(x_te, c_te, Z_te @ cox.beta))
-    print('C, a random score       : %.3f' % score(
+    print('C, Cox on the training set: %.3f' % cox.concordance())
+    print('C, Cox on the test set    : %.3f' % cox.concordance(x_te, c_te, Z_te))
+    print('C, a random score         : %.3f' % concordance_index(
         x_te, c_te, np.random.default_rng(0).normal(size=len(x_te))))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert cox.concordance(x_te, c_te, Z_te) == concordance_index(
+        x_te, c_te, Z_te @ cox.beta)
 
 For proportional odds, where a higher linear predictor means a *longer* life,
 negate it first; for any model, the predicted failure probability
-:math:`1 - S(t \mid Z)` at a fixed time is also a valid risk score. Concordance only
-measures ranking; pair it with the Brier score, which also checks that the
-predicted probabilities are right.
+:math:`1 - S(t \mid Z)` at a fixed time is also a valid risk score. The
+``concordance`` method makes that choice for each family (the linear
+predictor for Cox, the frailty models and the Lin-Ying additive model; the
+cumulative hazard at the median time scored for the parametric families,
+which ranks exactly as the linear predictor with its sign; minus the linear
+predictor for Buckley-James). The pairs are counted in
+:math:`O(n \log n)`, so 50,000 subjects take a fraction of a second.
+Concordance only measures ranking; pair it with the Brier score, which also
+checks that the predicted probabilities are right.
 
 Survival trees and random survival forests (beta)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -3106,13 +3125,12 @@ is compared with a Cox model on the same metrics:
     cox_t = CoxPH.fit(x=xt_tr, Z=Zt_tr, c=ct_tr)
     grid = np.array([3.0, 6.0, 9.0])
     scores = {}
-    for name, m, risk in [('forest', rsf, None),
-                          ('Cox', cox_t, Zt_te @ cox_t.beta)]:
+    for name, m in [('forest', rsf), ('Cox', cox_t)]:
         S_m = survival_probability(m, Zt_te, grid)
         ibs_m = integrated_brier_score(xt_te, ct_te, S_m, grid,
                                        x_train=xt_tr, c_train=ct_tr)
-        C = rsf.score(xt_te, Zt_te, ct_te) if risk is None else \
-            score(xt_te, ct_te, risk)
+        C = rsf.score(xt_te, Zt_te, ct_te) if m is rsf else \
+            m.concordance(xt_te, ct_te, Zt_te)
         scores[name] = ibs_m, C
         print(f'{name:6s}  IBS = {ibs_m:.3f}   C = {C:.3f}')
 

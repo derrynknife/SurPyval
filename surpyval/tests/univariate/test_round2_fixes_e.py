@@ -241,7 +241,7 @@ class TestNonParametricScalars:
 
 def test_concordance_discordant_tied_pair_scores_zero():
     # 276 (unit cases in tests/utils/test_score.py; pinned here too).
-    from surpyval.utils.score import score
+    from surpyval.metrics import concordance_index as score
 
     assert score([5.0, 5.0], [0, 1], [1.0, 2.0]) == 0.0
     assert score([5.0, 5.0], [0, 1], [2.0, 1.0]) == 1.0

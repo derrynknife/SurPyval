@@ -111,9 +111,9 @@ def test_residuals_respect_left_truncation():
 def test_ph_test_does_not_reject_true_ph():
     x, Z, c = _ph_data(seed=7)
     ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph()
-    assert ph["global"]["df"] == Z.shape[1]
-    assert ph["global"]["p_value"] > 0.05
-    assert len(ph["per_covariate"]) == Z.shape[1]
+    assert ph.loc["GLOBAL", "df"] == Z.shape[1]
+    assert ph.loc["GLOBAL", "p"] > 0.05
+    assert len(ph) == Z.shape[1] + 1
 
 
 def test_ph_test_detects_violation():
@@ -129,7 +129,7 @@ def test_ph_test_detects_violation():
     )
     c = np.zeros(n)
     ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph()
-    assert ph["global"]["p_value"] < 0.01
+    assert ph.loc["GLOBAL", "p"] < 0.01
 
 
 def test_ph_test_is_calibrated_under_null():
@@ -138,7 +138,7 @@ def test_ph_test_is_calibrated_under_null():
     # small, which would indicate a mis-scaled statistic).
     def one(seed):
         x, Z, c = _ph_data(seed=1000 + seed, n=150, censor=0.2)
-        return sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph()["global"]["p_value"]
+        return sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph().loc["GLOBAL", "p"]
 
     pvals = np.array([one(s) for s in range(80)])
     assert 0.0 <= pvals.min() and pvals.max() <= 1.0
@@ -150,8 +150,8 @@ def test_ph_test_is_calibrated_under_null():
 def test_ph_test_transforms_run(transform):
     x, Z, c = _ph_data(seed=9)
     ph = sp.CoxPH.fit(x=x, Z=Z, c=c).check_ph(transform=transform)
-    assert ph["transform"] == transform
-    assert np.isfinite(ph["global"]["statistic"])
+    assert ph.attrs["transform"] == transform
+    assert np.isfinite(ph.loc["GLOBAL", "statistic"])
 
 
 # -- guards ------------------------------------------------------------------
@@ -185,8 +185,7 @@ def test_per_covariate_names_from_dataframe():
     )
     m = sp.CoxPH.fit_from_df(df, x_col="time", Z_cols=["temp", "volt"])
     ph = m.check_ph()
-    names = [e.get("covariate") for e in ph["per_covariate"]]
-    assert names == ["temp", "volt"]
+    assert list(ph.index) == ["temp", "volt", "GLOBAL"]
 
 
 def _ph_test_dataset():
@@ -211,9 +210,37 @@ def test_check_ph_matches_lifelines_convention():
     x, Z, c = _ph_test_dataset()
     model = sp.CoxPH.fit(x=x, Z=Z, c=c)
     res = model.check_ph(transform="km")
-    stats = [e["statistic"] for e in res["per_covariate"]]
+    stats = res["statistic"].iloc[:2].tolist()
     assert stats[0] == pytest.approx(0.178375, abs=2e-4)
     assert stats[1] == pytest.approx(0.182189, abs=2e-4)
-    pvals = [e["p_value"] for e in res["per_covariate"]]
+    pvals = res["p"].iloc[:2].tolist()
     assert pvals[0] == pytest.approx(0.672773, abs=2e-4)
     assert pvals[1] == pytest.approx(0.669498, abs=2e-4)
+
+
+def test_check_ph_is_a_table_like_summary():
+    # #514: check_ph returned a nested dict while summary() is a table;
+    # it is now R's cox.zph table: a row per covariate and a GLOBAL row,
+    # with the statistic, its degrees of freedom and the p-value. The
+    # dict is still what the diagnostics function returns.
+    import pandas as pd
+
+    from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+        check_ph,
+    )
+
+    x, Z, c = _ph_test_dataset()
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c)
+    table = model.check_ph()
+    assert isinstance(table, pd.DataFrame)
+    assert list(table.columns) == ["statistic", "df", "p"]
+    assert list(table.index) == ["beta_0", "beta_1", "GLOBAL"]
+    assert table.index.name == "covariate"
+    assert table["df"].tolist() == [1, 1, 2]
+    assert table.attrs["transform"] == "km"
+    res = check_ph(model)
+    assert table.loc["GLOBAL", "statistic"] == res["global"]["statistic"]
+    assert table.loc["GLOBAL", "p"] == res["global"]["p_value"]
+    assert table["p"].iloc[:2].tolist() == [
+        e["p_value"] for e in res["per_covariate"]
+    ]

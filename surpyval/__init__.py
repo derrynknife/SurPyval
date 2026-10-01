@@ -8,6 +8,14 @@ from surpyval.distribution import (
     NonParametricDistribution,
     ParametricDistribution,
 )
+from surpyval.metrics import (  # noqa: E402,F401
+    auc_td,
+    brier_score,
+    concordance_index,
+    integrated_brier_score,
+    survival_probability,
+)
+from surpyval.univariate.competing_risks import gray_test  # noqa: E402,F401
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -72,28 +80,24 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
-from surpyval.univariate.competing_risks import gray_test  # noqa: E402,F401
-from surpyval.metrics import (  # noqa: E402,F401
-    auc_td,
-    brier_score,
-    integrated_brier_score,
-    survival_probability,
-)
 
 from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,
 )
 
-# The univariate regression models (CoxPH, WeibullPH, the accelerated
-# life models, etc.) are importable directly from `surpyval`. Everything
-# else (competing risks, recurrent events, pre-stable models) is
-# imported from its package. Competing risks lives under each paradigm
-# it applies to: `surpyval.univariate.competing_risks` and
-# `surpyval.recurrent.competing_risks`; recurrent events live in
-# `surpyval.recurrent`. Pre-stable models are tiered by maturity:
-# `surpyval.beta` (functionally complete, interface not yet stable --
-# the survival tree and random survival forest in `surpyval.beta.ml`)
-# and `surpyval.alpha` (exploratory).
+# The models are importable directly from `surpyval`: the univariate
+# regression models (CoxPH, WeibullPH, the accelerated life models, etc.),
+# the recurrent-event models (CrowAMSAA, ARA, ...), the competing-risks
+# models of both paradigms, and the degradation models. They also stay in
+# their packages, which is where the helper functions and result types
+# live (`surpyval.recurrent.laplace`, `TrendTestResult`, ...) and the
+# generically named copulas (`surpyval.multivariate.Gaussian`, `Frank`,
+# ...). Competing risks lives under each paradigm it applies to:
+# `surpyval.univariate.competing_risks` and
+# `surpyval.recurrent.competing_risks`. Pre-stable models are tiered by
+# maturity: `surpyval.beta` (functionally complete, interface not yet
+# stable -- the survival tree and random survival forest in
+# `surpyval.beta.ml`) and `surpyval.alpha` (exploratory).
 from surpyval.univariate.regression import *  # isort: skip # noqa: F401,F403,E501
 
 from surpyval.utils.surpyval_data import SurpyvalData  # isort: skip
@@ -104,53 +108,47 @@ from surpyval.utils.recurrent_utils import handle_xicn  # isort: skip
 # model's `to_json` file / `to_dict` dictionary.
 from surpyval.serialisation import from_dict, from_json  # isort: skip
 
+# The recurrent-event, competing-risks and degradation models (see above).
+from surpyval.univariate.competing_risks import (  # isort: skip # noqa: E402
+    CompetingRisks,
+    CompetingRisksProportionalHazards,
+    FineGray,
+    ParametricCompetingRisks,
+)
+from surpyval.recurrent import (  # isort: skip # noqa: E402
+    ARA,
+    ARI,
+    CauseSpecificMCF,
+    CauseSpecificNHPP,
+    CoxLewis,
+    CrowAMSAA,
+    Duane,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
+    HPP,
+    NonParametricCounting,
+    ProportionalIntensityHPP,
+    ProportionalIntensityNHPP,
+)
+from surpyval.degradation import (  # isort: skip # noqa: E402
+    DegradationAnalysis,
+    DestructiveDegradation,
+    GammaProcess,
+    WienerProcess,
+)
+
 NUM = np.float64
 TINIEST = np.finfo(np.float64).tiny
 EPS = np.sqrt(np.finfo(NUM).eps)
 
 from typing import TYPE_CHECKING, Any  # isort: skip # noqa: E402
 
-# Models that live in a subpackage, not at the top level: asking for one
-# here (``surpyval.CrowAMSAA``) says where it is, rather than only that
+# Names that live only in a subpackage: asking for one here
+# (``surpyval.laplace``) says where it is, rather than only that
 # it is missing (#485). The subpackages are not imported to find out.
 _ELSEWHERE = {
     **dict.fromkeys(
-        [
-            "ARA",
-            "ARI",
-            "CauseSpecificMCF",
-            "CauseSpecificNHPP",
-            "CoxLewis",
-            "CrowAMSAA",
-            "Duane",
-            "GeneralizedOneRenewal",
-            "GeneralizedRenewal",
-            "HPP",
-            "NonParametricCounting",
-            "ProportionalIntensityHPP",
-            "ProportionalIntensityNHPP",
-            "laplace",
-            "mil_hdbk_189c",
-        ],
-        "surpyval.recurrent",
-    ),
-    **dict.fromkeys(
-        [
-            "CompetingRisks",
-            "CompetingRisksProportionalHazards",
-            "FineGray",
-            "ParametricCompetingRisks",
-        ],
-        "surpyval.univariate.competing_risks",
-    ),
-    **dict.fromkeys(
-        [
-            "DegradationAnalysis",
-            "DestructiveDegradation",
-            "GammaProcess",
-            "WienerProcess",
-        ],
-        "surpyval.degradation",
+        ["TrendTestResult", "laplace", "mil_hdbk_189c"], "surpyval.recurrent"
     ),
     **dict.fromkeys(
         ["Clayton", "Copula", "Frank", "Gaussian", "Independence"],

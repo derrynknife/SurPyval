@@ -7,12 +7,15 @@ Cox's ``fit_tvc`` with one interval per subject -- gives the same
 predictions from the same data and the default options of each.
 """
 
+import importlib
 from dataclasses import replace
 
 import numpy as np
 import pytest
 
 from surpyval.tests.conformance.registry import (
+    CASES,
+    NO_DF_PATH,
     cases_for,
     fitted,
     predictions,
@@ -49,3 +52,31 @@ def test_fit_paths_agree(case, path):
             atol=case.rtol * 1e-2,
             err_msg=key,
         )
+
+
+def _fitters():
+    names = sorted({name for case in CASES for name in case.fitters})
+    out = []
+    for name in names:
+        module, _, attr = name.rpartition(".")
+        obj = getattr(importlib.import_module(module), attr)
+        if hasattr(obj, "fit"):
+            out.append(pytest.param(obj, id=name))
+    return out
+
+
+@pytest.mark.parametrize("fitter", _fitters())
+def test_every_fitter_reads_a_data_frame(fitter):
+    # Principle 14 (#511): every public fitter with a fit has the
+    # DataFrame entry point too.
+    assert callable(getattr(fitter, "fit_from_df", None))
+
+
+@pytest.mark.parametrize("case", CASES, ids=[c.name for c in CASES])
+def test_every_case_has_a_data_frame_path(case):
+    # ... and test_fit_paths_agree compares it with fit, for every model
+    # fitted from data (#511).
+    if case.name in NO_DF_PATH:
+        assert "fit_from_df" not in case.paths
+        return
+    assert "fit_from_df" in case.paths

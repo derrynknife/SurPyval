@@ -8,6 +8,7 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
@@ -15,7 +16,7 @@ from .proportional_intensity import ProportionalIntensityModel
 
 
 @singleton_fitter
-class ProportionalIntensityHPP:
+class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -324,7 +325,7 @@ class ProportionalIntensityHPP:
         out = ProportionalIntensityModel()
         out.data = data
 
-        out.param_names = ["lambda"]
+        out._rate_names = ["lambda"]
         out.bounds = ((0, None),)
         out.support = (-np.inf, np.inf)
 

@@ -16,8 +16,6 @@ from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.utils import _round_vals
 
-CB_COLOUR = "#e94c54"
-
 
 def adjust_heuristic(
     c: npt.NDArray, t: npt.NDArray | None, heuristic: str
@@ -67,15 +65,17 @@ def probability_plot_data(
     is called with the model x values to compute confidence bounds on
     the CDF.
 
-    The plotted points (``x_``, ``F``) are the failures only: the times
-    at which the plotting-position estimator records a failure (``d >
-    0``). A suspension (a right-censored unit) changes the plotting
-    positions of the failures after it, but is not itself a point on the
-    plot: drawn at the ``F`` of the failure before it, as it used to be,
-    it looked like one more failure (#478). This is the convention of
-    Abernethy's *New Weibull Handbook* and of Weibull++. The suspension
-    times are returned separately, as ``x_censored``, for a plot that
-    wants to mark them.
+    ``x_`` and ``F`` are every row of the plotting-position estimator
+    (with a finite ``x``), and ``failed`` is a boolean mask over them,
+    True where the estimator records a failure (``d > 0``). Only those
+    rows are points on the plot: a suspension (a right-censored unit)
+    changes the plotting positions of the failures after it, but has no
+    position of its own -- its row carries the ``F`` of the failure
+    before it, where drawn it looked like one more failure (#478). This
+    is the convention of Abernethy's *New Weibull Handbook* and of
+    Weibull++. The Turnbull rows where the estimate puts no mass are not
+    failures either. ``x_censored`` holds the suspension times, for a
+    plot that wants to mark them.
     """
     x_, r, d, F = plotting_positions(
         x=x,
@@ -85,10 +85,9 @@ def probability_plot_data(
         heuristic=heuristic,
     )
 
-    mask = np.isfinite(x_) & (d > 0)
+    mask = np.isfinite(x_)
     x_ = x_[mask] - gamma
-    r = r[mask]
-    d = d[mask]
+    failed = d[mask] > 0
     F = F[mask]
 
     x_arr = np.asarray(x, dtype=float)
@@ -113,7 +112,9 @@ def probability_plot_data(
     # Adjust the plotting points due to truncation
     F = Ftl + F * (Ftr - Ftl)
 
-    return _axes_data(dist, ff, x_, F, gamma, params, cb_func, x_censored)
+    out = _axes_data(dist, ff, x_, F, gamma, params, cb_func, x_censored)
+    out["failed"] = failed
+    return out
 
 
 def curve_plot_data(
@@ -143,6 +144,7 @@ def curve_plot_data(
     # The quantiles only placed the axes; nothing was observed.
     out["x_"] = np.array([])
     out["F"] = np.array([])
+    out["failed"] = np.array([], dtype=bool)
     return out
 
 
@@ -156,12 +158,12 @@ def _axes_data(
     cb_func: Callable[..., Any] | None,
     x_censored: npt.NDArray | None = None,
 ) -> Any:
-    """The axes, ticks and model curve of a probability plot through the
-    points ``(x_, F)``, with the suspension times ``x_censored``."""
+    """The axes, ticks and model curve of a probability plot of the rows
+    ``(x_, F)``, with the suspension times ``x_censored``."""
     if x_censored is None:
         x_censored = np.array([])
-    # The time axis spans every time, suspensions included, as it did
-    # when they were plotted.
+    # The time axis spans every time, suspensions included, although only
+    # the failures are drawn as points.
     x_axis = np.concatenate([x_, x_censored])
 
     # x-axis
@@ -197,8 +199,9 @@ def _axes_data(
 
     cdf = ff(x_model + gamma)
 
-    # The probability axis spans the points, or with no failure to plot
-    # (a zero-failure fit) the fitted curve.
+    # The probability axis spans the points (a suspension's row repeats
+    # the F of a failure, or is 0 before the first), or with no failure
+    # to plot (a zero-failure fit) the fitted curve.
     inside = F[(F > 0) & (F < 1)]
     if inside.size == 0:
         inside = cdf[(cdf > 0) & (cdf < 1)]
@@ -254,6 +257,24 @@ def _axes_data(
     }
 
 
+def _spread(ticks: list, x_lim: list, log: bool) -> list:
+    """The ticks, dropping any closer than a fourteenth of the axis to the
+    one before, so that the merged ticks of two plots do not overlap."""
+    if log:
+        ticks = [t for t in ticks if t > 0]
+        pos, ends = np.log10(ticks), np.log10(np.maximum(x_lim, 1e-300))
+    else:
+        pos, ends = np.asarray(ticks, dtype=float), np.asarray(x_lim)
+    gap = (ends[1] - ends[0]) / 14
+    kept: list = []
+    last = -np.inf
+    for t, p in zip(ticks, pos):
+        if p - last >= gap:
+            kept.append(t)
+            last = p
+    return kept
+
+
 def draw_probability_plot(
     ax: Any,
     d: Any,
@@ -262,27 +283,55 @@ def draw_probability_plot(
     title: str,
     plot_bounds: Any = False,
     show_censored: bool = False,
+    color: Any = None,
+    label: "str | None" = None,
+    **line_kwargs: Any,
 ) -> Any:
     """
     Draw the probability plot described by the ``probability_plot_data``
-    dictionary ``d`` onto the matplotlib axes ``ax``. With
-    ``show_censored``, each suspension time is marked by a tick on the
-    time axis (they have no plotting position of their own).
+    dictionary ``d`` onto the matplotlib axes ``ax``. The points are the
+    rows ``d["failed"]`` selects, the failures; with ``show_censored``,
+    each suspension time is marked by a tick on the time axis (they have
+    no plotting position of their own).
+
+    The points, the fitted line and its bounds are drawn in one colour,
+    ``color``, or by default the next colour of the axes' colour cycle, so
+    that several models plotted on one axes can be told apart (#510).
+    ``label`` and any other keyword arguments go to the fitted line (a
+    ``matplotlib.lines.Line2D``); the bounds are dashed. The x label is
+    "Time" unless the axes already have one, and on axes that already hold
+    a plot the limits and time ticks are widened to cover both.
     """
     from matplotlib.ticker import FixedLocator
 
+    y_lim = [max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)]
+    x_lim = [d["x_scale_min"], d["x_scale_max"]]
+    x_ticks = dict(zip(d["x_ticks"], d["x_ticks_labels"]))
+    x_minor = list(d.get("x_minor_ticks", []))
+    if ax.has_data():
+        # Drawing over an earlier plot: keep its range and ticks in view.
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        x_lim = [min(x_lim[0], x0), max(x_lim[1], x1)]
+        y_lim = [min(y_lim[0], y0), max(y_lim[1], y1)]
+        previous = zip(ax.get_xticks(), ax.get_xticklabels())
+        x_ticks = {t: lab.get_text() for t, lab in previous} | x_ticks
+        x_minor = sorted(set(x_minor) | set(ax.get_xticks(minor=True)))
+    ticks = sorted(x_ticks)
+    if ax.has_data():
+        ticks = _spread(ticks, x_lim, d["x_scale"] == "log")
+
     # Set limits and scale
-    ax.set_ylim([max(d["y_scale_min"], 1e-4), min(d["y_scale_max"], 0.9999)])
+    ax.set_ylim(y_lim)
     ax.set_xscale(d["x_scale"])
     ax.set_yscale("function", functions=(y_transform, inv_y_transform))
     ax.set_yticks(d["y_ticks"])
     ax.set_yticklabels(d["y_ticks_labels"])
     ax.yaxis.set_minor_locator(FixedLocator(np.linspace(0, 1, 51)))
-    ax.set_xticks(d["x_ticks"])
-    ax.set_xticklabels(d["x_ticks_labels"])
+    ax.set_xticks(ticks)
+    ax.set_xticklabels([x_ticks[t] for t in ticks])
 
     if d["x_scale"] == "log":
-        ax.set_xticks(d["x_minor_ticks"], minor=True)
+        ax.set_xticks(x_minor, minor=True)
         ax.set_xticklabels([], minor=True)
 
     ax.grid(visible=True, which="major", color="g", alpha=0.4, linestyle="-")
@@ -290,7 +339,18 @@ def draw_probability_plot(
 
     ax.set_title(title)
     ax.set_ylabel("CDF")
-    ax.scatter(d["x_"], d["F"])
+    if not ax.get_xlabel():
+        ax.set_xlabel("Time")
+
+    # The fitted line first, so that it takes the next colour of the
+    # axes' cycle; the points and bounds then share it.
+    (line,) = ax.plot(
+        d["x_model"], d["cdf"], color=color, label=label, **line_kwargs
+    )
+    color = line.get_color()
+
+    failed = d["failed"]
+    ax.scatter(d["x_"][failed], d["F"][failed], color=color)
 
     if show_censored and len(d.get("x_censored", [])) != 0:
         # A rug of suspension times along the bottom of the axes
@@ -300,15 +360,20 @@ def draw_probability_plot(
             linestyle="none",
             marker="|",
             markersize=12,
-            color="grey",
+            color=color,
             transform=ax.get_xaxis_transform(),
             clip_on=False,
-            label="suspensions",
+            label="_suspensions",
         )
 
-    ax.set_xlim([d["x_scale_min"], d["x_scale_max"]])
+    ax.set_xlim(x_lim)
     if plot_bounds and (len(d["cbs"]) != 0):
-        ax.plot(d["x_model"], d["cbs"], color=CB_COLOUR)
+        ax.plot(
+            d["x_model"],
+            d["cbs"],
+            color=color,
+            linestyle="--",
+            linewidth=0.8 * line.get_linewidth(),
+        )
 
-    ax.plot(d["x_model"], d["cdf"], color="k", linestyle="--")
     return ax

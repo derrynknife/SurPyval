@@ -889,7 +889,12 @@ worth knowing what they are, because they explain the warnings you may see.
    the optimiser said so), as it can for the four-parameter Beta, whose
    likelihood is unbounded as a shape below 1 meets an end point at the
    data's extreme. The optimiser that found the answer is recorded in
-   ``model.optimizer`` (``'closed-form'`` for the exact solutions above).
+   ``model.optimizer`` (``'closed-form'`` for the exact solutions above),
+   and what it reached in ``model.maximum``: ``'verified'`` (or exact),
+   ``'unverified'`` (the fit warned that it is not verifiably a maximum)
+   or ``'no finite maximum'`` (the fit warned "No finite maximum"); a fit
+   by another method, or a model built with ``from_params``, has
+   ``'not applicable'``. ``fit_best`` reads it to set such fits aside.
 
 Offsets (threshold parameters)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

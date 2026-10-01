@@ -28,10 +28,16 @@ started from a linearised fit.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import curve_fit
+
+from surpyval.utils.deprecation import (
+    RenamedAttribute,
+    renamed_class_attribute,
+)
 
 
 def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
@@ -48,19 +54,28 @@ class PathModel(ABC):
     A path model is a deterministic function of time with a small
     number of parameters that is fitted, per unit, to that unit's
     degradation measurements. Subclass this (implementing ``path``,
-    ``inv_path`` and the ``name``/``param_names`` attributes, and either
-    a ``_initial_guess(x, y)`` starting point for the default
+    ``inv_path`` and the ``name``/``parameter_names`` attributes, and
+    either a ``_initial_guess(x, y)`` starting point for the default
     least-squares ``fit`` or ``fit`` itself) to use a custom degradation
-    path with ``DegradationAnalysis``.
+    path with ``DegradationAnalysis``. A subclass that still names its
+    parameters ``param_names`` (before v0.22) works until v0.23, with a
+    ``DeprecationWarning``.
     """
 
     name: str
-    param_names: list[str]
+    parameter_names: list[str]
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
+    # sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
     #: True when ``path`` is linear in its parameters, i.e.
     #: ``path(x, *theta) == jacobian(x) @ theta`` with a Jacobian that
     #: does not depend on ``theta``. Enables exact conjugate posterior
     #: updates and REML population estimation.
     linear_in_parameters: bool = False
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        renamed_class_attribute(cls, "param_names", "parameter_names")
 
     @abstractmethod
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -124,7 +139,7 @@ class PathModel(ABC):
         Returns
         -------
         numpy array
-            The fitted parameters, in the order of ``param_names``.
+            The fitted parameters, in the order of ``parameter_names``.
 
         Examples
         --------
@@ -162,7 +177,7 @@ class LinearPath_(PathModel):
     """Linear degradation path: ``y = a + b * x``."""
 
     name = "Linear"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
     linear_in_parameters = True
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -190,7 +205,7 @@ class ExponentialPath_(PathModel):
     """Exponential degradation path: ``y = a * exp(b * x)``."""
 
     name = "Exponential"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
@@ -226,7 +241,7 @@ class PowerPath_(PathModel):
     """Power degradation path: ``y = a * x**b``."""
 
     name = "Power"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
@@ -267,7 +282,7 @@ class LogarithmicPath_(PathModel):
     """Logarithmic degradation path: ``y = a + b * ln(x)``."""
 
     name = "Logarithmic"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
     linear_in_parameters = True
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -302,7 +317,7 @@ class LloydLipowPath_(PathModel):
     """Lloyd-Lipow degradation path: ``y = a - b / x``."""
 
     name = "Lloyd-Lipow"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
     linear_in_parameters = True
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -338,7 +353,7 @@ class QuadraticPath_(PathModel):
     """Quadratic degradation path: ``y = a + b * x + c * x**2``."""
 
     name = "Quadratic"
-    param_names = ["a", "b", "c"]
+    parameter_names = ["a", "b", "c"]
     linear_in_parameters = True
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
@@ -396,7 +411,7 @@ class GompertzPath_(PathModel):
     """
 
     name = "Gompertz"
-    param_names = ["a", "b", "c"]
+    parameter_names = ["a", "b", "c"]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
@@ -445,7 +460,7 @@ class OffsetExponentialPath_(PathModel):
     """
 
     name = "Offset Exponential"
-    param_names = ["a", "b", "c"]
+    parameter_names = ["a", "b", "c"]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b, c = params
@@ -491,7 +506,7 @@ class MichaelisMentenPath_(PathModel):
     """
 
     name = "Michaelis-Menten"
-    param_names = ["a", "b"]
+    parameter_names = ["a", "b"]
 
     def path(self, x: npt.ArrayLike, *params: float) -> npt.NDArray:
         a, b = params
@@ -597,7 +612,7 @@ def get_path_model(path: "str | PathModel") -> PathModel:
     >>> import numpy as np
     >>> from surpyval.degradation import get_path_model
     >>> power = get_path_model("power")
-    >>> power.name, power.param_names
+    >>> power.name, power.parameter_names
     ('Power', ['a', 'b'])
     >>> power.path(np.array([1.0, 4.0]), 2.0, 0.5)
     array([2., 4.])

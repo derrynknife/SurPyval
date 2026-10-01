@@ -77,6 +77,13 @@ from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
 )
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils.dataframe import (
+    call_fit,
+    cause_column,
+    frame_column,
+    frame_columns,
+    require_frame,
+)
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
@@ -531,6 +538,83 @@ class FineGray_:
     class; its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
+
+    def fit_from_df(
+        self,
+        df: Any,
+        x_col: str,
+        e_col: str,
+        Z_cols: "str | list[str]",
+        c_col: "str | None" = None,
+        n_col: "str | None" = None,
+        **fit_options: Any,
+    ) -> FineGrayModel:
+        """
+        Fit the Fine-Gray model from the columns of a
+        :class:`pandas.DataFrame`.
+
+        The column names are passed in place of the arrays :meth:`fit`
+        takes, with the names of every competing-risks ``fit_from_df``
+        (``CompetingRisksProportionalHazards.fit_from_df`` too); ``event``
+        and ``center`` are passed to :meth:`fit` unchanged.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data.
+        x_col : str
+            Column of observed times.
+        e_col : str
+            Column of event-type (cause) labels. Use ``None`` (or a
+            blank/NaN cell) for a censored observation.
+        Z_cols : str or list of str
+            Covariate column(s), in the order of ``beta``.
+        c_col : str, optional
+            Column of censoring flags (0 observed, 1 right-censored).
+        n_col : str, optional
+            Column of counts per row.
+        **fit_options
+            ``event`` (the cause of interest) and ``center``, as for
+            :meth:`fit`.
+
+        Returns
+        -------
+        FineGrayModel
+            The model :meth:`fit` returns for the same arrays.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval.univariate.competing_risks import FineGray
+        >>> rng = np.random.default_rng(0)
+        >>> z = rng.binomial(1, 0.5, 200).astype(float)
+        >>> t_a = rng.exponential(1 / (0.1 * np.exp(0.7 * z)))
+        >>> t_b = rng.exponential(1 / 0.05, 200)
+        >>> df = pd.DataFrame({
+        ...     "time": np.minimum(t_a, t_b).round(3),
+        ...     "cause": np.where(t_a < t_b, "a", "b"),
+        ...     "z": z,
+        ... })
+        >>> model = FineGray.fit_from_df(
+        ...     df, x_col="time", e_col="cause", Z_cols="z", event="a"
+        ... )
+        >>> model.beta.round(3)
+        array([0.663])
+        """
+        df = require_frame(df)
+        arrays = {
+            "x": frame_column(df, x_col, "x_col", time=True),
+            "Z": frame_columns(df, Z_cols, "Z_cols").astype(float),
+            "e": cause_column(df, e_col),
+        }
+        if c_col is not None:
+            arrays["c"] = frame_column(df, c_col, "c_col")
+        if n_col is not None:
+            arrays["n"] = frame_column(df, n_col, "n_col")
+        names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
+        names |= {"c": "c_col", "n": "n_col"}
+        return call_fit(self, arrays, names, fit_options)
 
     def fit(
         self,

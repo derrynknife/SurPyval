@@ -25,6 +25,8 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
+from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     param_name,
     wald_undefined,
@@ -65,6 +67,20 @@ _LR_NOISE = 1e-6
 # is a failure; a target beyond a data-derived edge (the Uniform's) is not
 # reachable, and reads as this deviance, above any critical value.
 _LR_UNREACHABLE = 1e6
+
+# The values of ``Parametric.maximum``: whether the log-likelihood a model
+# reports is at a maximum (principles 12 and 13). The first three are what
+# a maximum-likelihood fit reached, and agree with its warnings: a fit
+# that warns "No finite maximum" is ``"no finite maximum"``, one that
+# warns its search did not reach a verified maximum is ``"unverified"``,
+# and a fit that warns neither is ``"verified"``.
+MAXIMUM_STATES = (
+    "verified",
+    "unverified",
+    "no finite maximum",
+    "not applicable",
+    "unknown",
+)
 
 
 class _LRCoord:
@@ -392,6 +408,33 @@ class Parametric(
     functions of a distribution for plotting, optimizations, monte carlo
     analysis and numeric integration.
 
+    Attributes
+    ----------
+    maximum : str
+        Whether the fit's answer is a maximum of the likelihood, and so
+        whether its log-likelihood, ``aic``, ``bic`` and ``aic_c`` and its
+        standard errors mean what they say (principles 12 and 13):
+
+        - ``"verified"``: a maximum-likelihood fit whose answer is
+          verifiably a maximum (a zero gradient and a positive-definite
+          Hessian), or exact (a closed form);
+        - ``"unverified"``: a maximum-likelihood fit whose search did not
+          reach a verified maximum; the parameters are the best point it
+          found, and the fit warned so;
+        - ``"no finite maximum"``: a maximum-likelihood fit to data on
+          which the likelihood has no finite maximum (a parameter runs
+          off to a limit of its range); the fit warned "No finite
+          maximum", and the parameters are where the search stopped;
+        - ``"not applicable"``: the parameters do not come from
+          maximising the likelihood -- a fit by ``how="MPS"``, ``"MSE"``,
+          ``"MPP"`` or ``"MOM"``, ``fit_from_ecdf``, or a model built
+          with ``from_params``;
+        - ``"unknown"``: a maximum-likelihood fit restored from a
+          dictionary saved before the attribute existed.
+
+        :func:`~surpyval.fit_best.fit_best` ranks a candidate by its criterion
+        only when this is ``"verified"``, unless nothing else fitted.
+
     Examples
     --------
     >>> import surpyval as surv
@@ -402,6 +445,8 @@ class Parametric(
     array([20.881,  2.931])
     >>> model.sf([10, 20]).round(4)
     array([0.8909, 0.4143])
+    >>> model.maximum
+    'verified'
 
     A model built from parameters has the same functions. With a limited
     failure population, one unit in ten never fails, so the mean life is
@@ -410,6 +455,8 @@ class Parametric(
     >>> lfp = surv.Weibull.from_params([20, 3], p=0.9)
     >>> float(lfp.sf(1000.0).round(4)), lfp.mean(), lfp.extras
     (0.1, inf, {'p': 0.9})
+    >>> lfp.maximum
+    'not applicable'
     """
 
     # Attributes populated after construction (by ``fit``, ``from_dict``
@@ -426,7 +473,11 @@ class Parametric(
     surv_data: "SurpyvalData"
     fitting_info: dict[str, Any]
     optimizer: str
+    maximum: str
     tl: Any
+    # The printout's "Data" line of a model restored without its
+    # data (#508)
+    _data_summary: "str | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -451,6 +502,9 @@ class Parametric(
         self.offset = offset
         self.lfp = lfp
         self.zi = zi
+        # Only a maximum-likelihood fit has a maximum to report; it sets
+        # the status it reached (see ``MAXIMUM_STATES``).
+        self.maximum = "unknown" if method == "MLE" else "not applicable"
 
         bounds = deepcopy(dist.bounds)
         param_map = dist.param_map.copy()
@@ -593,6 +647,19 @@ class Parametric(
 
         out.params = np.array(model_dict["params"])
 
+        # Dicts written before ``"maximum"`` existed keep the constructor's
+        # value: "unknown" for a maximum-likelihood fit, "not applicable"
+        # for any other.
+        if "maximum" in model_dict:
+            maximum = model_dict["maximum"]
+            if maximum not in MAXIMUM_STATES:
+                raise ValueError(
+                    f"The dictionary's 'maximum' is {maximum!r}; it must be "
+                    f"one of {list(MAXIMUM_STATES)}."
+                )
+            out.maximum = maximum
+        out._data_summary = model_dict.get("data_summary")
+
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
         dist._set_support(out, offset)
@@ -605,7 +672,9 @@ class Parametric(
 
         The dictionary holds the distribution name, the parameters, the
         offset / LFP / ZI settings, the names of any parameters fixed at fit
-        time (``"fixed"``) and, if available, the parameter covariance,
+        time (``"fixed"``), whether the fit reached a maximum of the
+        likelihood (``"maximum"``, see :class:`Parametric`) and, if
+        available, the parameter covariance,
         fitted negative log-likelihood and the sample size of BIC and
         AIC_c (``"ic_n"``), so a restored model can compute confidence
         bounds, ``aic``, ``bic`` and ``aic_c``. Restore it with
@@ -643,7 +712,7 @@ class Parametric(
             # from SurPyval's own distributions (see resolve_distribution).
             out["custom"] = True
         out["how"] = self.method
-        out["param_names"] = self.dist.param_names
+        out["param_names"] = self.dist.parameter_names
 
         data_dict: dict[str, Any] = {}
         if with_data:
@@ -681,6 +750,13 @@ class Parametric(
             out["cov_matrix"] = self.cov_matrix.tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
+        # Informational: a reader that predates it ignores it and restores
+        # the same model, so it needs no newer schema.
+        out["maximum"] = self.maximum
+        # The printout's "Data" line (#508), informational like "maximum",
+        # so a model restored without its data prints the same.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
@@ -693,6 +769,22 @@ class Parametric(
             out["fixed"] = [names[i] for i in fixed_idx]
 
         return stamp_schema(out)
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """
+        The names of ``params``, entry by entry: the distribution's
+        ``parameter_names``. An offset ``gamma``, limited-failure
+        proportion ``p`` and zero-inflation fraction ``f0`` are not in
+        ``params`` and not named here (see :attr:`extras`).
+
+        Examples
+        --------
+        >>> from surpyval import Weibull
+        >>> Weibull.from_params([100, 2]).parameter_names
+        ['alpha', 'beta']
+        """
+        return list(self.dist.parameter_names)
 
     @property
     def extras(self) -> dict[str, float]:
@@ -750,7 +842,7 @@ class Parametric(
         ----------
         params : array like
             The distribution's parameters, in the order of
-            ``model.dist.param_names``. They are checked as
+            ``model.dist.parameter_names``. They are checked as
             ``from_params`` checks them.
 
         Returns
@@ -777,7 +869,7 @@ class Parametric(
             param_string = "\n".join(
                 [
                     f"{name:>10}: {p}"
-                    for p, name in zip(self.params, self.dist.param_names)
+                    for p, name in zip(self.params, self.dist.parameter_names)
                 ]
             )
             out = (
@@ -786,6 +878,9 @@ class Parametric(
                 f"\nDistribution        : {self.dist.name}"
                 f"\nFitted by           : {self.method}"
             )
+            data_line = self._data_repr()
+            if data_line:
+                out += f"\nData                : {data_line}"
             if self.offset:
                 out += f"\nOffset (gamma)      : {self.gamma}"
 
@@ -801,6 +896,23 @@ class Parametric(
             return out
         else:
             return "Unable to fit values"
+
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and
+        truncation. Empty for a model built from parameters; a model
+        restored without its data gives the line it was saved with."""
+        data = getattr(self, "data", None)
+        if not isinstance(data, dict) or "c" not in data:
+            return getattr(self, "_data_summary", None) or ""
+        t = np.asarray(data.get("t", np.empty((0, 2))), dtype=float)
+        lower, upper = np.asarray(self.support, dtype=float)
+        x = data.get("x")
+        if t.size == 0:
+            return data_summary(data["c"], data.get("n"), x=x)
+        return data_summary(
+            data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper, x=x
+        )
 
     def param_cb(
         self,
@@ -983,7 +1095,7 @@ class Parametric(
                 "it is a threshold parameter whose likelihood is not "
                 "regular, so no standard error is estimated for it."
             )
-        valid = list(self.dist.param_names)
+        valid = list(self.dist.parameter_names)
         if self.lfp:
             valid.append(self.lfp_name)
         if self.zi:
@@ -1729,14 +1841,20 @@ class Parametric(
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
-    def cs(self, x: npt.ArrayLike, X: npt.ArrayLike) -> npt.NDArray:
+    @renamed_arguments(X="given")
+    def cs(self, x: npt.ArrayLike, given: npt.ArrayLike) -> npt.NDArray:
         r"""
 
         The conditional survival of the model; that is, the probability
-        that an item that has survived to ``X`` survives a further ``x``:
+        that an item that has survived to ``given`` survives a further ``x``:
 
         .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
+            R(x, given) = \frac{R(x + given)}{R(given)}
+
+        .. versionchanged:: 0.22.0
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
@@ -1744,7 +1862,7 @@ class Parametric(
         x : array like or scalar
             The further durations at which conditional survival is to be
             calculated.
-        X : array like or scalar
+        given : array like or scalar
             The value(s) at which it is known the item has survived
 
         Returns
@@ -1766,31 +1884,31 @@ class Parametric(
         The ratio is taken of the model's own :meth:`sf`, so a
         limited-failure proportion ``p``, a zero-inflation fraction ``f0``
         and an offset ``gamma`` all enter it: the never-failing units
-        still count among the survivors at ``X``, and survival to an
-        ``X`` before the offset is certain. Where :math:`R(X) = 0` the
+        still count among the survivors at ``given``, and survival to an
+        ``given`` before the offset is certain. Where :math:`R(given) = 0` the
         conditional survival is undefined and ``nan`` is returned.
         """
         x_arr = np.asarray(x, dtype=float)
-        X_arr = np.asarray(X, dtype=float)
-        Xg = X_arr - self.gamma
+        given_arr = np.asarray(given, dtype=float)
+        given_g = given_arr - self.gamma
         s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
         with np.errstate(all="ignore"):
-            # The ratio of the model's own sf. Handing the shifted X to
+            # The ratio of the model's own sf. Handing the shifted given to
             # ``dist.cs`` ignored p and f0 entirely (0.29 instead of 0.67
-            # for p = 0.7) and, for an X before the offset, evaluated the
+            # for p = 0.7) and, for a given before the offset, evaluated the
             # base sf at a negative time (1.0 or nan instead of 0.96).
             cs = np.asarray(
-                self.sf(x_arr + X_arr) / self.sf(X_arr), dtype=float
+                self.sf(x_arr + given_arr) / self.sf(given_arr), dtype=float
             )
             if (self.p == 1) and (self.f0 == 0):
                 # A plain model inside its support keeps the
                 # distribution's own form, which is exact where the ratio
                 # cancels in the far tail (the memoryless Exponential).
-                inside = np.broadcast_to(Xg >= s0, cs.shape)
+                inside = np.broadcast_to(given_g >= s0, cs.shape)
                 if inside.any():
-                    Xg_safe = np.where(Xg >= s0, Xg, s0)
+                    given_g_safe = np.where(given_g >= s0, given_g, s0)
                     own = np.asarray(
-                        self.dist.cs(x_arr, Xg_safe, *self.params),
+                        self.dist.cs(x_arr, given_g_safe, *self.params),
                         dtype=float,
                     )
                     cs = np.where(inside, own, cs)
@@ -3247,7 +3365,7 @@ class Parametric(
         sweep but 0.0652 queried alone (#421). ``None`` (the general
         search is used instead) where the interval cannot be found.
         """
-        name = self.dist.param_names[j]
+        name = self.dist.parameter_names[j]
         # A one-sided bound at alpha is an end of the two-sided region at
         # 2 alpha: the same chi-squared critical value.
         level = alpha_ci if bound == "two-sided" else 2.0 * alpha_ci
@@ -3608,10 +3726,13 @@ class Parametric(
 
         data : dict
             Returns dictionary containing the data needed to do a plot.
-            ``x_`` and ``F`` are the failures and their plotting
-            positions (suspensions are not plotted points; before v0.22
-            they were included, at the ``F`` of the failure before them),
-            and ``x_censored`` the suspension times.
+            ``x_`` and ``F`` are every row of the plotting positions,
+            suspensions included (a suspension's row carries the ``F`` of
+            the failure before it); ``failed`` is a boolean mask of the
+            same length, True where the row records a failure, and
+            ``x_censored`` holds the suspension times. :meth:`plot` draws
+            only the rows ``failed`` selects:
+            ``d["x_"][d["failed"]], d["F"][d["failed"]]``.
 
         Examples
         --------
@@ -3619,6 +3740,15 @@ class Parametric(
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> data = model.get_plot_data()
+
+        With suspensions, the rows to draw are the failures:
+
+        >>> model = Weibull.fit([10, 20, 30, 40, 50, 60], [0, 0, 0, 0, 1, 1])
+        >>> data = model.get_plot_data()
+        >>> data["x_"][data["failed"]]
+        array([10., 20., 30., 40.])
+        >>> data["x_censored"]
+        array([50., 60.])
         """
         self._require_data("get_plot_data()")
         cb_func: Callable[[Any], Any] | None
@@ -3658,15 +3788,20 @@ class Parametric(
         ax: "Axes | None" = None,
         show_censored: bool = False,
         method: str = "wald",
-    ) -> list:
+        color: Any = None,
+        label: "str | None" = None,
+        **kwargs: Any,
+    ) -> Axes:
         """
         A method to do a probability plot.
 
-        The points are the failures, at their plotting positions. A
-        suspension (right-censored unit) moves the plotting positions of
-        the failures after it but has no point of its own (Abernethy's
-        *New Weibull Handbook*, Weibull++); ``show_censored=True`` marks
-        each suspension time with a tick on the time axis.
+        The points are the failures, at their plotting positions (the
+        rows :meth:`get_plot_data` marks ``failed``). A suspension
+        (right-censored unit) moves the plotting positions of the
+        failures after it but has no point of its own (Abernethy's *New
+        Weibull Handbook*, Weibull++); ``show_censored=True`` marks each
+        suspension time with a tick on the time axis. The time axis spans
+        every time, suspensions included.
 
         A model without data (built with ``from_params``, or restored from
         a dict saved without its data) draws its CDF alone on the same
@@ -3704,11 +3839,25 @@ class Parametric(
             to ``"wald"``; ``"lr"``, the likelihood-ratio band, is slower
             but better in small samples, and always monotone.
 
+        color : matplotlib color, optional
+            The colour of the points, the fitted line and its bounds. By
+            default the next colour of the axes' colour cycle, so that
+            models plotted on the same axes differ.
+
+        label : str, optional
+            The legend label of the fitted line.
+
+        **kwargs
+            Other keyword arguments for the fitted line (a
+            ``matplotlib.lines.Line2D``: ``linestyle``, ``linewidth``, ...).
+
         Returns
         -------
 
         plot : matplotlib.axes.Axes
-            the axes the probability plot was drawn onto
+            the axes the probability plot was drawn onto. The x label is
+            "Time" unless the axes already have one; change it with
+            ``ax.set_xlabel``.
 
         Examples
         --------
@@ -3719,7 +3868,22 @@ class Parametric(
         >>> x = Weibull.random(100, 10, 3)
         >>> model = Weibull.fit(x)
         >>> model.plot()
-        <Axes: title={'center': 'Weibull Probability Plot'}, ylabel='CDF'>
+        <Axes: title={'center': 'Weibull Probability Plot'}, xlabel='Time',
+        ylabel='CDF'>
+
+        Two populations on one plot, each in its own colour, with a
+        legend:
+
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax = plt.subplots()
+        >>> north = Weibull.fit(Weibull.random(30, 10, 3))
+        >>> south = Weibull.fit(Weibull.random(30, 20, 2))
+        >>> ax = north.plot(ax=ax, label="North")
+        >>> ax = south.plot(ax=ax, label="South")
+        >>> legend = ax.legend()
+        >>> [text.get_text() for text in legend.get_texts()]
+        ['North', 'South']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -3760,4 +3924,7 @@ class Parametric(
             title=f"{self.dist.name} Probability Plot",
             plot_bounds=plot_bounds,
             show_censored=show_censored,
+            color=color,
+            label=label,
+            **kwargs,
         )

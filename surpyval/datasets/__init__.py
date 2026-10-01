@@ -181,13 +181,15 @@ def load_heart_transplants() -> pd.DataFrame:
 
 def load_lung() -> pd.DataFrame:
     """
-
     Data on the survival of patients with advanced lung cancer from [6]_.
 
-    ``time`` is the survival time in days. ``status`` is coded as
-    SurPyval's censoring flag -- 0 for a death, 1 for a patient censored
-    (alive at last follow-up) -- so use it directly as ``c``. There are
-    228 patients, 165 of whom died. The other columns are the covariates
+    ``time`` is the survival time in days. ``status`` is 1 for a death
+    at ``time`` and 0 for a patient censored (alive at last follow-up),
+    as in lifelines' ``load_lung`` (R's ``survival::lung`` codes it 2 and
+    1). SurPyval's censoring flag is its complement, so pass
+    ``c = 1 - status``. (Before v0.22 this copy stored ``status`` already
+    inverted to the censoring flag.) There are 228 patients, 165 of whom
+    died. The other columns are the covariates
     of the original data (``inst``, ``age``, ``sex`` with 1 male and 2
     female, ``ph.ecog``, ``ph.karno``, ``pat.karno``, ``meal.cal`` and
     ``wt.loss``, several with missing values).
@@ -197,7 +199,7 @@ def load_lung() -> pd.DataFrame:
     >>> import surpyval
     >>> from surpyval.datasets import load_lung
     >>> df = load_lung()
-    >>> km = surpyval.KaplanMeier.fit(df["time"], c=df["status"])
+    >>> km = surpyval.KaplanMeier.fit(df["time"], c=1 - df["status"])
     >>> km.sf([365]).round(3)
     array([0.409])
 

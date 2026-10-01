@@ -31,7 +31,7 @@ MARGINS = [Weibull.from_params([10.0, 2.0]), LogNormal.from_params([2.5, 0.5])]
 class AliMikhailHaq(Copula):
     name = "Ali-Mikhail-Haq"
     bounds = ((-1, 1),)
-    param_names = ("theta",)
+    parameter_names = ["theta"]
 
     def cdf(self, u, v, theta):
         return u * v / (1 - theta * (1 - u) * (1 - v))
@@ -77,7 +77,7 @@ def test_base_init_theta(bounds, expected):
 
     fam = Fam()
     fam.bounds = bounds
-    fam.param_names = tuple("p%d" % i for i in range(len(bounds)))
+    fam.parameter_names = ["p%d" % i for i in range(len(bounds))]
     np.testing.assert_array_equal(fam._init_theta([]), expected)
 
 
@@ -140,7 +140,7 @@ def test_complete_data_loglik_is_sum_log_pdf(clayton_data):
         expected = np.sum(np.log(m.pdf(clayton_data)))
         assert m.log_likelihood == pytest.approx(expected, rel=1e-8)
         assert m.neg_ll() == pytest.approx(-expected, rel=1e-8)
-        k = len(fam.param_names) + 4
+        k = len(fam.parameter_names) + 4
         assert m.k == k
         assert m.aic() == pytest.approx(2 * k - 2 * expected)
         assert m.bic() == pytest.approx(
