@@ -35,7 +35,6 @@ from surpyval.univariate.regression import tvc_path
 from surpyval.univariate.regression.accelerated_life import (
     AcceleratedLife,
     Linear,
-    Power,
 )
 
 NOT_CALLABLE: Any = 3.0

@@ -26,6 +26,11 @@ panel's midpoint, and adds the exact frozen-covariate increment
 zero, so a flat path gives the step schedule's sum: the two are one
 method.
 
+``cb_tvc`` bounds the survival along a path by the delta method, on the
+quadrature mesh adapted at the fitted parameters and then held fixed, and
+``mean_tvc`` integrates it to infinity (:func:`integrate_to_infinity`), the
+outer nodes being more query times of the same pass (#172 phase 2).
+
 The path is an *external* covariate, known in advance (a planned load, a
 test profile, ambient conditions): the survival along it is a probability
 only when the path does not depend on the item's own failure process.
@@ -844,6 +849,6 @@ def integrate_to_infinity(
         with np.errstate(invalid="ignore", over="ignore"):
             if f_end * end <= rtol * abs(total):
                 return total, None
-        if end >= scale * 2.0**_TAIL_DOUBLINGS or not np.isfinite(total):
+        if end >= scale * 2.0 ** _TAIL_DOUBLINGS or not np.isfinite(total):
             return total, (origin + end, f_end)
         edges = stretch(end, end * 2.0 ** np.arange(0, _TAIL_STEP + 1))

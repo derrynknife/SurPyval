@@ -255,9 +255,7 @@ def test_periodic_shortcut_for_a_time_scaling_family():
         ph.Hf_tvc(t, saw)
     # given: from the conditioning age, with the shortcut on both ends.
     S = model.sf_tvc(t[2:], saw, given=t[1])
-    np.testing.assert_allclose(
-        S, np.exp(-(H[2:] - H[1])), rtol=1e-10, atol=0
-    )
+    np.testing.assert_allclose(S, np.exp(-(H[2:] - H[1])), rtol=1e-10, atol=0)
 
 
 def test_cb_below_the_support_is_the_estimate():

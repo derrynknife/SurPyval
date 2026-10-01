@@ -1038,7 +1038,9 @@ class ParametricRegressionModel(
                     self.model.phi(Zc, *phi_params), dtype=float
                 )
             else:
-                rate = np.asarray(self.model._phi(Zc, *phi_params), dtype=float)
+                rate = np.asarray(
+                    self.model._phi(Zc, *phi_params), dtype=float
+                )
         rate = rate.ravel()
         if rate.size == 1 and Zc.shape[0] != 1:
             rate = np.full(Zc.shape[0], float(rate[0]))
@@ -1117,8 +1119,13 @@ class ParametricRegressionModel(
         accumulates an *accelerated age*
         :math:`\psi(x) = \sum_{\text{seg}} e^{\beta' z}\,(b - a)` and the
         cumulative hazard is the baseline evaluated there,
-        :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
-        segment reduces exactly to ``Hf(x, Z)``.
+        :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. An accelerated life model
+        whose life parameter scales time (Weibull ``alpha``, the Exponential
+        and Gamma rates, LogNormal's ``exp(mu)``) does the same with the rate
+        :math:`1 / L(z)` and the distribution at unit life, Nelson's
+        cumulative exposure; one whose life parameter is a location (Normal,
+        Gumbel, Logistic) raises ``NotImplementedError``. Either way a
+        single constant segment reduces exactly to ``Hf(x, Z)``.
 
         Along a
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`, a
@@ -1377,9 +1384,7 @@ class ParametricRegressionModel(
             from_0 = age(ex)
             if aft:
                 # The accelerated age, through the baseline once.
-                H_full = np.where(
-                    xe > 0, self._aft_H0(from_0, theta), H_x_low
-                )
+                H_full = np.where(xe > 0, self._aft_H0(from_0, theta), H_x_low)
                 H = H_full
                 if given is not None:
                     if g_pos:
@@ -1439,7 +1444,9 @@ class ParametricRegressionModel(
                 dtype=float,
             ).ravel()
 
-    def _path_panel_terms(self, path: Any, theta: "tuple | None" = None) -> Any:
+    def _path_panel_terms(
+        self, path: Any, theta: "tuple | None" = None
+    ) -> Any:
         """
         The family's ``panel_terms(a, b)`` for
         :func:`~.tvc_path.integrate_panels`: on each panel ``[a, b]`` the
@@ -1603,7 +1610,11 @@ class ParametricRegressionModel(
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath` the
         same quantities are integrated by quadrature, to a relative error of
         about ``1e-10`` on ``H`` (see :meth:`Hf_tvc`). A constant path gives
-        ``sf(x, Z)``. Accelerated life models raise ``NotImplementedError``.
+        ``sf(x, Z)``. An accelerated life model follows cumulative exposure
+        where its life parameter scales time, and raises
+        ``NotImplementedError`` where it is a location (see :meth:`Hf_tvc`).
+        :meth:`cb_tvc` bounds this survival and :meth:`mean_tvc` integrates
+        it.
 
         Parameters
         ----------
@@ -1720,8 +1731,12 @@ class ParametricRegressionModel(
         driven to 0) leaves the survival levelling off above 0. A fraction
         of units then never fails and the mean is infinite: ``inf`` is
         returned, with a warning that gives the survival where the
-        integration stopped, as ``Parametric.mean()`` returns ``inf`` for a
-        limited-failure population.
+        integration stopped, as a univariate model's ``mean()`` returns
+        ``inf`` for a limited-failure population. An additive hazard can
+        also turn negative, and survival rise above 1 (#376): the mean is
+        then infinite as well, or undefined (``nan``, with a warning)
+        where the failure probability before time 0 grows without
+        limit.
 
         Parameters
         ----------
@@ -1763,7 +1778,13 @@ class ParametricRegressionModel(
 
         >>> ramp = CovariatePath.from_points([0, 50], [0.0, 1.0])
         >>> round(model.mean_tvc(ramp), 2)
+        58.92
+        >>> round(model.mean_tvc(StepSchedule.constant([0.0])), 2)
+        101.32
+        >>> round(model.mean_tvc(StepSchedule.constant([1.0])), 2)
+        51.42
         >>> round(model.mean_tvc(ramp, given=50), 2)
+        24.07
         """
         from .tvc_path import (
             _TAIL_KNOTS,
@@ -1837,8 +1858,10 @@ class ParametricRegressionModel(
             from .tvc_path import warn_missed_target
 
             rel = max(w[0] for w in worst)
-            limit = "panels" if any(w[1] == "panels" for w in worst) else (
-                "rounds"
+            limit = (
+                "panels"
+                if any(w[1] == "panels" for w in worst)
+                else ("rounds")
             )
             warn_missed_target(
                 seen["missed"],
@@ -1855,8 +1878,8 @@ class ParametricRegressionModel(
                 "still {:.4g} at t = {:.4g}, so a fraction of units never "
                 "fails along it (the hazard dies away, or an additive "
                 "hazard turns negative) and the mean {}life is infinite; "
-                "inf is returned, as Parametric.mean() does for a "
-                "limited-failure population. sf_tvc gives the survival "
+                "inf is returned, as a univariate model's mean() does for "
+                "a limited-failure population. sf_tvc gives the survival "
                 "along the path.".format(
                     sf_end, at, "residual " if g is not None else ""
                 ),
@@ -2608,7 +2631,7 @@ class ParametricRegressionModel(
         # hazard's beta'Z x is not 0 at a negative x, and gave a band
         # around a survival of about 0.9 where sf is 1.
         lower = self.distribution.support[0]
-        below = x < lower
+        below = np.asarray(x) < lower
         x_in = np.where(below, lower + 1.0 if np.isfinite(lower) else 0.0, x)
 
         def H_of(p: npt.NDArray) -> npt.NDArray:
@@ -2624,7 +2647,7 @@ class ParametricRegressionModel(
             sf_of,
             params,
             cov,
-            x.shape,
+            np.shape(x),
             on,
             alpha_ci,
             bound,
@@ -2810,10 +2833,10 @@ class ParametricRegressionModel(
         if bound not in ("two-sided", "lower", "upper"):
             raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
         self._check_tvc_evaluable()
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        shape = x.shape + ((2,) if bound == "two-sided" else ())
+        xq: npt.NDArray = np.atleast_1d(np.asarray(x, dtype=float))
+        shape = xq.shape + ((2,) if bound == "two-sided" else ())
         g = None if given is None else float(given)
-        if (g is not None and np.isnan(g)) or x.size == 0:
+        if (g is not None and np.isnan(g)) or xq.size == 0:
             # A missing conditioning age: nothing is known (as sf_tvc).
             self._to_schedule(Z, xl)
             return np.full(shape, np.nan)
@@ -2827,21 +2850,21 @@ class ParametricRegressionModel(
         def H_of(p: npt.NDArray) -> npt.NDArray:
             theta = (p, center)
             if on_path or g is None:
-                H = self._hf_tvc(x, Z, xl, g, theta, frozen)[0]
+                H = self._hf_tvc(xq, Z, xl, g, theta, frozen)[0]
             else:
                 H = (
-                    self._hf_tvc(x, Z, xl, None, theta)[0]
+                    self._hf_tvc(xq, Z, xl, None, theta)[0]
                     - self._hf_tvc(g, Z, xl, None, theta)[0]
                 )
             if g is not None:
                 # Survival to x <= g is certain (as sf_tvc, #523).
-                H = np.where(x <= g, 0.0, H)
+                H = np.where(xq <= g, 0.0, H)
             return H
 
         # The estimate first: it adapts the mesh, and gives sf_tvc's
         # warnings (a falling additive hazard, a missed target).
         H, falls, accuracy = self._hf_tvc(
-            x, Z, xl, g if on_path else None, (params, center), frozen
+            xq, Z, xl, g if on_path else None, (params, center), frozen
         )
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
         return self._logit_sf_bounds(
@@ -2849,7 +2872,7 @@ class ParametricRegressionModel(
             lambda p: np.exp(-H_of(p)),
             params,
             cov,
-            x.shape,
+            xq.shape,
             on,
             alpha_ci,
             bound,
