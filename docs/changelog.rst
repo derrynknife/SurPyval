@@ -179,6 +179,34 @@ bands change (#477).
   periodic path, so 10 million cycles take about 1 ms.
 - **Fixed: an additive hazards model's cb below 0.** It gave a band where
   ``sf`` is 1 (WeibullAH ``cb(-1, z)`` was [0.81, 0.97]); it is now [1, 1].
+- **Survival forests grow 8-90 times faster (#190, #518).** The Weibull
+  split ran a Nelder-Mead fit for every candidate child (2 trees at n = 300:
+  21 s). On observed and right-censored data each child's maximum is now
+  found directly, every candidate of a feature at once: the exponential
+  rate and Weibull scale in closed form, the Weibull shape from its
+  profile likelihood (0.23 s). The log-rank split sorts each feature once
+  and scores every threshold from cumulative counts (10 trees at n = 1000:
+  2.2 s, was 16.5 s). The chosen splits are unchanged, so seeded forests
+  predict exactly as before. Data with left or interval censoring or
+  truncation still runs an optimiser for each candidate.
+- **Changed: trees and forests know their covariate names (#192).**
+  ``fit_from_df`` takes a ``formula`` as well as ``Z_cols``, and ``fit``
+  takes a ``DataFrame`` ``Z``; the fitted model keeps ``feature_names`` and
+  serialises them, ``print(tree)`` shows the splits by name (``temp <=
+  42``) and each leaf's model, and predictions read a ``DataFrame`` by name.
+  ``RandomSurvivalForest.feature_importances`` is a ``pandas.Series`` keyed
+  by feature name (it was an array).
+- **min_split_gain for the likelihood trees (#189).** A ``"weibull"`` or
+  ``"exponential"`` node splits only if its best cut raises the maximised
+  log-likelihood by more than ``min_split_gain``: a number, ``"aic"`` (the
+  kind's parameters, 1 or 2) or ``"bic"``. The default, 0, keeps the old
+  behaviour, which suits a forest; ``"aic"`` is the setting for a single
+  tree (on no-effect data, 3.4 leaves on average instead of 32).
+- **Split housekeeping (#193).** ``log_rank_split`` called directly on left-
+  or interval-censored or right-truncated data raised ``IndexError`` or
+  returned a wrong split; it now raises ``ValueError``. ``min_leaf_failures``
+  counts failures weighted by ``n`` in every split, so a row with count n
+  and n identical rows give the same tree.
 - **Non-parametric trees on truncated data (#188).** ``SurvivalTree`` and
   ``RandomSurvivalForest`` with ``kind="non-parametric"`` refused
   right-truncated data, and truncated data with left or interval
