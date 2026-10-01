@@ -5,12 +5,13 @@ Three studies:
 - **Pointwise** ``cb`` of Kaplan-Meier, Nelson-Aalen and Fleming-Harrington
   (default log(-log) bounds) at the true quartiles of a censored Weibull
   sample, n = 100.
-- **Simultaneous** ``band`` (Hall-Wellner and equal precision, on the
-  default arcsine-square-root scale): the whole true survival curve, over
-  the range the band covers, must lie inside it. On the log(-log) scale,
-  the default until v0.22, the equal precision band covered about 0.89, at
-  n = 100 and at n = 400, almost all of its misses at the first few event
-  times (#390).
+- **Simultaneous** ``band`` (Hall-Wellner and equal precision, with their
+  defaults: the arcsine-square-root scale, and for the equal precision
+  band the times with 0.1 <= a <= 0.9): the whole true survival curve,
+  over the range the band covers, must lie inside it. Over the first to
+  the last event and on the log(-log) scale, the defaults until v0.22, the
+  equal precision band covered about 0.89, at n = 100 and at n = 400,
+  most of its misses at the first few event times (#390).
 - **Band critical values**, checked against an independent Monte Carlo of
   the limiting Brownian bridge. This is the check that sees a critical
   value 1.5% low (coverage 94.4% for 95%), which no finite-sample coverage

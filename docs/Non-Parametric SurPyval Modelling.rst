@@ -527,11 +527,14 @@ to the pointwise one here, a sign that the asymptotic formula is adequate for th
 and ``bound_type``: the scale the band is applied on, ``'arcsine'`` (the arcsine-square-root of
 the survival function, the default), ``'exp'`` (its log(-log), as ``cb()``) or ``'normal'``. Its
 critical value, that of the limiting Brownian bridge over the range the band covers, is computed
-numerically rather than simulated, so results are accurate and reproducible. Both bands cover the
-first to the last event. Over the first few events the estimate rests on a handful of failures,
-and only on the arcsine scale does the band hold its level there: in simulation the Nair band
-covers about 95% for a nominal 95% on the arcsine scale, but 89% on the log(-log) scale and 83%
-untransformed, almost all the misses at the first events. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+numerically rather than simulated, so results are accurate and reproducible. ``x_range=(t_L, t_U)``
+sets the times a band covers; it is ``nan`` outside them. The Hall-Wellner band covers the first to
+the last event by default. The Nair band's boundary grows without limit towards the ends of the
+data, where the estimate rests on a handful of failures or of items at risk, so by default it covers
+the times where :math:`a = N\hat{\sigma}^2/(1 + N\hat{\sigma}^2)` is between 0.1 and 0.9. In
+simulation it covers 94% to 96% for a nominal 95% so; over the first to the last event it covered
+93% on the arcsine scale, 87% to 89% on the log(-log) scale and 83% untransformed, most misses at
+the first events. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
 one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
 outside the range of the data unless the model has a support (``set_support``).
 

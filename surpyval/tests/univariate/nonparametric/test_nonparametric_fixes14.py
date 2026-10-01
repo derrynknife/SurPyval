@@ -234,37 +234,99 @@ def test_band_refuses_alpha_ci_outside_the_open_unit_interval(alpha_ci):
 # -- #390: the equal precision band starts at the first event ---------------
 
 
-def test_equal_precision_band_starts_at_the_first_event():
-    # Kept from the first event, like the Hall-Wellner band; on the default
-    # arcsine-square-root scale it holds its level there too (#390).
-    rng = np.random.default_rng(3)
-    t = sp.Weibull.from_params([10, 1.5]).qf(rng.uniform(size=60))
-    model = sp.KaplanMeier.fit(t)
-    first = np.flatnonzero(model.d)[0]
-    for method in ("nair", "hall-wellner"):
-        for bound_type in ("arcsine", "exp", "normal"):
-            band = model.band(method=method, bound_type=bound_type)
-            assert np.isfinite(band[first]).all()
-
-
-def test_equal_precision_band_covers_the_first_event_on_the_arcsine_scale():
-    # #390: on the log(-log) scale, the default until v0.22, the band
-    # pulled the cumulative hazard at the first event down by a factor
-    # e^-c (c ~ 3.2, so to 4% of 1/n), and a first failure early enough
-    # for its step to be far from normal escaped it: here the true sf at
-    # the first event, 0.99974, is above the band's upper end, 0.99920.
-    # In simulation (Weibull, n = 40 to 400, 30% censored) that band
-    # covered 0.89 for 0.95, the arcsine band 0.945 to 0.954.
+def _censored_weibull(seed, n):
     true = sp.Weibull.from_params([10.0, 1.5])
-    rng = np.random.default_rng(21)
-    t = true.qf(rng.uniform(size=50))
-    cens = rng.uniform(0, 25, 50)
-    model = sp.KaplanMeier.fit(np.minimum(t, cens), c=(cens < t).astype(int))
+    rng = np.random.default_rng(seed)
+    t = true.qf(rng.uniform(size=n))
+    cens = rng.uniform(0, 25, n)
+    x, c = np.minimum(t, cens), (cens < t).astype(int)
+    return true, sp.KaplanMeier.fit(x, c=c)
+
+
+def test_equal_precision_band_covers_a_from_a_tenth_to_nine_tenths():
+    # #390: the equal precision band's standardized boundary is unbounded
+    # as a = N sigma^2 / (1 + N sigma^2) nears 0 or 1, and there the
+    # estimate rests on a few failures or a few at risk; over the first to
+    # the last event it covered 0.87-0.89 for 0.95 (log(-log) scale) and
+    # 0.93 (arcsine). By default it now covers 0.1 <= a <= 0.9, NaN
+    # outside; the Hall-Wellner band still covers every event.
+    _, model = _censored_weibull(3, 60)
+    N = 60.0
+    a = N * model.greenwood / (1 + N * model.greenwood)
+    with np.errstate(all="ignore"):
+        valid = np.isfinite(a) & (a > 0) & (model.R > 0) & (model.R < 1)
+    inside = valid & (a >= 0.1) & (a <= 0.9)
+    assert inside.any() and (valid & ~inside).any()
+    for bound_type in ("arcsine", "exp", "normal"):
+        nair = model.band(method="nair", bound_type=bound_type)
+        assert np.isfinite(nair[inside]).all()
+        assert np.isnan(nair[~inside]).all()
+        hw = model.band(bound_type=bound_type)
+        assert np.isfinite(hw[valid]).all()
+    # Its critical value is that of the range it covers.
+    crit = NonParametric._band_critical_value(
+        a[inside].min(), a[inside].max(), 0.05, True
+    )
+    half = crit * np.sqrt(model.greenwood[inside])
+    R = model.R[inside]
+    np.testing.assert_allclose(
+        model.band(method="nair", bound_type="normal")[inside],
+        np.c_[R - half * R, R + half * R],
+        rtol=1e-12,
+    )
+
+
+def test_band_x_range_sets_the_times_it_covers():
+    # x_range = (t_L, t_U): the band over those times, its critical value
+    # from a at both ends, NaN outside; for the equal precision band it
+    # can reach the first event, as Klein and Moeschberger's t_L can.
+    _, model = _censored_weibull(3, 60)
+    first, last = model.x[0], model.x[-1]
+    t_l, t_u = np.quantile(model.x, [0.3, 0.6])
+    q = np.array([first, t_l, (t_l + t_u) / 2, t_u, last])
+    for method in ("hall-wellner", "nair"):
+        band = model.band(q, method=method, x_range=(t_l, t_u))
+        assert np.isnan(band[[0, 4]]).all()
+        assert np.isfinite(band[1:4]).all()
+        # A narrower range needs a smaller critical value.
+        wide = model.band(q, method=method, x_range=(first, last))
+        assert np.all(band[1:4, 0] > wide[1:4, 0])
+        assert np.isfinite(wide[0]).all()
+    for bad in [(5.0, 1.0), (1.0,), "ab", 3.0]:
+        with pytest.raises(ValueError, match="'x_range' must be"):
+            model.band(x_range=bad)
+    with pytest.raises(ValueError, match="no observations in x_range"):
+        model.band(x_range=(-5.0, -1.0))
+
+
+def test_equal_precision_band_with_no_a_in_range_says_so():
+    # One failure among 30: a = 1/30 at most, below the default range.
+    x = np.arange(1.0, 31.0)
+    c = np.ones(30, int)
+    c[0] = 0
+    model = sp.KaplanMeier.fit(x, c=c)
+    with pytest.raises(ValueError, match="x_range, or use the Hall-Wellner"):
+        model.band(method="nair")
+    assert np.isfinite(model.band(method="nair", x_range=(1, 30))[0]).all()
+
+
+def test_equal_precision_band_old_default_missed_the_first_event():
+    # #390: on the log(-log) scale over the first to the last event (the
+    # default until v0.22) the band pulled the cumulative hazard at the
+    # first event down by a factor e^-c (c ~ 3.2, to 4% of 1/n), and a
+    # first failure early enough for its step to be far from normal
+    # escaped it: here the true sf at the first event, 0.99974, is above
+    # the band's upper end, 0.99920. On the arcsine scale the band
+    # reaches 1 there; by default it does not claim the first events at
+    # all (a < 0.1).
+    true, model = _censored_weibull(21, 50)
     first = model.x[0]
-    old = model.band(first, method="nair", bound_type="exp")
+    full = (first, model.x[-1])
+    old = model.band(first, method="nair", bound_type="exp", x_range=full)
     assert true.sf(first) > old[1]
-    lower, upper = model.band(first, method="nair")
+    lower, upper = model.band(first, method="nair", x_range=full)
     assert lower <= true.sf(first) <= upper
+    assert np.isnan(model.band(first, method="nair")).all()
 
 
 @pytest.mark.parametrize("method", ["hall-wellner", "nair"])
