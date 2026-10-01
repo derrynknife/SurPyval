@@ -228,7 +228,9 @@ def test_a_beta_geometric_fit_in_its_geometric_limit_warns():
 
 def test_a_beta_geometric_fit_from_a_data_frame_warns_at_the_caller():
     df = pd.DataFrame(_CYCLES)
-    _, caught = _caught(sp.BetaGeometric.fit_from_df, df, x="x", c="c", n="n")
+    _, caught = _caught(
+        sp.BetaGeometric.fit_from_df, df, x_col="x", c_col="c", n_col="n"
+    )
     _one_no_maximum(caught, "use Geometric")
 
 

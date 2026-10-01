@@ -7,7 +7,8 @@ data, with scikit-survival as a second reference for the tie methods.
 
 Tolerances: both programs solve the score equations to convergence (R
 stops when the log-likelihood changes by less than 1e-9 relatively,
-SurPyval's root finder at ``tol=1e-10``), so the coefficients agree to
+SurPyval's Newton-Raphson when a step is below ``tol=1e-10`` standard
+errors), so the coefficients agree to
 about 1e-9 on these data; ``atol=1e-7`` leaves room for that and nothing
 else. The standard errors and the Breslow baseline are smooth functions of
 the coefficients and agree to the same order (``rtol=1e-6``).
