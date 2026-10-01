@@ -1056,9 +1056,7 @@ class RenewalModel(
             if k == 0 and self._edge_value() is not None:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore")
-                    cb = self.param_cb(
-                        self._restoration_param_name, alpha_ci
-                    )
+                    cb = self.param_cb(self._restoration_param_name, alpha_ci)
                 rows.append([value, np.nan, cb[0], cb[1]])
                 continue
             if not var > 0:
