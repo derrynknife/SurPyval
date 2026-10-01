@@ -128,11 +128,12 @@ def _offset_start(x: npt.ArrayLike) -> float:
     return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
 
 
-def _offset_search_units(
+def _search_units(
     init: npt.NDArray,
     bounds: "tuple[tuple[float | None, float | None], ...]",
+    fixed_idx: "list[int] | tuple[int, ...]" = (),
 ) -> list[float]:
-    """Per-parameter ``units`` for ``bounds_convert`` in an offset fit.
+    """Per-parameter ``units`` for ``bounds_convert``.
 
     A parameter with one bound is searched as the log of its distance
     from the bound below one unit, and linearly above it. With a unit of
@@ -140,7 +141,8 @@ def _offset_search_units(
     searched in depends on the data's units: a Weibull scale is searched
     as a log for data in thousandths and linearly for data in thousands.
     The search is then a different one at every scale. For most fits
-    both routes lead to the same optimum, but an offset fit has a ridge
+    both routes lead to the same optimum (to about 1e-6 of a quantile on
+    40 points), but an offset fit has a ridge
     along which the offset, scale and shape trade off, and there they do
     not: an ExpoWeibull MSE fit to data in ten-thousandths wandered for
     800 iterations and ended 13% of the data's spread from the fit to
@@ -155,14 +157,18 @@ def _offset_search_units(
     is the same whatever the data's units: a scale's start and its unit
     both scale with the data, a shape's are both unchanged. A parameter
     that starts on its bound (or at a non-finite value) keeps a unit of
-    1; the other kinds of bound ignore the unit.
+    1; the other kinds of bound ignore the unit, and so does a fixed
+    parameter (``fixed_idx``), which is not searched: in its own unit its
+    value went through the map and back as 1.9999999999999998 for a fixed
+    2.
 
-    Only offset fits use this, to leave every other fit's search exactly
-    as it was.
+    Offset fits used this first; every fit does now (#366), so that the
+    search is one search in any units (principle 6). That moved the fits
+    without an offset in their last digits only.
     """
     units = [1.0] * len(bounds)
     for i, (low, upp) in enumerate(bounds):
-        if (low is None) == (upp is None):
+        if (low is None) == (upp is None) or i in fixed_idx:
             continue
         if upp is None:
             assert low is not None
@@ -2727,11 +2733,13 @@ turnbull_estimator
                     full_init[model.param_map[name]] = value
                 init = full_init
 
-            # An offset fit searches every parameter with one bound in
-            # units of its own starting distance from that bound (see
-            # ``_offset_search_units``); any other fit in units of 1.
-            units = (
-                _offset_search_units(init, model.bounds) if offset else None
+            # Every parameter with one bound is searched in units of its
+            # own starting distance from that bound (see ``_search_units``;
+            # #366: fits without an offset used units of 1).
+            units = _search_units(
+                init,
+                model.bounds,
+                [model.param_map[name] for name in (fixed or {})],
             )
             transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
                 surv_data.x, model.bounds, fixed, model.param_map, units
