@@ -163,6 +163,19 @@ bands change (#477).
   data or sits at the edge of its range. The docstrings say what ``q`` and
   ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
   that data LR = 0.40, p = 0.53).
+- **Fine-Gray fits in linear time (#517).** ``FineGray.fit`` (and
+  ``CompetingRisksProportionalHazards(model="Fine-Gray")``) built a dense
+  events-by-rows matrix of censoring weights and used it in every
+  likelihood, gradient and Hessian evaluation: 1.3 s and 476 MiB at 10,000
+  rows, and impossible at 100,000 (22 GB for the matrix alone). The risk
+  sets are now cumulative sums over the rows in time order, and the
+  censoring Kaplan-Meier (which the prediction metrics use too) is a
+  suffix sum, bit-identical. A fit takes 0.036 s at 10,000 rows and
+  0.63 s at 100,000, with memory linear in the rows (34 MiB). Results
+  agree to about 1e-14, except in a few percent of large fits where the
+  optimiser stops one iteration apart (coefficients within its
+  tolerance, up to 3.4e-6 relative); it now stops on "precision loss"
+  less often.
 - **CoxPH fits are 4-10 times faster at 100,000 rows (#516).** The
   information matrix was built as one p x p matrix per event time, with
   truncation terms computed even with no truncation, and the solver built
