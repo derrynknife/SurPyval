@@ -86,19 +86,25 @@ def censoring_survival(
     censored = np.asarray(censored, dtype=bool)
     if n is None:
         n = np.ones(x.size)
-    times = np.unique(x)
-    G = np.ones(times.size)
-    surv = 1.0
-    for i, t in enumerate(times):
-        cens_here = n[(x == t) & censored].sum()
-        if ties == "events_first":
-            at_risk = n[x > t].sum() + cens_here
-        else:
-            at_risk = n[x >= t].sum()
-        if at_risk > 0:
-            surv *= 1.0 - cens_here / at_risk
-        G[i] = surv
-    return times, G
+    # A nan time is at risk at no time (every comparison with it is false).
+    n = np.where(np.isnan(x), 0.0, np.asarray(n, dtype=float))
+    # The counts at each distinct time, and those at or after it as a
+    # suffix sum: O(N log N), where a sum over the rows at each time was
+    # O(N x times), a minute at 1e5 rows (#517). Exact for integer counts,
+    # so G is unchanged.
+    times, inv = np.unique(x, return_inverse=True)
+    cens_here = np.bincount(inv, np.where(censored, n, 0.0), times.size)
+    at_or_after = np.cumsum(np.bincount(inv, n, times.size)[::-1])[::-1]
+    if ties == "events_first":
+        after = np.append(at_or_after[1:], 0.0)
+        at_risk = after + cens_here
+    else:
+        at_risk = at_or_after
+    # A time nobody is at risk at leaves G as it is.
+    factor = 1.0 - np.divide(
+        cens_here, at_risk, out=np.zeros(times.size), where=at_risk > 0
+    )
+    return times, np.cumprod(factor)
 
 
 def step_at(

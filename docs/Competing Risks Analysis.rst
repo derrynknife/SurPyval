@@ -654,7 +654,12 @@ differentiation), reports standard errors from the inverse of the Hessian of
 :math:`\ell` at the optimum, and estimates the baseline by the Breslow-type
 increments :math:`\Delta\hat{\Lambda}_{k,0}^*(t) = d_k(t) / \sum_j w_j(t)\,
 n_j\, e^{Z_j\hat{\gamma}}`. The fitted CIF is a step function, flat before
-the first and after the last cause-:math:`k` event time. Those standard errors
+the first and after the last cause-:math:`k` event time. In time order the
+weighted risk set at :math:`t` is a suffix of the rows (:math:`x_j \geq t`)
+plus :math:`\hat{G}(t^-)` times a prefix of the competing failures, each
+weighted :math:`1/\hat{G}(x_j^-)`, so every sum is a cumulative sum and a fit
+takes time and memory linear in the number of rows (after a sort): about a
+second at :math:`10^5` rows and three covariates. Those standard errors
 are the model-based (inverse information) ones; the robust sandwich variance
 that Fine and Gray derived to account for the estimated weights is not
 implemented, so treat the reported ``se`` and ``p_values`` as approximate.
