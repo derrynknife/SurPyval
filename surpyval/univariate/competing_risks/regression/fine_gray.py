@@ -142,12 +142,21 @@ def _fit_cause(
     Z_sorted = Z[sets.order]
     n_sorted = n[sets.order]
     nZ_event = n_event @ Z[is_event]
+    # The optimiser minimises the negative log-likelihood less its value at
+    # beta = 0, sum d log(denom0): near the maximum its steps change the
+    # likelihood (5e4 at 1e4 rows) by less than its last digit, and BFGS
+    # stopped on "precision loss" (10 of 450 fits at 3e3 rows before #517;
+    # 2 with this and the blocked sums of _cumsum, 17 with neither).
+    denom0 = _risk_set_sums(n_sorted, sets)
+    offset = float(sets.d @ np.log(denom0))
 
     def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> Any:
         def neg_ll(beta: Any) -> Any:
             weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
             denom = _risk_set_sums(weighted_exp, sets)
-            ll = anp.dot(nZk_event, beta) - anp.sum(sets.d * anp.log(denom))
+            ll = anp.dot(nZk_event, beta) - anp.sum(
+                sets.d * anp.log(denom / denom0)
+            )
             return -ll
 
         return neg_ll
@@ -181,6 +190,8 @@ def _fit_cause(
         res = OptimizeResult(
             x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
         )
+    # The negative log-likelihood itself.
+    res.fun = float(res.fun) + offset
     beta = res.x
     # A covariate that separates the events of interest from the rest (a
     # level with none of them) drives its coefficient to infinity; BFGS
@@ -301,16 +312,46 @@ def _risk_set_sums(v: Any, sets: _RiskSets) -> Any:
     """
     shape = (-1,) + (1,) * (anp.ndim(v) - 1)
     # suffix[k] = sum of v over the rows k, k + 1, ... in time order
-    suffix = anp.cumsum(v[::-1], axis=0)[::-1]
+    suffix = _cumsum(v[::-1])[::-1]
     # prefix[k] = sum over the competing rows before row k of v / G(x-)
     prefix = anp.concatenate(
         [
             anp.zeros((1,) + anp.shape(v)[1:]),
-            anp.cumsum(sets.competing_over_G.reshape(shape) * v, axis=0),
+            _cumsum(sets.competing_over_G.reshape(shape) * v),
         ],
         axis=0,
     )
     return suffix[sets.start] + sets.G_t.reshape(shape) * prefix[sets.start]
+
+
+def _cumsum(v: Any) -> Any:
+    """
+    The cumulative sum of ``v`` along its first axis, in blocks of about
+    ``sqrt(N)`` rows: the running sum within each block plus the sum of
+    the blocks before it. Its rounding error grows as ``sqrt(N)`` rather
+    than ``N`` (``np.cumsum``'s), which keeps the risk-set sums as
+    accurate as the matrix product they replace (#517): with a plain
+    cumulative sum their relative error at 1e4 rows was 1.4e-15 (rms)
+    rather than the product's 1.4e-16, and the partial likelihood's
+    rounding noise 20 times the product's. Differentiable by autograd.
+    """
+    rows = anp.shape(v)[0]
+    rest = tuple(anp.shape(v)[1:])
+    size = max(1, int(np.ceil(np.sqrt(rows))))
+    blocks = -(-rows // size)
+    padded = anp.concatenate(
+        [v, anp.zeros((blocks * size - rows,) + rest)], axis=0
+    )
+    split = anp.reshape(padded, (blocks, size) + rest)
+    before = anp.concatenate(
+        [
+            anp.zeros((1,) + rest),
+            anp.cumsum(anp.sum(split, axis=1), axis=0)[:-1],
+        ],
+        axis=0,
+    )
+    out = anp.cumsum(split, axis=1) + anp.expand_dims(before, 1)
+    return anp.reshape(out, (blocks * size,) + rest)[:rows]
 
 
 def _information_at_zero(

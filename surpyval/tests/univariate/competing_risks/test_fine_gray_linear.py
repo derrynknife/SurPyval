@@ -276,7 +276,7 @@ def test_fit_matches_the_dense_weight_matrix(case, cause, center):
         keys, rtol = ["beta", "center", "baseline_cumhaz"], 1e-7
     for key in keys:
         _assert_close(new[key], old[key], rtol)
-    _assert_close(new["neg_ll"], old["neg_ll"])
+    _assert_close(new["neg_ll"], old["neg_ll"], rtol)
     # The predictions.
     t = np.quantile(args[0], [0.1, 0.5, 0.9, 1.0])
     z = args[1][:4] if args[1].shape[0] >= 4 else args[1][:1]
