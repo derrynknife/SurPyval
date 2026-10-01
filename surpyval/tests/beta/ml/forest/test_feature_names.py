@@ -173,10 +173,9 @@ def test_names_survive_serialisation():
     tree = _tree(df, kind="weibull")
     restored = surpyval.from_dict(json.loads(json.dumps(tree.to_dict())))
     assert restored.feature_names == ["temp", "load"]
-    assert restored.describe().splitlines()[1:] == [
-        line.rsplit(", ", 1)[0] if "units" in line else line
-        for line in tree.describe().splitlines()[1:]
-    ]
+    # The printout, leaf sizes included, survives too
+    assert restored.describe() == tree.describe()
+    assert "units" in restored.describe()
 
 
 def test_restored_array_tree_labels():

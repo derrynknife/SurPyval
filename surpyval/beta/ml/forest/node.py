@@ -270,9 +270,19 @@ class TerminalNode(Node):
             text = f"{model.dist.name}({params})"
         else:
             text = str(getattr(model, "model", type(model).__name__))
-        if self.data is not None:
-            text += f", {float(np.sum(self.data.n)):g} units"
+        units = self.units
+        if units is not None:
+            text += f", {units:g} units"
         return text
+
+    @property
+    def units(self) -> float | None:
+        """The number of units (``n``-weighted rows) that reached the leaf
+        when the tree was grown (kept by a restored tree; ``None`` for one
+        saved before it was stored)."""
+        if self.data is not None:
+            return float(np.sum(self.data.n))
+        return self.__dict__.get("_units")
 
     def apply_model_function(
         self,
@@ -298,7 +308,10 @@ class TerminalNode(Node):
             leaf: str | dict = "NeverOccurs"
         else:
             leaf = model.to_dict()
-        return {"node": "terminal", "kind": self.kind, "leaf": leaf}
+        out: dict = {"node": "terminal", "kind": self.kind, "leaf": leaf}
+        if self.units is not None:
+            out["units"] = self.units
+        return out
 
     @classmethod
     def from_dict(cls, node_dict: dict) -> "TerminalNode":
@@ -315,6 +328,7 @@ class TerminalNode(Node):
         # ``model`` is a cached_property; seed the instance ``__dict__`` slot
         # so the getter (which needs ``data``) never runs on a restored node.
         node.__dict__["model"] = model
+        node.__dict__["_units"] = node_dict.get("units")
         return node
 
 
