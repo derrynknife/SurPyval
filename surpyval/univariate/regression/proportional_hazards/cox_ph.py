@@ -157,9 +157,78 @@ def _efron_tie_terms(n_d: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     return idx, j / n_d[idx]
 
 
-def _per_time(idx: npt.NDArray, values: npt.NDArray, m: int) -> npt.NDArray:
-    """Sum the ragged per-death ``values`` to their ``m`` event times."""
-    return np.bincount(idx, weights=values, minlength=m)
+class _EfronTies:
+    """Efron's tie terms of a fit (:func:`_efron_tie_terms`), worked out
+    once: they depend on the deaths ``n_d`` only, not on ``beta``.
+
+    ``one`` marks the times with a single death term (``c = 0``), where
+    every Efron sum is its one term; ``tied`` those with more, and
+    ``t_idx`` / ``t_c`` are the tied times' terms alone, ``t_idx``
+    indexing ``tied``. The ragged sums then run over the tied deaths only,
+    nothing at all on continuous data, and take the same additions in the
+    same order as a sum over every death, so the results are unchanged to
+    the last bit (#516).
+    """
+
+    def __init__(self, n_d: npt.NDArray) -> None:
+        idx, c = _efron_tie_terms(n_d)
+        counts = np.bincount(idx, minlength=len(n_d))
+        self.one = np.flatnonzero(counts == 1)
+        self.tied = np.flatnonzero(counts > 1)
+        self.active = np.flatnonzero(counts >= 1)
+        in_tie = counts[idx] > 1
+        self.t_idx = np.searchsorted(self.tied, idx[in_tie])
+        self.t_c = c[in_tie]
+
+    def _sum(self, values: npt.NDArray) -> npt.NDArray:
+        """Sum the tied deaths' ``values`` to their times."""
+        return np.bincount(self.t_idx, weights=values, minlength=self.tied.size)
+
+    def log_denominator(self, R: npt.NDArray, D: npt.NDArray) -> npt.NDArray:
+        """Per event time, ``sum_j log(R - c D)``; see
+        :func:`efron_log_denominator`."""
+        out = np.zeros(len(R))
+        out[self.one] = np.log(R[self.one])
+        if self.tied.size:
+            Rt, Dt = R[self.tied], D[self.tied]
+            out[self.tied] = self._sum(
+                np.log(Rt[self.t_idx] - self.t_c * Dt[self.t_idx])
+            )
+        return out
+
+    def sums(self, R: npt.NDArray, D: npt.NDArray) -> tuple[npt.NDArray, ...]:
+        """At the tied times, ``sum u``, ``sum c u``, ``sum u^2``,
+        ``sum c u^2`` and ``sum c^2 u^2`` over the tied deaths, with
+        ``u = 1 / (R - c D)``: the scalars of the score
+        (:meth:`expected`) and the information (:func:`_cox_information`)."""
+        Rt, Dt = R[self.tied], D[self.tied]
+        c = self.t_c
+        u = 1.0 / (Rt[self.t_idx] - c * Dt[self.t_idx])
+        u2 = u**2
+        return (
+            self._sum(u),
+            self._sum(c * u),
+            self._sum(u2),
+            self._sum(c * u2),
+            self._sum(c**2 * u2),
+        )
+
+    def expected(
+        self,
+        R: npt.NDArray,
+        ZR: npt.NDArray,
+        ZD: npt.NDArray,
+        sums: tuple[npt.NDArray, ...],
+    ) -> npt.NDArray:
+        """Per event time, the expected covariate sum of the Efron score;
+        see :func:`efron_jac`. ``sums`` is :meth:`sums` of ``R`` and
+        ``D``."""
+        out = np.zeros(ZR.shape)
+        out[self.one] = ZR[self.one] / R[self.one, None]
+        if self.tied.size:
+            s_u, s_cu = sums[0][:, None], sums[1][:, None]
+            out[self.tied] = s_u * ZR[self.tied] - s_cu * ZD[self.tied]
+        return out
 
 
 def efron_log_denominator(
@@ -176,8 +245,7 @@ def efron_log_denominator(
     m = len(n_d)
     R = np.asarray(Ri).reshape(m)
     D = np.asarray(Di).reshape(m)
-    idx, c = _efron_tie_terms(n_d)
-    return _per_time(idx, np.log(R[idx] - c * D[idx]), m)
+    return _EfronTies(n_d).log_denominator(R, D)
 
 
 def efron_jac(
@@ -204,22 +272,9 @@ def efron_jac(
     m = len(n_d)
     R = np.asarray(Ri).reshape(m)
     D = np.asarray(Di).reshape(m)
-    ZR = np.asarray(ZRi)
-    ZD = np.asarray(ZDi)
-    out = np.zeros(ZR.shape)
-
-    idx, c = _efron_tie_terms(n_d)
-    counts = np.bincount(idx, minlength=m)
-    one = counts == 1
-    out[one] = ZR[one] / R[one, None]
-
-    tied = counts > 1
-    if tied.any():
-        u = 1.0 / (R[idx] - c * D[idx])
-        s_u = _per_time(idx, u, m)[tied, None]
-        s_cu = _per_time(idx, c * u, m)[tied, None]
-        out[tied] = s_u * ZR[tied] - s_cu * ZD[tied]
-    return out
+    ties = _EfronTies(n_d)
+    sums = ties.sums(R, D) if ties.tied.size else ()
+    return ties.expected(R, np.asarray(ZRi), np.asarray(ZDi), sums)
 
 
 class _RiskSetRows:
@@ -1111,15 +1166,10 @@ class CoxPH_:
         pos = np.searchsorted(x_tl, x_, side="left")
         rows = _RiskSetRows(x, x_, tl)
 
-        # Efron's tie terms depend on the deaths only: the event time and
-        # weight ``c = j / d`` of each tied death, the times with a death
-        # (at least one whole one; see ``_efron_tie_terms``) and those
-        # with more than one.
+        # Efron's tie terms depend on the deaths only.
         m = len(x_)
-        tie_idx, tie_c = _efron_tie_terms(n_d)
-        deaths = np.bincount(tie_idx, minlength=m)
-        active = np.flatnonzero(deaths >= 1)
-        tied = np.flatnonzero(deaths > 1)
+        ties = _EfronTies(n_d)
+        one, tied = ties.one, ties.tied
 
         def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
@@ -1137,7 +1187,7 @@ class CoxPH_:
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
-            efron_denom = efron_log_denominator(n_d, Ri, Di)
+            efron_denom = ties.log_denominator(Ri.reshape(m), Di.reshape(m))
 
             like = S_d.sum() - efron_denom.sum()
             return -like
@@ -1168,7 +1218,11 @@ class CoxPH_:
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
 
-            expected_S_d = efron_jac(n_d, Ri, ZRi, Di, ZDi)
+            # As ``efron_jac``, with the tie sums kept for the information.
+            R = Ri.reshape(m)
+            D = Di.reshape(m)
+            sums = ties.sums(R, D) if tied.size else ()
+            expected_S_d = ties.expected(R, ZRi, ZDi, sums)
 
             diff = S_d - expected_S_d
             jacobian = -diff.sum(axis=0)
@@ -1176,27 +1230,31 @@ class CoxPH_:
             # Observed information (Hessian of the negative log-likelihood),
             # positive definite, so ``inv(hess)`` gives the parameter
             # covariance directly; see ``_cox_information`` for the sums.
-            R = Ri.reshape(m)
-            D = Di.reshape(m)
-            u = 1.0 / (R[tie_idx] - tie_c * D[tie_idx])
-            u2 = u**2
-            s_u2 = _per_time(tie_idx, u2, m)[active]
+            # A time with one death term has u = 1 / R.
+            s_u = np.zeros(m)
+            s_u2 = np.zeros(m)
+            s_u[one] = 1.0 / R[one]
+            s_u2[one] = s_u[one] ** 2
             efron = None
             if tied.size:
+                s_u[tied], s_cu_t, s_u2[tied], s_cu2, s_c2u2 = sums
+                s_cu = np.zeros(m)
+                s_cu[tied] = s_cu_t
                 efron = (
                     death_n * e_beta_z[:, 0],
-                    _per_time(tie_idx, tie_c * u, m),
-                    _per_time(tie_idx, tie_c * u2, m)[tied],
-                    _per_time(tie_idx, tie_c**2 * u2, m)[tied],
+                    s_cu,
+                    s_cu2,
+                    s_c2u2,
                     ZRi[tied],
                     ZDi[tied],
                 )
+            active = ties.active
             hess_matrix = _cox_information(
                 Z,
                 rows,
                 risk_n * e_beta_z[:, 0],
-                _per_time(tie_idx, u, m),
-                s_u2,
+                s_u,
+                s_u2[active],
                 ZRi[active],
                 efron,
             )
