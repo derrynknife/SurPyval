@@ -163,6 +163,20 @@ bands change (#477).
   data or sits at the edge of its range. The docstrings say what ``q`` and
   ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
   that data LR = 0.40, p = 0.53).
+- **CoxPH fits are 4-10 times faster at 100,000 rows (#516).** The
+  information matrix was built as one p x p matrix per event time, with
+  truncation terms computed even with no truncation, and the solver built
+  it about 14 times per fit. It is now one product over the rows, the
+  truncation terms are skipped when nothing is truncated, and the
+  coefficients come from Newton-Raphson with step-halving (as in R's
+  ``coxph``), about 5 steps, falling back to the previous solver where it
+  fails, as where the likelihood has no finite maximum (that warning is
+  unchanged). At 100,000 rows and 5 covariates, Efron takes 0.28 s with
+  ties (was 1.6 s) and 0.66 s without (was 5.6 s); time-varying fits on
+  40,000 intervals take 0.24 s (was 0.85 s). The score is now solved to
+  rounding, so results change only in the last digits (at most 4e-13
+  relative). ``tol`` is the largest step, in standard errors, at which the
+  fit stops.
 - **Faster Efron Cox fits with tied times (#515).** The Efron score was
   computed on a masked (times x largest tie x covariates) array: one
   51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
