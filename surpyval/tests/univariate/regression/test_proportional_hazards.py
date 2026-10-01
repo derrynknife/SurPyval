@@ -218,7 +218,7 @@ def test_efron_returns_p_values():
 
 
 def test_efron_hessian_matches_finite_difference():
-    # The analytic Efron information (returned as the root-finding Jacobian)
+    # The analytic Efron information (the Hessian Newton-Raphson steps with)
     # must match a central-difference Jacobian of the score, including the
     # off-diagonal terms that the old inner-product bug corrupted. Uses a
     # multi-covariate design with tied event times.
@@ -639,59 +639,10 @@ def test_optimise_ph_never_returns_a_worse_point_than_it_started_from():
         assert res.fun == pytest.approx(rosenbrock(res.x), rel=1e-8, abs=1e-12)
 
 
-def _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di):
-    """The literal double loop ``efron_hess`` replaced, kept as an oracle.
-
-    ``efron_hess`` now factors the sum over tied deaths out of the p x p
-    part, which is a real algebraic rearrangement rather than a
-    reorganisation of the same arithmetic (#329). This pins it.
-    """
-    out = np.zeros((len(n_d),) + Z2Ri.shape[1:])
-    for i in range(len(n_d)):
-        val = np.zeros(out.shape[1:])
-        if n_d[i] == 0:
-            continue
-        for j in range(int(n_d[i])):
-            k = j / n_d[i]
-            dRD = Ri[i] - k * Di[i]
-            a = ZRi[i] - k * ZDi[i]
-            val += (dRD * (Z2Ri[i] - k * Z2Di[i]) - np.outer(a, a)) / dRD**2
-        out[i] = val
-    return out
-
-
-@pytest.mark.parametrize(
-    "counts",
-    [
-        [1.0, 1.0, 1.0, 1.0],  # no ties at all -- the continuous case
-        [1.0, 0.0, 3.0, 1.0],  # a time with no deaths mixed in
-        [7.0, 12.0, 1.0, 4.0],  # heavy ties
-        [2.5, 1.0, 3.5, 0.0],  # fractional weights: range(int(d)), c = j/d
-    ],
-)
-def test_efron_hessian_matches_the_loop_it_replaced(counts):
-    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
-        efron_hess,
-    )
-
-    rng = np.random.default_rng(31)
-    m, p = len(counts), 4
-    n_d = np.array(counts)
-
-    # Risk-set sums must dominate the death sums for R - cD to stay
-    # positive, which is what the real aggregation guarantees.
-    Ri = rng.uniform(50, 100, (m, 1))
-    Di = rng.uniform(0, 10, (m, 1))
-    ZRi = rng.normal(size=(m, p))
-    ZDi = rng.normal(size=(m, p))
-    Z2Ri = rng.normal(size=(m, p, p))
-    Z2Di = rng.normal(size=(m, p, p))
-
-    got = efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
-    want = _efron_hess_reference(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di)
-
-    assert got.shape == want.shape
-    np.testing.assert_allclose(got, want, rtol=1e-11, atol=1e-11)
+# The per-time ``efron_hess`` and its double-loop oracle are gone (#516):
+# the information is now formed over the rows, and test_cox_newton.py
+# checks it against a literal loop over the event times and tied deaths,
+# fractional counts included.
 
 
 @pytest.mark.parametrize(
@@ -774,7 +725,8 @@ def test_efron_score_matches_the_masked_array_it_replaced(counts):
 
 
 def test_efron_score_takes_int_d_terms_for_fractional_counts():
-    # The convention of efron_log_denominator and efron_hess: range(int(d))
+    # The convention of efron_log_denominator and the information
+    # (_cox_information): range(int(d))
     # terms with c = j / d, so the score is the derivative of the same
     # log-likelihood.
     from surpyval.univariate.regression.proportional_hazards.cox_ph import (

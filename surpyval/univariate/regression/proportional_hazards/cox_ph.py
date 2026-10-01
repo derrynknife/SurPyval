@@ -157,9 +157,80 @@ def _efron_tie_terms(n_d: npt.NDArray) -> tuple[npt.NDArray, npt.NDArray]:
     return idx, j / n_d[idx]
 
 
-def _per_time(idx: npt.NDArray, values: npt.NDArray, m: int) -> npt.NDArray:
-    """Sum the ragged per-death ``values`` to their ``m`` event times."""
-    return np.bincount(idx, weights=values, minlength=m)
+class _EfronTies:
+    """Efron's tie terms of a fit (:func:`_efron_tie_terms`), worked out
+    once: they depend on the deaths ``n_d`` only, not on ``beta``.
+
+    ``one`` marks the times with a single death term (``c = 0``), where
+    every Efron sum is its one term; ``tied`` those with more, and
+    ``t_idx`` / ``t_c`` are the tied times' terms alone, ``t_idx``
+    indexing ``tied``. The ragged sums then run over the tied deaths only,
+    nothing at all on continuous data, and take the same additions in the
+    same order as a sum over every death, so the results are unchanged to
+    the last bit (#516).
+    """
+
+    def __init__(self, n_d: npt.NDArray) -> None:
+        idx, c = _efron_tie_terms(n_d)
+        counts = np.bincount(idx, minlength=len(n_d))
+        self.one = np.flatnonzero(counts == 1)
+        self.tied = np.flatnonzero(counts > 1)
+        self.active = np.flatnonzero(counts >= 1)
+        in_tie = counts[idx] > 1
+        self.t_idx = np.searchsorted(self.tied, idx[in_tie])
+        self.t_c = c[in_tie]
+
+    def _sum(self, values: npt.NDArray) -> npt.NDArray:
+        """Sum the tied deaths' ``values`` to their times."""
+        return np.bincount(
+            self.t_idx, weights=values, minlength=self.tied.size
+        )
+
+    def log_denominator(self, R: npt.NDArray, D: npt.NDArray) -> npt.NDArray:
+        """Per event time, ``sum_j log(R - c D)``; see
+        :func:`efron_log_denominator`."""
+        out = np.zeros(len(R))
+        out[self.one] = np.log(R[self.one])
+        if self.tied.size:
+            Rt, Dt = R[self.tied], D[self.tied]
+            out[self.tied] = self._sum(
+                np.log(Rt[self.t_idx] - self.t_c * Dt[self.t_idx])
+            )
+        return out
+
+    def sums(self, R: npt.NDArray, D: npt.NDArray) -> tuple[npt.NDArray, ...]:
+        """At the tied times, ``sum u``, ``sum c u``, ``sum u^2``,
+        ``sum c u^2`` and ``sum c^2 u^2`` over the tied deaths, with
+        ``u = 1 / (R - c D)``: the scalars of the score
+        (:meth:`expected`) and the information (:func:`_cox_information`)."""
+        Rt, Dt = R[self.tied], D[self.tied]
+        c = self.t_c
+        u = 1.0 / (Rt[self.t_idx] - c * Dt[self.t_idx])
+        u2 = u**2
+        return (
+            self._sum(u),
+            self._sum(c * u),
+            self._sum(u2),
+            self._sum(c * u2),
+            self._sum(c**2 * u2),
+        )
+
+    def expected(
+        self,
+        R: npt.NDArray,
+        ZR: npt.NDArray,
+        ZD: npt.NDArray,
+        sums: tuple[npt.NDArray, ...],
+    ) -> npt.NDArray:
+        """Per event time, the expected covariate sum of the Efron score;
+        see :func:`efron_jac`. ``sums`` is :meth:`sums` of ``R`` and
+        ``D``."""
+        out = np.zeros(ZR.shape)
+        out[self.one] = ZR[self.one] / R[self.one, None]
+        if self.tied.size:
+            s_u, s_cu = sums[0][:, None], sums[1][:, None]
+            out[self.tied] = s_u * ZR[self.tied] - s_cu * ZD[self.tied]
+        return out
 
 
 def efron_log_denominator(
@@ -176,8 +247,7 @@ def efron_log_denominator(
     m = len(n_d)
     R = np.asarray(Ri).reshape(m)
     D = np.asarray(Di).reshape(m)
-    idx, c = _efron_tie_terms(n_d)
-    return _per_time(idx, np.log(R[idx] - c * D[idx]), m)
+    return _EfronTies(n_d).log_denominator(R, D)
 
 
 def efron_jac(
@@ -190,7 +260,7 @@ def efron_jac(
     """Per event time, the expected covariate sum of the Efron score,
     ``sum_j (ZR - c ZD) / (R - c D)`` over the ``d`` tied deaths.
 
-    As in :func:`efron_hess`, only ``c`` depends on ``j``, so with
+    As in :func:`_cox_information`, only ``c`` depends on ``j``, so with
     ``u = 1 / (R - c D)`` the sum factors into two scalars per time:
 
         sum_j (ZR - c ZD) u  =  (sum u) ZR - (sum c u) ZD.
@@ -204,102 +274,106 @@ def efron_jac(
     m = len(n_d)
     R = np.asarray(Ri).reshape(m)
     D = np.asarray(Di).reshape(m)
-    ZR = np.asarray(ZRi)
-    ZD = np.asarray(ZDi)
-    out = np.zeros(ZR.shape)
-
-    idx, c = _efron_tie_terms(n_d)
-    counts = np.bincount(idx, minlength=m)
-    one = counts == 1
-    out[one] = ZR[one] / R[one, None]
-
-    tied = counts > 1
-    if tied.any():
-        u = 1.0 / (R[idx] - c * D[idx])
-        s_u = _per_time(idx, u, m)[tied, None]
-        s_cu = _per_time(idx, c * u, m)[tied, None]
-        out[tied] = s_u * ZR[tied] - s_cu * ZD[tied]
-    return out
+    ties = _EfronTies(n_d)
+    sums = ties.sums(R, D) if ties.tied.size else ()
+    return ties.expected(R, np.asarray(ZRi), np.asarray(ZDi), sums)
 
 
-def efron_hess(
-    n_d: npt.NDArray,
-    Ri: npt.NDArray,
-    ZRi: npt.NDArray,
-    Z2Ri: npt.NDArray,
-    Di: npt.NDArray,
-    ZDi: npt.NDArray,
-    Z2Di: npt.NDArray,
+class _RiskSetRows:
+    """Where each row of a fit sits on the event-time axis, for
+    :func:`_cox_information`.
+
+    ``x`` are the rows' exit times in increasing order (the generators sort
+    them first), ``unique_x`` the distinct ones and ``tl`` the entry times.
+    A row is at risk at the event times in ``(tl, x]``
+    (:func:`cox_at_risk_mask`): those from index ``entered`` -- the number
+    of distinct times at or before ``tl`` -- up to and including ``exit``.
+    ``truncated`` is whether any row enters after the first time, i.e.
+    whether the not-yet-entered terms are anything but exact zeros; when
+    not, the generators skip them (#516).
+    """
+
+    def __init__(
+        self, x: npt.NDArray, unique_x: npt.NDArray, tl: npt.NDArray
+    ) -> None:
+        self.exit = np.searchsorted(unique_x, x)
+        self.truncated = bool(tl.size) and bool(tl.max() >= unique_x[0])
+        self.entered = (
+            np.searchsorted(unique_x, tl, side="right")
+            if self.truncated
+            else None
+        )
+
+    def over_risk_set(self, per_time: npt.NDArray) -> npt.NDArray:
+        """For each row, the sum of ``per_time`` over the event times at
+        which the row is at risk."""
+        total = np.cumsum(per_time)
+        if self.entered is None:
+            return total[self.exit]
+        total = np.concatenate([[0.0], total])
+        return total[self.exit + 1] - total[self.entered]
+
+
+def _cox_information(
+    Z: npt.NDArray,
+    rows: _RiskSetRows,
+    risk_w: npt.NDArray,
+    s_u: npt.NDArray,
+    s_u2: npt.NDArray,
+    ZR: npt.NDArray,
+    efron: tuple[npt.NDArray, ...] | None = None,
 ) -> npt.NDArray:
-    # Per-event-time contribution to the observed information (the Hessian of
-    # the negative Efron partial log-likelihood). For each of the ``n_d[i]``
-    # tied deaths the Efron correction shrinks the risk set by ``c * D``:
-    #
-    #     sum_j (Z2R - c Z2D) / (R - c D) - a a' / (R - c D)^2,
-    #
-    # with ``a = ZR - c ZD``. The second term is the *outer* product ``a a'``
-    # (a p x p matrix), which is where this previously went wrong -- an inner
-    # product collapses it to a scalar and silently corrupts the off-diagonal
-    # information for any model with more than one covariate.
-    #
-    # This used to be a Python double loop, 4.8s of a 16.9s fit at n=50 000
-    # with ten covariates, plus 370 000 calls to ``np.outer`` (#329).
-    #
-    # The sum over ``j`` factors out of the p x p part entirely, which is
-    # what makes the vectorised form cheap rather than merely loop-free.
-    # Only ``c`` depends on ``j``, so with ``u = 1 / (R - c D)``:
-    #
-    #     sum_j (Z2R - c Z2D) u  =  (sum u) Z2R - (sum c u) Z2D
-    #
-    # and, expanding ``a a' = ZR ZR' - c (ZR ZD' + ZD ZR') + c^2 ZD ZD'``,
-    #
-    #     sum_j a a' u^2 = (sum u^2) ZR ZR'
-    #                    - (sum c u^2) (ZR ZD' + ZD ZR')
-    #                    + (sum c^2 u^2) ZD ZD'.
-    #
-    # The five sums are scalars per event time, so the ragged ``j`` axis
-    # never has to carry a p x p payload: it costs O(times x ties) instead
-    # of O(times x ties x p^2). Untied times fall out of the same formula
-    # with a single j = 0 term and c = 0, so there is no separate branch --
-    # on continuous data the ragged axis is one element wide.
-    m = len(n_d)
-    p = ZRi.shape[1]
-    out = np.zeros((m, p, p))
+    """The observed information (Hessian of the negative partial
+    log-likelihood) of a Breslow or Efron fit, without a ``p x p`` array
+    per event time (#516).
 
-    active = n_d >= 1
-    if not active.any():
-        return out
+    Per event time ``i`` the information is (Efron's form, Breslow's being
+    ``c = 0`` with ``d`` copies of the one term)
 
-    idx, c = _efron_tie_terms(n_d)
-    R = np.asarray(Ri).reshape(m)
-    D = np.asarray(Di).reshape(m)
+        sum_j (Z2R - c Z2D) u - a a' u^2,   a = ZR - c ZD,  u = 1/(R - c D),
 
-    u = 1.0 / (R[idx] - c * D[idx])
-    u2 = u**2
+    over the ``d`` tied deaths, ``c = j / d``. The sum over ``j`` factors
+    into the scalars ``s_u = sum u``, ``s_cu``, ``s_u2``, ``s_cu2`` and
+    ``s_c2u2`` (#329, #515), so it is
 
-    def per_time(values: npt.NDArray) -> npt.NDArray:
-        return _per_time(idx, values, m)[active][:, None, None]
+        s_u Z2R - s_cu Z2D - s_u2 ZR ZR'
+            + s_cu2 (ZR ZD' + ZD ZR') - s_c2u2 ZD ZD'.
 
-    s_u = per_time(u)
-    s_cu = per_time(c * u)
-    s_u2 = per_time(u2)
-    s_cu2 = per_time(c * u2)
-    s_c2u2 = per_time(c**2 * u2)
+    The ``Z2`` sums are where the cost was: ``Z2R`` sums ``w z z'`` over the
+    risk set, which used to be built per event time as an ``(times x p x
+    p)`` array (and again for the not-yet-entered rows and ``Z2D``) and
+    weighted afterwards. Summed over the event times first,
 
-    ZR = ZRi[active]
-    ZD = ZDi[active]
-    RR = ZR[:, :, None] * ZR[:, None, :]
-    RD = ZR[:, :, None] * ZD[:, None, :]
-    DD = ZD[:, :, None] * ZD[:, None, :]
+        sum_i s_u(i) Z2R(i) = sum_k w_k z_k z_k' sum_{i: k at risk} s_u(i),
 
-    out[active] = (
-        s_u * Z2Ri[active]
-        - s_cu * Z2Di[active]
-        - s_u2 * RR
-        + s_cu2 * (RD + RD.transpose(0, 2, 1))
-        - s_c2u2 * DD
-    )
-    return out
+        sum_i s_cu(i) Z2D(i) = sum_{k dies} w_k z_k z_k' s_cu(i_k),
+
+    which is one ``Z' diag(q) Z`` over the rows, with ``q`` from a
+    cumulative sum of ``s_u`` (:meth:`_RiskSetRows.over_risk_set`). The
+    outer-product terms are ``(times x p)`` matrix products.
+
+    ``risk_w`` is each row's risk weight ``n exp(beta'Z)``, ``s_u`` is per
+    event time, and ``s_u2`` and the ``Z``-weighted risk sums ``ZR`` are
+    those of the times with a death only. ``efron`` carries Efron's tie
+    terms, ``(death_w, s_cu, s_cu2, s_c2u2, ZR, ZD)``: the rows' death
+    weight ``n_d exp(beta'Z)``, ``s_cu`` per event time, and the rest at
+    the tied times only (elsewhere ``c = 0`` and they vanish); it is
+    ``None`` for Breslow, or when no event time is tied.
+
+    The not-yet-entered rows of left-truncated (start-stop) data need no
+    term of their own: each row collects ``s_u`` only over the times at
+    which it is at risk.
+    """
+    q = risk_w * rows.over_risk_set(s_u)
+    if efron is not None:
+        death_w, s_cu, s_cu2, s_c2u2, ZR_t, ZD_t = efron
+        q = q - death_w * s_cu[rows.exit]
+    info = (Z.T * q) @ Z - (ZR.T * s_u2) @ ZR
+    if efron is not None:
+        cross = (ZR_t.T * s_cu2) @ ZD_t
+        info = info + cross + cross.T - (ZD_t.T * s_c2u2) @ ZD_t
+    # The products above are symmetric only to rounding.
+    return (info + info.T) / 2
 
 
 def _sort_by_event_time(
@@ -314,9 +388,8 @@ def _sort_by_event_time(
     Nothing in the partial likelihood depends on the order of the rows --
     every quantity is aggregated to unique event times first -- but
     ``_GroupBy`` gets to skip its permutation when the keys already arrive
-    grouped. One reordering of ``Z`` here replaces a gather of an
-    ``(n, p, p)`` array on every ``jac_hess`` call, roughly ten of them per
-    root-finding iteration (#329).
+    grouped. One reordering of ``Z`` here replaces a gather of the per-row
+    arrays on every ``jac_hess`` call (#329).
 
     The caller keeps the unsorted arrays: ``fit`` stores those on the model
     for the residual and diagnostic code, and the closures only ever hand
@@ -617,6 +690,83 @@ def _cox_aliased(
     )
 
 
+_NEWTON_MAX_ITER = 20
+_NEWTON_MAX_HALVINGS = 40
+
+
+def _newton_raphson(
+    neg_ll: Callable,
+    jac: Callable,
+    beta: npt.NDArray,
+    tol: float,
+    score: npt.NDArray,
+    hess: npt.NDArray,
+) -> "OptimizeResult | None":
+    """Newton-Raphson with step-halving on the negative partial
+    log-likelihood, the standard Cox algorithm (R's ``coxph``, lifelines):
+    a handful of information matrices where ``root(hybr)`` built one for
+    each of its ~16 evaluations (#516).
+
+    ``score`` and ``hess`` are ``jac(beta)`` at the start. A step that
+    does not decrease ``neg_ll`` (beyond rounding) is halved. The iteration
+    has converged when a full step is at most ``tol`` in size measured
+    by the information, ``sqrt(step' H step) <= tol`` -- ``tol`` standard
+    errors, so the scale of the covariates does not matter, and the error
+    left after that step is of the order of its square. Rounding stops
+    the step shrinking near ``1e-16 sqrt(events)``; a step that has
+    stopped shrinking once below ``1e-8`` is taken as converged there.
+
+    Returns ``None`` -- the caller then uses the root-finder -- when an
+    information matrix is singular or not finite, when halving finds no
+    decrease, or after ``_NEWTON_MAX_ITER`` steps, which is where a
+    likelihood with no finite maximum (#392) ends up. Otherwise the
+    result carries ``jac`` and ``hess`` at the solution.
+    """
+    beta = np.atleast_1d(np.asarray(beta, dtype=float))
+    f = float(neg_ll(beta))
+    if not np.isfinite(f):
+        return None
+    lam_prev = np.inf
+    for it in range(1, _NEWTON_MAX_ITER + 1):
+        score = np.atleast_1d(score)
+        hess = np.atleast_2d(hess)
+        if not (np.all(np.isfinite(score)) and np.all(np.isfinite(hess))):
+            return None
+        try:
+            step = np.linalg.solve(hess, score)
+        except np.linalg.LinAlgError:
+            return None
+        lam = float(np.sqrt(np.abs(score @ step)))
+        if not (np.all(np.isfinite(step)) and np.isfinite(lam)):
+            return None
+        slack = 1e3 * np.finfo(float).eps * max(abs(f), 1.0)
+        t = 1.0
+        for _ in range(_NEWTON_MAX_HALVINGS):
+            new = beta - t * step
+            f_new = float(neg_ll(new))
+            if np.isfinite(f_new) and f_new <= f + slack:
+                break
+            t /= 2
+        else:
+            return None
+        beta, f = new, f_new
+        score, hess = jac(beta)
+        full = t == 1.0
+        if full and (lam <= tol or (lam <= 1e-8 and lam >= lam_prev / 2)):
+            return OptimizeResult(
+                x=beta,
+                fun=f,
+                jac=np.atleast_1d(score),
+                hess=np.atleast_2d(hess),
+                nit=it,
+                success=True,
+                status=0,
+                message="Newton-Raphson converged",
+            )
+        lam_prev = lam if full else np.inf
+    return None
+
+
 def _solve_beta_and_p_values(
     neg_ll: Callable,
     jac: Callable,
@@ -627,18 +777,19 @@ def _solve_beta_and_p_values(
     n_events: float,
     strata: "npt.NDArray | None" = None,
 ) -> tuple[Any, npt.NDArray, npt.NDArray, npt.NDArray]:
-    """Root-find the score (with BFGS fallback) and compute Wald p-values
-    from the observed information; shared by ``fit`` and
-    ``_fit_stratified`` so the most-patched block in this file exists
-    exactly once. The covariates ``Z``, counts ``n``, weighted
-    number of events and stratum labels are for the aliasing check
-    (:func:`_cox_aliased`).
+    """Maximise the partial likelihood by Newton-Raphson
+    (:func:`_newton_raphson`; the score's root-finder, then BFGS, if that
+    fails) and compute Wald p-values from the observed information;
+    shared by ``fit`` and ``_fit_stratified`` so the most-patched block
+    in this file exists exactly once. The covariates ``Z``, counts ``n``,
+    weighted number of events and stratum labels are for the aliasing
+    check (:func:`_cox_aliased`).
 
     Returns ``(res, p_values, se, aliased)``: ``res.x`` has 0 at the
     aliased columns (the coefficients the predictions use), and their
     p-values and standard errors ``se`` are nan."""
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        info_at_start = jac(beta_init)[1]
+        score_at_start, info_at_start = jac(beta_init)
     p = len(np.atleast_1d(beta_init))
     aliased = _cox_aliased(info_at_start, Z, n, n_events, strata)
     kept = np.setdiff1d(np.arange(p), aliased)
@@ -669,6 +820,7 @@ def _solve_beta_and_p_values(
             return score[kept], hess[np.ix_(kept, kept)]
 
         info_at_start = np.atleast_2d(info_at_start)[np.ix_(kept, kept)]
+        score_at_start = np.atleast_1d(score_at_start)[kept]
         beta_init = np.asarray(beta_init, dtype=float)[kept]
         if kept.size == 0:
             res = OptimizeResult(x=np.zeros(p), success=True, fun=0.0)
@@ -678,24 +830,34 @@ def _solve_beta_and_p_values(
     # the resulting log(0) and 0/0 are that divergence, which is reported
     # by name below, not as a stream of RuntimeWarnings.
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        # Have found that root finding is faster than minimization. ``jac``
-        # returns (score, hessian), hence ``jac=True``.
-        res = root(jac, beta_init, jac=True, tol=tol)
+        res = _newton_raphson(
+            neg_ll, jac, beta_init, tol, score_at_start, info_at_start
+        )
+        if res is not None:
+            hessian_matrix = res.hess
+        else:
+            # Newton-Raphson gave up: a singular information (no events),
+            # no decrease on halving, or a likelihood with no finite
+            # maximum (#392). The score's root-finder (the solver before
+            # #516) takes over; ``jac`` returns (score, hessian), hence
+            # ``jac=True``.
+            res = root(jac, beta_init, jac=True, tol=tol)
 
-        # MINPACK's hybr root-finder can stall on delayed-entry data with
-        # staggered risk sets (e.g. the start-stop representation used for
-        # time-varying covariates) even though the partial log-likelihood
-        # is well behaved there. Fall back to a direct minimisation of the
-        # negative partial log-likelihood whenever root-finding fails to
-        # converge or lands at a worse point, so such fits still succeed.
-        if not res.success:
-            fallback = minimize(
-                lambda b: float(neg_ll(b)), beta_init, method="BFGS"
-            )
-            if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
-                res = fallback
+            # MINPACK's hybr root-finder can stall on delayed-entry data
+            # with staggered risk sets (e.g. the start-stop representation
+            # used for time-varying covariates) even though the partial
+            # log-likelihood is well behaved there. Fall back to a direct
+            # minimisation of the negative partial log-likelihood whenever
+            # root-finding fails to converge or lands at a worse point, so
+            # such fits still succeed.
+            if not res.success:
+                fallback = minimize(
+                    lambda b: float(neg_ll(b)), beta_init, method="BFGS"
+                )
+                if float(neg_ll(fallback.x)) < float(neg_ll(res.x)):
+                    res = fallback
 
-        hessian_matrix = jac(res.x)[1]
+            hessian_matrix = jac(res.x)[1]
     _warn_if_monotone(hessian_matrix, info_at_start, kept)
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
@@ -994,6 +1156,8 @@ class CoxPH_:
         gb_tl = _GroupBy(tl)
         n_d_x = np.where(c == 0, n, 0)
         n_d = gb_x.sum(n_d_x)[1]
+        death_n = n_d_x
+        risk_n = n
         n_d_x = n_d_x.reshape(-1, 1)
         n = n.reshape(-1, 1)
 
@@ -1002,6 +1166,12 @@ class CoxPH_:
         # For each unique event time, how many unique entry times precede it:
         # feeds the not-yet-entered suffix-sum gather below.
         pos = np.searchsorted(x_tl, x_, side="left")
+        rows = _RiskSetRows(x, x_, tl)
+
+        # Efron's tie terms depend on the deaths only.
+        m = len(x_)
+        ties = _EfronTies(n_d)
+        one, tied = ties.one, ties.tied
 
         def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
@@ -1014,21 +1184,17 @@ class CoxPH_:
             Ri = Ri[::-1].cumsum(axis=0)[::-1]
 
             # Subtract the not-yet-entered mass from the risk sums.
-            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            if rows.truncated:
+                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
-            efron_denom = efron_log_denominator(n_d, Ri, Di)
+            efron_denom = ties.log_denominator(Ri.reshape(m), Di.reshape(m))
 
             like = S_d.sum() - efron_denom.sum()
             return -like
 
         S_d = gb_x.sum(n_d_x * Z)[1]
-
-        # Z is fixed for the life of the fit, so its outer product is too.
-        # It used to be rebuilt inside ``jac_hess`` -- an (n, p, p) einsum
-        # on every root-finding iteration, 1.1s of a 16.9s fit (#329).
-        Z2 = np.einsum("ij, ik -> ijk", Z, Z)
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             # This line troubled me for longer than I care
@@ -1040,37 +1206,59 @@ class CoxPH_:
 
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             z_e_beta_z = Z * e_beta_z
-            z2_e_beta_z = Z2 * (n * e_beta_z)[:, :, None]
 
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
-            Z2Ri = gb_x.sum(z2_e_beta_z)[1]
-            Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
             # Subtract the not-yet-entered mass from the risk sums. The
             # Z-weighted sums are signed, so this must be the exact gather —
             # see ``not_yet_entered`` (#250).
-            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
-            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
+            if rows.truncated:
+                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
 
-            expected_S_d = efron_jac(n_d, Ri, ZRi, Di, ZDi)
+            # As ``efron_jac``, with the tie sums kept for the information.
+            R = Ri.reshape(m)
+            D = Di.reshape(m)
+            sums = ties.sums(R, D) if tied.size else ()
+            expected_S_d = ties.expected(R, ZRi, ZDi, sums)
 
             diff = S_d - expected_S_d
             jacobian = -diff.sum(axis=0)
 
             # Observed information (Hessian of the negative log-likelihood),
-            # accumulated per tied time then summed. Same positive-definite
-            # convention as the Breslow branch, so ``inv(hess)`` gives the
-            # parameter covariance directly.
-            Z2Di = Z2 * (n_d_x * e_beta_z)[:, :, None]
-            Z2Di = gb_x.sum(Z2Di)[1]
-
-            hess_matrix = efron_hess(n_d, Ri, ZRi, Z2Ri, Di, ZDi, Z2Di).sum(
-                axis=0
+            # positive definite, so ``inv(hess)`` gives the parameter
+            # covariance directly; see ``_cox_information`` for the sums.
+            # A time with one death term has u = 1 / R.
+            s_u = np.zeros(m)
+            s_u2 = np.zeros(m)
+            s_u[one] = 1.0 / R[one]
+            s_u2[one] = s_u[one] ** 2
+            efron = None
+            if tied.size:
+                s_u[tied], s_cu_t, s_u2[tied], s_cu2, s_c2u2 = sums
+                s_cu = np.zeros(m)
+                s_cu[tied] = s_cu_t
+                efron = (
+                    death_n * e_beta_z[:, 0],
+                    s_cu,
+                    s_cu2,
+                    s_c2u2,
+                    ZRi[tied],
+                    ZDi[tied],
+                )
+            active = ties.active
+            hess_matrix = _cox_information(
+                Z,
+                rows,
+                risk_n * e_beta_z[:, 0],
+                s_u,
+                s_u2[active],
+                ZRi[active],
+                efron,
             )
 
             return jacobian, hess_matrix
@@ -1096,6 +1284,7 @@ class CoxPH_:
         gb_tl = _GroupBy(tl)
         n_d_x = np.where(c == 0, n, 0)
         n_d = gb_x.sum(n_d_x)[1]
+        risk_n = n
         n_d_x = n_d_x.reshape(-1, 1)
         n = n.reshape(-1, 1)
 
@@ -1104,6 +1293,10 @@ class CoxPH_:
         # For each unique event time, how many unique entry times precede it:
         # feeds the not-yet-entered suffix-sum gather below.
         pos = np.searchsorted(x_tl, x_, side="left")
+        rows = _RiskSetRows(x, x_, tl)
+        # The times with a death, the only ones the information sums over.
+        active = n_d > 0
+        n_d_active = n_d[active]
 
         # Create the log_like function for the data
         def log_like(beta: npt.NDArray) -> float:
@@ -1115,7 +1308,8 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
 
             # Subtract the not-yet-entered mass from the risk sums.
-            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            if rows.truncated:
+                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -1126,45 +1320,42 @@ class CoxPH_:
 
         S_d = gb_x.sum(n_d_x.reshape(-1, 1) * Z)[1]
 
-        # Constant for the life of the fit; see the Efron branch (#329).
-        Z2 = np.einsum("ij, ik -> ijk", Z, Z)
-
         def jac_hess(beta: npt.NDArray) -> tuple:
             # Only call this once.. Yay.
             beta_z = Z @ beta
 
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
             z_e_beta_z = Z * e_beta_z
-            z2_e_beta_z = Z2 * (n * e_beta_z)[:, :, None]
 
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
-            Z2Ri = gb_x.sum(z2_e_beta_z)[1]
-            Z2Ri = Z2Ri[::-1].cumsum(axis=0)[::-1]
 
             # Subtract the not-yet-entered mass from the risk sums. The
             # Z-weighted sums are signed, so this must be the exact gather —
             # see ``not_yet_entered`` (#250).
-            Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-            ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
-            Z2Ri = Z2Ri - not_yet_entered(pos, gb_tl.sum(z2_e_beta_z)[1])
+            if rows.truncated:
+                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ
 
             jacobian = -(S_d - EZ).sum(axis=0)
 
-            # calc term 1
-            term_1 = Z2Ri / Ri[:, :, None]
-
-            # calc term 2
-            term_2 = ZRi / Ri
-            term_2 = np.einsum("ij, ik-> ijk", term_2, term_2)
-
-            # Compute the Hessian matrix
-            hess_matrix = term_1 - term_2
-            hess_matrix = np.einsum("ijk,i->ijk", hess_matrix, n_d.flatten())
-            hess_matrix = hess_matrix.sum(axis=0)
+            # Breslow's information is Efron's with every tie weight c = 0:
+            # per death time n_d (Z2R / R - ZR ZR' / R^2); see
+            # ``_cox_information``.
+            R = Ri[:, 0]
+            s_u = np.zeros(len(R))
+            s_u[active] = n_d_active / R[active]
+            hess_matrix = _cox_information(
+                Z,
+                rows,
+                risk_n * e_beta_z[:, 0],
+                s_u,
+                n_d_active / R[active] ** 2,
+                ZRi[active],
+            )
 
             return jacobian, hess_matrix
 
@@ -1396,7 +1587,14 @@ class CoxPH_:
             increments. ``'exact'`` removes the remaining bias under heavy
             ties at several times the cost.
         tol: float, optional
-            The tolerance for the root finding algorithm.
+            The convergence tolerance. The coefficients are found by
+            Newton-Raphson with step-halving on the partial
+            log-likelihood (as R's ``coxph`` and lifelines), which stops
+            once a step is at most ``tol`` standard errors long (measured
+            by the observed information), leaving an error of the order of
+            its square. Should Newton-Raphson fail -- as it does where the
+            likelihood has no finite maximum -- the score is root-found
+            instead, to a relative change in ``beta`` of ``tol``.
         strata: array-like, optional
             Stratum label for each observation. When supplied the model is
             *stratified*: a separate baseline hazard is estimated per stratum
@@ -1805,7 +2003,7 @@ class CoxPH_:
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
         tol : float, optional
-            Optimiser tolerance.
+            Convergence tolerance; see :meth:`fit`.
         center : bool, optional
             Report the baseline at the covariate means of the interval rows
             (``model.center``) instead of at ``Z = 0``; see :meth:`fit`.
@@ -1948,7 +2146,7 @@ class CoxPH_:
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
         tol : float, optional
-            Optimiser tolerance.
+            Convergence tolerance; see :meth:`fit`.
         center : bool, optional
             Report the baseline at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
