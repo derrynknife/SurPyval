@@ -3083,23 +3083,23 @@ kind of censoring and truncation, at a higher computational cost:
     np.random.seed(0)          # trees draw their candidate features at random
     tree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, max_depth=2,
                             kind='non-parametric', n_features_split='all')
-    root = tree._root
-    print('root split     : z%d <= %.2f' % (root.split_feature_index,
-                                             root.split_feature_value))
-    print('right child    : z%d <= %.2f' % (
-        root.right_child.split_feature_index,
-        root.right_child.split_feature_value))
+    print(tree)
     print('S(5), risky unit   :', tree.sf([5.0], [0.9, 0.1, 0.5]).round(3))
     print('S(5), ordinary unit:', tree.sf([5.0], [0.1, 0.9, 0.5]).round(3))
 
 The root splits on :math:`z_0` near 0.5, and the right-hand branch then splits
 on :math:`z_1` near 0.5 — the interaction, recovered without being specified.
-(The ``_root`` node structure is shown only to make the splits visible.)
+Printing a tree shows each split, the left branch (``<=``) and then the right
+(``>``) with its subtree indented under it, and each leaf's model. Fitted from
+arrays, the covariates are named by their column of ``Z`` (``Z0``, ``Z1``,
+...); a tree or forest fitted from a DataFrame keeps the column names as
+``feature_names`` and uses them instead (see below).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
+    root = tree._root
     assert root.split_feature_index == 0
     assert abs(root.split_feature_value - 0.5) < 0.15
     assert root.right_child.split_feature_index == 1
@@ -3170,21 +3170,28 @@ the last one with its average hazard. That makes its density a density per
 unit of time, on the same scale as a parametric leaf's, so forests of different
 ``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
 one covariate at a time among the out-of-bag rows and reports how much the
-score drops:
+score drops, as a ``pandas.Series`` keyed by covariate name. Here the forest
+is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
 
 .. jupyter-execute::
+
+    import pandas as pd
+
+    df_tr = pd.DataFrame(Zt_tr, columns=['z0', 'z1', 'z2'])
+    df_tr['time'], df_tr['censored'] = xt_tr, ct_tr
 
     oob = {}
     for depth in [0, 3]:                  # depth 0: every tree is one leaf
         np.random.seed(0)
         with contextlib.redirect_stderr(io.StringIO()):
-            rsf_oob = RandomSurvivalForest.fit(
-                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, max_depth=depth,
+            rsf_oob = RandomSurvivalForest.fit_from_df(
+                df_tr, x_col='time', c_col='censored',
+                Z_cols=['z0', 'z1', 'z2'], n_trees=30, max_depth=depth,
                 n_features_split=2, kind='non-parametric')
         oob[depth] = rsf_oob.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
     importance = rsf_oob.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance.round(3))
+    print(importance.round(3))
 
 The splits raise the out-of-bag log-likelihood above that of the pooled
 estimate, and the two covariates of the interaction carry the importance
@@ -3198,9 +3205,9 @@ methods need the fitted one.
     :hide-output:
 
     assert oob[3] > oob[0] + 0.05, oob
-    assert importance[0] > 0.05 and importance[1] > 0.05, importance
-    assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
-        importance
+    assert importance['z0'] > 0.05 and importance['z1'] > 0.05, importance
+    assert abs(importance['z2']) < min(importance['z0'],
+                                       importance['z1']) / 3, importance
 
 Because the score is a likelihood, it validates forests on data that
 concordance cannot handle. Below, units are only inspected every two time
@@ -3232,10 +3239,11 @@ such data with the log-rank scores of the pooled Turnbull estimate:
         oob_ic[depth] = rsf_ic.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
     importance_ic = rsf_ic.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance_ic.round(3))
+    print(importance_ic.round(3))
 
 Again the splits beat the pooled Turnbull estimate out of bag, and the
-importance falls on :math:`z_0` alone.
+importance falls on :math:`z_0` alone (``Z0``: this forest was fitted from
+arrays).
 
 .. jupyter-execute::
     :hide-code:
@@ -3243,8 +3251,8 @@ importance falls on :math:`z_0` alone.
 
     assert set(c_ic) == {-1, 1, 2}
     assert oob_ic[2] > oob_ic[0] + 0.02, oob_ic
-    assert importance_ic[0] > 0.02, importance_ic
-    assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
+    assert importance_ic['Z0'] > 0.02, importance_ic
+    assert importance_ic['Z0'] > 3 * np.abs(importance_ic.iloc[1:]).max(), \
         importance_ic
 
 Both the tree and the forest take ``random_state``: ``None`` (the default)
@@ -3323,19 +3331,12 @@ keeps the trees from fitting noise:
 
 .. jupyter-execute::
 
-    ctree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, kind='non-parametric',
-                             n_features_split='all', selection='ctree')
-
-    def show(node, depth=0):
-        if hasattr(node, 'split_feature_index'):
-            print('  ' * depth + f'z{node.split_feature_index} <= '
-                  f'{node.split_feature_value:.2f}   (p = {node.p_value:.1e})')
-            show(node.left_child, depth + 1)
-            show(node.right_child, depth + 1)
-        else:
-            print('  ' * depth + f'leaf: {len(node.data)} units')
-
-    show(ctree._root)
+    ctree = SurvivalTree.fit_from_df(df_tr, x_col='time', c_col='censored',
+                                     Z_cols=['z0', 'z1', 'z2'],
+                                     kind='non-parametric',
+                                     n_features_split='all',
+                                     selection='ctree')
+    print(ctree)
 
     oob_sel = {}
     for selection in ['greedy', 'ctree']:

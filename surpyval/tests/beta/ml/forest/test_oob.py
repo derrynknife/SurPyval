@@ -222,9 +222,9 @@ def test_informative_feature_ranks_above_noise():
     )
     importances = forest.feature_importances(random_state=0)
     assert importances.shape == (3,)
-    assert importances[0] > 0.1
-    assert np.abs(importances[1:]).max() < 0.05
-    assert importances[0] > importances[1:].max() + 0.05
+    assert importances["Z0"] > 0.1
+    assert np.abs(importances.iloc[1:]).max() < 0.05
+    assert importances["Z0"] > importances.iloc[1:].max() + 0.05
 
 
 @IN_EVERY_SAMPLE

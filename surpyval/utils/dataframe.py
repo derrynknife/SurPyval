@@ -513,19 +513,22 @@ class RecurrentRegressionDataFrameMixin:
 
 
 class RegressionDataFrameMixin:
-    """``fit_from_df`` for a regression fitter without a formula interface
-    (the survival trees and forest)."""
+    """``fit_from_df`` for the survival trees and forest: covariate
+    columns or a formula, and the univariate time columns."""
 
     @fitter_method
     def fit_from_df(
         self,
         df: pd.DataFrame,
-        x_col: str,
-        Z_cols: str | list[str],
+        x_col: str | None = None,
+        Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
         n_col: str | None = None,
         tl_col: str | None = None,
         tr_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        formula: str | None = None,
         **fit_options: Any,
     ) -> Any:
         """
@@ -536,36 +539,52 @@ class RegressionDataFrameMixin:
         other :meth:`fit` option is passed to it unchanged. The columns
         are handed to :meth:`fit` as they are, so the result, and the
         treatment of a missing covariate, is that of :meth:`fit` on the
-        same arrays.
+        same arrays. The fitted model keeps the covariate names as
+        ``feature_names`` (and the ``formula``): its split descriptions
+        and feature importances are named by them, and it predicts from a
+        DataFrame by them.
 
         Parameters
         ----------
         df : pandas.DataFrame
             The data.
-        x_col : str
-            Column of observed times.
-        Z_cols : str or list of str
+        x_col : str, optional
+            Column of observed times. Required unless ``xl_col`` and
+            ``xr_col`` are given.
+        Z_cols : str or list of str, optional
             Column(s) of the covariates, in the order :meth:`fit` reads
-            them (the columns of ``Z``).
+            them (the columns of ``Z``). Exactly one of ``Z_cols`` and
+            ``formula`` must be given.
         c_col : str, optional
             Column of censoring flags.
         n_col : str, optional
             Column of counts.
         tl_col, tr_col : str, optional
             Columns of left / right truncation.
+        xl_col, xr_col : str, optional
+            Columns of the left and right ends of each observation's
+            interval, in place of ``x_col`` (with ``c_col`` giving the
+            censoring of each row, as for :meth:`fit` with ``xl``/``xr``).
+        formula : str, optional
+            A ``formulaic`` formula for the covariates, e.g.
+            ``"age + C(sex)"``, as for the regression models'
+            ``fit_from_df``: categoricals get reference-level columns and
+            the intercept is dropped. Its columns are the features.
         **fit_options
             Every other option of :meth:`fit`.
 
         Returns
         -------
         model
-            The model :meth:`fit` returns.
+            The model :meth:`fit` returns, with ``feature_names`` (and
+            ``formula``) set.
 
         Raises
         ------
         ValueError
-            If ``df`` is not a DataFrame or a name is not one of its
-            columns.
+            If ``df`` is not a DataFrame, a name is not one of its
+            columns, or the times or covariates are not given exactly
+            once.
 
         Examples
         --------
@@ -580,11 +599,55 @@ class RegressionDataFrameMixin:
         ... )
         >>> tree.sf(10.0, [[0.2], [0.8]]).round(3)
         array([0.486, 0.029])
+        >>> tree.feature_names
+        ['z']
+        >>> tree.sf(10.0, pd.DataFrame({"z": [0.2, 0.8]})).round(3)
+        array([0.486, 0.029])
         """
-        columns = {"c": c_col, "n": n_col, "tl": tl_col, "tr": tr_col}
-        return _regression_fit_from_df(
-            self, df, x_col, Z_cols, columns, fit_options
-        )
+        df = require_frame(df)
+        if (Z_cols is None) == (formula is None):
+            raise ValueError(
+                "Give the covariates exactly once: as `Z_cols` (columns) "
+                "or as `formula`"
+            )
+        intervals = xl_col is not None or xr_col is not None
+        if (x_col is not None) == intervals or (
+            intervals and (xl_col is None or xr_col is None)
+        ):
+            raise ValueError(
+                "Give the times exactly once: as `x_col`, or as the "
+                "interval ends `xl_col` and `xr_col` together"
+            )
+        columns = {
+            "x": x_col,
+            "xl": xl_col,
+            "xr": xr_col,
+            "c": c_col,
+            "n": n_col,
+            "tl": tl_col,
+            "tr": tr_col,
+        }
+        arrays = _read_columns(df, columns)
+        model_spec = None
+        if Z_cols is not None:
+            names = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+            Z = frame_columns(df, names, "Z_cols").astype(float)
+        else:
+            # Local import: the regression package imports this module.
+            from surpyval.univariate.regression.regression_data import (
+                design_matrix_from_df,
+            )
+
+            Z, names, model_spec = design_matrix_from_df(df, None, formula)
+        # A DataFrame Z: ``fit`` keeps its column names as feature_names.
+        arrays["Z"] = pd.DataFrame(np.asarray(Z, dtype=float), columns=names)
+        arg_names = {k: f"{k}_col" for k in arrays} | {
+            "Z": "Z_cols" if formula is None else "formula"
+        }
+        model = call_fit(self, arrays, arg_names, fit_options)
+        model.formula = formula
+        model._model_spec = model_spec
+        return model
 
 
 def cause_column(df: pd.DataFrame, e_col: str) -> npt.NDArray:

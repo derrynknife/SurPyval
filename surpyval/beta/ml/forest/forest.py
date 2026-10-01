@@ -2,6 +2,7 @@ import warnings
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
@@ -15,7 +16,9 @@ from surpyval.beta.ml.forest.oob import (
 )
 from surpyval.beta.ml.forest.tree import (
     SurvivalTree,
+    covariate_matrix,
     drop_missing_covariate_rows,
+    feature_labels,
     resolve_random_state,
 )
 from surpyval.metrics.concordance import concordance_index
@@ -23,6 +26,11 @@ from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+)
+from surpyval.univariate.regression.regression_data import (
+    prepare_Z,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.dataframe import RegressionDataFrameMixin
@@ -48,6 +56,12 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     tree was grown on (with repeats); :meth:`oob_log_likelihood` and
     :meth:`feature_importances` use them to score every row with the trees
     that did not see it.
+
+    A forest fitted from a DataFrame (``fit_from_df``, or ``fit`` with a
+    DataFrame ``Z``) keeps the covariate names as ``feature_names``
+    (``None`` when fitted from an array); its trees' split descriptions
+    and :meth:`feature_importances` use them, and its predictions accept
+    a DataFrame ``Z``, read by those names.
     """
 
     def __init__(
@@ -64,9 +78,15 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         selection: str = "greedy",
         alpha_split: float = 0.05,
         random_state: Any = None,
+        feature_names: list[str] | None = None,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
+        Z, self.feature_names = covariate_matrix(Z, feature_names)
+        # Set by ``fit_from_df(formula=...)``: the formula and its
+        # design-matrix transformer, to expand a DataFrame at prediction.
+        self.formula: str | None = None
+        self._model_spec: Any = None
         # Rows with a missing covariate are dropped once, here, with the
         # standard warning, so no bootstrap sample can draw one.
         self.data: SurpyvalData
@@ -115,6 +135,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 selection=selection,
                 alpha_split=alpha_split,
                 random_state=tree_states[i],
+                feature_names=self.feature_names,
             )
             for i in range(self.n_trees)
         )
@@ -241,6 +262,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         data = SurpyvalData(
             x, c, n, t, xl=xl, xr=xr, tl=tl, tr=tr, group_and_sort=False
         )
+        Z, feature_names = covariate_matrix(Z)
         return cls(
             data,
             Z,
@@ -254,6 +276,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             selection,
             alpha_split,
             random_state,
+            feature_names,
         )
 
     def sf(
@@ -337,6 +360,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         # The times flat; the result gets their shape back (on its last
         # axis for a grid), so a scalar time gives a scalar.
         x, restore = flatten_query(x)
+        if isinstance(Z, pd.DataFrame):
+            # Read by the fitted names (or expanded by the formula)
+            Z = prepare_Z(Z, self.feature_names, self._model_spec)
         single_covariant_vector = np.ndim(Z) < 2
         Z = np.array(Z, ndmin=2)
 
@@ -542,8 +568,10 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
 
         Returns
         -------
-        numpy.ndarray
-            One importance per column of ``Z``.
+        pandas.Series
+            One importance per column of ``Z``, indexed by the feature
+            names (:attr:`feature_labels`: ``feature_names`` for a forest
+            fitted from a DataFrame, ``Z0``, ``Z1``, ... otherwise).
 
         Raises
         ------
@@ -565,7 +593,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ...     x, Z, n_trees=20, max_depth=1, kind="exponential"
         ... )
         >>> forest.feature_importances(random_state=1).round(3)
-        array([ 0.093, -0.001])
+        Z0    0.093
+        Z1   -0.001
+        Name: importance, dtype: float64
         """
         if (
             isinstance(n_repeats, bool)
@@ -595,23 +625,42 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 for _ in range(int(n_repeats))
             ]
             importances[j] = np.mean(drops)
-        return importances
+        return pd.Series(
+            importances, index=self.feature_labels, name="importance"
+        )
+
+    @property
+    def feature_labels(self) -> list[str]:
+        """The name of each feature: ``feature_names`` for a forest
+        fitted from a DataFrame, else ``Z0``, ``Z1``, ... by column of
+        ``Z``."""
+        if self.feature_names is not None or self.Z is not None:
+            n_features = 0 if self.Z is None else self.Z.shape[1]
+            return feature_labels(self.feature_names, n_features)
+        return self.trees[0].feature_labels if self.trees else []
+
+    def __repr__(self) -> str:
+        return (
+            f"RandomSurvivalForest(kind={self.kind!r}, "
+            f"n_trees={self.n_trees}, selection={self.selection!r}, "
+            f"features={self.feature_labels})"
+        )
 
     def to_dict(self) -> dict:
         """Serialise the fitted forest to a plain, JSON/BSON-safe dictionary:
         the ensemble settings and every fitted tree. The training data is not
         persisted -- a restored forest is a predictor, not re-fittable."""
-        return stamp_schema(
-            {
-                "model": "RandomSurvivalForest",
-                "kind": self.kind,
-                "n_trees": int(self.n_trees),
-                "bootstrap": bool(self.bootstrap),
-                "selection": self.selection,
-                "alpha_split": float(self.alpha_split),
-                "trees": [tree.to_dict() for tree in self.trees],
-            }
-        )
+        out = {
+            "model": "RandomSurvivalForest",
+            "kind": self.kind,
+            "n_trees": int(self.n_trees),
+            "bootstrap": bool(self.bootstrap),
+            "selection": self.selection,
+            "alpha_split": float(self.alpha_split),
+            "trees": [tree.to_dict() for tree in self.trees],
+        }
+        serialise_covariate_meta(self, out)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RandomSurvivalForest":
@@ -630,6 +679,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]
         forest.bootstrap_indices = None
+        forest._model_spec = None
+        # Forests saved before feature names existed have none.
+        restore_covariate_meta(forest, model_dict)
         forest.trees = [
             SurvivalTree.from_dict(tree_dict)
             for tree_dict in model_dict["trees"]

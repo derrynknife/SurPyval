@@ -141,6 +141,21 @@ class IntermediateNode(Node):
             )
         return res
 
+    def describe(
+        self, feature_names: "list[str] | None" = None, right: bool = False
+    ) -> str:
+        """The split rule as text, ``"temp <= 42"`` (``"temp >  42"`` for
+        the right branch with ``right=True``), naming the feature by
+        ``feature_names`` (``Z3`` for column 3 without them)."""
+        j = int(self.split_feature_index)
+        name = (
+            feature_names[j]
+            if feature_names is not None and j < len(feature_names)
+            else f"Z{j}"
+        )
+        op = ">  " if right else "<= "
+        return f"{name} {op}{float(self.split_feature_value):.6g}"
+
     def to_dict(self) -> dict:
         """Serialise the split rule and both child subtrees. The training
         data is deliberately not stored -- a restored tree is a predictor,
@@ -237,6 +252,25 @@ class TerminalNode(Node):
         except Exception:
             return self._crude_exponential()
 
+    def describe(self) -> str:
+        """The leaf as text: its model (with the parameters of a
+        parametric one) and, on a fitted tree, the number of units that
+        reached it."""
+        model = self.model
+        if model is NeverOccurs:
+            text = "never occurs (no failures)"
+        elif hasattr(model, "params") and hasattr(model, "parameter_names"):
+            params = ", ".join(
+                f"{name}={float(value):.4g}"
+                for name, value in zip(model.parameter_names, model.params)
+            )
+            text = f"{model.dist.name}({params})"
+        else:
+            text = str(getattr(model, "model", type(model).__name__))
+        if self.data is not None:
+            text += f", {float(np.sum(self.data.n)):g} units"
+        return text
+
     def apply_model_function(
         self,
         function_name: str,
@@ -303,6 +337,28 @@ def route_to_leaves(
         stack.append((current.left_child, idx[goes_left]))
         stack.append((current.right_child, idx[~goes_left]))
     return out
+
+
+def tree_lines(
+    node: Node, feature_names: "list[str] | None", depth: int = 0
+) -> list[str]:
+    """The subtree under ``node`` as lines of text, in the layout of
+    scikit-learn's ``export_text``: each split as its left rule, the left
+    subtree indented under it, then its right rule and the right
+    subtree; each leaf by :meth:`TerminalNode.describe`."""
+    pad = "|   " * depth
+    if isinstance(node, TerminalNode):
+        return [f"{pad}|--- leaf: {node.describe()}"]
+    assert isinstance(node, IntermediateNode)
+    p_value = (
+        "" if node.p_value is None else f"  (p = {float(node.p_value):.3g})"
+    )
+    return (
+        [f"{pad}|--- {node.describe(feature_names)}{p_value}"]
+        + tree_lines(node.left_child, feature_names, depth + 1)
+        + [f"{pad}|--- {node.describe(feature_names, right=True)}"]
+        + tree_lines(node.right_child, feature_names, depth + 1)
+    )
 
 
 def node_from_dict(node_dict: dict) -> Node:
