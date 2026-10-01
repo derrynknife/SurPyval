@@ -308,7 +308,9 @@ def test_risk_set_sums_are_the_weight_matrix_products():
 
         W = weights(sets.times)
         v = rng.uniform(0.1, 3.0, (x.size, 2))
-        _assert_close(fine_gray._risk_set_sums(v[sets.order], sets), W @ v)
+        _assert_close(
+            fine_gray._risk_set_sums(v[sets.order].T, sets), (W @ v).T
+        )
         _assert_close(
             fine_gray._risk_set_sums(v[sets.order, 0], sets), W @ v[:, 0]
         )

@@ -44,7 +44,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian
+from autograd import hessian
 from autograd import numpy as anp
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
@@ -144,13 +144,20 @@ def _fit_cause(
     nZ_event = n_event @ Z[is_event]
     # The optimiser minimises the negative log-likelihood less its value at
     # beta = 0, sum d log(denom0): near the maximum its steps change the
-    # likelihood (5e4 at 1e4 rows) by less than its last digit, and BFGS
-    # stopped on "precision loss" (10 of 450 fits at 3e3 rows before #517;
-    # 2 with this and the blocked sums of _cumsum, 17 with neither).
+    # likelihood (5e4 at 1e4 rows) by less than its last digit. BFGS
+    # stopped there on "precision loss" in 10 of 450 fits at 3e3 rows
+    # before #517, and in 17 with plain cumulative sums; with this and the
+    # blocked sums of _cumsum, in 1.
     denom0 = _risk_set_sums(n_sorted, sets)
     offset = float(sets.d @ np.log(denom0))
 
-    def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> Any:
+    def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> tuple:
+        """The objective, differentiable by autograd (the no-maximum check
+        and the information take its derivatives), and the objective with
+        its gradient for BFGS, ``-(nZ_event - sum_j d_j S1_j / S0_j)``
+        (``S1`` the risk-set sums of ``w Z``), by hand: a fit of 1e5 rows
+        took 1.2 s with autograd's gradient, 0.7 s with this."""
+
         def neg_ll(beta: Any) -> Any:
             weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
             denom = _risk_set_sums(weighted_exp, sets)
@@ -159,13 +166,24 @@ def _fit_cause(
             )
             return -ll
 
-        return neg_ll
+        def value_and_gradient(beta: npt.NDArray) -> tuple:
+            weighted_exp = n_sorted * np.exp(Zk @ beta)
+            denom = _risk_set_sums(weighted_exp, sets)
+            value = -(
+                nZk_event @ beta - np.sum(sets.d * np.log(denom / denom0))
+            )
+            # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
+            weights = _risk_set_weights(sets.d / denom, sets)
+            gradient = -(nZk_event - Zk.T @ (weighted_exp * weights))
+            return value, gradient
+
+        return neg_ll, value_and_gradient
 
     # Coefficients the weighted partial likelihood does not depend on are
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
     # reported as nan.
     p = Z.shape[1]
-    neg_ll = partial_neg_ll(Z_sorted, nZ_event)
+    neg_ll, value_and_gradient = partial_neg_ll(Z_sorted, nZ_event)
     aliased = aliased_columns(
         _information_at_zero(Z_sorted, n_sorted, sets),
         Z.shape[0],
@@ -180,11 +198,13 @@ def _fit_cause(
             "column, or a linear combination of the others within the "
             "risk sets, as the columns of every level of a factor are)",
         )
-        neg_ll = partial_neg_ll(Z_sorted[:, kept], nZ_event[kept])
+        neg_ll, value_and_gradient = partial_neg_ll(
+            Z_sorted[:, kept], nZ_event[kept]
+        )
 
     beta0 = np.zeros(kept.size)
     if kept.size:
-        res = minimize(neg_ll, beta0, jac=grad(neg_ll), method="BFGS")
+        res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
     else:
         # Every coefficient aliased: nothing to fit.
         res = OptimizeResult(
@@ -305,29 +325,44 @@ def _risk_set_sums(v: Any, sets: _RiskSets) -> Any:
     event time of ``sets``: ``sum_i W_ti v_i``, ``W`` the IPCW weights of
     :func:`_risk_sets`.
 
-    ``v`` is one value per row in time order (``sets.order``), or one row
-    of values per row; the sums are in O(N), the suffix sum of ``v`` over
-    ``x_i >= t`` plus ``G(t-)`` times the prefix sum of ``v_i / G(x_i-)``
-    over the competing failures before ``t``. Differentiable by autograd.
+    ``v`` is one value per row in time order (``sets.order``), or several
+    such rows (shape ``(k, N)``, giving ``(k, event times)``); the sums
+    are in O(N), the suffix sum of ``v`` over ``x_i >= t`` plus ``G(t-)``
+    times the prefix sum of ``v_i / G(x_i-)`` over the competing failures
+    before ``t``. Differentiable by autograd.
     """
-    shape = (-1,) + (1,) * (anp.ndim(v) - 1)
     # suffix[k] = sum of v over the rows k, k + 1, ... in time order
-    suffix = _cumsum(v[::-1])[::-1]
+    suffix = _cumsum(v[..., ::-1])[..., ::-1]
     # prefix[k] = sum over the competing rows before row k of v / G(x-)
     prefix = anp.concatenate(
         [
-            anp.zeros((1,) + anp.shape(v)[1:]),
-            _cumsum(sets.competing_over_G.reshape(shape) * v),
+            anp.zeros(anp.shape(v)[:-1] + (1,)),
+            _cumsum(sets.competing_over_G * v),
         ],
-        axis=0,
+        axis=-1,
     )
-    return suffix[sets.start] + sets.G_t.reshape(shape) * prefix[sets.start]
+    return suffix[..., sets.start] + sets.G_t * prefix[..., sets.start]
+
+
+def _risk_set_weights(q: npt.NDArray, sets: _RiskSets) -> npt.NDArray:
+    """
+    ``sum_t q_t W_ti`` for each row ``i`` in time order, ``q`` one value
+    per event time of ``sets``: the transpose of :func:`_risk_set_sums`,
+    in O(N). Row ``i`` is in the risk set, with weight 1, at the event
+    times at or before ``x_i`` (``start_t <= i``), and, for a competing
+    failure, with weight ``G(t-)/G(x_i-)`` at the later ones.
+    """
+    rows = sets.order.size
+    at_or_before = _cumsum(np.bincount(sets.start, q, minlength=rows))
+    later = np.bincount(sets.start, q * sets.G_t, minlength=rows + 1)
+    after = _cumsum(later[::-1])[::-1][1:]
+    return at_or_before + sets.competing_over_G * after
 
 
 def _cumsum(v: Any) -> Any:
     """
-    The cumulative sum of ``v`` along its first axis, in blocks of about
-    ``sqrt(N)`` rows: the running sum within each block plus the sum of
+    The cumulative sum of ``v`` along its last axis, in blocks of about
+    ``sqrt(N)`` values: the running sum within each block plus the sum of
     the blocks before it. Its rounding error grows as ``sqrt(N)`` rather
     than ``N`` (``np.cumsum``'s), which keeps the risk-set sums as
     accurate as the matrix product they replace (#517): with a plain
@@ -335,23 +370,24 @@ def _cumsum(v: Any) -> Any:
     rather than the product's 1.4e-16, and the partial likelihood's
     rounding noise 20 times the product's. Differentiable by autograd.
     """
-    rows = anp.shape(v)[0]
-    rest = tuple(anp.shape(v)[1:])
+    lead = tuple(anp.shape(v)[:-1])
+    rows = anp.shape(v)[-1]
     size = max(1, int(np.ceil(np.sqrt(rows))))
     blocks = -(-rows // size)
-    padded = anp.concatenate(
-        [v, anp.zeros((blocks * size - rows,) + rest)], axis=0
-    )
-    split = anp.reshape(padded, (blocks, size) + rest)
+    if blocks * size > rows:
+        v = anp.concatenate(
+            [v, anp.zeros(lead + (blocks * size - rows,))], axis=-1
+        )
+    split = anp.reshape(v, lead + (blocks, size))
     before = anp.concatenate(
         [
-            anp.zeros((1,) + rest),
-            anp.cumsum(anp.sum(split, axis=1), axis=0)[:-1],
+            anp.zeros(lead + (1,)),
+            anp.cumsum(anp.sum(split, axis=-1), axis=-1)[..., :-1],
         ],
-        axis=0,
+        axis=-1,
     )
-    out = anp.cumsum(split, axis=1) + anp.expand_dims(before, 1)
-    return anp.reshape(out, (blocks * size,) + rest)[:rows]
+    out = anp.cumsum(split, axis=-1) + before[..., None]
+    return anp.reshape(out, lead + (blocks * size,))[..., :rows]
 
 
 def _information_at_zero(
@@ -364,16 +400,8 @@ def _information_at_zero(
     (#476) judges the columns by. ``Z`` and ``n`` are in time order
     (``sets.order``); every sum is O(N) (:func:`_risk_set_sums`)."""
     S0 = _risk_set_sums(n, sets)
-    M = _risk_set_sums(n[:, None] * Z, sets) / S0[:, None]
-    q = sets.d / S0
-    rows = Z.shape[0]
-    # The weight of row i over the event times, a_i = sum_j q_j W_ji:
-    # the event times at or before x_i (start_j <= i), plus, for a
-    # competing failure, the later ones (start_j > i) at G(t_j-)/G(x_i-).
-    at_or_before = np.cumsum(np.bincount(sets.start, q, minlength=rows))
-    later = np.bincount(sets.start, q * sets.G_t, minlength=rows + 1)
-    after = np.cumsum(later[::-1])[::-1][1:]
-    a = n * (at_or_before + sets.competing_over_G * after)
+    M = _risk_set_sums((n[:, None] * Z).T, sets).T / S0[:, None]
+    a = n * _risk_set_weights(sets.d / S0, sets)
     return Z.T @ (a[:, None] * Z) - M.T @ (sets.d[:, None] * M)
 
 
