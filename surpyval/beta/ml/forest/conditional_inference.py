@@ -521,11 +521,9 @@ def ctree_select(
     if scores is None or not features:
         return -1, 1.0
     n = np.asarray(data.n, dtype=float)
-    # The failures each child must keep, counted as the kind's own split
-    # counts them: n-weighted for the deviance split, rows otherwise.
-    failures = (np.asarray(data.c) != 1).astype(float)
-    if kind != "non-parametric":
-        failures = failures * n
+    # The failures each child must keep, n-weighted as every split
+    # counts them (#193).
+    failures = (np.asarray(data.c) != 1) * n
     best_u, best_key = -1, (np.inf, np.inf)
     for u in features:
         statistic, p_value, n_cuts = max_statistic(

@@ -4,6 +4,9 @@ from math import sqrt
 import numpy as np
 from numpy.typing import NDArray
 
+from surpyval.beta.ml.forest.deviance_split import (
+    needs_full_likelihood_split,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -117,7 +120,9 @@ def log_rank_split(
     min_leaf_samples : int
         Minimum number of samples each child must have
     min_leaf_failures : int
-        Minimum number of failures each child must have
+        Minimum ``n``-weighted number of failures (rows that are not right
+        censored) each child must have, counted as the deviance split
+        counts them
     feature_indices_in : Iterable[int]
         Indices of the features to consider for the split
 
@@ -127,7 +132,28 @@ def log_rank_split(
         The feature index and value of the maximal Log-Rank split, these will
         be (-1, -Inf) if insufficient samples were provided to satisfy the
         min_leaf_failures constraint.
+
+    Raises
+    ------
+    ValueError
+        If ``data`` has left or interval censoring or right truncation,
+        which have no risk sets: such data is split by
+        :func:`~surpyval.beta.ml.forest.turnbull_score_split.turnbull_score_split`
+        or :func:`~surpyval.beta.ml.forest.deviance_split.deviance_split`.
     """
+    # The tree routes such data to another split; called directly, the
+    # risk sets below would come from a Turnbull fit whose grid is not
+    # the raw times, and the statistic would be silently wrong.
+    if needs_full_likelihood_split(data):
+        raise ValueError(
+            "log_rank_split needs observed and right-censored data "
+            "(optionally left truncated): left or interval censoring and "
+            "right truncation have no risk sets. Use turnbull_score_split "
+            "or deviance_split for such data."
+        )
+    # The failures each child keeps, n-weighted as the deviance split
+    # counts them (#193).
+    event_weight = data.n * (data.c != 1)
 
     # Now let's find the best (u, v) pair
     max_log_rank_magnitude = float("-inf")
@@ -144,9 +170,9 @@ def log_rank_split(
                 continue
             elif Z_u[~mask].size < min_leaf_samples:
                 continue
-            elif (data.c[mask] != 1).sum() < min_leaf_failures:
+            elif event_weight[mask].sum() < min_leaf_failures:
                 continue
-            elif (data.c[~mask] != 1).sum() < min_leaf_failures:
+            elif event_weight[~mask].sum() < min_leaf_failures:
                 continue
 
             abs_log_rank = log_rank(u, v, data, Z)

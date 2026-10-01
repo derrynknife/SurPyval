@@ -258,7 +258,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             A split is only made if each child keeps at least this many
             observations. Defaults to 5.
         min_leaf_failures : int, optional
-            ... and at least this many failures. Defaults to 2.
+            ... and at least this many failures (rows that are not
+            right censored, each counted ``n`` times). Defaults to 2.
         n_features_split : int, float or str, optional
             The number of features considered at each split: an int, a
             fraction of the features (float), ``"sqrt"`` (the default),

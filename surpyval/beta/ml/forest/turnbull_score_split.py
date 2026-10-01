@@ -174,8 +174,8 @@ def turnbull_score_split(
     min_leaf_samples : int
         Minimum number of rows each child must have.
     min_leaf_failures : int
-        Minimum number of rows that are not right censored each child
-        must have.
+        Minimum ``n``-weighted number of rows that are not right censored
+        each child must have.
     feature_indices_in : Iterable[int]
         Indices of the features to consider for the split.
 
@@ -197,7 +197,8 @@ def turnbull_score_split(
     spread = np.sum(n * (scores - c_bar) ** 2)
     if not np.isfinite(spread) or spread <= 0:
         return best_u, best_v
-    event = (np.asarray(data.c) != 1).astype(float)
+    # Failures n-weighted, as every split counts them (#193)
+    event = (np.asarray(data.c) != 1) * n
     n_rows = scores.size
     n_events = event.sum()
 
