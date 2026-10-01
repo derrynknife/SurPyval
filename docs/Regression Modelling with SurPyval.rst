@@ -1784,8 +1784,16 @@ an unbounded coefficient) so the interval always stays valid:
     m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
 
 ``cb`` propagates the parameter covariance through a predicted function by the
-delta method, returning a confidence *band*. Here is the survival at a covariate
-value with its 95% band:
+delta method, returning a confidence *band*. The band on ``sf``, ``ff`` and
+``Hf`` is formed on the baseline family's probability-plot scale, as for the
+univariate models (:doc:`Parametric Estimation`): :math:`\ln H` for a
+Weibull, Exponential, Rayleigh or Gumbel baseline, the normal quantile of
+:math:`F` for a Normal or LogNormal one, and the logit of :math:`F` for the
+rest. A model with its coefficients fixed at 0 then gives the univariate band,
+and the band rises with time wherever the shape's own interval excludes 0
+(before v0.22 every regression band was on the logit of the survival, and on
+small samples it could turn back in a tail). Here is the survival at a
+covariate value with its 95% band:
 
 .. jupyter-execute::
 
@@ -2553,11 +2561,10 @@ Bounds, mean life and accelerated life along a path
 ``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
 bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
 along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
-carried along the path: a Wald bound on the logit of the survival, with its
-standard error propagated from the fitted covariance by the delta method, so
-a constant path gives ``cb``. (That is the regression ``cb``'s scale. The
-univariate models' Wald bounds are on each family's probability-plot scale,
-and moving the regression bounds there is an open question, #504.) Along a
+carried along the path: a Wald bound on the baseline family's
+probability-plot scale (as for ``cb``), with its standard error propagated
+from the fitted covariance by the delta method, so a constant path gives
+``cb``. Along a
 ``CovariatePath`` the quadrature mesh is adapted once, at the fitted
 parameters, and then held fixed while the parameters are perturbed. The
 function the delta method differentiates is then smooth in the parameters,

@@ -13,9 +13,9 @@ from scipy.optimize import (
     minimize,
     minimize_scalar,
 )
-from scipy.special import expit, ndtr
+from scipy.special import expit
 from scipy.special import ndtri as z
-from scipy.stats import norm, uniform
+from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution, np
@@ -28,7 +28,9 @@ from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
+    cb_link,
     param_name,
+    sf_link_bound,
     wald_undefined,
     warn_wald_undefined,
 )
@@ -3545,8 +3547,8 @@ class Parametric(
         tail for most Weibull, LogNormal and Normal fits -- a lower bound on
         ``F(10)`` of 0.00004 under one on ``F(5)`` of 0.39 -- where this one
         does only when the shape's interval reaches 0. The scales agree to
-        first order, so large-sample bounds are essentially unchanged. The
-        returned array is the transpose of the per-point bounds, matching
+        first order, so large-sample bounds are essentially unchanged. A
+        two-sided bound is ``[upper, lower]`` on ``R`` on the last axis,
         the layout the public ``cb`` method expects.
         """
 
@@ -3567,38 +3569,16 @@ class Parametric(
             return np.where(left, -F, R) / unit
 
         sd_R = unit * self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
-        # ``diff`` moves the scale by z standard errors, in the direction
-        # that raises ``R`` when it is negative (the upper bound on R).
-        if bound == "two-sided":
-            diff = z(alpha_ci / 2) * sd_R * np.array([1.0, -1.0]).reshape(2, 1)
-        elif bound == "upper":
-            diff = z(alpha_ci) * sd_R
-        else:
-            diff = -z(alpha_ci) * sd_R
-
-        link = getattr(self.dist, "_cb_link", "logit")
-        with np.errstate(all="ignore"):
-            if link == "loglog":
-                # v = log H, dv/dR = -1 / (R H): se(v) = sd_R / (R H)
-                H_hat = np.where(
-                    F_hat < 0.5, -np.log1p(-F_hat), -np.log(R_hat)
-                )
-                R_cb = np.exp(-H_hat * np.exp(diff / (R_hat * H_hat)))
-            elif link == "probit":
-                # q = Phi^-1(F), dq/dR = -1 / phi(q): se(q) = sd_R / phi(q)
-                q = np.where(F_hat < 0.5, z(F_hat), -z(R_hat))
-                R_cb = ndtr(-(q + diff / norm.pdf(q)))
-            else:
-                # logit R, d/dR = 1 / (R F)
-                exponent = diff / (R_hat * F_hat)
-                R_cb = R_hat / (R_hat + F_hat * np.exp(exponent))
-        # At the boundary (R = 0 or 1, e.g. t <= gamma) the transform
-        # degenerates to 0/0; the bound there is the boundary itself (#256).
-        # So it is within a subnormal of it, where the variance is noise.
-        tiny = np.finfo(float).tiny
-        R_cb = np.where(np.broadcast_to(F_hat < tiny, R_cb.shape), 1.0, R_cb)
-        R_cb = np.where(np.broadcast_to(R_hat < tiny, R_cb.shape), 0.0, R_cb)
-        return R_cb.T
+        # On the family's scale (surpyval.utils.linalg.sf_link_bound, which
+        # the degradation and regression bands share). At the boundary (R =
+        # 0 or 1, e.g. t <= gamma) the transform degenerates to 0/0; the
+        # bound there is the boundary itself (#256).
+        R_cb = sf_link_bound(
+            R_hat, sd_R, alpha_ci, bound, cb_link(self.dist), ff_hat=F_hat
+        )
+        # [upper, lower] on R for a two-sided bound: the layout the public
+        # cb method expects (it flips it for sf).
+        return R_cb[..., ::-1] if bound == "two-sided" else R_cb
 
     def _cb_rate_bound(
         self, t: Any, ctx: Any, alpha_ci: float, bound: str, on: str
