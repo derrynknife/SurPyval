@@ -28,6 +28,8 @@ from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
 
+_TINY = float(np.finfo(float).tiny)
+
 
 class ProportionalOddsFitter(
     MirroredDistributionAttrs, TVCFitMixin, DataFrameRegressionMixin
@@ -65,6 +67,7 @@ class ProportionalOddsFitter(
         self.sf_dist = distribution.sf
         self.ff_dist = distribution.ff
         self.df_dist = distribution.df
+        self.log_sf_dist = distribution.log_sf
 
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
         return LogLinearPhi.phi(Z, *phi_params)
@@ -118,20 +121,14 @@ class ProportionalOddsFitter(
         Cumulative hazard :math:`-\\ln S(x \\mid Z)` at ``x`` for covariates
         ``Z``; ``params`` as for :meth:`sf`.
 
-        Evaluated as :math:`H_0(x) - \\ln\\phi + \\ln(F_0 + \\phi S_0)`,
-        which stays finite where :math:`S_0` underflows to zero (there
-        ``-log(sf)`` is ``inf``, and a difference of two such values along
-        a time-varying path would be ``nan``).
+        Evaluated as :math:`\\ln(1 + F_0 / (\\phi S_0))`, which keeps full
+        relative precision where the cumulative hazard is small (#528), and
+        where :math:`\\phi S_0` is below the normal range as
+        :math:`H_0(x) - \\ln\\phi + \\ln(1 + (\\phi - 1) S_0)`, which stays
+        finite there (``-log(sf)`` is ``inf``, and a difference of two such
+        values along a time-varying path would be ``nan``).
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
-        H0 = self.Hf_dist(x, *dist_params)
-        S0 = self.sf_dist(x, *dist_params)
-        F0 = self.ff_dist(x, *dist_params)
-        return H0 - np.log(phi) + np.log(F0 + phi * S0)
+        return -self.log_sf(x, Z, *params)
 
     def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
@@ -150,6 +147,9 @@ class ProportionalOddsFitter(
         return phi * f0 / (denom * denom)
 
     def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        """
+        Log of the survival function, :math:`-H(x \\mid Z)`; see :meth:`Hf`.
+        """
         x = np.atleast_1d(np.asarray(x, dtype=float))
         Z = np.atleast_2d(np.asarray(Z, dtype=float))
         dist_params = params[: self.k_dist]
@@ -157,7 +157,25 @@ class ProportionalOddsFitter(
         phi = self._phi(Z, *phi_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
-        return np.log(phi) + np.log(S0) - np.log(F0 + phi * S0)
+        # S = phi S0 / (F0 + phi S0) = 1 / (1 + F0 / (phi S0)). The old
+        # log(phi) + log(S0) - log(F0 + phi S0) cancelled to about 1e-16
+        # absolute where H is small: 20 % wrong at H = 4e-16 (#528).
+        scaled = phi * S0
+        # Where phi S0 is below the normal range (or 0), F0 / (phi S0) can
+        # overflow; there H is large and nothing cancels: log S0 from the
+        # baseline's log_sf, which stays finite where S0 is 0, and
+        # log(F0 + phi S0) = log1p((phi - 1) S0).
+        normal = scaled >= _TINY
+        # A denominator of 1 in the branch not taken keeps the value (and
+        # autograd's derivative) free of inf.
+        safe = np.where(normal, scaled, 1.0)
+        return np.where(
+            normal,
+            -np.log1p(F0 / safe),
+            np.log(phi)
+            + self.log_sf_dist(x, *dist_params)
+            - np.log1p((phi - 1.0) * S0),
+        )
 
     def log_ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         x = np.atleast_1d(np.asarray(x, dtype=float))

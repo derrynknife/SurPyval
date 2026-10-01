@@ -26,6 +26,14 @@ _QF_TOL = 1e-9
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
 _BOUNDS = ("two-sided", "upper", "lower")
 
+# The equal precision band's default range of a = N sigma^2 / (1 + N
+# sigma^2) (#390): its standardized boundary is unbounded as a nears 0 or
+# 1, and there the estimate rests on a few failures or a few at risk. Over
+# the first to the last event it covered 0.87-0.93 for 0.95; over this
+# range 0.94-0.96 (n = 40 to 400). Klein and Moeschberger tabulate it for
+# a_L from 0.02 and a_U to 0.98.
+_EP_RANGE = (0.1, 0.9)
+
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
 # of ``interp_function`` ('cubic' is PCHIP, the rest scipy's interp1d).
@@ -1851,8 +1859,9 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         self,
         x: npt.ArrayLike | None = None,
         method: str = "hall-wellner",
-        bound_type: str = "exp",
+        bound_type: str = "arcsine",
         alpha_ci: float = 0.05,
+        x_range: "tuple[float, float] | None" = None,
     ) -> npt.NDArray:
         r"""
         Simultaneous confidence band of the survival function.
@@ -1883,17 +1892,34 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         rather than read from a table or simulated, so they are accurate
         for any range and results are reproducible.
 
-        The band is only defined between the first and last observed
-        events (where the variance estimate is positive and finite, and
-        the estimate strictly between 0 and 1); NaN is returned outside
-        that range, whether or not the model has bounds (``set_support``).
-        Over the first few events the estimate rests on a handful of
-        failures and the Brownian bridge approximation behind the equal
-        precision band is poor there: in simulation it covers about 0.89
-        for a nominal 0.95, the misses almost all at the first events
-        (#390). The Hall-Wellner band does not have this problem. The
-        asymptotic theory for these bands is for right censored data; for
-        Turnbull models with interval censoring prefer ``bootstrap_cb()``.
+        A band covers a range of times :math:`[t_L, t_U]` (``x_range``),
+        and is NaN outside it. Its critical value depends on the range
+        through :math:`a = N\sigma^2/(1 + N\sigma^2)` at its two ends,
+        :math:`\sigma^2` the Greenwood sum, and the theory behind it holds
+        for a range inside the data, :math:`0 < a_L < a_U < 1`. The
+        Hall-Wellner band covers the first to the last observed event
+        (where the variance estimate is positive and finite, and the
+        estimate strictly between 0 and 1). The equal precision band's
+        boundary grows without limit as :math:`a` approaches 0 or 1, and
+        near either end of the data the estimate rests on a handful of
+        failures, or of items at risk, whose error is far from normal; by
+        default it covers the times with :math:`0.1 \le a \le 0.9`
+        (inside the range of Klein and Moeschberger's tables, from 0.02
+        to 0.98). Outside the band's range NaN is returned, whether or
+        not the model has bounds (``set_support``). The asymptotic theory
+        for these bands is for right censored data; for Turnbull models
+        with interval censoring prefer ``bootstrap_cb()``.
+
+        The band is applied on the arcsine-square-root scale by default
+        (Klein and Moeschberger's transformed bands; Borgan and Liestøl,
+        1990). In simulation (Weibull lifetimes, n = 40 to 400, 30%
+        censored, the true curve checked over the band's whole range) the
+        equal precision band over the first to the last event covered
+        0.87 to 0.89 for a nominal 0.95 on the log(-log) scale, the
+        default until v0.22, its misses mostly at the first events, 0.93
+        on the arcsine scale, and over its default range 0.94 to 0.96 on
+        the arcsine scale. The Hall-Wellner band covers about 0.95 over
+        the whole range on either scale (#390).
 
         Parameters
         ----------
@@ -1903,27 +1929,38 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             the observed values.
         method : ('hall-wellner', 'nair'), str, optional
             The type of band. Defaults to 'hall-wellner'.
-        bound_type : ('exp', 'normal'), str, optional
-            As for ``cb()``: 'exp' applies the band on the log(-log)
-            scale, keeping it within [0, 1]. Defaults to 'exp'.
+        bound_type : ('arcsine', 'exp', 'normal'), str, optional
+            The scale the band is applied on: 'arcsine' the
+            arcsine-square-root of the survival function, 'exp' its
+            log(-log), as the pointwise ``cb()`` default, and 'normal' the
+            survival function itself. 'arcsine' and 'exp' keep the band
+            within [0, 1]. Defaults to 'arcsine', the one that holds its
+            level from the first event on (see above).
         alpha_ci : scalar, optional
             The level of significance of the band. Defaults to 0.05.
+        x_range : (t_L, t_U), optional
+            The times the band covers. Defaults to the first to the last
+            event for the Hall-Wellner band, and to the times with
+            :math:`0.1 \le a \le 0.9` (see above) for the equal precision
+            band.
 
         Returns
         -------
 
         band : numpy array
             Array of shape (len(x), 2) with the ``[lower, upper]`` band
-            values for the survival function at each x.
+            values for the survival function at each x, NaN outside the
+            band's range.
 
         Raises
         ------
 
         ValueError
-            If no value has a positive, finite variance with an estimate
-            strictly between 0 and 1 (e.g. no failures), or the model has
-            no variance estimate (``fit_from_ecdf``), or ``alpha_ci`` is not
-            strictly between 0 and 1.
+            If no value in the band's range has a positive, finite
+            variance with an estimate strictly between 0 and 1 (e.g. no
+            failures), or the model has no variance estimate
+            (``fit_from_ecdf``), or ``alpha_ci`` is not strictly between 0
+            and 1, or ``x_range`` is not two increasing times.
 
         Examples
         --------
@@ -1931,14 +1968,18 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
         ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
         >>> model.band([4, 6]).round(4)
-        array([[0.0671, 0.898 ],
-               [0.0094, 0.826 ]])
+        array([[0.1209, 0.9652],
+               [0.0051, 0.9151]])
         >>> model.cb([4, 6]).round(4)
         array([[0.1802, 0.8441],
                [0.063 , 0.7242]])
 
         References
         ----------
+
+        Borgan, Ø. and Liestøl, K. (1990), "A note on confidence intervals
+        and bands for the survival function based on transformations",
+        Scandinavian Journal of Statistics 17, 35-41.
 
         Hall, W. J. and Wellner, J. A. (1980), "Confidence bands for a
         survival curve from censored data", Biometrika 67, 133-143.
@@ -1952,8 +1993,10 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
         """
         if method not in ["hall-wellner", "nair"]:
             raise ValueError("'method' must be in ['hall-wellner', 'nair']")
-        if bound_type not in ["exp", "normal"]:
-            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        if bound_type not in ["arcsine", "exp", "normal"]:
+            raise ValueError(
+                "'bound_type' must be in ['arcsine', 'exp', 'normal']"
+            )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bands "
@@ -1981,6 +2024,26 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                 )
 
             a = N * sigma2 / (1 + N * sigma2)
+            ends = np.append(self.x[1:], np.inf)
+            if x_range is not None:
+                t_l, t_u = self._band_range(x_range)
+                # The steps [x_j, x_j+1) that meet [t_L, t_U].
+                valid &= (self.x <= t_u) & (ends > t_l)
+                what = "in x_range"
+            elif method == "nair":
+                valid &= (a >= _EP_RANGE[0]) & (a <= _EP_RANGE[1])
+                what = (
+                    "with a = N sigma^2 / (1 + N sigma^2) between {} and {}, "
+                    "the equal precision band's default range; give one "
+                    "with x_range, or use the Hall-Wellner band".format(
+                        *_EP_RANGE
+                    )
+                )
+            if not valid.any():
+                raise ValueError(
+                    "Band is undefined: no observations {} with a "
+                    "positive, finite variance estimate".format(what)
+                )
             a_l = a[valid].min()
             a_u = a[valid].max()
 
@@ -1993,7 +2056,20 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             else:
                 half_width = crit * (1 + N * sigma2) / np.sqrt(N)
 
-            if bound_type == "exp":
+            if bound_type == "arcsine":
+                # Klein and Moeschberger's arcsine-square-root bands
+                # (Section 4.4): by the delta method arcsin(sqrt(S)) has
+                # the standard error sigma sqrt(S / (1 - S)) / 2, sigma^2
+                # the Greenwood sum.
+                # Near S = 1 the upper end reaches 1, and the band does not
+                # pull the cumulative hazard down by a factor e^-c at the
+                # first event, as on the log(-log) scale, where a step of
+                # a few failures is far from normal (#390).
+                angle = np.arcsin(np.sqrt(self.R))
+                se = 0.5 * half_width * np.sqrt(self.R / (1 - self.R))
+                lower = np.sin(np.maximum(angle - se, 0.0)) ** 2
+                upper = np.sin(np.minimum(angle + se, np.pi / 2)) ** 2
+            elif bound_type == "exp":
                 # Band applied on the log(-log) scale, mirroring the
                 # pointwise exponential Greenwood bounds.
                 theta = np.log(-np.log(self.R))
@@ -2016,9 +2092,28 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
             out[:, 0] = np.where(idx < 0, np.nan, lower[idx_c])
             out[:, 1] = np.where(idx < 0, np.nan, upper[idx_c])
             outside = (x < self.x.min()) | (x > self.x.max()) | np.isnan(x)
+            if x_range is not None:
+                outside |= (x < t_l) | (x > t_u)
             out[outside] = np.nan
 
         return out
+
+    @staticmethod
+    def _band_range(x_range: Any) -> tuple[float, float]:
+        """``x_range`` as two increasing times ``(t_L, t_U)``."""
+        try:
+            t_l, t_u = (float(t) for t in x_range)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "'x_range' must be two times (t_L, t_U); got "
+                "{!r}".format(x_range)
+            ) from None
+        if not t_l <= t_u:
+            raise ValueError(
+                "'x_range' must be two increasing times (t_L, t_U); got "
+                "{!r}".format(x_range)
+            )
+        return t_l, t_u
 
     @keeps_query_shape
     def smoothed_hf(

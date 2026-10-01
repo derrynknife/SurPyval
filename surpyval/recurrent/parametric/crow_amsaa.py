@@ -55,6 +55,7 @@ class CrowAMSAA(NHPPFitter):
     def __init__(self) -> None:
         self.name = "Crow-AMSAA"
         self.parameter_names = ["alpha", "beta"]
+        self.has_scale = True
         # beta > 0: the intensity beta / alpha**beta * x**(beta - 1) and
         # log(beta) are undefined below zero (a negative beta was allowed and
         # the optimiser could stop there, with a decreasing MCF).

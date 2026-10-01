@@ -2,14 +2,27 @@ from math import log2, sqrt
 from typing import Any
 
 import numpy as np
+import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.conditional_inference import parse_selection
-from surpyval.beta.ml.forest.node import build_tree, node_from_dict
+from surpyval.beta.ml.forest.deviance_split import parse_min_split_gain
+from surpyval.beta.ml.forest.node import (
+    IntermediateNode,
+    Node,
+    build_tree,
+    node_from_dict,
+    tree_lines,
+)
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+)
+from surpyval.univariate.regression.regression_data import (
+    prepare_Z,
+    restore_covariate_meta,
+    serialise_covariate_meta,
 )
 from surpyval.utils import check_covariate_rows, finite_covariate_mask
 from surpyval.utils.dataframe import RegressionDataFrameMixin
@@ -33,6 +46,43 @@ def resolve_random_state(random_state: Any = None) -> Random:
     if random_state is None:
         return np.random.mtrand._rand
     return as_generator(random_state)
+
+
+def covariate_matrix(
+    Z: "ArrayLike | NDArray | pd.DataFrame",
+    feature_names: "list[str] | None" = None,
+) -> "tuple[ArrayLike | NDArray, list[str] | None]":
+    """The covariate matrix and its feature names.
+
+    A DataFrame ``Z`` gives its values and its column names (unless
+    ``feature_names`` is given); any other ``Z`` is returned as it is,
+    with ``feature_names`` (``None`` when not given: a tree fitted from
+    an array has no feature names, as a regression model fitted from one
+    has none).
+    """
+    if isinstance(Z, pd.DataFrame):
+        if feature_names is None:
+            feature_names = [str(column) for column in Z.columns]
+        Z = Z.to_numpy(dtype=float)
+    if feature_names is not None:
+        feature_names = [str(name) for name in feature_names]
+        n_columns = np.shape(Z)[1] if np.ndim(Z) == 2 else 1
+        if len(feature_names) != n_columns:
+            raise ValueError(
+                f"feature_names has {len(feature_names)} names but Z has "
+                f"{n_columns} columns"
+            )
+    return Z, feature_names
+
+
+def feature_labels(
+    feature_names: "list[str] | None", n_features: int
+) -> list[str]:
+    """The name of each feature for display: its ``feature_names`` where
+    the model has them, else ``Z0``, ``Z1``, ... (the column of ``Z``)."""
+    if feature_names is not None:
+        return list(feature_names)
+    return [f"Z{j}" for j in range(n_features)]
 
 
 def drop_missing_covariate_rows(
@@ -77,14 +127,13 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       Supports the full data model.
     - ``"non-parametric"``: for observed / right-censored data
       (optionally left-truncated), the risk-set log-rank split with
-      Nelson-Aalen leaves. For data with left or interval censoring,
-      the Turnbull-score split -- the standardised sum of each child's
-      log-rank scores under the node's pooled Turnbull estimate
-      (Finkelstein, 1986), which reduces to the log-rank scores on
-      right-censored data -- with Turnbull leaves. Raises
-      ``ValueError`` for right truncation, or for truncation together
-      with left or interval censoring: the scores would have to come
-      from the truncation-conditioned likelihood (issue #188).
+      Nelson-Aalen leaves. For data with left or interval censoring or
+      right truncation, the Turnbull-score split -- the standardised
+      sum of each child's log-rank scores under the node's pooled
+      Turnbull estimate (Finkelstein, 1986), which reduces to the
+      log-rank scores on right-censored data; a truncated row's score
+      is that of its truncation-conditioned likelihood -- with
+      Turnbull leaves. Supports the full data model.
 
     ``selection`` decides how a node chooses the feature it splits on:
 
@@ -118,10 +167,17 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         selection: str = "greedy",
         alpha_split: float = 0.05,
         random_state: Any = None,
+        feature_names: list[str] | None = None,
+        min_split_gain: float | str = 0.0,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
-        self.data, self.Z = drop_missing_covariate_rows(data, Z)
+        Z_in, self.feature_names = covariate_matrix(Z, feature_names)
+        # Set by ``fit_from_df(formula=...)``: the formula and its
+        # design-matrix transformer, to expand a DataFrame at prediction.
+        self.formula: str | None = None
+        self._model_spec: Any = None
+        self.data, self.Z = drop_missing_covariate_rows(data, Z_in)
 
         n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]
@@ -130,6 +186,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         self.n_features_split = n_features
 
         self.kind = parse_kind(kind, self.data)
+        self.min_split_gain = parse_min_split_gain(min_split_gain, self.kind)
 
         self._root = build_tree(
             data=self.data,
@@ -143,6 +200,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             rng=resolve_random_state(random_state),
             selection=self.selection,
             alpha_split=self.alpha_split,
+            min_split_gain=self.min_split_gain,
         )
 
     @classmethod
@@ -164,6 +222,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         kind: str = "weibull",
         selection: str = "greedy",
         alpha_split: float = 0.05,
+        min_split_gain: float | str = 0.0,
         random_state: Any = None,
     ) -> "SurvivalTree":
         """
@@ -203,7 +262,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             A split is only made if each child keeps at least this many
             observations. Defaults to 5.
         min_leaf_failures : int, optional
-            ... and at least this many failures. Defaults to 2.
+            ... and at least this many failures (rows that are not
+            right censored, each counted ``n`` times). Defaults to 2.
         n_features_split : int, float or str, optional
             The number of features considered at each split: an int, a
             fraction of the features (float), ``"sqrt"`` (the default),
@@ -220,6 +280,23 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``, the size of the test of no association.
             Defaults to 0.05. Ignored by ``"greedy"``.
+        min_split_gain : float, "aic" or "bic", optional
+            The least gain in log-likelihood a split of a ``"weibull"`` or
+            ``"exponential"`` tree must make: a node splits only if its
+            best cut raises the maximised log-likelihood of its working
+            model by more than this (the two children's against the
+            node's). ``"aic"`` is the kind's degrees of freedom ``k`` (1
+            for ``"exponential"``, 2 for ``"weibull"``): the split must
+            lower Akaike's criterion. ``"bic"`` is ``k log(d) / 2``, with
+            ``d`` the node's failures (rows not right censored, counted
+            ``n`` times; its units if it has none), as every BIC in
+            SurPyval counts them: the split must lower the Bayesian
+            criterion. Defaults to 0: any gain, as a forest of deep trees
+            wants. ``"aic"`` is the recommended setting for a tree used
+            on its own, which otherwise splits on noise until
+            ``min_leaf_samples`` or ``min_leaf_failures`` stops it. Not
+            used by ``"non-parametric"`` trees, whose splits are not
+            likelihoods; stop those with ``selection="ctree"``.
         random_state : None, int or numpy.random.Generator, optional
             Seeds the features drawn for each split (when
             ``n_features_split`` is less than the number of features).
@@ -283,6 +360,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         data = SurpyvalData(
             x, c, n, t, xl=xl, xr=xr, tl=tl, tr=tr, group_and_sort=False
         )
+        Z, feature_names = covariate_matrix(Z)
         Z = np.asarray(Z)
         if Z.ndim == 1:
             # A 1-d Z is a single feature, one value per sample
@@ -298,6 +376,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             selection,
             alpha_split,
             random_state,
+            feature_names,
+            min_split_gain,
         )
 
     def apply_model_function(
@@ -337,11 +417,19 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         x, restore = flatten_query(x)
         return restore(self._apply_flat(function_name, x, Z), axis=-1)
 
+    def _covariates(self, Z: "ArrayLike | NDArray | pd.DataFrame") -> NDArray:
+        # A DataFrame is read by the names the tree was fitted with (or
+        # expanded by its formula), so its columns may be in any order;
+        # anything else is read in the fitted column order.
+        if isinstance(Z, pd.DataFrame):
+            return prepare_Z(Z, self.feature_names, self._model_spec)
+        return np.array(Z, ndmin=1, dtype=float)
+
     def _apply_flat(
         self, function_name: str, x: NDArray, Z: ArrayLike | NDArray
     ) -> NDArray:
         # ``apply_model_function`` at a 1-D array of times.
-        Z = np.array(Z, ndmin=1, dtype=float)
+        Z = self._covariates(Z)
         if Z.ndim > 2:
             raise ValueError(
                 f"Z must be one covariate vector (1-D) or one per row "
@@ -423,16 +511,17 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         persisted: a restored tree is a predictor, not a re-fittable
         object.
         """
-        return stamp_schema(
-            {
-                "model": "SurvivalTree",
-                "kind": self.kind,
-                "n_features_split": int(self.n_features_split),
-                "selection": self.selection,
-                "alpha_split": float(self.alpha_split),
-                "root": self._root.to_dict(),
-            }
-        )
+        out = {
+            "model": "SurvivalTree",
+            "kind": self.kind,
+            "n_features_split": int(self.n_features_split),
+            "selection": self.selection,
+            "alpha_split": float(self.alpha_split),
+            "min_split_gain": self.min_split_gain,
+            "root": self._root.to_dict(),
+        }
+        serialise_covariate_meta(self, out)
+        return stamp_schema(out)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SurvivalTree":
@@ -444,11 +533,61 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         # Trees saved before selection existed were grown greedily.
         tree.selection = model_dict.get("selection", "greedy")
         tree.alpha_split = model_dict.get("alpha_split", 0.05)
+        tree.min_split_gain = model_dict.get("min_split_gain", 0.0)
         # A restored tree predicts but is not re-fittable; it holds no data.
         tree.data = None  # type: ignore[assignment]
         tree.Z = None  # type: ignore[assignment]
+        tree._model_spec = None
+        # Trees saved before feature names existed have none.
+        restore_covariate_meta(tree, model_dict)
         tree._root = node_from_dict(model_dict["root"])
         return tree
+
+    @property
+    def feature_labels(self) -> list[str]:
+        """The name of each feature: ``feature_names`` for a tree fitted
+        from a DataFrame (``fit_from_df``, or ``fit`` with a DataFrame
+        ``Z``), else ``Z0``, ``Z1``, ... by column of ``Z``. Split
+        descriptions and the printout use them."""
+        if self.feature_names is not None:
+            return list(self.feature_names)
+        return feature_labels(None, _n_features(self._root, self.Z))
+
+    def describe(self) -> str:
+        """The tree as text: one line per split, ``name <= value`` for
+        the left branch and ``name >  value`` for the right one (with the
+        adjusted p-value of a ``selection="ctree"`` split), each branch's
+        subtree indented under it, and each leaf's model."""
+        lines = [
+            f"SurvivalTree(kind={self.kind!r}, "
+            f"selection={self.selection!r})"
+        ]
+        lines += tree_lines(self._root, self.feature_labels)
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        return self.describe()
+
+
+def _n_features(root: Node, Z: NDArray | None) -> int:
+    # The number of features a tree was grown on: the columns of its Z,
+    # or for a restored tree (which keeps no Z) one past the largest
+    # feature its splits use or drew.
+    if Z is not None:
+        return int(np.shape(Z)[1])
+    largest = -1
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, IntermediateNode):
+            drawn = np.asarray(node.feature_indices_in, dtype=int)
+            largest = max(
+                largest,
+                int(node.split_feature_index),
+                int(drawn.max()) if drawn.size else -1,
+            )
+            stack += [node.left_child, node.right_child]
+    return largest + 1
 
 
 def parse_n_features_split(
@@ -473,31 +612,15 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     """
     Resolve and validate the tree ``kind`` against the data.
 
-    The parametric kinds (``"weibull"``, ``"exponential"``) support the
-    full data model. The non-parametric kind splits observed and
-    right-censored data (optionally left truncated) by the risk-set
-    log-rank, and left- and interval-censored data by the Turnbull
-    scores; neither is defined for right truncation, or for truncation
-    with left or interval censoring, so such data are rejected.
+    Every kind supports the full data model. The non-parametric kind
+    splits observed and right-censored data (optionally left truncated)
+    by the risk-set log-rank, and data with left or interval censoring or
+    right truncation by the Turnbull scores, which allow for truncation
+    through the truncation-conditioned likelihood (issue #188).
     """
     resolved = kind.lower().replace("_", "-")
-    if resolved in ("weibull", "exponential"):
+    if resolved in ("weibull", "exponential", "non-parametric"):
         return resolved
-    if resolved == "non-parametric":
-        right_truncated = bool(np.isfinite(data.t[:, 1]).any())
-        left_truncated = bool(np.isfinite(data.t[:, 0]).any())
-        interval_like = bool(((data.c == 2) | (data.c == -1)).any())
-        if right_truncated or (left_truncated and interval_like):
-            raise ValueError(
-                "kind='non-parametric' does not support right truncation, "
-                "or truncation together with left or interval censoring: "
-                "its splits (the risk-set log-rank, and the Turnbull "
-                "scores for left and interval censoring) would need "
-                "scores from the truncation-conditioned likelihood, which "
-                "are not implemented yet (issue #188). Use kind='weibull' "
-                "or kind='exponential' for this data."
-            )
-        return "non-parametric"
     raise ValueError(
         f"kind={kind!r} is invalid. Must be 'weibull', 'exponential' or "
         "'non-parametric'."

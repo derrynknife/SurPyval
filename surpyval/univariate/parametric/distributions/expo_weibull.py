@@ -162,6 +162,12 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
           overflow where :math:`x/\alpha` does;
         - ``log_g`` is :math:`\ln g`, exact in the lower tail where
           :math:`1 - e^{-t}` is exactly 0 once :math:`t < 10^{-16}`;
+        - ``ratio_g`` is :math:`\ln(g / t)`, so that the density's
+          :math:`\ln t + (\mu - 1) \ln g` is taken as
+          :math:`\mu \ln g - \ln(g / t)`: as written it is the
+          difference of two terms of the size of :math:`\beta \ln(x /
+          \alpha)`, which at :math:`\beta = 10^{20}` cancel to an error of
+          :math:`10^4` (#472);
         - ``log_ff`` is :math:`\mu \ln g`;
         - ``log_nl`` is :math:`\ln(-\ln g)`, which is :math:`-t` in the
           right tail after :math:`e^{-t}` underflows, so that
@@ -183,9 +189,15 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         log_t = beta * (log_x - np.log(alpha))
         with np.errstate(over="ignore"):
             t = np.exp(log_t)
-        log_g, _ = _log1mexp(t, log_t)
+        log_g, ratio_g = _log1mexp(t, log_t)
         log_ff = mu * log_g
-        out = {"log_x": log_x, "t": t, "log_g": log_g, "log_ff": log_ff}
+        out = {
+            "log_x": log_x,
+            "t": t,
+            "log_g": log_g,
+            "ratio_g": ratio_g,
+            "log_ff": log_ff,
+        }
         if not right:
             return out
         log_nl = _log_neg_log1mexp(t, log_g)
@@ -380,11 +392,13 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         log_q = np.where(
             large, 0.0, p["log_nl"] + np.where(large, 0.0, p["t"])
         )
+        # ln t + (mu - 1) ln g as mu ln g - ln(g / t), whose terms do not
+        # cancel (#472).
         log_hf = (
             np.log(beta)
-            + (beta - 1) * p["log_x"]
-            - beta * np.log(alpha)
-            + (mu - 1) * p["log_g"]
+            - p["log_x"]
+            + mu * p["log_g"]
+            - p["ratio_g"]
             - p["ratio_r"]
             - log_q
         )
@@ -495,12 +509,17 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         self, x: Numeric, alpha: Boxable, beta: Boxable, mu: Boxable
     ) -> Boxable:
         p = self._log_forms(x, alpha, beta, mu, right=False)
+        # ln f = ln(beta mu / x) + ln t + (mu - 1) ln g - t, with
+        # ln t + (mu - 1) ln g taken as mu ln g - ln(g / t): as written,
+        # beta ln x - beta ln alpha + (mu - 1) ln g cancelled to an error of
+        # about 1e4 at beta = 1e20, and put the likelihood far above its
+        # maximum (#472).
         inside = (
             np.log(beta)
             + np.log(mu)
-            + (beta - 1) * p["log_x"]
-            - beta * np.log(alpha)
-            + (mu - 1) * p["log_g"]
+            - p["log_x"]
+            + mu * p["log_g"]
+            - p["ratio_g"]
             - p["t"]
         )
         bm = beta * mu

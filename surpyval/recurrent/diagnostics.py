@@ -525,9 +525,14 @@ def cramer_von_mises_regression(
             tl=np.asarray(tl_b, dtype=float),
         )
         sim_data.Z = np.asarray(Z_b, dtype=float)
-        refit = model._fitter.fit_from_recurrent_data(
-            sim_data, model._fitter_dist
-        )
+        # The fit warned once of an aliased column (#502); its refits, on
+        # the same covariates, do not repeat it.
+        from surpyval.univariate.regression._aliasing import collect_aliased
+
+        with collect_aliased():
+            refit = model._fitter.fit_from_recurrent_data(
+                sim_data, model._fitter_dist
+            )
         refit_cif = {
             it: (
                 lambda x, r=refit, Z=sim_data.Z[sim_data.i == it][0]: r.cif(

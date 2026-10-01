@@ -69,6 +69,14 @@ class CountingProcess(RecurrentDataFrameMixin, ABC):
     #: ``(low, high)`` bounds per parameter, ``None`` for unbounded.
     bounds: tuple
 
+    #: Whether the cumulative intensity times any positive constant is the
+    #: same model with other parameters (it has a free scale, as ``HPP``'s
+    #: rate, ``Duane``'s ``b``, ``CrowAMSAA``'s ``alpha`` and
+    #: ``CoxLewis``'s ``alpha`` are). A proportional-intensity regression
+    #: on it then has an intercept, so a constant covariate column is
+    #: aliased (#502). False unless a model says so.
+    has_scale: bool = False
+
     @abstractmethod
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:
         """Instantaneous intensity function (event rate) at ``x``."""

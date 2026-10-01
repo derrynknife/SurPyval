@@ -163,6 +163,127 @@ bands change (#477).
   data or sits at the edge of its range. The docstrings say what ``q`` and
   ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
   that data LR = 0.40, p = 0.53).
+- **Bounds, mean life and accelerated life along a covariate path (#172,
+  phase 2).** ``cb_tvc(x, Z, xl=None, given=None, on="sf", ...)`` bounds
+  ``sf``, ``ff`` and ``Hf`` along a step schedule or a ``CovariatePath``,
+  by the delta method on the same scale as ``cb``, with the quadrature
+  mesh held at the fitted parameters; a constant path gives ``cb``, and
+  in 1,000 simulated fits the 95% bounds covered the truth 94.6-96.2% of
+  the time. ``mean_tvc(Z, xl=None, given=None)`` gives the mean (or with
+  ``given`` the mean residual life) in one cumulative pass, accurate to
+  about 1e-15, and ``inf`` with a warning where survival levels off.
+  ``AcceleratedLife`` models, which refused every path, now follow
+  Nelson's cumulative exposure along steps and paths for the Weibull,
+  Exponential, Gamma and LogNormal (location families still refuse,
+  saying why). AFT and accelerated life integrate one period of a
+  periodic path, so 10 million cycles take about 1 ms.
+- **Fixed: an additive hazards model's cb below 0.** It gave a band where
+  ``sf`` is 1 (WeibullAH ``cb(-1, z)`` was [0.81, 0.97]); it is now [1, 1].
+- **Survival forests grow 8-90 times faster (#190, #518).** The Weibull
+  split ran a Nelder-Mead fit for every candidate child (2 trees at n = 300:
+  21 s). On observed and right-censored data each child's maximum is now
+  found directly, every candidate of a feature at once: the exponential
+  rate and Weibull scale in closed form, the Weibull shape from its
+  profile likelihood (0.23 s). The log-rank split sorts each feature once
+  and scores every threshold from cumulative counts (10 trees at n = 1000:
+  2.2 s, was 16.5 s). The chosen splits are unchanged, so seeded forests
+  predict exactly as before. Data with left or interval censoring or
+  truncation still runs an optimiser for each candidate.
+- **Changed: trees and forests know their covariate names (#192).**
+  ``fit_from_df`` takes a ``formula`` as well as ``Z_cols``, and ``fit``
+  takes a ``DataFrame`` ``Z``; the fitted model keeps ``feature_names`` and
+  serialises them, ``print(tree)`` shows the splits by name (``temp <=
+  42``) and each leaf's model, and predictions read a ``DataFrame`` by name.
+  ``RandomSurvivalForest.feature_importances`` is a ``pandas.Series`` keyed
+  by feature name (it was an array).
+- **min_split_gain for the likelihood trees (#189).** A ``"weibull"`` or
+  ``"exponential"`` node splits only if its best cut raises the maximised
+  log-likelihood by more than ``min_split_gain``: a number, ``"aic"`` (the
+  kind's parameters, 1 or 2) or ``"bic"``. The default, 0, keeps the old
+  behaviour, which suits a forest; ``"aic"`` is the setting for a single
+  tree (on no-effect data, 3.4 leaves on average instead of 32).
+- **Split housekeeping (#193).** ``log_rank_split`` called directly on left-
+  or interval-censored or right-truncated data raised ``IndexError`` or
+  returned a wrong split; it now raises ``ValueError``. ``min_leaf_failures``
+  counts failures weighted by ``n`` in every split, so a row with count n
+  and n identical rows give the same tree.
+- **Non-parametric trees on truncated data (#188).** ``SurvivalTree`` and
+  ``RandomSurvivalForest`` with ``kind="non-parametric"`` refused
+  right-truncated data, and truncated data with left or interval
+  censoring. They now take the Turnbull-score split with Turnbull leaves:
+  a truncated row's log-rank score is that of its likelihood given its
+  truncation window (the event's score less the window's, under the
+  pooled Turnbull estimate fitted with the truncation). On left-truncated
+  right-censored data these are the delayed-entry martingale residuals.
+  Without the window term, a covariate that changed only the truncation
+  was found significant in 39-49% of data sets at the 5% level; with it,
+  0.5-3%. Every tree kind now accepts the full data model.
+- **Breaking: Kaplan-Meier bands hold their level (#390).** The
+  equal-precision band covered 0.87-0.89 for a nominal 0.95 (0.83
+  untransformed), most misses at the first events, where its boundary is
+  unbounded and the estimate rests on a few failures. ``band()`` now forms
+  its bands on the arcsine-square-root scale by default
+  (``bound_type="arcsine"``; Borgan & Liestøl 1990), and the
+  equal-precision band covers 0.1 <= a <= 0.9 by default, NaN outside;
+  ``x_range=(t_L, t_U)`` sets any range. Coverage is now 0.94-0.96 at n =
+  40-400; Hall-Wellner covers about 0.95. Pass ``bound_type="exp"`` for
+  the old scale. ``cb()`` is unchanged.
+- **Breaking: parametric regression Wald bands on the baseline family's
+  scale (#504).** As for the univariate (#477) and degradation models, the
+  ``sf``/``ff``/``Hf`` band is now formed on ln H (Weibull, Exponential,
+  Rayleigh, Gumbel), the normal quantile of F (Normal, LogNormal) or the
+  logit (the rest), from the cumulative hazard, and ``cb_tvc`` follows. A
+  model with its coefficient fixed at 0 now gives the univariate band (it
+  was up to 120% away). On ten-point samples the Weibull PH and AFT bands
+  turned back in a tail in 200 of 200 fits and now never do. Small-sample
+  bands change; at n = 2000 they move by at most 1.4% of their width. The
+  three families of model share one helper in ``surpyval.utils.linalg``.
+- **Proportional-intensity regressions alias (#502).** A repeated column
+  was split (-0.231 as -0.116 / -0.116) and a constant column took part of
+  the baseline (rate 0.0807 became 0.0764), silently. Both now give a NaN
+  coefficient, ``model.aliased``, one warning, and the fit without the
+  column. A constant is aliased where the baseline has a scale
+  (``has_scale``: HPP, Duane, Crow-AMSAA, Cox-Lewis).
+- **Dual-stress life models alias an undetermined stress effect (#503).**
+  With equal (or collinear) stresses, DualPower and DualExponential split
+  one effect between two parameters (-1.174 as -0.568 / -0.605), silently.
+  The later stress's parameter is now NaN, with one warning naming the
+  column, and the fit is the single-stress one. PowerExponential is
+  unaffected.
+- **Renewal models: intervals at a boundary (#461).** A ``q`` driven to 0,
+  or a ``rho`` to 1 or 0, gave NaN ``param_cb`` for it and for ``alpha``
+  (whose variance was -10.6). The restoration parameter now gets its
+  one-sided profile-likelihood interval (e.g. q in [0, 0.069]); the others
+  get Wald intervals of the model held at the edge, and the printed table
+  says so.
+- **MixtureModel: no false "max iterations" warning, and faster (#506).**
+  EM on a censored mixture crawled for 1000 iterations and warned at the
+  maximum. After at most 20 EM iterations the fit is polished by direct
+  maximum likelihood with autograd gradients, and a verified maximum is
+  accepted. The issue's case takes about 1 s (7.4 s before on the same
+  machine), with no warning and a slightly better maximum (738.046941
+  against 738.047053).
+- **Proportional-odds cumulative hazard is accurate where it is small
+  (#528).** ``Hf``, ``log_sf`` and ``Hf_tvc`` of every PO model computed
+  H0 - ln(phi) + ln(F0 + phi S0), whose terms cancel to about 1e-16 in
+  absolute terms: 20% wrong at H = 4e-16, and ``log_sf`` was -inf where S0
+  underflows. They now use ln(1 + F0/(phi S0)). Checked against 50-digit
+  values for all seven baselines; fitted parameters are unchanged.
+- **ExpoWeibull likelihood is accurate at extreme shapes (#472).** The
+  log-density and hazard added terms of size beta ln(x/alpha) that cancel,
+  an error of about 1e4 per point at beta = 7e19, so the likelihood came
+  out up to 3.7e6 in deviance above the fitted maximum and a
+  likelihood-ratio search met -2e139. They are now computed without the
+  cancellation, and the likelihood-ratio band's walk starts from the
+  points its direct searches reached.
+- **Every parametric fit searches in the units of its start (#366).** Only
+  offset fits did; the others searched a scale as a log below 1 and
+  linearly above it, a different search in every set of units. Fits to
+  data in millionths and in millions now agree to rounding (1e-16 to
+  1e-11; up to 2e-6 before, and 3% for an ExpoWeibull MSE fit). Fits move
+  only in their last digits. A Beta4 fit on data where its likelihood is
+  unbounded can now warn "No finite maximum" instead of "did not reach a
+  verified maximum".
 - **Fine-Gray fits in linear time (#517).** ``FineGray.fit`` (and
   ``CompetingRisksProportionalHazards(model="Fine-Gray")``) built a dense
   events-by-rows matrix of censoring weights and used it in every

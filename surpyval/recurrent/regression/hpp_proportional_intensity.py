@@ -12,7 +12,10 @@ from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
-from .proportional_intensity import ProportionalIntensityModel
+from .proportional_intensity import (
+    ProportionalIntensityModel,
+    alias_covariates,
+)
 
 
 @singleton_fitter
@@ -366,10 +369,23 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
 
         neg_ll = self.create_negll_func(data)
 
-        res = minimize(neg_ll, init)
+        # A coefficient the data cannot determine is held at 0 and reported
+        # as nan (#502); the rate is the intercept.
+        aliased = alias_covariates(data.Z, intercept=True)
+        free = np.ones(1 + num_covariates, dtype=bool)
+        free[1 + aliased] = False
+
+        def neg_ll_free(values: np.ndarray) -> float:
+            params = np.zeros(1 + num_covariates)
+            params[free] = values
+            return neg_ll(params)
+
+        res = minimize(neg_ll_free, init[free])
         out.res = res
-        out.params = np.atleast_1d(np.exp(res.x[0]))
-        out.coeffs = np.atleast_1d(res.x[1:])
+        fitted = np.full(1 + num_covariates, np.nan)
+        fitted[free] = res.x
+        out.params = np.atleast_1d(np.exp(fitted[0]))
+        out.coeffs = np.atleast_1d(fitted[1:])
         out.name = "Homogeneous Poisson Process"
         out.kind = "HPP"
         out.parameterization = "Parametric"

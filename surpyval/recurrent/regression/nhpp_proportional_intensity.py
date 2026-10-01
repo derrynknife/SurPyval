@@ -16,7 +16,10 @@ from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
-from .proportional_intensity import ProportionalIntensityModel
+from .proportional_intensity import (
+    ProportionalIntensityModel,
+    alias_covariates,
+)
 
 
 @singleton_fitter
@@ -261,6 +264,16 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
 
         neg_ll = self.create_negll_func(data, dist)
 
+        # A coefficient the data cannot determine is held at 0 and reported
+        # as nan (#502). A constant column is one only where the baseline
+        # has a scale, which is then the intercept.
+        n_dist = len(dist.parameter_names)
+        aliased = alias_covariates(
+            data.Z, intercept=getattr(dist, "has_scale", False)
+        )
+        free = np.ones(expected, dtype=bool)
+        free[n_dist + aliased] = False
+
         # Search on an unconstrained scale: a baseline parameter bounded
         # below (Duane's b, Crow-AMSAA's alpha and beta) is optimised as the
         # log of its distance from the bound. Nelder-Mead on the natural
@@ -268,21 +281,27 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # well short of the optimum on as few as nine parameters. A
         # gradient search does the work and Nelder-Mead polishes it.
         bounds = list(dist.bounds) + [(None, None)] * num_covariates
+        bounds = [b for b, keep in zip(bounds, free) if keep]
         to_natural, to_search = unconstraining_maps(bounds)
+
+        def full(values: np.ndarray) -> np.ndarray:
+            params = np.zeros(expected)
+            params[free] = values
+            return params
 
         def objective(u: np.ndarray) -> float:
             with np.errstate(all="ignore"):
-                value = neg_ll(to_natural(u))
+                value = neg_ll(full(to_natural(u)))
             return float(value) if np.isfinite(value) else 1e300
 
         def search(start: np.ndarray) -> Any:
-            res = minimize(objective, to_search(start), method="BFGS")
+            res = minimize(objective, to_search(start[free]), method="BFGS")
             return minimize(
                 objective,
                 res.x,
                 method="Nelder-Mead",
                 options={
-                    "maxfev": 2000 * expected,
+                    "maxfev": 2000 * int(free.sum()),
                     "xatol": 1e-8,
                     "fatol": 1e-10,
                 },
@@ -299,8 +318,9 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
             warn_unconverged("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res
-        out.params = res.x[: len(dist.parameter_names)]
-        out.coeffs = res.x[len(dist.parameter_names) :]
+        fitted = np.where(free, full(res.x), np.nan)
+        out.params = fitted[:n_dist]
+        out.coeffs = fitted[n_dist:]
         out.name = "Non-Homogeneous Poisson Process"
         out.kind = "NHPP"
         out.parameterization = "Parametric"
@@ -313,7 +333,7 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
         out._neg_ll = neg_ll
-        out._mle = np.asarray(res.x, dtype=float)
+        out._mle = fitted
         out._n_obs = bic_sample_size(data)
 
         return out

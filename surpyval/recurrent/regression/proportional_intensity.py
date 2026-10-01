@@ -13,9 +13,53 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.regression._aliasing import (
+    aliased_columns,
+    constant_columns,
+    warn_aliased,
+)
 from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
+
+
+def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
+    """The columns of ``Z`` whose coefficients a proportional-intensity
+    fit cannot determine (#502), with one warning naming them.
+
+    The intensity is :math:`\\Lambda_0(t) e^{\\beta' Z}`, so a column that
+    is a linear combination of the others leaves the likelihood flat along
+    a combination of their coefficients, and a constant column one along
+    its coefficient and the baseline's scale, where the baseline has one
+    (``intercept``: the HPP's rate, or an NHPP baseline with
+    ``has_scale``); otherwise only a column of zeros is aliased. The check
+    is the regressions' (:mod:`surpyval.univariate.regression._aliasing`),
+    on the (centred) rows of ``Z``, the later of two collinear columns
+    aliased, as in R.
+    """
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim != 2 or Z.shape[0] == 0 or Z.shape[1] == 0:
+        return np.array([], dtype=int)
+    if intercept:
+        Zc = Z - Z.mean(axis=0)
+        constant = constant_columns(Z)
+    else:
+        Zc = Z
+        constant = np.all(Z == 0, axis=0)
+    aliased = aliased_columns(Zc.T @ Zc, Z.shape[0], constant)
+    if aliased.size:
+        warn_aliased(
+            aliased,
+            (
+                "they are constant (the baseline intensity's scale is the "
+                "model's intercept) or a linear combination of the other "
+                "columns"
+                if intercept
+                else "they are all zero or a linear combination of the "
+                "other columns"
+            ),
+        )
+    return aliased
 
 
 class ProportionalIntensityModel(
@@ -36,7 +80,8 @@ class ProportionalIntensityModel(
     ``params`` holds the base-rate parameters and ``coeffs`` the covariate
     coefficients; ``parameter_names`` names both, base rate first, the order
     of :meth:`covariance` and :meth:`standard_errors`, so
-    ``parameter_names[:len(params)]`` names ``params``.
+    ``parameter_names[:len(params)]`` names ``params``. A coefficient the
+    data cannot determine is ``nan`` and listed in :attr:`aliased`.
 
     Examples
     --------
@@ -154,6 +199,21 @@ class ProportionalIntensityModel(
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
         return out
 
+    @property
+    def aliased(self) -> np.ndarray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#502): a constant column (where the baseline has a
+        scale, which is the intercept) or a linear combination of the
+        others. Their coefficients are ``nan`` in ``coeffs`` (R's ``NA``),
+        as are their standard errors, and predictions take them as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.coeffs, dtype=float)))
+
+    def _coef(self) -> np.ndarray:
+        """``coeffs`` with an aliased coefficient as 0, as the model
+        predicts with it."""
+        coeffs = np.asarray(self.coeffs, dtype=float)
+        return np.where(np.isnan(coeffs), 0.0, coeffs)
+
     @keeps_query_shape
     def cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         """
@@ -170,7 +230,7 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
-        return self.dist.cif(x, *self.params) * np.exp(Z @ self.coeffs)
+        return self.dist.cif(x, *self.params) * np.exp(Z @ self._coef())
 
     @keeps_query_shape
     def iif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
@@ -188,11 +248,13 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
-        return self.dist.iif(x, *self.params) * np.exp(Z @ self.coeffs)
+        return self.dist.iif(x, *self.params) * np.exp(Z @ self._coef())
 
     def inv_cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         if hasattr(self.dist, "inv_cif"):
-            return self.dist.inv_cif(x / np.exp(self.coeffs @ Z), *self.params)
+            return self.dist.inv_cif(
+                x / np.exp(self._coef() @ Z), *self.params
+            )
         else:
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
@@ -383,7 +445,12 @@ class ProportionalIntensityModel(
                 Z @ theta[n_dist_params:]
             )
 
-        se = delta_method_se(cif_at, self._mle, self.covariance())
+        # An aliased coefficient is held at 0 and has no variance (#502).
+        held = ~self._estimated()
+        cov = self.covariance()
+        cov[held, :] = 0.0
+        cov[:, held] = 0.0
+        se = delta_method_se(cif_at, self._mle_values(), cov)
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
     # Extends the mixin plot with covariates -- same known divergence.

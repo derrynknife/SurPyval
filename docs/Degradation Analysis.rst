@@ -475,7 +475,8 @@ Two corrections are available.
           \frac{\partial\hat\phi}{\partial T_i}^{\!\top},
 
   and bounds on survival (or anything else) follow by one more delta step,
-  taken on the logit scale so they stay inside :math:`(0, 1)`; a two-sided
+  taken on the life distribution's probability-plot scale (as for the
+  parametric models) so they stay inside :math:`(0, 1)`; a two-sided
   band puts :math:`\alpha/2` in each tail. It is fast — no refitting. (In a
   simulation with twelve units, the nominal 95 % band covered the true
   reliability in 92–98 % of 400 runs, depending on the time.)

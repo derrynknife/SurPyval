@@ -76,7 +76,8 @@ below points straight to the section that answers it.
      - `Semi-Parametric — Additive Hazards`_
    * - use covariates that change during follow-up, or forecast along a
        planned covariate path
-     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, PO, AFT)
+     - ``fit_tvc`` (Cox, PH, AH, PO, AFT); ``sf_tvc``, and ``cb_tvc`` /
+       ``mean_tvc`` for the parametric families
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
      - ``model.check_ph()``
@@ -1783,8 +1784,16 @@ an unbounded coefficient) so the interval always stays valid:
     m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
 
 ``cb`` propagates the parameter covariance through a predicted function by the
-delta method, returning a confidence *band*. Here is the survival at a covariate
-value with its 95% band:
+delta method, returning a confidence *band*. The band on ``sf``, ``ff`` and
+``Hf`` is formed on the baseline family's probability-plot scale, as for the
+univariate models (:doc:`Parametric Estimation`): :math:`\ln H` for a
+Weibull, Exponential, Rayleigh or Gumbel baseline, the normal quantile of
+:math:`F` for a Normal or LogNormal one, and the logit of :math:`F` for the
+rest. A model with its coefficients fixed at 0 then gives the univariate band,
+and the band rises with time wherever the shape's own interval excludes 0
+(before v0.22 every regression band was on the logit of the survival, and on
+small samples it could turn back in a tail). Here is the survival at a
+covariate value with its 95% band:
 
 .. jupyter-execute::
 
@@ -2072,7 +2081,13 @@ The fit separates the two effects — an activation energy of 0.67 eV against
 the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
 because the design varies each stress while the other is held fixed. Had voltage been raised only
 together with temperature, the two columns would be collinear and no fit
-could tell their effects apart.
+could tell their effects apart. The fit then says so: where the terms the
+log-life is linear in (:math:`1/Z` for an exponential term, :math:`\log Z`
+for a power term) are collinear, or one is constant, the later stress's
+parameter is aliased -- ``nan``, with one warning naming its column -- and
+the others are those of the fit without it, as for a regression coefficient
+the data cannot determine. Two equal stress columns of ``DualPower``, say,
+give the ``Power`` fit, with ``n`` aliased.
 
 .. jupyter-execute::
     :hide-code:
@@ -2306,7 +2321,10 @@ for which the value in force at time 0 is taken to hold before it as well.
 ``fit_tvc`` treats a subject observed from time 0 the same way (its first
 interval is not left-truncated), so for PH, AH and PO a constant covariate
 split into intervals reproduces the ordinary ``fit``.
-Accelerated life models raise ``NotImplementedError``.
+An accelerated life model whose life parameter scales time (Weibull,
+Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
+:math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a
+location (Normal, Gumbel, Logistic) raises ``NotImplementedError``.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2525,8 +2543,8 @@ cumulative-exposure model: the path accumulates an accelerated age
 :math:`S(t) = S_0(\psi(t))`. A model fitted on fixed covariates and
 evaluated along a path assumes its family's time-varying form is right, and
 for the same ramp the two forms give different answers unless the baseline
-is exponential. Accelerated life models refuse a path, as they refuse a
-step schedule.
+is exponential. An accelerated life model follows cumulative exposure as
+AFT does, when its life parameter scales time (below).
 
 .. note::
 
@@ -2540,6 +2558,127 @@ step schedule.
    error shrinks with the square of the step width. A covariate driven by
    the unit itself, such as a degradation signal read from it, needs a
    joint longitudinal-survival model, which SurPyval does not provide.
+
+.. _tvc-bounds-mean:
+
+Bounds, mean life and accelerated life along a path
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
+bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
+along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
+carried along the path: a Wald bound on the baseline family's
+probability-plot scale (as for ``cb``), with its standard error propagated
+from the fitted covariance by the delta method, so a constant path gives
+``cb``. Along a
+``CovariatePath`` the quadrature mesh is adapted once, at the fitted
+parameters, and then held fixed while the parameters are perturbed. The
+function the delta method differentiates is then smooth in the parameters,
+and the cost is :math:`2k + 1` passes along the path for :math:`k`
+parameters.
+
+.. jupyter-execute::
+
+    t2 = np.array([0.5, 1.0, 2.0])
+    print('S(t) along the ramp:', ph.sf_tvc(t2, ramp).round(4))
+    print('95% bounds:')
+    print(ph.cb_tvc(t2, ramp).round(4))
+    print('given the ramp survived:', ph.cb_tvc([2.0], ramp, given=1.0).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b, _s = ph.cb_tvc(t2, ramp), ph.sf_tvc(t2, ramp)
+    assert np.all((_b[:, 0] < _s) & (_s < _b[:, 1]))
+    assert np.allclose(ph.cb_tvc(t2, CovariatePath.from_points([0], [0.5])),
+                       ph.cb(t2, [0.5]), rtol=1e-8)
+
+In a simulation of 1,000 fits each of a ``WeibullPH`` and a ``WeibullAFT``
+model (100 units, censored at a fixed time), the 95% bounds covered the true
+survival in 94.6% to 96.2% of the fits. That held along a ramp, along a step
+schedule, and conditional on survival to an age partway along the ramp.
+
+``mean_tvc(Z, xl=None, given=None)`` is the mean life along a path, and,
+with ``given``, the mean *residual* life of a unit that has survived to that
+age along it. The integral to infinity is adaptive Gauss-Kronrod over panels
+that grow geometrically, and its nodes are simply more query times of
+``sf_tvc``. Each round of refinement is then one pass along the path, not an
+integral for every node, and a mean takes a few milliseconds. A step schedule
+is integrated as the matching piecewise-constant path.
+
+.. jupyter-execute::
+
+    print('mean life, along the ramp      :', round(ph.mean_tvc(ramp), 4))
+    print('mean life, never stressed      :',
+          round(ph.mean_tvc(StepSchedule.constant([0.0])), 4))
+    print('mean remaining life, given 1.0 :', round(ph.mean_tvc(ramp, given=1.0), 4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    from scipy.integrate import quad as _quad
+    _ref = sum(_quad(lambda u: ph.sf_tvc(u, ramp), a, b, epsrel=1e-12,
+                     epsabs=0, limit=200)[0] for a, b in ((0, 1), (1, np.inf)))
+    assert abs(ph.mean_tvc(ramp) / _ref - 1) < 1e-8
+    assert ph.mean_tvc(ramp) < ph.mean_tvc(StepSchedule.constant([0.0]))
+
+A path can stop units failing. If the hazard dies away, for example because
+the stress falls to a level at which nothing fails, the survival levels off
+above 0. A fraction of the units then never fails and the mean is infinite.
+``mean_tvc`` then returns ``inf`` with a warning that gives the survival
+where the integration stopped, as a fitted univariate model's ``mean()`` does
+for a limited-failure population.
+
+**Accelerated life along a path.** An accelerated life model sets a
+distribution's life parameter to :math:`L(V)`, a function of the stress.
+Where that parameter scales time, :math:`S(t \mid V) = S_1(t / L(V))`, with
+:math:`S_1` the distribution at unit life. This holds for the Weibull
+:math:`\alpha`, the Exponential and Gamma rates :math:`1 / L` and the
+LogNormal's :math:`e^{\mu}`. A changing stress then ages the unit by Nelson's
+cumulative exposure,
+
+.. math::
+    S(t) = S_1\!\left(\int_0^t \frac{du}{L(V(u))}\right),
+
+the AFT form with the rate :math:`1 / L(V)`. That is the classical model of a
+step-stress or ramp-stress accelerated test. Here the Arrhenius model fitted
+above is evaluated along a test in which the temperature is ramped from
+85 °C to 125 °C over 4,000 hours:
+
+.. jupyter-execute::
+
+    ramp_T = CovariatePath.from_points([0.0, 4000.0], [358.0, 398.0])
+    t_al = np.array([1000.0, 2000.0, 3000.0, 4000.0])
+    print('S(t), ramped        :', model_arr.sf_tvc(t_al, ramp_T).round(3))
+    print('S(t), held at 85 °C :', model_arr.sf(t_al, [358.0]).round(3))
+    print('S(t), held at 125 °C:', model_arr.sf(t_al, [398.0]).round(3))
+    print('mean life, ramped   : %.0f h' % model_arr.mean_tvc(ramp_T))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _S = model_arr.sf_tvc(t_al, ramp_T)
+    assert np.all(model_arr.sf(t_al, [398.0]) < _S)
+    assert np.all(_S < model_arr.sf(t_al, [358.0]))
+    _flat = model_arr.sf_tvc(t_al, StepSchedule.constant([378.0]))
+    assert np.allclose(_flat, model_arr.sf(t_al, [378.0]), rtol=1e-12)
+
+A step schedule gives a step-stress test the same way. For the location
+families (Normal, Gumbel, Logistic) the life parameter :math:`\mu` shifts the
+distribution rather than rescaling time. A change of stress then carries no
+accumulated age from one level to the next, so those models raise
+``NotImplementedError`` along a path.
+
+A family that rescales time (AFT, and accelerated life) also accumulates the
+same age over every period of a periodic path, so along one it integrates a
+single period, :math:`\psi(t) = k\,\Psi_P + \psi(t - kP)` with
+:math:`k = \lfloor t / P \rfloor`. Ten million cycles then cost no more than
+one. A hazard family has no such shortcut, because its baseline ages from
+one period to the next, so a fast cycle over a long horizon still needs a
+panel per period and raises the ``ValueError`` above.
 
 
 Worked example: forecasting equipment on a duty cycle
@@ -3061,9 +3200,11 @@ The tree ``kind`` couples the split rule with the leaf model:
 ``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves for
 observed, right-censored and left-truncated data, and its score form under the
 pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
-data (not yet with truncation); ``'weibull'`` (the default) and
-``'exponential'`` use a likelihood split and parametric leaves and accept every
-kind of censoring and truncation, at a higher computational cost:
+and right-truncated data (with any truncation); ``'weibull'`` (the default)
+and ``'exponential'`` use a likelihood split and parametric leaves. Every kind
+accepts every kind of censoring and truncation; the parametric ones need an
+optimiser at each candidate split when there is left or interval censoring or
+truncation, at a much higher computational cost:
 
 .. jupyter-execute::
 
@@ -3083,23 +3224,23 @@ kind of censoring and truncation, at a higher computational cost:
     np.random.seed(0)          # trees draw their candidate features at random
     tree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, max_depth=2,
                             kind='non-parametric', n_features_split='all')
-    root = tree._root
-    print('root split     : z%d <= %.2f' % (root.split_feature_index,
-                                             root.split_feature_value))
-    print('right child    : z%d <= %.2f' % (
-        root.right_child.split_feature_index,
-        root.right_child.split_feature_value))
+    print(tree)
     print('S(5), risky unit   :', tree.sf([5.0], [0.9, 0.1, 0.5]).round(3))
     print('S(5), ordinary unit:', tree.sf([5.0], [0.1, 0.9, 0.5]).round(3))
 
 The root splits on :math:`z_0` near 0.5, and the right-hand branch then splits
 on :math:`z_1` near 0.5 — the interaction, recovered without being specified.
-(The ``_root`` node structure is shown only to make the splits visible.)
+Printing a tree shows each split, the left branch (``<=``) and then the right
+(``>``) with its subtree indented under it, and each leaf's model. Fitted from
+arrays, the covariates are named by their column of ``Z`` (``Z0``, ``Z1``,
+...); a tree or forest fitted from a DataFrame keeps the column names as
+``feature_names`` and uses them instead (see below).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
+    root = tree._root
     assert root.split_feature_index == 0
     assert abs(root.split_feature_value - 0.5) < 0.15
     assert root.right_child.split_feature_index == 1
@@ -3144,9 +3285,14 @@ is compared with a Cox model on the same metrics:
 With ten shallow trees the forest already edges out a Cox model that cannot
 represent the interaction; more and deeper trees usually widen the gap, at a
 proportional cost in time. Setting ``kind='weibull'`` (the default) gives
-parametric leaves and handles left and interval censoring and truncation, but
-fits a likelihood at every candidate split and is much slower. Fitted trees and
-forests serialise like every other model (next section).
+parametric leaves and handles left and interval censoring and truncation. On
+observed and right-censored data like these its split search costs the same
+order as the log-rank's, because each candidate child's Weibull maximum
+likelihood is found directly (the scale in closed form, the shape from the
+one-dimensional profile likelihood); its leaves are Weibull fits, made when
+the forest first predicts. With left or interval censoring or truncation every
+candidate needs an optimiser, and it is much slower. Fitted trees and forests
+serialise like every other model (next section).
 
 .. jupyter-execute::
     :hide-code:
@@ -3170,21 +3316,28 @@ the last one with its average hazard. That makes its density a density per
 unit of time, on the same scale as a parametric leaf's, so forests of different
 ``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
 one covariate at a time among the out-of-bag rows and reports how much the
-score drops:
+score drops, as a ``pandas.Series`` keyed by covariate name. Here the forest
+is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
 
 .. jupyter-execute::
+
+    import pandas as pd
+
+    df_tr = pd.DataFrame(Zt_tr, columns=['z0', 'z1', 'z2'])
+    df_tr['time'], df_tr['censored'] = xt_tr, ct_tr
 
     oob = {}
     for depth in [0, 3]:                  # depth 0: every tree is one leaf
         np.random.seed(0)
         with contextlib.redirect_stderr(io.StringIO()):
-            rsf_oob = RandomSurvivalForest.fit(
-                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, max_depth=depth,
+            rsf_oob = RandomSurvivalForest.fit_from_df(
+                df_tr, x_col='time', c_col='censored',
+                Z_cols=['z0', 'z1', 'z2'], n_trees=30, max_depth=depth,
                 n_features_split=2, kind='non-parametric')
         oob[depth] = rsf_oob.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
     importance = rsf_oob.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance.round(3))
+    print(importance.round(3))
 
 The splits raise the out-of-bag log-likelihood above that of the pooled
 estimate, and the two covariates of the interaction carry the importance
@@ -3198,9 +3351,9 @@ methods need the fitted one.
     :hide-output:
 
     assert oob[3] > oob[0] + 0.05, oob
-    assert importance[0] > 0.05 and importance[1] > 0.05, importance
-    assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
-        importance
+    assert importance['z0'] > 0.05 and importance['z1'] > 0.05, importance
+    assert abs(importance['z2']) < min(importance['z0'],
+                                       importance['z1']) / 3, importance
 
 Because the score is a likelihood, it validates forests on data that
 concordance cannot handle. Below, units are only inspected every two time
@@ -3232,10 +3385,11 @@ such data with the log-rank scores of the pooled Turnbull estimate:
         oob_ic[depth] = rsf_ic.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
     importance_ic = rsf_ic.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance_ic.round(3))
+    print(importance_ic.round(3))
 
 Again the splits beat the pooled Turnbull estimate out of bag, and the
-importance falls on :math:`z_0` alone.
+importance falls on :math:`z_0` alone (``Z0``: this forest was fitted from
+arrays).
 
 .. jupyter-execute::
     :hide-code:
@@ -3243,8 +3397,8 @@ importance falls on :math:`z_0` alone.
 
     assert set(c_ic) == {-1, 1, 2}
     assert oob_ic[2] > oob_ic[0] + 0.02, oob_ic
-    assert importance_ic[0] > 0.02, importance_ic
-    assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
+    assert importance_ic['Z0'] > 0.02, importance_ic
+    assert importance_ic['Z0'] > 3 * np.abs(importance_ic.iloc[1:]).max(), \
         importance_ic
 
 Both the tree and the forest take ``random_state``: ``None`` (the default)
@@ -3323,19 +3477,12 @@ keeps the trees from fitting noise:
 
 .. jupyter-execute::
 
-    ctree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, kind='non-parametric',
-                             n_features_split='all', selection='ctree')
-
-    def show(node, depth=0):
-        if hasattr(node, 'split_feature_index'):
-            print('  ' * depth + f'z{node.split_feature_index} <= '
-                  f'{node.split_feature_value:.2f}   (p = {node.p_value:.1e})')
-            show(node.left_child, depth + 1)
-            show(node.right_child, depth + 1)
-        else:
-            print('  ' * depth + f'leaf: {len(node.data)} units')
-
-    show(ctree._root)
+    ctree = SurvivalTree.fit_from_df(df_tr, x_col='time', c_col='censored',
+                                     Z_cols=['z0', 'z1', 'z2'],
+                                     kind='non-parametric',
+                                     n_features_split='all',
+                                     selection='ctree')
+    print(ctree)
 
     oob_sel = {}
     for selection in ['greedy', 'ctree']:
@@ -3362,6 +3509,79 @@ the one built from conditional-inference trees.
     assert not hasattr(root.right_child.left_child, 'split_feature_index')
     assert not hasattr(root.right_child.right_child, 'split_feature_index')
     assert oob_sel['ctree'] > oob_sel['greedy'], oob_sel
+
+Truncated data are split the same way. Below, a failure is recorded only if
+it happened before the unit's truncation time (retrospective sampling, so long
+lives are under-represented), and that time comes later for units with
+:math:`z_1 > 0.5`, which therefore show longer recorded lives although
+:math:`z_1` has no effect on survival; :math:`z_0 > 0.5` halves the life. A
+truncated unit's score is that of its likelihood given its window, so the tree
+splits on :math:`z_0` and not on :math:`z_1`, and its Turnbull leaves
+estimate the untruncated survival (at :math:`t = 3`, 0.848 and 0.628 for the
+true distributions):
+
+.. jupyter-execute::
+
+    r_rt = np.random.default_rng(0)
+    Z_rt = r_rt.uniform(0, 1, (400, 3))
+    T_rt = 10 * r_rt.weibull(1.5, 400) * np.where(Z_rt[:, 0] > 0.5, 0.5, 1.0)
+    tr_rt = r_rt.uniform(2, 20, 400) + 10 * (Z_rt[:, 1] > 0.5)
+    seen = T_rt <= tr_rt                  # the units we get to see
+    tree_rt = SurvivalTree.fit(x=T_rt[seen], Z=Z_rt[seen], tr=tr_rt[seen],
+                               kind='non-parametric', n_features_split='all',
+                               selection='ctree')
+    print(tree_rt)
+    s_rt = tree_rt.sf([3.0], [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])[:, 0]
+    print('S(3), z0 = 0.2 and 0.8:', s_rt.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert tree_rt._root.split_feature_index == 0
+    assert not hasattr(tree_rt._root.left_child, 'split_feature_index')
+    assert not hasattr(tree_rt._root.right_child, 'split_feature_index')
+    assert abs(s_rt[0] - 0.848) < 0.05 and abs(s_rt[1] - 0.628) < 0.05, s_rt
+
+The likelihood kinds (``'weibull'`` and ``'exponential'``) can also stop on
+the size of the gain itself. Their split is chosen by the rise in the working
+model's maximised log-likelihood, and noise always gives some rise, so by
+default a tree keeps splitting until ``min_leaf_samples`` or
+``min_leaf_failures`` stops it: what a forest of deep trees wants, but not a
+tree used on its own. ``min_split_gain`` sets the least gain (in
+log-likelihood units) a split must make: a number, ``'aic'`` (the kind's
+degrees of freedom :math:`k`, 1 for the exponential and 2 for the Weibull: the
+split must lower Akaike's criterion) or ``'bic'`` (:math:`k \log(d) / 2`, with
+:math:`d` the node's failures). ``'aic'`` is the recommended setting for a
+single tree. Neither is a test -- each split is the best of many cuts, so
+noise clears the AIC penalty more often than once in a while -- and
+``selection='ctree'`` remains the stop with a stated error rate. On the
+no-effect data from above:
+
+.. jupyter-execute::
+
+    def n_leaves(node):
+        if hasattr(node, 'left_child'):
+            return n_leaves(node.left_child) + n_leaves(node.right_child)
+        return 1
+
+    leaves = {}
+    for gain in [0.0, 'aic', 'bic']:
+        leaves[gain] = [
+            n_leaves(SurvivalTree.fit(
+                x=xm, Z=Zm, c=cm, kind='exponential', n_features_split='all',
+                min_split_gain=gain)._root)
+            for xm, cm, Zm in (make_mixed_data(seed, 1.0) for seed in range(10))
+        ]
+        print(f'min_split_gain={gain!r:5}: leaves {leaves[gain]}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert min(leaves[0.0]) > 10, leaves
+    assert sum(leaves['aic']) < sum(leaves[0.0]) / 3, leaves
+    assert sum(leaves['bic']) <= sum(leaves['aic']), leaves
 
 Saving and loading a fitted model
 ---------------------------------

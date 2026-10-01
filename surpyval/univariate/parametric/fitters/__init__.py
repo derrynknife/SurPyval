@@ -452,8 +452,8 @@ def add_to_funcs(
 
     A parameter with one bound is searched as the log of its distance
     from the bound where that distance is below ``unit``, and linearly
-    beyond it (``adj_relu``). ``unit`` is 1 except in an offset fit: see
-    ``bounds_convert``.
+    beyond it (``adj_relu``). ``unit`` is 1 unless the caller passes one:
+    see ``bounds_convert``.
     """
     if (low is None) and (upp is None):
         funcs.append(lambda x: x)
@@ -497,9 +497,9 @@ def bounds_convert(
     is at a fixed value, so a parameter measured in the data's units --
     an offset's distance below the first observation, a scale -- is
     searched as a log for data in thousandths and linearly for data in
-    thousands: a different search at every scale. An offset fit passes
-    each parameter's own starting distance from its bound instead (see
-    ``_offset_search_units`` in ``parametric_fitter``), which makes its
+    thousands: a different search at every scale. The parametric fits
+    pass each parameter's own starting distance from its bound instead
+    (see ``_search_units`` in ``parametric_fitter``), which makes the
     search the same whatever units the data is in.
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []

@@ -24,7 +24,13 @@ the item and must be constant within it: values that change between an
 item's rows raise a ``ValueError``. Both fitters also take ``init``,
 the starting values for the search: the baseline parameters on their natural
 scale followed by one value per coefficient. Gapped observation
-(``windows``) is not available with covariates.
+(``windows``) is not available with covariates. A covariate column the data
+cannot determine -- a linear combination of the others, or a constant column,
+whose effect the baseline's scale already carries (the HPP's rate, Duane's
+``b``, Crow-AMSAA's and Cox-Lewis's ``alpha``) -- is aliased, as in every
+SurPyval regression: its coefficient is ``nan`` and listed in
+``model.aliased``, one warning names it, and the other parameters and the
+predictions are those of the fit without it.
 
 Proportional-Intensity HPP
 --------------------------

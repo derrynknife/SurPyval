@@ -112,11 +112,11 @@ and step 2 builds on them.
 
 *Status: designed. Size: medium to large. From #172.*
 
-Phase 1 (shipped in 0.22) evaluates a fitted model along a known, external
-covariate path; phase 2 (bounds, the mean, and accelerated life along paths)
-is in progress. Phase 3 fits on
-continuous per-subject histories, such as ramp-stress accelerated life tests
-where each unit had a known ramp.
+Phases 1 and 2 (both in 0.22) evaluate a fitted model along a known,
+external covariate path, with bounds (`cb_tvc`), the mean (`mean_tvc`) and
+accelerated life models. Phase 3 fits on continuous per-subject histories,
+such as ramp-stress accelerated life tests where each unit had a known
+ramp.
 
 1. **Cox.** Split each subject's path at the event times and call
    `CoxPH.fit_tvc`. Exact and small.

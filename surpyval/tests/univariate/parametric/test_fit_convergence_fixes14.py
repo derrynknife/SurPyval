@@ -15,6 +15,10 @@ import surpyval as sp
 from surpyval.tests.conformance.registry import reg_data, stress_data, uni_data
 
 UNVERIFIED = "did not reach a verified maximum"
+# The Beta4 case can also end on the edge where its likelihood is infinite,
+# which has its own warning (#385); since every fit searches in units of its
+# start (#366) it does on the data below.
+UNBOUNDED = UNVERIFIED + "|No finite maximum"
 
 
 def _silent(fit, *args, **kwargs):
@@ -73,7 +77,7 @@ def test_an_unverified_answer_warns():
     # a at the smallest value), so no search ends at a maximum here; the
     # fit used to return an edge point in silence.
     x = np.array([0.1, 0.2, 0.25, 0.3, 0.4, 0.5, 0.55, 0.6, 0.7, 0.8])
-    with pytest.warns(UserWarning, match=UNVERIFIED):
+    with pytest.warns(UserWarning, match=UNBOUNDED):
         sp.Beta4.fit(x)
 
 

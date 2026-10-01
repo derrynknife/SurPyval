@@ -2443,6 +2443,18 @@ def _nonparametric_bounds(case):
                 label=f"quantile_cb[{bound_type}]",
             )
         )
+    # The band's default scale (#390), which the pointwise bounds lack.
+    for method in ("hall-wellner", "nair"):
+        out.append(
+            Bound(
+                "band",
+                kwargs={"method": method, "bound_type": "arcsine"},
+                sides=False,
+                wald=False,
+                nan_ok=True,
+                label=f"band[{method},arcsine]",
+            )
+        )
     out.append(
         Bound(
             "bootstrap_cb",
@@ -2952,26 +2964,11 @@ _NEGATIVE_VARIANCE = (
     "negative variance (covariance diagonal"
 )
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
-    # H. boundary estimates with a non-positive variance
-    "GeneralizedRenewal": _each(
-        ("cb_contains",),
-        "param_cb",
-        _NEGATIVE_VARIANCE + " -0.031 for q = 2.7e-16 and -10.6 for " "alpha)",
-    ),
-    "ARA": _each(
-        ("cb_contains",),
-        "param_cb",
-        _NEGATIVE_VARIANCE + " -0.026 for rho = 1 - 3e-16 and -8.09 for "
-        "alpha)",
-    ),
-    "ARI": _each(
-        ("cb_contains",),
-        "param_cb",
-        "no Wald interval exists, so param_cb is nan (with a warning saying "
-        "why, #411): rho = 1.0 exactly, the upper end of its (0, 1) "
-        "support, with a variance of -0.0021 (it raised "
-        "ZeroDivisionError, the logit of 1)",
-    ),
+    # H. boundary estimates with a non-positive variance. (The renewal
+    # fits' restoration parameter on its edge -- GeneralizedRenewal's q at
+    # 2.7e-16, ARA's rho at 1 - 3e-16, ARI's at 1 -- now has a
+    # profile-likelihood interval from the edge, and the other parameters
+    # the Wald intervals of the model held there, #461.)
     "Beta4": _each(
         ("cb_contains",),
         "param_cb[wald]",
@@ -2982,9 +2979,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "GeneralizedRenewal": "#461",
-    "ARA": "#461",
-    "ARI": "#461",
     "Beta4": "#461",
 }
 for _name, _failures in _OPTION_FAILURES.items():
@@ -3014,21 +3008,6 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     KNOWN_FAILURES[_name] = {
         **KNOWN_FAILURES.get(_name, {}),
         "convergence": f"{_CONVERGENCE_ISSUES[_group]}: {_reason}",
-    }
-
-
-# -- aliasing (test_aliasing.py) --------------------------------------------
-# The proportional-intensity fits split a repeated column's effect between
-# the two columns wherever BFGS stopped (HPP: -0.231 as -0.116 and -0.116;
-# NHPP: -0.1155 and -0.1158), and a constant column took 0.056 from the
-# baseline (HPP rate 0.0807 -> 0.0764), silently.
-for _name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
-    KNOWN_FAILURES[_name] = {
-        **KNOWN_FAILURES.get(_name, {}),
-        "aliasing": "#502: a repeated covariate column is not aliased; "
-        "the fit splits its coefficient between the two columns, silently",
-        "aliasing_constant": "#502: a constant covariate column is not "
-        "aliased; it takes part of the baseline rate, silently",
     }
 
 

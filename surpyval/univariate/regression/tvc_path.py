@@ -26,6 +26,11 @@ panel's midpoint, and adds the exact frozen-covariate increment
 zero, so a flat path gives the step schedule's sum: the two are one
 method.
 
+``cb_tvc`` bounds the survival along a path by the delta method, on the
+quadrature mesh adapted at the fitted parameters and then held fixed, and
+``mean_tvc`` integrates it to infinity (:func:`integrate_to_infinity`), the
+outer nodes being more query times of the same pass (#172 phase 2).
+
 The path is an *external* covariate, known in advance (a planned load, a
 test profile, ambient conditions): the survival along it is a probability
 only when the path does not depend on the item's own failure process.
@@ -734,3 +739,121 @@ def warn_missed_target(
         RuntimeWarning,
         stacklevel=stacklevel,
     )
+
+
+def step_path(schedule: Any) -> CovariatePath:
+    """
+    The :class:`CovariatePath` of a
+    :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`: the
+    same piecewise-constant path, each change-point a jump (the time given
+    twice), and a cyclic schedule a periodic path. Along it the quadrature
+    is exact on every flat piece, so it gives the schedule's step sum to
+    rounding; ``mean_tvc`` uses it so that a schedule and a path share one
+    integration to infinity.
+    """
+    starts = np.asarray(schedule.edges[:-1], dtype=float)
+    Z = np.asarray(schedule.Z, dtype=float)
+    times = np.repeat(starts, 2)[1:]
+    values = np.repeat(Z, 2, axis=0)[:-1]
+    period = schedule.period
+    if period is None:
+        return CovariatePath.from_points(times, values)
+    if starts[0] != 0:
+        raise ValueError(
+            "a cyclic StepSchedule must start its pattern at 0 here; build "
+            "it with StepSchedule.cyclic"
+        )
+    # The last value holds to the end of the period.
+    return CovariatePath.from_points(
+        np.append(times, period), np.vstack([values, Z[-1:]]), period=period
+    )
+
+
+#: The integral to infinity (``mean_tvc``) stops when the survival at the
+#: horizon times the horizon is below ``rtol`` of the integral, and gives
+#: up -- the survival levels off, so the mean is infinite -- at
+#: ``2**_TAIL_DOUBLINGS`` times the starting scale.
+_TAIL_DOUBLINGS = 64
+#: Each extension of the horizon multiplies it by ``2**_TAIL_STEP``.
+_TAIL_STEP = 4
+#: Breakpoints of the path within a stretch of the outer integral are
+#: panel edges there, up to this many (a fast cycle is left to refinement).
+_TAIL_KNOTS = 10_000
+
+
+def integrate_to_infinity(
+    func: Callable[[npt.NDArray], npt.NDArray],
+    origin: float,
+    scale: float,
+    rtol: float,
+    knots: "Callable[[float], npt.NDArray] | None" = None,
+) -> "tuple[float, tuple[float, float] | None]":
+    r"""
+    :math:`\int_{\text{origin}}^\infty f(t)\,dt` for a vectorised ``func``
+    that falls to 0 (a survival function), by
+    :func:`integrate_panels` on panels graded geometrically from
+    ``origin``: ``scale * 2**k`` for ``k`` from -30 to 6, then stretches
+    of ``2**_TAIL_STEP`` times the last, until ``f(T) * (T - origin)`` is
+    below ``rtol`` of the integral. ``knots(T)``, if given, lists times
+    up to ``T`` that are panel edges (kinks of the integrand).
+
+    The integrand is evaluated at all the nodes of a round in one call,
+    so a survival along a path costs one pass of the path engine per
+    round (the outer nodes are its query times).
+
+    Returns the integral and ``None``, or, when ``f`` has not fallen
+    away by ``scale * 2**_TAIL_DOUBLINGS`` past ``origin`` (it levels off:
+    a fraction never fails), the integral so far and ``(T, f(T))``.
+    """
+
+    # The outer edges so far. They are passed with every call: an
+    # integrand that is itself an integral from origin (a survival along a
+    # path, whose query times are the quadrature's panel edges) is then
+    # resolved near origin, not only around the nodes of a late stretch.
+    seen = [np.empty(0)]
+
+    def at(u: npt.NDArray) -> npt.NDArray:
+        # f at origin + u, evaluated alongside the edges so far.
+        lead = seen[0][seen[0] > 0]
+        values = np.asarray(func(origin + np.concatenate([lead, u])))
+        return values.astype(float).ravel()[lead.size :]
+
+    def terms(a: npt.NDArray, b: npt.NDArray) -> tuple:
+        m = a.shape[0]
+        mid, half = 0.5 * (a + b), 0.5 * (b - a)
+        u = (mid[:, None] + half[:, None] * _NODES[None, :]).ravel()
+        values = at(u).reshape(m, -1)
+        return np.zeros(m), values, np.abs(values), np.zeros(m, dtype=bool)
+
+    def stretch(lo: float, edges: npt.NDArray) -> npt.NDArray:
+        # The panel edges of [lo, edges[-1]], with the knots inside it.
+        if knots is not None:
+            inside = np.asarray(knots(origin + edges[-1]), dtype=float)
+            inside = inside - origin
+            inside = inside[(inside > lo) & (inside < edges[-1])]
+            if inside.size <= _TAIL_KNOTS:
+                edges = np.concatenate([edges, inside])
+        return np.unique(edges)
+
+    edges = stretch(
+        0.0, np.concatenate([[0.0], scale * 2.0 ** np.arange(-30, 7)])
+    )
+    seen[0] = edges
+    total = 0.0
+    while True:
+        with np.errstate(invalid="ignore", over="ignore"):
+            # inf - inf where f has overflowed; caught below.
+            res = integrate_panels(terms, edges, rtol)
+        total += float(np.sum(res["value"]))
+        end = float(edges[-1])
+        seen[0] = np.union1d(seen[0], edges[:-1])
+        f_end = float(at(np.array([end]))[0])
+        if not np.isfinite(total):
+            # f grew without limit (a survival above 1 that keeps rising).
+            return total, (origin + end, f_end)
+        with np.errstate(invalid="ignore", over="ignore"):
+            if f_end * end <= rtol * abs(total):
+                return total, None
+        if end >= scale * 2.0**_TAIL_DOUBLINGS:
+            return total, (origin + end, f_end)
+        edges = stretch(end, end * 2.0 ** np.arange(0, _TAIL_STEP + 1))

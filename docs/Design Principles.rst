@@ -161,9 +161,7 @@ Estimation
     that has coefficients with a repeated covariate column, and with a
     constant one where it has an intercept, and requires the aliasing and
     otherwise the fit without the column; the time-varying fits are
-    checked in ``univariate/regression/test_aliasing.py``. Known gaps:
-    the proportional-intensity recurrent regressions (#502) and the
-    dual-stress life models (#503).
+    checked in ``univariate/regression/test_aliasing.py``.
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
@@ -209,7 +207,7 @@ Uncertainty
     *Partly checked* by the calibration studies
     (``surpyval/tests/calibration``, run nightly), which cover the main
     parametric, non-parametric, Cox, regression, degradation and recurrent
-    bounds and the hypothesis tests, not every model; known gap #390.
+    bounds and the hypothesis tests, not every model.
 
 18. **Intervals behave consistently.** Bounds contain the estimate and stay
     in the valid range; a one-sided bound is the matching end of the
