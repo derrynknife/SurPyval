@@ -71,6 +71,11 @@ class LikelihoodInferenceMixin:
     a boundary (e.g. a repair parameter driven to its limit) the asymptotic
     normal approximation does not hold and the corresponding standard error is
     returned as NaN with a warning.
+
+    A ``nan`` entry of ``_mle`` is a parameter that was not estimated: an
+    aliased coefficient of a proportional-intensity regression (#502). It
+    enters the likelihood as 0, is not counted in AIC and BIC, and has no
+    variance (``nan``); the information is that of the other parameters.
     """
 
     # Supplied by the fitting routine (see the class docstring); declared
@@ -100,6 +105,17 @@ class LikelihoodInferenceMixin:
     def _check_has_data(self, what: str) -> None:
         require_data(self, what)
 
+    def _estimated(self) -> np.ndarray:
+        """Which entries of ``_mle`` were estimated: all but an aliased
+        coefficient's ``nan`` (#502)."""
+        return ~np.isnan(np.asarray(self._mle, dtype=float))
+
+    def _mle_values(self) -> np.ndarray:
+        """``_mle`` with a parameter that was not estimated as 0, the value
+        the likelihood takes it at."""
+        mle = np.asarray(self._mle, dtype=float)
+        return np.where(self._estimated(), mle, 0.0)
+
     def _parameter_names(self) -> list:
         """
         Names of the entries of ``_mle``, in order. Subclasses override this to
@@ -128,7 +144,7 @@ class LikelihoodInferenceMixin:
         model with no likelihood (built from parameters, or fitted by MSE).
         """
         self._check_fitted()
-        return -float(self._neg_ll(self._mle))
+        return -float(self._neg_ll(self._mle_values()))
 
     @property
     def aic(self) -> float:
@@ -137,7 +153,7 @@ class LikelihoodInferenceMixin:
         number of fitted parameters. Lower is better.
         """
         self._check_fitted()
-        k = self._mle.size
+        k = int(self._estimated().sum())
         return 2.0 * k - 2.0 * self.log_likelihood
 
     @property
@@ -152,41 +168,56 @@ class LikelihoodInferenceMixin:
         Lower is better.
         """
         self._check_fitted()
-        k = self._mle.size
+        k = int(self._estimated().sum())
         return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
 
     def covariance(self) -> np.ndarray:
         """
         Approximate parameter covariance matrix, ordered to match
         :attr:`parameter_names`. Computed as the inverse of the numerical
-        Hessian of the negative log-likelihood at the MLE.
+        Hessian of the negative log-likelihood at the MLE. A parameter
+        that was not estimated (an aliased coefficient, #502) has a ``nan``
+        row and column.
         """
         self._check_fitted()
-        H = numerical_hessian(self._neg_ll, self._mle)
-        n = self._mle.size
+        full = self._mle_values()
+        n = full.size
+        free = self._estimated()
+        if free.all():
+            H = numerical_hessian(self._neg_ll, full)
+        else:
+
+            def neg_ll_free(values: np.ndarray) -> float:
+                params = full.copy()
+                params[free] = values
+                return self._neg_ll(params)
+
+            H = numerical_hessian(neg_ll_free, full[free])
+        out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
             warnings.warn(
                 "Hessian could not be evaluated (the optimum may be at a "
                 "parameter boundary); covariance is unavailable."
             )
-            return np.full((n, n), np.nan)
+            return out
         try:
-            return np.linalg.inv(H)
+            out[np.ix_(free, free)] = np.linalg.inv(H)
         except np.linalg.LinAlgError:
             warnings.warn("Hessian is singular; covariance is unavailable.")
-            return np.full((n, n), np.nan)
+        return out
 
     def standard_errors(self) -> np.ndarray:
         """
         Standard errors of the fitted parameters (the square roots of the
         diagonal of :meth:`covariance`), ordered to match
         :attr:`parameter_names`. Entries are NaN where the variance is
-        non-positive, which typically indicates a boundary optimum.
+        non-positive, which typically indicates a boundary optimum, and for
+        a parameter that was not estimated (an aliased coefficient).
         """
         var = np.diag(self.covariance())
         with np.errstate(invalid="ignore"):
             se = np.sqrt(var)
-        if np.any(~(var > 0)):
+        if np.any(~(var > 0) & self._estimated()):
             warnings.warn(
                 "Some parameter variances are non-positive (the optimum may "
                 "be at a boundary); their standard errors are NaN."

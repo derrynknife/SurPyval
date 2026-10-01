@@ -3029,21 +3029,6 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     }
 
 
-# -- aliasing (test_aliasing.py) --------------------------------------------
-# The proportional-intensity fits split a repeated column's effect between
-# the two columns wherever BFGS stopped (HPP: -0.231 as -0.116 and -0.116;
-# NHPP: -0.1155 and -0.1158), and a constant column took 0.056 from the
-# baseline (HPP rate 0.0807 -> 0.0764), silently.
-for _name in ("ProportionalIntensityHPP", "ProportionalIntensityNHPP"):
-    KNOWN_FAILURES[_name] = {
-        **KNOWN_FAILURES.get(_name, {}),
-        "aliasing": "#502: a repeated covariate column is not aliased; "
-        "the fit splits its coefficient between the two columns, silently",
-        "aliasing_constant": "#502: a constant covariate column is not "
-        "aliased; it takes part of the baseline rate, silently",
-    }
-
-
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say
