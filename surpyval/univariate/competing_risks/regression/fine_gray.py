@@ -40,7 +40,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -128,41 +128,26 @@ def _fit_cause(
     # weights (evaluating G(t) counted them against the events they tie with).
     # G(x_i-) > 0 for every row: row i (a positive count) is at risk and
     # uncensored at every earlier censoring time, so no step before x_i can
-    # reach zero and the ratio below needs no guard.
+    # reach zero and the ratio G(t-)/G(x_i-) needs no guard.
     g_times, g_vals = censoring_survival(x, c == 1, n)
     G_x = step_left_limit(g_times, g_vals, x, before=1.0)
-
-    event_times = x[is_event]
-    G_t = step_left_limit(g_times, g_vals, event_times, before=1.0)
-
-    # Subdistribution risk-set weight matrix W (n_events x N), independent of
-    # beta: 1 for the ordinary risk set (x_i >= t_j); G(t_j-)/G(x_i-) for a
-    # subject who already failed from a competing cause (x_i < t_j); 0 for a
-    # censored subject or one that already had the event of interest.
-    at_risk = x[None, :] >= event_times[:, None]
-    already_competing = is_competing[None, :] & (
-        x[None, :] < event_times[:, None]
-    )
-    W = at_risk.astype(float) + already_competing * (
-        G_t[:, None] / G_x[None, :]
-    )
+    sets = _risk_sets(x, n, is_event, is_competing, G_x, g_times, g_vals)
 
     Z_raw = Z
     mean = (n @ Z) / n.sum()
     Z = Z - mean
     n_event = n[is_event]
+    # The rows in time order, which the risk-set sums run over, and the
+    # events' sum of n * Z, the linear term of the log-likelihood.
+    Z_sorted = Z[sets.order]
+    n_sorted = n[sets.order]
+    nZ_event = n_event @ Z[is_event]
 
-    def partial_neg_ll(Zk: npt.NDArray) -> Any:
-        Zk_event = Zk[is_event]
-
+    def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> Any:
         def neg_ll(beta: Any) -> Any:
-            eta = anp.dot(Zk, beta)
-            weighted_exp = n * anp.exp(eta)
-            denom = anp.dot(W, weighted_exp)
-            eta_event = anp.dot(Zk_event, beta)
-            ll = anp.sum(n_event * eta_event) - anp.sum(
-                n_event * anp.log(denom)
-            )
+            weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
+            denom = _risk_set_sums(weighted_exp, sets)
+            ll = anp.dot(nZk_event, beta) - anp.sum(sets.d * anp.log(denom))
             return -ll
 
         return neg_ll
@@ -171,9 +156,9 @@ def _fit_cause(
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
     # reported as nan.
     p = Z.shape[1]
-    neg_ll = partial_neg_ll(Z)
+    neg_ll = partial_neg_ll(Z_sorted, nZ_event)
     aliased = aliased_columns(
-        _information_at_zero(Z, W, n, is_event),
+        _information_at_zero(Z_sorted, n_sorted, sets),
         Z.shape[0],
         constant_columns(Z_raw),
         float(n_event.sum()) * (n @ Z**2) / n.sum(),
@@ -186,7 +171,7 @@ def _fit_cause(
             "column, or a linear combination of the others within the "
             "risk sets, as the columns of every level of a factor are)",
         )
-        neg_ll = partial_neg_ll(Z[:, kept])
+        neg_ll = partial_neg_ll(Z_sorted[:, kept], nZ_event[kept])
 
     beta0 = np.zeros(kept.size)
     if kept.size:
@@ -229,14 +214,9 @@ def _fit_cause(
 
     # Breslow baseline cumulative subdistribution hazard: at each event-of-
     # interest time, dLambda0 = (events there) / (weighted risk set there).
-    denom = W @ (n * np.exp(Z @ beta))
-    order = np.argsort(event_times, kind="mergesort")
-    t_sorted = event_times[order]
-    d_over_r = (n_event / denom)[order]
-    uniq_t, inv = np.unique(t_sorted, return_inverse=True)
-    dL = np.zeros(uniq_t.shape[0])
-    np.add.at(dL, inv, d_over_r)
-    baseline_cumhaz = np.cumsum(dL)
+    denom = _risk_set_sums(n_sorted * np.exp(Z_sorted @ beta), sets)
+    uniq_t = sets.times
+    baseline_cumhaz = np.cumsum(sets.d / denom)
     if not center:
         baseline_cumhaz = _cumhaz_at_origin(beta, mean, Z_raw, baseline_cumhaz)
         mean = np.zeros_like(mean)
@@ -259,20 +239,101 @@ def _fit_cause(
     }
 
 
+class _RiskSets(NamedTuple):
+    """The subdistribution risk sets of one cause, as
+    :func:`_risk_set_sums` reads them (see :func:`_risk_sets`)."""
+
+    #: The permutation that sorts the rows by time.
+    order: npt.NDArray
+    #: The distinct event times of the cause, and the events (counts) at
+    #: each.
+    times: npt.NDArray
+    d: npt.NDArray
+    #: The first row, in time order, with ``x >= t`` for each event time.
+    start: npt.NDArray
+    #: ``G(t-)`` at each event time, and ``1 / G(x_i-)`` for each row, in
+    #: time order, that failed from a competing cause (0 for the others).
+    G_t: npt.NDArray
+    competing_over_G: npt.NDArray
+
+
+def _risk_sets(
+    x: npt.NDArray,
+    n: npt.NDArray,
+    is_event: npt.NDArray,
+    is_competing: npt.NDArray,
+    G_x: npt.NDArray,
+    g_times: npt.NDArray,
+    g_vals: npt.NDArray,
+) -> _RiskSets:
+    """
+    The subdistribution risk sets of the cause whose events are
+    ``is_event``, in the O(N) form :func:`_risk_set_sums` evaluates.
+
+    At an event time ``t`` the risk set is every row with ``x_i >= t``,
+    with weight 1, and every row that failed from a competing cause before
+    ``t``, with weight ``G(t-)/G(x_i-)``; a censored row, or one that
+    already had the event of interest, has left it. The weights as an
+    (event times x N) matrix cost O(events x N) time and memory (28 GB at
+    1e5 rows, #517); in time order the first part is a suffix of the rows
+    and the second a prefix, so both are cumulative sums.
+    """
+    order = np.argsort(x, kind="mergesort")
+    times, inv = np.unique(x[is_event], return_inverse=True)
+    d = np.bincount(inv, weights=n[is_event], minlength=times.size)
+    start = np.searchsorted(x[order], times, side="left")
+    G_t = step_left_limit(g_times, g_vals, times, before=1.0)
+    # G(x_i-) > 0 for every row (see _fit_cause), so the division is safe.
+    competing_over_G = np.where(is_competing, 1.0 / G_x, 0.0)[order]
+    return _RiskSets(order, times, d, start, G_t, competing_over_G)
+
+
+def _risk_set_sums(v: Any, sets: _RiskSets) -> Any:
+    """
+    The weighted sum of ``v`` over the subdistribution risk set at each
+    event time of ``sets``: ``sum_i W_ti v_i``, ``W`` the IPCW weights of
+    :func:`_risk_sets`.
+
+    ``v`` is one value per row in time order (``sets.order``), or one row
+    of values per row; the sums are in O(N), the suffix sum of ``v`` over
+    ``x_i >= t`` plus ``G(t-)`` times the prefix sum of ``v_i / G(x_i-)``
+    over the competing failures before ``t``. Differentiable by autograd.
+    """
+    shape = (-1,) + (1,) * (anp.ndim(v) - 1)
+    # suffix[k] = sum of v over the rows k, k + 1, ... in time order
+    suffix = anp.cumsum(v[::-1], axis=0)[::-1]
+    # prefix[k] = sum over the competing rows before row k of v / G(x-)
+    prefix = anp.concatenate(
+        [
+            anp.zeros((1,) + anp.shape(v)[1:]),
+            anp.cumsum(sets.competing_over_G.reshape(shape) * v, axis=0),
+        ],
+        axis=0,
+    )
+    return suffix[sets.start] + sets.G_t.reshape(shape) * prefix[sets.start]
+
+
 def _information_at_zero(
-    Z: npt.NDArray, W: npt.NDArray, n: npt.NDArray, is_event: npt.NDArray
+    Z: npt.NDArray, n: npt.NDArray, sets: _RiskSets
 ) -> npt.NDArray:
     """The information of the subdistribution partial likelihood at
     ``beta = 0``: over the events, the covariance of ``Z`` in the risk set
     weighted by ``W * n``, ``sum_j d_j (sum_i w_ji Z_i Z_i' / S0_j - m_j
     m_j')``, ``m_j`` the weighted mean. It is what the aliasing check
-    (#476) judges the columns by."""
-    Wn = W * n
-    S0 = Wn.sum(axis=1)
-    d_over = n[is_event] / S0
-    M = (Wn @ Z) / S0[:, None]
-    a = d_over @ Wn
-    return Z.T @ (a[:, None] * Z) - M.T @ (n[is_event][:, None] * M)
+    (#476) judges the columns by. ``Z`` and ``n`` are in time order
+    (``sets.order``); every sum is O(N) (:func:`_risk_set_sums`)."""
+    S0 = _risk_set_sums(n, sets)
+    M = _risk_set_sums(n[:, None] * Z, sets) / S0[:, None]
+    q = sets.d / S0
+    rows = Z.shape[0]
+    # The weight of row i over the event times, a_i = sum_j q_j W_ji:
+    # the event times at or before x_i (start_j <= i), plus, for a
+    # competing failure, the later ones (start_j > i) at G(t_j-)/G(x_i-).
+    a = np.cumsum(np.bincount(sets.start, q, minlength=rows))
+    later = np.bincount(sets.start, q * sets.G_t, minlength=rows + 1)
+    a = a + sets.competing_over_G * np.cumsum(later[::-1])[::-1][1:]
+    a = a * n
+    return Z.T @ (a[:, None] * Z) - M.T @ (sets.d[:, None] * M)
 
 
 def _warn_if_monotone(fits: list) -> None:
