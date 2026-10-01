@@ -163,6 +163,17 @@ bands change (#477).
   data or sits at the edge of its range. The docstrings say what ``q`` and
   ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
   that data LR = 0.40, p = 0.53).
+- **Non-parametric trees on truncated data (#188).** ``SurvivalTree`` and
+  ``RandomSurvivalForest`` with ``kind="non-parametric"`` refused
+  right-truncated data, and truncated data with left or interval
+  censoring. They now take the Turnbull-score split with Turnbull leaves:
+  a truncated row's log-rank score is that of its likelihood given its
+  truncation window (the event's score less the window's, under the
+  pooled Turnbull estimate fitted with the truncation). On left-truncated
+  right-censored data these are the delayed-entry martingale residuals.
+  Without the window term, a covariate that changed only the truncation
+  was found significant in 39-49% of data sets at the 5% level; with it,
+  0.5-3%. Every tree kind now accepts the full data model.
 - **Fine-Gray fits in linear time (#517).** ``FineGray.fit`` (and
   ``CompetingRisksProportionalHazards(model="Fine-Gray")``) built a dense
   events-by-rows matrix of censoring weights and used it in every
