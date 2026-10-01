@@ -93,10 +93,12 @@ def test_an_ordinary_fit_does_not_warn(name):
 
 def test_the_issue_example():
     # d["Z"][:, 0] = d["c"] == 1; WeibullPH.fit(**d) gave -16.31 (now
-    # -14.72) silently.
+    # -15.78; -14.72 before the univariate seed's search took its units
+    # from its start, #366: on the runaway where the search stops is
+    # arbitrary) silently.
     model, w = _fit(lambda: sp.WeibullPH.fit(**_no_events(reg_data())))
     assert [str(x.message)[: len(NO_MAXIMUM)] for x in w] == [NO_MAXIMUM]
-    assert model.phi_params[0] == pytest.approx(-14.72, abs=0.01)
+    assert model.phi_params[0] == pytest.approx(-15.78, abs=0.01)
 
 
 def test_fit_from_df_points_at_the_caller():

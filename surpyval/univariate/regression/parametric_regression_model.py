@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.special import expit
-from scipy.stats import norm
 
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import (
@@ -17,9 +15,12 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import CallableList, RenamedAttribute
 from surpyval.utils.linalg import (
+    cb_link,
     delta_method_se,
+    link_band,
     log_transformed_cb,
     numerical_hessian,
+    sf_link_from_H,
     wald_bound_on_support,
 )
 from surpyval.utils.shapes import (
@@ -2577,9 +2578,13 @@ class ParametricRegressionModel(
 
         The bounds propagate the fitted parameter covariance through the
         requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from one bound on the logit of the survival function (so it
-        stays in ``(0, 1)``), formed from the cumulative hazard so the ``Hf``
-        bound has no ceiling where ``sf`` underflows; ``hf``/``df`` use a
+        derived from one bound on the baseline family's probability-plot
+        scale, as for the univariate models: ``log H`` for a Weibull,
+        Exponential, Rayleigh or Gumbel baseline, the normal quantile of
+        ``F`` for a Normal or LogNormal one, the logit of ``F`` for the rest
+        (#504; every band was on the logit before v0.22). Each keeps ``sf``
+        in ``(0, 1)``, and is formed from the cumulative hazard so the ``Hf``
+        bound has no ceiling where ``sf`` underflows. ``hf``/``df`` use a
         log-scale bound (so they stay positive).
 
         Parameters
@@ -2649,7 +2654,7 @@ class ParametricRegressionModel(
             S = np.asarray(self.model.sf(x_in, Zp, *p), dtype=float)
             return np.where(below, 1.0, S)
 
-        return self._logit_sf_bounds(
+        return self._sf_bounds(
             H_of,
             sf_of,
             params,
@@ -2660,8 +2665,15 @@ class ParametricRegressionModel(
             bound,
         )
 
-    @staticmethod
-    def _logit_sf_bounds(
+    @property
+    def _cb_link(self) -> str:
+        """The scale of the Wald bands on ``sf``/``ff``/``Hf``: the baseline
+        family's probability-plot scale, as for the univariate models
+        (#477, #504)."""
+        return cb_link(self.distribution)
+
+    def _sf_bounds(
+        self,
         H_of: Any,
         sf_of: Any,
         params: npt.NDArray,
@@ -2672,70 +2684,56 @@ class ParametricRegressionModel(
         bound: str,
     ) -> npt.NDArray:
         """The bounds of :meth:`cb` and :meth:`cb_tvc` on ``sf``, ``ff`` or
-        ``Hf``: a Wald bound on the logit of the survival, the cumulative
-        hazard ``H_of(p)`` propagated by the delta method, carried to the
-        scale of ``on``. ``sf_of(p)`` gives the survival where ``H`` is
-        negative (an additive hazard's ``sf`` above 1)."""
+        ``Hf``: a Wald bound on the baseline family's scale (``log H``,
+        the normal quantile of ``F`` or the logit of ``F``, see
+        :attr:`_cb_link`), formed from the cumulative hazard ``H_of(p)``
+        and propagated by the delta method, carried to the scale of
+        ``on``. ``sf_of(p)`` gives the survival where ``H`` is negative (an
+        additive hazard's ``sf`` above 1)."""
+        link = self._cb_link
+        name = {"R": "sf", "F": "ff"}.get(on, on)
 
-        # sf, ff and Hf all derive from one bound on the logit of sf,
-        # formed from the cumulative hazard: logit(sf) = -H - log(1 -
-        # exp(-H)). It used to be formed from sf clipped at 1e-15, so the
-        # Hf bounds stopped at -log(1e-15) = 34.54 (#418); from H the Hf
-        # bound, log(1 + exp(-logit)), has no ceiling.
-        def logit_sf(p: npt.NDArray) -> npt.NDArray:
-            H = np.asarray(H_of(p), dtype=float)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                return -H - np.log(-np.expm1(-H))
+        # Formed from the cumulative hazard, so the Hf bound has no
+        # ceiling where sf underflows (#418).
+        def u_of(p: npt.NDArray) -> npt.NDArray:
+            return sf_link_from_H(H_of(p), link)
 
         H_hat = np.asarray(H_of(params), dtype=float)
         H_hat = np.broadcast_to(H_hat, np.broadcast_shapes(H_hat.shape, shape))
-        # sf = 1 (H = 0) and sf = 0 (H = inf) are the logit's infinities:
-        # the bounds are the estimate there. A negative H (an additive
-        # hazards sf above 1, documented) keeps the clipped-sf bound.
-        positive = np.isfinite(H_hat) & (H_hat > 0)
-        L_hat = logit_sf(params)
+        u_hat = np.broadcast_to(u_of(params), H_hat.shape)
         with np.errstate(invalid="ignore"):
-            # inf - inf at those edges, replaced below
-            se_L = delta_method_se(logit_sf, params, cov)
-        if not positive.all():
-            sf_hat = np.asarray(sf_of(params), dtype=float)
-            se = delta_method_se(sf_of, params, cov)
+            # inf - inf where sf is 1 or 0: the bounds are the estimate
+            # there (link_band)
+            se_u = delta_method_se(u_of, params, cov)
+        cb = link_band(u_hat, se_u, alpha_ci, bound, link, name)
+        # A negative H (an additive hazards sf above 1, documented) has no
+        # point on these scales: it keeps the clipped-sf logit bound.
+        negative = H_hat < 0
+        if not negative.any():
+            return cb
+        sf_hat = np.asarray(sf_of(params), dtype=float)
+        se = delta_method_se(sf_of, params, cov)
 
-        def bounds_at(sign: float, tail: float) -> dict:
-            # One end on the sf, ff and Hf scales; sign +1 is sf's upper.
-            L = L_hat + sign * norm.ppf(1.0 - tail) * se_L
-            with np.errstate(over="ignore", invalid="ignore"):
-                sf_b, ff_b, Hf_b = expit(L), expit(-L), np.logaddexp(0.0, -L)
-            if not positive.all():
-                sf_c = logit_sf_bound(sf_hat, se, sign, tail)
-                with np.errstate(divide="ignore"):
-                    Hf_c = -np.log(sf_c)
-                sf_b = np.where(positive, sf_b, sf_c)
-                ff_b = np.where(positive, ff_b, 1.0 - sf_c)
-                Hf_b = np.where(positive, Hf_b, Hf_c)
-                for edge, values in (
-                    (0.0, (1.0, 0.0, 0.0)),
-                    (np.inf, (0.0, 1.0, np.inf)),
-                ):
-                    at = H_hat == edge
-                    sf_b = np.where(at, values[0], sf_b)
-                    ff_b = np.where(at, values[1], ff_b)
-                    Hf_b = np.where(at, values[2], Hf_b)
-            return {"sf": sf_b, "ff": ff_b, "Hf": Hf_b}
-
-        name = {"R": "sf", "F": "ff"}.get(on, on)
-        if bound == "two-sided":
-            lo = bounds_at(-1.0, alpha_ci / 2.0)
-            hi = bounds_at(+1.0, alpha_ci / 2.0)
+        def end(sign: float, tail: float) -> npt.NDArray:
+            # One end on the scale of ``on``; sign +1 is sf's upper.
+            sf_c = logit_sf_bound(sf_hat, se, sign, tail)
             if name == "sf":
-                return np.stack([lo["sf"], hi["sf"]], axis=-1)
-            # ff and Hf decrease in sf: their lower end is sf's upper.
-            return np.stack([hi[name], lo[name]], axis=-1)
-        # One-sided: ff and Hf use the opposite survival-function tail.
-        sign = -1.0 if bound == "lower" else 1.0
-        if name != "sf":
-            sign = -sign
-        return bounds_at(sign, alpha_ci)[name]
+                return sf_c
+            with np.errstate(divide="ignore"):
+                return 1.0 - sf_c if name == "ff" else -np.log(sf_c)
+
+        # ff and Hf decrease in sf: their lower end is sf's upper.
+        flip = -1.0 if name == "sf" else 1.0
+        if bound == "two-sided":
+            fallback = np.stack(
+                [end(flip, alpha_ci / 2.0), end(-flip, alpha_ci / 2.0)],
+                axis=-1,
+            )
+            negative = negative[..., None]
+        else:
+            sign = flip if bound == "lower" else -flip
+            fallback = end(sign, alpha_ci)
+        return np.where(negative, fallback, cb)
 
     @keeps_query_shape
     def cb_tvc(
@@ -2754,14 +2752,11 @@ class ParametricRegressionModel(
         or a continuously varying path, as for :meth:`sf_tvc`.
 
         The bounds are those of :meth:`cb`, carried along the path: a Wald
-        bound on the logit of :meth:`sf_tvc`, formed from the cumulative
-        hazard of :meth:`Hf_tvc`, its standard error propagated from the
-        fitted parameter covariance by the delta method. ``ff`` and ``Hf``
-        follow from the same bound, so the three agree with each other, and
-        a constant path gives :meth:`cb`. (The logit-of-survival scale is
-        the regression ``cb``'s; the univariate models' Wald bounds are on
-        each family's probability-plot scale, #477, and bringing the
-        regression bounds to that scale is #504.)
+        bound on the baseline family's probability-plot scale, formed from
+        the cumulative hazard of :meth:`Hf_tvc`, its standard error
+        propagated from the fitted parameter covariance by the delta method.
+        ``ff`` and ``Hf`` follow from the same bound, so the three agree with
+        each other, and a constant path gives :meth:`cb`.
 
         Along a
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
@@ -2816,8 +2811,8 @@ class ParametricRegressionModel(
         >>> model.sf_tvc([40, 80], ramp).round(4)
         array([0.771 , 0.1911])
         >>> model.cb_tvc([40, 80], ramp).round(4)
-        array([[0.725 , 0.8114],
-               [0.1295, 0.2727]])
+        array([[0.7243, 0.8109],
+               [0.1256, 0.267 ]])
 
         A constant path gives the ordinary bounds:
 
@@ -2874,7 +2869,7 @@ class ParametricRegressionModel(
             xq, Z, xl, g if on_path else None, (params, center), frozen
         )
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
-        return self._logit_sf_bounds(
+        return self._sf_bounds(
             H_of,
             lambda p: np.exp(-H_of(p)),
             params,

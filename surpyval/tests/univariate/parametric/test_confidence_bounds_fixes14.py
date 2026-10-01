@@ -152,9 +152,9 @@ def test_regression_Hf_bounds_have_no_ceiling(name):
         )
 
 
-def test_regression_sf_bounds_are_the_logit_wald_bounds():
-    # The survival bound is still the logit-scale Wald bound, now formed
-    # from the cumulative hazard: at a moderate sf it is unchanged.
+def test_regression_sf_bounds_are_the_family_scale_wald_bounds():
+    # The survival bound is the Wald bound on the baseline family's scale
+    # (log H for a Weibull, #504), formed from the cumulative hazard.
     np.random.seed(7)
     Z = np.random.binomial(1, 0.5, 120).reshape(-1, 1).astype(float)
     x = surv.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
@@ -162,14 +162,14 @@ def test_regression_sf_bounds_are_the_logit_wald_bounds():
     t, z = np.array([3.0, 8.0, 15.0]), np.array([[1.0]])
     params, cov = np.asarray(model.params), model.covariance()
 
-    def logit(p):
+    def log_H(p):
         s = model.model.sf(t, z, *p)
-        return np.log(s / (1 - s))
+        return np.log(-np.log(s))
 
-    se = delta_method_se(logit, params, cov)
+    se = delta_method_se(log_H, params, cov)
     q = ndtri(0.975)
-    L = logit(params)[:, None] + np.array([-q, q]) * se[:, None]
-    np.testing.assert_allclose(model.cb(t, z), 1 / (1 + np.exp(-L)), rtol=1e-6)
+    v = log_H(params)[:, None] + np.array([q, -q]) * se[:, None]
+    np.testing.assert_allclose(model.cb(t, z), np.exp(-np.exp(v)), rtol=1e-6)
 
 
 # -- #411: a Wald bound that does not exist warns and is nan ----------------

@@ -822,14 +822,18 @@ worth knowing what they are, because they explain the warnings you may see.
      bounds a custom distribution declares);
    - unbounded: :math:`u = \theta`.
 
-   In an offset fit the one-sided map is taken in units of each parameter's
-   own starting distance from its bound -- :math:`u = \ln((\theta - L) / d_{0})`
-   below :math:`d_{0} = \theta_{0} - L` and linear above it -- rather than in
-   units of 1. With a unit of 1 the switch sits at a fixed value, so the
-   offset's distance below the smallest observation, or a scale, was searched
-   as a log for data in thousandths and linearly for data in thousands: a
-   different search at every scale, and along the ridge an offset fit has
-   (below) not always one that found the same optimum.
+   The one-sided map is taken in units of each parameter's own starting
+   distance from its bound -- :math:`u = \ln((\theta - L) / d_{0})` below
+   :math:`d_{0} = \theta_{0} - L` and linear above it -- rather than in units
+   of 1, so every such parameter starts at :math:`u = 0`. With a unit of 1 the
+   switch sits at a fixed value, so the offset's distance below the smallest
+   observation, or a scale, was searched as a log for data in thousandths and
+   linearly for data in thousands: a different search at every scale, and
+   along the ridge an offset fit has (below) not always one that found the
+   same optimum. Offset fits made the change first; since v0.22 every fit
+   does, and a fit to data in millionths and one to the same data in
+   millions now take the same steps (the fitted quantiles agree to about
+   1e-15, where they differed by up to 2e-6).
 
    The likelihood's gradient and Hessian come from automatic differentiation
    (``autograd``), which is why custom distributions must use

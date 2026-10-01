@@ -23,6 +23,7 @@ from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
+from scipy.special import expit, log_ndtr, ndtr, ndtri, ndtri_exp
 from scipy.stats import norm
 
 # -- guarded linear algebra ------------------------------------------------
@@ -165,6 +166,149 @@ def log_transformed_cb(
         ratio = np.where(estimate > 0, se / estimate, 0.0)
     cb = estimate[..., None] * np.exp(signs * z * ratio[..., None])
     return cb if bound == "two-sided" else cb[..., 0]
+
+
+# -- the scale of a Wald band on a survival function (#477, #504) ----------
+#
+# The univariate parametric, degradation and parametric regression models
+# all form their Wald bands on ``sf``/``ff``/``Hf`` here, on the scale on
+# which the family is a straight line in (log) time -- its
+# probability-plot scale, the distribution's ``_cb_link``: ``log(-log S)``
+# ("loglog") for the Weibull, Exponential, Rayleigh and Gumbel, the normal
+# quantile of ``F`` ("probit") for the Normal and LogNormal, and the logit
+# of ``F`` ("logit") for the Logistic, LogLogistic and every family with no
+# such scale. Each scale is taken as ``u``, increasing in the cumulative
+# hazard, and computed so that it stays accurate in both tails.
+
+
+def cb_link(dist: Any) -> str:
+    """The scale of a family's Wald band on ``sf``/``ff``/``Hf``: the
+    distribution's ``_cb_link``, or ``"logit"`` for a family without one."""
+    return getattr(dist, "_cb_link", "logit")
+
+
+def sf_link_from_H(H: npt.ArrayLike, link: str) -> npt.NDArray:
+    """The band scale ``u`` of the survival ``exp(-H)``, from the cumulative
+    hazard: ``log H``, ``Phi^-1(F)`` or ``logit F``. It stays finite where
+    ``exp(-H)`` underflows, so a bound formed on it has no ceiling on
+    ``Hf`` (#418); ``H = 0`` and ``H = inf`` give ``-inf`` and ``inf``."""
+    H = np.asarray(H, dtype=float)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        if link == "loglog":
+            return np.log(H)
+        F = -np.expm1(-H)
+        if link == "probit":
+            # Phi^-1(F) = -Phi^-1(S), with S = exp(-H) taken in log space
+            # in the right half.
+            return np.where(F < 0.5, ndtri(F), -ndtri_exp(-H))
+        # logit F = log(F / S) = log F + H
+        return np.log(F) + H
+
+
+def sf_link_from_sf(
+    sf: npt.ArrayLike, ff: npt.ArrayLike, link: str
+) -> npt.NDArray:
+    """The band scale ``u`` (as :func:`sf_link_from_H`) from the survival
+    and the failure probability, each used where it is the smaller, so
+    accurate where it is small (``1 - sf`` is not)."""
+    sf = np.asarray(sf, dtype=float)
+    ff = np.asarray(ff, dtype=float)
+    left = ff < 0.5
+    with np.errstate(divide="ignore", invalid="ignore"):
+        if link == "loglog":
+            return np.log(np.where(left, -np.log1p(-ff), -np.log(sf)))
+        if link == "probit":
+            return np.where(left, ndtri(ff), -ndtri(sf))
+        return np.log(ff) - np.log(sf)
+
+
+def sf_from_link(u: npt.ArrayLike, link: str, on: str) -> npt.NDArray:
+    """``sf``, ``ff`` or ``Hf`` (``on``) at band scale ``u``, each to full
+    precision in its own small tail."""
+    u = np.asarray(u, dtype=float)
+    with np.errstate(over="ignore", under="ignore", invalid="ignore"):
+        if link == "loglog":
+            H = np.exp(u)
+            if on == "sf":
+                return np.exp(-H)
+            return -np.expm1(-H) if on == "ff" else H
+        if link == "probit":
+            if on == "sf":
+                return ndtr(-u)
+            return ndtr(u) if on == "ff" else -log_ndtr(-u)
+        if on == "sf":
+            return expit(-u)
+        return expit(u) if on == "ff" else np.logaddexp(0.0, u)
+
+
+def link_band(
+    u_hat: npt.ArrayLike,
+    se_u: npt.ArrayLike,
+    alpha_ci: float,
+    bound: str,
+    link: str,
+    on: str = "sf",
+) -> npt.NDArray:
+    """
+    A Wald band on ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``): ``u_hat`` +/-
+    ``z se_u`` on the band scale ``link``, mapped to ``on``. Two-sided
+    bounds put ``[lower, upper]`` on the last axis. Where ``u_hat`` is
+    infinite (``sf`` exactly 1 or 0) the bounds are the estimate.
+
+    ``u_hat`` and ``se_u`` come from :func:`sf_link_from_H` (or
+    :func:`sf_link_from_sf`) and the delta method on it; on these scales
+    the band is the envelope of the straight lines of the Wald ellipsoid,
+    so it rises with time whenever the shape's own Wald interval excludes
+    0, where a band on the logit of ``sf`` could turn back on small
+    samples (#477).
+    """
+    u_hat = np.asarray(u_hat, dtype=float)
+    se_u = np.asarray(se_u, dtype=float)
+    alpha, signs = bound_signs(alpha_ci, bound)
+    z = norm.ppf(1.0 - alpha)
+    # sf falls as u rises; ff and Hf rise with it.
+    direction = -1.0 if on == "sf" else 1.0
+    with np.errstate(invalid="ignore"):
+        u = u_hat[..., None] + direction * signs * z * se_u[..., None]
+    u = np.where(np.isinf(u_hat)[..., None], u_hat[..., None], u)
+    cb = sf_from_link(u, link, on)
+    return cb if bound == "two-sided" else cb[..., 0]
+
+
+def sf_link_bound(
+    sf_hat: npt.ArrayLike,
+    se: npt.ArrayLike,
+    alpha_ci: float,
+    bound: str,
+    link: str = "logit",
+    ff_hat: "npt.ArrayLike | None" = None,
+    on: str = "sf",
+) -> npt.NDArray:
+    """
+    The Wald band on ``on`` (``"sf"``, ``"ff"`` or ``"Hf"``) from the
+    survival ``sf_hat`` and its delta-method standard error ``se``, on the
+    band scale ``link`` (see :func:`link_band`). ``ff_hat``, when given,
+    is the failure probability to full precision where it is small
+    (otherwise ``1 - sf_hat``). Where ``sf`` or ``ff`` is below the normal
+    range the bounds are the edge they are at: the transform degenerates
+    to 0/0 there, and the variance is noise (#256).
+    """
+    sf_hat = np.asarray(sf_hat, dtype=float)
+    ff_hat = 1.0 - sf_hat if ff_hat is None else np.asarray(ff_hat, float)
+    u_hat = sf_link_from_sf(sf_hat, ff_hat, link)
+    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+        # |du / d sf|: 1 / (S H), 1 / phi(u) and 1 / (S F)
+        if link == "loglog":
+            slope = 1.0 / (sf_hat * np.exp(u_hat))
+        elif link == "probit":
+            slope = 1.0 / norm.pdf(u_hat)
+        else:
+            slope = 1.0 / (sf_hat * ff_hat)
+        se_u = np.asarray(se, dtype=float) * slope
+    tiny = np.finfo(float).tiny
+    u_hat = np.where(ff_hat < tiny, -np.inf, u_hat)
+    u_hat = np.where(sf_hat < tiny, np.inf, u_hat)
+    return link_band(u_hat, se_u, alpha_ci, bound, link, on)
 
 
 def wald_undefined(

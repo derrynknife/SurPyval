@@ -21,7 +21,7 @@ import warnings
 
 import numpy as np
 import pytest
-from scipy.special import exp1, expit
+from scipy.special import exp1
 from scipy.stats import norm
 
 import surpyval as sp
@@ -68,14 +68,18 @@ def test_cb_tvc_is_the_delta_method_through_the_path_integral(exp_ph):
     params, center, cov = exp_ph._inference_state()
     c = 0.0 if center is None else float(np.ravel(center)[0])
 
-    def logit_sf(p):
+    # On the Exponential's band scale, log H (#504).
+    def log_H(p):
         H = p[0] * np.exp(-p[1] * c) * np.expm1(p[1] * b0 * t) / (p[1] * b0)
-        return -H - np.log(-np.expm1(-H))
+        return np.log(H)
 
-    se = delta_method_se(logit_sf, params, cov)
+    se = delta_method_se(log_H, params, cov)
     z = norm.ppf(0.975)
     ref = np.stack(
-        [expit(logit_sf(params) - z * se), expit(logit_sf(params) + z * se)],
+        [
+            np.exp(-np.exp(log_H(params) + z * se)),
+            np.exp(-np.exp(log_H(params) - z * se)),
+        ],
         axis=-1,
     )
     np.testing.assert_allclose(

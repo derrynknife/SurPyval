@@ -38,9 +38,10 @@ import numpy.typing as npt
 from scipy.stats import norm
 
 from surpyval.utils.linalg import bound_signs as _bound_signs
+from surpyval.utils.linalg import cb_link
 from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import safe_inv
+from surpyval.utils.linalg import safe_inv, sf_link_bound
 from surpyval.utils.rng import as_generator
 
 # -- delta-method helpers shared with the recurrent package (the two
@@ -80,24 +81,7 @@ def _sf_bound(
     the normal quantile of ``F`` (``"probit"``) or the logit. The bands of
     the two stages are then on one scale, so the two-stage band contains
     the life model's own."""
-    if link not in ("loglog", "probit"):
-        return _logit_bound(sf_hat, se, alpha_ci, bound)
-    R = np.clip(np.asarray(sf_hat, dtype=float), 1e-15, 1.0 - 1e-15)
-    alpha, signs = _bound_signs(alpha_ci, bound)
-    # ``signs`` +1 is the upper bound on R.
-    step = (
-        signs * norm.ppf(1.0 - alpha) * np.asarray(se, dtype=float)[..., None]
-    )
-    with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
-        if link == "loglog":
-            # v = log H, dv/dR = -1 / (R H)
-            H = -np.log(R)[..., None]
-            cb = np.exp(-H * np.exp(-step / (R[..., None] * H)))
-        else:
-            # q = Phi^-1(F), dq/dR = -1 / phi(q)
-            q = norm.ppf(1.0 - R)[..., None]
-            cb = norm.sf(q - step / norm.pdf(q))
-    return cb if bound == "two-sided" else cb[..., 0]
+    return sf_link_bound(sf_hat, se, alpha_ci, bound, link)
 
 
 # -- first stage: per-unit pseudo-failure-time variances ------------------
@@ -252,7 +236,7 @@ def analytic_cb(
 ) -> npt.NDArray:
     cov = life_parameter_covariance(model, method="analytic")
     phi = np.asarray(model.life_model.params, dtype=float)
-    link = getattr(model.life_model.dist, "_cb_link", "logit")
+    link = cb_link(model.life_model.dist)
     x, sf_of = _target(model, x, on)
     sf_hat = np.asarray(sf_of(phi), dtype=float)
     se = _delta_se(sf_of, phi, cov)
