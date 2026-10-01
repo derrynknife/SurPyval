@@ -1816,7 +1816,10 @@ class ParametricRegressionModel(
                 seen["missed"] += accuracy[0]
                 seen["total"] += accuracy[1]
                 worst.append(accuracy[2:])
-            return np.exp(-H)
+            with np.errstate(over="ignore"):
+                # A falling additive hazard can send sf above 1 without
+                # limit: the mean is then infinite (below).
+                return np.exp(-H)
 
         params, center = self._tvc_theta(None)
         zc = self._centred(

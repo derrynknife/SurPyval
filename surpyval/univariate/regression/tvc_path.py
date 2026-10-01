@@ -841,14 +841,19 @@ def integrate_to_infinity(
     seen[0] = edges
     total = 0.0
     while True:
-        res = integrate_panels(terms, edges, rtol)
+        with np.errstate(invalid="ignore", over="ignore"):
+            # inf - inf where f has overflowed; caught below.
+            res = integrate_panels(terms, edges, rtol)
         total += float(np.sum(res["value"]))
         end = float(edges[-1])
         seen[0] = np.union1d(seen[0], edges[:-1])
         f_end = float(at(np.array([end]))[0])
+        if not np.isfinite(total):
+            # f grew without limit (a survival above 1 that keeps rising).
+            return total, (origin + end, f_end)
         with np.errstate(invalid="ignore", over="ignore"):
             if f_end * end <= rtol * abs(total):
                 return total, None
-        if end >= scale * 2.0 ** _TAIL_DOUBLINGS or not np.isfinite(total):
+        if end >= scale * 2.0**_TAIL_DOUBLINGS:
             return total, (origin + end, f_end)
         edges = stretch(end, end * 2.0 ** np.arange(0, _TAIL_STEP + 1))
