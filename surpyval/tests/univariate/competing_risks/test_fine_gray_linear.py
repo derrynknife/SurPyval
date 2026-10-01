@@ -211,7 +211,8 @@ def _three_causes(N: int, seed: int) -> tuple:
     t = T.min(axis=1)
     cens = rng.exponential(1 / 0.095, N)
     x = np.minimum(t, cens)
-    e = np.array(np.where(cens < t, None, T.argmin(axis=1) + 1), object)
+    e = (T.argmin(axis=1) + 1).astype(object)
+    e[cens < t] = None
     return x, Z, e, rng
 
 
