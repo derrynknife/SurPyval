@@ -961,7 +961,9 @@ class ParametricRegressionModel(
     # covariate, so the cumulative hazard is a sum of per-segment increments
     # of the constant-covariate ``Hf``; accelerated failure time instead
     # accumulates an *accelerated age* over the segments and then evaluates the
-    # baseline once. Accelerated life is refused below.
+    # baseline once. Accelerated life does the same (cumulative exposure,
+    # with the rate 1 / L(Z)) where its life parameter scales time; a
+    # location life parameter is refused (see ``_check_tvc_evaluable``).
     _TVC_ADDITIVE_KINDS = (
         "Proportional Hazard",
         "Additive Hazard",
@@ -972,7 +974,75 @@ class ParametricRegressionModel(
         "Additive Hazard",
         "Proportional Odds",
         "Accelerated Failure Time",
+        "Accelerated Life",
     )
+    #: The accelerated-life distributions whose life parameter is a scale
+    #: of time (Weibull ``alpha``, the Exponential and Gamma rates
+    #: ``1 / L``, LogNormal's ``exp(mu)``): S(t | V) = S_1(t / L(V)), with
+    #: S_1 the distribution at unit life, so a changing stress accumulates
+    #: an age ``int du / L(V(u))`` (#172).
+    _TVC_SCALE_LIFE = ("Weibull", "Exponential", "Gamma", "LogNormal")
+
+    def _check_tvc_evaluable(self) -> None:
+        """Refuse a family with no form along a covariate path."""
+        if self.kind not in self._TVC_EVALUABLE_KINDS:
+            raise NotImplementedError(
+                "time-varying-covariate evaluation is defined for the "
+                "proportional-hazards, additive-hazards, proportional-odds, "
+                "accelerated-failure-time and accelerated-life families "
+                "(this model is '{}').".format(self.kind)
+            )
+        name = self.distribution.name
+        if self.kind == "Accelerated Life" and name not in (
+            self._TVC_SCALE_LIFE
+        ):
+            raise NotImplementedError(
+                "An Accelerated Life model is evaluated along a changing "
+                "stress by cumulative exposure, S(t) = S_1(int_0^t du / "
+                "L(V(u))), which needs a life parameter that scales time "
+                "({} only). The {} life parameter '{}' is a location: a "
+                "change of stress shifts the distribution rather than "
+                "rescaling time, so there is no accumulated age to carry "
+                "from one stress to the next. Fit a scale-life "
+                "distribution (e.g. AcceleratedLife(Weibull, ...)) or an "
+                "accelerated failure time model for this.".format(
+                    ", ".join(self._TVC_SCALE_LIFE),
+                    name,
+                    self.life_parameter,
+                )
+            )
+
+    def _tvc_scales_time(self) -> bool:
+        """Whether the covariate rescales time along a path (AFT, and
+        accelerated life), rather than setting the current hazard."""
+        return self.kind in ("Accelerated Failure Time", "Accelerated Life")
+
+    def _tvc_theta(
+        self, theta: "tuple | None"
+    ) -> "tuple[npt.NDArray, npt.NDArray | None]":
+        """``(params, center)`` to evaluate a path at: ``theta``, or the
+        model's own (``cb_tvc`` passes those of ``_inference_state``)."""
+        if theta is None:
+            return self._eval_params(), self.center
+        return theta
+
+    def _tvc_rate(self, Zc: npt.NDArray, params: npt.NDArray) -> npt.NDArray:
+        """The rate at which a covariate row (already centred) ages a unit:
+        AFT's ``phi = exp(beta'z)``, and an accelerated life model's
+        ``1 / L(z)``. One value per row."""
+        Zc = np.atleast_2d(np.asarray(Zc, dtype=float))
+        phi_params = params[self.k_dist :]
+        with np.errstate(all="ignore"):
+            if self.kind == "Accelerated Life":
+                rate = 1.0 / np.asarray(
+                    self.model.phi(Zc, *phi_params), dtype=float
+                )
+            else:
+                rate = np.asarray(self.model._phi(Zc, *phi_params), dtype=float)
+        rate = rate.ravel()
+        if rate.size == 1 and Zc.shape[0] != 1:
+            rate = np.full(Zc.shape[0], float(rate[0]))
+        return rate
 
     def _tvc_segments(
         self, schedule: Any, t_max: float
@@ -994,7 +1064,9 @@ class ParametricRegressionModel(
         from .tvc_schedule import as_covariate_path
 
         schedule = as_covariate_path(Z, xl)
-        n_cov = self.params.shape[0] - self.k_dist
+        # Columns of Z (an accelerated life model's life-model parameters
+        # are not one per column).
+        n_cov = self._n_covariates()
         if schedule.p != n_cov:
             raise ValueError(
                 "the {} has {} covariate(s) but the model was fit with "
@@ -1146,6 +1218,8 @@ class ParametricRegressionModel(
         Z: "npt.ArrayLike | Any",
         xl: "npt.ArrayLike | None",
         given: "float | None" = None,
+        theta: "tuple | None" = None,
+        frozen: "dict | None" = None,
     ) -> "tuple[npt.NDArray, int, tuple | None]":
         """The cumulative hazard along the path, the number of query
         times at which an additive hazard fell (a negative ``H`` or a
@@ -1153,16 +1227,17 @@ class ParametricRegressionModel(
         and, for a ``CovariatePath`` whose quadrature missed its target,
         ``(missed, total, worst)`` (else ``None``). ``given`` is used only
         for a ``CovariatePath``: ``H`` is then integrated from ``given``,
-        ``H(x) - H(given)``."""
+        ``H(x) - H(given)``.
+
+        ``theta`` is ``(params, center)`` to evaluate at instead of the
+        model's own. ``frozen`` is a dict that keeps a path's quadrature
+        mesh: an empty one gets the mesh of this call (under
+        ``"edges"``), and one holding a mesh is integrated on it with no
+        refinement, so that a function of the parameters is smooth in
+        them (``cb_tvc``'s delta method, #172)."""
         from .tvc_path import CovariatePath
 
-        if self.kind not in self._TVC_EVALUABLE_KINDS:
-            raise NotImplementedError(
-                "time-varying-covariate evaluation is defined for the "
-                "proportional-hazards, additive-hazards, proportional-odds "
-                "and accelerated-failure-time families (this model is "
-                "'{}').".format(self.kind)
-            )
+        self._check_tvc_evaluable()
         xq = np.atleast_1d(np.asarray(x, dtype=float))
         schedule = self._to_schedule(Z, xl)
         # A missing query time has no value (NaN); the others are
@@ -1172,7 +1247,7 @@ class ParametricRegressionModel(
             return np.full(xq.shape, np.nan), 0, None
         if isinstance(schedule, CovariatePath):
             # Integrated, not summed.
-            return self._tvc_hf_path(xq, schedule, given)
+            return self._tvc_hf_path(xq, schedule, given, theta, frozen)
         # A horizon at or below 0 materialises the one segment in force at
         # 0: H is then 0, or the baseline's value for a time below 0.
         t_max = float(np.max(xq[~missing]))
@@ -1181,9 +1256,11 @@ class ParametricRegressionModel(
 
         falls = np.zeros(xq.shape[0], dtype=bool)
         if self.kind in self._TVC_ADDITIVE_KINDS:
-            H = self._tvc_hf_additive(xq_eval, starts, ends, Zseg, falls)
+            H = self._tvc_hf_additive(
+                xq_eval, starts, ends, Zseg, falls, theta
+            )
         else:
-            H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg)
+            H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg, theta)
         if self.kind == "Additive Hazard":
             falls |= H < 0
         falls &= ~missing
@@ -1198,18 +1275,27 @@ class ParametricRegressionModel(
         xq: npt.NDArray,
         path: Any,
         given: "float | None",
+        theta: "tuple | None" = None,
+        frozen: "dict | None" = None,
     ) -> "tuple[npt.NDArray, int, tuple | None]":
         r"""
         The cumulative hazard along a continuously varying ``path`` (#172),
         less its value at ``given`` when that is supplied; the values and
-        counts are as for :meth:`_hf_tvc`.
+        counts, ``theta`` and ``frozen`` are as for :meth:`_hf_tvc`.
 
         At and before time 0 the value in force at 0 applies, exactly as
         for a step schedule, so there the one-segment step sum gives ``H``.
-        After 0 the hazard (for AFT, the accelerated-age rate) is
-        integrated over panels by :func:`~.tvc_path.integrate_panels`, and
-        summed outward from ``given`` (or 0): nothing is subtracted for a
-        baseline that starts at 0.
+        After 0 the hazard (for AFT and accelerated life, the rate at which
+        the unit ages) is integrated over panels by
+        :func:`~.tvc_path.integrate_panels`, and summed outward from
+        ``given`` (or 0): nothing is subtracted for a baseline that starts
+        at 0.
+
+        Along a periodic path the age a time-scaling family accumulates
+        over a whole period is the same every period, so only one period
+        is integrated: :math:`\psi(t) = k\,\Psi_P + \psi(t - kP)` with
+        :math:`k = \lfloor t / P \rfloor` (#172, the periodic shortcut). A
+        hazard family has no such shortcut: its baseline ages.
         """
         from .tvc_path import (
             integrate_panels,
@@ -1218,7 +1304,7 @@ class ParametricRegressionModel(
             sum_between,
         )
 
-        aft = self.kind == "Accelerated Failure Time"
+        aft = self._tvc_scales_time()
         missing = np.isnan(xq)
         xe = np.where(missing, 0.0, xq)
         n = xq.shape[0]
@@ -1232,9 +1318,9 @@ class ParametricRegressionModel(
         falls_low = np.zeros(low_t.shape, dtype=bool)
         seg = (np.zeros(1), np.zeros(1), z0.reshape(1, -1))
         if aft:
-            H_low = self._tvc_hf_aft(low_t, *seg)
+            H_low = self._tvc_hf_aft(low_t, *seg, theta)
         else:
-            H_low = self._tvc_hf_additive(low_t, *seg, falls_low)
+            H_low = self._tvc_hf_additive(low_t, *seg, falls_low, theta)
         H_x_low, H_at0, H_g_low = H_low[:n], H_low[n], H_low[n + 1]
         falls = falls_low[:n].copy()
 
@@ -1248,27 +1334,67 @@ class ParametricRegressionModel(
             accuracy = None
         else:
             ex = np.maximum(xe, 0.0)
+            period = path.period
+            # The periodic shortcut: integrate one period only.
+            whole = aft and period is not None and np.max(points) > period
+
+            def split(t: npt.NDArray) -> tuple:
+                # Whole periods, and the time into the last one.
+                k = np.floor(t / period)
+                return k, np.clip(t - k * period, 0.0, period)
+
+            if whole:
+                k_x, r_x = split(ex)
+                inner = np.append(r_x[r_x > 0], period)
+                if g_pos:
+                    inner = np.append(inner, split(np.array([given]))[1])
+                inner = inner[inner > 0]
+            else:
+                inner = points
+            if frozen is not None and "edges" in frozen:
+                mesh, rounds = frozen["edges"], 0
+            else:
+                mesh, rounds = path_mesh(path, np.unique(inner)), None
             res = integrate_panels(
-                self._path_panel_terms(path),
-                path_mesh(path, np.unique(points)),
+                self._path_panel_terms(path, theta),
+                mesh,
                 self._tvc_rtol,
+                max_rounds=rounds,
             )
+            if frozen is not None and "edges" not in frozen:
+                frozen["edges"] = res["edges"]
             edges, value = res["edges"], res["value"]
-            from_0 = sum_between(edges, value, 0.0, ex)
+
+            def age(t: npt.NDArray) -> npt.NDArray:
+                # The integral from 0 to each t (the accelerated age, for
+                # a family that scales time).
+                if not whole:
+                    return sum_between(edges, value, 0.0, t)
+                k, r = split(t)
+                cycle = sum_between(edges, value, 0.0, np.array([period]))
+                return k * cycle[0] + sum_between(edges, value, 0.0, r)
+
+            from_0 = age(ex)
             if aft:
                 # The accelerated age, through the baseline once.
-                H_full = np.where(xe > 0, self._aft_H0(from_0), H_x_low)
+                H_full = np.where(
+                    xe > 0, self._aft_H0(from_0, theta), H_x_low
+                )
                 H = H_full
                 if given is not None:
                     if g_pos:
-                        psi_g = sum_between(
-                            edges, value, 0.0, np.array([given])
-                        )
-                        H = H_full - self._aft_H0(psi_g)[0]
+                        psi_g = age(np.array([float(given)]))
+                        H = H_full - self._aft_H0(psi_g, theta)[0]
                     else:
                         H = H_full - H_g_low
                 origin = 0.0
-                reach = np.maximum(ex, given) if g_pos else ex
+                if whole:
+                    # Each value carries a whole period's integral (but
+                    # for those in the first period, where this is
+                    # conservative).
+                    reach = np.full(ex.shape, float(period))
+                else:
+                    reach = np.maximum(ex, given) if g_pos else ex
             else:
                 # H(x) = A(x) + int_0^max(x, 0) h, with A(x) the step
                 # value at min(x, 0) (0 for a baseline that starts at 0).
@@ -1294,34 +1420,42 @@ class ParametricRegressionModel(
         falls &= ~missing
         return np.where(missing, np.nan, H), int(falls.sum()), accuracy
 
-    def _aft_H0(self, psi: npt.NDArray) -> npt.NDArray:
-        """The AFT baseline cumulative hazard at accelerated ages ``psi``.
-        (An age of 0 makes a log-time baseline evaluate log(0) = -inf on
-        its way to the correct H = 0.)"""
+    def _aft_H0(
+        self, psi: npt.NDArray, theta: "tuple | None" = None
+    ) -> npt.NDArray:
+        """The baseline cumulative hazard at accelerated ages ``psi``: the
+        AFT baseline, or an accelerated life model's distribution at unit
+        life (its life parameter set to ``L = 1``). (An age of 0 makes a
+        log-time baseline evaluate log(0) = -inf on its way to the correct
+        H = 0.)"""
+        params = self._tvc_theta(theta)[0]
+        dist = np.array(params[: self.k_dist], dtype=float)
+        if self.kind == "Accelerated Life":
+            slot = self.model.param_map[self.model.life_parameter]
+            dist[slot] = self.model.param_transform(1.0)
         with np.errstate(divide="ignore"):
             return np.asarray(
-                self.model.Hf_dist(
-                    np.asarray(psi, dtype=float), *self.params[: self.k_dist]
-                ),
+                self.model.Hf_dist(np.asarray(psi, dtype=float), *dist),
                 dtype=float,
             ).ravel()
 
-    def _path_panel_terms(self, path: Any) -> Any:
+    def _path_panel_terms(self, path: Any, theta: "tuple | None" = None) -> Any:
         """
         The family's ``panel_terms(a, b)`` for
         :func:`~.tvc_path.integrate_panels`: on each panel ``[a, b]`` the
         exact increment with the covariate frozen at the panel's midpoint
         value ``zbar``, and at the 15 Kronrod nodes the correction
         integrand -- the hazard along the path less the hazard at ``zbar``
-        (for AFT, ``phi(Z(u)) - phi(zbar)``) -- its size, for the rounding
-        floor, and (for AH) whether the hazard is negative at a node. The
-        correction is 0 where the path is flat.
+        (for AFT and accelerated life, the ageing rate ``phi(Z(u)) -
+        phi(zbar)``) -- its size, for the rounding floor, and (for AH)
+        whether the hazard is negative at a node. The correction is 0
+        where the path is flat.
         """
         from .tvc_path import _NODES
 
-        M, params = self.model, self._eval_params()
-        beta = params[self.k_dist :]
-        aft = self.kind == "Accelerated Failure Time"
+        M = self.model
+        params, center = self._tvc_theta(theta)
+        aft = self._tvc_scales_time()
         additive = self.kind == "Additive Hazard"
         starts_at_0 = float(self.distribution.support[0]) >= 0
 
@@ -1336,14 +1470,14 @@ class ParametricRegressionModel(
             mid, half = 0.5 * (a + b), 0.5 * (b - a)
             u = (mid[:, None] + half[:, None] * _NODES[None, :]).ravel()
             n = u.shape[0]
-            zu = self._centred(path._values(u))
-            zbar = self._centred(path._values(mid))
+            zu = self._centred(path._values(u), center)
+            zbar = self._centred(path._values(mid), center)
             zrep = np.repeat(zbar, _NODES.shape[0], axis=0)
             with np.errstate(all="ignore"):
                 if aft:
-                    along = flat(M._phi(zu, *beta), n)
-                    frozen = flat(M._phi(zrep, *beta), n)
-                    exact = flat(M._phi(zbar, *beta), m) * (b - a)
+                    along = self._tvc_rate(zu, params)
+                    frozen = self._tvc_rate(zrep, params)
+                    exact = self._tvc_rate(zbar, params) * (b - a)
                 else:
                     along = flat(M.hf(u, zu, *params), n)
                     frozen = flat(M.hf(u, zrep, *params), n)
@@ -1370,6 +1504,7 @@ class ParametricRegressionModel(
         ends: npt.NDArray,
         Zseg: npt.NDArray,
         falls: "npt.NDArray | None" = None,
+        theta: "tuple | None" = None,
     ) -> npt.NDArray:
         """
         Cumulative hazard along a step path for the families whose hazard
@@ -1377,10 +1512,13 @@ class ParametricRegressionModel(
         telescoping sum of the model's ``Hf`` increment on each segment, the
         last clipped at the query time.
         """
+        params, center = self._tvc_theta(theta)
         H = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = self._centred(np.asarray(z, dtype=float).reshape(1, -1))
+            zrow = self._centred(
+                np.asarray(z, dtype=float).reshape(1, -1), center
+            )
             # Query times before 0 fall in the first segment when the
             # baseline is defined there.
             upper = np.clip(xq, min(a, support_lo) if i == 0 else a, b)
@@ -1389,8 +1527,7 @@ class ParametricRegressionModel(
             # H = 0; that is not worth a warning.
             with np.errstate(divide="ignore"):
                 hi = np.asarray(
-                    self.model.Hf(upper, zrow, *self._eval_params()),
-                    dtype=float,
+                    self.model.Hf(upper, zrow, *params), dtype=float
                 ).ravel()
                 # The first segment runs from the bottom of the support,
                 # where H = 0. Subtracting H(0, z) instead would, for a
@@ -1400,9 +1537,7 @@ class ParametricRegressionModel(
                     lo = np.zeros(1)
                 else:
                     lo = np.asarray(
-                        self.model.Hf(
-                            np.array([a]), zrow, *self._eval_params()
-                        ),
+                        self.model.Hf(np.array([a]), zrow, *params),
                         dtype=float,
                     ).ravel()
             if falls is not None and self.kind == "Additive Hazard":
@@ -1418,37 +1553,33 @@ class ParametricRegressionModel(
         starts: npt.NDArray,
         ends: npt.NDArray,
         Zseg: npt.NDArray,
+        theta: "tuple | None" = None,
     ) -> npt.NDArray:
         r"""
-        Cumulative hazard along a step path for accelerated failure time.
+        Cumulative hazard along a step path for accelerated failure time
+        and accelerated life.
 
-        The covariate rescales time by ``phi(z) = exp(beta'z)``, so each
-        segment contributes ``phi(z) * (width)`` of *accelerated age*. The
-        accumulated age ``psi(x)`` is then fed once through the baseline
-        cumulative hazard ``H0``. This is exact for a step covariate and
-        reduces to ``Hf(x, Z)`` for a single constant segment.
+        The covariate rescales time by ``phi(z) = exp(beta'z)`` (for
+        accelerated life ``1 / L(z)``), so each segment contributes
+        ``phi(z) * (width)`` of *accelerated age*. The accumulated age
+        ``psi(x)`` is then fed once through the baseline cumulative hazard
+        ``H0`` (for accelerated life, the distribution at unit life). This
+        is exact for a step covariate and reduces to ``Hf(x, Z)`` for a
+        single constant segment.
         """
-        dist_params = self.params[: self.k_dist]
-        phi_params = self._eval_params()[self.k_dist :]
+        params, center = self._tvc_theta(theta)
         psi = np.zeros(xq.shape[0], dtype=float)
         support_lo = float(self.distribution.support[0])
         for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = self._centred(np.asarray(z, dtype=float).reshape(1, -1))
-            phi_seg = float(
-                np.asarray(
-                    self.model._phi(zrow, *phi_params), dtype=float
-                ).ravel()[0]
+            zrow = self._centred(
+                np.asarray(z, dtype=float).reshape(1, -1), center
             )
+            rate = float(self._tvc_rate(zrow, params)[0])
             # Query times before 0 fall in the first segment when the
             # baseline is defined there (a negative age, as sf(x, Z)).
             width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a
-            psi = psi + phi_seg * width
-        # An age of 0 makes a log-time baseline (LogNormal) evaluate
-        # log(0) = -inf on its way to the correct H = 0.
-        with np.errstate(divide="ignore"):
-            return np.asarray(
-                self.model.Hf_dist(psi, *dist_params), dtype=float
-            ).ravel()
+            psi = psi + rate * width
+        return self._aft_H0(psi, theta)
 
     @keeps_query_shape
     def sf_tvc(

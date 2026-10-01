@@ -19,8 +19,10 @@ registered model that has them:
   at and before ``given``, ``S(x) / S(given)`` after it, and at most 1
   (but for the additive hazards' documented exception, #376; #523).
 
-A model whose family has no exact form along a step path (accelerated
-life) refuses with ``NotImplementedError`` instead.
+An accelerated life model is evaluated by cumulative exposure where its
+life parameter scales time (Weibull, Exponential, Gamma, LogNormal); one
+whose life parameter is a location (Normal, Gumbel, Logistic) refuses with
+``NotImplementedError`` instead.
 
 The same properties are checked along a constant ``CovariatePath``
 (#172), which is integrated rather than summed.
@@ -75,9 +77,16 @@ def _times(case):
     return np.concatenate([[-1.0, 0.0], np.asarray(case.x, dtype=float)])
 
 
+# Accelerated life distributions whose life parameter scales time, and so
+# evaluate along a path by cumulative exposure (#172 phase 2).
+_SCALE_LIFE = ("Weibull", "Exponential", "Gamma", "LogNormal")
+
+
 def _evaluable(case, model):
     """Whether the model evaluates a step path; if not, check it refuses."""
     if getattr(model, "kind", None) != "Accelerated Life":
+        return True
+    if model.distribution.name in _SCALE_LIFE:
         return True
     with pytest.raises(NotImplementedError):
         model.sf_tvc([1.0], StepSchedule.constant(_rows(case)[0]))
