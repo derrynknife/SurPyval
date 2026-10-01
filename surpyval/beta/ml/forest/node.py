@@ -11,6 +11,7 @@ from surpyval.beta.ml.forest.conditional_inference import ctree_select
 from surpyval.beta.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
+    leaf_mle,
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.log_rank_split import log_rank_split
@@ -197,7 +198,9 @@ class TerminalNode(Node):
     tree a Nelson-Aalen estimate (a Turnbull estimate if the leaf holds
     left- or interval-censored or right-truncated rows); ``NeverOccurs``
     for a parametric
-    leaf with no failures.
+    leaf with no failures. On observed and right-censored data a
+    parametric leaf is the maximum found as the split search finds a
+    child's, built from its parameters (so it has no ``cb()`` of its own).
     """
 
     def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
@@ -240,17 +243,29 @@ class TerminalNode(Node):
         if n_failures == 0:
             return NeverOccurs
 
-        # A degenerate bootstrap sample (e.g. heavily tied event times)
-        # can make an MLE's covariance/Hessian step fail. A single
-        # terminal node must not crash the whole forest, so fall back to
-        # progressively simpler fits -- staying within the parametric
-        # family: Weibull -> Exponential (a Weibull with shape fixed at
-        # 1) -> the crude rate.
+        # On observed and right-censored data the leaf is the maximum the
+        # split search finds, built from its parameters (leaf_mle) rather
+        # than re-fitted: a full fit per leaf made a forest's first
+        # prediction several times slower than growing it. Such a leaf
+        # has no covariance, so no cb() of its own; the forest uses none.
+        #
+        # Otherwise the leaf is fitted. A degenerate bootstrap sample
+        # (e.g. heavily tied event times) can make an MLE's
+        # covariance/Hessian step fail. A single terminal node must not
+        # crash the whole forest, so fall back to progressively simpler
+        # fits -- staying within the parametric family: Weibull ->
+        # Exponential (a Weibull with shape fixed at 1) -> the crude rate.
         if self.kind == "weibull" and n_failures > 1:
+            params = leaf_mle(self.data, "weibull")
+            if params is not None:
+                return Weibull.from_params(params)
             try:
                 return Weibull.fit_from_surpyval_data(self.data)
             except Exception:
                 pass
+        params = leaf_mle(self.data, "exponential")
+        if params is not None:
+            return Exponential.from_params(params)
         try:
             return Exponential.fit_from_surpyval_data(self.data)
         except Exception:

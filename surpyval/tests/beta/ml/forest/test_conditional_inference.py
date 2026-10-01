@@ -593,12 +593,12 @@ GREEDY_SF = {
         [0.8668778997501816, 0.600781597182098],
     ],
     ("right", "weibull"): [
-        [0.914864449994829, 0.6482164543192853],
-        [0.886889236779209, 0.39846524921481696],
+        [0.914864480283742, 0.6482164842613901],
+        [0.8868892411626376, 0.39846525389032417],
     ],
     ("interval", "exponential"): [
-        [0.8300143680933468, 0.5718166950525637],
-        [0.7395999997403062, 0.40456723470983613],
+        [0.8300143127125043, 0.5718165805930213],
+        [0.7396000030204344, 0.4045672400926068],
     ],
 }
 
@@ -629,7 +629,9 @@ def test_greedy_is_todays_tree(censoring, kind, explicit):
     assert _splits(tree._root) == GREEDY_SPLITS[censoring, kind]
     if (censoring, kind) in GREEDY_SF:
         sf = tree.sf([2.0, 6.0], [[0.0, 0.2, 0.7], [2.0, 0.8, 0.1]])
-        np.testing.assert_allclose(sf, GREEDY_SF[censoring, kind], rtol=1e-9)
+        # The leaves are maximum likelihood fits, whose last digits move
+        # with the optimiser (#366); the splits above are exact.
+        np.testing.assert_allclose(sf, GREEDY_SF[censoring, kind], rtol=1e-6)
     assert all(
         getattr(node, "p_value", None) is None
         for node in [tree._root, tree._root.left_child]
