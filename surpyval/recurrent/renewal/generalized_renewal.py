@@ -154,11 +154,12 @@ class GeneralizedRenewal(RenewalFitMixin):
     ``q`` is often poorly determined: only the order and spacing of each
     system's failures carry information about it, and a few failures per
     system leave a wide interval. The fitted model prints ``q`` with its
-    standard error and Wald interval, and says so when the interval covers
-    repairs of opposite kinds (both ``q <= 0.5`` and ``q >= 2``);
+    standard error and Wald interval, and the conclusion of
     :meth:`RenewalModel.repair_test
-    <surpyval.recurrent.renewal.renewal_model.RenewalModel.repair_test>`
-    tests the fit against minimal repair.
+    <surpyval.recurrent.renewal.renewal_model.RenewalModel.repair_test>`,
+    the likelihood-ratio tests of the fit against perfect repair (``q =
+    0``) and minimal repair (``q = 1``): "not determined" when the data
+    are consistent with both.
 
     Examples
     --------
@@ -181,6 +182,9 @@ class GeneralizedRenewal(RenewalFitMixin):
         q        0.1573 0.03311     0.1041     0.2376
         alpha     1.261  0.1238      1.041      1.529
         beta      8.939   2.499      5.168      15.46
+    Repair test: both perfect and minimal repair rejected: q = 0.1573 is
+          between perfect and minimal repair (LR tests, q = 0: p =
+          0.000108; q = 1: p = 3.59e-05)
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -345,7 +349,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             one that leaves the system worse than before it failed (see the
             class docstring); the model prints it with its standard error
             and Wald interval, and ``repair_test()`` tests it against
-            minimal repair.
+            perfect and minimal repair.
 
         Example
         -------
@@ -374,8 +378,9 @@ class GeneralizedRenewal(RenewalFitMixin):
             alpha     2.399  0.509      1.583      3.636
             beta      2.754 0.6533       1.73      4.384
         Note: q = 7.274e-17 is at the edge of its range, so it has no standard
-              error or interval; repair_test() says whether the data support
-              it over minimal repair.
+              error or interval.
+        Repair test: consistent with perfect repair; minimal repair rejected
+              (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
         # Resolving the Kijima type first gives the clear error for an
         # unknown one (it used to surface as a NameError from inside the
@@ -456,7 +461,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             one that leaves the system worse than before it failed (see the
             class docstring); the model prints it with its standard error
             and Wald interval, and ``repair_test()`` tests it against
-            minimal repair.
+            perfect and minimal repair.
 
         Example
         -------
@@ -483,8 +488,9 @@ class GeneralizedRenewal(RenewalFitMixin):
             alpha     2.399  0.509      1.583      3.636
             beta      2.754 0.6533       1.73      4.384
         Note: q = 7.274e-17 is at the edge of its range, so it has no standard
-              error or interval; repair_test() says whether the data support
-              it over minimal repair.
+              error or interval.
+        Repair test: consistent with perfect repair; minimal repair rejected
+              (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)
@@ -538,6 +544,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Parameters          :
                 mu: 10
             sigma: 2
+        Repair test         : not available (no data)
         """
         self._resolve_virtual_age_function(kijima)
         validate_lifetime_dist(dist, type(self).__name__)

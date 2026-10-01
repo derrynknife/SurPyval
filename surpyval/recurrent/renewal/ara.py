@@ -123,13 +123,14 @@ class ARA(RenewalFitMixin):
     finite memories ``m >= 2``.
 
     The repair efficiency ``rho`` lies in ``[0, 1]``: ``rho = 1`` is a
-    repair as good as new (for ``m = inf``) and ``rho = 0`` one as bad as
+    repair as good as new (whatever the memory ``m``: the virtual age
+    returns to 0, an ordinary renewal process) and ``rho = 0`` one as bad as
     old (minimal repair, the non-homogeneous Poisson process of the
     distribution's cumulative hazard); ``rho = 1 - q`` for the Kijima ``q``
     of ``GeneralizedRenewal``. The fitted model prints ``rho`` with its
-    standard error and Wald interval, says when that interval covers both
-    ``rho <= 0.25`` and ``rho >= 0.75`` (not determined by the data), and
-    its ``repair_test()`` tests it against minimal repair.
+    standard error and Wald interval, and the conclusion of
+    ``repair_test()``, the likelihood-ratio tests of the fit against
+    perfect repair (``rho = 1``) and minimal repair (``rho = 0``).
 
     Like the other renewal models there is no closed-form intensity, so the
     cumulative intensity is obtained by simulation (see ``mcf`` and ``plot``).

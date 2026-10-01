@@ -1108,32 +1108,58 @@ trucks are simulated under minimal repair, so the true ``q`` is 1:
     trucks
 
 The estimate, 2.63, would say every repair makes the truck worse, but its
-interval runs from 0.09 (almost as good as new) to 73, and the model says
-the data do not determine it: it flags an interval that covers both
-``q = 0.5`` and ``q = 2``, repairs of opposite kinds. ``repair_test()``
-answers the question the data can answer -- does repair quality matter here?
--- with the likelihood-ratio test of the fit against the same model with
-``q = 1``:
+interval runs from 0.09 (almost as good as new) to 73. The question the data
+can answer is which kinds of repair they rule out, and the last line of the
+printout answers it: ``repair_test()`` refits the model with ``q`` held at
+perfect repair (``q = 0``, an ordinary Weibull renewal process) and at
+minimal repair (``q = 1``, the Crow-AMSAA power law), and tests the fit
+against each by likelihood ratio:
 
 .. jupyter-execute::
 
     test = trucks.repair_test()
-    print(f"LR = {test.statistic:.2f}, p = {test.p_value:.2f}")
+    test
 
-With a p-value of 0.53 the trucks are consistent with minimal repair: the
-Crow-AMSAA model, one parameter simpler, describes them as well. (``ARA`` and
-``ARI`` test ``rho = 0``, the edge of their range, where the p-value is
-halved.)
+.. jupyter-execute::
+
+    print(f"vs perfect: LR = {test.perfect.statistic:.1f}, p = {test.perfect.p_value:.1g}")
+    print(f"vs minimal: LR = {test.minimal.statistic:.2f}, p = {test.minimal.p_value:.2f}")
+
+Perfect repair is rejected (p = 2e-9) and minimal repair is not (p = 0.53):
+the trucks are consistent with minimal repair, and the Crow-AMSAA model, one
+parameter simpler, describes them as well as the fitted ``q`` does. At the
+level ``alpha_ci`` (default 0.05) the conclusion is one of:
+
+- "not determined: the data are consistent with both perfect and minimal
+  repair" -- neither is rejected, and the data cannot say what repairs do;
+- "consistent with minimal repair; perfect repair rejected", or the other
+  way round;
+- both rejected, and where the estimate lies: "between perfect and minimal
+  repair" (``0 < q < 1``) or "worse than minimal repair" (``q > 1``).
+
+Each test has one degree of freedom. Where the value tested is on the edge
+of the parameter's range -- ``q = 0`` (``q`` cannot be negative), and both
+``rho = 0`` and ``rho = 1`` for ``ARA`` and ``ARI`` -- the statistic is a
+50:50 mixture of chi-squared(0) and chi-squared(1) when the hypothesis
+holds, so the p-value is half the chi-squared(1) tail (Self and Liang,
+1987). ``ARA``'s ``rho = 1`` is perfect repair; ``ARI`` has no repair as
+good as new, and its ``rho = 1`` (each repair removes all the intensity, the
+most an ARI repair can) is tested in its place as "maximal repair". The G1
+process has no minimal repair, so it is tested against perfect repair (its
+``q = 0``, inside the range) only. The refits are made the first time the
+model is printed or ``repair_test()`` is called, and kept on the model.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert round(trucks.q, 2) == 2.63
-    assert "q is not determined by these data" in " ".join(repr(trucks).split())
     lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
     assert round(lo_q, 2) == 0.09 and round(hi_q) == 73
-    assert round(test.p_value, 2) == 0.53
+    assert round(test.minimal.p_value, 2) == 0.53
+    assert f"{test.perfect.p_value:.1g}" == "2e-09"
+    assert test.conclusion == "consistent with minimal repair; perfect repair rejected"
+    assert "consistent with minimal repair; perfect repair rejected" in " ".join(repr(trucks).split())
 
 G1 Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
