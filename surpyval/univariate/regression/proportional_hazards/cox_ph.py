@@ -331,9 +331,8 @@ def _sort_by_event_time(
     Nothing in the partial likelihood depends on the order of the rows --
     every quantity is aggregated to unique event times first -- but
     ``_GroupBy`` gets to skip its permutation when the keys already arrive
-    grouped. One reordering of ``Z`` here replaces a gather of an
-    ``(n, p, p)`` array on every ``jac_hess`` call, roughly ten of them per
-    root-finding iteration (#329).
+    grouped. One reordering of ``Z`` here replaces a gather of the per-row
+    arrays on every ``jac_hess`` call (#329).
 
     The caller keeps the unsorted arrays: ``fit`` stores those on the model
     for the residual and diagnostic code, and the closures only ever hand
@@ -1528,7 +1527,14 @@ class CoxPH_:
             increments. ``'exact'`` removes the remaining bias under heavy
             ties at several times the cost.
         tol: float, optional
-            The tolerance for the root finding algorithm.
+            The convergence tolerance. The coefficients are found by
+            Newton-Raphson with step-halving on the partial
+            log-likelihood (as R's ``coxph`` and lifelines), which stops
+            once a step is at most ``tol`` standard errors long (measured
+            by the observed information), leaving an error of the order of
+            its square. Should Newton-Raphson fail -- as it does where the
+            likelihood has no finite maximum -- the score is root-found
+            instead, to a relative change in ``beta`` of ``tol``.
         strata: array-like, optional
             Stratum label for each observation. When supplied the model is
             *stratified*: a separate baseline hazard is estimated per stratum
@@ -1937,7 +1943,7 @@ class CoxPH_:
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
         tol : float, optional
-            Optimiser tolerance.
+            Convergence tolerance; see :meth:`fit`.
         center : bool, optional
             Report the baseline at the covariate means of the interval rows
             (``model.center``) instead of at ``Z = 0``; see :meth:`fit`.
@@ -2080,7 +2086,7 @@ class CoxPH_:
             ``'exact'`` or ``'kalbfleisch-prentice'`` (``'kp'``); see
             :meth:`fit`.
         tol : float, optional
-            Optimiser tolerance.
+            Convergence tolerance; see :meth:`fit`.
         center : bool, optional
             Report the baseline at the covariate means (``model.center``)
             instead of at ``Z = 0``; see :meth:`fit`.
