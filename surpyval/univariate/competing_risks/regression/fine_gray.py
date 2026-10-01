@@ -329,10 +329,10 @@ def _information_at_zero(
     # The weight of row i over the event times, a_i = sum_j q_j W_ji:
     # the event times at or before x_i (start_j <= i), plus, for a
     # competing failure, the later ones (start_j > i) at G(t_j-)/G(x_i-).
-    a = np.cumsum(np.bincount(sets.start, q, minlength=rows))
+    at_or_before = np.cumsum(np.bincount(sets.start, q, minlength=rows))
     later = np.bincount(sets.start, q * sets.G_t, minlength=rows + 1)
-    a = a + sets.competing_over_G * np.cumsum(later[::-1])[::-1][1:]
-    a = a * n
+    after = np.cumsum(later[::-1])[::-1][1:]
+    a = n * (at_or_before + sets.competing_over_G * after)
     return Z.T @ (a[:, None] * Z) - M.T @ (sets.d[:, None] * M)
 
 

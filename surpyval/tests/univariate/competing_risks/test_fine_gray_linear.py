@@ -206,7 +206,7 @@ def _three_causes(N: int, seed: int) -> tuple:
     t = T.min(axis=1)
     cens = rng.exponential(1 / 0.095, N)
     x = np.minimum(t, cens)
-    e = np.where(cens < t, None, T.argmin(axis=1) + 1).astype(object)
+    e = np.array(np.where(cens < t, None, T.argmin(axis=1) + 1), object)
     return x, Z, e, rng
 
 
@@ -299,6 +299,7 @@ def test_risk_set_sums_are_the_weight_matrix_products():
         sets = fine_gray._risk_sets(
             x, n, is_event, is_competing, G_x, g_times, g_vals
         )
+
         def weights(t):
             G_t = step_left_limit(g_times, g_vals, t, before=1.0)
             return (x[None, :] >= t[:, None]) + (
