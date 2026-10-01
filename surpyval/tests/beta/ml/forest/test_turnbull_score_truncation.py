@@ -267,9 +267,7 @@ def test_truncation_that_excludes_nothing_changes_nothing():
     # score by the same amount, so the split is the same.
     rt = _right_truncated(1, n=120, effect=0.5)
     exact = SurpyvalData(rt["x"], group_and_sort=False)
-    common = SurpyvalData(
-        rt["x"], tr=np.full(120, 1e3), group_and_sort=False
-    )
+    common = SurpyvalData(rt["x"], tr=np.full(120, 1e3), group_and_sort=False)
     shift = log_rank_scores(common) - log_rank_scores(exact)
     np.testing.assert_allclose(shift, shift[0], atol=1e-8)
     assert turnbull_score_split(
@@ -423,7 +421,8 @@ def test_forest_on_right_truncated_data():
     d = _right_truncated(3, n=150, effect=0.5)
     oob = {}
     for depth in (0, 2):
-        with contextlib.redirect_stderr(io.StringIO()), warnings.catch_warnings():
+        log = io.StringIO()
+        with contextlib.redirect_stderr(log), warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             forest = RandomSurvivalForest.fit(
                 **d,

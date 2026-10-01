@@ -8,6 +8,32 @@ leaf (parametric, or a Nelson-Aalen or Turnbull estimate for
 ``kind="non-parametric"``), so a prediction is a distribution rather
 than a point.
 
+The tree ``kind`` couples the split with the leaf model, and every kind
+takes every kind of censoring and truncation:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 39 39
+
+   * - ``kind``
+     - Observed and right-censored data, with or without left truncation
+     - Left- or interval-censored data, or right truncation (any truncation)
+   * - ``"non-parametric"``
+     - Risk-set log-rank split; Nelson-Aalen leaves
+     - Turnbull-score split (log-rank scores of the pooled Turnbull estimate,
+       each less the score of its truncation window); Turnbull leaves
+   * - ``"exponential"``
+     - Exponential deviance split; Exponential leaves
+     - The same, on the full likelihood
+   * - ``"weibull"`` (default)
+     - Weibull deviance split; Weibull leaves
+     - The same, on the full likelihood
+
+For ``"non-parametric"`` the column is chosen at each node (and leaf) from
+the rows that reach it. Either
+``selection`` (``"greedy"`` or ``"ctree"``) works with every kind and data
+type.
+
 .. warning::
 
    These live under ``surpyval.beta`` because their API is not yet

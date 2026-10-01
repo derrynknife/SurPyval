@@ -3061,9 +3061,10 @@ The tree ``kind`` couples the split rule with the leaf model:
 ``'non-parametric'`` uses the log-rank statistic and Nelson-Aalen leaves for
 observed, right-censored and left-truncated data, and its score form under the
 pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
-data (not yet with truncation); ``'weibull'`` (the default) and
-``'exponential'`` use a likelihood split and parametric leaves and accept every
-kind of censoring and truncation, at a higher computational cost:
+and right-truncated data (with any truncation); ``'weibull'`` (the default)
+and ``'exponential'`` use a likelihood split and parametric leaves. Every kind
+accepts every kind of censoring and truncation; the parametric ones fit a
+likelihood at every candidate split, at a higher computational cost:
 
 .. jupyter-execute::
 
@@ -3144,9 +3145,9 @@ is compared with a Cox model on the same metrics:
 With ten shallow trees the forest already edges out a Cox model that cannot
 represent the interaction; more and deeper trees usually widen the gap, at a
 proportional cost in time. Setting ``kind='weibull'`` (the default) gives
-parametric leaves and handles left and interval censoring and truncation, but
-fits a likelihood at every candidate split and is much slower. Fitted trees and
-forests serialise like every other model (next section).
+parametric leaves, but fits a likelihood at every candidate split and is much
+slower. Fitted trees and forests serialise like every other model (next
+section).
 
 .. jupyter-execute::
     :hide-code:
@@ -3362,6 +3363,39 @@ the one built from conditional-inference trees.
     assert not hasattr(root.right_child.left_child, 'split_feature_index')
     assert not hasattr(root.right_child.right_child, 'split_feature_index')
     assert oob_sel['ctree'] > oob_sel['greedy'], oob_sel
+
+Truncated data are split the same way. Below, a failure is recorded only if
+it happened before the unit's truncation time (retrospective sampling, so long
+lives are under-represented), and that time comes later for units with
+:math:`z_1 > 0.5`, which therefore show longer recorded lives although
+:math:`z_1` has no effect on survival; :math:`z_0 > 0.5` halves the life. A
+truncated unit's score is that of its likelihood given its window, so the tree
+splits on :math:`z_0` and not on :math:`z_1`, and its Turnbull leaves
+estimate the untruncated survival (at :math:`t = 3`, 0.848 and 0.628 for the
+true distributions):
+
+.. jupyter-execute::
+
+    r_rt = np.random.default_rng(0)
+    Z_rt = r_rt.uniform(0, 1, (400, 3))
+    T_rt = 10 * r_rt.weibull(1.5, 400) * np.where(Z_rt[:, 0] > 0.5, 0.5, 1.0)
+    tr_rt = r_rt.uniform(2, 20, 400) + 10 * (Z_rt[:, 1] > 0.5)
+    seen = T_rt <= tr_rt                  # the units we get to see
+    tree_rt = SurvivalTree.fit(x=T_rt[seen], Z=Z_rt[seen], tr=tr_rt[seen],
+                               kind='non-parametric', n_features_split='all',
+                               selection='ctree')
+    show(tree_rt._root)
+    s_rt = tree_rt.sf([3.0], [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])[:, 0]
+    print('S(3), z0 = 0.2 and 0.8:', s_rt.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert tree_rt._root.split_feature_index == 0
+    assert not hasattr(tree_rt._root.left_child, 'split_feature_index')
+    assert not hasattr(tree_rt._root.right_child, 'split_feature_index')
+    assert abs(s_rt[0] - 0.848) < 0.05 and abs(s_rt[1] - 0.628) < 0.05, s_rt
 
 Saving and loading a fitted model
 ---------------------------------
