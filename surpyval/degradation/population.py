@@ -150,6 +150,7 @@ def reml_estimate(
     cov_init: npt.NDArray,
     sigma2_init: float,
     a_mat_list: "list[npt.NDArray] | None" = None,
+    diagnostics: "dict | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float, bool]:
     """
     REML fit of ``y_i ~ N(A_i gamma, X_i Sigma X_i' + sigma^2 I)``.
@@ -170,6 +171,10 @@ def reml_estimate(
         Each unit's fixed-effects design ``A_i = X_i D_i`` when the
         path parameters depend on the unit's stress. Default ``None``:
         ``A_i = X_i``, so the fixed effect is the population mean.
+    diagnostics : dict, optional
+        If given, ``diagnostics["on_boundary"]`` is set to whether the
+        estimate of ``Sigma`` is on the boundary of the positive
+        semi-definite cone (singular; see :func:`_on_boundary`).
 
     Returns
     -------
@@ -186,7 +191,12 @@ def reml_estimate(
     if a_mat_list is None:
         a_mat_list = x_mat_list
     gamma, covariance, sigma2, converged, _ = reml_estimate_woodbury(
-        y_list, x_mat_list, cov_init, sigma2_init, a_mat_list
+        y_list,
+        x_mat_list,
+        cov_init,
+        sigma2_init,
+        a_mat_list,
+        diagnostics=diagnostics,
     )
     return gamma, covariance, sigma2, converged
 
@@ -219,10 +229,22 @@ def _reml_pieces_woodbury(
     ``p x p`` computation on the unit's cross-products (batched over units)
     rather than an ``n_i x n_i`` factorisation.
     """
-    chol = _chol_from_z(z, p)
-    sigma2 = np.exp(2.0 * z[-1])
+    return _reml_pieces_from_root(
+        _chol_from_z(z, p), np.exp(2.0 * z[-1]), summary, reml
+    )
+
+
+def _reml_pieces_from_root(
+    chol: npt.NDArray, sigma2: float, summary: dict, reml: bool = True
+) -> tuple:
+    """:func:`_reml_pieces_woodbury` at ``Sigma = chol chol'`` for any
+    ``(p, r)`` root ``chol``, not only the Cholesky factor: every term
+    depends on ``chol`` only through ``chol chol'``, so a root with
+    ``r < p`` columns evaluates the objective at a singular ``Sigma``
+    (on the boundary of the positive semi-definite cone)."""
+    r = chol.shape[1]
     m_mat = (
-        np.eye(p)
+        np.eye(r)
         + np.einsum("ji,ujk,kl->uil", chol, summary["xtx"], chol) / sigma2
     )
     m_chol = np.linalg.cholesky(m_mat)
@@ -258,6 +280,7 @@ def reml_estimate_woodbury(
     sigma2_init: float,
     a_mat_list: "list[npt.NDArray]",
     reml: bool = True,
+    diagnostics: "dict | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float, bool, float]:
     """
     :func:`reml_estimate` evaluated through the Woodbury identity: the same
@@ -269,7 +292,9 @@ def reml_estimate_woodbury(
 
     Returns ``(gamma, Sigma, sigma2, converged, objective)`` with
     ``objective`` the minimised negative (RE)ML log-likelihood on the
-    original scale of the data.
+    original scale of the data. With a ``diagnostics`` dict,
+    ``diagnostics["on_boundary"]`` is set to whether the estimate of
+    ``Sigma`` is singular (see :func:`_on_boundary`).
     """
     p = x_mat_list[0].shape[1]
     # Column scaling: the REML fit is equivariant to rescaling the design
@@ -338,6 +363,8 @@ def reml_estimate_woodbury(
     objective_value, gamma, covariance, sigma2 = _reml_pieces_woodbury(
         result.x, summary, p, reml
     )
+    if diagnostics is not None:
+        diagnostics["on_boundary"] = _on_boundary(result.x, summary, p, reml)
     covariance = covariance / np.outer(x_scale, x_scale)
     # undo the column scaling's constant shift of the objective: the
     # random-effects scaling cancels in V, the fixed-effects one enters only
@@ -346,6 +373,50 @@ def reml_estimate_woodbury(
         objective_value += float(np.sum(np.log(a_scale)))
     gamma = (gamma + beta0) / a_scale
     return gamma, covariance, sigma2, converged, objective_value
+
+
+def _on_boundary(z: npt.NDArray, summary: dict, p: int, reml: bool) -> bool:
+    """
+    Whether the (RE)ML estimate at ``z`` is on the boundary of the positive
+    semi-definite cone: ``Sigma`` with its smallest eigenvalue set to zero
+    fits at least as well.
+
+    ``Sigma`` is searched through its log-Cholesky factor, so it is
+    positive definite at every trial point and a maximum on the boundary
+    (a between-unit variance of zero, or a correlation of +-1) is only
+    approached: the search stops where the shrinking gradient meets its
+    tolerance, which leaves the smallest eigenvalue anywhere from 1e-10 to
+    1e-4 of the largest (and unscaled, the ratio also depends on the units
+    of time). No threshold on the eigenvalues separates that from a small
+    genuine eigenvalue, so the test is on the objective instead. At an
+    interior maximum the gradient is zero and removing the smallest
+    eigenvalue ``lambda`` loses about ``f'' lambda^2 / 2`` of
+    log-likelihood; at a maximum on the boundary the objective still
+    improves towards it, so the singular ``Sigma`` is no worse. "No
+    worse" is up to ``sqrt(eps)`` relative, the package's tolerance for
+    two values being the same to numerical accuracy (as in ``Beta4`` and
+    the destructive-degradation
+    root search).
+
+    The eigenvalues are those of the column-scaled ``Sigma`` the search
+    works on, so the test does not depend on the units of the path
+    parameters. ``sigma^2`` is held at its estimate; refitting it on the
+    boundary could only lower the objective there further.
+    """
+    chol = _chol_from_z(z, p)
+    sigma2 = float(np.exp(2.0 * z[-1]))
+    try:
+        with np.errstate(all="ignore"):
+            estimate = _reml_pieces_from_root(chol, sigma2, summary, reml)[0]
+            eigvals, eigvecs = np.linalg.eigh(chol @ chol.T)
+            root = eigvecs[:, 1:] * np.sqrt(np.clip(eigvals[1:], 0.0, None))
+            edge = _reml_pieces_from_root(root, sigma2, summary, reml)[0]
+    except np.linalg.LinAlgError:
+        return False
+    if not (np.isfinite(estimate) and np.isfinite(edge)):
+        return False
+    roundoff = np.sqrt(np.finfo(float).eps) * max(abs(estimate), 1.0)
+    return bool(edge <= estimate + roundoff)
 
 
 def _column_scale(mats: list) -> npt.NDArray:
@@ -432,6 +503,7 @@ def reml_estimate_nonlinear(
     max_outer: int = 50,
     tol: float = 1e-5,
     d_mat_list: "list[npt.NDArray] | None" = None,
+    diagnostics: "dict | None" = None,
 ) -> tuple[npt.NDArray, npt.NDArray, float, bool]:
     """
     REML fit of a nonlinear random-effects degradation path by the
@@ -462,6 +534,8 @@ def reml_estimate_nonlinear(
         path parameters depend on the unit's stress: the unit's prior
         mean is ``D_i gamma`` and the linearised fixed-effects design is
         ``A_i = J_i D_i``. Default ``None``: ``D_i = I``.
+    diagnostics : dict, optional
+        As for :func:`reml_estimate`, for the last linearisation.
 
     Returns
     -------
@@ -507,6 +581,7 @@ def reml_estimate_nonlinear(
             covariance,
             sigma2,
             a_mat_list=None if d_mat_list is None else a_list,
+            diagnostics=diagnostics,
         )
 
         prev = np.concatenate([gamma, covariance.ravel(), [sigma2]])
