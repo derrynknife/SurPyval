@@ -2072,7 +2072,13 @@ The fit separates the two effects — an activation energy of 0.67 eV against
 the true 0.7, and a voltage exponent ``n`` of -1.44 against the true -1.5 —
 because the design varies each stress while the other is held fixed. Had voltage been raised only
 together with temperature, the two columns would be collinear and no fit
-could tell their effects apart.
+could tell their effects apart. The fit then says so: where the terms the
+log-life is linear in (:math:`1/Z` for an exponential term, :math:`\log Z`
+for a power term) are collinear, or one is constant, the later stress's
+parameter is aliased -- ``nan``, with one warning naming its column -- and
+the others are those of the fit without it, as for a regression coefficient
+the data cannot determine. Two equal stress columns of ``DualPower``, say,
+give the ``Power`` fit, with ``n`` aliased.
 
 .. jupyter-execute::
     :hide-code:
