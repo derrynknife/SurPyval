@@ -2964,26 +2964,11 @@ _NEGATIVE_VARIANCE = (
     "negative variance (covariance diagonal"
 )
 _OPTION_FAILURES: dict[str, dict[str, str]] = {
-    # H. boundary estimates with a non-positive variance
-    "GeneralizedRenewal": _each(
-        ("cb_contains",),
-        "param_cb",
-        _NEGATIVE_VARIANCE + " -0.031 for q = 2.7e-16 and -10.6 for " "alpha)",
-    ),
-    "ARA": _each(
-        ("cb_contains",),
-        "param_cb",
-        _NEGATIVE_VARIANCE + " -0.026 for rho = 1 - 3e-16 and -8.09 for "
-        "alpha)",
-    ),
-    "ARI": _each(
-        ("cb_contains",),
-        "param_cb",
-        "no Wald interval exists, so param_cb is nan (with a warning saying "
-        "why, #411): rho = 1.0 exactly, the upper end of its (0, 1) "
-        "support, with a variance of -0.0021 (it raised "
-        "ZeroDivisionError, the logit of 1)",
-    ),
+    # H. boundary estimates with a non-positive variance. (The renewal
+    # fits' restoration parameter on its edge -- GeneralizedRenewal's q at
+    # 2.7e-16, ARA's rho at 1 - 3e-16, ARI's at 1 -- now has a
+    # profile-likelihood interval from the edge, and the other parameters
+    # the Wald intervals of the model held there, #461.)
     "Beta4": _each(
         ("cb_contains",),
         "param_cb[wald]",
@@ -2994,9 +2979,6 @@ _OPTION_FAILURES: dict[str, dict[str, str]] = {
 # The issue tracking each case's option failures (by key where a case
 # has failures of more than one kind); it leads each reason.
 _OPTION_ISSUES: dict[str, str | dict[str, str]] = {
-    "GeneralizedRenewal": "#461",
-    "ARA": "#461",
-    "ARI": "#461",
     "Beta4": "#461",
 }
 for _name, _failures in _OPTION_FAILURES.items():

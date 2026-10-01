@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
 from surpyval.recurrent.inference import LikelihoodInferenceMixin
@@ -16,7 +16,11 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.univariate.regression._summary import format_table
-from surpyval.utils.linalg import wald_bound_on_support
+from surpyval.utils.linalg import (
+    bound_signs,
+    numerical_hessian,
+    wald_bound_on_support,
+)
 
 #: The values of the restoration parameter at which each family is a
 #: perfect and a minimal repair process (#513): the Kijima ``q`` of the
@@ -1007,9 +1011,11 @@ class RenewalModel(
         The intervals are those of :meth:`param_cb`: on the log scale for
         a parameter bounded below (the Kijima ``q``, a positive scale), on
         the logit scale for one bounded on both sides (``rho`` of ARA and
-        ARI), so they stay inside the parameter's range. A parameter at
-        the edge of its range (a ``q`` driven to 0) has no standard error
-        or interval: ``nan``.
+        ARI), so they stay inside the parameter's range. A restoration
+        parameter at the edge of its range (a ``q`` driven to 0) has no
+        standard error (``nan``); its interval is the profile-likelihood
+        one, which starts at the edge, and the other parameters' are
+        those of the model with it held there (#461).
 
         Parameters
         ----------
@@ -1032,9 +1038,9 @@ class RenewalModel(
         >>> model = GeneralizedRenewal.fit(x, i, c)
         >>> model.summary().round(3)
                estimate     se  lower 95%  upper 95%
-        q         0.000    NaN        NaN        NaN
-        alpha     2.399  0.509      1.583      3.636
-        beta      2.754  0.653      1.730      4.384
+        q         0.000    NaN      0.000      0.092
+        alpha     2.399  0.287      1.898      3.033
+        beta      2.754  0.652      1.732      4.379
         """
         self._check_fitted()
         with warnings.catch_warnings():
@@ -1047,7 +1053,15 @@ class RenewalModel(
             zip(self._mle, self._parameter_bounds())
         ):
             var = float(cov[k, k])
-            if not var > 0 or (k == 0 and self._restoration_at_edge()):
+            if k == 0 and self._edge_value() is not None:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore")
+                    cb = self.param_cb(
+                        self._restoration_param_name, alpha_ci
+                    )
+                rows.append([value, np.nan, cb[0], cb[1]])
+                continue
+            if not var > 0:
                 rows.append([value, np.nan, np.nan, np.nan])
                 continue
             with warnings.catch_warnings():
@@ -1066,8 +1080,177 @@ class RenewalModel(
     def _restoration_at_edge(self) -> bool:
         """Whether the restoration parameter sits on a bound of its range
         (a ``q`` driven to 0), where a Wald interval does not hold."""
-        edges = [b for b in self._restoration_bounds if b is not None]
-        return any(abs(self.restoration - b) < 1e-6 for b in edges)
+        return self._edge_value() is not None
+
+    def _edge_value(self) -> "float | None":
+        """The bound of its range the restoration parameter sits on
+        (within 1e-6), or ``None``."""
+        for edge in self._restoration_bounds:
+            if edge is not None and abs(self.restoration - edge) < 1e-6:
+                return float(edge)
+        return None
+
+    def covariance(self) -> np.ndarray:
+        """
+        Approximate parameter covariance matrix, ordered to match
+        :attr:`parameter_names`: the inverse of the numerical Hessian of
+        the negative log-likelihood at the MLE.
+
+        Where the restoration parameter sits on the edge of its range (a
+        ``q`` driven to 0, an ARA or ARI ``rho`` at 1), it has no Wald
+        variance: its row and column are ``nan``, and :meth:`param_cb`
+        gives its profile-likelihood interval. The other parameters'
+        covariance is then the inverse information with it held on the
+        edge, the model the data reached. The Hessian over every
+        parameter took steps across the edge, where the likelihood is not
+        the model's, and gave negative variances to the others too (-10.8
+        for a Weibull ``alpha``, #461).
+        """
+        self._check_fitted()
+        edge = self._edge_value()
+        if edge is None:
+            return super().covariance()
+        mle = self._mle_values()
+
+        def neg_ll_rest(params: np.ndarray) -> float:
+            return self._neg_ll(np.r_[mle[0], params])
+
+        H = numerical_hessian(neg_ll_rest, mle[1:])
+        n = mle.size
+        out = np.full((n, n), np.nan)
+        if not np.all(np.isfinite(H)):
+            warnings.warn(
+                "Hessian could not be evaluated (the optimum may be at a "
+                "parameter boundary); covariance is unavailable."
+            )
+            return out
+        try:
+            out[1:, 1:] = np.linalg.inv(H)
+        except np.linalg.LinAlgError:
+            warnings.warn("Hessian is singular; covariance is unavailable.")
+        return out
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> np.ndarray:
+        """
+        Confidence bound(s) on a fitted parameter.
+
+        Wald bounds from the observed information, on a scale chosen from
+        the parameter's range so they stay inside it: log for one bounded
+        below (the Kijima ``q``, a positive scale), logit for one bounded
+        on both sides (``rho`` of ARA and ARI), natural otherwise.
+
+        A restoration parameter on the edge of its range (a ``q`` driven
+        to 0; an ARA or ARI ``rho`` at 1 or 0) has no Wald interval: the
+        likelihood is not regular there and its variance is not defined.
+        Its interval is then the profile-likelihood one (#461): the values
+        the likelihood-ratio test does not reject, the restricted model
+        refitted at each, as :meth:`repair_test` refits it at the perfect
+        and minimal values. It is one-sided, from the edge to where twice
+        the drop in the profile log-likelihood reaches the chi-squared(1)
+        quantile for the level (the whole range if it never does), so a
+        one-sided bound towards the edge is the edge itself. The other
+        parameters' Wald bounds are those of the model with the
+        restoration parameter held on the edge (see :meth:`covariance`).
+
+        Parameters
+        ----------
+
+        name : str
+            The parameter to bound; one of :attr:`parameter_names`.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default is 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+
+        Returns
+        -------
+
+        numpy array
+            The confidence bound(s) on the parameter.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> x = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
+        >>> c = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
+        >>> i = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
+        >>> model = GeneralizedRenewal.fit(x, i, c)
+        >>> model.param_cb("q").round(3)
+        array([0.   , 0.092])
+        >>> model.param_cb("q", bound="lower").round(3)
+        array([0.])
+        """
+        edge = self._edge_value()
+        if name != self._restoration_param_name or edge is None:
+            return super().param_cb(name, alpha_ci, bound)
+        self._check_fitted()
+        if not 0 < alpha_ci < 1:
+            raise ValueError(
+                "'alpha_ci' must be strictly between 0 and 1; got "
+                "{}".format(alpha_ci)
+            )
+        alpha, signs = bound_signs(alpha_ci, bound)
+        crit = float(chi2.ppf(1.0 - 2.0 * alpha, 1)) if alpha < 0.5 else 0.0
+        lower, upper = self._restoration_bounds
+        # Away from the edge: up from a lower edge, down from an upper one.
+        away = 1.0 if edge == lower else -1.0
+        out = np.full(signs.shape, edge)
+        far = signs == away
+        if far.any():
+            out[far] = self._profile_end(edge, crit, away)
+        return out
+
+    def _profile_ll(self, value: float) -> float:
+        """The profile log-likelihood at restoration parameter ``value``:
+        the likelihood maximised over the other parameters with it held
+        there (``-inf`` if that fails). Kept on the model by value."""
+        cache = self.__dict__.setdefault("_profile_cache", {})
+        if value in cache:
+            return cache[value][0]
+        starts = [np.asarray(self._mle[1:], dtype=float)]
+        if cache:
+            # The nearest value's maximum is the best start.
+            near = min(cache, key=lambda v: abs(v - value))
+            if np.all(np.isfinite(cache[near][1])):
+                starts.insert(0, cache[near][1])
+        fun, params = self._restricted_maximum(value, starts)
+        cache[value] = (-fun, params)
+        return -fun
+
+    def _profile_end(self, edge: float, crit: float, away: float) -> float:
+        """The end, away from ``edge``, of the profile-likelihood interval:
+        where twice the drop of the profile log-likelihood from its
+        maximum reaches ``crit``; the far end of the range if it never
+        does."""
+        ll_hat = self.log_likelihood
+
+        def excess(value: float) -> float:
+            drop = 2.0 * (ll_hat - self._profile_ll(value))
+            # A failed profile fit is far outside the interval.
+            return drop - crit if np.isfinite(drop) else np.inf
+
+        lower, upper = self._restoration_bounds
+        far = upper if away > 0 else lower
+        if far is not None:
+            if excess(far) <= 0:
+                return float(far)
+            return float(brentq(excess, edge, far, xtol=1e-8, rtol=1e-8))
+        # Unbounded away from the edge (the Kijima q): bracket by doubling.
+        inner, step = edge, 0.01
+        for _ in range(60):
+            outer = edge + away * step
+            if excess(outer) > 0:
+                return float(
+                    brentq(excess, inner, outer, xtol=1e-8, rtol=1e-8)
+                )
+            inner, step = outer, 2.0 * step
+        return float(away * np.inf)
 
     def _edge_note(self, table: pd.DataFrame) -> str:
         """A note when the restoration parameter has no standard error:
@@ -1077,15 +1260,19 @@ class RenewalModel(
         est, se = table.loc[name, ["estimate", "se"]].to_numpy()
         if np.isfinite(se):
             return ""
-        where = (
-            "at the edge of its range"
-            if self._restoration_at_edge()
-            else "where the likelihood's curvature is lost"
-        )
-        note = (
-            f"Note: {name} = {est:.4g} is {where}, so it has no standard "
-            "error or interval."
-        )
+        if self._restoration_at_edge():
+            note = (
+                f"Note: {name} = {est:.4g} is at the edge of its range, "
+                "so it has no standard error. Its interval is the "
+                "profile-likelihood one, from the edge; the others' are "
+                f"Wald intervals with {name} held there."
+            )
+        else:
+            note = (
+                f"Note: {name} = {est:.4g} is where the likelihood's "
+                "curvature is lost, so it has no standard error or "
+                "interval."
+            )
         return textwrap.fill(note, width=70, subsequent_indent="      ")
 
     def _repair_line(self) -> str:
@@ -1288,17 +1475,14 @@ class RenewalModel(
                 starts.append(extra)
         return starts
 
-    def _restricted_fit(
-        self, which: str, value: float, hypothesis: str
-    ) -> RestrictedRepairFit:
-        """Maximise the likelihood with the restoration parameter held at
-        ``value`` and test the full fit against it (see
-        :meth:`repair_test`)."""
-        name = self._restoration_param_name
-        mle = np.asarray(self._mle, dtype=float)
+    def _restricted_maximum(
+        self, value: float, starts: "list[np.ndarray]"
+    ) -> "tuple[float, np.ndarray]":
+        """The minimum of the negative log-likelihood with the restoration
+        parameter held at ``value``, over the other parameters searched
+        from each of ``starts``, and where it is; ``(inf, nan)`` if no
+        search reached a finite value."""
         bounds = self._parameter_bounds()[1:]
-        lower, upper = self._restoration_bounds
-        boundary = value == lower or value == upper
 
         def to_free(p: np.ndarray) -> np.ndarray:
             out = np.array(p, dtype=float)
@@ -1336,7 +1520,7 @@ class RenewalModel(
         # search that stops short) are not the user's.
         with warnings.catch_warnings(), np.errstate(all="ignore"):
             warnings.simplefilter("ignore")
-            for start in self._restricted_starts(which):
+            for start in starts:
                 z0 = to_free(start)
                 if not np.isfinite(restricted(z0)):
                     continue
@@ -1348,8 +1532,25 @@ class RenewalModel(
                     best is None or res.fun < best.fun
                 ):
                     best = res
-        ll_full = -float(self._neg_ll(mle))
         if best is None:
+            return np.inf, np.full(len(bounds), np.nan)
+        return float(best.fun), from_free(best.x)
+
+    def _restricted_fit(
+        self, which: str, value: float, hypothesis: str
+    ) -> RestrictedRepairFit:
+        """Maximise the likelihood with the restoration parameter held at
+        ``value`` and test the full fit against it (see
+        :meth:`repair_test`)."""
+        name = self._restoration_param_name
+        mle = np.asarray(self._mle, dtype=float)
+        lower, upper = self._restoration_bounds
+        boundary = value == lower or value == upper
+        fun, best_params = self._restricted_maximum(
+            value, self._restricted_starts(which)
+        )
+        ll_full = -float(self._neg_ll(mle))
+        if not np.isfinite(fun):
             nan_params = np.full(mle.size, np.nan)
             nan_params[0] = value
             return RestrictedRepairFit(
@@ -1367,7 +1568,7 @@ class RenewalModel(
                     f"({hypothesis}) could not be maximised"
                 ),
             )
-        ll_restricted = -float(best.fun)
+        ll_restricted = -float(fun)
         # The restricted model is nested: its maximum cannot exceed the
         # full one's except by the optimisers' tolerance.
         stat = max(2.0 * (ll_full - ll_restricted), 0.0)
@@ -1379,7 +1580,7 @@ class RenewalModel(
             hypothesis,
             name,
             value,
-            np.r_[value, from_free(best.x)],
+            np.r_[value, best_params],
             ll_restricted,
             stat,
             1,
