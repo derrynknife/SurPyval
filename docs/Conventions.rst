@@ -143,18 +143,18 @@ Other areas of the package add a few more names, always with the same meaning:
 Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
 ``DataFrame`` and the names of its columns in place of these arrays, passes
 every other option to ``fit``, and gives the model ``fit`` gives on the same
-arrays (the conformance suite checks this for every model). The columns are
-named in one of two ways, by family:
-
-- the distributions and estimators of one lifetime per row (parametric,
-  non-parametric, ``RoystonParmar``, ``MixtureModel``), the copulas and the
-  degradation models use the array's own name: ``x='hours'``, ``c=``,
-  ``n=``, ``xl=`` / ``xr=``, ``tl=`` / ``tr=`` (a column or one number),
-  ``y=``, ``i=``;
-- the regression, competing-risks and recurrent-event fitters add
-  ``_col``: ``x_col='hours'``, ``c_col=``, ``n_col=``, ``tl_col=``,
-  ``tr_col=``, ``e_col=``, ``i_col=``, and ``Z_cols=`` for the covariates
-  (or a ``formula``, where the model supports one).
+arrays (the conformance suite checks this for every model). Every
+DataFrame entry point names a column argument after the array it fills,
+with a ``_col`` suffix, and ``_cols`` for a list of columns:
+``x_col='hours'``, ``c_col=``, ``n_col=``, ``xl_col=`` / ``xr_col=``,
+``tl_col=`` / ``tr_col=``, ``e_col=``, ``i_col=``, ``y_col=``, and
+``Z_cols=`` for the covariates (or a ``formula``, where the model supports
+one). The univariate ``tl_col`` / ``tr_col`` also take one number, a
+truncation shared by every row; a copula takes a column per dimension
+(``x_cols=['pump', 'motor']``). The names of v0.21 without the suffix
+(``Weibull.fit_from_df(df, x='hours', c=...)``, and ``x=``, ``y=``,
+``i=`` of the degradation fitters) still work, with a
+``DeprecationWarning``, until v0.23.
 
 .. jupyter-execute::
 
@@ -162,7 +162,7 @@ named in one of two ways, by family:
 
     table = pd.DataFrame({'hours': [5.0, 8, 12, 20, 25, 30],
                           'failed': [0, 0, 0, 1, 0, 1]})
-    km = surv.KaplanMeier.fit_from_df(table, x='hours', c='failed')
+    km = surv.KaplanMeier.fit_from_df(table, x_col='hours', c_col='failed')
     log = pd.DataFrame({'hours': [3.0, 9, 20, 5, 12],
                         'unit': [1, 1, 1, 2, 2], 'end': [0, 0, 1, 0, 1]})
     mcf = NonParametricCounting.fit_from_df(log, x_col='hours', i_col='unit',

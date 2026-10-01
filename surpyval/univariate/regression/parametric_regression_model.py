@@ -1492,9 +1492,11 @@ class ParametricRegressionModel(
         given : float, optional
             If supplied, return the *conditional* survival given the item has
             survived to age ``given``:
-            ``S(x | given) = exp(-(H(x) - H(given)))``. Along a
-            ``CovariatePath`` the hazard is integrated from ``given`` on,
-            so nothing is subtracted.
+            ``S(x | given) = exp(-(H(x) - H(given)))`` for ``x > given``,
+            and 1 for ``x <= given`` (survival to those times is certain).
+            Along a ``CovariatePath`` the hazard is integrated from
+            ``given`` on, so nothing is subtracted. A ``nan`` ``given``
+            gives ``nan``.
 
         Returns
         -------
@@ -1527,8 +1529,8 @@ class ParametricRegressionModel(
         >>> ramp = CovariatePath.from_points([0, 10], [0.0, 1.0])
         >>> model.sf_tvc([4, 8, 12], ramp).round(4)
         array([0.8195, 0.6331, 0.471 ])
-        >>> model.sf_tvc([4, 8, 12], ramp, given=4).round(4)
-        array([1.    , 0.7725, 0.5747])
+        >>> model.sf_tvc([2, 4, 8, 12], ramp, given=4).round(4)
+        array([1.    , 1.    , 0.7725, 0.5747])
         """
         from .tvc_path import CovariatePath
 
@@ -1548,6 +1550,12 @@ class ParametricRegressionModel(
                 # H(given) is 0 at or below 0, unless the baseline has
                 # mass below 0 (then it is -log of the survival to given).
                 H = H - self._hf_tvc(g, Z, xl)[0]
+        if g is not None and not np.isnan(g):
+            # Given survival to g, survival to any x <= g is certain: the
+            # difference H(x) - H(g) is not a cumulative hazard there, and
+            # gave a "survival" above 1 (#523).
+            xq = np.atleast_1d(np.asarray(x, dtype=float))
+            H = np.where(xq <= g, 0.0, H)
         return np.exp(-H)
 
     @keeps_query_shape

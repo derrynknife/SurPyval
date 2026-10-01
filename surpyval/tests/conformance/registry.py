@@ -797,7 +797,7 @@ def _fit(fitter, **fixed):
 def _parametric_paths(fitter, **fixed):
     def from_df(d):
         df = pd.DataFrame({"x": d["x"], "c": d["c"], "n": d["n"]})
-        return fitter.fit_from_df(df, x="x", c="c", n="n", **fixed)
+        return fitter.fit_from_df(df, x_col="x", c_col="c", n_col="n", **fixed)
 
     def from_params(d):
         # The structure is passed only where the model has it, as the
@@ -2121,7 +2121,7 @@ def _copula_df(fitter, **fixed):
     def run(d):
         df, rest = _frame(d, ("x", "n"))
         return fitter.fit_from_df(
-            df, x=_column_names(df, "x"), n="n", **fixed, **rest
+            df, x_cols=_column_names(df, "x"), n_col="n", **fixed, **rest
         )
 
     return run
@@ -2170,7 +2170,7 @@ def _df_paths():
     paths["CauseSpecificNHPP"] = _col_df(rc.CauseSpecificNHPP)
     paths["DestructiveDegradation"] = lambda d: (
         dg.DestructiveDegradation.fit_from_df(
-            pd.DataFrame(d), x="x", y="y", threshold=20.0
+            pd.DataFrame(d), x_col="x", y_col="y", threshold=20.0
         )
     )
     for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):

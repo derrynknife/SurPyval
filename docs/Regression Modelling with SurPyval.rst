@@ -2381,24 +2381,27 @@ Cox case:
     plt.show()
 
 The array form gives the segment start times as ``xl`` and one covariate row per
-segment, and ``given=`` conditions on survival to an age along the same path.
-Conditional survival is only meaningful at times at or after ``given``:
+segment, and ``given=`` conditions on survival to an age along the same path:
+:math:`S(x) / S(g)` after ``given``, and 1 at and before it (survival to
+those times is certain). (A univariate model's ``cs(x, given)`` takes the
+further time ``x`` instead: it is :math:`S(given + x)/S(given)`.)
 
 .. jupyter-execute::
 
-    at = np.array([1.5, 2.5, 3.5])
+    at = np.array([0.5, 1.5, 2.5, 3.5])
     pulse = dict(Z=[[0.0], [1.0], [0.0]], xl=[0.0, 1.0, 2.0])   # on for 1 < t < 2
     print('S(t)             :', ph.sf_tvc(at, **pulse).round(3))
     print('S(t | T > 1)     :', ph.sf_tvc(at, **pulse, given=1.0).round(3))
-    print('same as a ratio  :', (ph.sf_tvc(at, **pulse)
+    print('same as a ratio  :', (ph.sf_tvc(at[1:], **pulse)
                                  / ph.sf_tvc([1.0], **pulse)).round(3))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(ph.sf_tvc(at, **pulse, given=1.0),
-                       ph.sf_tvc(at, **pulse) / ph.sf_tvc([1.0], **pulse))
+    assert np.allclose(ph.sf_tvc(at[1:], **pulse, given=1.0),
+                       ph.sf_tvc(at[1:], **pulse) / ph.sf_tvc([1.0], **pulse))
+    assert ph.sf_tvc(at, **pulse, given=1.0)[0] == 1.0
 
 
 .. _tvc-continuous:
@@ -2999,7 +3002,10 @@ Concordance
 Harrell's concordance index is the fraction of comparable pairs of subjects
 that a risk score ranks in the right order (the one that failed first has the
 higher score), with 0.5 for chance and 1 for perfect; the pair and tie rules
-are on the :doc:`regression analysis` page. Every regression model has a
+are on the :doc:`regression analysis` page. Two deaths at the same time are
+not a pair by default (Therneau's convention, as R's ``survival`` and
+lifelines); ``ties="harrell"`` counts them, as Harrell's original definition
+does. Every regression model has a
 ``concordance`` method: with no arguments it scores the data the model was
 fitted to, and given ``x``, ``c`` and ``Z`` it scores those, such as a test
 set. For any other score there is
@@ -3104,7 +3110,8 @@ considering a random subset of ``n_features_split`` covariates at each split.
 Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
 row per covariate row, one column per time — unlike the element-wise
 regression models, and its ``score(x, Z, c)``
-is the concordance of its mortality score. Trees and forests follow the
+is the concordance of its mortality score (with the same ``ties`` option and
+default as ``concordance_index``). Trees and forests follow the
 package's :ref:`missing-value rule <missing-values>`: a row with a missing covariate is
 dropped at fit time, with one warning giving the count, and predicts ``nan``
 (it is not sent down either branch of a split). The forest reports its progress

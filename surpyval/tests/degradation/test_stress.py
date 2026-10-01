@@ -398,9 +398,9 @@ def test_fit_from_df_passes_links():
     df = pd.DataFrame({"t": x, "deg": y, "unit": i, "stress": Z})
     model = DegradationAnalysis.fit_from_df(
         df,
-        x="t",
-        y="deg",
-        i="unit",
+        x_col="t",
+        y_col="deg",
+        i_col="unit",
         Z_cols="stress",
         threshold=100.0,
         links={"b": "log"},

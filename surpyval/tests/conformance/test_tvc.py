@@ -14,7 +14,10 @@ registered model that has them:
   ignored and a schedule starting after ``0`` has its first value held
   back to it, so a constant path starting anywhere is still ``sf(x, z)``;
 - conditioning on survival to ``given`` divides by ``sf(given, z)``, and
-  a missing ``given`` gives NaN.
+  a missing ``given`` gives NaN;
+- along a changing step schedule and a ramp, conditional survival is 1
+  at and before ``given``, ``S(x) / S(given)`` after it, and at most 1
+  (but for the additive hazards' documented exception, #376; #523).
 
 A model whose family has no exact form along a step path (accelerated
 life) refuses with ``NotImplementedError`` instead.
@@ -252,3 +255,46 @@ def test_path_given(case):
     )
     got = model.sf_tvc(x, path, given=np.nan, **kw)
     assert np.isnan(got).all(), got
+
+
+# -- conditional survival before and after given (#523) --------------------
+
+
+def _changing_paths(case, x):
+    # A step change a quarter of the way along, and a ramp over the whole
+    # range: H(x) - H(given) then differs from zero for x < given.
+    z, other = _rows(case)
+    top = float(np.max(x))
+    return {
+        "step": StepSchedule.from_changepoints([0.0, top / 4], [z, other]),
+        "ramp": CovariatePath.from_points([0.0, top], [z, other]),
+    }
+
+
+@pytest.mark.parametrize("case", TVC_CASES)
+def test_conditional_survival_is_one_up_to_given(case):
+    # S(x | given) is 1 for x <= given -- survival to x is certain -- and
+    # S(x) / S(given) after it. It exceeded 1 before given (#523: 1.18 for
+    # WeibullPO, 1.21 for CoxPH).
+    model = fitted(case)
+    if not _evaluable(case, model):
+        return
+    kw = case.call_kwargs
+    x = _times(case)
+    given = float(np.median(case.x))
+    after = x[x > given]
+    for name, path in _changing_paths(case, x).items():
+        got = model.sf_tvc(x, path, given=given, **kw)
+        np.testing.assert_array_equal(got[x <= given], 1.0, err_msg=name)
+        ratio = model.sf_tvc(after, path, **kw) / model.sf_tvc(
+            given, path, **kw
+        )
+        np.testing.assert_allclose(
+            got[x > given], ratio, rtol=1e-8, atol=1e-12, err_msg=name
+        )
+        if getattr(model, "kind", None) != "Additive Hazard":
+            # The additive hazard can fall below 0, and survival exceed 1,
+            # after given too (principle 9's documented exception, #376).
+            assert np.all(got <= 1.0), (name, got.max())
+        got = model.sf_tvc(x, path, given=np.nan, **kw)
+        assert np.isnan(got).all(), (name, got)

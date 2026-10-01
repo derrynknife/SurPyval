@@ -18,49 +18,240 @@ from surpyval.serialisation import (
 from surpyval.univariate.regression._summary import format_table
 from surpyval.utils.linalg import wald_bound_on_support
 
-#: For each restoration parameter with an "as bad as old" (minimal repair)
-#: value: that value, whether it is on the boundary of the parameter's
-#: range, and the two values an interval must cover to be called "not
-#: determined by these data" (#513). For the Kijima ``q`` (0 as good as
-#: new, 1 as bad as old), an interval reaching from a repair that removes
-#: at least half the age (q <= 0.5) to one that at least doubles it
-#: (q >= 2); for the ARA / ARI ``rho`` (1 as good as new, 0 as bad as old),
-#: one reaching from mostly as bad as old (rho <= 0.25) to mostly as good
-#: as new (rho >= 0.75).
-_RESTORATION_SCALES: dict[str, dict[str, Any]] = {
-    "Generalized Renewal": {"minimal": 1.0, "edge": False, "span": (0.5, 2)},
-    "ARA Renewal": {"minimal": 0.0, "edge": True, "span": (0.25, 0.75)},
-    "ARI Recurrence": {"minimal": 0.0, "edge": True, "span": (0.25, 0.75)},
+#: The values of the restoration parameter at which each family is a
+#: perfect and a minimal repair process (#513): the Kijima ``q`` of the
+#: generalized renewal process is 0 as good as new and 1 as bad as old;
+#: the ARA ``rho`` is 1 as good as new and 0 as bad as old; the ARI
+#: ``rho = 1`` removes all the intensity at each failure (the most an ARI
+#: repair can; it is not a renewal process) and ``rho = 0`` is minimal
+#: repair; the G1 ``q = 0`` is a renewal process and G1 has no minimal
+#: repair (``None``). ``label`` names the perfect end in the conclusions.
+_REPAIR_VALUES: dict[str, dict[str, Any]] = {
+    "Generalized Renewal": {
+        "perfect": 0.0,
+        "minimal": 1.0,
+        "label": "perfect",
+    },
+    "G1 Renewal": {"perfect": 0.0, "minimal": None, "label": "perfect"},
+    "ARA Renewal": {"perfect": 1.0, "minimal": 0.0, "label": "perfect"},
+    "ARI Recurrence": {
+        "perfect": 1.0,
+        "minimal": 0.0,
+        "label": "maximal",
+    },
 }
 
 
 @dataclass(frozen=True)
-class RepairTest:
-    """The likelihood-ratio test of an imperfect-repair model against
-    minimal repair (:meth:`RenewalModel.repair_test`).
+class RestrictedRepairFit:
+    """One likelihood-ratio test of :meth:`RenewalModel.repair_test`: the
+    model refitted with its restoration parameter held at one kind of
+    repair, and the test of the full fit against it.
 
     Attributes
     ----------
-    statistic : float
-        ``2 * (log_likelihood - log_likelihood_minimal)``.
-    p_value : float
-        Its p-value: chi-squared with one degree of freedom, halved where
-        minimal repair is at the edge of the parameter's range (``rho = 0``
-        of ARA / ARI; Self and Liang, 1987).
+    hypothesis : str
+        ``"perfect repair"`` (``"maximal repair"`` for ARI) or ``"minimal
+        repair"``.
+    parameter : str
+        The restoration parameter's name, ``"q"`` or ``"rho"``.
+    value : float
+        The value it is held at.
+    params : numpy.ndarray
+        The restricted maximum-likelihood estimates of every parameter, in
+        the order of the model's ``parameter_names`` (the first is
+        ``value``); ``nan`` if the refit failed.
     log_likelihood : float
-        The fitted model's.
-    log_likelihood_minimal : float
-        The same model's maximum with the restoration parameter held at
-        minimal repair.
-    minimal : float
-        That value (``q = 1``, ``rho = 0``).
+        The restricted maximum of the log-likelihood.
+    statistic : float
+        The likelihood-ratio statistic, ``2 * (full - restricted)``.
+    df : int
+        Its degrees of freedom, 1.
+    p_value : float
+        Its p-value: the chi-squared(1) tail, halved where ``value`` is on
+        the edge of the parameter's range (``boundary``).
+    boundary : bool
+        Whether ``value`` is on the edge of the parameter's range; the
+        statistic is then a 50:50 mixture of chi-squared(0) and
+        chi-squared(1) under the hypothesis (Self and Liang, 1987).
+    message : str
+        Why the test is unavailable (the refit failed); empty otherwise.
     """
 
-    statistic: float
-    p_value: float
+    hypothesis: str
+    parameter: str
+    value: float
+    params: np.ndarray
     log_likelihood: float
-    log_likelihood_minimal: float
-    minimal: float
+    statistic: float
+    df: int
+    p_value: float
+    boundary: bool
+    message: str = ""
+
+    @property
+    def available(self) -> bool:
+        """Whether the restricted refit succeeded and the test ran."""
+        return not self.message
+
+    def rejected(self, alpha_ci: float = 0.05) -> bool:
+        """Whether the hypothesis is rejected at level ``alpha_ci``."""
+        return self.available and self.p_value < alpha_ci
+
+
+@dataclass(frozen=True)
+class RepairTestResult:
+    """The likelihood-ratio tests of an imperfect-repair model against
+    perfect and minimal repair (:meth:`RenewalModel.repair_test`).
+
+    Attributes
+    ----------
+    kind : str
+        The model, e.g. ``"Generalized Renewal"``.
+    parameter : str
+        The restoration parameter's name, ``"q"`` or ``"rho"``.
+    estimate : float
+        Its fitted value.
+    log_likelihood : float
+        The fitted model's log-likelihood.
+    perfect : RestrictedRepairFit
+        The test against perfect repair (``q = 0``; ``rho = 1``; for ARI
+        the maximal repair ``rho = 1``).
+    minimal : RestrictedRepairFit or None
+        The test against minimal repair (``q = 1``; ``rho = 0``); ``None``
+        for the G1 renewal process, which has no minimal repair.
+    alpha_ci : float
+        The level at which ``conclusion`` rejects a hypothesis.
+    conclusion : str
+        What the tests say together, in one line.
+    """
+
+    kind: str
+    parameter: str
+    estimate: float
+    log_likelihood: float
+    perfect: RestrictedRepairFit
+    minimal: "RestrictedRepairFit | None"
+    alpha_ci: float
+    conclusion: str
+
+    def __repr__(self) -> str:
+        title = "Repair test (likelihood ratio)"
+        lines = [
+            title,
+            "=" * len(title),
+            "Model               : {}".format(self.kind),
+            "Estimate            : {} = {:.4g}".format(
+                self.parameter, self.estimate
+            ),
+            "Log-likelihood      : {:.6g}".format(self.log_likelihood),
+            "Tests               :",
+        ]
+        rows = []
+        tests = [t for t in (self.perfect, self.minimal) if t is not None]
+        for test in tests:
+            value = "{} = {:g}".format(test.parameter, test.value)
+            if not test.available:
+                rows.append([test.hypothesis, value, "nan", "nan", "nan", ""])
+                continue
+            rows.append(
+                [
+                    test.hypothesis,
+                    value,
+                    "{:.6g}".format(test.log_likelihood),
+                    "{:.4g}".format(test.statistic),
+                    "{:.4g}".format(test.p_value),
+                    "yes" if test.boundary else "no",
+                ]
+            )
+        table = pd.DataFrame(
+            rows,
+            columns=[
+                "hypothesis",
+                "value",
+                "log-lik",
+                "LR (df 1)",
+                "p-value",
+                "on edge",
+            ],
+        )
+        lines += [
+            "    " + line for line in table.to_string(index=False).split("\n")
+        ]
+        notes = ["Note: " + t.message for t in tests if not t.available]
+        notes.append(
+            "Conclusion ({:g}% level): {}".format(
+                100 * self.alpha_ci, self.conclusion
+            )
+        )
+        lines += [
+            textwrap.fill(note, width=70, subsequent_indent="      ")
+            for note in notes
+        ]
+        return "\n".join(lines)
+
+
+def _repair_conclusion(
+    perfect: RestrictedRepairFit,
+    minimal: "RestrictedRepairFit | None",
+    estimate: float,
+    label: str,
+    alpha_ci: float,
+) -> str:
+    """The one-line conclusion of the repair tests at level ``alpha_ci``
+    (see :meth:`RenewalModel.repair_test`)."""
+    name = perfect.parameter
+    if minimal is None:
+        # G1: a renewal process (q = 0) or times between failures that
+        # change by the factor 1 + q from one failure to the next.
+        if not perfect.available:
+            return "not available: " + perfect.message
+        if not perfect.rejected(alpha_ci):
+            return (
+                "consistent with perfect repair (a renewal process); the "
+                "G1 process has no minimal repair"
+            )
+        trend = "deterioration" if estimate < 0 else "improvement"
+        return (
+            "perfect repair (a renewal process) rejected: each time "
+            "between failures is {:.4g} times the one before "
+            "({})".format(1.0 + estimate, trend)
+        )
+    unavailable = [t for t in (perfect, minimal) if not t.available]
+    if len(unavailable) == 2:
+        return "not available: " + perfect.message
+    if unavailable:
+        # One test only: say what it says, and that the other is missing.
+        (done,) = [t for t in (perfect, minimal) if t.available]
+        verdict = "rejected" if done.rejected(alpha_ci) else "not rejected"
+        return "{} {} ({} test not available)".format(
+            done.hypothesis, verdict, unavailable[0].hypothesis
+        )
+    perfect_out = perfect.rejected(alpha_ci)
+    minimal_out = minimal.rejected(alpha_ci)
+    if not perfect_out and not minimal_out:
+        return (
+            "not determined: the data are consistent with both {} and "
+            "minimal repair".format(label)
+        )
+    if perfect_out and not minimal_out:
+        return "consistent with minimal repair; {} repair rejected".format(
+            label
+        )
+    if minimal_out and not perfect_out:
+        return "consistent with {} repair; minimal repair rejected".format(
+            label
+        )
+    low, high = sorted((perfect.value, minimal.value))
+    if low < estimate < high:
+        where = "between {} and minimal repair".format(label)
+    elif (estimate - minimal.value) * (minimal.value - perfect.value) > 0:
+        where = "worse than minimal repair"
+    else:
+        where = "better than new"
+    return "both {} and minimal repair rejected: {} = {:.4g} is {}".format(
+        label, name, estimate, where
+    )
 
 
 #: Below this cumulative hazard the quantile function is accurate enough to
@@ -794,14 +985,18 @@ class RenewalModel(
                 )
             )
             return (
-                "\n".join(lines) + "\nParameters          :\n" + param_string
+                "\n".join(lines)
+                + "\nParameters          :\n"
+                + param_string
+                + "\nRepair test         : not available (no data)"
             )
         table = self.summary()
         lines.append("Parameters          : Wald 95% intervals")
         lines.append(format_table(table, list(table.columns)))
-        note = self._undetermined_note(table)
+        note = self._edge_note(table)
         if note:
             lines.append(note)
+        lines.append(self._repair_line())
         return "\n".join(lines)
 
     def summary(self, alpha_ci: float = 0.05) -> pd.DataFrame:
@@ -874,71 +1069,110 @@ class RenewalModel(
         edges = [b for b in self._restoration_bounds if b is not None]
         return any(abs(self.restoration - b) < 1e-6 for b in edges)
 
-    def _undetermined_note(self, table: pd.DataFrame) -> str:
-        """A warning line when the restoration parameter's interval covers
-        repairs of opposite kinds (see ``_RESTORATION_SCALES``)."""
-        scale = _RESTORATION_SCALES.get(self.kind)
-        if scale is None:
-            return ""
+    def _edge_note(self, table: pd.DataFrame) -> str:
+        """A note when the restoration parameter has no standard error:
+        at the edge of its range (a ``q`` driven to 0), or where the
+        likelihood has lost its curvature."""
         name = self._restoration_param_name
-        est, se, lower, upper = table.loc[name].to_numpy()
-        low, high = scale["span"]
-        if not np.isfinite(se):
-            where = (
-                "at the edge of its range"
-                if self._restoration_at_edge()
-                else "where the likelihood's curvature is lost"
-            )
-            note = (
-                f"Note: {name} = {est:.4g} is {where}, so it has no "
-                "standard error or interval; repair_test() says whether "
-                "the data support it over minimal repair."
-            )
-        elif lower <= low and upper >= high:
-            note = (
-                f"Note: {name} is not determined by these data: its 95% "
-                f"interval [{lower:.4g}, {upper:.4g}] covers both {low:g} "
-                f"and {high:g}, repairs of opposite kinds. Do not read a "
-                "repair quality from it; repair_test() compares the fit "
-                "with minimal repair."
-            )
-        else:
+        est, se = table.loc[name, ["estimate", "se"]].to_numpy()
+        if np.isfinite(se):
             return ""
+        where = (
+            "at the edge of its range"
+            if self._restoration_at_edge()
+            else "where the likelihood's curvature is lost"
+        )
+        note = (
+            f"Note: {name} = {est:.4g} is {where}, so it has no standard "
+            "error or interval."
+        )
         return textwrap.fill(note, width=70, subsequent_indent="      ")
 
-    def repair_test(self) -> RepairTest:
-        """
-        The likelihood-ratio test of the fitted repair quality against
-        minimal repair ("as bad as old": ``q = 1`` for the generalized
-        renewal process, ``rho = 0`` for ARA and ARI).
+    def _repair_line(self) -> str:
+        """The repair tests' conclusion as the printed model shows it,
+        with the two p-values. Never raises: a test that cannot be run
+        is reported as not available."""
+        try:
+            result = self.repair_test()
+        except Exception as error:  # pragma: no cover - defensive
+            text = f"Repair test: not available ({error})"
+        else:
+            p_values = "; ".join(
+                f"{t.parameter} = {t.value:g}: p = {t.p_value:.3g}"
+                for t in (result.perfect, result.minimal)
+                if t is not None and t.available
+            )
+            text = "Repair test: " + result.conclusion
+            if p_values:
+                text += f" (LR tests, {p_values})"
+        return textwrap.fill(text, width=70, subsequent_indent="      ")
 
-        Under minimal repair the process is the non-homogeneous Poisson
-        process whose cumulative intensity is the lifetime distribution's
-        cumulative hazard (the Crow-AMSAA power law for a Weibull), so the
-        test answers "does repair quality matter here?". The same
-        likelihood is maximised with the restoration parameter held at
-        minimal repair, and twice the difference in log-likelihood is
-        referred to a chi-squared distribution with one degree of freedom
-        -- halved for ``rho = 0``, the edge of its range (Self and Liang,
-        1987).
+    def repair_test(self, alpha_ci: float = 0.05) -> RepairTestResult:
+        """
+        The likelihood-ratio tests of the fitted repair quality against
+        perfect repair ("as good as new") and minimal repair ("as bad as
+        old").
+
+        Each test refits the model with the restoration parameter held at
+        that kind of repair and refers twice the difference in
+        log-likelihood to a chi-squared distribution with one degree of
+        freedom:
+
+        - perfect repair: ``q = 0`` for the generalized (Kijima) and G1
+          renewal processes, ``rho = 1`` for ARA -- an ordinary renewal
+          process, the distribution fitted to the times between failures.
+          ARI has no as-good-as-new repair; its ``rho = 1``, which removes
+          all the intensity at each failure (the most an ARI repair can),
+          is tested in its place and called maximal repair.
+        - minimal repair: ``q = 1``, ``rho = 0`` -- the non-homogeneous
+          Poisson process whose cumulative intensity is the lifetime
+          distribution's cumulative hazard (the Crow-AMSAA power law for a
+          Weibull), or ARI's baseline intensity. The G1 process has no
+          minimal repair (its ``q`` scales the times between failures
+          geometrically), so it has the perfect-repair test only.
+
+        Where the value tested is on the edge of the parameter's range --
+        the Kijima ``q = 0`` (``q >= 0``), and ``rho = 0`` and ``rho = 1``
+        (``0 <= rho <= 1``) -- the statistic is a 50:50 mixture of
+        chi-squared(0) and chi-squared(1) under the hypothesis, so the
+        p-value is half the chi-squared(1) tail (Self and Liang, 1987),
+        and 1 when the statistic is 0. The G1 ``q = 0`` and the Kijima
+        ``q = 1`` are inside the range: the full chi-squared(1) tail.
+
+        At level ``alpha_ci`` the conclusion is "not determined" when
+        neither hypothesis is rejected (the data are consistent with
+        both), "consistent with" the one not rejected when only the other
+        is, and where the estimate lies (between perfect and minimal
+        repair, or worse than minimal repair) when both are.
+
+        The refits are made the first time the model is printed or this
+        is called, and kept on the model. If a refit fails, its test is
+        reported as not available (one warning) rather than raising.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The significance level of the conclusion. Default 0.05.
 
         Returns
         -------
-        RepairTest
-            The statistic, its p-value and the two log-likelihoods.
+        RepairTestResult
+            The two tests (``perfect`` and ``minimal``, each a
+            :class:`RestrictedRepairFit` with the restricted fit, the
+            statistic, its degrees of freedom and p-value) and the
+            ``conclusion``.
 
         Raises
         ------
         ValueError
-            For a model with no likelihood (built from parameters), or the
-            G1 renewal process, which has no minimal-repair value (its
-            ``q = 0`` is an ordinary renewal process).
+            For a model with no likelihood (built from parameters or
+            restored from a dict).
 
         Examples
         --------
         Eight systems simulated under minimal repair: the fitted ``q`` is
         far from 1, but the test finds no evidence against minimal
-        repair:
+        repair, and rejects perfect repair:
 
         >>> import numpy as np
         >>> from surpyval.recurrent import GeneralizedRenewal
@@ -954,19 +1188,117 @@ class RenewalModel(
         >>> round(float(model.q), 2)
         2.63
         >>> test = model.repair_test()
-        >>> round(test.statistic, 3), round(test.p_value, 3)
+        >>> round(test.minimal.statistic, 3), round(test.minimal.p_value, 3)
         (0.398, 0.528)
+        >>> test.perfect.p_value < 1e-8
+        True
+        >>> test.conclusion
+        'consistent with minimal repair; perfect repair rejected'
         """
         self._check_fitted()
-        scale = _RESTORATION_SCALES.get(self.kind)
-        if scale is None:
+        values = _REPAIR_VALUES.get(self.kind)
+        if values is None:
             raise ValueError(
-                f"The {self.kind} model has no minimal-repair value to test "
-                "against."
+                f"The {self.kind} model has no repair values to test."
             )
-        minimal = scale["minimal"]
+        perfect, minimal = self._repair_fits()
+        estimate = float(self.restoration)
+        return RepairTestResult(
+            kind=self.kind,
+            parameter=self._restoration_param_name,
+            estimate=estimate,
+            log_likelihood=self.log_likelihood,
+            perfect=perfect,
+            minimal=minimal,
+            alpha_ci=alpha_ci,
+            conclusion=_repair_conclusion(
+                perfect,
+                minimal,
+                estimate,
+                values["label"],
+                alpha_ci,
+            ),
+        )
+
+    def _repair_fits(
+        self,
+    ) -> "tuple[RestrictedRepairFit, RestrictedRepairFit | None]":
+        """The restricted refits of :meth:`repair_test`, made once and kept
+        on the model (they do not depend on ``alpha_ci``). One warning if
+        any failed."""
+        cached = getattr(self, "_repair_fit_cache", None)
+        if cached is not None:
+            return cached
+        values = _REPAIR_VALUES[self.kind]
+        perfect = self._restricted_fit(
+            "perfect", values["perfect"], values["label"] + " repair"
+        )
+        minimal = (
+            None
+            if values["minimal"] is None
+            else self._restricted_fit(
+                "minimal", values["minimal"], "minimal repair"
+            )
+        )
+        failed = [f for f in (perfect, minimal) if f is not None and f.message]
+        if failed:
+            from surpyval.utils import _caller_stacklevel
+
+            warnings.warn(
+                "The repair test is not available: {}. The other "
+                "results of the fit are unaffected.".format(
+                    "; ".join(f.message for f in failed)
+                ),
+                UserWarning,
+                stacklevel=_caller_stacklevel(),
+            )
+        self._repair_fit_cache = (perfect, minimal)
+        return perfect, minimal
+
+    def _restricted_starts(self, which: str) -> "list[np.ndarray]":
+        """Starting values of the distribution's parameters for the fit
+        with the restoration parameter held at ``which`` repair: the full
+        fit's, and that restricted model's own fit where the family has
+        one (the distribution fitted to the times between failures for a
+        renewal process, the plain NHPP fit of an ARI baseline), or the
+        fit to the times to first failure."""
+        starts = [np.asarray(self._mle[1:], dtype=float)]
+        fitter = getattr(self, "_fitter", None)
+        data = getattr(self, "data", None)
+        dist = self.model.dist
+        if fitter is None or data is None:
+            return starts
+        ari = self._dist_label == "Baseline Intensity"
+        try:
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                if ari and which == "minimal":
+                    extra = fitter._initial_baseline_params(data, dist)
+                elif ari:
+                    extra = None
+                elif which == "perfect":
+                    extra = fitter._renewal_dist_params(data, dist)
+                else:
+                    extra = fitter._initial_dist_params(data, dist)
+        except Exception:
+            extra = None
+        if extra is not None:
+            extra = np.asarray(extra, dtype=float)
+            if extra.shape == starts[0].shape and np.all(np.isfinite(extra)):
+                starts.append(extra)
+        return starts
+
+    def _restricted_fit(
+        self, which: str, value: float, hypothesis: str
+    ) -> RestrictedRepairFit:
+        """Maximise the likelihood with the restoration parameter held at
+        ``value`` and test the full fit against it (see
+        :meth:`repair_test`)."""
+        name = self._restoration_param_name
         mle = np.asarray(self._mle, dtype=float)
         bounds = self._parameter_bounds()[1:]
+        lower, upper = self._restoration_bounds
+        boundary = value == lower or value == upper
 
         def to_free(p: np.ndarray) -> np.ndarray:
             out = np.array(p, dtype=float)
@@ -976,6 +1308,8 @@ class RenewalModel(
                     out[k] = np.log(u / (1 - u))
                 elif lo is not None:
                     out[k] = np.log(out[k] - lo)
+                elif hi is not None:
+                    out[k] = np.log(hi - out[k])
             return out
 
         def from_free(z: np.ndarray) -> np.ndarray:
@@ -985,24 +1319,70 @@ class RenewalModel(
                     out[k] = lo + (hi - lo) / (1 + np.exp(-out[k]))
                 elif lo is not None:
                     out[k] = lo + np.exp(out[k])
+                elif hi is not None:
+                    out[k] = hi - np.exp(out[k])
             return out
 
         def restricted(z: np.ndarray) -> float:
             with np.errstate(all="ignore"):
-                value = float(self._neg_ll(np.r_[minimal, from_free(z)]))
-            return value if np.isfinite(value) else np.inf
+                try:
+                    v = float(self._neg_ll(np.r_[value, from_free(z)]))
+                except (ValueError, ArithmeticError):
+                    return np.inf
+            return v if np.isfinite(v) else np.inf
 
-        start = to_free(mle[1:])
-        best = minimize(restricted, start, method="Nelder-Mead")
-        polish = minimize(restricted, best.x, method="BFGS")
-        if polish.fun < best.fun:
-            best = polish
+        best = None
+        # The searches' own warnings (an overflowing trial point, a line
+        # search that stops short) are not the user's.
+        with warnings.catch_warnings(), np.errstate(all="ignore"):
+            warnings.simplefilter("ignore")
+            for start in self._restricted_starts(which):
+                z0 = to_free(start)
+                if not np.isfinite(restricted(z0)):
+                    continue
+                res = minimize(restricted, z0, method="Nelder-Mead")
+                polish = minimize(restricted, res.x, method="BFGS")
+                if polish.fun < res.fun:
+                    res = polish
+                if np.isfinite(res.fun) and (
+                    best is None or res.fun < best.fun
+                ):
+                    best = res
         ll_full = -float(self._neg_ll(mle))
-        ll_min = -float(best.fun)
+        if best is None:
+            nan_params = np.full(mle.size, np.nan)
+            nan_params[0] = value
+            return RestrictedRepairFit(
+                hypothesis,
+                name,
+                value,
+                nan_params,
+                np.nan,
+                np.nan,
+                1,
+                np.nan,
+                boundary,
+                message=(
+                    f"the likelihood with {name} = {value:g} "
+                    f"({hypothesis}) could not be maximised"
+                ),
+            )
+        ll_restricted = -float(best.fun)
         # The restricted model is nested: its maximum cannot exceed the
         # full one's except by the optimisers' tolerance.
-        stat = max(2.0 * (ll_full - ll_min), 0.0)
+        stat = max(2.0 * (ll_full - ll_restricted), 0.0)
         p = float(chi2.sf(stat, 1))
-        if scale["edge"]:
+        if boundary:
+            # Self and Liang (1987): a 50:50 mixture of chi2(0) and chi2(1).
             p = 0.5 * p if stat > 0 else 1.0
-        return RepairTest(stat, p, ll_full, ll_min, minimal)
+        return RestrictedRepairFit(
+            hypothesis,
+            name,
+            value,
+            np.r_[value, from_free(best.x)],
+            ll_restricted,
+            stat,
+            1,
+            p,
+            boundary,
+        )

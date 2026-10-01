@@ -3,17 +3,13 @@
 Each family's ``fit_from_df`` names the columns of a
 :class:`pandas.DataFrame` in place of the arrays its ``fit`` takes, and
 passes every other keyword on to ``fit``, so the two entry points give the
-same model for the same data (principle 14). The argument names follow the
-family's existing ``fit_from_df``:
-
-- one lifetime per row (the parametric distributions, the non-parametric
-  estimators, ``RoystonParmar``, ``MixtureModel``) and the copulas: the
-  column is named by the ``fit`` argument it fills (``x``, ``c``, ``n``,
-  ``xl``, ``xr``, ``tl``, ``tr``), as ``Weibull.fit_from_df`` always has;
-- the recurrent-event fitters, the regressions and the competing-risks
-  fitters: ``x_col``, ``i_col``, ``c_col``, ``n_col``, ``tl_col``,
-  ``tr_col``, ``e_col`` and ``Z_cols``, as ``CoxPH.fit_from_df``,
-  ``CompetingRisks.fit_from_df`` and ``CauseSpecificNHPP.fit_from_df`` do.
+same model for the same data (principle 14). Every DataFrame entry point
+names a column argument after the ``fit`` argument it fills, with a
+``_col`` suffix (``_cols`` for a list of columns; principle 21):
+``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``, ``tl_col``,
+``tr_col``, ``i_col``, ``e_col`` and ``Z_cols``. The univariate names of
+v0.21 (``x``, ``c``, ``n``, ``xl``, ``xr``, ``tl``, ``tr``) are accepted
+with a ``DeprecationWarning`` until v0.23.
 
 The columns are read as they are and handed to ``fit``, which does all
 the checking: a missing value is treated exactly as the same value in an
@@ -32,6 +28,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
+from surpyval.utils.deprecation import renamed_arguments
 
 
 class fitter_method:
@@ -145,16 +142,25 @@ class UnivariateDataFrameMixin:
     """
 
     @fitter_method
+    @renamed_arguments(
+        x="x_col",
+        c="c_col",
+        n="n_col",
+        xl="xl_col",
+        xr="xr_col",
+        tl="tl_col",
+        tr="tr_col",
+    )
     def fit_from_df(
         self,
         df: pd.DataFrame,
-        x: str | None = None,
-        c: str | None = None,
-        n: str | None = None,
-        xl: str | None = None,
-        xr: str | None = None,
-        tl: str | float | None = None,
-        tr: str | float | None = None,
+        x_col: str | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
+        tl_col: str | float | None = None,
+        tr_col: str | float | None = None,
         **fit_options: Any,
     ) -> Any:
         r"""
@@ -172,39 +178,39 @@ class UnivariateDataFrameMixin:
         df : DataFrame
             DataFrame of data to be used to create surpyval model
 
-        x : string, optional
+        x_col : string, optional
             column name for the column in df containing the variable data.
-            If not provided must provide both xl and xr.
+            If not provided must provide both xl_col and xr_col.
 
-        c : string, optional
+        c_col : string, optional
             column name for the column in df containing the censor flag of x.
             If not provided assumes all values of x are observed.
 
-        n : string, optional
+        n_col : string, optional
             column name in for the column in df containing the counts of x.
             If not provided assumes each x is one observation.
 
-        xl : string, optional
+        xl_col : string, optional
             column name for the column in df containing the left interval for
             interval censored data. If left interval is -Inf, assumes left
             censored. If xl[i] == xr[i] assumes observed. Cannot be provided
-            with x, must be provided with xr.
+            with x_col, must be provided with xr_col.
 
-        xr : string, optional
+        xr_col : string, optional
             column name for the column in df containing the right interval
             for interval censored data. If right interval is Inf, assumes
             right censored. If xl[i] == xr[i] assumes observed. Cannot be
-            provided with x, must be provided with xl.
+            provided with x_col, must be provided with xl_col.
 
-        tl : string or scalar, optional
-            If string, column name in for the column in df containing the left
-            truncation data. If scalar assumes each x is left truncated by
-            that value. If not provided assumes x is not left truncated.
+        tl_col : string or scalar, optional
+            If a string, the column of the left truncation of each row. If
+            a number, every row is left truncated at that value (a constant
+            truncation). If not provided, x is not left truncated.
 
-        tr : string or scalar, optional
-            If string, column name in for the column in df containing the
-            right truncation data. If scalar assumes each x is right truncated
-            by that value. If not provided assumes x is not right truncated.
+        tr_col : string or scalar, optional
+            If a string, the column of the right truncation of each row. If
+            a number, every row is right truncated at that value. If not
+            provided, x is not right truncated.
 
         fit_options : dict, optional
             Every other option of :meth:`fit` (``how``, ``offset``,
@@ -220,15 +226,24 @@ class UnivariateDataFrameMixin:
         ------
         ValueError
             If ``df`` is not a DataFrame, a name is not one of its columns,
-            ``x`` is given with ``xl`` / ``xr``, or a column is given that
-            :meth:`fit` has no argument for.
+            ``x_col`` is given with ``xl_col`` / ``xr_col``, or a column is
+            given that :meth:`fit` has no argument for.
+
+        Notes
+        -----
+        Every DataFrame entry point names its columns with a ``_col``
+        suffix (principle 21). The names this method had in v0.21 (``x``,
+        ``c``, ``n``, ``xl``, ``xr``, ``tl``, ``tr``) still work, with a
+        ``DeprecationWarning``, until v0.23.
 
         Examples
         --------
         >>> import surpyval as surv
         >>> from surpyval.datasets import load_bofors_steel
         >>> df = load_bofors_steel()
-        >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
+        >>> model = surv.Weibull.fit_from_df(
+        ...     df, x_col='x', n_col='n', offset=True
+        ... )
         >>> print(model)
         Parametric SurPyval Model
         =========================
@@ -239,47 +254,53 @@ class UnivariateDataFrameMixin:
         Parameters          :
              alpha: 7.141983615103902
               beta: 2.62047590823775
-        >>> km = surv.KaplanMeier.fit_from_df(df, x='x', n='n')
+        >>> km = surv.KaplanMeier.fit_from_df(df, x_col='x', n_col='n')
         >>> km.sf([45, 48]).round(4)
         array([0.5861, 0.2571])
         """
         df = require_frame(df)
-        if (x is not None) and ((xl is not None) or (xr is not None)):
-            raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
+        if (x_col is not None) and (
+            (xl_col is not None) or (xr_col is not None)
+        ):
+            raise ValueError(
+                "Cannot use `x_col` and (`xl_col` and `xr_col`) together"
+            )
         arrays: dict[str, Any] = {}
-        names = {"x": "x", "c": "c", "n": "n", "t": "tl` / `tr"}
-        if x is not None:
-            arrays["x"] = frame_column(df, x, "x", time=True).astype(float)
-        elif xl is not None and xr is not None:
+        names = {"x": "x_col", "c": "c_col", "n": "n_col"}
+        names["t"] = "tl_col` / `tr_col"
+        if x_col is not None:
+            arrays["x"] = frame_column(df, x_col, "x_col", time=True)
+        elif xl_col is not None and xr_col is not None:
             arrays["x"] = np.column_stack(
                 [
-                    frame_column(df, xl, "xl", time=True).astype(float),
-                    frame_column(df, xr, "xr", time=True).astype(float),
+                    frame_column(df, xl_col, "xl_col", time=True),
+                    frame_column(df, xr_col, "xr_col", time=True),
                 ]
             )
-            names["x"] = "xl` / `xr"
+            names["x"] = "xl_col` / `xr_col"
         else:
             raise ValueError(
-                "Name the column of times with `x`, or the interval ends "
-                "with both `xl` and `xr`"
+                "Name the column of times with `x_col`, or the interval "
+                "ends with both `xl_col` and `xr_col`"
             )
-        if c is not None:
-            arrays["c"] = frame_column(df, c, "c")
-        if n is not None:
-            arrays["n"] = frame_column(df, n, "n")
-        if tl is not None or tr is not None:
+        arrays["x"] = arrays["x"].astype(float)
+        if c_col is not None:
+            arrays["c"] = frame_column(df, c_col, "c_col")
+        if n_col is not None:
+            arrays["n"] = frame_column(df, n_col, "n_col")
+        if tl_col is not None or tr_col is not None:
             rows = len(df)
             arrays["t"] = np.column_stack(
                 [
                     (
                         np.full(rows, -np.inf)
-                        if tl is None
-                        else _truncation(df, tl, "tl")
+                        if tl_col is None
+                        else _truncation(df, tl_col, "tl_col")
                     ),
                     (
                         np.full(rows, np.inf)
-                        if tr is None
-                        else _truncation(df, tr, "tr")
+                        if tr_col is None
+                        else _truncation(df, tr_col, "tr_col")
                     ),
                 ]
             )

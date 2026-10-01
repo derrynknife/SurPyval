@@ -578,7 +578,7 @@ The oldest discrimination measure is **Harrell's concordance index** [Harrell198
 
     C = \frac{\#\{\text{concordant pairs}\} + \tfrac12\, \#\{\text{pairs with tied scores}\}}{\#\{\text{comparable pairs}\}},
 
-with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conventions, and surpyval's are: a failure and a censoring at the same time form a fully comparable pair, because the censored subject is known to have outlived the failure (so a lower score for the failure counts 0, not 0.5); two failures at the same time count 1 if their scores tie and 0.5 otherwise; two censorings at the same time are not comparable. (R's ``survival`` and lifelines do not count two failures at the same time as a comparable pair, so on data with tied failure times their value differs slightly: 0.6371 against surpyval's 0.6369 for a Cox model of the lung data on age, sex and ECOG score.) For a proportional hazards model the linear predictor :math:`\beta' Z` is a natural risk score. :math:`C` measures ranking only — a model can have an excellent :math:`C` and badly miscalibrated survival probabilities, which is what the Brier score is for. A four-subject example shows the counting:
+with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conventions. A failure and a censoring at the same time form a fully comparable pair, because the censored subject is known to have outlived the failure (so a lower score for the failure counts 0, not 0.5), and two censorings at the same time are not comparable. Two failures at the same time are where the conventions differ. By default surpyval follows Therneau, as R's ``survival::concordance`` and lifelines do (``ties="therneau"``): neither subject outlived the other, so the pair is not comparable. Harrell's original definition (``ties="harrell"``) counts the pair, 1 if the scores tie and 0.5 otherwise. The two agree on data without tied failure times; for a Cox model of the lung data on age, sex and ECOG score, whose 28 pairs of tied deaths make the difference, Therneau's gives 0.6371 (R and lifelines too) and Harrell's 0.6369. For a proportional hazards model the linear predictor :math:`\beta' Z` is a natural risk score. :math:`C` measures ranking only — a model can have an excellent :math:`C` and badly miscalibrated survival probabilities, which is what the Brier score is for. A four-subject example shows the counting:
 
 .. jupyter-execute::
 
@@ -596,6 +596,17 @@ with 0.5 for a random ranking and 1 for a perfect one. Ties in *time* need conve
     :hide-output:
 
     assert score(x_c, c_c, risk) == 1.0
+    # the lung numbers quoted above (R survival 3.5.8: 0.637135493)
+    import surpyval as _sp
+    from surpyval.datasets import load_lung as _load_lung
+    _lung = _load_lung().dropna(subset=["ph.ecog"])
+    _lung["censored"] = 1 - _lung["status"]
+    _cox = _sp.CoxPH.fit_from_df(_lung, x_col="time", c_col="censored",
+                                 Z_cols=["age", "sex", "ph.ecog"])
+    assert round(_cox.concordance(), 4) == 0.6371
+    assert round(_cox.concordance(ties="harrell"), 4) == 0.6369
+    _ev = _lung["time"][_lung["censored"] == 0].value_counts()
+    assert (_ev * (_ev - 1) // 2).sum() == 28
 
 Survival trees and forests
 ^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -84,6 +84,56 @@ bands change (#477).
   now go through in one pass. The saved documents are byte-identical. A
   Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
   1.22 s).
+- **Changed: renewal models test the repair against perfect and minimal
+  repair (#513).** ``repair_test(alpha_ci=0.05)`` gives two
+  likelihood-ratio tests: against perfect repair (Kijima q = 0, ARA rho =
+  1; ARI's rho = 1 is maximal repair) and against minimal repair (q = 1,
+  rho = 0; G1 has none). Each refits the model with the restoration
+  parameter fixed and reports the statistic and p-value, halved where the
+  tested value is on the edge of the parameter's range (Self and Liang
+  1987). The printed model shows the conclusion, for example "consistent
+  with minimal repair; perfect repair rejected" on the issue's eight haul
+  trucks (against q = 1: LR 0.40, p 0.53; against q = 0: LR 34.9, p
+  2e-9), rather than a fixed rule on the width of the interval. The
+  refits run the first time the model is printed or tested, and are
+  cached.
+- **REML warns when its between-unit covariance is on the boundary.**
+  ``DegradationAnalysis(population_method="reml")`` could return a
+  singular covariance (an intercept-slope correlation of 0.999998 on six
+  units) without comment, while the default method warned on the same
+  data. It now warns when the covariance with its smallest eigenvalue
+  removed fits the data as well (to ``sqrt(eps)``): the estimate is on the
+  boundary of the valid covariances, where standard errors and intervals
+  are unreliable. On 144 simulated datasets it flagged all 18 boundary
+  fits and none of the others. The default method's warning now says that
+  REML may land on the boundary too.
+- **Conditional sf_tvc is 1 at and before given (#523).** ``sf_tvc(x,
+  schedule, given=g)`` returned :math:`S(x)/S(g)` for x < g as well,
+  above 1 (1.75 for WeibullPO and 1.64 for CoxPH on the conformance
+  fixtures). It is now 1 for x <= g, for the parametric regressions and
+  Cox, along step schedules and covariate paths; a conformance property
+  checks it.
+- **Changed / deprecated: DataFrame columns are named with _col
+  (principle 21).** Every ``fit_from_df`` (and ``fit_tvc_from_df``,
+  ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
+  argument it fills, with ``_col`` (``_cols`` for a list).
+  ``Weibull.fit_from_df(df, x=, c=, n=, xl=, xr=, tl=, tr=)`` is now
+  ``x_col=, c_col=, n_col=, xl_col=, xr_col=, tl_col=, tr_col=``
+  (``tl_col`` and ``tr_col`` also take a number shared by every row), and
+  ``DegradationAnalysis``, ``WienerProcess`` and ``GammaProcess`` take
+  ``x_col=, y_col=, i_col=``, as the regression, recurrent and
+  competing-risks fitters already did. The 0.21 names work until v0.23
+  with a ``DeprecationWarning``. A conformance test checks the rule on
+  every DataFrame entry point.
+- **Changed: the concordance index leaves out tied event times by default.**
+  ``sp.metrics.concordance_index``, the regression models' ``concordance()``
+  and ``RandomSurvivalForest.score`` take ``ties="therneau"`` (the
+  default: two events at the same time are not a usable pair, as in R's
+  ``survival::concordance`` and lifelines) or ``ties="harrell"`` (Harrell's
+  original definition, which counted them). On the lung Cox model (age,
+  sex, ph.ecog), with 28 pairs of tied deaths, C is 0.637135, as R and
+  lifelines give, instead of 0.636942. The deprecated
+  ``surpyval.utils.score.score`` keeps Harrell's convention.
 - **fit_from_df on every fitter (#511).** Kaplan-Meier, Nelson-Aalen,
   Fleming-Harrington, Turnbull, RoystonParmar, MixtureModel, the
   closed-form distributions, the copulas, FineGray,

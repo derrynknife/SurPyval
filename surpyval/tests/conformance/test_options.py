@@ -66,6 +66,8 @@ NOT_SWEPT = {
     "the baseline; checked in regression/test_summary.py, #484)",
     "trend_test": "a hypothesis test: alpha_ci is the level its trend is "
     "concluded at (#481), not an interval's",
+    "repair_test": "a hypothesis test: alpha_ci is the level its "
+    "conclusion about the repair is drawn at, not an interval's",
 }
 # "confidence" was the recurrent models' level until v0.22.0; a method
 # that took it again would be an unswept uncertainty method.

@@ -1079,9 +1079,11 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
         given : float, optional
             If supplied, return the *conditional* survival given the item has
             survived to age ``given``:
-            ``S(x | given) = exp(-(H(x) - H(given)))``. Along a
-            ``CovariatePath`` the baseline jumps after ``given`` are summed,
-            so nothing is subtracted.
+            ``S(x | given) = exp(-(H(x) - H(given)))`` for ``x > given``,
+            and 1 for ``x <= given`` (survival to those times is certain).
+            Along a ``CovariatePath`` the baseline jumps after ``given``
+            are summed, so nothing is subtracted. A ``nan`` ``given`` gives
+            ``nan``.
         stratum : optional
             For a stratified fit, the stratum whose baseline hazard to use
             (required there, as for :meth:`sf`).
@@ -1106,19 +1108,22 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
         """
         from .tvc_path import CovariatePath
 
-        if (
-            isinstance(Z, CovariatePath)
-            and given is not None
-            and not np.isnan(float(given))
-        ):
+        g = None if given is None else float(given)
+        if isinstance(Z, CovariatePath) and g is not None and not np.isnan(g):
             # Summed from given on.
-            return np.exp(-self._hf_tvc(x, Z, xl, stratum, given=float(given)))
-        H = self._hf_tvc(x, Z, xl, stratum)
-        if given is not None:
-            given = float(given)
-            if np.isnan(given):
-                # A missing conditioning age: nothing is known.
-                H = np.full(np.shape(H), np.nan)
-            else:
-                H = H - self._hf_tvc(given, Z, xl, stratum)
+            H = self._hf_tvc(x, Z, xl, stratum, given=g)
+        else:
+            H = self._hf_tvc(x, Z, xl, stratum)
+            if g is not None:
+                if np.isnan(g):
+                    # A missing conditioning age: nothing is known.
+                    H = np.full(np.shape(H), np.nan)
+                else:
+                    H = H - self._hf_tvc(g, Z, xl, stratum)
+        if g is not None and not np.isnan(g):
+            # Given survival to g, survival to any x <= g is certain: the
+            # difference H(x) - H(g) is not a cumulative hazard there, and
+            # gave a "survival" above 1 (#523).
+            xq = np.atleast_1d(np.asarray(x, dtype=float))
+            H = np.where(xq <= g, 0.0, H)
         return np.exp(-H)
