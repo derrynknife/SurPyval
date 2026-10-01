@@ -3063,7 +3063,9 @@ observed, right-censored and left-truncated data, and its score form under the
 pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
 data (not yet with truncation); ``'weibull'`` (the default) and
 ``'exponential'`` use a likelihood split and parametric leaves and accept every
-kind of censoring and truncation, at a higher computational cost:
+kind of censoring and truncation (with left or interval censoring or truncation
+at a much higher computational cost, since each candidate split then needs an
+optimiser):
 
 .. jupyter-execute::
 
@@ -3144,9 +3146,14 @@ is compared with a Cox model on the same metrics:
 With ten shallow trees the forest already edges out a Cox model that cannot
 represent the interaction; more and deeper trees usually widen the gap, at a
 proportional cost in time. Setting ``kind='weibull'`` (the default) gives
-parametric leaves and handles left and interval censoring and truncation, but
-fits a likelihood at every candidate split and is much slower. Fitted trees and
-forests serialise like every other model (next section).
+parametric leaves and handles left and interval censoring and truncation. On
+observed and right-censored data like these its split search costs the same
+order as the log-rank's, because each candidate child's Weibull maximum
+likelihood is found directly (the scale in closed form, the shape from the
+one-dimensional profile likelihood); its leaves are Weibull fits, made when
+the forest first predicts. With left or interval censoring or truncation every
+candidate needs an optimiser, and it is much slower. Fitted trees and forests
+serialise like every other model (next section).
 
 .. jupyter-execute::
     :hide-code:
