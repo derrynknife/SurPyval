@@ -177,7 +177,8 @@ class TerminalNode(Node):
     and fits, on first use, the leaf model given by the tree's ``kind``
     (``model``): a Weibull or Exponential fit, or for a non-parametric
     tree a Nelson-Aalen estimate (a Turnbull estimate if the leaf holds
-    left- or interval-censored rows); ``NeverOccurs`` for a parametric
+    left- or interval-censored or right-truncated rows); ``NeverOccurs``
+    for a parametric
     leaf with no failures.
     """
 
@@ -188,8 +189,8 @@ class TerminalNode(Node):
     def _nonparametric_model(self) -> Any:
         # Nelson-Aalen is a risk-set estimator, so it is only defined for
         # observed / right-censored (optionally left-truncated) data; the
-        # Turnbull estimate covers left and interval censoring, the data
-        # the Turnbull-score split is used on.
+        # Turnbull estimate covers left and interval censoring and right
+        # truncation, the data the Turnbull-score split is used on.
         if needs_full_likelihood_split(self.data):
             return Turnbull.fit(
                 self.data.x, self.data.c, self.data.n, self.data.t
@@ -341,8 +342,8 @@ def build_tree(
     or ``"non-parametric"``: the risk-set log-rank split with
     Nelson-Aalen leaves at a node of observed / right-censored data
     (optionally left truncated), and the Turnbull-score split with
-    Turnbull leaves at a node with left- or interval-censored rows
-    (untruncated).
+    Turnbull leaves at a node with left- or interval-censored or
+    right-truncated rows (with any truncation).
 
     ``rng`` draws the features considered at each split: numpy's global
     generator when ``None`` (see
@@ -382,8 +383,9 @@ def build_tree(
 
     # Figure out best feature-value split
     if kind == "non-parametric" and needs_full_likelihood_split(data):
-        # Left or interval censoring (the tree has refused truncation
-        # with it): the log-rank scores of the pooled Turnbull estimate.
+        # Left or interval censoring, or right truncation: the log-rank
+        # scores of the pooled Turnbull estimate, less each truncated
+        # row's window score.
         split_feature_index, split_feature_value = turnbull_score_split(
             data, Z, min_leaf_samples, min_leaf_failures, candidates
         )
