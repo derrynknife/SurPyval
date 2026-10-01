@@ -564,7 +564,10 @@ def test_band_round_trips_with_truncation(name):
     assert_allclose(restored.band(q), model.band(q), rtol=1e-12)
     if name == "KaplanMeier":
         assert_allclose(
-            restored.band(q)[0], [0.4900, 0.8917], atol=5e-5, rtol=0
+            restored.band(q, bound_type="exp")[0],
+            [0.4900, 0.8917],
+            atol=5e-5,
+            rtol=0,
         )
 
 
@@ -582,7 +585,10 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
     del old["band_n"]
     q = np.quantile(x, [0.2])
     assert_allclose(
-        sp.from_dict(old).band(q), [[0.4535, 0.9018]], atol=5e-5, rtol=0
+        sp.from_dict(old).band(q, bound_type="exp"),
+        [[0.4535, 0.9018]],
+        atol=5e-5,
+        rtol=0,
     )
     old["band_n"] = "60"
     with pytest.raises(ValueError, match="'band_n' must be a number"):

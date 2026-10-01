@@ -421,7 +421,12 @@ def _regression_fit_from_df(
     arrays = _read_columns(df, {"x": x_col, **columns})
     arrays["Z"] = frame_columns(df, Z_cols, "Z_cols").astype(float)
     names = {k: f"{k}_col" for k in arrays} | {"Z": "Z_cols"}
-    return call_fit(fitter, arrays, names, fit_options)
+    # An aliasing warning names the columns (#502).
+    from surpyval.univariate.regression._aliasing import covariate_columns
+
+    columns_named = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+    with covariate_columns(columns_named):
+        return call_fit(fitter, arrays, names, fit_options)
 
 
 class RecurrentRegressionDataFrameMixin:

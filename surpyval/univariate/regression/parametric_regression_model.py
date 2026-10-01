@@ -452,7 +452,11 @@ class ParametricRegressionModel(
         determine (#476): a constant column where the family has an
         intercept, or a linear combination of the others. Their
         coefficients are ``nan`` in ``params`` (R's ``NA``), as are their
-        standard errors, and predictions take them as 0."""
+        standard errors, and predictions take them as 0. For an
+        accelerated-life model, whose parameters are not one per column,
+        they are positions in ``phi_params``: a stress effect the data
+        cannot determine (#503), such as the second of two equal stress
+        columns of ``DualPower``."""
         phi = np.asarray(self.params, dtype=float)[self.k_dist :]
         return np.flatnonzero(np.isnan(phi))
 

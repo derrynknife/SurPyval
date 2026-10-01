@@ -1149,6 +1149,16 @@ process has no minimal repair, so it is tested against perfect repair (its
 ``q = 0``, inside the range) only. The refits are made the first time the
 model is printed or ``repair_test()`` is called, and kept on the model.
 
+A fit can also put the restoration parameter on the edge of its range: a
+``q`` driven to 0, an ARA or ARI ``rho`` to 1 or 0. It then has no standard
+error, since the likelihood is not regular there, and its interval
+(``param_cb``, and the printed table) is the profile-likelihood one: the
+values the same likelihood-ratio test does not reject, the model refitted at
+each. It runs from the edge to where twice the drop in the log-likelihood
+reaches the chi-squared(1) quantile, and a one-sided bound towards the edge
+is the edge itself. The other parameters' intervals are then the Wald
+intervals of the model held on the edge, as the printout notes.
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:

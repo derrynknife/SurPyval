@@ -33,5 +33,14 @@ class PowerExponential_(LifeModel):
         c, a, n = np.linalg.lstsq(A, y, rcond=None)[0]
         return [np.exp(c), a, n]
 
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        # log L = log c + a / s1 + n log s2: identified even with equal
+        # stress columns, unless both are constant.
+        Z = np.atleast_2d(Z)
+        terms = np.stack([1.0 / Z[:, 0], np.log(Z[:, 1])], axis=1)
+        return terms, ("a", "n"), True
+
 
 PowerExponential = PowerExponential_()

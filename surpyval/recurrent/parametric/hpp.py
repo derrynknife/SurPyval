@@ -61,6 +61,7 @@ class HPP(CountingProcess):
 
     def __init__(self) -> None:
         self.parameter_names = ["lambda"]
+        self.has_scale = True
         self.bounds = ((0, None),)
         # A constant rate is defined at any time, so an item observed from
         # a negative ``tl`` may have events at negative times (the support

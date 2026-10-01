@@ -374,11 +374,12 @@ class GeneralizedRenewal(RenewalFitMixin):
         Restoration Factor  : 7.274462742318132e-17
         Parameters          : Wald 95% intervals
                    estimate     se  lower 95%  upper 95%
-            q     7.274e-17    nan        nan        nan
-            alpha     2.399  0.509      1.583      3.636
-            beta      2.754 0.6533       1.73      4.384
+            q     7.274e-17    nan          0    0.09235
+            alpha     2.399  0.287      1.898      3.033
+            beta      2.754 0.6516      1.732      4.379
         Note: q = 7.274e-17 is at the edge of its range, so it has no standard
-              error or interval.
+              error. Its interval is the profile-likelihood one, from the
+              edge; the others' are Wald intervals with q held there.
         Repair test: consistent with perfect repair; minimal repair rejected
               (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
@@ -484,11 +485,12 @@ class GeneralizedRenewal(RenewalFitMixin):
         Restoration Factor  : 7.274462742318132e-17
         Parameters          : Wald 95% intervals
                    estimate     se  lower 95%  upper 95%
-            q     7.274e-17    nan        nan        nan
-            alpha     2.399  0.509      1.583      3.636
-            beta      2.754 0.6533       1.73      4.384
+            q     7.274e-17    nan          0    0.09235
+            alpha     2.399  0.287      1.898      3.033
+            beta      2.754 0.6516      1.732      4.379
         Note: q = 7.274e-17 is at the edge of its range, so it has no standard
-              error or interval.
+              error. Its interval is the profile-likelihood one, from the
+              edge; the others' are Wald intervals with q held there.
         Repair test: consistent with perfect repair; minimal repair rejected
               (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
