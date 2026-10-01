@@ -84,6 +84,27 @@ bands change (#477).
   now go through in one pass. The saved documents are byte-identical. A
   Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
   1.22 s).
+- **Changed / deprecated: DataFrame columns are named with _col
+  (principle 21).** Every ``fit_from_df`` (and ``fit_tvc_from_df``,
+  ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
+  argument it fills, with ``_col`` (``_cols`` for a list).
+  ``Weibull.fit_from_df(df, x=, c=, n=, xl=, xr=, tl=, tr=)`` is now
+  ``x_col=, c_col=, n_col=, xl_col=, xr_col=, tl_col=, tr_col=``
+  (``tl_col`` and ``tr_col`` also take a number shared by every row), and
+  ``DegradationAnalysis``, ``WienerProcess`` and ``GammaProcess`` take
+  ``x_col=, y_col=, i_col=``, as the regression, recurrent and
+  competing-risks fitters already did. The 0.21 names work until v0.23
+  with a ``DeprecationWarning``. A conformance test checks the rule on
+  every DataFrame entry point.
+- **Changed: the concordance index leaves out tied event times by default.**
+  ``sp.metrics.concordance_index``, the regression models' ``concordance()``
+  and ``RandomSurvivalForest.score`` take ``ties="therneau"`` (the
+  default: two events at the same time are not a usable pair, as in R's
+  ``survival::concordance`` and lifelines) or ``ties="harrell"`` (Harrell's
+  original definition, which counted them). On the lung Cox model (age,
+  sex, ph.ecog), with 28 pairs of tied deaths, C is 0.637135, as R and
+  lifelines give, instead of 0.636942. The deprecated
+  ``surpyval.utils.score.score`` keeps Harrell's convention.
 - **fit_from_df on every fitter (#511).** Kaplan-Meier, Nelson-Aalen,
   Fleming-Harrington, Turnbull, RoystonParmar, MixtureModel, the
   closed-form distributions, the copulas, FineGray,
