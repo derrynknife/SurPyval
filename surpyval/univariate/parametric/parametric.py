@@ -1159,10 +1159,11 @@ class Parametric(
         than the fit's precision (``_LR_NOISE`` in deviance, or 1e-8 of
         the log-likelihood; the registry's fits are within 2e-11 of
         their profiles' minima). The fit is the maximum, so a likelihood
-        above it is the likelihood failing at extreme parameters: an
-        ExpoWeibull's at ``beta`` = 1e14 and ``mu`` = 1e-14 is a
+        above it is the likelihood failing at extreme parameters. An
+        ExpoWeibull's was, at ``beta`` = 1e14 and ``mu`` = 1e-14, a
         deviance of -1e21, and a search that reached it took it for the
-        best point there.
+        best point there; its density is now accurate there (#472), and
+        this stays as a guard for any other family.
         """
         if not np.all(np.isfinite(theta)):
             return np.nan
@@ -3220,6 +3221,9 @@ class Parametric(
         # The points of the region known so far, with their psi, and
         # those of each walk.
         known = [(psi_hat, u_start)]
+        # Where each direct search ended, inside the region or not: starts
+        # for the walk's searches (below).
+        reached: list[tuple[float, npt.NDArray]] = []
         walks = []
         for group in seeds:
             walk = []
@@ -3260,6 +3264,8 @@ class Parametric(
             if not np.all(np.isfinite(res.x)):
                 return None
             psi_star = psi_u(res.x)
+            if np.isfinite(psi_star):
+                reached.append((psi_star, np.asarray(res.x)))
             if not (
                 np.isfinite(psi_star)
                 and dev_u(res.x) <= crit + _LR_NOISE
@@ -3321,6 +3327,15 @@ class Parametric(
 
             def deviance(target: float) -> float:
                 nll, u = solve(target, path.starts(target))
+                if u is None and reached:
+                    # From where a direct search ended nearest the target:
+                    # it can have run down a valley the walk's own points
+                    # do not reach, and stopped just outside the region
+                    # because the extreme there is only approached (an
+                    # ExpoWeibull sf(13) as beta -> inf with alpha at the
+                    # largest observation, #472).
+                    near = min(reached, key=lambda k: abs(k[0] - target))
+                    nll, u = solve(target, [near[1]])
                 if u is None:
                     nll, u = solve(target, [u_hat])
                 if u is None:
