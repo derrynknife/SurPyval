@@ -7,6 +7,7 @@ from joblib import Parallel, delayed
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.conditional_inference import parse_selection
+from surpyval.beta.ml.forest.deviance_split import parse_min_split_gain
 from surpyval.beta.ml.forest.oob import (
     RowTerms,
     add_tree_terms,
@@ -79,6 +80,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         alpha_split: float = 0.05,
         random_state: Any = None,
         feature_names: list[str] | None = None,
+        min_split_gain: float | str = 0.0,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
@@ -95,6 +97,10 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         self.n_trees = n_trees
         self.bootstrap = bootstrap
         self.kind = kind
+        # Validated against the kind once, before any tree is grown
+        self.min_split_gain = parse_min_split_gain(
+            min_split_gain, kind.lower().replace("_", "-")
+        )
 
         # With random_state=None every draw is from numpy's global stream,
         # in the order it always was: the bootstraps, then each tree's
@@ -136,6 +142,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 alpha_split=alpha_split,
                 random_state=tree_states[i],
                 feature_names=self.feature_names,
+                min_split_gain=self.min_split_gain,
             )
             for i in range(self.n_trees)
         )
@@ -161,6 +168,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         kind: str = "weibull",
         selection: str = "greedy",
         alpha_split: float = 0.05,
+        min_split_gain: float | str = 0.0,
         random_state: Any = None,
     ) -> "RandomSurvivalForest":
         """
@@ -216,6 +224,22 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             With ``selection="ctree"``, a node splits only if the
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``. Defaults to 0.05.
+        min_split_gain : float, "aic" or "bic", optional
+            The least gain in log-likelihood a split of a ``"weibull"`` or
+            ``"exponential"`` tree must make: a node splits only if its
+            best cut raises the maximised log-likelihood of its working
+            model by more than this (the two children's against the
+            node's). ``"aic"`` is the kind's degrees of freedom ``k`` (1
+            for ``"exponential"``, 2 for ``"weibull"``): the split must
+            lower Akaike's criterion. ``"bic"`` is ``k log(d) / 2``, with
+            ``d`` the node's failures (rows not right censored, counted
+            ``n`` times; its units if it has none), as every BIC in
+            SurPyval counts them: the split must lower the Bayesian
+            criterion. Defaults to 0: any gain, as a forest of deep trees
+            wants. (``"aic"`` is the recommended setting for a single
+            :class:`~surpyval.beta.ml.forest.tree.SurvivalTree`.) Not
+            used by ``"non-parametric"`` trees, whose splits are not
+            likelihoods; stop those with ``selection="ctree"``.
         random_state : None, int or numpy.random.Generator, optional
             Seeds the bootstrap resamples and the features drawn for each
             split. ``None`` (the default) draws from NumPy's global random
@@ -278,6 +302,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             alpha_split,
             random_state,
             feature_names,
+            min_split_gain,
         )
 
     def sf(
@@ -658,6 +683,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             "bootstrap": bool(self.bootstrap),
             "selection": self.selection,
             "alpha_split": float(self.alpha_split),
+            "min_split_gain": self.min_split_gain,
             "trees": [tree.to_dict() for tree in self.trees],
         }
         serialise_covariate_meta(self, out)
@@ -676,6 +702,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         # Forests saved before selection existed were grown greedily.
         forest.selection = model_dict.get("selection", "greedy")
         forest.alpha_split = model_dict.get("alpha_split", 0.05)
+        forest.min_split_gain = model_dict.get("min_split_gain", 0.0)
         # A restored forest predicts but is not re-fittable; it holds no data.
         forest.data = None  # type: ignore[assignment]
         forest.Z = None  # type: ignore[assignment]

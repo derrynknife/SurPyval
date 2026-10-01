@@ -6,6 +6,7 @@ import pandas as pd
 from numpy.typing import ArrayLike, NDArray
 
 from surpyval.beta.ml.forest.conditional_inference import parse_selection
+from surpyval.beta.ml.forest.deviance_split import parse_min_split_gain
 from surpyval.beta.ml.forest.node import (
     IntermediateNode,
     Node,
@@ -168,6 +169,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         alpha_split: float = 0.05,
         random_state: Any = None,
         feature_names: list[str] | None = None,
+        min_split_gain: float | str = 0.0,
     ) -> None:
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
@@ -185,6 +187,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         self.n_features_split = n_features
 
         self.kind = parse_kind(kind, self.data)
+        self.min_split_gain = parse_min_split_gain(min_split_gain, self.kind)
 
         self._root = build_tree(
             data=self.data,
@@ -198,6 +201,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             rng=resolve_random_state(random_state),
             selection=self.selection,
             alpha_split=self.alpha_split,
+            min_split_gain=self.min_split_gain,
         )
 
     @classmethod
@@ -219,6 +223,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         kind: str = "weibull",
         selection: str = "greedy",
         alpha_split: float = 0.05,
+        min_split_gain: float | str = 0.0,
         random_state: Any = None,
     ) -> "SurvivalTree":
         """
@@ -276,6 +281,23 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             Bonferroni-adjusted p-value of its chosen feature is below
             ``alpha_split``, the size of the test of no association.
             Defaults to 0.05. Ignored by ``"greedy"``.
+        min_split_gain : float, "aic" or "bic", optional
+            The least gain in log-likelihood a split of a ``"weibull"`` or
+            ``"exponential"`` tree must make: a node splits only if its
+            best cut raises the maximised log-likelihood of its working
+            model by more than this (the two children's against the
+            node's). ``"aic"`` is the kind's degrees of freedom ``k`` (1
+            for ``"exponential"``, 2 for ``"weibull"``): the split must
+            lower Akaike's criterion. ``"bic"`` is ``k log(d) / 2``, with
+            ``d`` the node's failures (rows not right censored, counted
+            ``n`` times; its units if it has none), as every BIC in
+            SurPyval counts them: the split must lower the Bayesian
+            criterion. Defaults to 0: any gain, as a forest of deep trees
+            wants. ``"aic"`` is the recommended setting for a tree used
+            on its own, which otherwise splits on noise until
+            ``min_leaf_samples`` or ``min_leaf_failures`` stops it. Not
+            used by ``"non-parametric"`` trees, whose splits are not
+            likelihoods; stop those with ``selection="ctree"``.
         random_state : None, int or numpy.random.Generator, optional
             Seeds the features drawn for each split (when
             ``n_features_split`` is less than the number of features).
@@ -356,6 +378,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             alpha_split,
             random_state,
             feature_names,
+            min_split_gain,
         )
 
     def apply_model_function(
@@ -495,6 +518,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             "n_features_split": int(self.n_features_split),
             "selection": self.selection,
             "alpha_split": float(self.alpha_split),
+            "min_split_gain": self.min_split_gain,
             "root": self._root.to_dict(),
         }
         serialise_covariate_meta(self, out)
@@ -510,6 +534,7 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         # Trees saved before selection existed were grown greedily.
         tree.selection = model_dict.get("selection", "greedy")
         tree.alpha_split = model_dict.get("alpha_split", 0.05)
+        tree.min_split_gain = model_dict.get("min_split_gain", 0.0)
         # A restored tree predicts but is not re-fittable; it holds no data.
         tree.data = None  # type: ignore[assignment]
         tree.Z = None  # type: ignore[assignment]

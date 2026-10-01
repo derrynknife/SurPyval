@@ -3364,6 +3364,46 @@ the one built from conditional-inference trees.
     assert not hasattr(root.right_child.right_child, 'split_feature_index')
     assert oob_sel['ctree'] > oob_sel['greedy'], oob_sel
 
+The likelihood kinds (``'weibull'`` and ``'exponential'``) can also stop on
+the size of the gain itself. Their split is chosen by the rise in the working
+model's maximised log-likelihood, and noise always gives some rise, so by
+default a tree keeps splitting until ``min_leaf_samples`` or
+``min_leaf_failures`` stops it: what a forest of deep trees wants, but not a
+tree used on its own. ``min_split_gain`` sets the least gain (in
+log-likelihood units) a split must make: a number, ``'aic'`` (the kind's
+degrees of freedom :math:`k`, 1 for the exponential and 2 for the Weibull: the
+split must lower Akaike's criterion) or ``'bic'`` (:math:`k \log(d) / 2`, with
+:math:`d` the node's failures). ``'aic'`` is the recommended setting for a
+single tree. Neither is a test -- each split is the best of many cuts, so
+noise clears the AIC penalty more often than once in a while -- and
+``selection='ctree'`` remains the stop with a stated error rate. On the
+no-effect data from above:
+
+.. jupyter-execute::
+
+    def n_leaves(node):
+        if hasattr(node, 'left_child'):
+            return n_leaves(node.left_child) + n_leaves(node.right_child)
+        return 1
+
+    leaves = {}
+    for gain in [0.0, 'aic', 'bic']:
+        leaves[gain] = [
+            n_leaves(SurvivalTree.fit(
+                x=xm, Z=Zm, c=cm, kind='exponential', n_features_split='all',
+                min_split_gain=gain)._root)
+            for xm, cm, Zm in (make_mixed_data(seed, 1.0) for seed in range(10))
+        ]
+        print(f'min_split_gain={gain!r:5}: leaves {leaves[gain]}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert min(leaves[0.0]) > 10, leaves
+    assert sum(leaves['aic']) < sum(leaves[0.0]) / 3, leaves
+    assert sum(leaves['bic']) <= sum(leaves['aic']), leaves
+
 Saving and loading a fitted model
 ---------------------------------
 

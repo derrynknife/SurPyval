@@ -71,6 +71,7 @@ class IntermediateNode(Node):
         selection: str = "greedy",
         alpha_split: float = 0.05,
         p_value: float | None = None,
+        min_split_gain: float | str = 0.0,
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -97,6 +98,7 @@ class IntermediateNode(Node):
             rng=rng,
             selection=selection,
             alpha_split=alpha_split,
+            min_split_gain=min_split_gain,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -110,6 +112,7 @@ class IntermediateNode(Node):
             rng=rng,
             selection=selection,
             alpha_split=alpha_split,
+            min_split_gain=min_split_gain,
         )
 
     def apply_model_function(
@@ -386,6 +389,7 @@ def build_tree(
     rng: Any = None,
     selection: str = "greedy",
     alpha_split: float = 0.05,
+    min_split_gain: float | str = 0.0,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -410,6 +414,10 @@ def build_tree(
     :mod:`~surpyval.beta.ml.forest.conditional_inference`), stops if its
     Bonferroni-adjusted p-value is not below ``alpha_split``, and
     otherwise cuts that feature by the kind's criterion.
+
+    ``min_split_gain`` is the least log-likelihood gain a deviance split
+    must make (see
+    :func:`~surpyval.beta.ml.forest.deviance_split.deviance_split`).
     """
     if rng is None:
         rng = np.random.mtrand._rand
@@ -455,6 +463,7 @@ def build_tree(
             min_leaf_failures,
             candidates,
             model=kind,
+            min_split_gain=min_split_gain,
         )
 
     # If the split rule can't suggest a feature-value split, return a
@@ -479,4 +488,5 @@ def build_tree(
         selection=selection,
         alpha_split=alpha_split,
         p_value=p_value,
+        min_split_gain=min_split_gain,
     )

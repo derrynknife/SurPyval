@@ -352,6 +352,74 @@ def _candidate_values(Z_u: NDArray) -> NDArray:
     return values
 
 
+# The degrees of freedom a split adds: the working model's parameters.
+_SPLIT_DOF = {"exponential": 1, "weibull": 2}
+
+# The smallest gain that counts as one: below it, the "gain" is only the
+# optimiser's noise on data every partition of which scores the parent's
+# log-likelihood (fully degenerate data, #185).
+_GAIN_FLOOR = 1e-6
+
+
+def parse_min_split_gain(
+    min_split_gain: float | str, kind: str
+) -> float | str:
+    """Validate ``min_split_gain`` for a tree of ``kind``: a number at
+    least 0, ``"aic"`` or ``"bic"``. Only the likelihood kinds use it, so a
+    non-parametric tree accepts only the default 0."""
+    if isinstance(min_split_gain, str):
+        resolved = min_split_gain.lower()
+        if resolved not in ("aic", "bic"):
+            raise ValueError(
+                f"min_split_gain={min_split_gain!r} is invalid. Must be a "
+                "log-likelihood gain (a number at least 0), 'aic' or 'bic'."
+            )
+    elif (
+        isinstance(min_split_gain, bool)
+        or not isinstance(
+            min_split_gain, (int, float, np.integer, np.floating)
+        )
+        or not (np.isfinite(min_split_gain) and min_split_gain >= 0)
+    ):
+        raise ValueError(
+            f"min_split_gain must be a log-likelihood gain (a finite number "
+            f"at least 0), 'aic' or 'bic'; got {min_split_gain!r}."
+        )
+    else:
+        resolved = float(min_split_gain)  # type: ignore[assignment]
+    if kind == "non-parametric" and resolved != 0:
+        raise ValueError(
+            "min_split_gain applies to the likelihood splits of "
+            "kind='weibull' and kind='exponential'; a non-parametric "
+            "tree's log-rank split is not a likelihood. Stop a "
+            "non-parametric tree with selection='ctree' (and alpha_split) "
+            "instead."
+        )
+    return resolved
+
+
+def split_gain_threshold(
+    min_split_gain: float | str, data: SurpyvalData, model: str
+) -> float:
+    """The log-likelihood gain a split of the node ``data`` must exceed:
+    ``min_split_gain`` itself, or for ``"aic"`` the working model's
+    degrees of freedom ``k``, for ``"bic"`` ``k log(d) / 2`` with ``d``
+    the node's n-weighted failures (its units if it has none, as
+    :meth:`~surpyval.univariate.information_criteria.InformationCriteriaMixin.bic`
+    counts them). Never below the floor that tells a gain from the
+    optimiser's noise."""
+    if min_split_gain == "aic":
+        threshold = float(_SPLIT_DOF[model])
+    elif min_split_gain == "bic":
+        d = float(np.sum(data.n * (data.c != 1)))
+        if d <= 0:
+            d = float(np.sum(data.n))
+        threshold = _SPLIT_DOF[model] * np.log(d) / 2.0
+    else:
+        threshold = float(min_split_gain)
+    return max(threshold, _GAIN_FLOOR)
+
+
 def deviance_split(
     data: SurpyvalData,
     Z: NDArray,
@@ -359,6 +427,7 @@ def deviance_split(
     min_leaf_failures: int,
     feature_indices_in: Iterable[int],
     model: str = "exponential",
+    min_split_gain: float | str = 0.0,
 ) -> tuple[int, float]:
     """
     Best ``(feature index, value)`` split by the deviance criterion
@@ -391,6 +460,11 @@ def deviance_split(
     model : {"exponential", "weibull"}, optional
         The working model whose maximised log-likelihood scores each
         candidate's children.
+    min_split_gain : float, "aic" or "bic", optional
+        The best cut is made only if it raises the maximised
+        log-likelihood by more than this (see
+        :func:`split_gain_threshold`); 0 (the default) asks only for a
+        gain beyond the optimiser's noise.
 
     Returns
     -------
@@ -452,9 +526,11 @@ def deviance_split(
 
     # A split that does not improve on the parent's log-likelihood by a
     # meaningful margin carries no information (for fully degenerate
-    # data every partition scores exactly the parent value); stop
-    # rather than split arbitrarily.
-    if best_u != -1 and best_score <= parent_ll + 1e-6:
+    # data every partition scores exactly the parent value), nor one
+    # that gains less than min_split_gain asks (#189); stop rather than
+    # split.
+    threshold = split_gain_threshold(min_split_gain, data, model)
+    if best_u != -1 and best_score <= parent_ll + threshold:
         return -1, -float("inf")
 
     return best_u, best_v
