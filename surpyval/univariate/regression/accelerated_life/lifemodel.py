@@ -67,3 +67,18 @@ class LifeModel(ABC):
         value per row of ``Z``). Typically a least-squares fit of the
         linearised relationship.
         """
+
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        """
+        The terms of the stresses the log-life is linear in, for the
+        check of which stress effects the data determine (#503): one
+        column per stress column of ``Z`` (``log s`` for a power term,
+        ``1 / s`` for an exponential one), the life-model parameter each
+        multiplies, and whether the model has a free constant factor
+        (an intercept on the log scale, which absorbs a constant
+        stress). ``None`` for a life model with no such form, or with one
+        stress, where one stress level is refused already.
+        """
+        return None

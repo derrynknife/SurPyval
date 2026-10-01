@@ -31,5 +31,11 @@ class DualPower_(LifeModel):
         c, m, n = np.linalg.lstsq(A, y, rcond=None)[0]
         return [np.exp(c), m, n]
 
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        # log L = log c + m log s1 + n log s2
+        return np.log(np.atleast_2d(Z)), ("m", "n"), True
+
 
 DualPower = DualPower_()

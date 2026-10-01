@@ -94,5 +94,11 @@ class DualExponential_(LifeModel):
         c, a, b = np.linalg.lstsq(A, y, rcond=None)[0]
         return [a, b, np.exp(c)]
 
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        # log L = log c + a / s1 + b / s2
+        return 1.0 / np.atleast_2d(Z), ("a", "b"), True
+
 
 DualExponential = DualExponential_()

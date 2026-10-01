@@ -365,34 +365,103 @@ def test_lin_ying_and_buckley_james(fitter, kind):
         assert np.isnan(ci[3]).all()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#503: a dual-stress life model with equal stress columns "
-    "splits the stress exponent between them silently",
-)
-@pytest.mark.parametrize(
-    "dual, single",
-    [("DualPower", "Power"), ("DualExponential", "Exponential")],
-)
-def test_dual_stress_life_model_with_equal_stresses(dual, single):
-    # With s1 == s2, DualPower's c s1^m s2^n is Power's c s^(m + n), and
-    # DualExponential's c exp(a / s1 + b / s2) is c exp((a + b) / s): only
-    # the sum is determined. DualPower split Power's exponent -1.174 into
-    # -0.568 and -0.605, DualExponential Exponential's 1.877 into 0.912
-    # and 0.965, silently.
+def _stress_data():
     s = np.repeat([1.0, 2.0, 3.0], 10)
     u = (np.arange(1, 31) - 0.3) / 30.4
     life = (-np.log1p(-u)) ** 0.5
     x = np.round(30.0 * s**-1.2 * life[(np.arange(30) * 7 + 3) % 30], 3)
-    lm = "ExponentialLifeModel" if single == "Exponential" else single
-    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp, lm)).fit(x, Z=s)
+    return x, s
+
+
+@pytest.mark.parametrize(
+    "dual, single, kept, dropped",
+    [
+        ("DualPower", "Power", ["c", "m"], "n"),
+        ("DualExponential", "ExponentialLifeModel", ["a", "c"], "b"),
+    ],
+)
+def test_dual_stress_life_model_with_equal_stresses(
+    dual, single, kept, dropped
+):
+    # #503: with s1 == s2, DualPower's c s1^m s2^n is Power's c s^(m + n),
+    # and DualExponential's c exp(a / s1 + b / s2) is c exp((a + b) / s):
+    # only the sum is determined. DualPower split Power's exponent -1.174
+    # into -0.568 and -0.605, DualExponential Exponential's 1.877 into
+    # 0.912 and 0.965, silently. The second stress's parameter is now
+    # aliased, and the others are those of the single-stress fit.
+    x, s = _stress_data()
+    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp, single)).fit(x, Z=s)
     F = sp.AcceleratedLife(sp.Weibull, getattr(sp, dual))
-    model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
-    aliased = [m for m in messages if "cannot be estimated" in m]
-    assert len(aliased) == 1
+    model, messages, caught = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
+    assert len(messages) == 1 and messages[0].startswith(_aliased(1))
+    assert dual in messages[0]
+    assert caught[0].filename == __file__
+    names = list(model.parameter_names)
+    phi = list(model.reg_model.phi_param_map)
+    assert np.isnan(model.params[names.index(dropped)])
     assert np.isnan(model.params).sum() == 1
+    np.testing.assert_array_equal(model.aliased, [phi.index(dropped)])
+    # The single-stress model's parameters, (a, n) for Power and (a, c)
+    # for ExponentialLifeModel, are the kept ones.
+    got = [model.params[names.index(k)] for k in kept]
+    np.testing.assert_allclose(got, ref.phi_params, rtol=1e-4)
+    np.testing.assert_allclose(model.dist_params, ref.dist_params, rtol=1e-4)
+    assert model.neg_ll() == pytest.approx(ref.neg_ll(), rel=1e-8)
+    assert model.k == ref.k
     np.testing.assert_allclose(
         model.sf([5.0, 10.0], [[1.5, 1.5], [2.5, 2.5]]),
         ref.sf([5.0, 10.0], [1.5, 2.5]),
         rtol=1e-4,
     )
+    # A query with any value in the aliased column: its effect is 0.
+    np.testing.assert_allclose(
+        model.sf([5.0, 10.0], [[1.5, 7.0], [2.5, 0.3]]),
+        ref.sf([5.0, 10.0], [1.5, 2.5]),
+        rtol=1e-4,
+    )
+    se = model.standard_errors()
+    assert np.isnan(se[names.index(dropped)])
+    np.testing.assert_allclose(
+        [se[names.index(k)] for k in kept],
+        ref.standard_errors()[ref.k_dist :],
+        rtol=1e-3,
+    )
+    restored = sp.from_dict(json.loads(json.dumps(model.to_dict())))
+    np.testing.assert_array_equal(restored.aliased, model.aliased)
+
+
+def test_dual_power_with_a_constant_stress_aliases_its_exponent():
+    # A constant second stress: s2^n is absorbed by c, so n is aliased and
+    # the fit is Power's.
+    x, s = _stress_data()
+    ref = sp.AcceleratedLife(sp.Weibull, sp.Power).fit(x, Z=s)
+    F = sp.AcceleratedLife(sp.Weibull, sp.DualPower)
+    model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, np.full(30, 4.0)]))
+    assert len(messages) == 1 and messages[0].startswith(_aliased(1))
+    assert "constant" in messages[0]
+    np.testing.assert_allclose(model.phi_params[:2], ref.phi_params, rtol=1e-4)
+    assert np.isnan(model.phi_params[2])
+
+
+def test_power_exponential_with_equal_stresses_is_identified():
+    # PowerExponential's log-life is a / s1 + n log s2: with s1 == s2 the
+    # two terms are not proportional over three levels, so both effects
+    # are determined and nothing is aliased.
+    x, s = _stress_data()
+    F = sp.AcceleratedLife(sp.Weibull, sp.PowerExponential)
+    model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
+    assert not [m for m in messages if "cannot be estimated" in m]
+    assert np.isfinite(model.params).all() and model.aliased.size == 0
+
+
+def test_dual_stress_fixed_parameter_is_an_offset_not_aliased():
+    # With n fixed by the caller, the second stress is an offset: no
+    # aliasing, and m is fitted (about Power's -1.174 less n).
+    x, s = _stress_data()
+    F = sp.AcceleratedLife(sp.Weibull, sp.DualPower)
+    model, messages, _ = _fit(
+        lambda: F.fit(x, Z=np.c_[s, s], fixed={"n": -0.2})
+    )
+    assert not [m for m in messages if "cannot be estimated" in m]
+    assert model.params[-1] == -0.2 and np.isfinite(model.params).all()
+    assert model.params[-2] == pytest.approx(-1.174 + 0.2, abs=2e-3)

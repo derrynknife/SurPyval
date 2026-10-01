@@ -20,9 +20,11 @@ from surpyval.utils import _caller_stacklevel
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     check_fixed_and_init,
+    covariate_center,
     drop_nonfinite_covariates,
     finite_start,
     make_objective,
@@ -287,6 +289,58 @@ class ParameterSubstitutionFitter(
                     )
                 )
 
+    def _aliased_stresses(
+        self, Z: npt.NDArray, n: npt.NDArray, fixed: dict
+    ) -> tuple[str, ...]:
+        """The life-model parameters the data cannot determine (#503),
+        with one warning naming their stress columns.
+
+        A life model whose log-life is linear in terms of the stresses
+        (``LifeModel._stress_terms``: ``log s`` for a power term, ``1 / s``
+        for an exponential one) determines a term's parameter only where
+        the term is not constant (the constant factor, ``c``, absorbs a
+        constant one) or a linear combination of the others: with equal
+        stress columns ``DualPower``'s ``c s1^m s2^n`` is ``c s^(m + n)``,
+        and only ``m + n`` is determined. The check is that of the
+        regressions (:mod:`.._aliasing`) on the centred terms, the later
+        of two collinear columns aliased. A parameter the caller fixed is
+        an offset, left out.
+        """
+        found = self.life_model._stress_terms(Z)
+        if found is None:
+            return ()
+        terms, names, intercept = found
+        terms = np.asarray(terms, dtype=float)
+        free = np.array([k for k, nm in enumerate(names) if nm not in fixed])
+        if free.size == 0 or not np.all(np.isfinite(terms)):
+            return ()
+        T = terms[:, free]
+        if intercept:
+            T = T - covariate_center(T, n)
+            constant = constant_columns(terms[:, free])
+        else:
+            constant = np.all(T == 0, axis=0)
+        gram = T.T @ (n[:, None] * T)
+        aliased = free[aliased_columns(gram, T.shape[0], constant)]
+        if aliased.size == 0:
+            return ()
+        if intercept:
+            how = (
+                "the {} life model's log-life is linear in a term of each "
+                "stress (log s for a power term, 1 / s for an exponential "
+                "one), and their terms are constant (the constant factor "
+                "absorbs them) or a linear combination of the other "
+                "columns' terms"
+            )
+        else:
+            how = (
+                "the {} life model's log-life is linear in the stresses, "
+                "and these are all zero or a linear combination of the "
+                "other columns"
+            )
+        warn_aliased(aliased, how.format(self.life_model.name))
+        return tuple(names[k] for k in aliased.tolist())
+
     def _one_level_message(self, Z: Any, free_phi: list) -> str:
         level = np.unique(Z, axis=0)[0]
         level_text = (
@@ -452,6 +506,12 @@ class ParameterSubstitutionFitter(
             phi_param_map = self.life_model.phi_param_map(data.Z)
         else:
             phi_param_map = self.life_model.phi_param_map
+        # A stress effect the data cannot determine is aliased (#503): held
+        # at 0 in the fit, reported as nan.
+        aliased = self._aliased_stresses(
+            Z_arr, np.asarray(data.n, dtype=float), fixed
+        )
+        fixed = {**fixed, **dict.fromkeys(aliased, 0.0)}
         # The life-model parameters the fit estimates, and the distinct
         # stress levels that identify them: each level pins down one life.
         free_phi = [k for k in phi_param_map if k not in fixed]
@@ -561,6 +621,11 @@ class ParameterSubstitutionFitter(
         model.kind = self.kind
         model.distribution = self.dist
         model.reg_model = self.life_model
+        if aliased:
+            # Reported as nan, R's NA (#503); the model predicts with 0.
+            params = np.array(params, dtype=float)
+            params[[param_map[name] for name in aliased]] = np.nan
+            phi_params = np.array(params[self.k_dist :])
         model.params = np.array(params)
         model.dist_params = dist_params
         model.phi_params = phi_params
@@ -569,14 +634,15 @@ class ParameterSubstitutionFitter(
         # Store the full merged fixed dict (baseline-derived + fitter-level +
         # user-supplied), not just the fitter's own — otherwise standard
         # errors are reported for parameters that were held fixed (#261).
-        model.fixed = fixed
+        # An aliased parameter is not fixed but nan (``aliased``).
+        model.fixed = {k: v for k, v in fixed.items() if k not in aliased}
         model.k_dist = self.k_dist
         model.fun = fun
 
         # Estimated parameters only. ``fixed`` holds the life-parameter
         # placeholder (its value is replaced by the life model, so it is not
-        # a parameter at all), any baseline parameters and the user's fixed
-        # values; counting them inflated AIC/BIC.
+        # a parameter at all), any baseline parameters, the user's fixed
+        # values and the aliased ones; counting them inflated AIC/BIC.
         model.k = len(bounds) - len(fixed)
 
         model.data = {"x": x, "c": c, "n": n, "t": t}
