@@ -2381,24 +2381,27 @@ Cox case:
     plt.show()
 
 The array form gives the segment start times as ``xl`` and one covariate row per
-segment, and ``given=`` conditions on survival to an age along the same path.
-Conditional survival is only meaningful at times at or after ``given``:
+segment, and ``given=`` conditions on survival to an age along the same path:
+:math:`S(x) / S(g)` after ``given``, and 1 at and before it (survival to
+those times is certain). (A univariate model's ``cs(x, given)`` takes the
+further time ``x`` instead: it is :math:`S(given + x)/S(given)`.)
 
 .. jupyter-execute::
 
-    at = np.array([1.5, 2.5, 3.5])
+    at = np.array([0.5, 1.5, 2.5, 3.5])
     pulse = dict(Z=[[0.0], [1.0], [0.0]], xl=[0.0, 1.0, 2.0])   # on for 1 < t < 2
     print('S(t)             :', ph.sf_tvc(at, **pulse).round(3))
     print('S(t | T > 1)     :', ph.sf_tvc(at, **pulse, given=1.0).round(3))
-    print('same as a ratio  :', (ph.sf_tvc(at, **pulse)
+    print('same as a ratio  :', (ph.sf_tvc(at[1:], **pulse)
                                  / ph.sf_tvc([1.0], **pulse)).round(3))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.allclose(ph.sf_tvc(at, **pulse, given=1.0),
-                       ph.sf_tvc(at, **pulse) / ph.sf_tvc([1.0], **pulse))
+    assert np.allclose(ph.sf_tvc(at[1:], **pulse, given=1.0),
+                       ph.sf_tvc(at[1:], **pulse) / ph.sf_tvc([1.0], **pulse))
+    assert ph.sf_tvc(at, **pulse, given=1.0)[0] == 1.0
 
 
 .. _tvc-continuous:

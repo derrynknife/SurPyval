@@ -77,6 +77,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         q        -0.173 0.02645    -0.2233    -0.1195
         alpha     1.392  0.2045      1.044      1.856
         beta      5.009   1.314      2.996      8.375
+    Repair test: perfect repair (a renewal process) rejected: each time
+          between failures is 0.827 times the one before (deterioration)
+          (LR tests, q = 0: p = 0.000141)
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -257,6 +260,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             q        0.3403 0.1398    0.09251     0.6442
             alpha     1.412 0.2624     0.9805      2.032
             beta      3.55 0.8432      2.229      5.655
+        Repair test: perfect repair (a renewal process) rejected: each time
+              between failures is 1.34 times the one before (improvement) (LR
+              tests, q = 0: p = 0.0148)
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -369,6 +375,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             q        0.3403 0.1398    0.09251     0.6442
             alpha     1.412 0.2624     0.9805      2.032
             beta      3.55 0.8432      2.229      5.655
+        Repair test: perfect repair (a renewal process) rejected: each time
+              between failures is 1.34 times the one before (improvement) (LR
+              tests, q = 0: p = 0.0148)
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
@@ -415,6 +424,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Parameters          :
              alpha: 10
               beta: 2
+        Repair test         : not available (no data)
         """
         self._check_dist_eligible(dist)
         validate_restoration(q, "q", (-1, None), open_lower=True)

@@ -44,6 +44,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
+from surpyval.utils import _caller_stacklevel
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     psd_precision,
@@ -82,6 +83,18 @@ from .stress import (
     fixed_effect_names,
     stress_design,
     validate_links,
+)
+
+#: What a between-unit covariance on the boundary of the positive
+#: semi-definite cone means, and what to do: the end of the warning both
+#: population methods give when their estimate is singular.
+_BOUNDARY_CONSEQUENCE = (
+    "a direction of between-unit variation is estimated as zero (a "
+    "variance of zero, or a correlation of +-1 between path parameters). "
+    "The standard errors and intervals that depend on the population "
+    "parameters (path_param_cov and the bounds drawn from it) are "
+    "unreliable there. More units, or a path model with fewer parameters, "
+    "give the data a better chance to determine it"
 )
 
 
@@ -2355,8 +2368,10 @@ class DegradationAnalysis_:
             ``measurement_var``) is estimated. ``"moments"`` (default)
             uses the two-stage noise-corrected sample moments;
             ``"reml"`` maximises the restricted marginal likelihood of
-            the mixed model, which cannot go rank-deficient and is
-            preferable with few units. Linear-in-parameter paths (linear,
+            the mixed model, which never needs clipping and is
+            preferable with few units; both warn when the estimated
+            covariance is singular (on the boundary: a variance of zero
+            or a correlation of +-1). Linear-in-parameter paths (linear,
             quadratic, logarithmic, lloyd-lipow) are fitted as an exact
             linear mixed model; nonlinear paths (exponential, power,
             gompertz, ...) are fitted by the Lindstrom-Bates FOCE
@@ -2578,13 +2593,16 @@ class DegradationAnalysis_:
             warnings.warn(
                 "The noise-corrected between-unit covariance of the path "
                 "parameters was not positive semi-definite (the estimation "
-                "noise is comparable to the between-unit scatter); negative "
-                "eigenvalues were clipped to zero. With this few units or "
-                "measurements per unit, path_param_cov is unreliable; "
-                "consider population_method='reml'",
-                stacklevel=2,
+                "noise is comparable to the between-unit scatter); its "
+                "negative eigenvalues were clipped to zero, so "
+                + _BOUNDARY_CONSEQUENCE
+                + "; population_method='reml' estimates it by restricted "
+                "maximum likelihood instead, though it may also land on the "
+                "boundary",
+                stacklevel=_caller_stacklevel(),
             )
 
+        reml_diagnostics: dict = {}
         if population_method == "reml":
             noise_floor = np.finfo(float).eps * float(np.mean(y_arr**2))
             if not measurement_var > noise_floor:
@@ -2606,6 +2624,7 @@ class DegradationAnalysis_:
                     design_by_unit,
                     path_param_cov,
                     measurement_var,
+                    diagnostics=reml_diagnostics,
                 )
             else:
                 reml_mean, reml_cov, reml_var, converged = (
@@ -2617,6 +2636,7 @@ class DegradationAnalysis_:
                         path_param_cov,
                         measurement_var,
                         path_params,
+                        diagnostics=reml_diagnostics,
                     )
                 )
             if not converged:
@@ -2632,6 +2652,7 @@ class DegradationAnalysis_:
         path_param_fixed = None
         path_param_fixed_names = None
         path_param_link_cov = None
+        link_diagnostics: dict = {}
         if linked is not None:
             assert Z_units is not None and links is not None
             path_param_fixed, path_param_link_cov, link_var = (
@@ -2646,6 +2667,7 @@ class DegradationAnalysis_:
                     link_estimation_covs,
                     measurement_var,
                     population_method,
+                    diagnostics=link_diagnostics,
                 )
             )
             path_param_fixed_names = fixed_effect_names(
@@ -2659,6 +2681,24 @@ class DegradationAnalysis_:
                 # of a linked fit; its noise estimate supersedes the
                 # pooled one
                 measurement_var = link_var
+        on_boundary = [
+            name
+            for name, diagnostics in (
+                ("path_param_cov", reml_diagnostics),
+                ("path_param_link_cov", link_diagnostics),
+            )
+            if diagnostics.get("on_boundary", False)
+        ]
+        if on_boundary:
+            warnings.warn(
+                "The REML estimate of the between-unit covariance of the "
+                "path parameters ({}) is singular, on the boundary of the "
+                "positive semi-definite cone, so ".format(
+                    " and ".join(on_boundary)
+                )
+                + _BOUNDARY_CONSEQUENCE,
+                stacklevel=_caller_stacklevel(),
+            )
 
         events = np.isfinite(pseudo) & (pseudo > 0)
         if not events.any():
@@ -3002,6 +3042,7 @@ class DegradationAnalysis_:
         link_estimation_covs: list,
         measurement_var: float,
         population_method: str,
+        diagnostics: "dict | None" = None,
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """
         Estimate the stress-conditional population of link-scale path
@@ -3046,6 +3087,7 @@ class DegradationAnalysis_:
                     link_cov,
                     measurement_var,
                     a_mat_list=a_by_unit,
+                    diagnostics=diagnostics,
                 )
             else:
                 gamma, link_cov, sigma2, converged = reml_estimate_nonlinear(
@@ -3057,6 +3099,7 @@ class DegradationAnalysis_:
                     measurement_var,
                     link_params,
                     d_mat_list=designs,
+                    diagnostics=diagnostics,
                 )
             if not converged:
                 warnings.warn(
