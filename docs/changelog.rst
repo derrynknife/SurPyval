@@ -163,6 +163,22 @@ bands change (#477).
   data or sits at the edge of its range. The docstrings say what ``q`` and
   ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
   that data LR = 0.40, p = 0.53).
+- **Bounds, mean life and accelerated life along a covariate path (#172,
+  phase 2).** ``cb_tvc(x, Z, xl=None, given=None, on="sf", ...)`` bounds
+  ``sf``, ``ff`` and ``Hf`` along a step schedule or a ``CovariatePath``,
+  by the delta method on the same scale as ``cb``, with the quadrature
+  mesh held at the fitted parameters; a constant path gives ``cb``, and
+  in 1,000 simulated fits the 95% bounds covered the truth 94.6-96.2% of
+  the time. ``mean_tvc(Z, xl=None, given=None)`` gives the mean (or with
+  ``given`` the mean residual life) in one cumulative pass, accurate to
+  about 1e-15, and ``inf`` with a warning where survival levels off.
+  ``AcceleratedLife`` models, which refused every path, now follow
+  Nelson's cumulative exposure along steps and paths for the Weibull,
+  Exponential, Gamma and LogNormal (location families still refuse,
+  saying why). AFT and accelerated life integrate one period of a
+  periodic path, so 10 million cycles take about 1 ms.
+- **Fixed: an additive hazards model's cb below 0.** It gave a band where
+  ``sf`` is 1 (WeibullAH ``cb(-1, z)`` was [0.81, 0.97]); it is now [1, 1].
 - **Non-parametric trees on truncated data (#188).** ``SurvivalTree`` and
   ``RandomSurvivalForest`` with ``kind="non-parametric"`` refused
   right-truncated data, and truncated data with left or interval
