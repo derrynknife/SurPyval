@@ -2999,7 +2999,10 @@ Concordance
 Harrell's concordance index is the fraction of comparable pairs of subjects
 that a risk score ranks in the right order (the one that failed first has the
 higher score), with 0.5 for chance and 1 for perfect; the pair and tie rules
-are on the :doc:`regression analysis` page. Every regression model has a
+are on the :doc:`regression analysis` page. Two deaths at the same time are
+not a pair by default (Therneau's convention, as R's ``survival`` and
+lifelines); ``ties="harrell"`` counts them, as Harrell's original definition
+does. Every regression model has a
 ``concordance`` method: with no arguments it scores the data the model was
 fitted to, and given ``x``, ``c`` and ``Z`` it scores those, such as a test
 set. For any other score there is
@@ -3104,7 +3107,8 @@ considering a random subset of ``n_features_split`` covariates at each split.
 Its ``sf(x, Z)``, like a tree's, returns a grid for a covariate matrix — one
 row per covariate row, one column per time — unlike the element-wise
 regression models, and its ``score(x, Z, c)``
-is the concordance of its mortality score. Trees and forests follow the
+is the concordance of its mortality score (with the same ``ties`` option and
+default as ``concordance_index``). Trees and forests follow the
 package's :ref:`missing-value rule <missing-values>`: a row with a missing covariate is
 dropped at fit time, with one warning giving the count, and predicts ``nan``
 (it is not sent down either branch of a split). The forest reports its progress

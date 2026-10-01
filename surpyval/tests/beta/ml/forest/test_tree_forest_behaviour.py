@@ -300,6 +300,21 @@ def test_forest_concordance_beats_chance(signal_forest):
     assert forest.score(x, Z, c) > 0.7
 
 
+def test_forest_score_uses_the_concordance_tie_conventions(signal_forest):
+    # The forest's score is concordance_index of its mortality, with the
+    # same default (Therneau: tied deaths are not a pair) and option.
+    from surpyval.metrics import concordance_index
+
+    forest, x, Z, c = signal_forest
+    x = np.ceil(np.asarray(x, dtype=float))  # tied death times
+    mortality = forest.mortality(x, Z)
+    therneau = concordance_index(x, c, mortality)
+    harrell = concordance_index(x, c, mortality, ties="harrell")
+    assert therneau != harrell
+    assert forest.score(x, Z, c) == therneau
+    assert forest.score(x, Z, c, ties="harrell") == harrell
+
+
 def test_forest_accepts_1d_covariates():
     rng = np.random.default_rng(12)
     n = 60

@@ -60,7 +60,8 @@ forest.
 .. automodule:: surpyval.metrics.validation
    :members:
 
-Harrell's concordance index of any risk score (every regression model also
-has a ``concordance`` method that picks its family's score):
+Harrell's concordance index of any risk score, with Therneau's treatment
+of tied event times by default, as R and lifelines (every regression model
+also has a ``concordance`` method that picks its family's score):
 
 .. autofunction:: surpyval.metrics.concordance.concordance_index

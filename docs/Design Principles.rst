@@ -242,12 +242,18 @@ Behaviour and API
     ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
     ``x`` for the times and ``p`` for a quantile's probability), and so
     does the same attribute: every model's fitted values are ``params``,
-    named entry by entry by the attribute ``parameter_names``. When a name
-    changes, the old one keeps working for one release with a
+    named entry by entry by the attribute ``parameter_names``. Every
+    DataFrame entry point (``fit_from_df``, ``fit_tvc_from_df``,
+    ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
+    argument it fills with a ``_col`` suffix, ``_cols`` for a list of
+    columns: ``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``,
+    ``tl_col``, ``tr_col``, ``i_col``, ``e_col``, ``y_col``, ``Z_cols``.
+    When a name changes, the old one keeps working for one release with a
     ``DeprecationWarning`` naming the new one.
 
-    *Checked* by ``conformance/test_options.py`` and
-    ``conformance/test_params.py``.
+    *Checked* by ``conformance/test_options.py``,
+    ``conformance/test_params.py`` and, for the column names,
+    ``conformance/test_fit_paths.py``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
     what happened and what to do about it. No raw numpy warning escapes

@@ -518,9 +518,9 @@ class DestructiveDegradation_:
     def fit_from_df(
         self,
         df: Any,
-        x: str = "x",
-        y: str = "y",
-        c: "str | None" = None,
+        x_col: str = "x",
+        y_col: str = "y",
+        c_col: "str | None" = None,
         **fit_kwargs: Any,
     ) -> "DestructiveDegradationModel":
         """
@@ -532,11 +532,11 @@ class DestructiveDegradation_:
         ----------
         df : pandas.DataFrame
             One row per unit tested.
-        x : str, optional
+        x_col : str, optional
             Column of the measurement times. Defaults to ``"x"``.
-        y : str, optional
+        y_col : str, optional
             Column of the measurements. Defaults to ``"y"``.
-        c : str, optional
+        c_col : str, optional
             Column of the measurements' censoring flags. Default all
             observed.
         **fit_kwargs
@@ -561,19 +561,19 @@ class DestructiveDegradation_:
         ...     "strength": np.exp(4.0 - 0.02 * age + rng.normal(0, 0.1, 24)),
         ... })
         >>> model = DestructiveDegradation.fit_from_df(
-        ...     df, x="age", y="strength", threshold=20
+        ...     df, x_col="age", y_col="strength", threshold=20
         ... )
         >>> model.sf([50, 80]).round(4)
         array([0.4956, 0.    ])
         """
         df = require_frame(df)
         arrays = {
-            "x": frame_column(df, x, "x", time=True),
-            "y": frame_column(df, y, "y"),
+            "x": frame_column(df, x_col, "x_col", time=True),
+            "y": frame_column(df, y_col, "y_col"),
         }
-        if c is not None:
-            arrays["c"] = frame_column(df, c, "c")
-        names = {"x": "x", "y": "y", "c": "c"}
+        if c_col is not None:
+            arrays["c"] = frame_column(df, c_col, "c_col")
+        names = {"x": "x_col", "y": "y_col", "c": "c_col"}
         return call_fit(self, arrays, names, fit_kwargs)
 
     def fit(

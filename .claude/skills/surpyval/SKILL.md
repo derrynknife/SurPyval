@@ -108,10 +108,14 @@ Beta4 recommends `how="MPS"`). **0.22:** the Uniform's MLE refuses censored
 data; use `how="MPS"`, `"MPP"` or `"MSE"` for it.
 
 ### DataFrame entry
-Most fitters also offer `fit_from_df(df, ...)`. The univariate distributions
-name the columns by role (`sp.Weibull.fit_from_df(df, x="t", c="c")`); the
-regression fitters take `x_col`, `c_col` and `Z_cols` or a `formula=` that codes
-categorical columns (`CoxPH.fit_tvc_from_df` too).
+Most fitters also offer `fit_from_df(df, ...)`. Every DataFrame entry point
+names a column argument after the `fit` argument it fills, with a `_col`
+suffix (`_cols` for a list): `sp.Weibull.fit_from_df(df, x_col="t",
+c_col="c")`, and `x_col`, `c_col`, `n_col`, `xl_col`, `xr_col`, `tl_col`,
+`tr_col`, `i_col`, `e_col` elsewhere. The regression fitters take `x_col`,
+`c_col` and `Z_cols` or a `formula=` that codes categorical columns
+(`CoxPH.fit_tvc_from_df` too). The v0.21 names `x=`, `c=`, ... still work
+until v0.23, with a `DeprecationWarning`.
 
 ## The xicn data model (recurrent events)
 

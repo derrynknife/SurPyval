@@ -83,7 +83,7 @@ Surpyval also offers the ability to use a pandas DataFrame as an input to every 
     xl = [1, 2, 3, 4, 5]
     df = pd.DataFrame({'xl' : xl, 'xr' : xr})
 
-    model = surv.Weibull.fit_from_df(df, xl='xl', xr='xr')
+    model = surv.Weibull.fit_from_df(df, xl_col='xl', xr_col='xr')
     print(model)
 
 If you have mixed interval and observed or censored data, the two columns can still describe every row, provided no ``c`` column is given: a row with the same value in both columns is an exact observation, a row whose ``xr`` is infinite is right censored at ``xl``, and a row whose ``xl`` is minus infinity is left censored at ``xr``. This is exactly the shape of inspection data recorded as "last seen working" and "first seen failed":
@@ -103,7 +103,9 @@ If you have mixed interval and observed or censored data, the two columns can st
     x, c, n, t = surv.xcnt_handler(xl=df['last_ok'], xr=df['first_failed'])
     print(c)
 
-    model = surv.Weibull.fit_from_df(df, xl='last_ok', xr='first_failed')
+    model = surv.Weibull.fit_from_df(
+        df, xl_col='last_ok', xr_col='first_failed'
+    )
     print(model.params)
 
 (``xcnt_handler`` is the function every fitter uses to validate its input; calling it yourself is a quick way to check how SurPyval has read your data. Its output is sorted, so the flags come back in order of time.)
@@ -179,8 +181,8 @@ Truncation can be a single shared bound, a per-observation array, an upper
     print("right tr    :", surv.Weibull.fit(x=x, tr=2000).params)
     print("window tl,tr:", surv.Weibull.fit(x=x, tl=100, tr=2000).params)
 
-The same columns can live in a DataFrame — ``c``, ``n``, ``tl`` and ``tr`` are
-all optional columns you point ``fit_from_df`` at:
+The same columns can live in a DataFrame — ``c_col``, ``n_col``, ``tl_col``
+and ``tr_col`` are all optional columns you point ``fit_from_df`` at:
 
 .. jupyter-execute::
 
@@ -190,7 +192,9 @@ all optional columns you point ``fit_from_df`` at:
         'n':  [1,   2,   1,    3,    1,    2],
         'tl': [500, 500, 500,  500,  500,  500],
     })
-    surv.Weibull.fit_from_df(df, x='x', c='c', n='n', tl='tl')
+    surv.Weibull.fit_from_df(
+        df, x_col='x', c_col='c', n_col='n', tl_col='tl'
+    )
 
 
 From dates to durations
@@ -220,7 +224,7 @@ Field data often arrives as a table of dates: when each unit was installed, when
     log["c"] = np.where(log["reason"] == "failure", 0, 1)
     print(log[["unit", "x", "c"]])
 
-    surv.Weibull.fit_from_df(log, x="x", c="c")
+    surv.Weibull.fit_from_df(log, x_col="x", c_col="c")
 
 A common mistake is to count the preventive replacement of unit E as a failure. It was not one, and counting it as one makes the item look less reliable than it is. Another is to leave units B and D out because they "have no failure date": they are the survivors, and they carry most of the information about how long the units last.
 
@@ -228,7 +232,7 @@ A common mistake is to count the preventive replacement of unit E as a failure. 
     :hide-code:
     :hide-output:
 
-    _right = surv.Weibull.fit_from_df(log, x="x", c="c")
+    _right = surv.Weibull.fit_from_df(log, x_col="x", c_col="c")
     _e_failed = np.where(log["removed"].isna(), 1, 0)     # E as a failure
     _wrong = surv.Weibull.fit(log["x"], _e_failed)
     assert _wrong.params[0] < _right.params[0], _wrong.params

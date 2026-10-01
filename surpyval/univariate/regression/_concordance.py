@@ -35,6 +35,7 @@ class ConcordanceMixin:
         c: "npt.ArrayLike | None" = None,
         Z: Any = None,
         tie_tol: float = 1e-8,
+        ties: str = "therneau",
     ) -> float:
         """Harrell's concordance index (C) of the model's risk scores.
 
@@ -43,7 +44,9 @@ class ConcordanceMixin:
         subject the higher risk: 1 ranks every pair correctly, 0.5 is
         chance. With no arguments it scores the data the model was fitted
         to (each row counted ``n`` times); pass ``x``, ``c`` and ``Z``
-        together to score other data, such as a test set. See
+        together to score other data, such as a test set. Two events
+        at the same time are not a pair (``ties="therneau"``, as R's
+        ``concordance`` and lifelines) unless ``ties="harrell"``; see
         :func:`surpyval.metrics.concordance_index` for the treatment of
         tied times and scores.
 
@@ -77,6 +80,11 @@ class ConcordanceMixin:
             with ``fit_from_df``).
         tie_tol : float, optional
             Scores within this of each other are tied. Default ``1e-8``.
+        ties : {"therneau", "harrell"}, optional
+            ``"therneau"`` (the default, as R's ``survival::concordance``
+            and lifelines): two events at the same time are not a usable
+            pair. ``"harrell"`` (Harrell's original definition): they are,
+            counting 1 if their scores are tied, else 0.5.
 
         Returns
         -------
@@ -102,6 +110,8 @@ class ConcordanceMixin:
         ...     Z_cols=["age", "sex", "ph.ecog"],
         ... )
         >>> round(model.concordance(), 4)
+        0.6371
+        >>> round(model.concordance(ties="harrell"), 4)
         0.6369
         """
         given = [v is not None for v in (x, c, Z)]
@@ -114,7 +124,7 @@ class ConcordanceMixin:
             x_arr = np.asarray(x, dtype=float).ravel()
             c_arr = np.asarray(c).ravel()
             risk = self._concordance_risk(x_arr, Z)
-            return concordance_index(x_arr, c_arr, risk, tie_tol)
+            return concordance_index(x_arr, c_arr, risk, tie_tol, ties)
         data = self._concordance_data()
         if data is None:
             raise ValueError(
@@ -126,4 +136,6 @@ class ConcordanceMixin:
         rows = np.repeat(np.arange(x_arr.size), np.asarray(n_arr, int))
         x_arr = np.asarray(x_arr, dtype=float)[rows]
         risk = self._concordance_risk(x_arr, np.asarray(Z_arr)[rows])
-        return concordance_index(x_arr, np.asarray(c_arr)[rows], risk, tie_tol)
+        return concordance_index(
+            x_arr, np.asarray(c_arr)[rows], risk, tie_tol, ties
+        )

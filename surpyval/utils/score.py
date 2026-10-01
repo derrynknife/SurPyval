@@ -1,8 +1,11 @@
 """Harrell's concordance index, under its pre-0.22 name.
 
 The index is :func:`surpyval.metrics.concordance_index` (#512), which
-counts the pairs in O(n log n) with the same tie conventions; ``score``
-keeps working until v0.23, with a ``DeprecationWarning``.
+counts the pairs in O(n log n); ``score`` keeps working until v0.23, with a
+``DeprecationWarning``, and keeps its old tie convention, Harrell's
+(``ties="harrell"``: two events at the same time are a usable pair), where
+``concordance_index`` defaults to Therneau's (R's
+``survival::concordance``, lifelines: they are not).
 """
 
 import warnings
@@ -21,7 +24,11 @@ def score(
 ) -> float:
     """Harrell's concordance index of risk ``scores`` (deprecated).
 
-    Use :func:`surpyval.metrics.concordance_index`, which this calls.
+    Use :func:`surpyval.metrics.concordance_index`, which this calls with
+    ``ties="harrell"``, the convention ``score`` always had: two events at
+    the same time are a usable pair. ``concordance_index`` leaves them out
+    by default (``ties="therneau"``, as R and lifelines), so the two differ
+    on data with tied event times.
 
     Examples
     --------
@@ -38,4 +45,4 @@ def score(
         DeprecationWarning,
         stacklevel=2,
     )
-    return concordance_index(x, c, scores, tie_tol)
+    return concordance_index(x, c, scores, tie_tol, ties="harrell")

@@ -1020,8 +1020,10 @@ The surpyval API is extremely flexible. All the unique examples provided above c
     print(model)
 
 Data often live in a table. ``fit_from_df`` takes a pandas ``DataFrame`` and
-the names of its columns; ``tl`` and ``tr`` may be a column name or a single
-value, and any other ``fit`` option is passed straight through:
+the names of its columns (``x_col``, ``c_col``, ``n_col``, ``xl_col`` /
+``xr_col``, ``tl_col`` / ``tr_col``); ``tl_col`` and ``tr_col`` may be a
+column name or a single value, and any other ``fit`` option is passed
+straight through:
 
 .. jupyter-execute::
 
@@ -1032,7 +1034,9 @@ value, and any other ``fit`` option is passed straight through:
         'censored': [0, 0, 1, 0, 0, 1, 0],
         'entry':    [0, 0, 0, 1, 2, 2, 0],
     })
-    model = surv.Weibull.fit_from_df(df, x='hours', c='censored', tl='entry')
+    model = surv.Weibull.fit_from_df(
+        df, x_col='hours', c_col='censored', tl_col='entry'
+    )
     print(model.params)
 
 Sometimes there are no unit-level data at all, only a curve: a failure

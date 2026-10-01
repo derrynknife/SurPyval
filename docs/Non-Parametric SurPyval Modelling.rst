@@ -79,7 +79,8 @@ Note the use of ``n``: rather than typing 389 values, each distinct stress is gi
 
 Data held in a pandas ``DataFrame`` can be passed with ``fit_from_df``,
 naming the columns, exactly as for a parametric distribution
-(``x``, ``c``, ``n``, ``xl`` / ``xr`` and ``tl`` / ``tr``); the estimate is
+(``x_col``, ``c_col``, ``n_col``, ``xl_col`` / ``xr_col`` and ``tl_col`` /
+``tr_col``); the estimate is
 the one ``fit`` gives on the same arrays:
 
 .. jupyter-execute::
@@ -87,7 +88,9 @@ the one ``fit`` gives on the same arrays:
     import pandas as pd
 
     bofors = pd.DataFrame({'stress': x, 'broke': n})
-    bofors_df_na = surv.NelsonAalen.fit_from_df(bofors, x='stress', n='broke')
+    bofors_df_na = surv.NelsonAalen.fit_from_df(
+        bofors, x_col='stress', n_col='broke'
+    )
     print(bofors_df_na.sf([34, 36]).round(4))
 
 .. jupyter-execute::
