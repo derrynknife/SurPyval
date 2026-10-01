@@ -218,6 +218,72 @@ bands change (#477).
   Without the window term, a covariate that changed only the truncation
   was found significant in 39-49% of data sets at the 5% level; with it,
   0.5-3%. Every tree kind now accepts the full data model.
+- **Breaking: Kaplan-Meier bands hold their level (#390).** The
+  equal-precision band covered 0.87-0.89 for a nominal 0.95 (0.83
+  untransformed), most misses at the first events, where its boundary is
+  unbounded and the estimate rests on a few failures. ``band()`` now forms
+  its bands on the arcsine-square-root scale by default
+  (``bound_type="arcsine"``; Borgan & Liestøl 1990), and the
+  equal-precision band covers 0.1 <= a <= 0.9 by default, NaN outside;
+  ``x_range=(t_L, t_U)`` sets any range. Coverage is now 0.94-0.96 at n =
+  40-400; Hall-Wellner covers about 0.95. Pass ``bound_type="exp"`` for
+  the old scale. ``cb()`` is unchanged.
+- **Breaking: parametric regression Wald bands on the baseline family's
+  scale (#504).** As for the univariate (#477) and degradation models, the
+  ``sf``/``ff``/``Hf`` band is now formed on ln H (Weibull, Exponential,
+  Rayleigh, Gumbel), the normal quantile of F (Normal, LogNormal) or the
+  logit (the rest), from the cumulative hazard, and ``cb_tvc`` follows. A
+  model with its coefficient fixed at 0 now gives the univariate band (it
+  was up to 120% away). On ten-point samples the Weibull PH and AFT bands
+  turned back in a tail in 200 of 200 fits and now never do. Small-sample
+  bands change; at n = 2000 they move by at most 1.4% of their width. The
+  three families of model share one helper in ``surpyval.utils.linalg``.
+- **Proportional-intensity regressions alias (#502).** A repeated column
+  was split (-0.231 as -0.116 / -0.116) and a constant column took part of
+  the baseline (rate 0.0807 became 0.0764), silently. Both now give a NaN
+  coefficient, ``model.aliased``, one warning, and the fit without the
+  column. A constant is aliased where the baseline has a scale
+  (``has_scale``: HPP, Duane, Crow-AMSAA, Cox-Lewis).
+- **Dual-stress life models alias an undetermined stress effect (#503).**
+  With equal (or collinear) stresses, DualPower and DualExponential split
+  one effect between two parameters (-1.174 as -0.568 / -0.605), silently.
+  The later stress's parameter is now NaN, with one warning naming the
+  column, and the fit is the single-stress one. PowerExponential is
+  unaffected.
+- **Renewal models: intervals at a boundary (#461).** A ``q`` driven to 0,
+  or a ``rho`` to 1 or 0, gave NaN ``param_cb`` for it and for ``alpha``
+  (whose variance was -10.6). The restoration parameter now gets its
+  one-sided profile-likelihood interval (e.g. q in [0, 0.069]); the others
+  get Wald intervals of the model held at the edge, and the printed table
+  says so.
+- **MixtureModel: no false "max iterations" warning, and faster (#506).**
+  EM on a censored mixture crawled for 1000 iterations and warned at the
+  maximum. After at most 20 EM iterations the fit is polished by direct
+  maximum likelihood with autograd gradients, and a verified maximum is
+  accepted. The issue's case takes about 1 s (7.4 s before on the same
+  machine), with no warning and a slightly better maximum (738.046941
+  against 738.047053).
+- **Proportional-odds cumulative hazard is accurate where it is small
+  (#528).** ``Hf``, ``log_sf`` and ``Hf_tvc`` of every PO model computed
+  H0 - ln(phi) + ln(F0 + phi S0), whose terms cancel to about 1e-16 in
+  absolute terms: 20% wrong at H = 4e-16, and ``log_sf`` was -inf where S0
+  underflows. They now use ln(1 + F0/(phi S0)). Checked against 50-digit
+  values for all seven baselines; fitted parameters are unchanged.
+- **ExpoWeibull likelihood is accurate at extreme shapes (#472).** The
+  log-density and hazard added terms of size beta ln(x/alpha) that cancel,
+  an error of about 1e4 per point at beta = 7e19, so the likelihood came
+  out up to 3.7e6 in deviance above the fitted maximum and a
+  likelihood-ratio search met -2e139. They are now computed without the
+  cancellation, and the likelihood-ratio band's walk starts from the
+  points its direct searches reached.
+- **Every parametric fit searches in the units of its start (#366).** Only
+  offset fits did; the others searched a scale as a log below 1 and
+  linearly above it, a different search in every set of units. Fits to
+  data in millionths and in millions now agree to rounding (1e-16 to
+  1e-11; up to 2e-6 before, and 3% for an ExpoWeibull MSE fit). Fits move
+  only in their last digits. A Beta4 fit on data where its likelihood is
+  unbounded can now warn "No finite maximum" instead of "did not reach a
+  verified maximum".
 - **Fine-Gray fits in linear time (#517).** ``FineGray.fit`` (and
   ``CompetingRisksProportionalHazards(model="Fine-Gray")``) built a dense
   events-by-rows matrix of censoring weights and used it in every
