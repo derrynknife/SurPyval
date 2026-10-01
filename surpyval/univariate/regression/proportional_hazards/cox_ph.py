@@ -182,7 +182,9 @@ class _EfronTies:
 
     def _sum(self, values: npt.NDArray) -> npt.NDArray:
         """Sum the tied deaths' ``values`` to their times."""
-        return np.bincount(self.t_idx, weights=values, minlength=self.tied.size)
+        return np.bincount(
+            self.t_idx, weights=values, minlength=self.tied.size
+        )
 
     def log_denominator(self, R: npt.NDArray, D: npt.NDArray) -> npt.NDArray:
         """Per event time, ``sum_j log(R - c D)``; see
