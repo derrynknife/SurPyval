@@ -4,15 +4,20 @@ The subdistribution risk set at an event time ``t`` is every row with
 ``x_i >= t`` (weight 1) plus every competing failure before ``t`` (weight
 ``G(t-)/G(x_i-)``). ``_fit_cause`` used to build those weights as a dense
 (events x N) matrix ``W`` and multiply by it in every likelihood, gradient
-and Hessian evaluation: 1.7 s and 476 MiB at 1e4 rows, about 30 GB at 1e5.
-It now takes the two parts as a suffix and a prefix cumulative sum over
-the rows in time order. The censoring Kaplan-Meier the weights come from
-(``censoring_survival``) summed the rows at and after each distinct time
-in a loop, O(N x times), a minute at 1e5 rows; it is now a suffix sum.
+and Hessian evaluation: 1.3 s and 476 MiB at 1e4 rows, 22 GB for ``W``
+alone at 1e5. It now takes the two parts as a suffix and a prefix
+cumulative sum over the rows in time order. The censoring Kaplan-Meier
+the weights come from (``censoring_survival``) summed the rows at and
+after each distinct time in a loop, O(N x times), a minute at 1e5 rows;
+it is now a suffix sum.
 
 The old implementation is kept below (``_old_fit_cause``,
 ``_old_censoring_survival``) and the new one must match it to the last
-digits on tied and untied, censored, counted, multi-cause data.
+digits on tied and untied, censored, counted, multi-cause data. (BFGS
+can stop one iteration apart from the old code, where a step changes the
+likelihood by less than its rounding; then the coefficients differ by
+up to the optimiser's tolerance, 1e-8 to 1e-6 relatively. None of the
+cases below does.)
 """
 
 import time

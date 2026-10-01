@@ -305,9 +305,10 @@ def _risk_sets(
     with weight 1, and every row that failed from a competing cause before
     ``t``, with weight ``G(t-)/G(x_i-)``; a censored row, or one that
     already had the event of interest, has left it. The weights as an
-    (event times x N) matrix cost O(events x N) time and memory (28 GB at
-    1e5 rows, #517); in time order the first part is a suffix of the rows
-    and the second a prefix, so both are cumulative sums.
+    (event times x N) matrix cost O(events x N) time and memory (22 GB at
+    1e5 rows and three causes, #517); in time order the first part is a
+    suffix of the rows and the second a prefix, so both are cumulative
+    sums.
     """
     order = np.argsort(x, kind="mergesort")
     times, inv = np.unique(x[is_event], return_inverse=True)
