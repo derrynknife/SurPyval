@@ -188,6 +188,8 @@ def concordance_index(
     >>> concordance_index(x, c, risk, ties="harrell")
     0.75
     """
+    if ties not in TIES:
+        raise ValueError(f"'ties' must be one of {TIES}, got {ties!r}")
     x_arr = _as_1d(x, "x")
     c_arr = _as_1d(c, "c")
     s = np.asarray(risk, dtype=float).ravel()
@@ -198,8 +200,6 @@ def concordance_index(
         )
     if np.isnan(x_arr).any() or np.isnan(s).any():
         return float("nan")
-    if ties not in TIES:
-        raise ValueError(f"'ties' must be one of {TIES}, got {ties!r}")
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
             "'c' must be 0 (event) or 1 (right censored); the concordance "
@@ -267,6 +267,13 @@ def concordance_index(
     if usable == 0:
         raise ValueError(
             "No usable pairs: the concordance index needs an event that "
-            "is earlier than another subject's time (or tied with it)"
+            "is earlier than another subject's time, or at the time of a "
+            "censored one"
+            + (
+                " or of another event"
+                if ties == "harrell"
+                else " (two events at one time are not a pair under "
+                "ties='therneau')"
+            )
         )
     return float(concordant / usable)
