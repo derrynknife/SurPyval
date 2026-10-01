@@ -356,8 +356,16 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         Z: ArrayLike | NDArray,
         c: ArrayLike,
         tie_tol: float = 1e-8,
+        ties: str = "therneau",
     ) -> float:
         """Harrell's concordance index of the forest's mortality scores.
+
+        The index is :func:`surpyval.metrics.concordance_index`, with its
+        tie conventions: by default (``ties="therneau"``, as R's
+        ``survival::concordance``, lifelines and every model's
+        ``concordance``) two events at the same time are not a usable
+        pair; ``ties="harrell"`` counts them, as this method did before
+        v0.22.
 
         A missing (NaN) covariate or time leaves a subject's score, and so
         the index, undefined: the index is NaN, not a number computed by
@@ -366,7 +374,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         scores: ArrayLike = self.mortality(x, Z)
         if np.isnan(scores).any():
             return float("nan")
-        return concordance_index(x, c, scores, tie_tol)
+        return concordance_index(x, c, scores, tie_tol, ties)
 
     def _oob_setup(self) -> tuple[list[NDArray], RowTerms, float, NDArray]:
         # The rows each tree left out, the likelihood's view of every row,

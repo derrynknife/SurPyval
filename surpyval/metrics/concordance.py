@@ -5,8 +5,10 @@ first should carry the higher risk score. Counting the pairs one by one
 costs O(n^2) (about 5 minutes at 50,000 subjects); here the subjects are
 sorted by time and the pairs are counted with a merge sort over the ranked
 scores, as lifelines and scikit-survival do, in O(n log^2 n) array
-operations. The tie conventions are those of the pairwise definition
-(see :func:`concordance_index`), which the tests keep as the oracle.
+operations. The tie conventions, Therneau's (the default, as R's
+``survival::concordance`` and lifelines) or Harrell's original, are those
+of the pairwise definitions (see :func:`concordance_index`), which the
+tests keep as the oracle.
 """
 
 from __future__ import annotations
@@ -17,6 +19,9 @@ import numpy.typing as npt
 from surpyval.utils import validate_1d as _as_1d
 
 __all__ = ["concordance_index"]
+
+#: The conventions for two events at the same time (``ties=``).
+TIES = ("therneau", "harrell")
 
 # math.isclose's default relative tolerance, which the pairwise definition
 # used together with ``tie_tol``.
@@ -94,6 +99,7 @@ def concordance_index(
     c: npt.ArrayLike,
     risk: npt.ArrayLike,
     tie_tol: float = 1e-8,
+    ties: str = "therneau",
 ) -> float:
     r"""Harrell's concordance index (C) of risk scores against right-censored
     outcomes.
@@ -120,6 +126,13 @@ def concordance_index(
     tie_tol : float, optional
         Two scores within ``tie_tol`` of each other (or within a relative
         ``1e-9``, as :func:`math.isclose`) are tied. Default ``1e-8``.
+    ties : {"therneau", "harrell"}, optional
+        How a pair of events at the same time counts. ``"therneau"`` (the
+        default, as R's ``survival::concordance`` and lifelines): it is not
+        usable, since neither subject outlived the other. ``"harrell"``
+        (Harrell's original definition): it is usable, and counts 1 if the
+        scores are tied, else 0.5. Every other pair is treated the same
+        way by both (see Notes).
 
     Returns
     -------
@@ -129,27 +142,28 @@ def concordance_index(
     Raises
     ------
     ValueError
-        If the arrays differ in length, a flag is not 0 or 1, or no pair
-        is usable (every event is tied with, or later than, every other
-        subject's time).
+        If the arrays differ in length, a flag is not 0 or 1, ``ties`` is
+        not one of the conventions, or no pair is usable (every event is
+        tied with, or later than, every other subject's time).
 
     Notes
     -----
-    The ties follow Harrell (the pairwise definition this function
-    reproduces exactly, #276):
+    Each pair is scored by the pairwise definition this function
+    reproduces exactly (#276):
 
     - times ``x_i < x_j`` with an event at ``x_i`` (whatever ``c_j``):
       1 if ``risk_i > risk_j``, 0.5 if the scores are tied, else 0;
-    - equal times, both events: usable, 1 if the scores are tied, else 0.5;
+    - equal times, both events: not usable under ``ties="therneau"``;
+      under ``ties="harrell"`` usable, 1 if the scores are tied, else 0.5;
     - equal times, one event and one censored: usable (the censored
       subject outlived the event), 1 if the event has the higher score,
       0.5 on a tie, else 0;
     - equal times, both censored, or an earlier censored time: not usable.
 
-    lifelines (``lifelines.utils.concordance_index``) scores predicted
-    *times*, so its value for ``-risk`` is this one; it counts tied times
-    as usable only when exactly one is an event, so the two differ on data
-    with tied event times.
+    The default is R's (``survival::concordance``, Therneau) and
+    lifelines' (``lifelines.utils.concordance_index``, which scores
+    predicted *times*, so its value for ``-risk`` is this one). The two
+    conventions agree on data without tied event times.
 
     The pairs are counted in :math:`O(n \log^2 n)` array operations, not
     one by one: 50,000 subjects take a fraction of a second.
@@ -162,6 +176,17 @@ def concordance_index(
     >>> risk = [0.9, 0.5, 0.7, 0.6, 0.2]
     >>> concordance_index(x, c, risk)
     0.75
+
+    Two deaths at the same time are a pair only under Harrell's
+    convention:
+
+    >>> x = [1.0, 1.0, 2.0, 3.0]
+    >>> c = [0, 0, 0, 1]
+    >>> risk = [0.9, 0.5, 0.7, 0.2]
+    >>> concordance_index(x, c, risk)
+    0.8
+    >>> concordance_index(x, c, risk, ties="harrell")
+    0.75
     """
     x_arr = _as_1d(x, "x")
     c_arr = _as_1d(c, "c")
@@ -173,6 +198,8 @@ def concordance_index(
         )
     if np.isnan(x_arr).any() or np.isnan(s).any():
         return float("nan")
+    if ties not in TIES:
+        raise ValueError(f"'ties' must be one of {TIES}, got {ties!r}")
     if not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
             "'c' must be 0 (event) or 1 (right censored); the concordance "
@@ -210,20 +237,22 @@ def concordance_index(
     concordant = np.sum(below[event]) + 0.5 * np.sum(tied_above[event])
     usable = float(np.sum(later[event]))
 
-    # Pairs at the same time, both events: 1 if tied, else 0.5. In the
-    # events sorted by (time, score) a tied pair is counted once, from its
-    # member that comes first: the later one's score is at least its own.
+    # Pairs at the same time, both events (Harrell's convention only;
+    # Therneau's leaves them out): 1 if tied, else 0.5. In the events
+    # sorted by (time, score) a tied pair is counted once, from its member
+    # that comes first: the later one's score is at least its own.
     span = u.size + 2
     g_ev = group[event] * span
-    ev_keys = g_ev + rank[event]
-    position = np.empty(ev_keys.size, dtype=np.int64)
-    position[np.argsort(ev_keys, kind="stable")] = np.arange(ev_keys.size)
-    ahead = np.searchsorted(np.sort(ev_keys), g_ev + hi[event], "right")
-    tied_pairs = np.sum(ahead - position - 1)
     n_events = np.bincount(group[event], minlength=times.size)
-    both = float(np.sum(n_events * (n_events - 1) // 2))
-    concordant += 0.5 * both + 0.5 * tied_pairs
-    usable += both
+    if ties == "harrell":
+        ev_keys = g_ev + rank[event]
+        position = np.empty(ev_keys.size, dtype=np.int64)
+        position[np.argsort(ev_keys, kind="stable")] = np.arange(ev_keys.size)
+        ahead = np.searchsorted(np.sort(ev_keys), g_ev + hi[event], "right")
+        tied_pairs = np.sum(ahead - position - 1)
+        both = float(np.sum(n_events * (n_events - 1) // 2))
+        concordant += 0.5 * both + 0.5 * tied_pairs
+        usable += both
     # one event, one censored: 1 if the event's score is above the
     # censored one's and not tied, 0.5 if tied, else 0
     cens = ~event
