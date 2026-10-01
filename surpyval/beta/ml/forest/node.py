@@ -71,6 +71,7 @@ class IntermediateNode(Node):
         selection: str = "greedy",
         alpha_split: float = 0.05,
         p_value: float | None = None,
+        min_split_gain: float | str = 0.0,
     ) -> None:
         # Set split attributes
         self.split_feature_index = split_feature_index
@@ -97,6 +98,7 @@ class IntermediateNode(Node):
             rng=rng,
             selection=selection,
             alpha_split=alpha_split,
+            min_split_gain=min_split_gain,
         )
         self.right_child = build_tree(
             data[right_indices],
@@ -110,6 +112,7 @@ class IntermediateNode(Node):
             rng=rng,
             selection=selection,
             alpha_split=alpha_split,
+            min_split_gain=min_split_gain,
         )
 
     def apply_model_function(
@@ -140,6 +143,21 @@ class IntermediateNode(Node):
                 function_name, x, Z[~goes_left]
             )
         return res
+
+    def describe(
+        self, feature_names: "list[str] | None" = None, right: bool = False
+    ) -> str:
+        """The split rule as text, ``"temp <= 42"`` (``"temp >  42"`` for
+        the right branch with ``right=True``), naming the feature by
+        ``feature_names`` (``Z3`` for column 3 without them)."""
+        j = int(self.split_feature_index)
+        name = (
+            feature_names[j]
+            if feature_names is not None and j < len(feature_names)
+            else f"Z{j}"
+        )
+        op = ">  " if right else "<= "
+        return f"{name} {op}{float(self.split_feature_value):.6g}"
 
     def to_dict(self) -> dict:
         """Serialise the split rule and both child subtrees. The training
@@ -238,6 +256,35 @@ class TerminalNode(Node):
         except Exception:
             return self._crude_exponential()
 
+    def describe(self) -> str:
+        """The leaf as text: its model (with the parameters of a
+        parametric one) and, on a fitted tree, the number of units that
+        reached it."""
+        model = self.model
+        if model is NeverOccurs:
+            text = "never occurs (no failures)"
+        elif hasattr(model, "params") and hasattr(model, "parameter_names"):
+            params = ", ".join(
+                f"{name}={float(value):.4g}"
+                for name, value in zip(model.parameter_names, model.params)
+            )
+            text = f"{model.dist.name}({params})"
+        else:
+            text = str(getattr(model, "model", type(model).__name__))
+        units = self.units
+        if units is not None:
+            text += f", {units:g} units"
+        return text
+
+    @property
+    def units(self) -> float | None:
+        """The number of units (``n``-weighted rows) that reached the leaf
+        when the tree was grown (kept by a restored tree; ``None`` for one
+        saved before it was stored)."""
+        if self.data is not None:
+            return float(np.sum(self.data.n))
+        return self.__dict__.get("_units")
+
     def apply_model_function(
         self,
         function_name: str,
@@ -262,7 +309,10 @@ class TerminalNode(Node):
             leaf: str | dict = "NeverOccurs"
         else:
             leaf = model.to_dict()
-        return {"node": "terminal", "kind": self.kind, "leaf": leaf}
+        out: dict = {"node": "terminal", "kind": self.kind, "leaf": leaf}
+        if self.units is not None:
+            out["units"] = self.units
+        return out
 
     @classmethod
     def from_dict(cls, node_dict: dict) -> "TerminalNode":
@@ -279,6 +329,7 @@ class TerminalNode(Node):
         # ``model`` is a cached_property; seed the instance ``__dict__`` slot
         # so the getter (which needs ``data``) never runs on a restored node.
         node.__dict__["model"] = model
+        node.__dict__["_units"] = node_dict.get("units")
         return node
 
 
@@ -306,6 +357,28 @@ def route_to_leaves(
     return out
 
 
+def tree_lines(
+    node: Node, feature_names: "list[str] | None", depth: int = 0
+) -> list[str]:
+    """The subtree under ``node`` as lines of text, in the layout of
+    scikit-learn's ``export_text``: each split as its left rule, the left
+    subtree indented under it, then its right rule and the right
+    subtree; each leaf by :meth:`TerminalNode.describe`."""
+    pad = "|   " * depth
+    if isinstance(node, TerminalNode):
+        return [f"{pad}|--- leaf: {node.describe()}"]
+    assert isinstance(node, IntermediateNode)
+    p_value = (
+        "" if node.p_value is None else f"  (p = {float(node.p_value):.3g})"
+    )
+    return (
+        [f"{pad}|--- {node.describe(feature_names)}{p_value}"]
+        + tree_lines(node.left_child, feature_names, depth + 1)
+        + [f"{pad}|--- {node.describe(feature_names, right=True)}"]
+        + tree_lines(node.right_child, feature_names, depth + 1)
+    )
+
+
 def node_from_dict(node_dict: dict) -> Node:
     """Restore an ``IntermediateNode`` or ``TerminalNode`` from its dict."""
     kind = node_dict.get("node")
@@ -331,6 +404,7 @@ def build_tree(
     rng: Any = None,
     selection: str = "greedy",
     alpha_split: float = 0.05,
+    min_split_gain: float | str = 0.0,
 ) -> Node:
     """
     Node factory. Decides to return IntermediateNode object, or its
@@ -355,6 +429,10 @@ def build_tree(
     :mod:`~surpyval.beta.ml.forest.conditional_inference`), stops if its
     Bonferroni-adjusted p-value is not below ``alpha_split``, and
     otherwise cuts that feature by the kind's criterion.
+
+    ``min_split_gain`` is the least log-likelihood gain a deviance split
+    must make (see
+    :func:`~surpyval.beta.ml.forest.deviance_split.deviance_split`).
     """
     if rng is None:
         rng = np.random.mtrand._rand
@@ -401,6 +479,7 @@ def build_tree(
             min_leaf_failures,
             candidates,
             model=kind,
+            min_split_gain=min_split_gain,
         )
 
     # If the split rule can't suggest a feature-value split, return a
@@ -425,4 +504,5 @@ def build_tree(
         selection=selection,
         alpha_split=alpha_split,
         p_value=p_value,
+        min_split_gain=min_split_gain,
     )

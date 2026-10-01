@@ -3189,8 +3189,9 @@ observed, right-censored and left-truncated data, and its score form under the
 pooled Turnbull estimate, with Turnbull leaves, for left- and interval-censored
 and right-truncated data (with any truncation); ``'weibull'`` (the default)
 and ``'exponential'`` use a likelihood split and parametric leaves. Every kind
-accepts every kind of censoring and truncation; the parametric ones fit a
-likelihood at every candidate split, at a higher computational cost:
+accepts every kind of censoring and truncation; the parametric ones need an
+optimiser at each candidate split when there is left or interval censoring or
+truncation, at a much higher computational cost:
 
 .. jupyter-execute::
 
@@ -3210,23 +3211,23 @@ likelihood at every candidate split, at a higher computational cost:
     np.random.seed(0)          # trees draw their candidate features at random
     tree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, max_depth=2,
                             kind='non-parametric', n_features_split='all')
-    root = tree._root
-    print('root split     : z%d <= %.2f' % (root.split_feature_index,
-                                             root.split_feature_value))
-    print('right child    : z%d <= %.2f' % (
-        root.right_child.split_feature_index,
-        root.right_child.split_feature_value))
+    print(tree)
     print('S(5), risky unit   :', tree.sf([5.0], [0.9, 0.1, 0.5]).round(3))
     print('S(5), ordinary unit:', tree.sf([5.0], [0.1, 0.9, 0.5]).round(3))
 
 The root splits on :math:`z_0` near 0.5, and the right-hand branch then splits
 on :math:`z_1` near 0.5 — the interaction, recovered without being specified.
-(The ``_root`` node structure is shown only to make the splits visible.)
+Printing a tree shows each split, the left branch (``<=``) and then the right
+(``>``) with its subtree indented under it, and each leaf's model. Fitted from
+arrays, the covariates are named by their column of ``Z`` (``Z0``, ``Z1``,
+...); a tree or forest fitted from a DataFrame keeps the column names as
+``feature_names`` and uses them instead (see below).
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
+    root = tree._root
     assert root.split_feature_index == 0
     assert abs(root.split_feature_value - 0.5) < 0.15
     assert root.right_child.split_feature_index == 1
@@ -3271,9 +3272,14 @@ is compared with a Cox model on the same metrics:
 With ten shallow trees the forest already edges out a Cox model that cannot
 represent the interaction; more and deeper trees usually widen the gap, at a
 proportional cost in time. Setting ``kind='weibull'`` (the default) gives
-parametric leaves, but fits a likelihood at every candidate split and is much
-slower. Fitted trees and forests serialise like every other model (next
-section).
+parametric leaves and handles left and interval censoring and truncation. On
+observed and right-censored data like these its split search costs the same
+order as the log-rank's, because each candidate child's Weibull maximum
+likelihood is found directly (the scale in closed form, the shape from the
+one-dimensional profile likelihood); its leaves are Weibull fits, made when
+the forest first predicts. With left or interval censoring or truncation every
+candidate needs an optimiser, and it is much slower. Fitted trees and forests
+serialise like every other model (next section).
 
 .. jupyter-execute::
     :hide-code:
@@ -3297,21 +3303,28 @@ the last one with its average hazard. That makes its density a density per
 unit of time, on the same scale as a parametric leaf's, so forests of different
 ``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
 one covariate at a time among the out-of-bag rows and reports how much the
-score drops:
+score drops, as a ``pandas.Series`` keyed by covariate name. Here the forest
+is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
 
 .. jupyter-execute::
+
+    import pandas as pd
+
+    df_tr = pd.DataFrame(Zt_tr, columns=['z0', 'z1', 'z2'])
+    df_tr['time'], df_tr['censored'] = xt_tr, ct_tr
 
     oob = {}
     for depth in [0, 3]:                  # depth 0: every tree is one leaf
         np.random.seed(0)
         with contextlib.redirect_stderr(io.StringIO()):
-            rsf_oob = RandomSurvivalForest.fit(
-                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, max_depth=depth,
+            rsf_oob = RandomSurvivalForest.fit_from_df(
+                df_tr, x_col='time', c_col='censored',
+                Z_cols=['z0', 'z1', 'z2'], n_trees=30, max_depth=depth,
                 n_features_split=2, kind='non-parametric')
         oob[depth] = rsf_oob.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
     importance = rsf_oob.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance.round(3))
+    print(importance.round(3))
 
 The splits raise the out-of-bag log-likelihood above that of the pooled
 estimate, and the two covariates of the interaction carry the importance
@@ -3325,9 +3338,9 @@ methods need the fitted one.
     :hide-output:
 
     assert oob[3] > oob[0] + 0.05, oob
-    assert importance[0] > 0.05 and importance[1] > 0.05, importance
-    assert abs(importance[2]) < min(importance[0], importance[1]) / 3, \
-        importance
+    assert importance['z0'] > 0.05 and importance['z1'] > 0.05, importance
+    assert abs(importance['z2']) < min(importance['z0'],
+                                       importance['z1']) / 3, importance
 
 Because the score is a likelihood, it validates forests on data that
 concordance cannot handle. Below, units are only inspected every two time
@@ -3359,10 +3372,11 @@ such data with the log-rank scores of the pooled Turnbull estimate:
         oob_ic[depth] = rsf_ic.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
     importance_ic = rsf_ic.feature_importances(random_state=1)
-    print('importance of z0, z1, z2:', importance_ic.round(3))
+    print(importance_ic.round(3))
 
 Again the splits beat the pooled Turnbull estimate out of bag, and the
-importance falls on :math:`z_0` alone.
+importance falls on :math:`z_0` alone (``Z0``: this forest was fitted from
+arrays).
 
 .. jupyter-execute::
     :hide-code:
@@ -3370,8 +3384,8 @@ importance falls on :math:`z_0` alone.
 
     assert set(c_ic) == {-1, 1, 2}
     assert oob_ic[2] > oob_ic[0] + 0.02, oob_ic
-    assert importance_ic[0] > 0.02, importance_ic
-    assert importance_ic[0] > 3 * np.abs(importance_ic[1:]).max(), \
+    assert importance_ic['Z0'] > 0.02, importance_ic
+    assert importance_ic['Z0'] > 3 * np.abs(importance_ic.iloc[1:]).max(), \
         importance_ic
 
 Both the tree and the forest take ``random_state``: ``None`` (the default)
@@ -3450,19 +3464,12 @@ keeps the trees from fitting noise:
 
 .. jupyter-execute::
 
-    ctree = SurvivalTree.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, kind='non-parametric',
-                             n_features_split='all', selection='ctree')
-
-    def show(node, depth=0):
-        if hasattr(node, 'split_feature_index'):
-            print('  ' * depth + f'z{node.split_feature_index} <= '
-                  f'{node.split_feature_value:.2f}   (p = {node.p_value:.1e})')
-            show(node.left_child, depth + 1)
-            show(node.right_child, depth + 1)
-        else:
-            print('  ' * depth + f'leaf: {len(node.data)} units')
-
-    show(ctree._root)
+    ctree = SurvivalTree.fit_from_df(df_tr, x_col='time', c_col='censored',
+                                     Z_cols=['z0', 'z1', 'z2'],
+                                     kind='non-parametric',
+                                     n_features_split='all',
+                                     selection='ctree')
+    print(ctree)
 
     oob_sel = {}
     for selection in ['greedy', 'ctree']:
@@ -3510,7 +3517,7 @@ true distributions):
     tree_rt = SurvivalTree.fit(x=T_rt[seen], Z=Z_rt[seen], tr=tr_rt[seen],
                                kind='non-parametric', n_features_split='all',
                                selection='ctree')
-    show(tree_rt._root)
+    print(tree_rt)
     s_rt = tree_rt.sf([3.0], [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])[:, 0]
     print('S(3), z0 = 0.2 and 0.8:', s_rt.round(3))
 
@@ -3522,6 +3529,46 @@ true distributions):
     assert not hasattr(tree_rt._root.left_child, 'split_feature_index')
     assert not hasattr(tree_rt._root.right_child, 'split_feature_index')
     assert abs(s_rt[0] - 0.848) < 0.05 and abs(s_rt[1] - 0.628) < 0.05, s_rt
+
+The likelihood kinds (``'weibull'`` and ``'exponential'``) can also stop on
+the size of the gain itself. Their split is chosen by the rise in the working
+model's maximised log-likelihood, and noise always gives some rise, so by
+default a tree keeps splitting until ``min_leaf_samples`` or
+``min_leaf_failures`` stops it: what a forest of deep trees wants, but not a
+tree used on its own. ``min_split_gain`` sets the least gain (in
+log-likelihood units) a split must make: a number, ``'aic'`` (the kind's
+degrees of freedom :math:`k`, 1 for the exponential and 2 for the Weibull: the
+split must lower Akaike's criterion) or ``'bic'`` (:math:`k \log(d) / 2`, with
+:math:`d` the node's failures). ``'aic'`` is the recommended setting for a
+single tree. Neither is a test -- each split is the best of many cuts, so
+noise clears the AIC penalty more often than once in a while -- and
+``selection='ctree'`` remains the stop with a stated error rate. On the
+no-effect data from above:
+
+.. jupyter-execute::
+
+    def n_leaves(node):
+        if hasattr(node, 'left_child'):
+            return n_leaves(node.left_child) + n_leaves(node.right_child)
+        return 1
+
+    leaves = {}
+    for gain in [0.0, 'aic', 'bic']:
+        leaves[gain] = [
+            n_leaves(SurvivalTree.fit(
+                x=xm, Z=Zm, c=cm, kind='exponential', n_features_split='all',
+                min_split_gain=gain)._root)
+            for xm, cm, Zm in (make_mixed_data(seed, 1.0) for seed in range(10))
+        ]
+        print(f'min_split_gain={gain!r:5}: leaves {leaves[gain]}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert min(leaves[0.0]) > 10, leaves
+    assert sum(leaves['aic']) < sum(leaves[0.0]) / 3, leaves
+    assert sum(leaves['bic']) <= sum(leaves['aic']), leaves
 
 Saving and loading a fitted model
 ---------------------------------

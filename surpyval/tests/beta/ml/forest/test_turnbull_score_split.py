@@ -269,8 +269,8 @@ def test_forest_end_to_end_and_out_of_bag_gain():
     s = forest.sf(6.0, [[0.2, 0.5, 0.5], [0.8, 0.5, 0.5]])
     assert s[1] < s[0]
     importance = forest.feature_importances(random_state=0)
-    assert importance[0] > 0.03
-    assert importance[0] > np.abs(importance[1:]).max()
+    assert importance["Z0"] > 0.03
+    assert importance["Z0"] > np.abs(importance.iloc[1:]).max()
 
 
 @pytest.mark.parametrize(
