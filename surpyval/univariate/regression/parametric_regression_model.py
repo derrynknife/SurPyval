@@ -1689,6 +1689,207 @@ class ParametricRegressionModel(
             H = np.where(xq <= g, 0.0, H)
         return np.exp(-H)
 
+    def mean_tvc(
+        self,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+        given: "float | None" = None,
+    ) -> float:
+        r"""
+        The mean life along a covariate path ``Z(t)`` (a step schedule or
+        a continuously varying path, as for :meth:`sf_tvc`), or, with
+        ``given``, the mean *residual* life of a unit that has survived to
+        that age along it.
+
+        .. math::
+            \text{mean} = \int_0^\infty S(t)\, dt, \qquad
+            \text{mrl}(g) = \int_g^\infty S(t \mid g)\, dt .
+
+        The outer integral is adaptive Gauss-Kronrod on panels graded
+        geometrically from the start, and its nodes are simply more query
+        times of :meth:`sf_tvc`: each round of refinement is one pass along
+        the path, not an integral per node. A step schedule is integrated
+        as the matching piecewise-constant path, whose survival is its step
+        sum to rounding. For a baseline defined below zero (``Normal``,
+        ``Gumbel``, ``Logistic``) the mean without ``given`` also takes off
+        :math:`\int_{-\infty}^0 F(t)\, dt`, the covariate held at its value
+        at 0 before it, as :meth:`sf_tvc` does.
+
+        A path can stop units from failing: a hazard that dies away (a
+        stress driven to a level with no failures, an additive hazard
+        driven to 0) leaves the survival levelling off above 0. A fraction
+        of units then never fails and the mean is infinite: ``inf`` is
+        returned, with a warning that gives the survival where the
+        integration stopped, as ``Parametric.mean()`` returns ``inf`` for a
+        limited-failure population.
+
+        Parameters
+        ----------
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path, as for :meth:`sf_tvc`.
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        given : float, optional
+            An age survived to: the mean remaining life from it. A ``nan``
+            ``given`` gives ``nan``.
+
+        Returns
+        -------
+        float
+            The mean (residual) life along the path.
+
+        Examples
+        --------
+        At a constant covariate the mean of a Weibull proportional hazards
+        model is that of a Weibull with scale
+        :math:`\alpha e^{-\beta z / \gamma}` (shape :math:`\gamma`):
+
+        >>> import numpy as np
+        >>> from scipy.special import gamma
+        >>> from surpyval import CovariatePath, StepSchedule, WeibullPH
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 1))
+        >>> x = 100 * rng.weibull(2, 200) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> alpha, shape, beta = model.params
+        >>> exact = alpha * np.exp(-beta * 0.5 / shape) * gamma(1 + 1 / shape)
+        >>> mean = model.mean_tvc(StepSchedule.constant([0.5]))
+        >>> bool(np.isclose(mean, exact, rtol=1e-9))
+        True
+
+        Along a stress ramped from 0 to 1 over 50 hours the mean lies
+        between those at the two ends, and a unit that has survived the
+        ramp has less left:
+
+        >>> ramp = CovariatePath.from_points([0, 50], [0.0, 1.0])
+        >>> round(model.mean_tvc(ramp), 2)
+        >>> round(model.mean_tvc(ramp, given=50), 2)
+        """
+        from .tvc_path import (
+            _TAIL_KNOTS,
+            CovariatePath,
+            integrate_to_infinity,
+            step_path,
+        )
+
+        self._check_tvc_evaluable()
+        path = self._to_schedule(Z, xl)
+        if not isinstance(path, CovariatePath):
+            path = step_path(path)
+        g = None if given is None else float(given)
+        if g is not None and np.isnan(g):
+            return np.nan
+        origin = 0.0 if g is None else g
+        # What the passes along the path warn of, gathered into one
+        # warning each.
+        seen = {"falls": 0, "points": 0, "missed": 0, "total": 0}
+        worst: list = []
+
+        def sf_at(t: npt.NDArray) -> npt.NDArray:
+            H, falls, accuracy = self._tvc_hf_path(
+                np.asarray(t, dtype=float), path, g
+            )
+            seen["falls"] += falls
+            seen["points"] += H.size
+            if accuracy is not None:
+                seen["missed"] += accuracy[0]
+                seen["total"] += accuracy[1]
+                worst.append(accuracy[2:])
+            return np.exp(-H)
+
+        params, center = self._tvc_theta(None)
+        zc = self._centred(
+            path._values(np.array([max(origin, 0.0)]), left=False), center
+        )
+        scale = self._tvc_time_scale(origin, zc, params)
+
+        def knots(t_max: float) -> npt.NDArray:
+            # The path's kinks and jumps as outer panel edges, unless it
+            # repeats too often for that to help.
+            if path._n_breakpoints(t_max) > _TAIL_KNOTS:
+                return np.empty(0)
+            return path.breakpoints(t_max)
+
+        value, tail = integrate_to_infinity(
+            sf_at, origin, scale, self._tvc_rtol, knots
+        )
+        if g is None and float(self.distribution.support[0]) < 0:
+            # Less the area under F before 0, where the value at 0 holds.
+            def ff_below(t: npt.NDArray) -> npt.NDArray:
+                with np.errstate(all="ignore"):
+                    return np.asarray(
+                        self.model.ff(-t, zc, *params), dtype=float
+                    ).ravel()
+
+            below, below_tail = integrate_to_infinity(
+                ff_below, 0.0, scale, self._tvc_rtol
+            )
+            value -= below
+            if below_tail is not None:
+                # F does not fall away before 0: an additive hazard that
+                # is negative there (#376) makes it grow without limit.
+                value = np.nan
+        if seen["falls"]:
+            self._warn_negative_hazard(
+                seen["falls"], seen["points"], None, stacklevel=3
+            )
+        if seen["missed"]:
+            from .tvc_path import warn_missed_target
+
+            rel = max(w[0] for w in worst)
+            limit = "panels" if any(w[1] == "panels" for w in worst) else (
+                "rounds"
+            )
+            warn_missed_target(
+                seen["missed"],
+                seen["total"],
+                rel,
+                limit,
+                self._tvc_rtol,
+                stacklevel=3,
+            )
+        if tail is not None:
+            at, sf_end = tail
+            warnings.warn(
+                "The survival along this path has not fallen to 0: it is "
+                "still {:.4g} at t = {:.4g}, so a fraction of units never "
+                "fails along it (the hazard dies away, or an additive "
+                "hazard turns negative) and the mean {}life is infinite; "
+                "inf is returned, as Parametric.mean() does for a "
+                "limited-failure population. sf_tvc gives the survival "
+                "along the path.".format(
+                    sf_end, at, "residual " if g is not None else ""
+                ),
+                stacklevel=2,
+            )
+            return np.inf
+        if np.isnan(value):
+            warnings.warn(
+                "The mean is undefined: before time 0, where the "
+                "covariate's value at 0 holds, the failure probability of "
+                "this additive hazards model grows without limit (its "
+                "hazard is negative there), so the area it takes off the "
+                "mean does not converge; nan is returned. The mean "
+                "residual life (given=) avoids the times before 0.",
+                stacklevel=2,
+            )
+        return float(value)
+
+    def _tvc_time_scale(
+        self, origin: float, zc: npt.NDArray, params: npt.NDArray
+    ) -> float:
+        """A time scale for the integral to infinity from ``origin``: how
+        long the cumulative hazard takes to grow by 1 with the covariate
+        held at ``zc`` (a power of 2; 1 where it never does)."""
+        u = 2.0 ** np.arange(-60, 61)
+        with np.errstate(all="ignore"):
+            t = np.append(origin + u, origin)
+            H = np.asarray(self.model.Hf(t, zc, *params), dtype=float)
+            H = np.broadcast_to(H.ravel(), t.shape)
+            grown = H[:-1] - H[-1]
+        ok = np.isfinite(grown) & (grown >= 1.0)
+        return float(u[np.argmax(ok)]) if ok.any() else 1.0
+
     @keeps_query_shape
     def ff(
         self,
@@ -2398,18 +2599,46 @@ class ParametricRegressionModel(
             se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
             return log_transformed_cb(est, se, alpha_ci, bound)
 
+        return self._logit_sf_bounds(
+            lambda p: self.model.Hf(x, Zp, *p),
+            lambda p: self.model.sf(x, Zp, *p),
+            params,
+            cov,
+            x.shape,
+            on,
+            alpha_ci,
+            bound,
+        )
+
+    @staticmethod
+    def _logit_sf_bounds(
+        H_of: Any,
+        sf_of: Any,
+        params: npt.NDArray,
+        cov: npt.NDArray,
+        shape: tuple,
+        on: str,
+        alpha_ci: float,
+        bound: str,
+    ) -> npt.NDArray:
+        """The bounds of :meth:`cb` and :meth:`cb_tvc` on ``sf``, ``ff`` or
+        ``Hf``: a Wald bound on the logit of the survival, the cumulative
+        hazard ``H_of(p)`` propagated by the delta method, carried to the
+        scale of ``on``. ``sf_of(p)`` gives the survival where ``H`` is
+        negative (an additive hazard's ``sf`` above 1)."""
+
         # sf, ff and Hf all derive from one bound on the logit of sf,
         # formed from the cumulative hazard: logit(sf) = -H - log(1 -
         # exp(-H)). It used to be formed from sf clipped at 1e-15, so the
         # Hf bounds stopped at -log(1e-15) = 34.54 (#418); from H the Hf
         # bound, log(1 + exp(-logit)), has no ceiling.
         def logit_sf(p: npt.NDArray) -> npt.NDArray:
-            H = np.asarray(self.model.Hf(x, Zp, *p), dtype=float)
+            H = np.asarray(H_of(p), dtype=float)
             with np.errstate(divide="ignore", invalid="ignore"):
                 return -H - np.log(-np.expm1(-H))
 
-        H_hat = np.asarray(self.model.Hf(x, Zp, *params), dtype=float)
-        H_hat = np.broadcast_to(H_hat, np.broadcast(H_hat, x).shape)
+        H_hat = np.asarray(H_of(params), dtype=float)
+        H_hat = np.broadcast_to(H_hat, np.broadcast_shapes(H_hat.shape, shape))
         # sf = 1 (H = 0) and sf = 0 (H = inf) are the logit's infinities:
         # the bounds are the estimate there. A negative H (an additive
         # hazards sf above 1, documented) keeps the clipped-sf bound.
@@ -2419,10 +2648,8 @@ class ParametricRegressionModel(
             # inf - inf at those edges, replaced below
             se_L = delta_method_se(logit_sf, params, cov)
         if not positive.all():
-            sf_hat = np.asarray(self.model.sf(x, Zp, *params), dtype=float)
-            se = delta_method_se(
-                lambda p: self.model.sf(x, Zp, *p), params, cov
-            )
+            sf_hat = np.asarray(sf_of(params), dtype=float)
+            se = delta_method_se(sf_of, params, cov)
 
         def bounds_at(sign: float, tail: float) -> dict:
             # One end on the sf, ff and Hf scales; sign +1 is sf's upper.
@@ -2459,6 +2686,154 @@ class ParametricRegressionModel(
         if name != "sf":
             sign = -sign
         return bounds_at(sign, alpha_ci)[name]
+
+    @keeps_query_shape
+    def cb_tvc(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | Any",
+        xl: "npt.ArrayLike | None" = None,
+        given: "float | None" = None,
+        on: str = "sf",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the survival, failure probability or
+        cumulative hazard along a covariate path ``Z(t)``: a step schedule
+        or a continuously varying path, as for :meth:`sf_tvc`.
+
+        The bounds are those of :meth:`cb`, carried along the path: a Wald
+        bound on the logit of :meth:`sf_tvc`, formed from the cumulative
+        hazard of :meth:`Hf_tvc`, its standard error propagated from the
+        fitted parameter covariance by the delta method. ``ff`` and ``Hf``
+        follow from the same bound, so the three agree with each other, and
+        a constant path gives :meth:`cb`. (The logit-of-survival scale is
+        the regression ``cb``'s; the univariate models' Wald bounds are on
+        each family's probability-plot scale, #477, and bringing the
+        regression bounds to that scale is #504.)
+
+        Along a
+        :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
+        the integral is taken on a quadrature mesh adapted at the fitted
+        parameters and then held fixed, so the function differentiated is
+        smooth in the parameters. The cost is ``2k + 1`` evaluations along
+        the path for ``k`` parameters.
+
+        With ``given`` the bounds are on the conditional survival
+        :math:`S(x \mid \text{survived to } g)` of :meth:`sf_tvc`: 1, with
+        no width, at and before ``given``.
+
+        Parameters
+        ----------
+        x : array_like
+            Times at which to bound the function.
+        Z : StepSchedule, CovariatePath or array_like
+            The covariate path, as for :meth:`sf_tvc`.
+        xl : array_like, optional
+            Segment start times, required only when ``Z`` is an array.
+        given : float, optional
+            Condition on survival to this age, as for :meth:`sf_tvc`. A
+            ``nan`` ``given`` gives ``nan``.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are accepted for
+            ``'sf'`` and ``'ff'``). Default ``'sf'``. The hazard and the
+            density along a path are not bounded.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+
+        Returns
+        -------
+        numpy array
+            The confidence bound(s) on ``on`` at each ``x``: the query's
+            shape, with ``[lower, upper]`` on a last axis for two-sided
+            bounds.
+
+        Examples
+        --------
+        A proportional hazards model along a stress ramped from 0 to 1 over
+        50 hours:
+
+        >>> import numpy as np
+        >>> from surpyval import CovariatePath, WeibullPH
+        >>> rng = np.random.default_rng(0)
+        >>> Z = rng.uniform(0, 1, (200, 1))
+        >>> x = 100 * rng.weibull(2, 200) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> ramp = CovariatePath.from_points([0, 50], [0.0, 1.0])
+        >>> model.sf_tvc([40, 80], ramp).round(4)
+        array([0.771 , 0.1911])
+        >>> model.cb_tvc([40, 80], ramp).round(4)
+        array([[0.725 , 0.8114],
+               [0.1295, 0.2727]])
+
+        A constant path gives the ordinary bounds:
+
+        >>> flat = CovariatePath.from_points([0], [0.5])
+        >>> bool(np.allclose(model.cb_tvc([40, 80], flat),
+        ...                  model.cb(np.array([40, 80]), [0.5])))
+        True
+        """
+        from .tvc_path import CovariatePath
+
+        self._check_inference()
+        valid = ("sf", "R", "ff", "F", "Hf")
+        if on not in valid:
+            raise ValueError(
+                "`on` must be one of {} for cb_tvc: the survival, failure "
+                "probability and cumulative hazard along a path are "
+                "bounded (the hazard and density along a path are "
+                "not)".format(valid)
+            )
+        if bound not in ("two-sided", "lower", "upper"):
+            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        self._check_tvc_evaluable()
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        shape = x.shape + ((2,) if bound == "two-sided" else ())
+        g = None if given is None else float(given)
+        if (g is not None and np.isnan(g)) or x.size == 0:
+            # A missing conditioning age: nothing is known (as sf_tvc).
+            self._to_schedule(Z, xl)
+            return np.full(shape, np.nan)
+        on_path = isinstance(Z, CovariatePath)
+        # In the parameterisation of the centred fit when there is one, as
+        # for cb (#463).
+        params, center, cov = self._inference_state()
+        # The path's mesh, adapted at the fitted parameters and then held.
+        frozen: dict = {}
+
+        def H_of(p: npt.NDArray) -> npt.NDArray:
+            theta = (p, center)
+            if on_path or g is None:
+                H = self._hf_tvc(x, Z, xl, g, theta, frozen)[0]
+            else:
+                H = (
+                    self._hf_tvc(x, Z, xl, None, theta)[0]
+                    - self._hf_tvc(g, Z, xl, None, theta)[0]
+                )
+            if g is not None:
+                # Survival to x <= g is certain (as sf_tvc, #523).
+                H = np.where(x <= g, 0.0, H)
+            return H
+
+        # The estimate first: it adapts the mesh, and gives sf_tvc's
+        # warnings (a falling additive hazard, a missed target).
+        H, falls, accuracy = self._hf_tvc(
+            x, Z, xl, g if on_path else None, (params, center), frozen
+        )
+        self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        return self._logit_sf_bounds(
+            H_of,
+            lambda p: np.exp(-H_of(p)),
+            params,
+            cov,
+            x.shape,
+            on,
+            alpha_ci,
+            bound,
+        )
 
     def plot(
         self,
