@@ -112,6 +112,9 @@ Every model in SurPyval keeps the same rules, so what you learn about one holds 
 Each principle is enforced by tests, most as properties checked against every registered model. The [Design Principles](https://surpyval.readthedocs.io/en/latest/Design%20Principles.html) page lists them in full, with the tests that check each one and the open issues where a model does not yet comply.
 
 # Development
+## Roadmap
+The bigger ideas (distributional regression, multi-state models, multivariate copulas, ...) are in [ROADMAP.md](ROADMAP.md); the issues are for work that can start now.
+
 ## Dependencies
 ```pip install -r requirements_dev.txt```
 
