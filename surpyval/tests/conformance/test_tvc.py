@@ -28,6 +28,8 @@ The same properties are checked along a constant ``CovariatePath``
 (#172), which is integrated rather than summed.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -307,3 +309,109 @@ def test_conditional_survival_is_one_up_to_given(case):
             assert np.all(got <= 1.0), (name, got.max())
         got = model.sf_tvc(x, path, given=np.nan, **kw)
         assert np.isnan(got).all(), (name, got)
+
+
+# -- bounds and the mean along a path (#172 phase 2) -----------------------
+#
+# cb_tvc bounds sf_tvc as cb bounds sf, and mean_tvc integrates sf_tvc, so
+# along a constant path both are the time-fixed model's: cb, and the
+# integral of sf. (Cox has neither: it has no cb, and its baseline ends at
+# the last event.)
+
+
+def _has(model, name):
+    return hasattr(model, name) and _evaluable(None, model)
+
+
+@pytest.mark.parametrize("case", TVC_CASES)
+def test_constant_path_bounds_are_cb(case):
+    model = fitted(case)
+    if not _has(model, "cb_tvc"):
+        return
+    x = _times(case)
+    z = _rows(case)[1]
+    for Z in (_constant_path(z), StepSchedule.constant(z)):
+        for on in ("sf", "ff", "Hf"):
+            for bound in ("two-sided", "lower"):
+                got = model.cb_tvc(x, Z, on=on, bound=bound)
+                ref = model.cb(x, z, on=on, bound=bound)
+                np.testing.assert_allclose(
+                    got,
+                    ref,
+                    rtol=1e-7,
+                    atol=1e-10,
+                    err_msg=f"{type(Z).__name__} {on} {bound}",
+                )
+
+
+@pytest.mark.parametrize("case", TVC_CASES)
+def test_bounds_keep_the_query_shape(case):
+    model = fitted(case)
+    if not _has(model, "cb_tvc"):
+        return
+    z = _rows(case)[1]
+    x = np.asarray(case.x, dtype=float)
+    top = float(np.max(x))
+    path = CovariatePath.from_points([0.0, top], [z, _rows(case)[0]])
+    assert np.shape(model.cb_tvc(x[1], path)) == (2,)
+    assert np.shape(model.cb_tvc(x[1], path, bound="upper")) == ()
+    grid = x[: 2 * (len(x) // 2)].reshape(2, -1)
+    got = model.cb_tvc(grid, path)
+    assert got.shape == grid.shape + (2,), got.shape
+    np.testing.assert_allclose(
+        got.reshape(-1, 2), model.cb_tvc(grid.ravel(), path), rtol=1e-12
+    )
+    assert model.cb_tvc(np.array([]), path).shape == (0, 2)
+    # Given survival to g, the bound at and before g is [1, 1].
+    given = float(np.median(x))
+    got = model.cb_tvc(x, path, given=given)
+    np.testing.assert_array_equal(got[x <= given], 1.0)
+    assert np.isnan(model.cb_tvc(x, path, given=np.nan)).all()
+
+
+@pytest.mark.parametrize("case", TVC_CASES)
+def test_constant_path_mean_is_the_integral_of_sf(case):
+    from scipy.integrate import quad
+
+    model = fitted(case)
+    if not _has(model, "mean_tvc"):
+        return
+    kw = case.call_kwargs
+    z = _rows(case)[1]
+
+    def sf(t):
+        return float(model.sf(np.array([t]), z, **kw)[0])
+
+    with warnings.catch_warnings():
+        # An additive hazard negative somewhere warns (#376).
+        warnings.simplefilter("ignore")
+        mean = model.mean_tvc(_constant_path(z), **kw)
+        mean_step = model.mean_tvc(StepSchedule.constant(z), **kw)
+        given = float(np.median(case.x))
+        mrl = model.mean_tvc(_constant_path(z), given=given, **kw)
+        ref_mrl = quad(sf, given, np.inf, epsabs=0, epsrel=1e-12, limit=500)[
+            0
+        ] / sf(given)
+        if np.isfinite(mean):
+            ref = quad(sf, 0, np.inf, epsabs=0, epsrel=1e-12, limit=500)[0]
+            if model.distribution.support[0] < 0:
+                ref -= quad(
+                    lambda t: 1 - sf(t),
+                    -np.inf,
+                    0,
+                    epsabs=0,
+                    epsrel=1e-12,
+                    limit=500,
+                )[0]
+            assert abs(mean / ref - 1) < 1e-8, (mean, ref)
+    # An additive hazard that turns negative can leave the mean infinite
+    # (survival above 1) or undefined (nan, F growing before 0).
+    if np.isfinite(mean_step):
+        assert abs(mean / mean_step - 1) < 1e-12, (mean, mean_step)
+    else:
+        np.testing.assert_array_equal(mean, mean_step)
+    if np.isfinite(ref_mrl):
+        assert abs(mrl / ref_mrl - 1) < 1e-8, (mrl, ref_mrl)
+    else:
+        assert mrl == ref_mrl, (mrl, ref_mrl)
+    assert np.isnan(model.mean_tvc(_constant_path(z), given=np.nan, **kw))

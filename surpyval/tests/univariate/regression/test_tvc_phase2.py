@@ -258,3 +258,21 @@ def test_periodic_shortcut_for_a_time_scaling_family():
     np.testing.assert_allclose(
         S, np.exp(-(H[2:] - H[1])), rtol=1e-10, atol=0
     )
+
+
+def test_cb_below_the_support_is_the_estimate():
+    # Before 0 nothing has happened: sf is 1, and so is its bound. An
+    # additive hazard's beta'Z x is not 0 at x < 0, and cb gave a band
+    # around a survival of about 0.9 there (cb_tvc's constant-path
+    # property found it).
+    rng = np.random.default_rng(1)
+    Z = rng.uniform(0, 1, (300, 1))
+    x = rng.weibull(2, 300) * 10 / (1 + Z[:, 0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.WeibullAH.fit(x, Z)
+    t = np.array([-1.0, 0.0, 5.0])
+    b = model.cb(t, [1.0])
+    np.testing.assert_array_equal(b[:2], 1.0)
+    np.testing.assert_array_equal(model.sf(t[:2], [1.0]), 1.0)
+    assert b[2, 0] < model.sf(5.0, [1.0]) < b[2, 1]

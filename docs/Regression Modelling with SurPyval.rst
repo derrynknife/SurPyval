@@ -76,7 +76,8 @@ below points straight to the section that answers it.
      - `Semi-Parametric — Additive Hazards`_
    * - use covariates that change during follow-up, or forecast along a
        planned covariate path
-     - ``fit_tvc`` / ``sf_tvc`` (Cox, PH, AH, PO, AFT)
+     - ``fit_tvc`` (Cox, PH, AH, PO, AFT); ``sf_tvc``, and ``cb_tvc`` /
+       ``mean_tvc`` for the parametric families
      - `Time-Varying Covariates`_, `Time-varying covariates across families`_
    * - check that a hazard ratio really is constant
      - ``model.check_ph()``
@@ -2306,7 +2307,10 @@ for which the value in force at time 0 is taken to hold before it as well.
 ``fit_tvc`` treats a subject observed from time 0 the same way (its first
 interval is not left-truncated), so for PH, AH and PO a constant covariate
 split into intervals reproduces the ordinary ``fit``.
-Accelerated life models raise ``NotImplementedError``.
+An accelerated life model whose life parameter scales time (Weibull,
+Exponential, Gamma, LogNormal) accumulates an age like AFT, at the rate
+:math:`1 / L(V)` (see :ref:`tvc-bounds-mean`); one whose life parameter is a
+location (Normal, Gumbel, Logistic) raises ``NotImplementedError``.
 
 Describing the covariate path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -2525,8 +2529,8 @@ cumulative-exposure model: the path accumulates an accelerated age
 :math:`S(t) = S_0(\psi(t))`. A model fitted on fixed covariates and
 evaluated along a path assumes its family's time-varying form is right, and
 for the same ramp the two forms give different answers unless the baseline
-is exponential. Accelerated life models refuse a path, as they refuse a
-step schedule.
+is exponential. An accelerated life model follows cumulative exposure as
+AFT does, when its life parameter scales time (below).
 
 .. note::
 

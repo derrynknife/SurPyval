@@ -2589,8 +2589,12 @@ class ParametricRegressionModel(
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self.kind == "Additive Hazard":
+            # Not below the support, where nothing has happened yet.
             self._warn_if_hazard_negative(
-                x, self._centred(self._prepare_Z(Z)), stacklevel=4
+                x,
+                self._centred(self._prepare_Z(Z)),
+                x >= self.distribution.support[0],
+                stacklevel=4,
             )
 
         if on in ("hf", "df"):
@@ -2599,9 +2603,25 @@ class ParametricRegressionModel(
             se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
             return log_transformed_cb(est, se, alpha_ci, bound)
 
+        # Below the support nothing has happened yet: H is 0 there, as
+        # for sf (the bound is then the estimate, sf = 1). An additive
+        # hazard's beta'Z x is not 0 at a negative x, and gave a band
+        # around a survival of about 0.9 where sf is 1.
+        lower = self.distribution.support[0]
+        below = x < lower
+        x_in = np.where(below, lower + 1.0 if np.isfinite(lower) else 0.0, x)
+
+        def H_of(p: npt.NDArray) -> npt.NDArray:
+            H = np.asarray(self.model.Hf(x_in, Zp, *p), dtype=float)
+            return np.where(below, 0.0, H)
+
+        def sf_of(p: npt.NDArray) -> npt.NDArray:
+            S = np.asarray(self.model.sf(x_in, Zp, *p), dtype=float)
+            return np.where(below, 1.0, S)
+
         return self._logit_sf_bounds(
-            lambda p: self.model.Hf(x, Zp, *p),
-            lambda p: self.model.sf(x, Zp, *p),
+            H_of,
+            sf_of,
             params,
             cov,
             x.shape,
