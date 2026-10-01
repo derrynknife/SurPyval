@@ -2443,6 +2443,18 @@ def _nonparametric_bounds(case):
                 label=f"quantile_cb[{bound_type}]",
             )
         )
+    # The band's default scale (#390), which the pointwise bounds lack.
+    for method in ("hall-wellner", "nair"):
+        out.append(
+            Bound(
+                "band",
+                kwargs={"method": method, "bound_type": "arcsine"},
+                sides=False,
+                wald=False,
+                nan_ok=True,
+                label=f"band[{method},arcsine]",
+            )
+        )
     out.append(
         Bound(
             "bootstrap_cb",

@@ -24,7 +24,9 @@ def test_band_contains_pointwise_bounds():
     model = _censored_model()
     pw = model.cb(model.x)
     for method in ["hall-wellner", "nair"]:
-        band = model.band(method=method)
+        # On the pointwise bounds' (log(-log)) scale: the default arcsine
+        # band (#390) is on another, so it need not contain them.
+        band = model.band(method=method, bound_type="exp")
         finite = np.isfinite(band[:, 0]) & np.isfinite(pw[:, 0])
         assert np.all(band[finite, 0] <= pw[finite, 0] + 1e-9)
         assert np.all(band[finite, 1] >= pw[finite, 1] - 1e-9)
