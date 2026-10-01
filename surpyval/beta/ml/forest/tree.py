@@ -77,14 +77,13 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
       Supports the full data model.
     - ``"non-parametric"``: for observed / right-censored data
       (optionally left-truncated), the risk-set log-rank split with
-      Nelson-Aalen leaves. For data with left or interval censoring,
-      the Turnbull-score split -- the standardised sum of each child's
-      log-rank scores under the node's pooled Turnbull estimate
-      (Finkelstein, 1986), which reduces to the log-rank scores on
-      right-censored data -- with Turnbull leaves. Raises
-      ``ValueError`` for right truncation, or for truncation together
-      with left or interval censoring: the scores would have to come
-      from the truncation-conditioned likelihood (issue #188).
+      Nelson-Aalen leaves. For data with left or interval censoring or
+      right truncation, the Turnbull-score split -- the standardised
+      sum of each child's log-rank scores under the node's pooled
+      Turnbull estimate (Finkelstein, 1986), which reduces to the
+      log-rank scores on right-censored data; a truncated row's score
+      is that of its truncation-conditioned likelihood -- with
+      Turnbull leaves. Supports the full data model.
 
     ``selection`` decides how a node chooses the feature it splits on:
 
@@ -473,31 +472,15 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     """
     Resolve and validate the tree ``kind`` against the data.
 
-    The parametric kinds (``"weibull"``, ``"exponential"``) support the
-    full data model. The non-parametric kind splits observed and
-    right-censored data (optionally left truncated) by the risk-set
-    log-rank, and left- and interval-censored data by the Turnbull
-    scores; neither is defined for right truncation, or for truncation
-    with left or interval censoring, so such data are rejected.
+    Every kind supports the full data model. The non-parametric kind
+    splits observed and right-censored data (optionally left truncated)
+    by the risk-set log-rank, and data with left or interval censoring or
+    right truncation by the Turnbull scores, which allow for truncation
+    through the truncation-conditioned likelihood (issue #188).
     """
     resolved = kind.lower().replace("_", "-")
-    if resolved in ("weibull", "exponential"):
+    if resolved in ("weibull", "exponential", "non-parametric"):
         return resolved
-    if resolved == "non-parametric":
-        right_truncated = bool(np.isfinite(data.t[:, 1]).any())
-        left_truncated = bool(np.isfinite(data.t[:, 0]).any())
-        interval_like = bool(((data.c == 2) | (data.c == -1)).any())
-        if right_truncated or (left_truncated and interval_like):
-            raise ValueError(
-                "kind='non-parametric' does not support right truncation, "
-                "or truncation together with left or interval censoring: "
-                "its splits (the risk-set log-rank, and the Turnbull "
-                "scores for left and interval censoring) would need "
-                "scores from the truncation-conditioned likelihood, which "
-                "are not implemented yet (issue #188). Use kind='weibull' "
-                "or kind='exponential' for this data."
-            )
-        return "non-parametric"
     raise ValueError(
         f"kind={kind!r} is invalid. Must be 'weibull', 'exponential' or "
         "'non-parametric'."

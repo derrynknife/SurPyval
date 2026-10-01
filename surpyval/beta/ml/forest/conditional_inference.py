@@ -25,7 +25,9 @@ Turnbull-score split (the Savage scores :math:`\delta_i - \hat H(x_i)` on
 right-censored data); with delayed entry, the martingale residuals
 :math:`\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]` of the Nelson-Aalen
 estimate of the delayed-entry risk sets (Fu and Simonoff, 2017), whose sum
-over a child is again the log-rank numerator :math:`O - E`. The
+over a child is again the log-rank numerator :math:`O - E`, and with right
+truncation, or truncation and left or interval censoring, the Turnbull
+scores less the score of each row's truncation window. The
 parametric kinds use the contribution of each row to the score (gradient
 of the log-likelihood) of the working model at the node's pooled maximum
 likelihood estimate, the construction of model-based conditional
@@ -141,6 +143,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     _exp_neg_ll_parts,
     _exp_theta0,
     _wei_max_ll,
+    needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.turnbull_score_split import log_rank_scores
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -190,17 +193,19 @@ def _bounds(data: SurpyvalData) -> tuple[NDArray, NDArray]:
 def nonparametric_scores(data: SurpyvalData) -> NDArray:
     r"""The log-rank score of each row of ``data``, as an ``(N, 1)`` array.
 
-    Untruncated data: :func:`log_rank_scores` (the Turnbull scores, and
-    the Savage scores on right-censored data). Left-truncated
-    right-censored data: the martingale residuals
-    :math:`\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]` of the
+    Left-truncated observed and right-censored data: the martingale
+    residuals :math:`\delta_i - [\hat H(x_i) - \hat H(t_{l,i})]` of the
     delayed-entry Nelson-Aalen estimate, the hazard accrued over the
-    window :math:`(t_l, x]` the row was at risk in.
+    window :math:`(t_l, x]` the row was at risk in. Any other data:
+    :func:`log_rank_scores` (the Turnbull scores, less the score of the
+    truncation window; the Savage scores on right-censored data), which
+    are the same residuals on that data but need the Turnbull EM.
     """
-    if not np.isfinite(data.t[:, 0]).any():
+    if not np.isfinite(data.t[:, 0]).any() or needs_full_likelihood_split(
+        data
+    ):
         return log_rank_scores(data)[:, None]
-    # The tree refuses truncation with left or interval censoring, so
-    # this data is observed and right censored.
+    # Observed and right-censored data with delayed entry.
     times, r, d = data.to_xrd()
     with np.errstate(divide="ignore", invalid="ignore"):
         H = np.cumsum(np.where(r > 0, d / r, 0.0))

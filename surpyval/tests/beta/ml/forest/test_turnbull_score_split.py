@@ -1,4 +1,4 @@
-"""The Turnbull-score split of the non-parametric tree (issue #188, stage 1).
+"""The Turnbull-score split of the non-parametric tree (issue #188).
 
 ``kind="non-parametric"`` splits a node with left- or interval-censored
 rows by the standardised sum of the left child's log-rank scores under
@@ -15,7 +15,8 @@ the node's pooled Turnbull estimate. These check:
   leaves;
 - the forest end to end, and its out-of-bag log-likelihood (#186) beats
   the no-split forest when there is an effect;
-- truncation with left or interval censoring still raises.
+- truncated interval-censored data are split too (stage 2; see
+  test_turnbull_score_truncation.py).
 """
 
 import contextlib
@@ -277,10 +278,20 @@ def test_forest_end_to_end_and_out_of_bag_gain():
     [{"tl": 0.5}, {"tr": 25.0}, {"tl": 0.5, "tr": 25.0}],
     ids=["left", "right", "both"],
 )
-def test_truncated_interval_data_still_raises(truncation):
-    x, Z, c = _inspection_data(n=60)
-    with pytest.raises(ValueError, match="#188"):
-        SurvivalTree.fit(x=x, Z=Z, c=c, kind="non-parametric", **truncation)
+def test_truncated_interval_data_is_split(truncation):
+    # Raised until stage 2 (see test_turnbull_score_truncation.py).
+    x, Z, c = _inspection_data(n=200, binary=True)
+    tree = SurvivalTree.fit(
+        x=x,
+        Z=Z,
+        c=c,
+        kind="non-parametric",
+        max_depth=1,
+        n_features_split="all",
+        random_state=0,
+        **truncation,
+    )
+    assert tree._root.split_feature_index == 0
 
 
 def test_left_truncated_right_censored_data_keeps_the_log_rank():
