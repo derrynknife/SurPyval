@@ -244,3 +244,106 @@ def test_check_ph_is_a_table_like_summary():
     assert table["p"].iloc[:2].tolist() == [
         e["p_value"] for e in res["per_covariate"]
     ]
+
+
+# -- the risk sums are computed in one pass (performance sweep) -------------
+
+
+def _risk_sum_reference(model):
+    # The per-event-time loop the residuals used, kept as the reference:
+    # a mask of every row at each event time (O(n K)).
+    from surpyval.univariate.regression.proportional_hazards.cox_ph import (
+        cox_at_risk_mask,
+    )
+    from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E501
+        _require_cox,
+    )
+
+    data = _require_cox(model)
+    x, c, n, Z, tl = (data[k] for k in ("x", "c", "n", "Z", "tl"))
+    beta = np.asarray(model.beta, dtype=float)
+    w = n * np.exp(Z @ beta)
+    times = np.unique(x[c == 0])
+    A, B, A_own, B_own, Zbar = [], [], [], [], []
+    for tau in times:
+        r = cox_at_risk_mask(x, tl, tau)
+        s0, s1 = w[r].sum(), (w[r, None] * Z[r]).sum(axis=0)
+        ev = (x == tau) & (c == 0)
+        m = int(round(n[ev].sum()))
+        if model.tie_method == "efron" and m > 1:
+            f = np.arange(m) / m
+            s0_l = s0 - f * w[ev].sum()
+            e_l = (s1 - f[:, None] * (w[ev, None] * Z[ev]).sum(axis=0)) / (
+                s0_l[:, None]
+            )
+            Zbar.append(e_l.mean(axis=0))
+            A.append((1 / s0_l).sum())
+            B.append((e_l / s0_l[:, None]).sum(axis=0))
+            A_own.append(((1 - f) / s0_l).sum())
+            B_own.append(((1 - f)[:, None] * e_l / s0_l[:, None]).sum(axis=0))
+        else:
+            Zbar.append(s1 / s0)
+            A.append(m / s0)
+            B.append(s1 / s0 * m / s0)
+            A_own.append(A[-1])
+            B_own.append(B[-1])
+    A, B, A_own, B_own, Zbar = map(np.array, (A, B, A_own, B_own, Zbar))
+    score = np.zeros_like(Z)
+    for i in range(len(x)):
+        win = (times > tl[i]) & (times <= x[i])
+        if not win.any():
+            continue
+        a, b = A[win].sum(), B[win].sum(axis=0)
+        if c[i] == 0:
+            k = np.searchsorted(times, x[i])
+            a, b = a + A_own[k] - A[k], b + B_own[k] - B[k]
+            score[i] += Z[i] - Zbar[k]
+        score[i] -= np.exp(Z[i] @ beta) * (Z[i] * a - b)
+    return Zbar, score * n[:, None]
+
+
+@pytest.mark.parametrize("tie_method", ["efron", "breslow"])
+def test_residuals_match_the_per_time_loop(tie_method):
+    # Ties, delayed entry and counts: the one-pass risk sums give the
+    # Schoenfeld and score residuals of the loop over the event times.
+    rng = np.random.default_rng(3)
+    n = 300
+    Z = rng.normal(0, 1, (n, 2)) * [1.0, 4.0] + [0.0, 50.0]
+    x = np.round(10 * rng.weibull(1.5, n) * np.exp(-0.3 * Z[:, 0]), 0) + 1
+    c = (rng.random(n) < 0.3).astype(int)
+    tl = np.where(rng.random(n) < 0.4, x * rng.uniform(0, 0.9, n), 0.0)
+    counts = rng.integers(1, 4, n)
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c, n=counts, tl=tl, tie_method=tie_method)
+    Zbar, score = _risk_sum_reference(model)
+    events = np.flatnonzero(c == 0)
+    times = np.unique(x[events])
+    sch = model.compute_residuals("schoenfeld")
+    Zc = Z - model._fit_center if model._fit_center is not None else Z
+    expected_sch = Zc[events] - Zbar[np.searchsorted(times, x[events])]
+    np.testing.assert_allclose(sch, expected_sch, rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(
+        model.compute_residuals("score"), score, rtol=1e-10, atol=1e-12
+    )
+
+
+def test_residuals_do_not_loop_over_event_times(monkeypatch):
+    # The residuals used a mask of every row at each event time, O(n K):
+    # dfbeta took 4.5 s on 1e4 rows with distinct times and 47 s on 3e4
+    # (0.014 s and 0.046 s now). The risk sums now come from one pass.
+    from surpyval.univariate.regression.proportional_hazards import (
+        diagnostics as dg,
+    )
+
+    calls = []
+
+    def counting(x, tl, tau):
+        calls.append(tau)
+        return (tl < tau) & (x >= tau)
+
+    monkeypatch.setattr(dg, "cox_at_risk_mask", counting, raising=False)
+    x, Z, c = _ph_data(n=500)
+    model = sp.CoxPH.fit(x=x, Z=Z, c=c)
+    for kind in ("martingale", "schoenfeld", "score", "dfbeta"):
+        model.compute_residuals(kind)
+    model.check_ph()
+    assert calls == []
