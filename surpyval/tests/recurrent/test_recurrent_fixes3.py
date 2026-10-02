@@ -131,7 +131,7 @@ def test_multistart_keeps_a_start_that_hit_the_evaluation_cap():
 
 def test_renewal_rejects_unknown_kijima_type():
     x = np.array([1, 2, 3, 4, 4.5, 5, 5.5, 5.7, 6])
-    with pytest.raises(ValueError, match="Unknown kijima_type"):
+    with pytest.raises(ValueError, match="'kijima_type' must be one of"):
         GeneralizedRenewal.fit(x, kijima="iii")
 
 
@@ -261,7 +261,7 @@ def test_single_failure_truncated_event_is_a_clear_error():
 
 
 def test_nhpp_rejects_bad_how_and_init():
-    with pytest.raises(ValueError, match="how must be"):
+    with pytest.raises(ValueError, match="'how' must be"):
         CrowAMSAA.fit([1, 2, 3, 4], how="bad")
     with pytest.raises(ValueError, match="init must have 2 values"):
         CrowAMSAA.fit([1, 2, 3, 4], init=[1])

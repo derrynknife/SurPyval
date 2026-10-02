@@ -44,6 +44,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.validation import BOUNDS, check_option
 
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
@@ -52,7 +53,6 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 from .families import frailty_cv2, kendall_tau, lognormal_log_integral
-from surpyval.utils.validation import BOUNDS, check_option
 
 if TYPE_CHECKING:
     import pandas as pd

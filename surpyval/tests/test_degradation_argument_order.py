@@ -58,7 +58,7 @@ def test_cb_takes_Z_second():
         model.cb(T, Z=[1.0], method="bootstrap", n_boot=4, random_state=3),
     )
     # The old order, with ``on`` second, now fails.
-    with pytest.raises(ValueError, match="`on` must be one of"):
+    with pytest.raises(ValueError, match="'on' must be one of"):
         model.cb(T, "sf", 0.05, "two-sided", "bootstrap", 4, 3, [1.0])
 
 
@@ -66,7 +66,7 @@ def test_cb_in_the_old_positional_order_fails():
     model = _model("DegradationAnalysis[linear]")
     with pytest.raises(ValueError, match="no covariates"):
         model.cb(T, "ff")
-    with pytest.raises(ValueError, match="`on` must be one of"):
+    with pytest.raises(ValueError, match="'on' must be one of"):
         model.cb(T, "ff", 0.1, "lower", "analytic", 200, None, None)
 
 

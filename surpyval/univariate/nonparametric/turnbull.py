@@ -7,6 +7,7 @@ import numpy.typing as npt
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
+from surpyval.utils.validation import check_option
 
 from ._turnbull_npmle import (
     DOES_NOT_EXIST,
@@ -21,7 +22,6 @@ from ._turnbull_npmle import (
 from .fleming_harrington import _fleming_harrington as fh
 from .kaplan_meier import _kaplan_meier as km
 from .nelson_aalen import _nelson_aalen as na
-from surpyval.utils.validation import check_option
 
 # The estimators that can be applied to the Turnbull ladder. Checked up
 # front: an unknown name used to fall through to Fleming-Harrington in the

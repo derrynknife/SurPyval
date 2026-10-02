@@ -23,6 +23,7 @@ from surpyval.utils.recurrent_utils import (
     validate_renewal_times,
     validate_restoration,
 )
+from surpyval.utils.validation import option_error
 
 
 def _previous_in_item(values: np.ndarray, item: np.ndarray) -> np.ndarray:
@@ -204,9 +205,7 @@ class GeneralizedRenewal(RenewalFitMixin):
             return self.kijima_i
         if kijima_type == "ii":
             return self.kijima_ii
-        raise ValueError(
-            "Unknown kijima_type {!r}; must be 'i' or 'ii'".format(kijima_type)
-        )
+        raise option_error("kijima_type", kijima_type, ("i", "ii"))
 
     @staticmethod
     def _build_sampler(model: Any, n: int) -> Callable:

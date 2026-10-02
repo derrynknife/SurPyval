@@ -21,6 +21,7 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
+from surpyval.utils.validation import option_error
 
 #: The values of the restoration parameter at which each family is a
 #: perfect and a minimal repair process (#513): the Kijima ``q`` of the
@@ -874,9 +875,8 @@ class RenewalModel(
                 observed = int((c[mask] == 0).sum())
                 residuals.append(observed - float(increments[mask].sum()))
             return np.array(residuals)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(

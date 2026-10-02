@@ -174,9 +174,9 @@ def test_cb_accepts_dataframe_covariates():
 def test_cb_rejects_bad_arguments():
     x, Z, c = _data(9)
     m = WeibullPH.fit(x=x, Z=Z, c=c)
-    with pytest.raises(ValueError, match="`on` must be one of"):
+    with pytest.raises(ValueError, match="'on' must be one of"):
         m.cb([1.0], [0.0, 0.0], on="nonsense")
-    with pytest.raises(ValueError, match="`bound` must be"):
+    with pytest.raises(ValueError, match="'bound' must be one of"):
         m.cb([1.0], [0.0, 0.0], bound="sideways")
     with pytest.raises(ValueError, match="Unknown parameter"):
         m.param_cb("beta_99")

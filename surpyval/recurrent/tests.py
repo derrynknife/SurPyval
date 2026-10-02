@@ -48,6 +48,8 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2, norm
 
+from surpyval.utils.validation import check_option
+
 _ALTERNATIVES = ("two-sided", "increasing", "decreasing")
 
 
@@ -151,12 +153,7 @@ class TrendTestResult:
 
 
 def _validate_alternative(alternative: str, alpha_ci: float) -> None:
-    if alternative not in _ALTERNATIVES:
-        raise ValueError(
-            "`alternative` must be one of {}; got {!r}".format(
-                list(_ALTERNATIVES), alternative
-            )
-        )
+    check_option("alternative", alternative, _ALTERNATIVES)
     if not (
         isinstance(alpha_ci, (int, float, np.integer, np.floating))
         and not isinstance(alpha_ci, bool)

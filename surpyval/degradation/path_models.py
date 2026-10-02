@@ -38,6 +38,7 @@ from surpyval.utils.deprecation import (
     RenamedAttribute,
     renamed_class_attribute,
 )
+from surpyval.utils.validation import option_error
 
 
 def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
@@ -626,9 +627,8 @@ def get_path_model(path: "str | PathModel") -> PathModel:
         key = _KEY_BY_DISPLAY_NAME.get(key, key)
         if key in PATH_MODELS:
             return PATH_MODELS[key]
-        raise ValueError(
-            "Unknown path model '{}'; must be one of {} or a PathModel "
-            "instance".format(path, sorted(PATH_MODELS))
+        raise option_error(
+            "path", path, sorted(PATH_MODELS), "A PathModel is accepted too."
         )
     raise ValueError(
         "path must be a string or a PathModel instance, got {}".format(

@@ -1,0 +1,156 @@
+"""One message for an unknown option value, everywhere (principles 2 and
+21): ``'<name>' must be one of <values>; got <value>`` from
+``surpyval.utils.validation.check_option``.
+
+The same refusal used to be worded a dozen ways across the models
+("bound must be ...", "`on` must be one of (...)", "Unknown
+confidence-bound method ...", "cb 'on' supports ...", "how must be
+...", "Method must be in [...]", "Unrecognised baseline method"), some
+without the value given or the values accepted.
+"""
+
+import re
+
+import numpy as np
+import pytest
+
+import surpyval as sp
+from surpyval.tests.conformance.registry import CASE_BY_NAME, fitted
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    format_options,
+    option_error,
+)
+
+X = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
+C = np.array([0, 0, 1, 0, 0, 1, 0, 0])
+
+
+def test_check_option_message():
+    check_option("bound", "lower", BOUNDS)
+    with pytest.raises(ValueError) as err:
+        check_option("bound", "both", BOUNDS)
+    assert str(err.value) == (
+        "'bound' must be one of 'two-sided', 'lower' or 'upper'; got 'both'"
+    )
+    # One accepted value reads "must be", and a note follows the value.
+    with pytest.raises(ValueError) as err:
+        check_option("dist", "t", ("z",), "Use `bootstrap_cb`.")
+    assert str(err.value) == "'dist' must be 'z'; got 't'. Use `bootstrap_cb`."
+
+
+@pytest.mark.parametrize("value", [None, 1, np.array(["lower"]), ["lower"]])
+def test_check_option_refuses_what_is_not_a_string(value):
+    # An array is refused, not compared element-wise (which raised "The
+    # truth value of an array ... is ambiguous").
+    with pytest.raises(ValueError, match="'bound' must be one of"):
+        check_option("bound", value, BOUNDS)
+
+
+def test_format_options():
+    assert format_options(("a",)) == "'a'"
+    assert format_options(["a", "b"]) == "'a' or 'b'"
+    assert format_options({"a": 1, "b": 2, "c": 3}) == "'a', 'b' or 'c'"
+    assert str(option_error("k", 2, (None, "x"))) == (
+        "'k' must be one of None or 'x'; got 2"
+    )
+
+
+def _weibull():
+    return sp.Weibull.fit(X, C)
+
+
+def _ph():
+    return fitted(CASE_BY_NAME["CoxPH"])
+
+
+# An unknown value of an option, model by model. Each used to give its own
+# wording; every one now gives the message of ``check_option``.
+def _refusals():
+    """The calls, by label. (In a function: mypy checks the lambdas of a
+    module-level table, and the singleton fitters look like classes to it.)"""
+    return {
+        "Parametric.cb bound": (lambda: _weibull().cb([2.0], bound="both")),
+        "Parametric.cb on": (lambda: _weibull().cb([2.0], on="xf")),
+        "Parametric.cb method": (lambda: _weibull().cb([2.0], method="boot")),
+        "Parametric.cb lr bound": (
+            lambda: _weibull().cb([2.0], method="lr", bound="both")
+        ),
+        "Parametric.param_cb bound": (
+            lambda: _weibull().param_cb("alpha", bound="both")
+        ),
+        "Parametric.param_cb method": (
+            lambda: _weibull().param_cb("alpha", method="boot")
+        ),
+        "Parametric.quantile_cb bound": (
+            lambda: _weibull().quantile_cb(0.1, bound="both")
+        ),
+        "Parametric fit how": (lambda: sp.Weibull.fit(X, C, how="MXE")),
+        "RoystonParmar.cb on": (
+            lambda: fitted(CASE_BY_NAME["RoystonParmar"]).cb([2.0], on="hf")
+        ),
+        "RoystonParmar.fit scale": (
+            lambda: sp.RoystonParmar.fit(X, C, scale="logit")
+        ),
+        "KaplanMeier.cb bound_type": (
+            lambda: sp.KaplanMeier.fit(X, C).cb([2.0], bound_type="log")
+        ),
+        "KaplanMeier.band method": (
+            lambda: sp.KaplanMeier.fit(X, C).band([2.0], method="eqp")
+        ),
+        "Turnbull turnbull_estimator": (
+            lambda: sp.Turnbull.fit(X, C, turnbull_estimator="Greenwood")
+        ),
+        "ParametricRegression.cb on": (
+            lambda: fitted(CASE_BY_NAME["WeibullPH"]).cb(
+                [2.0], Z=CASE_BY_NAME["WeibullPH"].Z[0], on="xf"
+            )
+        ),
+        "ParametricRegression.cb bound": (
+            lambda: fitted(CASE_BY_NAME["WeibullPH"]).cb(
+                [2.0], Z=CASE_BY_NAME["WeibullPH"].Z[0], bound="both"
+            )
+        ),
+        "CoxPH tie_method": (
+            lambda: sp.CoxPH.fit(X, Z=np.arange(8.0), c=C, tie_method="fast")
+        ),
+        "CoxPH residual kind": (lambda: _ph().compute_residuals("bogus")),
+        "Frailty param_cb bound": (
+            lambda: fitted(CASE_BY_NAME["WeibullFrailty"]).param_cb(
+                "theta", bound="both"
+            )
+        ),
+        "CompetingRisksProportionalHazards model": (
+            lambda: sp.CompetingRisksProportionalHazards.fit(
+                X, np.arange(8.0)[:, None], ["a", "b"] * 4, model="Weibull"
+            )
+        ),
+        "concordance_index ties": (
+            lambda: sp.metrics.concordance_index(X, C, X, ties="breslow")
+        ),
+        "fit_best metric": (lambda: sp.fit_best(X, C, metric="r2")),
+        "NHPP how": (
+            lambda: sp.recurrent.CrowAMSAA.fit([1, 2, 3, 4], how="MPS")
+        ),
+        "trend_test test": (
+            lambda: sp.recurrent.HPP.fit(
+                [1.0, 2.0, 3.0], i=[1, 1, 1]
+            ).trend_test(test="nope")
+        ),
+        "recurrence residuals kind": (
+            lambda: sp.recurrent.HPP.fit(
+                [1.0, 2.0, 3.0], i=[1, 1, 1]
+            ).residuals(kind="deviance")
+        ),
+    }
+
+
+@pytest.mark.parametrize("label", sorted(_refusals()))
+def test_an_unknown_option_value_has_one_message(label):
+    with pytest.raises(ValueError) as err:
+        _refusals()[label]()
+    message = str(err.value)
+    assert re.match(
+        r"'\w+' must be (one of )?'[^;]+; got [^;]+(\. .*)?$", message
+    ), message

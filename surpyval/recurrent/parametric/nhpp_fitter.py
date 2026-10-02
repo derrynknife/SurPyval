@@ -16,6 +16,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.validation import check_option
 
 
 def nhpp_log_likelihood(
@@ -143,10 +144,7 @@ class NHPPFitter(IntensityModel):
             An instance of the ParametricRecurrenceModel class containing the
             fitted model, estimated parameters, and other relevant attributes.
         """
-        if how not in ("MLE", "MSE"):
-            raise ValueError(
-                "how must be 'MLE' or 'MSE'; got {!r}".format(how)
-            )
+        check_option("how", how, ("MLE", "MSE"))
         validate_nhpp_data(data, self)
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)

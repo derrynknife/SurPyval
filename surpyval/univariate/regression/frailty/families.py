@@ -31,6 +31,7 @@ import numpy.typing as npt
 from autograd.tracer import Box, getval
 from scipy.integrate import quad
 from scipy.special import roots_hermite, wrightomega
+
 from surpyval.utils.validation import check_option
 
 FAMILIES = ("gamma", "lognormal")

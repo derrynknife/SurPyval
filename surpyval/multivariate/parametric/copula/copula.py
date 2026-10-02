@@ -41,6 +41,7 @@ from surpyval.utils.deprecation import (
 )
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import check_option
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
@@ -594,8 +595,7 @@ class Copula:
         if len(margins) != data.D:
             raise ValueError("need one margin per dimension")
 
-        if how not in ("IFM", "MLE"):
-            raise ValueError("how must be 'IFM' or 'MLE'")
+        check_option("how", how, ("IFM", "MLE"))
         if init is not None:
             init = self._check_init(init)
 

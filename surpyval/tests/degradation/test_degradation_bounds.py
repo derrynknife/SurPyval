@@ -208,11 +208,11 @@ def test_coverage_improves_over_mle_only():
 
 def test_cb_rejects_bad_arguments():
     m, _ = _fit(6)
-    with pytest.raises(ValueError, match="`on` must be one of"):
+    with pytest.raises(ValueError, match="'on' must be one of"):
         m.cb([10.0], on="nonsense")
-    with pytest.raises(ValueError, match="`bound` must be"):
+    with pytest.raises(ValueError, match="'bound' must be one of"):
         m.cb([10.0], bound="sideways")
-    with pytest.raises(ValueError, match="`method` must be"):
+    with pytest.raises(ValueError, match="'method' must be one of"):
         m.cb([10.0], method="magic")
 
 

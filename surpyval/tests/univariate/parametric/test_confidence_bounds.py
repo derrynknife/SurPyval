@@ -401,7 +401,7 @@ def test_lr_rejects_offset_model():
 
 
 def test_param_cb_rejects_unknown_method(weibull_model):
-    with pytest.raises(ValueError, match="Unknown confidence-bound method"):
+    with pytest.raises(ValueError, match="'method' must be one of"):
         weibull_model.param_cb("beta", method="bootstrap")
 
 
@@ -499,7 +499,7 @@ def test_lr_cb_rejects_offset_model():
 
 
 def test_cb_rejects_unknown_method(weibull_model):
-    with pytest.raises(ValueError, match="Unknown confidence-bound method"):
+    with pytest.raises(ValueError, match="'method' must be one of"):
         weibull_model.cb(np.array([10.0]), on="sf", method="bootstrap")
 
 

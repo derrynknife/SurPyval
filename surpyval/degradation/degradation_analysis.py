@@ -52,6 +52,7 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
 
 from ._bounds import (
@@ -1803,11 +1804,8 @@ class DegradationModel(SerialisableMixin):
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
-        valid = ("sf", "R", "ff", "F", "Hf")
-        if on not in valid:
-            raise ValueError("`on` must be one of {}".format(valid))
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        check_option("bound", bound, BOUNDS)
         if self._is_clock:
             self._clock(Z)  # validates the stress
             Z = self._covariates(Z)
@@ -1823,7 +1821,7 @@ class DegradationModel(SerialisableMixin):
                 return bootstrap_cb(
                     self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
-            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+            raise option_error("method", method, ("analytic", "bootstrap"))
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             if method == "analytic":
@@ -1839,14 +1837,14 @@ class DegradationModel(SerialisableMixin):
                 return bootstrap_cb(
                     self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
-            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+            raise option_error("method", method, ("analytic", "bootstrap"))
         if method == "analytic":
             return analytic_cb(self, x, on, alpha_ci, bound)
         elif method == "bootstrap":
             return bootstrap_cb(
                 self, x, on, alpha_ci, bound, n_boot, random_state
             )
-        raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+        raise option_error("method", method, ("analytic", "bootstrap"))
 
     def plot(self, ax: Any = None) -> Any:
         """
@@ -2180,11 +2178,9 @@ class DegradationAnalysis_:
             raise ValueError("threshold must be a finite number")
         threshold = float(threshold)
 
-        if population_method not in ("moments", "reml"):
-            raise ValueError(
-                "population_method must be 'moments' or 'reml', got "
-                "'{}'".format(population_method)
-            )
+        check_option(
+            "population_method", population_method, ("moments", "reml")
+        )
 
         units = np.unique(i_arr)
         if len(units) < 2:
@@ -2194,11 +2190,7 @@ class DegradationAnalysis_:
             )
 
         if acceleration not in (None, "clock"):
-            raise ValueError(
-                "acceleration must be None or 'clock', got {!r}".format(
-                    acceleration
-                )
-            )
+            raise option_error("acceleration", acceleration, (None, "clock"))
         if acceleration is None and stress_ref is not None:
             raise ValueError(
                 "stress_ref is the reference stress of acceleration='clock' "

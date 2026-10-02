@@ -53,6 +53,7 @@ from surpyval.serialisation import (
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import covariate_center
@@ -69,7 +70,6 @@ from ..regression_data import (
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from .frailty_fitter import _log_rising_ratio, grouped_data
 from .frailty_model import _SharedFrailty
-from surpyval.utils.validation import check_option
 
 _TIE_METHODS = ("efron", "breslow")
 # The search for theta, on its log: between 1e-6 (no detectable frailty;

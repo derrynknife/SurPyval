@@ -143,7 +143,7 @@ def test_crph_model_attribute():
 
 def test_crph_rejects_an_unknown_model_by_its_name():
     x, Z, e = _cr()
-    with pytest.raises(ValueError, match="`model` must be"):
+    with pytest.raises(ValueError, match="'model' must be one of"):
         CompetingRisksProportionalHazards.fit(x, Z, e, model="Weibull")
 
 

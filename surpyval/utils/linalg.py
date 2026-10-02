@@ -26,6 +26,8 @@ import numpy.typing as npt
 from scipy.special import expit, log_ndtr, ndtr, ndtri, ndtri_exp
 from scipy.stats import norm
 
+from surpyval.utils.validation import BOUNDS, option_error
+
 # -- guarded linear algebra ------------------------------------------------
 
 
@@ -143,7 +145,7 @@ def bound_signs(alpha_ci: float, bound: str) -> tuple[float, npt.NDArray]:
         return alpha_ci, np.array([-1.0])
     elif bound == "upper":
         return alpha_ci, np.array([1.0])
-    raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+    raise option_error("bound", bound, BOUNDS)
 
 
 def log_transformed_cb(

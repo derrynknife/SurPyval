@@ -16,6 +16,7 @@ from scipy.optimize import brentq
 from scipy.stats import norm
 
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import check_option
 
 # The equal precision band's default range of a = N sigma^2 / (1 + N
 # sigma^2) (#390): its standardized boundary is unbounded as a nears 0 or
@@ -351,12 +352,8 @@ class BandsMixin:
         Klein, J. P. and Moeschberger, M. L. (2003), "Survival
         Analysis", 2nd ed., Section 4.4.
         """
-        if method not in ["hall-wellner", "nair"]:
-            raise ValueError("'method' must be in ['hall-wellner', 'nair']")
-        if bound_type not in ["arcsine", "exp", "normal"]:
-            raise ValueError(
-                "'bound_type' must be in ['arcsine', 'exp', 'normal']"
-            )
+        check_option("method", method, ("hall-wellner", "nair"))
+        check_option("bound_type", bound_type, ("arcsine", "exp", "normal"))
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bands "

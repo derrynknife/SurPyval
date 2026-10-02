@@ -28,6 +28,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import BOUNDS, CB_ON, check_option
 
 from ._bounds import logit_sf_bound
 from ._concordance import ConcordanceMixin
@@ -2626,11 +2627,8 @@ class ParametricRegressionModel(
             The confidence bound(s) on ``on`` at each ``x``.
         """
         self._check_inference()
-        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
-        if on not in valid:
-            raise ValueError("`on` must be one of {}".format(valid))
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option("on", on, CB_ON)
+        check_option("bound", bound, BOUNDS)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there
@@ -2843,16 +2841,14 @@ class ParametricRegressionModel(
         from .tvc_path import CovariatePath
 
         self._check_inference()
-        valid = ("sf", "R", "ff", "F", "Hf")
-        if on not in valid:
-            raise ValueError(
-                "`on` must be one of {} for cb_tvc: the survival, failure "
-                "probability and cumulative hazard along a path are "
-                "bounded (the hazard and density along a path are "
-                "not)".format(valid)
-            )
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option(
+            "on",
+            on,
+            ("sf", "R", "ff", "F", "Hf"),
+            "cb_tvc bounds the survival, failure probability and cumulative "
+            "hazard along a path, not the hazard or the density.",
+        )
+        check_option("bound", bound, BOUNDS)
         self._check_tvc_evaluable()
         xq: npt.NDArray = np.atleast_1d(np.asarray(x, dtype=float))
         shape = xq.shape + ((2,) if bound == "two-sided" else ())

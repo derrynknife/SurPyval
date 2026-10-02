@@ -35,6 +35,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.validation import check_option
 
 from .._aliasing import (
     aliased_columns,
@@ -51,7 +52,6 @@ from .._fit_skeleton import (
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
-from surpyval.utils.validation import check_option
 
 nonparametric_dists = {
     "Nelson-Aalen": NelsonAalen,

@@ -160,7 +160,7 @@ def test_ph_test_transforms_run(transform):
 def test_unknown_residual_kind_raises():
     x, Z, c = _ph_data(seed=10)
     m = sp.CoxPH.fit(x=x, Z=Z, c=c)
-    with pytest.raises(ValueError, match="Unknown residual kind"):
+    with pytest.raises(ValueError, match="'kind' must be one of"):
         m.compute_residuals("bogus")
 
 

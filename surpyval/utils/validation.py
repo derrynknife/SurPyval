@@ -208,8 +208,7 @@ def validate_cr_inputs(
 
     # Two baselines
     # TODO: Add fleming-harrington
-    if method not in FG_BASELINE_OPTIONS:
-        raise ValueError("Unrecognised baseline method")
+    check_option("how", method, FG_BASELINE_OPTIONS)
 
     return x, c, n, e
 
