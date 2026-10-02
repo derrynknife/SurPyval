@@ -44,6 +44,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
     BOUNDS,
     check_option,
@@ -108,6 +109,10 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         # The number of estimated parameters -- the baseline, the
         # coefficients and theta -- the ``k`` of the information criteria.
         self.k: int = 0
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
+        # for a model restored from a dict saved without it.
+        self.maximum: str = "unknown"
 
     # -- covariate / frailty resolution ------------------------------------
 
@@ -359,7 +364,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         (``nan``), nor for an aliased coefficient (#476), whose value is
         ``nan`` too.
 
-        .. versionchanged:: 0.22.0
+        .. versionchanged:: 0.22
            Returns a ``DataFrame``; it returned the text ``repr`` prints.
 
         Parameters
@@ -613,6 +618,7 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
             "n_events_weighted": float(self.n_events_weighted),
             "n_obs_weighted": float(self.n_obs_weighted),
             "_neg_ll": to_native(self._neg_ll),
+            **maximum_entry(self.maximum),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -657,6 +663,7 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
         )
         out.n_obs_weighted = float(model_dict.get("n_obs_weighted", out.n_obs))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)

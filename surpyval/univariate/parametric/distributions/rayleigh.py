@@ -183,7 +183,9 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.df(x, 3)
         array([0.10510661, 0.17794165, 0.20217689, 0.18271657, 0.138529  ])
         """
-        return (x / (sigma**2)) * self.sf(x, sigma)
+        sf = self.sf(x, sigma)
+        # 0 where sf is, not inf * 0 far in the tail (#561)
+        return np.where(sf == 0, 0.0, x / (sigma**2)) * sf
 
     def hf(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
@@ -359,7 +361,13 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:
         # -inf at x = 0, without a log(0) warning
         x_pos = positive_or_one(x)
+        # and -inf at x = inf, not inf - inf (#561)
+        at_inf = x_pos == np.inf
+        if np.any(at_inf):
+            x_pos = np.where(at_inf, 1.0, x_pos)
         inside = np.log(x_pos) - 2 * np.log(sigma) - 0.5 * (x_pos / sigma) ** 2
+        if np.any(at_inf):
+            inside = np.where(at_inf, -np.inf, inside)
         return on_support(x, inside, -np.inf)
 
     def log_sf(self, x: Numeric, sigma: Boxable) -> Boxable:

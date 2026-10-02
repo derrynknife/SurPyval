@@ -1,8 +1,12 @@
 Changelog
 =========
 
-v0.22.0 (unreleased)
---------------------
+v0.22 (unreleased)
+------------------
+
+**Versioning.** From this release, versions have two parts,
+``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``); every release takes the
+next minor number. pip compares ``0.22`` and ``0.22.0`` as equal.
 
 **Removed.** The names 0.21 deprecated (#422) are gone. An old argument
 name (``seed``, ``confidence``, ``B``, ``t``, ``q``, ``u``, CoxPH's
@@ -196,6 +200,85 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **New: every likelihood fit says whether it reached a verified
+  maximum.** The regression fits (PH, AFT, PO, AH, accelerated life and
+  their time-varying forms), Cox, parametric and Cox frailty, proportional
+  odds, Fine-Gray and competing-risks PH, mixture, Royston-Parmar, HPP,
+  NHPP, proportional-intensity, renewal and copula models have
+  ``maximum``, as ``Parametric`` does: ``"verified"``, ``"unverified"`` or
+  ``"no finite maximum"``, agreeing with the fit's warnings, and saved by
+  ``to_dict`` (an older dict reads ``"unknown"``). Lin-Ying and
+  Buckley-James, which solve estimating equations, are ``"not
+  applicable"``. A parameter on its bound where the likelihood is highest
+  (a frailty variance of 0, an AMH copula at ``theta = 1``) is a verified
+  boundary maximum. A new conformance property, ``maximum``, checks every
+  likelihood fit in the registry and verifies each answer independently;
+  the degradation process and destructive fits are its known gap (#564).
+- **Fixed: fits that kept an unverified answer now polish it or say so.**
+  The Nelder-Mead fits (NHPP, proportional intensity, renewal, copulas),
+  Fine-Gray's BFGS, Cox's fallback root-finder, the HPP and Royston-Parmar
+  took their optimiser's answer unchecked. Where results move, they move
+  towards the maximum: Cox-Lewis by 1.7e-5 relative (log-likelihood up
+  7e-9), a Gaussian copula's ``rho`` by 1.9e-6, a G1 renewal's ``q`` by
+  1e-4.
+- **Fixed: the truncated mixture fit kept L-BFGS-B's answer unverified
+  (#560).** It is now polished and verified, as the EM fit is; two
+  equivalent forms of the same data agree to 5e-7 (they differed by
+  1.8e-5).
+- **Changed: one wording for no finite maximum.** Cox's, Fine-Gray's,
+  competing-risks PH's and Cox frailty's "Monotone partial likelihood: ..."
+  now reads "No finite maximum: the partial likelihood keeps increasing
+  ..."; update code that matches the old text. Cox frailty's EM warning
+  says it "did not reach a verified maximum", and a mixture with a
+  point-mass component warns once, not twice.
+- **Fixed: rows censored with a finite truncation bound are read as the
+  intervals they are in the fit checks (#559).** Data whose every row is
+  right censored with a finite ``tr`` (or left censored with a finite
+  ``tl``) was refused as having no failure, from the raw censoring codes.
+  The checks and the start guess now read each row as the likelihood does.
+  Such data still bounds no failure from one side, so its likelihood has
+  no finite maximum unless a parameter is fixed: a free two-parameter fit
+  is refused, as the same rows written as intervals are; a fit with a
+  parameter fixed equals the interval fit; and the Exponential, Rayleigh,
+  Poisson, Geometric, NegativeBinomial and DiscreteWeibull fits, which
+  stopped at ``failure_rate = 3.6e-7`` or ``sigma = 313.5`` and reported
+  it verified, warn "No finite maximum". MPS still refuses data with no
+  exact value.
+- **Fixed: distribution functions are quiet in the far tail and right at
+  infinity (#561).** ``Weibull.sf`` far in the tail warned "overflow
+  encountered in power" though its 0 was right; an overflow or division by
+  zero inside a distribution function is no longer warned about (an
+  invalid operation still is). A sweep of every registered distribution at
+  extreme ``x`` and parameters also found 218 wrong ``nan`` values, each
+  now the right value: a Gamma's or Poisson's ``sf(inf)``, a Weibull's
+  ``df(1e300)``, Gumbel's ``df(inf)``, a NegativeBinomial past 1.3e154
+  trials, a discretised Weibull's hazard from k = 1e6, a zero-inflated
+  model's hazard at large ``x``. Hazards take their limits at infinity (a
+  Gamma's rate, a NegativeBinomial's p). Fitted results are bit-identical.
+- **Fixed: derivatives through ``np.where`` with a broadcast argument
+  (#562).** autograd's rule for ``np.where(c, x, y)`` did not reduce the
+  gradient to the shape of a broadcast ``x`` or ``y``: the gradient came
+  back the wrong shape or raised, and where a later step summed it away
+  the second derivative was silently wrong (7.52 instead of 4.46 in the old
+  accelerated-life substitution). SurPyval registers a broadcast-aware rule
+  when imported (``surpyval/utils/autograd_where_compat.py``), so every
+  model and every custom distribution written with ``surpyval.np`` gets
+  the right derivatives; no fitted value changes. **Behaviour change:**
+  importing surpyval changes ``autograd.numpy.where``'s derivative for the
+  whole process. A test notices when autograd fixes this itself, so the
+  patch can go.
+- **Fixed: ``Discretize`` has an exact Hessian at the first bin (#562).**
+  The probability of ``k = 1`` took ``R(0)`` through the continuous
+  formula, whose Hessian is not finite there (a Weibull's ``(0/α)^β``), so
+  the covariance silently fell back to a numerical Hessian. ``R`` is now
+  exactly 1 at the start of the support; values are unchanged.
+- **A ``derivatives`` conformance property (#562).** For every registered
+  model whose fit or inference differentiates its likelihood, the gradient
+  and Hessian it takes at the fit, in its search space, agree with
+  Richardson finite differences to 1e-6 of the standard-error scale (1e-5
+  through the numerical incomplete gamma and beta shape derivatives); so do
+  a parametric ``cb``'s delta-method gradients, the copulas' h-functions
+  and density, and the degradation paths' Jacobians.
 - **Fixed: accelerated life and AFT time-varying fits warn of no finite
   maximum and use the exact information (#555).** Stress levels without
   failures, or a covariate level with no events, let parameters run off
@@ -402,10 +485,10 @@ bands change (#477).
   bootstrap and recurrent fits, the public API, the import set and the
   test IDs, so ``compare`` shows a change altered nothing (see
   :doc:`Contributing`). CI lints with isort as well, and covers
-  ``conftest.py`` and ``scripts/``; flake8 caps function complexity at 70;
+  ``conftest.py`` and ``scripts/``; flake8 caps function complexity (now at 25);
   mypy reports unused ``type: ignore`` comments, redundant casts and
   impossible comparisons; a test fails once the version reaches
-  ``REMOVED_IN`` (0.23.0) while deprecated names are still accepted; and
+  ``REMOVED_IN`` (0.23) while deprecated names are still accepted; and
   the nightly refit study covers the seven models added in 0.22 (#545).
 - **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
   (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have

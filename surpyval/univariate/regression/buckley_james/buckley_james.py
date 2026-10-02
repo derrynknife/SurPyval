@@ -244,6 +244,11 @@ class BuckleyJamesModel(
     #: The iterations the fit took, and whether it converged.
     n_iter: int
     converged: bool
+    #: The Buckley-James estimator solves its estimating equations by
+    #: iterated least squares rather than maximising a likelihood: ``"not
+    #: applicable"`` (one of ``MAXIMUM_STATES``,
+    #: ``surpyval.utils.no_maximum``); ``converged`` says how it ended.
+    maximum: str = "not applicable"
     #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
     #: ``concordance``; ``None`` when not kept.
     _data: "tuple | None"

@@ -28,7 +28,7 @@ __all__ = [
 ]
 
 #: The release in which the old names stop being accepted.
-REMOVED_IN = "0.23.0"
+REMOVED_IN = "0.23"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -74,7 +74,7 @@ def renamed_arguments(**renames: str) -> Callable[[F], F]:
     ...     describe(names=["a"])
     ['a']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    describe: 'names' is deprecated and will be removed in v0.23.0;
+    describe: 'names' is deprecated and will be removed in v0.23;
     use 'labels'.
     """
 
@@ -124,7 +124,7 @@ class RenamedAttribute:
     ...     Model().param_names
     ['a', 'b']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
-    Model.param_names is deprecated and will be removed in v0.23.0;
+    Model.param_names is deprecated and will be removed in v0.23;
     use 'parameter_names'.
     """
 
@@ -209,7 +209,7 @@ class CallableList(list):
     ['alpha', 'beta']
     >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
     WeibullPH.parameter_names is now a property: 'parameter_names()' is
-    deprecated and will be removed in v0.23.0; use 'parameter_names'.
+    deprecated and will be removed in v0.23; use 'parameter_names'.
     """
 
     def __init__(self, items: Any = (), where: str = "") -> None:

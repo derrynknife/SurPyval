@@ -5,7 +5,7 @@
 ``DegradationModel.cb`` and the process models' ``random`` take ``Z``
 second; ``induced_life`` and both ``predict_rul`` take everything after
 the query by keyword. The old orders (``Z`` last) and the old names
-(``t``, ``q``, ``seed``) were removed in v0.22.0: a call in the old order
+(``t``, ``q``, ``seed``) were removed in v0.22: a call in the old order
 now fails rather than being read with its old meaning (see also
 test_removed_arguments.py).
 """

@@ -67,12 +67,13 @@ from .._fit_skeleton import (
     MirroredDistributionAttrs,
     _gradient,
     assemble_regression_model,
-    finish_search,
     free_coefficients,
+    judge_search,
     keep_information,
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
+    say_verdict,
     uniform_draws,
 )
 from .._kinds import ADDITIVE_HAZARD
@@ -563,12 +564,16 @@ class AdditiveHazardsFitter(
         # boundary is no stationary point, and its warning says why; any
         # other that is not a maximum says so.
         coefs = free_coefficients(self, fixed, pmap)
-        no_maximum, derivatives = finish_search(true_neg_ll, res, coefs, init)
-        if not (
-            no_maximum
-            or self._warn_if_on_positivity_boundary(data, params)
-            or converged
-        ):
+        verdict = judge_search(
+            true_neg_ll, res, coefs, init, n_obs, verified=converged
+        )
+        maximum = verdict.maximum
+        if verdict.no_maximum:
+            say_verdict(verdict)
+        elif self._warn_if_on_positivity_boundary(data, params):
+            # (said in its own words: held by the barrier, not stationary)
+            maximum = "unverified"
+        elif not converged:
             warn_unverified("The additive hazards fit")
 
         # beta'Z is added to the hazard: the link has no multiplier phi.
@@ -587,8 +592,15 @@ class AdditiveHazardsFitter(
             neg_ll=final_neg_ll,
             centring=centring,
         )
+        model.maximum = maximum
         # The exact information for the model's covariance (#392).
         keep_information(
-            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+            model,
+            verdict.no_maximum,
+            verdict.derivatives,
+            inv_trans,
+            const,
+            res.x,
+            centring,
         )
         return model

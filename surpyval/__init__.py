@@ -57,6 +57,10 @@ from surpyval.univariate.parametric import (
     Weibull,
     weibayes,
 )
+
+# A broadcast-aware derivative rule for ``np.where``, registered on import
+# (autograd's does not unbroadcast; #562).
+from surpyval.utils import autograd_where_compat as _where  # noqa: F401
 from surpyval.utils import (
     fs_to_xcnt,
     fs_to_xrd,

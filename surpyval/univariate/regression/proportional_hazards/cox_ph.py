@@ -26,6 +26,7 @@ from surpyval.univariate.nonparametric import (
     NelsonAalen,
     Turnbull,
 )
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
@@ -33,6 +34,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 
 from .._aliasing import (
     aliased_columns,
@@ -139,7 +141,12 @@ def _solve_beta_and_p_values(
 
     Returns ``(res, p_values, se, aliased)``: ``res.x`` has 0 at the
     aliased columns (the coefficients the predictions use), and their
-    p-values and standard errors ``se`` are nan."""
+    p-values and standard errors ``se`` are nan. ``res.maximum`` is what
+    the search reached, for the model's ``maximum``: ``"no finite
+    maximum"`` where the partial likelihood is monotone, else
+    ``"verified"`` where the score is zero and the information positive
+    definite (``is_local_minimum``, per event), and otherwise
+    ``"unverified"``, which is said."""
     with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
         score_at_start, info_at_start = jac(beta_init)
     p = len(np.atleast_1d(beta_init))
@@ -176,6 +183,8 @@ def _solve_beta_and_p_values(
         beta_init = np.asarray(beta_init, dtype=float)[kept]
         if kept.size == 0:
             res = OptimizeResult(x=np.zeros(p), success=True, fun=0.0)
+            # Nothing estimated: the answer is exact
+            res.maximum = "verified"
             return res, np.full(p, np.nan), np.full(p, np.nan), aliased
     # Where the likelihood is monotone (below) the coefficients run off
     # towards infinity and the risk-set sums underflow to 0 on the way;
@@ -210,7 +219,9 @@ def _solve_beta_and_p_values(
                     res = fallback
 
             hessian_matrix = jac(res.x)[1]
-    _warn_if_monotone(hessian_matrix, info_at_start, kept)
+    res.maximum = _maximum_reached(
+        res, jac, hessian_matrix, info_at_start, kept, n_events
+    )
     # An exactly singular information matrix raises before the
     # pseudo-inverse fallback can run (#259); route it there.
     try:
@@ -237,11 +248,46 @@ def _solve_beta_and_p_values(
     return res, p_values, se, aliased
 
 
+def _maximum_reached(
+    res: Any,
+    jac: Callable,
+    info: npt.NDArray,
+    info_at_start: npt.NDArray,
+    kept: npt.NDArray,
+    n_events: float,
+) -> str:
+    """What the partial-likelihood search reached (see
+    :func:`_solve_beta_and_p_values`), with its one warning: no finite
+    maximum (:func:`_warn_if_monotone`), else a verified maximum -- the
+    score and the information at ``res.x`` (``res.jac`` from
+    Newton-Raphson, else ``jac``) pass ``is_local_minimum`` per event --
+    or a search that did not reach one."""
+    if _warn_if_monotone(info, info_at_start, kept):
+        return "no finite maximum"
+    score = getattr(res, "jac", None)
+    if score is None or not isinstance(res.get("hess"), np.ndarray):
+        score = jac(res.x)[0]
+    verified = is_local_minimum(
+        lambda _: 0.0,  # (only the derivatives are read)
+        lambda _: np.atleast_1d(score),
+        lambda _: np.atleast_2d(info),
+        np.atleast_1d(res.x),
+        obj_scale=max(n_events, 1.0),
+    )
+    if verified:
+        return "verified"
+    warn_unverified(
+        "The partial-likelihood search",
+        None if res.success else "it reported: {}".format(res.message),
+    )
+    return "unverified"
+
+
 def _warn_if_monotone(
     info: npt.NDArray,
     info_at_start: npt.NDArray,
     columns: "npt.NDArray | None" = None,
-) -> None:
+) -> bool:
     """Warn when the partial likelihood has no finite maximum.
 
     When a covariate separates the events from the survivors (every
@@ -252,7 +298,8 @@ def _warn_if_monotone(
     the information for that coefficient has collapsed: the risk sets'
     weighted covariate variance goes to 0 as the coefficient grows.
     ``columns`` are the columns of ``Z`` the matrices are for (all of
-    them by default; the identified ones after aliasing).
+    them by default; the identified ones after aliasing). Returns whether
+    it warned.
     """
     d = np.diag(np.atleast_2d(info))
     d0 = np.diag(np.atleast_2d(info_at_start))
@@ -263,20 +310,21 @@ def _warn_if_monotone(
         if columns is not None:
             diverged = np.asarray(columns)[diverged]
         warn_monotone(str(diverged.tolist()))
+        return True
+    return False
 
 
 def warn_monotone(which: str) -> None:
     """Warn that the partial likelihood has no finite maximum in the
     coefficients ``which`` names (``"[0]"``, or ``"[0] (cause 'a')"``);
     shared with the Fine-Gray fit, a weighted partial likelihood (#392)."""
-    warnings.warn(
-        "Monotone partial likelihood: it keeps increasing as coefficient"
-        "(s) {} grow without bound, so the estimate is infinite (the "
-        "covariate separates the events from the survivors). The "
-        "reported value, its standard error and its p-value are "
-        "meaningless; consider removing or coarsening the covariate, "
-        "or a penalised fit.".format(which),
-        stacklevel=_caller_stacklevel(),
+    warn_no_maximum(
+        "the partial likelihood keeps increasing as coefficient(s) {} "
+        "grow without bound, so the estimate is infinite (the covariate "
+        "separates the events from the survivors)".format(which),
+        "The reported value, its standard error and its p-value are "
+        "meaningless",
+        "consider removing or coarsening the covariate, or a penalised fit",
     )
 
 
@@ -524,6 +572,7 @@ class CoxPH_(CoxLikelihoodMixin):
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)
         model.res = res
+        model.maximum = res.maximum
         model.beta = copy(res.x)
         model.params = res.x
         if aliased.size:
@@ -677,6 +726,7 @@ class CoxPH_(CoxLikelihoodMixin):
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)
         model.res = res
+        model.maximum = res.maximum
         model.beta = copy(res.x)
         model.params = res.x
         if aliased.size:

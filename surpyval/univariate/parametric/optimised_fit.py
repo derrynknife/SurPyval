@@ -862,9 +862,10 @@ turnbull_estimator
     ) -> bool:
         """Warn, and return ``True``, when a maximum-likelihood fit's
         ``results`` sit in a limit of the family where its likelihood has
-        no finite maximum (#392). None does here; a family that contains
+        no finite maximum (#392): here, data that bound no failure from
+        one side (``_warn_if_one_sided``, #559). A family that contains
         another as a limit overrides this (see ``BetaGeometric``)."""
-        return False
+        return self._warn_if_one_sided(surv_data, results, zi, lfp)
 
     def _warn_if_offset_at_limit(
         self,

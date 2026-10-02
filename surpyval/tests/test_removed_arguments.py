@@ -1,5 +1,5 @@
 """
-The names v0.21 deprecated are gone in v0.22.0 (#422, principle 21).
+The names v0.21 deprecated are gone in v0.22 (#422, principle 21).
 
 An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``, and ``surpyval.experimental`` no longer
@@ -156,7 +156,10 @@ def _package_shims():
 
 
 def _release(version):
-    return tuple(int(part) for part in re.findall(r"\d+", version)[:3])
+    # MAJOR.MINOR (two parts since 0.22); padded, so "0.23" and "0.23.0"
+    # compare equal.
+    parts = [int(part) for part in re.findall(r"\d+", version)[:3]]
+    return tuple(parts + [0] * (3 - len(parts)))
 
 
 def test_deprecation_shims_are_found():

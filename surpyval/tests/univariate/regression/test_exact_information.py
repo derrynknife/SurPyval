@@ -20,6 +20,7 @@ from autograd import grad, hessian
 
 import surpyval as sp
 import surpyval.univariate.competing_risks.regression.fine_gray as fine_gray
+import surpyval.univariate.regression._fit_skeleton as skeleton
 import surpyval.univariate.regression._inference as inference
 import surpyval.univariate.regression.frailty.frailty_fitter as frailty
 from surpyval.tests.conformance.registry import CASE_BY_NAME, reg_data
@@ -187,16 +188,19 @@ def test_a_model_with_other_data_falls_back(monkeypatch):
     assert len(calls) == 1
 
 
-def test_accelerated_life_uses_the_numerical_hessian(monkeypatch):
-    calls = _count_numerical(monkeypatch, inference)
+def test_accelerated_life_keeps_the_exact_information(monkeypatch):
+    # Since #555 the accelerated-life fit keeps its exact information. The
+    # registry case holds alpha, whose standard error is 0.
     model = _registry("WeibullAL[Power]")
-    assert model._information is None
-    model.standard_errors()
-    assert len(calls) == 1
+    assert model._information is not None
+    calls = _count_numerical(monkeypatch, inference)
+    se = dict(zip(model.parameter_names, model.standard_errors()))
+    assert not calls and se.pop("alpha") == 0
+    assert all(np.isfinite(v) and v > 0 for v in se.values())
 
 
-def test_aft_time_varying_fit_uses_the_numerical_hessian(monkeypatch):
-    # Its accumulated-age likelihood is not one autograd can differentiate.
+def test_aft_time_varying_fit_keeps_the_exact_information(monkeypatch):
+    # Since #555 its accumulated-age likelihood is written for autograd.
     rng = np.random.default_rng(3)
     n = 200
     Z = rng.normal(0, 1, (n, 1))
@@ -206,10 +210,10 @@ def test_aft_time_varying_fit_uses_the_numerical_hessian(monkeypatch):
             np.arange(n), np.zeros(n), x, np.zeros(n, dtype=int), Z
         )
     )
-    assert model._information is None
+    assert model._information is not None
     calls = _count_numerical(monkeypatch, inference)
     se = model.standard_errors()
-    assert len(calls) == 1 and np.all(np.isfinite(se)) and np.all(se > 0)
+    assert not calls and np.all(np.isfinite(se)) and np.all(se > 0)
 
 
 @pytest.mark.parametrize(
@@ -406,10 +410,11 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
 
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     # The subdistribution fit's standard errors invert the exact Hessian
-    # the no-maximum check took, rather than taking it again.
+    # the no-maximum check took (``judge_search``, which checks the
+    # maximum with it too), rather than taking it again.
     case = CASE_BY_NAME["FineGray"]
     calls, seen = [], []
-    original, take = fine_gray.hessian, fine_gray.search_derivatives
+    original, take = fine_gray.hessian, skeleton.search_derivatives
 
     def counted(f):
         calls.append(1)
@@ -420,7 +425,7 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
         return take(neg_ll, beta)
 
     monkeypatch.setattr(fine_gray, "hessian", counted)
-    monkeypatch.setattr(fine_gray, "search_derivatives", taking)
+    monkeypatch.setattr(skeleton, "search_derivatives", taking)
     model = _fit(lambda: case.fit(case.data()))
     assert calls == [] and len(seen) == 1
     neg_ll, beta = seen[0]

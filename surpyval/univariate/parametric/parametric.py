@@ -30,6 +30,10 @@ from surpyval.utils.linalg import (
     wald_undefined,
     warn_wald_undefined,
 )
+from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
+    MAXIMUM_STATES,
+    restored_maximum,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -69,20 +73,6 @@ _NO_COVARIANCE_WHY = (
 )
 
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
-
-# The values of ``Parametric.maximum``: whether the log-likelihood a model
-# reports is at a maximum (principles 12 and 13). The first three are what
-# a maximum-likelihood fit reached, and agree with its warnings: a fit
-# that warns "No finite maximum" is ``"no finite maximum"``, one that
-# warns its search did not reach a verified maximum is ``"unverified"``,
-# and a fit that warns neither is ``"verified"``.
-MAXIMUM_STATES = (
-    "verified",
-    "unverified",
-    "no finite maximum",
-    "not applicable",
-    "unknown",
-)
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -413,14 +403,7 @@ class Parametric(
         # Dicts written before ``"maximum"`` existed keep the constructor's
         # value: "unknown" for a maximum-likelihood fit, "not applicable"
         # for any other.
-        if "maximum" in model_dict:
-            maximum = model_dict["maximum"]
-            if maximum not in MAXIMUM_STATES:
-                raise ValueError(
-                    f"The dictionary's 'maximum' is {maximum!r}; it must be "
-                    f"one of {list(MAXIMUM_STATES)}."
-                )
-            out.maximum = maximum
+        out.maximum = restored_maximum(model_dict, out.maximum)
         out._data_summary = model_dict.get("data_summary")
 
         # Restore the support interval, which fit-time construction sets via
@@ -1105,7 +1088,17 @@ class Parametric(
             # own hf; df / sf(k) disagreed with it for an LFP or ZI model.
             return self.df(x) / self.sf(np.asarray(x, dtype=float) - 1.0)
         else:
-            return self.df(x) / self.sf(x)
+            sf = self.sf(x)
+            gone = sf == 0
+            if not np.any(gone):
+                return self.df(x) / sf
+            # Only a zero-inflated model's survival reaches 0 (an LFP's
+            # stays at 1 - p), and past 0 its 1 - f0 cancels: the hazard
+            # is the base's, where df / sf was 0 / 0 (#561).
+            xg = np.asarray(x, dtype=float) - self.gamma
+            base = self.dist.hf(xg, *self.params)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                return np.where(gone, base, self.df(x) / sf)[()]
 
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -1149,8 +1142,10 @@ class Parametric(
             return out[()]
         else:
             # 0.0 - log(...) rather than -log(...): where sf is exactly 1
-            # (before 0, or before the offset) the latter gave -0.0.
-            return 0.0 - np.log(self.sf(x))
+            # (before 0, or before the offset) the latter gave -0.0. A
+            # survival of 0 is a cumulative hazard of inf, said quietly.
+            with np.errstate(divide="ignore"):
+                return 0.0 - np.log(self.sf(x))
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
@@ -1235,7 +1230,7 @@ class Parametric(
         .. math::
             R(x, given) = \frac{R(x + given)}{R(given)}
 
-        .. versionchanged:: 0.22.0
+        .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``, which
            still works until v0.23 with a ``DeprecationWarning``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.

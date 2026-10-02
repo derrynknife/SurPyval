@@ -160,7 +160,11 @@ Estimation
     that has coefficients with a repeated covariate column, and with a
     constant one where it has an intercept, and requires the aliasing and
     otherwise the fit without the column; the time-varying fits are
-    checked in ``univariate/regression/test_aliasing.py``.
+    checked in ``univariate/regression/test_aliasing.py``. The
+    derivatives a fit takes -- the gradient and Hessian with which it
+    searches, verifies its maximum and computes its covariance -- agree
+    with finite differences at the fit, for every registered model that
+    takes them (``conformance/test_derivatives.py``, #562).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
@@ -172,7 +176,19 @@ Estimation
     reason. A fit accepts an optimiser's answer only when it is a
     verified maximum (zero gradient, positive-definite Hessian), and a fit
     given ``init`` is also started from the default start. A likelihood
-    with no finite maximum warns so (#392), whatever the model.
+    with no finite maximum warns so (#392), whatever the model. And by
+    ``conformance/test_maximum.py``: every maximum-likelihood fit in the
+    registry -- the univariate distributions, mixtures, the parametric and
+    semi-parametric regressions, frailty, competing-risks, recurrence and
+    copula models -- records what it reached as its model's ``maximum``
+    (``"verified"``, ``"unverified"`` or ``"no finite maximum"``), warns
+    exactly when that is not a verified maximum, its fixture's fit, its
+    starved fit and its time-varying-covariate fit alike; and a verified
+    maximum passes an independent check at the reported parameters (the
+    gradient of the model's own likelihood ~0 and its Hessian positive
+    definite, a parameter on a boundary of its space held out where the
+    likelihood does not rise off it). Known gap: the degradation process
+    and destructive fits (#564).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.

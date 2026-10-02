@@ -95,6 +95,11 @@ PROPERTIES: dict[str, str] = {
         "first time and holds (or is NaN) after the last, for every "
         "function alike"
     ),
+    # test_derivatives.py, for the cases of DIFFERENTIATED.
+    "derivatives": (
+        "the derivatives a fit or its inference takes (autograd's, or the "
+        "model's own) agree with finite differences at the fit"
+    ),
     # The option sweeps of test_options.py, over each case's ``bounds``
     # (see :class:`Bound`), ``interp`` and ``estimators``.
     "cb_declared": (
@@ -149,6 +154,12 @@ PROPERTIES: dict[str, str] = {
         "a constant covariate column is aliased, the same way, where the "
         "model has an intercept"
     ),
+    # test_maximum.py, for the cases whose fit maximises a likelihood.
+    "maximum": (
+        "a likelihood fit's ``maximum`` says what it reached, it warns "
+        "exactly when that is not a verified maximum, and a verified "
+        "maximum has a zero gradient and a positive-definite Hessian"
+    ),
     # test_attributes.py, for the model classes in DECLARED_ATTRIBUTES.
     "attributes": (
         "every way of building the model (fit, each alternate fit path, "
@@ -171,6 +182,85 @@ DECLARED_ATTRIBUTES = frozenset(
     }
 )
 
+# The model classes whose fit or inference differentiates its likelihood
+# (or, for a copula, its cdf; for a degradation path, the path), which the
+# "derivatives" property checks against finite differences; and the cases
+# of those classes that take no derivatives. The other models take none:
+# their estimators are closed-form or nonparametric (Kaplan-Meier, Lin-Ying
+# additive hazards, Buckley-James, the trees), or their fits search
+# without a gradient and take a numerical Hessian (Royston-Parmar, Cox
+# frailty, the NHPP and renewal fits, the Wiener, gamma-process and
+# destructive degradation fits); the semi-parametric proportional odds
+# fit's profile derivatives are internal to it; and the competing-risks
+# Cox and Fine-Gray models fit each cause by CoxPH and FineGray, which
+# are checked.
+DIFFERENTIATED = frozenset(
+    {
+        "surpyval.Parametric",
+        "surpyval.MixtureModel",
+        "surpyval.ParametricRegressionModel",
+        "surpyval.FrailtyModel",
+        "surpyval.SemiParametricRegressionModel",
+        "surpyval.univariate.competing_risks.regression.fine_gray"
+        ".FineGrayModel",
+        "surpyval.univariate.competing_risks.ParametricCompetingRisks",
+        "surpyval.recurrent.parametric.parametric_recurrence"
+        ".ParametricRecurrenceModel",
+        "surpyval.recurrent.regression.proportional_intensity"
+        ".ProportionalIntensityModel",
+        "surpyval.multivariate.CopulaModel",
+        "surpyval.degradation.DegradationModel",
+    }
+)
+_NO_DERIVATIVES = "the fit takes no derivatives: "
+NOT_DIFFERENTIATED = {
+    "Uniform": _NO_DERIVATIVES + "the MLE is the sample extremes",
+    "Binomial": _NO_DERIVATIVES + "a closed-form estimate",
+    "Bernoulli": _NO_DERIVATIVES + "a closed-form estimate",
+    "FixedEventProbability": _NO_DERIVATIVES + "a closed-form estimate",
+    "ExactEventTime": _NO_DERIVATIVES + "a closed-form estimate",
+    "Hypoexponential": _NO_DERIVATIVES + "the model is given its rates",
+    **dict.fromkeys(
+        ("CrowAMSAA", "Duane", "CoxLewis", "ProportionalIntensityNHPP"),
+        _NO_DERIVATIVES + "a search on finite-difference gradients, and "
+        "a numerical Hessian",
+    ),
+}
+
+# The model classes whose estimate does not maximise a likelihood, and why;
+# the "maximum" property does not apply to them (a case of another class
+# whose fit is not a likelihood maximisation excludes it with the reason).
+NOT_A_LIKELIHOOD_FIT: dict[str, str] = {
+    "surpyval.NonParametric": "a product-limit or self-consistency estimate",
+    "surpyval.NeverOccurs": "a fixed model, not fitted",
+    "surpyval.InstantlyOccurs": "a fixed model, not fitted",
+    "surpyval.AdditiveHazardsModel": (
+        "Lin and Ying's estimating equations, a linear system"
+    ),
+    "surpyval.BuckleyJamesModel": (
+        "the Buckley-James estimating equations, by iterated least squares"
+    ),
+    "surpyval.beta.ml.SurvivalTree": "a tree of greedy splits",
+    "surpyval.beta.ml.RandomSurvivalForest": "an ensemble of trees",
+    "surpyval.univariate.competing_risks.CompetingRisks": (
+        "a non-parametric (Aalen-Johansen) estimate"
+    ),
+    "surpyval.recurrent.NonParametricCounting": (
+        "the non-parametric mean cumulative function"
+    ),
+    "surpyval.recurrent.CauseSpecificMCF": (
+        "the non-parametric mean cumulative function of each cause"
+    ),
+    "surpyval.degradation.DegradationModel": (
+        "two stages: each unit's path by least squares (or a mixed model), "
+        "then a fit of the pseudo-failure times, whose own maximum is a "
+        "univariate one"
+    ),
+    "surpyval.degradation.InducedFailureDistribution": (
+        "a Monte Carlo of a fitted degradation model"
+    ),
+}
+
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(
     {
@@ -184,6 +274,7 @@ REFIT_PROPERTIES = frozenset(
         "aliasing",
         "aliasing_constant",
         "attributes",
+        "maximum",
     }
 )
 
@@ -315,11 +406,18 @@ class Case:
             return False
         if prop == "convergence" and self.starve is None:
             return False
+        if prop == "derivatives" and (
+            self.model_class not in DIFFERENTIATED
+            or self.name in NOT_DIFFERENTIATED
+        ):
+            return False
         if prop == "aliasing_constant" and not self.intercept:
             return False
         if prop == "attributes" and (
             self.model_class not in DECLARED_ATTRIBUTES
         ):
+            return False
+        if prop == "maximum" and self.model_class in NOT_A_LIKELIHOOD_FIT:
             return False
         return self.interface in _APPLICABLE[prop] and prop not in (
             self.exclude
@@ -425,6 +523,26 @@ def _fitted(name):
     case = CASE_BY_NAME[name]
     with quiet():
         return case.fit(case.data())
+
+
+def tvc_path(case):
+    """The case's fit by ``fit_tvc`` where its fitter has one: one
+    ``(0, x]`` interval per subject, the time-fixed data; else ``None``."""
+    fitter = getattr(sp, case.name, None)
+    if not hasattr(fitter, "fit_tvc"):
+        return None
+
+    def fit_tvc(d):
+        n = np.asarray(d["n"])
+        return fitter.fit_tvc(
+            np.arange(n.sum()),
+            np.zeros(n.sum()),
+            np.repeat(d["x"], n),
+            np.repeat(d["c"], n),
+            np.repeat(d["Z"], n, axis=0),
+        )
+
+    return fit_tvc
 
 
 def fitted(case):

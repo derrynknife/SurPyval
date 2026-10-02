@@ -162,8 +162,17 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         >>> Gumbel.df(x, 3, 2)
         array([0.12732319, 0.16535215, 0.18393972, 0.15852096, 0.08968704])
         """
-        z = (x - mu) / sigma
-        return (1 / sigma) * np.exp(z - np.exp(z))
+        return (1 / sigma) * np.exp(self._log_kernel((x - mu) / sigma))
+
+    @staticmethod
+    def _log_kernel(z: Boxable) -> Boxable:
+        """``z - exp(z)``, the log density without its ``-log(sigma)``:
+        -inf at ``z = inf``, not ``inf - inf`` (#561)."""
+        top = z == np.inf
+        if not np.any(top):
+            return z - np.exp(z)
+        z = np.where(top, 0.0, z)
+        return np.where(top, -np.inf, z - np.exp(z))
 
     def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -307,8 +316,7 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         return mu - sigma * euler_gamma
 
     def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        z = (x - mu) / sigma
-        return z - np.exp(z) - np.log(sigma)
+        return self._log_kernel((x - mu) / sigma) - np.log(sigma)
 
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -self.Hf(x, mu, sigma)

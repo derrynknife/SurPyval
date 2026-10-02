@@ -97,6 +97,12 @@ through each property that applies to it:
   rows, and counts ``n`` against the same rows repeated;
 - valid values: probabilities in [0, 1] and monotone in time, no NaN at a
   valid time;
+- that the derivatives a fit or its inference takes -- the gradient and
+  Hessian of its likelihood in its search space, by autograd or the
+  model's own, and the delta-method gradients behind a parametric ``cb``
+  -- agree with finite differences at the fit (``test_derivatives.py``;
+  the model classes that differentiate are listed in ``DIFFERENTIATED``,
+  and the cases of those that do not in ``NOT_DIFFERENTIATED``);
 - the missing-value rule (see :doc:`Conventions`), seed reproducibility of
   the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
   that keeps every prediction;
@@ -112,6 +118,18 @@ through each property that applies to it:
   cannot determine is aliased, not given an arbitrary coefficient
   (``test_aliasing.py``; a model with covariates declares its
   ``coefficients``);
+- that a fit which maximises a likelihood says what it reached
+  (``test_maximum.py``): its model's ``maximum`` is ``"verified"``,
+  ``"unverified"`` or ``"no finite maximum"``, it warns exactly when that
+  is not a verified maximum, and a verified maximum has a zero gradient and
+  a positive-definite Hessian of the likelihood at the reported
+  parameters. **A new likelihood fitter must set** ``maximum``
+  (``surpyval.utils.no_maximum.MAXIMUM_STATES``), from a check of its
+  answer -- ``is_local_minimum``, or ``verify_or_polish`` for a search
+  whose answer may need polishing -- with ``warn_unverified`` or
+  ``warn_no_maximum`` where it is not a verified maximum, and pass this
+  property (a family's likelihood goes in ``SEARCHES`` there; a fit that
+  is not a likelihood maximisation is excluded with the reason);
 - that no raw numpy, scipy or autograd warning escapes the package, and
   each deliberate warning appears once (``test_warnings.py``).
 
@@ -271,6 +289,12 @@ documentation build from running on every change:
   short-lived branch and opened as a pull request into ``develop``.
 * At release time ``develop`` is merged into ``master`` in a single pull
   request and the new version is tagged.
+
+Versions have two parts, ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``), since
+0.22; earlier releases had three. Every release, fixes only or not, takes the
+next minor number. A name deprecated in one release is removed in the next
+(``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
+the version reaches it while the old names are still accepted.
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather

@@ -241,7 +241,17 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         finite = (x > 0) & (x < np.inf)
         x_pos = np.where(finite, x, 1.0)
         z = (np.log(x_pos) - mu) / sigma
-        inside = np.where(finite, normal_hazard(z) / (sigma * x_pos), 0.0)
+        scale = sigma * x_pos
+        if np.any(scale == 0):
+            # sigma x underflows at a subnormal x with a small sigma: 0 / 0
+            # where the hazard is 0, divided out one factor at a time (#561)
+            scale = np.where(scale == 0, 1.0, scale)
+            hz = normal_hazard(z)
+            ratio = np.where(
+                sigma * x_pos == 0, hz / sigma / x_pos, hz / scale
+            )
+            return on_support(x, np.where(finite, ratio, 0.0), 0.0)
+        inside = np.where(finite, normal_hazard(z) / scale, 0.0)
         return on_support(x, inside, 0.0)
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:

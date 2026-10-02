@@ -597,7 +597,7 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
 
 def test_band_does_not_warn_and_its_retired_arguments_are_gone():
     # No warning by default; n_sims and random_state, unused since the
-    # critical value stopped being simulated, were removed in v0.22.0.
+    # critical value stopped being simulated, were removed in v0.22.
     model = _fit()
     with warnings.catch_warnings():
         warnings.simplefilter("error")

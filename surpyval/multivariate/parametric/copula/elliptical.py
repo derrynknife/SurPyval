@@ -125,8 +125,8 @@ class GaussianCopula(Copula):
 
     def _warn_if_no_maximum(
         self, margin_models: list, data: Any, theta: npt.NDArray
-    ) -> None:
-        _warn_if_rho_at_bound(self, margin_models, data, theta)
+    ) -> bool:
+        return _warn_if_rho_at_bound(self, margin_models, data, theta)
 
     def cdf(self, u: Any, v: Any, rho: Any) -> Any:
         rho = float(rho)
@@ -518,13 +518,13 @@ class StudentTCopula(Copula):
 
     def _warn_if_no_maximum(
         self, margin_models: list, data: Any, theta: npt.NDArray
-    ) -> None:
+    ) -> bool:
         """Warn when the Gaussian copula, the limit ``nu -> inf``, is at
         least as likely as the t copula the search reached (see the class
         docstring), or when ``rho`` ran to +-1 (as for the Gaussian
-        copula; one warning)."""
+        copula; one warning). Returns whether it warned."""
         if _warn_if_rho_at_bound(self, margin_models, data, theta):
-            return
+            return True
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
@@ -533,7 +533,7 @@ class StudentTCopula(Copula):
         rho = Gaussian._fit_theta(margin_models, data, init=theta[:1])
         nll_gauss = Gaussian.neg_ll(rho, dims, data.n)
         if not nll_gauss <= nll_t + 1e-4:
-            return
+            return False
         warn_no_maximum(
             "nu grows without bound: the data show no more tail "
             "dependence than the Gaussian copula, the limit of the t "
@@ -544,6 +544,7 @@ class StudentTCopula(Copula):
             "derived from it are meaningless",
             "fit the Gaussian copula instead",
         )
+        return True
 
 
 Gaussian = GaussianCopula()

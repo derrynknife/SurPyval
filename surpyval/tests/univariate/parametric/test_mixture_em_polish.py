@@ -122,6 +122,14 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
         model._truncated = False
         model.p = np.ones((2, len(x))) / 2
         model.initialise_params()
-        model._em(max_iter=4, budget=2)
+        reason = model._em(max_iter=4, budget=2)
+    # ``_em`` says why; the fit gives the one warning (unless the
+    # likelihood has no finite maximum, which says so instead)
+    assert caught == []
+    assert reason == "EM reached its iteration limit"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        fitted = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
     assert len(caught) == 1
     assert "did not reach a verified maximum" in str(caught[0].message)
+    assert fitted.maximum == "unverified"

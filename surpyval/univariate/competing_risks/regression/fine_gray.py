@@ -40,7 +40,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -69,8 +69,7 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.univariate.regression._fit_skeleton import (
     LOG_MAX,
     baseline_at_origin_error,
-    runaway_coefficients,
-    search_derivatives,
+    judge_search,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
@@ -88,6 +87,12 @@ from surpyval.utils.dataframe import (
 )
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    maximum_entry,
+    restored_maximum,
+    warn_unverified,
+)
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     missing_cause_error,
@@ -211,24 +216,31 @@ def _fit_cause(
     beta0 = np.zeros(kept.size)
     if kept.size:
         res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
+        # A covariate that separates the events of interest from the rest
+        # (a level with none of them) drives its coefficient to infinity;
+        # BFGS stops where the rise is below its tolerance and reports
+        # success (-12.9 on such data). Newton's method cannot converge
+        # from there, which is what the check finds (#392). Otherwise the
+        # answer must be a verified maximum, polished if it is not (BFGS's
+        # absolute tolerance on the gradient is not scale free).
+        verdict = judge_search(
+            neg_ll,
+            res,
+            [(k, int(kept[k])) for k in range(kept.size)],
+            beta0,
+            float(n_event.sum()),
+        )
+        res, derivatives = verdict.res, verdict.derivatives
+        runaway, maximum = verdict.runaway, verdict.maximum
     else:
         # Every coefficient aliased: nothing to fit.
         res = OptimizeResult(
             x=beta0, fun=float(neg_ll(beta0)), success=True, nit=0
         )
+        derivatives, runaway, maximum = None, [], "verified"
     # The negative log-likelihood itself.
     res.fun = float(res.fun) + offset
     beta = res.x
-    # A covariate that separates the events of interest from the rest (a
-    # level with none of them) drives its coefficient to infinity; BFGS
-    # stops where the rise is below its tolerance and reports success
-    # (-12.9 on such data). Newton's method cannot converge from there,
-    # which is what the check finds (#392).
-    derivatives = search_derivatives(neg_ll, beta)
-    runaway = runaway_coefficients(
-        neg_ll, beta, list(range(beta.size)), beta0, derivatives
-    )
-    runaway = [int(kept[k]) for k in runaway]
 
     # Standard errors from the inverse observed information, the Hessian
     # the check just took.
@@ -273,6 +285,8 @@ def _fit_cause(
         "neg_ll": float(res.fun),
         "res": res,
         "runaway": runaway,
+        "maximum": maximum,
+        "objective": neg_ll,
     }
 
 
@@ -412,23 +426,31 @@ def _information_at_zero(
     return Z.T @ (a[:, None] * Z) - M.T @ (sets.d[:, None] * M)
 
 
-def _warn_if_monotone(fits: list) -> None:
+def _warn_if_monotone(fits: list) -> str:
     """One warning for the causes, among the per-cause fits ``fits``
     (``_fit_cause``'s dicts), whose partial likelihood has no finite
     maximum; as ``CoxPH`` warns (``cox_ph.warn_monotone``), naming the
-    cause where the model has more than one."""
+    cause where the model has more than one. Then one for the causes whose
+    search did not reach a verified maximum. Returns the model's
+    ``maximum``, the worst of the causes'."""
     runaway = [(fit["cause"], fit["runaway"]) for fit in fits]
     runaway = [(cause, coefs) for cause, coefs in runaway if coefs]
-    if not runaway:
-        return
-    if len(fits) == 1:
+    if len(fits) == 1 and runaway:
         warn_monotone(str(runaway[0][1]))
-        return
-    warn_monotone(
-        " and ".join(
-            "{} (cause {!r})".format(coefs, cause) for cause, coefs in runaway
+    elif runaway:
+        warn_monotone(
+            " and ".join(
+                "{} (cause {!r})".format(coefs, cause)
+                for cause, coefs in runaway
+            )
         )
-    )
+    unverified = [f["cause"] for f in fits if f["maximum"] == "unverified"]
+    if unverified:
+        warn_unverified(
+            "The Fine-Gray fit"
+            + ("" if len(fits) == 1 else " of cause(s) {}".format(unverified))
+        )
+    return combined_maximum(f["maximum"] for f in fits)
 
 
 def _cumhaz_at_origin(
@@ -510,6 +532,14 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     _neg_ll: float
     #: The optimiser's result (``None`` on a restored model).
     res: Any
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"unknown"``
+    #: for a model restored from a dict saved without it.
+    maximum: str
+    #: The negative weighted partial log-likelihood the fit maximised, of
+    #: the coefficients it did not alias, on the centred covariates (less
+    #: its value at 0); ``None`` on a restored model (not saved).
+    _objective: "Callable | None"
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -528,6 +558,8 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
         self.res = fit["res"]
+        self.maximum = fit.get("maximum", "unknown")
+        self._objective = fit.get("objective")
 
     _ALIASED_WHY = (
         "a constant column, which the baseline subdistribution hazard "
@@ -560,6 +592,7 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
             "neg_ll": float(self._neg_ll),
+            **maximum_entry(self.maximum),
         }
         if np.any(self.center):
             out["center"] = np.asarray(self.center, dtype=float).tolist()
@@ -596,6 +629,7 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
                 ),
                 "neg_ll": model_dict["neg_ll"],
                 "res": None,
+                "maximum": restored_maximum(model_dict),
             }
         )
 
@@ -831,8 +865,10 @@ class FineGray_:
             raise unknown_cause_error(event, causes)
 
         fit = _fit_cause(x, Z, e, c, n, event, center)
-        _warn_if_monotone([fit])
-        return FineGrayModel(fit)
+        maximum = _warn_if_monotone([fit])
+        model = FineGrayModel(fit)
+        model.maximum = maximum
+        return model
 
 
 FineGray = FineGray_()

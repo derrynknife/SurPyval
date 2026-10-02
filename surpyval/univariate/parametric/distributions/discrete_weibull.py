@@ -110,6 +110,14 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         # No mass to condition on below k = 1. The exponent is a
         # difference of powers; formed as one (see ``_steps``) it no
         # longer reads inf - inf = NaN at k = 1e6 with shape 1000 (#458).
+        # At k = inf the exponent is inf * 0; its limit there is that of
+        # beta k^(beta - 1) log q: the hazard tends to 1, 1 - q or 0 as
+        # beta is above, at or below 1 (#561).
+        top = np.asarray(x) == np.inf
+        if np.any(top):
+            out = self.hf(np.where(top, 1.0, x), q, beta)
+            limit = np.where(beta > 1, 1.0, np.where(beta == 1, 1.0 - q, 0.0))
+            return np.where(top, limit + np.zeros_like(out), out)
         _, step, _ = self._steps(x, q, beta)
         return np.where(x < 1.0, 0.0, -np.expm1(step))
 
@@ -124,7 +132,9 @@ class DiscreteWeibull_(OptimisedFitMixin, DiscreteParametricFitter):
         # See ``Geometric.qf``: inverting a CDF built by cancellation
         # lands a few ulp above the integer, and ceil() would answer
         # k + 1 for a u that came straight out of ``ff``.
-        k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
+        # (u = 1 is k = inf, where inf - inf is NaN and k stands)
+        with np.errstate(invalid="ignore"):
+            k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, q: Boxable, beta: Boxable) -> Boxable:

@@ -86,25 +86,74 @@ def finite_difference_covariance(model, rel_step=1e-3):
         full[free] = v
         return float(model.model.neg_ll(data, *full))
 
-    def hessian(h):
-        x0, k = p_hat[free], len(free)
+    h = rel_step * np.maximum(np.abs(p_hat[free]), 1e-2)
+    with np.errstate(all="ignore"):
+        H = richardson_hessian(f, p_hat[free], h)
+    return cov[np.ix_(free, free)], np.linalg.inv(H)
+
+
+def richardson_gradient(f, x, step):
+    """The gradient of the scalar ``f`` at ``x`` by central differences
+    with steps ``step`` (one per coordinate) and half of them,
+    extrapolated (Richardson): error O(step**4) from truncation, plus
+    about ``eps |f| / step`` from rounding."""
+    x = np.asarray(x, dtype=float)
+    step = np.broadcast_to(np.asarray(step, dtype=float), x.shape)
+
+    def central(h):
+        g = np.empty(x.size)
+        for i in range(x.size):
+            e = np.zeros(x.size)
+            e[i] = h[i]
+            g[i] = (float(f(x + e)) - float(f(x - e))) / (2 * h[i])
+        return g
+
+    return (4 * central(step / 2) - central(step)) / 3
+
+
+def richardson_hessian(f, x, step):
+    """The Hessian of the scalar ``f`` at ``x`` by central second
+    differences with steps ``step`` and half of them, symmetrised and
+    extrapolated (Richardson): error O(step**4) from truncation, plus
+    about ``eps |f| / step**2`` from rounding."""
+    x = np.asarray(x, dtype=float)
+    step = np.broadcast_to(np.asarray(step, dtype=float), x.shape)
+    k = x.size
+
+    def central(h):
         H = np.empty((k, k))
         for i in range(k):
             for j in range(k):
                 ei, ej = np.zeros(k), np.zeros(k)
                 ei[i], ej[j] = h[i], h[j]
                 H[i, j] = (
-                    f(x0 + ei + ej)
-                    - f(x0 + ei - ej)
-                    - f(x0 - ei + ej)
-                    + f(x0 - ei - ej)
+                    float(f(x + ei + ej))
+                    - float(f(x + ei - ej))
+                    - float(f(x - ei + ej))
+                    + float(f(x - ei - ej))
                 ) / (4 * h[i] * h[j])
         return 0.5 * (H + H.T)
 
-    h = rel_step * np.maximum(np.abs(p_hat[free]), 1e-2)
-    with np.errstate(all="ignore"):
-        H = (4 * hessian(h / 2) - hessian(h)) / 3
-    return cov[np.ix_(free, free)], np.linalg.inv(H)
+    return (4 * central(step / 2) - central(step)) / 3
+
+
+def richardson_jacobian(f, x, step):
+    """The Jacobian ``d f_i / d x_j`` of the vector ``f`` at ``x``, as
+    :func:`richardson_gradient` takes a gradient."""
+    x = np.asarray(x, dtype=float)
+    step = np.broadcast_to(np.asarray(step, dtype=float), x.shape)
+
+    def central(h):
+        cols = []
+        for j in range(x.size):
+            e = np.zeros(x.size)
+            e[j] = h[j]
+            up = np.asarray(f(x + e), dtype=float)
+            down = np.asarray(f(x - e), dtype=float)
+            cols.append((up - down) / (2 * h[j]))
+        return np.stack(cols, axis=-1)
+
+    return (4 * central(step / 2) - central(step)) / 3
 
 
 def neg_ll_at(model, theta):
