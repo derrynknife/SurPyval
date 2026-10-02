@@ -29,7 +29,7 @@ class LifeModel(ABC):
     ``Power`` is one, with :math:`L(Z) = a Z^n`:
 
     >>> import numpy as np
-    >>> from surpyval import LifeModel, Power
+    >>> from surpyval.life_models import LifeModel, Power
     >>> isinstance(Power, LifeModel)
     True
     >>> Power.phi_param_map
@@ -67,7 +67,7 @@ class LifeModel(ABC):
 
         Examples
         --------
-        >>> from surpyval import GeneralLogLinear, Power
+        >>> from surpyval.life_models import GeneralLogLinear, Power
         >>> Power.resolve(1) is Power
         True
         >>> GeneralLogLinear.resolve(2).phi_param_map

@@ -436,7 +436,8 @@ class ParameterSubstitutionFitter(
         --------
 
         >>> import numpy as np
-        >>> from surpyval import Weibull, AcceleratedLife, Power
+        >>> from surpyval import Weibull, AcceleratedLife
+        >>> from surpyval.life_models import Power
         >>> np.random.seed(1)
         >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
         >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)

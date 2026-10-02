@@ -27,7 +27,8 @@ class GeneralLogLinear_(LifeModel):
     Examples
     --------
     >>> import numpy as np
-    >>> from surpyval import AcceleratedLife, GeneralLogLinear, Weibull
+    >>> from surpyval import AcceleratedLife, Weibull
+    >>> from surpyval.life_models import GeneralLogLinear
     >>> rng = np.random.default_rng(1)
     >>> Z = np.column_stack(
     ...     [np.repeat([1.0, 2.0, 3.0], 40), np.tile([0.0, 1.0], 60)]
@@ -46,9 +47,9 @@ class GeneralLogLinear_(LifeModel):
         # parameters are only the constant factor until the fit sees Z.
         k = 0 if n_stresses is None else int(n_stresses)
         names = ["c"] + ["beta_" + str(j) for j in range(k)]
-        bounds: tuple[tuple[int | None, int | None], ...] = (
-            (0, None),
-        ) + ((None, None),) * k
+        bounds: tuple[tuple[int | None, int | None], ...] = ((0, None),) + (
+            (None, None),
+        ) * k
         super().__init__(
             "GeneralLogLinear", {nm: i for i, nm in enumerate(names)}, bounds
         )
