@@ -2,6 +2,10 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import json  # noqa: E402
+import warnings  # noqa: E402
+from typing import Any, cast  # noqa: E402
+
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 import pytest  # noqa: E402
@@ -10,7 +14,12 @@ from surpyval import AFT, LogNormal, Weibull, WeibullPH  # noqa: E402
 from surpyval.degradation import (  # noqa: E402
     PATH_MODELS,
     DegradationAnalysis,
+    DegradationModel,
     ExponentialPath,
+)
+from surpyval.tests._helpers import (  # noqa: E402
+    linear_degradation_units,
+    linear_degradation_units_with_extremes,
 )
 
 
@@ -983,3 +992,120 @@ def test_352_measurement_inputs_are_refused_with_one_wording():
             predict([1.0, 2.0], [1.0, np.nan])
         with pytest.raises(ValueError, match="x and y must not be empty"):
             predict([], [])
+
+
+# ---------------------------------------------------------------------------
+# Units already past the threshold at their first measurement
+# are failed (left censored), not survivors; ``predict_rul`` /
+# ``predict_failure_time`` treat them as failed at time zero.
+# ``predict_rul`` quantiles reaching into the never-fails mass
+# are ``inf``. Seeded ``random`` and argument checks.
+# ---------------------------------------------------------------------------
+
+
+def test_unit_past_threshold_at_start_is_left_censored() -> None:
+    x, y, i = linear_degradation_units_with_extremes()
+    with pytest.warns(UserWarning) as caught:
+        model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    messages = " ".join(str(w.message) for w in caught)
+    assert "already past the threshold" in messages
+    assert "never reach" in messages  # unit 7, trending away
+    assert model.c[6] == -1 and model.pseudo_failure_times[6] == 1.0
+    assert model.c[7] == 1
+    assert "Failed Before Start : 1" in repr(model)
+    # the life likelihood (and so the analytic bounds) include the unit
+    band = model.cb([5.0, 10.0])
+    assert np.isfinite(band).all()
+    # and it round-trips
+    restored = DegradationModel.from_dict(
+        json.loads(json.dumps(model.to_dict()))
+    )
+    assert np.array_equal(restored.c, model.c)
+
+
+def test_left_censored_at_first_positive_time_when_starting_at_zero() -> None:
+    x, y, i = linear_degradation_units()
+    t = np.arange(0.0, 8.0)
+    x = np.concatenate([x, t])
+    y = np.concatenate([y, 16 + t])
+    i = np.concatenate([i, np.full(t.size, 9)])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    assert model.c[-1] == -1 and model.pseudo_failure_times[-1] == 1.0
+
+
+def test_predictions_for_a_trajectory_already_past_threshold() -> None:
+    # units whose starting levels vary widely, so the posterior of a new
+    # unit's intercept follows its own (already failed) trajectory
+    rng = np.random.default_rng(2)
+    t = np.arange(1.0, 9.0)
+    x = np.tile(t, 10)
+    i = np.repeat(np.arange(10), t.size)
+    a = np.repeat(rng.normal(4.0, 5.0, 10), t.size)
+    b = np.repeat(rng.normal(1.0, 0.2, 10), t.size)
+    y = a + b * x + rng.normal(0, 0.3, x.size)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        model = DegradationAnalysis.fit(x, y, i, threshold=30.0)
+    t = np.arange(1.0, 9.0)
+    t = np.arange(1.0, 9.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        pred = model.predict_rul(t, 31 + t, random_state=0)
+        crossing = model.predict_failure_time(t, 31 + t)
+    assert pred.prob_failed == 1.0
+    assert pred.prob_never_fails == 0.0
+    assert pred.failure_time == 0.0
+    assert pred.rul == -8.0
+    assert crossing == pytest.approx(-1.0)
+    # a unit below the threshold moving away still never reaches it
+    with pytest.warns(UserWarning, match="never reaches"):
+        assert np.isnan(model.predict_failure_time(t, 20 - 0.5 * t))
+
+
+def test_predict_rul_quantiles_inf_without_warnings() -> None:
+    rng = np.random.default_rng(0)
+    xs, ys, ids = [], [], []
+    for u in range(8):
+        t = np.arange(1.0, 11.0)
+        xs.append(t)
+        ys.append(1 + rng.normal(0.05, 0.2) * t + rng.normal(0, 0.3, t.size))
+        ids.append(np.full(t.size, u))
+    x, y, i = map(np.concatenate, (xs, ys, ids))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        model = DegradationAnalysis.fit(x, y, i, threshold=5.0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        pred = model.predict_rul([1, 2, 3], [1.0, 0.9, 0.8], random_state=0)
+        flat = model.predict_rul([1, 2, 3], [1.0, 0.5, 0.0], random_state=0)
+    assert pred.failure_time_interval[1] == np.inf
+    assert pred.rul_interval[1] == np.inf
+    assert np.isfinite(pred.failure_time)
+    assert flat.prob_never_fails > 0.5
+    assert flat.failure_time == np.inf and flat.rul == np.inf
+
+
+def test_plain_random_honours_seed() -> None:
+    x, y, i = linear_degradation_units()
+    model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    a = model.random(5, random_state=0)
+    b = model.random(5, random_state=0)
+    assert np.array_equal(a, b)
+    assert np.all(a > 0)
+
+
+def test_minor_argument_checks() -> None:
+    x, y, i = linear_degradation_units()
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=cast(Any, np.array(15.0))
+    )
+    assert model.threshold == 15.0
+    with pytest.raises(ValueError, match="n_samples"):
+        model.predict_rul([1.0, 2.0], [2.0, 3.0], n_samples=0)
+    for alpha in (0.0, 1.0, 1.5):
+        with pytest.raises(ValueError, match="alpha_ci"):
+            model.predict_rul([1.0, 2.0], [2.0, 3.0], alpha_ci=alpha)
+    with pytest.raises(ValueError, match="not one of the model's units"):
+        model.path([1.0], 42)

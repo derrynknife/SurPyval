@@ -21,6 +21,7 @@ from surpyval.degradation._bounds import (
     _life_loglik,
     _num_hessian,
 )
+from surpyval.tests._helpers import linear_degradation_units
 from surpyval.utils.linalg import sf_link_bound
 
 
@@ -223,3 +224,25 @@ def test_analytic_rejects_lfp_life_model():
     m.life_model.p = 0.8  # pretend an LFP was fitted
     with pytest.raises(ValueError, match="limited-failure-population"):
         m.cb([10.0], on="sf", method="analytic")
+
+
+# ---------------------------------------------------------------------------
+# The analytic two-sided ``cb`` puts ``alpha_ci / 2`` in each
+# tail (it was a 90% band labelled 95%).
+# ---------------------------------------------------------------------------
+
+
+def test_analytic_two_sided_cb_puts_half_alpha_in_each_tail() -> None:
+    x, y, i = linear_degradation_units(12)
+    model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    t = np.array([10.0, 14.0, 18.0])
+    for on in ("sf", "ff", "Hf"):
+        two = model.cb(t, on=on)
+        lower = model.cb(t, on=on, bound="lower", alpha_ci=0.025)
+        upper = model.cb(t, on=on, bound="upper", alpha_ci=0.025)
+        assert np.allclose(two[:, 0], lower)
+        assert np.allclose(two[:, 1], upper)
+    # the old band equalled the 5% one-sided bound (z = 1.645)
+    assert not np.allclose(
+        model.cb(t)[:, 0], model.cb(t, bound="lower", alpha_ci=0.05)
+    )

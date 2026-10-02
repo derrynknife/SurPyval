@@ -1,5 +1,5 @@
-"""Regression tests for the degradation part of #375 (missing values) and
-for #374 (predicting from a DataFrame after ``fit_from_df``).
+"""Missing values (#375) and covariates read by name (#374) in the
+degradation models.
 
 #375, NaN in, NaN out (element by element), except for the methods that
 describe one unit's history, which raise:
@@ -36,6 +36,8 @@ from surpyval.degradation import (
 )
 
 PROCESSES = [GammaProcess, WienerProcess]
+
+
 REFUSAL = "fitted without covariate names"
 
 
