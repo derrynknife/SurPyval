@@ -60,6 +60,7 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
 from ._clock import StressClock, covariates_by_name, stress_row
+from ._measurements import validate_xy
 
 __all__ = [
     "WienerProcess",
@@ -96,17 +97,7 @@ def _increments_and_stress(
     taken just after a measurement is exact. Returns ``(dt, dy, z)`` with
     ``z`` one row per increment, or ``None`` without ``Z``.
     """
-    x = np.atleast_1d(np.asarray(x, dtype=float))
-    y = np.atleast_1d(np.asarray(y, dtype=float))
-    i = np.atleast_1d(np.asarray(i))
-    if x.ndim != 1 or y.ndim != 1 or i.ndim != 1:
-        raise ValueError("x, y, and i must be one dimensional")
-    if not (len(x) == len(y) == len(i)):
-        raise ValueError("x, y, and i must have the same length")
-    if len(x) == 0:
-        raise ValueError("x, y, and i must not be empty")
-    if not (np.isfinite(x).all() and np.isfinite(y).all()):
-        raise ValueError("x and y must contain only finite values")
+    x, y, i = validate_xy(x, y, i)
     Z_arr = None
     if Z is not None:
         Z_arr = np.asarray(Z, dtype=float)

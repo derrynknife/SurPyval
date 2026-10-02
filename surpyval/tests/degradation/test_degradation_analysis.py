@@ -941,3 +941,45 @@ def test_adt_repr():
     assert "Degradation Analysis SurPyval Model" in out
     assert "covariates" in out
     assert "beta_0" in out
+
+
+def test_352_measurement_inputs_are_refused_with_one_wording():
+    # The path, process and destructive fits and the trajectory
+    # predictions share one check of x, y (and i or c): the same message
+    # for the same fault, naming the array at fault and giving the lengths.
+    import numpy as np
+    import pytest
+
+    from surpyval.degradation import (
+        DegradationAnalysis,
+        DestructiveDegradation,
+        GammaProcess,
+        WienerProcess,
+    )
+
+    x = [1.0, 2.0, 3.0, 1.0, 2.0, 3.0]
+    y = [1.0, 2.1, 3.3, 0.9, 2.0, 3.1]
+    i = [1, 1, 1, 2, 2, 2]
+    for fitter in (GammaProcess, WienerProcess, DegradationAnalysis):
+        with pytest.raises(
+            ValueError,
+            match=r"x, y, and i must have the same length; got 6, 5, and 6",
+        ):
+            fitter.fit(x, y[:-1], i, threshold=10.0)
+        with pytest.raises(ValueError, match="^y must contain only finite"):
+            fitter.fit(x, [np.nan, *y[1:]], i, threshold=10.0)
+        with pytest.raises(ValueError, match="x, y, and i must not be empty"):
+            fitter.fit([], [], [], threshold=10.0)
+    with pytest.raises(
+        ValueError,
+        match=r"x, y, and c must have the same length; got 6, 5, and 6",
+    ):
+        DestructiveDegradation.fit(x, y[:-1], threshold=10.0)
+    with pytest.raises(ValueError, match="^y must contain only finite"):
+        DestructiveDegradation.fit(x, [np.nan, *y[1:]], threshold=10.0)
+    model = DegradationAnalysis.fit(x, y, i, threshold=10.0)
+    for predict in (model.predict_rul, model.predict_failure_time):
+        with pytest.raises(ValueError, match="^y must contain only finite"):
+            predict([1.0, 2.0], [1.0, np.nan])
+        with pytest.raises(ValueError, match="x and y must not be empty"):
+            predict([], [])

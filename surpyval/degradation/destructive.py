@@ -62,6 +62,8 @@ from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
+from ._measurements import validate_xy
+
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
 # coefficients, so phi carries no parameters of its own.
@@ -648,15 +650,19 @@ class DestructiveDegradation_:
         array([0.4956, 0.    ])
         """
         dist = _resolve_distribution(distribution)
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        y = np.atleast_1d(np.asarray(y, dtype=float))
-        c = (
-            np.zeros(x.shape[0], dtype=int)
-            if c is None
-            else np.atleast_1d(np.asarray(c, dtype=int))
+        # Bad input used to fit silently to nonsense or fail deep inside
+        # the least-squares start (``LinAlgError: SVD did not converge``,
+        # with LAPACK noise on stderr); it is refused up front instead.
+        x, y, c = validate_xy(
+            x,
+            y,
+            (
+                np.zeros(np.size(x), dtype=int)
+                if c is None
+                else np.asarray(c, dtype=int)
+            ),
+            i_name="c",
         )
-        if not (x.shape[0] == y.shape[0] == c.shape[0]):
-            raise ValueError("x, y and c must have the same length")
         if x.shape[0] < 3:
             raise ValueError(
                 "destructive degradation needs at least 3 units to identify "
@@ -664,11 +670,6 @@ class DestructiveDegradation_:
             )
         if not np.isin(c, (-1, 0, 1)).all():
             raise ValueError("c must be 0 (observed), 1 (right) or -1 (left)")
-        # Bad input used to fit silently to nonsense or fail deep inside
-        # the least-squares start (``LinAlgError: SVD did not converge``,
-        # with LAPACK noise on stderr); refuse it up front instead.
-        if not (np.isfinite(x).all() and np.isfinite(y).all()):
-            raise ValueError("x and y must contain only finite values")
         if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
             threshold = threshold.item()
         if not isinstance(threshold, Number) or not np.isfinite(threshold):
