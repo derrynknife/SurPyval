@@ -5,13 +5,13 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
-from scipy.special import gammaln
 
 from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent._convergence import better_result, warn_unconverged
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -86,91 +86,37 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z
         s = data.split_for_nhpp_likelihood()
-        x_o, x_o_prev = s["x_o"], s["x_o_prev"]
-        x_right, x_right_prev = s["x_right"], s["x_right_prev"]
-        x_left, n_left = s["x_left"], s["n_left"]
-        x_left_prev = s["x_left_prev"]
-        x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
-        x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
         # Covariate rows gathered with the same masks; the zeros((1, p))
         # placeholders keep the dot products defined when a censoring
         # type is absent (the matching x arrays are empty, so the terms
         # vanish in the sums).
         p_cov = Z.shape[1]
-        Z_o = Z[s["mask_o"]] if s["mask_o"].any() else np.zeros((1, p_cov))
-        Z_right = (
-            Z[s["mask_right"]]
-            if s["mask_right"].any()
-            else np.zeros((1, p_cov))
-        )
-        Z_left = (
-            Z[s["mask_left"]] if s["mask_left"].any() else np.zeros((1, p_cov))
-        )
-        Z_i = Z[s["mask_i"]] if s["mask_i"].any() else np.zeros((1, p_cov))
-        Z_close = Z[s["close_idx"]]
-
-        # Using the empty arrays avoids the need for if statements in the
-        # likelihood function. It also means that the likelihood function
-        # will not encounter any invalid values since taking the log of 0
-        # will not occur.
+        Z_pieces = {
+            key: Z[mask] if mask.any() else np.zeros((1, p_cov))
+            for key, mask in [
+                ("o", s["mask_o"]),
+                ("right", s["mask_right"]),
+                ("left", s["mask_left"]),
+                ("i", s["mask_i"]),
+            ]
+        }
+        Z_pieces["close"] = Z[s["close_idx"]]
+        k_dist = len(dist.parameter_names)
 
         def negll_func(params: np.ndarray) -> float:
-            dist_params = params[: len(dist.parameter_names)]
-            beta_coeffs = params[len(dist.parameter_names) :]
-            # ll of directly observed
-            phi_exponents_observed = np.dot(Z_o, beta_coeffs)
-            delta_cif_o = dist.cif(x_o_prev, *dist_params) - dist.cif(
-                x_o, *dist_params
+            dist_params = params[:k_dist]
+            beta_coeffs = params[k_dist:]
+            eta = {
+                key: np.dot(Z_piece, beta_coeffs)
+                for key, Z_piece in Z_pieces.items()
+            }
+            return -nhpp_log_likelihood(
+                lambda x: dist.cif(x, *dist_params),
+                lambda x: dist.log_iif(x, *dist_params),
+                s,
+                eta,
             )
-            ll = (
-                dist.log_iif(x_o, *dist_params)
-                + phi_exponents_observed
-                + (np.exp(phi_exponents_observed) * delta_cif_o)
-            ).sum()
-
-            # ll of right censored
-            phi_right = np.exp(np.dot(Z_right, beta_coeffs))
-            delta_cif_right = dist.cif(x_right_prev, *dist_params) - dist.cif(
-                x_right, *dist_params
-            )
-            ll += (phi_right * delta_cif_right).sum()
-
-            # ll of left censored: the count over (entry, x]
-            delta_cif_left = dist.cif(x_left, *dist_params) - dist.cif(
-                x_left_prev, *dist_params
-            )
-            phi_exponents_left = np.dot(Z_left, beta_coeffs)
-            phi_left = np.exp(phi_exponents_left)
-            ll += (
-                n_left * phi_exponents_left
-                + n_left * np.log(delta_cif_left)
-                - phi_left * delta_cif_left
-                - gammaln(n_left + 1)
-            ).sum()
-
-            # ll of interval censored
-            delta_cif_interval = dist.cif(x_i_r, *dist_params) - dist.cif(
-                x_i_l, *dist_params
-            )
-            phi_exponents_interval = np.dot(Z_i, beta_coeffs)
-            phi_interval = np.exp(phi_exponents_interval)
-
-            ll += (
-                n_i * phi_exponents_interval
-                + n_i * np.log(delta_cif_interval)
-                - phi_interval * delta_cif_interval
-                - gammaln(n_i + 1)
-            ).sum()
-
-            # right window-close: extend each item's integral to its tr
-            phi_close = np.exp(np.dot(Z_close, beta_coeffs))
-            delta_cif_close = dist.cif(x_close_last, *dist_params) - dist.cif(
-                x_close_tr, *dist_params
-            )
-            ll += (phi_close * delta_cif_close).sum()
-
-            return -ll
 
         return negll_func
 
