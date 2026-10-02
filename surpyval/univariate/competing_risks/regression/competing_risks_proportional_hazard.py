@@ -33,13 +33,14 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
+    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
 from surpyval.utils import (
+    finite_covariate_mask,
     is_missing_event,
     validate_fine_gray_inputs,
-    wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
@@ -591,9 +592,11 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, mask, form, feature_names, model_spec = (
-            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
         )
+        mask = finite_covariate_mask(Z)
+        Z = Z[mask]
         sub = df.loc[mask]
         x = sub[x_col].values
         # A censored row's cause is ``None``; accept a blank/NaN cell for it.
@@ -613,7 +616,7 @@ class CompetingRisksProportionalHazards(
                 tie_method=tie_method,
                 center=center,
             )
-        fitted.formula = form
+        fitted.formula = formula
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
         return fitted

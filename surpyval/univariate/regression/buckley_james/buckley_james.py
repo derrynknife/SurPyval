@@ -46,9 +46,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import (
-    wrangle_and_check_form_and_Z_cols,
-)
+from surpyval.utils import finite_covariate_mask
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
@@ -64,6 +62,7 @@ from .._aliasing import (
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
     LinearPredictorMixin,
+    design_matrix_from_df,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -229,9 +228,9 @@ class BuckleyJamesModel(
     array([0.9444, 0.8113])
     """
 
-    feature_names = None
-    formula = None
-    _model_spec = None
+    feature_names: "list[str] | None" = None
+    formula: "str | None" = None
+    _model_spec: Any = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -680,9 +679,11 @@ class BuckleyJames_:
             The fitted model, which keeps the covariate names (or formula)
             so it predicts from DataFrame rows.
         """
-        Z, mask, form, feature_names, model_spec = (
-            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
         )
+        mask = finite_covariate_mask(Z)
+        Z = Z[mask]
         sub = df.loc[mask]
         x = sub[x_col].values
         c = sub[c_col].values if c_col is not None else None
@@ -691,7 +692,7 @@ class BuckleyJames_:
         # The aliasing warning (#476) names the columns.
         with covariate_columns(feature_names, Z, model_spec):
             model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
-        model.formula = form
+        model.formula = formula
         model.feature_names = feature_names
         model._model_spec = model_spec
         return model

@@ -19,7 +19,6 @@ from surpyval.utils.covariates import (
     formula_model_matrix,
     numeric_columns,
     optional_column,
-    wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.data_formats import (
     _check_truncation_bounds,

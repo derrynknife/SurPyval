@@ -154,3 +154,36 @@ def test_an_unknown_option_value_has_one_message(label):
     assert re.match(
         r"'\w+' must be (one of )?'[^;]+; got [^;]+(\. .*)?$", message
     ), message
+
+
+def _frame():
+    import pandas as pd
+
+    return pd.DataFrame(
+        {"x": X, "c": C, "z": np.arange(8.0), "e": ["a", "b"] * 4}
+    )
+
+
+def _no_covariates():
+    df = _frame()
+    return {
+        "CoxPH": lambda: sp.CoxPH.fit_from_df(df, "x", c_col="c"),
+        "BuckleyJames": lambda: sp.BuckleyJames.fit_from_df(
+            df, "x", c_col="c"
+        ),
+        "CompetingRisksProportionalHazards": lambda: (
+            sp.CompetingRisksProportionalHazards.fit_from_df(df, "x", "e")
+        ),
+        "WeibullPH": lambda: sp.WeibullPH.fit_from_df(df, "x", c_col="c"),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_no_covariates()))
+def test_fit_from_df_without_covariates_has_one_message(name):
+    # Cox, Buckley-James and the competing-risks PH model built their
+    # design matrix with their own copy of ``design_matrix_from_df``, which
+    # said "'Z_cols' or 'formula' cannot both be None".
+    with pytest.raises(
+        ValueError, match="^One of 'Z_cols' or 'formula' must be provided$"
+    ):
+        _no_covariates()[name]()

@@ -11,7 +11,7 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.covariates import wrangle_and_check_form_and_Z_cols
+from surpyval.utils.covariates import finite_covariate_mask
 from surpyval.utils.data_formats import resolve_cr_censoring, xcnt_handler
 
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
@@ -233,11 +233,15 @@ def validate_coxph_df_inputs(
     tl_col: "str | None" = None,
     strata_col: "str | None" = None,
 ) -> tuple:
-    # TODO: Return the count of dropped rows?
-
-    Z, mask, form, feature_names, model_spec = (
-        wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    from surpyval.univariate.regression.regression_data import (
+        design_matrix_from_df,
     )
+
+    # Rows with a missing covariate drop (with one warning), and the times,
+    # flags, counts, entry times and strata with them.
+    Z, feature_names, model_spec = design_matrix_from_df(df, Z_cols, formula)
+    mask = finite_covariate_mask(Z)
+    Z = Z[mask]
 
     x = df.loc[mask, x_col].values
 
@@ -259,4 +263,4 @@ def validate_coxph_df_inputs(
 
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    return x, c, n, tl, strata, Z, form, feature_names, model_spec
+    return x, c, n, tl, strata, Z, formula, feature_names, model_spec
