@@ -240,6 +240,34 @@ bands change (#477).
   ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
   converters and helpers; everything else it exports is internal. A test
   stops new imports of another package's private names.
+- **A model's formula is the str you gave.** Cox, Buckley-James and the
+  competing-risks PH model kept a parsed ``formulaic.Formula`` in
+  ``model.formula``, every other model the str; now all of them keep the
+  str, and a saved Cox model's formula no longer changes on a round trip
+  (a time-varying Cox model saved ``"1 + dose"`` for ``"dose"``). Code
+  that read ``.formula`` as a ``Formula`` should parse the str with
+  ``formulaic.Formula(model.formula)``.
+- **The semi-parametric fits share one input check.** Proportional odds,
+  Lin-Ying additive hazards, Buckley-James, Fine-Gray and the
+  competing-risks PH model now drop a row with a missing covariate (with
+  the usual warning) before checking that the observed times are finite,
+  as Cox did; they raised "must be finite" on such a row. The degradation
+  models' input errors share one wording and name the offending input
+  ("y must contain only finite values"; "x, y, and i must have the same
+  length; got 55, 54, and 55").
+- **Development: duplicated code merged (consolidation sweep, phases 1-2).**
+  Fitted numbers are bit-identical, checked with the equivalence harness.
+  The PH, AFT and PO fits share ``fit_log_linear`` and
+  ``split_log_linear``; the accelerated-life and AFT time-varying fits are
+  assembled by ``assemble_regression_model``; the time-varying DataFrame
+  fits share ``fit_tvc_df``; the Efron and Breslow Cox generators share
+  one risk-set setup; the semi-parametric models share one covariate
+  centring and one ``LinearPredictorMixin``; the plain and
+  proportional-intensity NHPP fitters, and HPP, share one log-likelihood
+  (#350); the bootstrap tails share ``percentile_bounds`` (#351); and the
+  degradation inputs are checked by one ``validate_xy`` (#352). The
+  accelerated-life fitter now has the deprecated ``param_names`` alias
+  the other fitters have.
 - **Development: refactors are proven bit-identical.**
   ``scripts/refactor/snapshot.py`` records what every registered model
   computes and says (fits, predictions, every bound, ``to_dict``,
