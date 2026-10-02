@@ -196,6 +196,20 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Removed: the empty surpyval.alpha package**, which has held no models
+  since v0.17.0, and the unused ``surpyval.utils.validate_tv_coxph_df_inputs``.
+- **Development: refactors are proven bit-identical.**
+  ``scripts/refactor/snapshot.py`` records what every registered model
+  computes and says (fits, predictions, every bound, ``to_dict``,
+  printouts, warnings, and errors on invalid input), plus time-varying,
+  bootstrap and recurrent fits, the public API, the import set and the
+  test IDs, so ``compare`` shows a change altered nothing (see
+  :doc:`Contributing`). CI lints with isort as well, and covers
+  ``conftest.py`` and ``scripts/``; flake8 caps function complexity at 70;
+  mypy reports unused ``type: ignore`` comments, redundant casts and
+  impossible comparisons; a test fails once the version reaches
+  ``REMOVED_IN`` (0.23.0) while deprecated names are still accepted; and
+  the nightly refit study covers the seven models added in 0.22 (#545).
 - **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
   (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have
   censoring- and truncation-aware likelihoods, Kendall's tau, Spearman's
