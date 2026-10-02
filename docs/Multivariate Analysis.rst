@@ -143,6 +143,15 @@ dependence):
    * - Gaussian
      - :math:`\rho \in (-1, 1)`
      - symmetric, no tail
+   * - Joe
+     - :math:`\theta \geq 1`
+     - upper-tail, stronger than Gumbel's
+   * - AMH (Ali-Mikhail-Haq)
+     - :math:`-1 \leq \theta \leq 1`
+     - weak only (:math:`-0.18 \leq \tau \leq 1/3`), no tail
+   * - StudentT
+     - :math:`\rho \in (-1, 1)`, :math:`\nu > 0`
+     - symmetric, both tails
 
 The strength of dependence is summarised by rank measures that do not depend on
 the margins — **Kendall's** :math:`\tau` and **Spearman's** :math:`\rho` — and
@@ -267,14 +276,89 @@ joint *extreme* events become asymptotically independent — a Gaussian copula
 can understate the risk of joint early failure when the true dependence is
 Clayton-like.
 
-In SurPyval, Kendall's tau is computed in closed form for all five families
+**Joe** —
+
+.. math::
+
+   C(u_1, u_2) = 1 - \big(\bar u_1^{\theta} + \bar u_2^{\theta}
+       - \bar u_1^{\theta} \bar u_2^{\theta}\big)^{1/\theta},
+   \qquad \bar u = 1 - u, \qquad \theta \geq 1,
+
+   \tau = 1 - \frac{2}{\theta}\,
+       \frac{\psi(2/\theta + 1) - \psi(2)}{2/\theta - 1}, \qquad
+   \lambda_L = 0, \qquad \lambda_U = 2 - 2^{1/\theta},
+
+with :math:`\psi` the digamma function (at :math:`\theta = 2` the quotient
+is :math:`\psi'(2)`). Like the Gumbel it links the long lives, but more
+strongly for the same Kendall's tau: at :math:`\tau = 0.5` the Joe copula has
+:math:`\lambda_U = 0.73` (:math:`\theta = 2.86`), the Gumbel 0.59. The
+parameterisation is that of R's ``copula::joeCopula`` and of VineCopula's
+family 6.
+
+**Ali-Mikhail-Haq (AMH)** —
+
+.. math::
+
+   C(u_1, u_2) = \frac{u_1 u_2}{1 - \theta(1 - u_1)(1 - u_2)},
+   \qquad -1 \leq \theta \leq 1,
+
+   \tau = 1 - \frac{2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}}
+       {3\theta^2}, \qquad
+   \lambda_L = \lambda_U = 0 \ (\theta < 1).
+
+Spearman's rho has a closed form too, through the dilogarithm. The family
+reaches only weak dependence of either sign, :math:`-0.1817 \leq \tau
+\leq 1/3`, and is a cheap closed-form model for it (R's
+``copula::amhCopula``). Data more strongly dependent than that drive the fit
+to the bound :math:`\theta = \pm 1` (a valid copula; :math:`\theta = 1` is
+the Clayton copula with :math:`\theta = 1`, with :math:`\lambda_L = 1/2`),
+which it returns, as Clayton returns independence for negatively dependent
+data: compare the empirical Kendall's tau with that range first.
+
+**Student-t** —
+
+.. math::
+
+   C(u_1, u_2) = T_{2,\nu}\big(T_\nu^{-1}(u_1), T_\nu^{-1}(u_2);
+       \rho\big),
+   \qquad -1 < \rho < 1, \quad \nu > 0,
+
+   \tau = \frac{2}{\pi}\arcsin\rho, \qquad
+   \lambda_L = \lambda_U = 2\,T_{\nu + 1}\!\left(-\sqrt{\frac{(\nu + 1)
+       (1 - \rho)}{1 + \rho}}\right),
+
+where :math:`T_\nu` is the t CDF with :math:`\nu` degrees of freedom and
+:math:`T_{2,\nu}` the bivariate t CDF. It is the Gaussian copula with heavier
+joint tails: the same Kendall's tau for a given :math:`\rho`, but extreme
+events — the earliest failures *and* the longest survivals — come together,
+the more so the smaller :math:`\nu`. As :math:`\nu \to \infty` it becomes
+the Gaussian copula; data with no tail dependence send the fitted
+:math:`\nu` there, and the fit then warns ("No finite maximum") and
+recommends the Gaussian copula. The parameters are R's
+``copula::tCopula(param = rho, df = nu)``.
+
+**Rotations.** Turning a copula round gives a new one: the 180-degree
+rotation, :math:`C_{180}(u_1, u_2) = u_1 + u_2 - 1 + C(1 - u_1, 1 - u_2)`,
+is the *survival copula*, the copula of :math:`(1 - U_1, 1 - U_2)`, with the
+lower and upper tail dependence swapped; the 90- and 270-degree rotations,
+:math:`u_2 - C(1 - u_1, u_2)` and :math:`u_1 - C(u_1, 1 - u_2)`, negate
+Kendall's tau and Spearman's rho and put the family's tail in a corner where
+one series is short and the other long. SurPyval rotates the Clayton, Gumbel
+and Joe copulas with the ``rotation`` option of ``fit`` and ``from_params``
+(R's ``VineCopula`` convention, with the parameter kept in its own range as
+in pyvinecopulib); a survival Clayton links long lives, a survival Gumbel or
+Joe early failures.
+
+In SurPyval, Kendall's tau is computed in closed form for every family
 (Frank's through a numerically evaluated Debye integral), and so are
-Spearman's rho for the Gaussian, Independence and Frank copulas (Frank's is
-:math:`1 - 12\{D_1(\theta) - D_2(\theta)\}/\theta`, with :math:`D_k` the
-Debye functions) and the tail-dependence coefficients (which are zero except
-for Clayton and Gumbel). Spearman's rho for Clayton and Gumbel is estimated
-from a fixed-seed sample of 50,000 draws from the copula, so it is accurate
-to roughly two decimal places.
+Spearman's rho for the Gaussian, Independence, Frank and AMH copulas (Frank's
+is :math:`1 - 12\{D_1(\theta) - D_2(\theta)\}/\theta`, with :math:`D_k`
+the Debye functions) and the tail-dependence coefficients. Spearman's rho for
+the Clayton, Gumbel and Joe copulas is the integral above, taken by
+Gauss-Legendre quadrature (accurate to about :math:`10^{-11}`), and the
+Student-t's is :math:`12\,E[U_1 U_2] - 3` integrated through its conditional
+distribution (to about :math:`10^{-13}`). (Before version 0.22 it was
+estimated from 50,000 simulated pairs, up to :math:`5 \times 10^{-3}` off.)
 
 Choosing a family
 ~~~~~~~~~~~~~~~~~
@@ -282,11 +366,13 @@ Choosing a family
 - Start from the physics: is there a mechanism that makes *early* failures
   cluster (Clayton), *long* lives cluster (Gumbel), or a diffuse association
   with no special tail (Frank, Gaussian)?
-- Only Frank and Gaussian can express **negative** dependence. Clayton
-  (:math:`\theta > 0`) and Gumbel (:math:`\theta \geq 1`) are positive-only in
-  SurPyval; fitted to negatively dependent data they are pushed to their
-  independence boundary, so check the sign of the empirical Kendall's tau
-  first.
+- Joint extremes in *both* tails point to the Student-t; joint long lives
+  more strongly than a Gumbel allows point to the Joe.
+- Only Frank, Gaussian, Student-t and (weakly) AMH can express **negative**
+  dependence. Clayton (:math:`\theta > 0`), Gumbel and Joe
+  (:math:`\theta \geq 1`) are positive-only in SurPyval; fitted to
+  negatively dependent data they are pushed to their independence boundary,
+  so check the sign of the empirical Kendall's tau first.
 - Compare fitted families by their log-likelihood or AIC (the fitted model's
   ``log_likelihood`` and ``aic()``, which use the full censored and truncated
   joint likelihood below) and by plotting simulated samples against the data.
@@ -538,10 +624,19 @@ Some further points worth knowing:
   raises a ``ValueError``.
 - Margin probabilities are kept a tiny distance (:math:`10^{-10}`) inside
   :math:`(0, 1)` to keep the Archimedean formulas finite.
-- The Frank and Clayton formulas are evaluated in log space, from terms that
-  neither cancel nor overflow, so they stay accurate however strong the
-  dependence (Frank's sampler also inverts its h-function in closed form).
-  The Gaussian copula's :math:`\rho` is kept within :math:`\pm 0.9999`.
+- The Frank, Clayton, Gumbel and Joe formulas are evaluated in log space,
+  from terms that neither cancel nor overflow, so they stay accurate however
+  strong the dependence (Frank's and the Student-t's samplers also invert
+  their h-functions in closed form). The Gaussian and Student-t copulas'
+  :math:`\rho` is kept within :math:`\pm 0.9999`.
+- The Student-t copula's CDF (needed for rows censored in both series and
+  for truncation) is the integral of its closed-form h-function, taken by
+  tanh-sinh quadrature: within :math:`10^{-11}` of Genz's exact algorithm
+  (R's ``mvtnorm``, integer :math:`\nu`) and :math:`10^{-15}` of a
+  30-digit integration at non-integer :math:`\nu`. scipy's
+  ``multivariate_t.cdf`` is a randomised quasi-Monte Carlo integration
+  (about :math:`10^{-4}` off, different on every call), which an optimiser
+  cannot use.
 - Only bivariate models are supported; more than two series raise a
   ``NotImplementedError``.
 

@@ -20,6 +20,7 @@ bookkeeping uniform across all 16 bivariate censoring combinations.
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import numpy as onp
@@ -71,6 +72,9 @@ class Copula:
     #: Empty for a family that is not known to reach either.
     dependence_limits: dict = {}
 
+    def __repr__(self) -> str:
+        return f"{self.name} copula"
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # A family written against the pre-0.22 name, ``param_names``,
         # still works until v0.23, with a DeprecationWarning.
@@ -117,18 +121,34 @@ class Copula:
 
     # -- dependence measures (closed-form overrides preferred) ------------
     def kendall_tau(self, *params: float) -> float:
-        """Kendall's tau. Default: empirical estimate from a large sample."""
-        from scipy.stats import kendalltau
+        """Kendall's tau.
 
-        u, v = self.sample_uv(50_000, params, random_state=0)
-        return float(kendalltau(u, v).statistic)
+        The default integrates :math:`\\tau = 1 - 4 \\int_0^1 \\int_0^1
+        \\frac{\\partial C}{\\partial u} \\frac{\\partial C}{\\partial v}
+        \\, du \\, dv` by Gauss-Legendre quadrature (400 nodes per margin:
+        accurate to about 1e-10 at a tau of 0.5 and 1e-8 at 0.8, the
+        integrand sharpening along the diagonal as the dependence grows);
+        families with a closed form override it. It used to estimate tau
+        from 50 000 simulated pairs, with an error near 1e-3.
+        """
+        u, v, w = _quadrature_grid()
+        du = onp.asarray(self.du(u, v, *params), dtype=float)
+        dv = onp.asarray(self.dv(u, v, *params), dtype=float)
+        return float(1.0 - 4.0 * onp.sum(w * du * dv))
 
     def spearman_rho(self, *params: float) -> float:
-        """Spearman's rho. Default: empirical estimate from a large sample."""
-        from scipy.stats import spearmanr
+        """Spearman's rho.
 
-        u, v = self.sample_uv(50_000, params, random_state=0)
-        return float(spearmanr(u, v).statistic)
+        The default integrates :math:`\\rho_S = 12 \\int_0^1 \\int_0^1
+        C(u, v) \\, du \\, dv - 3` by Gauss-Legendre quadrature (400 nodes
+        per margin, accurate to about 1e-11 for the built-in families);
+        families with a closed form override it. It used to estimate rho
+        from 50 000 simulated pairs, which was up to 5e-3 off (Clayton,
+        Gumbel).
+        """
+        u, v, w = _quadrature_grid()
+        C = onp.asarray(self.cdf(u, v, *params), dtype=float)
+        return float(12.0 * onp.sum(w * C) - 3.0)
 
     def tail_dependence(self, *params: float) -> tuple:
         """Lower/upper tail-dependence coefficients ``(lambda_L, lambda_U)``.
@@ -181,6 +201,20 @@ class Copula:
         diff_v: bool,
         params: Any,
     ) -> Any:
+        # The upper end of a right-censored slot is exactly 1, where every
+        # copula has C(1, v) = v and dC/dv(1, v) = 1 (and symmetrically):
+        # those are used as they are, rather than the family's formula at
+        # 1 - 1e-10, which was off by up to 1e-10 and for a family whose
+        # CDF is an integral (the Student-t) cost three quarters of a
+        # doubly right-censored row.
+        u_one = not diff_u and bool(onp.all(onp.asarray(u) == 1.0))
+        v_one = not diff_v and bool(onp.all(onp.asarray(v) == 1.0))
+        if u_one or v_one:
+            shape = onp.broadcast_shapes(onp.shape(u), onp.shape(v))
+            if diff_u or diff_v:
+                return onp.ones(shape)
+            other = onp.ones(shape) if u_one and v_one else (v if u_one else u)
+            return onp.broadcast_to(onp.asarray(other, dtype=float), shape)
         u = np.clip(u, _EPS, 1 - _EPS)
         v = np.clip(v, _EPS, 1 - _EPS)
         if diff_u and diff_v:
@@ -452,6 +486,7 @@ class Copula:
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
         init: "npt.ArrayLike | None" = None,
+        rotation: int = 0,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
@@ -482,6 +517,21 @@ class Copula:
             entry of ``parameter_names``, each strictly inside the family's
             ``bounds``. By default each family starts from its own guess
             (the built-in families match the empirical Kendall's tau).
+        rotation : {0, 90, 180, 270}, optional
+            Rotate the copula by this many degrees, in the convention of R's
+            ``VineCopula`` (families 13, 23, 33 for the Clayton, ...):
+            ``180`` is the survival copula, ``C(u, v) = u + v - 1 + C_0(1 -
+            u, 1 - v)``, with the tail dependence moved to the other tail
+            (a Clayton's to the upper tail, a Gumbel's or Joe's to the
+            lower); ``90``, ``C(u, v) = v - C_0(1 - u, v)``, and ``270``,
+            ``C(u, v) = u - C_0(u, 1 - v)``, give negative dependence with
+            the family's shape, its tail in a corner where one series is
+            short and the other long. The parameter keeps its own range
+            (pyvinecopulib's convention; ``VineCopula`` writes it negated
+            for 90 and 270). Only the Clayton, Gumbel and Joe copulas are
+            rotated; for a radially symmetric family (Frank, Gaussian,
+            Student-t) ``180`` is the family itself and ``90`` its negative
+            parameter. Default 0, the family as it is.
 
         Returns
         -------
@@ -517,6 +567,18 @@ class Copula:
         >>> round(float(model.kendall_tau()), 3)
         0.534
         """
+        if rotation:
+            return self.rotated(rotation).fit(
+                x,
+                c=c,
+                n=n,
+                t=t,
+                margins=margins,
+                how=how,
+                xl=xl,
+                xr=xr,
+                init=init,
+            )
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
         )
@@ -561,12 +623,22 @@ class Copula:
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
-        self._warn_if_perfectly_dependent(data, theta)
+        # One warning per fit: perfect dependence explains any runaway.
+        if not self._warn_if_perfectly_dependent(data, theta):
+            self._warn_if_no_maximum(margin_models, data, theta)
         return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
+
+    def _warn_if_no_maximum(
+        self, margin_models: list, data: Any, theta: npt.NDArray
+    ) -> None:
+        """A family whose likelihood can lack a finite maximum on data
+        that are not perfectly dependent checks for it here (the Student-t
+        copula's degrees of freedom); by default there is nothing to
+        check."""
 
     def _warn_if_perfectly_dependent(
         self, data: Any, theta: npt.NDArray
-    ) -> None:
+    ) -> bool:
         """Warn when the data sit at a Frechet bound the family reaches
         only in the limit of its parameter (#392).
 
@@ -586,12 +658,12 @@ class Copula:
         the dependence. Data with even one discordant pair (or a tie in
         one coordinate only) are never flagged, so a fit to data drawn
         from any member of the family is silent unless the sample itself
-        is perfectly dependent.
+        is perfectly dependent. Returns whether it warned.
         """
         sign, rows = _perfect_dependence(data)
         limit = self.dependence_limits.get(sign)
         if limit is None:
-            return
+            return False
         bound, kind, relation = (
             ("1", "comonotone", "increasing")
             if sign > 0
@@ -614,8 +686,9 @@ class Copula:
             f"{relation} function of the other): model that relationship "
             "directly rather than with a copula",
         )
+        return True
 
-    def from_params(self, params: Any, margins: Any) -> Any:
+    def from_params(self, params: Any, margins: Any, rotation: int = 0) -> Any:
         """
         Build a
         :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`
@@ -632,6 +705,8 @@ class Copula:
         margins : sequence of length 2
             Fitted (or ``from_params``) univariate models, one per
             dimension, each exposing ``ff`` and ``df``.
+        rotation : {0, 90, 180, 270}, optional
+            The rotation of the copula, as for :meth:`fit`.
 
         Returns
         -------
@@ -654,6 +729,8 @@ class Copula:
             CopulaModel,
         )
 
+        if rotation:
+            return self.rotated(rotation).from_params(params, margins)
         params = self._check_params(params)
         margins = list(margins)
         if len(margins) != 2:
@@ -674,6 +751,49 @@ class Copula:
     #: (Gumbel's ``theta = 1`` is the independence copula). The fitter
     #: never reaches a bound, but ``from_params`` may be given one.
     closed_bounds: tuple = ()
+
+    #: The rotation of the copula in degrees (see :meth:`rotated`): 0 for
+    #: the family as it is.
+    rotation: int = 0
+    #: Whether :meth:`rotated` applies: the families whose rotations are
+    #: new copulas (the asymmetric Archimedean ones).
+    rotatable: bool = False
+
+    def rotated(self, rotation: int) -> "Copula":
+        """The family rotated by ``rotation`` degrees (0, 90, 180 or 270),
+        in R's ``VineCopula`` convention; see the ``rotation`` option of
+        :meth:`fit`, which uses it. ``rotated(0)`` is the family itself.
+
+        Examples
+        --------
+        >>> from surpyval.multivariate import Clayton
+        >>> survival = Clayton.rotated(180)
+        >>> survival.tail_dependence(2.0)
+        (0.0, 0.7071067811865476)
+        >>> Clayton.rotated(90).kendall_tau(2.0)
+        -0.5
+        """
+        if rotation not in (0, 90, 180, 270):
+            raise ValueError(
+                f"rotation must be 0, 90, 180 or 270 degrees, got "
+                f"{rotation!r}."
+            )
+        base = getattr(self, "base", self)
+        if self.rotation:
+            rotation = (self.rotation + rotation) % 360
+        if rotation == 0:
+            return base
+        if not base.rotatable:
+            raise ValueError(
+                f"The {base.name} copula is not rotated: only the Clayton, "
+                "Gumbel and Joe copulas are (a radially symmetric family is "
+                "its own 180-degree rotation, and its 90-degree one is the "
+                "family with the opposite dependence)."
+            )
+        cache = base.__dict__.setdefault("_rotations", {})
+        if rotation not in cache:
+            cache[rotation] = RotatedCopula(base, rotation)
+        return cache[rotation]
 
     def _check_params(self, params: npt.ArrayLike) -> npt.NDArray:
         """Validate copula parameters given directly: one finite value per
@@ -811,9 +931,16 @@ class Copula:
             ]
             return self.neg_ll(theta, dims, data.n)
 
-        start = onp.concatenate(
-            [to_unbounded(theta0)] + [j.start for j in joint]
-        )
+        # The two-stage estimate may sit on a closed bound (the AMH's
+        # theta = 1, where the search's transform saturated), which the
+        # unbounded space cannot hold: the joint search starts just inside.
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            theta_start = onp.asarray(to_unbounded(theta0), dtype=float)
+        if not onp.all(onp.isfinite(theta_start)):
+            theta_start = onp.asarray(
+                to_unbounded(self._just_inside(theta0)), dtype=float
+            )
+        start = onp.concatenate([theta_start] + [j.start for j in joint])
         with onp.errstate(all="ignore"):  # as in ``_fit_theta``
             res = minimize(
                 obj,
@@ -823,6 +950,17 @@ class Copula:
             )
         theta, models = unpack(res.x)
         return onp.asarray(theta, dtype=float), models
+
+    def _just_inside(self, theta: npt.NDArray) -> npt.NDArray:
+        """``theta`` with any value on (or beyond) a finite bound moved
+        1e-9 of the way (relative to the bound) inside it."""
+        out = onp.array(theta, dtype=float)
+        for i, (low, high) in enumerate(self.bounds):
+            if low is not None and out[i] <= low:
+                out[i] = low + 1e-9 * max(1.0, abs(low))
+            if high is not None and out[i] >= high:
+                out[i] = high - 1e-9 * max(1.0, abs(high))
+        return out
 
     def _init_theta(self, dims: list) -> npt.NDArray:
         """Initial parameter guess, strictly inside ``bounds``.
@@ -986,6 +1124,117 @@ class _JointMargin:
             # parameter count) as the fitted margin did.
             model.fitting_info = {"fixed_idx": list(self.fixed)}
         return model
+
+
+@functools.lru_cache(maxsize=1)
+def _quadrature_grid(nodes: int = 400) -> tuple:
+    """Tensor Gauss-Legendre rule on the unit square: flat ``u``, ``v`` and
+    weights ``w`` (summing to 1), for the dependence-measure integrals."""
+    x, w = onp.polynomial.legendre.leggauss(nodes)
+    x, w = 0.5 * (x + 1.0), 0.5 * w
+    u, v = onp.meshgrid(x, x, indexing="ij")
+    return u.ravel(), v.ravel(), onp.outer(w, w).ravel()
+
+
+class RotatedCopula(Copula):
+    """A copula family rotated by 90, 180 or 270 degrees (R's
+    ``VineCopula`` convention); made by :meth:`Copula.rotated` and the
+    ``rotation`` option of ``fit`` and ``from_params``.
+
+    With ``C_0`` the family, the rotations are
+
+    * 90: ``C(u, v) = v - C_0(1 - u, v)``,
+    * 180: ``C(u, v) = u + v - 1 + C_0(1 - u, 1 - v)`` (the survival
+      copula),
+    * 270: ``C(u, v) = u - C_0(u, 1 - v)``,
+
+    and every primitive, measure and draw follows from the family's. The
+    parameters, their names and bounds are the family's.
+    """
+
+    def __init__(self, base: Copula, rotation: int) -> None:
+        self.base = base
+        self.rotation = rotation
+        self.name = base.name
+        self.bounds = base.bounds
+        self.parameter_names = list(base.parameter_names)
+        self.closed_bounds = base.closed_bounds
+        # A quarter turn swaps the comonotone and countermonotone limits
+        flip = -1 if rotation in (90, 270) else 1
+        self.dependence_limits = {
+            flip * sign: limit
+            for sign, limit in base.dependence_limits.items()
+        }
+
+    def __repr__(self) -> str:
+        return f"{self.name} copula rotated {self.rotation} degrees"
+
+    def _flips(self) -> tuple[bool, bool]:
+        """Whether the first and the second coordinate are reflected."""
+        return self.rotation in (90, 180), self.rotation in (180, 270)
+
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        c = self.base.cdf(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        if f0 and f1:
+            return u + v - 1.0 + c
+        return (v if f0 else u) - c
+
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.du(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f1 else h
+
+    def dv(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.dv(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f0 else h
+
+    def pdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        return self.base.pdf(
+            1.0 - u if f0 else u, 1.0 - v if f1 else v, *params
+        )
+
+    def kendall_tau(self, *params: float) -> float:
+        tau = self.base.kendall_tau(*params)
+        return -tau if self.rotation in (90, 270) else tau
+
+    def spearman_rho(self, *params: float) -> float:
+        rho = self.base.spearman_rho(*params)
+        return -rho if self.rotation in (90, 270) else rho
+
+    def tail_dependence(self, *params: float) -> tuple:
+        """``(lambda_L, lambda_U)``: the family's, swapped by a half turn.
+        A quarter turn moves the family's tail dependence to a corner where
+        one series is short and the other long, which neither coefficient
+        measures, so both are 0."""
+        lower, upper = self.base.tail_dependence(*params)
+        if self.rotation == 180:
+            return (upper, lower)
+        return (0.0, 0.0)
+
+    def sample_uv(
+        self,
+        size: int,
+        params: Any,
+        random_state: "int | None" = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        u, v = self.base.sample_uv(size, params, random_state)
+        f0, f1 = self._flips()
+        return (1.0 - u if f0 else u), (1.0 - v if f1 else v)
+
+    def _bounds_transforms(self) -> tuple:
+        return self.base._bounds_transforms()
+
+    def _init_theta(self, dims: list) -> npt.NDArray:
+        # The family's guess from the data reflected back to its own
+        # orientation.
+        reflected = [
+            {**dim, "u": 1.0 - dim["u"]} if flip else dim
+            for dim, flip in zip(dims, self._flips())
+        ]
+        return self.base._init_theta(reflected)
 
 
 def _broadcast_pair(u: Any, v: Any) -> tuple:

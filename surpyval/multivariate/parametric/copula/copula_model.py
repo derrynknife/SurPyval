@@ -293,6 +293,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             "how": self.method,
             "margins": margins,
         }
+        if self.copula.rotation:
+            out["rotation"] = int(self.copula.rotation)
         if self._has_likelihood():
             out["neg_ll"], out["ic_n"] = self._fit_stats()
             out["k"] = self._fitted_k()
@@ -303,11 +305,21 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         """Rebuild a copula model from a :meth:`to_dict` dictionary."""
         import surpyval
 
-        from .archimedean import Clayton, Frank, Gumbel, Independence
-        from .elliptical import Gaussian
+        from .archimedean import AMH, Clayton, Frank, Gumbel, Independence, Joe
+        from .elliptical import Gaussian, StudentT
 
         families = {
-            c.name: c for c in (Independence, Clayton, Gumbel, Frank, Gaussian)
+            c.name: c
+            for c in (
+                Independence,
+                Clayton,
+                Gumbel,
+                Frank,
+                Gaussian,
+                Joe,
+                AMH,
+                StudentT,
+            )
         }
         copula_name = model_dict["copula"]
         if copula_name not in families:
@@ -324,8 +336,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
                     "so this copula model cannot be rebuilt."
                 )
             margins.append(surpyval.from_dict(m))
+        family = families[copula_name].rotated(model_dict.get("rotation", 0))
         model = cls(
-            families[copula_name],
+            family,
             model_dict["params"],
             margins,
             data=None,
@@ -352,10 +365,13 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         margin_names = [
             getattr(getattr(m, "dist", m), "name", "?") for m in self.margins
         ]
+        family = self.copula.name
+        if self.copula.rotation:
+            family += f" (rotated {self.copula.rotation} degrees)"
         return (
             "Copula SurPyval Model"
             "\n====================="
-            f"\nCopula    : {self.copula.name}"
+            f"\nCopula    : {family}"
             f"\nParameters: {param_str if param_str else '(none)'}"
             f"\nMargins   : {', '.join(margin_names)}"
             f"\nFitted by : {self.method}"

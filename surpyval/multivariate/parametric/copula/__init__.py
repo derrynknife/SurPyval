@@ -1,12 +1,14 @@
 from .archimedean import (
+    AMH,
     Clayton,
     Frank,
     Gumbel,
     Independence,
+    Joe,
 )
 from .copula import Copula
 from .copula_model import CopulaModel
-from .elliptical import Gaussian
+from .elliptical import Gaussian, StudentT
 
 __all__ = [
     "Copula",
@@ -16,4 +18,7 @@ __all__ = [
     "Gumbel",
     "Frank",
     "Gaussian",
+    "Joe",
+    "AMH",
+    "StudentT",
 ]
