@@ -69,7 +69,9 @@ from .proportional_odds import (
     LogisticPO,
     LogNormalPO,
     NormalPO,
+    ProportionalOdds,
     ProportionalOddsFitter,
+    ProportionalOddsModel,
     WeibullPO,
 )
 from .semi_parametric_regression_model import SemiParametricRegressionModel
@@ -80,6 +82,7 @@ __all__ = [
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
+    "ProportionalOddsModel",
     "FrailtyModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
@@ -143,7 +146,7 @@ __all__ = [
     "PH",
     "ProportionalHazardsFitter",
     "WeibullPH",
-    # PO
+    # PO — semi-parametric (NPMLE) and parametric
     "ExponentialPO",
     "GammaPO",
     "GumbelPO",
@@ -151,6 +154,7 @@ __all__ = [
     "LogNormalPO",
     "NormalPO",
     "PO",
+    "ProportionalOdds",
     "ProportionalOddsFitter",
     "WeibullPO",
 ]

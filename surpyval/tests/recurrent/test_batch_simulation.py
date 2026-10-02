@@ -151,12 +151,12 @@ def _cases():
             _ara(0.4, np.inf),
         ),
         "ari-m1": (
-            ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA),
+            ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA),
             _ari(20.0, 1.5, 0.5, 1),
         ),
         "ari-inf": (
             ARI.fit_from_parameters(
-                [20.0, 1.5], 0.5, m=np.inf, dist=CrowAMSAA
+                [20.0, 1.5], 0.5, m=np.inf, baseline=CrowAMSAA
             ),
             _ari(20.0, 1.5, 0.5, np.inf),
         ),

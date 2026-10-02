@@ -21,7 +21,7 @@ import pytest
 from scipy.stats import norm
 
 import surpyval as sp
-from surpyval.tests.calibration._montecarlo import check_coverage
+from surpyval.tests.calibration._montecarlo import check_bias, check_coverage
 
 N = 200
 Z_CRIT = norm.ppf(0.975)
@@ -64,6 +64,29 @@ def test_cox_coefficient_coverage(tied):
     label = "CoxPH ({})".format("efron, ties" if tied else "breslow")
     check_coverage(lo, hi, beta, 0.95, label + " model-based", slack=slack)
     check_coverage(rlo, rhi, beta, 0.95, label + " robust", slack=slack)
+
+
+def test_proportional_odds_coefficient_coverage():
+    # The semi-parametric proportional odds NPMLE (#341): log-logistic
+    # baseline odds (t / 10)^2, survival odds multiplied by exp(beta'Z),
+    # about 50% censored. The intervals are param_cb's, from the profile
+    # likelihood's information; the standard errors must match the spread.
+    rng = np.random.default_rng(341)
+    beta = np.array([1.0, -0.5])
+    reps = 1000
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    est, se = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        Z = _covariates(rng)
+        u = rng.uniform(size=N)
+        t = 10.0 * (u / (1 - u) * np.exp(Z @ beta)) ** 0.5
+        x, c = _censor(t, rng, 30.0)
+        model = sp.ProportionalOdds.fit(x, Z, c=c)
+        est[r], se[r] = model.beta, model.se
+        bounds = [model.param_cb(name) for name in model.parameter_names]
+        lo[r], hi[r] = np.array(bounds).T
+    check_coverage(lo, hi, beta, 0.95, "ProportionalOdds param_cb")
+    check_bias(est, beta, "ProportionalOdds", standard_errors=se)
 
 
 def _ph(rng, Z, phi):

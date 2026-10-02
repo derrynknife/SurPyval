@@ -8,6 +8,7 @@ from surpyval.univariate.parametric import (
     Weibull,
 )
 
+from .proportional_odds import ProportionalOdds, ProportionalOddsModel
 from .proportional_odds_fitter import PO, ProportionalOddsFitter
 
 # Pre-built PO instances — one per distribution
@@ -27,6 +28,8 @@ __all__ = [
     "LogNormalPO",
     "NormalPO",
     "PO",
+    "ProportionalOdds",
     "ProportionalOddsFitter",
+    "ProportionalOddsModel",
     "WeibullPO",
 ]

@@ -37,7 +37,7 @@ def _fit_each():
         "GR-ii": GeneralizedRenewal.fit(x, i, dist=Weibull, kijima="ii"),
         "G1R": GeneralizedOneRenewal.fit(x, i, dist=Weibull),
         "ARA-m2": ARA.fit(x, i, dist=Weibull, m=2),
-        "ARI": ARI.fit(x, i, dist=CrowAMSAA, m=1),
+        "ARI": ARI.fit(x, i, baseline=CrowAMSAA, m=1),
         "_x": x,
         "_i": i,
     }
@@ -131,9 +131,9 @@ def test_age_reduction_residuals_are_exp1():
 def test_intensity_reduction_residuals_are_exp1():
     # ARI (intensity reduction): the reduced-intensity integral per interval
     # is Exp(1) under the fitted model -- a different construction entirely.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     e, model = _simulate_refit_residuals(
-        truth, ARI, dict(dist=CrowAMSAA, m=1), seed=5
+        truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=5
     )
     assert e.size > 1500
     assert abs(e.mean() - 1.0) < 0.06
@@ -176,8 +176,8 @@ def test_cvm_age_reduction_runs_and_matches_statistic():
 
 
 def test_cvm_intensity_reduction_runs():
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
-    model = _small_fit(truth, ARI, dict(dist=CrowAMSAA, m=1), seed=4)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    model = _small_fit(truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=4)
     result = model.cramer_von_mises(n_boot=10, random_state=2)
     assert isinstance(result, GoodnessOfFitResult)
     assert 0.0 < result.p_value <= 1.0

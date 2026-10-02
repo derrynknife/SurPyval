@@ -216,6 +216,41 @@ def test_ew_band_reaches_the_power_function_valley(ew):
     assert upper >= at
 
 
+def test_ew_99_band_contains_the_95_band(ew):
+    # The 99% hf(13) lower bound was 0.1046, above the 95% one of 0.1017,
+    # and the 99% qf(0.95) upper bound 36.44, below the 95% one of 40.37:
+    # the searches stopped on local extremes of the long, curved region
+    # (alpha -> 0, beta -> 0, mu -> inf), and none of the walks' points
+    # they could start from lay in the far extreme's basin (#535). The
+    # 95% extreme is a point of the 99% region, so the 99% bound must
+    # reach past it.
+    theta = [4.06915818e-04, 2.00959888e-01, 1.20416620e03]
+    assert _deviance(ew, theta) <= CRIT_95
+    at = ew.dist.hf(np.array([13.0]), *theta)[0]
+    assert at == pytest.approx(0.101709, rel=1e-5)
+
+    # One-sided at alpha / 2: the ends of the two-sided 95% and 99% bands.
+    def end(f, a, x, **kw):
+        return float(np.ravel(f(x, alpha_ci=a, method="lr", **kw))[0])
+
+    lo = {
+        a: end(ew.cb, a, 13.0, on="hf", bound="lower") for a in (0.025, 0.005)
+    }
+    hi = {
+        a: end(ew.quantile_cb, a, 0.95, bound="upper") for a in (0.025, 0.005)
+    }
+    assert lo[0.025] == pytest.approx(at, rel=1e-4)
+    assert hi[0.025] == pytest.approx(40.367, rel=1e-4)
+    assert lo[0.005] < lo[0.025] and hi[0.005] > hi[0.025]
+    # At 99% the region runs down the valley to alpha's edge, and the
+    # extremes are approached only there: 0.07077 and 87.01 at the end of
+    # alpha's search coordinate (alpha = 2.2e-308), found by tracing the
+    # region's two-parameter slices at 100 values of log(alpha). The
+    # search comes within 1% and 8% of them.
+    assert 0.07077 <= lo[0.005] < 0.07077 * 1.01
+    assert 87.01 * 0.92 < hi[0.005] <= 87.01
+
+
 # ---------------------------------------------------------------------------
 # Both
 # ---------------------------------------------------------------------------

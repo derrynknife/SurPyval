@@ -155,9 +155,10 @@ or `"decreasing"` only when `p_value < alpha_ci`, otherwise `"none"`;
 
 Renewal / imperfect-repair models: `GeneralizedRenewal`,
 `GeneralizedOneRenewal` and `ARA` take a **lifetime distribution** as `dist`
-(`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model**
-(`dist=CrowAMSAA`, `Duane`, `CoxLewis`); each refuses the other kind with an
-error naming the right fitter. Their `params` is the repair parameter (`q` or
+(`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model** as
+`baseline` (`baseline=CrowAMSAA`, `Duane`, `CoxLewis`; its old name `dist=`
+warns until v0.23); each refuses the other kind with an error naming the
+right fitter. Their `params` is the repair parameter (`q` or
 `rho`) followed by the distribution's parameters, named by `parameter_names`.
 
 (Sub-namespaces like `surpyval.recurrent`, `surpyval.degradation`,
@@ -245,7 +246,7 @@ silently wrong numbers, not errors.
 | **Non-parametric** | `sp.<Name>` | KaplanMeier, NelsonAalen, FlemingHarrington, **Turnbull** (NPMLE for the full data model incl. interval + truncation) |
 | **Tests** | `sp.logrank`, `sp.gray_test`, `surpyval.recurrent.laplace` / `mil_hdbk_189c` | k-sample (weighted, stratified) log-rank; Gray's test for cumulative incidences; recurrent trend tests |
 | **Regression (parametric)** | `sp.<Dist><Kind>` or `sp.AFT/PH/PO/AH(dist)` | AFT, PH (proportional hazards), PO (proportional odds), AH (additive hazards). E.g. `sp.WeibullPH`, `sp.LogNormalAFT`. Fit with `(x, Z, c, n, t)`; predict `sf(x, Z)`; `params` named by `parameter_names`. |
-| **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying). |
+| **Semi-parametric** | `sp.CoxPH` | Cox proportional hazards (Efron ties by default, with the matching Efron baseline); also `CoxPH.fit_tvc` / `fit_tvc_from_df` for time-varying covariates. `sp.BuckleyJames` (AFT), `sp.AdditiveHazards` (Lin–Ying), `sp.ProportionalOdds` (NPMLE; positive `beta` = longer life, as in `PO`). |
 | **Time-varying covariates** | `sp.StepSchedule`, `sp.CovariatePath` | Evaluate a fitted regression along a covariate path with `sf_tvc` / `Hf_tvc`; `CovariatePath.from_points` / `from_callable` (**0.22**) for ramps and cycles |
 | **Frailty** | `sp.WeibullFrailty`, ... | Shared gamma frailty PH; `params` = baseline, coefficients, `theta` |
 | **Competing risks** | `surpyval.univariate.competing_risks` | `CompetingRisks` (nonparametric CIF), `ParametricCompetingRisks`, `FineGray` (subdistribution regression), `CompetingRisksProportionalHazards` |

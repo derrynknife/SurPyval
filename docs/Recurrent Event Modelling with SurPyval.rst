@@ -968,8 +968,8 @@ inter-arrival time is affected by some restoration factor.
 All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
 intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
-default, or for ``ARI`` the baseline intensity model) and the model's own
-options. Each item must be observed from new, with exact event times and at
+default) and the model's own options; ``ARI`` takes a ``baseline`` intensity
+model in place of the ``dist``. Each item must be observed from new, with exact event times and at
 most a final right-censored row. They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
@@ -1001,7 +1001,7 @@ available as ``model.model`` (an ordinary SurPyval distribution, with ``sf``,
 search from your own values instead of the built-in starts, and
 ``GeneralizedRenewal.fit_from_parameters(params, q, kijima=..., dist=...)``
 builds a model from known values for simulation; ``GeneralizedOneRenewal``,
-``ARA`` and ``ARI`` have the same method.
+``ARA`` and ``ARI`` have the same method (``ARI``'s takes ``baseline=``).
 
 .. jupyter-execute::
     :hide-code:
@@ -1108,7 +1108,7 @@ trucks are simulated under minimal repair, so the true ``q`` is 1:
     trucks
 
 The estimate, 2.63, would say every repair makes the truck worse, but its
-interval runs from 0.09 (almost as good as new) to 73. The question the data
+interval runs from 0.09 (almost as good as new) to 74. The question the data
 can answer is which kinds of repair they rule out, and the last line of the
 printout answers it: ``repair_test()`` refits the model with ``q`` held at
 perfect repair (``q = 0``, an ordinary Weibull renewal process) and at
@@ -1165,7 +1165,7 @@ intervals of the model held on the edge, as the printout notes.
 
     assert round(trucks.q, 2) == 2.63
     lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
-    assert round(lo_q, 2) == 0.09 and round(hi_q) == 73
+    assert round(lo_q, 2) == 0.09 and round(hi_q) == 74
     assert round(test.minimal.p_value, 2) == 0.53
     assert f"{test.perfect.p_value:.1g}" == "2e-09"
     assert test.conclusion == "consistent with minimal repair; perfect repair rejected"
@@ -1323,21 +1323,22 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. Its ``dist`` is that intensity model, so ``ARI.fit(x, i,
-dist=Weibull)`` raises an error saying so and naming ``ARA`` and
-``GeneralizedRenewal`` (a Weibull hazard as the baseline intensity is the power
-law, ``dist=CrowAMSAA``); the other fitters likewise refuse an intensity model
-as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
+distribution. It is passed as ``baseline=`` (``dist=``, its name before v0.22,
+still works with a ``DeprecationWarning`` until v0.23), and a lifetime
+distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
+saying so and naming ``ARA`` and ``GeneralizedRenewal`` (a Weibull hazard as
+the baseline intensity is the power law, ``baseline=CrowAMSAA``); the other
+fitters likewise refuse an intensity model as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
 power-law baseline (:math:`\beta = 2.5`) and fit it back:
 
 .. jupyter-execute::
 
     from surpyval.recurrent import ARI, CrowAMSAA
 
-    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, dist=CrowAMSAA)
+    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, baseline=CrowAMSAA)
     sim_ari = ari_true.time_terminated_simulation_data(40, items=10, random_state=7)
 
-    ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, dist=CrowAMSAA, m=1)
+    ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, baseline=CrowAMSAA, m=1)
     ari
 
 The baseline parameters are recovered well (we simulated from
