@@ -316,7 +316,18 @@ _CENTER_HINT = (
 
 def covariate_center(Z: npt.ArrayLike, n: npt.ArrayLike) -> npt.NDArray:
     """The ``n``-weighted mean of the covariate rows, where a centred fit
-    puts its baseline (#459, #463)."""
+    puts its baseline (#459, #463).
+
+    Every regression fit centres on it where it can: ``exp(beta'Z)`` then
+    stays near 1 for the rows of the data instead of overflowing on a
+    column far from 0 (a year, a date as a day count). The Cox partial
+    likelihood depends on the covariates only through their differences
+    within a risk set, so its coefficients are unchanged; with
+    ``center=True`` the model keeps its baseline at this point and
+    predicts with ``exp(beta'(Z - center))``, as R's ``coxph``, lifelines
+    and scikit-survival do (for start-stop data R's mean is over the
+    interval rows, as here).
+    """
     Z_arr = np.asarray(Z, dtype=float)
     n_arr = np.asarray(n, dtype=float).reshape(-1)
     return np.dot(n_arr, Z_arr) / n_arr.sum()

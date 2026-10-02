@@ -43,6 +43,7 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
+from .._fit_skeleton import covariate_center
 from ..regression_data import (
     check_finite_event_times,
     design_matrix_from_df,
@@ -683,7 +684,7 @@ def _cox_aliased(
         return np.array([], dtype=int)
     Z = np.asarray(Z, dtype=float)
     n = np.asarray(n, dtype=float).reshape(-1)
-    Zc = Z - _covariate_center(Z, n)
+    Zc = Z - covariate_center(Z, n)
     spread = n_events * (n @ Zc**2) / n.sum()
     return aliased_columns(
         info, Z.shape[0], constant_columns(Z, strata), spread
@@ -952,26 +953,6 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
         return jac_total, hess_total
 
     return neg_ll, jac_hess
-
-
-def _covariate_center(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
-    """The ``n``-weighted mean of the covariate rows, the point the fit
-    centres the covariates on (#459).
-
-    The partial likelihood depends on the covariates only through their
-    differences within a risk set, so fitting on ``Z - center`` gives the
-    same coefficients, while ``exp(beta'Z)`` stays near 1 for the rows of
-    the data instead of overflowing on a column far from 0 (a year, a
-    date as a day count). The baseline hazard it gives is that of a unit
-    at the centre; with ``center=True`` the model keeps it there, and every
-    prediction uses ``exp(beta'(Z - center))``, as R's ``coxph``,
-    lifelines and scikit-survival do (for start-stop data R's mean is over
-    the interval rows, as here). By default it is moved to ``Z = 0``
-    (:func:`_baseline_at_origin`).
-    """
-    Z = np.asarray(Z, dtype=float)
-    n = np.asarray(n, dtype=float).reshape(-1)
-    return (n @ Z) / n.sum()
 
 
 _LOG_MAX = float(np.log(np.finfo(float).max))
@@ -1662,8 +1643,8 @@ class CoxPH_:
         beta_init = np.zeros(Z.shape[1])
 
         # Fitted on centred covariates, so exp(beta'Z) cannot overflow on a
-        # column far from 0 (#459); see ``_covariate_center``.
-        mean = _covariate_center(Z, n)
+        # column far from 0 (#459); see ``covariate_center``.
+        mean = covariate_center(Z, n)
         Zc = Z - mean
         neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
@@ -1794,7 +1775,7 @@ class CoxPH_:
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
         # coxph), so the strata's baselines stay comparable (#459).
-        mean = _covariate_center(
+        mean = covariate_center(
             np.vstack([v[5] for v in validated]),
             np.concatenate([v[3] for v in validated]),
         )

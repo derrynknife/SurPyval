@@ -107,8 +107,8 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._fit_skeleton import covariate_center
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
-from ..proportional_hazards.cox_ph import _covariate_center
 from ..regression_data import (
     check_finite_event_times,
     design_matrix_from_df,
@@ -465,7 +465,7 @@ def _po_aliased(
     The scale is the number of events times each column's weighted
     variance, the yardstick of
     :func:`~..proportional_hazards.cox_ph._cox_aliased`."""
-    Zc = Z - _covariate_center(Z, n)
+    Zc = Z - covariate_center(Z, n)
     gram = (Zc * n[:, None]).T @ Zc
     aliased = aliased_columns(gram, Z.shape[0], constant_columns(Z))
     return aliased, n_events * np.diag(gram) / n.sum()
@@ -1083,7 +1083,7 @@ class ProportionalOdds_:
         """
         x, c, n, tl, Z = _validate(x, Z, c, n, tl)
         p = Z.shape[1]
-        mean = _covariate_center(Z, n)
+        mean = covariate_center(Z, n)
         Zc = Z - mean
         inner_tol = min(tol, 1e-10) * 1e-2
         lik = _POLikelihood(x, c, n, tl, Zc)
