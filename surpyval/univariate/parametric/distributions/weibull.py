@@ -159,7 +159,10 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
         # really is unbounded there.
         with np.errstate(divide="ignore"):
             power = (x / alpha) ** (beta - 1)
-        return (beta / alpha) * power * np.exp(-((x / alpha) ** beta))
+        sf = np.exp(-((x / alpha) ** beta))
+        # Far in the tail the power overflows where sf is 0: the density
+        # is 0 there, not inf * 0 (#561)
+        return (beta / alpha) * np.where(sf == 0, 0.0, power) * sf
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

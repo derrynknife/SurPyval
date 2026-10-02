@@ -101,7 +101,9 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # 1 - (1 - p)^k. Recovering k from it lands a few ulp above the
         # integer, and a bare ceil() then answers k + 1 -- so F and its
         # quantile did not invert each other. Snap first.
-        k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
+        # (u = 1 is k = inf, where inf - inf is NaN and k stands)
+        with np.errstate(invalid="ignore"):
+            k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, p: Boxable) -> Boxable:

@@ -158,8 +158,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         >>> GumbelLEV.df(x, 3, 2)
         array([0.08968704, 0.15852096, 0.18393972, 0.16535215, 0.12732319])
         """
-        z = (x - mu) / sigma
-        return (1.0 / sigma) * np.exp(-(z + np.exp(-z)))
+        return (1.0 / sigma) * np.exp(self._log_kernel((x - mu) / sigma))
+
+    @staticmethod
+    def _log_kernel(z: Boxable) -> Boxable:
+        """``-(z + exp(-z))``, the log density without its
+        ``-log(sigma)``: -inf at ``z = -inf``, not ``-(-inf + inf)``
+        (#561)."""
+        bottom = z == -np.inf
+        if not np.any(bottom):
+            return -(z + np.exp(-z))
+        z = np.where(bottom, 0.0, z)
+        return np.where(bottom, -np.inf, -(z + np.exp(-z)))
 
     def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -331,8 +341,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         return -np.exp(-(x - mu) / sigma)
 
     def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        z = (x - mu) / sigma
-        return -np.log(sigma) - (z + np.exp(-z))
+        return -np.log(sigma) + self._log_kernel((x - mu) / sigma)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

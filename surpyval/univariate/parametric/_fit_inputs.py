@@ -16,6 +16,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 import surpyval
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
@@ -46,6 +47,23 @@ _POINT_MASS_FAMILIES = frozenset(
 
 
 _OFFSET_POINT_MASS_FAMILIES = frozenset({"Exponential", "Rayleigh"})
+
+# The families not refused by the point-mass check that move their mass
+# later (or earlier) without limit through a parameter in which they are
+# ordered by likelihood ratio: a scale (Exponential, Rayleigh, the
+# DiscreteWeibull's q) or the Poisson, Geometric and NegativeBinomial
+# success parameter. On data that bound no failure from above (or below)
+# their likelihood has no finite maximum (``_warn_if_one_sided``).
+_ONE_SIDED_FAMILIES = frozenset(
+    {
+        "Exponential",
+        "Rayleigh",
+        "Poisson",
+        "Geometric",
+        "NegativeBinomial",
+        "DiscreteWeibull",
+    }
+)
 
 
 def _offset_start(x: npt.ArrayLike) -> float:
@@ -88,6 +106,53 @@ def _imputed_data(
     ``t`` down.
     """
     return SurpyvalData(x=x, c=c, n=n, group_and_sort=False)
+
+
+def _rows_as_read(
+    surv_data: SurpyvalData,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Each row's lower and upper bounds and censoring code as the
+    likelihood reads it.
+
+    A right censored row with a finite right truncation ``tr`` is the
+    interval ``[x, tr]``, and a left censored row with a finite left
+    truncation ``tl`` the interval ``[tl, x]`` (#310; the masks of
+    ``SurpyvalData._split_to_observation_types``), so such rows are
+    returned with code 2 and those bounds. Every other row is returned as
+    given, an exact or censored value ``x`` as ``(x, x)``. The checks that
+    decide whether the data leave a fit read the data this way, as the
+    likelihood does (#559).
+    """
+    x = np.asarray(surv_data.x, dtype=float)
+    lo, hi = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
+    c = np.asarray(surv_data.c)
+    recast_r = surv_data.mask_i & (c == 1)
+    recast_l = surv_data.mask_i & (c == -1)
+    lo = np.where(recast_l, np.asarray(surv_data.tl, dtype=float), lo)
+    hi = np.where(recast_r, np.asarray(surv_data.tr, dtype=float), hi)
+    return lo, hi, np.where(recast_l | recast_r, 2, c)
+
+
+def _row_sets(
+    surv_data: SurpyvalData,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """The lower and upper ends of each row's set of failure times, and
+    its censoring code as the likelihood reads it (``_rows_as_read``).
+
+    An exact value is ``{x}``, a right censored one ``(x, inf)``, a left
+    censored one ``(-inf, x]`` and an interval ``(xl, xr]``; a set that
+    reaches an edge of its truncation window extends beyond it (see
+    ``FitInputsMixin._point_mass_region``).
+    """
+    xl, xr, c = _rows_as_read(surv_data)
+    tl = np.asarray(surv_data.tl, dtype=float)
+    tr = np.asarray(surv_data.tr, dtype=float)
+    lower = np.where(c == -1, -np.inf, xl)
+    upper = np.where(c == 1, np.inf, np.where(c == 0, xl, xr))
+    # Sets that reach an edge of their window extend beyond it
+    lower = np.where((c != 0) & (lower == tl), -np.inf, lower)
+    upper = np.where(upper == tr, np.inf, upper)
+    return lower, upper, c
 
 
 PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
@@ -142,6 +207,7 @@ class FitInputsMixin:
         # below type check without the mixin pretending to own them.
         name: str
         k: int
+        parameter_names: list[str]
         support: tuple[int | float, int | float]
         discrete: bool
         supports_mpp: bool
@@ -188,15 +254,14 @@ class FitInputsMixin:
         if n_free <= 0:
             return
 
-        x, c = surv_data.x, surv_data.c
-        informative = np.asarray(c) != 1
+        # A right censored row with a finite ``tr`` is an interval, and
+        # locates a failure as one (#559)
+        lo, hi, c = _rows_as_read(surv_data)
+        informative = c != 1
         if not informative.any():
             return
-        rows = np.asarray(x)[informative]
-        if rows.ndim == 1:
-            distinct = np.unique(rows).size
-        else:
-            distinct = np.unique(rows, axis=0).shape[0]
+        rows = np.column_stack([lo, hi])[informative]
+        distinct = np.unique(rows, axis=0).shape[0]
 
         if distinct < n_free:
             raise ValueError(
@@ -275,24 +340,15 @@ class FitInputsMixin:
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
         ):
             return None
-        x = np.asarray(surv_data.x, dtype=float)
-        c = np.asarray(surv_data.c)
-        xl, xr = (x[:, 0], x[:, 1]) if x.ndim == 2 else (x, x)
-        tl = np.asarray(surv_data.tl, dtype=float)
-        tr = np.asarray(surv_data.tr, dtype=float)
+        lower, upper, c = _row_sets(surv_data)
         if lfp:
             kept = c != 1
-            xl, xr, c, tl, tr = xl[kept], xr[kept], c[kept], tl[kept], tr[kept]
+            lower, upper, c = lower[kept], upper[kept], c[kept]
         if c.size == 0 or np.all(c == 1):
             return None
         if self.name == "Uniform" and not np.any(c == 0):
             # Its own fit refuses these, saying it needs an exact value
             return None
-        lower = np.where(c == -1, -np.inf, xl)
-        upper = np.where(c == 1, np.inf, np.where(c == 0, xl, xr))
-        # Sets that reach an edge of their window extend beyond it
-        lower = np.where((c != 0) & (lower == tl), -np.inf, lower)
-        upper = np.where(upper == tr, np.inf, upper)
         lo, hi = float(np.max(lower)), float(np.min(upper))
         # Only an exact value's lower end is closed
         lo_closed = bool(np.all(c[lower == lo] == 0))
@@ -310,6 +366,63 @@ class FitInputsMixin:
         if not np.isfinite(lo):
             return f"(any time up to {hi:g})"
         return f"(any time in ({lo:g}, {hi:g}])"
+
+    def _warn_if_one_sided(
+        self, surv_data: SurpyvalData, results: dict, zi: bool, lfp: bool
+    ) -> bool:
+        """Warn, and return ``True``, when no row of the data bounds a
+        failure from above (or none from below), where the likelihood of
+        the families in ``_ONE_SIDED_FAMILIES`` has no finite maximum.
+
+        Each row's set of failure times (``_row_sets``) then reaches up to
+        infinity: every row is right censored, or an interval reaching the
+        top of its truncation window, which is how the likelihood reads a
+        right censored row with a finite ``tr`` (#559). Each row's
+        likelihood is the probability of its set given its window, and a
+        family ordered by likelihood ratio in a parameter raises every
+        such probability as that parameter moves its mass later: the
+        likelihood keeps rising toward the end of that parameter's range.
+        Suspensions at 1, ..., 5 truncated at 2, 6, 4, 8 and 9 ran an
+        Exponential to ``failure_rate = 3.6e-7`` and a Rayleigh to
+        ``sigma = 313.5``, reported as verified maxima. Data whose every
+        row is left censored, or an interval from the bottom of its window
+        or of the support, are the mirror image. The other families
+        refuse such data in ``_check_has_maximum``.
+
+        The criterion is on the data alone, and an observation bounded on
+        both sides (an exact value, an interval inside its window) breaks
+        it, so it cannot fire on data with a finite maximum. Only a free
+        fit is checked: with ``zi`` or ``lfp`` the extra parameter changes
+        the argument, the caller does not check a fit with ``fixed``
+        parameters, and an offset fit of these families on such data is
+        refused by ``_check_has_maximum`` before it starts.
+        """
+        if zi or lfp or self.name not in _ONE_SIDED_FAMILIES:
+            return False
+        lower, upper, _ = _row_sets(surv_data)
+        if np.all(np.isposinf(upper)):
+            side, kind, edge, way = "above", "right", "top", "later"
+        elif np.all(lower <= self.support[0]):
+            side, kind, edge, way = "below", "left", "bottom", "earlier"
+        else:
+            return False
+        params = np.atleast_1d(np.asarray(results.get("params", [])))
+        reached = ", ".join(
+            f"{name} = {value:.4g}"
+            for name, value in zip(self.parameter_names, params)
+        )
+        warn_no_maximum(
+            f"no observation bounds a failure from {side} (every row is "
+            f"{kind} censored, or an interval reaching the {edge} of its "
+            f"truncation window), so the {self.name} likelihood keeps "
+            f"rising as the distribution moves its mass {way} than every "
+            f"observation",
+            f"The reported {reached}, the standard errors and the bounds "
+            f"are where the search stopped and are meaningless",
+            "a fit needs a failure observed exactly, or known to lie in an "
+            "interval inside its truncation window",
+        )
+        return True
 
     def _validate_fit_inputs(
         self,
@@ -463,8 +576,26 @@ class FitInputsMixin:
     def _check_censoring_for_method(
         surv_data: SurpyvalData, how: str, heuristic: str
     ) -> None:
-        """Censoring the data has (or lacks) that leaves no fit."""
-        if (surv_data.c == 1).all():
+        """Censoring the data has (or lacks) that leaves no fit.
+
+        Maximum likelihood and probability plotting (whose Turnbull
+        heuristic is a likelihood) read a censored row with a finite
+        truncation bound on its censored side as an interval (#310), so
+        whether any row locates a failure is decided from the rows as they
+        read them (#559). Maximum product of spacings refuses data whose
+        every row is right (or left) censored as before, whatever their
+        truncation: with no exact value it has no spacing to score, and
+        its objective is the conditional likelihood of the censored rows,
+        which has no maximum on such data (it would run a Weibull to
+        ``beta = 23.9`` on suspensions at 1, ..., 5 truncated at 9).
+        """
+        if how == "MPS":
+            only_right = bool((surv_data.c == 1).all())
+            only_left = bool((surv_data.c == -1).all())
+        else:
+            only_right = bool(surv_data.mask_r.all())
+            only_left = bool(surv_data.mask_l.all())
+        if only_right:
             # No failure: the likelihood keeps rising as the distribution
             # moves out past every suspension, with a shape fixed or not.
             raise ValueError(
@@ -476,7 +607,7 @@ class FitInputsMixin:
                 "standard lower bound on the scale"
             )
 
-        if (surv_data.c == -1).all():
+        if only_left:
             raise ValueError("Cannot have only left censored data")
 
         if surpyval.utils.check_no_censoring(surv_data.c) and (how == "MOM"):
@@ -588,6 +719,14 @@ class FitInputsMixin:
         rows, so the caller's object no longer describes it.
         """
         x, c, n = data.x, data.c, data.n
+        if (c == 1).all():
+            # No row is a failure, so the rows that locate one are those
+            # the likelihood reads as intervals: right censored with a
+            # finite ``tr`` (#559). They are seeded as the interval rows
+            # are, below; with a failure anywhere else, a suspension is
+            # seed enough and the start stays as it was.
+            lo, hi, c = _rows_as_read(data)
+            x = np.column_stack([lo, np.where(c == 2, hi, lo)])
         if x.ndim == 2:
             # If x has 2 dims, then there is intervally
             # censored data. Simply take the midpoint to

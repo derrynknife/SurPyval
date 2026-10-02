@@ -100,7 +100,25 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
 
     def hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(K = k)/R(k - 1)`."""
-        return self.df(x, *params) / self._sf_before(x, *params)
+        before = self._sf_before(x, *params)
+        gone = before == 0
+        if not np.any(gone):
+            return self.df(x, *params) / before
+        # Once R(k - 1) underflows the ratio is 0 / 0 (NaN from k = 1e6
+        # for a Weibull(4.4, 1.6), #561). The hazard is then 1 - R(k) /
+        # R(k - 1) from the log survival while k - 1 and k are told apart
+        # in it, and past that (and at k = inf) the limit 1 - exp(-h) of
+        # the continuous hazard h, which varies slowly there.
+        k = np.asarray(x, dtype=float)
+        with np.errstate(invalid="ignore"):
+            ratio = self.df(x, *params) / before
+            log_before = self.dist.log_sf(k - 1.0, *params)
+            from_logs = -np.expm1(self.dist.log_sf(k, *params) - log_before)
+            limit = -np.expm1(-self.dist.hf(k, *params))
+        resolved = np.isfinite(log_before) & (k < 1e15)
+        tail = np.where(resolved, from_logs, limit)
+        out = np.where(gone, tail, ratio)
+        return out[()] if out.ndim == 0 else out
 
     def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""

@@ -305,7 +305,7 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
     #   log Q = (a-1) log x - x - log Gamma(a)
     #           + log(1 + (a-1)/x + (a-1)(a-2)/x^2 + ...)
     # is accurate; it is summed until the terms stop shrinking.
-    tail = (q < 1e-280) & (x_arr > a_arr)
+    tail = (q < 1e-280) & (x_arr > a_arr) & np.isfinite(x_arr)
     if np.any(tail):
         at, xt = a_arr[tail], x_arr[tail]
         total = np.ones_like(xt)
@@ -319,6 +319,8 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
         out[tail] = (
             (at - 1.0) * np.log(xt) - xt - _sc_gammaln(at) + np.log(total)
         )
+    # Q(a, inf) = 0 (the series is inf - inf there, #561)
+    out = np.where(np.isposinf(x_arr), -np.inf, out)
     return out if out.ndim else float(out)
 
 

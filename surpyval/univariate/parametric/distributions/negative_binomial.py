@@ -101,7 +101,11 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         r"""CDF :math:`F(k) = I_{p}(r, k)`."""
         # Nothing fails before k = 1 (I_p(r, 0) is 1, not 0).
         safe_x = np.where(x <= 0.0, 1.0, x)
-        return np.where(x <= 0.0, 0.0, betainc(r, safe_x, p))
+        out = np.where(x <= 0.0, 0.0, betainc(r, safe_x, p))
+        huge = x > _HUGE_K
+        if np.any(huge):
+            out = np.where(huge, -np.expm1(self._log_sf_huge(x, r, p)), out)
+        return out
 
     def df(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k)`."""
@@ -109,6 +113,12 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def hf(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
+        # Its limit p at k = inf, where the logs below are -inf - -inf
+        # (#561)
+        top = np.asarray(x) == np.inf
+        if np.any(top):
+            out = self.hf(np.where(top, 1.0, x), r, p)
+            return np.where(top, p + np.zeros_like(out), out)
         # On the log scale: df/sf was 0/0 = nan once both underflowed
         # (#458).
         log_hf = self.log_df(x, r, p) - self.log_sf(x - 1.0, r, p)
@@ -122,7 +132,15 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         # differentiates the log form above.)
         x = np.asarray(x, dtype=float)
         a = x - 1.0
-        tail = (a >= 1.0) & (1.0 - p < (a + 1.0) / (a + r + 2.0))
+        # Past ``_HUGE_K`` the fraction's terms overflow, and the hazard is
+        # p to a relative O(r / k) (see ``_log_sf_huge``), which the
+        # difference of two logs of size k ln(1 - p) cannot resolve.
+        huge = a > _HUGE_K
+        if np.any(huge):
+            log_hf = np.where(huge, np.log(p) + np.zeros_like(log_hf), log_hf)
+        tail = (
+            (a >= 1.0) & (a <= _HUGE_K) & (1.0 - p < (a + 1.0) / (a + r + 2.0))
+        )
         if np.any(tail):
             a_t = np.where(tail, a, 1.0)
             cf = beta_cf(a_t, r, np.where(tail, 1.0 - p, 0.5))
@@ -233,11 +251,41 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         # ``betainccln``): log(sf) was capped at -708 and lost R near 1
         # (#458). R = 1 up to k = 0.
         safe_x = np.where(x <= 0.0, 1.0, x)
-        return np.where(x <= 0.0, 0.0, betainccln(r, safe_x, p))
+        out = np.where(
+            x <= 0.0,
+            0.0,
+            betainccln(r, np.where(safe_x > _HUGE_K, 1.0, safe_x), p),
+        )
+        huge = x > _HUGE_K
+        if np.any(huge):
+            out = np.where(huge, self._log_sf_huge(x, r, p), out)
+        return out
 
     def log_ff(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
         safe_x = np.where(x <= 0.0, 1.0, x)
-        return np.where(x <= 0.0, -np.inf, betaincln(r, safe_x, p))
+        out = np.where(
+            x <= 0.0,
+            -np.inf,
+            betaincln(r, np.where(safe_x > _HUGE_K, 1.0, safe_x), p),
+        )
+        huge = x > _HUGE_K
+        if np.any(huge):
+            out = np.where(
+                huge, np.log1p(-np.exp(self._log_sf_huge(x, r, p))), out
+            )
+        return out
 
+    def _log_sf_huge(self, x: Numeric, r: Boxable, p: Boxable) -> Boxable:
+        """log R(k) past ``_HUGE_K``, where the incomplete beta's terms
+        overflow (it gave NaN from k = 1.3e154, #561): R(k) = P(T = k + 1)
+        / p to a relative O(r / k), as successive masses there shrink by
+        the factor 1 - p."""
+        k = np.where(x > _HUGE_K, x, _HUGE_K)
+        return self.log_df(k + 1.0, r, p) - np.log(p)
+
+
+#: Past this many trials the tails are taken from the mass
+#: (``NegativeBinomial_._log_sf_huge``), to a relative 1e-150.
+_HUGE_K = 1e150
 
 NegativeBinomial = NegativeBinomial_("NegativeBinomial")
