@@ -46,8 +46,10 @@ from surpyval.utils.validation import check_option
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
 # interior values.
-_EPS = 1e-10
-_TINY = 1e-300
+_U_CLIP = 1e-10
+# Likelihoods, masses and densities are floored here before their log, so a
+# zero gives a large finite negative log rather than -inf.
+_LOG_FLOOR = 1e-300
 
 
 class Copula:
@@ -172,8 +174,8 @@ class Copula:
         Override for families with a direct sampler (e.g. Gaussian).
         """
         rng = as_generator(random_state)
-        u = rng.uniform(_EPS, 1 - _EPS, size=size)
-        w = rng.uniform(_EPS, 1 - _EPS, size=size)
+        u = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
+        w = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         v = self._invert_du(u, w, params)
         return u, v
 
@@ -184,8 +186,8 @@ class Copula:
         params: Any,
         iters: int = 60,
     ) -> npt.NDArray:
-        lo = onp.full_like(onp.asarray(u, dtype=float), _EPS)
-        hi = onp.full_like(lo, 1 - _EPS)
+        lo = onp.full_like(onp.asarray(u, dtype=float), _U_CLIP)
+        hi = onp.full_like(lo, 1 - _U_CLIP)
         for _ in range(iters):
             mid = 0.5 * (lo + hi)
             over = onp.asarray(self.du(u, mid, *params)) > w
@@ -216,8 +218,8 @@ class Copula:
                 return onp.ones(shape)
             other = onp.ones(shape) if u_one and v_one else (v if u_one else u)
             return onp.broadcast_to(onp.asarray(other, dtype=float), shape)
-        u = np.clip(u, _EPS, 1 - _EPS)
-        v = np.clip(v, _EPS, 1 - _EPS)
+        u = np.clip(u, _U_CLIP, 1 - _U_CLIP)
+        v = np.clip(v, _U_CLIP, 1 - _U_CLIP)
         if diff_u and diff_v:
             return self.pdf(u, v, *params)
         if diff_u:
@@ -266,7 +268,7 @@ class Copula:
                         L = L + coef0 * coef1 * onp.asarray(
                             self._eval(u0, u1, du0, du1, params)
                         )
-                logL = onp.log(onp.clip(L, _TINY, None))
+                logL = onp.log(onp.clip(L, _LOG_FLOOR, None))
                 if a == 0:
                     logL = logL + d0["logf"][mask]
                 if b == 0:
@@ -311,7 +313,7 @@ class Copula:
             - self._boundary_cdf(ur0, ul1, params)
             + self._boundary_cdf(ul0, ul1, params)
         )
-        return onp.log(onp.clip(mass, _TINY, None))
+        return onp.log(onp.clip(mass, _LOG_FLOOR, None))
 
     # -- fitting ----------------------------------------------------------
     def _prepare_dim(
@@ -339,7 +341,9 @@ class Copula:
             n_units = float(onp.max(getattr(margin, "r", [len(x)])))
             scale = n_units / (n_units + 1.0)
         u = onp.clip(
-            scale * onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS
+            scale * onp.asarray(margin.ff(x), dtype=float),
+            _U_CLIP,
+            1 - _U_CLIP,
         )
         # An interval may start at the edge of a margin's support (0 for a
         # LogNormal, whose ff takes log(0) = -inf on the way to the correct
@@ -347,14 +351,14 @@ class Copula:
         with onp.errstate(divide="ignore"):
             ulo = scale * onp.asarray(margin.ff(xl), dtype=float)
             uhi = scale * onp.asarray(margin.ff(xr), dtype=float)
-        ulo = onp.clip(ulo, _EPS, 1 - _EPS)
-        uhi = onp.clip(uhi, _EPS, 1 - _EPS)
+        ulo = onp.clip(ulo, _U_CLIP, 1 - _U_CLIP)
+        uhi = onp.clip(uhi, _U_CLIP, 1 - _U_CLIP)
         if semiparametric:
             logf = onp.zeros(onp.shape(u))
         else:
             with onp.errstate(divide="ignore"):
                 logf = onp.log(
-                    onp.clip(onp.asarray(margin.df(x)), _TINY, None)
+                    onp.clip(onp.asarray(margin.df(x)), _LOG_FLOOR, None)
                 )
         has_trunc = bool(onp.isfinite(tl).any() or onp.isfinite(tr).any())
         ul = scale * _ff_where_finite(margin, tl, 0.0)
