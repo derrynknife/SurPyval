@@ -2,6 +2,8 @@
 Tests for the ``MixtureModel`` fitter.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -294,3 +296,33 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
     assert coded.loglike == pytest.approx(explicit.loglike, rel=1e-8)
     np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-4)
     np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-4)
+
+
+@pytest.mark.parametrize("kind", ["right", "left"])
+def test_560_truncated_fit_is_a_verified_maximum(kind):
+    # The truncated path took L-BFGS-B's answer unverified: the two forms
+    # of the same data reached parameters 2e-5 apart on a flat maximum.
+    # Polished and verified as the EM path is (#506), they agree to 1e-6,
+    # and each is a verified maximum, in silence.
+    x, t = _data_544()
+    c = np.zeros(80, int)
+    xl, xr, ci = x.copy(), x.copy(), c.copy()
+    rows = [3, 50]
+    if kind == "right":
+        c[rows] = 1
+        t[rows, 1] = x[rows] + 5
+        xr[rows] = t[rows, 1]
+    else:
+        c[rows] = -1
+        t[rows, 0] = x[rows] / 2
+        xl[rows] = t[rows, 0]
+    ci[rows] = 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        coded = sp.MixtureModel.fit(x, c=c, t=t, dist=sp.Weibull)
+        explicit = sp.MixtureModel.fit(
+            xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull
+        )
+    assert coded.maximum == explicit.maximum == "verified"
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-6)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-6)
