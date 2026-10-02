@@ -160,7 +160,11 @@ Estimation
     that has coefficients with a repeated covariate column, and with a
     constant one where it has an intercept, and requires the aliasing and
     otherwise the fit without the column; the time-varying fits are
-    checked in ``univariate/regression/test_aliasing.py``.
+    checked in ``univariate/regression/test_aliasing.py``. The
+    derivatives a fit takes -- the gradient and Hessian with which it
+    searches, verifies its maximum and computes its covariance -- agree
+    with finite differences at the fit, for every registered model that
+    takes them (``conformance/test_derivatives.py``, #562).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.

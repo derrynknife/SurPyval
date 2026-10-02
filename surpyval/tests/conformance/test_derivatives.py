@@ -34,10 +34,20 @@ scaled by ``s = 1/sqrt(H_ii)`` (about its standard error), so a gradient
 error is ``|dg_i| s_i`` and a Hessian error ``|dH_ij| s_i s_j``, the
 latter relative to the unit diagonal of the scaled Hessian. The finite
 differences step ``STEP`` of a standard error, so their error is about
-``STEP**4`` from truncation and ``eps |f| / STEP**2`` from rounding: below
-1e-8 on these fixtures (the largest seen is in ``TOL``'s comment). A
-wrong derivative shows at 1e-5 and above (the accelerated-life ``where``
-bug of #555 was 4e-5).
+``STEP**4`` from truncation and ``eps |f| / STEP**2`` from rounding: on
+these fixtures the largest disagreement of a correct derivative is
+4e-9 (Hessian) and 2e-10 (gradient), against a tolerance ``TOL`` of
+1e-6; the likelihoods through the incomplete gamma and beta functions'
+numerical shape derivatives get 1e-5 (see ``NUMERICAL_SHAPE``). A wrong
+derivative shows well above that: the accelerated-life ``where`` bug of
+#555 was 4e-5, a NaN is infinite. The delta-method gradients are scaled
+the same way (the change of the probability per standard error: at most
+5e-9 here), and the copulas' derivatives are compared absolutely (at
+most 3e-11).
+
+The property reuses the fitted models (it is not a refit property),
+except for the frailty and Fine-Gray cases, refitted to capture the
+derivatives their fitters take.
 """
 
 from unittest import mock
@@ -52,7 +62,9 @@ from surpyval.tests._helpers import (
     richardson_jacobian,
 )
 from surpyval.tests.conformance.registry import (
+    CASE_BY_NAME,
     DIFFERENTIATED,
+    NOT_DIFFERENTIATED,
     cases_for,
     fitted,
     refit,
@@ -442,3 +454,6 @@ def test_every_differentiated_class_has_a_check():
         "surpyval.degradation.DegradationModel",
     }
     assert checked == set(DIFFERENTIATED)
+    # and the exceptions are cases of those classes
+    for name in NOT_DIFFERENTIATED:
+        assert CASE_BY_NAME[name].model_class in DIFFERENTIATED, name

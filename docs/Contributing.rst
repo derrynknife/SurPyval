@@ -97,6 +97,12 @@ through each property that applies to it:
   rows, and counts ``n`` against the same rows repeated;
 - valid values: probabilities in [0, 1] and monotone in time, no NaN at a
   valid time;
+- that the derivatives a fit or its inference takes -- the gradient and
+  Hessian of its likelihood in its search space, by autograd or the
+  model's own, and the delta-method gradients behind a parametric ``cb``
+  -- agree with finite differences at the fit (``test_derivatives.py``;
+  the model classes that differentiate are listed in ``DIFFERENTIATED``,
+  and the cases of those that do not in ``NOT_DIFFERENTIATED``);
 - the missing-value rule (see :doc:`Conventions`), seed reproducibility of
   the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
   that keeps every prediction;
