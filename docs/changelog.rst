@@ -196,6 +196,58 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Fixed: accelerated life and AFT time-varying fits warn of no finite
+  maximum and use the exact information (#555).** Stress levels without
+  failures, or a covariate level with no events, let parameters run off
+  silently; these fits now warn "No finite maximum" once, as the other
+  regressions do. The covariance is the exact observed information
+  instead of a numerical Hessian, which was up to 1e-3 of the standard
+  errors off and much worse on ill-conditioned fits: the Arrhenius
+  example's ``se(a)`` was 317 where the correct value is 574, so AL
+  standard errors and bounds change. The AL likelihood's second
+  derivatives were also wrong (autograd's ``np.where`` with a broadcast
+  argument: a LogNormal ``Hf`` was 13% off; #562 audits the rest). AFT
+  time-varying fits now search with their exact gradient and reach a
+  slightly better maximum (parameters move by up to 6e-5 relative), in
+  half the time.
+- **Fixed: HPP proportional intensity restarts and warns (#554).** From a
+  poor ``init`` the single BFGS search returned a rate of 0 with ``nan``
+  coefficients, or its starting point, without a word. A user's ``init``
+  is now followed by the default start, the better answer kept, and an
+  answer that is not a verified maximum warns. Default fits are unchanged.
+- **AFT models fit a covariate timeline from a DataFrame (#553):**
+  ``WeibullAFT.fit_tvc_timeline_from_df`` (every AFT model), as PH, AH, PO
+  and Cox have.
+- **Fixed (breaking): the Gaussian and Student-t copulas no longer clip
+  rho to ±0.9999 (#541).** Every formula silently evaluated ``rho =
+  0.9999`` for any larger value: ``from_params([0.99995])`` gave a density
+  of 81.11 at (0.3, 0.3001) where the true value is 114.68. They are now
+  accurate for any ``|rho| < 1`` (within 1e-14 of a 40-digit integration);
+  ``rho = ±1`` is still refused. A fit whose rho runs to ±1, which stopped
+  silently near 0.99999, gives the standard no-finite-maximum warning
+  recommending the comonotone or countermonotone model. Ordinary fits
+  change only in the last digits.
+- **Changed: ``RandomSurvivalForest.fit`` is quiet and takes ``n_jobs``
+  (#546).** It printed joblib's progress on every fit. ``n_jobs`` (default
+  1, the old sequential behaviour; -1 for every core) grows the trees in
+  worker processes: 20 trees on 400 rows in 3.9 s with 2 jobs against 6.6
+  s with 1. A seeded forest is identical whatever ``n_jobs`` is.
+- **Fixed: a non-parametric survival tree or forest crashed on data mixing
+  exact, right- and interval-censored rows (#543).** A node holding only
+  exact and right-censored rows kept its parent's two-column times; it is
+  now split and leafed as its rows would be on their own.
+- **Fixed: mixture fits with a censored row and finite truncation (#544).**
+  A right-censored row with a finite ``tr`` (or left-censored with a
+  finite ``tl``) is the interval [x, tr] (or [tl, x]) since #310, but the
+  mixture likelihood grouped rows by censoring code and raised
+  ``IndexError``. It now uses the same observation masks as every other
+  fitter, and equals a fit to the rows written as intervals.
+- **Fixed: zero-inflated fits with a left truncation below 0 (#548).** A
+  ``tl`` below 0 counted the mass at 0 as already excluded, so a no-op
+  ``tl=-1`` sent ``f0`` to 1 with an unbounded likelihood. The mass now
+  enters a window only from 0 on, as in the model's ``ff``, so ``tl < 0``
+  gives exactly the untruncated fit (with ``lfp`` and ``offset`` too);
+  ``tl = 0`` still excludes it, as for the discrete distributions.
 - **Performance sweep.** Results are unchanged to the bit except where
   noted, checked by the new equivalence harness:
 
