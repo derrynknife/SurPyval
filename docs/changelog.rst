@@ -239,7 +239,14 @@ bands change (#477).
   ``degradation/rul.py``. Old import paths keep working.
   ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
   converters and helpers; everything else it exports is internal. A test
-  stops new imports of another package's private names.
+  stops new imports of another package's private names. In the same way,
+  the parametric regression model's time-varying evaluation is in
+  ``univariate/regression/_tvc_evaluation.py`` and its covariance and Wald
+  bounds in ``_inference.py``; the Cox partial likelihood (tie terms,
+  likelihood generators and the Newton-Raphson solver) is in
+  ``proportional_hazards/cox_likelihood.py``; the fitted
+  ``DegradationModel`` is in ``degradation/degradation_model.py``; and
+  ``bootstrap_cb`` is in ``nonparametric/_bands.py`` beside ``band``.
 - **A model's formula is the str you gave.** Cox, Buckley-James and the
   competing-risks PH model kept a parsed ``formulaic.Formula`` in
   ``model.formula``, every other model the str; now all of them keep the
