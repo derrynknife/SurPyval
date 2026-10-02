@@ -144,6 +144,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     DUAL_LIFE_MODELS,
     FAST_REGRESSIONS,
     LIFE_MODELS,
+    NOT_A_LIKELIHOOD_FIT,
     PROPERTIES,
     Q_PROBS,
     REFIT_PROPERTIES,
@@ -176,6 +177,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     query,
     refit,
     regression,
+    tvc_path,
 )
 from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     N_REG,
