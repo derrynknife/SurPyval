@@ -169,7 +169,17 @@ PROPERTIES: dict[str, str] = {
         "a constant covariate column is aliased, the same way, where the "
         "model has an intercept"
     ),
+    # test_attributes.py, for the model classes in DECLARED_ATTRIBUTES.
+    "attributes": (
+        "every way of building the model (fit, each alternate fit path, "
+        "from_dict) gives it the same attributes, each declared on its "
+        "class"
+    ),
 }
+
+# The model classes that declare every attribute their builders set, which
+# the "attributes" property checks.
+DECLARED_ATTRIBUTES = frozenset({"surpyval.ParametricRegressionModel"})
 
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(
@@ -183,6 +193,7 @@ REFIT_PROPERTIES = frozenset(
         "convergence",
         "aliasing",
         "aliasing_constant",
+        "attributes",
     }
 )
 
@@ -315,6 +326,10 @@ class Case:
         if prop == "convergence" and self.starve is None:
             return False
         if prop == "aliasing_constant" and not self.intercept:
+            return False
+        if prop == "attributes" and (
+            self.model_class not in DECLARED_ATTRIBUTES
+        ):
             return False
         return self.interface in _APPLICABLE[prop] and prop not in (
             self.exclude

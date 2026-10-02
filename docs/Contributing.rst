@@ -81,7 +81,10 @@ through each property that applies to it:
   the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
   that keeps every prediction;
 - that the alternate ways of fitting a model (``fit_from_df``, a formula,
-  ``from_params``, ``fit_tvc`` ...) agree with ``fit``;
+  ``from_params``, ``fit_tvc`` ...) agree with ``fit``, and, for a model
+  class that declares its attributes (``DECLARED_ATTRIBUTES``), that every
+  way of building it gives it the same attributes, each declared on the
+  class (``test_attributes.py``);
 - every option of every confidence bound, ``interp=`` value and estimation
   option (``test_options.py``), behaviour outside the data
   (``test_outside_data.py``), that a fit which cannot converge says
