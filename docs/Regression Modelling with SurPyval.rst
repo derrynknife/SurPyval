@@ -224,7 +224,8 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
        ``AcceleratedLife(Weibull, life_models.Eyring)``
    * - Shared frailty PH
      - PH with a random multiplier shared within a group
-     - ``WeibullFrailty``, …, ``Frailty(dist)``
+     - ``WeibullFrailty``, …, ``Frailty(dist)``, and the semi-parametric
+       ``CoxFrailty``
    * - Survival trees and forests (beta)
      - No link: recursive splits on the covariates
      - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.beta.ml``
@@ -3011,6 +3012,52 @@ frail groups fail first, so the marginal hazard ratio starts at
     assert np.isclose(_hr[0], np.exp(model.beta[0]), rtol=0.01)
     assert np.all(np.diff(_hr) < 0), _hr
 
+The frailty is Gamma-distributed by default. ``family="lognormal"`` takes a
+log-normal frailty instead, :math:`u = e^{w}` with :math:`w` normal of mean 0
+and variance ``theta``, as R's ``frailtypack`` and ``coxme`` define it (so
+``theta`` is then the variance of :math:`\log u`). It has no closed form, and
+each group's likelihood is integrated by adaptive Gauss-Hermite quadrature.
+The two families put different weight in the tail of the frailty, so they can
+disagree about how much of the spread is between groups; fitting both and
+comparing their AIC is the usual check. ``frailty_variance`` (the variance of
+the frailty scaled to mean 1) and ``kendall_tau`` (the dependence it induces
+between two units of one group) are on one scale for both. On the kidney
+catheter data (two infection times for each of 38 patients):
+
+.. jupyter-execute::
+
+    from surpyval import Frailty, Weibull
+    from surpyval.datasets import load_kidney
+
+    kidney = load_kidney()
+    kidney['female'] = (kidney['sex'] == 2).astype(float)
+    kidney['censored'] = 1 - kidney['status']
+    fits = {
+        family: Frailty(Weibull, family=family).fit_from_df(
+            kidney, x_col='time', c_col='censored', group_col='id',
+            Z_cols=['age', 'female'])
+        for family in ('gamma', 'lognormal')
+    }
+    for family, fit in fits.items():
+        print('%-9s theta %.3f  Var(u)/E(u)^2 %.3f  tau %.3f  AIC %.2f  '
+              'female %.2f' % (family, fit.theta, fit.frailty_variance,
+                               fit.kendall_tau, fit.aic(), fit.beta[1]))
+
+The gamma frailty fits slightly better (its AIC is about 1.7 lower: weak
+evidence), with the same within-patient dependence (Kendall's tau of about
+0.2) but a larger effect of sex. Women's lower infection rate holds under
+either family, so that conclusion does not depend on the choice; its size
+does.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {f: m.aic() for f, m in fits.items()}
+    assert 1.5 < _aic['lognormal'] - _aic['gamma'] < 1.9, _aic
+    assert all(abs(m.kendall_tau - 0.2) < 0.01 for m in fits.values())
+    assert fits['gamma'].beta[1] < fits['lognormal'].beta[1] < -1.5
+
 ``fit_from_df`` names the columns instead (``group_col`` for the groups, and
 ``Z_cols`` or a ``formula`` for the covariates), and the fitted model then
 predicts from a DataFrame:
@@ -3026,10 +3073,11 @@ predicts from a DataFrame:
           by_lot.sf([10.0], [0.0], group='L00'))
 
 Omit ``Z`` entirely for a pure random-effects survival model (grouped data, no
-covariates). Only Gamma frailty is available for now (``Frailty(dist)`` takes
-any baseline distribution; ``WeibullFrailty``, ``ExponentialFrailty``,
-``LogNormalFrailty`` and ``GammaFrailty`` are pre-built), on observed and
-right-censored data, and at least two groups are required. When the data show
+covariates). ``Frailty(dist)`` takes any baseline distribution
+(``WeibullFrailty``, ``ExponentialFrailty``, ``LogNormalFrailty`` and
+``GammaFrailty`` are pre-built, each with a Gamma frailty -- the name is the
+baseline's), on observed and right-censored data, and at least two groups are
+required. When the data show
 little between-group variation the estimate of ``theta`` goes to its boundary
 at zero, and the frailty fit then coincides with the ordinary ``WeibullPH`` fit
 (the same baseline, coefficients and likelihood). The frailty model has the
@@ -3064,6 +3112,52 @@ boundary has no meaningful Wald interval (``param_cb('theta')`` is then
     assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
     assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
     assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+
+**A Cox baseline.** ``CoxFrailty`` is the same shared gamma frailty with the
+baseline hazard left unspecified, as in ``CoxPH`` -- the semi-parametric
+member of the family, as ``CoxPH`` is of ``WeibullPH``. For a given ``theta``
+it is fitted by EM over the frailties: each group's posterior mean frailty
+(closed form for the gamma), then a ``CoxPH`` fit with the log-frailties as
+offsets and the frailty-weighted Breslow baseline. ``theta`` maximises the
+profile of the integrated likelihood. This is the fit of R's
+``coxph(Surv(time, status) ~ ... + frailty(id, dist = "gamma"))``, with
+Efron's ties by default (``tie_method="breslow"`` for Breslow's); on the
+kidney data it gives R's coefficients, standard errors, frailties and
+I-likelihood:
+
+.. jupyter-execute::
+
+    from surpyval import CoxFrailty
+
+    cox_frailty = CoxFrailty.fit_from_df(
+        kidney, x_col='time', c_col='censored', group_col='id',
+        Z_cols=['age', 'female'])
+    print(cox_frailty)
+
+The model predicts as the parametric one does: the marginal curve by
+default, a patient's own with ``group=``. The baseline (``x``, ``h0``,
+``H0``) is a step function, of a unit at ``Z = 0`` with frailty 1. Twice the
+gain of the I-likelihood over the Cox partial likelihood
+(``loglik_no_frailty``, its value at ``theta = 0``) tests for a frailty;
+``theta`` is on its boundary under the null, so the p-value is half the
+chi-square one:
+
+.. jupyter-execute::
+
+    from scipy.stats import chi2
+
+    lr = 2 * (cox_frailty.loglik - cox_frailty.loglik_no_frailty)
+    print('LR statistic %.2f, p = %.3f' % (lr, chi2.sf(lr, 1) / 2))
+    woman = pd.DataFrame({'age': [45.0], 'female': [1.0]})
+    print(cox_frailty.sf([30, 100], woman).round(3),
+          cox_frailty.sf([30, 100], woman, group=21).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(cox_frailty.theta - 0.40777) < 1e-4
+    assert 5.0 < lr < 6.0 and 0.005 < chi2.sf(lr, 1) / 2 < 0.02
 
 
 Model Selection

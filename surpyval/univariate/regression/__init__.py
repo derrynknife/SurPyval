@@ -40,6 +40,9 @@ from .additive_hazards import (
 )
 from .buckley_james import BuckleyJames, BuckleyJamesModel
 from .frailty import (
+    CoxFrailty,
+    CoxFrailtyFitter,
+    CoxFrailtyModel,
     ExponentialFrailty,
     Frailty,
     FrailtyFitter,
@@ -84,6 +87,9 @@ __all__ = [
     "SemiParametricRegressionModel",
     "ProportionalOddsModel",
     "FrailtyModel",
+    "CoxFrailty",
+    "CoxFrailtyFitter",
+    "CoxFrailtyModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
     "FrailtyFitter",
