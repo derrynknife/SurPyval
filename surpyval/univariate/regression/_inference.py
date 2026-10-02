@@ -33,7 +33,14 @@ from ._bounds import logit_sf_bound
 if TYPE_CHECKING:
     import pandas as pd
 
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
     from surpyval.utils.deprecation import CallableList
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    from ._covariate_link import CovariateLink
+    from .accelerated_life.lifemodel import LifeModel
 
 
 class InferenceMixin:
@@ -53,14 +60,17 @@ class InferenceMixin:
         k_dist: int
         kind: str
         fixed: dict[str, float]
-        distribution: Any
-        reg_model: Any
+        distribution: ParametricFitter
+        reg_model: "CovariateLink | LifeModel"
         model: Any
-        data: Any
+        data: SurpyvalData
+        res: Any
         center: "npt.NDArray | None"
         _fit_centring: "tuple | None"
         _information: "tuple | None"
         _covariance_cache: "tuple | None"
+        _restored_covariance: "npt.NDArray | None"
+        _restored: bool
 
         @property
         def parameter_names(self) -> CallableList: ...
@@ -70,6 +80,8 @@ class InferenceMixin:
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
+        def _is_accelerated_life(self) -> bool: ...
+        def _is_additive(self) -> bool: ...
         def _life_relation(self) -> str: ...
 
         def _prepare_Z(
@@ -93,9 +105,9 @@ class InferenceMixin:
     def _check_inference(self) -> None:
         # A model deserialised with a stored covariance can produce bounds
         # without the original data.
-        if getattr(self, "_restored_covariance", None) is not None:
+        if self._restored_covariance is not None:
             return
-        if getattr(self, "_restored", False):
+        if self._restored:
             # Restored without a covariance: to_dict stores one only when
             # it was finite at fit time, and the data are not stored.
             raise ValueError(
@@ -132,7 +144,7 @@ class InferenceMixin:
         the centred fit, carried to the reported parameters (the baseline
         at ``Z = 0``) by the jacobian of the map between them.
         """
-        restored = getattr(self, "_restored_covariance", None)
+        restored = self._restored_covariance
         if restored is not None:
             return restored
         self._check_inference()
@@ -155,7 +167,7 @@ class InferenceMixin:
         a model that reports its baseline at 0 (#463), where the
         coefficients and the baseline are not nearly collinear, else the
         model's own."""
-        restored = getattr(self, "_restored_covariance", None)
+        restored = self._restored_covariance
         if restored is not None:
             return (
                 np.asarray(self._eval_params(), dtype=float),
@@ -258,7 +270,7 @@ class InferenceMixin:
         coefficients are unbounded)."""
         n_phi = len(self.params) - self.k_dist
         phi_bounds: Any = ((None, None),) * n_phi
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
             if callable(declared):
                 declared = declared(np.asarray(self.data.Z))
@@ -407,12 +419,12 @@ class InferenceMixin:
             )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             # Not below the support, where nothing has happened yet.
             self._warn_if_hazard_negative(
                 x,
                 self._centred(self._prepare_Z(Z)),
-                x >= self.distribution.support[0],
+                np.asarray(x) >= self.distribution.support[0],
                 stacklevel=4,
             )
 

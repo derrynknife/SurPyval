@@ -193,6 +193,10 @@ class AdditiveHazardsModel(
     _b: npt.NDArray
     #: The rows fitted ``(x, c, n, Z)``, for ``concordance``; not saved.
     _fit_data: "tuple | None" = None
+    #: The family (``"Additive Hazards"``) and ``"Semi-Parametric"``, which the
+    #: printout shows and ``to_dict`` stores.
+    kind: str
+    parameterization: str
 
     def __init__(self) -> None:
         self.kind = "Additive Hazards"

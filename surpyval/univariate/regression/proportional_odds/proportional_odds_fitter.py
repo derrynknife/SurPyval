@@ -19,6 +19,7 @@ from .._fit_skeleton import (
     optimise_nm_tnc,
     split_log_linear,
 )
+from .._kinds import PROPORTIONAL_ODDS
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -244,7 +245,7 @@ class ProportionalOddsFitter(
             init,
             fixed,
             center,
-            kind="Proportional Odds",
+            kind=PROPORTIONAL_ODDS,
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )

@@ -42,10 +42,16 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._aliasing import aliased_columns, constant_columns, warn_aliased
+from ._covariate_link import CovariateLink
+from ._kinds import (
+    ACCELERATED_FAILURE_TIME,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
 from .parametric_regression_model import ParametricRegressionModel
 
 
-class LogLinearPhi:
+class LogLinearPhi(CovariateLink):
     """The ``exp(beta'Z)`` covariate link shared by PH, AFT and PO —
     previously defined inline in at least seven places (#295).
 
@@ -60,9 +66,8 @@ class LogLinearPhi:
     NAME_E = "Log Linear [e^(beta'Z)]"
     NAME_EXP = "Log Linear [exp(beta'Z)]"
 
-    def __init__(self, name: str, phi_param_map: dict) -> None:
-        self.name = name
-        self.phi_param_map = phi_param_map
+    def __init__(self, name: str, phi_param_map: dict[str, int]) -> None:
+        super().__init__(name, phi_param_map)
 
     @staticmethod
     def phi(Z: Numeric, *params: Boxable) -> Boxable:
@@ -270,38 +275,38 @@ def _both_scale_up(p: Any, s: Any) -> list:
 
 
 ORIGIN_MAPS: "dict[tuple[str, str], tuple[tuple[int, ...], Callable]]" = {
-    ("Proportional Hazard", "Weibull"): ((0,), _ph_weibull),
-    ("Proportional Hazard", "Exponential"): ((0,), _rate_down),
-    ("Proportional Hazard", "Rayleigh"): (
+    (PROPORTIONAL_HAZARD, "Weibull"): ((0,), _ph_weibull),
+    (PROPORTIONAL_HAZARD, "Exponential"): ((0,), _rate_down),
+    (PROPORTIONAL_HAZARD, "Rayleigh"): (
         (0,),
         lambda p, s: [p[0] * np.exp(s / 2.0)],
     ),
-    ("Proportional Hazard", "Gumbel"): (
+    (PROPORTIONAL_HAZARD, "Gumbel"): (
         (0,),
         lambda p, s: [p[0] + p[1] * s, p[1]],
     ),
-    ("Accelerated Failure Time", "Weibull"): ((0,), _first_scale_up),
-    ("Accelerated Failure Time", "Exponential"): ((0,), _rate_down),
-    ("Accelerated Failure Time", "Rayleigh"): ((0,), _first_scale_up),
-    ("Accelerated Failure Time", "LogLogistic"): ((0,), _first_scale_up),
-    ("Accelerated Failure Time", "ExpoWeibull"): ((0,), _first_scale_up),
-    ("Accelerated Failure Time", "Gamma"): (
+    (ACCELERATED_FAILURE_TIME, "Weibull"): ((0,), _first_scale_up),
+    (ACCELERATED_FAILURE_TIME, "Exponential"): ((0,), _rate_down),
+    (ACCELERATED_FAILURE_TIME, "Rayleigh"): ((0,), _first_scale_up),
+    (ACCELERATED_FAILURE_TIME, "LogLogistic"): ((0,), _first_scale_up),
+    (ACCELERATED_FAILURE_TIME, "ExpoWeibull"): ((0,), _first_scale_up),
+    (ACCELERATED_FAILURE_TIME, "Gamma"): (
         (1,),
         lambda p, s: [p[0], p[1] * np.exp(-s)],
     ),
-    ("Accelerated Failure Time", "LogNormal"): (
+    (ACCELERATED_FAILURE_TIME, "LogNormal"): (
         (0,),
         lambda p, s: [p[0] + s, p[1]],
     ),
-    ("Accelerated Failure Time", "Normal"): ((0, 1), _both_scale_up),
-    ("Accelerated Failure Time", "Logistic"): ((0, 1), _both_scale_up),
-    ("Accelerated Failure Time", "Gumbel"): ((0, 1), _both_scale_up),
-    ("Accelerated Failure Time", "GumbelLEV"): ((0, 1), _both_scale_up),
-    ("Proportional Odds", "LogLogistic"): (
+    (ACCELERATED_FAILURE_TIME, "Normal"): ((0, 1), _both_scale_up),
+    (ACCELERATED_FAILURE_TIME, "Logistic"): ((0, 1), _both_scale_up),
+    (ACCELERATED_FAILURE_TIME, "Gumbel"): ((0, 1), _both_scale_up),
+    (ACCELERATED_FAILURE_TIME, "GumbelLEV"): ((0, 1), _both_scale_up),
+    (PROPORTIONAL_ODDS, "LogLogistic"): (
         (0,),
         lambda p, s: [p[0] * np.exp(-s / p[1]), p[1]],
     ),
-    ("Proportional Odds", "Logistic"): (
+    (PROPORTIONAL_ODDS, "Logistic"): (
         (0,),
         lambda p, s: [p[0] - p[1] * s, p[1]],
     ),
@@ -617,7 +622,7 @@ def prepare_regression_fit(
     final assembly need. ``phi_bounds``/``phi_param_map``/``phi_init`` may
     be callables of the covariate array or static values.
 
-    ``kind`` names a log-linear family (``"Proportional Hazard"``, ...),
+    ``kind`` names a log-linear family (``PROPORTIONAL_HAZARD``, ...),
     whose fit runs on centred covariates where its baseline maps back to
     ``Z = 0`` exactly, and ``center=True`` centres any family and keeps the
     baseline at the covariate means (:class:`Centring`). ``data`` is then
@@ -872,6 +877,7 @@ def assemble_regression_model(
     model.reg_model = reg_model
     model.kind = kind
     model.distribution = fitter.dist
+    model.dist = fitter.dist
     params_arr = np.array(params)
     aliased = getattr(fixed, "aliased", ())
     if aliased:

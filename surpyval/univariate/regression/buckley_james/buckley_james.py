@@ -232,6 +232,22 @@ class BuckleyJamesModel(
     formula: "str | None" = None
     _model_spec: Any = None
 
+    #: The covariate coefficients (``params`` and ``coef`` are the same
+    #: array), in the accelerated-failure convention.
+    beta: npt.NDArray
+    params: npt.NDArray
+    coef: npt.NDArray
+    #: The residual Kaplan-Meier the predictions read: the sorted
+    #: residuals and the survival at each.
+    _resid: npt.NDArray
+    _resid_surv: npt.NDArray
+    #: The iterations the fit took, and whether it converged.
+    n_iter: int
+    converged: bool
+    #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
+    #: ``concordance``; ``None`` when not kept.
+    _data: "tuple | None"
+
     @property
     def parameter_names(self) -> list[str]:
         """The names of ``params``, entry by entry: ``beta_0``,

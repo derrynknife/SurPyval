@@ -147,6 +147,11 @@ class SemiParametricRegressionModel(
     tvc_subject_ids: "npt.NDArray | None" = None
     tvc_row_order: "npt.NDArray | None" = None
 
+    #: The model (``"Cox"``) and ``"Semi-Parametric"``, which the
+    #: printout shows and ``to_dict`` stores.
+    kind: str
+    parameterization: str
+
     _ALIASED_WHY = (
         "a constant column, one constant within each stratum, or a linear "
         "combination of the others"

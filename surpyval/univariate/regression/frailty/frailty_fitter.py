@@ -58,6 +58,7 @@ from .._fit_skeleton import (
     optimise_ph,
     require_finite_fit,
 )
+from .._kinds import PROPORTIONAL_HAZARD
 from ..proportional_hazards.cox_likelihood import strata_labels
 from ..regression_data import design_matrix_from_df
 from .families import (
@@ -482,7 +483,7 @@ class FrailtyFitter:
         aliased = getattr(
             alias_coefficients(
                 self,
-                "Proportional Hazard",
+                PROPORTIONAL_HAZARD,
                 Zc,
                 w,
                 {},

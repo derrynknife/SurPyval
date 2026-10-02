@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import types
 import warnings
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -21,7 +20,15 @@ from surpyval.utils.shapes import (
 )
 
 from ._concordance import ConcordanceMixin
+from ._covariate_link import CovariateLink
 from ._inference import InferenceMixin
+from ._kinds import (
+    ACCELERATED_FAILURE_TIME,
+    ACCELERATED_LIFE,
+    ADDITIVE_HAZARD,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     prepare_Z,
@@ -33,6 +40,13 @@ if TYPE_CHECKING:
     import pandas as pd
     from matplotlib.axes import Axes
 
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    from .accelerated_life.lifemodel import LifeModel
+
 
 # Regression families whose fitted model round-trips through ``to_dict`` /
 # ``from_dict``: each has a fixed-form covariate link (a log-linear multiplier
@@ -41,10 +55,10 @@ if TYPE_CHECKING:
 # therefore every prediction -- can be rebuilt from the distribution's name.
 # Maps kind -> (public fitter factory name, covariate-link form).
 _SERIALISABLE_KINDS: "dict[str, tuple[str, str]]" = {
-    "Accelerated Failure Time": ("AFT", "exp"),
-    "Proportional Hazard": ("PH", "exp"),
-    "Proportional Odds": ("PO", "exp"),
-    "Additive Hazard": ("AH", "additive"),
+    ACCELERATED_FAILURE_TIME: ("AFT", "exp"),
+    PROPORTIONAL_HAZARD: ("PH", "exp"),
+    PROPORTIONAL_ODDS: ("PO", "exp"),
+    ADDITIVE_HAZARD: ("AH", "additive"),
 }
 
 # The covariate-link (``reg_model``) names those families produce. A model
@@ -97,12 +111,93 @@ class ParametricRegressionModel(
     array([0.728 , 0.4833])
     """
 
-    # Covariate metadata populated when the model is fit from a pandas
-    # DataFrame (see ``DataFrameRegressionMixin.fit_from_df``). These defaults
-    # keep the array based interface working unchanged.
+    # Every attribute a fitted model carries. The model is created empty
+    # and filled in by its builder: ``assemble_regression_model`` (every
+    # ``fit``, the time-varying-covariate fits and ``AcceleratedLife``),
+    # then ``fit_from_df`` / ``fit_tvc`` add theirs, and ``from_dict``
+    # (for a model restored without its data). An attribute with a value
+    # here is optional: the builders that have nothing to say leave the
+    # default. ``conformance/test_attributes.py`` checks that every
+    # builder gives the same set, and nothing undeclared.
+
+    # -- set by every builder ---------------------------------------------
+    #: The fitted parameters: the distribution's, then the covariate
+    #: coefficients (or life-model parameters); an aliased one is nan.
+    params: npt.NDArray
+    #: ``params[:k_dist]``, the baseline distribution's parameters.
+    dist_params: npt.NDArray
+    #: ``params[k_dist:]``, the covariate coefficients (or life-model
+    #: parameters).
+    phi_params: npt.NDArray
+    #: The number of estimated parameters (fixed and aliased ones are not
+    #: counted), the ``k`` of the information criteria.
+    k: int
+    #: The number of baseline distribution parameters.
+    k_dist: int
+    #: The family, one of the names in ``_kinds``: ``"Proportional
+    #: Hazard"``, ``"Accelerated Failure Time"``, ``"Proportional Odds"``,
+    #: ``"Additive Hazard"`` or ``"Accelerated Life"``.
+    kind: str
+    #: ``{name: value}`` of the parameters held fixed in the fit (an
+    #: accelerated life model's placeholder for its life parameter
+    #: included; the aliased coefficients are not).
+    fixed: dict[str, float]
+    #: The baseline distribution (``Weibull``, ...).
+    distribution: ParametricFitter
+    #: The same distribution, under the name the fitters use.
+    dist: ParametricFitter
+    #: ``{name: position}`` of the baseline distribution's parameters.
+    distribution_param_map: dict[str, int]
+    #: ``{name: position}`` of the covariate coefficients (life-model
+    #: parameters), counted from the first of them.
+    phi_param_map: dict[str, int]
+    #: How the covariates act: a :class:`CovariateLink` (its ``name``,
+    #: ``phi_param_map`` and ``phi``), or the life model of an
+    #: accelerated life model.
+    reg_model: "CovariateLink | LifeModel"
+    #: The regression fitter that built the model; its ``sf(x, Z,
+    #: *params)`` and the others (and ``neg_ll``) are the model's.
+    model: Any
+    #: The fitted negative log-likelihood.
+    _neg_ll: float
+
+    # -- set by the fits from data (absent on a model from ``from_dict``) --
+    #: The data fitted to, with its covariates ``Z``.
+    data: SurpyvalData
+    #: The optimiser's result (``scipy.optimize.OptimizeResult``).
+    res: Any
+    #: The objective the search minimised, in the transformed search
+    #: space; set by the accelerated life fit only.
+    fun: Callable[[npt.NDArray], Any]
+
+    # -- optional ----------------------------------------------------------
+    #: Not parameters of a regression model; kept at the univariate
+    #: models' neutral values (no offset, no defective fraction, no zero
+    #: inflation), which ``to_dict`` stores.
+    gamma: float = 0.0
+    p: float = 1.0
+    f0: float = 0.0
+    #: The covariate point the baseline parameters are at: zeros (or
+    #: ``None``, for an accelerated life model) when they are those of a
+    #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
+    #: its baseline at the ``n``-weighted covariate means (#463), stored
+    #: here, and every prediction uses ``Z - center``.
+    center: "npt.NDArray | None" = None
+    #: Covariate metadata of a model fitted from a pandas DataFrame (see
+    #: ``DataFrameRegressionMixin.fit_from_df``): the coefficients'
+    #: column names, the formula, and the formulaic model spec that
+    #: encodes a DataFrame's columns. ``None`` for a fit from arrays.
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: Whether the model was fitted to time-varying covariates
+    #: (``fit_tvc``, ``fit_tvc_timeline``), one data row per interval.
+    is_tvc: bool = False
+    #: The number of subjects of a time-varying-covariate fit.
+    n_subjects: "int | None" = None
+    #: The weighted number of subjects of a time-varying-covariate fit,
+    #: the sample size of ``bic`` / ``aic_c`` when none failed.
+    _ic_n_total: "float | None" = None
     #: Set only on models rebuilt by :meth:`from_dict` that carried a stored
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
@@ -112,12 +207,6 @@ class ParametricRegressionModel(
     #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
     #: (#508).
     _data_summary: "str | None" = None
-    #: The covariate point the baseline parameters are at: zeros (or
-    #: ``None``, for an accelerated life model) when they are those of a
-    #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
-    #: its baseline at the ``n``-weighted covariate means (#463), stored
-    #: here, and every prediction uses ``Z - center``.
-    center: "npt.NDArray | None" = None
     #: ``(params, center, jacobian)`` of the centred fit behind a model
     #: that reports its baseline at 0 (the log-linear families whose
     #: baseline maps exactly between the two, #463): the covariance and
@@ -132,35 +221,8 @@ class ParametricRegressionModel(
     _information: "tuple | None" = None
     #: ``(point, covariance)`` of the last covariance computed.
     _covariance_cache: "tuple | None" = None
-
-    # Attributes populated after construction (by ``fit`` / ``from_params``).
-    # Declared here so static type checkers know their types.
-    params: npt.NDArray
-    dist_params: npt.NDArray
-    phi_params: npt.NDArray
-    k: int
-    k_dist: int
-    gamma: float
-    p: float
-    f0: float
-    kind: str
-    fixed: dict[str, float]
-    dist: Any
-    distribution: Any
-    distribution_param_map: Any
-    phi_param_map: Any
-    reg_model: Any
-    model: Any
-    data: Any
-    res: Any
-    fun: Any
-    _neg_ll: float
-    _bic: float
-    #: Set by the AFT time-varying-covariate fit; absent otherwise.
-    is_tvc: bool
-    n_subjects: int
-    _aic: float
-    _aic_c: float
+    # The information criteria's sample size ``_ic_n`` and their caches
+    # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
     # -- serialisation -----------------------------------------------------
 
@@ -172,13 +234,13 @@ class ParametricRegressionModel(
         name. Raises ``NotImplementedError`` for any link that cannot be
         reconstructed from a name.
         """
-        phi_param_map = getattr(self.reg_model, "phi_param_map", None)
+        phi_param_map = self.reg_model.phi_param_map
         if not isinstance(phi_param_map, dict):
             raise NotImplementedError(
                 "This model's covariate coefficients are not a fixed name map "
                 "and cannot be serialised."
             )
-        reg_name = getattr(self.reg_model, "name", None)
+        reg_name = self.reg_model.name
         base: dict[str, Any] = {
             "parameterization": "parametric-regression",
             "kind": self.kind,
@@ -188,7 +250,7 @@ class ParametricRegressionModel(
             },
         }
 
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
                 LIFE_MODELS,
             )
@@ -205,7 +267,8 @@ class ParametricRegressionModel(
             if LIFE_MODELS[reg_name].n_stresses is None:
                 # A parameter per stress column (GeneralLogLinear): the
                 # reader resolves the model for this many columns.
-                base["n_stresses"] = int(self.reg_model.n_stresses)
+                life_model = cast("LifeModel", self.reg_model)
+                base["n_stresses"] = int(cast(int, life_model.n_stresses))
             return base
 
         if self.kind not in _SERIALISABLE_KINDS:
@@ -258,9 +321,9 @@ class ParametricRegressionModel(
         out["k"] = int(self.k)
         out["k_dist"] = int(self.k_dist)
         out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
-        out["gamma"] = float(getattr(self, "gamma", 0.0))
-        out["p"] = float(getattr(self, "p", 1.0))
-        out["f0"] = float(getattr(self, "f0", 0.0))
+        out["gamma"] = float(self.gamma)
+        out["p"] = float(self.p)
+        out["f0"] = float(self.f0)
         if self._has_center():
             # Only a baseline at the covariate means (center=True, #463) is
             # stored, which makes the dict schema 2: a schema-1 reader
@@ -278,7 +341,7 @@ class ParametricRegressionModel(
             except Exception:
                 cov = None
         else:
-            cov = getattr(self, "_restored_covariance", None)
+            cov = self._restored_covariance
         if cov is not None and np.all(np.isfinite(cov)):
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
@@ -331,8 +394,8 @@ class ParametricRegressionModel(
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
 
-        reg_model: Any
-        if kind == "Accelerated Life":
+        reg_model: "CovariateLink | LifeModel"
+        if kind == ACCELERATED_LIFE:
             # Rebuild the parameter-substitution fitter from the distribution
             # and the built-in life model; the fitter carries the life-model's
             # phi and the distribution's life-parameter transforms, so it
@@ -373,6 +436,7 @@ class ParametricRegressionModel(
                     )
                 reg_model = reg_model.resolve(n_stresses)
             fitter = AcceleratedLife(dist, reg_model)
+            phi_param_map = dict(reg_model.phi_param_map)
         elif kind in _SERIALISABLE_KINDS:
             factory_name, phi_kind = _SERIALISABLE_KINDS[kind]
             factory = getattr(surpyval, factory_name)
@@ -380,17 +444,20 @@ class ParametricRegressionModel(
             phi_param_map = {
                 k: int(v) for k, v in model_dict["phi_param_map"].items()
             }
-            reg_model = types.SimpleNamespace(
-                name=model_dict["reg_model_name"],
-                phi_param_map=phi_param_map,
-            )
             if phi_kind == "exp":
                 # The log-linear multiplier exp(beta'Z), matching the
                 # fitters. Imported here because _fit_skeleton imports
                 # this module at load time.
                 from ._fit_skeleton import LogLinearPhi
 
-                reg_model.phi = LogLinearPhi.phi
+                reg_model = LogLinearPhi(
+                    model_dict["reg_model_name"], phi_param_map
+                )
+            else:
+                # Additive: beta'Z is added to the hazard, no multiplier.
+                reg_model = CovariateLink(
+                    model_dict["reg_model_name"], phi_param_map
+                )
         else:
             raise ValueError(
                 "Cannot deserialise regression kind {!r}".format(kind)
@@ -400,6 +467,8 @@ class ParametricRegressionModel(
         out.model = fitter
         out.distribution = dist
         out.dist = dist
+        out.distribution_param_map = fitter.param_map
+        out.phi_param_map = phi_param_map
         out.reg_model = reg_model
         out.kind = kind
         out.params = params
@@ -419,7 +488,7 @@ class ParametricRegressionModel(
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
-        if kind != "Accelerated Life":
+        if kind != ACCELERATED_LIFE:
             # A dict without one has its baseline at Z = 0 (#463).
             out.center = np.array(
                 model_dict.get("center", np.zeros(len(params) - k_dist)),
@@ -497,6 +566,18 @@ class ParametricRegressionModel(
             return int(np.shape(Z)[1])
         return len(self.params) - self.k_dist
 
+    def _is_accelerated_life(self) -> bool:
+        """Whether this is an accelerated life model: a life model gives
+        the distribution's life parameter, and the covariate parameters
+        are the life model's, not one coefficient per column."""
+        return self.kind == ACCELERATED_LIFE
+
+    def _is_additive(self) -> bool:
+        """Whether the covariates add ``beta'Z`` to the hazard (additive
+        hazards), which nothing keeps positive, rather than act through
+        a multiplier."""
+        return self.kind == ADDITIVE_HAZARD
+
     def _has_center(self) -> bool:
         """Whether the baseline is at a nonzero covariate ``center``."""
         return self.center is not None and bool(np.any(self.center))
@@ -513,18 +594,18 @@ class ParametricRegressionModel(
 
     #: What ``exp(coef)`` is, for a log-linear link, by kind.
     _EXP_MEANING = {
-        "Proportional Hazard": "the hazard ratio",
-        "Accelerated Failure Time": "the acceleration factor",
-        "Proportional Odds": "the survival odds ratio",
+        PROPORTIONAL_HAZARD: "the hazard ratio",
+        ACCELERATED_FAILURE_TIME: "the acceleration factor",
+        PROPORTIONAL_ODDS: "the survival odds ratio",
     }
 
     @property
     def life_parameter(self) -> "str | None":
         """The distribution parameter an accelerated life model replaces by
         its life model (``None`` for the other families)."""
-        if self.kind != "Accelerated Life":
+        if not self._is_accelerated_life():
             return None
-        return getattr(getattr(self, "model", None), "life_parameter", None)
+        return getattr(self.model, "life_parameter", None)
 
     def _life_relation(self) -> str:
         # How the life parameter follows from the life model, e.g.
@@ -538,8 +619,8 @@ class ParametricRegressionModel(
         coefficient table is for; an accelerated-life model's are the
         parameters of its life model."""
         n_phi = len(self.params) - self.k_dist
-        pmap = dict(getattr(self.reg_model, "phi_param_map", {}) or {})
-        return self.kind != "Accelerated Life" and pmap == {
+        pmap = dict(self.reg_model.phi_param_map or {})
+        return not self._is_accelerated_life() and pmap == {
             "beta_{}".format(i): i for i in range(n_phi)
         }
 
@@ -548,7 +629,7 @@ class ParametricRegressionModel(
         log-linear (``exp(coef)`` is then not a ratio)."""
         from ._fit_skeleton import LogLinearPhi
 
-        name = getattr(self.reg_model, "name", "")
+        name = self.reg_model.name
         if name not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
             return None
         return self._EXP_MEANING.get(self.kind)
@@ -738,7 +819,7 @@ class ParametricRegressionModel(
         # The life parameter an accelerated-life model substitutes is held
         # at a placeholder value, not a parameter of the model.
         placeholder = set()
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             placeholder = set(getattr(self.model, "fixed", None) or {})
         fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
         if fixed:
@@ -794,13 +875,14 @@ class ParametricRegressionModel(
 
     def _concordance_data(self) -> "tuple | None":
         data = getattr(self, "data", None)
-        if data is None or getattr(self, "is_tvc", False):
+        if data is None or self.is_tvc:
             return None
         return data.x, data.c, data.n, data.Z
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
-        if not hasattr(self.reg_model, "phi"):
+        phi = self.reg_model.phi
+        if phi is None:
             # Additive-hazards reg models have no multiplier: the
             # covariate effect enters as beta'Z added to the hazard, so
             # phi() is undefined rather than an AttributeError (#277).
@@ -810,9 +892,7 @@ class ParametricRegressionModel(
                 "not a multiplier."
             )
         # Relative to the centre for a baseline kept there (#463).
-        return self.reg_model.phi(
-            self._centred(Z), *self._eval_params()[self.k_dist :]
-        )
+        return phi(self._centred(Z), *self._eval_params()[self.k_dist :])
 
     def _eval(
         self,
@@ -851,7 +931,7 @@ class ParametricRegressionModel(
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
             out = fn(x, Z, *self._eval_params())
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)
@@ -1299,7 +1379,7 @@ class ParametricRegressionModel(
         return ic_sample_size(
             self.data.c,
             self.data.n,
-            n_rows=getattr(self, "_ic_n_total", None),
+            n_rows=self._ic_n_total,
         )
 
     # ``self.k`` is the number of estimated parameters, so the AIC/BIC
@@ -1379,7 +1459,7 @@ class ParametricRegressionModel(
         x, r, d = self.data.to_xrd()
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
-        Z_mean = self.data.Z.mean(axis=0)
+        Z_mean = np.asarray(self.data.Z).mean(axis=0)
         ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
         sf = self.sf(x_plot, Z_mean)
         ax.plot(x_plot, sf, color="b")
