@@ -81,6 +81,21 @@ class LogLinearPhi:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
+def split_log_linear(
+    fitter: Any, x: Numeric, Z: Numeric, params: tuple
+) -> "tuple[Numeric, tuple, Boxable]":
+    """``(x, dist_params, phi)`` for a covariate-function evaluation of
+    the AFT and PO fitters: ``x`` as a 1-D float array, the distribution
+    parameters (the first ``fitter.k_dist`` of ``params``) and the
+    multiplier ``fitter._phi(Z, *coefficients)`` for ``Z`` read as rows.
+    The parameters stay autograd values, so the likelihood built from
+    them can be differentiated."""
+    x = np.atleast_1d(np.asarray(x, dtype=float))
+    Z = np.atleast_2d(np.asarray(Z, dtype=float))
+    k = fitter.k_dist
+    return x, params[:k], fitter._phi(Z, *params[k:])
+
+
 def make_objective(
     fitter: Any, data: SurpyvalData, inv_trans: Callable, const: Callable
 ) -> Callable:
@@ -298,10 +313,54 @@ _CENTER_HINT = (
     "(model.center) instead, or move the covariates nearer 0."
 )
 
+#: The largest linear predictor exp can take, log(largest float).
+LOG_MAX = float(np.log(np.finfo(float).max))
+
+
+def baseline_at_origin_error(
+    what: str,
+    center: npt.ArrayLike,
+    lp_center: float,
+    log_ratio: float,
+    why: str = "",
+) -> ValueError:
+    """The refusal of a semi-parametric baseline fitted at the covariate
+    means that cannot be moved to ``Z = 0`` (#463): the ``what`` (``"baseline
+    hazard"``, ...) at ``Z = 0`` is ``exp(log_ratio)`` times that at the
+    ``center``, where the linear predictor is ``lp_center``, and over- or
+    underflows. ``why`` adds a reason in brackets. Cox, the semi-parametric
+    proportional odds model and Fine-Gray raise it; the parametric fits'
+    :meth:`Centring.finish` has its own, as their baseline moves through
+    its parameters."""
+    return ValueError(
+        "The {} at Z = 0 cannot be represented for these covariates: their "
+        "means are {} and the linear predictor there is beta'center = "
+        "{:.4g}, so the baseline at Z = 0 is exp({:.4g}) times that at the "
+        "means, which over- or underflows{}. {}".format(
+            what,
+            np.array2string(np.asarray(center), precision=4),
+            lp_center,
+            log_ratio,
+            why,
+            _CENTER_HINT,
+        )
+    )
+
 
 def covariate_center(Z: npt.ArrayLike, n: npt.ArrayLike) -> npt.NDArray:
     """The ``n``-weighted mean of the covariate rows, where a centred fit
-    puts its baseline (#459, #463)."""
+    puts its baseline (#459, #463).
+
+    Every regression fit centres on it where it can: ``exp(beta'Z)`` then
+    stays near 1 for the rows of the data instead of overflowing on a
+    column far from 0 (a year, a date as a day count). The Cox partial
+    likelihood depends on the covariates only through their differences
+    within a risk set, so its coefficients are unchanged; with
+    ``center=True`` the model keeps its baseline at this point and
+    predicts with ``exp(beta'(Z - center))``, as R's ``coxph``, lifelines
+    and scikit-survival do (for start-stop data R's mean is over the
+    interval rows, as here).
+    """
     Z_arr = np.asarray(Z, dtype=float)
     n_arr = np.asarray(n, dtype=float).reshape(-1)
     return np.dot(n_arr, Z_arr) / n_arr.sum()
@@ -470,7 +529,7 @@ def uniform_draws(size: int, random_state: Any = None) -> npt.NDArray:
     return as_generator(random_state).uniform(0, 1, size)
 
 
-class _Fixed(dict):
+class FixedWithAliased(dict):
     """The ``fixed`` of a fit, with the aliased coefficients (#476) held
     at 0 among them; ``aliased`` names those, which the fitted model
     reports as ``nan`` rather than as fixed."""
@@ -530,7 +589,7 @@ def alias_coefficients(
         ),
     )
     names = tuple("beta_{}".format(j) for j in aliased.tolist())
-    out = _Fixed({**fixed, **{name: 0.0 for name in names}})
+    out = FixedWithAliased({**fixed, **{name: 0.0 for name in names}})
     out.aliased = names
     return out
 
@@ -738,7 +797,7 @@ def finite_start(
                     "The log-likelihood is not finite at the supplied "
                     "`init`, so the fit cannot start there; starting from "
                     "the default initial values instead.",
-                    stacklevel=4,
+                    stacklevel=_caller_stacklevel(),
                 )
                 return alt
     raise ValueError(
@@ -774,12 +833,15 @@ def assemble_regression_model(
     fixed: dict,
     neg_ll: "float | None" = None,
     centring: "Centring | None" = None,
+    raw_neg_ll: "Callable | None" = None,
 ) -> ParametricRegressionModel:
     """Common tail of every parametric-regression ``fit``.
 
     With a ``centring``, ``data`` and ``params`` are those of the centred
     fit: the model keeps the data as given, and its parameters and
-    ``center`` are placed by :meth:`Centring.finish`.
+    ``center`` are placed by :meth:`Centring.finish`, which checks them
+    against the likelihood of the data as given, ``raw_neg_ll(*params)``
+    (by default ``fitter.neg_ll`` of ``centring.raw``).
     """
     require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
     fit_centring = None
@@ -790,7 +852,11 @@ def assemble_regression_model(
         params, center, J = centring.finish(
             params_c,
             float(res.fun) if neg_ll is None else neg_ll,
-            lambda *p: fitter.neg_ll(raw, *p),
+            (
+                (lambda *p: fitter.neg_ll(raw, *p))
+                if raw_neg_ll is None
+                else raw_neg_ll
+            ),
             bounds,
             fitter.dist.name,
         )
@@ -1066,12 +1132,6 @@ def runaway_coefficients(
     return out
 
 
-#: The largest linear predictor exp can take, log(largest float): a
-#: runaway's Newton step is at least this fraction of its coefficient's
-#: size (see above).
-_LOG_FLOAT_RANGE = float(np.log(np.finfo(float).max))
-
-
 def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     """Which parameters Newton's method shows to be at a maximum at ``x``,
     ``H`` and ``g`` the Hessian and gradient there: those whose part of the
@@ -1095,7 +1155,9 @@ def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     except np.linalg.LinAlgError:
         return cleared
     with np.errstate(all="ignore"):
-        cleared[used] = np.abs(step) * _LOG_FLOAT_RANGE <= np.abs(x[used])
+        # A runaway's Newton step is at least 1 / LOG_MAX of its
+        # coefficient's size (see above).
+        cleared[used] = np.abs(step) * LOG_MAX <= np.abs(x[used])
     return cleared
 
 
@@ -1597,3 +1659,96 @@ def _is_stationary(g: "npt.NDArray | None", f: float) -> bool:
     if g is None:
         return True
     return bool(np.max(np.abs(g), initial=0.0) <= 1e-2 * max(1.0, abs(f)))
+
+
+def fit_log_linear(
+    fitter: Any,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    t: "npt.ArrayLike | None",
+    init: "npt.ArrayLike | None",
+    fixed: "dict[str, float] | None",
+    center: bool,
+    *,
+    kind: str,
+    optimiser: Callable,
+    reg_model: Callable[[dict], Any],
+    phi_bounds: "Callable[[npt.NDArray], tuple] | tuple" = (
+        LogLinearPhi.phi_bounds
+    ),
+    phi_param_map: "Callable[[npt.NDArray], dict] | dict" = (
+        LogLinearPhi.make_param_map
+    ),
+    phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    log_linear: bool = True,
+) -> ParametricRegressionModel:
+    """The whole ``fit`` of the PH, AFT and PO families (#238, #302).
+
+    Prepares the data and the search (:func:`prepare_regression_fit`),
+    maximises the likelihood with ``optimiser`` (:func:`optimise_ph` or
+    :func:`optimise_nm_tnc`, called with ``quiet=True``), builds the model
+    of ``kind`` (:func:`assemble_regression_model`) with the covariate
+    link ``reg_model(pmap)``, then warns of anything wrong with the search
+    and keeps the exact information (#392). ``log_linear=False`` (a custom
+    PH ``phi``) fits without the move of the baseline to ``Z = 0``, which
+    only the log-linear link has (#463; :class:`Centring`). Each family
+    keeps its own ``fit`` signature and docstring and calls this.
+    """
+    data, prep = prepare_regression_fit(
+        fitter,
+        x,
+        Z,
+        c,
+        n,
+        t,
+        init,
+        fixed,
+        phi_bounds,
+        phi_param_map,
+        phi_init,
+        kind=kind if log_linear else None,
+        center=center,
+    )
+    (
+        init_t,
+        bounds,
+        pmap,
+        transform,
+        inv_trans,
+        const,
+        fixed,
+        centring,
+    ) = prep
+
+    with np.errstate(all="ignore"):
+
+        fun = make_objective(fitter, data, inv_trans, const)
+
+        res = optimiser(fun, init_t, quiet=True)
+
+    params = inv_trans(const(res.x))
+
+    model = assemble_regression_model(
+        fitter,
+        kind,
+        reg_model(pmap),
+        data,
+        res,
+        params,
+        bounds,
+        pmap,
+        fixed,
+        centring=centring,
+    )
+    # After the model is built (which may refuse the data), one
+    # warning for what the search found (#392).
+    no_maximum, derivatives = finish_search(
+        fun, res, free_coefficients(fitter, fixed, pmap), init_t
+    )
+    # The exact information for the model's covariance (#392).
+    keep_information(
+        model, no_maximum, derivatives, inv_trans, const, res.x, centring
+    )
+    return model

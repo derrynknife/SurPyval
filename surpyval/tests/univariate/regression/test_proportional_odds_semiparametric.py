@@ -246,10 +246,16 @@ def test_center_gives_the_same_model():
 def test_baseline_far_from_the_covariates_is_refused():
     x, c, _, _, Z = _po_data(n=80, seed=7)
     Z = Z + [0.0, 1e5]
-    with pytest.raises(ValueError, match="center=True"):
+    with pytest.raises(ValueError, match="center=True") as err:
         sp.ProportionalOdds.fit(x, Z, c=c)
     model = sp.ProportionalOdds.fit(x, Z, c=c, center=True)
     assert np.all(np.isfinite(model.sf(x, Z)))
+    # Worded as CoxPH's and FineGray's refusals (one helper): the failure
+    # odds at Z = 0 are exp(beta'center) times those at the means.
+    s = float(model.beta @ model.center)
+    message = str(err.value)
+    assert "beta'center = {:.4g}".format(s) in message
+    assert "is exp({:.4g}) times".format(s) in message
 
 
 @pytest.mark.parametrize("flag", [-1, 2])

@@ -24,15 +24,110 @@ from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import (
     _caller_stacklevel,
+    check_covariate_rows,
+    finite_covariate_mask,
     formula_model_matrix,
     numeric_columns,
     refuse_time_values,
+    xcnt_handler,
 )
 
 from ._aliasing import covariate_columns
 
 if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
+
+
+_ALIASED_DOC = """The columns of ``Z`` whose coefficients the data cannot
+determine (#476): {why}. Their ``beta`` is ``nan`` (R's ``NA``){also}, and
+predictions take it as 0."""
+
+
+def _aliased_columns(model: Any) -> npt.NDArray:
+    return np.flatnonzero(np.isnan(np.asarray(model.beta, dtype=float)))
+
+
+class LinearPredictorMixin:
+    """The coefficient and linear-predictor accessors of the
+    semi-parametric regression models (Cox, proportional odds, Lin-Ying
+    additive hazards, Buckley-James, Fine-Gray and the competing-risks
+    PH model), each of which carried its own copy: the aliased columns,
+    ``beta`` with an aliased coefficient as 0, the centre, the design
+    matrix of new covariates, and ``beta'(Z - center)``.
+
+    A model class says what makes a coefficient undetermined for it in
+    ``_ALIASED_WHY`` (and anything else that is ``nan`` with it in
+    ``_ALIASED_ALSO``), which completes the docstring of its
+    :attr:`aliased`; a class that defines its own ``aliased`` keeps it.
+    """
+
+    beta: Any
+    center: Any
+    feature_names: Any
+    _model_spec: Any
+
+    _ALIASED_WHY = (
+        "a constant column, which the baseline absorbs, or a linear "
+        "combination of the others"
+    )
+    _ALIASED_ALSO = ""
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if "aliased" not in cls.__dict__:
+            doc = _ALIASED_DOC.format(
+                why=cls._ALIASED_WHY, also=cls._ALIASED_ALSO
+            )
+            setattr(cls, "aliased", property(_aliased_columns, doc=doc))
+
+    @property
+    def aliased(self) -> npt.NDArray:
+        return _aliased_columns(self)
+
+    def _coef(self) -> npt.NDArray:
+        """``beta`` with an aliased coefficient as 0, as the predictions
+        use it (R's ``predict.coxph`` does the same)."""
+        beta = np.asarray(self.beta, dtype=float)
+        return np.where(np.isnan(beta), 0.0, beta)
+
+    def _center(self) -> npt.NDArray:
+        """The centre as an array, zeros for a model without one."""
+        if self.center is None:
+            return np.zeros(np.asarray(self.beta, dtype=float).shape[0])
+        return np.asarray(self.center, dtype=float)
+
+    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        """
+        Convert ``Z`` to a numeric design matrix: a DataFrame is read by
+        the covariate names (or expanded by the formula) recorded by
+        ``fit_from_df`` -- it used to be read by column position, and a
+        formula's raw columns were not expanded at all (#370); an array is
+        taken as it is, in the fitted column order.
+        """
+        return prepare_Z(Z, self.feature_names, self._model_spec)
+
+    def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
+        """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log
+        of the multiplier of the baseline."""
+        return (Z - self._center()) @ self._coef()
+
+    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        """``beta'(Z - center)`` for covariates ``Z`` as the predictions
+        take them (:meth:`_prepare_Z`; a scalar for a one-covariate
+        model), the log of the model's ``phi``."""
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        if Z_arr.ndim == 0:
+            Z_arr = Z_arr.reshape(1)
+        return self._log_risk(Z_arr)
+
+    @staticmethod
+    def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
+        """``base * exp(log_risk)`` computed as ``exp(log(base) +
+        log_risk)``: a baseline at ``Z = 0`` far from the data is tiny and
+        ``exp(beta'Z)`` huge, and their product is formed without either
+        overflowing (#463). A zero baseline stays 0, and nan stays nan."""
+        with np.errstate(divide="ignore", over="ignore"):
+            return np.exp(np.log(base) + log_risk)
 
 
 def drop_intercept(model_matrix: Any) -> Any:
@@ -68,6 +163,64 @@ def check_finite_event_times(x: npt.ArrayLike, c: npt.ArrayLike) -> None:
             "had not failed by the end of observation is right censored "
             "(c=1)."
         )
+
+
+def semi_parametric_inputs(
+    x: "npt.ArrayLike | None",
+    Z: "npt.ArrayLike | None",
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    tl: "npt.ArrayLike | None" = None,
+    *,
+    censoring: "str | None",
+    truncation: "str | None" = None,
+    rows: tuple = (),
+) -> tuple:
+    """The input checks the semi-parametric fitters share (Cox, the
+    semi-parametric proportional odds, Lin-Ying additive hazards,
+    Fine-Gray and Buckley-James): ``(x, c, n, tl, Z, *rows)`` as floats,
+    ``x`` and ``tl`` one-dimensional, ``Z`` two-dimensional.
+
+    In order: a two-dimensional ``tl`` (a ``[tl, tr]`` pair) is refused
+    with the model's message ``truncation``; the data are read by
+    :func:`~surpyval.utils.xcnt_handler`; left- or interval-censored rows
+    are refused with ``censoring`` (``None`` leaves that to the caller);
+    a two-column ``x`` with no interval row (``xl == xr`` everywhere) is
+    read as its first column; ``Z`` must have a row per observation; rows
+    with a missing or infinite covariate are dropped, with a warning, from
+    every array, the extra per-row arrays ``rows`` too; and only then are
+    the exactly observed times checked to be finite
+    (:func:`check_finite_event_times`), so a row with a bad covariate is
+    dropped rather than refused (principle 3). The model-specific checks
+    stay with each fitter.
+    """
+    if tl is not None and np.ndim(tl) == 2:
+        raise ValueError(truncation)
+    x_h, c_h, n_h, t_h = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+    c_arr = np.asarray(c_h, dtype=float)
+    if censoring is not None and np.isin(c_arr, (-1, 2)).any():
+        raise ValueError(censoring)
+    x_arr = np.asarray(x_h, dtype=float)
+    if x_arr.ndim == 2:
+        # Two columns with no interval row: xl == xr on every row.
+        x_arr = x_arr[:, 0]
+    n_arr = np.asarray(n_h, dtype=float)
+    tl_arr = np.asarray(t_h, dtype=float)[:, 0]
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    # Checked before the mask indexes the data (a mismatch was a bare
+    # IndexError from the mask).
+    check_covariate_rows(Z_arr, x_arr.shape[0])
+    mask = finite_covariate_mask(Z_arr)
+    x_arr, c_arr, n_arr, tl_arr, Z_arr = (
+        a[mask] for a in (x_arr, c_arr, n_arr, tl_arr, Z_arr)
+    )
+    extra = tuple(np.asarray(a)[mask] for a in rows)
+    check_finite_event_times(x_arr, c_arr)
+    return (x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra)
 
 
 def design_matrix_from_df(
@@ -387,10 +540,11 @@ def _native(value: Any) -> Any:
 def formula_to_string(formula: Any) -> str:
     """The text of a formula, in a form that parses back to the same terms.
 
-    A formula given as text is returned unchanged. ``str`` of a parsed
-    ``formulaic.Formula`` (which the Cox and competing-risks fitters keep)
-    lists the intercept when there is one but says nothing when there is
-    not, so ``"0 + z + g"`` came back as ``"z + g"`` -- which parses *with*
+    A formula given as text (as every fitted model keeps it) is returned
+    unchanged. ``str`` of a parsed ``formulaic.Formula`` (which the Cox,
+    Buckley-James and competing-risks fitters kept before 0.22) lists
+    the intercept when there is one but says nothing when there is not,
+    so ``"0 + z + g"`` came back as ``"z + g"`` -- which parses *with*
     an intercept, giving a different design matrix. The ``"0 + "`` is put
     back here.
     """

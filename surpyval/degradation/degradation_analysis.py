@@ -65,6 +65,7 @@ from ._clock import (
     covariates_by_name,
     stress_row,
 )
+from ._measurements import validate_xy
 from .path_models import (
     PATH_MODELS,
     PathModel,
@@ -1154,16 +1155,7 @@ class DegradationModel(SerialisableMixin):
                     n_samples
                 )
             )
-        x_arr = np.atleast_1d(np.asarray(x, dtype=float))
-        y_arr = np.atleast_1d(np.asarray(y, dtype=float))
-        if x_arr.ndim != 1 or y_arr.ndim != 1 or len(x_arr) != len(y_arr):
-            raise ValueError(
-                "x and y must be one dimensional and the same length"
-            )
-        if len(x_arr) == 0:
-            raise ValueError("At least one measurement is required")
-        if not (np.isfinite(x_arr).all() and np.isfinite(y_arr).all()):
-            raise ValueError("x and y must contain only finite values")
+        x_arr, y_arr, _ = validate_xy(x, y)
         clock = self._history_clock(x_arr, Z, Z_future)
         path_x = x_arr if clock is None else clock.tau
         self.path_model.check_data(path_x, y_arr)
@@ -1301,27 +1293,16 @@ class DegradationModel(SerialisableMixin):
     def _handle_new_trajectory(
         self, x: npt.ArrayLike, y: npt.ArrayLike
     ) -> tuple[npt.NDArray, npt.NDArray]:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        y = np.atleast_1d(np.asarray(y, dtype=float))
-        if x.ndim != 1 or y.ndim != 1:
-            raise ValueError("x and y must be one dimensional")
-        if len(x) != len(y):
-            raise ValueError(
-                "x and y must have the same length; got {} and {}".format(
-                    len(x), len(y)
-                )
-            )
-        if not (np.isfinite(x).all() and np.isfinite(y).all()):
-            raise ValueError("x and y must contain only finite values")
+        x_arr, y_arr, _ = validate_xy(x, y)
         n_params = len(self.path_model.parameter_names)
-        if len(x) < n_params or len(np.unique(x)) < 2:
+        if len(x_arr) < n_params or len(np.unique(x_arr)) < 2:
             raise ValueError(
                 "The trajectory needs at least {} measurements at 2 or "
                 "more distinct times to fit the {} path model".format(
                     n_params, self.path_model.name
                 )
             )
-        return x, y
+        return x_arr, y_arr
 
     def _life_fn(self, name: str, x: npt.ArrayLike, Z: Any) -> npt.NDArray:
         # One dispatcher for the five distribution functions: the
@@ -3067,23 +3048,7 @@ class DegradationAnalysis_:
     def _handle_xyi(
         x: npt.ArrayLike, y: npt.ArrayLike, i: npt.ArrayLike
     ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        y = np.atleast_1d(np.asarray(y, dtype=float))
-        i = np.atleast_1d(np.asarray(i))
-        if x.ndim != 1 or y.ndim != 1 or i.ndim != 1:
-            raise ValueError("x, y, and i must be one dimensional")
-        if not (len(x) == len(y) == len(i)):
-            raise ValueError(
-                "x, y, and i must have the same length; got {}, {}, "
-                "and {}".format(len(x), len(y), len(i))
-            )
-        if len(x) == 0:
-            raise ValueError("x, y, and i must not be empty")
-        if not np.isfinite(x).all():
-            raise ValueError("x must contain only finite values")
-        if not np.isfinite(y).all():
-            raise ValueError("y must contain only finite values")
-        return x, y, i
+        return validate_xy(x, y, i)
 
 
 DegradationAnalysis = DegradationAnalysis_()

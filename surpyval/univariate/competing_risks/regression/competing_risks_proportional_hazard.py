@@ -13,7 +13,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -34,8 +33,7 @@ from surpyval.univariate.regression._aliasing import (
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import (
-    check_finite_event_times,
-    prepare_Z,
+    LinearPredictorMixin,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -62,7 +60,9 @@ def _check_interp(interp: str) -> None:
     _check_option("interp", interp, ("step",))
 
 
-class CompetingRisksProportionalHazards(SerialisableMixin):
+class CompetingRisksProportionalHazards(
+    LinearPredictorMixin, SerialisableMixin
+):
     """
     Competing-risks proportional-hazards regression.
 
@@ -108,7 +108,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     _fg_models: dict
     # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
     feature_names: "list | None" = None
-    formula: Any = None
+    formula: "str | None" = None
     _model_spec: Any = None
 
     # -- serialisation -----------------------------------------------------
@@ -250,24 +250,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return (self._prepare_Z(Z) - self.center) @ np.where(
             np.isnan(beta), 0.0, beta
         )
-
-    @staticmethod
-    def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
-        """``base * exp(log_risk)`` on the log scale, so a tiny baseline at
-        ``Z = 0`` and a huge multiplier on covariates far from 0 do not
-        overflow (#463)."""
-        with np.errstate(divide="ignore", over="ignore"):
-            return np.exp(np.log(base) + log_risk)
-
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        """
-        Convert ``Z`` to a numeric design matrix: a DataFrame is read by
-        the covariate names (or expanded by the formula) recorded by
-        ``fit_from_df`` -- it used to be read by column position, and a
-        formula's raw columns were not expanded at all (#370); an array is
-        taken as it is, in the fitted column order.
-        """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
@@ -731,7 +713,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         array([0.59  , 0.7369])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
-        check_finite_event_times(x, c)
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.

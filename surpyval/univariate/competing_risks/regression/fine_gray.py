@@ -67,6 +67,8 @@ from surpyval.univariate.regression._aliasing import (
     warn_aliased,
 )
 from surpyval.univariate.regression._fit_skeleton import (
+    LOG_MAX,
+    baseline_at_origin_error,
     runaway_coefficients,
     search_derivatives,
 )
@@ -74,7 +76,7 @@ from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
 )
 from surpyval.univariate.regression.regression_data import (
-    check_finite_event_times,
+    LinearPredictorMixin,
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.dataframe import (
@@ -442,22 +444,12 @@ def _cumhaz_at_origin(
         out = np.exp(np.log(cumhaz) - shift)
     tiny = np.finfo(float).tiny
     if not (
-        np.all(np.abs(lp) < np.log(np.finfo(float).max))
+        np.all(np.abs(lp) < LOG_MAX)
         and np.all(np.isfinite(out))
         and np.all(out[cumhaz > 0] >= tiny)
     ):
-        raise ValueError(
-            "The baseline cumulative subdistribution hazard at Z = 0 "
-            "cannot be represented for these covariates: their means are {} "
-            "and the linear predictor there is beta'center = {:.4g}, so "
-            "the baseline at Z = 0 is exp({:.4g}) times that at the means, "
-            "which over- or underflows. Fit with center=True to report the "
-            "baseline at the covariate means (model.center) instead, or "
-            "move the covariates nearer 0.".format(
-                np.array2string(np.asarray(center), precision=4),
-                shift,
-                -shift,
-            )
+        raise baseline_at_origin_error(
+            "baseline cumulative subdistribution hazard", center, shift, -shift
         )
     return out
 
@@ -489,7 +481,7 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
     return np.broadcast_to(Z_arr, (n_x, p))
 
 
-class FineGrayModel(SerialisableMixin):
+class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
 
@@ -516,17 +508,10 @@ class FineGrayModel(SerialisableMixin):
         self._neg_ll = fit["neg_ll"]
         self.res = fit["res"]
 
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): their ``beta`` is ``nan``, and predictions take
-        it as 0."""
-        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
-
-    def _coef(self) -> npt.NDArray:
-        """``beta`` with an aliased coefficient as 0."""
-        beta = np.asarray(self.beta, dtype=float)
-        return np.where(np.isnan(beta), 0.0, beta)
+    _ALIASED_WHY = (
+        "a constant column, which the baseline subdistribution hazard "
+        "absorbs, or a linear combination of the others"
+    )
 
     # -- serialisation -----------------------------------------------------
 
@@ -813,7 +798,6 @@ class FineGray_:
         array([0.5808, 0.7395])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
-        check_finite_event_times(x, c)
 
         causes = ordered_labels(e)
         if event is None:
