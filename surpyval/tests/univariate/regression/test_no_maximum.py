@@ -366,3 +366,53 @@ def test_the_gate_clears_a_maximum_and_nothing_else():
     x = np.array([1.0, 7.0])
     H, g = hessian(ignores)(x), grad(ignores)(x)
     assert skeleton._cleared(x, H, g).tolist() == [True, False]
+
+
+# -- the cost of reading a profile (#501) -------------------------------------
+
+
+@pytest.mark.parametrize("name", ["LogNormalAFT", "WeibullAFT", "WeibullPH"])
+def test_a_profile_is_read_without_more_hessians(monkeypatch, name):
+    # The covariate is +1 and -1 on two copies of the same data, so its
+    # coefficient is exactly 0 at the maximum: no Newton step is small
+    # beside 0, and its profile is read. The curvatures a quarter step
+    # either side of the fit come from Hessian-vector products there; the
+    # full Hessian is formed once, at the fit, for the covariance (#501:
+    # twice more for each profile, which on 100,000 rows took 65% of a
+    # LogNormal AFT fit).
+    rng = np.random.default_rng(0)
+    x = np.exp(2 + 0.5 * rng.normal(size=20))
+    c = (rng.uniform(size=20) < 0.3).astype(int)
+    Z = np.concatenate([np.ones(20), -np.ones(20)])[:, None]
+    calls = _count_profiles(monkeypatch)
+    hessians = []
+    full = skeleton.search_derivatives
+
+    def counted(*args):
+        hessians.append(1)
+        return full(*args)
+
+    monkeypatch.setattr(skeleton, "search_derivatives", counted)
+    fitter = getattr(sp, name)
+    model, w = _fit(lambda: fitter.fit(x=np.tile(x, 2), c=np.tile(c, 2), Z=Z))
+    assert not w, [str(x.message) for x in w]
+    assert calls == [len(fitter.parameter_names)]
+    assert len(hessians) == 1
+    assert model.params[-1] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_the_profile_curvature_from_products_is_exact():
+    # exp(t) + 50 (u - t)^2: the profile of t is exp(t), and so is its
+    # curvature. Formed from the full Hessian, H_tt - H_tu^2 / H_uu loses
+    # the digits of exp(t) ~ 3e-7 that cancel against the 100s (1e-8 of
+    # it); from Hessian-vector products along the profile it is exact.
+    def f(p):
+        return anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2
+
+    at = np.array([-15.0, -15.0])
+    H, _ = skeleton.search_derivatives(f, at)
+    v = np.array([1.0, 1.0])
+    for t in (-14.9, -15.0, -15.2):
+        point = np.array([t, -15.0])
+        S = skeleton._profile_curvature(f, point, 0, H, v)
+        assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)

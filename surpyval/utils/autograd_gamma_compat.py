@@ -35,9 +35,12 @@ from autograd.scipy.special import gammaln as _ag_gammaln
 from autograd.tracer import getval
 from scipy.special import betainc as _sc_betainc
 from scipy.special import betaincc as _sc_betaincc
+from scipy.special import digamma as _sc_digamma
 from scipy.special import gammainc as _sc_gammainc
 from scipy.special import gammaincc as _sc_gammaincc
 from scipy.special import gammaln as _sc_gammaln
+from scipy.special import polygamma as _sc_polygamma
+from scipy.special import zeta as _sc_zeta
 
 # The value-or-box union the distributions use (see parametric_fitter):
 # every boundary here may see a plain numpy value or an ArrayBox.
@@ -422,11 +425,15 @@ def betaln_accurate(a: Boxable, b: Boxable) -> Boxable:
 
 
 def beta_cf(
-    a: npt.ArrayLike, b: npt.ArrayLike, x: npt.ArrayLike
+    a: npt.ArrayLike,
+    b: npt.ArrayLike,
+    x: npt.ArrayLike,
+    terms: int | None = None,
 ) -> npt.NDArray:
     """The continued fraction of the incomplete beta (Lentz), such that
     I_x(a, b) = x^a (1 - x)^b / (a B(a, b)) * beta_cf(a, b, x); it
-    converges fast for x below (a + 1) / (a + b + 2)."""
+    converges fast for x below (a + 1) / (a + b + 2). ``nan`` where it
+    has not converged in ``terms`` terms (``_CF_TERMS`` by default)."""
     a, b, x = np.broadcast_arrays(
         np.asarray(a, dtype=float),
         np.asarray(b, dtype=float),
@@ -438,7 +445,7 @@ def beta_cf(
     d = 1.0 / np.where(np.abs(d) < tiny, tiny, d)
     h = d.copy()
     done = np.zeros(x.shape, dtype=bool)
-    for m in range(1, 100000):
+    for m in range(1, _CF_TERMS if terms is None else terms):
         for aa in (
             m * (b - m) * x / ((a + 2 * m - 1) * (a + 2 * m)),
             -(a + m) * (a + b + m) * x / ((a + 2 * m) * (a + 2 * m + 1)),
@@ -451,23 +458,144 @@ def beta_cf(
         done = done | (np.abs(d * c - 1.0) < 1e-16) | ~np.isfinite(h)
         if np.all(done):
             break
-    return h
+    # Not converged: nan, never the unconverged value (#473, #520).
+    return np.where(done, h, np.nan)
+
+
+#: The most terms of ``beta_cf``. Inside its region, x below (a + 1) /
+#: (a + b + 2), it converges in tens of terms on the tails it is used for
+#: (71 at most for shapes from 10 to 1e12, 2 to 30 standard deviations
+#: out). Outside, the terms it needs grow as 1 / (1 - x): 273 at x = 0.999,
+#: 62,042 at 1 - 1e-8, and at an x that rounds to 1 it ran to this limit,
+#: 4.6 s a call, and its value was 40% off (#520).
+_CF_TERMS = 100000
+
+#: The most terms of a tail's continued fraction in ``_beta_logs`` before
+#: the other side's power series is used instead (``_beta_series_log``):
+#: past them its x is within 1e-3 of 1, where the series converges in a
+#: few terms.
+_CF_TAIL_TERMS = 1000
+
+
+#: ln Gamma(1 + a) - (-euler a) as a power series in a: the coefficients of
+#: a^2 ... a^12, (-1)^k zeta(k) / k, for |a| below ``_LNGAMMA1P_SERIES``.
+_LNGAMMA1P_SERIES = 1e-2
+_LNGAMMA1P_COEFFS = tuple(
+    float((-1) ** k * _sc_zeta(k) / k) for k in range(2, 13)
+)
+_EULER = 0.57721566490153286061
+_ZETA2, _ZETA3, _ZETA4 = (float(_sc_zeta(k)) for k in (2, 3, 4))
+
+
+def _lngamma1p(a: npt.NDArray) -> npt.NDArray:
+    """ln Gamma(1 + a), relative to its size for a tiny ``a`` as well:
+    ``gammaln(1 + a)`` is 0 once 1 + a rounds to 1."""
+    small = np.abs(a) < _LNGAMMA1P_SERIES
+    a_s = np.where(small, a, 0.0)
+    series = np.zeros_like(a_s)
+    for c in _LNGAMMA1P_COEFFS[::-1]:
+        series = c + a_s * series
+    series = a_s * (-_EULER + a_s * series)
+    return np.where(small, series, _sc_gammaln(1.0 + np.where(small, 1.0, a)))
+
+
+#: The most terms of ``_beta_series_log``; it is used where b x < a + 1,
+#: and converges in a few.
+_SERIES_TERMS = 10000
+
+
+def _beta_series_log(
+    a: npt.NDArray, b: npt.NDArray, x: npt.NDArray
+) -> npt.NDArray:
+    r"""log I_x(a, b) from its power series in x (DLMF 8.17.7),
+
+    .. math::
+        I_x(a, b) = x^a \frac{\Gamma(a + b)}{\Gamma(a + 1) \Gamma(b)}
+        \Big(1 + a \sum_{n \geq 1} \frac{(1 - b)_n x^n}{n! (a + n)}\Big),
+
+    with each factor's log taken to its own relative precision. It is for
+    the side of a tail whose continued fraction does not converge
+    (``_beta_logs``): there x is below (a + 1) / (a + b + 2) and I_x(a, b)
+    is near 1 because ``a`` is small, b x is below a + 1, and the series
+    converges in a few terms. The other tail is ``-expm1`` of this, exact
+    to the last digits, where the continued fraction of this side gives a
+    log near 0 as a difference of logs of size 1. ``nan`` where the series
+    has not converged."""
+    total = np.zeros_like(x)
+    term = np.ones_like(x)
+    done = np.zeros(x.shape, dtype=bool)
+    for n in range(1, _SERIES_TERMS):
+        term = term * (n - b) * x / n
+        step = term / (a + n)
+        total = np.where(done, total, total + step)
+        done = done | (np.abs(step) <= 1e-17 * np.abs(total)) | (term == 0)
+        if np.all(done):
+            break
+    with np.errstate(divide="ignore"):
+        log_x = np.log(x)
+    out = a * log_x + _log_beta_front(a, b) + np.log1p(a * total)
+    return np.where(done, out, np.nan)
+
+
+#: Below this multiple of min(1, b), ``_log_beta_front`` takes its Taylor
+#: series in ``a``: the terms after a^4 are below 1e-16 of it.
+_FRONT_SERIES = 1e-4
+
+
+def _log_beta_front(a: npt.NDArray, b: npt.NDArray) -> npt.NDArray:
+    r""":math:`\ln \Gamma(a + b) - \ln \Gamma(b) - \ln \Gamma(1 + a)`,
+    to its own relative precision at a small ``a``, where it is of size
+    ``a`` and the gammas' rounding (1e-18 in the Stirling remainders of
+    ``log_gamma_ratio``) is not: :math:`a (\psi(b) + \gamma) + \sum_{k
+    \geq 2} a^k [\psi^{(k - 1)}(b) / k! - (-1)^k \zeta(k) / k]`, to
+    :math:`a^4`, for an ``a`` below 1e-4 of min(1, b)."""
+    tiny = a < _FRONT_SERIES * np.minimum(1.0, b)
+    a_t = np.where(tiny, a, 0.0)
+    b_t = np.where(tiny, b, 1.0)
+    series = a_t * (
+        (_sc_digamma(b_t) + _EULER)
+        + a_t
+        * (
+            (_sc_polygamma(1, b_t) - _ZETA2) / 2.0
+            + a_t
+            * (
+                (_sc_polygamma(2, b_t) + 2.0 * _ZETA3) / 6.0
+                + a_t * (_sc_polygamma(3, b_t) - 6.0 * _ZETA4) / 24.0
+            )
+        )
+    )
+    a_g = np.where(tiny, 1.0, a)
+    b_g = np.where(tiny, 1.0, b)
+    general = log_gamma_ratio(b_g, a_g) - _lngamma1p(a_g)
+    return np.where(tiny, series, general)
 
 
 def _beta_cf_log(
-    a: npt.NDArray, b: npt.NDArray, x: npt.NDArray, xc: npt.NDArray
+    a: npt.NDArray,
+    b: npt.NDArray,
+    x: npt.NDArray,
+    xc: npt.NDArray,
+    terms: int | None = None,
 ) -> npt.NDArray:
     """log I_x(a, b) from ``beta_cf``, for x below (a + 1) / (a + b + 2),
     with ``xc = 1 - x``: the log of the front factor x^a (1 - x)^b /
     (a B(a, b)) stays finite where I_x itself underflows. Each log is
     taken from whichever of x and xc is below 1/2 (one of them is the
     caller's own, exact, argument): log(1 - p) of a rounded 1 - p, times
-    k = 2.7e9, lost 5e-8 of a Negative Binomial's sf (#458)."""
+    k = 2.7e9, lost 5e-8 of a Negative Binomial's sf (#458). ``nan``
+    where ``beta_cf`` has not converged in ``terms`` terms."""
     with np.errstate(divide="ignore"):
         log_x = np.where(x < 0.5, np.log(x), np.log1p(-xc))
         log_xc = np.where(xc < 0.5, np.log(xc), np.log1p(-x))
     front = a * log_x + b * log_xc - betaln_accurate(a, b) - np.log(a)
-    return front + np.log(beta_cf(a, b, x))
+    return front + np.log(beta_cf(a, b, x, terms))
+
+
+def _log1mexp_neg(v: npt.NDArray) -> npt.NDArray:
+    """log(1 - exp(v)) for v <= 0, from whichever of expm1 and log1p keeps
+    its digits."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(v > -_LN2, np.log(-np.expm1(v)), np.log1p(-np.exp(v)))
 
 
 def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
@@ -480,7 +608,12 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
     ``log(betainc)`` was capped at -708 where it underflows (#443), the
     log of a probability near 1 lost its complement (#442), and scipy's
     small tail itself can be off (``betaincc(1e-3, 1e3, 0.1)`` is 1.74e-51
-    for 1.34e-51, #458)."""
+    for 1.34e-51, #458). Where that continued fraction does not converge
+    in ``_CF_TAIL_TERMS`` terms (its x within about 1e-3 of 1, as it is
+    where the other side's first shape is tiny), the other side comes
+    from its power series (``_beta_series_log``) and the small tail from
+    it: the fraction ran to 100,000 terms there, 4.6 s a call, and its
+    value was 40% off (#520)."""
     a_arr, b_arr, x_arr = np.broadcast_arrays(
         np.asarray(a, dtype=float),
         np.asarray(b, dtype=float),
@@ -502,15 +635,23 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
         at, bt, xt = a_arr[tail], b_arr[tail], xs[tail]
         low = p[tail] <= q[tail]
         # the small tail from its own side, the large one from it
-        small = np.empty_like(xt)
-        xl, xh = xt[low], xt[~low]
-        small[low] = _beta_cf_log(at[low], bt[low], xl, 1.0 - xl)
-        small[~low] = _beta_cf_log(bt[~low], at[~low], 1.0 - xh, xh)
-        large = np.where(
-            small > -_LN2,
-            np.log(-np.expm1(small)),
-            np.log1p(-np.exp(small)),
-        )
+        # (shapes and x of the small tail's side)
+        a_s = np.where(low, at, bt)
+        b_s = np.where(low, bt, at)
+        x_s = np.where(low, xt, 1.0 - xt)
+        xc_s = np.where(low, 1.0 - xt, xt)
+        with np.errstate(invalid="ignore"):
+            small = _beta_cf_log(a_s, b_s, x_s, xc_s, _CF_TAIL_TERMS)
+        far = np.isnan(small)
+        if np.any(far):
+            # The small tail's continued fraction has not converged: its x
+            # is near 1, far above its region, which happens where the
+            # other side is near 1 because its first shape is small (a
+            # NegativeBinomial r of 1e-172). That side from its power
+            # series, and the small tail from it.
+            large_far = _beta_series_log(b_s[far], a_s[far], xc_s[far])
+            small[far] = _log1mexp_neg(large_far)
+        large = _log1mexp_neg(small)
         log_p[tail] = np.where(low, small, large)
         log_q[tail] = np.where(low, large, small)
     out = log_q if upper else log_p
