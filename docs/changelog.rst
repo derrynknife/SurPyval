@@ -177,6 +177,40 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Breaking: GeneralLogLinear fixed, with a constant term, and exported
+  (#530, #345).** ``AcceleratedLife(dist, GeneralLogLinear).fit`` raised
+  an autograd broadcast ``ValueError`` on any data. The life model is now
+  L(Z) = c exp(sum of beta_j Z_j), with one coefficient per column of
+  ``Z``; with no constant, L(0) was 1 in whatever unit the times were in
+  (principle 6). With the Weibull it reaches the Weibull AFT maximum
+  (log-likelihood -422.414831 in both). It is importable as
+  ``sp.GeneralLogLinear``, round-trips through JSON (a model saved now
+  cannot be read by 0.21), and is in the conformance registry.
+  ``LifeModel.resolve(n_stresses)`` builds the model for a number of
+  columns, so its parameter map and bounds are the types ``LifeModel``
+  declares.
+- **Forest importance no longer silently NaN (#533).** When an out-of-bag
+  row had zero ensemble probability, ``feature_importances`` returned NaN
+  for every feature without a warning (3 trees, 1 row of 46). Each drop is
+  now over the rows that are finite before and after the shuffle, the same
+  as before when every row is, and one warning gives the counts and
+  recommends more trees or ``kind="exponential"``. ``oob_log_likelihood``
+  warns the same way when it returns -inf.
+- **Normal and LogNormal 2-4 times faster (#469).** ``sf``, ``ff``, ``df``,
+  ``qf`` and their logs use ``scipy.special`` directly instead of
+  ``scipy.stats.norm``, with bit-identical values: ``Normal.sf`` on 1,024
+  values takes 41 µs instead of 96 µs, ``qf`` 33 µs instead of 110 µs,
+  and a censored fit 30 ms instead of 42 ms. The density no longer emits
+  numpy's overflow warning at \|x\| near 1e300.
+- **import surpyval is 0.3 s faster (#470).** The regression,
+  competing-risks, recurrent and degradation models and the metrics load
+  on first use, and pandas and formulaic are imported only where used
+  (1.16 s to 0.86 s). Every name, ``dir(surpyval)`` and attribute access
+  such as ``surpyval.recurrent.laplace`` work as before.
+- **MCF variance in linear time (#521).** The Lawless-Nadeau variance and
+  each item's observation window took a pass over all times or rows per
+  item. At 5,000 items the fit takes 0.27 s instead of 1.8 s, with the
+  same variance to 2e-13.
 - **Design principle 24: simple by default, more as an option.** When a
   method reaches its limit, the new approach is added as an option beside
   it. The default stays the simple, standard method, and changes only
