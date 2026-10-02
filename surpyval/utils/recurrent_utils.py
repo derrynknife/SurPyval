@@ -470,6 +470,327 @@ def _expand_windows(
     )
 
 
+def _xicn_defaults(
+    x: npt.NDArray,
+    i: npt.ArrayLike | None,
+    c: npt.ArrayLike | None,
+    n: npt.ArrayLike | None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """``i``, ``c`` and ``n`` as arrays: one item, observed, one event."""
+    i_arr = np.ones(x.shape[0]) if i is None else np.array(i)
+    n_arr = np.ones(x.shape[0]) if n is None else np.array(n)
+    c_arr = np.zeros(x.shape[0]) if c is None else np.array(c)
+    return i_arr, c_arr, n_arr
+
+
+def _xicn_marks(
+    e: npt.ArrayLike | None, c: npt.NDArray, x: npt.NDArray
+) -> npt.NDArray | None:
+    """The event-type marks (competing-risks recurrent process), or None.
+
+    Marks are per row and aligned with ``x``; ``None``/NaN marks
+    (typically the end-of-observation censoring row) are permitted. They
+    are kept as an object array so string, integer or ``None`` marks all
+    round-trip unchanged.
+    """
+    if e is None:
+        return None
+    from surpyval.utils import resolve_cr_censoring
+
+    # One mark per row (a tuple mark is not split into a column), and
+    # every "no attributed cause" marker (None, NaN, pandas NA) turned
+    # into Python ``None`` so downstream cause bookkeeping
+    # (``event_types``, cause-specific counts) sees a single missing
+    # sentinel. The derived censoring flag is not used: ``c`` is set.
+    e_arr, _ = resolve_cr_censoring(e, c)
+    if e_arr.shape[0] != x.shape[0]:
+        raise ValueError("x and e must have the same length")
+    return e_arr
+
+
+def _reject_window_conflicts(
+    t: npt.ArrayLike | None,
+    tl: npt.ArrayLike | None,
+    tr: npt.ArrayLike | None,
+    Z: npt.ArrayLike | dict | None,
+    e_arr: npt.NDArray | None,
+) -> None:
+    """Gapped observation (``windows``) excludes truncation, Z and marks."""
+    if t is not None or tl is not None or tr is not None:
+        raise ValueError(
+            "windows defines each item's observation windows, so t, tl "
+            "and tr must not also be supplied"
+        )
+    if Z is not None:
+        raise ValueError(
+            "windows (gapped observation) does not support covariates Z"
+        )
+    if e_arr is not None:
+        raise ValueError(
+            "windows (gapped observation) does not support event-type "
+            "marks e yet"
+        )
+
+
+def _xicn_covariates(
+    Z: npt.ArrayLike | dict | None, i: npt.NDArray
+) -> npt.NDArray | None:
+    """Z as an (N, p) float array, one row per row of ``x``, or None."""
+    if Z is None:
+        return None
+    if isinstance(Z, dict):
+        missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
+        if missing:
+            raise ValueError(
+                "Z has no covariates for item(s) {}".format(missing)
+            )
+        # a scalar value is a single covariate, held as a 1-element row
+        return np.array(
+            [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
+        )
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        # one covariate: a value per row, not one row of values
+        Z_arr = Z_arr.reshape(-1, 1)
+    return Z_arr
+
+
+def _check_xicn_lengths(
+    x: npt.NDArray,
+    i: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    Z_arr: npt.NDArray | None,
+) -> None:
+    """Every per-row array has one entry per row of ``x``."""
+    if x.shape[0] != i.shape[0]:
+        raise ValueError("x and i must have the same length")
+    if x.shape[0] != c.shape[0]:
+        raise ValueError("x and c must have the same length")
+    if x.shape[0] != n.shape[0]:
+        raise ValueError("x and n must have the same length")
+
+    if Z_arr is not None:
+        if x.shape[0] != Z_arr.shape[0]:
+            raise ValueError("x and Z must have the same length")
+
+
+def _check_item_ids(i: npt.NDArray) -> None:
+    """Item identifiers are finite numbers or present objects."""
+    if np.issubdtype(i.dtype, np.number) and not np.isfinite(i).all():
+        raise ValueError("Item identifiers 'i' must be finite (no NaN or inf)")
+    if i.dtype == object:
+        from surpyval.utils import is_missing_event
+
+        # A missing id cannot say which item a row belongs to, and the sort
+        # would otherwise fail with a bare "'<' not supported".
+        if any(is_missing_event(v) for v in i):
+            raise ValueError(
+                "Item identifiers 'i' must not be missing (None or NaN)"
+            )
+
+
+def _check_xicn_values(
+    x: npt.NDArray,
+    i: npt.NDArray,
+    c: npt.NDArray,
+    n: npt.NDArray,
+    tl_arr: npt.NDArray,
+    tr_arr: npt.NDArray,
+    Z_arr: npt.NDArray | None,
+) -> None:
+    """Reject non-finite values and nonsensical counts and codes.
+
+    Malformed input fails here with an informative error rather than
+    flowing silently into the optimiser. NaN in ``x`` is already rejected
+    by ``coerce_xcnt_x``; here the remaining degenerate values are caught.
+    """
+    if not np.isfinite(x).all():
+        raise ValueError("Event times 'x' must be finite (no inf values)")
+
+    _check_item_ids(i)
+
+    # Censoring codes: -1 left, 0 observed, 1 right, 2 interval. ``np.isin``
+    # also flags NaN, which is never a valid code.
+    valid_c = np.isin(c, [-1, 0, 1, 2])
+    if not valid_c.all():
+        bad = np.unique(c[~valid_c]).tolist()
+        raise ValueError(
+            "Censoring 'c' must be one of -1 (left), 0 (observed), "
+            f"1 (right), or 2 (interval); got {bad}"
+        )
+
+    if not np.isfinite(n).all():
+        raise ValueError("Counts 'n' must be finite")
+    if np.any(n <= 0):
+        raise ValueError("Counts 'n' must be strictly positive")
+
+    # Truncation bounds may be +/-inf (the default open window) but a NaN
+    # bound is meaningless.
+    if np.isnan(tl_arr).any() or np.isnan(tr_arr).any():
+        raise ValueError("Truncation bounds must not contain NaN")
+
+    if (
+        Z_arr is not None
+        and np.issubdtype(Z_arr.dtype, np.number)
+        and not np.isfinite(Z_arr).all()
+    ):
+        raise ValueError("Covariates 'Z' must be finite (no NaN or inf)")
+
+    if np.any((n > 1) & ((c == 0) | (c == 1))):
+        raise ValueError(
+            "Counts greater than 1 must be intervally or left censored"
+        )
+
+
+def _xicn_sort_order(
+    x: npt.NDArray, i: npt.NDArray, c: npt.NDArray
+) -> npt.NDArray:
+    """The row order: by item, then time, then censoring code.
+
+    An end-of-observation (c=1) row tied with an event at the same time
+    closes the window after it, so ties put it last (and a left-censored
+    count, which covers the time from entry, first); whether the input is
+    accepted therefore does not depend on the order tied rows are given in.
+    """
+    tie_order = np.where(c == 1, 3, c)
+    x_key = x.mean(axis=1) if x.ndim == 2 else x  # 2D by the midpoint
+    try:
+        return np.lexsort((tie_order, x_key, i))
+    except TypeError:
+        raise ValueError(
+            "Item identifiers 'i' must be of one comparable kind (all "
+            "numbers or all strings)"
+        ) from None
+
+
+def _check_censoring_positions(
+    unique_i: npt.NDArray, censoring_by_i: list
+) -> None:
+    """At most one c=1 row, last, and one c=-1 row, first, per item."""
+    for ii, arr in zip(unique_i, censoring_by_i):
+        if 1 in arr:
+            if (arr == 1).sum() > 1:
+                raise ValueError(
+                    f"Item {ii} has more than one right censored time"
+                )
+            if arr[-1] != 1:
+                raise ValueError(
+                    f"Item {ii} has right censored event which is not the last"
+                )
+        if -1 in arr:
+            if (arr == -1).sum() > 1:
+                raise ValueError(
+                    f"Item {ii} has more than one left censored event"
+                )
+            if arr[0] != -1:
+                raise ValueError(
+                    f"Item {ii} has left censored event that is not the first"
+                )
+
+
+def _check_interval_overlaps(
+    x: npt.NDArray, idx: npt.NDArray, unique_i: npt.NDArray
+) -> None:
+    """An item's interval-censored rows do not overlap (2-D ``x`` only)."""
+    if x.ndim != 2:
+        return
+    times_by_i = np.split(x, idx)[1:]
+    for ii, arr in zip(unique_i, times_by_i):
+        starts = arr[1:][:, 0]
+        ends = arr[:-1][:, 1]
+        if (ends > starts).any():
+            raise ValueError(f"Item {ii} has overlapping intervals")
+
+
+def _check_item_window(
+    ii: object,
+    tl_i: npt.NDArray,
+    tr_i: npt.NDArray,
+    xl_i: npt.NDArray,
+    xu_i: npt.NDArray,
+    c_i: npt.NDArray,
+) -> None:
+    """One item's truncation bounds form one window holding its events."""
+    if not (np.all(tl_i == tl_i[0]) and np.all(tr_i == tr_i[0])):
+        raise ValueError(
+            f"Item {ii} has inconsistent truncation bounds; each item "
+            "must have a single observation window."
+        )
+    if tl_i[0] > tr_i[0]:
+        raise ValueError(f"Item {ii} has left truncation beyond right")
+    # An end-of-observation (c=1) row and a finite right truncation both
+    # say where the item's window closes, so they must agree: a tr past
+    # the c=1 row claims the item was watched (with no events) after its
+    # observation ended, and every model closes the window at one place.
+    if np.isfinite(tr_i[0]) and c_i[-1] == 1 and xu_i[-1] < tr_i[0]:
+        raise ValueError(
+            f"Item {ii} has an end-of-observation (c=1) row at "
+            f"{xu_i[-1]} before its right truncation time tr="
+            f"{tr_i[0]}; both close the observation window, so they "
+            "must agree (drop the c=1 row or set tr to its time)."
+        )
+    # The item's first interval is integrated from its entry time: the
+    # left-truncation bound when finite, otherwise the fallback origin 0
+    # (see RecurrentEventData.get_previous_x). Events below that origin
+    # would give negative interarrival times, so they are rejected. This
+    # is why untruncated event times must be non-negative while an
+    # explicit (possibly negative) left-truncation window admits negative
+    # times.
+    lower = tl_i[0] if np.isfinite(tl_i[0]) else 0.0
+    if (xl_i < lower).any() or (xu_i > tr_i[0]).any():
+        raise ValueError(
+            f"Item {ii} has events outside its observation window "
+            f"[{lower}, {tr_i[0]}]"
+        )
+
+
+def _check_observation_windows(
+    x: npt.NDArray,
+    tl_arr: npt.NDArray,
+    tr_arr: npt.NDArray,
+    idx: npt.NDArray,
+    unique_i: npt.NDArray,
+    censoring_by_i: list,
+) -> None:
+    """Truncation defines a single observation window [tl, tr] per item.
+
+    The bounds must be constant within an item and contain all of its
+    events.
+    """
+    tl_by_i = np.split(tl_arr, idx)[1:]
+    tr_by_i = np.split(tr_arr, idx)[1:]
+    x_lower = x if x.ndim == 1 else x[:, 0]
+    x_upper = x if x.ndim == 1 else x[:, 1]
+    xl_by_i = np.split(x_lower, idx)[1:]
+    xu_by_i = np.split(x_upper, idx)[1:]
+    for ii, tl_i, tr_i, xl_i, xu_i, c_i in zip(
+        unique_i, tl_by_i, tr_by_i, xl_by_i, xu_by_i, censoring_by_i
+    ):
+        _check_item_window(ii, tl_i, tr_i, xl_i, xu_i, c_i)
+
+
+def _check_static_covariates(
+    Z_arr: npt.NDArray | None, idx: npt.NDArray, unique_i: npt.NDArray
+) -> None:
+    """Covariates describe the item, not the row.
+
+    The proportional-intensity likelihood, its tr window close and its
+    diagnostics would otherwise disagree about which row's values apply
+    (the close and diagnostics use the first row), so values that change
+    within an item are rejected rather than half used.
+    """
+    if Z_arr is None:
+        return
+    for ii, Z_i in zip(unique_i, np.split(Z_arr, idx)[1:]):
+        if not np.all(Z_i == Z_i[0]):
+            raise ValueError(
+                f"Item {ii} has covariates Z that change between its "
+                "rows; covariates are per item (static) and must be "
+                "the same on every row of an item."
+            )
+
+
 # ``as_recurrent_data`` picks the return shape, so the two cases are
 # declared separately. Without this every caller taking the default gets
 # the union back and has to narrow it, which is nine call sites saying
@@ -588,37 +909,8 @@ def handle_xicn(
     if x.shape[0] == 0:
         raise ValueError("'x' cannot be empty")
 
-    if i is None:
-        i = np.ones(x.shape[0])
-    else:
-        i = np.array(i)
-
-    if n is None:
-        n = np.ones(x.shape[0])
-    else:
-        n = np.array(n)
-
-    if c is None:
-        c = np.zeros(x.shape[0])
-    else:
-        c = np.array(c)
-
-    # Optional event-type marks (competing-risks recurrent process). Marks are
-    # per-row and aligned with ``x``; ``None``/NaN marks (typically the
-    # end-of-observation censoring row) are permitted. Kept as an object array
-    # so string, integer or ``None`` marks all round-trip unchanged.
-    e_arr: npt.NDArray | None = None
-    if e is not None:
-        from surpyval.utils import resolve_cr_censoring
-
-        # One mark per row (a tuple mark is not split into a column), and
-        # every "no attributed cause" marker (None, NaN, pandas NA) turned
-        # into Python ``None`` so downstream cause bookkeeping
-        # (``event_types``, cause-specific counts) sees a single missing
-        # sentinel. The derived censoring flag is not used: ``c`` is set.
-        e_arr, _ = resolve_cr_censoring(e, c)
-        if e_arr.shape[0] != x.shape[0]:
-            raise ValueError("x and e must have the same length")
+    i, c, n = _xicn_defaults(x, i, c, n)
+    e_arr = _xicn_marks(e, c, x)
 
     # Gapped (multi-window) observation: each item is observed over several
     # disjoint windows with unobserved gaps between them. Expand each window
@@ -626,139 +918,29 @@ def handle_xicn(
     # and the NHPP likelihood and MCF at-risk set downstream -- treat the gaps
     # correctly without any special-casing (see ``_expand_windows``).
     window_map: dict | None = None
-    tl_gap: npt.NDArray | None = None
-    tr_gap: npt.NDArray | None = None
     if windows is not None:
-        if t is not None or tl is not None or tr is not None:
-            raise ValueError(
-                "windows defines each item's observation windows, so t, tl "
-                "and tr must not also be supplied"
-            )
-        if Z is not None:
-            raise ValueError(
-                "windows (gapped observation) does not support covariates Z"
-            )
-        if e_arr is not None:
-            raise ValueError(
-                "windows (gapped observation) does not support event-type "
-                "marks e yet"
-            )
-        x, i, c, n, tl_gap, tr_gap, window_map = _expand_windows(
+        _reject_window_conflicts(t, tl, tr, Z, e_arr)
+        x, i, c, n, tl_arr, tr_arr, window_map = _expand_windows(
             x, i, c, n, windows
         )
-
-    # Truncation follows surpyval's xcnt convention (shared with the univariate
-    # handler): the default window is the whole real line. No global sign
-    # assumption is made about ``x`` here -- each item is instead validated
-    # against its own observation window below. An item with an explicit
-    # (possibly negative) left-truncation bound legitimately admits negative
-    # event times; an untruncated item is integrated from the fallback origin
-    # 0 (see ``get_previous_x``) and so must have non-negative event times.
-    if tl_gap is not None and tr_gap is not None:
-        tl_arr = tl_gap
-        tr_arr = tr_gap
     else:
+        # Truncation follows surpyval's xcnt convention (shared with the
+        # univariate handler): the default window is the whole real line.
+        # No global sign assumption is made about ``x`` here -- each item
+        # is instead validated against its own observation window below.
+        # An item with an explicit (possibly negative) left-truncation
+        # bound legitimately admits negative event times; an untruncated
+        # item is integrated from the fallback origin 0 (see
+        # ``get_previous_x``) and so must have non-negative event times.
         truncation = format_truncation(t, tl, tr, x.shape[0])
         tl_arr = truncation[:, 0]
         tr_arr = truncation[:, 1]
 
-    Z_arr: npt.NDArray | None = None
-    if Z is not None:
-        if isinstance(Z, dict):
-            missing = [ii for ii in np.unique(i).tolist() if ii not in Z]
-            if missing:
-                raise ValueError(
-                    "Z has no covariates for item(s) {}".format(missing)
-                )
-            # a scalar value is a single covariate (it used to give a 1-D
-            # array and an IndexError further on)
-            Z_arr = np.array(
-                [np.atleast_1d(np.asarray(Z[ii], dtype=float)) for ii in i]
-            )
-        else:
-            Z_arr = np.asarray(Z, dtype=float)
-            if Z_arr.ndim == 1:
-                # one covariate: a value per row, not one row of values
-                Z_arr = Z_arr.reshape(-1, 1)
+    Z_arr = _xicn_covariates(Z, i)
+    _check_xicn_lengths(x, i, c, n, Z_arr)
+    _check_xicn_values(x, i, c, n, tl_arr, tr_arr, Z_arr)
 
-    if x.shape[0] != i.shape[0]:
-        raise ValueError("x and i must have the same length")
-    if x.shape[0] != c.shape[0]:
-        raise ValueError("x and c must have the same length")
-    if x.shape[0] != n.shape[0]:
-        raise ValueError("x and n must have the same length")
-
-    if Z_arr is not None:
-        if x.shape[0] != Z_arr.shape[0]:
-            raise ValueError("x and Z must have the same length")
-
-    # --- Value validation ------------------------------------------------
-    # Reject malformed input with informative errors rather than letting
-    # NaN/inf or nonsensical counts and codes flow silently into the
-    # optimiser. NaN in ``x`` is already rejected by ``coerce_xcnt_x``; here
-    # the remaining degenerate values are caught.
-    if not np.isfinite(x).all():
-        raise ValueError("Event times 'x' must be finite (no inf values)")
-
-    if np.issubdtype(i.dtype, np.number) and not np.isfinite(i).all():
-        raise ValueError("Item identifiers 'i' must be finite (no NaN or inf)")
-    if i.dtype == object:
-        from surpyval.utils import is_missing_event
-
-        # A missing id cannot say which item a row belongs to, and the sort
-        # below would otherwise fail with a bare "'<' not supported".
-        if any(is_missing_event(v) for v in i):
-            raise ValueError(
-                "Item identifiers 'i' must not be missing (None or NaN)"
-            )
-
-    # Censoring codes: -1 left, 0 observed, 1 right, 2 interval. ``np.isin``
-    # also flags NaN, which is never a valid code.
-    valid_c = np.isin(c, [-1, 0, 1, 2])
-    if not valid_c.all():
-        bad = np.unique(c[~valid_c]).tolist()
-        raise ValueError(
-            "Censoring 'c' must be one of -1 (left), 0 (observed), "
-            f"1 (right), or 2 (interval); got {bad}"
-        )
-
-    if not np.isfinite(n).all():
-        raise ValueError("Counts 'n' must be finite")
-    if np.any(n <= 0):
-        raise ValueError("Counts 'n' must be strictly positive")
-
-    # Truncation bounds may be +/-inf (the default open window) but a NaN
-    # bound is meaningless.
-    if np.isnan(tl_arr).any() or np.isnan(tr_arr).any():
-        raise ValueError("Truncation bounds must not contain NaN")
-
-    if (
-        Z_arr is not None
-        and np.issubdtype(Z_arr.dtype, np.number)
-        and not np.isfinite(Z_arr).all()
-    ):
-        raise ValueError("Covariates 'Z' must be finite (no NaN or inf)")
-
-    if np.any((n > 1) & ((c == 0) | (c == 1))):
-        raise ValueError(
-            "Counts greater than 1 must be intervally or left censored"
-        )
-
-    # Sort by item, then time, then censoring code. An end-of-observation
-    # (c=1) row tied with an event at the same time closes the window after
-    # it, so ties put it last (and a left-censored count, which covers the
-    # time from entry, first); otherwise whether the input was accepted
-    # depended on the order the tied rows happened to be given in.
-    tie_order = np.where(c == 1, 3, c)
-    x_key = x.mean(axis=1) if x.ndim == 2 else x  # 2D by the midpoint
-    try:
-        sort_order = np.lexsort((tie_order, x_key, i))
-    except TypeError:
-        raise ValueError(
-            "Item identifiers 'i' must be of one comparable kind (all "
-            "numbers or all strings)"
-        ) from None
-
+    sort_order = _xicn_sort_order(x, i, c)
     x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
     tl_arr, tr_arr = tl_arr[sort_order], tr_arr[sort_order]
 
@@ -771,91 +953,12 @@ def handle_xicn(
     unique_i, idx = np.unique(i, return_index=True)
     censoring_by_i = np.split(c, idx)[1:]
 
-    for ii, arr in zip(unique_i, censoring_by_i):
-        if 1 in arr:
-            if (arr == 1).sum() > 1:
-                raise ValueError(
-                    f"Item {ii} has more than one right censored time"
-                )
-            if arr[-1] != 1:
-                raise ValueError(
-                    f"Item {ii} has right censored event which is not the last"
-                )
-        if -1 in arr:
-            if (arr == -1).sum() > 1:
-                raise ValueError(
-                    f"Item {ii} has more than one left censored event"
-                )
-            if arr[0] != -1:
-                raise ValueError(
-                    f"Item {ii} has left censored event that is not the first"
-                )
-
-    if x.ndim == 2:
-        times_by_i = np.split(x, idx)[1:]
-        for ii, arr in zip(unique_i, times_by_i):
-            starts = arr[1:][:, 0]
-            ends = arr[:-1][:, 1]
-            if (ends > starts).any():
-                raise ValueError(f"Item {ii} has overlapping intervals")
-
-    # Truncation defines a single observation window [tl, tr] per item, so the
-    # bounds must be constant within an item and contain all of its events.
-    tl_by_i = np.split(tl_arr, idx)[1:]
-    tr_by_i = np.split(tr_arr, idx)[1:]
-    x_lower = x if x.ndim == 1 else x[:, 0]
-    x_upper = x if x.ndim == 1 else x[:, 1]
-    xl_by_i = np.split(x_lower, idx)[1:]
-    xu_by_i = np.split(x_upper, idx)[1:]
-    for ii, tl_i, tr_i, xl_i, xu_i, c_i in zip(
-        unique_i, tl_by_i, tr_by_i, xl_by_i, xu_by_i, censoring_by_i
-    ):
-        if not (np.all(tl_i == tl_i[0]) and np.all(tr_i == tr_i[0])):
-            raise ValueError(
-                f"Item {ii} has inconsistent truncation bounds; each item "
-                "must have a single observation window."
-            )
-        if tl_i[0] > tr_i[0]:
-            raise ValueError(f"Item {ii} has left truncation beyond right")
-        # An end-of-observation (c=1) row and a finite right truncation both
-        # say where the item's window closes, so they must agree: a tr past
-        # the c=1 row claims the item was watched (with no events) after its
-        # observation ended. Models used to resolve this differently (the
-        # cause-specific NHPP closed at the row, the others at tr).
-        if np.isfinite(tr_i[0]) and c_i[-1] == 1 and xu_i[-1] < tr_i[0]:
-            raise ValueError(
-                f"Item {ii} has an end-of-observation (c=1) row at "
-                f"{xu_i[-1]} before its right truncation time tr="
-                f"{tr_i[0]}; both close the observation window, so they "
-                "must agree (drop the c=1 row or set tr to its time)."
-            )
-        # The item's first interval is integrated from its entry time: the
-        # left-truncation bound when finite, otherwise the fallback origin 0
-        # (see RecurrentEventData.get_previous_x). Events below that origin
-        # would give negative interarrival times, so they are rejected. This
-        # is why untruncated event times must be non-negative while an
-        # explicit (possibly negative) left-truncation window admits negative
-        # times.
-        lower = tl_i[0] if np.isfinite(tl_i[0]) else 0.0
-        if (xl_i < lower).any() or (xu_i > tr_i[0]).any():
-            raise ValueError(
-                f"Item {ii} has events outside its observation window "
-                f"[{lower}, {tr_i[0]}]"
-            )
-
-    # Covariates describe the item, not the row: the proportional-intensity
-    # likelihood, its tr window close and its diagnostics would otherwise
-    # disagree about which row's values apply (the close and diagnostics
-    # use the first row), so values that change within an item are
-    # rejected rather than half used.
-    if Z_arr is not None:
-        for ii, Z_i in zip(unique_i, np.split(Z_arr, idx)[1:]):
-            if not np.all(Z_i == Z_i[0]):
-                raise ValueError(
-                    f"Item {ii} has covariates Z that change between its "
-                    "rows; covariates are per item (static) and must be "
-                    "the same on every row of an item."
-                )
+    _check_censoring_positions(unique_i, censoring_by_i)
+    _check_interval_overlaps(x, idx, unique_i)
+    _check_observation_windows(
+        x, tl_arr, tr_arr, idx, unique_i, censoring_by_i
+    )
+    _check_static_covariates(Z_arr, idx, unique_i)
 
     if as_recurrent_data:
         data = RecurrentEventData(x, i, c, n, e=e_arr, tl=tl_arr, tr=tr_arr)
