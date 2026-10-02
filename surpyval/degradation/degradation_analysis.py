@@ -44,7 +44,7 @@ from ._clock import stress_row
 from ._measurements import validate_xy
 
 # DegradationModel, RULPrediction and InducedFailureDistribution are
-# re-exported: they were defined here.
+# re-exported: code imports them from this module.
 from .degradation_model import (  # noqa: F401
     DegradationModel,
     _failure_side,
@@ -783,8 +783,8 @@ class DegradationAnalysis_:
         Such a unit's fitted path crossed at or before time zero: it has
         failed, and its failure time is known only to be before its first
         measurement (left censored there). Counting it as never reaching
-        the threshold -- right censored at its last time, as the fit used
-        to -- made the worst unit a survivor. A unit on the good side whose
+        the threshold -- right censored at its last time -- would make the
+        worst unit a survivor. A unit on the good side whose
         path moves away from the threshold still never reaches it.
         """
         started = np.zeros(len(units), dtype=bool)
@@ -963,9 +963,9 @@ class DegradationAnalysis_:
             sigma2_init = float(resid @ resid) / dof
             # Checked here, before the mixed-model clock estimate: without
             # noise (or with next to none) the variance components are not
-            # identified, and the estimate wandered off (gamma 1.87 for a
-            # true 2.0) with overflow warnings -- the post-fit REML noise
-            # check came too late.
+            # identified, and the estimate wanders off (gamma 1.87 for a
+            # true 2.0) with overflow warnings -- the REML noise check after
+            # the fit would come too late.
             if not sigma2_init > 1e-8 * float(np.var(y_arr)):
                 raise ValueError(
                     "population_method='reml' requires measurement noise, "
@@ -1205,8 +1205,9 @@ class DegradationAnalysis_:
             df[i_col].to_numpy(),
             **fit_kwargs,
         )
-        # The names were not kept, so the model refused a DataFrame Z and
-        # told the user to fit with fit_from_df -- which they had done.
+        # The names are kept so the model reads a DataFrame Z by them;
+        # without them it would refuse one and tell the user to fit with
+        # fit_from_df -- which they had done.
         model.Z_cols = cols
         if cols is not None and isinstance(
             model.life_model, ParametricRegressionModel
@@ -1256,9 +1257,9 @@ class DegradationAnalysis_:
             Z_units[idx] = rows[0]
         # With one stress level (or a constant covariate, or one that is a
         # combination of the others) the stress effect is confounded with
-        # the intercept: the regression life fit returned an arbitrary
-        # coefficient, and ``links`` split the log rate into an invented
-        # stress effect. The clock and process fitters refuse this too.
+        # the intercept: the regression life fit would return an arbitrary
+        # coefficient, and ``links`` would split the log rate into an
+        # invented stress effect. The clock and process fitters refuse this too.
         design = np.column_stack([np.ones(len(Z_units)), Z_units])
         if np.linalg.matrix_rank(design) < Z_units.shape[1] + 1:
             raise ValueError(

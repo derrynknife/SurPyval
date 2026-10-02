@@ -215,9 +215,9 @@ def validate_intensity_model(baseline: object, fitter: str) -> None:
 
     ARA and the generalized renewal processes take a *lifetime
     distribution* as ``dist``, so ``sp.Weibull`` is the natural thing to
-    pass here too; it failed with an ``AttributeError`` from inside the
-    fit. (ARI's argument was ``dist`` too, until #507 named it
-    ``baseline``.)
+    pass here too, and without this check it would fail with an
+    ``AttributeError`` from inside the fit. (ARI's argument is
+    ``baseline``, #507.)
     """
     if _is_intensity_model(baseline):
         return
@@ -241,8 +241,8 @@ def validate_lifetime_dist(dist: object, fitter: str) -> None:
     Refuse a ``dist`` that is not a lifetime distribution, for the fitters
     whose ``dist`` is the distribution of the times between repairs (ARA
     and the generalized renewal processes, #495). The mirror image of
-    :func:`validate_intensity_model`: an intensity model passed here was
-    read as a distribution and failed with an unrelated message.
+    :func:`validate_intensity_model`: an intensity model passed here would
+    be read as a distribution and fail with an unrelated message.
     """
     if hasattr(dist, "fit") and hasattr(dist, "hf"):
         return

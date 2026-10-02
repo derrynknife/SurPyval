@@ -52,12 +52,12 @@ def _offset_start(x: npt.ArrayLike) -> float:
     """Starting offset: just below the smallest value, by a step on the
     data's own scale.
 
-    It was ``min(x) - 1``, a step of one *unit*, so the start depended on
-    the units the data were recorded in: at a scale of 1e-3 it sat a
-    thousand spreads below the data, where the likelihood is flat in the
-    offset and the search never moved it, and at 1e5 it was a hair below
-    the smallest value. The step is now the mean spacing of the sorted
-    finite values (see ``offset_step``), which scales with the data.
+    The step is the mean spacing of the sorted finite values (see
+    ``offset_step``), which scales with the data. A step of one *unit*
+    (``min(x) - 1``) would make the start depend on the units the data
+    were recorded in: at a scale of 1e-3 it sits a thousand spreads below
+    the data, where the likelihood is flat in the offset and the search
+    never moves it, and at 1e5 a hair below the smallest value.
 
     Every offset initialiser seeds its other parameters from the data
     shifted by this same value, since the fitter installs it as the
@@ -168,9 +168,9 @@ class FitInputsMixin:
         parameters and the likelihood has a flat direction: for a
         Weibull on a tied sample it is unbounded, since a spike of
         arbitrary height can sit on the repeated value, and the reported
-        answer is wherever the optimiser happened to stop. Three tied
-        observations at 10 returned ``beta = 512`` with ``success=True``
-        and no warning.
+        answer is wherever the optimiser happened to stop: three tied
+        observations at 10 would return ``beta = 512`` with
+        ``success=True`` and no warning.
 
         The count is of *free* parameters, not of the distribution's
         parameters, so fixing one buys back a degree of freedom: a
@@ -243,7 +243,7 @@ class FitInputsMixin:
         Such a time means the likelihood has no maximum (#392): a failure
         at 0.5 and one known only to be before 1 are both explained
         perfectly by a spike at 0.5, so a Weibull's likelihood grows
-        without bound with its shape, and the fit returned wherever it
+        without bound with its shape, and the fit would return wherever it
         stopped (``beta = 395.7``, a Normal ``sigma`` of 5e-324) in
         silence. Tied exact values are the special case the distinct-value
         count already refuses; this is the general one, as the Turnbull
@@ -267,8 +267,9 @@ class FitInputsMixin:
         censored or interval one up to ``tr``) extends to every time
         above ``tr``, and a set starting at ``tl`` (an interval from
         ``tl``) to every time below it. An exact failure at 1 observable
-        only up to 1, one at 2 and one known to be before 3 gave a Weibull
-        ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in silence.
+        only up to 1, one at 2 and one known to be before 3 would give a
+        Weibull ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in
+        silence.
         """
         if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
@@ -767,12 +768,13 @@ class FitInputsMixin:
         """Refuse a ``fixed`` or ``init`` the fit cannot use, with a
         message that says why.
 
-        Without this an unknown name in ``fixed`` was a bare KeyError, a
-        fixed value outside its parameter's bounds (a negative scale, a
-        proportion above one, an offset past the first observation) sent
-        the optimiser a nan and ended in an "MLE Failed" warning and a
+        Without it, an unknown name in ``fixed`` would be a bare KeyError,
+        a fixed value outside its parameter's bounds (a negative scale, a
+        proportion above one, an offset past the first observation) would
+        send the optimiser a nan and end in an "MLE Failed" warning and a
         "non-finite parameters" error, and a wrongly sized or
-        out-of-bounds ``init`` failed in ``zip`` or with an IndexError.
+        out-of-bounds ``init`` would fail in ``zip`` or with an
+        IndexError.
         """
         names = sorted(model.param_map, key=model.param_map.__getitem__)
 

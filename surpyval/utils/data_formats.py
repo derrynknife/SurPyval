@@ -45,23 +45,19 @@ def group_xcnt(
     ``(k, 2)``); each group is represented by its first row, in order of
     first appearance. Rows containing NaN are never merged.
 
-    This used to walk every observation in Python, accumulating into a
-    triple-nested ``defaultdict``. That is O(N) but with a very large
-    constant -- roughly 13 microseconds per observation -- which made it
-    the dominant cost of fitting: 94% of a 50,000-point Normal fit, and
-    two seconds at 100,000 points. It is now done by sorting and
-    ``np.bincount``.
+    It sorts and counts with ``np.bincount``: a walk over every
+    observation in Python (a triple-nested ``defaultdict``) is O(N) but
+    with a very large constant -- roughly 13 microseconds per observation,
+    94% of a 50,000-point Normal fit and two seconds at 100,000 points.
 
-    The group *order* is preserved exactly, which is subtler than it
-    looks. The nested dictionary iterated x-major: outer by first
-    appearance of ``x``, then of ``(x, c)`` within it, then of the full
-    key. ``xcnt_sort`` runs immediately after this and re-sorts on
-    ``c``, ``t.min(axis=1)`` and ``x`` -- but it is a *stable* sort, so
+    The group *order* is x-major, which is subtler than it looks: outer
+    by first appearance of ``x``, then of ``(x, c)`` within it, then of
+    the full key. ``xcnt_sort`` runs immediately after this and re-sorts
+    on ``c``, ``t.min(axis=1)`` and ``x`` -- but it is a *stable* sort, so
     rows tying on all three of those keep whatever order arrived. Rows
     sharing an ``x`` and ``c`` with different ``tr`` but an equal
     ``t.min()`` are exactly such a tie, so a plain sorted ``np.unique``
-    would silently reorder them. The lexsort below reproduces the
-    original nesting instead.
+    would silently reorder them; the lexsort below keeps the nesting.
 
     When nothing needs grouping the inputs are returned as they are,
     rather than copied. Callers inside the package sort immediately
@@ -86,7 +82,7 @@ def group_xcnt(
     columns = [x_columns[:, j] for j in range(width)] + [c, t[:, 0], t[:, 1]]
     # One sort on the full key. The x and (x, c) groups are prefixes of
     # it, so they are runs of the same order: three lexsorts (seven sort
-    # passes) were 36% of a tied Weibull fit at 1e5 (#515). A column
+    # passes) would be 36% of a tied Weibull fit at 1e5 (#515). A column
     # holding one value throughout (no truncation, all observed) cannot
     # change the order and is left out; one with a NaN is never constant,
     # since NaN != NaN. The sort need not be stable, as the first row of
@@ -103,8 +99,8 @@ def group_xcnt(
     # Where each level's run starts in sorted order: a change in x starts
     # an x run, a change in c as well an (x, c) run, and a change in t as
     # well a full-key run. Rows containing NaN never compare equal, so
-    # they stay in runs of their own, as under the dictionary keying this
-    # replaced.
+    # they stay in runs of their own, as a dictionary keyed on the rows
+    # would keep them.
     changed = [np.zeros(len(x) - 1, dtype=bool) for _ in range(3)]
     for j in varying:
         level = 0 if j < width else 1 if j == width else 2
@@ -134,7 +130,7 @@ def group_xcnt(
     representative = first_full[order]
 
     totals = np.bincount(group, weights=n, minlength=first_full.size)[order]
-    # ``bincount`` always returns float64; the counts were integers going
+    # ``bincount`` always returns float64; the counts are integers going
     # in and callers rely on that (an integer ``n`` must stay integer).
     totals = totals.astype(n.dtype)
 
@@ -155,8 +151,8 @@ def xcnt_sort(
     x, c, n, t : arrays
         The same arrays, reordered together.
     """
-    # One stable sort on the three keys (the last is the primary), the
-    # order three stable sorts, by c, then t, then x, gave.
+    # One stable sort on the three keys (the last is the primary): the
+    # order three stable sorts, by c, then t, then x, would give.
     t_key = t if t.ndim == 1 else t.min(axis=1)
     x_key = x if x.ndim == 1 else x.mean(axis=1)
     idx = np.lexsort((c, t_key, x_key))
@@ -253,8 +249,9 @@ def fsli_handler(
         if i.shape[1] != 2:
             raise ValueError("'i' array must be of shape (k, 2)")
 
-    # NaN compares false with everything, so it slipped past every check
-    # below and into the fitted data (xcnt_handler refuses it in 'x').
+    # NaN compares false with everything, so it would slip past every
+    # check below and into the fitted data (xcnt_handler refuses it in
+    # 'x').
     for name, arr in (("f", f), ("s", s), ("l", l), ("i", i)):
         if np.isnan(arr).any():
             raise ValueError(f"'{name}' cannot contain NaN values")
@@ -274,7 +271,7 @@ def _whole_number_array(values: npt.ArrayLike, name: str) -> npt.NDArray:
 
     An integer-valued float array such as ``[5.0, 4.0]`` is accepted: that
     is how counts arrive from a DataFrame column with a missing value, or
-    after any arithmetic, and ``astype(int, casting="safe")`` used to refuse
+    after any arithmetic, and ``astype(int, casting="safe")`` would refuse
     it. Fractions, NaN and infinities are refused, as are booleans' string
     cousins -- anything numpy cannot read as a number.
     """
@@ -393,7 +390,7 @@ def xrd_handler(
         )
 
     # Every estimator walks the rows in order, multiplying (or summing)
-    # one step per row, so unsorted rows used to give a silently wrong
+    # one step per row, so unsorted rows would give a silently wrong
     # curve (and xrd_to_xcnt wrong rows). The rows are independent
     # triples, so sorting them together is exact.
     order = np.argsort(x, kind="stable")
@@ -516,9 +513,9 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     if isinstance(x, (list, tuple)) and any(
         isinstance(v, (list, tuple, np.ndarray)) and np.ndim(v) > 0 for v in x
     ):
-        # A ragged mix of scalars and pairs. Only lists used to be
-        # recognised as pairs, so ``[1, (2, 3), 4]`` reached np.array and
-        # failed with numpy's "inhomogeneous shape" error.
+        # A ragged mix of scalars and pairs. Tuples and arrays count as
+        # pairs as lists do: ``[1, (2, 3), 4]`` would otherwise reach
+        # np.array and fail with numpy's "inhomogeneous shape" error.
         x_ndarray = np.empty(shape=(len(x), 2))
         for idx, val in enumerate(x):
             try:
@@ -538,9 +535,8 @@ def coerce_xcnt_x(x: npt.ArrayLike) -> npt.NDArray:
     else:
         # Always a copy: the handlers rewrite interval endpoints in place
         # (an infinite endpoint becomes a one-sided censoring), which must
-        # not reach the caller's array -- refitting it gave a different
-        # answer. ``atleast_1d``: a scalar is one observation (it used to
-        # fail with "tuple index out of range").
+        # not reach the caller's array, or refitting it would give a
+        # different answer. ``atleast_1d``: a scalar is one observation.
         try:
             x = np.atleast_1d(np.array(x, dtype=float))
         except (ValueError, TypeError):
@@ -628,8 +624,8 @@ def format_truncation(
                 " bounds"
             )
 
-    # NaN compares false with everything, so a NaN bound passed every
-    # validity check and then meant something different to each fitter:
+    # NaN compares false with everything, so a NaN bound would pass every
+    # validity check and then mean something different to each fitter:
     # "no truncation" to the parametric likelihood, a divide-by-zero in
     # Kaplan-Meier's risk sets, a third answer from Turnbull. A missing
     # bound is spelled -inf (left) or inf (right).
@@ -650,8 +646,9 @@ def _truncation_bound(
     """One truncation bound as a float array, broadcasting a scalar.
 
     ``np.ndim`` rather than ``np.isscalar``: a 0-d array such as
-    ``np.array(0.5)`` is not a "scalar" to numpy, so it used to be kept
-    0-d and crash the length check with "tuple index out of range".
+    ``np.array(0.5)`` is not a "scalar" to numpy, and is broadcast like
+    one rather than kept 0-d (which fails the length check with "tuple
+    index out of range").
     """
     if bound is None:
         return np.full(n_rows, default)
@@ -671,14 +668,13 @@ def _check_truncation_bounds(
 
     The window is ``(tl, tr]`` and a row's event time ``X`` must be able
     to fall in it. A single value (observed, or censored on one side) is
-    held to the same rules whether ``x`` has one column or two -- the
-    two-column path used to allow a value at exactly ``tl``:
+    held to the same rules whether ``x`` has one column or two:
 
     * ``tl < x``: at ``x == tl`` the observation window has zero length
       (#260); a left censored ``X <= tl`` is likewise impossible.
     * ``x <= tr``, and for a right censored row ``x < tr``: censored at
       ``tr`` means ``tr < X <= tr``, an empty set. The likelihood for it
-      is ``log 0`` and the fit failed with a stream of warnings.
+      is ``log 0``, and the fit would fail with a stream of warnings.
 
     An interval row ``[xl, xr]`` means ``xl < X <= xr``, so it may start
     at ``tl`` (``tl <= xl``) and must end by ``tr`` (``xr <= tr``).
@@ -692,9 +688,8 @@ def _check_truncation_bounds(
     if (has_tl & point & (t[:, 0] >= lo)).any():
         # Strictly less: under the (entry, exit] risk-interval convention
         # a value at exactly its own left-truncation time has a
-        # zero-length observation window — contradictory data that
-        # previously slipped through and silently distorted the Turnbull
-        # estimate (#260).
+        # zero-length observation window — contradictory data that would
+        # silently distort the Turnbull estimate (#260).
         raise ValueError(
             "All left truncated values must be strictly less than the"
             + " respective observed values: a value at its own left"
@@ -1107,8 +1102,8 @@ def xcn_to_fs(
     (array([1, 1, 5]), array([2]))
     """
     # Validated because the conversion is silent otherwise: a count of
-    # 1.7 was truncated to one item, a length mismatch surfaced as an
-    # IndexError, and a two-column x crashed inside np.repeat.
+    # 1.7 would be truncated to one item, a length mismatch would surface
+    # as an IndexError, and a two-column x would crash inside np.repeat.
     x = np.atleast_1d(np.array(x))
     if x.ndim == 2 and x.shape[1] == 2:
         interval = x[:, 0] != x[:, 1]
@@ -1165,13 +1160,13 @@ def _entered_before(
     ``((tl[:, None] < x[None, :]) * n[:, None]).sum(0)``, which materialises
     an ``N x K`` matrix and so costs quadratic time *and* memory: at 20,000
     observations that is a 3.2 GB intermediate taking ~15 s, and past ~50,000
-    it raised ``MemoryError`` outright. Two cheap branches give identical
+    it raises ``MemoryError`` outright. Two cheap branches give identical
     counts:
 
     * **nothing is left truncated** -- the default and by far the common
       case. Every observation has entered before every event time, so the
       whole matrix is ``True`` and ``e`` collapses to the constant
-      ``n.sum()``. The matrix was being built to recompute a scalar.
+      ``n.sum()``, with no matrix built to recompute a scalar.
     * **otherwise** -- sort the entry times once and read off the cumulative
       weight below each ``x`` with ``searchsorted``. ``side="left"`` counts
       entries *strictly* less than ``x``, matching the ``<`` above exactly,
@@ -1281,9 +1276,9 @@ def _handled_xcnt_to_xrd(
 
     # No warning for a shared entry time: validation guarantees tl < x for
     # every observation, so a common entry time never alters the (entry,
-    # exit] risk sets -- the old "Ignoring left truncated values" warning
-    # fired on perfectly ordinary inputs like tl=0 everywhere, e.g. from
-    # check_ph on a model fit with a constant entry column (#282).
+    # exit] risk sets -- a warning here would fire on perfectly ordinary
+    # inputs like tl=0 everywhere, e.g. from check_ph on a model fit with
+    # a constant entry column (#282).
 
     if ((c != 1) & (c != 0)).any():
         raise ValueError(
@@ -1379,7 +1374,7 @@ def xrd_to_xcnt(
     """
     # Validated (and sorted) like every other xrd input: the growth check
     # and the drop-out arithmetic below assume distinct, increasing times,
-    # and used to return the wrong rows for unsorted ones.
+    # and would return the wrong rows for unsorted ones.
     x, r, d = xrd_handler(x, r, d)
     n_f = np.copy(d)
     x_f = np.copy(x)
@@ -1388,9 +1383,8 @@ def xrd_to_xcnt(
     x_f = x_f[mask]
 
     # A risk set that grows (after accounting for that step's events) means
-    # late entry / left truncation, which the xcnt output cannot represent;
-    # the old np.abs() silently converted such data into a different study
-    # instead of raising (#281).
+    # late entry / left truncation, which the xcnt output cannot represent,
+    # so it is refused rather than turned into a different study (#281).
     r_arr = np.asarray(r)
     d_arr = np.asarray(d)
     if (np.diff(r_arr) + d_arr[:-1] > 0).any():
@@ -1533,7 +1527,7 @@ def fsl_to_xcnt(
     if l is None:
         l = []
 
-    # np.unique keeps NaN, so it used to become a row of the output.
+    # np.unique keeps NaN, so it would become a row of the output.
     named: list[tuple[str, npt.ArrayLike]] = [("f", f), ("s", s), ("l", l)]
     for name, values in named:
         if np.isnan(np.asarray(values, dtype=float)).any():
@@ -1621,7 +1615,7 @@ def is_missing_event(value: Any) -> bool:
 def missing_events(values: npt.NDArray) -> npt.NDArray:
     """:func:`is_missing_event` of each element of a 1-D object array.
 
-    A per-element loop over ``is_missing_event`` was a noticeable part of
+    A per-element loop over ``is_missing_event`` is a noticeable part of
     a competing-risks fit at 1e5 rows (#515). ``pandas.isna`` of an object
     array checks each element as ``isna`` checks a scalar, and so agrees
     with ``is_missing_event`` for every label type -- except an object
