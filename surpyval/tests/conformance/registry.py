@@ -179,7 +179,17 @@ PROPERTIES: dict[str, str] = {
 
 # The model classes that declare every attribute their builders set, which
 # the "attributes" property checks.
-DECLARED_ATTRIBUTES = frozenset({"surpyval.ParametricRegressionModel"})
+DECLARED_ATTRIBUTES = frozenset(
+    {
+        "surpyval.ParametricRegressionModel",
+        "surpyval.SemiParametricRegressionModel",
+        "surpyval.ProportionalOddsModel",
+        "surpyval.AdditiveHazardsModel",
+        "surpyval.BuckleyJamesModel",
+        "surpyval.univariate.competing_risks.regression.fine_gray"
+        ".FineGrayModel",
+    }
+)
 
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(

@@ -27,10 +27,17 @@ from surpyval.tests.conformance.registry import (
     refit,
 )
 
-# What a model restored by ``from_dict`` lacks: the fitted data, the
-# optimiser's result and (accelerated life) the search objective, none of
-# which a dict stores.
-RESTORED_WITHOUT = frozenset({"data", "res", "fun"})
+# What a model restored by ``from_dict`` lacks, by class: the fitted data
+# and what was computed from them -- the optimiser's result, the search
+# objective (accelerated life), Cox's likelihood closures, Lin-Ying's
+# estimating-equation terms -- none of which a dict stores.
+RESTORED_WITHOUT = {
+    "ParametricRegressionModel": frozenset({"data", "res", "fun"}),
+    "SemiParametricRegressionModel": frozenset(
+        {"_fit_data", "jac", "neg_ll", "res"}
+    ),
+    "AdditiveHazardsModel": frozenset({"_A", "_b"}),
+}
 
 
 def declared(cls):
@@ -77,9 +84,10 @@ def _from_dict(case):
 def _builders(case):
     out = {"fit": lambda d: refit(case, d), **case.paths}
     tvc = _tvc_path(case)
-    if tvc is not None:
+    if tvc is not None and "fit_tvc" not in out:
         out["fit_tvc"] = tvc
-    out["from_dict"] = _from_dict(case)
+    if case.applies("serialise"):
+        out["from_dict"] = _from_dict(case)
     return out
 
 
@@ -104,7 +112,8 @@ def test_every_builder_gives_the_same_attributes(case, builder):
     ref = attributes(refit(case, data))
     got = attributes(_builders(case)[builder](data))
     if builder == "from_dict":
-        ref -= RESTORED_WITHOUT
+        name = case.model_class.rpartition(".")[2]
+        ref -= RESTORED_WITHOUT.get(name, frozenset())
     assert (
         got == ref
     ), f"missing: {sorted(ref - got)}; extra: {sorted(got - ref)}"
@@ -120,12 +129,15 @@ def test_every_attribute_is_declared(case, builder):
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "#TBD: a model restored by from_dict has no data, res (or, for "
-        "accelerated life, fun): the dict does not store them. Whether "
-        "to declare them None there is the maintainer's decision."
+        "#TBD: a model restored by from_dict lacks the attributes "
+        "RESTORED_WITHOUT lists (the data and what came with them): the "
+        "dict does not store them. Whether to declare them None there "
+        "is the maintainer's decision."
     ),
 )
-@pytest.mark.parametrize("name", ["WeibullPH", "WeibullAL[Power]"])
+@pytest.mark.parametrize(
+    "name", ["WeibullPH", "WeibullAL[Power]", "CoxPH", "AdditiveHazards"]
+)
 def test_a_restored_model_has_every_attribute(name):
     case = CASE_BY_NAME[name]
     data = case.data()

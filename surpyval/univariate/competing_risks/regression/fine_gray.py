@@ -494,6 +494,23 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     hazard ratios.
     """
 
+    #: The cause of interest the subdistribution hazard is of.
+    cause: Any
+    #: The coefficients (``beta``, the log subdistribution hazard
+    #: ratios), their standard errors, Wald p-values and covariance.
+    coefficients: npt.NDArray
+    se: npt.NDArray
+    p_values: npt.NDArray
+    cov: npt.NDArray
+    #: The baseline subdistribution cumulative hazard: its step times and
+    #: values.
+    _times: npt.NDArray
+    _cumhaz: npt.NDArray
+    #: The negative partial log-likelihood at the fit.
+    _neg_ll: float
+    #: The optimiser's result (``None`` on a restored model).
+    res: Any
+
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
         self.coefficients = fit["beta"]

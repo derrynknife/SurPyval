@@ -544,6 +544,10 @@ class ProportionalOddsModel(
     _fit_data: "dict | None" = None
     #: The printout's data line of a restored model.
     _data_summary: "str | None" = None
+    #: The family (``"Proportional Odds"``) and ``"Semi-Parametric"``,
+    #: which the printout shows and ``to_dict`` stores.
+    kind: str
+    parameterization: str
 
     def __init__(self) -> None:
         self.kind = PROPORTIONAL_ODDS
