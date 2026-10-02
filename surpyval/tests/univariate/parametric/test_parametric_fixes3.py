@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import surpyval as surv
-from surpyval.univariate.parametric import parametric as parametric_module
+from surpyval.univariate.parametric import _likelihood_ratio
 
 W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
 
@@ -71,7 +71,7 @@ def test_lr_band_is_nan_with_a_warning_when_every_search_fails(monkeypatch):
         fun = np.nan
 
     monkeypatch.setattr(
-        parametric_module, "minimize", lambda *a, **k: Failed()
+        _likelihood_ratio, "minimize", lambda *a, **k: Failed()
     )
     with pytest.warns(RuntimeWarning, match="could not be found"):
         band = model.cb([5.0, 10.0], method="lr")

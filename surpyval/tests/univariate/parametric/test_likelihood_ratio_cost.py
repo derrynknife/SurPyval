@@ -18,6 +18,7 @@ from scipy.optimize import brentq, minimize_scalar
 from scipy.special import ndtri as z
 
 import surpyval as sp
+import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
 import surpyval.univariate.parametric.parametric as parametric_module
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 
@@ -106,13 +107,13 @@ def test_a_likelihood_is_evaluated_once_per_point(monkeypatch):
     model = _fitted("Weibull")
     times = np.linspace(2.0, 15.0, 10)
     seen = []
-    lean = parametric_module._lean_neg_ll
+    lean = likelihood_ratio._lean_neg_ll
 
     def recorded(dist, data, theta):
         seen.append(np.asarray(theta, dtype=float).tobytes())
         return lean(dist, data, theta)
 
-    monkeypatch.setattr(parametric_module, "_lean_neg_ll", recorded)
+    monkeypatch.setattr(likelihood_ratio, "_lean_neg_ll", recorded)
     band = model.cb(times, method="lr")
     assert len(seen) > 1000
     assert len(set(seen)) == len(seen)
