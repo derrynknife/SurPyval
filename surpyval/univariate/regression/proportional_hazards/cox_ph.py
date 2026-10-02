@@ -2065,7 +2065,7 @@ class CoxPH_:
         covariates as a ``formulaic`` formula, which codes categorical
         (e.g. ``"yes"`` / ``"no"``) columns.
         """
-        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
         with covariate_columns(names, Z, spec):
             model = self.fit_tvc(
                 i=df[i_col].to_numpy(),
@@ -2078,7 +2078,7 @@ class CoxPH_:
                 center=center,
             )
         model.feature_names = names
-        model.formula = form
+        model.formula = formula
         model._model_spec = spec
         return model
 
@@ -2172,7 +2172,7 @@ class CoxPH_:
         ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
         ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
-        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
+        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
         with covariate_columns(names, Z, spec):
             model = self.fit_tvc_timeline(
                 i=df[i_col].to_numpy(),
@@ -2184,23 +2184,9 @@ class CoxPH_:
                 center=center,
             )
         model.feature_names = names
-        model.formula = form
+        model.formula = formula
         model._model_spec = spec
         return model
-
-
-def _df_covariates(
-    df: Any, Z_cols: str | list[str] | None, formula: str | None
-) -> tuple:
-    """The covariates of the TVC ``*_from_df`` fits, from ``Z_cols`` or a
-    ``formula`` (#485), with every row kept: a TVC fit refuses a missing
-    covariate rather than dropping part of a subject's path. The design is
-    the parametric regressions' (``design_matrix_from_df``, which their
-    TVC fits use too); Cox keeps its formula as a ``Formula``."""
-    from formulaic import Formula
-
-    Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-    return Z, None if formula is None else Formula(formula), names, spec
 
 
 CoxPH = CoxPH_()

@@ -108,7 +108,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     _fg_models: dict
     # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
     feature_names: "list | None" = None
-    formula: Any = None
+    formula: "str | None" = None
     _model_spec: Any = None
 
     # -- serialisation -----------------------------------------------------

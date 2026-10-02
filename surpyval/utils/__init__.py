@@ -2020,10 +2020,9 @@ def wrangle_and_check_form_and_Z_cols(
         # Materialise with the implicit intercept so categoricals get
         # reference-level coding, then drop the intercept column — the
         # baseline hazard plays that role, and a full one-hot is collinear
-        # with it (#252). An explicit "0 + ..." formula opts out.
-        from formulaic import Formula
-
-        form = Formula(formula)
+        # with it (#252). An explicit "0 + ..." formula opts out. The
+        # model keeps the formula as given, a str, as every fitter does.
+        form = formula
         model_matrix, model_spec = formula_model_matrix(formula, df)
         if "Intercept" in model_matrix.columns:
             model_matrix = model_matrix.drop(columns=["Intercept"])

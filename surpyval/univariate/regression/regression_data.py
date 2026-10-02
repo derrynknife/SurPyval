@@ -387,10 +387,11 @@ def _native(value: Any) -> Any:
 def formula_to_string(formula: Any) -> str:
     """The text of a formula, in a form that parses back to the same terms.
 
-    A formula given as text is returned unchanged. ``str`` of a parsed
-    ``formulaic.Formula`` (which the Cox and competing-risks fitters keep)
-    lists the intercept when there is one but says nothing when there is
-    not, so ``"0 + z + g"`` came back as ``"z + g"`` -- which parses *with*
+    A formula given as text (as every fitted model keeps it) is returned
+    unchanged. ``str`` of a parsed ``formulaic.Formula`` (which the Cox,
+    Buckley-James and competing-risks fitters kept before 0.22) lists
+    the intercept when there is one but says nothing when there is not,
+    so ``"0 + z + g"`` came back as ``"z + g"`` -- which parses *with*
     an intercept, giving a different design matrix. The ``"0 + "`` is put
     back here.
     """
