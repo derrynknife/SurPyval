@@ -24,11 +24,13 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
+    MirroredDistributionAttrs,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
     finite_start,
     make_objective,
+    mirror_distribution,
     require_finite_fit,
     uniform_draws,
 )
@@ -50,7 +52,7 @@ def _search(
 
 
 class ParameterSubstitutionFitter(
-    HazardIdentitiesMixin, DataFrameRegressionMixin
+    MirroredDistributionAttrs, HazardIdentitiesMixin, DataFrameRegressionMixin
 ):
     """
     Accelerated life fitter: the life parameter of a distribution is
@@ -87,15 +89,8 @@ class ParameterSubstitutionFitter(
 
         self.name = name
         self.kind = kind
-        self.dist = distribution
+        mirror_distribution(self, distribution)
         self.life_model = life_model
-        self.k_dist = len(self.dist.parameter_names)
-        self.bounds = self.dist.bounds
-        self.support = self.dist.support
-        self.parameter_names = self.dist.parameter_names
-        self.param_map = {
-            v: i for i, v in enumerate(self.dist.parameter_names)
-        }
         self.phi = life_model.phi
         self.Hf_dist = self.dist.Hf
         self.hf_dist = self.dist.hf
