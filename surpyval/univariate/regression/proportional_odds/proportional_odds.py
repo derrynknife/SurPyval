@@ -108,10 +108,7 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
-from ..proportional_hazards.cox_ph import (
-    _baseline_at_origin,
-    _covariate_center,
-)
+from ..proportional_hazards.cox_ph import _covariate_center
 from ..regression_data import (
     check_finite_event_times,
     design_matrix_from_df,
@@ -257,12 +254,21 @@ class _POLikelihood:
         S = der["N_gg"] - der["N_ug"].T @ X
         return 0.5 * (S + S.T)
 
-    def start(self, x: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
+    def start(
+        self, x: npt.NDArray, n: npt.NDArray, tl: npt.NDArray
+    ) -> npt.NDArray:
         """Log jumps to start from: the Nelson-Aalen increments,
         ``d / (number at risk)`` (the odds and the cumulative hazard
-        agree where both are small)."""
-        at_risk = np.array([n[x >= t].sum() for t in self.t])
-        return np.log(self.d / at_risk)
+        agree where both are small); a row is at risk at ``t`` once it
+        has entered (``tl < t``) and until it exits (``x >= t``)."""
+
+        def at_or_above(times: npt.NDArray) -> npt.NDArray:
+            order = np.argsort(times)
+            tail = _rev_cumsum(np.append(n[order], 0.0))
+            return tail[np.searchsorted(times[order], self.t, side="left")]
+
+        at_risk = at_or_above(x) - at_or_above(tl)
+        return np.log(self.d / np.maximum(at_risk, self.d))
 
 
 def _inner(
@@ -372,3 +378,880 @@ def _profile_fit(
             S = np.full((gamma.size, gamma.size), np.nan)
         lam_prev = lam if (newton and t == 1.0) else np.inf
     return gamma, u, der, S, False, max_iter
+
+
+def _validate(
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    tl: "npt.ArrayLike | None",
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    if tl is not None and np.ndim(tl) == 2:
+        raise ValueError(
+            "ProportionalOdds supports left truncation (delayed entry) "
+            "only, given as a one-dimensional `tl`; right or interval "
+            "truncation is not available. Use a parametric proportional "
+            "odds model (e.g. PO(LogLogistic)) with t=[tl, tr] for such "
+            "data."
+        )
+    x_h, c_h, n_h, t_h = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+    c_arr = np.asarray(c_h, dtype=float)
+    if np.isin(c_arr, (-1, 2)).any():
+        raise ValueError(
+            "ProportionalOdds supports only observed (c=0) and "
+            "right-censored (c=1) observations, with optional left "
+            "truncation (`tl`); its baseline jumps at the event times, so "
+            "it has no term for left-censored (c=-1) or interval-censored "
+            "(c=2) data. Use a parametric proportional odds model instead, "
+            "e.g. PO(LogLogistic).fit(x, Z, c=c) or WeibullPO.fit(x, Z, "
+            "c=c), which handle every censoring type."
+        )
+    x_arr = np.asarray(x_h, dtype=float)
+    if x_arr.ndim == 2:
+        # Two columns with no interval row: xl == xr on every row.
+        x_arr = x_arr[:, 0]
+    check_finite_event_times(x_arr, c_arr)
+    tl_arr = np.asarray(t_h, dtype=float)[:, 0]
+    n_arr = np.asarray(n_h, dtype=float)
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    check_covariate_rows(Z_arr, x_arr.shape[0])
+    # Rows with a NaN / infinite covariate are dropped with a warning, as
+    # in every regression fitter.
+    mask = finite_covariate_mask(Z_arr)
+    x_arr, c_arr, n_arr, tl_arr = (
+        a[mask] for a in (x_arr, c_arr, n_arr, tl_arr)
+    )
+    Z_arr = Z_arr[mask]
+    if not np.any(c_arr == 0):
+        raise ValueError(
+            "ProportionalOdds needs at least one event (c=0); with every "
+            "observation censored there is no baseline to estimate."
+        )
+    return x_arr, c_arr, n_arr, tl_arr, Z_arr
+
+
+def _po_aliased(
+    info: npt.NDArray, Z: npt.NDArray, n: npt.NDArray, n_events: float
+) -> npt.NDArray:
+    """The columns whose coefficients the likelihood cannot determine
+    (#476), from ``info``, the profile information at ``beta = 0``: a
+    constant column (the baseline odds absorb it, as a Cox baseline
+    absorbs a constant), or a linear combination of the others. Each
+    column's information is judged against its spread over the data,
+    as for Cox (:func:`~..proportional_hazards.cox_ph._cox_aliased`)."""
+    info = np.atleast_2d(np.asarray(info, dtype=float))
+    if info.shape[0] == 0:
+        return np.array([], dtype=int)
+    Zc = Z - _covariate_center(Z, n)
+    spread = n_events * (n @ Zc**2) / n.sum()
+    return aliased_columns(info, Z.shape[0], constant_columns(Z), spread)
+
+
+_LOG_MAX = float(np.log(np.finfo(float).max))
+_LOG_TINY = float(np.log(np.finfo(float).tiny))
+
+
+def _baseline_at_origin(
+    log_g: npt.NDArray, shift: float, lp: npt.NDArray, center: npt.NDArray
+) -> npt.NDArray:
+    """The log jumps of the baseline odds fitted at the covariate means
+    moved to ``Z = 0``: ``log_g + shift``, ``shift = -gamma'center``.
+    Refused, with a ``ValueError`` pointing to ``center=True``, where a
+    jump there over- or underflows, or the linear predictor ``lp`` of a
+    fitted row does (as CoxPH and the parametric fits refuse, #463)."""
+    out = log_g + shift
+    ok = bool(np.all(np.abs(lp) < _LOG_MAX)) and bool(
+        np.all((out < _LOG_MAX) & (out > _LOG_TINY))
+    )
+    if not ok:
+        raise ValueError(
+            "The baseline odds at Z = 0 cannot be represented for these "
+            "covariates: their means are {} and the baseline at Z = 0 is "
+            "exp({:.4g}) times that at the means, which over- or "
+            "underflows. Fit with center=True to report the baseline at "
+            "the covariate means (model.center) instead, or move the "
+            "covariates nearer 0.".format(
+                np.array2string(np.asarray(center), precision=4), shift
+            )
+        )
+    return out
+
+
+class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
+    """
+    A fitted semi-parametric proportional odds model, returned by
+    :meth:`ProportionalOdds.fit <ProportionalOdds_.fit>` and
+    ``fit_from_df``.
+
+    The covariates multiply the survival odds of a baseline whose
+    failure odds :math:`G_0 = F_0 / S_0` is a step function:
+
+    .. math::
+        S(x \\mid Z) = \\frac{1}{1 + G_0(x)\\, e^{-\\beta' (Z -
+        \\text{center})}},
+
+    so ``exp(beta)`` are survival odds ratios, as in the parametric
+    ``LogisticPO`` / ``WeibullPO`` models (a positive coefficient means a
+    longer life). ``x`` are the distinct observed times, ``g0`` the
+    baseline's jumps there (0 at a time with no event) and ``G0`` its
+    cumulative value, the baseline failure odds; the baseline is that of
+    a unit at ``center``, ``Z = 0`` unless fitted with ``center=True``.
+    Before the first time the survival is 1 and after the last it holds
+    its last value, as for ``CoxPH``.
+
+    Examples
+    --------
+    On the Rossi recidivism data (``arrest`` is 1 for an arrest, so ``c =
+    1 - arrest``), financial aid raises the odds of staying out of
+    prison by about 48 %, and each prior conviction lowers them by
+    about 11 %:
+
+    >>> from surpyval import ProportionalOdds
+    >>> from surpyval.datasets import load_rossi_static
+    >>> df = load_rossi_static()
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
+    >>> model = ProportionalOdds.fit(x, df[["fin", "age", "prio"]].values, c=c)
+    >>> model.beta.round(4)
+    array([ 0.391 ,  0.0701, -0.1116])
+    >>> model.sf([20, 52], [1, 25, 3]).round(4)
+    array([0.9351, 0.7938])
+    """
+
+    # Covariate metadata populated by ``fit_from_df``.
+    feature_names: list[str] | None = None
+    formula: str | None = None
+    _model_spec: Any = None
+
+    # Fitted quantities set by ``ProportionalOdds.fit``.
+    beta: npt.NDArray
+    params: npt.NDArray
+    se: npt.NDArray
+    cov: npt.NDArray
+    p_values: npt.NDArray
+    x: npt.NDArray
+    d: npt.NDArray
+    g0: npt.NDArray
+    G0: npt.NDArray
+    #: The covariate values the baseline is at: zeros by default, the
+    #: ``n``-weighted covariate means for a fit with ``center=True``.
+    center: "npt.NDArray | None" = None
+    #: The log-likelihood at the maximum (Murphy et al.'s, with the jumps
+    #: of the baseline odds in place of its density).
+    log_likelihood: float = np.nan
+    #: Newton iterations of the profile likelihood.
+    n_iter: int = 0
+    #: The rows fitted, ``{"x", "c", "n", "Z", "tl"}``, for
+    #: ``concordance`` and the printout; not saved.
+    _fit_data: "dict | None" = None
+    #: The printout's data line of a restored model.
+    _data_summary: "str | None" = None
+
+    def __init__(self) -> None:
+        self.kind = "Proportional Odds"
+        self.parameterization = "Semi-Parametric"
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
+
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column, which the baseline odds
+        absorb, or a linear combination of the others. Their ``beta`` is
+        ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+
+    def _coef(self) -> npt.NDArray:
+        beta = np.asarray(self.beta, dtype=float)
+        return np.where(np.isnan(beta), 0.0, beta)
+
+    def _center(self) -> npt.NDArray:
+        if self.center is None:
+            return np.zeros(np.asarray(self.beta).shape[0])
+        return np.asarray(self.center, dtype=float)
+
+    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        return prepare_Z(Z, self.feature_names, self._model_spec)
+
+    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        if Z_arr.ndim == 0:
+            Z_arr = Z_arr.reshape(1)
+        return (Z_arr - self._center()) @ self._coef()
+
+    def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
+        """
+        The survival odds multiplier :math:`e^{\\beta' (Z -
+        \\text{center})}` of covariates ``Z`` (one row, or one per
+        prediction): the survival odds ratio of ``Z`` against a unit at
+        ``center``. On covariates far from ``center`` it can overflow to
+        ``inf``; the predictions work on the log scale and do not.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.phi([[1, 0], [0, 0]]).round(4)
+        array([1.5334, 1.    ])
+        """
+        with np.errstate(over="ignore"):
+            return np.exp(self._log_phi(Z))
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        # A higher survival odds is a later event: the risk is -beta'Z.
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        return -self._log_phi(Z_arr.reshape(x.size, -1))
+
+    def _concordance_data(self) -> "tuple | None":
+        data = self._fit_data
+        if data is None:
+            return None
+        return data["x"], data["c"], data["n"], data["Z"]
+
+    # -- the baseline at the query times -------------------------------
+
+    def _parts(
+        self, x: npt.NDArray, Z: "npt.ArrayLike | pd.DataFrame", grid: bool
+    ) -> tuple:
+        """``(log g, log G, log G_prev, eta)`` broadcast for the query:
+        the log jump at the last baseline time at or before ``x``, the
+        log baseline odds there and at the time before, and the log
+        failure odds multiplier ``eta = -beta'(Z - center)``; paired
+        (row ``i`` with ``x[i]``, or one of them single), or on the grid
+        ``(len(Z), len(x))``. A missing time gives nan."""
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        idx = np.searchsorted(self.x, x, side="right") - 1
+        top = self.x.size - 1
+        with np.errstate(divide="ignore"):
+            log_g = np.log(self.g0)
+            log_G = np.log(self.G0)
+        before = idx < 0
+        lg = np.where(before, -np.inf, log_g[np.clip(idx, 0, top)])
+        lG = np.where(before, -np.inf, log_G[np.clip(idx, 0, top)])
+        lGp = np.where(idx < 1, -np.inf, log_G[np.clip(idx - 1, 0, top)])
+        missing = np.isnan(x)
+        lg, lG, lGp = (np.where(missing, np.nan, v) for v in (lg, lG, lGp))
+        if grid:
+            rows = covariate_rows(
+                self._prepare_Z(Z), np.asarray(self.beta).shape[0]
+            )
+            eta = -((rows - self._center()) @ self._coef())[:, None]
+            return lg[None, :], lG[None, :], lGp[None, :], eta
+        eta = -self._log_phi(Z)
+        check_paired_rows(x.size, np.size(eta))
+        return lg, lG, lGp, eta
+
+    @keeps_query_shape
+    def Hf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        Cumulative hazard :math:`\\log(1 + G_0(x)\\, e^{-\\beta' (Z -
+        \\text{center})})` at ``x`` for covariates ``Z`` (one row for every
+        ``x``, or one row per ``x``, paired in the order given; a DataFrame
+        for a model fitted with ``fit_from_df``). 0 before the first time,
+        held after the last. With ``grid=True`` every time is evaluated
+        for every row of ``Z``, giving shape ``(len(Z),) + x.shape``.
+        """
+        _, lG, _, eta = self._parts(x, Z, grid)
+        return np.logaddexp(0.0, lG + eta)
+
+    @keeps_query_shape
+    def sf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        Survival :math:`1 / (1 + G_0(x)\\, e^{-\\beta' (Z -
+        \\text{center})})` at ``x`` for covariates ``Z``; arguments as for
+        :meth:`Hf`. A missing time or covariate gives ``nan``.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "age"]].values, c=c)
+        >>> model.sf([10, 30, 50], [[0, 20], [1, 20]], grid=True).round(3)
+        array([[0.948, 0.801, 0.65 ],
+               [0.964, 0.856, 0.733]])
+        """
+        _, lG, _, eta = self._parts(x, Z, grid)
+        return expit(-(lG + eta))
+
+    @keeps_query_shape
+    def ff(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """Failure probability ``1 - sf`` at ``x`` for covariates ``Z``;
+        arguments as for :meth:`Hf`."""
+        _, lG, _, eta = self._parts(x, Z, grid)
+        return expit(lG + eta)
+
+    @keeps_query_shape
+    def hf(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The jump of the cumulative hazard :meth:`Hf` at the last baseline
+        time at or before ``x`` (0 at a time with no event, and before the
+        first time): a step size, not a hazard rate, as ``CoxPH``'s
+        ``hf`` is. Arguments as for :meth:`Hf`.
+        """
+        lg, _, lGp, eta = self._parts(x, Z, grid)
+        # log(1 + g e / (1 + G_prev e)), e = exp(eta), on the log scale.
+        return np.log1p(np.exp(lg + eta - np.logaddexp(0.0, lGp + eta)))
+
+    @keeps_query_shape
+    def df(
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        """
+        The probability mass at the last baseline time at or before ``x``,
+        ``ff`` there less ``ff`` at the time before (0 at a time with no
+        event, and before the first time): the baseline is a step
+        function, so this is a jump, not a density. Arguments as for
+        :meth:`Hf`.
+        """
+        lg, lG, lGp, eta = self._parts(x, Z, grid)
+        # g e / ((1 + G e)(1 + G_prev e)), e = exp(eta), on the log scale.
+        return np.exp(
+            lg
+            + eta
+            - np.logaddexp(0.0, lG + eta)
+            - np.logaddexp(0.0, lGp + eta)
+        )
+
+    # -- inference -------------------------------------------------------
+
+    def covariance(self) -> npt.NDArray:
+        """The covariance of the coefficients: the inverse of the
+        negative Hessian of the profile log-likelihood at the maximum
+        (``nan`` rows and columns for an aliased coefficient)."""
+        return self.cov
+
+    def standard_errors(self) -> npt.NDArray:
+        """The coefficients' standard errors, from :meth:`covariance`."""
+        return self.se
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+    ) -> npt.NDArray:
+        """
+        Wald confidence bound(s) on a coefficient, from the profile
+        likelihood's information (see :meth:`covariance`).
+
+        Parameters
+        ----------
+        name : str
+            The coefficient, one of :attr:`parameter_names`.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> model.param_cb("beta_0").round(4)
+        array([-0.0017,  0.8567])
+        """
+        names = self.parameter_names
+        if name not in names:
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, names
+                )
+            )
+        idx = names.index(name)
+        return wald_bound_on_support(
+            float(self.params[idx]),
+            float(self.cov[idx, idx]),
+            None,
+            None,
+            alpha_ci,
+            bound,
+            name=name,
+        )
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The coefficient table: one row per covariate (named by
+        ``feature_names`` for a model fitted with ``fit_from_df``), with
+        the coefficient, the survival odds ratio ``exp(coef)``, the
+        standard error, two-sided ``1 - alpha_ci`` Wald intervals for
+        both, the Wald statistic ``z`` and its two-sided p-value. An
+        aliased coefficient is ``nan`` throughout.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
+        >>> model = ProportionalOdds.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "exp(coef)", "se(coef)", "p"]].round(4)
+                     coef  exp(coef)  se(coef)       p
+        covariate
+        fin        0.3896     1.4764    0.2191  0.0754
+        age        0.0751     1.0780    0.0227  0.0009
+        """
+        beta = np.asarray(self.beta, dtype=float)
+        names = coefficient_names(self, beta.size)
+        se = np.asarray(self.se, dtype=float)
+        return coefficient_table(names, beta, se, alpha_ci, p=self.p_values)
+
+    def _data_repr(self) -> str:
+        data = self._fit_data
+        if not isinstance(data, dict):
+            return self._data_summary or ""
+        tl = data["tl"]
+        if not np.isfinite(tl).any():
+            return data_summary(data["c"], data["n"], x=data["x"])
+        return data_summary(
+            data["c"], data["n"], tl=tl, lower=-np.inf, x=data["x"]
+        )
+
+    def __repr__(self) -> str:
+        out = (
+            "Semi-Parametric Regression SurPyval Model"
+            + "\n========================================="
+            + "\nType                : Proportional Odds"
+            + "\nKind                : NPMLE (Murphy, Rossini & van der "
+            "Vaart)"
+            + "\nParameterization    : Semi-Parametric"
+        )
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
+        if np.any(self._center()):
+            out += (
+                "\nBaseline at         : the covariate means, Z = {}".format(
+                    np.array2string(self._center(), separator=", ")
+                )
+            )
+        out += (
+            "\nCoefficients        : exp(coef) is the survival odds ratio; "
+            "Wald 95% intervals\n"
+        )
+        return out + coefficient_repr(self.summary()) + "\n"
+
+    # -- serialisation ---------------------------------------------------
+
+    def to_dict(self) -> dict:
+        """
+        Serialise the fitted model to a plain, JSON-serialisable dict: the
+        coefficients with their covariance and p-values, and the baseline
+        step arrays (the times ``x``, events ``d``, jumps ``g0`` and
+        cumulative baseline odds ``G0``), with ``center`` where the
+        baseline is at the covariate means. Every prediction round-trips
+        exactly; the fitted rows are not stored.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds, ProportionalOddsModel
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
+        >>> restored = ProportionalOddsModel.from_dict(model.to_dict())
+        >>> bool(restored.sf(52, [1, 2]) == model.sf(52, [1, 2]))
+        True
+        """
+        out: dict[str, Any] = {
+            "model": "ProportionalOddsModel",
+            "beta": np.asarray(self.beta, dtype=float).tolist(),
+            "params": np.asarray(self.params, dtype=float).tolist(),
+            "se": np.asarray(self.se, dtype=float).tolist(),
+            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            "p_values": np.asarray(self.p_values, dtype=float).tolist(),
+            "x": np.asarray(self.x, dtype=float).tolist(),
+            "d": np.asarray(self.d, dtype=float).tolist(),
+            "g0": np.asarray(self.g0, dtype=float).tolist(),
+            "G0": np.asarray(self.G0, dtype=float).tolist(),
+            "log_likelihood": float(self.log_likelihood),
+            "n_iter": int(self.n_iter),
+        }
+        if np.any(self._center()):
+            out["center"] = self._center().tolist()
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
+        serialise_covariate_meta(self, out)
+        return stamp_schema(out)
+
+    @classmethod
+    def from_dict(cls, model_dict: dict) -> "ProportionalOddsModel":
+        """
+        Rebuild a model from a :meth:`to_dict` dictionary.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds, ProportionalOddsModel
+        >>> model = ProportionalOdds.fit([1, 2, 3, 4], [0, 1, 0, 1])
+        >>> ProportionalOddsModel.from_dict(model.to_dict()).beta.round(4)
+        array([1.1744])
+        """
+        require_model_tag(
+            model_dict,
+            "ProportionalOddsModel",
+            "a semi-parametric proportional odds model",
+        )
+        out = cls()
+        for key in ("beta", "params", "se", "p_values", "x", "d", "g0"):
+            setattr(out, key, np.array(model_dict[key], dtype=float))
+        out.G0 = np.array(model_dict["G0"], dtype=float)
+        out.cov = np.array(model_dict["cov"], dtype=float).reshape(
+            out.beta.size, out.beta.size
+        )
+        out.center = np.array(
+            model_dict.get("center", np.zeros(out.beta.size)), dtype=float
+        )
+        out.log_likelihood = float(model_dict.get("log_likelihood", np.nan))
+        out.n_iter = int(model_dict.get("n_iter", 0))
+        out._data_summary = model_dict.get("data_summary")
+        restore_covariate_meta(out, model_dict)
+        return out
+
+
+class ProportionalOdds_:
+    """
+    The semi-parametric proportional odds model: the covariates multiply
+    the survival odds of a baseline left to the data,
+
+    .. math::
+        \\frac{S(x \\mid Z)}{F(x \\mid Z)} = e^{\\beta' Z}\\,
+        \\frac{S_0(x)}{F_0(x)},
+
+    the proportional-odds counterpart of ``CoxPH``, fitted by
+    nonparametric maximum likelihood (Murphy, Rossini and van der Vaart
+    1997). A positive coefficient raises the odds of survival, as in the
+    parametric proportional odds models (``LogisticPO``, ``PO(...)``);
+    R's ``timereg::prop.odds`` and ``mets::logitSurv`` model the odds of
+    failure, so their coefficients have the opposite sign.
+    ``ProportionalOdds`` is an instance of this class; its ``fit``
+    returns a :class:`ProportionalOddsModel`.
+    """
+
+    def fit(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.ArrayLike,
+        c: npt.ArrayLike | None = None,
+        n: npt.ArrayLike | None = None,
+        tl: npt.ArrayLike | None = None,
+        tol: float = 1e-9,
+        center: bool = False,
+    ) -> ProportionalOddsModel:
+        """
+        Fit the semi-parametric proportional odds model.
+
+        The coefficients maximise the profile likelihood, the likelihood
+        maximised over the baseline odds at each ``beta`` (see the module
+        notes), and their standard errors are the profile likelihood's
+        (the inverse of its negative Hessian at the maximum), as Murphy,
+        Rossini and van der Vaart (1997) justify.
+
+        Parameters
+        ----------
+        x : array_like
+            The observed times.
+        Z : array_like
+            The covariates, one row per observation (a 1-D array is one
+            covariate). Rows with a missing or infinite covariate are
+            dropped, with a warning. A constant column (the baseline odds
+            absorb it) or a linear combination of the others is aliased,
+            as in ``CoxPH``: its coefficient is ``nan`` and one warning
+            names it.
+        c : array_like, optional
+            The censoring flags: 0 observed, 1 right censored. Defaults to
+            all observed. Left (-1) and interval (2) censored rows raise a
+            ``ValueError``; fit those with a parametric proportional odds
+            model (``PO(LogLogistic)``, ``WeibullPO``, ...).
+        n : array_like, optional
+            The count of each row. Defaults to 1.
+        tl : array_like, optional
+            Left-truncation (delayed entry) times: a row is in the risk
+            sets only after its entry time, and its likelihood is
+            conditional on surviving to it.
+        tol : float, optional
+            The convergence tolerance: Newton-Raphson on the profile
+            likelihood stops once a step is at most ``tol`` standard errors
+            long (measured by the profile information).
+        center : bool, optional
+            ``False`` (the default) reports the baseline (``g0``, ``G0``)
+            at ``Z = 0``; ``True`` reports it at the covariate means,
+            stored as ``model.center``. The fit runs on centred covariates
+            either way, so the coefficients and predictions are the same;
+            the default refuses, with a ``ValueError``, covariates so far
+            from 0 that the baseline there over- or underflows.
+
+        Returns
+        -------
+        ProportionalOddsModel
+            The fitted model. If a covariate separates the events from the
+            survivors (a level with no events, say) the likelihood has no
+            finite maximum: the fit warns "No finite maximum" and that
+            coefficient is meaningless.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> x, c = df["week"].values, 1 - df["arrest"].values
+        >>> Z = df[["fin", "age", "prio"]].values
+        >>> model = ProportionalOdds.fit(x, Z, c=c)
+        >>> model.beta.round(4)
+        array([ 0.391 ,  0.0701, -0.1116])
+        >>> model.se.round(4)
+        array([0.2206, 0.0227, 0.0331])
+        """
+        x, c, n, tl, Z = _validate(x, Z, c, n, tl)
+        p = Z.shape[1]
+        mean = _covariate_center(Z, n)
+        Zc = Z - mean
+        inner_tol = min(tol, 1e-10) * 1e-2
+        # The baseline at beta = 0, the start, and the information there,
+        # which decides the aliased columns.
+        lik = _POLikelihood(x, c, n, tl, Zc)
+        with np.errstate(all="ignore"):
+            u, der = _inner(lik, np.zeros(p), lik.start(x, n, tl), inner_tol)
+            try:
+                info0 = lik.schur(der)
+            except (LinAlgError, ValueError):
+                info0 = np.full((p, p), np.nan)
+        aliased = _po_aliased(info0, Z, n, float(lik.d.sum()))
+        kept = np.setdiff1d(np.arange(p), aliased)
+        if aliased.size:
+            warn_aliased(
+                aliased,
+                "the likelihood does not depend on them beyond a "
+                "combination of the other columns (a constant column, "
+                "which the baseline odds absorb, or a linear combination "
+                "of the others)",
+            )
+            lik = _POLikelihood(x, c, n, tl, Zc[:, kept])
+        info0 = info0[np.ix_(kept, kept)]
+        gamma = np.zeros(kept.size)
+        converged, n_iter = True, 0
+        S = np.zeros((0, 0))
+        if kept.size:
+            with np.errstate(all="ignore"):
+                gamma, u, der, S, converged, n_iter = _profile_fit(
+                    lik, u, gamma, tol, _OUTER_MAX_ITER
+                )
+            _check_maximum(S, info0, kept, converged, n_iter)
+
+        cov_k = _inverse_information(S)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            se_k = np.sqrt(np.diag(cov_k))
+            p_k = 2.0 * norm.sf(np.abs(-gamma / se_k))
+        beta = expand(-gamma, kept, p)
+        cov = np.full((p, p), np.nan)
+        cov[np.ix_(kept, kept)] = cov_k
+
+        # The baseline odds jumps, fitted at the means, moved to Z = 0
+        # unless center=True; then laid on every distinct observed time
+        # (0 where there is no event), as CoxPH's baseline is.
+        gamma_full = np.zeros(p)
+        gamma_full[kept] = gamma
+        log_g = u
+        if center:
+            model_center = mean
+        else:
+            log_g = _baseline_at_origin(
+                u, -float(gamma_full @ mean), Z @ gamma_full, mean
+            )
+            model_center = np.zeros(p)
+        times = np.unique(x)
+        at = np.searchsorted(times, lik.t)
+        g0 = np.zeros(times.size)
+        g0[at] = np.exp(log_g)
+        d = np.zeros(times.size)
+        d[at] = lik.d
+
+        model = ProportionalOddsModel()
+        model.beta = beta
+        model.params = copy(beta)
+        model.se = expand(se_k, kept, p)
+        model.cov = cov
+        model.p_values = expand(p_k, kept, p)
+        model.x = times
+        model.d = d
+        model.g0 = g0
+        model.G0 = np.cumsum(g0)
+        model.center = model_center
+        model.log_likelihood = float(der["value"])
+        model.n_iter = int(n_iter)
+        model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
+        return model
+
+    def fit_from_df(
+        self,
+        df: "pd.DataFrame",
+        x_col: str,
+        Z_cols: str | list[str] | None = None,
+        c_col: str | None = None,
+        n_col: str | None = None,
+        formula: str | None = None,
+        tl_col: str | None = None,
+        tol: float = 1e-9,
+        center: bool = False,
+    ) -> ProportionalOddsModel:
+        """
+        Fit the semi-parametric proportional odds model from a pandas
+        DataFrame, keeping the covariate names for prediction and the
+        coefficient table; see :meth:`fit` for the model.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data.
+        x_col : str
+            The column of the observed times.
+        Z_cols : str or list of str, optional
+            The covariate column(s). Give this or ``formula``.
+        c_col, n_col, tl_col : str, optional
+            The columns of the censoring flags, counts and entry times.
+        formula : str, optional
+            A ``formulaic`` formula for the covariates (``"age + C(site)"``)
+            instead of ``Z_cols``.
+        tol, center
+            As for :meth:`fit`.
+
+        Examples
+        --------
+        >>> from surpyval import ProportionalOdds
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]
+        >>> model = ProportionalOdds.fit_from_df(
+        ...     df, x_col="week", c_col="censored", formula="fin + prio"
+        ... )
+        >>> model.beta.round(4)
+        array([ 0.4275, -0.1206])
+        """
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
+        )
+        x = df[x_col].values
+        c = None if c_col is None else df[c_col].values
+        n = None if n_col is None else df[n_col].values
+        tl = None if tl_col is None else df[tl_col].values
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(x, Z, c=c, n=n, tl=tl, tol=tol, center=center)
+        model.feature_names = feature_names
+        model.formula = formula
+        model._model_spec = model_spec
+        return model
+
+
+def _inverse_information(S: npt.NDArray) -> npt.NDArray:
+    """The covariance from the profile information ``S``; the
+    pseudo-inverse where the inverse has a non-positive variance (a
+    likelihood with no finite maximum), and ``nan`` where that does
+    too."""
+    k = S.shape[0]
+    if k == 0:
+        return np.zeros((0, 0))
+    if not np.all(np.isfinite(S)):
+        return np.full((k, k), np.nan)
+    try:
+        cov = np.linalg.inv(S)
+    except np.linalg.LinAlgError:
+        cov = np.linalg.pinv(S)
+    if np.any(np.diag(cov) <= 0):
+        cov = np.linalg.pinv(S)
+    bad = ~(np.diag(cov) > 0)
+    cov[bad, :] = np.nan
+    cov[:, bad] = np.nan
+    return cov
+
+
+def _check_maximum(
+    S: npt.NDArray,
+    info0: npt.NDArray,
+    kept: npt.NDArray,
+    converged: bool,
+    n_iter: int,
+) -> None:
+    """One warning when the profile likelihood has no finite maximum or
+    the iteration did not converge.
+
+    The criterion is Cox's (``_warn_if_monotone``): where a covariate
+    separates the events from the survivors, the likelihood keeps
+    increasing as that coefficient grows, and the information for it
+    collapses (the survival odds of the separated rows go to 0 or
+    infinity, and the likelihood flattens in that direction). A
+    coefficient whose profile information has fallen below ``1e-8`` of
+    its value at ``beta = 0`` is taken to have run away; on an ordinary
+    fit the information at the maximum is of the order of that at the
+    start."""
+    d = np.diag(np.atleast_2d(S)) if S.size else np.zeros(0)
+    d0 = np.diag(np.atleast_2d(info0)) if info0.size else np.zeros(0)
+    collapsed = np.flatnonzero(
+        (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
+    )
+    if collapsed.size:
+        warn_no_maximum(
+            "the profile likelihood keeps increasing as coefficient(s) {} "
+            "of Z grow without bound, so the estimate is infinite (the "
+            "covariate separates the events from the survivors, as a "
+            "level with no events does)".format(kept[collapsed].tolist()),
+            "The reported value, its standard error and its p-value are "
+            "meaningless",
+            "consider removing or coarsening the covariate",
+        )
+    elif not converged:
+        warnings.warn(
+            "ProportionalOdds did not converge: the profile likelihood's "
+            "Newton-Raphson iteration stopped after {} step(s) without "
+            "reaching its tolerance, so the estimates may not be the "
+            "maximum. Check the covariates for extreme values, or rescale "
+            "them.".format(n_iter),
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+
+
+ProportionalOdds = ProportionalOdds_()
