@@ -34,7 +34,7 @@ class Bernoulli_(  # type: ignore[misc]
        wants ``1 - p``. The flat model itself is unchanged and still
        available as :data:`FixedEventProbability`.
 
-    .. versionchanged:: 0.22.0
+    .. versionchanged:: 0.22
        ``R(x)`` was :math:`P(X \geq x)` (``R(0) = 1``, ``R(1) = p``),
        with ``F(x) = P(X < x)``, which never reached 1, so ``qf`` could
        not invert ``ff`` (#344). Every function now equals ``Binomial``

@@ -107,7 +107,7 @@ def test_reduces_to_bernoulli_at_n_one():
         np.asarray(binomial.df([0, 1]), dtype=float),
     )
 
-    # Since 0.22.0 (#344) Bernoulli follows the package's discrete rule
+    # Since 0.22 (#344) Bernoulli follows the package's discrete rule
     # R(k) = P(K > k) too, so every function agrees, not just the mass
     # (it used P(X >= x), offset by one from Binomial).
     for fn in ("sf", "ff", "hf", "Hf"):

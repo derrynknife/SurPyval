@@ -1,8 +1,12 @@
 Changelog
 =========
 
-v0.22.0 (unreleased)
---------------------
+v0.22 (unreleased)
+------------------
+
+**Versioning.** From this release, versions have two parts,
+``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``); every release takes the
+next minor number. pip compares ``0.22`` and ``0.22.0`` as equal.
 
 **Removed.** The names 0.21 deprecated (#422) are gone. An old argument
 name (``seed``, ``confidence``, ``B``, ``t``, ``q``, ``u``, CoxPH's
@@ -402,10 +406,10 @@ bands change (#477).
   bootstrap and recurrent fits, the public API, the import set and the
   test IDs, so ``compare`` shows a change altered nothing (see
   :doc:`Contributing`). CI lints with isort as well, and covers
-  ``conftest.py`` and ``scripts/``; flake8 caps function complexity at 70;
+  ``conftest.py`` and ``scripts/``; flake8 caps function complexity (now at 25);
   mypy reports unused ``type: ignore`` comments, redundant casts and
   impossible comparisons; a test fails once the version reaches
-  ``REMOVED_IN`` (0.23.0) while deprecated names are still accepted; and
+  ``REMOVED_IN`` (0.23) while deprecated names are still accepted; and
   the nightly refit study covers the seven models added in 0.22 (#545).
 - **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
   (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have

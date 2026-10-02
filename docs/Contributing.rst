@@ -272,6 +272,12 @@ documentation build from running on every change:
 * At release time ``develop`` is merged into ``master`` in a single pull
   request and the new version is tagged.
 
+Versions have two parts, ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``), since
+0.22; earlier releases had three. Every release, fixes only or not, takes the
+next minor number. A name deprecated in one release is removed in the next
+(``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
+the version reaches it while the old names are still accepted.
+
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather
 than on every push to every branch. Not every job runs on every event:

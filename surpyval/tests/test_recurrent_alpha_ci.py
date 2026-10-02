@@ -1,7 +1,7 @@
 """``alpha_ci`` sets the level of the recurrent-event bounds (#422).
 
 ``alpha_ci`` replaced ``confidence`` (its complement) in v0.21; the old
-name was removed in v0.22.0 (see test_removed_arguments.py). The level
+name was removed in v0.22 (see test_removed_arguments.py). The level
 is keyword-only, so an old positional ``confidence`` is refused rather
 than read as its complement.
 """

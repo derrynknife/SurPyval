@@ -3,7 +3,7 @@
 keyword ``random_state`` (principle 19): ``None`` is numpy's global
 stream, as before, and an int or a generator is a stream of its own.
 Also, the positional form of the query methods renamed in #422 (their
-old names were removed in v0.22.0; see test_removed_arguments.py).
+old names were removed in v0.22; see test_removed_arguments.py).
 """
 
 import warnings

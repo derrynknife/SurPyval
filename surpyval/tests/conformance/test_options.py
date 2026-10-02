@@ -71,7 +71,7 @@ NOT_SWEPT = {
     "cb_tvc": "needs a covariate path; checked against cb along a constant "
     "path, for every bound and on=, in conformance/test_tvc.py (#172)",
 }
-# "confidence" was the recurrent models' level until v0.22.0; a method
+# "confidence" was the recurrent models' level until v0.22; a method
 # that took it again would be an unswept uncertainty method.
 _LEVEL_NAMES = ("alpha_ci", "confidence")
 

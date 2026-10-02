@@ -481,7 +481,7 @@ class ParametricFitter(UnivariateDataFrameMixin):
         :math:`R(x, given) = R(x)`, which is both cheaper and free of the
         cancellation the ratio suffers in the far tail.
 
-        .. versionchanged:: 0.22.0
+        .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``, which
            still works until v0.23 with a ``DeprecationWarning``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.

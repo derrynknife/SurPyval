@@ -162,7 +162,7 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         The Exponential distribution is memoryless, and hence is the same as
         the regular survival distribution.
 
-        .. versionchanged:: 0.22.0
+        .. versionchanged:: 0.22
            The time already survived is ``given`` (it was ``X``, which
            still works until v0.23 with a ``DeprecationWarning``), the
            name the regression models' ``sf_tvc(..., given=)`` uses.

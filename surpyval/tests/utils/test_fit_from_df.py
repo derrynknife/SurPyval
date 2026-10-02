@@ -192,7 +192,7 @@ def test_univariate_v021_names_still_work_with_a_warning():
     )
     np.testing.assert_allclose(old.params, new.params)
     assert [str(w.message).split(":")[1] for w in caught] == [
-        f" '{k}' is deprecated and will be removed in v0.23.0; use "
+        f" '{k}' is deprecated and will be removed in v0.23; use "
         f"'{k}_col'."
         for k in ("x", "c", "n", "tl", "tr")
     ]

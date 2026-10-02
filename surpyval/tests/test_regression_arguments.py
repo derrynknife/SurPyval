@@ -5,7 +5,7 @@ One name per option in regression and competing risks (#422, principle
 The old names (CoxPH's ``method``, ``id_col``, ``time_col``,
 BuckleyJames's ``seed``, the competing-risks ``how`` and ``cause``, and
 the fitted ``CompetingRisksProportionalHazards.how`` and
-``CompetingRisks.method``) were removed in v0.22.0; see
+``CompetingRisks.method``) were removed in v0.22; see
 test_removed_arguments.py. The tests here check that the new names take
 effect, that positional calls read the same arguments, and that the saved
 files keep the old keys so older files still load.

@@ -359,7 +359,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         (``nan``), nor for an aliased coefficient (#476), whose value is
         ``nan`` too.
 
-        .. versionchanged:: 0.22.0
+        .. versionchanged:: 0.22
            Returns a ``DataFrame``; it returned the text ``repr`` prints.
 
         Parameters
