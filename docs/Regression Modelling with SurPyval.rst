@@ -3324,7 +3324,11 @@ the last one with its average hazard. That makes its density a density per
 unit of time, on the same scale as a parametric leaf's, so forests of different
 ``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
 one covariate at a time among the out-of-bag rows and reports how much the
-score drops, as a ``pandas.Series`` keyed by covariate name. Here the forest
+score drops, as a ``pandas.Series`` keyed by covariate name. With very few
+trees a row can land only in leaves that give it zero probability, which makes
+the score :math:`-\infty`; both methods then warn with the number of such rows,
+and the importances are computed over the rows scored before and after each
+shuffle. More trees, or ``kind="exponential"``, remove the problem. Here the forest
 is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
 
 .. jupyter-execute::

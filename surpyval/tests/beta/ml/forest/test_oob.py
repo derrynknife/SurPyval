@@ -316,3 +316,97 @@ def test_restored_forest_predicts_but_cannot_score_out_of_bag():
         restored.oob_log_likelihood()
     with pytest.raises(ValueError, match="from_dict"):
         restored.feature_importances()
+
+
+def _zero_probability_forest():
+    # Three trees leave one out-of-bag row in leaves that put no density
+    # at its time (#533).
+    rng = np.random.default_rng(0)
+    Z = rng.normal(size=(60, 2))
+    x = rng.weibull(1.5, 60) * np.exp(0.5 * Z[:, 0])
+    forest = _fit(x=x, Z=Z, n_trees=3, random_state=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        oob, terms, origin, n_oob = forest._oob_setup()
+        ll = forest._oob_rows_log_likelihood(oob, terms, origin, n_oob, {})
+    return forest, ll
+
+
+@IN_EVERY_SAMPLE
+def test_zero_probability_row_warns_in_the_oob_log_likelihood():
+    forest, ll = _zero_probability_forest()
+    assert np.isneginf(ll).sum() == 1
+    with pytest.warns(UserWarning, match="1 of 46 out-of-bag rows") as rec:
+        assert forest.oob_log_likelihood() == -np.inf
+    zero = [w for w in rec if "zero probability" in str(w.message)]
+    assert len(zero) == 1
+    assert zero[0].filename == __file__
+    assert "n_trees" in str(zero[0].message)
+
+
+@IN_EVERY_SAMPLE
+def test_importance_is_over_the_rows_scored_before_and_after():
+    # Every importance was NaN, silently (#533): a drop from -inf.
+    forest, ll = _zero_probability_forest()
+    with pytest.warns(UserWarning, match="zero probability") as rec:
+        got = forest.feature_importances(n_repeats=3, random_state=1)
+    zero = [w for w in rec if "zero probability" in str(w.message)]
+    assert len(zero) == 1
+    assert zero[0].filename == __file__
+    assert "left out of every feature's importance" in str(zero[0].message)
+    assert np.all(np.isfinite(got))
+
+    # By hand: the drop of the mean over the rows finite before and
+    # after each shuffle, averaged over the shuffles.
+    rng = np.random.default_rng(1)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        oob, terms, origin, n_oob = forest._oob_setup()
+    want = []
+    for j in range(2):
+        drops = []
+        for _ in range(3):
+            shuffled = forest._oob_rows_log_likelihood(
+                oob, terms, origin, n_oob, {}, permute=(j, rng)
+            )
+            keep = np.isfinite(ll) & np.isfinite(shuffled)
+            n = terms.n[keep]
+            drops.append(
+                np.sum(n * ll[keep]) / n.sum()
+                - np.sum(n * shuffled[keep]) / n.sum()
+            )
+        want.append(np.mean(drops))
+    np.testing.assert_allclose(got.to_numpy(), want, rtol=1e-12)
+
+
+@IN_EVERY_SAMPLE
+def test_every_row_finite_importance_is_unchanged():
+    # With every row scored the importance is the drop of the whole
+    # out-of-bag mean, as before, and nothing warns of zero probability.
+    x, Z, c = _signal_data(n=60)
+    np.random.seed(0)
+    forest = _fit(x=x, Z=Z, c=c, n_trees=10, max_depth=1, kind="exponential")
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        got = forest.feature_importances(n_repeats=2, random_state=3)
+        base = forest.oob_log_likelihood()
+    assert not [w for w in rec if "zero probability" in str(w.message)]
+    rng = np.random.default_rng(3)
+    oob, terms, origin, n_oob = forest._oob_setup()
+    want = [
+        np.mean(
+            [
+                base
+                - np.nansum(
+                    terms.n
+                    * forest._oob_rows_log_likelihood(
+                        oob, terms, origin, n_oob, {}, permute=(j, rng)
+                    )
+                )
+                / terms.n[n_oob > 0].sum()
+                for _ in range(2)
+            ]
+        )
+        for j in range(3)
+    ]
+    np.testing.assert_allclose(got.to_numpy(), want, rtol=1e-12)
