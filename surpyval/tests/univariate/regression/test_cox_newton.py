@@ -216,7 +216,7 @@ def test_a_monotone_likelihood_still_warns():
     Z = np.column_stack(
         [(x < np.median(x)).astype(float), rng.normal(size=60)]
     )
-    with pytest.warns(UserWarning, match="Monotone partial likelihood") as w:
+    with pytest.warns(UserWarning, match="No finite maximum: the partial likelihood") as w:
         model = CoxPH.fit(x, Z, c, center=True)
     assert len(w) == 1
     assert w[0].filename == __file__

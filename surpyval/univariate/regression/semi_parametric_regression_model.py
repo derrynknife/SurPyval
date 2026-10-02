@@ -14,6 +14,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.no_maximum import restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -105,6 +106,13 @@ class SemiParametricRegressionModel(
     #: The covariate means the fit centred on, which the residuals and
     #: diagnostics centre on too; not saved (they need the fitted data).
     _fit_center: "npt.NDArray | None" = None
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``): ``"verified"`` (a zero score and a
+    #: positive-definite information), ``"unverified"`` or ``"no finite
+    #: maximum"`` (a monotone partial likelihood), each as the fit's
+    #: warnings say; ``"unknown"`` for a model restored from a dict saved
+    #: without it.
+    maximum: str = "unknown"
 
     @property
     def parameter_names(self) -> list[str]:
@@ -377,6 +385,7 @@ class SemiParametricRegressionModel(
             out["se"] = np.asarray(self.se, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
+        out["maximum"] = self.maximum
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
         if self._data_repr():
@@ -433,6 +442,7 @@ class SemiParametricRegressionModel(
             out.se = onp.array(model_dict["se"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
+        out.maximum = restored_maximum(model_dict)
         restore_covariate_meta(out, model_dict)
         return out
 

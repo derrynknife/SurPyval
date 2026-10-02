@@ -236,7 +236,7 @@ def test_cox_constant_column_on_separated_data():
     # and the second warning.
     assert [str(w.message)[:28] for w in caught] == [
         "Covariate column(s) 2 of Z c",
-        "Monotone partial likelihood:",
+        "No finite maximum: the parti",
     ]
     assert np.isnan(model.beta[2])
     # Without it the data are still separated: the one warning is the
@@ -252,7 +252,7 @@ def test_cox_constant_column_on_separated_data():
             sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
     assert found == [], leaks.report(found)
     assert [str(w.message)[:28] for w in caught] == [
-        "Monotone partial likelihood:"
+        "No finite maximum: the parti"
     ]
     assert np.all(np.isfinite(sf)), sf
 

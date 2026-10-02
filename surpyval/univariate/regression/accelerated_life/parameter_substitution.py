@@ -18,7 +18,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils import _caller_stacklevel
-from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -643,15 +642,29 @@ class ParameterSubstitutionFitter(
             # off (stress levels with no failures at one end, say), or
             # else a search that did not reach a verified maximum. (A
             # ridge of non-identifiable parameters was said above.)
-            no_maximum, derivatives = finish_search(
-                fun, res, free_coefficients(self, fixed, phi_param_map), start
+            verdict = finish_search(
+                fun,
+                res,
+                free_coefficients(self, fixed, phi_param_map),
+                start,
+                n_obs,
+                verified=verified,
+                what="The accelerated life fit",
             )
-            if not (no_maximum or verified):
-                warn_unverified("The accelerated life fit")
+            model.maximum = verdict.maximum
             # The exact observed information for the covariance, which
             # was a numerical Hessian.
             keep_information(
-                model, no_maximum, derivatives, inv_trans, const, res.x, None
+                model,
+                verdict.no_maximum,
+                verdict.derivatives,
+                inv_trans,
+                const,
+                res.x,
+                None,
             )
+        else:
+            # A ridge has no single maximum (said above, in its own words)
+            model.maximum = "unverified"
         model.fun = fun
         return model

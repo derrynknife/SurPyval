@@ -36,7 +36,7 @@ from surpyval.univariate.regression._fit_skeleton import (
 )
 
 NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
-MONOTONE = "Monotone partial likelihood"
+MONOTONE = "No finite maximum: the partial likelihood"
 
 
 def _no_events(d):
@@ -258,7 +258,7 @@ def test_collinear_fine_gray_formula_does_not_warn():
     # "0 + C(g)" codes every level, so the columns sum to 1: the partial
     # likelihood does not depend on their sum. Along it the derivatives at
     # the fit are rounding, and on these data they looked like a runaway
-    # ("Monotone partial likelihood" for coefficient 2 of cause "u").
+    # ("No finite maximum" for coefficient 2 of cause "u").
     rng = np.random.default_rng(3)
     n = 300
     g = rng.choice(["a", "b", "c"], n)
@@ -437,7 +437,7 @@ def test_cox_warns_on_monotone_likelihood():
     x = np.r_[np.full(10, 1.0), np.full(10, 5.0)] + rng.uniform(0, 0.1, 20)
     Z = np.r_[np.ones(10), np.zeros(10)]
     c = np.r_[np.zeros(10), np.ones(10)]
-    with pytest.warns(UserWarning, match="Monotone partial likelihood"):
+    with pytest.warns(UserWarning, match="No finite maximum: the partial likelihood"):
         CoxPH.fit(x=x, Z=Z, c=c)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

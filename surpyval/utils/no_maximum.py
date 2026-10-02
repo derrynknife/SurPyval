@@ -12,18 +12,85 @@ A fit whose search stops at a point it cannot verify as a maximum (the
 optimiser gave up, or the gradient is not zero there) says so with
 :func:`warn_unverified`, again one message of one form for every model.
 
-A caller that fits on the user's behalf and reads what the fit reached
-from the model instead (``Parametric.maximum``; ``fit_best`` does) runs
-the fits inside :func:`quiet_maximum_warnings`, which holds back both
-warnings so that the caller can say it once, in its own words.
+Every maximum-likelihood fit also records what it reached as its
+model's ``maximum`` (one of :data:`MAXIMUM_STATES`), in agreement with
+these warnings. A caller that fits on the user's behalf and reads what
+the fit reached from the model instead (``Parametric.maximum``;
+``fit_best`` does) runs the fits inside :func:`quiet_maximum_warnings`,
+which holds back both warnings so that the caller can say it once, in
+its own words.
 """
 
 import contextlib
 import contextvars
 import warnings
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 from surpyval.utils.warnings import caller_stacklevel
+
+#: The values of a fitted model's ``maximum``: whether the log-likelihood
+#: it reports is at a maximum (principles 12 and 13). The first three are
+#: what a maximum-likelihood fit reached, and agree with its warnings: a
+#: fit that warns "No finite maximum" (:func:`warn_no_maximum`) is ``"no
+#: finite maximum"``, one that warns its search did not reach a verified
+#: maximum (:func:`warn_unverified`) is ``"unverified"``, and a fit that
+#: warns neither is ``"verified"``: its answer has a zero gradient and a
+#: positive-definite Hessian (or is exact, a closed form). ``"not
+#: applicable"`` is a model whose parameters do not come from maximising a
+#: likelihood, and ``"unknown"`` one restored from a dictionary saved
+#: without it.
+MAXIMUM_STATES = (
+    "verified",
+    "unverified",
+    "no finite maximum",
+    "not applicable",
+    "unknown",
+)
+
+
+def combined_maximum(states: Iterable[str]) -> str:
+    """The ``maximum`` of a model fitted in parts (a cause at a time, a
+    margin at a time): the worst of its parts' states -- ``"no finite
+    maximum"``, then ``"unverified"``, then ``"unknown"`` -- and
+    ``"verified"`` only where every part with a likelihood is; ``"not
+    applicable"`` where none has one.
+
+    Examples
+    --------
+    >>> from surpyval.utils.no_maximum import combined_maximum
+    >>> combined_maximum(["verified", "unverified"])
+    'unverified'
+    >>> combined_maximum(["verified", "not applicable"])
+    'verified'
+    """
+    found = set(states)
+    for state in ("no finite maximum", "unverified", "unknown", "verified"):
+        if state in found:
+            return state
+    return "not applicable"
+
+
+def restored_maximum(model_dict: dict, default: str = "unknown") -> str:
+    """The ``maximum`` a model's ``to_dict`` dictionary records, or
+    ``default`` for one written before it was stored; a value that is not
+    one of :data:`MAXIMUM_STATES` is refused.
+
+    Examples
+    --------
+    >>> from surpyval.utils.no_maximum import restored_maximum
+    >>> restored_maximum({"maximum": "verified"})
+    'verified'
+    >>> restored_maximum({})
+    'unknown'
+    """
+    maximum = model_dict.get("maximum", default)
+    if maximum not in MAXIMUM_STATES:
+        raise ValueError(
+            f"The dictionary's 'maximum' is {maximum!r}; it must be one of "
+            f"{list(MAXIMUM_STATES)}."
+        )
+    return maximum
+
 
 # Set while a caller that reads ``maximum`` off its models is fitting
 _QUIET: contextvars.ContextVar[bool] = contextvars.ContextVar(

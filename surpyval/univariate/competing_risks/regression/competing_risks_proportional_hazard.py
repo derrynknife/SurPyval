@@ -43,6 +43,7 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
 )
 from surpyval.utils.ipcw import step_at as _step
+from surpyval.utils.no_maximum import combined_maximum, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     check_option,
@@ -111,6 +112,11 @@ class CompetingRisksProportionalHazards(
     phi: Any
     phi_e: Any
     _fg_models: dict
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``): the worst of the causes' fits, as
+    #: their warnings say; ``"unknown"`` for a model restored from a dict
+    #: saved without it.
+    maximum: str = "unknown"
     # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
     feature_names: "list | None" = None
     formula: "str | None" = None
@@ -160,6 +166,7 @@ class CompetingRisksProportionalHazards(
             "x": np.asarray(self.x, dtype=float).tolist(),
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
+            "maximum": self.maximum,
         }
         if np.any(self.center):
             # A baseline at the covariate means (center=True) is stored,
@@ -215,6 +222,7 @@ class CompetingRisksProportionalHazards(
                 dtype=float,
             ),
         )
+        model.maximum = restored_maximum(model_dict)
         restore_covariate_meta(model, model_dict)
         return model
 
@@ -749,6 +757,7 @@ class CompetingRisksProportionalHazards(
             # Cause-specific proportional hazards: one Cox model per cause,
             # treating every other cause (and censoring) as right-censored.
             results = []
+            states = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
                 with collect_aliased() as aliased:
@@ -758,6 +767,7 @@ class CompetingRisksProportionalHazards(
                 found += aliased
 
                 results.append(cox_model.res)
+                states.append(cox_model.maximum)
                 # nan where aliased, as the Cox model reports it.
                 betas[i, :] = cox_model.beta
                 at = np.asarray(cox_model.center, dtype=float)
@@ -795,8 +805,9 @@ class CompetingRisksProportionalHazards(
             out._fg_models = fg_models
             # One warning for every cause whose partial likelihood has no
             # finite maximum (#392).
-            _warn_if_monotone(fits)
+            states = [_warn_if_monotone(fits)]
         warn_collected(found, "in the fit of each cause")
+        out.maximum = combined_maximum(states)
 
         out.results = results
         out._finish(betas, baselines, at)
