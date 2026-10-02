@@ -206,6 +206,10 @@ class ParametricRegressionModel(
                     )
                 )
             base["life_model_name"] = reg_name
+            if LIFE_MODELS[reg_name].n_stresses is None:
+                # A parameter per stress column (GeneralLogLinear): the
+                # reader resolves the model for this many columns.
+                base["n_stresses"] = int(self.reg_model.n_stresses)
             return base
 
         if self.kind not in _SERIALISABLE_KINDS:
@@ -363,6 +367,15 @@ class ParametricRegressionModel(
                     )
                 )
             reg_model = LIFE_MODELS[life_name]
+            if reg_model.n_stresses is None:
+                n_stresses = model_dict.get("n_stresses")
+                if not isinstance(n_stresses, int) or n_stresses < 1:
+                    raise ValueError(
+                        "Cannot deserialise the {} life model without its "
+                        "number of stress columns ('n_stresses', a positive "
+                        "integer).".format(life_name)
+                    )
+                reg_model = reg_model.resolve(n_stresses)
             fitter = AcceleratedLife(dist, reg_model)
         elif kind in _SERIALISABLE_KINDS:
             factory_name, phi_kind = _SERIALISABLE_KINDS[kind]

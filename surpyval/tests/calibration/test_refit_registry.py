@@ -1011,7 +1011,7 @@ for _kind in ("PH", "AFT", "PO", "AH"):
                 else ""
             ),
         )
-for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS:
+for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
         _REG_N,

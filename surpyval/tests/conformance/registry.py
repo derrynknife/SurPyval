@@ -994,6 +994,22 @@ def _accelerated_life_family():
                 },
             )
         )
+    # One coefficient per stress column (#530): any number of columns,
+    # of any sign, so the ordinary regression data serve.
+    out.append(
+        regression(
+            "WeibullAL[GeneralLogLinear]",
+            sp.AcceleratedLife(sp.Weibull, sp.GeneralLogLinear),
+            fitters=("surpyval.GeneralLogLinear",),
+            slow=REFIT_PROPERTIES,
+            coefficients=None,
+            exclude={
+                "aliasing": "model.aliased are positions in phi_params, "
+                "after the constant c, not columns of Z; the aliasing is "
+                "tests/univariate/regression/test_general_log_linear.py's"
+            },
+        )
+    )
     return out
 
 
