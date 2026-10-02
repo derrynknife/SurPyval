@@ -5,6 +5,34 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class DualPower_(LifeModel):
+    r"""
+    The dual power life model, for two non-thermal stresses (for example
+    voltage and frequency), each a power law:
+
+    .. math::
+        L(U, V) = c\, U^{m} V^{n},
+
+    with ``U`` and ``V`` the two columns of ``Z``, both positive.
+
+    Parameters (as the fitted model reports them):
+
+    - ``c`` (> 0): the life at unit stresses (``U = V = 1``).
+    - ``m``: the power of ``U``: doubling ``U`` multiplies the life by
+      :math:`2^{m}`.
+    - ``n``: the power of ``V``, likewise.
+
+    With equal (or proportional) stress columns ``m`` and ``n`` cannot be
+    told apart: ``n`` is reported as aliased (NaN), and the fit is the
+    :class:`Power` fit.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import life_models
+    >>> life_models.DualPower.phi(np.array([[2.0, 3.0]]), 100.0, -1.0, -0.5)
+    array([28.86751346])
+    """
+
     n_stresses = 2
     positive_stress_columns = (0, 1)
 
