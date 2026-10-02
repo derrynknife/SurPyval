@@ -194,9 +194,7 @@ class RecurrentEventData:
         last = np.full(len(first), -np.inf)
         np.maximum.at(last, inverse, np.asarray(x_upper, dtype=float))
         tr_item = np.asarray(self.tr, dtype=float)[first]
-        exit_ = np.where(
-            np.isfinite(tr_item), np.maximum(last, tr_item), last
-        )
+        exit_ = np.where(np.isfinite(tr_item), np.maximum(last, tr_item), last)
         return entry, exit_
 
     def item_rows(self) -> tuple[npt.NDArray, npt.NDArray]:
