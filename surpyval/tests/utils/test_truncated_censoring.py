@@ -28,6 +28,7 @@ from surpyval import (
     LogLogistic,
     LogNormal,
     Normal,
+    Rayleigh,
     Weibull,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -262,3 +263,115 @@ def test_every_distribution_gives_a_finite_fit(dist, side, censoring):
     # No runaway: every fitted parameter stays within a sane magnitude of
     # the data it came from.
     assert (np.abs(np.asarray(model.params, dtype=float)) < 1e6).all()
+
+
+# -- every row censored, with a finite bound (#559) ------------------------
+
+# Suspensions at 1, ..., 5 under right truncation (the issue's rows): each
+# is the interval [x, tr]. And the mirror: left censored values with a
+# finite left truncation, each the interval [tl, x].
+X_559 = np.arange(1.0, 6.0)
+TR_559 = np.array([2.0, 6.0, 4.0, 8.0, 9.0])
+XM_559 = np.array([2.0, 3.0, 4.0, 5.0, 6.0])
+TL_559 = np.array([0.5, 1.0, 1.5, 0.2, 3.0])
+ONES = np.ones(5, dtype=np.int64)
+
+
+def _559_forms(side):
+    """The rows as censored values with a truncation bound, and as the
+    explicit intervals the likelihood reads them as."""
+    if side == "right":
+        return (
+            dict(x=X_559, c=ONES, tr=TR_559),
+            dict(xl=X_559, xr=TR_559, tr=TR_559),
+        )
+    return (
+        dict(x=XM_559, c=-ONES, tl=TL_559),
+        dict(xl=TL_559, xr=XM_559, tl=TL_559),
+    )
+
+
+# With one parameter fixed these likelihoods have an interior maximum
+FIXED_559 = [
+    (Weibull, {"alpha": 3.5}),
+    (Normal, {"mu": 3.5}),
+    (LogNormal, {"mu": float(np.log(3.5))}),
+]
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+@pytest.mark.parametrize(
+    "dist, fixed", FIXED_559, ids=[d.name for d, _ in FIXED_559]
+)
+def test_559_censored_rows_with_a_finite_bound_fit_as_intervals(
+    dist, fixed, side
+):
+    # Every row censored on one side used to be refused ("Cannot have
+    # only right censored data"), although the likelihood reads each as
+    # an interval: the fit must be the fit to those intervals.
+    censored, intervals = _559_forms(side)
+    model = dist.fit(fixed=fixed, **censored)
+    reference = dist.fit(fixed=fixed, **intervals)
+    assert model.maximum == "verified"
+    assert model.neg_ll() == pytest.approx(reference.neg_ll(), abs=1e-8)
+    np.testing.assert_allclose(model.params, reference.params, rtol=1e-5)
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+@pytest.mark.parametrize("dist", [Weibull, Normal, Gamma, LogNormal])
+def test_559_free_fit_is_refused_as_the_intervals_are(dist, side):
+    # With every row reaching the edge of its window, one failure time
+    # past (or before) every row explains them all, and the likelihood
+    # rises without bound toward a spike there (#392): neg_ll is 3e-13 at
+    # a Weibull alpha = 1000, beta = 100 on the issue's rows. Both forms
+    # say so, in the same words.
+    censored, intervals = _559_forms(side)
+    with pytest.raises(ValueError, match="has no maximum") as got:
+        dist.fit(**censored)
+    with pytest.raises(ValueError) as want:
+        dist.fit(**intervals)
+    assert str(got.value) == str(want.value)
+
+
+@pytest.mark.parametrize("side", ["right", "left"])
+@pytest.mark.parametrize("dist", [Exponential, Rayleigh])
+def test_559_one_parameter_fit_warns_no_finite_maximum(dist, side):
+    # These families pass the point-mass check, and their likelihood
+    # keeps rising as the mass moves past every row: an Exponential ran
+    # to failure_rate = 3.6e-7 and a Rayleigh to sigma = 313.5, reported
+    # as verified maxima. Both forms warn, once, at the caller.
+    for kwargs in _559_forms(side):
+        with pytest.warns(UserWarning, match="No finite maximum") as caught:
+            model = dist.fit(**kwargs)
+        assert len(caught) == 1
+        assert caught[0].filename == __file__
+        assert model.maximum == "no finite maximum"
+
+
+def test_559_data_with_no_finite_bound_is_refused_as_before():
+    match = "Cannot have only right censored data: with no failure"
+    with pytest.raises(ValueError, match=match):
+        Weibull.fit(X_559, c=ONES)
+    with pytest.raises(ValueError, match=match):
+        Exponential.fit(X_559, c=ONES)
+    with pytest.raises(ValueError, match="Cannot have only left censored"):
+        Exponential.fit(X_559, c=-ONES)
+
+
+def test_559_mps_still_refuses_data_with_no_failure():
+    # Maximum product of spacings has no spacing without an exact value;
+    # on these rows its objective ran a Weibull to beta = 23.9.
+    match = "Cannot have only right censored data"
+    with pytest.raises(ValueError, match=match):
+        Weibull.fit(X_559, c=ONES, tr=9.0, how="MPS")
+    with pytest.raises(ValueError, match="Cannot have only left censored"):
+        Weibull.fit(XM_559, c=-ONES, tl=0.5, how="MPS")
+
+
+def test_559_turnbull_probability_plot_fits_as_the_intervals_do():
+    censored, intervals = _559_forms("right")
+    with pytest.warns(UserWarning, match="Turnbull"):
+        model = Weibull.fit(how="MPP", heuristic="Turnbull", **censored)
+    with pytest.warns(UserWarning, match="Turnbull"):
+        reference = Weibull.fit(how="MPP", heuristic="Turnbull", **intervals)
+    np.testing.assert_allclose(model.params, reference.params, rtol=1e-10)
