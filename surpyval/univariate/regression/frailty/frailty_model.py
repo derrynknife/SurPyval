@@ -9,18 +9,19 @@ group (a lot, a site, a repairable unit):
     h(t \\mid Z, u) = u \\, h_0(t) \\, e^{\\beta' Z},
 
 with the frailties drawn once per group from a Gamma distribution of mean 1 and
-variance :math:`\\theta` (``theta``). ``theta`` measures the unexplained
-between-group variability; ``theta = 0`` recovers an ordinary parametric PH
-model.
+variance :math:`\\theta` (``theta``), or, with ``family="lognormal"``, as
+``u = exp(w)`` with ``w`` normal of mean 0 and variance :math:`\\theta`.
+``theta`` measures the unexplained between-group variability; ``theta = 0``
+recovers an ordinary parametric PH model.
 
 Because the frailty enters multiplicatively on the *cumulative* hazard, a Gamma
 frailty integrates out of a group's likelihood in closed form, and the same
-conjugacy gives each group's posterior frailty in closed form -- so prediction
-comes in two flavours:
+conjugacy gives each group's posterior frailty in closed form (a log-normal
+frailty's are computed by quadrature) -- so prediction comes in two flavours:
 
 * **marginal** (population-averaged), integrating the frailty out --
-  ``S(t \\mid Z) = (1 + \\theta\\, e^{\\beta'Z} H_0(t))^{-1/\\theta}`` -- the
-  right curve for a new unit from an unknown group; and
+  ``S(t \\mid Z) = (1 + \\theta\\, e^{\\beta'Z} H_0(t))^{-1/\\theta}`` for the
+  gamma frailty -- the right curve for a new unit from an unknown group; and
 * **conditional**, on a supplied frailty value or on an *observed* group's
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
@@ -50,6 +51,7 @@ from ..regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+from .families import frailty_cv2, kendall_tau, lognormal_log_integral
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -219,7 +221,10 @@ class FrailtyModel(
         H0 = self.dist.Hf(x, *self.dist_params)
         s = eta * H0
         u = self._resolve_frailty(group, frailty)
-        if u is None:
+        if u is None and self.family == "lognormal":
+            # -log of the frailty's Laplace transform at s
+            out = -lognormal_log_integral(0.0, s, self.theta)
+        elif u is None:
             if self.theta < 1e-12:
                 # theta -> 0 is the no-frailty PH limit
                 # log(1 + theta s)/theta -> s; dividing by a zero theta
@@ -242,7 +247,8 @@ class FrailtyModel(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
     ) -> np.ndarray:
         """CDF / failure function."""
-        return 1.0 - self.sf(x, Z, group=group, frailty=frailty)
+        # 1 - exp(-H) without the cancellation of 1 - sf for a small H
+        return -np.expm1(-self.Hf(x, Z, group=group, frailty=frailty))
 
     def hf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
@@ -253,6 +259,14 @@ class FrailtyModel(
         H0 = self.dist.Hf(x, *self.dist_params)
         h0 = self.dist.hf(x, *self.dist_params)
         u = self._resolve_frailty(group, frailty)
+        if u is None and self.family == "lognormal":
+            # eta h0 times the mean frailty of the survivors to t
+            s = eta * H0
+            mean_u = np.exp(
+                lognormal_log_integral(1.0, s, self.theta)
+                - lognormal_log_integral(0.0, s, self.theta)
+            )
+            return eta * h0 * mean_u
         if u is None:
             return eta * h0 / (1.0 + self.theta * eta * H0)
         return u * eta * h0
@@ -269,8 +283,43 @@ class FrailtyModel(
 
     @property
     def frailty_variance(self) -> float:
-        """The estimated frailty variance :math:`\\hat\\theta`."""
-        return float(self.theta)
+        """
+        The variance of the frailty scaled to mean 1, :math:`\\mathrm{Var}(u)
+        / E(u)^2`, which compares the families: :math:`\\hat\\theta` for the
+        gamma frailty (mean 1, variance ``theta``) and
+        :math:`e^{\\hat\\theta} - 1` for the log-normal (``theta`` the
+        variance of :math:`\\log u`). A baseline whose scale multiplies the
+        hazard (Weibull, Exponential) absorbs the frailty's mean, so this
+        is the spread the data identify.
+
+        Examples
+        --------
+        >>> from surpyval import FrailtyModel
+        >>> model = FrailtyModel()
+        >>> model.family, model.theta = "lognormal", 0.5
+        >>> round(model.frailty_variance, 4)
+        0.6487
+        """
+        return frailty_cv2(self.family, float(self.theta))
+
+    @property
+    def kendall_tau(self) -> float:
+        """
+        Kendall's tau between the event times of two units of one group
+        (no covariates, no censoring): the within-group dependence the
+        frailty induces, on the same scale for every family (Hougaard 2000,
+        section 4.2). ``theta / (theta + 2)`` for the gamma frailty; by
+        quadrature for the log-normal.
+
+        Examples
+        --------
+        >>> from surpyval import FrailtyModel
+        >>> model = FrailtyModel()
+        >>> model.theta = 0.5
+        >>> model.kendall_tau
+        0.2
+        """
+        return kendall_tau(self.family, float(self.theta))
 
     @property
     def aliased(self) -> np.ndarray:
@@ -461,6 +510,18 @@ class FrailtyModel(
         table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
         return table
 
+    def _family_line(self) -> str:
+        if self.family == "lognormal":
+            return (
+                "lognormal (log u ~ N(0, theta)); Var(u)/E(u)^2 = "
+                "{:.4g}, Kendall's tau = {:.4g}".format(
+                    self.frailty_variance, self.kendall_tau
+                )
+            )
+        return "gamma (mean 1, variance theta); Kendall's tau = {:.4g}".format(
+            self.kendall_tau
+        )
+
     def __repr__(self) -> str:
         from .._summary import coefficient_repr, format_table
 
@@ -468,7 +529,7 @@ class FrailtyModel(
             "Shared-Frailty Regression SurPyval Model"
             "\n========================================"
             f"\nDistribution        : {self.dist.name}"
-            f"\nFrailty             : {self.family}"
+            f"\nFrailty             : {self._family_line()}"
             f"\nGroups              : {self.n_groups}"
             f"  (observations {self.n_obs}, events {self.n_events})"
         )

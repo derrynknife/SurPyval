@@ -1,24 +1,31 @@
 """
-Fitter for shared-frailty proportional-hazards models (Gamma frailty).
+Fitter for shared-frailty proportional-hazards models.
 
 The frailty enters as a random multiplier on the hazard shared within a group,
 so the conditional cumulative hazard of an observation is ``u * eta * H0(t)``
-with ``eta = exp(beta'Z)``. A Gamma frailty of mean 1 and variance ``theta``
-integrates out of a group's likelihood in closed form. With ``D`` the number
-of events in a group and ``H`` the sum of ``eta * H0`` over its observations,
-the group log-likelihood is
+with ``eta = exp(beta'Z)``. Integrating the frailty out of a group's
+likelihood leaves, with ``D`` the number of events in the group and ``H`` the
+sum of ``eta * H0`` over its observations,
 
 .. math::
     \\sum_{\\text{events}} \\log(h_0 \\, \\eta)
+    + \\log \\int u^D e^{-u H} \\, dG_\\theta(u).
+
+A Gamma frailty of mean 1 and variance ``theta`` (the default family)
+integrates out in closed form,
+
+.. math::
     - \\tfrac{1}{\\theta}\\log\\theta - \\log\\Gamma(\\tfrac{1}{\\theta})
     + \\log\\Gamma(D + \\tfrac{1}{\\theta})
     - (D + \\tfrac{1}{\\theta}) \\log(H + \\tfrac{1}{\\theta}),
 
-and the posterior frailty is ``(D + 1/theta) / (H + 1/theta)``. Only observed
-(``c = 0``) and right-censored (``c = 1``) data are supported -- the closed
-form relies on that split. The ordinary parametric MLE is not touched; this
-module
-maximises its own marginal likelihood on a fresh optimiser.
+with posterior frailty ``(D + 1/theta) / (H + 1/theta)``. A log-normal
+frailty (``family="lognormal"``: ``u = exp(w)``, ``w ~ N(0, theta)``) has no
+closed form; its integral is computed by adaptive Gauss-Hermite quadrature
+(``families.py``). Only observed (``c = 0``) and right-censored (``c = 1``)
+data are supported -- the integral relies on that split. The ordinary
+parametric MLE is not touched; this module maximises its own marginal
+likelihood on a fresh optimiser.
 """
 
 import warnings
@@ -53,6 +60,11 @@ from .._fit_skeleton import (
 )
 from ..proportional_hazards.cox_ph import _strata_labels
 from ..regression_data import design_matrix_from_df
+from .families import (
+    check_family,
+    lognormal_log_integral,
+    lognormal_posterior_mean,
+)
 from .frailty_model import FrailtyModel
 
 
@@ -154,10 +166,15 @@ def _log_rising_ratio(
 
 
 def _group_frailty_ll(
-    D: npt.NDArray, H: npt.NDArray, theta: float, ops: Any = None
+    D: npt.NDArray,
+    H: npt.NDArray,
+    theta: float,
+    ops: Any = None,
+    family: str = "gamma",
 ) -> npt.NDArray:
     """
-    Each group's gamma-frailty term of the marginal log-likelihood,
+    Each group's frailty term of the marginal log-likelihood,
+    ``log E[u^D exp(-u H)]``. For the gamma frailty it is
 
     .. math::
         -\\tfrac{1}{\\theta}\\log\\theta - \\log\\Gamma(\\tfrac{1}{\\theta})
@@ -167,9 +184,13 @@ def _group_frailty_ll(
     rearranged so that it stays accurate as ``theta -> 0``: it equals
     ``log_rising_ratio(D, theta) - (D + 1/theta) log1p(H theta)``, which
     tends to ``-H`` -- the no-frailty (proportional-hazards) contribution.
-    ``ops`` as for ``FrailtyFitter._neg_ll_natural``.
+    The log-normal frailty's has no closed form and is computed by
+    quadrature (``families.lognormal_log_integral``); it tends to ``-H``
+    too. ``ops`` as for ``FrailtyFitter._neg_ll_natural``.
     """
     xp = (ops or _NUMPY).np
+    if family == "lognormal":
+        return lognormal_log_integral(D, H, theta, ops)
     if theta * max(xp.max(H), np.max(D), 1.0) ** 2 < _EPS:
         # theta is too small to change any group's term by more than
         # rounding (each correction to the no-frailty value -H is of order
@@ -244,11 +265,7 @@ class FrailtyFitter:
     """Configured fitter for a shared-frailty PH model on one distribution."""
 
     def __init__(self, name: str, dist: Any, family: str = "gamma") -> None:
-        if family != "gamma":
-            raise NotImplementedError(
-                "Only the 'gamma' frailty family is available; "
-                f"got {family!r}."
-            )
+        family = check_family(family)
         self.name = name
         self.dist = dist
         self.family = family
@@ -296,7 +313,7 @@ class FrailtyFitter:
         n_groups = inv.max() + 1
         D = np.bincount(inv, weights=w * event, minlength=n_groups)
         H = ops.group_sum(w * eta * H0, inv, n_groups)
-        ll = ll + xp.sum(_group_frailty_ll(D, H, theta, ops))
+        ll = ll + xp.sum(_group_frailty_ll(D, H, theta, ops, self.family))
         return -ll
 
     # -- fit ---------------------------------------------------------------
@@ -558,9 +575,12 @@ class FrailtyFitter:
         eta = np.exp(Zc @ beta) if n_beta else np.ones_like(x)
         D = np.bincount(inv, weights=w * (c == 0), minlength=n_groups)
         H = np.bincount(inv, weights=w * eta * H0, minlength=n_groups)
-        # (D + 1/theta) / (H + 1/theta), written to stay finite (and tend
-        # to 1) as theta -> 0
-        post = (1.0 + D * theta) / (1.0 + H * theta)
+        if self.family == "lognormal":
+            post = lognormal_posterior_mean(D, H, theta)
+        else:
+            # (D + 1/theta) / (H + 1/theta), written to stay finite (and
+            # tend to 1) as theta -> 0
+            post = (1.0 + D * theta) / (1.0 + H * theta)
 
         # Covariance of the natural parameters: the inverse of the exact
         # Hessian the check computed (#392), converted from the search

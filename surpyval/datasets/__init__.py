@@ -179,6 +179,38 @@ def load_heart_transplants() -> pd.DataFrame:
     return _read_csv("heart.csv")
 
 
+def load_kidney() -> pd.DataFrame:
+    """
+    Times to infection at the catheter insertion point of 38 kidney
+    patients on portable dialysis, from McGilchrist and Aisbett [16]_, as
+    R's ``survival::kidney``: two times per patient, the classic example
+    of a shared frailty (the patient).
+
+    ``id`` is the patient (the frailty group), ``time`` the time to
+    infection or censoring in days and ``status`` 1 for an infection and 0
+    for a censored time, so pass ``c = 1 - status``. The covariates are
+    ``age``, ``sex`` (1 male, 2 female) and ``disease`` (``Other``,
+    ``GN``, ``AN`` or ``PKD``); ``frail`` is the frailty estimate of the
+    original paper. 76 rows, 58 infections.
+
+    Examples
+    --------
+    >>> from surpyval import CoxPH
+    >>> from surpyval.datasets import load_kidney
+    >>> df = load_kidney()
+    >>> female = (df["sex"] == 2).astype(float).values
+    >>> model = CoxPH.fit(df["time"], female[:, None], c=1 - df["status"])
+    >>> model.params.round(4)
+    array([-0.8377])
+
+    References
+    ----------
+    .. [16] McGilchrist, C. A. and Aisbett, C. W. (1991). Regression with
+            frailty in survival analysis. Biometrics, 47(2), 461-466.
+    """
+    return _read_csv("kidney.csv")
+
+
 def load_lung() -> pd.DataFrame:
     """
     Data on the survival of patients with advanced lung cancer from [6]_.

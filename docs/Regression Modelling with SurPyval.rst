@@ -2936,6 +2936,52 @@ frail groups fail first, so the marginal hazard ratio starts at
     assert np.isclose(_hr[0], np.exp(model.beta[0]), rtol=0.01)
     assert np.all(np.diff(_hr) < 0), _hr
 
+The frailty is Gamma-distributed by default. ``family="lognormal"`` takes a
+log-normal frailty instead, :math:`u = e^{w}` with :math:`w` normal of mean 0
+and variance ``theta``, as R's ``frailtypack`` and ``coxme`` define it (so
+``theta`` is then the variance of :math:`\log u`). It has no closed form, and
+each group's likelihood is integrated by adaptive Gauss-Hermite quadrature.
+The two families put different weight in the tail of the frailty, so they can
+disagree about how much of the spread is between groups; fitting both and
+comparing their AIC is the usual check. ``frailty_variance`` (the variance of
+the frailty scaled to mean 1) and ``kendall_tau`` (the dependence it induces
+between two units of one group) are on one scale for both. On the kidney
+catheter data (two infection times for each of 38 patients):
+
+.. jupyter-execute::
+
+    from surpyval import Frailty, Weibull
+    from surpyval.datasets import load_kidney
+
+    kidney = load_kidney()
+    kidney['female'] = (kidney['sex'] == 2).astype(float)
+    kidney['censored'] = 1 - kidney['status']
+    fits = {
+        family: Frailty(Weibull, family=family).fit_from_df(
+            kidney, x_col='time', c_col='censored', group_col='id',
+            Z_cols=['age', 'female'])
+        for family in ('gamma', 'lognormal')
+    }
+    for family, fit in fits.items():
+        print('%-9s theta %.3f  Var(u)/E(u)^2 %.3f  tau %.3f  AIC %.2f  '
+              'female %.2f' % (family, fit.theta, fit.frailty_variance,
+                               fit.kendall_tau, fit.aic(), fit.beta[1]))
+
+The gamma frailty fits slightly better (its AIC is about 1.7 lower: weak
+evidence), with the same within-patient dependence (Kendall's tau of about
+0.2) but a larger effect of sex. Women's lower infection rate holds under
+either family, so that conclusion does not depend on the choice; its size
+does.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _aic = {f: m.aic() for f, m in fits.items()}
+    assert 1.5 < _aic['lognormal'] - _aic['gamma'] < 1.9, _aic
+    assert all(abs(m.kendall_tau - 0.2) < 0.01 for m in fits.values())
+    assert fits['gamma'].beta[1] < fits['lognormal'].beta[1] < -1.5
+
 ``fit_from_df`` names the columns instead (``group_col`` for the groups, and
 ``Z_cols`` or a ``formula`` for the covariates), and the fitted model then
 predicts from a DataFrame:
@@ -2951,10 +2997,11 @@ predicts from a DataFrame:
           by_lot.sf([10.0], [0.0], group='L00'))
 
 Omit ``Z`` entirely for a pure random-effects survival model (grouped data, no
-covariates). Only Gamma frailty is available for now (``Frailty(dist)`` takes
-any baseline distribution; ``WeibullFrailty``, ``ExponentialFrailty``,
-``LogNormalFrailty`` and ``GammaFrailty`` are pre-built), on observed and
-right-censored data, and at least two groups are required. When the data show
+covariates). ``Frailty(dist)`` takes any baseline distribution
+(``WeibullFrailty``, ``ExponentialFrailty``, ``LogNormalFrailty`` and
+``GammaFrailty`` are pre-built, each with a Gamma frailty -- the name is the
+baseline's), on observed and right-censored data, and at least two groups are
+required. When the data show
 little between-group variation the estimate of ``theta`` goes to its boundary
 at zero, and the frailty fit then coincides with the ordinary ``WeibullPH`` fit
 (the same baseline, coefficients and likelihood). The frailty model has the

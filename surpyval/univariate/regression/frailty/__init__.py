@@ -18,16 +18,22 @@ def Frailty(distribution: Any, family: str = "gamma") -> FrailtyFitter:
     A shared-frailty model adds a random hazard multiplier shared within a
     group (a lot, site, or repairable unit) on top of a proportional-hazards
     baseline, capturing unobserved between-group heterogeneity and the
-    within-group correlation it induces. The frailty family is Gamma (the only
-    one currently available), whose closed-form marginal likelihood keeps the
-    fit fast.
+    within-group correlation it induces. The frailty is Gamma by default,
+    whose closed-form marginal likelihood keeps the fit fast, or log-normal
+    (``family="lognormal"``), integrated out by adaptive Gauss-Hermite
+    quadrature.
 
     Parameters
     ----------
     distribution : ParametricFitter
         A surpyval parametric distribution (e.g. ``Weibull``, ``Exponential``).
     family : str, optional
-        The frailty distribution. Only ``"gamma"`` is currently supported.
+        The frailty distribution: ``"gamma"`` (the default), mean 1 and
+        variance ``theta``; or ``"lognormal"``, ``u = exp(w)`` with ``w``
+        normal of mean 0 and variance ``theta``, the parameterisation of
+        R's ``frailtypack`` (``RandDist = "LogN"``) and ``coxme``.
+        ``frailty_variance`` (``Var(u) / E(u)^2``) and ``kendall_tau``
+        compare the two; so does ``aic()``.
 
     Returns
     -------
@@ -47,6 +53,18 @@ def Frailty(distribution: Any, family: str = "gamma") -> FrailtyFitter:
     array([0.829])
     >>> model.n_groups
     20
+
+    A log-normal frailty, on the kidney catheter data (two infection times
+    per patient):
+
+    >>> from surpyval.datasets import load_kidney
+    >>> df = load_kidney()
+    >>> Z = np.column_stack([df["age"], df["sex"] == 2])
+    >>> lognormal = Frailty(Weibull, family="lognormal").fit(
+    ...     df["time"], Z=Z, c=1 - df["status"], groups=df["id"]
+    ... )
+    >>> round(lognormal.theta, 3), round(lognormal.kendall_tau, 3)
+    (0.593, 0.196)
     """
     return FrailtyFitter.create(distribution, family)
 

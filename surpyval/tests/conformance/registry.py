@@ -1047,6 +1047,28 @@ def _frailty_family():
                 intercept=("Proportional Hazard", base) in ORIGIN_MAPS,
             )
         )
+    # The log-normal frailty (#343), whose group integral is by quadrature.
+    lognormal = sp.Frailty(sp.Weibull, family="lognormal")
+    out.append(
+        replace(
+            out[0],
+            name="WeibullFrailty[lognormal]",
+            fitters=(),
+            fit=_fit(lognormal),
+            paths={
+                "fit_from_df": lambda d: lognormal.fit_from_df(
+                    pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                        x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                    ),
+                    x_col="x",
+                    group_col="g",
+                    Z_cols=["z0", "z1"],
+                    c_col="c",
+                    n_col="n",
+                )
+            },
+        )
+    )
     return out
 
 

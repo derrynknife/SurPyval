@@ -1,0 +1,40 @@
+{
+  "generator": "scripts/reference/reference_r_frailty.R",
+  "R": "R version 4.3.3 (2024-02-29)",
+  "references": {
+    "kidney_lognormal_weibull": {
+      "fixture": "kidney",
+      "software": "R lme4",
+      "version": "1.1.35.1",
+      "call": "glmer(status ~ age + female + (1 | id) + offset(shape * log(time)), family = poisson, nAGQ = 25), profiled over shape",
+      "settings": {
+        "model": "weibull baseline, log-normal frailty, covariates age and female = (sex == 2)",
+        "frailty": "u = exp(w), w ~ N(0, theta)",
+        "loglik": "full log-likelihood, logLik - sum(status) (see top)"
+      },
+      "values": {
+        "dist_params": [50.4038993954328, 1.17756613140497],
+        "beta": [0.00595966513013801, -1.62847966207382],
+        "theta": 0.592637338722549,
+        "loglik": -333.030184026787
+      }
+    },
+    "kidney_lognormal_exponential": {
+      "fixture": "kidney",
+      "software": "R lme4",
+      "version": "1.1.35.1",
+      "call": "glmer(status ~ age + female + (1 | id) + offset(shape * log(time)), family = poisson, nAGQ = 25), profiled over shape",
+      "settings": {
+        "model": "exponential baseline, log-normal frailty, covariates age and female = (sex == 2)",
+        "frailty": "u = exp(w), w ~ N(0, theta)",
+        "loglik": "full log-likelihood, logLik - sum(status) (see top)"
+      },
+      "values": {
+        "dist_params": 0.0196849888258106,
+        "beta": [0.0044743786092278, -1.35123178537762],
+        "theta": 0.330470161749112,
+        "loglik": -333.745080284292
+      }
+    }
+  }
+}

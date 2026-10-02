@@ -28,8 +28,17 @@ Factory::
 Pre-built instances: ``ExponentialFrailty``, ``WeibullFrailty``,
 ``LogNormalFrailty``, ``GammaFrailty``.
 
-The frailty is Gamma-distributed (the only family currently available),
-so it integrates out of each group's likelihood in closed form. Only
+The frailty is Gamma-distributed by default, so it integrates out of
+each group's likelihood in closed form. ``Frailty(dist,
+family="lognormal")`` takes a log-normal frailty instead, :math:`w =
+e^{v}` with :math:`v \sim N(0, \theta)` (the parameterisation of R's
+``frailtypack`` and ``coxme``: ``theta`` is then the variance of the log
+frailty, and the median frailty is 1), whose group integrals are computed
+by adaptive Gauss-Hermite quadrature with 30 nodes (accurate to about
+:math:`10^{-10}` in each group's log-likelihood for :math:`\theta \le
+1`, :math:`10^{-7}` at 2 and :math:`10^{-5}` at 5). ``frailty_variance``
+(the variance of the frailty scaled to mean 1) and ``kendall_tau`` put the
+two families on one scale. Only
 observed and right-censored data are supported, and at least two groups
 are needed; a row with a missing group label (``None``, ``NaN``) is dropped,
 with a warning, and a missing ``group=`` at prediction gives ``nan``. The fitted model predicts the *marginal* (population) curve

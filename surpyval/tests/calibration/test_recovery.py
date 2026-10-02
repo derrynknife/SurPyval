@@ -242,6 +242,30 @@ def test_frailty_recovery():
     check_bias(est, truth, "WeibullFrailty", standard_errors=se)
 
 
+def test_lognormal_frailty_recovery():
+    # As above with a log-normal frailty (#343): u = exp(w), w ~ N(0, 0.5),
+    # so the baseline is that of a group of median frailty.
+    rng = np.random.default_rng(343)
+    groups = np.repeat(np.arange(60), 5)
+    truth = np.array([10.0, 1.5, 0.6, 0.5])
+    fitter = sp.Frailty(sp.Weibull, family="lognormal")
+    reps = 300
+    est, se = np.empty((reps, 4)), np.empty((reps, 4))
+    for r in range(reps):
+        u = np.exp(rng.normal(0.0, np.sqrt(0.5), 60))[groups]
+        Z = rng.binomial(1, 0.5, (groups.size, 1))
+        H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
+        t = 10.0 * H ** (1 / 1.5)
+        x, c = _censored(t, rng, 30.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = fitter.fit(x, Z=Z, c=c, groups=groups)
+        est[r] = model.params
+        errors = model.standard_errors()
+        se[r] = [errors[p] for p in model.parameter_names]
+    check_bias(est, truth, "WeibullFrailty[lognormal]", standard_errors=se)
+
+
 # --- renewal models ---------------------------------------------------------
 
 

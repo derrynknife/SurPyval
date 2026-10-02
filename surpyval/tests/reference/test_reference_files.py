@@ -20,6 +20,7 @@ EXPECTED_SOURCES = {
     "r_riskregression",
     "r_npsurv",
     "r_fitdistrplus",
+    "r_frailty",
     "py_lifelines",
     "py_sksurv",
 }
