@@ -375,3 +375,94 @@ def test_decoder_errors_and_results_unchanged(record):
         NON_FINITE_KEY: record,
     }
     _check_decoding(document)
+
+
+# --- the schema version from one walk (performance sweep) -----------------
+
+
+def _old_required_schema(model_dict):
+    # The four walks of every value, item by item, as they were
+    def walk(value, test):
+        if isinstance(value, dict):
+            return test(value) or any(walk(v, test) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(walk(v, test) for v in value)
+        return False
+
+    def center(d):
+        c = d.get("center")
+        return isinstance(c, (list, tuple)) and any(v != 0 for v in c)
+
+    def formula(d):
+        meta = d.get("formula_meta")
+        return isinstance(meta, dict) and "factor_levels" not in meta
+
+    def support(d):
+        return any(d.get(k) is not None for k in ("support", "band_n"))
+
+    tests = (lambda d: NON_FINITE_KEY in d, formula, support, center)
+    return 2 if any(walk(model_dict, t) for t in tests) else 1
+
+
+@pytest.mark.parametrize("case", cases_for("serialise"))
+def test_registered_models_schema_unchanged(case):
+    model = fitted(case)
+    try:
+        document = model.to_dict(with_data=True)
+    except TypeError:
+        document = model.to_dict()
+    assert ser.required_schema(document) == _old_required_schema(document)
+
+
+@pytest.mark.parametrize(
+    "document",
+    [
+        {"x": [1.0, 2.0]},
+        {"a": [[1.0, {"center": [0.0, 3.0]}]]},
+        {"a": ({"support": None, "band_n": [1]},)},
+        {"m": [{"formula_meta": {"terms": []}}]},
+        {"m": [{"formula_meta": {"factor_levels": {}}}]},
+        {"t": [[1.0, None], [2.0, 3.0]], "center": [0.0]},
+        {"deep": [[[{"non_finite": {}}]]]},
+    ],
+)
+def test_edge_documents_schema_unchanged(document):
+    assert ser.required_schema(document) == _old_required_schema(document)
+
+
+def test_a_list_of_numbers_is_walked_once():
+    # The four checks each walked a model's data value by value: 80% of
+    # saving a Kaplan-Meier model of 1e5 rows with its data.
+    passes = []
+
+    class Counted(list):
+        def __iter__(self):
+            passes.append(1)
+            return super().__iter__()
+
+    ser.required_schema({"x": Counted([1.0] * 1000), "c": [0] * 1000})
+    assert len(passes) <= 1
+
+
+def test_a_cox_model_is_read_without_autograd_arrays(monkeypatch):
+    # autograd's ``array`` inspects a list item by item for boxes: 90% of
+    # reading a Cox model of 1e5 rows
+    import autograd.numpy as anp
+
+    rng = np.random.default_rng(0)
+    Z = rng.normal(size=(500, 2))
+    x = rng.exponential(size=500) * np.exp(-Z[:, 0])
+    model = surpyval.CoxPH.fit(x=x, Z=Z, c=rng.choice([0, 1], 500))
+    text = model.to_json()
+    array = anp.array
+
+    def refusing(value, *args, **kwargs):
+        assert not (isinstance(value, list) and len(value) > 100)
+        return array(value, *args, **kwargs)
+
+    monkeypatch.setattr(anp, "array", refusing)
+    restored = surpyval.from_json(text)
+    for name in ("x", "r", "d", "h0", "H0", "beta", "center"):
+        np.testing.assert_array_equal(
+            getattr(restored, name), getattr(model, name)
+        )

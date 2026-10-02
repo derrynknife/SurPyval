@@ -269,32 +269,12 @@ def xcnt_sort(
     x, c, n, t : arrays
         The same arrays, reordered together.
     """
-    idx_c = np.argsort(c, kind="stable")
-    x = x[idx_c]
-    c = c[idx_c]
-    n = n[idx_c]
-    t = t[idx_c]
-
-    if t.ndim == 1:
-        idx = np.argsort(t, kind="stable")
-    else:
-        idx = np.argsort(t.min(axis=1), kind="stable")
-    x = x[idx]
-    c = c[idx]
-    n = n[idx]
-    t = t[idx]
-
-    if x.ndim == 1:
-        idx = np.argsort(x, kind="stable")
-    else:
-        idx = np.argsort(x.mean(axis=1), kind="stable")
-
-    x = x[idx]
-    c = c[idx]
-    n = n[idx]
-    t = t[idx]
-
-    return x, c, n, t
+    # One stable sort on the three keys (the last is the primary), the
+    # order three stable sorts, by c, then t, then x, gave.
+    t_key = t if t.ndim == 1 else t.min(axis=1)
+    x_key = x if x.ndim == 1 else x.mean(axis=1)
+    idx = np.lexsort((c, t_key, x_key))
+    return x[idx], c[idx], n[idx], t[idx]
 
 
 def fsli_handler(
@@ -1378,8 +1358,16 @@ def xcnt_to_xrd(
     >>> d
     array([1, 1, 1, 1, 1])
     """
-    x, c, n, t = xcnt_handler(x, c, n, t, **kwargs)
+    return _handled_xcnt_to_xrd(*xcnt_handler(x, c, n, t, **kwargs))
 
+
+def _handled_xcnt_to_xrd(
+    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray, t: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
+    """:func:`xcnt_to_xrd` of data that ``xcnt_handler`` has already
+    validated, grouped and sorted (which it leaves as they are): a fit
+    that has handled its data need not pay for it again, a third of a
+    Kaplan-Meier fit."""
     if np.isfinite(t[:, 1]).any():
         raise ValueError("xrd format can't be used right truncated data")
 

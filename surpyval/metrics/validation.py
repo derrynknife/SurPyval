@@ -432,12 +432,17 @@ def auc_td(
             continue
         rc = r[cases]
         wc = w[cases]
-        rk = r[controls]
-        num = 0.0
-        for ri, wi in zip(rc, wc):
-            num += wi * (
-                np.count_nonzero(ri > rk) + 0.5 * np.count_nonzero(ri == rk)
-            )
+        # Each case's controls below it and tied with it, from the sorted
+        # controls (a comparison with every control was O(cases x
+        # controls): 15 s at 1e5 rows). NaN sorts last, so it is counted
+        # as neither, as a comparison counts it; a NaN case counts none.
+        rk = np.sort(r[controls])
+        below = np.searchsorted(rk, rc, side="left")
+        tied = np.searchsorted(rk, rc, side="right") - below
+        terms = wc * (below + 0.5 * tied)
+        terms[np.isnan(rc)] = 0.0
+        # Summed in order, as the loop did
+        num = float(np.cumsum(terms)[-1])
         den = wc.sum() * controls.sum()
         if den > 0:
             auc[k] = num / den

@@ -790,13 +790,30 @@ class ParametricFitter(UnivariateDataFrameMixin):
 
         lo_finite = np.isfinite(xl)
         hi_finite = np.isfinite(xr)
+        # A lower bound at or below the support's lower edge (a ``tl`` of
+        # 0 for a lifetime distribution) is a CDF of exactly 0, so it is
+        # taken as 0 rather than evaluated: its value is the same, but
+        # the formula's second derivative there is nan (``0 * log 0`` in
+        # a Weibull's), which sent the fit's covariance to the numerical
+        # Hessian, 45% of a left-truncated Weibull fit at 1e5 rows.
+        lo_evaluated = lo_finite
+        stand_in = 1.0
+        if not self.discrete:
+            edge, top = self._support_edges(*dist_params)
+            if np.isfinite(edge):
+                lo_evaluated = lo_finite & (xl - _raw(gamma) > edge)
+                # Inside the support, should no bound be left to stand in
+                stand_in = (
+                    0.5 * (edge + top) if np.isfinite(top) else edge + 1.0
+                ) + float(_raw(gamma))
 
         # ``xl`` and ``xr`` are data, never traced, so this substitution
         # is invisible to autograd -- it only changes what the CDF is
         # asked to evaluate.
-        present = np.concatenate([xl[lo_finite], xr[hi_finite]])
-        stand_in = float(present[0]) if present.size else 1.0
-        xl_safe = np.where(lo_finite, xl, stand_in)
+        present = np.concatenate([xl[lo_evaluated], xr[hi_finite]])
+        if present.size:
+            stand_in = float(present[0])
+        xl_safe = np.where(lo_evaluated, xl, stand_in)
         xr_safe = np.where(hi_finite, xr, stand_in)
 
         upper = np.where(
@@ -806,7 +823,11 @@ class ParametricFitter(UnivariateDataFrameMixin):
         )
         lower = np.where(
             lo_finite,
-            f0 + (p - f0) * self.ff(xl_safe - gamma, *dist_params),
+            f0
+            + (p - f0)
+            * np.where(
+                lo_evaluated, self.ff(xl_safe - gamma, *dist_params), 0.0
+            ),
             0.0,
         )
         window = np.maximum(upper - lower, 0.0)

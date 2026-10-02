@@ -67,3 +67,66 @@ def test_second_derivatives_keep_their_shapes():
     assert h.shape == (2, 2)
     assert np.all(np.isfinite(h))
     assert h[0, 1] == pytest.approx(h[1, 0], rel=1e-3, abs=1e-8)
+
+
+# -- each side of an incomplete function only where it is needed ----------
+
+
+def _incomplete_logs():
+    import surpyval.utils.autograd_gamma_compat as agc
+
+    rng = np.random.default_rng(5)
+    n = 4000
+    a = np.exp(rng.uniform(-6, 6, n))
+    b = np.exp(rng.uniform(-6, 6, n))
+    x = np.exp(rng.uniform(-12, 3, n))
+    u = np.r_[rng.uniform(0, 1, n - 5), 0.0, 1.0, 1.5, np.nan, 1e-300]
+    a[:4] = np.nan, 0.0, 1e-300, 1e300
+    x[4:8] = np.nan, 0.0, 1e-300, 800.0
+    with np.errstate(all="ignore"):
+        return _logs(agc, a, b, x, u)
+
+
+def _logs(agc, a, b, x, u):
+    return [
+        agc._gammaincln_raw(a, x),
+        agc._gammainccln_raw(a, x),
+        agc._beta_logs(a, b, u, upper=False),
+        agc._beta_logs(a, b, u, upper=True),
+        np.array(
+            [
+                agc._gammainccln_raw(2.0, 1e-4),
+                agc._gammaincln_raw(3.0, 40.0),
+                agc._beta_logs(2.0, 3.0, 0.9999, True),
+                agc._beta_logs(2.0, 3.0, 1e-4, False),
+            ]
+        ),
+    ]
+
+
+def test_the_complement_is_computed_where_it_is_used(monkeypatch):
+    # log Q(a, x) used P(a, x) only where P < 1e-3 (log1p(-P)), but both
+    # were computed everywhere, each as costly as the other: 37% of a
+    # censored Gamma fit at 1e5 rows. Now the other side is computed only
+    # where it can be that small, and every value is the same to the bit
+    # as with both sides everywhere.
+    import surpyval.utils.autograd_gamma_compat as agc
+
+    new = _incomplete_logs()
+    monkeypatch.setattr(agc, "_NEAR_ONE", -np.inf, raising=False)
+    both = _incomplete_logs()
+    for got, expected in zip(new, both):
+        np.testing.assert_array_equal(got, expected)
+
+    monkeypatch.undo()
+    sizes = []
+    gammainc = agc._sc_gammainc
+
+    def counted(a, x):
+        sizes.append(np.size(x))
+        return gammainc(a, x)
+
+    monkeypatch.setattr(agc, "_sc_gammainc", counted)
+    x = np.linspace(0.5, 20.0, 1000)
+    agc._gammainccln_raw(2.5, x)
+    assert sum(sizes) < 10

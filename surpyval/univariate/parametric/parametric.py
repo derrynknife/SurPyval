@@ -70,6 +70,9 @@ _LR_NOISE = 1e-6
 # is a failure; a target beyond a data-derived edge (the Uniform's) is not
 # reachable, and reads as this deviance, above any critical value.
 _LR_UNREACHABLE = 1e6
+# The most likelihoods a model keeps for its likelihood-ratio searches
+# (``_lr_raw_neg_ll``; a 50-point Weibull band asks for 16,000).
+_LR_MEMO_SIZE = 100_000
 
 # The values of ``Parametric.maximum``: whether the log-likelihood a model
 # reports is at a maximum (principles 12 and 13). The first three are what
@@ -1216,15 +1219,32 @@ class Parametric(
         return nll
 
     def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
+        # Kept by the parameters' bytes: the searches ask for the same
+        # point again (SLSQP's function and gradient calls, a result
+        # checked after the search), a quarter of a band's evaluations,
+        # each O(n).
+        key = np.asarray(theta, dtype=float).tobytes()
+        memo = self.__dict__.get("_lr_nll_memo")
+        if memo is None or memo[0] is not self.surv_data:
+            memo = (self.surv_data, {})
+            self.__dict__["_lr_nll_memo"] = memo
+        kept: dict[bytes, float] = memo[1]
+        if key in kept:
+            return kept[key]
         with np.errstate(all="ignore"):
             lean = self._lr_lean_data()
             if lean is not None:
-                return _lean_neg_ll(self.dist, lean, theta)
-            return float(
-                self.dist._neg_ll_func(
-                    self.surv_data, *theta, self.gamma, self.f0, self.p
+                nll = _lean_neg_ll(self.dist, lean, theta)
+            else:
+                nll = float(
+                    self.dist._neg_ll_func(
+                        self.surv_data, *theta, self.gamma, self.f0, self.p
+                    )
                 )
-            )
+        if len(kept) >= _LR_MEMO_SIZE:
+            kept.clear()
+        kept[key] = nll
+        return nll
 
     def _lr_plain(self) -> bool:
         """Whether the likelihood-ratio searches may evaluate the

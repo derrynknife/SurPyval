@@ -8,7 +8,7 @@ import numpy.typing as npt
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
-from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
+from surpyval.utils import _handled_xcnt_to_xrd, xcnt_handler, xrd_handler
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 
 
@@ -305,7 +305,9 @@ class NonParametricFitter(UnivariateDataFrameMixin):
                         self.how, " or ".join(unsupported)
                     )
                 )
-            x, r, d = xcnt_to_xrd(x, c, n, t)
+            # The data are handled (above): converted without handling
+            # them again
+            x, r, d = _handled_xcnt_to_xrd(x, c, n, t)
             estimator = self.how
 
         if set_lower_limit is not None:
