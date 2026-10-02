@@ -326,3 +326,20 @@ def test_560_truncated_fit_is_a_verified_maximum(kind):
     assert coded.maximum == explicit.maximum == "verified"
     np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-6)
     np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-6)
+
+
+def test_a_point_mass_component_warns_once():
+    # A component collapsed onto a point mass has no finite maximum, which
+    # is also why EM ran to its iteration limit: one warning, "No finite
+    # maximum", where the fit used to give that one and "did not reach a
+    # verified maximum" as well (principle 22).
+    x = np.r_[np.full(10, 3.0), np.linspace(20.0, 40.0, 10)]
+    n = np.ones(20, int)
+    n[[2, 15]] = 2
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = sp.MixtureModel.fit(x, n=n, dist=sp.Weibull)
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1, messages
+    assert messages[0].startswith("No finite maximum"), messages
+    assert model.maximum == "no finite maximum"

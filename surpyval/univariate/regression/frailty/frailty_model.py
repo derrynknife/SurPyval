@@ -44,7 +44,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.deprecation import RenamedAttribute
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
     BOUNDS,
     check_option,
@@ -618,7 +618,7 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
             "n_events_weighted": float(self.n_events_weighted),
             "n_obs_weighted": float(self.n_obs_weighted),
             "_neg_ll": to_native(self._neg_ll),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()

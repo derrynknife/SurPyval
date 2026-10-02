@@ -10,7 +10,7 @@ import numpy.typing as npt
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import ic_sample_size
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 
 # Margin probabilities are kept strictly inside (0, 1), as in copula.py.
@@ -299,7 +299,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             "params": self.params.tolist(),
             "how": self.method,
             "margins": margins,
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if self.copula.rotation:
             out["rotation"] = int(self.copula.rotation)

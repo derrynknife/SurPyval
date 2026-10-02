@@ -43,7 +43,11 @@ from surpyval.utils import (
     validate_fine_gray_inputs,
 )
 from surpyval.utils.ipcw import step_at as _step
-from surpyval.utils.no_maximum import combined_maximum, restored_maximum
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    maximum_entry,
+    restored_maximum,
+)
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
     check_option,
@@ -166,7 +170,7 @@ class CompetingRisksProportionalHazards(
             "x": np.asarray(self.x, dtype=float).tolist(),
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if np.any(self.center):
             # A baseline at the covariate means (center=True) is stored,

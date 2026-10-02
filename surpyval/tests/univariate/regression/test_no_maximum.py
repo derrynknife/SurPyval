@@ -437,7 +437,7 @@ def test_cox_warns_on_monotone_likelihood():
     x = np.r_[np.full(10, 1.0), np.full(10, 5.0)] + rng.uniform(0, 0.1, 20)
     Z = np.r_[np.ones(10), np.zeros(10)]
     c = np.r_[np.zeros(10), np.ones(10)]
-    with pytest.warns(UserWarning, match="No finite maximum: the partial likelihood"):
+    with pytest.warns(UserWarning, match=MONOTONE):
         CoxPH.fit(x=x, Z=Z, c=c)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

@@ -21,6 +21,7 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.no_maximum import (
+    maximum_entry,
     restored_maximum,
     warn_no_maximum,
     warn_unverified,
@@ -203,7 +204,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             "m": int(self.m),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "w": np.asarray(self.w, dtype=float).tolist(),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading

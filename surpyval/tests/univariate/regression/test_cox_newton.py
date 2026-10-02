@@ -20,6 +20,8 @@ from surpyval import CompetingRisksProportionalHazards, CoxPH
 from surpyval.univariate.regression.proportional_hazards import cox_ph
 from surpyval.utils import validate_coxph
 
+MONOTONE = "No finite maximum: the partial likelihood"
+
 
 def _data(kind):
     """Deterministic data: ``x, Z, c, n, tl`` (``n`` and ``tl`` may be
@@ -216,7 +218,7 @@ def test_a_monotone_likelihood_still_warns():
     Z = np.column_stack(
         [(x < np.median(x)).astype(float), rng.normal(size=60)]
     )
-    with pytest.warns(UserWarning, match="No finite maximum: the partial likelihood") as w:
+    with pytest.warns(UserWarning, match=MONOTONE) as w:
         model = CoxPH.fit(x, Z, c, center=True)
     assert len(w) == 1
     assert w[0].filename == __file__

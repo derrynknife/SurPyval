@@ -30,7 +30,7 @@ from autograd import elementwise_grad
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
-    at_boundary_maximum,
+    verified_maximum,
     verify_or_polish,
 )
 from surpyval.utils.dataframe import (
@@ -912,12 +912,13 @@ class Copula:
     ) -> tuple[npt.NDArray, bool]:
         """``(theta, verified)``: the copula's parameters for the fitted
         margins, by Nelder-Mead in the unbounded space, and whether they
-        are a verified maximum (principle 13). Nelder-Mead's tolerances
-        are absolute, so an answer that is not verified is polished
-        (``verify_or_polish``, by central differences: the likelihood is
-        not written for autograd). A parameter on a closed bound of its
-        family (the AMH's ``theta = 1``) is a maximum there when the
-        likelihood does not rise off it (:meth:`_at_closed_bounds`)."""
+        are a verified maximum (principle 13; ``verified_maximum``, by
+        central differences: the likelihood is not written for autograd).
+        Nelder-Mead's tolerances are absolute, so an answer that is not
+        verified is polished (``verify_or_polish``). A parameter on a bound
+        of its family (the AMH's ``theta = 1``, a Clayton at its
+        independence end) is a maximum there when the likelihood does not
+        rise off it."""
         if not self.parameter_names:
             # (the independence copula: nothing to estimate)
             return onp.zeros(0), True
@@ -955,40 +956,19 @@ class Copula:
         n_obs = float(onp.sum(data.n))
         if not onp.isfinite(res.fun):
             return theta, False
-        if self._at_closed_bounds(dims, data, theta, n_obs):
-            return theta, True
-        with onp.errstate(all="ignore"):
-            res, verified = verify_or_polish(obj, res, n_obs, numerical=True)
-        return onp.asarray(to_bounded(res.x), dtype=float), verified
 
-    def _at_closed_bounds(
-        self, dims: list, data: Any, theta: npt.NDArray, n_obs: float
-    ) -> bool:
-        """Whether every parameter is on a closed bound of the family
-        (``closed_bounds``; the AMH's ``theta = 1``) and the likelihood is
-        at a maximum there: ``at_boundary_maximum``, moving each a
-        millionth of its distance closer to the bound, and ``1e-6`` off
-        it. The search's transform maps such a bound to infinity, where
-        no gradient can be checked."""
-        closed = getattr(self, "closed_bounds", ())
-        names = list(self.parameter_names)
-        if not closed or len(closed) != len(names):
-            return False
-
-        def fun(params: npt.NDArray) -> float:
+        def natural(params: npt.NDArray) -> float:
             return float(self.neg_ll(params, dims, data.n))
 
-        for j, name in enumerate(names):
-            if name not in closed:
-                return False
-            ends = [b for b in self.bounds[j] if b is not None]
-            bound = min(ends, key=lambda b: abs(b - theta[j]))
-            toward, away = (onp.array(theta, dtype=float) for _ in (0, 1))
-            toward[j] = bound + (theta[j] - bound) * 1e-6
-            away[j] = bound - 1e-6 * onp.sign(bound - theta[j] or bound)
-            if not at_boundary_maximum(fun, theta, toward, away, 1e-6, n_obs):
-                return False
-        return True
+        # A parameter on a bound of the family where the likelihood is
+        # highest (the AMH's theta = 1, a Clayton at its independence end)
+        # is checked there (``verified_maximum``).
+        if verified_maximum(natural, theta, self.bounds, n_obs):
+            return theta, True
+        with onp.errstate(all="ignore"):
+            res, _ = verify_or_polish(obj, res, n_obs, numerical=True)
+        theta = onp.asarray(to_bounded(res.x), dtype=float)
+        return theta, verified_maximum(natural, theta, self.bounds, n_obs)
 
     def _fit_joint(
         self,

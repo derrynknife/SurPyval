@@ -277,6 +277,85 @@ def at_boundary_maximum(
     return bool(flat and (f_away - f) / step / n_obs > -OPTIMUM_GTOL)
 
 
+def verified_maximum(
+    neg_ll: Callable[[npt.NDArray], Any],
+    mle: npt.ArrayLike,
+    bounds: Sequence[tuple[float | None, float | None]],
+    n_obs: float,
+) -> bool:
+    """Whether ``mle`` is a verified maximum of the likelihood whose
+    negative log is ``neg_ll``, a function of the natural parameters with
+    the given ``(lower, upper)`` ``bounds``, per observation (``n_obs``),
+    for a fit whose likelihood is not written for autograd.
+
+    A parameter on a bound of its space where the likelihood is highest
+    -- an ARA repair efficiency of 1, a Kijima ``q`` of 0, a copula at its
+    independence end -- is held out of the test (:func:`at_boundary_maximum`:
+    the likelihood the same a millionth of the way closer to the bound,
+    and not rising ``1e-6`` off it). The others must have a zero gradient
+    and a positive-definite Hessian (:func:`is_local_minimum`), by central
+    differences (:func:`numerical_derivatives`), with each searched as the
+    log of its distance from a one-sided bound, the logit between two, or
+    as it is.
+    """
+    x = np.asarray(mle, dtype=float)
+    if not np.all(np.isfinite(x)):
+        return False
+
+    def natural(v: Any) -> float:
+        return float(neg_ll(np.asarray(v, dtype=float)))
+
+    held = []
+    for j, (low, high) in enumerate(bounds):
+        for bound, inward in ((low, 1.0), (high, -1.0)):
+            if bound is None:
+                continue
+            toward, away = x.copy(), x.copy()
+            toward[j] = bound + (x[j] - bound) * 1e-6
+            away[j] = bound + inward * 1e-6
+            if at_boundary_maximum(natural, x, toward, away, 1e-6, n_obs):
+                held.append(j)
+                break
+    free = [j for j in range(x.size) if j not in held]
+    if not free:
+        return True
+    lows = [bounds[j][0] for j in free]
+    highs = [bounds[j][1] for j in free]
+
+    def to_natural(u: npt.NDArray) -> npt.NDArray:
+        out = np.array(u, dtype=float)
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                out[k] = low + (high - low) / (1.0 + np.exp(-u[k]))
+            elif low is not None:
+                out[k] = low + np.exp(u[k])
+            elif high is not None:
+                out[k] = high - np.exp(u[k])
+        return out
+
+    u0 = np.array(x[free], dtype=float)
+    with np.errstate(all="ignore"):
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                f = (u0[k] - low) / (high - low)
+                u0[k] = np.log(f) - np.log1p(-f)
+            elif low is not None:
+                u0[k] = np.log(u0[k] - low)
+            elif high is not None:
+                u0[k] = np.log(high - u0[k])
+    if not np.all(np.isfinite(u0)):
+        return False
+
+    def search(u: npt.NDArray) -> float:
+        full = x.copy()
+        full[free] = to_natural(np.asarray(u, dtype=float))
+        return natural(full)
+
+    jac, hess = numerical_derivatives(search, u0)
+    with np.errstate(all="ignore"):
+        return is_local_minimum(search, jac, hess, u0, obj_scale=n_obs)
+
+
 def _hessian_from_gradient(
     jac: Callable[..., Any],
     x: npt.NDArray,

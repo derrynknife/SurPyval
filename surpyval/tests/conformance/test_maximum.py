@@ -715,8 +715,9 @@ def _search_copula(model, data):
     """The two-stage (IFM) estimate: each margin's own fit, and the
     copula's likelihood in its parameters, the margins as fitted, in the
     space the fit searches (``_bounds_transforms``). A parameter on a
-    closed bound of its family (the AMH's ``theta = 1``) is checked there
-    instead: the likelihood flat towards it and not rising off it."""
+    bound of its family where the likelihood is highest (the AMH's
+    ``theta = 1``, a Clayton at its independence end) is checked there
+    instead (:func:`_on_bounds`), the others in the canonical space."""
     copula, fitted = model.copula, model.data
     out = []
     for d, margin in enumerate(model.margins):
@@ -735,21 +736,22 @@ def _search_copula(model, data):
     def neg_ll(params):
         return float(copula.neg_ll(params, dims, fitted.n))
 
-    closed = getattr(copula, "closed_bounds", ())
-    if closed and all(
-        any(b is not None and theta[j] == b for b in copula.bounds[j])
-        for j in range(theta.size)
-    ):
-        for j in range(theta.size):
-            bound = theta[j]
-            away = theta.copy()
-            away[j] = bound - 1e-6 * np.sign(bound)
-            rise = (neg_ll(theta) - neg_ll(away)) / 1e-6 / n_obs
-            assert rise < OPTIMUM_GTOL, (
-                f"{copula.parameter_names[j]} is on its bound {bound}, but "
-                f"the likelihood rises off it ({rise:.3g} per observation)"
-            )
-        return out
+    with np.errstate(all="ignore"):
+        held = _on_bounds(neg_ll, theta, list(copula.bounds), n_obs)
+    if held:
+        free = [j for j in range(theta.size) if j not in held]
+        if not free:
+            return out
+
+        def reduced(v):
+            full = list(theta)
+            for k, j in enumerate(free):
+                full[j] = v[k]
+            return neg_ll(np.array(full, dtype=float))
+
+        bounds = [copula.bounds[j] for j in free]
+        search = _canonical(reduced, theta[free], bounds, n_obs)
+        return out + [search._replace(name="copula")]
 
     def fun(phi):
         return copula.neg_ll(to_bounded(phi), dims, fitted.n)

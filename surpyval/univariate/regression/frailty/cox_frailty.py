@@ -53,6 +53,7 @@ from surpyval.serialisation import (
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import (
+    maximum_entry,
     restored_maximum,
     warn_no_maximum,
     warn_unverified,
@@ -833,7 +834,7 @@ class CoxFrailtyModel(_SharedFrailty):
             "loglik": to_native(self.loglik),
             "loglik_no_frailty": to_native(self.loglik_no_frailty),
             "data_summary": self._data_summary,
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()

@@ -13,7 +13,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import option_error
 
@@ -90,7 +90,7 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
-                "maximum": self.maximum,
+                **maximum_entry(self.maximum),
             }
         )
 

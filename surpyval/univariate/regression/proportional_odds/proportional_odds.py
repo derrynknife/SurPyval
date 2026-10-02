@@ -86,6 +86,7 @@ from surpyval.serialisation import (
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
+    maximum_entry,
     restored_maximum,
     warn_no_maximum,
     warn_unverified,
@@ -906,7 +907,7 @@ class ProportionalOddsModel(
             "G0": np.asarray(self.G0, dtype=float).tolist(),
             "log_likelihood": float(self.log_likelihood),
             "n_iter": int(self.n_iter),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if np.any(self._center()):
             out["center"] = self._center().tolist()

@@ -89,6 +89,7 @@ from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.no_maximum import (
     combined_maximum,
+    maximum_entry,
     restored_maximum,
     warn_unverified,
 )
@@ -591,7 +592,7 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
             "neg_ll": float(self._neg_ll),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if np.any(self.center):
             out["center"] = np.asarray(self.center, dtype=float).tolist()

@@ -4,9 +4,11 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
-from surpyval.recurrent._convergence import verified_maximum
 from surpyval.recurrent.inference import bic_sample_size
-from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.fitters import (
+    bounds_convert,
+    verified_maximum,
+)
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.no_maximum import warn_unverified
 

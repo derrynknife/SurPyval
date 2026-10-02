@@ -21,7 +21,7 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import alpha_ci_error, option_error
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -721,7 +721,7 @@ class RenewalModel(
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
             "how": self.how,
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
         }
         if getattr(self, "kijima_type", None) is not None:
             out["kijima_type"] = self.kijima_type

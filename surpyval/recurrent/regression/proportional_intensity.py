@@ -20,7 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import option_error
 
@@ -171,7 +171,7 @@ class ProportionalIntensityModel(
                 "param_names": list(self._rate_names),
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
-                "maximum": self.maximum,
+                **maximum_entry(self.maximum),
             }
         )
 

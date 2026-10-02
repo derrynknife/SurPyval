@@ -13,7 +13,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import CallableList, RenamedAttribute
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -353,7 +353,7 @@ class ParametricRegressionModel(
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
-        out["maximum"] = self.maximum
+        out.update(maximum_entry(self.maximum))
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()

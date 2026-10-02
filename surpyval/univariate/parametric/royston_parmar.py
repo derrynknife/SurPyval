@@ -54,7 +54,11 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.linalg import numerical_gradient, numerical_hessian
-from surpyval.utils.no_maximum import restored_maximum, warn_unverified
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
@@ -428,7 +432,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
-            "maximum": self.maximum,
+            **maximum_entry(self.maximum),
             "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:

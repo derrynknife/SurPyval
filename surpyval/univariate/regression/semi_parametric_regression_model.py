@@ -14,7 +14,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.no_maximum import restored_maximum
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -385,7 +385,7 @@ class SemiParametricRegressionModel(
             out["se"] = np.asarray(self.se, dtype=float).tolist()
         if getattr(self, "_neg_log_like", None) is not None:
             out["_neg_log_like"] = float(self._neg_log_like)
-        out["maximum"] = self.maximum
+        out.update(maximum_entry(self.maximum))
         # The printout's "Data" line (#508), so the restored model prints
         # the same; the data themselves are not stored.
         if self._data_repr():

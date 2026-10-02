@@ -70,6 +70,22 @@ def combined_maximum(states: Iterable[str]) -> str:
     return "not applicable"
 
 
+def maximum_entry(maximum: str) -> dict:
+    """``{"maximum": maximum}``, the entry a model's ``to_dict`` writes;
+    nothing for ``"unknown"``, so that a model restored from a dictionary
+    saved before the entry existed saves as it was read.
+
+    Examples
+    --------
+    >>> from surpyval.utils.no_maximum import maximum_entry
+    >>> maximum_entry("verified")
+    {'maximum': 'verified'}
+    >>> maximum_entry("unknown")
+    {}
+    """
+    return {} if maximum == "unknown" else {"maximum": maximum}
+
+
 def restored_maximum(model_dict: dict, default: str = "unknown") -> str:
     """The ``maximum`` a model's ``to_dict`` dictionary records, or
     ``default`` for one written before it was stored; a value that is not
