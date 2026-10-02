@@ -155,9 +155,10 @@ or `"decreasing"` only when `p_value < alpha_ci`, otherwise `"none"`;
 
 Renewal / imperfect-repair models: `GeneralizedRenewal`,
 `GeneralizedOneRenewal` and `ARA` take a **lifetime distribution** as `dist`
-(`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model**
-(`dist=CrowAMSAA`, `Duane`, `CoxLewis`); each refuses the other kind with an
-error naming the right fitter. Their `params` is the repair parameter (`q` or
+(`dist=sp.Weibull`), while `ARI` takes a **baseline intensity model** as
+`baseline` (`baseline=CrowAMSAA`, `Duane`, `CoxLewis`; its old name `dist=`
+warns until v0.23); each refuses the other kind with an error naming the
+right fitter. Their `params` is the repair parameter (`q` or
 `rho`) followed by the distribution's parameters, named by `parameter_names`.
 
 (Sub-namespaces like `surpyval.recurrent`, `surpyval.degradation`,

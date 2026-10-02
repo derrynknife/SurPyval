@@ -146,7 +146,7 @@ def test_mcf_at_risk_set_excludes_item_during_its_gap():
         (GeneralizedRenewal, dict(dist=Weibull, kijima="i")),
         (GeneralizedOneRenewal, dict(dist=Weibull)),
         (ARA, dict(dist=Weibull, m=1)),
-        (ARI, dict(dist=CrowAMSAA, m=1)),
+        (ARI, dict(baseline=CrowAMSAA, m=1)),
     ],
 )
 def test_renewal_models_reject_gapped_data(fitter, kwargs):

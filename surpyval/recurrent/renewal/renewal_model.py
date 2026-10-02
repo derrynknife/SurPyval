@@ -759,10 +759,13 @@ class RenewalModel(
         restoration = model_dict["restoration"]
 
         if family == "ARI":
-            # the ARI baseline is a recurrence intensity model
-            dist = intensity_dist_by_name(model_dict["dist"])
+            # The ARI baseline is a recurrence intensity model, stored
+            # under "dist" as every family's underlying model is (the file
+            # layout did not change when ARI's argument became
+            # ``baseline``, #507).
+            baseline = intensity_dist_by_name(model_dict["dist"])
             return fitter.fit_from_parameters(
-                params, restoration, m=model_dict["m"], dist=dist
+                params, restoration, m=model_dict["m"], baseline=baseline
             )
 
         import surpyval
