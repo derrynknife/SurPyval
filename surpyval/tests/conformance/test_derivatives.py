@@ -232,7 +232,8 @@ def _regression(model, label=""):
 def _spied(case, label=""):
     """The objective, point and derivatives the fitter passes through
     ``search_derivatives`` first (at its answer), from a refit."""
-    from surpyval.univariate.competing_risks.regression import fine_gray
+    # Fine-Gray and the frailty fits reach it through _fit_skeleton
+    # (judge_search), so one spy there sees every fit.
     from surpyval.univariate.regression import _fit_skeleton
 
     original = _fit_skeleton.search_derivatives
@@ -243,10 +244,7 @@ def _spied(case, label=""):
         calls.append((neg_ll, np.array(x, dtype=float), out))
         return out
 
-    with (
-        mock.patch.object(_fit_skeleton, "search_derivatives", spy),
-        mock.patch.object(fine_gray, "search_derivatives", spy),
-    ):
+    with mock.patch.object(_fit_skeleton, "search_derivatives", spy):
         refit(case, case.data())
     assert calls, "the fit took no derivatives"
     neg_ll, at, out = calls[0]
