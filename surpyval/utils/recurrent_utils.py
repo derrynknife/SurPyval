@@ -208,30 +208,31 @@ def _is_intensity_model(dist: object) -> bool:
     )
 
 
-def validate_intensity_model(dist: object, fitter: str) -> None:
+def validate_intensity_model(baseline: object, fitter: str) -> None:
     """
-    Refuse a ``dist`` that is not a recurrence intensity model, for the
-    fitters whose ``dist`` is the baseline intensity (ARI, #495).
+    Refuse a ``baseline`` that is not a recurrence intensity model, for the
+    fitters that reduce a baseline intensity (ARI, #495).
 
     ARA and the generalized renewal processes take a *lifetime
     distribution* as ``dist``, so ``sp.Weibull`` is the natural thing to
     pass here too; it failed with an ``AttributeError`` from inside the
-    fit.
+    fit. (ARI's argument was ``dist`` too, until #507 named it
+    ``baseline``.)
     """
-    if _is_intensity_model(dist):
+    if _is_intensity_model(baseline):
         return
-    name = getattr(dist, "name", repr(dist))
-    if hasattr(dist, "fit") and hasattr(dist, "hf"):
+    name = getattr(baseline, "name", repr(baseline))
+    if hasattr(baseline, "fit") and hasattr(baseline, "hf"):
         raise ValueError(
-            "{f}'s `dist` is the baseline intensity model ({m}), not a "
+            "{f}'s `baseline` is the baseline intensity model ({m}), not a "
             "lifetime distribution; got {n}. For imperfect repair with a "
             "{n} lifetime use ARA (reduction of age) or GeneralizedRenewal, "
             "or, for ARI with a power-law intensity (a Weibull hazard), "
-            "dist=CrowAMSAA.".format(f=fitter, m=_INTENSITY_MODELS, n=name)
+            "baseline=CrowAMSAA.".format(f=fitter, m=_INTENSITY_MODELS, n=name)
         )
     raise ValueError(
-        "{}'s `dist` must be a recurrence intensity model ({}); got "
-        "{!r}.".format(fitter, _INTENSITY_MODELS, dist)
+        "{}'s `baseline` must be a recurrence intensity model ({}); got "
+        "{!r}.".format(fitter, _INTENSITY_MODELS, baseline)
     )
 
 
@@ -251,8 +252,8 @@ def validate_lifetime_dist(dist: object, fitter: str) -> None:
             "{f}'s `dist` is a lifetime distribution (e.g. Weibull, "
             "Exponential, LogNormal, Gamma), not an intensity model; got "
             "{n}. For imperfect repair that reduces a baseline intensity "
-            "use ARI (arithmetic reduction of intensity), whose `dist` is "
-            "the intensity model.".format(f=fitter, n=name)
+            "use ARI (arithmetic reduction of intensity), whose `baseline` "
+            "is the intensity model.".format(f=fitter, n=name)
         )
     raise ValueError(
         "{}'s `dist` must be a lifetime distribution (e.g. Weibull, "

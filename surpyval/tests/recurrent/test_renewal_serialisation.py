@@ -45,7 +45,9 @@ def _make(name):
     if name == "ARA":
         return ARA.fit_from_parameters([50.0, 2.0], 0.4, m=2, dist=Weibull)
     if name == "ARI":
-        return ARI.fit_from_parameters([60.0, 2.0], 0.3, m=1, dist=CrowAMSAA)
+        return ARI.fit_from_parameters(
+            [60.0, 2.0], 0.3, m=1, baseline=CrowAMSAA
+        )
     raise ValueError(name)
 
 
