@@ -888,7 +888,27 @@ def _task(task: tuple[str, str, bool]) -> tuple[str, str, Any, float]:
             value = RECORDERS[section](name)
     except Exception:  # noqa: BLE001 -- a harness failure is recorded
         value = {"harness-error": norm(traceback.format_exc())}
+    foreign = _foreign_modules()
+    if foreign:
+        value = {"harness-error": f"imported from another checkout: {foreign}"}
     return section, name, value, time.perf_counter() - start
+
+
+def _foreign_modules() -> list[str]:
+    """SurPyval modules loaded from outside this checkout.
+
+    An editable install of another checkout serves a module this one
+    lacks (one a change deleted or moved), so a snapshot could silently
+    record the other checkout's code.
+    """
+    root = str(ROOT) + os.sep
+    return sorted(
+        name
+        for name, module in list(sys.modules.items())
+        if name.split(".")[0] == "surpyval"
+        and getattr(module, "__file__", None)
+        and not os.path.abspath(module.__file__).startswith(root)
+    )
 
 
 def _tasks(full: bool, only: list[str] | None) -> list[tuple[str, str, bool]]:
