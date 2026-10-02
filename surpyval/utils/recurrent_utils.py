@@ -664,6 +664,13 @@ def _xicn_sort_order(
         ) from None
 
 
+def _rows_in_order(
+    order: npt.NDArray, *columns: npt.NDArray
+) -> list[npt.NDArray]:
+    """Each per-row array reordered by ``order``."""
+    return [column[order] for column in columns]
+
+
 def _check_censoring_positions(
     unique_i: npt.NDArray, censoring_by_i: list
 ) -> None:
@@ -941,8 +948,9 @@ def handle_xicn(
     _check_xicn_values(x, i, c, n, tl_arr, tr_arr, Z_arr)
 
     sort_order = _xicn_sort_order(x, i, c)
-    x, i, c, n = x[sort_order], i[sort_order], c[sort_order], n[sort_order]
-    tl_arr, tr_arr = tl_arr[sort_order], tr_arr[sort_order]
+    x, i, c, n, tl_arr, tr_arr = _rows_in_order(
+        sort_order, x, i, c, n, tl_arr, tr_arr
+    )
 
     if Z_arr is not None:
         Z_arr = Z_arr[sort_order]
