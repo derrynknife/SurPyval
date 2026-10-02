@@ -1259,7 +1259,8 @@ class DegradationAnalysis_:
         # combination of the others) the stress effect is confounded with
         # the intercept: the regression life fit would return an arbitrary
         # coefficient, and ``links`` would split the log rate into an
-        # invented stress effect. The clock and process fitters refuse this too.
+        # invented stress effect. The clock and process fitters refuse this
+        # too.
         design = np.column_stack([np.ones(len(Z_units)), Z_units])
         if np.linalg.matrix_rank(design) < Z_units.shape[1] + 1:
             raise ValueError(

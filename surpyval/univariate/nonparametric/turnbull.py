@@ -263,7 +263,7 @@ def _initial_mass(
     hi: npt.NDArray,
     M: int,
     identifiable: npt.NDArray[np.bool_],
-    any_truncated: bool,
+    any_truncated: "bool | np.bool_",
     interval: npt.NDArray[np.bool_],
     tr: npt.NDArray,
     estimator: str,
@@ -326,7 +326,7 @@ def _expected_events(
     p: npt.NDArray,
     ranges: _Ranges,
     identifiable: npt.NDArray[np.bool_],
-    any_truncated: bool,
+    any_truncated: "bool | np.bool_",
 ) -> npt.NDArray:
     """The E-step: the expected number of events in each piece."""
     lo, hi, n = ranges.lo, ranges.hi, ranges.n
@@ -392,7 +392,7 @@ def _em(
     p: npt.NDArray,
     ranges: _Ranges,
     identifiable: npt.NDArray[np.bool_],
-    any_truncated: bool,
+    any_truncated: "bool | np.bool_",
     estimator: str,
     tol: float,
     max_iter: int,
@@ -445,7 +445,7 @@ def _collapsed(
     k: int,
     bounds: npt.NDArray,
     tl: npt.NDArray,
-    any_truncated: bool,
+    any_truncated: "bool | np.bool_",
 ) -> bool:
     """Whether the reported survival has entirely collapsed.
 

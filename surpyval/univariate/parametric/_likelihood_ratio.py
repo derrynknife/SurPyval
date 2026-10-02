@@ -656,8 +656,9 @@ class _PsiBoundSearch:
         scaling, and in a narrow valley neither alone is reliable: the
         99% qf(0.95) upper bound stops at 25.3 in one and at 35.3 in the
         other, and at 82.3 taking the better of the two at each rung, of
-        the 87.0 that tracing the region slice by slice finds), and the more extreme answer taken,
-        or the rung's start where neither is further out. An answer
+        the 87.0 that tracing the region slice by slice finds), and the
+        more extreme answer taken, or the rung's start where neither is
+        further out. An answer
         outside its region (SLSQP's tolerance, or its iteration limit) is
         taken back onto the boundary along the line from the rung's
         start.
