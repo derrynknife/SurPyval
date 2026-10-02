@@ -53,6 +53,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -488,10 +489,7 @@ class BuckleyJamesModel(ConcordanceMixin, SerialisableMixin):
                 boot.append(expand(-g, kept, p))
             except np.linalg.LinAlgError:
                 continue
-        boot_arr = np.asarray(boot)
-        lo = np.quantile(boot_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(boot_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
+        return percentile_bounds(boot, alpha_ci)
 
     def __repr__(self) -> str:
         lines = [

@@ -41,7 +41,7 @@ from surpyval.utils.linalg import bound_signs as _bound_signs
 from surpyval.utils.linalg import cb_link
 from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import safe_inv, sf_link_bound
+from surpyval.utils.linalg import percentile_bounds, safe_inv, sf_link_bound
 from surpyval.utils.rng import as_generator
 
 # -- delta-method helpers shared with the recurrent package (the two
@@ -353,13 +353,7 @@ def bootstrap_cb(
             "The degradation bootstrap produced too few successful refits "
             "to form a confidence bound" + detail + "."
         )
-    curves_arr = np.asarray(curves)
-    if bound == "two-sided":
-        lo = np.quantile(curves_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(curves_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
-    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
-    return np.quantile(curves_arr, q, axis=0)
+    return percentile_bounds(curves, alpha_ci, bound)
 
 
 def _bootstrap_curves(

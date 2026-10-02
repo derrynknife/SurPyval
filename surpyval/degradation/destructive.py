@@ -57,6 +57,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
+from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -338,15 +339,7 @@ class DestructiveDegradationModel(SerialisableMixin):
             draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
-        draws_arr = np.vstack(draws)
-
-        if bound == "lower":
-            return np.quantile(draws_arr, alpha_ci, axis=0)
-        if bound == "upper":
-            return np.quantile(draws_arr, 1.0 - alpha_ci, axis=0)
-        lo = np.quantile(draws_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(draws_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
+        return percentile_bounds(np.vstack(draws), alpha_ci, bound)
 
     # -- serialisation ----------------------------------------------------
 

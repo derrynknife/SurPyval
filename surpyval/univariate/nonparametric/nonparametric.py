@@ -12,6 +12,7 @@ from scipy.stats import norm
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -1678,15 +1679,7 @@ class NonParametric(SerialisableMixin, NonParametricDistribution):
                         idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]
                     )
 
-            if bound == "two-sided":
-                qs = np.quantile(
-                    R_boot, [alpha_ci / 2, 1 - alpha_ci / 2], axis=0
-                )
-                return qs.T
-            elif bound == "lower":
-                return np.quantile(R_boot, alpha_ci, axis=0)
-            else:
-                return np.quantile(R_boot, 1 - alpha_ci, axis=0)
+            return percentile_bounds(R_boot, alpha_ci, bound)
 
         # NaN outside the data or, with a support set, 1 before the first
         # value and the bounds at the last value carried to ``upper``, as
