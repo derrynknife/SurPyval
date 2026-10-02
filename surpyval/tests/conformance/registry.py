@@ -2075,23 +2075,41 @@ def _degradation():
 # ---------------------------------------------------------------------------
 # Copulas
 # ---------------------------------------------------------------------------
+_COPULA_FAMILIES = (
+    "Independence",
+    "Clayton",
+    "Gumbel",
+    "Frank",
+    "Gaussian",
+    "Joe",
+    "AMH",
+    "StudentT",
+)
+
+
+# The rotation option (#157), on one family: (case name, family, rotation)
+_ROTATED_COPULAS = (("ClaytonCopula[rotation=180]", "Clayton", 180),)
+
+
 def _copulas():
     out = []
-    for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
+    plain = [(f"{name}Copula", name, 0) for name in _COPULA_FAMILIES]
+    for case_name, name, rotation in plain + list(_ROTATED_COPULAS):
         fitter = getattr(mv, name)
+        rotated = {"rotation": rotation} if rotation else {}
 
-        def from_params(d, f=fitter):
-            m = f.fit(**d, margins=[sp.Weibull, sp.Weibull])
-            return f.from_params(m.params, margins=m.margins)
+        def from_params(d, f=fitter, r=rotated):
+            m = f.fit(**d, margins=[sp.Weibull, sp.Weibull], **r)
+            return f.from_params(m.params, margins=m.margins, **r)
 
         out.append(
             Case(
-                name=f"{name}Copula",
+                name=case_name,
                 fitters=(f"surpyval.multivariate.{name}",),
                 model_class="surpyval.multivariate.CopulaModel",
                 interface=BIVARIATE,
                 data=copula_data,
-                fit=_fit(fitter, margins=[sp.Weibull, sp.Weibull]),
+                fit=_fit(fitter, margins=[sp.Weibull, sp.Weibull], **rotated),
                 functions=("sf", "cdf", "pdf"),
                 x=X_COP,
                 rows=("x", "n"),
@@ -2245,9 +2263,15 @@ def _df_paths():
             pd.DataFrame(d), x_col="x", y_col="y", threshold=20.0
         )
     )
-    for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
+    for name in _COPULA_FAMILIES:
         paths[f"{name}Copula"] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
+        )
+    for case_name, name, rotation in _ROTATED_COPULAS:
+        paths[case_name] = _copula_df(
+            getattr(mv, name),
+            margins=[sp.Weibull, sp.Weibull],
+            rotation=rotation,
         )
     return paths
 
@@ -2984,6 +3008,10 @@ _NO_STARVE: dict[str, str] = {
     "CauseSpecificMCF": _EXACT,
     "IndependenceCopula": "no dependence parameter: the margins are "
     "univariate fits, starved in their own cases",
+    "AMHCopula": "the comonotone starve is no failure for it: the AMH "
+    "reaches neither Frechet bound, and on such data it goes to its bound "
+    "theta = 1, a valid copula, without a word (as Clayton does on "
+    "countermonotone data, test_no_finite_maximum.py)",
     "InducedFailureDistribution": "a Monte Carlo of the DegradationAnalysis "
     "fit, which is starved in its own case",
     "RoystonParmar": "no public iteration limit or starting point, and no "
