@@ -25,6 +25,8 @@ from .._aliasing import aliased_columns, constant_columns, warn_aliased
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
+    _Fixed,
+    assemble_regression_model,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
@@ -630,40 +632,25 @@ class ParameterSubstitutionFitter(
                 "found. Check the fit, or try another `init`.",
                 stacklevel=2,
             )
-        params = inv_trans(const(res.x))
-        dist_params = np.array(params[0 : self.k_dist])
-        phi_params = np.array(params[self.k_dist :])
-
-        model = ParametricRegressionModel()
-        model.model = self
-        model.kind = self.kind
-        model.distribution = self.dist
-        model.reg_model = self.life_model
-        if aliased:
-            # Reported as nan, R's NA (#503); the model predicts with 0.
-            params = np.array(params, dtype=float)
-            params[[param_map[name] for name in aliased]] = np.nan
-            phi_params = np.array(params[self.k_dist :])
-        model.params = np.array(params)
-        model.dist_params = dist_params
-        model.phi_params = phi_params
-        model.res = res
-        model._neg_ll = res.fun
-        # Store the full merged fixed dict (baseline-derived + fitter-level +
-        # user-supplied), not just the fitter's own — otherwise standard
+        # Store the full merged fixed dict (baseline-derived + fitter-level
+        # + user-supplied), not just the fitter's own -- otherwise standard
         # errors are reported for parameters that were held fixed (#261).
-        # An aliased parameter is not fixed but nan (``aliased``).
-        model.fixed = {k: v for k, v in fixed.items() if k not in aliased}
-        model.k_dist = self.k_dist
+        # It holds the life-parameter placeholder (its value is replaced by
+        # the life model, so it is not a parameter at all), any baseline
+        # parameters, the user's fixed values and the aliased ones, which
+        # are reported as nan, R's NA (#503), and predict with 0.
+        held = _Fixed(fixed)
+        held.aliased = tuple(aliased)
+        model = assemble_regression_model(
+            self,
+            self.kind,
+            self.life_model,
+            data,
+            res,
+            inv_trans(const(res.x)),
+            bounds,
+            phi_param_map,
+            held,
+        )
         model.fun = fun
-
-        # Estimated parameters only. ``fixed`` holds the life-parameter
-        # placeholder (its value is replaced by the life model, so it is not
-        # a parameter at all), any baseline parameters, the user's fixed
-        # values and the aliased ones; counting them inflated AIC/BIC.
-        model.k = len(bounds) - len(fixed)
-
-        model.data = {"x": x, "c": c, "n": n, "t": t}
-        model.data = data
-
         return model
