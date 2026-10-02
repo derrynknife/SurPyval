@@ -263,9 +263,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         array([0.8       , 1.23076923, 1.44      , 1.56097561, 1.63934426])
         """
         # in logs, so the ratio stays finite deep in the tail
-        return np.exp(
-            self.log_df(x, alpha, beta) - self.log_sf(x, alpha, beta)
-        )
+        log_sf = self.log_sf(x, alpha, beta)
+        gone = log_sf == -np.inf
+        if not np.any(gone):
+            return np.exp(self.log_df(x, alpha, beta) - log_sf)
+        # where both logs are -inf (at x = inf, or where beta x
+        # overflows), the hazard's limit, the rate beta (#561)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(self.log_df(x, alpha, beta) - log_sf)
+        return np.where(gone, beta + np.zeros_like(out), out)
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""

@@ -41,3 +41,142 @@ def test_gamma_cumulative_hazard_in_the_tail(a, x):
     assert Hf == pytest.approx(-_gamma_log_q(a, x), rel=1e-12)
     # the hazard tends to the rate: 1 - (a - 1)/x to first order
     assert hf == pytest.approx(1 - (a - 1) / x, rel=1e-4)
+
+
+# -- every distribution, far out and at extreme parameters (#561) ---------
+
+FUNCTIONS = ("sf", "ff", "df", "hf", "Hf", "log_sf", "log_ff", "log_df")
+# x = 0, tiny, moderate, huge and infinite (and the negative ones for the
+# families on the whole line; below a support they take its edge values)
+X_CONTINUOUS = np.array(
+    [-np.inf, -1e300, 0.0, 5e-324, 1e-300, 0.5, 1e10, 1e300, 1.7e308, np.inf]
+)
+X_DISCRETE = np.array([0.0, 1.0, 2.0, 1e6, 1e15, 1e300, np.inf])
+# A proper distribution's functions at x = inf (the hazard's limit is the
+# family's own)
+AT_INFINITY = {
+    "sf": 0.0,
+    "ff": 1.0,
+    "df": 0.0,
+    "Hf": np.inf,
+    "log_sf": -np.inf,
+    "log_ff": 0.0,
+    "log_df": -np.inf,
+}
+# Functions a distribution refuses on purpose, or does not have
+REFUSED = {
+    "Bernoulli": FUNCTIONS,  # defined at x = 0 and 1 only
+    "ExactEventTime": ("df", "hf", "log_df"),  # a point mass
+    "FixedEventProbability": FUNCTIONS,  # no time axis
+}
+
+
+def _parametric_cases():
+    from surpyval.tests.conformance.registry import CASES
+
+    return [c.name for c in CASES if c.model_class == "surpyval.Parametric"]
+
+
+def _quiet_values(fn, x, *params):
+    """``fn(x, *params)``, failing on any RuntimeWarning (numpy's
+    overflow, division and invalid-value warnings)."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        return np.asarray(fn(x, *params), dtype=float)
+
+
+def _variants(dist, params):
+    """The fitted parameters, and each one 1e8 times larger and smaller
+    (where its bounds and the family's own check allow it)."""
+    params = np.asarray(params, dtype=float)
+    out = [params]
+    bounds = getattr(dist, "bounds", None)
+    for i in range(params.size):
+        for factor in (1e-8, 1e8):
+            p = params.copy()
+            p[i] = p[i] * factor if p[i] != 0 else factor
+            lo, hi = bounds[i] if bounds is not None else (None, None)
+            if (lo is not None and p[i] <= lo) or (
+                hi is not None and p[i] >= hi
+            ):
+                continue
+            try:
+                getattr(dist, "_check_params", lambda p: None)(p)
+                # (a Hypoexponential refuses rates too close to tell
+                # apart, as its functions check)
+                dist.sf(np.array([1.0]), *p)
+            except ValueError:
+                continue
+            out.append(p)
+    return out
+
+
+@pytest.mark.parametrize("name", _parametric_cases())
+def test_561_functions_far_out_are_quiet_and_right(name):
+    # Weibull.sf far in the tail warned "overflow encountered in power"
+    # although its 0 was right, and a dozen families gave NaN at x = inf
+    # (a Gamma's sf, a Poisson's sf, a Weibull's df at 1e300: inf * 0).
+    from surpyval.tests._helpers import fresh_conformance_fit
+
+    model = fresh_conformance_fit(name)
+    dist = model.dist
+    x = X_DISCRETE if dist.discrete else X_CONTINUOUS
+    refused = REFUSED.get(dist.name, ())
+    for f in FUNCTIONS:
+        if f in refused or not callable(getattr(dist, f, None)):
+            continue
+        # the model's own, which carry an offset, lfp or zero inflation
+        if callable(getattr(model, f, None)):
+            values = _quiet_values(getattr(model, f), x)
+            assert not np.isnan(values).any(), (f, values)
+        for params in _variants(dist, model.params):
+            values = _quiet_values(getattr(dist, f), x, *params)
+            assert not np.isnan(values).any(), (f, params, values)
+            if f in AT_INFINITY:
+                assert values[-1] == AT_INFINITY[f], (f, params, values)
+
+
+@pytest.mark.parametrize(
+    "dist, params, limit",
+    [
+        (surv.Exponential, (0.5,), 0.5),
+        (surv.Weibull, (3.0, 0.5), 0.0),
+        (surv.Weibull, (3.0, 1.0), 1 / 3),
+        (surv.Weibull, (3.0, 2.0), np.inf),
+        (surv.ExpoWeibull, (3.0, 1.0, 2.0), 1 / 3),
+        (surv.ExpoWeibull, (3.0, 2.0, 0.5), np.inf),
+        (surv.Gamma, (2.0, 1.5), 1.5),
+        (surv.Poisson, (3.0,), 1.0),
+        (surv.Geometric, (0.2,), 0.2),
+        (surv.NegativeBinomial, (3.0, 0.3), 0.3),
+        (surv.DiscreteWeibull, (0.8, 1.0), 0.2),
+        (surv.DiscreteWeibull, (0.8, 2.0), 1.0),
+        (surv.DiscreteWeibull, (0.8, 0.5), 0.0),
+    ],
+)
+def test_561_hazard_takes_its_limit_at_infinity(dist, params, limit):
+    hf = _quiet_values(dist.hf, np.array([1e300, np.inf]), *params)
+    assert hf[-1] == pytest.approx(limit, rel=1e-12)
+
+
+def test_561_a_discretized_hazard_past_the_survival_underflow():
+    # R(k - 1) underflows at k = 1e6 for a Weibull(4.4, 1.6): df / R(k - 1)
+    # was 0 / 0. The hazard there is 1 to double precision, and with
+    # shape 0.5 it is 1 - R(k) / R(k - 1) = -expm1(H(k - 1) - H(k)).
+    disc = surv.Discretize(surv.Weibull)
+    k = np.array([1e6, 1e15, np.inf])
+    assert (_quiet_values(disc.hf, k, 4.4, 1.6) == 1.0).all()
+    hf = _quiet_values(disc.hf, np.array([1e6]), 4.4, 0.5)[0]
+    H = surv.Weibull.Hf(np.array([1e6 - 1.0, 1e6]), 4.4, 0.5)
+    assert hf == pytest.approx(-np.expm1(H[0] - H[1]), rel=1e-9)
+
+
+def test_561_weibull_far_tail_is_zero_and_quiet():
+    # The issue's case: a Weibull-kind forest's sf at a far-tail time
+    sf = _quiet_values(surv.Weibull.sf, np.array([1e6, 1e300]), 10.0, 3.0)
+    assert (sf == 0.0).all()
+    model = surv.Weibull.from_params([10.0, 3.0])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        assert model.sf(1e300) == 0.0
+        assert model.df(1e300) == 0.0

@@ -171,6 +171,15 @@ def _as_array(value: Any) -> Any:
 # that ``_array_inputs`` wraps.
 _QUERY_FUNCTIONS = tuple(_OUTSIDE_SUPPORT) + ("qf",)
 
+# Each function's limit as x goes to infinity, where every distribution
+# has the same one (its value past an upper support edge): all but the
+# hazard, whose limit is the family's own.
+_AT_INFINITY: dict[str, float] = {
+    name: above
+    for name, (_, above) in _OUTSIDE_SUPPORT.items()
+    if name != "hf"
+}
+
 
 def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Wrap a distribution function so that a list or tuple argument
@@ -184,21 +193,49 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     Bernoulli's ``sf(nan)`` raised (#382). The function is evaluated with
     the NaNs replaced by a point it accepts, then NaN is put back, so
     nothing else about the other points changes.
+
+    An overflow or a division by zero inside a formula is the formula
+    reaching the infinite limit it is evaluated toward, not something
+    the caller needs to hear about (principle 22): far in a Weibull's tail
+    ``(x / alpha) ** beta`` overflows to ``inf``, and ``exp(-inf)`` is the
+    0 the survival function is, but numpy warned "overflow encountered in
+    power" (#561). Those two are not warned about here; an invalid
+    operation (``inf - inf``, ``0 * inf``, giving a NaN) still is, since
+    its value is wrong.
+
+    A discrete distribution on the integers up to infinity takes its
+    limits at ``x = inf`` (``_AT_INFINITY``) rather than evaluating its
+    formulas there, where the incomplete gamma and beta functions and
+    ``q ** inf`` gave NaN: a Poisson's ``sf(inf)`` was NaN, not 0 (#561).
+    The hazard's limit there is the family's own, and is computed.
     """
+    at_infinity = _AT_INFINITY.get(fn.__name__)
 
     @functools.wraps(fn)
     def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+        with np.errstate(over="ignore", divide="ignore"):
+            return evaluate(self, x, *params)
+
+    def evaluate(self: "ParametricFitter", x: Any, *params: Any) -> Any:
         x = _as_array(x)
         params = tuple(_as_array(p) for p in params)
         if isinstance(x, ArrayBox):
             return fn(self, x, *params)
         x_arr = np.asarray(x, dtype=float)
         missing = np.isnan(x_arr)
-        if not np.any(missing):
+        top = (
+            np.isposinf(x_arr)
+            if at_infinity is not None
+            and self.discrete
+            and self.support[1] == np.inf
+            else np.zeros(x_arr.shape, dtype=bool)
+        )
+        replaced = missing | top
+        if not np.any(replaced):
             return fn(self, x, *params)
         # A point asked for alongside is one the function accepts; failing
         # that, the middle probability or the support's finite edge.
-        known = x_arr[~missing]
+        known = x_arr[~replaced]
         if known.size:
             fill = float(known[0])
         elif fn.__name__ == "qf":
@@ -206,7 +243,9 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         else:
             lo, hi = self._support_edges(*params)
             fill = lo if np.isfinite(lo) else (hi if np.isfinite(hi) else 0.0)
-        out = fn(self, np.where(missing, fill, x_arr), *params)
+        out = fn(self, np.where(replaced, fill, x_arr), *params)
+        if np.any(top):
+            out = np.where(top, at_infinity, out)
         out = np.where(missing, np.nan, out)
         return out[()] if isinstance(out, np.ndarray) else out
 
@@ -452,8 +491,16 @@ class ParametricFitter(UnivariateDataFrameMixin):
 
         Used by the likelihood; many distributions override it with a
         closed form that stays finite where ``df`` itself underflows.
+
+        Where the cumulative hazard is infinite (far in a tail whose
+        hazard grows without bound) it is -inf, not ``inf - inf`` (#561).
         """
-        return np.log(self.hf(x, *params)) - self.Hf(x, *params)
+        H = self.Hf(x, *params)
+        gone = H == np.inf
+        if not np.any(gone):
+            return np.log(self.hf(x, *params)) - H
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, -np.inf, np.log(self.hf(x, *params)) - H)
 
     def log_sf(self, x: Numeric, *params: Any) -> Any:
         r"""Log of the survival function, :math:`\ln R(x) = -H(x)`."""

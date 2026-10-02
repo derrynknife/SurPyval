@@ -94,9 +94,11 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         r"""Discrete hazard :math:`h(k) = P(T = k)/R(k - 1)`."""
         # On the log scale: df/sf was 0/0 = nan once both underflowed
         # (#444).
-        log_hf = self.log_df(x, mu) - self.log_sf(x - 1.0, mu)
         if isinstance(mu, ArrayBox):
-            return np.exp(log_hf)
+            return np.exp(self.log_df(x, mu) - self.log_sf(x - 1.0, mu))
+        # (-inf - -inf at k = inf, which the tail below replaces)
+        with np.errstate(invalid="ignore"):
+            log_hf = self.log_df(x, mu) - self.log_sf(x - 1.0, mu)
         # Beyond the mean both logs grow like k log k and their difference
         # loses the hazard's digits. There R(k - 1) = P(T = k) S with
         # S = sum_n mu^n / ((k + 1) ... (k + n)), so h = 1 / S exactly;

@@ -308,9 +308,16 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     def df(self, x: Numeric, *params: Boxable) -> Boxable:
         """
         Density, :math:`f(x) = dF(x)/dx`, differentiated from ``ff`` with
-        autograd.
+        autograd. Where the survival function is 0 it is 0: the chain
+        rule's :math:`e^{-H} dH/dx` is ``0 * inf`` there once ``H`` is
+        infinite (#561).
         """
-        return elementwise_grad(self.ff)(x, *params)
+        density = elementwise_grad(self.ff)
+        gone = self.sf(x, *params) == 0
+        if not np.any(gone):
+            return density(x, *params)
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, 0.0, density(x, *params))
 
     def _scalar_fn(
         self, fn: Callable[..., Boxable], params: "list[float]"

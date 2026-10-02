@@ -1105,7 +1105,16 @@ class Parametric(
             # own hf; df / sf(k) disagreed with it for an LFP or ZI model.
             return self.df(x) / self.sf(np.asarray(x, dtype=float) - 1.0)
         else:
-            return self.df(x) / self.sf(x)
+            sf = self.sf(x)
+            gone = sf == 0
+            if not np.any(gone):
+                return self.df(x) / sf
+            # Only a zero-inflated model's survival reaches 0 (an LFP's
+            # stays at 1 - p), and past 0 its 1 - f0 cancels: the hazard
+            # is the base's, where df / sf was 0 / 0 (#561).
+            base = self.dist.hf(x - self.gamma, *self.params)
+            with np.errstate(invalid="ignore", divide="ignore"):
+                return np.where(gone, base, self.df(x) / sf)[()]
 
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -1149,8 +1158,10 @@ class Parametric(
             return out[()]
         else:
             # 0.0 - log(...) rather than -log(...): where sf is exactly 1
-            # (before 0, or before the offset) the latter gave -0.0.
-            return 0.0 - np.log(self.sf(x))
+            # (before 0, or before the offset) the latter gave -0.0. A
+            # survival of 0 is a cumulative hazard of inf, said quietly.
+            with np.errstate(divide="ignore"):
+                return 0.0 - np.log(self.sf(x))
 
     def qf(self, p: npt.ArrayLike) -> npt.NDArray:
         r"""
