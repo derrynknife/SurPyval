@@ -599,5 +599,5 @@ def test_cox_on_separated_data_warns_once_without_the_constant_column():
         model = sp.CoxPH.fit(**data, center=True)
         sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
     messages = [str(w.message) for w in caught]
-    assert len(messages) == 1 and messages[0].startswith("Monotone")
+    assert len(messages) == 1 and messages[0].startswith("No finite maximum")
     assert np.isfinite(sf).all()
