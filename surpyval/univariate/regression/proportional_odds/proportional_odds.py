@@ -205,8 +205,10 @@ class _POLikelihood:
         D = -g * r
         w = np.bincount(self.K, -aq * q, m + 1)[1:]
         # -d2l/du dgamma = -g * (U B), B the per-K sums of a q (1-p) Z.
-        B = np.zeros((m + 1, self.Zt.shape[1]))
-        np.add.at(B, self.K, (aq * (1.0 - p))[:, None] * self.Zt)
+        w_b = aq * (1.0 - p)
+        B = np.column_stack(
+            [np.bincount(self.K, w_b * z, m + 1) for z in self.Zt.T]
+        )
         N_ug = -g[:, None] * _rev_cumsum(B)[1:]
         N_gg = -(self.Zt * (apq * (1.0 - p))[:, None]).T @ self.Zt
         return {
@@ -1021,7 +1023,13 @@ class ProportionalOdds_:
         Parameters
         ----------
         x : array_like
-            The observed times.
+            The observed times. Only their order matters. Tied event times
+            share one jump of the baseline, each event contributing its
+            full term (Breslow's convention for Cox, which R's ``coxph``
+            with ``ties = "breslow"`` and a unit gamma frailty matches);
+            under heavy ties the coefficients are attenuated a little
+            towards 0, as Breslow's are (by about 5% with 100 events on 30
+            distinct times).
         Z : array_like
             The covariates, one row per observation (a 1-D array is one
             covariate). Rows with a missing or infinite covariate are
