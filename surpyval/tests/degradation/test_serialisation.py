@@ -254,10 +254,6 @@ def test_a_reloaded_model_gives_the_same_bootstrap_bounds(distribution):
 # ---------------------------------------------------------------------------
 
 
-def _rt_rt(d: dict) -> dict:
-    return json.loads(json.dumps(d))
-
-
 # Per-path data: (true parameters, threshold). Each unit's parameters are
 # jittered around these, and the threshold is reached inside or a little
 # past the measurement window.
@@ -302,7 +298,7 @@ def test_every_built_in_path_round_trips(key):
         # warnings; they are not what is being tested here
         warnings.simplefilter("ignore")
         model = DegradationAnalysis.fit(x, y, i, threshold=threshold, path=key)
-    d = _rt_rt(model.to_dict())
+    d = _rt(model.to_dict())
     assert d["path_model"] == key
     restored = DegradationModel.from_dict(d)
     assert restored.path_model is model.path_model
@@ -331,7 +327,7 @@ def test_old_dict_with_display_name_still_loads():
         model = DegradationAnalysis.fit(
             x, y, i, threshold=threshold, path="offset-exponential"
         )
-    d = _rt_rt(model.to_dict())
+    d = _rt(model.to_dict())
     d["path_model"] = "Offset Exponential"
     restored = DegradationModel.from_dict(d)
     assert restored.path_model is model.path_model
@@ -352,7 +348,7 @@ def _destructive_model() -> DestructiveDegradationModel:
 
 def test_destructive_round_trip_keeps_data_and_bounds():
     model = _destructive_model()
-    restored = DestructiveDegradationModel.from_dict(_rt_rt(model.to_dict()))
+    restored = DestructiveDegradationModel.from_dict(_rt(model.to_dict()))
     t = np.array([30.0, 50.0, 70.0])
     assert np.allclose(model.sf(t), restored.sf(t))
     assert np.allclose(
@@ -392,7 +388,7 @@ def test_destructive_json_file_and_package_dispatch(tmp_path):
 
 def test_destructive_old_dict_without_data_still_loads():
     model = _destructive_model()
-    d = _rt_rt(model.to_dict())
+    d = _rt(model.to_dict())
     for key in ("data", "neg_ll", "transform_scores"):
         del d[key]
     restored = DestructiveDegradationModel.from_dict(d)

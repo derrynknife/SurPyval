@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 from scipy.stats import kendalltau
 
 import surpyval as surv
@@ -47,3 +48,26 @@ def test_conditional_cdf_is_in_unit_interval():
     x = np.array([[10.0, 18.0], [5.0, 25.0]])
     h = m.conditional_cdf(x, given_dim=0)
     assert np.all(h >= 0) and np.all(h <= 1)
+
+
+# ---------------------------------------------------------------------------
+# ``CopulaModel.random`` honours a tuple size;
+# ``conditional_cdf`` checks ``given_dim``.
+# ---------------------------------------------------------------------------
+
+
+WEIBULL_MARGINS = [
+    surv.Weibull.from_params([10, 2]),
+    surv.Weibull.from_params([20, 3]),
+]
+
+
+def test_random_tuple_size_and_given_dim():
+    model = Clayton.from_params([2.0], WEIBULL_MARGINS)
+    draws = model.random((2, 3), random_state=0)
+    assert draws.shape == (2, 3, 2)
+    np.testing.assert_allclose(
+        draws.reshape(6, 2), model.random(6, random_state=0)
+    )
+    with pytest.raises(ValueError, match="given_dim"):
+        model.conditional_cdf([[10, 18]], given_dim=2)

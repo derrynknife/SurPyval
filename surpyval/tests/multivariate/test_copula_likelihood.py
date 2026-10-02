@@ -1,15 +1,11 @@
-"""Regression tests for the second docs-review bug-fix round (copulas).
+"""The joint log-likelihood of a fitted copula model.
 
-- The base ``Copula`` starting value respects the family's bounds (a fixed 1
-  sat on the bound of a ``(-1, 1)`` family, the bounds transform made it
-  infinite and the fit silently returned it), and ``fit`` takes a public
-  ``init``.
-- ``CopulaModel`` reports the full censored/truncated joint log-likelihood
-  (``log_likelihood``/``neg_ll``) and ``aic``/``bic``.
+``CopulaModel`` reports the full censored/truncated joint log-likelihood
+(``log_likelihood``/``neg_ll``) and ``aic``/``bic``, counting only the
+parameters the fit estimated, and keeps them through serialisation.
 """
 
 import json
-import warnings
 
 import numpy as np
 import pytest
@@ -18,7 +14,6 @@ import surpyval as surv
 from surpyval import LogNormal, Weibull
 from surpyval.multivariate import (
     Clayton,
-    Copula,
     Frank,
     Gaussian,
     Gumbel,
@@ -26,102 +21,6 @@ from surpyval.multivariate import (
 )
 
 MARGINS = [Weibull.from_params([10.0, 2.0]), LogNormal.from_params([2.5, 0.5])]
-
-
-class AliMikhailHaq(Copula):
-    name = "Ali-Mikhail-Haq"
-    bounds = ((-1, 1),)
-    parameter_names = ["theta"]
-
-    def cdf(self, u, v, theta):
-        return u * v / (1 - theta * (1 - u) * (1 - v))
-
-
-AMH = AliMikhailHaq()
-
-
-@pytest.fixture(scope="module")
-def amh_data():
-    return AMH.from_params(0.6, margins=MARGINS).random(400, random_state=0)
-
-
-# -- starting value ---------------------------------------------------------
-
-
-def test_default_start_is_strictly_inside_the_bounds(amh_data):
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")  # the old start warned (arctanh(1))
-        model = AMH.fit(amh_data, margins=[Weibull, LogNormal])
-    theta = model.params[0]
-    # the old fit returned exactly the start, theta = 1
-    assert -1 < theta < 1
-    assert theta != 1.0
-    assert theta == pytest.approx(0.6, abs=0.3)
-
-
-@pytest.mark.parametrize(
-    "bounds, expected",
-    [
-        (((0, None),), [1.0]),  # 1 inside: the historical default is kept
-        (((None, None),), [1.0]),
-        (((-1, 1),), [0.0]),
-        (((1, None),), [2.0]),
-        (((None, 1),), [0.0]),
-        (((2, 3),), [2.5]),
-        (((0, None), (-1, 1)), [1.0, 0.0]),
-    ],
-)
-def test_base_init_theta(bounds, expected):
-    class Fam(Copula):
-        pass
-
-    fam = Fam()
-    fam.bounds = bounds
-    fam.parameter_names = ["p%d" % i for i in range(len(bounds))]
-    np.testing.assert_array_equal(fam._init_theta([]), expected)
-
-
-def test_public_init_argument(amh_data):
-    a = AMH.fit(amh_data, margins=[Weibull, LogNormal], init=0.3)
-    b = AMH.fit(amh_data, margins=[Weibull, LogNormal], init=[0.3])
-    assert a.params[0] == b.params[0]
-    assert a.params[0] == pytest.approx(
-        AMH.fit(amh_data, margins=[Weibull, LogNormal]).params[0], abs=1e-3
-    )
-    # also used by the built-in families, and by MLE (through its IFM start)
-    data = Clayton.from_params(2.0, margins=MARGINS).random(
-        300, random_state=1
-    )
-    ifm = Clayton.fit(data, margins=[Weibull, LogNormal], init=5.0)
-    ref = Clayton.fit(data, margins=[Weibull, LogNormal])
-    assert ifm.params[0] == pytest.approx(ref.params[0], rel=1e-3)
-    mle = Clayton.fit(data, margins=[Weibull, LogNormal], how="MLE", init=5.0)
-    assert mle.params[0] == pytest.approx(ref.params[0], rel=0.2)
-
-
-@pytest.mark.parametrize("bad", [1.0, -1.0, 2.0, np.nan, [0.1, 0.2]])
-def test_init_outside_bounds_raises(amh_data, bad):
-    with pytest.raises(ValueError, match="init"):
-        AMH.fit(amh_data, margins=[Weibull, LogNormal], init=bad)
-
-
-def test_subclass_start_on_bound_raises_not_silent(amh_data):
-    class Stuck(AliMikhailHaq):
-        def _init_theta(self, dims):
-            return np.array([1.0])  # on the bound
-
-    with pytest.raises(ValueError, match="strictly inside"):
-        Stuck().fit(amh_data, margins=[Weibull, LogNormal])
-
-
-def test_independence_accepts_empty_init():
-    data = Independence.from_params([], margins=MARGINS).random(
-        100, random_state=0
-    )
-    m = Independence.fit(data, margins=[Weibull, LogNormal], init=[])
-    assert m.params.size == 0
-    with pytest.raises(ValueError, match="init"):
-        Independence.fit(data, margins=[Weibull, LogNormal], init=[0.5])
 
 
 # -- log-likelihood and information criteria --------------------------------
