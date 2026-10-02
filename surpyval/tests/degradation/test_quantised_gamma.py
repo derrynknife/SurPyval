@@ -1,4 +1,4 @@
-"""Round 4: the quantised (gauge-rounded) likelihood of ``GammaProcess``.
+"""The quantised (gauge-rounded) likelihood of ``GammaProcess``.
 
 Readings rounded to a gauge whose step is comparable to the increments bias
 the ordinary fit, even with its zero increments censored: every non-zero

@@ -173,7 +173,7 @@ def test_declared_levels_count_as_seen(family):
     # A declared level with no rows in the data ('d') keeps its column but
     # is not a fitted level: it warns at fit and raises at prediction
     # (#377; it used to predict as the reference level, see
-    # test_formula_levels_fixes7.py).
+    # test_formula_levels.py).
     df = _df()
     formula = "z + C(g, levels=['a', 'b', 'c', 'd'])"
     with pytest.warns(UserWarning, match=r"no rows at the level\(s\) \['d'\]"):

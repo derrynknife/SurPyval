@@ -4,7 +4,7 @@ Parametric fits are equivariant under a change of the data's units.
 Fitting ``k * x`` must give the fit to ``x`` with every scale parameter
 multiplied by ``k`` (rates divided by it, a log-location shifted by
 ``log k``) and every shape parameter unchanged -- for small ``k`` as well
-as large. Before round 4 the optimiser's rescaling only scaled *up*: a
+as large. The optimiser's rescaling used to scale only *up*: a
 parameter starting below 1 kept a unit step, so at data scales of 1e-3 a
 Rayleigh MOM fit was 1.2% off, a Uniform MPS fit 0.15% and a Beta4 MLE
 fit 0.1%.
