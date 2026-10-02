@@ -151,11 +151,6 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "_caller_stacklevel",
         ),
         (
-            "surpyval.univariate.regression.proportional_odds.proportional_odds",  # noqa: E501
-            "surpyval.utils",
-            "_caller_stacklevel",
-        ),
-        (
             "surpyval.univariate.regression.regression_data",
             "surpyval.utils",
             "_caller_stacklevel",

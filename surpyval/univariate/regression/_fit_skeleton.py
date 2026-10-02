@@ -37,7 +37,7 @@ from surpyval.utils import (
     finite_covariate_mask,
 )
 from surpyval.utils.deprecation import RenamedAttribute
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -968,18 +968,16 @@ def optimise_ph(
 
 
 def warn_if_not_converged(res: Any) -> None:
-    """Say so when no optimiser rung converged.
+    """Say so when no optimiser rung converged (``warn_unverified``).
 
     The best point found is still returned, but not silently: it used to
     come back with ``res.success`` False and nothing said, which is how a
     nan covariate passed off the starting values as a fit.
     """
     if not res.success:
-        warnings.warn(
-            "The optimiser did not converge ({}); the fitted parameters may "
-            "not be the maximum-likelihood estimates. Check the data, or "
-            "supply a better `init`.".format(str(res.message).rstrip(".")),
-            stacklevel=_caller_stacklevel(),
+        warn_unverified(
+            "The maximum-likelihood search",
+            "the optimiser reported: {}".format(str(res.message).rstrip(".")),
         )
 
 

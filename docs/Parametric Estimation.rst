@@ -889,10 +889,10 @@ worth knowing what they are, because they explain the warnings you may see.
    fails SurPyval warns ("MLE Failed; returning the optimiser's starting point
    ...") and returns the starting point, which for many distributions is the
    probability-plot fit; if the answer kept is not verifiably a maximum it
-   warns ("did not reach a verified maximum", or "Precision was lost" where
-   the optimiser said so), as it can for the four-parameter Beta, whose
-   likelihood is unbounded as a shape below 1 meets an end point at the
-   data's extreme. The optimiser that found the answer is recorded in
+   warns ("did not reach a verified maximum", with the optimiser's loss of
+   precision as the reason where it reported one), as it can for the
+   four-parameter Beta, whose likelihood is unbounded as a shape below 1
+   meets an end point at the data's extreme. The optimiser that found the answer is recorded in
    ``model.optimizer`` (``'closed-form'`` for the exact solutions above),
    and what it reached in ``model.maximum``: ``'verified'`` (or exact),
    ``'unverified'`` (the fit warned that it is not verifiably a maximum)

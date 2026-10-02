@@ -135,7 +135,7 @@ def test_optimise_ph_warns_instead_of_returning_a_failed_start(monkeypatch):
     def fun(p):
         return ((p - 3.0) ** 2).sum()
 
-    with pytest.warns(UserWarning, match="did not converge"):
+    with pytest.warns(UserWarning, match="did not reach a verified maximum"):
         _fit_skeleton.optimise_ph(fun, np.zeros(2))
 
 

@@ -221,17 +221,17 @@ def mle(model: "Parametric") -> Any:
             else res.get("message", "")
         )
 
-        # The warning is the caller's to give (``results["_warning"]``):
+        # The warning is the caller's to give (``results["_warning"]``,
+        # or ``warn_unverified`` with ``results["_unverified_reason"]``):
         # it may try other starts, and only the answer it keeps speaks.
         warning = None
+        unverified_reason = None
         if verified:
             pass
         elif "Desired error not necessarily" in winning_message:
-            warning = (
-                "Precision was lost, try:"
-                "\n- Using alternate fitting method"
-                "\n- visually checking model fit"
-                "\n- change data to be closer to 1."
+            unverified_reason = (
+                "the optimiser stopped on a loss of precision; data "
+                "rescaled closer to 1 may help"
             )
 
         elif (not res.success) or (np.isnan(res.x).any()):
@@ -374,6 +374,7 @@ def mle(model: "Parametric") -> Any:
         results["res"] = res
         results["_verified"] = bool(verified) and not use_initial
         results["_warning"] = warning
+        results["_unverified_reason"] = unverified_reason
         results["optimizer"] = (
             best_method if best_method is not None else method
         )

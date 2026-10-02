@@ -18,6 +18,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -625,13 +626,7 @@ class ParameterSubstitutionFitter(
                 stacklevel=_caller_stacklevel(),
             )
         elif not verified:
-            warnings.warn(
-                "The accelerated life fit did not reach a verified maximum "
-                "of the likelihood (a zero gradient, curving down in every "
-                "direction); the parameters returned are the best point "
-                "found. Check the fit, or try another `init`.",
-                stacklevel=2,
-            )
+            warn_unverified("The accelerated life fit")
         # Store the full merged fixed dict (baseline-derived + fitter-level
         # + user-supplied), not just the fitter's own -- otherwise standard
         # errors are reported for parameters that were held fixed (#261).
