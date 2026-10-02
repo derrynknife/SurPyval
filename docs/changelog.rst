@@ -200,6 +200,37 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **New: every likelihood fit says whether it reached a verified
+  maximum.** The regression fits (PH, AFT, PO, AH, accelerated life and
+  their time-varying forms), Cox, parametric and Cox frailty, proportional
+  odds, Fine-Gray and competing-risks PH, mixture, Royston-Parmar, HPP,
+  NHPP, proportional-intensity, renewal and copula models have
+  ``maximum``, as ``Parametric`` does: ``"verified"``, ``"unverified"`` or
+  ``"no finite maximum"``, agreeing with the fit's warnings, and saved by
+  ``to_dict`` (an older dict reads ``"unknown"``). Lin-Ying and
+  Buckley-James, which solve estimating equations, are ``"not
+  applicable"``. A parameter on its bound where the likelihood is highest
+  (a frailty variance of 0, an AMH copula at ``theta = 1``) is a verified
+  boundary maximum. A new conformance property, ``maximum``, checks every
+  likelihood fit in the registry and verifies each answer independently;
+  the degradation process and destructive fits are its known gap (#564).
+- **Fixed: fits that kept an unverified answer now polish it or say so.**
+  The Nelder-Mead fits (NHPP, proportional intensity, renewal, copulas),
+  Fine-Gray's BFGS, Cox's fallback root-finder, the HPP and Royston-Parmar
+  took their optimiser's answer unchecked. Where results move, they move
+  towards the maximum: Cox-Lewis by 1.7e-5 relative (log-likelihood up
+  7e-9), a Gaussian copula's ``rho`` by 1.9e-6, a G1 renewal's ``q`` by
+  1e-4.
+- **Fixed: the truncated mixture fit kept L-BFGS-B's answer unverified
+  (#560).** It is now polished and verified, as the EM fit is; two
+  equivalent forms of the same data agree to 5e-7 (they differed by
+  1.8e-5).
+- **Changed: one wording for no finite maximum.** Cox's, Fine-Gray's,
+  competing-risks PH's and Cox frailty's "Monotone partial likelihood: ..."
+  now reads "No finite maximum: the partial likelihood keeps increasing
+  ..."; update code that matches the old text. Cox frailty's EM warning
+  says it "did not reach a verified maximum", and a mixture with a
+  point-mass component warns once, not twice.
 - **Fixed: rows censored with a finite truncation bound are read as the
   intervals they are in the fit checks (#559).** Data whose every row is
   right censored with a finite ``tr`` (or left censored with a finite

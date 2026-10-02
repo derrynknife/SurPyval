@@ -188,7 +188,7 @@ Estimation
     gradient of the model's own likelihood ~0 and its Hessian positive
     definite, a parameter on a boundary of its space held out where the
     likelihood does not rise off it). Known gap: the degradation process
-    and destructive fits (#TBD-degradation-maximum).
+    and destructive fits (#564).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.

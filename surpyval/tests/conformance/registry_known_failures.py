@@ -82,7 +82,7 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
 # fit); the reason leads with the issue.
 _MAXIMUM_FAILURES: dict[str, str] = {
     name: (
-        "#TBD-degradation-maximum: the {} fit sets no ``maximum`` and does "
+        "#564: the {} fit sets no ``maximum`` and does "
         "not check that its answer is a verified maximum".format(name)
     )
     for name in ("WienerProcess", "GammaProcess", "DestructiveDegradation")
