@@ -1157,7 +1157,17 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, ah, bj]
+    po = regression(
+        "ProportionalOdds",
+        sp.ProportionalOdds,
+        model_class="surpyval.ProportionalOddsModel",
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    return [cox, strat, ah, bj, po]
 
 
 _NO_COEFFICIENTS = (
@@ -2521,7 +2531,7 @@ def _bounds(case):
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "ParametricRegressionModel":
         return (Bound("cb", on=_ON_ALL), _PARAM_CB)
-    if cls == "FrailtyModel":
+    if cls in ("FrailtyModel", "ProportionalOddsModel"):
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
@@ -2861,7 +2871,11 @@ def _starve(case):
         return _far_start(case, lambda m: _scaled_start(m.params, 2))
     if cls in ("ParametricRegressionModel", "FrailtyModel"):
         return lambda d: fit(_no_event_level(d))
-    if cls in ("SemiParametricRegressionModel", "FineGrayModel"):
+    if cls in (
+        "SemiParametricRegressionModel",
+        "FineGrayModel",
+        "ProportionalOddsModel",
+    ):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":
         return lambda d: fit(_no_event_level(d))

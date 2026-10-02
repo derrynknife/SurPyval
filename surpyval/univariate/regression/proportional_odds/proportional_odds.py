@@ -669,7 +669,8 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         for every row of ``Z``, giving shape ``(len(Z),) + x.shape``.
         """
         _, lG, _, eta = self._parts(x, Z, grid)
-        return np.logaddexp(0.0, lG + eta)
+        with np.errstate(invalid="ignore"):  # a missing value is nan
+            return np.logaddexp(0.0, lG + eta)
 
     @keeps_query_shape
     def sf(
@@ -696,7 +697,8 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
                [0.964, 0.856, 0.733]])
         """
         _, lG, _, eta = self._parts(x, Z, grid)
-        return expit(-(lG + eta))
+        with np.errstate(invalid="ignore"):
+            return expit(-(lG + eta))
 
     @keeps_query_shape
     def ff(
@@ -709,7 +711,8 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         """Failure probability ``1 - sf`` at ``x`` for covariates ``Z``;
         arguments as for :meth:`Hf`."""
         _, lG, _, eta = self._parts(x, Z, grid)
-        return expit(lG + eta)
+        with np.errstate(invalid="ignore"):
+            return expit(lG + eta)
 
     @keeps_query_shape
     def hf(
@@ -727,7 +730,8 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         """
         lg, _, lGp, eta = self._parts(x, Z, grid)
         # log(1 + g e / (1 + G_prev e)), e = exp(eta), on the log scale.
-        return np.log1p(np.exp(lg + eta - np.logaddexp(0.0, lGp + eta)))
+        with np.errstate(invalid="ignore"):
+            return np.logaddexp(0.0, lg + eta - np.logaddexp(0.0, lGp + eta))
 
     @keeps_query_shape
     def df(
@@ -746,12 +750,13 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         """
         lg, lG, lGp, eta = self._parts(x, Z, grid)
         # g e / ((1 + G e)(1 + G_prev e)), e = exp(eta), on the log scale.
-        return np.exp(
-            lg
-            + eta
-            - np.logaddexp(0.0, lG + eta)
-            - np.logaddexp(0.0, lGp + eta)
-        )
+        with np.errstate(invalid="ignore"):
+            return np.exp(
+                lg
+                + eta
+                - np.logaddexp(0.0, lG + eta)
+                - np.logaddexp(0.0, lGp + eta)
+            )
 
     # -- inference -------------------------------------------------------
 
@@ -802,15 +807,21 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
                 )
             )
         idx = names.index(name)
+        lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             float(self.params[idx]),
             float(self.cov[idx, idx]),
-            None,
-            None,
+            lower,
+            upper,
             alpha_ci,
             bound,
             name=name,
         )
+
+    def _parameter_bounds(self) -> "list[tuple[None, None]]":
+        """The support of each parameter: the coefficients are
+        unbounded, so their bounds are on the natural scale."""
+        return [(None, None)] * len(self.params)
 
     def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
         """
