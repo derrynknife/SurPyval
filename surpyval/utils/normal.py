@@ -43,11 +43,16 @@ _NORM_PDF_LOGC = float(np.log(_NORM_PDF_C))
 
 
 def _std_logpdf(z: Any) -> Any:
-    return -(z**2) / 2.0 - _NORM_PDF_LOGC
+    # z**2 overflows to inf beyond |z| ~ 1e154, where the log density is
+    # -inf and the density 0, as they should be: no raw numpy warning
+    # (principle 22), which scipy.stats let through.
+    with np.errstate(over="ignore"):
+        return -(z**2) / 2.0 - _NORM_PDF_LOGC
 
 
 def _std_pdf(z: Any) -> Any:
-    return np.exp(-(z**2) / 2.0) / _NORM_PDF_C
+    with np.errstate(over="ignore"):
+        return np.exp(-(z**2) / 2.0) / _NORM_PDF_C
 
 
 ndtr = primitive(special.ndtr)

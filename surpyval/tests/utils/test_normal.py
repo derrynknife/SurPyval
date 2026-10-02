@@ -8,6 +8,8 @@ the last bit -- tails, infinities, NaN and bad scales included -- and the
 derivatives the fits take must be those of the old wrapper.
 """
 
+import warnings
+
 import autograd.numpy as anp
 import numpy as np
 import pytest
@@ -128,3 +130,15 @@ def test_distributions_unchanged(dist):
             want_qf = np.exp(scipy_norm.ppf(Q, 3.0, 4.0))
         np.testing.assert_array_equal(D.sf(x, 3.0, 4.0), want_sf)
         np.testing.assert_array_equal(D.qf(Q, 3.0, 4.0), want_qf)
+
+
+def test_no_overflow_warning_far_out():
+    # scipy.stats let numpy's "overflow encountered in square" through at
+    # |x| = 1e300 (principle 22); the density there is 0 and its log -inf.
+    x = np.array([-1e300, 1e300])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        np.testing.assert_array_equal(sp.Normal.df(x, 3.0, 4.0), [0.0, 0.0])
+        np.testing.assert_array_equal(
+            sp.Normal.log_df(x, 3.0, 4.0), [-np.inf, -np.inf]
+        )
