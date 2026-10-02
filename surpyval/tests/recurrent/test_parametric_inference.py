@@ -13,13 +13,20 @@ from matplotlib import pyplot as plt  # noqa: E402
 
 from surpyval import Exponential, Weibull  # noqa: E402
 from surpyval.recurrent import (  # noqa: E402
+    ARI,
     HPP,
     CoxLewis,
     CrowAMSAA,
     Duane,
+    GeneralizedOneRenewal,
     GeneralizedRenewal,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
+)
+from surpyval.tests._helpers import (  # noqa: E402
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
 )
 
 
@@ -279,3 +286,34 @@ def test_renewal_param_cb():
     assert 0 < lower < model.q < upper
     lower, upper = model.param_cb("alpha")
     assert 0 < lower < model.model.params[0] < upper
+
+
+# ---------------------------------------------------------------------------
+# One BIC sample size, the observed events, for every recurrent
+# model.
+# ---------------------------------------------------------------------------
+
+
+def test_bic_counts_observed_events_only():
+    n_events = sum(ci == 0 for ci in REPAIR_FLEET_C)
+    models = [
+        HPP.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C),
+        CrowAMSAA.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C),
+        GeneralizedOneRenewal.fit(
+            REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C
+        ),
+        ARI.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, m=1),
+    ]
+    for model in models:
+        k = model._mle.size
+        expected = k * np.log(n_events) - 2 * model.log_likelihood
+        assert model.bic == pytest.approx(expected)
+
+
+def test_bic_counts_interval_events():
+    # Only interval counts: the five events they hold are observed events,
+    # so BIC's sample size is 5 (it used to count exact events only, and
+    # was NaN here rather than log(0) = -inf).
+    model = HPP.fit([[0, 10], [10, 20]], c=[2, 2], n=[2, 3])
+    assert model.bic == pytest.approx(np.log(5) - 2 * model.log_likelihood)
+    assert np.isfinite(model.aic)

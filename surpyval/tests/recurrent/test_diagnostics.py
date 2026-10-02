@@ -1,12 +1,31 @@
 """Residual diagnostics, trend-test delegation and the Cramer-von Mises
 goodness-of-fit test on fitted parametric recurrent models."""
 
+import matplotlib
 import numpy as np
 import pytest
 
 from surpyval import Exponential
-from surpyval.recurrent import HPP, CoxLewis, CrowAMSAA, laplace, mil_hdbk_189c
+from surpyval.datasets import load_rossi_static
+from surpyval.recurrent import (
+    HPP,
+    CauseSpecificNHPP,
+    CoxLewis,
+    CrowAMSAA,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
+    ProportionalIntensityHPP,
+    ProportionalIntensityNHPP,
+    laplace,
+    mil_hdbk_189c,
+)
 from surpyval.recurrent.diagnostics import cvm_statistic
+from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.tests._helpers import (
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+)
 
 
 def _events():
@@ -175,3 +194,59 @@ def test_cramer_von_mises_requires_likelihood_fit():
     no_data = CrowAMSAA.from_params([1000.0, 1.2])
     with pytest.raises(ValueError, match="fitted from data"):
         no_data.cramer_von_mises()
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics on a model without its data say what they need.
+# ---------------------------------------------------------------------------
+
+
+matplotlib.use("Agg")
+
+
+def _rossi():
+    data = load_rossi_static()
+    x = data["week"].values
+    c = 1 - data["arrest"].values
+    i = np.arange(len(x))
+    Z = data[["fin", "age"]].values
+    return x, Z, i, c
+
+
+def _data_less_models():
+    x, Z, i, c = _rossi()
+    pi_nhpp = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    pi_hpp = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
+    ca = CrowAMSAA.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C)
+    g1 = GeneralizedOneRenewal.fit(
+        REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C
+    )
+    return {
+        "HPP.from_params": HPP.from_params([0.5]),
+        "CrowAMSAA restored": type(ca).from_dict(ca.to_dict()),
+        "PI-NHPP restored": type(pi_nhpp).from_dict(pi_nhpp.to_dict()),
+        "PI-HPP restored": type(pi_hpp).from_dict(pi_hpp.to_dict()),
+        "G1 restored": RenewalModel.from_dict(g1.to_dict()),
+        "GRP fit_from_parameters": GeneralizedRenewal.fit_from_parameters(
+            [10, 2], 0.3
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "method", ["residuals", "trend_test", "cramer_von_mises", "plot"]
+)
+def test_data_less_models_raise_informative_error(method):
+    for name, model in _data_less_models().items():
+        with pytest.raises(ValueError, match="requires a model fitted"):
+            getattr(model, method)()
+
+
+def test_restored_cause_specific_nhpp_plot_raises_informative_error():
+    e = ["A", "B", "A", "B", "A", None, "A", "B", "A", "A", None]
+    model = CauseSpecificNHPP.fit(
+        REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, e=e
+    )
+    restored = CauseSpecificNHPP.from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="requires a model fitted"):
+        restored.plot()

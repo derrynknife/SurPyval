@@ -36,3 +36,12 @@ def linear_degradation_units_with_extremes() -> (
     )
     i = np.concatenate([i, np.full(t.size, 6), np.full(t.size, 7)])
     return x, y, i
+
+
+REPAIR_FLEET_X = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+
+
+REPAIR_FLEET_I = [1] * 6 + [2] * 5
+
+
+REPAIR_FLEET_C = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]

@@ -174,3 +174,22 @@ def test_hf_is_nan_at_a_nan_time():
     model = AdditiveHazards.fit(x, Z, c=c)
     out = model.hf(np.array([1.0, np.nan]), np.array([0.2, -0.1]))
     assert np.isfinite(out[0]) and np.isnan(out[1]), out
+
+
+# ---------------------------------------------------------------------------
+# The bandwidth on coincident event times (#289).
+# ---------------------------------------------------------------------------
+
+
+class TestRound2FollowUps:
+    def test_ah_bandwidth_coincident_events(self):
+        # 289: nearly-tied event times used to collapse the bandwidth to
+        # the floor and return Dirac spikes (~1.6e9).
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m = AdditiveHazards.fit(x=[5.0, 5.0 + 1e-9], Z=[[0.0], [0.1]])
+        hf = float(np.ravel(m.hf([5.0], np.array([0.05])))[0])
+        assert np.isfinite(hf)
+        assert hf < 100.0

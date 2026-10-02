@@ -70,3 +70,24 @@ class TestMPSValidation:
         m = Weibull.fit(x=x, how="MPS")
         assert m.params[0] == pytest.approx(10.0, rel=0.05)
         assert m.params[1] == pytest.approx(2.0, rel=0.05)
+
+
+# ---------------------------------------------------------------------------
+# The MPS tie objective is inf, not nan (#289).
+# ---------------------------------------------------------------------------
+
+
+class TestRound2FollowUps:
+    def test_mps_tie_objective_inf_not_nan(self):
+        # 289: untied points no longer contribute 0*log(0) to the tie
+        # density block.
+        v = Weibull.neg_mean_D(
+            np.array([1.0, 2, 3, 300]),
+            np.zeros(4),
+            np.array([1, 2, 1, 1]),
+            -np.inf,
+            np.inf,
+            10.0,
+            2.0,
+        )
+        assert np.isinf(v)

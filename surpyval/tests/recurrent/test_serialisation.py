@@ -220,3 +220,29 @@ def test_cause_specific_nhpp_json_file(tmp_path):
     xt = np.array([100.0, 300.0])
     for cause in model.event_types:
         assert np.allclose(model.cif(xt, cause), restored.cif(xt, cause))
+
+
+# ---------------------------------------------------------------------------
+# A simulated MCF has no variance, before and after a round
+# trip; an old dict's NaN variance reads as none.
+# ---------------------------------------------------------------------------
+
+
+def test_simulated_mcf_round_trip_has_no_variance():
+    sim = CrowAMSAA.from_params([10, 2]).time_terminated_simulation(
+        20, items=50, random_state=1
+    )
+    as_dict = sim.to_dict()
+    assert as_dict["var"] is None
+    restored = NonParametricCounting.from_dict(as_dict)
+    with pytest.raises(ValueError, match="no variance"):
+        restored.mcf_cb([5])
+
+
+def test_old_dict_with_nan_variance_reads_as_no_variance():
+    old = NonParametricCounting.fit([1, 2, 3]).to_dict()
+    old["var"] = float("nan")
+    old.pop("origin")
+    restored = NonParametricCounting.from_dict(old)
+    assert restored.var is None
+    assert restored.origin == 0.0
