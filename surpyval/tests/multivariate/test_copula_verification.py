@@ -204,3 +204,129 @@ def test_data_checked_with_fitted_margins(clayton_sample, case):
     kwargs, match = _bad_series(X)[case]
     with pytest.raises(ValueError, match=match):
         Clayton.fit(margins=margins, **kwargs)
+
+
+# -- #541: the elliptical copulas near rho = +-1 -----------------------------
+# rho was clipped to +-0.9999 inside every formula, so from_params(0.99995)
+# silently evaluated another copula: a density of 81.11 at (0.3, 0.3001)
+# for the true 114.68.
+_NEAR_ONE = [0.99995, -0.99995, 1 - 1e-8, -(1 - 1e-12)]
+_POINTS = [(0.3, 0.3001), (0.5, 0.5), (0.9, 0.2), (0.02, 0.0201), (0.7, 0.3)]
+
+
+def _gaussian_density(u, v, rho):
+    """The bivariate normal density over its margins' in long double, from
+    the textbook form."""
+    from scipy.special import ndtri
+
+    a = np.longdouble(ndtri(u))
+    b = np.longdouble(ndtri(v))
+    r = np.longdouble(rho)
+    d = 1 - r * r
+    quad = (r * r * (a * a + b * b) - 2 * r * a * b) / (2 * d)
+    return float(np.exp(-quad) / np.sqrt(d))
+
+
+def _t_density(u, v, rho, nu):
+    """The bivariate t density over its margins', the quadratic form in
+    long double."""
+    from scipy.special import gammaln, stdtrit
+
+    x = np.longdouble(stdtrit(nu, u))
+    y = np.longdouble(stdtrit(nu, v))
+    r = np.longdouble(rho)
+    d = 1 - r * r
+    q = (x * x + y * y - 2 * r * x * y) / (nu * d)
+    log_c = (
+        gammaln((nu + 2) / 2)
+        + gammaln(nu / 2)
+        - 2 * gammaln((nu + 1) / 2)
+        - np.log(np.sqrt(d))
+        - (nu + 2) / 2 * np.log1p(q)
+        + (nu + 1) / 2 * (np.log1p(x * x / nu) + np.log1p(y * y / nu))
+    )
+    return float(np.exp(log_c))
+
+
+def _assert_log_close(value, reference):
+    if reference < 1e-300:  # underflows in double precision
+        assert value < 1e-290, (value, reference)
+        return
+    log_ref = np.log(reference)
+    tol = 1e-11 * max(1.0, abs(log_ref))
+    assert abs(np.log(value) - log_ref) <= tol, (value, reference)
+
+
+@pytest.mark.parametrize("rho", _NEAR_ONE)
+def test_541_elliptical_density_near_rho_one(rho):
+    from surpyval.multivariate import StudentT
+
+    margins = [Weibull.from_params([10, 2]), Weibull.from_params([20, 3])]
+    gauss = Gaussian.from_params([rho], margins)
+    t = StudentT.from_params([rho, 4.0], margins)
+    for u, v in _POINTS:
+        if rho < 0:
+            v = 1 - v
+        # On the log scale the likelihood uses: far from the diagonal the
+        # density is as small as 1e-42, its exponent good to 1e-12
+        _assert_log_close(
+            gauss.copula.pdf(u, v, rho), _gaussian_density(u, v, rho)
+        )
+        _assert_log_close(
+            t.copula.pdf(u, v, rho, 4.0), _t_density(u, v, rho, 4.0)
+        )
+
+
+@pytest.mark.parametrize("rho", _NEAR_ONE)
+def test_541_gaussian_cdf_and_h_function_near_rho_one(rho):
+    from scipy.special import ndtr, ndtri
+
+    # C(1/2, 1/2) = 1/4 + arcsin(rho) / (2 pi) exactly; scipy's check of
+    # the covariance refused rho within 1e-10 of 1
+    np.testing.assert_allclose(
+        Gaussian.cdf(0.5, 0.5, rho),
+        0.25 + np.arcsin(rho) / (2 * np.pi),
+        rtol=1e-13,
+        atol=1e-15,
+    )
+    # Within 1e-8 of +-1, and off the diagonal, the CDF is a Frechet
+    # bound to double precision
+    if 1 - abs(rho) <= 1e-8:
+        v, expected = (0.31, 0.3) if rho > 0 else (0.69, 0.0)
+        assert Gaussian.cdf(0.3, v, rho) == pytest.approx(expected, abs=1e-15)
+    for u, v in _POINTS:
+        a = np.longdouble(ndtri(u))
+        b = np.longdouble(ndtri(v))
+        r = np.longdouble(rho)
+        z = float((b - r * a) / np.sqrt(1 - r * r))
+        np.testing.assert_allclose(
+            Gaussian.du(u, v, rho), ndtr(z), rtol=1e-11, atol=1e-300
+        )
+
+
+def test_541_samples_near_rho_one_have_the_right_dependence():
+    from scipy.stats import kendalltau
+
+    from surpyval.multivariate import StudentT
+
+    margins = [Weibull.from_params([10, 2]), Weibull.from_params([20, 3])]
+    expected = 2 / np.pi * np.arcsin(0.99995)  # 0.99363; 0.99100 at 0.9999
+    for model in (
+        Gaussian.from_params([0.99995], margins),
+        StudentT.from_params([0.99995, 3.0], margins),
+    ):
+        assert model.kendall_tau() == pytest.approx(expected, rel=1e-14)
+        X = model.random(5000, random_state=0)
+        tau = kendalltau(X[:, 0], X[:, 1]).statistic
+        assert tau == pytest.approx(expected, abs=5e-4)
+
+
+@pytest.mark.parametrize("rho", [1.0, -1.0, 1.5])
+def test_541_rho_of_one_is_not_an_elliptical_copula(rho):
+    from surpyval.multivariate import StudentT
+
+    margins = [Weibull.from_params([10, 2]), Weibull.from_params([20, 3])]
+    with pytest.raises(ValueError, match="rho = .* is outside its bounds"):
+        Gaussian.from_params([rho], margins)
+    with pytest.raises(ValueError, match="rho = .* is outside its bounds"):
+        StudentT.from_params([rho, 4.0], margins)

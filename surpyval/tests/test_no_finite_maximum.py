@@ -20,7 +20,13 @@ from surpyval.degradation import (
     GammaProcess,
     WienerProcess,
 )
-from surpyval.multivariate import Clayton, Frank, Gaussian, Gumbel
+from surpyval.multivariate import (
+    Clayton,
+    Frank,
+    Gaussian,
+    Gumbel,
+    StudentT,
+)
 from surpyval.multivariate.parametric.copula.copula import (
     _perfect_dependence,
 )
@@ -101,6 +107,37 @@ def test_a_family_without_negative_dependence_is_not_told_about_it():
 def test_ordinary_copula_fits_are_silent(copula):
     _, caught = _caught(copula.fit, _dependent(), margins=_MARGINS)
     _silent(caught)
+
+
+@pytest.mark.parametrize("copula", [Gaussian, StudentT])
+@pytest.mark.parametrize("sign", [1, -1])
+def test_541_perfectly_dependent_elliptical_fit_reaches_a_valid_rho(
+    copula, sign
+):
+    # rho was clipped to +-0.9999 inside the formulas; the search now runs
+    # it as far as a double goes, keeps it inside (-1, 1), and warns once.
+    X = np.column_stack([_X1, _X1 / 2 if sign > 0 else 100.0 - _X1])
+    model, caught = _caught(copula.fit, X, margins=_MARGINS)
+    kind = "comonotone" if sign > 0 else "countermonotone"
+    _one_no_maximum(caught, kind)
+    rho = model.params[0]
+    assert 0.998 < sign * rho < 1.0
+    assert np.isfinite(model.copula.pdf(0.3, 0.4, *model.params))
+
+
+@pytest.mark.parametrize("copula", [Gaussian, StudentT])
+@pytest.mark.parametrize("how", ["IFM", "MLE"])
+def test_541_rho_running_to_one_on_censored_data_warns(copula, how):
+    # The second series is right censored below the comonotone value x1/2
+    # in every row: the likelihood rises (to a plateau in floating point)
+    # as rho tends to 1. No row is observed in both series, so the data
+    # are not "perfectly dependent"; the fit stopped silently at 0.99999.
+    X = np.column_stack([_X1, 0.4 * _X1])
+    c = np.column_stack([np.zeros(20, int), np.ones(20, int)])
+    margins = [sp.Weibull.from_params([10, 2]), sp.Weibull.from_params([5, 2])]
+    model, caught = _caught(copula.fit, X, c=c, margins=margins, how=how)
+    _one_no_maximum(caught, "rho runs to 1", "comonotone")
+    assert 0.999 < model.params[0] < 1.0
 
 
 def test_perfect_dependence_is_decided_exactly():

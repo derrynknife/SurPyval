@@ -627,8 +627,14 @@ Some further points worth knowing:
 - The Frank, Clayton, Gumbel and Joe formulas are evaluated in log space,
   from terms that neither cancel nor overflow, so they stay accurate however
   strong the dependence (Frank's and the Student-t's samplers also invert
-  their h-functions in closed form). The Gaussian and Student-t copulas'
-  :math:`\rho` is kept within :math:`\pm 0.9999`.
+  their h-functions in closed form). The Gaussian and Student-t formulas
+  are written in :math:`1 - |\rho|` and in the difference of the two
+  quantiles, so they are accurate for any :math:`|\rho| < 1` (the Gaussian
+  CDF is scipy's, Genz's algorithm, within :math:`10^{-14}` of a 40-digit
+  integration up to :math:`\rho = 1 - 2^{-52}`); :math:`\rho = \pm 1`, the
+  comonotone or countermonotone copula, is not a member of either family
+  and ``from_params`` refuses it. A fit whose :math:`\rho` runs to
+  :math:`\pm 1` warns that the likelihood has no finite maximum.
 - The Student-t copula's CDF (needed for rows censored in both series and
   for truncation) is the integral of its closed-form h-function, taken by
   tanh-sinh quadrature: within :math:`10^{-11}` of Genz's exact algorithm
