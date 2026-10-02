@@ -279,10 +279,13 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             data.x_il, *params
         )
         like = np.zeros(len(self.data.x))
-        like[data.c == 0] = like_o
-        like[data.c == 1] = like_r
-        like[data.c == -1] = like_l
-        like[data.c == 2] = like_i
+        # The observation masks, not the raw codes: a censored row with a
+        # finite truncation bound on its censored side is an interval
+        # (#310, #544).
+        like[data.mask_o] = like_o
+        like[data.mask_r] = like_r
+        like[data.mask_l] = like_l
+        like[data.mask_i] = like_i
         return like
 
     def log_likelihood(self, params: Any) -> Any:
@@ -304,16 +307,19 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         # Each kind of row in one piece, put back in the rows' order by
         # indexing rather than assignment, so that autograd can
         # differentiate it (the EM's M-step and the polish take its
-        # gradient, #506).
+        # gradient, #506). The kinds are the observation masks, not the raw
+        # codes: a right-censored row with a finite ``tr`` is the interval
+        # [x, tr] and a left-censored row with a finite ``tl`` is [tl, x]
+        # (#310), and grouping by code lost them (#544).
         pieces = []
         with np.errstate(all="ignore"):
-            if (data.c == 0).any():
+            if data.mask_o.any():
                 pieces.append(dist.log_df(data.x_o, *params))
-            if (data.c == 1).any():
+            if data.mask_r.any():
                 pieces.append(dist.log_sf(data.x_r, *params))
-            if (data.c == -1).any():
+            if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
-            if (data.c == 2).any():
+            if data.mask_i.any():
                 window = dist.ff(data.x_ir, *params) - dist.ff(
                     data.x_il, *params
                 )
@@ -333,10 +339,9 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         """The index that puts the rows grouped by kind (exact, right,
         left, interval, as :meth:`log_likelihood` builds them) back in
         the data's order."""
-        c = self.data.c
-        grouped = np.concatenate(
-            [np.flatnonzero(c == kind) for kind in (0, 1, -1, 2)]
-        )
+        data = self.data
+        masks = (data.mask_o, data.mask_r, data.mask_l, data.mask_i)
+        grouped = np.concatenate([np.flatnonzero(mask) for mask in masks])
         return np.argsort(grouped)
 
     def _log_resp(self, w: npt.NDArray, params: Any) -> Any:

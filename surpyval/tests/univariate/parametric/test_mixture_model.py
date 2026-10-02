@@ -230,3 +230,67 @@ def test_restored_mixture_needs_its_data_for_plots_and_takes_lists_in_cs():
     for method in (restored.plot, restored.get_plot_data):
         with pytest.raises(ValueError, match="needs the data"):
             method()
+
+
+# ---------------------------------------------------------------------------
+# #544: a censored row with a finite truncation bound on its censored side
+# is the interval between them (#310); the EM's pieces lost it.
+# ---------------------------------------------------------------------------
+
+
+def _data_544():
+    rng = np.random.default_rng(544)
+    x = np.sort(
+        np.concatenate([rng.weibull(3, 40) * 5, rng.weibull(4, 40) * 20])
+    )
+    t = np.column_stack([np.zeros(80), np.full(80, np.inf)])
+    return x, t
+
+
+@pytest.mark.parametrize("kind", ["right", "left"])
+def test_544_censored_row_with_truncation_is_its_interval(kind):
+    x, t = _data_544()
+    c = np.zeros(80, int)
+    xl, xr, ci = x.copy(), x.copy(), c.copy()
+    rows = [3, 50]
+    if kind == "right":
+        # right censored at x, truncated at tr: the interval [x, tr]
+        c[rows] = 1
+        t[rows, 1] = x[rows] + 5
+        xr[rows] = t[rows, 1]
+    else:
+        # left censored at x, truncated at tl: the interval [tl, x]
+        c[rows] = -1
+        t[rows, 0] = x[rows] / 2
+        xl[rows] = t[rows, 0]
+    ci[rows] = 2
+
+    # It raised IndexError: the converted rows fell out of the row order
+    coded = sp.MixtureModel.fit(x, c=c, t=t, dist=sp.Weibull)
+    explicit = sp.MixtureModel.fit(xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull)
+
+    # The same likelihood at any parameters: row by row (the two forms
+    # sort the rows differently), and in total
+    for params in (explicit.params, [[3.0, 2.0], [10.0, 1.0]]):
+        params = np.asarray(params)
+        np.testing.assert_allclose(
+            np.sort(coded.likelihood(params[0])),
+            np.sort(explicit.likelihood(params[0])),
+            rtol=1e-12,
+        )
+        # each row's log-likelihood is its likelihood's log
+        np.testing.assert_allclose(
+            coded.log_likelihood(params[1]),
+            np.log(coded.likelihood(params[1])),
+            rtol=1e-12,
+        )
+        assert coded.neg_ll_of(explicit.w, params) == pytest.approx(
+            explicit.neg_ll_of(explicit.w, params), rel=1e-12
+        )
+    # and so the same fit: the maximum to 1e-8; the parameters to the
+    # tolerance of the truncated path's optimiser (L-BFGS-B), as the
+    # maximum is flat: the two fits' log-likelihoods differ by 3e-8 (of
+    # 243) where their parameters differ by 2e-5
+    assert coded.loglike == pytest.approx(explicit.loglike, rel=1e-8)
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-4)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-4)

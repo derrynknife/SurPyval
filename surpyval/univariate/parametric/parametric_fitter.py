@@ -653,14 +653,20 @@ class ParametricFitter(UnivariateDataFrameMixin):
         xl_safe = np.where(lo_evaluated, xl, stand_in)
         xr_safe = np.where(hi_finite, xr, stand_in)
 
+        # The zero-inflation mass ``f0`` sits at 0 in observed time (see
+        # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
+        # 0 nothing has failed, and a window opening below 0 contains the
+        # mass. Counting it at a ``tl`` of -1 made a no-op truncation
+        # divide by ``1 - f0``, and f0 ran to 1 (#548). (With ``f0 = 0``
+        # this is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
-            f0 + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
+            f0 * (xr >= 0) + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
             1.0,
         )
         lower = np.where(
             lo_finite,
-            f0
+            f0 * (xl >= 0)
             + (p - f0)
             * np.where(
                 lo_evaluated, self.ff(xl_safe - gamma, *dist_params), 0.0
