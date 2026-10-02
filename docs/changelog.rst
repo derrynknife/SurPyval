@@ -321,6 +321,19 @@ bands change (#477).
   names are constants in ``regression/_kinds.py``, and the model branches on
   ``_is_accelerated_life()`` and ``_is_additive()`` instead of comparing
   ``kind`` with string literals; ``kind`` and its values are unchanged.
+- **Development: long functions split into named steps; flake8
+  ``max-complexity`` lowered from 70 to 25 (maintainability sweep, phase
+  2).** ``handle_xicn``, the tvc-schedule expression evaluator, the MLE
+  fitter, ``xcnt_handler``, ``turnbull``, ``DegradationAnalysis.fit``, the
+  fit-input validation and the harness's ``diff`` are split into named
+  steps, and the likelihood-ratio search behind ``cb(method="lr")`` is a
+  ``_PsiBoundSearch`` class rather than eleven closures. No result
+  changes: the equivalence harness is bit-identical, and old-against-new
+  runs over thousands of inputs per function give identical values,
+  warnings and error messages. Comments in these modules state current
+  behaviour rather than its history, and the copula and renewal
+  tolerances are named for what they are (``_U_CLIP``, ``_LOG_FLOOR``,
+  ``_MACHINE_EPS``).
 - **Development: tests organised by feature (maintainability sweep,
   phase 3).** The 59 test modules named after fix rounds
   (``*_fixesN.py``, ``*_roundN.py``, ``test_tvc_phase2.py``, ...) are
