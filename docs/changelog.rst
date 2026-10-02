@@ -200,6 +200,30 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Fixed: derivatives through ``np.where`` with a broadcast argument
+  (#562).** autograd's rule for ``np.where(c, x, y)`` did not reduce the
+  gradient to the shape of a broadcast ``x`` or ``y``: the gradient came
+  back the wrong shape or raised, and where a later step summed it away
+  the second derivative was silently wrong (7.52 instead of 4.46 in the old
+  accelerated-life substitution). SurPyval registers a broadcast-aware rule
+  when imported (``surpyval/utils/autograd_where_compat.py``), so every
+  model and every custom distribution written with ``surpyval.np`` gets
+  the right derivatives; no fitted value changes. **Behaviour change:**
+  importing surpyval changes ``autograd.numpy.where``'s derivative for the
+  whole process. A test notices when autograd fixes this itself, so the
+  patch can go.
+- **Fixed: ``Discretize`` has an exact Hessian at the first bin (#562).**
+  The probability of ``k = 1`` took ``R(0)`` through the continuous
+  formula, whose Hessian is not finite there (a Weibull's ``(0/α)^β``), so
+  the covariance silently fell back to a numerical Hessian. ``R`` is now
+  exactly 1 at the start of the support; values are unchanged.
+- **A ``derivatives`` conformance property (#562).** For every registered
+  model whose fit or inference differentiates its likelihood, the gradient
+  and Hessian it takes at the fit, in its search space, agree with
+  Richardson finite differences to 1e-6 of the standard-error scale (1e-5
+  through the numerical incomplete gamma and beta shape derivatives); so do
+  a parametric ``cb``'s delta-method gradients, the copulas' h-functions
+  and density, and the degradation paths' Jacobians.
 - **Fixed: accelerated life and AFT time-varying fits warn of no finite
   maximum and use the exact information (#555).** Stress levels without
   failures, or a covariate level with no events, let parameters run off
