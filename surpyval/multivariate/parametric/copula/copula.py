@@ -853,9 +853,16 @@ class Copula:
             ]
             return self.neg_ll(theta, dims, data.n)
 
-        start = onp.concatenate(
-            [to_unbounded(theta0)] + [j.start for j in joint]
-        )
+        # The two-stage estimate may sit on a closed bound (the AMH's
+        # theta = 1, where the search's transform saturated), which the
+        # unbounded space cannot hold: the joint search starts just inside.
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            theta_start = onp.asarray(to_unbounded(theta0), dtype=float)
+        if not onp.all(onp.isfinite(theta_start)):
+            theta_start = onp.asarray(
+                to_unbounded(self._just_inside(theta0)), dtype=float
+            )
+        start = onp.concatenate([theta_start] + [j.start for j in joint])
         with onp.errstate(all="ignore"):  # as in ``_fit_theta``
             res = minimize(
                 obj,
@@ -865,6 +872,17 @@ class Copula:
             )
         theta, models = unpack(res.x)
         return onp.asarray(theta, dtype=float), models
+
+    def _just_inside(self, theta: npt.NDArray) -> npt.NDArray:
+        """``theta`` with any value on (or beyond) a finite bound moved
+        1e-9 of the way (relative to the bound) inside it."""
+        out = onp.array(theta, dtype=float)
+        for i, (low, high) in enumerate(self.bounds):
+            if low is not None and out[i] <= low:
+                out[i] = low + 1e-9 * max(1.0, abs(low))
+            if high is not None and out[i] >= high:
+                out[i] = high - 1e-9 * max(1.0, abs(high))
+        return out
 
     def _init_theta(self, dims: list) -> npt.NDArray:
         """Initial parameter guess, strictly inside ``bounds``.

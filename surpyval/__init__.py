@@ -289,7 +289,16 @@ _ELSEWHERE = {
         ["TrendTestResult", "laplace", "mil_hdbk_189c"], "surpyval.recurrent"
     ),
     **dict.fromkeys(
-        ["Clayton", "Copula", "Frank", "Gaussian", "Independence"],
+        [
+            "AMH",
+            "Clayton",
+            "Copula",
+            "Frank",
+            "Gaussian",
+            "Independence",
+            "Joe",
+            "StudentT",
+        ],
         "surpyval.multivariate",
     ),
 }

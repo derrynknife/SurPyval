@@ -2019,9 +2019,21 @@ def _degradation():
 # ---------------------------------------------------------------------------
 # Copulas
 # ---------------------------------------------------------------------------
+_COPULA_FAMILIES = (
+    "Independence",
+    "Clayton",
+    "Gumbel",
+    "Frank",
+    "Gaussian",
+    "Joe",
+    "AMH",
+    "StudentT",
+)
+
+
 def _copulas():
     out = []
-    for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
+    for name in _COPULA_FAMILIES:
         fitter = getattr(mv, name)
 
         def from_params(d, f=fitter):
@@ -2189,7 +2201,7 @@ def _df_paths():
             pd.DataFrame(d), x_col="x", y_col="y", threshold=20.0
         )
     )
-    for name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
+    for name in _COPULA_FAMILIES:
         paths[f"{name}Copula"] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
         )
@@ -2923,6 +2935,10 @@ _NO_STARVE: dict[str, str] = {
     "CauseSpecificMCF": _EXACT,
     "IndependenceCopula": "no dependence parameter: the margins are "
     "univariate fits, starved in their own cases",
+    "AMHCopula": "the comonotone starve is no failure for it: the AMH "
+    "reaches neither Frechet bound, and on such data it goes to its bound "
+    "theta = 1, a valid copula, without a word (as Clayton does on "
+    "countermonotone data, test_no_finite_maximum.py)",
     "InducedFailureDistribution": "a Monte Carlo of the DegradationAnalysis "
     "fit, which is starved in its own case",
     "RoystonParmar": "no public iteration limit or starting point, and no "

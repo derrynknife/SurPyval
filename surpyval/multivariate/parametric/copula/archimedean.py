@@ -204,7 +204,9 @@ class GumbelCopula(Copula):
     def _logs(u: Any, v: Any, theta: Any) -> tuple:
         log_x = np.log(-np.log(u))
         log_y = np.log(-np.log(v))
-        log_a = np.logaddexp(theta * log_x, theta * log_y) / theta
+        # (a missing u or v gives NaN, without numpy's warning about it)
+        with onp.errstate(invalid="ignore"):
+            log_a = np.logaddexp(theta * log_x, theta * log_y) / theta
         return log_x, log_y, log_a
 
     # Named single parameter narrows the variadic base contract.
@@ -456,7 +458,8 @@ class JoeCopula(Copula):
         a = -onp.expm1(theta * log_ubar)
         b = -onp.expm1(theta * log_vbar)
         ab = a * b
-        with onp.errstate(divide="ignore"):
+        # (a missing u or v gives NaN, without numpy's warning about it)
+        with onp.errstate(divide="ignore", invalid="ignore"):
             near_upper = onp.logaddexp(
                 theta * log_ubar, theta * log_vbar + onp.log(a)
             )
