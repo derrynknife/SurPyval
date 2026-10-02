@@ -196,6 +196,35 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Performance sweep.** Results are unchanged to the bit except where
+  noted, checked by the new equivalence harness:
+
+  - Cox residuals, ``check_ph`` and robust standard errors are linear time.
+    They looped over the event times with a mask of every row: dfbeta on
+    10,000 rows took 4.3 s and now takes 0.01 s; ``check_ph`` with four
+    residual kinds on 100,000 rows 6.5 s, now 0.3 s.
+  - A truncation time at or below the support's edge truncates nothing
+    and is no longer evaluated. A ``tl`` of 0 sent the covariance to the
+    numerical Hessian: a left-truncated Weibull at 100,000 rows fits in
+    0.37 s instead of 0.80 s, and the covariance is now the analytic one
+    (the registry's mixed-censoring Weibull covariance was 0.09% off; the
+    Gamma's 4e-6). With an offset, rows truncated below the threshold
+    gave a nan gradient, so the fit fell back to Nelder-Mead and stopped
+    1.23 log-likelihood units short of the maximum with a "not verified"
+    warning; it now converges, in 0.15 s instead of 4.6 s.
+  - Likelihood-ratio bounds keep each likelihood their searches evaluate
+    (18% were repeats): 10-60% faster.
+  - Censored Gamma, Beta and Negative Binomial fits compute each
+    incomplete function's complement only where it is used: a censored
+    Gamma at 100,000 rows takes 0.77 s instead of 1.25 s.
+  - Kaplan-Meier, Nelson-Aalen and Fleming-Harrington sort and validate
+    their data once: 1,000,000 rows in 0.49 s instead of 0.72 s.
+  - ``metrics.auc_td`` counts pairs by binary search: 100,000 rows and 20
+    horizons in 0.48 s instead of 15.5 s.
+  - Saving and reading models: the schema check walks the document once,
+    and Cox models are read into plain arrays. A Cox JSON round trip at
+    100,000 rows takes 0.41 s instead of 2.35 s.
+
 - **Removed: the empty surpyval.alpha package**, which has held no models
   since v0.17.0, and the unused ``surpyval.utils.validate_tv_coxph_df_inputs``.
 - **Development: refactors are proven bit-identical.**
