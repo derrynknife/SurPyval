@@ -1,8 +1,9 @@
-"""Archimedean copula families: Independence, Clayton, Gumbel, Frank.
+"""Archimedean copula families: Independence, Clayton, Gumbel, Frank, Joe
+and Ali-Mikhail-Haq (AMH).
 
-All four have a closed-form CDF, and each supplies closed forms for its
-partial derivatives (``du``, ``dv``) and density (``pdf``); Clayton, Gumbel
-and Frank evaluate everything in log space so that strong dependence
+All six have a closed-form CDF, and each supplies closed forms for its
+partial derivatives (``du``, ``dv``) and density (``pdf``); Clayton, Gumbel,
+Frank and Joe evaluate everything in log space so that strong dependence
 neither overflows nor cancels. Each family converts an empirical Kendall's
 tau into a starting parameter for the optimiser.
 """
@@ -176,7 +177,7 @@ class ClaytonCopula(Copula):
         return theta / (theta + 2.0)
 
     def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
-        return (2.0 ** (-1.0 / theta), 0.0)
+        return (float(2.0 ** (-1.0 / theta)), 0.0)
 
     def _init_theta(self, dims: list) -> npt.NDArray:
         tau = onp.clip(self._emp_tau(dims), 1e-3, 0.95)
@@ -243,7 +244,7 @@ class GumbelCopula(Copula):
         return 1.0 - 1.0 / theta
 
     def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
-        return (0.0, 2.0 - 2.0 ** (1.0 / theta))
+        return (0.0, float(2.0 - 2.0 ** (1.0 / theta)))
 
     def _init_theta(self, dims: list) -> npt.NDArray:
         tau = onp.clip(self._emp_tau(dims), 1e-3, 0.95)
@@ -404,6 +405,277 @@ class FrankCopula(Copula):
         return onp.asarray([theta])
 
 
+class JoeCopula(Copula):
+    """Joe copula (upper-tail dependence), ``theta >= 1``.
+
+    .. math::
+        C(u, v) = 1 - \\left(\\bar u^\\theta + \\bar v^\\theta - \\bar
+        u^\\theta \\bar v^\\theta\\right)^{1/\\theta},
+        \\qquad \\bar u = 1 - u,
+
+    the parameterisation of R's ``copula::joeCopula`` and of
+    ``VineCopula`` (family 6). ``theta = 1`` is the independence copula,
+    and the dependence grows with ``theta`` towards the comonotone copula.
+    Like the Gumbel it has upper-tail dependence only,
+    :math:`\\lambda_U = 2 - 2^{1/\\theta}`, but for a given Kendall's tau
+    a stronger one: at tau = 0.5 the Joe has :math:`\\lambda_U = 0.71`
+    (``theta = 2.86``), the Gumbel 0.59.
+
+    With :math:`a = 1 - \\bar u^\\theta` and :math:`b = 1 - \\bar
+    v^\\theta`, the bracket is :math:`A = 1 - a b`, and every primitive is
+    formed from ``log A``: as ``log1p(-a b)`` near the lower corner (where
+    ``a b`` is small and ``C`` is tiny), as a log-sum-exp of :math:`\\bar
+    u^\\theta` and :math:`\\bar v^\\theta a` near the upper one.
+
+    Examples
+    --------
+    >>> from surpyval import Weibull
+    >>> from surpyval.multivariate import Joe
+    >>> margins = [
+    ...     Weibull.from_params([10, 2]),
+    ...     Weibull.from_params([20, 3]),
+    ... ]
+    >>> model = Joe.from_params([2.0], margins)
+    >>> round(model.kendall_tau(), 4)
+    0.3551
+    >>> [round(x, 4) for x in model.tail_dependence()]
+    [0.0, 0.5858]
+    """
+
+    name = "Joe"
+    bounds = ((1, None),)
+    parameter_names = ["theta"]
+    closed_bounds = ("theta",)
+    dependence_limits = {1: "theta grows without bound"}
+
+    @staticmethod
+    def _parts(u: Any, v: Any, theta: Any) -> tuple:
+        """``(log ubar, log vbar, log b, a b, log A)`` (see the class
+        docstring)."""
+        log_ubar, log_vbar = onp.log1p(-u), onp.log1p(-v)
+        a = -onp.expm1(theta * log_ubar)
+        b = -onp.expm1(theta * log_vbar)
+        ab = a * b
+        with onp.errstate(divide="ignore"):
+            near_upper = onp.logaddexp(
+                theta * log_ubar, theta * log_vbar + onp.log(a)
+            )
+        # (the branch not taken is kept finite: ab may round to 1)
+        log_A = onp.where(
+            ab < 0.5, onp.log1p(-onp.minimum(ab, 0.5)), near_upper
+        )
+        return log_ubar, log_vbar, onp.log(b), ab, log_A
+
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        u, v, theta = _frank_args(u, v, theta)
+        return -onp.expm1(self._parts(u, v, theta)[4] / theta)
+
+    # Named single parameter narrows the variadic base contract.
+    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # dC/du = ubar^(theta - 1) b A^(1/theta - 1)
+        u, v, theta = _frank_args(u, v, theta)
+        log_ubar, _, log_b, _, log_A = self._parts(u, v, theta)
+        return onp.exp(
+            (theta - 1.0) * log_ubar + log_b + (1.0 / theta - 1.0) * log_A
+        )
+
+    # Named single parameter narrows the variadic base contract.
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        return self.du(v, u, theta)
+
+    # Named single parameter narrows the variadic base contract.
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # c = (ubar vbar)^(theta - 1) A^(1/theta - 2) (theta - 1 + A)
+        u, v, theta = _frank_args(u, v, theta)
+        log_ubar, log_vbar, _, _, log_A = self._parts(u, v, theta)
+        return onp.exp(
+            (theta - 1.0) * (log_ubar + log_vbar)
+            + (1.0 / theta - 2.0) * log_A
+            + onp.log(theta - 1.0 + onp.exp(log_A))
+        )
+
+    def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
+        """Kendall's tau, :math:`1 - \\frac{2}{\\theta}\\,
+        \\frac{\\psi(2 + \\delta) - \\psi(2)}{\\delta}` with
+        :math:`\\delta = 2/\\theta - 1` and :math:`\\psi` the digamma
+        function (the closed form of R's ``copula::tau`` for the Joe
+        copula, written so that ``theta = 2`` is not 0/0)."""
+        from scipy.special import polygamma, psi
+
+        theta = float(theta)
+        delta = 2.0 / theta - 1.0
+        if abs(delta) < 1e-4:
+            # Taylor series of the difference quotient about delta = 0
+            ratio = (
+                polygamma(1, 2.0)
+                + polygamma(2, 2.0) * delta / 2.0
+                + polygamma(3, 2.0) * delta**2 / 6.0
+            )
+        else:
+            ratio = (psi(2.0 + delta) - psi(2.0)) / delta
+        return float(1.0 - 2.0 / theta * ratio)
+
+    def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
+        return (0.0, float(2.0 - 2.0 ** (1.0 / theta)))
+
+    def _init_theta(self, dims: list) -> npt.NDArray:
+        return onp.asarray(
+            [_invert_tau(self, self._emp_tau(dims), 1.0, 1e4, 1.0 + 1e-2)]
+        )
+
+
+class AMHCopula(Copula):
+    """Ali-Mikhail-Haq copula (weak dependence), ``-1 <= theta <= 1``.
+
+    .. math::
+        C(u, v) = \\frac{u v}{1 - \\theta (1 - u)(1 - v)},
+
+    the parameterisation of R's ``copula::amhCopula``. ``theta = 0`` is the
+    independence copula. The family only reaches weak dependence: Kendall's
+    tau lies in :math:`[-0.1817, 1/3]` and Spearman's rho in
+    :math:`[-0.2711, 0.4784]`, both bounds attained at ``theta = -1``
+    and ``1``. A fit to data more strongly dependent than that runs to the
+    bound (a valid copula) and returns it, without a warning, as a Clayton
+    fit to negatively dependent data runs to independence; use the
+    Clayton, Frank or Gaussian copula there. It has no tail dependence,
+    except :math:`\\lambda_L = 1/2` at ``theta = 1`` (where it is the
+    Clayton copula with ``theta = 1``).
+
+    Examples
+    --------
+    >>> from surpyval import Weibull
+    >>> from surpyval.multivariate import AMH
+    >>> margins = [
+    ...     Weibull.from_params([10, 2]),
+    ...     Weibull.from_params([20, 3]),
+    ... ]
+    >>> model = AMH.from_params([0.5], margins)
+    >>> round(model.kendall_tau(), 4), round(model.spearman_rho(), 4)
+    (0.1288, 0.1924)
+    """
+
+    name = "AMH"
+    bounds = ((-1, 1),)
+    parameter_names = ["theta"]
+    closed_bounds = ("theta",)
+
+    @staticmethod
+    def _d(u: Any, v: Any, theta: float) -> Any:
+        """``1 - theta (1 - u)(1 - v)``, written as ``(1 - theta) +
+        theta (u + v - u v)`` so that it keeps its relative accuracy where
+        it is small (``theta`` near 1 and ``u``, ``v`` near 0)."""
+        return (1.0 - theta) + theta * (u + v * (1.0 - u))
+
+    # Named single parameter narrows the variadic base contract.
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        u, v, theta = _frank_args(u, v, theta)
+        return u * v / self._d(u, v, theta)
+
+    # Named single parameter narrows the variadic base contract.
+    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # dC/du = v (1 - theta (1 - v)) / D^2
+        u, v, theta = _frank_args(u, v, theta)
+        return v * ((1.0 - theta) + theta * v) / self._d(u, v, theta) ** 2
+
+    # Named single parameter narrows the variadic base contract.
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        return self.du(v, u, theta)
+
+    # Named single parameter narrows the variadic base contract.
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # c = (1 + theta((1 + u)(1 + v) - 3) + theta^2 (1 - u)(1 - v)) / D^3,
+        # its numerator regrouped as (1 - theta)(1 - theta + theta s) +
+        # theta (1 + theta) q, s = u + v, q = u v, which is 2 u v (not a
+        # difference of numbers near 1) at theta = 1.
+        u, v, theta = _frank_args(u, v, theta)
+        num = (1.0 - theta) * (1.0 - theta + theta * (u + v)) + theta * (
+            1.0 + theta
+        ) * (u * v)
+        return num / self._d(u, v, theta) ** 3
+
+    # Below |theta| = 0.1 the closed forms divide nearly cancelling terms
+    # by theta^2; their power series (exact, from the series of log and
+    # dilog) are used there, to 20 terms (the next is below 1e-21).
+    _SERIES_THETA = 0.1
+
+    def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
+        """Kendall's tau, :math:`1 - \\frac{2}{3 \\theta^2}(\\theta + (1 -
+        \\theta)^2 \\log(1 - \\theta))` (Nelsen 2006, example 5.4), from
+        -0.1817 at ``theta = -1`` to 1/3 at ``theta = 1``."""
+        from scipy.special import xlogy
+
+        theta = float(theta)
+        if abs(theta) < self._SERIES_THETA:
+            m = onp.arange(1, 21)
+            return float(
+                4.0 / 3.0 * onp.sum(theta**m / (m * (m + 1.0) * (m + 2.0)))
+            )
+        return float(
+            1.0
+            - 2.0
+            * (theta + xlogy((1.0 - theta) ** 2, 1.0 - theta))
+            / (3.0 * theta**2)
+        )
+
+    def spearman_rho(self, theta: float) -> float:  # type: ignore[override]
+        """Spearman's rho, :math:`\\frac{12 (1 + \\theta)}{\\theta^2}
+        \\mathrm{Li}_2(\\theta) - \\frac{24 (1 - \\theta)}{\\theta^2}
+        \\log(1 - \\theta) - \\frac{3 (\\theta + 12)}{\\theta}` (Nelsen
+        2006, exercise 5.10, with the dilogarithm
+        :math:`\\mathrm{Li}_2`), from -0.2711 at ``theta = -1`` to 0.4784
+        at ``theta = 1``."""
+        from scipy.special import spence, xlogy
+
+        theta = float(theta)
+        if abs(theta) < self._SERIES_THETA:
+            m = onp.arange(1, 21)
+            return float(
+                12.0 * onp.sum(theta**m / ((m + 1.0) ** 2 * (m + 2.0) ** 2))
+            )
+        # scipy's spence(1 - x) is the dilogarithm Li2(x)
+        return float(
+            12.0 * (1.0 + theta) / theta**2 * spence(1.0 - theta)
+            - 24.0 * xlogy(1.0 - theta, 1.0 - theta) / theta**2
+            - 3.0 * (theta + 12.0) / theta
+        )
+
+    def tail_dependence(self, theta: float) -> tuple:  # type: ignore[override]
+        return (0.5 if float(theta) == 1.0 else 0.0, 0.0)
+
+    def _init_theta(self, dims: list) -> npt.NDArray:
+        # The fit starts strictly inside the bounds; data beyond the
+        # family's range of tau start next to the nearer bound.
+        return onp.asarray(
+            [_invert_tau(self, self._emp_tau(dims), -1.0, 1.0, 0.0)]
+        )
+
+
+def _invert_tau(
+    family: Copula, tau: float, low: float, high: float, default: float
+) -> float:
+    """The parameter in ``(low, high)`` whose Kendall's tau is ``tau``, for
+    a family whose tau increases with its one parameter.
+
+    ``tau`` is first moved inside the family's range, just short of the
+    tau at each end (``low`` and ``high`` themselves may be valid
+    parameters, a limit, or the start of a range that is never reached in
+    floating point), so the root is strictly inside; ``default`` is
+    returned if no root is bracketed.
+    """
+    span = high - low
+    lo = low + 1e-3 * min(span, 1.0)
+    hi = high - 1e-3 * min(span, 1.0)
+    tau_lo, tau_hi = family.kendall_tau(lo), family.kendall_tau(hi)
+    if not tau_lo < tau < tau_hi:
+        tau = float(onp.clip(tau, tau_lo, tau_hi))
+        return lo if tau == tau_lo else hi
+    try:
+        return float(brentq(lambda p: family.kendall_tau(p) - tau, lo, hi))
+    except ValueError:
+        return default
+
+
 def _frank_theta(theta: Any) -> float:
     """The Frank parameter as a float (one value, like every family's)."""
     arr = onp.asarray(theta, dtype=float)
@@ -482,3 +754,5 @@ Independence = IndependenceCopula()
 Clayton = ClaytonCopula()
 Gumbel = GumbelCopula()
 Frank = FrankCopula()
+Joe = JoeCopula()
+AMH = AMHCopula()

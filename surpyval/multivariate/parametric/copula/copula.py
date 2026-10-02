@@ -198,6 +198,20 @@ class Copula:
         diff_v: bool,
         params: Any,
     ) -> Any:
+        # The upper end of a right-censored slot is exactly 1, where every
+        # copula has C(1, v) = v and dC/dv(1, v) = 1 (and symmetrically):
+        # those are used as they are, rather than the family's formula at
+        # 1 - 1e-10, which was off by up to 1e-10 and for a family whose
+        # CDF is an integral (the Student-t) cost three quarters of a
+        # doubly right-censored row.
+        u_one = not diff_u and bool(onp.all(onp.asarray(u) == 1.0))
+        v_one = not diff_v and bool(onp.all(onp.asarray(v) == 1.0))
+        if u_one or v_one:
+            shape = onp.broadcast_shapes(onp.shape(u), onp.shape(v))
+            if diff_u or diff_v:
+                return onp.ones(shape)
+            other = onp.ones(shape) if u_one and v_one else (v if u_one else u)
+            return onp.broadcast_to(onp.asarray(other, dtype=float), shape)
         u = np.clip(u, _EPS, 1 - _EPS)
         v = np.clip(v, _EPS, 1 - _EPS)
         if diff_u and diff_v:
@@ -578,12 +592,22 @@ class Copula:
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
-        self._warn_if_perfectly_dependent(data, theta)
+        # One warning per fit: perfect dependence explains any runaway.
+        if not self._warn_if_perfectly_dependent(data, theta):
+            self._warn_if_no_maximum(margin_models, data, theta)
         return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
+
+    def _warn_if_no_maximum(
+        self, margin_models: list, data: Any, theta: npt.NDArray
+    ) -> None:
+        """A family whose likelihood can lack a finite maximum on data
+        that are not perfectly dependent checks for it here (the Student-t
+        copula's degrees of freedom); by default there is nothing to
+        check."""
 
     def _warn_if_perfectly_dependent(
         self, data: Any, theta: npt.NDArray
-    ) -> None:
+    ) -> bool:
         """Warn when the data sit at a Frechet bound the family reaches
         only in the limit of its parameter (#392).
 
@@ -603,12 +627,12 @@ class Copula:
         the dependence. Data with even one discordant pair (or a tie in
         one coordinate only) are never flagged, so a fit to data drawn
         from any member of the family is silent unless the sample itself
-        is perfectly dependent.
+        is perfectly dependent. Returns whether it warned.
         """
         sign, rows = _perfect_dependence(data)
         limit = self.dependence_limits.get(sign)
         if limit is None:
-            return
+            return False
         bound, kind, relation = (
             ("1", "comonotone", "increasing")
             if sign > 0
@@ -631,6 +655,7 @@ class Copula:
             f"{relation} function of the other): model that relationship "
             "directly rather than with a copula",
         )
+        return True
 
     def from_params(self, params: Any, margins: Any) -> Any:
         """

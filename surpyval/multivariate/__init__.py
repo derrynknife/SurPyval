@@ -19,6 +19,7 @@ Accessed as a package, mirroring ``surpyval.recurrent``::
 """
 
 from .parametric import (
+    AMH,
     Clayton,
     Copula,
     CopulaModel,
@@ -26,7 +27,9 @@ from .parametric import (
     Gaussian,
     Gumbel,
     Independence,
+    Joe,
     MultivariateSurpyvalData,
+    StudentT,
 )
 
 __all__ = [
@@ -38,4 +41,7 @@ __all__ = [
     "Gumbel",
     "Frank",
     "Gaussian",
+    "Joe",
+    "AMH",
+    "StudentT",
 ]

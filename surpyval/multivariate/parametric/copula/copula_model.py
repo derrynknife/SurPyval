@@ -303,11 +303,21 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         """Rebuild a copula model from a :meth:`to_dict` dictionary."""
         import surpyval
 
-        from .archimedean import Clayton, Frank, Gumbel, Independence
-        from .elliptical import Gaussian
+        from .archimedean import AMH, Clayton, Frank, Gumbel, Independence, Joe
+        from .elliptical import Gaussian, StudentT
 
         families = {
-            c.name: c for c in (Independence, Clayton, Gumbel, Frank, Gaussian)
+            c.name: c
+            for c in (
+                Independence,
+                Clayton,
+                Gumbel,
+                Frank,
+                Gaussian,
+                Joe,
+                AMH,
+                StudentT,
+            )
         }
         copula_name = model_dict["copula"]
         if copula_name not in families:
