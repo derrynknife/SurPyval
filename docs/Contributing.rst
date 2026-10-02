@@ -120,6 +120,43 @@ model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
 
+Proving a refactor changed nothing
+----------------------------------
+
+A refactor (moving, merging or splitting code) must not change what the
+package computes or says. ``scripts/refactor/snapshot.py`` records a
+snapshot of it before the change and another after, and compares them:
+
+.. code-block:: bash
+
+    python scripts/refactor/snapshot.py record /tmp/before.json
+    # ... make the change ...
+    python scripts/refactor/snapshot.py record /tmp/after.json
+    python scripts/refactor/snapshot.py compare /tmp/before.json /tmp/after.json
+
+A snapshot holds, for every case in the conformance registry: the fitted
+parameters, ``neg_ll``, ``aic`` and ``bic``, every function at the
+registry's query, every confidence bound the case declares (each side and
+``on=``), ``to_dict()``, ``repr`` and ``summary()``, the warnings each call
+raises, each alternate fit path, and the error each of a corpus of invalid
+inputs raises. It adds the fits the registry does not reach (time-varying
+covariates, seeded bootstraps, recurrent data mixing every kind of
+censoring), the public API (names, signatures and defaults), the modules
+``import surpyval`` loads, and the IDs of the collected tests and
+doctests. It takes two to three minutes on two cores (``-j`` sets the
+workers; ``--full`` adds the likelihood-ratio bounds the conformance suite
+runs only nightly, about two minutes more).
+
+Floats are stored exactly, so ``compare`` is bit-exact unless given
+``--rtol``. A pure move or merge must compare clean. Splitting a function
+into steps may change results by at most ``--rtol 1e-12``, with the reason
+for each difference given in the pull request. A change that is meant to
+alter the API (a removed name, a new method) shows only in the ``api``
+section; say so. The snapshot depends on the numpy and scipy build, so
+compare snapshots recorded in the same environment, and with the same
+version of the script (copy it aside if the change edits it). The snapshots
+themselves are not committed.
+
 Mutation testing
 ----------------
 
