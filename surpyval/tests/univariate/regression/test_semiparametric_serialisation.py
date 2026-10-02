@@ -13,10 +13,13 @@ covariance, and Buckley-James's bootstrap CI all survive the round-trip.
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
+import surpyval as surv
 from surpyval import AdditiveHazards, BuckleyJames
 from surpyval.datasets import load_rossi_static
+from surpyval.tests._helpers import weibull_ph_data
 from surpyval.univariate.regression import (
     CoxPH,
     SemiParametricRegressionModel,
@@ -200,3 +203,76 @@ def test_buckley_james_json_file_round_trip(tmp_path):
 def test_buckley_james_rejects_wrong_model():
     with pytest.raises(ValueError, match="BuckleyJamesModel"):
         BuckleyJamesModel.from_dict({"model": "Other"})
+
+
+# ---------------------------------------------------------------------------
+# Formula fits round-trip (#261).
+# ---------------------------------------------------------------------------
+
+
+def _df(seed=7, n=240):
+    rng = np.random.default_rng(seed)
+    sex = rng.choice(["M", "F"], n)
+    age = rng.normal(50, 10, n)
+    x = (
+        10
+        * np.exp(-0.3 * (sex == "M") + 0.01 * (age - 50))
+        * (-np.log(rng.uniform(size=n))) ** (1 / 2)
+    )
+    return pd.DataFrame(
+        {"time": x, "sex": sex, "age": age, "cens": np.zeros(n)}
+    )
+
+
+def test_buckley_james_formula_round_trip():
+    df = _df()
+    m = BuckleyJames.fit_from_df(
+        df, x_col="time", formula="age + I(age**2) + sex", c_col="cens"
+    )
+    restored = surv.from_dict(json.loads(json.dumps(m.to_dict())))
+    new = pd.DataFrame({"age": [55.0], "sex": ["M"]})
+    assert np.allclose(m.sf(5.0, new), restored.sf(5.0, new))
+
+
+def test_additive_hazards_formula_round_trip():
+    df = _df()
+    m = AdditiveHazards.fit_from_df(
+        df, x_col="time", formula="age + sex", c_col="cens"
+    )
+    restored = surv.from_dict(json.loads(json.dumps(m.to_dict())))
+    new = pd.DataFrame({"age": [55.0, 45.0], "sex": ["M", "F"]})
+    assert np.allclose(m.sf([5.0, 10.0], new), restored.sf([5.0, 10.0], new))
+
+
+# ---------------------------------------------------------------------------
+# A restored Cox model's residuals say they need the data; Cox
+# serialises to strict JSON.
+# ---------------------------------------------------------------------------
+
+
+def test_restored_cox_residuals_explain_missing_data():
+    x, Z = weibull_ph_data()
+    restored = SemiParametricRegressionModel.from_dict(
+        CoxPH.fit(x, Z).to_dict()
+    )
+    with pytest.raises(ValueError, match="restored"):
+        restored.compute_residuals()
+
+
+def test_cox_to_dict_is_strict_json_and_reads_old_dicts():
+    x, Z = weibull_ph_data()
+    model = CoxPH.fit(x, Z)
+    text = json.dumps(model.to_dict(), allow_nan=False)
+    restored = SemiParametricRegressionModel.from_dict(json.loads(text))
+    np.testing.assert_allclose(
+        restored.sf([3.0], [0.5]), model.sf([3.0], [0.5])
+    )
+    old = model.to_dict()
+    old["tl"] = [-np.inf] * 200
+    assert np.all(SemiParametricRegressionModel.from_dict(old).tl == -np.inf)
+    tl = np.r_[np.zeros(100), np.full(100, -np.inf)]
+    delayed = CoxPH.fit(x, Z, tl=tl)
+    text = json.dumps(delayed.to_dict(), allow_nan=False)
+    np.testing.assert_array_equal(
+        SemiParametricRegressionModel.from_dict(json.loads(text)).tl, tl
+    )

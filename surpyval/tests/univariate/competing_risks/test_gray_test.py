@@ -253,3 +253,50 @@ def test_gray_mixed_and_tuple_labels():
     causes = [("a", 1), ("b", 2)] * 3
     tup = gray_test(X6, causes, G6, event=("a", 1))
     assert tup.statistic == pytest.approx(gray_test(X6, E6, G6, 1).statistic)
+
+
+# ---------------------------------------------------------------------------
+# #380: Gray's test is cmprsk's.
+# ---------------------------------------------------------------------------
+
+
+_GRAY = dict(
+    x=[2, 7, 6, 3, 1, 6, 3, 7, 3, 6, 2, 5, 1, 7, 1, 6, 7, 4, 7, 5, 7, 6, 8]
+    + [1, 1, 6, 6, 6, 7, 4, 7, 5, 2, 2, 7, 6, 7, 8, 7, 3, 5, 4, 3, 8, 8],
+    e=[1, 1, 0, 0, 2, 0, 0, 2, 2, 2, 2, 2, 1, 2, 0, 2, 2, 0, 0, 0, 2, 1, 0]
+    + [1, 1, 1, 2, 2, 1, 0, 0, 0, 2, 2, 0, 2, 1, 1, 1, 2, 2, 0, 2, 0, 2],
+    group=[1, 1, 2, 0, 0, 1, 0, 2, 2, 1, 0, 2, 0, 2, 2, 0, 2, 2, 1, 2, 1, 1]
+    + [1, 0, 1, 1, 0, 1, 0, 2, 0, 0, 1, 0, 1, 0, 2, 0, 2, 2, 2, 2, 1, 0, 1],
+)
+
+
+@pytest.mark.parametrize(
+    "rho, event, expected",
+    [
+        (0, 1, 0.680791319807),
+        (0, 2, 1.495728261106),
+        (1, 1, 0.877130594184),
+        (1, 2, 1.212189254797),
+    ],
+)
+def test_gray_test_matches_cmprsk_on_three_tied_groups(rho, event, expected):
+    # R cmprsk 2.2-11: cuminc(x, e, group, rho = rho)$Tests. The variance
+    # was SurPyval's own linearisation (6.162 against cmprsk's 5.065 on
+    # the reference suite's tied fixture), and the rho weight used a
+    # different pooled incidence.
+    e = [None if k == 0 else k for k in _GRAY["e"]]
+    res = sp.gray_test(_GRAY["x"], e, _GRAY["group"], event=event, rho=rho)
+    assert res.df == 2
+    assert res.statistic == pytest.approx(expected, rel=1e-10)
+
+
+def test_gray_test_counts_equal_repeated_rows():
+    rng = np.random.default_rng(3)
+    x = rng.integers(1, 6, 30).astype(float)
+    e = rng.choice(np.array([None, "a", "b"], dtype=object), 30)
+    g = rng.integers(0, 2, 30)
+    n = rng.integers(1, 4, 30)
+    counted = sp.gray_test(x, e, g, event="a", n=n, rho=0.5)
+    rows = np.repeat(np.arange(30), n)
+    repeated = sp.gray_test(x[rows], e[rows], g[rows], event="a", rho=0.5)
+    assert counted.statistic == pytest.approx(repeated.statistic, rel=1e-12)

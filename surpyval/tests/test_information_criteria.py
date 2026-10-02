@@ -22,8 +22,15 @@ import surpyval as surv
 from surpyval import Exponential, Weibull, WeibullAFT, WeibullPH
 from surpyval.multivariate import Clayton
 from surpyval.recurrent import HPP
-from surpyval.tests._helpers import no_warnings
+from surpyval.tests._helpers import (
+    fitted_accelerated_life_model,
+    no_warnings,
+    weibull_binary_covariate_data,
+)
 from surpyval.univariate.parametric.royston_parmar import RoystonParmar
+from surpyval.univariate.regression.parametric_regression_model import (
+    ParametricRegressionModel,
+)
 
 N = 80
 
@@ -396,3 +403,30 @@ def test_aic_c_is_nan_without_enough_observations(x):
         # k = 2, N = 3: N = k + 1
         assert np.isnan(no_warnings(model.aic_c))
     assert not model.aic_c() < model.aic()
+
+
+# ---------------------------------------------------------------------------
+# A regression's ``k`` counts the estimated parameters only.
+# ---------------------------------------------------------------------------
+
+
+def test_fixed_parameters_not_counted_in_k():
+    x, Z = weibull_binary_covariate_data()
+    free = WeibullPH.fit(x, Z)
+    fixed = WeibullPH.fit(x, Z, fixed={"beta": 2.0})
+    assert free.k == 3
+    assert fixed.k == 2
+    n = len(x)
+    assert fixed.aic() == pytest.approx(2 * 2 + 2 * fixed.neg_ll())
+    assert fixed.aic_c() == pytest.approx(
+        fixed.aic() + (2 * 2**2 + 2 * 2) / (n - 2 - 1)
+    )
+
+
+def test_restored_model_k_counts_estimated_parameters():
+    model = fitted_accelerated_life_model()
+    d = model.to_dict()
+    d["k"] = 4  # a dict written by a version that counted the placeholder
+    restored = ParametricRegressionModel.from_dict(d)
+    assert restored.k == 3
+    assert restored.aic() == pytest.approx(model.aic())

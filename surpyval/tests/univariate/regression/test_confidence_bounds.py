@@ -16,6 +16,7 @@ from scipy.special import ndtri
 import surpyval as surv
 from surpyval import (
     ExponentialPH,
+    Weibull,
     WeibullAFT,
     WeibullAH,
     WeibullPH,
@@ -248,3 +249,24 @@ def test_regression_sf_bounds_are_the_family_scale_wald_bounds():
     q = ndtri(0.975)
     v = log_H(params)[:, None] + np.array([q, -q]) * se[:, None]
     np.testing.assert_allclose(model.cb(t, z), np.exp(-np.exp(v)), rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Invalid ``cb`` arguments raise ``ValueError`` (#261).
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_cb_arguments_raise_value_error():
+    np.random.seed(8)
+    m = Weibull.fit(Weibull.random(80, 10, 3))
+    with pytest.raises(ValueError):
+        m.cb([5.0], on="bogus")
+    with pytest.raises(ValueError):
+        m.param_cb("alpha", bound="both")
+
+
+def test_interval_bound_below_support_raises():
+    with pytest.raises(ValueError):
+        Weibull.fit(xl=np.array([-0.5, 1, 2]), xr=np.array([0.5, 2, 3]))
+    with pytest.raises(ValueError):
+        Weibull.fit(np.array([0.0, 1.0, 2.0, 5.0]), c=np.array([-1, 0, 0, 0]))

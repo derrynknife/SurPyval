@@ -1,7 +1,21 @@
-import numpy as np
-import pytest
+import itertools
+import time
+import warnings
 
+import numpy as np
+import pandas as pd
+import pytest
+from scipy.special import logsumexp
+
+import surpyval as sp
 from surpyval import CoxPH, ExponentialPH, Weibull, WeibullPH
+from surpyval.univariate.competing_risks import (
+    CompetingRisks,
+    CompetingRisksProportionalHazards,
+    FineGray,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_ph import CoxPH_
+from surpyval.utils import validate_coxph
 
 
 @pytest.fixture(autouse=True)
@@ -887,3 +901,296 @@ class TestPHRandom:
         assert np.shape(x) == (7,)
         assert np.shape(z_out) == (7, 2)
         assert np.all(np.isfinite(x))
+
+
+# ---------------------------------------------------------------------------
+# A plain-list ``Z`` and an ndarray ``init`` (#261).
+# ---------------------------------------------------------------------------
+
+
+def test_ph_fit_accepts_plain_list_Z():
+    np.random.seed(5)
+    x = Weibull.random(100, 10, 3)
+    Z = [[float(v)] for v in np.random.normal(size=100)]
+    m = WeibullPH.fit(x, Z=Z)
+    assert np.isfinite(m.params).all()
+
+
+def test_fit_accepts_ndarray_init():
+    np.random.seed(6)
+    x = Weibull.random(100, 10, 3)
+    m = Weibull.fit(x, init=np.array([10.0, 3.0]))
+    assert np.isfinite(m.params).all()
+
+
+# ---------------------------------------------------------------------------
+# Cox refuses left- and interval-censored rows; ``fit_from_df``
+# with delayed entry; the Kalbfleisch-Prentice and exact tie
+# likelihoods against brute force.
+# ---------------------------------------------------------------------------
+
+
+def _cox_data() -> tuple:
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    Z = np.array([0.0, 1.0, 0.0, 1.0, 0.0, 1.0]).reshape(-1, 1)
+    return x, Z
+
+
+def test_cox_rejects_left_censoring():
+    # c = -1 used to be read as right-censored: the fit matched c[2] = 1.
+    x, Z = _cox_data()
+    with pytest.raises(ValueError, match="left-censored"):
+        CoxPH.fit(x, Z, c=[0, 0, -1, 0, 0, 1])
+
+
+def test_cox_rejects_interval_censoring():
+    # Interval rows used to fail with an IndexError deep in the generator.
+    x, Z = _cox_data()
+    x2 = [[1, 2], 2, 3, 4, 5, 6]
+    with pytest.raises(ValueError, match="interval-censored"):
+        CoxPH.fit(x2, Z, c=[2, 0, 0, 0, 0, 1])
+
+
+@pytest.mark.parametrize("method", ["breslow", "efron", "exact", "kp"])
+def test_cox_rejects_left_censoring_every_entry_point(method):
+    x, Z = _cox_data()
+    c = [0, 0, -1, 0, 0, 1]
+    with pytest.raises(ValueError, match="parametric regression"):
+        CoxPH.fit(x, Z, c=c, tie_method=method, strata=[0, 0, 0, 1, 1, 1])
+    df = pd.DataFrame({"x": x, "z": Z[:, 0], "c": c})
+    with pytest.raises(ValueError, match="parametric regression"):
+        CoxPH.fit_from_df(
+            df, x_col="x", Z_cols="z", c_col="c", tie_method=method
+        )
+
+
+def test_cox_accepts_two_column_exact_times():
+    # A two-column x with xl == xr everywhere is exact / right-censored data
+    # written as intervals, and fits as such.
+    x, Z = _cox_data()
+    c = [0, 0, 1, 0, 0, 1]
+    two_col = CoxPH.fit(np.column_stack([x, x]), Z, c=c)
+    assert np.allclose(two_col.params, CoxPH.fit(x, Z, c=c).params)
+
+
+def test_cox_fit_from_df_tl_col_matches_fit():
+    rng = np.random.default_rng(1)
+    n = 120
+    z = rng.normal(size=n)
+    tl = rng.uniform(0, 1.5, size=n)
+    x = tl + rng.exponential(np.exp(-0.7 * z))
+    c = (rng.uniform(size=n) < 0.2).astype(int)
+    df = pd.DataFrame({"x": x, "z": z, "c": c, "entry": tl})
+
+    for method in ("breslow", "efron"):
+        from_df = CoxPH.fit_from_df(
+            df,
+            x_col="x",
+            Z_cols="z",
+            c_col="c",
+            tl_col="entry",
+            tie_method=method,
+        )
+        direct = CoxPH.fit(x, z.reshape(-1, 1), c=c, tl=tl, tie_method=method)
+        assert np.allclose(from_df.params, direct.params)
+        # ... and the entry ages change the answer.
+        ignored = CoxPH.fit(x, z.reshape(-1, 1), c=c, tie_method=method)
+        assert not np.allclose(from_df.params, ignored.params)
+
+
+def test_cox_fit_from_df_masks_tl_and_strata_with_missing_covariates():
+    # Rows with a missing covariate are dropped; the entry ages and stratum
+    # labels must drop with them (strata used to raise a length mismatch).
+    df = pd.DataFrame(
+        {
+            "x": [1, 2, 3, 4, 5, 6, 7, 8.0],
+            "z": [0, 1, np.nan, 1, 0, 1, 0, 1],
+            "s": [0, 0, 0, 0, 1, 1, 1, 1],
+            "tl": [0, 0, 0, 1, 1, 2, 2, 0.0],
+        }
+    )
+    kept = df.dropna()
+    m = CoxPH.fit_from_df(df, "x", Z_cols="z", tl_col="tl", strata_col="s")
+    direct = CoxPH.fit(
+        kept.x.values,
+        kept[["z"]].values,
+        tl=kept.tl.values,
+        strata=kept.s.values,
+        tie_method="efron",
+    )
+    assert np.allclose(m.params, direct.params)
+
+
+def _brute_kp_neg_ll(beta, x, Z, c, tl):
+    """Kalbfleisch-Prentice by listing every d-subset of each risk set."""
+    ll = 0.0
+    eta = Z @ beta
+    for tau in np.unique(x[c == 0]):
+        deaths = np.flatnonzero((x == tau) & (c == 0))
+        risk = np.flatnonzero((tl < tau) & (x >= tau))
+        subsets = [
+            eta[list(s)].sum()
+            for s in itertools.combinations(risk, len(deaths))
+        ]
+        ll += eta[deaths].sum() - logsumexp(subsets)
+    return -ll
+
+
+def _brute_exact_neg_ll(beta, x, Z, c, tl):
+    """The exact partial likelihood by summing over every ordering."""
+    ll = 0.0
+    a = np.exp(Z @ beta)
+    for tau in np.unique(x[c == 0]):
+        deaths = np.flatnonzero((x == tau) & (c == 0))
+        risk = np.flatnonzero((tl < tau) & (x >= tau))
+        total = 0.0
+        for order in itertools.permutations(deaths):
+            remaining, prob = a[risk].sum(), 1.0
+            for j in order:
+                prob *= a[j] / remaining
+                remaining -= a[j]
+            total += prob
+        ll += np.log(total)
+    return -ll
+
+
+def _small_tied_data(seed):
+    rng = np.random.default_rng(seed)
+    n = 18
+    Z = rng.normal(size=(n, 2))
+    x = rng.integers(1, 6, size=n).astype(float)
+    c = (rng.uniform(size=n) < 0.25).astype(int)
+    tl = np.where(rng.uniform(size=n) < 0.3, rng.uniform(0, 2, n), -np.inf)
+    tl = np.minimum(tl, x - 0.5)
+    return x, Z, c, tl
+
+
+@pytest.mark.parametrize(
+    "method, brute",
+    [("kp", _brute_kp_neg_ll), ("exact", _brute_exact_neg_ll)],
+)
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_tie_likelihoods_match_brute_force(method, brute, seed):
+    x, Z, c, tl = _small_tied_data(seed)
+    xv, cv, nv, tlv, Zv = validate_coxph(x, c, None, Z, tl, method)
+    neg_ll, jac_hess = CoxPH_()._resolve_func_generator(method)(
+        xv, Zv, cv, nv, tlv
+    )
+    eps = 1e-5
+    eye = np.eye(2)
+    for beta in (np.zeros(2), np.array([0.4, -0.9]), np.array([1.5, 2.0])):
+        ref = brute(beta, x, Z, c, tl)
+        assert neg_ll(beta) == pytest.approx(ref, rel=1e-11)
+
+        score, hess = jac_hess(beta)
+        score_fd = np.array(
+            [
+                (brute(beta + eps * e, x, Z, c, tl))
+                - brute(beta - eps * e, x, Z, c, tl)
+                for e in eye
+            ]
+        ) / (2 * eps)
+        assert np.allclose(score, score_fd, atol=1e-6)
+        hess_fd = np.column_stack(
+            [
+                (jac_hess(beta + eps * e)[0] - jac_hess(beta - eps * e)[0])
+                / (2 * eps)
+                for e in eye
+            ]
+        )
+        assert np.allclose(hess, hess_fd, atol=1e-5)
+
+
+def _heavy_ties(seed=0):
+    # 18 distinct times, 107 failures tied at one of them: the old KP took
+    # over nine minutes on data like this.
+    rng = np.random.default_rng(seed)
+    x = np.concatenate(
+        [np.full(107, 5.0), rng.integers(1, 19, size=150).astype(float)]
+    )
+    Z = rng.normal(size=(x.size, 2))
+    c = (rng.uniform(size=x.size) < 0.2).astype(int)
+    return x, Z, c
+
+
+@pytest.mark.parametrize("method", ["kp", "exact"])
+def test_heavy_ties_fit_quickly(method):
+    x, Z, c = _heavy_ties()
+    start = time.perf_counter()
+    model = CoxPH.fit(x, Z, c=c, tie_method=method)
+    elapsed = time.perf_counter() - start
+    assert elapsed < 5.0
+    assert np.all(np.isfinite(model.beta))
+    assert np.all(np.isfinite(model.p_values))
+
+
+@pytest.mark.parametrize("method", ["kp", "exact"])
+def test_heavy_tie_fit_is_the_likelihood_maximum(method):
+    # Score zero and a positive-definite information at the fitted beta.
+    x, Z, c = _heavy_ties(1)
+    model = CoxPH.fit(x, Z, c=c, tie_method=method)
+    score, hess = model.jac(model.beta)
+    assert np.allclose(score, 0.0, atol=1e-6)
+    assert np.all(np.linalg.eigvalsh(hess) > 0)
+
+
+def test_exact_every_unit_tied():
+    # One tie set of 75 used to be refused (a cap of 12 ties) and, below
+    # the cap, took tens of seconds.
+    rng = np.random.default_rng(3)
+    Z = rng.normal(size=(80, 1))
+    x = np.ones(80)
+    c = np.zeros(80, dtype=int)
+    c[:5] = 1  # five survivors keep the risk set larger than the tie set
+    start = time.perf_counter()
+    model = CoxPH.fit(x=x, Z=Z, c=c, tie_method="exact")
+    assert time.perf_counter() - start < 5.0
+    assert np.isfinite(model.beta[0])
+
+
+# ---------------------------------------------------------------------------
+# #394: an exactly observed time of inf.
+# ---------------------------------------------------------------------------
+
+
+_Z5 = [[-1.0], [1.0], [0.0], [2.0], [1.0], [0.0]]
+_X5 = [np.inf, 0.5, 1.0, 2.0, 3.0, 4.0]
+_E5 = ["a", "b", "a", "b", "a", "a"]
+
+
+@pytest.mark.parametrize(
+    "fit",
+    [
+        lambda: sp.CoxPH.fit(x=_X5, Z=_Z5),
+        lambda: sp.CoxPH.fit(x=_X5, Z=_Z5, strata=[1, 1, 1, 2, 2, 2]),
+        lambda: sp.AdditiveHazards.fit(_X5, _Z5),
+        lambda: sp.BuckleyJames.fit(_X5, _Z5),
+        lambda: CompetingRisksProportionalHazards.fit(_X5, _Z5, _E5),
+        lambda: FineGray.fit(_X5, _Z5, _E5, event="a"),
+        lambda: CompetingRisks.fit(_X5, _E5),
+    ],
+    ids=[
+        "CoxPH",
+        "stratified",
+        "LinYing",
+        "BuckleyJames",
+        "CR-Cox",
+        "FG",
+        "CR",
+    ],
+)
+def test_semi_parametric_fitters_refuse_an_infinite_event_time(fit):
+    # Each used to take it as an event at infinity: Cox gave beta 19.4 on
+    # two rows, the Aalen-Johansen incidence counted it, and Lin-Ying
+    # failed with a LinAlgError from an SVD.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match=r"\(c=0\) must be finite"):
+            fit()
+
+
+def test_cox_accepts_an_infinite_censoring_time():
+    model = sp.CoxPH.fit(
+        [np.inf, 0.5, 1.0, 2.0], [[-1.0], [1.0], [0.0], [1.0]], c=[1, 0, 0, 0]
+    )
+    assert np.isfinite(model.beta).all()

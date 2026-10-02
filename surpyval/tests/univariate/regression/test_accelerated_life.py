@@ -14,8 +14,22 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import AcceleratedLife, Exponential, Weibull
+from surpyval import (
+    AcceleratedLife,
+    Exponential,
+    Gamma,
+    GammaFrailty,
+    LogNormal,
+    Weibull,
+)
 from surpyval.life_models import Power
+from surpyval.tests._helpers import fitted_accelerated_life_model
+from surpyval.univariate.regression import (
+    DualPower,
+    ExponentialLifeModel,
+    InversePower,
+    Linear,
+)
 from surpyval.univariate.regression.accelerated_life.accelerated_life import (
     _LIFE_PARAM_MAP,
 )
@@ -198,3 +212,141 @@ def test_one_stress_level_with_init_warns_not_identifiable():
         )
     # the life at stress 20 is a * 20**n, about 10 * 100 / 20 = 50
     assert model.params[2] / 20.0 == pytest.approx(50.0, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# Refit and ``fixed`` (#261).
+# ---------------------------------------------------------------------------
+
+
+def test_accelerated_life_refit_and_fixed():
+    np.random.seed(4)
+    stress = np.repeat([1.0, 2.0, 3.0, 4.0], 50)
+    x = (100 / stress) * (-np.log(np.random.uniform(size=len(stress)))) ** (
+        1 / 3
+    )
+    fitter = AcceleratedLife(Weibull, Power)
+    m1 = fitter.fit(x, Z=stress)  # 1-D stress vector (#261)
+    assert np.isfinite(np.atleast_1d(m1.sf([50.0], np.array([1.0])))).all()
+    # A second fit on the same fitter instance used to corrupt the
+    # parameter map; and user-fixed parameters were dropped from
+    # ``model.fixed`` so SEs were reported for constrained parameters.
+    m2 = fitter.fit(x, Z=stress, fixed={"beta": 3.0})
+    assert "beta" in m2.fixed
+    assert m2.params[1] == pytest.approx(3.0, abs=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# ``random()`` size per stress; ``k`` excludes the placeholder.
+# ---------------------------------------------------------------------------
+
+
+def test_accelerated_life_random_size_per_stress():
+    model = fitted_accelerated_life_model()
+    # A pair of stresses gives size draws at each: 2 * size, never size**2
+    # (the old uniform (low, high) option drew size stresses and then size
+    # draws at each).
+    for Zq in ((1.0, 2.0), [1.0, 2.0], [[1.0], [2.0]]):
+        draws, rows = model.model.random(3, Zq, *model.params)
+        assert draws.shape == (6,)
+        assert rows.shape == (6, 1)
+    draws, rows = model.random(3, 2.0)
+    assert draws.shape == (3,)
+    assert np.all(rows == 2.0)
+
+
+def test_accelerated_life_k_excludes_placeholder():
+    model = fitted_accelerated_life_model()
+    assert len(model.params) == 4
+    assert model.k == 3
+    assert model.aic() == pytest.approx(2 * 3 + 2 * model.neg_ll())
+
+
+# ---------------------------------------------------------------------------
+# Covariate shapes, a tiny parameter's covariance, the life
+# models' starts and stresses, and ragged ``x``.
+# ---------------------------------------------------------------------------
+
+
+def test_two_stress_accelerated_life_accepts_a_1d_row():
+    rng = np.random.default_rng(0)
+    T = np.repeat([300.0, 350.0, 400.0], 30)
+    V = np.tile(np.repeat([1.0, 2.0, 3.0], 10), 3)
+    x = 100 * rng.weibull(2.0, 90) * (T / 300) ** -2 * V**-1
+    model = AcceleratedLife(Weibull, DualPower).fit(
+        x, Z=np.column_stack([T, V])
+    )
+    row = [320.0, 2.0]
+    np.testing.assert_allclose(model.sf([5.0], row), model.sf([5.0], [row]))
+    np.testing.assert_allclose(model.hf([5.0], row), model.hf([5.0], [row]))
+    np.testing.assert_allclose(model.cb([5.0], row), model.cb([5.0], [row]))
+    draws, Z_out = model.random(3, row)
+    assert draws.shape == (3,) and Z_out.shape == (3, 2)
+
+
+def test_single_stress_accelerated_life_accepts_a_scalar_stress():
+    stress = np.repeat([300.0, 350.0, 400.0], 30)
+    rng = np.random.default_rng(0)
+    x = rng.weibull(2.0, 90) * 1e-3 * np.exp(3000 / stress)
+    model = AcceleratedLife(Weibull, ExponentialLifeModel).fit(x, Z=stress)
+    np.testing.assert_allclose(
+        model.sf([10.0, 5.0], 300.0), model.sf([10.0, 5.0], [300.0, 300.0])
+    )
+    np.testing.assert_allclose(
+        model.cb([10.0, 5.0], 300.0), model.cb([10.0, 5.0], [300.0, 300.0])
+    )
+
+
+def _arrhenius_data() -> tuple:
+    stress = np.repeat([300.0, 350.0, 400.0], 40)
+    rng = np.random.default_rng(0)
+    x = rng.weibull(2.0, 120) * 1e-3 * np.exp(3000 / stress)
+    return x, stress
+
+
+def test_accelerated_life_covariance_with_tiny_parameter():
+    x, stress = _arrhenius_data()
+    model = AcceleratedLife(Weibull, InversePower).fit(x, Z=stress)
+    assert model.params[2] < 1e-15
+    se = model.standard_errors()
+    assert np.all(np.isfinite(se))
+    power = AcceleratedLife(Weibull, Power).fit(x, Z=stress)
+    # InversePower's n is Power's -n, with the same standard error.
+    assert se[3] == pytest.approx(power.standard_errors()[3], rel=1e-2)
+    restored = surpyval.from_dict(model.to_dict())
+    np.testing.assert_allclose(restored.standard_errors(), se)
+
+
+def test_power_life_model_refuses_non_positive_stress(capfd):
+    x, stress = _arrhenius_data()
+    with pytest.raises(ValueError, match="strictly positive stresses"):
+        AcceleratedLife(Weibull, Power).fit(x, Z=stress - 350)
+    assert capfd.readouterr().err == ""
+
+
+@pytest.mark.parametrize("dist", [Weibull, LogNormal, Exponential, Gamma])
+def test_linear_life_model_finds_a_feasible_start(dist):
+    x, stress = _arrhenius_data()
+    model = AcceleratedLife(dist, Linear).fit(x, Z=stress)
+    assert np.all(model.phi(np.array([300.0, 350.0, 400.0])) > 0)
+    assert np.isfinite(model.neg_ll())
+
+
+def test_accelerated_life_and_gamma_frailty_accept_ragged_x():
+    x = [10, [11, 13], 12, 9, [20, 25], 30, 14, 15, 16]
+    c = [0, 2, 0, 0, 2, 0, 0, 0, 0]
+    model = AcceleratedLife(Weibull, Power).fit(
+        x, Z=[1, 1, 1, 2, 2, 2, 3, 3, 3], c=c
+    )
+    assert np.all(np.isfinite(model.params))
+    # The frailty likelihood has no interval term, so an interval row is
+    # refused by name; the ragged form itself no longer crashes.
+    with pytest.raises(ValueError, match="right-censored"):
+        GammaFrailty.fit(x, groups=[0, 0, 0, 0, 0, 1, 1, 1, 1], c=c)
+    exact = [10, 11, 12, 9, 20, 30, 14, 15, 16, 3]
+    two_col = np.column_stack([exact, exact])
+    groups = [0] * 5 + [1] * 5
+    np.testing.assert_allclose(
+        GammaFrailty.fit(two_col, groups=groups).dist_params,
+        GammaFrailty.fit(exact, groups=groups).dist_params,
+    )

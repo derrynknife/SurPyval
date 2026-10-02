@@ -5,8 +5,9 @@ import warnings
 import numpy as np
 
 import surpyval as sp
-from surpyval import Turnbull
+from surpyval import Turnbull, Weibull
 from surpyval.tests.conformance.registry import CASE_BY_NAME
+from surpyval.univariate.regression import AcceleratedLife, Power
 
 
 def linear_degradation_units(
@@ -102,3 +103,33 @@ def fresh_conformance_fit(name):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return case.fit(case.data())
+
+
+def weibull_binary_covariate_data(n=100, seed=1, effect=-0.5):
+    np.random.seed(seed)
+    Z = np.random.binomial(1, 0.5, n).reshape(-1, 1)
+    x = Weibull.random(n, 10, 2) * np.exp(effect * Z[:, 0])
+    return x, Z
+
+
+def fitted_accelerated_life_model():
+    np.random.seed(0)
+    Z = np.repeat([1.0, 2.0, 3.0], 30)
+    x = Weibull.random(90, 10, 2) * Z**-1.0
+    return AcceleratedLife(Weibull, Power).fit(x, Z)
+
+
+def weibull_ph_data(n: int = 200, seed: int = 0) -> tuple:
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 1))
+    x = 10 * rng.weibull(1.5, n) * np.exp(-0.5 * Z[:, 0] / 1.5)
+    return x, Z
+
+
+def counted_regression_data() -> tuple:
+    rng = np.random.default_rng(7)
+    x = np.round(rng.exponential(5, 50)) + 1
+    Z = rng.normal(size=(50, 1))
+    n = rng.integers(1, 4, 50)
+    c = (rng.uniform(size=50) < 0.2).astype(int)
+    return x, Z, n, c

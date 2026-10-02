@@ -12,7 +12,7 @@ The evaluation is exact for these families because the cumulative hazard is
 additive over disjoint segments, so along a step path it is the sum of the
 per-segment increments -- and therefore collapses to the ordinary ``sf`` when
 the covariate is constant. Proportional odds joined in #236; its dedicated
-checks are in ``test_po_tvc_fixes5.py``.
+checks are in ``test_tvc_proportional_odds.py``.
 """
 
 import numpy as np

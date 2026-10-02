@@ -1,19 +1,11 @@
-r"""
-Time-varying covariates, #172 phase 2: bounds and mean life along a path,
-and accelerated life along steps and paths.
+"""Time-varying covariates along a path: bounds and mean life (#172), and
+accelerated life along steps and paths.
 
-- ``cb_tvc``: the delta method on the logit of ``sf_tvc``, on a
-  quadrature mesh held at the fitted parameters, against the delta method
-  through the closed-form cumulative hazard of an exponential PH ramp;
-  conditional bounds; refusals. (A constant path giving ``cb``, and the
-  shapes, are the conformance properties in ``conformance/test_tvc.py``.)
-- ``mean_tvc``: the closed-form mean and mean residual life along an
-  exponential PH ramp, ``e^{c_1} E_1(c_1) / c``; midpoint steps converging
-  to it; a survival that levels off giving ``inf`` with one warning.
-- Accelerated life: cumulative exposure ``S_1(int du / L(V(u)))`` along a
-  ramp in closed form for each scale-life distribution, midpoint steps
-  converging to it, and the periodic shortcut against a closed form far
-  beyond the panel limit.
+- ``cb_tvc``: the delta method on the logit of ``sf_tvc``, on a quadrature
+  mesh held at the fitted parameters, against the delta method through the
+  closed-form cumulative hazard of a ramp.
+- ``mean_tvc``: the integral of ``sf_tvc``, against closed forms.
+- Accelerated life along steps and paths is cumulative exposure.
 """
 
 import copy
@@ -117,6 +109,7 @@ def test_cb_tvc_refusals(exp_ph):
 
 
 # -- mean_tvc ------------------------------------------------------------
+
 
 LAM, BETA, B0 = 0.1, 0.8, 0.1
 
