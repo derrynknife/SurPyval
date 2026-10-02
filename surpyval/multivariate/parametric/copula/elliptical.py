@@ -23,23 +23,113 @@ from surpyval.multivariate.parametric.copula.copula import _U_CLIP, Copula
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 
-_RHO_MAX = 0.9999
+# The fit's start is kept this far inside (-1, 1): a start of rho = +-1
+# (from a Kendall's tau of +-1) has no tanh-scale value to search from.
+_RHO_START = 0.9999
+
+
+def _one_minus_rho2(rho: float) -> float:
+    """``1 - rho**2`` as ``(1 - |rho|)(1 + |rho|)``, accurate however near
+    ``|rho|`` is to 1 (``1 - |rho|`` is exact for ``|rho| >= 1/2``), where
+    ``1 - rho**2`` loses the digits of ``rho**2`` that round away."""
+    r = abs(rho)
+    return (1.0 - r) * (1.0 + r)
+
+
+def _toward(rho: float) -> float:
+    """The sign of the dependence, +1 for ``rho >= 0``. As ``|rho|`` nears
+    1 the two quantiles of a likely point near each other (or each
+    other's negative), so the quadratic forms below are written in their
+    difference ``a - s b``, which then cancels nothing."""
+    return 1.0 if rho >= 0 else -1.0
+
+
+def _neg_ll_inside(copula: Copula, params: Any, dims: list, w: Any) -> float:
+    """The negative log-likelihood, ``inf`` at ``|rho| = 1`` (where the
+    search's tanh rounds to 1): no copula of the family is there, and its
+    formulas divide by ``1 - rho**2``."""
+    if not abs(float(params[0])) < 1.0:
+        return onp.inf
+    return Copula.neg_ll(copula, params, dims, w)
+
+
+def _warn_if_rho_at_bound(
+    copula: Copula, margin_models: list, data: Any, theta: npt.NDArray
+) -> bool:
+    """Warn when the search ran ``rho`` to +-1 on data that are not
+    perfectly dependent (those are told so first; see
+    ``Copula._warn_if_perfectly_dependent``), as data censored in one
+    dimension can do. Returns whether it warned.
+
+    The criterion: the bound is at least as likely as the ``rho`` reached
+    (the likelihood at the last double before it, ``1 - 2**-53`` from
+    it, is no lower), and the ``rho`` reached is more likely than
+    ``rho = 0`` (the data say something about ``rho``). The likelihood
+    then keeps increasing to the bound, or rises to a plateau there (rows
+    whose likelihood tends to 1, such as a censored row whose bound lies
+    below the comonotone value, reach 1 in floating point before ``rho``
+    does). At an interior maximum the bound is far less likely, and a
+    likelihood flat in ``rho`` is as high at 0, so neither warns. Any
+    other parameter (the t copula's ``nu``) is kept at its value.
+    """
+    rho = float(theta[0])
+    s = _toward(rho)
+    edge = onp.array(theta, dtype=float)
+    edge[0] = s * onp.nextafter(1.0, 0.0)
+    independent = onp.array(theta, dtype=float)
+    independent[0] = 0.0
+    dims = [
+        copula._prepare_dim(margin_models[d], *data.dimension(d))
+        for d in range(data.D)
+    ]
+    nll = copula.neg_ll(theta, dims, data.n)
+    nll_edge = copula.neg_ll(edge, dims, data.n)
+    nll_independent = copula.neg_ll(independent, dims, data.n)
+    if not nll_edge <= nll < nll_independent:
+        return False
+    bound, kind, relation = (
+        ("1", "comonotone", "increasing")
+        if s > 0
+        else ("-1", "countermonotone", "decreasing")
+    )
+    warn_no_maximum(
+        f"rho runs to {bound}: the likelihood keeps increasing towards "
+        f"the {kind} copula (a Frechet bound), which the {copula.name} "
+        f"family reaches only as rho tends to {bound}",
+        f"The reported rho = {rho!r} and the dependence measures "
+        "derived from it are meaningless",
+        f"the data are consistent with one variable being an {relation} "
+        f"function of the other (the {kind} model): model that "
+        "relationship directly rather than with a copula",
+    )
+    return True
 
 
 class GaussianCopula(Copula):
-    """Gaussian copula, ``rho in (-1, 1)`` (no tail dependence)."""
+    """Gaussian copula, ``rho in (-1, 1)`` (no tail dependence).
+
+    Every function is accurate for any ``|rho| < 1``: the formulas are
+    written in ``1 - |rho|`` and in the difference of the two normal
+    quantiles, and the CDF is scipy's bivariate normal CDF (Genz's
+    algorithm), within 1e-14 of a 40-digit integration up to ``rho = 1 -
+    2**-52``.
+    """
 
     name = "Gaussian"
     bounds = ((-1, 1),)
     parameter_names = ["rho"]
     dependence_limits = {1: "rho tends to 1", -1: "rho tends to -1"}
 
-    @staticmethod
-    def _clip_rho(rho: float) -> float:
-        return float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
+    def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
+        return _neg_ll_inside(self, params, dims, weights)
+
+    def _warn_if_no_maximum(
+        self, margin_models: list, data: Any, theta: npt.NDArray
+    ) -> None:
+        _warn_if_rho_at_bound(self, margin_models, data, theta)
 
     def cdf(self, u: Any, v: Any, rho: Any) -> Any:
-        rho = self._clip_rho(rho)
+        rho = float(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
         a, b = onp.broadcast_arrays(a, b)
@@ -55,32 +145,45 @@ class GaussianCopula(Copula):
             axis=-1,
         )
         cov = [[1.0, rho], [rho, 1.0]]
-        out = multivariate_normal.cdf(pts, mean=[0.0, 0.0], cov=cov)
+        # Within 1e-10 of |rho| = 1 scipy's check of the covariance calls
+        # it singular (it is only at 1); its CDF is accurate there.
+        out = multivariate_normal.cdf(
+            pts, mean=[0.0, 0.0], cov=cov, allow_singular=True
+        )
         out = onp.asarray(out).reshape(a.shape)
         return onp.where(missing, onp.nan, out)
 
     def du(self, u: Any, v: Any, rho: Any) -> Any:
-        rho = self._clip_rho(rho)
+        rho = float(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
-        return ndtr((b - rho * a) / onp.sqrt(1.0 - rho**2))
+        # b - rho a, from b - s a and 1 - |rho|
+        s = _toward(rho)
+        num = (b - s * a) + s * (1.0 - abs(rho)) * a
+        return ndtr(num / onp.sqrt(_one_minus_rho2(rho)))
 
     def dv(self, u: Any, v: Any, rho: Any) -> Any:
         return self.du(v, u, rho)
 
     def pdf(self, u: Any, v: Any, rho: Any) -> Any:
-        rho = self._clip_rho(rho)
+        rho = float(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
-        denom = 1.0 - rho**2
-        quad = (rho**2 * (a**2 + b**2) - 2.0 * rho * a * b) / (2.0 * denom)
+        denom = _one_minus_rho2(rho)
+        # (rho^2 (a^2 + b^2) - 2 rho a b) / (2 (1 - rho^2)), its numerator
+        # as rho^2 (a - s b)^2 - 2 rho a b (1 - |rho|): no difference of
+        # large terms as |rho| nears 1.
+        s = _toward(rho)
+        quad = rho**2 * (a - s * b) ** 2 / (2.0 * denom) - rho * a * b / (
+            1.0 + abs(rho)
+        )
         return onp.exp(-quad) / onp.sqrt(denom)
 
     def kendall_tau(self, rho: float) -> float:  # type: ignore[override]
-        return 2.0 / onp.pi * onp.arcsin(self._clip_rho(rho))
+        return 2.0 / onp.pi * onp.arcsin(float(rho))
 
     def spearman_rho(self, rho: float) -> float:  # type: ignore[override]
-        return 6.0 / onp.pi * onp.arcsin(self._clip_rho(rho) / 2.0)
+        return 6.0 / onp.pi * onp.arcsin(float(rho) / 2.0)
 
     def sample_uv(
         self,
@@ -88,17 +191,18 @@ class GaussianCopula(Copula):
         params: Any,
         random_state: "int | None" = None,
     ) -> tuple[npt.NDArray, npt.NDArray]:
-        rho = self._clip_rho(params[0])
+        rho = float(params[0])
         rng = as_generator(random_state)
         z1 = rng.standard_normal(size)
         z2 = rng.standard_normal(size)
-        z2 = rho * z1 + onp.sqrt(1.0 - rho**2) * z2
+        z2 = rho * z1 + onp.sqrt(_one_minus_rho2(rho)) * z2
         return ndtr(z1), ndtr(z2)
 
     def _bounds_transforms(self) -> tuple:
-        # tanh keeps rho strictly inside (-1, 1) during optimisation.
+        # tanh keeps rho inside (-1, 1) during optimisation (but for its
+        # rounding to +-1, which ``neg_ll`` rejects).
         def to_unbounded(params: npt.NDArray) -> npt.NDArray:
-            return onp.arctanh(onp.clip(params, -_RHO_MAX, _RHO_MAX))
+            return onp.arctanh(onp.asarray(params, dtype=float))
 
         def to_bounded(phi: npt.NDArray) -> npt.NDArray:
             return onp.tanh(onp.asarray(phi, dtype=float))
@@ -106,7 +210,8 @@ class GaussianCopula(Copula):
         return to_unbounded, to_bounded
 
     def _init_theta(self, dims: list) -> npt.NDArray:
-        return onp.asarray([onp.sin(onp.pi / 2.0 * self._emp_tau(dims))])
+        rho = onp.sin(onp.pi / 2.0 * self._emp_tau(dims))
+        return onp.asarray([onp.clip(rho, -_RHO_START, _RHO_START)])
 
 
 def _tanh_sinh(step: float = 1.0 / 16.0, reach: float = 3.25) -> tuple:
@@ -199,13 +304,15 @@ class StudentTCopula(Copula):
     parameter_names = ["rho", "nu"]
     dependence_limits = {1: "rho tends to 1", -1: "rho tends to -1"}
 
+    def neg_ll(self, params: Any, dims: list, weights: npt.NDArray) -> float:
+        return _neg_ll_inside(self, params, dims, weights)
+
     @staticmethod
     def _args(u: Any, v: Any, rho: Any, nu: Any) -> tuple:
         u, v = onp.broadcast_arrays(
             onp.asarray(u, dtype=float), onp.asarray(v, dtype=float)
         )
-        rho = float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
-        return u, v, rho, float(nu)
+        return u, v, float(rho), float(nu)
 
     @staticmethod
     def _quantile(nu: float, p: Any, q: Any) -> Any:
@@ -222,9 +329,12 @@ class StudentTCopula(Copula):
     def _h(y: Any, x: Any, rho: float, nu: float) -> Any:
         """The h-function in the t scale: :math:`P(Y \\le y \\mid X = x)
         = T_{\\nu+1}\\left((y - \\rho x) \\big/ \\sqrt{(\\nu + x^2)(1 -
-        \\rho^2) / (\\nu + 1)}\\right)`."""
-        scale = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
-        return stdtr(nu + 1.0, (y - rho * x) / scale)
+        \\rho^2) / (\\nu + 1)}\\right)`, with ``y - rho x`` formed from
+        ``y - s x`` and ``1 - |rho|`` (as the Gaussian's)."""
+        scale = onp.sqrt((nu + x**2) * _one_minus_rho2(rho) / (nu + 1.0))
+        s = _toward(rho)
+        num = (y - s * x) + s * (1.0 - abs(rho)) * x
+        return stdtr(nu + 1.0, num / scale)
 
     def du(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         u, v, rho, nu = self._args(u, v, rho, nu)
@@ -241,8 +351,12 @@ class StudentTCopula(Copula):
         u, v, rho, nu = self._args(u, v, rho, nu)
         x = self._quantile(nu, u, 1.0 - u)
         y = self._quantile(nu, v, 1.0 - v)
-        one_m_r2 = 1.0 - rho**2
-        quad = (x**2 + y**2 - 2.0 * rho * x * y) / (nu * one_m_r2)
+        one_m_r2 = _one_minus_rho2(rho)
+        # x^2 + y^2 - 2 rho x y as (x - s y)^2 + 2 s (1 - |rho|) x y
+        s = _toward(rho)
+        quad = ((x - s * y) ** 2 + 2.0 * s * (1.0 - abs(rho)) * x * y) / (
+            nu * one_m_r2
+        )
         log_joint = (
             _log_t_constant(nu)
             - 0.5 * onp.log(one_m_r2)
@@ -312,8 +426,7 @@ class StudentTCopula(Copula):
     ) -> float:
         """Kendall's tau, :math:`\\frac{2}{\\pi}\\arcsin\\rho` (the same
         for every elliptical copula, so independent of ``nu``)."""
-        rho = float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
-        return float(2.0 / onp.pi * onp.arcsin(rho))
+        return float(2.0 / onp.pi * onp.arcsin(float(rho)))
 
     def spearman_rho(  # type: ignore[override]
         self, rho: float, nu: float
@@ -329,10 +442,10 @@ class StudentTCopula(Copula):
         tanh-sinh quadrature; the result agrees with the integral of the
         copula's CDF to about 1e-10.
         """
-        rho = float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
+        rho = float(rho)
         nu = float(nu)
         x = self._quantile(nu, _TS_Z, _TS_ZC)[:, None]
-        sigma = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
+        sigma = onp.sqrt((nu + x**2) * _one_minus_rho2(rho) / (nu + 1.0))
         # The q-integral is split where the argument of T_nu crosses 0:
         # far in the tails (x large) the integrand steps there from 0 to 1.
         cut = stdtr(nu + 1.0, -rho * x / sigma)
@@ -348,7 +461,7 @@ class StudentTCopula(Copula):
     def tail_dependence(  # type: ignore[override]
         self, rho: float, nu: float
     ) -> tuple:
-        rho = float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
+        rho = float(rho)
         lam = 2.0 * stdtr(
             nu + 1.0, -onp.sqrt((nu + 1.0) * (1.0 - rho) / (1.0 + rho))
         )
@@ -363,14 +476,14 @@ class StudentTCopula(Copula):
         """Draw ``(u, v)`` pairs by conditional inversion in closed form:
         given ``u`` (``x``) and a uniform ``w``,
         :math:`v = T_\\nu(\\rho x + \\sigma(x) T_{\\nu+1}^{-1}(w))`."""
-        rho = float(onp.clip(params[0], -_RHO_MAX, _RHO_MAX))
+        rho = float(params[0])
         nu = float(params[1])
         rng = as_generator(random_state)
         u = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         w = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         x = self._quantile(nu, u, 1.0 - u)
         z = self._quantile(nu + 1.0, w, 1.0 - w)
-        sigma = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
+        sigma = onp.sqrt((nu + x**2) * _one_minus_rho2(rho) / (nu + 1.0))
         y = rho * x + sigma * z
         # T_nu(y), formed from the smaller tail for accuracy near 1
         v = onp.where(y <= 0, stdtr(nu, y), 1.0 - stdtr(nu, -y))
@@ -382,7 +495,7 @@ class StudentTCopula(Copula):
             params = onp.asarray(params, dtype=float)
             return onp.array(
                 [
-                    onp.arctanh(onp.clip(params[0], -_RHO_MAX, _RHO_MAX)),
+                    onp.arctanh(params[0]),
                     onp.log(params[1]),
                 ]
             )
@@ -408,7 +521,10 @@ class StudentTCopula(Copula):
     ) -> None:
         """Warn when the Gaussian copula, the limit ``nu -> inf``, is at
         least as likely as the t copula the search reached (see the class
-        docstring)."""
+        docstring), or when ``rho`` ran to +-1 (as for the Gaussian
+        copula; one warning)."""
+        if _warn_if_rho_at_bound(self, margin_models, data, theta):
+            return
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)

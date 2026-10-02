@@ -3439,19 +3439,17 @@ is the concordance of its mortality score (with the same ``ties`` option and
 default as ``concordance_index``). Trees and forests follow the
 package's :ref:`missing-value rule <missing-values>`: a row with a missing covariate is
 dropped at fit time, with one warning giving the count, and predicts ``nan``
-(it is not sent down either branch of a split). The forest reports its progress
-through joblib on standard error, which we silence here. On held-out data it
-is compared with a Cox model on the same metrics:
+(it is not sent down either branch of a split). The trees are grown one after
+another; ``n_jobs=-1`` grows them in parallel on every core, and given a
+``random_state`` gives the same forest. On held-out data it is compared with a
+Cox model on the same metrics:
 
 .. jupyter-execute::
 
-    import contextlib, io
-
     np.random.seed(0)
-    with contextlib.redirect_stderr(io.StringIO()):    # joblib progress log
-        rsf = RandomSurvivalForest.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=10,
-                                       max_depth=3, n_features_split=2,
-                                       kind='non-parametric')
+    rsf = RandomSurvivalForest.fit(x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=10,
+                                   max_depth=3, n_features_split=2,
+                                   kind='non-parametric')
     print('forest sf grid shape:', rsf.sf([3.0, 6.0], Zt_te[:4]).shape)
 
     cox_t = CoxPH.fit(x=xt_tr, Z=Zt_tr, c=ct_tr)
@@ -3517,11 +3515,10 @@ is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
     oob = {}
     for depth in [0, 3]:                  # depth 0: every tree is one leaf
         np.random.seed(0)
-        with contextlib.redirect_stderr(io.StringIO()):
-            rsf_oob = RandomSurvivalForest.fit_from_df(
-                df_tr, x_col='time', c_col='censored',
-                Z_cols=['z0', 'z1', 'z2'], n_trees=30, max_depth=depth,
-                n_features_split=2, kind='non-parametric')
+        rsf_oob = RandomSurvivalForest.fit_from_df(
+            df_tr, x_col='time', c_col='censored',
+            Z_cols=['z0', 'z1', 'z2'], n_trees=30, max_depth=depth,
+            n_features_split=2, kind='non-parametric')
         oob[depth] = rsf_oob.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob[depth]:.3f}')
     importance = rsf_oob.feature_importances(random_state=1)
@@ -3566,10 +3563,9 @@ such data with the log-rank scores of the pooled Turnbull estimate:
     oob_ic = {}
     for depth in [0, 2]:
         np.random.seed(0)
-        with contextlib.redirect_stderr(io.StringIO()):
-            rsf_ic = RandomSurvivalForest.fit(
-                x=x_ic, Z=Z_ic, c=c_ic, n_trees=30, max_depth=depth,
-                n_features_split=2, kind='non-parametric')
+        rsf_ic = RandomSurvivalForest.fit(
+            x=x_ic, Z=Z_ic, c=c_ic, n_trees=30, max_depth=depth,
+            n_features_split=2, kind='non-parametric')
         oob_ic[depth] = rsf_ic.oob_log_likelihood()
         print(f'max_depth={depth}: OOB log-likelihood {oob_ic[depth]:.3f}')
     importance_ic = rsf_ic.feature_importances(random_state=1)
@@ -3674,10 +3670,9 @@ keeps the trees from fitting noise:
 
     oob_sel = {}
     for selection in ['greedy', 'ctree']:
-        with contextlib.redirect_stderr(io.StringIO()):
-            rsf_sel = RandomSurvivalForest.fit(
-                x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, n_features_split=2,
-                kind='non-parametric', selection=selection, random_state=0)
+        rsf_sel = RandomSurvivalForest.fit(
+            x=xt_tr, Z=Zt_tr, c=ct_tr, n_trees=30, n_features_split=2,
+            kind='non-parametric', selection=selection, random_state=0)
         oob_sel[selection] = rsf_sel.oob_log_likelihood()
         print(f'{selection:6s} forest: OOB log-likelihood '
               f'{oob_sel[selection]:.3f}')
