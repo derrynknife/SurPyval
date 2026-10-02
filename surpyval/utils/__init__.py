@@ -2159,18 +2159,12 @@ def validate_coxph(
     # by adjusting the risk sets, but has no way to incorporate right or
     # interval truncation (that needs a reverse-time / retro-hazard model). A
     # 2-D ``tl`` is the natural way a user would try to pass a [tl, tr] pair,
-    # so reject it with a clear, Cox-specific message rather than the generic
-    # truncation error (which points at a ``t`` argument CoxPH does not have).
-    if tl is not None and np.ndim(tl) == 2:
-        raise ValueError(
-            "CoxPH supports left-truncation (delayed entry) only, supplied "
-            "as a one-dimensional `tl`. Right or interval truncation is not "
-            "available for the Cox partial likelihood; use a parametric "
-            "proportional-hazards fitter (e.g. WeibullPH) with t=[tl, tr] "
-            "for right/interval-truncated data."
-        )
-
-    x_a, c_a, n_a, t_a = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+    # so it is refused with a clear, Cox-specific message rather than the
+    # generic truncation error (which points at a ``t`` argument CoxPH does
+    # not have).
+    from surpyval.univariate.regression.regression_data import (
+        semi_parametric_inputs,
+    )
 
     # The partial likelihood is built from risk sets at exact event times,
     # so it can only use observed (0) and right-censored (1) rows. A left-
@@ -2178,40 +2172,30 @@ def validate_coxph(
     # the generators would otherwise read ``c != 0`` as "right-censored"
     # and silently fit the wrong likelihood (or, for interval rows, index
     # a 2-D ``x`` as if it were 1-D). Refuse them and point at a model that
-    # has a full likelihood for them.
-    if np.isin(c_a, (-1, 2)).any():
-        raise ValueError(
+    # has a full likelihood for them. Rows with a NaN / infinite covariate
+    # are dropped with a warning, as every regression fitter does.
+    x_a, c_a, n_a, tl_a, Z_arr = semi_parametric_inputs(
+        x,
+        Z,
+        c,
+        n,
+        tl,
+        censoring=(
             "CoxPH supports only observed (c=0) and right-censored (c=1) "
             "observations (with optional left-truncation `tl`); the Cox "
             "partial likelihood has no term for left-censored (c=-1) or "
             "interval-censored (c=2) data. Use a parametric regression "
             "model instead, e.g. WeibullPH.fit(x, Z, c=c) or "
             "WeibullAFT.fit(x, Z, c=c), which handle every censoring type."
-        )
-    # A two-column ``x`` with no interval rows has ``xl == xr`` everywhere:
-    # it is exact / right-censored data written as intervals.
-    if np.ndim(x_a) == 2:
-        x_a = np.asarray(x_a)[:, 0]
-
-    tl_a = t_a[:, 0]
-
-    x_a, c_a, n_a, tl_a = (
-        np.array(a).astype(float) for a in [x_a, c_a, n_a, tl_a]
+        ),
+        truncation=(
+            "CoxPH supports left-truncation (delayed entry) only, supplied "
+            "as a one-dimensional `tl`. Right or interval truncation is not "
+            "available for the Cox partial likelihood; use a parametric "
+            "proportional-hazards fitter (e.g. WeibullPH) with t=[tl, tr] "
+            "for right/interval-truncated data."
+        ),
     )
-
-    Z_arr = np.array(Z).astype(float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    elif Z_arr.ndim != 2:
-        raise ValueError("Covariate matrix must be two dimensional")
-    check_covariate_rows(Z_arr, x_a.shape[0])
-    # Rows with a NaN / infinite covariate are dropped with a warning, as
-    # every regression fitter does (they used to be dropped silently, and
-    # an infinity let through to the partial likelihood).
-    mask = finite_covariate_mask(Z_arr)
-    x_a, c_a, n_a, tl_a = (arr[mask] for arr in (x_a, c_a, n_a, tl_a))
-    Z_arr = Z_arr[mask]
-
     return x_a, c_a, n_a, tl_a, Z_arr
 
 
@@ -2225,25 +2209,16 @@ def validate_fine_gray_inputs(
     # A missing event (None / NaN) marks a censored observation; if c is not
     # given it is derived from the events.
     e, c = resolve_cr_censoring(e, c)
-    x_a, c_a, n_a, _ = xcnt_handler(x, c, n, group_and_sort=False)
+    from surpyval.univariate.regression.regression_data import (
+        semi_parametric_inputs,
+    )
 
-    e_arr = np.array(e)
-    Z_arr = np.array(Z, dtype=float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    elif Z_arr.ndim != 2:
-        raise ValueError("Covariate matrix must be two dimensional")
-    # Check the row count before the mask indexes the data (a mismatch was
-    # a bare IndexError from the mask).
-    check_covariate_rows(Z_arr, x_a.shape[0])
     # Rows with a NaN / infinite covariate are dropped with a warning, as
-    # every regression fitter does (they used to be dropped silently here).
-    mask = finite_covariate_mask(Z_arr)
-    x_a, c_a, n_a, e_arr = (arr[mask] for arr in (x_a, c_a, n_a, e_arr))
-    Z_arr = Z_arr[mask]
-
-    # Set all dtypes to float. Very poor results otherwise.
-    x_a, c_a, n_a = (arr.astype(float) for arr in [x_a, c_a, n_a])
+    # every regression fitter does (they used to be dropped silently here);
+    # left- and interval-censored rows are refused below, after the drop.
+    x_a, c_a, n_a, _, Z_arr, e_arr = semi_parametric_inputs(
+        x, Z, c, n, censoring=None, rows=(np.array(e),)
+    )
 
     check_e_and_x(e_arr, x_a)
     check_Z_and_x(Z_arr, x_a)

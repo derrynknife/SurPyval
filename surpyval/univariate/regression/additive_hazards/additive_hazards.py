@@ -54,11 +54,6 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import (
-    check_covariate_rows,
-    finite_covariate_mask,
-    xcnt_handler,
-)
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -71,10 +66,10 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
-    check_finite_event_times,
     design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
+    semi_parametric_inputs,
     serialise_covariate_meta,
 )
 
@@ -88,29 +83,16 @@ def _validate(
     c: npt.ArrayLike | None,
     n: npt.ArrayLike | None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-    c_arr = np.asarray(c_h, dtype=float)
-    if not np.all((c_arr == 0) | (c_arr == 1)):
-        raise ValueError(
+    x_arr, c_arr, n_arr, _, Z_arr = semi_parametric_inputs(
+        x,
+        Z,
+        c,
+        n,
+        censoring=(
             "The additive hazards model supports only observed (c=0) and "
             "right-censored (c=1) data."
-        )
-    x_arr = np.asarray(x_h, dtype=float)
-    if x_arr.ndim == 2:
-        # Two columns with no interval row: xl == xr on every row.
-        x_arr = x_arr[:, 0]
-    check_finite_event_times(x_arr, c_arr)
-    Z_arr = np.asarray(Z, dtype=float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    elif Z_arr.ndim != 2:
-        raise ValueError("Covariate matrix must be two dimensional")
-    check_covariate_rows(Z_arr, x_arr.shape[0])
-    # Rows with a NaN / infinite covariate are dropped with a warning, as in
-    # every regression fitter (this one used to drop NaN rows silently).
-    mask = finite_covariate_mask(Z_arr)
-    x_arr, c_arr, Z_arr = x_arr[mask], c_arr[mask], Z_arr[mask]
-    n_arr = np.asarray(n_h, dtype=float)[mask]
+        ),
+    )
     if np.any(x_arr < 0):
         # The estimating equations integrate over the risk sets from time
         # 0; a negative time fed a negative width into that integral.

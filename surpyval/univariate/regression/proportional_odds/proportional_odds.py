@@ -86,9 +86,6 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import (
     _caller_stacklevel,
-    check_covariate_rows,
-    finite_covariate_mask,
-    xcnt_handler,
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
@@ -110,10 +107,10 @@ from .._concordance import ConcordanceMixin
 from .._fit_skeleton import covariate_center
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
-    check_finite_event_times,
     design_matrix_from_df,
     prepare_Z,
     restore_covariate_meta,
+    semi_parametric_inputs,
     serialise_covariate_meta,
 )
 
@@ -398,18 +395,13 @@ def _validate(
     n: "npt.ArrayLike | None",
     tl: "npt.ArrayLike | None",
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    if tl is not None and np.ndim(tl) == 2:
-        raise ValueError(
-            "ProportionalOdds supports left truncation (delayed entry) "
-            "only, given as a one-dimensional `tl`; right or interval "
-            "truncation is not available. Use a parametric proportional "
-            "odds model (e.g. PO(LogLogistic)) with t=[tl, tr] for such "
-            "data."
-        )
-    x_h, c_h, n_h, t_h = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
-    c_arr = np.asarray(c_h, dtype=float)
-    if np.isin(c_arr, (-1, 2)).any():
-        raise ValueError(
+    x_arr, c_arr, n_arr, tl_arr, Z_arr = semi_parametric_inputs(
+        x,
+        Z,
+        c,
+        n,
+        tl,
+        censoring=(
             "ProportionalOdds supports only observed (c=0) and "
             "right-censored (c=1) observations, with optional left "
             "truncation (`tl`); its baseline jumps at the event times, so "
@@ -417,27 +409,15 @@ def _validate(
             "(c=2) data. Use a parametric proportional odds model instead, "
             "e.g. PO(LogLogistic).fit(x, Z, c=c) or WeibullPO.fit(x, Z, "
             "c=c), which handle every censoring type."
-        )
-    x_arr = np.asarray(x_h, dtype=float)
-    if x_arr.ndim == 2:
-        # Two columns with no interval row: xl == xr on every row.
-        x_arr = x_arr[:, 0]
-    check_finite_event_times(x_arr, c_arr)
-    tl_arr = np.asarray(t_h, dtype=float)[:, 0]
-    n_arr = np.asarray(n_h, dtype=float)
-    Z_arr = np.asarray(Z, dtype=float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    elif Z_arr.ndim != 2:
-        raise ValueError("Covariate matrix must be two dimensional")
-    check_covariate_rows(Z_arr, x_arr.shape[0])
-    # Rows with a NaN / infinite covariate are dropped with a warning, as
-    # in every regression fitter.
-    mask = finite_covariate_mask(Z_arr)
-    x_arr, c_arr, n_arr, tl_arr = (
-        a[mask] for a in (x_arr, c_arr, n_arr, tl_arr)
+        ),
+        truncation=(
+            "ProportionalOdds supports left truncation (delayed entry) "
+            "only, given as a one-dimensional `tl`; right or interval "
+            "truncation is not available. Use a parametric proportional "
+            "odds model (e.g. PO(LogLogistic)) with t=[tl, tr] for such "
+            "data."
+        ),
     )
-    Z_arr = Z_arr[mask]
     if not np.any(c_arr == 0):
         raise ValueError(
             "ProportionalOdds needs at least one event (c=0); with every "

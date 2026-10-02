@@ -73,9 +73,6 @@ from surpyval.univariate.regression._fit_skeleton import (
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
 )
-from surpyval.univariate.regression.regression_data import (
-    check_finite_event_times,
-)
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.dataframe import (
     call_fit,
@@ -813,7 +810,6 @@ class FineGray_:
         array([0.5808, 0.7395])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
-        check_finite_event_times(x, c)
 
         causes = ordered_labels(e)
         if event is None:

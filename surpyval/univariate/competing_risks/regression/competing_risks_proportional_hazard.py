@@ -34,7 +34,6 @@ from surpyval.univariate.regression._aliasing import (
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import (
-    check_finite_event_times,
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
@@ -731,7 +730,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         array([0.59  , 0.7369])
         """
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
-        check_finite_event_times(x, c)
 
         # A fixed order for the causes (a set's iteration order depends on
         # the hash seed for strings), so ``betas`` rows are reproducible.

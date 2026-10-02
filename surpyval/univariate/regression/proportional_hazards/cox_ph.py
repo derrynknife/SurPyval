@@ -44,7 +44,6 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._fit_skeleton import covariate_center
-from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
@@ -1638,7 +1637,6 @@ class CoxPH_:
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
-        check_finite_event_times(x, c)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
@@ -1768,7 +1766,6 @@ class CoxPH_:
                 _sub(tl_o, mask),
                 tie_method,
             )
-            check_finite_event_times(xs, cs)
             validated.append((s, xs, cs, ns_, tls, Zs))
 
         if not validated:

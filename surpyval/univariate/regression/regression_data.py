@@ -24,9 +24,12 @@ from formulaic.parser.types import Factor  # type: ignore[import-untyped]
 
 from surpyval.utils import (
     _caller_stacklevel,
+    check_covariate_rows,
+    finite_covariate_mask,
     formula_model_matrix,
     numeric_columns,
     refuse_time_values,
+    xcnt_handler,
 )
 
 from ._aliasing import covariate_columns
@@ -68,6 +71,64 @@ def check_finite_event_times(x: npt.ArrayLike, c: npt.ArrayLike) -> None:
             "had not failed by the end of observation is right censored "
             "(c=1)."
         )
+
+
+def semi_parametric_inputs(
+    x: "npt.ArrayLike | None",
+    Z: "npt.ArrayLike | None",
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    tl: "npt.ArrayLike | None" = None,
+    *,
+    censoring: "str | None",
+    truncation: "str | None" = None,
+    rows: tuple = (),
+) -> tuple:
+    """The input checks the semi-parametric fitters share (Cox, the
+    semi-parametric proportional odds, Lin-Ying additive hazards,
+    Fine-Gray and Buckley-James): ``(x, c, n, tl, Z, *rows)`` as floats,
+    ``x`` and ``tl`` one-dimensional, ``Z`` two-dimensional.
+
+    In order: a two-dimensional ``tl`` (a ``[tl, tr]`` pair) is refused
+    with the model's message ``truncation``; the data are read by
+    :func:`~surpyval.utils.xcnt_handler`; left- or interval-censored rows
+    are refused with ``censoring`` (``None`` leaves that to the caller);
+    a two-column ``x`` with no interval row (``xl == xr`` everywhere) is
+    read as its first column; ``Z`` must have a row per observation; rows
+    with a missing or infinite covariate are dropped, with a warning, from
+    every array, the extra per-row arrays ``rows`` too; and only then are
+    the exactly observed times checked to be finite
+    (:func:`check_finite_event_times`), so a row with a bad covariate is
+    dropped rather than refused (principle 3). The model-specific checks
+    stay with each fitter.
+    """
+    if tl is not None and np.ndim(tl) == 2:
+        raise ValueError(truncation)
+    x_h, c_h, n_h, t_h = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
+    c_arr = np.asarray(c_h, dtype=float)
+    if censoring is not None and np.isin(c_arr, (-1, 2)).any():
+        raise ValueError(censoring)
+    x_arr = np.asarray(x_h, dtype=float)
+    if x_arr.ndim == 2:
+        # Two columns with no interval row: xl == xr on every row.
+        x_arr = x_arr[:, 0]
+    n_arr = np.asarray(n_h, dtype=float)
+    tl_arr = np.asarray(t_h, dtype=float)[:, 0]
+    Z_arr = np.asarray(Z, dtype=float)
+    if Z_arr.ndim == 1:
+        Z_arr = Z_arr.reshape(-1, 1)
+    elif Z_arr.ndim != 2:
+        raise ValueError("Covariate matrix must be two dimensional")
+    # Checked before the mask indexes the data (a mismatch was a bare
+    # IndexError from the mask).
+    check_covariate_rows(Z_arr, x_arr.shape[0])
+    mask = finite_covariate_mask(Z_arr)
+    x_arr, c_arr, n_arr, tl_arr, Z_arr = (
+        a[mask] for a in (x_arr, c_arr, n_arr, tl_arr, Z_arr)
+    )
+    extra = tuple(np.asarray(a)[mask] for a in rows)
+    check_finite_event_times(x_arr, c_arr)
+    return (x_arr, c_arr, n_arr, tl_arr, Z_arr, *extra)
 
 
 def design_matrix_from_df(

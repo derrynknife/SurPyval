@@ -139,3 +139,75 @@ def test_missing_covariate_or_label_at_fit(case, key):
         np.testing.assert_allclose(
             got[name], ref[name], rtol=1e-9, atol=1e-12, err_msg=name
         )
+
+
+def _semi_parametric_fits():
+    from surpyval import (
+        AdditiveHazards,
+        BuckleyJames,
+        CompetingRisksProportionalHazards,
+        CoxPH,
+        FineGray,
+        ProportionalOdds,
+    )
+
+    # Each takes (x, Z, c, e) and returns the fitted coefficients; ``e``
+    # (the causes) is read by the competing-risks models only.
+    return [
+        ("CoxPH", lambda x, Z, c, e: CoxPH.fit(x, Z, c=c).params),
+        (
+            "ProportionalOdds",
+            lambda x, Z, c, e: ProportionalOdds.fit(x, Z, c=c).params,
+        ),
+        (
+            "AdditiveHazards",
+            lambda x, Z, c, e: AdditiveHazards.fit(x, Z, c=c).params,
+        ),
+        ("BuckleyJames", lambda x, Z, c, e: BuckleyJames.fit(x, Z, c=c).beta),
+        (
+            "FineGray",
+            lambda x, Z, c, e: FineGray.fit(x, Z, e, c=c, event="a").beta,
+        ),
+        (
+            "CompetingRisksProportionalHazards",
+            lambda x, Z, c, e: CompetingRisksProportionalHazards.fit(
+                x, Z, e, c=c
+            ).betas,
+        ),
+    ]
+
+
+@pytest.mark.parametrize(
+    "name, fit",
+    [pytest.param(*nf, id=nf[0]) for nf in _semi_parametric_fits()],
+)
+def test_bad_covariate_row_is_dropped_before_the_event_time_check(name, fit):
+    # The semi-parametric fitters share one input check (consolidation
+    # sweep, decision 4): a row with a missing covariate is dropped, with
+    # the usual warning, before the exactly observed times are checked to
+    # be finite, as Cox did (principle 3). The proportional odds, Lin-Ying
+    # and Buckley-James fits raised "must be finite" on such a row.
+    rng = np.random.default_rng(4)
+    x = rng.exponential(5.0, 40) + 0.1
+    Z = rng.normal(size=(40, 1))
+    c = (rng.uniform(size=40) < 0.2).astype(int)
+    c[:2] = 0
+    # Two causes; a censored row has none.
+    e = np.where(np.arange(40) % 2 == 0, "a", "b").astype(object)
+    e[c == 1] = None
+    x_bad, Z_bad, c_bad, e_bad = x.copy(), Z.copy(), c.copy(), e.copy()
+    x_bad[5], Z_bad[5, 0], c_bad[5], e_bad[5] = np.inf, np.nan, 0, "b"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        got = fit(x_bad, Z_bad, c_bad, e_bad)
+    dropped = [w for w in caught if "Dropped" in str(w.message)]
+    assert len(dropped) == 1, [str(w.message) for w in caught]
+    keep = np.arange(40) != 5
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        ref = fit(x[keep], Z[keep], c[keep], e[keep])
+    np.testing.assert_allclose(got, ref, rtol=1e-12, err_msg=name)
+    # An infinite observed time on a row that is kept is still refused.
+    x_bad[5], Z_bad[5, 0] = np.inf, 0.0
+    with pytest.raises(ValueError, match="must be finite"):
+        fit(x_bad, Z_bad, c_bad, e_bad)

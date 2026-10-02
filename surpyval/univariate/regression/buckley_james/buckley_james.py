@@ -47,10 +47,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils import (
-    check_covariate_rows,
-    finite_covariate_mask,
     wrangle_and_check_form_and_Z_cols,
-    xcnt_handler,
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import percentile_bounds
@@ -66,8 +63,8 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
-    check_finite_event_times,
     restore_covariate_meta,
+    semi_parametric_inputs,
     serialise_covariate_meta,
 )
 
@@ -597,29 +594,16 @@ class BuckleyJames_:
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
-        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        c_a = np.asarray(c_h, dtype=float)
-        if np.any((c_a != 0) & (c_a != 1)):
-            raise ValueError(
+        x_a, c_a, n_a, _, Z_a = semi_parametric_inputs(
+            x,
+            Z,
+            c,
+            n,
+            censoring=(
                 "Buckley-James supports only observed (c=0) and "
                 "right-censored (c=1) data."
-            )
-        x_a = np.asarray(x_h, dtype=float)
-        if x_a.ndim == 2:
-            # Two columns with no interval row: xl == xr on every row.
-            x_a = x_a[:, 0]
-        check_finite_event_times(x_a, c_a)
-        Z_a = np.asarray(Z, dtype=float)
-        if Z_a.ndim == 1:
-            Z_a = Z_a.reshape(-1, 1)
-        elif Z_a.ndim != 2:
-            raise ValueError("Covariate matrix must be two dimensional")
-        check_covariate_rows(Z_a, x_a.shape[0])
-        # Rows with a NaN / infinite covariate are dropped with a warning,
-        # as in every regression fitter (NaN rows used to go silently).
-        mask = finite_covariate_mask(Z_a)
-        x_a, c_a, Z_a = x_a[mask], c_a[mask], Z_a[mask]
-        n_a = np.asarray(n_h, dtype=float)[mask]
+            ),
+        )
 
         if np.any(x_a <= 0):
             raise ValueError(
