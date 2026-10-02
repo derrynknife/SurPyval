@@ -3266,6 +3266,11 @@ class Parametric(
     #: boundary, at angles evenly spaced in the Wald metric.
     _LR_TRACE_RAYS = 64
 
+    #: The fractions of the critical value at which ``_cb_lr_psi_bounds``
+    #: finds a function's extreme over the narrower regions first, each
+    #: search started from the one before (continuation in the level).
+    _LR_LADDER = (0.25, 0.5, 0.75)
+
     def _lr_trace(
         self, free: list[int], crit: float, seeds: list[list[npt.NDArray]]
     ) -> list[npt.NDArray] | None:
@@ -3489,13 +3494,11 @@ class Parametric(
             if walk:
                 walks.append(walk)
 
-        def direct(direction: float, start: npt.NDArray) -> float | None:
-            # The extreme of psi over the region, sought directly (SLSQP),
-            # is taken when it checks out: its deviance at crit or below,
-            # and none with psi a hair further out (1e-6 of it) at crit or
-            # below. That is where the profile of psi crosses crit, which
-            # the walk would find at many times the cost. Otherwise
-            # ``None``.
+        def extreme(
+            direction: float, start: npt.NDArray, level: float
+        ) -> npt.NDArray | None:
+            # Where SLSQP stops in its search for the extreme of psi over
+            # the region {deviance <= level}; ``None`` where it fails.
             try:
                 res = minimize(
                     lambda u: -direction * psi_u(u),
@@ -3506,7 +3509,7 @@ class Parametric(
                     constraints=[
                         {
                             "type": "ineq",
-                            "fun": lambda u: crit - dev_u(u),
+                            "fun": lambda u: level - dev_u(u),
                             "jac": lambda u: -_central_gradient(dev_u, u),
                         }
                     ],
@@ -3516,18 +3519,30 @@ class Parametric(
                 return None
             if not np.all(np.isfinite(res.x)):
                 return None
-            psi_star = psi_u(res.x)
+            return np.asarray(res.x)
+
+        def direct(direction: float, start: npt.NDArray) -> float | None:
+            # The extreme of psi over the region, sought directly (SLSQP),
+            # is taken when it checks out: its deviance at crit or below,
+            # and none with psi a hair further out (1e-6 of it) at crit or
+            # below. That is where the profile of psi crosses crit, which
+            # the walk would find at many times the cost. Otherwise
+            # ``None``.
+            x = extreme(direction, start, crit)
+            if x is None:
+                return None
+            psi_star = psi_u(x)
             if np.isfinite(psi_star):
-                reached.append((psi_star, np.asarray(res.x)))
+                reached.append((psi_star, x))
             if not (
                 np.isfinite(psi_star)
-                and dev_u(res.x) <= crit + _LR_NOISE
+                and dev_u(x) <= crit + _LR_NOISE
                 and direction * (psi_star - psi_hat) >= 0
             ):
                 return None
-            known.append((psi_star, np.asarray(res.x)))
+            known.append((psi_star, x))
             beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-            nll, u = solve(beyond, [np.asarray(res.x), u_hat])
+            nll, u = solve(beyond, [x, u_hat])
             if u is not None and 2.0 * (nll - nll_hat) < crit:
                 return None
             return psi_star
@@ -3572,16 +3587,67 @@ class Parametric(
                 return quick
             return None
 
+        # The points the level ladders found (``ladder``).
+        ladder_ids: set[int] = set()
+
+        def ladder(direction: float) -> float:
+            # The extreme of psi over the narrower regions {deviance <= f
+            # crit}, f in _LR_LADDER, and then over this one, each sought
+            # from the one before (continuation in the level): points of
+            # this region that the bound must reach, as far as the farthest
+            # of them (``-inf`` if none). A region grows with its level,
+            # and the extreme moves out with it; followed so, the search
+            # stays in its valley, where one from the estimate or from a
+            # walk's tip can stop on a nearer local extreme of a long,
+            # curved region (an ExpoWeibull hf(13) lower bound of 0.1046
+            # at 99%, though 0.1017 is in the 95% region, #535). A search
+            # that stops outside its region (SLSQP's tolerance, or its
+            # iteration limit in a narrow valley) is taken back onto its
+            # boundary along the line from the step before.
+            u_step, far = u_start, -np.inf
+            for frac in (*self._LR_LADDER, 1.0):
+                level = frac * crit
+                x = extreme(direction, u_step, level)
+                if x is None:
+                    break
+                if not dev_u(x) <= level:
+                    if not dev_u(u_step) <= level:
+                        break
+                    ray = x - u_step
+
+                    def excess(r: float) -> float:
+                        d = dev_u(u_step + r * ray)
+                        return min(d, _LR_UNREACHABLE) - level
+
+                    try:
+                        r = brentq(
+                            excess,
+                            0.0,
+                            1.0,
+                            xtol=1e-14,
+                            rtol=1e-14,
+                        )
+                    except ValueError:
+                        break
+                    x = u_step + r * ray
+                psi_x = psi_u(x)
+                if not np.isfinite(psi_x):
+                    break
+                known.append((psi_x, x))
+                ladder_ids.add(id(x))
+                far = max(far, direction * psi_x)
+                u_step = x
+            return far
+
         def solve_side(direction: float) -> float:
             quick = from_trace(direction)
             if quick is not None:
                 return quick
+            far_ladder = ladder(direction)
             # The search starts from the estimate and from the farthest
             # points of the two walks that reach farthest (the region can
-            # have more than one local extreme: an ExpoWeibull hf(13) of
-            # 0.108 on its near boundary at 99%, and 0.102 down the valley
-            # of alpha -> 0, inside the 95% region already), and the most
-            # extreme result that checks out is taken.
+            # have more than one local extreme), and the most extreme
+            # result that checks out is taken.
             tips = sorted(
                 (max(walk, key=lambda k: direction * k[0]) for walk in walks),
                 key=lambda k: -direction * k[0],
@@ -3593,8 +3659,15 @@ class Parametric(
                     best is None or direction * quick > direction * best
                 ):
                     best = quick
-            far = max(direction * k[0] for k in known)
-            if best is not None and direction * best >= far:
+            far = max(
+                direction * k[0] for k in known if id(k[1]) not in ladder_ids
+            )
+            if (
+                best is not None
+                and direction * best >= far
+                and direction * best
+                >= far_ladder - 1e-6 * max(1.0, abs(best))
+            ):
                 return best
             # The bound is at least as far out as every point of the
             # region known: a search that stops short of one has stopped
