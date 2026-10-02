@@ -2,9 +2,6 @@ __version__ = "0.21.0"
 
 from autograd import numpy as np
 
-# Before anything differentiates: a broadcast-aware derivative rule for
-# ``np.where`` (autograd's does not unbroadcast; #562).
-import surpyval.utils.autograd_where_compat  # noqa: F401  # isort: skip
 from surpyval.distribution import (
     Distribution,
     MultivariateDistribution,
@@ -60,6 +57,10 @@ from surpyval.univariate.parametric import (
     Weibull,
     weibayes,
 )
+
+# A broadcast-aware derivative rule for ``np.where``, registered on import
+# (autograd's does not unbroadcast; #562).
+from surpyval.utils import autograd_where_compat as _where  # noqa: F401
 from surpyval.utils import (
     fs_to_xcnt,
     fs_to_xrd,
