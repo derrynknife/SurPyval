@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -17,6 +16,7 @@ from .._fit_skeleton import (
     fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
+    split_log_linear,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -62,23 +62,16 @@ class AFTFitter(
         covariates ``Z``; ``params`` are the distribution parameters
         followed by the covariate coefficients.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        return self.Hf_dist(self._phi(Z, *phi_params) * x, *dist_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
+        return self.Hf_dist(phi * x, *dist_params)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
         Hazard rate :math:`e^{\\beta' Z} h_0(e^{\\beta' Z} x)` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`Hf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi_val = self._phi(Z, *phi_params)
-        return phi_val * self.hf_dist(phi_val * x, *dist_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
+        return phi * self.hf_dist(phi * x, *dist_params)
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)

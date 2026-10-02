@@ -81,6 +81,21 @@ class LogLinearPhi:
         return {"beta_" + str(i): i for i in range(Z.shape[1])}
 
 
+def split_log_linear(
+    fitter: Any, x: Numeric, Z: Numeric, params: tuple
+) -> "tuple[Numeric, tuple, Boxable]":
+    """``(x, dist_params, phi)`` for a covariate-function evaluation of
+    the AFT and PO fitters: ``x`` as a 1-D float array, the distribution
+    parameters (the first ``fitter.k_dist`` of ``params``) and the
+    multiplier ``fitter._phi(Z, *coefficients)`` for ``Z`` read as rows.
+    The parameters stay autograd values, so the likelihood built from
+    them can be differentiated."""
+    x = np.atleast_1d(np.asarray(x, dtype=float))
+    Z = np.atleast_2d(np.asarray(Z, dtype=float))
+    k = fitter.k_dist
+    return x, params[:k], fitter._phi(Z, *params[k:])
+
+
 def make_objective(
     fitter: Any, data: SurpyvalData, inv_trans: Callable, const: Callable
 ) -> Callable:

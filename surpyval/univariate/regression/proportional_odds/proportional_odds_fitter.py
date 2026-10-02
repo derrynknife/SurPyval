@@ -17,6 +17,7 @@ from .._fit_skeleton import (
     fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
+    split_log_linear,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -73,11 +74,7 @@ class ProportionalOddsFitter(
         covariates ``Z``; ``params`` are the distribution parameters
         followed by the covariate coefficients.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return phi * S0 / (F0 + phi * S0)
@@ -87,11 +84,7 @@ class ProportionalOddsFitter(
         Failure (CDF) function :math:`F_0 / (F_0 + \\phi S_0)` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return F0 / (F0 + phi * S0)
@@ -101,11 +94,7 @@ class ProportionalOddsFitter(
         Hazard rate :math:`h_0 / (F_0 + \\phi S_0)` at ``x`` for covariates
         ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         h0 = self.hf_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
@@ -130,11 +119,7 @@ class ProportionalOddsFitter(
         Density :math:`\\phi f_0 / (F_0 + \\phi S_0)^2` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         f0 = self.df_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
@@ -145,11 +130,7 @@ class ProportionalOddsFitter(
         """
         Log of the survival function, :math:`-H(x \\mid Z)`; see :meth:`Hf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         # S = phi S0 / (F0 + phi S0) = 1 / (1 + F0 / (phi S0)). The old
@@ -173,21 +154,13 @@ class ProportionalOddsFitter(
         )
 
     def log_ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return np.log(F0) - np.log(F0 + phi * S0)
 
     def log_df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         f0 = self.df_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
