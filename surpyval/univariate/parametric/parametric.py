@@ -36,7 +36,9 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     BOUNDS,
     CB_ON,
+    alpha_ci_error,
     check_option,
+    no_covariance_error,
     option_error,
 )
 
@@ -61,6 +63,11 @@ if TYPE_CHECKING:
 # ``cov``, and ``n_core`` (the number of leading core parameters). These three
 # always travel together, so they are bundled to keep the bound helpers'
 # signatures small.
+# Why a fitted model has no parameter covariance.
+_NO_COVARIANCE_WHY = (
+    "the Hessian was singular at the optimum, or the model was not fit by MLE"
+)
+
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
 
 # The values of ``Parametric.maximum``: whether the log-likelihood a model
@@ -751,10 +758,7 @@ class Parametric(
         if not is_core:
             cov = getattr(self, "cov_matrix", None)
             if cov is None:
-                raise ValueError(
-                    f"Model has no covariance for '{name}'; "
-                    "it must be fit with the MLE method"
-                )
+                raise no_covariance_error(_NO_COVARIANCE_WHY)
             p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
             param_bounds: tuple[float | None, float | None] = (0, 1)
@@ -762,11 +766,7 @@ class Parametric(
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
-                raise ValueError(
-                    "Model carries no parameter covariance (the Hessian was "
-                    "singular at the optimum, or the model was not fit by "
-                    "MLE); confidence bounds are unavailable."
-                )
+                raise no_covariance_error(_NO_COVARIANCE_WHY)
             var = hess_inv[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
@@ -843,8 +843,7 @@ class Parametric(
         if self.zi:
             valid.append("f0")
         raise ValueError(
-            f"Unknown parameter {name!r} for this {self.dist.name} model; "
-            f"expected one of {valid}"
+            f"Unknown parameter {name!r}; expected one of {valid}"
         )
 
     def _ensure_surv_data(self) -> None:
@@ -1992,7 +1991,7 @@ class Parametric(
             raise ValueError("Only MLE has confidence bounds")
         check_option("bound", bound, BOUNDS)
         if not 0 < alpha_ci < 1:
-            raise ValueError(f"'alpha_ci' must be in (0, 1); got {alpha_ci}")
+            raise alpha_ci_error(alpha_ci)
 
     def _summary_scale(self, zero_floor: bool = False) -> tuple:
         """The scale a quantile or the mean is bounded on, from the
@@ -2176,11 +2175,7 @@ class Parametric(
         if cov is None:
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:
-                raise ValueError(
-                    "Model carries no parameter covariance (the Hessian "
-                    "was singular at the optimum, or the model was not fit "
-                    "by MLE); confidence bounds are unavailable."
-                )
+                raise no_covariance_error(_NO_COVARIANCE_WHY)
             cov = np.zeros((len(phi_hat), len(phi_hat)))
             cov[:n_core, :n_core] = np.copy(hess_inv)
 

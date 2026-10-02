@@ -7,6 +7,7 @@ import numpy.typing as npt
 from scipy.stats import chi2
 
 from surpyval.utils import xcnt_handler
+from surpyval.utils.validation import alpha_ci_error
 
 from .distributions import Weibull
 from .parametric import Parametric
@@ -129,7 +130,7 @@ def weibayes(
     if not (np.isscalar(beta) and np.isfinite(beta_f) and beta_f > 0):
         raise ValueError(f"'beta' must be a positive number; got {beta}")
     if not 0 < alpha_ci < 1:
-        raise ValueError(f"'alpha_ci' must be in (0, 1); got {alpha_ci}")
+        raise alpha_ci_error(alpha_ci)
 
     beta_f = float(beta_f)
     # Scaled by the largest time so that a large shape cannot overflow

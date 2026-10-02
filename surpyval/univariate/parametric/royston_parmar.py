@@ -55,7 +55,12 @@ from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option, option_error
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    no_covariance_error,
+    option_error,
+)
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -322,7 +327,7 @@ class RoystonParmarModel(SerialisableMixin):
             two-sided bound at ``2 * alpha_ci``.
         """
         if self.covariance is None:
-            raise ValueError("Confidence bounds need a covariance (MLE fit).")
+            raise no_covariance_error()
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).
         check_option("bound", bound, BOUNDS)

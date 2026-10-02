@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import unknown_cause_error
 
 
 class RecurrentEventData:
@@ -266,11 +267,7 @@ class RecurrentEventData:
                 "cause-specific curves."
             )
         if cause not in self.event_types:
-            raise ValueError(
-                "Unrecognised cause {!r}; known causes are {}".format(
-                    cause, self.event_types
-                )
-            )
+            raise unknown_cause_error(cause, self.event_types)
 
         # Reuse the shared at-risk set and event-time grid from to_xrd.
         x_unique, r, _ = self.to_xrd()

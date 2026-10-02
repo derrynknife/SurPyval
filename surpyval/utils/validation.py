@@ -92,6 +92,71 @@ def check_option(
         raise option_error(name, value, accepted, note)
 
 
+def alpha_ci_error(alpha_ci: Any, note: str | None = None) -> ValueError:
+    """The one refusal of an ``alpha_ci`` outside (0, 1), for every
+    method that takes it.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import alpha_ci_error
+    >>> alpha_ci_error(1.5)
+    ValueError("'alpha_ci' must be strictly between 0 and 1; got 1.5")
+    """
+    message = "'alpha_ci' must be strictly between 0 and 1; got {!r}".format(
+        alpha_ci
+    )
+    if note:
+        message += ". " + note
+    return ValueError(message)
+
+
+def unknown_cause_error(cause: Any, causes: Any) -> ValueError:
+    """The one refusal of a cause (event type) a competing-risks model or
+    its data does not have.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import unknown_cause_error
+    >>> unknown_cause_error("c", ["a", "b"])
+    ValueError("Unknown cause 'c'; the causes are ['a', 'b']")
+    """
+    return ValueError(
+        "Unknown cause {!r}; the causes are {}".format(cause, list(causes))
+    )
+
+
+def no_covariance_error(
+    why: str = "the Hessian was singular at the optimum",
+) -> ValueError:
+    """The one refusal of a standard error or Wald bound from a model that
+    carries no parameter covariance.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import no_covariance_error
+    >>> print(no_covariance_error())
+    The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.
+    """  # noqa: E501
+    return ValueError(
+        "The model carries no parameter covariance ({}); its standard "
+        "errors and confidence bounds are unavailable.".format(why)
+    )
+
+
+def missing_cause_error(what: str) -> ValueError:
+    """The one refusal of a cause-specific call made without its cause.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import missing_cause_error
+    >>> missing_cause_error("The CIF")
+    ValueError('The CIF is of one cause at a time; pass `event`.')
+    """
+    return ValueError(
+        "{} is of one cause at a time; pass `event`.".format(what)
+    )
+
+
 def _check_x_not_empty(func: Callable) -> Callable:
     # Decorator to check that x is not empty
     def wrap(obj: Any, x: Any, *args: Any, **kwargs: Any) -> Any:
@@ -215,12 +280,12 @@ def validate_cr_inputs(
 
 def validate_event(mapping: dict, event: Any) -> None:
     if event is not None and event not in mapping:
-        raise ValueError("Event type not in model")
+        raise unknown_cause_error(event, mapping)
 
 
 def validate_cif_event(event: Any) -> None:
     if event is None:
-        raise ValueError("CIF needs event type, not None")
+        raise missing_cause_error("The CIF")
 
 
 def validate_coxph_df_inputs(

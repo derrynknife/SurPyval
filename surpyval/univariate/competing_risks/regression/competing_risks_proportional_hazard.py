@@ -44,7 +44,11 @@ from surpyval.utils import (
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import (
+    check_option,
+    missing_cause_error,
+    unknown_cause_error,
+)
 
 from .fine_gray import (
     FineGrayModel,
@@ -256,11 +260,9 @@ class CompetingRisksProportionalHazards(
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
         # explicit cause (the Fine-Gray CIF is defined one cause at a time).
         if event is None:
-            raise ValueError(
-                "A Fine-Gray model predicts one cause at a time; pass `event`."
-            )
+            raise missing_cause_error("A Fine-Gray model's prediction")
         if event not in self._fg_models:
-            raise ValueError("Unrecognised event type for this model")
+            raise unknown_cause_error(event, self._fg_models)
         return self._fg_models[event]
 
     def _f(
@@ -286,7 +288,7 @@ class CompetingRisksProportionalHazards(
 
         if event is not None:
             if event not in self.event_idx_map:
-                raise ValueError("Unrecognised event type for this model")
+                raise unknown_cause_error(event, self.event_idx_map)
             e_i = self.event_idx_map[event]
             return self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
         # All causes combined: each cause contributes with its OWN
@@ -424,12 +426,10 @@ class CompetingRisksProportionalHazards(
         covariates for a model fitted with ``fit_from_df``. ``event`` must
         be one of the fitted causes.
         """
-        if event is None or event not in self.event_idx_map:
-            causes = list(self.event_idx_map)
-            raise ValueError(
-                f"`event` must be one of the fitted causes {causes}, got "
-                f"{event!r}."
-            )
+        if event is None:
+            raise missing_cause_error("The CIF")
+        if event not in self.event_idx_map:
+            raise unknown_cause_error(event, self.event_idx_map)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).

@@ -187,3 +187,83 @@ def test_fit_from_df_without_covariates_has_one_message(name):
         ValueError, match="^One of 'Z_cols' or 'formula' must be provided$"
     ):
         _no_covariates()[name]()
+
+
+def _unknown_causes():
+    def model(name):
+        return fitted(CASE_BY_NAME[name])
+
+    crph = "CompetingRisksProportionalHazards[Cox]"
+    Z = CASE_BY_NAME[crph].Z[0]
+    return {
+        "ParametricCompetingRisks": lambda: model(
+            "ParametricCompetingRisks"
+        ).cif([1.0], event="zzz"),
+        "CompetingRisksProportionalHazards.cif": lambda: model(crph).cif(
+            [1.0], Z, "zzz"
+        ),
+        "CompetingRisksProportionalHazards.sf": lambda: model(crph).sf(
+            [1.0], Z, event="zzz"
+        ),
+        "CompetingRisks": lambda: model("CompetingRisks[Kaplan-Meier]").sf(
+            [1.0], event="zzz"
+        ),
+        "CauseSpecificNHPP": lambda: model("CauseSpecificNHPP").cif(
+            [1.0], "zzz"
+        ),
+        "CauseSpecificMCF": lambda: model("CauseSpecificMCF").mcf(
+            [1.0], "zzz"
+        ),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_unknown_causes()))
+def test_an_unknown_cause_has_one_message(name):
+    # Worded six ways ("Unrecognised event type for this model", "Event
+    # type not in model", "`event` must be one of the fitted causes ...",
+    # ...), and a bare KeyError from CauseSpecificMCF.
+    with pytest.raises(
+        ValueError,
+        match=r"^Unknown cause 'zzz'; the causes are \['a', 'b'\]$",
+    ):
+        _unknown_causes()[name]()
+
+
+def _bad_alpha_ci():
+    return {
+        "KaplanMeier.band": lambda: sp.KaplanMeier.fit(X, C).band(
+            [2.0], alpha_ci=1.5
+        ),
+        "Parametric.quantile_cb": lambda: _weibull().quantile_cb(
+            0.1, alpha_ci=1.5
+        ),
+        "trend_test": lambda: sp.recurrent.HPP.fit([1.0, 2.0, 3.0]).trend_test(
+            alpha_ci=1.5
+        ),
+    }
+
+
+@pytest.mark.parametrize("name", sorted(_bad_alpha_ci()))
+def test_an_alpha_ci_outside_zero_one_has_one_message(name):
+    with pytest.raises(
+        ValueError,
+        match=r"^'alpha_ci' must be strictly between 0 and 1; got 1\.5",
+    ):
+        _bad_alpha_ci()[name]()
+
+
+@pytest.mark.parametrize(
+    "kwargs, name",
+    [
+        ({"c": [0, 1]}, "'c'"),
+        ({"n": [1, 2]}, "'n'"),
+        ({"tl": [0, 0]}, "'tl' and 'tr'"),
+    ],
+)
+def test_a_column_of_the_wrong_length_has_one_message(kwargs, name):
+    # "censoring flag array must be same length as variable array" and the
+    # like, beside "'c' must be the same length as 'x'".
+    with pytest.raises(
+        ValueError, match=f"^{name} must be the same length as 'x'$"
+    ):
+        sp.Weibull.fit([1.0, 2.0, 3.0], **kwargs)

@@ -29,6 +29,7 @@ from surpyval.utils.shapes import (
     keeps_query_shape,
 )
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.warnings import warn_no_covariance
 
 from ._bounds import logit_sf_bound
 from ._concordance import ConcordanceMixin
@@ -2435,11 +2436,7 @@ class ParametricRegressionModel(
             except np.linalg.LinAlgError:
                 bad = True
         if bad:
-
-            warnings.warn(
-                "The information matrix could not be inverted (the optimum "
-                "may be at a parameter boundary); covariance is unavailable."
-            )
+            warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
         self._covariance_cache = (point, cov.copy())

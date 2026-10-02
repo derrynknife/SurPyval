@@ -16,7 +16,7 @@ from scipy.optimize import brentq
 from scipy.stats import norm
 
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import alpha_ci_error, check_option
 
 # The equal precision band's default range of a = N sigma^2 / (1 + N
 # sigma^2) (#390): its standardized boundary is unbounded as a nears 0 or
@@ -89,10 +89,7 @@ class BandsMixin:
         whole range to about 1e-8.
         """
         if not 0 < 1 - alpha_ci < 1:
-            raise ValueError(
-                "'alpha_ci' must be strictly between 0 and 1; got "
-                "{}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         # t = a / (1 - a); a_u = 1 would put the end at infinity, which
         # the grid below cannot reach in finitely many steps.
         a_u = min(float(a_u), 1.0 - 1e-12)

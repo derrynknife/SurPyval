@@ -48,7 +48,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.stats import chi2, norm
 
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import alpha_ci_error, check_option
 
 _ALTERNATIVES = ("two-sided", "increasing", "decreasing")
 
@@ -159,10 +159,7 @@ def _validate_alternative(alternative: str, alpha_ci: float) -> None:
         and not isinstance(alpha_ci, bool)
         and 0 < alpha_ci < 1
     ):
-        raise ValueError(
-            "`alpha_ci`, the significance level, must be a number strictly "
-            "between 0 and 1; got {!r}".format(alpha_ci)
-        )
+        raise alpha_ci_error(alpha_ci, "It is the test's significance level.")
 
 
 def _resolve_truncation(

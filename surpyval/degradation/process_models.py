@@ -58,7 +58,7 @@ from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import check_option
+from surpyval.utils.validation import alpha_ci_error, check_option
 
 from ._clock import StressClock, covariates_by_name, stress_row
 from ._measurements import validate_xy
@@ -860,9 +860,7 @@ class FirstPassageProcessModel(SerialisableMixin):
         """
         if not 0.0 < float(alpha_ci) < 1.0:
             # 1.5 used to give an inverted interval
-            raise ValueError(
-                "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         current = float(current_degradation)
         if np.isnan(current):
             # it used to hang the quantile search

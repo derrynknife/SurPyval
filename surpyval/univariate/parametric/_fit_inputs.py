@@ -751,19 +751,23 @@ class FitInputsMixin:
                 return None
             return f"{name} = {value} lies outside its bounds ({lo_v}, {hi_v})"
 
-        for name, value in (fixed or {}).items():
-            if name not in model.param_map:
-                hint = {
-                    "gamma": " (an offset needs offset=True)",
-                    "f0": " (zero inflation needs zi=True)",
-                    model.lfp_name: (
-                        " (the limited-failure proportion needs lfp=True)"
-                    ),
-                }.get(name, "")
-                raise ValueError(
-                    f"Unknown parameter {name!r} in `fixed`{hint}; this "
-                    f"{self.name} model has {names}."
+        unknown = [name for name in fixed or {} if name not in model.param_map]
+        if unknown:
+            hints = {
+                "gamma": "an offset needs offset=True",
+                "f0": "zero inflation needs zi=True",
+                model.lfp_name: (
+                    "the limited-failure proportion needs lfp=True"
+                ),
+            }
+            hint = "; ".join(hints[k] for k in unknown if k in hints)
+            raise ValueError(
+                "Unknown parameter(s) {} in `fixed`{}; this model's "
+                "parameters are {}.".format(
+                    unknown, " ({})".format(hint) if hint else "", names
                 )
+            )
+        for name, value in (fixed or {}).items():
             problem = outside(name, value)
             if problem is not None:
                 raise ValueError(f"Cannot fix {name}: {problem}.")

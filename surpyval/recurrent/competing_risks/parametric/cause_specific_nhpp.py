@@ -44,6 +44,7 @@ from surpyval.univariate.competing_risks.labels import (
 )
 from surpyval.utils import optional_column
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.validation import unknown_cause_error
 
 
 class CauseSpecificNHPP(SerialisableMixin):
@@ -344,11 +345,7 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     def _check_cause(self, cause: Any) -> None:
         if cause not in self.models:
-            raise ValueError(
-                "Unrecognised cause {!r}; known causes are {}".format(
-                    cause, self.event_types
-                )
-            )
+            raise unknown_cause_error(cause, self.event_types)
 
     def cif(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific cumulative intensity: the expected count of

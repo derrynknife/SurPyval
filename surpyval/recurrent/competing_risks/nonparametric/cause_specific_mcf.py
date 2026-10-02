@@ -44,6 +44,7 @@ from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.validation import unknown_cause_error
 
 
 def _cause_model(data: Any, cause: Any) -> Any:
@@ -225,13 +226,19 @@ class CauseSpecificMCF(SerialisableMixin):
         """Cause-specific MCF evaluated at ``x`` for the event type
         ``event`` (see ``NonParametricCounting.mcf``, and
         :meth:`set_support` for its values outside the data)."""
-        return self.models[event].mcf(x, interp=interp)
+        return self._model(event).mcf(x, interp=interp)
 
     def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
         """Confidence bounds on the cause-specific MCF for the event type
         ``event``; ``kwargs`` are those of
         ``NonParametricCounting.mcf_cb``."""
-        return self.models[event].mcf_cb(x, **kwargs)
+        return self._model(event).mcf_cb(x, **kwargs)
+
+    def _model(self, event: Any) -> Any:
+        # An unknown cause used to escape as a bare KeyError.
+        if event not in self.models:
+            raise unknown_cause_error(event, self.event_types)
+        return self.models[event]
 
     def plot(
         self,

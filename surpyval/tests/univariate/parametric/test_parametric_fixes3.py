@@ -389,7 +389,10 @@ def test_exact_event_time_refuses_contradictory_checks():
 @pytest.mark.parametrize(
     "kwargs, match",
     [
-        (dict(fixed={"shape": 1}), "Unknown parameter 'shape'"),
+        (
+            dict(fixed={"shape": 1}),
+            r"Unknown parameter\(s\) \['shape'\] in `fixed`",
+        ),
         (dict(fixed={"p": 0.5}), "needs lfp=True"),
         (dict(fixed={"gamma": 0.5}), "needs offset=True"),
         (dict(fixed={"alpha": -1}), "Cannot fix alpha"),

@@ -52,7 +52,12 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option, option_error
+from surpyval.utils.validation import (
+    BOUNDS,
+    alpha_ci_error,
+    check_option,
+    option_error,
+)
 from surpyval.utils.warnings import caller_stacklevel
 
 from ._bounds import (
@@ -1147,9 +1152,7 @@ class DegradationModel(SerialisableMixin):
                 "instead"
             )
         if not 0.0 < float(alpha_ci) < 1.0:
-            raise ValueError(
-                "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         if int(n_samples) < 1:
             raise ValueError(
                 "n_samples must be a positive integer, got {!r}".format(
