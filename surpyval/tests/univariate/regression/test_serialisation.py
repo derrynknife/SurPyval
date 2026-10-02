@@ -17,16 +17,8 @@ import json
 import numpy as np
 import pytest
 
-from surpyval import (
-    AFT,
-    AH,
-    PH,
-    PO,
-    AcceleratedLife,
-    Eyring,
-    Power,
-    Weibull,
-)
+from surpyval import AFT, AH, PH, PO, AcceleratedLife, Weibull
+from surpyval.life_models import Eyring, Power
 from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,

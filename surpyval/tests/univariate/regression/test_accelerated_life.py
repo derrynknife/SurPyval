@@ -14,7 +14,8 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import AcceleratedLife, Exponential, Power, Weibull
+from surpyval import AcceleratedLife, Exponential, Weibull
+from surpyval.life_models import Power
 from surpyval.univariate.regression.accelerated_life.accelerated_life import (
     _LIFE_PARAM_MAP,
 )
@@ -98,7 +99,8 @@ def test_gamma_life_is_the_reciprocal_of_its_rate():
     # Gamma's beta is a rate, like the Exponential's failure_rate, so the
     # life model must enter through 1 / life. With shape 1 the Gamma is
     # the Exponential, so on exponential data the two agree.
-    from surpyval import AcceleratedLife, Exponential, Gamma, InversePower
+    from surpyval import AcceleratedLife, Exponential, Gamma
+    from surpyval.life_models import InversePower
 
     rng = np.random.default_rng(0)
     stress = np.repeat([1.0, 2.0, 4.0], 60)

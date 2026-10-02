@@ -66,7 +66,7 @@ below points straight to the section that answers it.
        `Semi-Parametric — Buckley-James (AFT)`_
    * - carry accelerated-test results to use conditions through a physical
        stress-life law
-     - ``AcceleratedLife(Weibull, ExponentialLifeModel)``, ...
+     - ``AcceleratedLife(Weibull, life_models.Exponential)``, ...
      - `Accelerated Life (AL)`_
    * - model an effect that fades as time goes on
      - ``LogisticPO``, ``PO(dist)``
@@ -217,7 +217,8 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
      - ``AdditiveHazards`` (semi-parametric), ``WeibullAH``, …, ``AH(dist)``
    * - Accelerated Life (AL)
      - Substitutes the life parameter with a physics-motivated function
-     - ``AcceleratedLife(Weibull, Power)``, ``AcceleratedLife(Weibull, Eyring)``
+     - ``AcceleratedLife(Weibull, life_models.Power)``,
+       ``AcceleratedLife(Weibull, life_models.Eyring)``
    * - Shared frailty PH
      - PH with a random multiplier shared within a group
      - ``WeibullFrailty``, …, ``Frailty(dist)``
@@ -1869,7 +1870,10 @@ Gamma, Gumbel and Logistic are supported.
 Available life models
 ~~~~~~~~~~~~~~~~~~~~~~
 
-The choice of life model depends on the physical failure mechanism. The
+The life models are in ``surpyval.life_models`` (``from surpyval import
+life_models``); until v0.22 they were importable from ``surpyval`` itself,
+where the exponential one was ``ExponentialLifeModel``. The choice of life
+model depends on the physical failure mechanism. The
 letters in each formula are the parameter names the fitted model reports, and
 :math:`Z_1, Z_2` are the two columns of ``Z`` for the two-stress models
 (:math:`Z_0, Z_1, \ldots` its columns for ``GeneralLogLinear``, numbered from
@@ -1882,7 +1886,7 @@ letters in each formula are the parameter names the fitted model reports, and
    * - Life model
      - Formula :math:`\phi(Z)`
      - Typical use
-   * - ``ExponentialLifeModel``
+   * - ``Exponential``
      - :math:`b \cdot e^{a/Z}` (Arrhenius)
      - Thermally-activated (chemical, diffusion, electromigration)
    * - ``Eyring``
@@ -1937,8 +1941,7 @@ is stopped at 6,000 hours so that most of the coolest units are still running
 
 .. jupyter-execute::
 
-    from surpyval import Weibull
-    from surpyval import AcceleratedLife, Power, ExponentialLifeModel
+    from surpyval import AcceleratedLife, Weibull, life_models
 
     # Discrete stress levels — three temperatures in Kelvin
     stress = np.repeat([358., 378., 398.], 20)   # 85°C, 105°C, 125°C
@@ -1952,8 +1955,9 @@ is stopped at 6,000 hours so that most of the coolest units are still running
     print('censored at each stress:',
           [int(c_al[stress == s].sum()) for s in (358., 378., 398.)])
 
-    # Weibull + Arrhenius (ExponentialLifeModel) — the most common ALT model
-    model_arr = AcceleratedLife(Weibull, ExponentialLifeModel).fit(
+    # Weibull + Arrhenius (the Exponential life model): the most common ALT
+    # model
+    model_arr = AcceleratedLife(Weibull, life_models.Exponential).fit(
         x_al, Z=stress, c=c_al)
     model_arr
 
@@ -1991,7 +1995,9 @@ estimates the activation energy directly:
 .. jupyter-execute::
 
     # Power law — a common choice for voltage or load acceleration
-    model_power = AcceleratedLife(Weibull, Power).fit(x_al, Z=stress, c=c_al)
+    model_power = AcceleratedLife(Weibull, life_models.Power).fit(
+        x_al, Z=stress, c=c_al
+    )
     model_power
 
 Over a narrow range of temperatures a steep power law mimics Arrhenius (hence
@@ -2070,7 +2076,7 @@ power law in voltage, :math:`c\, e^{a/Z_1} Z_2^{n}`:
 
 .. jupyter-execute::
 
-    from surpyval import PowerExponential
+    from surpyval.life_models import PowerExponential
 
     rng = np.random.default_rng(0)
     temp = np.repeat([358., 378., 358., 378.], 25)       # kelvin
@@ -2122,7 +2128,8 @@ two methods you must implement are:
 
 .. jupyter-execute::
 
-    from surpyval import LifeModel, AcceleratedLife
+    from surpyval import AcceleratedLife
+    from surpyval.life_models import LifeModel
     from surpyval import Weibull
     import autograd.numpy as anp
 

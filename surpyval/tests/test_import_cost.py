@@ -75,12 +75,16 @@ def test_lazy_names_are_the_packages_names() -> None:
     exported = {
         k for k, v in lazy.items() if v == "surpyval.univariate.regression"
     }
-    assert exported == set(regression.__all__)
+    # The life models moved to ``surpyval.life_models``
+    moved = set(surpyval._MOVED_TO_LIFE_MODELS)  # type: ignore[attr-defined]
+    moved |= {"GeneralLogLinear"}
+    assert exported | moved == set(regression.__all__)
+    assert not exported & moved
     for name, module in lazy.items():
         assert name in dir(surpyval)
         package = importlib.import_module(module)
         assert getattr(surpyval, name) is getattr(package, name)
-    for name in ("degradation", "metrics", "recurrent"):
+    for name in ("degradation", "life_models", "metrics", "recurrent"):
         assert isinstance(getattr(surpyval, name), types.ModuleType)
     assert isinstance(surpyval.univariate.regression, types.ModuleType)
     assert isinstance(surpyval.univariate.competing_risks, types.ModuleType)

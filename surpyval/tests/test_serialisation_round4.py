@@ -39,7 +39,6 @@ from surpyval import (
     NeverOccurs,
     NonParametric,
     Parametric,
-    Power,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -47,6 +46,7 @@ from surpyval import (
     WeibullFrailty,
     WeibullPH,
 )
+from surpyval.life_models import Power
 from surpyval.serialisation import (
     _PARAMETERIZATIONS,
     _TAGGED_MODELS,

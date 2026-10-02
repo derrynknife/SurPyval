@@ -133,13 +133,14 @@ and ``Gamma`` (the rate is :math:`1/L`).
 
 Factory::
 
-    from surpyval import Weibull
-    from surpyval import AcceleratedLife, Power, Eyring
-    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress, c=c)
+    from surpyval import AcceleratedLife, Weibull, life_models
+    model = AcceleratedLife(Weibull, life_models.Power).fit(x, Z=stress, c=c)
 
 .. autofunction:: surpyval.univariate.regression.accelerated_life.accelerated_life.AcceleratedLife
 
-The available life models, importable from ``surpyval``, with :math:`Z`
+The available life models, in ``surpyval.life_models`` (until v0.22
+importable from ``surpyval``, the exponential one as
+``ExponentialLifeModel``), with :math:`Z`
 the stress (:math:`Z_1, Z_2` for the two-stress models) and the
 parameter names as the fitted model reports them:
 
@@ -156,7 +157,7 @@ parameter names as the fitted model reports them:
    * - ``InversePower``
      - :math:`1 / (a Z^{n})`
      - ``a`` (> 0), ``n``
-   * - ``ExponentialLifeModel``
+   * - ``Exponential``
      - :math:`b\, e^{a / Z}`
      - ``a``, ``b`` (> 0)
    * - ``InverseExponential``
@@ -187,7 +188,8 @@ parameter names as the fitted model reports them:
 
 Custom life models can be created by subclassing ``LifeModel``::
 
-    from surpyval import LifeModel, AcceleratedLife
+    from surpyval import AcceleratedLife
+    from surpyval.life_models import LifeModel
     import autograd.numpy as anp
 
     class MyStressModel(LifeModel):

@@ -207,7 +207,7 @@ def test_accelerated_life_ramp_is_cumulative_exposure(dist):
     x = rng.weibull(2.0, 180) * 50 / stress
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        al = sp.AcceleratedLife(dist, sp.Power).fit(x=x, Z=stress)
+        al = sp.AcceleratedLife(dist, sp.life_models.Power).fit(x=x, Z=stress)
     A, n = al.params[al.k_dist :]
     a0, b0 = 1.0, 0.05
     t = np.array([1.0, 5.0, 20.0, 60.0])

@@ -314,7 +314,7 @@ For each of the distributions in Surpyval their life parameter that varies is as
 
 Given the simple substitution into the life parameter, surpyval uses MLE to calculate the parameters: the remaining distribution parameters (for a Weibull, the shape) are shared across all stress levels — the assumption that the failure *mechanism* is the same at every stress and only its speed changes — and the life-model parameters replace the life parameter. The life parameter itself is kept in the parameter vector as a fixed placeholder (reported as ``1.0``), since its value now comes from :math:`\phi(Z)`; it is not estimated, so it is not counted in the :math:`k` of the AIC and BIC, and an accelerated life model's AIC is directly comparable with that of any other parametric family. To start the search, surpyval fits the distribution separately at each distinct stress and regresses those lives on the stress, so the data need at least two distinct stress levels.
 
-The built-in stress-life relationships (all are ``LifeModel`` instances, and a custom one can be written by subclassing ``LifeModel``). The letters are the parameter names surpyval reports; :math:`Z_1, Z_2` are the two columns of a two-stress ``Z``:
+The built-in stress-life relationships, in ``surpyval.life_models`` (all are ``LifeModel`` instances, and a custom one can be written by subclassing ``LifeModel``). The letters are the parameter names surpyval reports; :math:`Z_1, Z_2` are the two columns of a two-stress ``Z``:
 
 .. list-table::
    :header-rows: 1
@@ -329,7 +329,7 @@ The built-in stress-life relationships (all are ``LifeModel`` instances, and a c
    * - ``InversePower``
      - :math:`1 / (a Z^{n})`
      - The inverse power law of voltage endurance and fatigue
-   * - ``ExponentialLifeModel``
+   * - ``Exponential``
      - :math:`b\, e^{a / Z}`
      - Arrhenius: temperature (in kelvin) with :math:`a = E_a / k_B`
    * - ``InverseExponential``

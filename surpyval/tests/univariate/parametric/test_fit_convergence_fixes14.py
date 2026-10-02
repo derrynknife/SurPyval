@@ -206,7 +206,9 @@ def test_an_accelerated_life_fit_from_a_far_start(life_model):
     # InversePower from its first life parameter x1e6 ended 14.7 below
     # the maximum; Linear 0.13 below. No warning either way.
     data = stress_data(1)
-    fitter = sp.AcceleratedLife(sp.Weibull, getattr(sp, life_model))
+    fitter = sp.AcceleratedLife(
+        sp.Weibull, getattr(sp.life_models, life_model)
+    )
     ref = _silent(fitter.fit, **data)
     far = np.array(ref.params, dtype=float)
     far[2] *= 1e6

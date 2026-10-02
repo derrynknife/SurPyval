@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from surpyval import AFT, PO, AcceleratedLife, Power, Weibull, WeibullPH
+from surpyval import AFT, PO, AcceleratedLife, Weibull, WeibullPH
+from surpyval.life_models import Power
 from surpyval.univariate.regression import CoxPH
 
 

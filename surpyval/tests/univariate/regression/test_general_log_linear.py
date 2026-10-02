@@ -32,7 +32,7 @@ def _data():
     return x, Z, c
 
 
-GLL = sp.AcceleratedLife(sp.Weibull, sp.GeneralLogLinear)
+GLL = sp.AcceleratedLife(sp.Weibull, sp.life_models.GeneralLogLinear)
 
 
 def test_fits_and_is_the_weibull_aft():
@@ -65,8 +65,8 @@ def test_resolved_for_the_columns():
     assert lm.n_stresses == 2
     assert lm.phi_param_map == {"c": 0, "beta_0": 1, "beta_1": 2}
     assert lm.phi_bounds == ((0, None), (None, None), (None, None))
-    assert sp.GeneralLogLinear.n_stresses is None
-    assert sp.GeneralLogLinear.resolve(3).n_stresses == 3
+    assert sp.life_models.GeneralLogLinear.n_stresses is None
+    assert sp.life_models.GeneralLogLinear.resolve(3).n_stresses == 3
     assert lm.resolve(5) is lm
     # A 1-D query is one row of two stresses.
     np.testing.assert_allclose(

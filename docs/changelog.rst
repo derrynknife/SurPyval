@@ -177,6 +177,15 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Changed: the life models are in surpyval.life_models.** ``Power``,
+  ``InversePower``, ``Eyring``, ``InverseEyring``, ``Linear``,
+  ``InverseExponential``, ``DualPower``, ``DualExponential``,
+  ``PowerExponential``, ``GeneralLogLinear`` and the ``LifeModel`` base
+  class are used as ``AcceleratedLife(Weibull, life_models.Power)``. The
+  exponential (Arrhenius) life model is ``life_models.Exponential``: at the
+  top level that name is the distribution, so it was
+  ``ExponentialLifeModel``. The old top-level names still work until
+  v0.23, with a ``DeprecationWarning`` naming the new one.
 - **Breaking: GeneralLogLinear fixed, with a constant term, and exported
   (#530, #345).** ``AcceleratedLife(dist, GeneralLogLinear).fit`` raised
   an autograd broadcast ``ValueError`` on any data. The life model is now
@@ -184,7 +193,7 @@ bands change (#477).
   ``Z``; with no constant, L(0) was 1 in whatever unit the times were in
   (principle 6). With the Weibull it reaches the Weibull AFT maximum
   (log-likelihood -422.414831 in both). It is importable as
-  ``sp.GeneralLogLinear``, round-trips through JSON (a model saved now
+  ``sp.life_models.GeneralLogLinear``, round-trips through JSON (a model saved now
   cannot be read by 0.21), and is in the conformance registry.
   ``LifeModel.resolve(n_stresses)`` builds the model for a number of
   columns, so its parameter map and bounds are the types ``LifeModel``

@@ -377,7 +377,7 @@ def _stress_data():
     "dual, single, kept, dropped",
     [
         ("DualPower", "Power", ["c", "m"], "n"),
-        ("DualExponential", "ExponentialLifeModel", ["a", "c"], "b"),
+        ("DualExponential", "Exponential", ["a", "c"], "b"),
     ],
 )
 def test_dual_stress_life_model_with_equal_stresses(
@@ -390,8 +390,10 @@ def test_dual_stress_life_model_with_equal_stresses(
     # 0.912 and 0.965, silently. The second stress's parameter is now
     # aliased, and the others are those of the single-stress fit.
     x, s = _stress_data()
-    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp, single)).fit(x, Z=s)
-    F = sp.AcceleratedLife(sp.Weibull, getattr(sp, dual))
+    ref = sp.AcceleratedLife(sp.Weibull, getattr(sp.life_models, single)).fit(
+        x, Z=s
+    )
+    F = sp.AcceleratedLife(sp.Weibull, getattr(sp.life_models, dual))
     model, messages, caught = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
     assert len(messages) == 1 and messages[0].startswith(_aliased(1))
     assert dual in messages[0]
@@ -434,8 +436,8 @@ def test_dual_power_with_a_constant_stress_aliases_its_exponent():
     # A constant second stress: s2^n is absorbed by c, so n is aliased and
     # the fit is Power's.
     x, s = _stress_data()
-    ref = sp.AcceleratedLife(sp.Weibull, sp.Power).fit(x, Z=s)
-    F = sp.AcceleratedLife(sp.Weibull, sp.DualPower)
+    ref = sp.AcceleratedLife(sp.Weibull, sp.life_models.Power).fit(x, Z=s)
+    F = sp.AcceleratedLife(sp.Weibull, sp.life_models.DualPower)
     model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, np.full(30, 4.0)]))
     assert len(messages) == 1 and messages[0].startswith(_aliased(1))
     assert "constant" in messages[0]
@@ -448,7 +450,7 @@ def test_power_exponential_with_equal_stresses_is_identified():
     # two terms are not proportional over three levels, so both effects
     # are determined and nothing is aliased.
     x, s = _stress_data()
-    F = sp.AcceleratedLife(sp.Weibull, sp.PowerExponential)
+    F = sp.AcceleratedLife(sp.Weibull, sp.life_models.PowerExponential)
     model, messages, _ = _fit(lambda: F.fit(x, Z=np.c_[s, s]))
     assert not [m for m in messages if "cannot be estimated" in m]
     assert np.isfinite(model.params).all() and model.aliased.size == 0
@@ -458,7 +460,7 @@ def test_dual_stress_fixed_parameter_is_an_offset_not_aliased():
     # With n fixed by the caller, the second stress is an offset: no
     # aliasing, and m is fitted (about Power's -1.174 less n).
     x, s = _stress_data()
-    F = sp.AcceleratedLife(sp.Weibull, sp.DualPower)
+    F = sp.AcceleratedLife(sp.Weibull, sp.life_models.DualPower)
     model, messages, _ = _fit(
         lambda: F.fit(x, Z=np.c_[s, s], fixed={"n": -0.2})
     )

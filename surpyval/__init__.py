@@ -119,15 +119,11 @@ _LAZY = {
             "BuckleyJamesModel",
             "CovariatePath",
             "CoxPH",
-            "DualExponential",
-            "DualPower",
             "ExponentialAFT",
             "ExponentialAH",
             "ExponentialFrailty",
-            "ExponentialLifeModel",
             "ExponentialPH",
             "ExponentialPO",
-            "Eyring",
             "Frailty",
             "FrailtyFitter",
             "FrailtyModel",
@@ -136,16 +132,10 @@ _LAZY = {
             "GammaFrailty",
             "GammaPH",
             "GammaPO",
-            "GeneralLogLinear",
             "GumbelAFT",
             "GumbelAH",
             "GumbelPH",
             "GumbelPO",
-            "InverseExponential",
-            "InverseEyring",
-            "InversePower",
-            "LifeModel",
-            "Linear",
             "LogNormalAFT",
             "LogNormalAH",
             "LogNormalFrailty",
@@ -163,8 +153,6 @@ _LAZY = {
             "PO",
             "ParameterSubstitutionFitter",
             "ParametricRegressionModel",
-            "Power",
-            "PowerExponential",
             "ProportionalHazardsFitter",
             "ProportionalOddsFitter",
             "SemiParametricRegressionModel",
@@ -228,7 +216,7 @@ _LAZY = {
 }
 
 if TYPE_CHECKING:
-    from surpyval import degradation, metrics, recurrent
+    from surpyval import degradation, life_models, metrics, recurrent
     from surpyval.degradation import (
         DegradationAnalysis,
         DestructiveDegradation,
@@ -267,8 +255,31 @@ if TYPE_CHECKING:
     from surpyval.univariate.regression import *  # noqa: F401,F403
 
 # The subpackages ``import surpyval`` used to import, so that
-# ``surpyval.recurrent.laplace`` works without an import of its own.
-_SUBPACKAGES = ("degradation", "metrics", "recurrent")
+# ``surpyval.recurrent.laplace`` works without an import of its own, and
+# ``surpyval.life_models``.
+_SUBPACKAGES = ("degradation", "life_models", "metrics", "recurrent")
+
+# The life models were importable from ``surpyval`` until v0.22; they are
+# in ``surpyval.life_models``, where the exponential one is ``Exponential``
+# (at the top level that name is the distribution).
+_MOVED_TO_LIFE_MODELS = {
+    **{
+        name: name
+        for name in (
+            "DualExponential",
+            "DualPower",
+            "Eyring",
+            "InverseExponential",
+            "InverseEyring",
+            "InversePower",
+            "LifeModel",
+            "Linear",
+            "Power",
+            "PowerExponential",
+        )
+    },
+    "ExponentialLifeModel": "Exponential",
+}
 
 # Names that live only in a subpackage: asking for one here
 # (``surpyval.laplace``) says where it is, rather than only that
@@ -294,6 +305,22 @@ if not TYPE_CHECKING:  # keep the type checker's view of the module exact
             return value
         if name in _SUBPACKAGES:
             return import_module(f"surpyval.{name}")
+        if name in _MOVED_TO_LIFE_MODELS:
+            import warnings
+
+            from surpyval.utils.deprecation import _message
+
+            new = _MOVED_TO_LIFE_MODELS[name]
+            warnings.warn(
+                _message(
+                    "surpyval",
+                    f"surpyval.{name}",
+                    f"surpyval.life_models.{new}",
+                ),
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            return getattr(import_module("surpyval.life_models"), new)
         if name in _ELSEWHERE:
             raise AttributeError(
                 "module 'surpyval' has no attribute {n!r}: it is in "
