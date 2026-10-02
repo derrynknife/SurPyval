@@ -4,13 +4,14 @@ import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import grad, hessian
 from autograd.scipy.special import logsumexp as ag_logsumexp
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from surpyval import Distribution, np
+from surpyval import Distribution
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,

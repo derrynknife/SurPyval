@@ -35,11 +35,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy import integrate
 from scipy.special import factorial, gammaln, xlogy
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,

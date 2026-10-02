@@ -6,12 +6,12 @@ from math import comb
 from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
 import surpyval
-from surpyval import np
 from surpyval.utils import _check_x_not_empty
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments

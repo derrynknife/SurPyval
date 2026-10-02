@@ -6,6 +6,7 @@ from copy import copy, deepcopy
 from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import jacobian
 from scipy.optimize import (
@@ -18,7 +19,7 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
-from surpyval import ParametricDistribution, np
+from surpyval import ParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,

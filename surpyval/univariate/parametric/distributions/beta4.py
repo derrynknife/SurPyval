@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,

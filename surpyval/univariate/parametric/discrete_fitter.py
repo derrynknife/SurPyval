@@ -18,7 +18,7 @@ is ``P(T > k)``.
 
 from math import comb
 
-from surpyval import np
+import autograd.numpy as np
 
 from .parametric_fitter import ParametricFitter
 

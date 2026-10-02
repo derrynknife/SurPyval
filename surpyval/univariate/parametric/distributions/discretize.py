@@ -1,8 +1,8 @@
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )

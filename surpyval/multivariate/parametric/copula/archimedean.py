@@ -13,11 +13,11 @@ from __future__ import annotations
 import math
 from typing import Any
 
+import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from scipy.optimize import brentq
 
-from surpyval import np
 from surpyval.multivariate.parametric.copula.copula import _EPS, Copula
 from surpyval.utils.rng import as_generator
 

@@ -16,7 +16,8 @@ these functions.
 
 from typing import Any, Callable
 
-from surpyval import np
+import autograd.numpy as np
+
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
 from surpyval.utils import normal as norm
 

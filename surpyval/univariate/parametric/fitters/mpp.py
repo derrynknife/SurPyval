@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..parametric import Parametric
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize, minimize_scalar
 from scipy.stats import pearsonr
 
-from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters import offset_step
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, betaln, digamma
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
