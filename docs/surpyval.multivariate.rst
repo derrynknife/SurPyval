@@ -21,7 +21,8 @@ Copulas
 -------
 
 Each copula below is exported as a ready-to-use instance --
-``Clayton``, ``Gumbel``, ``Frank``, ``Gaussian`` and ``Independence`` --
+``Clayton``, ``Gumbel``, ``Frank``, ``Gaussian``, ``Independence``, ``Joe``,
+``AMH`` and ``StudentT`` --
 in the same way the univariate distributions are. The classes are
 documented here; the instances carry the same methods.
 
@@ -45,7 +46,19 @@ documented here; the instances carry the same methods.
    :members:
 
 .. autoclass::
+   surpyval.multivariate.parametric.copula.archimedean.JoeCopula
+   :members:
+
+.. autoclass::
+   surpyval.multivariate.parametric.copula.archimedean.AMHCopula
+   :members:
+
+.. autoclass::
    surpyval.multivariate.parametric.copula.elliptical.GaussianCopula
+   :members:
+
+.. autoclass::
+   surpyval.multivariate.parametric.copula.elliptical.StudentTCopula
    :members:
 
 Fitted Model

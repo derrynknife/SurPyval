@@ -10,8 +10,9 @@ and the estimation strategies) see the :doc:`Multivariate Analysis` page; this
 page is the how-to. The full API is on the :doc:`surpyval.multivariate`
 reference page.
 
-SurPyval provides the ``Independence``, ``Clayton``, ``Gumbel``, ``Frank`` and
-``Gaussian`` copulas. Each is a ready-made object (like ``surpyval.Weibull``)
+SurPyval provides the ``Independence``, ``Clayton``, ``Gumbel``, ``Frank``,
+``Gaussian``, ``Joe``, ``AMH`` (Ali-Mikhail-Haq) and ``StudentT`` copulas. Each
+is a ready-made object (like ``surpyval.Weibull``)
 with two ways to create a model: ``fit`` to data, or ``from_params`` for a
 known parameter. Both return a
 :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`.
@@ -355,6 +356,101 @@ same for perfectly discordant data):
 
     assert len(caught) == 1
     assert str(caught[0].message).startswith("No finite maximum")
+
+Joint extremes in both tails: the Student-t copula
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Gaussian copula has no tail dependence: however strong its correlation,
+the very earliest failures (and the very longest lives) of the two series
+become independent. The Student-t copula keeps the Gaussian's elliptical
+shape and its Kendall's tau, :math:`2 \arcsin(\rho) / \pi`, but adds a
+second parameter, the degrees of freedom :math:`\nu`, and with it the same
+tail dependence in both tails, the stronger the smaller :math:`\nu`. Here the
+data come from a t copula with :math:`\rho = 0.7` and :math:`\nu = 3`, with
+a third of each series right censored:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import StudentT
+
+    t_truth = StudentT.from_params([0.7, 3.0], margins=truth.margins)
+    t_data = t_truth.random(1500, random_state=5)
+    stop = np.column_stack([np.full(1500, 13.0), np.full(1500, 16.0)])
+    t_c = (t_data > stop).astype(int)
+    t_x = np.minimum(t_data, stop)
+
+    t_fit = StudentT.fit(t_x, c=t_c, margins=[surv.Weibull, surv.LogNormal])
+    g_fit = Gaussian.fit(t_x, c=t_c, margins=[surv.Weibull, surv.LogNormal])
+    for m in (t_fit, g_fit):
+        print("%-9s params=%-18s tails=%s  AIC=%.1f" % (
+            m.copula.name, np.round(m.params, 3),
+            np.round(m.tail_dependence(), 3), m.aic()))
+
+Both find the same correlation, but only the t copula sees the joint
+extremes, and its AIC is lower despite the extra parameter. Rows censored in
+both series need the t copula's CDF, the bivariate t distribution function,
+which SurPyval evaluates by numerical integration to about
+:math:`10^{-11}` (scipy's ``multivariate_t.cdf`` is a randomised Monte Carlo
+integration, too noisy for an optimiser).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(t_fit.params[0] - 0.7) < 0.05, t_fit.params
+    assert 2 < t_fit.params[1] < 5, t_fit.params
+    assert abs(g_fit.params[0] - t_fit.params[0]) < 0.05
+    assert t_fit.aic() < g_fit.aic() - 10
+
+Fitted to data with *no* tail dependence, the t copula's likelihood keeps
+rising as :math:`\nu` grows towards the Gaussian copula, its limit, and has
+no maximum; the fit says so and recommends the Gaussian copula:
+
+.. jupyter-execute::
+
+    gauss_data = Gaussian.from_params(0.6, margins=truth.margins).random(
+        300, random_state=1)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        StudentT.fit(gauss_data, margins=[surv.Weibull, surv.LogNormal])
+    print(caught[0].message)
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(caught) == 1
+    assert "fit the Gaussian copula instead" in str(caught[0].message)
+
+Two more one-parameter families complete the set. The **Joe** copula links
+the long lives, as the Gumbel does, but more strongly for the same Kendall's
+tau. The **AMH** (Ali-Mikhail-Haq) copula is a cheap closed form for *weak*
+dependence of either sign: its Kendall's tau lies between -0.18 and 1/3, and
+fitted to data more dependent than that it stops at its bound
+:math:`\theta = \pm 1`:
+
+.. jupyter-execute::
+
+    from surpyval.multivariate import AMH, Joe
+
+    joe = Joe.fit(data, margins=[surv.Weibull, surv.LogNormal])
+    amh = AMH.fit(data, margins=[surv.Weibull, surv.LogNormal])
+    print("Joe: theta=%.3f, tau=%.3f, AIC=%.1f" % (
+        joe.params[0], joe.kendall_tau(), joe.aic()))
+    print("AMH: theta=%.3f, tau=%.3f, AIC=%.1f" % (
+        amh.params[0], amh.kendall_tau(), amh.aic()))
+
+On the Clayton data, whose dependence is in the lower tail, the Joe copula
+(all upper tail) settles on a weak dependence, and the AMH copula stops at
+its bound, :math:`\tau = 1/3` for data with :math:`\tau = 0.5`; both are far
+behind the Clayton copula's AIC of 34160 (the AMH by 490, the Joe by 1930).
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert amh.params[0] == 1.0, amh.params
+    assert min(joe.aic(), amh.aic()) > fits["Clayton"].aic() + 400
 
 Censoring and truncation
 ------------------------
@@ -780,28 +876,31 @@ extremes:
         "Gumbel": 1 / (1 - tau),
         "Gaussian": np.sin(np.pi * tau / 2),
         "Frank": brentq(lambda th: Frank.kendall_tau(th) - tau, 0.1, 50),
+        "Joe": brentq(lambda th: Joe.kendall_tau(th) - tau, 1.01, 50),
+        "StudentT": [np.sin(np.pi * tau / 2), 4.0],
     }
     margins = [surv.Weibull.from_params([10.0, 2.0]),
                surv.Weibull.from_params([10.0, 2.0])]
     q_lo = margins[0].qf(0.05)                   # 5% quantile of each margin
     q_hi = margins[0].qf(0.95)                   # 95% quantile
-    families = {"Clayton": Clayton, "Gumbel": Gumbel,
-                "Gaussian": Gaussian, "Frank": Frank}
+    families = {"Clayton": Clayton, "Gumbel": Gumbel, "Joe": Joe,
+                "Gaussian": Gaussian, "Frank": Frank, "StudentT": StudentT}
 
-    print("family    param   tau    P(both < 5% q)  P(both > 95% q)")
+    print("family     tau    P(both < 5% q)  P(both > 95% q)")
     for name, fam in families.items():
         m = fam.from_params(params[name], margins=margins)
         both_early = m.cdf([[q_lo, q_lo]])[0]
         both_late = m.sf([[q_hi, q_hi]])[0]
-        print("%-9s %5.3f   %.3f   %.4f          %.4f" % (
-            name, params[name], m.kendall_tau(), both_early, both_late))
-    print("independent               %.4f          %.4f" % (0.05**2, 0.05**2))
+        print("%-9s  %.3f   %.4f          %.4f" % (
+            name, m.kendall_tau(), both_early, both_late))
+    print("independent       %.4f          %.4f" % (0.05**2, 0.05**2))
 
-All four have the same Kendall's tau, but Clayton makes a joint failure below
-the 5% quantile far more likely than the others, and Gumbel a joint survival
-beyond the 95% quantile. Frank and Gaussian treat the two tails alike (their
-two probabilities are equal), with Frank, whose dependence is weakest in the
-tails, below Gaussian in both. Clayton, for its part, gives the lowest
+All six have the same Kendall's tau, but Clayton makes a joint failure below
+the 5% quantile far more likely than the others, and Joe, then Gumbel, a
+joint survival beyond the 95% quantile. Frank, Gaussian and Student-t treat
+the two tails alike (their two probabilities are equal), with Frank, whose
+dependence is weakest in the tails, below Gaussian in both and the t copula
+(:math:`\nu = 4`) above it. Clayton, for its part, gives the lowest
 probability of joint survival beyond the 95% quantile. When the quantity you care about is a joint extreme — both
 redundant units failing early, both components outliving a warranty — the
 choice of family matters as much as the strength of dependence.
@@ -816,16 +915,16 @@ choice of family matters as much as the strength of dependence.
         _early[_name] = _m.cdf([[q_lo, q_lo]])[0]
         _late[_name] = _m.sf([[q_hi, q_hi]])[0]
     assert max(_early, key=_early.get) == "Clayton", _early
-    assert max(_late, key=_late.get) == "Gumbel", _late
+    assert sorted(_late, key=_late.get)[-2:] == ["Gumbel", "Joe"], _late
     assert min(_late, key=_late.get) == "Clayton", _late
-    for _name in ["Frank", "Gaussian"]:
+    for _name in ["Frank", "Gaussian", "StudentT"]:
         assert np.isclose(_early[_name], _late[_name], rtol=1e-3)
-    assert _early["Frank"] < _early["Gaussian"]
+    assert _early["Frank"] < _early["Gaussian"] < _early["StudentT"]
 
 Defining your own copula family
 -------------------------------
 
-The five families are instances of classes derived from
+The built-in families are instances of classes derived from
 :class:`~surpyval.multivariate.parametric.copula.copula.Copula`, and a new
 family can be added the same way. The one thing a subclass must supply is the
 copula CDF ``cdf(u, v, theta)``, plus a ``name``, the parameter ``bounds``
@@ -834,46 +933,52 @@ unbounded) and ``parameter_names``. Everything else is derived from the CDF:
 ``du``, ``dv`` and ``pdf`` by automatic differentiation (so write the CDF with
 arithmetic operators and the functions of ``surpyval.np``, autograd's numpy),
 sampling by inverting ``du``, and Kendall's tau and Spearman's rho by
-simulation. As an example, the Ali-Mikhail-Haq copula
-:math:`C(u, v) = uv / \{1 - \theta(1 - u)(1 - v)\}`,
-:math:`-1 \leq \theta < 1`, which only allows weak dependence
-(:math:`-0.18 < \tau < 1/3`):
+numerical integration. As an example, the Plackett copula,
+
+.. math::
+
+    C(u, v) = \frac{1 + (\theta - 1)(u + v) - \sqrt{\{1 + (\theta - 1)(u +
+    v)\}^2 - 4 u v \theta (\theta - 1)}}{2(\theta - 1)}, \qquad \theta > 0,
+
+for which :math:`\theta = 1` is independence (a limit of the formula, so
+the example keeps away from it):
 
 .. jupyter-execute::
 
     from surpyval.multivariate import Copula
 
-    class AliMikhailHaq(Copula):
-        name = "Ali-Mikhail-Haq"
-        bounds = ((-1, 1),)
+    class Plackett(Copula):
+        name = "Plackett"
+        bounds = ((0, None),)
         parameter_names = ["theta"]
 
         def cdf(self, u, v, theta):
-            return u * v / (1 - theta * (1 - u) * (1 - v))
+            s = 1 + (theta - 1) * (u + v)
+            root = surv.np.sqrt(s**2 - 4 * u * v * theta * (theta - 1))
+            return (s - root) / (2 * (theta - 1))
 
-    AMH = AliMikhailHaq()
-    amh_truth = AMH.from_params(0.6, margins=truth.margins)
-    amh_data = amh_truth.random(1000, random_state=0)
+    plackett = Plackett()
+    pl_truth = plackett.from_params(6.0, margins=truth.margins)
+    pl_data = pl_truth.random(1000, random_state=0)
     # init (optional) starts the search at a value strictly inside the bounds
-    amh_fit = AMH.fit(amh_data, margins=[surv.Weibull, surv.LogNormal], init=0.5)
-    print(amh_fit)
-    print("Kendall's tau (simulated): %.3f" % amh_fit.kendall_tau())
+    pl_fit = plackett.fit(pl_data, margins=[surv.Weibull, surv.LogNormal],
+                          init=4.0)
+    print(pl_fit)
+    print("Spearman's rho (integrated): %.6f" % pl_fit.spearman_rho())
 
-The estimate, 0.55 against a true 0.6, is typical for this weakly dependent
-family, whose parameter is hard to pin down with 1,000 rows. The simulated
-tau agrees with the family's closed form,
-:math:`1 - 2\{\theta + (1 - \theta)^2 \ln(1 - \theta)\}/(3\theta^2) = 0.145`
-at the fitted :math:`\theta`, to within the simulation error.
+The estimate, 5.2 against a true 6, and the integrated Spearman's rho agrees
+with the family's closed form,
+:math:`\frac{\theta + 1}{\theta - 1} - \frac{2\theta\ln\theta}{(\theta -
+1)^2}`, at the fitted :math:`\theta`, to eight decimal places.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _th = amh_fit.params[0]
-    assert round(_th, 2) == 0.55, _th
-    _tau = 1 - 2 * (_th + (1 - _th) ** 2 * np.log(1 - _th)) / (3 * _th**2)
-    assert round(_tau, 3) == 0.145, _tau
-    assert abs(amh_fit.kendall_tau() - _tau) < 0.01
+    _th = pl_fit.params[0]
+    assert abs(_th - 6) < 1, _th
+    _rho = (_th + 1) / (_th - 1) - 2 * _th * np.log(_th) / (_th - 1) ** 2
+    assert abs(pl_fit.spearman_rho() - _rho) < 1e-8, (pl_fit.spearman_rho(), _rho)
 
 Two notes. Without ``init`` the search starts from a point strictly inside
 the ``bounds``: :math:`\theta = 1` when that is inside them, otherwise the
@@ -882,5 +987,5 @@ built-in families start from the value matching the data's Kendall's tau; pass
 ``init`` (one value per parameter, strictly inside the bounds, or a
 ``ValueError`` explains the problem) when you have a better guess, as above.
 And a model of a custom family cannot be restored with ``from_dict``, which
-rebuilds a copula from its name and so only knows the five built-in families.
+rebuilds a copula from its name and so only knows the built-in families.
 
