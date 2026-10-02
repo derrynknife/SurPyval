@@ -176,6 +176,19 @@ def _frailty():
     )
 
 
+def _cox_frailty():
+    from surpyval import CoxFrailty
+    from surpyval.datasets import load_kidney
+
+    df = load_kidney()
+    return CoxFrailty.fit(
+        df["time"],
+        Z=np.column_stack([df["age"], df["sex"] == 2]),
+        c=1 - df["status"],
+        groups=df["id"],
+    )
+
+
 def _destructive():
     from surpyval.degradation import DestructiveDegradation
 
@@ -289,6 +302,7 @@ def _build(name):
         "cox": lambda: CoxPH.fit(*_semipar_data(1)[:2]),
         "cox_delayed_entry": _cox_delayed_entry,
         "frailty": _frailty,
+        "cox_frailty": _cox_frailty,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
         "mixture": _mixture,
@@ -372,6 +386,7 @@ CASES = [
     "cox",
     "cox_delayed_entry",
     "frailty",
+    "cox_frailty",
     "additive_hazards",
     "buckley_james",
     "mixture",

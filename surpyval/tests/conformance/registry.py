@@ -3158,6 +3158,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.ProportionalOddsFitter": _BASE,
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
+    "surpyval.CoxFrailtyFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
