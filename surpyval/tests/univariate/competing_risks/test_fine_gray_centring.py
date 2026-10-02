@@ -12,13 +12,13 @@ at the covariate means.
 """
 
 import json
-import warnings
 
 import numpy as np
 import pytest
 
 import surpyval
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import no_warnings
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
@@ -47,12 +47,6 @@ def _shift(offset):
     return np.array([offset, 0.0])
 
 
-def _fit_quietly(fit, *args, **kwargs):
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        return fit(*args, **kwargs)
-
-
 def _same(model, ref, s):
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-7, atol=1e-10)
     np.testing.assert_allclose(model.se, ref.se, rtol=1e-6)
@@ -72,7 +66,7 @@ def test_offset_leaves_the_fit_and_predictions_unchanged(offset):
     x, Z, e = _data()
     ref = FineGray.fit(x, Z, e, event="a", center=True)
     s = _shift(offset)
-    model = _fit_quietly(FineGray.fit, x, Z + s, e, event="a", center=True)
+    model = no_warnings(FineGray.fit, x, Z + s, e, event="a", center=True)
     _same(model, ref, s)
     np.testing.assert_allclose(model.center, ref.center + s, rtol=1e-12)
     np.testing.assert_allclose(model.phi(QUERY + s), ref.phi(QUERY), rtol=1e-7)
@@ -83,7 +77,7 @@ def test_by_default_the_baseline_is_at_zero(offset):
     x, Z, e = _data()
     s = _shift(offset)
     centred = FineGray.fit(x, Z + s, e, event="a", center=True)
-    model = _fit_quietly(FineGray.fit, x, Z + s, e, event="a")
+    model = no_warnings(FineGray.fit, x, Z + s, e, event="a")
     np.testing.assert_array_equal(model.center, [0.0, 0.0])
     _same(model, centred, 0.0)
     np.testing.assert_allclose(
@@ -155,7 +149,7 @@ def test_competing_risks_fine_gray(offset, center):
     x, Z, e = _data()
     s = _shift(offset)
     ref = CompetingRisksProportionalHazards.fit(x, Z, e, model="Fine-Gray")
-    model = _fit_quietly(
+    model = no_warnings(
         CompetingRisksProportionalHazards.fit,
         x,
         Z + s,

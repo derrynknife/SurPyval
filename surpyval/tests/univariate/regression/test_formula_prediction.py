@@ -16,8 +16,6 @@ does; it used to read a DataFrame by column position and could not expand
 a formula's categoricals.
 """
 
-import json
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -25,6 +23,7 @@ import pytest
 import surpyval
 from surpyval import AcceleratedLife, Weibull
 from surpyval.life_models import Linear
+from surpyval.tests._helpers import strict_json_model_round_trip
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
@@ -88,11 +87,6 @@ def _fit(family, formula, df):
     return getattr(surpyval, family).fit_from_df(df, **kw)
 
 
-def _rt(model):
-    text = json.dumps(model.to_dict(), allow_nan=False)
-    return surpyval.from_dict(json.loads(text))
-
-
 def _sf(model, family, frame, t=5.0):
     kw = {"event": "u"} if family.startswith("CR-") else {}
     if family == "BuckleyJames":
@@ -111,7 +105,7 @@ def fitted():
     out = {}
     for family in FAMILIES:
         model = _fit(family, "z + g", df)
-        out[family] = (model, _rt(model))
+        out[family] = (model, strict_json_model_round_trip(model))
     return out
 
 
@@ -135,7 +129,7 @@ def test_unseen_level_error_names_every_column(family):
     df = _df()
     model = _fit(family, "z + C(g, contr.sum) + C(k)", df)
     new = pd.DataFrame({"z": [2.0, 2.0], "g": ["e", "x"], "k": [1, 7]})
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         with pytest.raises(ValueError) as err:
             _sf(m, family, new)
         text = str(err.value)
@@ -180,7 +174,7 @@ def test_declared_levels_count_as_seen(family):
         model = _fit(family, formula, df)
     assert sum("[T.d]" in name for name in model.feature_names) == 1
     seen = pd.DataFrame({"z": [2.0, 2.0], "g": ["c", "b"]})
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         assert np.isfinite(_sf(m, family, seen)).all()
         for level in ["d", "e"]:
             new = pd.DataFrame({"z": [2.0], "g": [level]})
@@ -206,7 +200,7 @@ def test_computed_categorical_term_is_named():
         df, x_col="t", c_col="c", formula="z + C(k + 1)"
     )
     new = pd.DataFrame({"z": [2.0], "k": [7]})
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         with pytest.raises(ValueError, match=r"C\(k \+ 1\).*8"):
             m.sf([5.0], new)
 
@@ -290,7 +284,7 @@ def test_competing_risks_formula_predicts_from_dataframe(
         _df(), "t", "cause", c_col="c", formula=formula, model=how
     )
     if restored:
-        model = _rt(model)
+        model = strict_json_model_round_trip(model)
     Z = prepare_Z(NEW, model.feature_names, model._model_spec)
     assert Z.shape == (4, len(model.feature_names))
     for method in _methods(how):
@@ -324,7 +318,7 @@ def test_competing_risks_dataframe_is_read_by_column_name(how):
     expected = model.cif(T, arr, "u")
     # reordered, with an extra column: it used to be read by position
     shuffled = NEW[["k", "w", "z"]]
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         np.testing.assert_allclose(
             m.cif(T, shuffled, "u"), expected, rtol=1e-12
         )

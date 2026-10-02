@@ -18,6 +18,7 @@ from surpyval.multivariate import (
     Independence,
 )
 from surpyval.multivariate.parametric.data import MultivariateSurpyvalData
+from surpyval.tests._helpers import WEIBULL_MARGINS
 
 MARGINS = [Weibull.from_params([10.0, 2.0]), LogNormal.from_params([2.5, 0.5])]
 
@@ -205,12 +206,6 @@ def test_data_checks():
 # configuration (offset, limited failure, zero inflation,
 # fixed parameters), and refuses a non-parametric margin.
 # ---------------------------------------------------------------------------
-
-
-WEIBULL_MARGINS = [
-    surv.Weibull.from_params([10, 2]),
-    surv.Weibull.from_params([20, 3]),
-]
 
 
 @pytest.mark.parametrize(

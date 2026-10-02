@@ -20,6 +20,7 @@ from scipy.special import ndtri as z
 import surpyval as sp
 import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
 import surpyval.univariate.parametric.parametric as parametric_module
+from surpyval.tests._helpers import neg_ll_at
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 
 CRIT_95 = z(0.975) ** 2
@@ -32,15 +33,6 @@ def _fitted(name):
         model = case.fit(case.data())
     model._ensure_surv_data()
     return model
-
-
-def _full_nll(model, theta):
-    with np.errstate(all="ignore"):
-        return float(
-            model.dist._neg_ll_func(
-                model.surv_data, *theta, model.gamma, model.f0, model.p
-            )
-        )
 
 
 @pytest.mark.parametrize(
@@ -68,7 +60,7 @@ def test_the_lean_likelihood_is_the_full_one_to_the_bit(fitter):
         theta = np.asarray(model.params) * np.exp(
             0.2 * rng.normal(size=len(model.params))
         )
-        assert model._lr_raw_neg_ll(theta) == _full_nll(model, theta)
+        assert model._lr_raw_neg_ll(theta) == neg_ll_at(model, theta)
 
 
 def test_a_support_set_by_the_parameters_takes_the_full_path():
@@ -138,14 +130,14 @@ def test_a_bound_is_the_extreme_on_the_region_boundary():
     model = _fitted("LogNormal")
     lower = model.cb(np.array([0.5]), on="hf", method="lr")[0, 0]
     theta_hat = np.asarray(model.params, dtype=float)
-    nll_hat = _full_nll(model, theta_hat)
+    nll_hat = neg_ll_at(model, theta_hat)
     L = np.linalg.cholesky(np.asarray(model.hess_inv, dtype=float))
 
     def boundary(angle):
         d = L @ np.array([np.cos(angle), np.sin(angle)])
 
         def excess(r):
-            nll = _full_nll(model, theta_hat + r * d)
+            nll = neg_ll_at(model, theta_hat + r * d)
             return 2.0 * (nll - nll_hat) - CRIT_95
 
         hi = 2.0

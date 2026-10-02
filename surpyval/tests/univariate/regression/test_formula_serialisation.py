@@ -15,6 +15,7 @@ import pytest
 import surpyval
 from surpyval import AcceleratedLife, Weibull
 from surpyval.life_models import Power
+from surpyval.tests._helpers import strict_json_model_round_trip
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
@@ -58,12 +59,6 @@ NEW = pd.DataFrame(
     }
 )
 T = np.array([2.0, 5.0, 8.0, 12.0])
-
-
-def _rt(model):
-    # strict JSON both ways, as a database or JavaScript client would see it
-    text = json.dumps(model.to_dict(), allow_nan=False)
-    return surpyval.from_dict(json.loads(text))
 
 
 FORMULAS = [
@@ -116,7 +111,7 @@ def _sf(model, family, frame):
 @pytest.mark.parametrize("family", ["WeibullPH", "CoxPH"])
 def test_every_formula_round_trips(family, formula):
     model = _fit(family, formula, _df())
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     assert restored.feature_names == model.feature_names
     np.testing.assert_allclose(
         _sf(restored, family, NEW), _sf(model, family, NEW), rtol=1e-12
@@ -137,7 +132,7 @@ def test_every_formula_round_trips(family, formula):
 def test_other_families_round_trip(family):
     formula = "C(g, levels=['c', 'b', 'a']) + scale(z) + C(k) + h"
     model = _fit(family, formula, _df())
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     np.testing.assert_allclose(
         _sf(restored, family, NEW), _sf(model, family, NEW), rtol=1e-12
     )
@@ -146,7 +141,7 @@ def test_other_families_round_trip(family):
 def test_accelerated_life_transform_round_trips():
     # a single-stress life model with a data-dependent transform
     model = _fit("AL", "I(scale(z) + 5)", _df())
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     np.testing.assert_allclose(
         restored.sf(T, NEW), model.sf(T, NEW), rtol=1e-12
     )
@@ -157,7 +152,7 @@ def test_competing_risks_formula_round_trips():
     model = CompetingRisksProportionalHazards.fit_from_df(
         df, "t", "cause", c_col="c", formula="0 + C(g) + poly(z, 2)"
     )
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     before = prepare_Z(NEW, model.feature_names, model._model_spec)
     after = prepare_Z(NEW, restored.feature_names, restored._model_spec)
     np.testing.assert_array_equal(after, before)
@@ -170,7 +165,7 @@ def test_competing_risks_formula_round_trips():
 
 def test_level_order_and_reference_level_are_kept():
     model = _fit("WeibullPH", "z + C(g, levels=['c', 'b', 'a']) + kc", _df())
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     # reference levels 'c' (from levels=) and 3 (the column's first category)
     assert restored.feature_names == [
         "z",
@@ -199,7 +194,7 @@ def test_integer_levels_round_trip_to_the_same_prediction():
     # came back as '3', '1', '2' and matched nothing: every row was coded
     # as the reference level, off by up to ~0.05 in sf.
     model = _fit("WeibullPH", "z + kc", _df())
-    restored = _rt(model)
+    restored = strict_json_model_round_trip(model)
     np.testing.assert_allclose(
         restored.sf(T, NEW), model.sf(T, NEW), rtol=1e-12
     )

@@ -13,6 +13,7 @@ from scipy.stats import lognorm
 
 import surpyval as sp
 import surpyval as surv
+from surpyval.tests._helpers import no_warnings
 from surpyval.tests.conformance.registry import reg_data, stress_data, uni_data
 from surpyval.univariate.parametric.fitters import fallback_minimize
 
@@ -21,13 +22,6 @@ UNVERIFIED = "did not reach a verified maximum"
 # which has its own warning (#385); since every fit searches in units of its
 # start (#366) it does on the data below.
 UNBOUNDED = UNVERIFIED + "|No finite maximum"
-
-
-def _silent(fit, *args, **kwargs):
-    """``fit(...)``, failing on any warning it gives."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        return fit(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -51,8 +45,8 @@ def test_a_far_start_reaches_the_maximum(dist, far):
     data = uni_data()
     if dist.discrete:
         data["x"] = np.round(data["x"])
-    ref = _silent(dist.fit, **data)
-    got = _silent(dist.fit, **data, init=far)
+    ref = no_warnings(dist.fit, **data)
+    got = no_warnings(dist.fit, **data, init=far)
     np.testing.assert_allclose(got.params, ref.params, rtol=1e-4)
     np.testing.assert_allclose(got.neg_ll(), ref.neg_ll(), rtol=1e-8)
 
@@ -60,7 +54,7 @@ def test_a_far_start_reaches_the_maximum(dist, far):
 def test_a_verified_first_rung_stops_the_ladder():
     # The check costs one gradient and one Hessian; a fit BFGS solves is
     # not sent down the rest of the ladder.
-    model = _silent(sp.Weibull.fit, **uni_data())
+    model = no_warnings(sp.Weibull.fit, **uni_data())
     assert model.optimizer == "BFGS"
 
 
@@ -70,7 +64,9 @@ def test_precision_loss_at_the_maximum_is_accepted():
     # to a worse rung.
     data = uni_data()
     ref = sp.Normal.fit(**data)
-    model = _silent(sp.Normal.fit, **data, init=[ref.params[0] * 1e6, 4.15])
+    model = no_warnings(
+        sp.Normal.fit, **data, init=[ref.params[0] * 1e6, 4.15]
+    )
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-6)
 
 
@@ -86,7 +82,7 @@ def test_an_unverified_answer_warns():
 def test_the_uniform_is_not_warned_about_its_edges():
     # Its maximum is on the data's extremes by construction.
     x = np.linspace(2.0, 8.0, 50)
-    model = _silent(sp.Uniform.fit, x, fixed={"a": 1.5})
+    model = no_warnings(sp.Uniform.fit, x, fixed={"a": 1.5})
     assert model.params[1] == pytest.approx(8.0, rel=1e-4)
 
 
@@ -132,8 +128,8 @@ def test_a_truncated_fit_is_unit_free(dist, k):
     # -4.026) but 48.87, 23.04 on it x 7.3; Gumbel and Weibull failed with
     # "MLE Failed" at some scales. The NaN truncation term (#412) made
     # every gradient rung fail, leaving Powell to stop where it could.
-    ref = _silent(dist.fit, **_TRUNCATED)
-    got = _silent(
+    ref = no_warnings(dist.fit, **_TRUNCATED)
+    got = no_warnings(
         dist.fit,
         x=_TRUNCATED["x"] * k,
         c=_TRUNCATED["c"],
@@ -151,7 +147,7 @@ def test_a_truncated_fit_is_unit_free(dist, k):
 
 
 def test_the_truncated_normal_fit_is_the_maximum():
-    model = _silent(sp.Normal.fit, **_TRUNCATED)
+    model = no_warnings(sp.Normal.fit, **_TRUNCATED)
     np.testing.assert_allclose(model.params, [8.7445, 2.4586], atol=1e-4)
     np.testing.assert_allclose(-model.neg_ll(), -4.0263, atol=1e-4)
 
@@ -186,17 +182,19 @@ def test_an_offset_makes_a_one_parameter_family_spike():
 @pytest.mark.parametrize("data", _NO_MAXIMUM[:2])
 def test_a_one_parameter_family_has_a_maximum_there(data):
     # The Exponential cannot concentrate: its fit stands
-    model = _silent(sp.Exponential.fit, **data)
+    model = no_warnings(sp.Exponential.fit, **data)
     assert np.isfinite(model.params).all()
 
 
 def test_a_fixed_parameter_restores_the_maximum():
-    model = _silent(sp.Weibull.fit, x=[0.5, 1.0], c=[0, -1], fixed={"beta": 2})
+    model = no_warnings(
+        sp.Weibull.fit, x=[0.5, 1.0], c=[0, -1], fixed={"beta": 2}
+    )
     assert np.isfinite(model.params).all()
 
 
 def test_data_that_disagree_are_fitted():
-    model = _silent(sp.Weibull.fit, xl=[1.0, 3.0], xr=[2.0, 4.0])
+    model = no_warnings(sp.Weibull.fit, xl=[1.0, 3.0], xr=[2.0, 4.0])
     assert np.isfinite(model.params).all()
 
 
@@ -211,10 +209,10 @@ def test_an_accelerated_life_fit_from_a_far_start(life_model):
     fitter = sp.AcceleratedLife(
         sp.Weibull, getattr(sp.life_models, life_model)
     )
-    ref = _silent(fitter.fit, **data)
+    ref = no_warnings(fitter.fit, **data)
     far = np.array(ref.params, dtype=float)
     far[2] *= 1e6
-    got = _silent(fitter.fit, **data, init=far)
+    got = no_warnings(fitter.fit, **data, init=far)
     np.testing.assert_allclose(got._neg_ll, ref._neg_ll, rtol=1e-6)
     np.testing.assert_allclose(got.params, ref.params, rtol=1e-3)
 
@@ -235,7 +233,7 @@ def test_an_additive_hazards_fit_with_no_maximum_says_so():
 
 
 def test_an_additive_hazards_fit_at_its_maximum_is_silent():
-    model = _silent(sp.WeibullAH.fit, **reg_data())
+    model = no_warnings(sp.WeibullAH.fit, **reg_data())
     assert np.isfinite(model.params).all()
 
 

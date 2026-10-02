@@ -17,7 +17,6 @@ fit and in the ``AdditiveHazards`` prediction; ``None`` is now a missing
 value, dropped with a warning at fit and predicted as ``nan``.
 """
 
-import json
 import warnings
 
 import numpy as np
@@ -28,6 +27,7 @@ import surpyval
 from surpyval import AcceleratedLife, Weibull
 from surpyval.life_models import Linear, Power
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import strict_json_model_round_trip
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
@@ -86,11 +86,6 @@ def _fit_quietly(family, formula, df, **extra):
         return _fit(family, formula, df, **extra)
 
 
-def _rt(model):
-    text = json.dumps(model.to_dict(), allow_nan=False)
-    return surpyval.from_dict(json.loads(text))
-
-
 def _sf(model, family, frame, t=5.0):
     kw = {"event": "u"} if family.startswith("CR-") else {}
     return np.asarray(
@@ -117,7 +112,7 @@ def test_empty_declared_level_warns_at_fit(family):
 def test_empty_declared_level_raises_at_prediction(family, restored):
     model = _fit_quietly(family, "z + " + LEVELS, _df())
     if restored:
-        model = _rt(model)
+        model = strict_json_model_round_trip(model)
     seen = pd.DataFrame({"z": [2.0, 2.0, 2.0], "g": ["a", "b", "c"]})
     assert np.isfinite(_sf(model, family, seen)).all()
     # 'd' used to be predicted (as 'a' for WeibullPH and CoxPH)
@@ -147,7 +142,7 @@ def test_empty_declared_level_old_answer_was_the_reference_level():
 def test_empty_level_and_unseen_level_in_one_message():
     model = _fit_quietly("WeibullPH", "z + " + LEVELS, _df())
     new = pd.DataFrame({"z": [2.0, 2.0], "g": ["d", "x"]})
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         with pytest.raises(ValueError) as err:
             m.sf(np.full(2, 5.0), new)
         text = str(err.value)
@@ -159,7 +154,7 @@ def test_missing_value_on_an_empty_level_model_is_nan():
     new = pd.DataFrame(
         {"z": [2.0, 2.0], "g": pd.Series(["b", None], dtype=object)}
     )
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         out = m.sf(np.full(2, 5.0), new)
         assert np.isfinite(out[0]) and np.isnan(out[1])
 
@@ -184,7 +179,7 @@ def test_unused_category_of_a_categorical_column(family):
     df["g"] = pd.Categorical(df["g"], categories=["a", "b", "c", "d"])
     with pytest.warns(UserWarning, match=r"no rows at the level\(s\) \['d'\]"):
         model = _fit(family, "z + g", df)
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         assert np.isfinite(
             _sf(m, family, pd.DataFrame({"z": [2.0], "g": ["b"]}))
         ).all()
@@ -235,7 +230,7 @@ def test_accelerated_life_empty_level():
             formula="C(g, levels=['a', 'd'])",
             init=[1.0, 1.5, 10.0, 1.0],
         )
-    for m in (model, _rt(model)):
+    for m in (model, strict_json_model_round_trip(model)):
         assert np.isfinite(m.sf([5.0], pd.DataFrame({"g": ["a"]}))).all()
         with pytest.raises(ValueError, match="not fitted with"):
             m.sf([5.0], pd.DataFrame({"g": ["d"]}))

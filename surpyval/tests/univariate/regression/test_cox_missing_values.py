@@ -14,6 +14,7 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
+from surpyval.tests._helpers import dropped_row_messages
 
 
 def _data(seed=0, n=150):
@@ -27,10 +28,6 @@ def _data(seed=0, n=150):
     x = np.minimum(t, cens)
     c = (t > cens).astype(int)
     return x, np.column_stack([z1, z2]), c, g
-
-
-def _dropped_warnings(record):
-    return [str(w.message) for w in record if "Dropped" in str(w.message)]
 
 
 # -- CoxPH: a missing time at prediction ---------------------------------
@@ -135,7 +132,7 @@ def test_stratified_fit_drops_missing_stratum_array(missing):
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         model = sp.CoxPH.fit(x, Z, c, strata=strata)
-    assert _dropped_warnings(record) == [
+    assert dropped_row_messages(record) == [
         "Dropped 2 of 150 rows with a missing stratum label."
     ]
     ref = sp.CoxPH.fit(x[keep], Z[keep], c[keep], strata=g[keep])
@@ -183,7 +180,7 @@ def test_stratified_fit_from_df_drops_missing_stratum(dtype):
         model = sp.CoxPH.fit_from_df(
             df, "x", Z_cols=["z1", "z2"], c_col="c", strata_col="g"
         )
-    assert _dropped_warnings(record) == [
+    assert dropped_row_messages(record) == [
         "Dropped 2 of 150 rows with a missing stratum label."
     ]
     keep = np.ones(len(x), bool)
@@ -210,7 +207,7 @@ def test_stratified_array_fit_warns_once_for_missing_covariates():
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         model = sp.CoxPH.fit(x, Zn, c, strata=g)
-    assert _dropped_warnings(record) == [
+    assert dropped_row_messages(record) == [
         "Dropped 2 of 150 rows with a missing (NaN) or infinite covariate "
         "value."
     ]
@@ -229,7 +226,7 @@ def test_stratified_fit_missing_covariate_and_stratum():
         warnings.simplefilter("always")
         model = sp.CoxPH.fit(x, Zn, c, strata=strata)
     # Row 0 misses both: counted once, with the covariates.
-    assert sorted(_dropped_warnings(record)) == [
+    assert sorted(dropped_row_messages(record)) == [
         "Dropped 1 of 148 rows with a missing stratum label.",
         "Dropped 2 of 150 rows with a missing (NaN) or infinite covariate "
         "value.",

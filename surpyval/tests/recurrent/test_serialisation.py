@@ -11,8 +11,6 @@ MCF, the step arrays), and the reloaded model reproduces every prediction
 exactly.
 """
 
-import json
-
 import numpy as np
 import pytest
 
@@ -30,11 +28,7 @@ from surpyval.recurrent.competing_risks import (
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
-
-
-def _rt(d):
-    """JSON round-trip a dict (proves it is JSON-serialisable)."""
-    return json.loads(json.dumps(d))
+from surpyval.tests._helpers import json_round_trip
 
 
 def _pi_data(seed=0, n_items=25):
@@ -62,7 +56,9 @@ def test_parametric_recurrence_round_trip(fitter):
     rng = np.random.default_rng(1)
     x = np.sort(rng.uniform(0, 1000, 40))
     model = fitter.fit(x)
-    restored = ParametricRecurrenceModel.from_dict(_rt(model.to_dict()))
+    restored = ParametricRecurrenceModel.from_dict(
+        json_round_trip(model.to_dict())
+    )
     xt = np.array([100.0, 500.0, 900.0])
     assert np.allclose(model.cif(xt), restored.cif(xt))
     assert np.allclose(model.iif(xt), restored.iif(xt))
@@ -100,7 +96,9 @@ def test_mcf_round_trip():
     i = np.array([1, 1, 1, 2, 2, 3, 3])
     c = np.array([0, 0, 1, 0, 1, 0, 1])
     model = NonParametricCounting.fit(x, i, c)
-    restored = NonParametricCounting.from_dict(_rt(model.to_dict()))
+    restored = NonParametricCounting.from_dict(
+        json_round_trip(model.to_dict())
+    )
     grid = np.array([6.0, 11.0, 16.0])
     assert np.allclose(model.mcf(grid), restored.mcf(grid), equal_nan=True)
     assert np.allclose(model.x, restored.x)
@@ -125,7 +123,7 @@ def test_mcf_json_file(tmp_path):
 def test_proportional_intensity_nhpp_round_trip():
     x, i, c, Z = _pi_data(seed=3)
     model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=Duane)
-    restored = type(model).from_dict(_rt(model.to_dict()))
+    restored = type(model).from_dict(json_round_trip(model.to_dict()))
     xt = np.array([100.0, 300.0, 450.0])
     Zq = np.array([0.5])
     assert np.allclose(model.cif(xt, Zq), restored.cif(xt, Zq))
@@ -138,7 +136,7 @@ def test_proportional_intensity_hpp_round_trip():
     x, i, c, Z = _pi_data(seed=4)
     model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
     assert model.kind == "HPP"
-    restored = type(model).from_dict(_rt(model.to_dict()))
+    restored = type(model).from_dict(json_round_trip(model.to_dict()))
     xt = np.array([100.0, 300.0])
     Zq = np.array([0.5])
     assert np.allclose(model.cif(xt, Zq), restored.cif(xt, Zq))
@@ -163,7 +161,7 @@ def test_cause_specific_mcf_round_trip():
     c = np.array([0, 0, 1, 0, 1, 0, 1])
     e = np.array(["A", "B", "A", "A", "B", "B", "A"])
     model = CauseSpecificMCF.fit(x, i, c, e=e)
-    restored = CauseSpecificMCF.from_dict(_rt(model.to_dict()))
+    restored = CauseSpecificMCF.from_dict(json_round_trip(model.to_dict()))
     assert restored.event_types == model.event_types
     grid = np.array([6.0, 11.0, 16.0])
     for cause in model.event_types:
@@ -190,7 +188,7 @@ def test_cause_specific_nhpp_round_trip():
     model = CauseSpecificNHPP.fit(
         np.array(xs), np.array(ii), np.array(cc), e=np.array(es, dtype=object)
     )
-    restored = CauseSpecificNHPP.from_dict(_rt(model.to_dict()))
+    restored = CauseSpecificNHPP.from_dict(json_round_trip(model.to_dict()))
     assert restored.dist.name == model.dist.name
     assert restored.event_types == model.event_types
     xt = np.array([50.0, 200.0, 350.0])

@@ -22,7 +22,11 @@ from scipy.stats import poisson
 
 import surpyval as surv
 import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
-from surpyval.tests._helpers import fresh_conformance_fit, no_warnings
+from surpyval.tests._helpers import (
+    fresh_conformance_fit,
+    neg_ll_at,
+    no_warnings,
+)
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 from surpyval.univariate.parametric import _likelihood_ratio
 
@@ -46,17 +50,8 @@ def ew():
         return case.fit(case.data())
 
 
-def _nll(model, theta):
-    with np.errstate(all="ignore"):
-        return float(
-            model.dist._neg_ll_func(
-                model.surv_data, *theta, model.gamma, model.f0, model.p
-            )
-        )
-
-
 def _deviance(model, theta):
-    return 2.0 * (_nll(model, theta) - _nll(model, model.params))
+    return 2.0 * (neg_ll_at(model, theta) - neg_ll_at(model, model.params))
 
 
 def _brute_profile(model, name, value, points=7):
@@ -109,7 +104,7 @@ def test_nb_profile_of_r_levels_off_at_the_shifted_poisson(nb):
         return -np.sum(n * ll)
 
     res = minimize_scalar(nll, bounds=(0.1, 20), method="bounded")
-    nll_hat = _nll(nb, nb.params)
+    nll_hat = neg_ll_at(nb, nb.params)
     limit = 2 * (res.fun - nll_hat)
     assert limit == pytest.approx(2.34507, abs=1e-4)
     assert CRIT_80 < limit < CRIT_95
@@ -175,7 +170,7 @@ def test_ew_profile_follows_its_valleys(ew, name, value, want):
     idx = ew.dist.param_map[name]
     coord = ew._lr_coords()[0][idx]
     path = likelihood_ratio._LRPath()
-    nll_hat = _nll(ew, ew.params)
+    nll_hat = neg_ll_at(ew, ew.params)
     for w in np.linspace(coord.to_u(ew.params[idx]), coord.to_u(value), 25):
         nll = ew._profile_neg_ll(idx, coord.from_u(w), path=path)
     assert 2 * (nll - nll_hat) == pytest.approx(want, abs=1e-3)

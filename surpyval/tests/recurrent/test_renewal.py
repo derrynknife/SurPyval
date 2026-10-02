@@ -79,11 +79,7 @@ def test_ara_simulated_mcf_is_right_at_long_horizons():
 
 
 _X = np.array([3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60])
-
-
 _I = np.array([1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2])
-
-
 _C = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1])
 
 

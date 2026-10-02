@@ -12,8 +12,6 @@ the edge; the other parameters' Wald intervals are those of the model
 held on the edge.
 """
 
-import warnings
-
 import numpy as np
 import pytest
 from scipy.stats import chi2
@@ -28,19 +26,13 @@ C = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1])
 I = np.array([1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3])
 
 
-def _quiet(func, *args, **kwargs):
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        return func(*args, **kwargs)
-
-
 @pytest.mark.parametrize(
     "fitter, name, edge", [(GeneralizedRenewal, "q", 0.0), (ARA, "rho", 1.0)]
 )
 def test_restoration_on_its_edge_has_a_profile_interval(fitter, name, edge):
     model = fitter.fit(X, I, C)
     assert abs(model.params[0] - edge) < 1e-6
-    two = _quiet(model.param_cb, name)
+    two = no_warnings(model.param_cb, name)
     assert np.all(np.isfinite(two))
     # One-sided, from the edge.
     far = 1 if edge == 0.0 else 0
@@ -53,14 +45,14 @@ def test_restoration_on_its_edge_has_a_profile_interval(fitter, name, edge):
     # A one-sided bound is the end of the two-sided bound at twice the
     # level; towards the edge it is the edge itself.
     toward, away = ("lower", "upper") if edge == 0.0 else ("upper", "lower")
-    two_10 = _quiet(model.param_cb, name, alpha_ci=0.1)
-    assert _quiet(model.param_cb, name, bound=toward) == [edge]
+    two_10 = no_warnings(model.param_cb, name, alpha_ci=0.1)
+    assert no_warnings(model.param_cb, name, bound=toward) == [edge]
     np.testing.assert_allclose(
-        _quiet(model.param_cb, name, bound=away), [two_10[far]], rtol=1e-6
+        no_warnings(model.param_cb, name, bound=away), [two_10[far]], rtol=1e-6
     )
     # A higher level is wider.
     assert abs(two[far] - edge) > abs(two_10[far] - edge)
-    wide = _quiet(model.param_cb, name, alpha_ci=0.01)
+    wide = no_warnings(model.param_cb, name, alpha_ci=0.01)
     assert abs(wide[far] - edge) > abs(two[far] - edge)
 
 
@@ -81,7 +73,7 @@ def test_others_are_the_wald_bounds_of_the_model_on_the_edge():
     assert np.isnan(cov[0]).all() and np.isnan(cov[:, 0]).all()
     np.testing.assert_allclose(cov[1:, 1:], weibull.hess_inv, rtol=2e-3)
     for k, name in enumerate(("alpha", "beta"), start=1):
-        bounds = _quiet(model.param_cb, name)
+        bounds = no_warnings(model.param_cb, name)
         assert bounds[0] < model.params[k] < bounds[1]
 
 
@@ -92,7 +84,7 @@ def test_conformance_fixtures_have_bounds_for_every_parameter(name):
     # for alpha.
     model = fitted([c for c in CASES if c.name == name][0])
     for parameter, value in zip(model.parameter_names, model.params):
-        bounds = _quiet(model.param_cb, parameter)
+        bounds = no_warnings(model.param_cb, parameter)
         assert np.all(np.isfinite(bounds))
         assert bounds[0] <= value <= bounds[1]
 
@@ -131,7 +123,9 @@ def test_interior_restoration_keeps_its_wald_interval():
     var = cov[0, 0]
     q = model.params[0]
     want = q * np.exp(np.array([-1, 1]) * 1.959963984540054 * np.sqrt(var) / q)
-    np.testing.assert_allclose(_quiet(model.param_cb, "q"), want, rtol=1e-8)
+    np.testing.assert_allclose(
+        no_warnings(model.param_cb, "q"), want, rtol=1e-8
+    )
 
 
 def numerical_hessian_inverse(model):

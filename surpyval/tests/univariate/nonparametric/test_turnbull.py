@@ -2,8 +2,6 @@
 memory-efficient EM (the interval-censoring results against R's icenReg
 live in test_np.py)."""
 
-import warnings
-
 import numpy as np
 import pytest
 
@@ -15,6 +13,7 @@ from surpyval.tests._helpers import (
     TURNBULL_MIXED_CENSORING,
     fit_turnbull_quietly,
     no_warnings,
+    quietly,
 )
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric import plotting_positions
@@ -450,12 +449,6 @@ def test_only_the_km_option_is_the_npmle():
 # ---------------------------------------------------------------------------
 
 
-def _quiet(fit, *args, **kwargs):
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return fit(*args, **kwargs)
-
-
 # -- #391: Turnbull with every row right truncated ----------------------------
 # The Kaplan-Meier option reaches 0 where all the mass is placed; the
 # default Fleming-Harrington one never reaches 0, and must agree with the
@@ -463,7 +456,7 @@ def _quiet(fit, *args, **kwargs):
 
 
 def _km_turnbull(**kw):
-    return _quiet(sp.Turnbull.fit, turnbull_estimator="Kaplan-Meier", **kw)
+    return quietly(sp.Turnbull.fit, turnbull_estimator="Kaplan-Meier", **kw)
 
 
 def test_turnbull_failure_at_its_right_truncation_time():
@@ -471,8 +464,8 @@ def test_turnbull_failure_at_its_right_truncation_time():
     # sf(1) is 0. Turnbull gave 1 (ladder x = [1], R = [1]).
     model = _km_turnbull(x=[1.0], c=[0], tr=[1.0])
     assert model.sf([1.0])[0] == 0.0
-    fh = _quiet(sp.Turnbull.fit, x=[1.0], c=[0], tr=[1.0])
-    untruncated = _quiet(sp.Turnbull.fit, x=[1.0], c=[0])
+    fh = quietly(sp.Turnbull.fit, x=[1.0], c=[0], tr=[1.0])
+    untruncated = quietly(sp.Turnbull.fit, x=[1.0], c=[0])
     np.testing.assert_allclose(fh.sf([0.5, 1.0]), untruncated.sf([0.5, 1.0]))
 
 
@@ -482,8 +475,8 @@ def test_turnbull_two_failures_right_truncated_at_the_last():
     x, c = [1.0, 2.0], [0, 0]
     model = _km_turnbull(x=x, c=c, tr=[2.0, 2.0])
     np.testing.assert_allclose(model.sf([1.0, 2.0]), [0.5, 0.0])
-    fh = _quiet(sp.Turnbull.fit, x=x, c=c, tr=[2.0, 2.0])
-    one = _quiet(sp.Turnbull.fit, x=x, c=c, tr=[2.0, np.inf])
+    fh = quietly(sp.Turnbull.fit, x=x, c=c, tr=[2.0, 2.0])
+    one = quietly(sp.Turnbull.fit, x=x, c=c, tr=[2.0, np.inf])
     np.testing.assert_allclose(fh.sf([1.0, 2.0]), one.sf([1.0, 2.0]))
 
 

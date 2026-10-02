@@ -255,11 +255,7 @@ def test_auc_counts_the_pairs_as_every_comparison_did(monkeypatch):
 # Event time given a binary covariate z, and an independent censoring time,
 # each uniform on a few integers so that events and censorings tie.
 T_GIVEN_Z = {0: [2.0, 3.0, 4.0], 1: [1.0, 2.0, 3.0]}
-
-
 C_VALUES = [1.0, 2.0, 3.0, 4.0]
-
-
 PRED = {0: 0.7, 1: 0.4}  # predicted survival, constant in t
 
 

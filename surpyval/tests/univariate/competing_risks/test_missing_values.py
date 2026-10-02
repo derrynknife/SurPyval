@@ -11,6 +11,7 @@ import warnings
 import numpy as np
 import pytest
 
+from surpyval.tests._helpers import dropped_row_messages
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards as CR,
 )
@@ -26,10 +27,6 @@ def _data(seed=0, n=150):
     x = np.minimum(t, cens)
     e = np.where(t > cens, None, rng.choice([1, 2], n)).astype(object)
     return x, np.column_stack([z1, z2]), e
-
-
-def _dropped_warnings(record):
-    return [str(w.message) for w in record if "Dropped" in str(w.message)]
 
 
 @pytest.fixture(scope="module")
@@ -143,7 +140,7 @@ def test_fine_gray_fit_warns_when_dropping_missing_covariates():
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         model = FineGray.fit(x, Zn, e, event=1)
-    assert _dropped_warnings(record) == [MESSAGE]
+    assert dropped_row_messages(record) == [MESSAGE]
     ref = FineGray.fit(x[keep], Z[keep], e[keep], event=1)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-10)
 
@@ -154,7 +151,7 @@ def test_cr_fit_warns_once_when_dropping_missing_covariates(how):
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         model = CR.fit(x, Zn, e, model=how)
-    assert _dropped_warnings(record) == [MESSAGE]
+    assert dropped_row_messages(record) == [MESSAGE]
     ref = CR.fit(x[keep], Z[keep], e[keep], model=how)
     np.testing.assert_allclose(model.betas, ref.betas, rtol=1e-10)
 

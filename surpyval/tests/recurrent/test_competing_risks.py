@@ -138,11 +138,7 @@ def test_cause_specific_mcf_plot_draws_bounds_on_request():
 # Three items; item 1 has far more events than the others, so the robust
 # (Lawless-Nadeau) variance is well above the per-step one.
 X = [1, 2, 3, 4, 5, 6, 7, 3, 6, 9, 2, 9]
-
-
 I = [1] * 7 + [2] * 3 + [3] * 2
-
-
 C = [0] * 6 + [1] + [0, 0, 1] + [0, 1]
 
 

@@ -4,6 +4,7 @@ from scipy.stats import kendalltau
 
 import surpyval as surv
 from surpyval.multivariate import Clayton, Frank, Gaussian, Gumbel
+from surpyval.tests._helpers import WEIBULL_MARGINS
 
 MARGINS = [
     surv.Weibull.from_params([10, 2]),
@@ -54,12 +55,6 @@ def test_conditional_cdf_is_in_unit_interval():
 # ``CopulaModel.random`` honours a tuple size;
 # ``conditional_cdf`` checks ``given_dim``.
 # ---------------------------------------------------------------------------
-
-
-WEIBULL_MARGINS = [
-    surv.Weibull.from_params([10, 2]),
-    surv.Weibull.from_params([20, 3]),
-]
 
 
 def test_random_tuple_size_and_given_dim():

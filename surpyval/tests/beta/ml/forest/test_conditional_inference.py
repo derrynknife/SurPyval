@@ -54,6 +54,7 @@ from surpyval.beta.ml.forest.turnbull_score_split import (
     log_rank_scores,
     turnbull_score,
 )
+from surpyval.tests._helpers import tree_leaves
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
@@ -71,12 +72,6 @@ def _depth(node):
     if isinstance(node, TerminalNode):
         return 0
     return 1 + max(_depth(node.left_child), _depth(node.right_child))
-
-
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
 
 
 def _survival_data(seed, n=150, effect=1.0, censoring="right"):
@@ -507,11 +502,11 @@ def test_the_other_stopping_rules_still_apply():
     tree = SurvivalTree.fit(**d, **fit, selection="ctree", max_depth=1)
     assert _depth(tree._root) == 1
     tree = SurvivalTree.fit(**d, **fit, selection="ctree", min_leaf_samples=40)
-    assert min(len(leaf.data) for leaf in _leaves(tree._root)) >= 40
+    assert min(len(leaf.data) for leaf in tree_leaves(tree._root)) >= 40
     # A stricter alpha_split never gives a bigger tree.
     sizes = [
         len(
-            _leaves(
+            tree_leaves(
                 SurvivalTree.fit(
                     **d, **fit, alpha_split=a, selection="ctree"
                 )._root

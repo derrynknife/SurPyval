@@ -48,14 +48,9 @@ from surpyval.beta.ml.forest.turnbull_score_split import (
     pooled_cumulative_hazard,
     turnbull_score_split,
 )
+from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
-
-
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
 
 
 def _H_at(data):
@@ -336,7 +331,7 @@ def test_tree_finds_a_planted_effect_with_turnbull_leaves(maker):
     root = tree._root
     assert root.split_feature_index == 0
     assert abs(root.split_feature_value - 0.5) < 0.1
-    leaves = _leaves(root)
+    leaves = tree_leaves(root)
     with warnings.catch_warnings():
         # A leaf's Turnbull EM may report slow convergence.
         warnings.simplefilter("ignore", UserWarning)

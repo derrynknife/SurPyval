@@ -17,6 +17,7 @@ import pytest
 import surpyval
 from surpyval import MixtureModel, Weibull
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import json_round_trip
 from surpyval.univariate.competing_risks import (
     CompetingRisks,
     CompetingRisksProportionalHazards,
@@ -26,10 +27,6 @@ from surpyval.univariate.competing_risks import (
 from surpyval.univariate.competing_risks.regression.fine_gray import (
     FineGrayModel,
 )
-
-
-def _rt(d):
-    return json.loads(json.dumps(d))
 
 
 def _cr_data(seed=0, n=150):
@@ -49,7 +46,7 @@ def test_mixture_model_round_trip():
     x = np.concatenate([Weibull.random(80, 10, 3), Weibull.random(80, 50, 4)])
     model = MixtureModel(dist=Weibull, m=2)
     model.fit(x=x)
-    restored = MixtureModel.from_dict(_rt(model.to_dict()))
+    restored = MixtureModel.from_dict(json_round_trip(model.to_dict()))
     t = np.array([5.0, 20.0, 50.0])
     assert np.allclose(model.sf(t), restored.sf(t))
     assert np.allclose(model.ff(t), restored.ff(t))
@@ -91,7 +88,7 @@ def test_mixture_model_guards():
 def test_fine_gray_round_trip():
     x, Z, e, c = _cr_data()
     model = FineGray.fit(x, Z, e, c=c, event=1)
-    restored = FineGrayModel.from_dict(_rt(model.to_dict()))
+    restored = FineGrayModel.from_dict(json_round_trip(model.to_dict()))
     t = np.array([2.0, 5.0, 10.0])
     Zq = np.array([0.3, -0.2])
     assert np.allclose(model.cif(t, Zq), restored.cif(t, Zq))
@@ -122,7 +119,9 @@ def test_fine_gray_guard():
 def test_parametric_competing_risks_round_trip():
     x, _, e, c = _cr_data(seed=3)
     model = ParametricCompetingRisks.fit(x, e, c=c)
-    restored = ParametricCompetingRisks.from_dict(_rt(model.to_dict()))
+    restored = ParametricCompetingRisks.from_dict(
+        json_round_trip(model.to_dict())
+    )
     assert restored.causes == model.causes
     t = np.array([2.0, 5.0, 10.0])
     for cause in model.causes:
@@ -145,7 +144,7 @@ def test_parametric_competing_risks_guard():
 def test_competing_risks_round_trip():
     x, _, e, c = _cr_data(seed=4)
     model = CompetingRisks.fit(x, e, c=c)
-    restored = CompetingRisks.from_dict(_rt(model.to_dict()))
+    restored = CompetingRisks.from_dict(json_round_trip(model.to_dict()))
     assert list(restored.event_idx_map) == list(model.event_idx_map)
     t = np.array([2.0, 5.0, 10.0])
     for event in model.event_idx_map:

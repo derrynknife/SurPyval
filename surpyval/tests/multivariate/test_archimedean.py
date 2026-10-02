@@ -14,6 +14,7 @@ from surpyval.multivariate import (
     Gumbel,
     Independence,
 )
+from surpyval.tests._helpers import WEIBULL_MARGINS
 
 MARGINS = [
     surv.Weibull.from_params([10, 2]),
@@ -106,12 +107,6 @@ def test_from_params_roundtrips_through_to_dict():
 
 
 getcontext().prec = 200
-
-
-WEIBULL_MARGINS = [
-    surv.Weibull.from_params([10, 2]),
-    surv.Weibull.from_params([20, 3]),
-]
 
 
 def _frank_cdf_exact(u, v, theta):

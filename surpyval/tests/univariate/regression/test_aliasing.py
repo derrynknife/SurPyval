@@ -20,8 +20,7 @@ import pytest
 
 import surpyval as sp
 from surpyval import AdditiveHazards, BuckleyJames
-from surpyval.datasets import load_rossi_static
-from surpyval.tests._helpers import weibull_ph_data
+from surpyval.tests._helpers import rossi_with_censoring, weibull_ph_data
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
@@ -30,14 +29,8 @@ from surpyval.univariate.competing_risks import (
 COLS = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
 
-def _rossi_df():
-    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
-    df = load_rossi_static()
-    return df.assign(censored=1 - df["arrest"])
-
-
 def _rossi():
-    df = _rossi_df()
+    df = rossi_with_censoring()
     return (
         df.week.to_numpy(),
         df[COLS].to_numpy(float),
@@ -124,7 +117,7 @@ def test_additive_hazards_constant_column_is_identified():
 
 
 def test_the_warning_names_the_columns_of_a_data_frame():
-    df = _rossi_df().assign(one=1.0)
+    df = rossi_with_censoring().assign(one=1.0)
     model, messages, caught = _fit(
         lambda: sp.CoxPH.fit_from_df(
             df, x_col="week", c_col="censored", Z_cols=["fin", "one", "age"]
@@ -143,7 +136,7 @@ def test_the_warning_names_the_columns_of_a_data_frame():
 def test_every_level_of_a_factor():
     # "0 + C(race)" codes every level; with the model's intercept (the Cox
     # baseline, the Weibull scale) their sum is aliased, as in R.
-    df = _rossi_df()
+    df = rossi_with_censoring()
     for fitter in (sp.CoxPH, sp.WeibullPH):
         model, messages, _ = _fit(
             lambda: fitter.fit_from_df(

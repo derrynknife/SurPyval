@@ -27,10 +27,7 @@ from surpyval.degradation import (
     WienerProcess,
     WienerProcessModel,
 )
-
-
-def _rt(d):
-    return json.loads(json.dumps(d))
+from surpyval.tests._helpers import json_round_trip, linear_degradation_paths
 
 
 def _monotone_process_data(seed=1, n_units=15):
@@ -57,22 +54,13 @@ def _wiener_process_data(seed=2, n_units=15):
     return (np.concatenate(z) for z in (xs, ys, ii))
 
 
-def _linear_deg_data(seed=0):
-    rng = np.random.default_rng(seed)
-    x = np.tile(np.arange(100, 1100, 100), 4).astype(float)
-    slopes = np.repeat([0.31, 0.28, 0.44, 0.37], 10)
-    i = np.repeat([1, 2, 3, 4], 10)
-    y = 10 + slopes * x + rng.normal(0, 1, x.size)
-    return x, y, i
-
-
 # -- process models -------------------------------------------------------
 
 
 def test_gamma_process_round_trip():
     xg, yg, ig = _monotone_process_data()
     model = GammaProcess.fit(xg, yg, ig, threshold=15.0)
-    restored = GammaProcessModel.from_dict(_rt(model.to_dict()))
+    restored = GammaProcessModel.from_dict(json_round_trip(model.to_dict()))
     t = np.array([5.0, 10.0, 15.0])
     assert np.allclose(model.sf(t), restored.sf(t))
     assert np.allclose(model.ff(t), restored.ff(t))
@@ -105,12 +93,14 @@ def test_process_model_rejects_wrong_dict():
 
 
 def test_induced_failure_distribution_round_trip():
-    x, y, i = _linear_deg_data()
+    x, y, i = linear_degradation_paths()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = DegradationAnalysis.fit(x, y, i, threshold=150)
     induced = model.induced_life(n_samples=5000, random_state=3)
-    restored = InducedFailureDistribution.from_dict(_rt(induced.to_dict()))
+    restored = InducedFailureDistribution.from_dict(
+        json_round_trip(induced.to_dict())
+    )
     t = np.array([300.0, 450.0, 600.0])
     assert np.allclose(induced.ff(t), restored.ff(t))
     assert np.isclose(induced.median(), restored.median())
@@ -144,11 +134,11 @@ def test_induced_never_fails_mass_survives_round_trip():
 
 
 def test_degradation_model_round_trip():
-    x, y, i = _linear_deg_data()
+    x, y, i = linear_degradation_paths()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = DegradationAnalysis.fit(x, y, i, threshold=150)
-    restored = DegradationModel.from_dict(_rt(model.to_dict()))
+    restored = DegradationModel.from_dict(json_round_trip(model.to_dict()))
     t = np.array([300.0, 450.0, 600.0])
     assert np.allclose(model.sf(t), restored.sf(t))
     assert np.allclose(model.ff(t), restored.ff(t))
@@ -164,7 +154,7 @@ def test_degradation_model_round_trip():
 
 
 def test_degradation_model_json_file(tmp_path):
-    x, y, i = _linear_deg_data(seed=2)
+    x, y, i = linear_degradation_paths(seed=2)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = DegradationAnalysis.fit(x, y, i, threshold=150)
@@ -196,7 +186,7 @@ def test_degradation_model_accelerated_round_trip():
         model = DegradationAnalysis.fit(
             x, y, i, threshold=30.0, path="linear", Z=Z
         )
-    restored = DegradationModel.from_dict(_rt(model.to_dict()))
+    restored = DegradationModel.from_dict(json_round_trip(model.to_dict()))
     assert restored.is_accelerated
     t = np.array([10.0, 20.0, 30.0])
     for stress in ([0.0], [0.5], [1.0]):
@@ -298,7 +288,7 @@ def test_every_built_in_path_round_trips(key):
         # warnings; they are not what is being tested here
         warnings.simplefilter("ignore")
         model = DegradationAnalysis.fit(x, y, i, threshold=threshold, path=key)
-    d = _rt(model.to_dict())
+    d = json_round_trip(model.to_dict())
     assert d["path_model"] == key
     restored = DegradationModel.from_dict(d)
     assert restored.path_model is model.path_model
@@ -327,7 +317,7 @@ def test_old_dict_with_display_name_still_loads():
         model = DegradationAnalysis.fit(
             x, y, i, threshold=threshold, path="offset-exponential"
         )
-    d = _rt(model.to_dict())
+    d = json_round_trip(model.to_dict())
     d["path_model"] = "Offset Exponential"
     restored = DegradationModel.from_dict(d)
     assert restored.path_model is model.path_model
@@ -348,7 +338,9 @@ def _destructive_model() -> DestructiveDegradationModel:
 
 def test_destructive_round_trip_keeps_data_and_bounds():
     model = _destructive_model()
-    restored = DestructiveDegradationModel.from_dict(_rt(model.to_dict()))
+    restored = DestructiveDegradationModel.from_dict(
+        json_round_trip(model.to_dict())
+    )
     t = np.array([30.0, 50.0, 70.0])
     assert np.allclose(model.sf(t), restored.sf(t))
     assert np.allclose(
@@ -388,7 +380,7 @@ def test_destructive_json_file_and_package_dispatch(tmp_path):
 
 def test_destructive_old_dict_without_data_still_loads():
     model = _destructive_model()
-    d = _rt(model.to_dict())
+    d = json_round_trip(model.to_dict())
     for key in ("data", "neg_ll", "transform_scores"):
         del d[key]
     restored = DestructiveDegradationModel.from_dict(d)

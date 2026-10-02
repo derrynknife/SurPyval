@@ -5,7 +5,6 @@ import matplotlib
 import numpy as np
 import pytest
 
-from surpyval import Exponential
 from surpyval.datasets import load_rossi_static
 from surpyval.recurrent import (
     HPP,
@@ -25,12 +24,8 @@ from surpyval.tests._helpers import (
     REPAIR_FLEET_C,
     REPAIR_FLEET_I,
     REPAIR_FLEET_X,
+    exponential_event_times,
 )
-
-
-def _events():
-    np.random.seed(1)
-    return Exponential.random(40, 1e-2).cumsum()
 
 
 def _multi_item_data():
@@ -45,14 +40,14 @@ def _multi_item_data():
 def test_hpp_cumulative_hazard_residuals_are_rescaled_gaps():
     # For an HPP the time-rescaling transform is linear, so the residuals
     # are exactly lambda times the interarrival gaps.
-    x = _events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     gaps = np.diff(np.concatenate([[0.0], x]))
     assert np.allclose(model.residuals(), model.params[0] * gaps)
 
 
 def test_pit_residuals_transform_of_cumulative_hazard():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     e = model.residuals()
     pit = model.residuals(kind="pit")
     assert np.allclose(pit, 1.0 - np.exp(-e))
@@ -80,7 +75,7 @@ def test_residuals_with_delayed_entry():
 
 
 def test_residuals_validation():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     with pytest.raises(ValueError, match="kind"):
         model.residuals(kind="nope")
     no_data = CrowAMSAA.from_params([1000.0, 1.2])
@@ -96,7 +91,7 @@ def test_residuals_validation():
 def test_trend_test_matches_standalone_failure_truncated():
     # A failure-truncated single system: the model method must reproduce
     # the standalone test's statistic exactly.
-    x = _events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     for name, func in (("laplace", laplace), ("mil_hdbk_189c", mil_hdbk_189c)):
         res = model.trend_test(test=name)
@@ -123,7 +118,7 @@ def test_trend_test_matches_standalone_mixed_windows():
 
 
 def test_trend_test_validation():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     with pytest.raises(ValueError, match="'test' must be one of"):
         model.trend_test(test="nope")
     truncated = CrowAMSAA.fit(
@@ -146,7 +141,7 @@ def test_cvm_statistic_minimum_at_uniform_quantiles():
 def test_cramer_von_mises_reproducible_and_calibrated():
     # A correctly-specified HPP should not be rejected, and the same seed
     # must reproduce the same p-value.
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     gof = model.cramer_von_mises(n_boot=50, random_state=1)
     gof2 = model.cramer_von_mises(n_boot=50, random_state=1)
     assert gof.p_value == gof2.p_value
@@ -187,7 +182,7 @@ def test_cramer_von_mises_multi_item_and_cox_lewis():
 
 
 def test_cramer_von_mises_requires_likelihood_fit():
-    x = _events()
+    x = exponential_event_times()
     mse = CrowAMSAA.fit(x, how="MSE")
     with pytest.raises(ValueError, match="fitted from data"):
         mse.cramer_von_mises()
