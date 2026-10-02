@@ -43,6 +43,7 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
 )
 from surpyval.utils import optional_column
+from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
 from surpyval.utils.validation import unknown_cause_error
 
@@ -89,6 +90,27 @@ class CauseSpecificNHPP(SerialisableMixin):
     models: dict
     dist: Any
     how: str
+
+    @property
+    def maximum(self) -> str:
+        """What the causes' fits reached, one of ``MAXIMUM_STATES``
+        (``surpyval.utils.no_maximum``): the worst of the per-cause
+        models' ``maximum`` (principles 12 and 13).
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        >>> e = ["a", "b", "a", "b", "a", None, "b", "a", "b", "a", None]
+        >>> CauseSpecificNHPP.fit(x, i=i, c=c, e=e).maximum
+        'verified'
+        """
+        return combined_maximum(
+            getattr(self.models[k], "maximum", "unknown")
+            for k in self.event_types
+        )
 
     def __repr__(self) -> str:
         return "Cause-specific {} with causes: {}".format(

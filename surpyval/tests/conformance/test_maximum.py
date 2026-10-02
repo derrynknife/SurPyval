@@ -208,8 +208,9 @@ class Search(NamedTuple):
     def _parts(self):
         x = np.asarray(self.x, dtype=float)
         keep = [i for i in range(x.size) if i not in self.held]
-        jac = self.jac or jacobian(self.fun)
-        hess = self.hess or hessian(self.fun)
+        jac, hess = self.jac, self.hess
+        if jac is None or hess is None:
+            jac, hess = _derivatives(self.fun, x)
         floor = np.broadcast_to(np.asarray(self.floor, float), x.shape)
         return x, keep, jac, hess, floor
 
@@ -245,6 +246,31 @@ class Search(NamedTuple):
             np.round(scale * g / self.n_obs, 8).tolist(),
             "eigenvalues {}".format(np.round(eig / self.n_obs, 8).tolist()),
         )
+
+
+def _derivatives(fun, x):
+    """``(jac, hess)`` of ``fun``: autograd's, or central differences
+    (``numerical_gradient``, ``numerical_hessian``, in steps relative to
+    each component) for a likelihood autograd cannot differentiate, or
+    whose autograd derivatives are not finite at ``x``."""
+    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+
+    jac, hess = jacobian(fun), hessian(fun)
+    try:
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            ok = np.all(np.isfinite(np.asarray(jac(x), float))) and np.all(
+                np.isfinite(np.asarray(hess(x), float))
+            )
+    except Exception:
+        ok = False
+    if ok:
+        return jac, hess
+    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, float)), 1.0)
+    return (
+        lambda v: numerical_gradient(fun, v, 1e-2 * steps),
+        lambda v: numerical_hessian(fun, v, steps),
+    )
 
 
 def _canonical(neg_ll, params, bounds, n_obs, held=(), name=""):
@@ -537,9 +563,8 @@ def _search_proportional_odds(model, data):
 
 
 def _numerical(fun, x, n_obs):
-    """A :class:`Search` of a likelihood autograd cannot differentiate,
-    by central differences (``numerical_gradient``, ``numerical_hessian``,
-    in steps relative to each component)."""
+    """A :class:`Search` of a likelihood written in plain numpy, by
+    central differences (see :func:`_derivatives`)."""
     from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 
     x = np.asarray(x, dtype=float)

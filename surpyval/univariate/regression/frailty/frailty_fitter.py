@@ -41,7 +41,7 @@ from autograd.scipy.special import gammaln as _ad_gammaln
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
-from surpyval.univariate.parametric.fitters import OPTIMUM_GTOL
+from surpyval.univariate.parametric.fitters import at_boundary_maximum
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
@@ -244,29 +244,18 @@ def _at_zero_variance(fun: Callable, res: Any, n_obs: float) -> bool:
     the check of its gradient and Hessian (``judge_search``'s ``held``).
 
     ``theta`` is searched as ``log theta``, whose boundary is at minus
-    infinity: there the likelihood stops depending on it, its gradient
-    and curvature in ``log theta`` are zero (or rounding), and the
-    Hessian is singular, so the usual check cannot pass however well the
-    other parameters are fitted. The fit is on the boundary when the
-    likelihood does not change, to rounding, as ``theta`` moves further
-    towards 0 (a factor ``e^10``, as ``_settle_on_zero_variance`` steps);
-    and it is a maximum there -- the condition that replaces the zero
-    gradient for a parameter on a boundary -- when moving ``theta`` off
-    it, to ``1e-6`` (its natural unit being 1), does not raise the
-    likelihood: a slope per observation above ``-OPTIMUM_GTOL``.
+    infinity, where the Hessian is singular (see ``at_boundary_maximum``).
+    The fit is there when the likelihood does not change, to rounding, as
+    ``theta`` moves further towards 0 (a factor ``e^10``, as
+    ``_settle_on_zero_variance`` steps), and a maximum there when moving
+    ``theta`` off it, to ``1e-6`` (its natural unit being 1), does not
+    raise the likelihood.
     """
     u = np.array(res.x, dtype=float)
-    f = float(res.fun)
     toward, away = u.copy(), u.copy()
     toward[-1] -= 10.0
-    step = 1e-6
-    away[-1] = np.log(step)
-    with np.errstate(all="ignore"):
-        f_toward, f_away = float(fun(toward)), float(fun(away))
-    if not (np.isfinite(f) and np.isfinite(f_toward) and np.isfinite(f_away)):
-        return False
-    flat = abs(f_toward - f) <= 1e-12 * max(abs(f), 1.0)
-    return bool(flat and (f_away - f) / step / n_obs > -OPTIMUM_GTOL)
+    away[-1] = np.log(1e-6)
+    return at_boundary_maximum(fun, u, toward, away, 1e-6, n_obs)
 
 
 @primitive

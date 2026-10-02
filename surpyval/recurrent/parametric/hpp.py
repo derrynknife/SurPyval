@@ -17,7 +17,9 @@ from surpyval.recurrent.parametric.counting_process import (
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.validation import check_option
@@ -281,13 +283,25 @@ class HPP(CountingProcess):
         res = root(jac, init, jac=hess)
         out.res = res
         out.params = np.exp(res.x)
+        # The root of the score is accepted as the maximum only where it
+        # is one (a zero gradient and a positive curvature, per event).
+        n_obs = bic_sample_size(data)
+        verified = bool(
+            np.all(np.isfinite(res.x))
+            and is_local_minimum(
+                neg_ll, jac, hess, res.x, obj_scale=max(float(n_obs), 1.0)
+            )
+        )
+        out.maximum = "verified" if verified else "unverified"
+        if not verified:
+            warn_unverified("The HPP fit")
 
         # ``neg_ll`` is parameterised by ``log_rate`` for a stable optimiser;
         # expose it in natural (rate) space so the shared likelihood-inference
         # machinery sees ``_neg_ll(_mle)`` with ``_mle`` the fitted rate.
         out._neg_ll = lambda params: neg_ll(np.log(np.asarray(params)))
         out._mle = np.asarray(out.params, dtype=float)
-        out._n_obs = bic_sample_size(data)
+        out._n_obs = n_obs
 
         return out
 

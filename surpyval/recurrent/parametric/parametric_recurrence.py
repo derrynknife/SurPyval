@@ -13,6 +13,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.no_maximum import restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import option_error
 
@@ -59,6 +60,12 @@ class ParametricRecurrenceModel(
     mcf_hat: "np.ndarray"
     how: str
     res: Any
+    #: What a maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
+    #: applicable"`` for a least-squares fit or a model built from its
+    #: parameters, ``"unknown"`` for one restored from a dict saved
+    #: without it.
+    maximum: str = "not applicable"
 
     # -- serialisation -----------------------------------------------------
 
@@ -83,6 +90,7 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
+                "maximum": self.maximum,
             }
         )
 
@@ -102,6 +110,7 @@ class ParametricRecurrenceModel(
         out.dist = intensity_dist_by_name(model_dict["dist"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
+        out.maximum = restored_maximum(model_dict)
         return out
 
     def _parameter_names(self) -> list:
