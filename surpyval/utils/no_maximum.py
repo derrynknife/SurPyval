@@ -20,7 +20,7 @@ import contextvars
 import warnings
 from collections.abc import Iterator
 
-from surpyval.utils import _caller_stacklevel
+from surpyval.utils.warnings import caller_stacklevel
 
 # Set while a caller that reads ``maximum`` off its models is fitting
 _QUIET: contextvars.ContextVar[bool] = contextvars.ContextVar(
@@ -114,5 +114,5 @@ def warn_no_maximum(what: str, consequence: str, advice: str) -> None:
     warnings.warn(
         "No finite maximum: {}. {}; {}.".format(what, consequence, advice),
         UserWarning,
-        stacklevel=_caller_stacklevel(),
+        stacklevel=caller_stacklevel(),
     )

@@ -20,6 +20,10 @@ on:
 
 env:
   SRC: surpyval # Source directory to run jobs on
+  # What the style checks cover: the package, the root conftest and the
+  # maintenance scripts. (mypy checks the package; the others are not
+  # annotated.)
+  LINT: surpyval conftest.py scripts
 
 jobs:
   lint:
@@ -38,13 +42,16 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: flake8
-        run: flake8 $SRC
+        run: flake8 $LINT
+
+      - name: isort
+        run: isort --check-only $LINT
 
       - name: mypy
         run: mypy $SRC
 
       - name: black
-        run: black --check $SRC
+        run: black --check $LINT
 
   # The conformance suite runs on every pull request, like lint, rather
   # than waiting for the release pull request with the rest of the tests.
@@ -126,10 +133,6 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: pytest
-        # The alpha-stage modules are not part of the release contract
-        # and are excluded from the deployment test run. (Beta-stage
-        # tests, e.g. the survival forest's, do run.)
-        #
         # Run across all available cores: the suite is dominated by a
         # handful of Monte Carlo and bootstrap tests, so it parallelises
         # well -- 13m21 to 4m10 on four cores locally. Coverage comes
@@ -145,8 +148,7 @@ jobs:
         # in. They are skipped by default because they are 97 of the
         # suite's 180 seconds locally, but deployment still tests them.
         run:
-          python -m pytest -n auto --cov=surpyval --cov-report=
-          --ignore=surpyval/tests/alpha --run-ml
+          python -m pytest -n auto --cov=surpyval --cov-report= --run-ml
 
       # Execute the ``>>>`` examples in the docstrings and compare their
       # printed output. This is what a user (or an agent) sees from
@@ -157,14 +159,13 @@ jobs:
       # doctest collection does not disturb coverage or xdist.
       #
       # ``surpyval/tests`` is excluded because the test modules have no
-      # user-facing examples, and ``surpyval/alpha`` because it is not
-      # part of the release contract (same reason the suite skips it).
+      # user-facing examples.
       # Option flags are set in pyproject.toml; conftest.py adds the
       # numeric comparison that lets the examples record real output.
       - name: doctests
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
 
       # The numeric comparison above only runs for an example whose
       # output has actually drifted -- a handful on any one machine, and
@@ -175,7 +176,7 @@ jobs:
       - name: doctests (numeric comparison forced)
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
           --doctest-force-numeric
 
       - name: coverage

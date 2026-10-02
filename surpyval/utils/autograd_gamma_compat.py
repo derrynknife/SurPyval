@@ -57,6 +57,27 @@ _EPS_H = np.finfo(float).eps ** (1.0 / 3.0)
 # keeps its relative precision to within 1e3 * eps.
 _COMPLEMENT = 1e-3
 _LN2 = float(np.log(2.0))
+# A probability is below _COMPLEMENT only where its complement, as scipy
+# computes it (to 1e-14), is above this.
+_NEAR_ONE = 0.99
+
+
+def _where_near_one(
+    f: Callable, args: tuple, complement: npt.NDArray
+) -> npt.NDArray:
+    """``f(*args)`` where ``complement`` (f's complement, computed) is above
+    ``_NEAR_ONE``, and 1 elsewhere: where f is below ``_COMPLEMENT`` (the
+    only place the callers use it, besides choosing a side) it is f, to
+    the bit. Each incomplete function costs as much as its complement, and
+    computing both everywhere doubled the cost of a censored fit."""
+    complement = np.asarray(complement, dtype=float)
+    out = np.ones(complement.shape)
+    near = complement > _NEAR_ONE
+    if np.any(near):
+        out[near] = f(
+            *(np.broadcast_to(v, complement.shape)[near] for v in args)
+        )
+    return out
 
 
 def _step(v: Boxable) -> Boxable:
@@ -217,7 +238,7 @@ def _gammaincln_raw(a: Boxable, x: Boxable) -> Boxable:
         np.asarray(a, dtype=float), np.asarray(x, dtype=float)
     )
     p = _sc_gammainc(a_arr, x_arr)
-    q = _sc_gammaincc(a_arr, x_arr)
+    q = _where_near_one(_sc_gammaincc, (a_arr, x_arr), p)
     with np.errstate(divide="ignore"):
         # log1p(-Q) where P is near 1, and rounds to it (#442)
         out = np.where(
@@ -276,7 +297,7 @@ def _gammainccln_raw(a: Boxable, x: Boxable) -> Boxable:
     q = _sc_gammaincc(a_arr, x_arr)
     out = np.array(np.log(np.clip(q, _LOG_EPS, np.inf)), dtype=float)
     # log1p(-P) where Q is near 1, and rounds to it (#442)
-    p = _sc_gammainc(a_arr, x_arr)
+    p = _where_near_one(_sc_gammainc, (a_arr, x_arr), q)
     out = np.where(p < _COMPLEMENT, np.log1p(-np.minimum(p, _COMPLEMENT)), out)
     # Q(a, x) underflows past ~1e-308 (x of ~700 for a small a), where
     # a clipped log would cap the Gamma cumulative hazard. There x >> a
@@ -622,8 +643,16 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
     shape = x_arr.shape
     inside = (x_arr > 0.0) & (x_arr < 1.0)
     xs = np.where(inside, x_arr, 0.5)
-    p = _sc_betainc(a_arr, b_arr, xs)
-    q = _sc_betaincc(a_arr, b_arr, xs)
+    # The side asked for everywhere, the other where it can be the small
+    # tail (``_where_near_one``): the two sides' only other use is to
+    # choose the small one, and there a 1 chooses as the value would.
+    args = (a_arr, b_arr, xs)
+    if upper:
+        q = _sc_betaincc(*args)
+        p = _where_near_one(_sc_betainc, args, q)
+    else:
+        p = _sc_betainc(*args)
+        q = _where_near_one(_sc_betaincc, args, p)
     with np.errstate(divide="ignore"):
         log_p = np.array(np.log(p), dtype=float, ndmin=1)
         log_q = np.array(np.log(q), dtype=float, ndmin=1)

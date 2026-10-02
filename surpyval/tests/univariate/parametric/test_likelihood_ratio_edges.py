@@ -20,7 +20,7 @@ from scipy.special import expit, logit
 from scipy.special import ndtri as z
 from scipy.stats import poisson
 
-import surpyval.univariate.parametric.parametric as parametric_module
+import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 
 CRIT_95 = z(0.975) ** 2
@@ -171,7 +171,7 @@ def test_ew_profile_follows_its_valleys(ew, name, value, want):
     # Nelder-Mead over a grid of starts (_brute_profile), recorded.
     idx = ew.dist.param_map[name]
     coord = ew._lr_coords()[0][idx]
-    path = parametric_module._LRPath()
+    path = likelihood_ratio._LRPath()
     nll_hat = _nll(ew, ew.params)
     for w in np.linspace(coord.to_u(ew.params[idx]), coord.to_u(value), 25):
         nll = ew._profile_neg_ll(idx, coord.from_u(w), path=path)
@@ -273,7 +273,7 @@ def test_lr_bounds_raise_no_raw_warnings(family, name, alpha, request):
 # The walk's levelling-off test (_lr_walk)
 # ---------------------------------------------------------------------------
 def _walk(deviance, crit, end=709.78):
-    return parametric_module._lr_walk(deviance, 0.0, 0.5, 1.0, crit, end)
+    return likelihood_ratio._lr_walk(deviance, 0.0, 0.5, 1.0, crit, end)
 
 
 def test_walk_reads_a_converging_profile_as_unbounded():

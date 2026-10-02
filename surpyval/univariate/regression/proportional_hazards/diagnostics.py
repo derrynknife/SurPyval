@@ -21,8 +21,6 @@ from scipy.stats import chi2
 
 from surpyval.utils.linalg import safe_inv
 
-from .cox_ph import cox_at_risk_mask
-
 if TYPE_CHECKING:  # pragma: no cover
     from ..semi_parametric_regression_model import (
         SemiParametricRegressionModel,
@@ -85,6 +83,21 @@ def _require_cox(model: "SemiParametricRegressionModel") -> dict:
     return dict(data, Z=np.asarray(data["Z"], dtype=float) - center)
 
 
+def _bucket_sums(
+    bucket: np.ndarray, values: np.ndarray, size: int
+) -> np.ndarray:
+    """The sums of ``values`` (rows) by ``bucket``, in ``size`` buckets."""
+    values = np.asarray(values, dtype=float)
+    if values.ndim == 1:
+        return np.bincount(bucket, weights=values, minlength=size)
+    return np.column_stack(
+        [
+            np.bincount(bucket, weights=values[:, j], minlength=size)
+            for j in range(values.shape[1])
+        ]
+    ).reshape(size, values.shape[1])
+
+
 def _risk_set_means(
     data: dict, beta: np.ndarray, tie_method: str = "breslow"
 ) -> tuple:
@@ -123,30 +136,44 @@ def _risk_set_means(
     efron = str(tie_method).lower() == "efron"
 
     event_times = np.unique(x[c == 0])
-    p = Z.shape[1]
     K = event_times.size
-    Zbar = np.empty((K, p))
-    S0 = np.empty(K)
-    d = np.empty(K)
-    A = np.empty(K)
-    B = np.empty((K, p))
-    A_own = np.empty(K)
-    B_own = np.empty((K, p))
-    for k, tau in enumerate(event_times):
-        at_risk = cox_at_risk_mask(x, tl, tau)
-        s0 = w[at_risk].sum()
-        s1 = (w[at_risk, None] * Z[at_risk]).sum(axis=0)
-        is_event = (x == tau) & (c == 0)
-        d_k = float(n[is_event].sum())
-        S0[k] = s0
-        d[k] = d_k
-        m = int(round(d_k))
-        if efron and m > 1:
-            s0D = w[is_event].sum()
-            s1D = (w[is_event, None] * Z[is_event]).sum(axis=0)
+    # The risk sums at every event time at once, as the fit and its
+    # baseline compute them (``cox_at_risk_mask``'s convention, #299):
+    # everyone with ``x >= tau`` (a suffix sum over the rows bucketed by
+    # the number of event times at or before their exit) less those not
+    # yet entered, ``tl >= tau`` (valid because ``tl < x`` on every row).
+    # A loop over the event times with a mask of every row was O(n K):
+    # 29 s for the martingale residuals of 3e4 rows with distinct times.
+    wZ = w[:, None] * Z
+    exit_k = np.searchsorted(event_times, x, side="right")
+    entry_k = np.searchsorted(event_times, tl, side="right")
+
+    def suffix(bucket: np.ndarray, values: np.ndarray) -> np.ndarray:
+        # sum of ``values`` over the rows whose bucket is > k, for each k
+        out = _bucket_sums(bucket, values, K + 1)
+        return out[::-1].cumsum(axis=0)[::-1][1:]
+
+    S0 = suffix(exit_k, w) - suffix(entry_k, w)
+    S1 = suffix(exit_k, wZ) - suffix(entry_k, wZ)
+
+    is_event = c == 0
+    event_k = np.searchsorted(event_times, x[is_event])
+    d = _bucket_sums(event_k, n[is_event], K)
+    Zbar = S1 / S0[:, None]
+    A = d / S0
+    B = Zbar * (d / S0)[:, None]
+    A_own = A.copy()
+    B_own = B.copy()
+    if efron:
+        S0D = _bucket_sums(event_k, w[is_event], K)
+        S1D = _bucket_sums(event_k, wZ[is_event], K)
+        for k in np.flatnonzero(np.round(d) > 1):
+            m = int(round(d[k]))
             fracs = np.arange(m) / m  # l/m for l = 0..m-1
-            s0_l = s0 - fracs * s0D
-            e_l = (s1[None, :] - fracs[:, None] * s1D[None, :]) / s0_l[:, None]
+            s0_l = S0[k] - fracs * S0D[k]
+            e_l = (S1[k][None, :] - fracs[:, None] * S1D[k][None, :]) / s0_l[
+                :, None
+            ]
             inv_l = 1.0 / s0_l
             own_coef = 1.0 - fracs  # (m - l)/m
             Zbar[k] = e_l.mean(axis=0)
@@ -154,13 +181,6 @@ def _risk_set_means(
             B[k] = (inv_l[:, None] * e_l).sum(axis=0)
             A_own[k] = (own_coef * inv_l).sum()
             B_own[k] = ((own_coef * inv_l)[:, None] * e_l).sum(axis=0)
-        else:
-            zbar = s1 / s0
-            Zbar[k] = zbar
-            A[k] = d_k / s0
-            B[k] = zbar * (d_k / s0)
-            A_own[k] = A[k]
-            B_own[k] = B[k]
     return event_times, Zbar, S0, d, A, B, A_own, B_own
 
 
@@ -169,7 +189,7 @@ def _information(model: "SemiParametricRegressionModel") -> np.ndarray:
     log-likelihood) at the fitted ``beta``."""
     # ``model.jac`` is the jac/hess closure returned by the fitter (the class
     # attribute is loosely annotated as an array); [1] is the Hessian.
-    _, hess = model.jac(model.beta)  # type: ignore[operator]
+    _, hess = model.jac(model.beta)
     return np.atleast_2d(hess)
 
 
@@ -285,19 +305,22 @@ def compute_residuals(
     event_rows = np.flatnonzero(c == 0)
     zbar_idx = np.searchsorted(event_times, x[event_rows])
     score[event_rows] += Z[event_rows] - Zbar[zbar_idx]
-    # Second term: subtract the expected score accrued while at risk.
-    is_event_row = c == 0
-    for i in range(Z.shape[0]):
-        in_window = (event_times > tl[i]) & (event_times <= x[i])
-        if not in_window.any():
-            continue
-        A_sum = A[in_window].sum()
-        B_sum = B[in_window].sum(axis=0)
-        if is_event_row[i]:
-            k_own = np.searchsorted(event_times, x[i])
-            A_sum += A_own[k_own] - A[k_own]
-            B_sum += B_own[k_own] - B[k_own]
-        score[i] -= w[i] * (Z[i] * A_sum - B_sum)
+    # Second term: subtract the expected score accrued while at risk, over
+    # the event times in each row's window (tl, x]: differences of the
+    # cumulative A and B (a loop over the rows was O(n K)).
+    lo = np.searchsorted(event_times, tl, side="right")
+    hi = np.searchsorted(event_times, x, side="right")
+    in_window = hi > lo
+    cum_A = np.concatenate([[0.0], np.cumsum(A)])
+    cum_B = np.concatenate([np.zeros((1, B.shape[1])), np.cumsum(B, axis=0)])
+    A_sum = np.where(in_window, cum_A[hi] - cum_A[lo], 0.0)
+    B_sum = np.where(in_window[:, None], cum_B[hi] - cum_B[lo], 0.0)
+    # A tied death accrues only its own partial step at its event time.
+    own = in_window[event_rows]
+    rows_own, k_own = event_rows[own], zbar_idx[own]
+    A_sum[rows_own] += A_own[k_own] - A[k_own]
+    B_sum[rows_own] += B_own[k_own] - B[k_own]
+    score -= w[:, None] * (Z * A_sum[:, None] - B_sum)
     score = score * n[:, None]
     if kind == "score":
         return score

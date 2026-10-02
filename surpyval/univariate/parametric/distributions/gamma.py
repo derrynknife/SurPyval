@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.special import digamma, gammaincinv
 
-from surpyval import np
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln

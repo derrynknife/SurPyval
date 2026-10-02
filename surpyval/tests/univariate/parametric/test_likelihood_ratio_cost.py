@@ -18,6 +18,7 @@ from scipy.optimize import brentq, minimize_scalar
 from scipy.special import ndtri as z
 
 import surpyval as sp
+import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
 import surpyval.univariate.parametric.parametric as parametric_module
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 
@@ -96,6 +97,35 @@ def test_a_band_takes_fewer_evaluations(monkeypatch):
     )
     model.cb(np.linspace(2.0, 15.0, 10), method="lr")
     assert len(calls) < 8000
+
+
+def test_a_likelihood_is_evaluated_once_per_point(monkeypatch):
+    # The searches ask for the same point again (SLSQP's function and
+    # gradient calls, a search's result checked after it): a quarter of
+    # a band's likelihood evaluations, each O(n), were repeats. The
+    # likelihoods are kept, so the band is the same to the bit.
+    model = _fitted("Weibull")
+    times = np.linspace(2.0, 15.0, 10)
+    seen = []
+    lean = likelihood_ratio._lean_neg_ll
+
+    def recorded(dist, data, theta):
+        seen.append(np.asarray(theta, dtype=float).tobytes())
+        return lean(dist, data, theta)
+
+    monkeypatch.setattr(likelihood_ratio, "_lean_neg_ll", recorded)
+    band = model.cb(times, method="lr")
+    assert len(seen) > 1000
+    assert len(set(seen)) == len(seen)
+    # The same band from a model that keeps no likelihoods
+
+    class KeepsNothing(dict):
+        def __setitem__(self, key, value):
+            pass
+
+    fresh = _fitted("Weibull")
+    fresh.__dict__["_lr_nll_memo"] = (fresh.surv_data, KeepsNothing())
+    np.testing.assert_array_equal(fresh.cb(times, method="lr"), band)
 
 
 def test_a_bound_is_the_extreme_on_the_region_boundary():

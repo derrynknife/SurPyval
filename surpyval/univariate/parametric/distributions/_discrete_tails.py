@@ -4,10 +4,10 @@ accurate log tails."""
 
 from typing import Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import gammaln as _sc_gammaln
 
-from surpyval import np
 from surpyval.utils.autograd_gamma_compat import log_gamma_ratio
 
 __all__ = [

@@ -154,6 +154,16 @@ def test_parameter_names_and_life_parameter():
     assert ph.life_parameter is None
 
 
+def test_fitter_param_names_is_the_deprecated_alias():
+    # The accelerated-life fitter lost its ``param_names`` when the other
+    # fitters got the deprecated alias (an AttributeError); it now mirrors
+    # its distribution like them (consolidation sweep).
+    fitter = AcceleratedLife(Weibull, Power)
+    with pytest.warns(DeprecationWarning, match="param_names is deprecated"):
+        names = fitter.param_names
+    assert names == fitter.parameter_names == ["alpha", "beta"]
+
+
 def test_param_cb_refuses_the_life_parameter():
     x, stress = _weibull_power()
     model = AcceleratedLife(Weibull, Power).fit(x, Z=stress)

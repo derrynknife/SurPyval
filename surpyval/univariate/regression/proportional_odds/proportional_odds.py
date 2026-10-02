@@ -86,9 +86,6 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import (
     _caller_stacklevel,
-    check_covariate_rows,
-    finite_covariate_mask,
-    xcnt_handler,
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
@@ -107,13 +104,17 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._fit_skeleton import (
+    LOG_MAX,
+    baseline_at_origin_error,
+    covariate_center,
+)
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
-from ..proportional_hazards.cox_ph import _covariate_center
 from ..regression_data import (
-    check_finite_event_times,
+    LinearPredictorMixin,
     design_matrix_from_df,
-    prepare_Z,
     restore_covariate_meta,
+    semi_parametric_inputs,
     serialise_covariate_meta,
 )
 
@@ -398,18 +399,13 @@ def _validate(
     n: "npt.ArrayLike | None",
     tl: "npt.ArrayLike | None",
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    if tl is not None and np.ndim(tl) == 2:
-        raise ValueError(
-            "ProportionalOdds supports left truncation (delayed entry) "
-            "only, given as a one-dimensional `tl`; right or interval "
-            "truncation is not available. Use a parametric proportional "
-            "odds model (e.g. PO(LogLogistic)) with t=[tl, tr] for such "
-            "data."
-        )
-    x_h, c_h, n_h, t_h = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
-    c_arr = np.asarray(c_h, dtype=float)
-    if np.isin(c_arr, (-1, 2)).any():
-        raise ValueError(
+    x_arr, c_arr, n_arr, tl_arr, Z_arr = semi_parametric_inputs(
+        x,
+        Z,
+        c,
+        n,
+        tl,
+        censoring=(
             "ProportionalOdds supports only observed (c=0) and "
             "right-censored (c=1) observations, with optional left "
             "truncation (`tl`); its baseline jumps at the event times, so "
@@ -417,27 +413,15 @@ def _validate(
             "(c=2) data. Use a parametric proportional odds model instead, "
             "e.g. PO(LogLogistic).fit(x, Z, c=c) or WeibullPO.fit(x, Z, "
             "c=c), which handle every censoring type."
-        )
-    x_arr = np.asarray(x_h, dtype=float)
-    if x_arr.ndim == 2:
-        # Two columns with no interval row: xl == xr on every row.
-        x_arr = x_arr[:, 0]
-    check_finite_event_times(x_arr, c_arr)
-    tl_arr = np.asarray(t_h, dtype=float)[:, 0]
-    n_arr = np.asarray(n_h, dtype=float)
-    Z_arr = np.asarray(Z, dtype=float)
-    if Z_arr.ndim == 1:
-        Z_arr = Z_arr.reshape(-1, 1)
-    elif Z_arr.ndim != 2:
-        raise ValueError("Covariate matrix must be two dimensional")
-    check_covariate_rows(Z_arr, x_arr.shape[0])
-    # Rows with a NaN / infinite covariate are dropped with a warning, as
-    # in every regression fitter.
-    mask = finite_covariate_mask(Z_arr)
-    x_arr, c_arr, n_arr, tl_arr = (
-        a[mask] for a in (x_arr, c_arr, n_arr, tl_arr)
+        ),
+        truncation=(
+            "ProportionalOdds supports left truncation (delayed entry) "
+            "only, given as a one-dimensional `tl`; right or interval "
+            "truncation is not available. Use a parametric proportional "
+            "odds model (e.g. PO(LogLogistic)) with t=[tl, tr] for such "
+            "data."
+        ),
     )
-    Z_arr = Z_arr[mask]
     if not np.any(c_arr == 0):
         raise ValueError(
             "ProportionalOdds needs at least one event (c=0); with every "
@@ -465,13 +449,12 @@ def _po_aliased(
     The scale is the number of events times each column's weighted
     variance, the yardstick of
     :func:`~..proportional_hazards.cox_ph._cox_aliased`."""
-    Zc = Z - _covariate_center(Z, n)
+    Zc = Z - covariate_center(Z, n)
     gram = (Zc * n[:, None]).T @ Zc
     aliased = aliased_columns(gram, Z.shape[0], constant_columns(Z))
     return aliased, n_events * np.diag(gram) / n.sum()
 
 
-_LOG_MAX = float(np.log(np.finfo(float).max))
 _LOG_TINY = float(np.log(np.finfo(float).tiny))
 
 
@@ -484,24 +467,19 @@ def _baseline_at_origin(
     jump there over- or underflows, or the linear predictor ``lp`` of a
     fitted row does (as CoxPH and the parametric fits refuse, #463)."""
     out = log_g + shift
-    ok = bool(np.all(np.abs(lp) < _LOG_MAX)) and bool(
-        np.all((out < _LOG_MAX) & (out > _LOG_TINY))
+    ok = bool(np.all(np.abs(lp) < LOG_MAX)) and bool(
+        np.all((out < LOG_MAX) & (out > _LOG_TINY))
     )
     if not ok:
-        raise ValueError(
-            "The baseline odds at Z = 0 cannot be represented for these "
-            "covariates: their means are {} and the baseline at Z = 0 is "
-            "exp({:.4g}) times that at the means, which over- or "
-            "underflows. Fit with center=True to report the baseline at "
-            "the covariate means (model.center) instead, or move the "
-            "covariates nearer 0.".format(
-                np.array2string(np.asarray(center), precision=4), shift
-            )
-        )
+        # shift = -gamma'center = beta'center, the model's coefficients
+        # being beta = -gamma.
+        raise baseline_at_origin_error("baseline odds", center, shift, shift)
     return out
 
 
-class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
+class ProportionalOddsModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     A fitted semi-parametric proportional odds model, returned by
     :meth:`ProportionalOdds.fit <ProportionalOdds_.fit>` and
@@ -580,31 +558,10 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         ``beta_1``, ... for the covariate coefficients."""
         return ["beta_{}".format(i) for i in range(len(self.params))]
 
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): a constant column, which the baseline odds
-        absorb, or a linear combination of the others. Their ``beta`` is
-        ``nan`` (R's ``NA``), and predictions take it as 0."""
-        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
-
-    def _coef(self) -> npt.NDArray:
-        beta = np.asarray(self.beta, dtype=float)
-        return np.where(np.isnan(beta), 0.0, beta)
-
-    def _center(self) -> npt.NDArray:
-        if self.center is None:
-            return np.zeros(np.asarray(self.beta).shape[0])
-        return np.asarray(self.center, dtype=float)
-
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        return prepare_Z(Z, self.feature_names, self._model_spec)
-
-    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        if Z_arr.ndim == 0:
-            Z_arr = Z_arr.reshape(1)
-        return (Z_arr - self._center()) @ self._coef()
+    _ALIASED_WHY = (
+        "a constant column, which the baseline odds absorb, or a linear "
+        "combination of the others"
+    )
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -1083,7 +1040,7 @@ class ProportionalOdds_:
         """
         x, c, n, tl, Z = _validate(x, Z, c, n, tl)
         p = Z.shape[1]
-        mean = _covariate_center(Z, n)
+        mean = covariate_center(Z, n)
         Zc = Z - mean
         inner_tol = min(tol, 1e-10) * 1e-2
         lik = _POLikelihood(x, c, n, tl, Zc)

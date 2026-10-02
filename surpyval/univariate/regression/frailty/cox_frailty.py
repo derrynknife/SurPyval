@@ -55,10 +55,10 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import warn_no_maximum
 
 from .._aliasing import covariate_columns, expand
+from .._fit_skeleton import covariate_center
 from ..proportional_hazards.cox_ph import (
     CoxPH,
     _baseline_at_origin,
-    _covariate_center,
     _newton_raphson,
 )
 from ..regression_data import (
@@ -467,7 +467,7 @@ class CoxFrailtyFitter:
         if cox is not None and cox.aliased.size:
             kept = np.setdiff1d(kept, cox.aliased)
         Zk = Zfull[:, kept]
-        center = _covariate_center(Zk, w) if kept.size else np.zeros(0)
+        center = covariate_center(Zk, w) if kept.size else np.zeros(0)
         em = _CoxFrailtyEM(x, Zk - center, c, w, inv, n_groups, tie_method)
         if monotone:
             # The coefficients run off to infinity whatever theta is: the

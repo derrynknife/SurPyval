@@ -10,7 +10,8 @@ so the linear-time replacement cannot drift from it.
 import numpy as np
 import pytest
 
-from surpyval.utils import _entered_before, xcnt_to_xrd
+from surpyval.utils import xcnt_to_xrd
+from surpyval.utils.data_formats import _entered_before
 
 INF = np.inf
 

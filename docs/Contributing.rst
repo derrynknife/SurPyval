@@ -19,17 +19,23 @@ the pre-commit hooks:
 Code style is enforced rather than requested. The pre-commit hooks
 (``.pre-commit-config.yaml``) run isort, pyupgrade (Python 3.11+ syntax),
 black (line length 79), flake8 and mypy on every commit, and the lint job in
-continuous integration runs ``flake8``, ``mypy`` and ``black --check`` on the
-``surpyval`` package. mypy is strict about annotations: every function in the
-package must be type annotated (``disallow_untyped_defs``); only the tests and
-the ``surpyval.alpha`` tree are exempt.
+continuous integration runs ``flake8``, ``isort --check-only`` and ``black
+--check`` on the ``surpyval`` package, ``conftest.py`` and ``scripts/``, and
+``mypy`` on the package. flake8 also caps each function's McCabe complexity
+at 70 (``max-complexity`` in ``pyproject.toml``). mypy reports a ``type:
+ignore`` that silences nothing, a redundant cast and an ``==`` between types
+that cannot be equal; an ignore needed under one Python's numpy stubs but not
+another's carries the ``unused-ignore`` code as well. mypy is strict about
+annotations: every function in the package must be type annotated
+(``disallow_untyped_defs``); only the tests, ``conftest.py`` and ``scripts/``
+are exempt.
 
 To run the tests as continuous integration does:
 
 .. code-block:: bash
 
-    python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
-    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests --ignore=surpyval/alpha
+    python -m pytest -n auto --run-ml
+    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests
 
 The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
@@ -119,6 +125,43 @@ The properties enforce the package's :doc:`Design Principles`: the rules every
 model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
+
+Proving a refactor changed nothing
+----------------------------------
+
+A refactor (moving, merging or splitting code) must not change what the
+package computes or says. ``scripts/refactor/snapshot.py`` records a
+snapshot of it before the change and another after, and compares them:
+
+.. code-block:: bash
+
+    python scripts/refactor/snapshot.py record /tmp/before.json
+    # ... make the change ...
+    python scripts/refactor/snapshot.py record /tmp/after.json
+    python scripts/refactor/snapshot.py compare /tmp/before.json /tmp/after.json
+
+A snapshot holds, for every case in the conformance registry: the fitted
+parameters, ``neg_ll``, ``aic`` and ``bic``, every function at the
+registry's query, every confidence bound the case declares (each side and
+``on=``), ``to_dict()``, ``repr`` and ``summary()``, the warnings each call
+raises, each alternate fit path, and the error each of a corpus of invalid
+inputs raises. It adds the fits the registry does not reach (time-varying
+covariates, seeded bootstraps, recurrent data mixing every kind of
+censoring), the public API (names, signatures and defaults), the modules
+``import surpyval`` loads, and the IDs of the collected tests and
+doctests. It takes two to three minutes on two cores (``-j`` sets the
+workers; ``--full`` adds the likelihood-ratio bounds the conformance suite
+runs only nightly, about two minutes more).
+
+Floats are stored exactly, so ``compare`` is bit-exact unless given
+``--rtol``. A pure move or merge must compare clean. Splitting a function
+into steps may change results by at most ``--rtol 1e-12``, with the reason
+for each difference given in the pull request. A change that is meant to
+alter the API (a removed name, a new method) shows only in the ``api``
+section; say so. The snapshot depends on the numpy and scipy build, so
+compare snapshots recorded in the same environment, and with the same
+version of the script (copy it aside if the change edits it). The snapshots
+themselves are not committed.
 
 Mutation testing
 ----------------

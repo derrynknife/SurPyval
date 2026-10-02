@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import expit
 from scipy.stats import fisk
 
-from surpyval import np
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 

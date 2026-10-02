@@ -1,11 +1,11 @@
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.scipy.special import gammaincc, gammaln
 from scipy.stats import poisson
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     stirling2_numbers,

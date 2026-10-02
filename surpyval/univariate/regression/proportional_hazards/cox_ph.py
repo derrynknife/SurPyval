@@ -43,11 +43,13 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
-from ..regression_data import (
-    check_finite_event_times,
-    design_matrix_from_df,
+from .._fit_skeleton import (
+    LOG_MAX,
+    baseline_at_origin_error,
+    covariate_center,
 )
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
+from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
 
 nonparametric_dists = {
@@ -312,6 +314,49 @@ class _RiskSetRows:
             return total[self.exit]
         total = np.concatenate([[0.0], total])
         return total[self.exit + 1] - total[self.entered]
+
+
+class _CoxRiskSets:
+    """The data of an Efron or Breslow partial likelihood in event-time
+    order (:func:`_sort_by_event_time`), with the risk-set bookkeeping both
+    generators share: the grouping by exit and by entry time, the deaths
+    ``n_d`` at each unique time, where each row sits on the time axis
+    (``rows``) and the summed covariates of the deaths ``S_d``.
+    ``n_d_x`` (the deaths of each row) and ``n`` are columns."""
+
+    def __init__(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> None:
+        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
+        self.Z = Z
+        self.gb_x = _GroupBy(x)
+        self.gb_tl = _GroupBy(tl)
+        death_n = np.where(c == 0, n, 0)
+        self.n_d = self.gb_x.sum(death_n)[1]
+        self.death_n = death_n
+        self.risk_n = n
+        self.n_d_x = death_n.reshape(-1, 1)
+        self.n = n.reshape(-1, 1)
+        # For each unique event time, how many unique entry times precede
+        # it: feeds the not-yet-entered suffix-sum gather.
+        self.pos = np.searchsorted(
+            self.gb_tl.unique, self.gb_x.unique, side="left"
+        )
+        self.rows = _RiskSetRows(x, self.gb_x.unique, tl)
+        self.S_d = self.gb_x.sum(self.n_d_x * Z)[1]
+
+    def entered(self, R: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+        """The at-risk sums ``R`` of the row weights ``w`` less the mass
+        not yet entered. ``w`` may be Z-weighted, so signed: the exact
+        gather of ``not_yet_entered`` (#250)."""
+        if not self.rows.truncated:
+            return R
+        return R - not_yet_entered(self.pos, self.gb_tl.sum(self.n * w)[1])
 
 
 def _cox_information(
@@ -683,7 +728,7 @@ def _cox_aliased(
         return np.array([], dtype=int)
     Z = np.asarray(Z, dtype=float)
     n = np.asarray(n, dtype=float).reshape(-1)
-    Zc = Z - _covariate_center(Z, n)
+    Zc = Z - covariate_center(Z, n)
     spread = n_events * (n @ Zc**2) / n.sum()
     return aliased_columns(
         info, Z.shape[0], constant_columns(Z, strata), spread
@@ -954,27 +999,6 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
     return neg_ll, jac_hess
 
 
-def _covariate_center(Z: npt.NDArray, n: npt.NDArray) -> npt.NDArray:
-    """The ``n``-weighted mean of the covariate rows, the point the fit
-    centres the covariates on (#459).
-
-    The partial likelihood depends on the covariates only through their
-    differences within a risk set, so fitting on ``Z - center`` gives the
-    same coefficients, while ``exp(beta'Z)`` stays near 1 for the rows of
-    the data instead of overflowing on a column far from 0 (a year, a
-    date as a day count). The baseline hazard it gives is that of a unit
-    at the centre; with ``center=True`` the model keeps it there, and every
-    prediction uses ``exp(beta'(Z - center))``, as R's ``coxph``,
-    lifelines and scikit-survival do (for start-stop data R's mean is over
-    the interval rows, as here). By default it is moved to ``Z = 0``
-    (:func:`_baseline_at_origin`).
-    """
-    Z = np.asarray(Z, dtype=float)
-    n = np.asarray(n, dtype=float).reshape(-1)
-    return (n @ Z) / n.sum()
-
-
-_LOG_MAX = float(np.log(np.finfo(float).max))
 _TINY = float(np.finfo(float).tiny)
 
 
@@ -1004,26 +1028,19 @@ def _baseline_at_origin(
         h0_0 = np.exp(np.log(h0) - shift)
         r_0 = np.exp(np.log(r) + shift)
     ok = (
-        bool(np.all(np.abs(lp) < _LOG_MAX))
+        bool(np.all(np.abs(lp) < LOG_MAX))
         and bool(np.all(np.isfinite(h0_0)) and np.all(np.isfinite(r_0)))
         and bool(np.all(h0_0[h0 > 0] >= _TINY))
         and bool(np.all(r_0[r > 0] >= _TINY))
     )
     if not ok:
-        raise ValueError(
-            "The {} at Z = 0 cannot be represented for these covariates: "
-            "their means are {} and the linear predictor there is "
-            "beta'center = {:.4g}, so the baseline at Z = 0 is exp({:.4g}) "
-            "times that at the means, which over- or underflows (as it "
-            "does when a covariate separates the events, and the "
-            "coefficients run off towards infinity). Fit with center=True "
-            "to report the baseline at the covariate means (model.center) "
-            "instead, or move the covariates nearer 0.".format(
-                what,
-                np.array2string(np.asarray(center), precision=4),
-                shift,
-                -shift,
-            )
+        raise baseline_at_origin_error(
+            what,
+            center,
+            shift,
+            -shift,
+            " (as it does when a covariate separates the events, and the "
+            "coefficients run off towards infinity)",
         )
     return r_0, h0_0
 
@@ -1149,52 +1166,34 @@ class CoxPH_:
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
-        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
-
-        # Groupby object for repeated use
-        gb_x = _GroupBy(x)
-        gb_tl = _GroupBy(tl)
-        n_d_x = np.where(c == 0, n, 0)
-        n_d = gb_x.sum(n_d_x)[1]
-        death_n = n_d_x
-        risk_n = n
-        n_d_x = n_d_x.reshape(-1, 1)
-        n = n.reshape(-1, 1)
-
-        x_ = gb_x.unique
-        x_tl = gb_tl.unique
-        # For each unique event time, how many unique entry times precede it:
-        # feeds the not-yet-entered suffix-sum gather below.
-        pos = np.searchsorted(x_tl, x_, side="left")
-        rows = _RiskSetRows(x, x_, tl)
+        rs = _CoxRiskSets(x, Z, c, n, tl)
+        Z, gb_x, n_d_x, n, n_d = rs.Z, rs.gb_x, rs.n_d_x, rs.n, rs.n_d
+        death_n, risk_n, rows, S_d = rs.death_n, rs.risk_n, rs.rows, rs.S_d
 
         # Efron's tie terms depend on the deaths only.
-        m = len(x_)
+        m = len(gb_x.unique)
         ties = _EfronTies(n_d)
         one, tied = ties.one, ties.tied
 
         def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
 
-            S_d = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
+            S_dz = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
 
-            x_, Ri = gb_x.sum(n * e_beta_z)
+            Ri = gb_x.sum(n * e_beta_z)[1]
 
             Ri = Ri[::-1].cumsum(axis=0)[::-1]
 
             # Subtract the not-yet-entered mass from the risk sums.
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            Ri = rs.entered(Ri, e_beta_z)
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
             efron_denom = ties.log_denominator(Ri.reshape(m), Di.reshape(m))
 
-            like = S_d.sum() - efron_denom.sum()
+            like = S_dz.sum() - efron_denom.sum()
             return -like
-
-        S_d = gb_x.sum(n_d_x * Z)[1]
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             # This line troubled me for longer than I care
@@ -1210,12 +1209,9 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
 
-            # Subtract the not-yet-entered mass from the risk sums. The
-            # Z-weighted sums are signed, so this must be the exact gather —
-            # see ``not_yet_entered`` (#250).
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = rs.entered(Ri, e_beta_z)
+            ZRi = rs.entered(ZRi, z_e_beta_z)
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
@@ -1278,22 +1274,9 @@ class CoxPH_:
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
-        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
-
-        gb_x = _GroupBy(x)
-        gb_tl = _GroupBy(tl)
-        n_d_x = np.where(c == 0, n, 0)
-        n_d = gb_x.sum(n_d_x)[1]
-        risk_n = n
-        n_d_x = n_d_x.reshape(-1, 1)
-        n = n.reshape(-1, 1)
-
-        x_ = gb_x.unique
-        x_tl = gb_tl.unique
-        # For each unique event time, how many unique entry times precede it:
-        # feeds the not-yet-entered suffix-sum gather below.
-        pos = np.searchsorted(x_tl, x_, side="left")
-        rows = _RiskSetRows(x, x_, tl)
+        rs = _CoxRiskSets(x, Z, c, n, tl)
+        Z, gb_x, n_d_x, n, n_d = rs.Z, rs.gb_x, rs.n_d_x, rs.n, rs.n_d
+        risk_n, rows, S_d = rs.risk_n, rs.rows, rs.S_d
         # The times with a death, the only ones the information sums over.
         active = n_d > 0
         n_d_active = n_d[active]
@@ -1308,8 +1291,7 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
 
             # Subtract the not-yet-entered mass from the risk sums.
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            Ri = rs.entered(Ri, e_beta_z)
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -1317,8 +1299,6 @@ class CoxPH_:
             like = di_beta_z - Ri
 
             return -like.sum()
-
-        S_d = gb_x.sum(n_d_x.reshape(-1, 1) * Z)[1]
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             # Only call this once.. Yay.
@@ -1330,12 +1310,9 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
 
-            # Subtract the not-yet-entered mass from the risk sums. The
-            # Z-weighted sums are signed, so this must be the exact gather —
-            # see ``not_yet_entered`` (#250).
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = rs.entered(Ri, e_beta_z)
+            ZRi = rs.entered(ZRi, z_e_beta_z)
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ
@@ -1656,14 +1633,13 @@ class CoxPH_:
             )
 
         x, c, n, tl, Z = validate_coxph(x, c, n, Z, tl, tie_method)
-        check_finite_event_times(x, c)
 
         # Good initial guess assumes no impact
         beta_init = np.zeros(Z.shape[1])
 
         # Fitted on centred covariates, so exp(beta'Z) cannot overflow on a
-        # column far from 0 (#459); see ``_covariate_center``.
-        mean = _covariate_center(Z, n)
+        # column far from 0 (#459); see ``covariate_center``.
+        mean = covariate_center(Z, n)
         Zc = Z - mean
         neg_ll, jac = func_generator(x, Zc, c, n, tl)
 
@@ -1786,7 +1762,6 @@ class CoxPH_:
                 _sub(tl_o, mask),
                 tie_method,
             )
-            check_finite_event_times(xs, cs)
             validated.append((s, xs, cs, ns_, tls, Zs))
 
         if not validated:
@@ -1794,7 +1769,7 @@ class CoxPH_:
         n_params = validated[0][5].shape[1]
         # One centre for every stratum, the mean over all the rows (as R's
         # coxph), so the strata's baselines stay comparable (#459).
-        mean = _covariate_center(
+        mean = covariate_center(
             np.vstack([v[5] for v in validated]),
             np.concatenate([v[3] for v in validated]),
         )
@@ -2084,22 +2059,16 @@ class CoxPH_:
         covariates as a ``formulaic`` formula, which codes categorical
         (e.g. ``"yes"`` / ``"no"``) columns.
         """
-        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc(
-                i=df[i_col].to_numpy(),
-                xl=df[xl_col].to_numpy(),
-                xr=df[xr_col].to_numpy(),
-                c=df[c_col].to_numpy(),
-                Z=Z,
-                n=None if n_col is None else df[n_col].to_numpy(),
-                tie_method=tie_method,
-                center=center,
-            )
-        model.feature_names = names
-        model.formula = form
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc,
+            df,
+            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            tie_method=tie_method,
+            center=center,
+        )
 
     def fit_tvc_timeline(
         self,
@@ -2191,35 +2160,16 @@ class CoxPH_:
         ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
         ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
-        Z, form, names, spec = _df_covariates(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc_timeline(
-                i=df[i_col].to_numpy(),
-                x=df[x_col].to_numpy(),
-                Z=Z,
-                c=df[c_col].to_numpy(),
-                n=None if n_col is None else df[n_col].to_numpy(),
-                tie_method=tie_method,
-                center=center,
-            )
-        model.feature_names = names
-        model.formula = form
-        model._model_spec = spec
-        return model
-
-
-def _df_covariates(
-    df: Any, Z_cols: str | list[str] | None, formula: str | None
-) -> tuple:
-    """The covariates of the TVC ``*_from_df`` fits, from ``Z_cols`` or a
-    ``formula`` (#485), with every row kept: a TVC fit refuses a missing
-    covariate rather than dropping part of a subject's path. The design is
-    the parametric regressions' (``design_matrix_from_df``, which their
-    TVC fits use too); Cox keeps its formula as a ``Formula``."""
-    from formulaic import Formula
-
-    Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-    return Z, None if formula is None else Formula(formula), names, spec
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            tie_method=tie_method,
+            center=center,
+        )
 
 
 CoxPH = CoxPH_()

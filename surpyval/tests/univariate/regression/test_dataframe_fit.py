@@ -158,3 +158,36 @@ def test_coxph_formula_predict_from_df():
     sf = model.sf([5, 10], new_df)
     assert sf.shape == (2,)
     assert np.all((sf >= 0) & (sf <= 1))
+
+
+def test_formula_is_the_str_given_for_every_fitter():
+    # Cox, Buckley-James and the competing-risks PH model kept a parsed
+    # formulaic.Formula, every other model the str it was given; a Cox
+    # model's formula also turned into a str on a save/load round trip
+    # (sweep decision 2, principle 21).
+    import surpyval
+    from surpyval import BuckleyJames, CompetingRisksProportionalHazards
+
+    df = _make_df()
+    rng = np.random.default_rng(1)
+    df["cause"] = rng.choice(["a", "b"], len(df))
+    df["id"] = np.arange(len(df))
+    df["start"] = 0.0
+    models = [
+        CoxPH.fit_from_df(df, "time", formula="age + sex", c_col="censored"),
+        CoxPH.fit_tvc_from_df(
+            df, "id", "start", "time", "censored", formula="age + sex"
+        ),
+        BuckleyJames.fit_from_df(
+            df, "time", formula="age + sex", c_col="censored"
+        ),
+        CompetingRisksProportionalHazards.fit_from_df(
+            df, "time", "cause", formula="age + sex", c_col="censored"
+        ),
+        WeibullPH.fit_from_df(df, "time", formula="age + sex"),
+    ]
+    for model in models:
+        assert type(model.formula) is str
+        assert model.formula == "age + sex"
+        restored = surpyval.from_dict(model.to_dict())
+        assert restored.formula == model.formula

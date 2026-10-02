@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 
-from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 

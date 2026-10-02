@@ -175,3 +175,54 @@ def test_brier_shape_validation():
     bad = np.ones((3, 3))  # wrong number of time columns
     with pytest.raises(ValueError, match="n_samples, n_times"):
         brier_score(x, c, bad, times)
+
+
+# -- the AUC's pairs counted from the sorted controls (performance sweep) --
+
+
+def _auc_by_pairs(x, c, risk, times, w):
+    # Every case against every control, as auc_td counted them, O(n^2)
+    auc = np.full(times.size, np.nan)
+    for k, t in enumerate(times):
+        r = risk[:, k]
+        cases = (x <= t) & (c == 0)
+        controls = x > t
+        if not cases.any() or not controls.any():
+            continue
+        rk = r[controls]
+        num = 0.0
+        for ri, wi in zip(r[cases], w[cases]):
+            num += wi * (
+                np.count_nonzero(ri > rk) + 0.5 * np.count_nonzero(ri == rk)
+            )
+        auc[k] = num / (w[cases].sum() * controls.sum())
+    return auc
+
+
+def test_auc_counts_the_pairs_as_every_comparison_did(monkeypatch):
+    # Ties in the risk and in the times, and missing risks: the same AUC,
+    # to the bit, as comparing each case with every control, which took
+    # 15 s at 1e5 rows and 20 horizons.
+    from surpyval.metrics import validation
+
+    rng = np.random.default_rng(3)
+    n = 700
+    x = np.round(rng.exponential(5, n)) + 0.5
+    c = rng.choice([0, 1], n)
+    risk = np.round(rng.normal(size=(n, 4)), 1)
+    risk[rng.uniform(size=risk.shape) < 0.05] = np.nan
+    times = np.quantile(x, [0.2, 0.5, 0.8, 0.95])
+    _, _, w = validation._ipcw(x, c, None, None)
+    expected = _auc_by_pairs(x, c, risk, times, w)
+
+    calls = []
+    count_nonzero = np.count_nonzero
+
+    def counting(*args, **kwargs):
+        calls.append(1)
+        return count_nonzero(*args, **kwargs)
+
+    monkeypatch.setattr(np, "count_nonzero", counting)
+    got = auc_td(x, c, risk, times)[1]
+    assert len(calls) < 10
+    np.testing.assert_array_equal(got, expected)

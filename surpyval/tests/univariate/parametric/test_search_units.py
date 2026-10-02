@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 import surpyval as sp
-from surpyval.univariate.parametric.parametric_fitter import _search_units
+from surpyval.univariate.parametric.optimised_fit import _search_units
 
 LOCATION = ("Normal", "Gumbel", "GumbelLEV", "Logistic")
 FAMILIES = (

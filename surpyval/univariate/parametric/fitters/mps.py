@@ -4,10 +4,9 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from ..parametric import Parametric
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
-
-from surpyval import np
 
 from . import fallback_minimize, search_floor
 

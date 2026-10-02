@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import brentq
 
-from surpyval import np
 from surpyval.univariate import parametric as para
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
     weighted_mean_and_std,
@@ -14,7 +15,6 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData

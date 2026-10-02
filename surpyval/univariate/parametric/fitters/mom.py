@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from ..parametric import Parametric
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize
 
-from surpyval import np
 from surpyval.univariate.parametric.fitters import (
     preconditioned_bfgs,
     search_floor,

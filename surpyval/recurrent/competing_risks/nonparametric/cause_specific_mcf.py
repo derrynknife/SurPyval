@@ -35,9 +35,9 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
 )
-from surpyval.univariate.nonparametric.nonparametric import (
-    _check_support,
-    _support_from_dict,
+from surpyval.univariate.nonparametric._support import (
+    check_support,
+    support_from_dict,
 )
 from surpyval.utils import optional_column
 from surpyval.utils.recurrent_utils import (
@@ -156,7 +156,7 @@ class CauseSpecificMCF(SerialisableMixin):
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
-        support = _support_from_dict(model_dict)
+        support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
         return out
@@ -207,7 +207,7 @@ class CauseSpecificMCF(SerialisableMixin):
         # The causes share the risk set, so their grids and origins agree;
         # checked against their union all the same.
         models = [self.models[cause] for cause in self.event_types]
-        support = _check_support(
+        support = check_support(
             lower,
             upper,
             min(m._origin() for m in models),

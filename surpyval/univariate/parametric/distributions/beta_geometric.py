@@ -3,12 +3,12 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
 from scipy.stats import beta as beta_rv
 from scipy.stats import geom
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     eulerian_numbers,

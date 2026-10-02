@@ -324,8 +324,10 @@ def test_po_non_finite_init_falls_back_to_default_start():
     x, Z, c = _tires()
     ph = WeibullPH.fit(x=x, Z=Z, c=c)
     init = np.concatenate([ph.params[:2], -ph.params[2:]])
-    with pytest.warns(UserWarning, match="not finite at the supplied"):
+    with pytest.warns(UserWarning, match="not finite at the supplied") as w:
         po = PO(Weibull).fit(x=x, Z=Z, c=c, init=init)
+    # The warning points at the caller, through the shared fit function.
+    assert [r.filename for r in w] == [__file__]
     default = PO(Weibull).fit(x=x, Z=Z, c=c)
     # Previously the init came back unchanged, with neg_ll() == inf.
     assert not np.allclose(po.params, init)

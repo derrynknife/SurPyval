@@ -3,10 +3,10 @@ from typing import TYPE_CHECKING, Any, Callable
 if TYPE_CHECKING:
     from ..parametric import Parametric
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 
-from surpyval import np
 from surpyval.univariate.nonparametric import fleming_harrington, turnbull
 from surpyval.utils import xcnt_to_xrd
 

@@ -92,9 +92,7 @@ _TAGGED_MODELS: dict[str, str] = {
     ),
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
     "DegradationModel": "surpyval.degradation.degradation_analysis",
-    "InducedFailureDistribution": (
-        "surpyval.degradation.degradation_analysis"
-    ),
+    "InducedFailureDistribution": "surpyval.degradation.rul",
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
@@ -154,7 +152,7 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # which such a reader refuses with a request to upgrade: one carrying a
 # ``"non_finite"`` record (whose ``null`` values it would take for
 # missing entries), a formula model whose design-matrix state is
-# stored only in the schema-2 form (see ``_needs_formula_reader``), or a
+# stored only in the schema-2 form (see ``_formula_without_levels``), or a
 # non-parametric estimate with the ``"support"`` its ``set_support`` gave
 # it (new in schema 2; a schema-1 reader would silently drop it, and
 # with it the estimate's values outside the data), or a regression model
@@ -632,72 +630,68 @@ def required_schema(model_dict: dict) -> int:
     >>> required_schema({"beta": [0.5], "center": [2000.0]})
     2
     """
+    dicts = _nested_dicts(model_dict)
     return (
         SCHEMA_VERSION
-        if _carries_non_finite(model_dict)
-        or _needs_formula_reader(model_dict)
-        or _carries_support(model_dict)
-        or _carries_center(model_dict)
+        if any(
+            _has_non_finite(d)
+            or _formula_without_levels(d)
+            or _has_support(d)
+            or _center_nonzero(d)
+            for d in dicts
+        )
         else _SCHEMA_WITHOUT_NON_FINITE
     )
 
 
-def _carries_center(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it has a
-    ``"center"`` with a nonzero entry: the covariate means where a model
-    fitted with ``center=True`` has its baseline (#459, #463). A schema-1
-    reader would drop it and read the baseline as at 0; a zero centre
-    reads the same either way."""
-    if isinstance(value, dict):
-        center = value.get("center")
-        if isinstance(center, (list, tuple)) and any(v != 0 for v in center):
-            return True
-        return any(_carries_center(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_carries_center(v) for v in value)
-    return False
+def _nested_dicts(value: Any) -> list:
+    """Every dictionary in ``value``, itself included. A list of scalars
+    (a model's data) is not walked item by item: walking each of a
+    Kaplan-Meier model's 700,000 values, once for each of the four
+    checks of ``required_schema``, was 80% of saving it."""
+    found = []
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            found.append(item)
+            stack.extend(item.values())
+        elif isinstance(item, (list, tuple)) and not _is_flat(item):
+            stack.extend(item)
+    return found
 
 
-def _carries_support(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it (a cause-specific
-    MCF's per-cause estimates) has a ``"support"`` or a ``"band_n"``,
-    which only the non-parametric estimates' ``to_dict`` writes (from
-    ``set_support``, and for ``band`` on left truncated data)."""
-    if isinstance(value, dict):
-        return any(
-            value.get(key) is not None for key in ("support", "band_n")
-        ) or any(_carries_support(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_carries_support(v) for v in value)
-    return False
+def _center_nonzero(d: dict) -> bool:
+    """Whether ``d`` has a ``"center"`` with a nonzero entry: the
+    covariate means where a model fitted with ``center=True`` has its
+    baseline (#459, #463). A schema-1 reader would drop it and read the
+    baseline as at 0; a zero centre reads the same either way."""
+    center = d.get("center")
+    return isinstance(center, (list, tuple)) and any(v != 0 for v in center)
 
 
-def _needs_formula_reader(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it has a
-    ``"formula_meta"`` without the ``"factor_levels"`` pair that the
-    v0.17 - v0.20 readers rebuild a formula from. That pair is written
-    only when those readers rebuild the same design matrix; without it
-    v0.20 fails with a formula error rather than a request to upgrade."""
-    if isinstance(value, dict):
-        meta = value.get("formula_meta")
-        if isinstance(meta, dict) and "factor_levels" not in meta:
-            return True
-        return any(_needs_formula_reader(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_needs_formula_reader(v) for v in value)
-    return False
+def _has_support(d: dict) -> bool:
+    """Whether ``d`` (a cause-specific MCF's per-cause estimates are
+    nested) has a ``"support"`` or a ``"band_n"``, which only the
+    non-parametric estimates' ``to_dict`` writes (from ``set_support``,
+    and for ``band`` on left truncated data)."""
+    return any(d.get(key) is not None for key in ("support", "band_n"))
 
 
-def _carries_non_finite(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it (a copula's
-    margins, a forest's trees) has a ``"non_finite"`` record."""
-    if isinstance(value, dict):
-        return NON_FINITE_KEY in value or any(
-            _carries_non_finite(v) for v in value.values()
-        )
-    if isinstance(value, (list, tuple)):
-        return any(_carries_non_finite(v) for v in value)
-    return False
+def _formula_without_levels(d: dict) -> bool:
+    """Whether ``d`` has a ``"formula_meta"`` without the
+    ``"factor_levels"`` pair that the v0.17 - v0.20 readers rebuild a
+    formula from. That pair is written only when those readers rebuild
+    the same design matrix; without it v0.20 fails with a formula error
+    rather than a request to upgrade."""
+    meta = d.get("formula_meta")
+    return isinstance(meta, dict) and "factor_levels" not in meta
+
+
+def _has_non_finite(d: dict) -> bool:
+    """Whether ``d`` (a copula's margins and a forest's trees are
+    nested) has a ``"non_finite"`` record."""
+    return NON_FINITE_KEY in d
 
 
 def stamp_schema(model_dict: dict) -> dict:

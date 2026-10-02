@@ -196,6 +196,90 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Performance sweep.** Results are unchanged to the bit except where
+  noted, checked by the new equivalence harness:
+
+  - Cox residuals, ``check_ph`` and robust standard errors are linear time.
+    They looped over the event times with a mask of every row: dfbeta on
+    10,000 rows took 4.3 s and now takes 0.01 s; ``check_ph`` with four
+    residual kinds on 100,000 rows 6.5 s, now 0.3 s.
+  - A truncation time at or below the support's edge truncates nothing
+    and is no longer evaluated. A ``tl`` of 0 sent the covariance to the
+    numerical Hessian: a left-truncated Weibull at 100,000 rows fits in
+    0.37 s instead of 0.80 s, and the covariance is now the analytic one
+    (the registry's mixed-censoring Weibull covariance was 0.09% off; the
+    Gamma's 4e-6). With an offset, rows truncated below the threshold
+    gave a nan gradient, so the fit fell back to Nelder-Mead and stopped
+    1.23 log-likelihood units short of the maximum with a "not verified"
+    warning; it now converges, in 0.15 s instead of 4.6 s.
+  - Likelihood-ratio bounds keep each likelihood their searches evaluate
+    (18% were repeats): 10-60% faster.
+  - Censored Gamma, Beta and Negative Binomial fits compute each
+    incomplete function's complement only where it is used: a censored
+    Gamma at 100,000 rows takes 0.77 s instead of 1.25 s.
+  - Kaplan-Meier, Nelson-Aalen and Fleming-Harrington sort and validate
+    their data once: 1,000,000 rows in 0.49 s instead of 0.72 s.
+  - ``metrics.auc_td`` counts pairs by binary search: 100,000 rows and 20
+    horizons in 0.48 s instead of 15.5 s.
+  - Saving and reading models: the schema check walks the document once,
+    and Cox models are read into plain arrays. A Cox JSON round trip at
+    100,000 rows takes 0.41 s instead of 2.35 s.
+
+- **Removed: the empty surpyval.alpha package**, which has held no models
+  since v0.17.0, and the unused ``surpyval.utils.validate_tv_coxph_df_inputs``.
+- **Development: large modules split (maintainability sweep, phase 1).**
+  Code was moved only, checked bit-exact with the equivalence harness.
+  The likelihood-ratio bounds are in
+  ``univariate/parametric/_likelihood_ratio.py``, the optimised fits in
+  ``optimised_fit.py`` and their input checks and starts in
+  ``_fit_inputs.py``; the non-parametric support helpers in ``_support.py``
+  and its bands in ``_bands.py``; ``surpyval/utils/__init__.py`` is split
+  into ``data_formats``, ``validation``, ``covariates``, ``numeric`` and
+  ``warnings``; and the remaining-useful-life classes are in
+  ``degradation/rul.py``. Old import paths keep working.
+  ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
+  converters and helpers; everything else it exports is internal. A test
+  stops new imports of another package's private names.
+- **A model's formula is the str you gave.** Cox, Buckley-James and the
+  competing-risks PH model kept a parsed ``formulaic.Formula`` in
+  ``model.formula``, every other model the str; now all of them keep the
+  str, and a saved Cox model's formula no longer changes on a round trip
+  (a time-varying Cox model saved ``"1 + dose"`` for ``"dose"``). Code
+  that read ``.formula`` as a ``Formula`` should parse the str with
+  ``formulaic.Formula(model.formula)``.
+- **The semi-parametric fits share one input check.** Proportional odds,
+  Lin-Ying additive hazards, Buckley-James, Fine-Gray and the
+  competing-risks PH model now drop a row with a missing covariate (with
+  the usual warning) before checking that the observed times are finite,
+  as Cox did; they raised "must be finite" on such a row. The degradation
+  models' input errors share one wording and name the offending input
+  ("y must contain only finite values"; "x, y, and i must have the same
+  length; got 55, 54, and 55").
+- **Development: duplicated code merged (consolidation sweep, phases 1-2).**
+  Fitted numbers are bit-identical, checked with the equivalence harness.
+  The PH, AFT and PO fits share ``fit_log_linear`` and
+  ``split_log_linear``; the accelerated-life and AFT time-varying fits are
+  assembled by ``assemble_regression_model``; the time-varying DataFrame
+  fits share ``fit_tvc_df``; the Efron and Breslow Cox generators share
+  one risk-set setup; the semi-parametric models share one covariate
+  centring and one ``LinearPredictorMixin``; the plain and
+  proportional-intensity NHPP fitters, and HPP, share one log-likelihood
+  (#350); the bootstrap tails share ``percentile_bounds`` (#351); and the
+  degradation inputs are checked by one ``validate_xy`` (#352). The
+  accelerated-life fitter now has the deprecated ``param_names`` alias
+  the other fitters have.
+- **Development: refactors are proven bit-identical.**
+  ``scripts/refactor/snapshot.py`` records what every registered model
+  computes and says (fits, predictions, every bound, ``to_dict``,
+  printouts, warnings, and errors on invalid input), plus time-varying,
+  bootstrap and recurrent fits, the public API, the import set and the
+  test IDs, so ``compare`` shows a change altered nothing (see
+  :doc:`Contributing`). CI lints with isort as well, and covers
+  ``conftest.py`` and ``scripts/``; flake8 caps function complexity at 70;
+  mypy reports unused ``type: ignore`` comments, redundant casts and
+  impossible comparisons; a test fails once the version reaches
+  ``REMOVED_IN`` (0.23.0) while deprecated names are still accepted; and
+  the nightly refit study covers the seven models added in 0.22 (#545).
 - **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
   (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have
   censoring- and truncation-aware likelihoods, Kendall's tau, Spearman's

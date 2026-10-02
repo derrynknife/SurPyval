@@ -181,6 +181,25 @@ def log_transformed_cb(
 # hazard, and computed so that it stays accurate in both tails.
 
 
+def percentile_bounds(
+    draws: npt.ArrayLike, alpha_ci: float, bound: str = "two-sided"
+) -> npt.NDArray:
+    """The percentile bootstrap bound of ``draws`` (one resample per row):
+    the ``alpha_ci`` quantile for ``bound="lower"``, the ``1 - alpha_ci``
+    quantile for ``"upper"``, and otherwise the ``alpha_ci / 2`` and ``1 -
+    alpha_ci / 2`` quantiles, stacked on a last axis of 2. Shared by the
+    Kaplan-Meier, degradation, destructive-degradation and Buckley-James
+    bootstraps (#351)."""
+    draws = np.asarray(draws)
+    if bound == "lower":
+        return np.quantile(draws, alpha_ci, axis=0)
+    if bound == "upper":
+        return np.quantile(draws, 1.0 - alpha_ci, axis=0)
+    lo = np.quantile(draws, alpha_ci / 2.0, axis=0)
+    hi = np.quantile(draws, 1.0 - alpha_ci / 2.0, axis=0)
+    return np.stack([lo, hi], axis=-1)
+
+
 def cb_link(dist: Any) -> str:
     """The scale of a family's Wald band on ``sf``/``ff``/``Hf``: the
     distribution's ``_cb_link``, or ``"logit"`` for a family without one."""

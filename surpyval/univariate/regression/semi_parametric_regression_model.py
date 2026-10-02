@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from scipy.stats import norm
 
@@ -26,7 +27,7 @@ from ._summary import (
     coefficient_table,
 )
 from .regression_data import (
-    prepare_Z,
+    LinearPredictorMixin,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -35,7 +36,9 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
+class SemiParametricRegressionModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,
     ``fit_from_df``, ``fit_tvc`` and ``fit_tvc_timeline``.
@@ -144,51 +147,14 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
     tvc_subject_ids: "npt.NDArray | None" = None
     tvc_row_order: "npt.NDArray | None" = None
 
+    _ALIASED_WHY = (
+        "a constant column, one constant within each stratum, or a linear "
+        "combination of the others"
+    )
+
     def __init__(self, kind: str, parameterization: str) -> None:
         self.kind = kind
         self.parameterization = parameterization
-
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        """
-        Convert ``Z`` to a numeric design matrix, selecting the covariate
-        columns recorded at fit time when a pandas DataFrame is passed.
-        """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
-
-    def _center(self) -> npt.NDArray:
-        """The centre as an array, zeros for a model without one."""
-        beta = np.asarray(self.beta, dtype=float)
-        if self.center is None:
-            return np.zeros(beta.shape[0])
-        return np.asarray(self.center, dtype=float)
-
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): a constant column, one constant within each
-        stratum, or a linear combination of the others. Their ``beta`` is
-        ``nan`` (R's ``NA``), and predictions take it as 0."""
-        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
-
-    def _coef(self) -> npt.NDArray:
-        """``beta`` with an aliased coefficient as 0, as the predictions
-        use it (R's ``predict.coxph`` does the same)."""
-        beta = np.asarray(self.beta, dtype=float)
-        return np.where(np.isnan(beta), 0.0, beta)
-
-    def _log_risk(self, Z: npt.NDArray) -> npt.NDArray:
-        """``beta'(Z - center)`` for numeric covariate rows ``Z``, the log
-        of the multiplier of the baseline."""
-        return (Z - self._center()) @ self._coef()
-
-    @staticmethod
-    def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
-        """``base * exp(log_risk)`` computed as ``exp(log(base) +
-        log_risk)``: a baseline at ``Z = 0`` far from the data is tiny and
-        ``exp(beta'Z)`` huge, and their product is formed without either
-        overflowing (#463). A zero baseline stays 0, and nan stays nan."""
-        with np.errstate(divide="ignore", over="ignore"):
-            return np.exp(np.log(base) + log_risk)
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """
@@ -224,13 +190,6 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
         if data is None or self.is_tvc:
             return None
         return data["x"], data["c"], data["n"], data["Z"]
-
-    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        """The log of :meth:`phi`."""
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        if Z_arr.ndim == 0:
-            Z_arr = Z_arr.reshape(1)
-        return self._log_risk(Z_arr)
 
     def _data_repr(self) -> str:
         """The data the model was fitted to, in one line, for the printout
@@ -433,19 +392,21 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
             model_dict, "SemiParametricRegressionModel", "a Cox model"
         )
         out = cls(model_dict["kind"], model_dict["parameterization"])
-        beta = np.array(model_dict["beta"], dtype=float)
+        # Plain numpy: autograd's ``array`` inspects a list item by item
+        # for its boxes, 90% of reading a Cox model of 1e5 rows.
+        beta = onp.array(model_dict["beta"], dtype=float)
         out.beta = beta
-        out.params = np.array(model_dict["params"], dtype=float)
+        out.params = onp.array(model_dict["params"], dtype=float)
         # A dict without a "center" (the default fit, or one written
         # before #459) has its baseline at Z = 0.
-        out.center = np.array(
+        out.center = onp.array(
             model_dict.get("center", np.zeros(beta.shape[0])), dtype=float
         )
-        out.x = np.array(model_dict["x"], dtype=float)
-        out.r = np.array(model_dict["r"], dtype=float)
-        out.d = np.array(model_dict["d"], dtype=float)
-        out.h0 = np.array(model_dict["h0"], dtype=float)
-        out.H0 = np.array(model_dict["H0"], dtype=float)
+        out.x = onp.array(model_dict["x"], dtype=float)
+        out.r = onp.array(model_dict["r"], dtype=float)
+        out.d = onp.array(model_dict["d"], dtype=float)
+        out.h0 = onp.array(model_dict["h0"], dtype=float)
+        out.H0 = onp.array(model_dict["H0"], dtype=float)
         # phi is fully determined by beta and center (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
@@ -454,7 +415,7 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
         # A bare null (no "non_finite" record) is how schema-1 dicts wrote
         # a row without delayed entry; it still reads as -inf.
         out.tl = (
-            np.array(
+            onp.array(
                 [-np.inf if v is None else v for v in model_dict["tl"]],
                 dtype=float,
             )
@@ -462,9 +423,9 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
             else None
         )
         if "p_values" in model_dict:
-            out.p_values = np.array(model_dict["p_values"], dtype=float)
+            out.p_values = onp.array(model_dict["p_values"], dtype=float)
         if "se" in model_dict:
-            out.se = np.array(model_dict["se"], dtype=float)
+            out.se = onp.array(model_dict["se"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         restore_covariate_meta(out, model_dict)
