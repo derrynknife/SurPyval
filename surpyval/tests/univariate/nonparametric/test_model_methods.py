@@ -2,11 +2,24 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import json  # noqa: E402
+import warnings  # noqa: E402
+
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 import surpyval  # noqa: E402
+import surpyval as sp  # noqa: E402
+from surpyval import NonParametric  # noqa: E402
+from surpyval.tests._helpers import (  # noqa: E402
+    TURNBULL_MIXED_CENSORING,
+    fit_turnbull_quietly,
+    no_warnings,
+    sharp_drop_long_tail_data,
+    small_kaplan_meier,
+)
+from surpyval.univariate import nonparametric as nonp  # noqa: E402
 
 
 def test_qf_uncensored():
@@ -181,3 +194,195 @@ def test_plot_without_bounds_or_censors():
     assert len(ax.lines) == 1
     assert len(ax.collections) == 0
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# ``random`` is seedable and draws from the observed values.
+# ---------------------------------------------------------------------------
+
+
+def test_random_is_reproducible_with_seed():
+    model = surpyval.KaplanMeier.fit(sharp_drop_long_tail_data())
+    a = model.random(500, random_state=42)
+    b = model.random(500, random_state=42)
+    c = model.random(500, random_state=7)
+    assert np.array_equal(a, b)
+    assert not np.array_equal(a, c)
+
+
+def test_random_draws_from_observed_values():
+    model = surpyval.KaplanMeier.fit(sharp_drop_long_tail_data())
+    draws = model.random(1000, random_state=1)
+    assert set(np.unique(draws)).issubset(set(model.x))
+    assert draws.size == 1000
+
+
+# ---------------------------------------------------------------------------
+# #408: ``df`` where the estimate reaches zero.
+# ---------------------------------------------------------------------------
+
+
+def test_df_is_the_step_probability_where_the_estimate_reaches_zero():
+    model = sp.KaplanMeier.fit([1.0, 2.0, 3.0])
+    df = no_warnings(model.df, [1.5, 2.5, 3.5])
+    # Each step of 1 takes 1/3; past 3 the last jump is carried, as hf
+    # carries the infinite jump to zero.
+    np.testing.assert_allclose(df, [1 / 3, 1 / 3, 1 / 3], rtol=1e-12)
+    np.testing.assert_allclose(no_warnings(model.df, 3.5), 1 / 3)
+    assert np.all(np.isposinf(model.hf([2.5, 3.5])))
+
+
+@pytest.mark.parametrize("interp", ["step", "linear", "cubic"])
+def test_df_is_finite_and_a_probability(interp):
+    model = sp.KaplanMeier.fit([1, 2, 3, 4, 5])
+    df = no_warnings(model.df, [1.0, 2.0, 3.0, 4.0, 5.0], interp=interp)
+    assert np.all(np.isfinite(df)) and np.all((df >= 0) & (df <= 1))
+
+
+def test_df_is_the_drop_in_sf_over_the_step_hf_differences():
+    x = np.array([1, 2, 3, 4, 5, 6, 7, 8])
+    c = np.array([0, 1, 0, 0, 1, 0, 0, 1])
+    model = sp.KaplanMeier.fit(x, c=c)
+    q = np.array([0.5, 1.5, 2.5, 3.5, 4.5, 6.5])
+    sf, hf, df = model.sf(q), model.hf(q), model.df(q)
+    # 0.5 repeats 1.5; 2.5 has no failure since 1.5 and takes 1.5's step.
+    before = np.array([1.0, 1.0, 1.0, sf[2], sf[3], sf[4]])
+    after = np.array([sf[1], sf[1], sf[1], sf[3], sf[4], sf[5]])
+    np.testing.assert_allclose(df, before - after, rtol=1e-12)
+    # The same step as hf: df = S (1 - exp(-hf)).
+    np.testing.assert_allclose(df, before * -np.expm1(-hf), rtol=1e-12)
+
+
+def test_df_with_a_support_is_zero_before_the_first_value():
+    model = sp.KaplanMeier.fit([1.0, 2.0, 3.0]).set_support(0, 10)
+    df = no_warnings(model.df, [-1.0, 0.5, 2.5, 5.0])
+    # From 0.5 (sf 1) to 2.5 (sf 1/3), then to 5 (sf 0).
+    np.testing.assert_allclose(df, [np.nan, 0.0, 2 / 3, 1 / 3])
+
+
+# ---------------------------------------------------------------------------
+# ``bootstrap_cb`` refits Turnbull resamples with the fit's
+# ``tol`` and ``max_iter``.
+# ---------------------------------------------------------------------------
+
+
+class TestBootstrapSettings:
+    def _record(self, monkeypatch):
+        calls = []
+        real = nonp.turnbull
+
+        def spy(*args, **kwargs):
+            calls.append(kwargs)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(nonp, "turnbull", spy)
+        return calls
+
+    def test_resamples_use_fit_settings(self, monkeypatch):
+        model = fit_turnbull_quietly(
+            **TURNBULL_MIXED_CENSORING,
+            turnbull_estimator="Nelson-Aalen",
+            tol=1e-6,
+            max_iter=7,
+        )
+        calls = self._record(monkeypatch)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            model.bootstrap_cb([6.0], n_boot=3, random_state=1)
+        assert len(calls) == 3
+        for kwargs in calls:
+            assert kwargs["estimator"] == "Nelson-Aalen"
+            assert kwargs["tol"] == 1e-6
+            assert kwargs["max_iter"] == 7
+
+    def test_settings_survive_serialisation(self, monkeypatch):
+        model = fit_turnbull_quietly(
+            **TURNBULL_MIXED_CENSORING, tol=1e-8, max_iter=50
+        )
+        restored = NonParametric.from_dict(model.to_dict(with_data=True))
+        assert restored.data["tol"] == 1e-8
+        assert restored.data["max_iter"] == 50
+        calls = self._record(monkeypatch)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            restored.bootstrap_cb([6.0], n_boot=2, random_state=1)
+        assert all(k["tol"] == 1e-8 and k["max_iter"] == 50 for k in calls)
+
+
+# ---------------------------------------------------------------------------
+# ``qf`` and the median with round-off; ``bootstrap_cb``
+# argument checks; a restored Turnbull model plots; ``random``
+# on an all-censored model; ``mean`` refuses a negative
+# ``tau``.
+# ---------------------------------------------------------------------------
+
+
+def test_median_of_1_to_30_is_15():
+    # F at 15 is 0.4999999999999999, which used to push the median to 16.
+    assert sp.KaplanMeier.fit(np.arange(1, 31)).median == 15.0
+
+
+def test_qf_inverts_ff_at_the_steps():
+    assert sp.KaplanMeier.fit([1, 2, 3, 4, 5]).qf(0.2) == 1.0
+    for N in range(2, 60):
+        model = sp.KaplanMeier.fit(np.arange(1, N + 1))
+        x = model.x[:-1]
+        np.testing.assert_array_equal(model.qf(model.ff(x)), x)
+
+
+def test_qf_agrees_between_kaplan_meier_and_turnbull():
+    x, tl = [2, 3, 3, 4, 5, 6], [0, 0, 1, 1, 2, 2]
+    km = sp.KaplanMeier.fit(x, tl=tl)
+    tb = sp.Turnbull.fit(x, tl=tl, turnbull_estimator="Kaplan-Meier")
+    p = [0.25, 0.5, 0.7]
+    np.testing.assert_array_equal(km.qf(p), tb.qf(p))
+
+
+def test_qf_tiny_p_does_not_match_a_zero_cdf():
+    # A Turnbull ladder starts with F exactly 0; the tolerance must not
+    # make a p below it match there.
+    tb = sp.Turnbull.fit([2, 3, 4], turnbull_estimator="Kaplan-Meier")
+    assert tb.F[0] == 0
+    assert tb.qf(1e-12) == tb.x[np.argmax(tb.F > 0)]
+
+
+@pytest.mark.parametrize("n_boot", [0, -3, 2.5])
+def test_bootstrap_cb_rejects_bad_n_boot(n_boot):
+    with pytest.raises(ValueError, match="'n_boot'"):
+        small_kaplan_meier().bootstrap_cb(2, n_boot=n_boot)
+
+
+def test_bootstrap_cb_error_names_with_data():
+    restored = sp.from_dict(small_kaplan_meier().to_dict())
+    with pytest.raises(ValueError, match="with_data=True"):
+        restored.bootstrap_cb(2, n_boot=5)
+
+
+def test_restored_turnbull_model_plots():
+    tb = sp.Turnbull.fit([1, 2, 3, 4, 5, 6], c=[0, 1, 0, 0, 1, 0])
+    restored = sp.from_dict(json.loads(json.dumps(tb.to_dict())))
+    fig, ax = plt.subplots()
+    restored.plot(ax=ax)
+    with pytest.raises(ValueError, match="with_data=True"):
+        restored.plot(ax=ax, show_censors=True)
+    with_data = sp.from_dict(
+        json.loads(json.dumps(tb.to_dict(with_data=True)))
+    )
+    n_lines = len(ax.lines)
+    with_data.plot(ax=ax)
+    # The curve and the censoring marks.
+    assert len(ax.lines) == n_lines + 2
+    plt.close(fig)
+
+
+def test_random_on_an_all_censored_model():
+    # No failure within the data: the estimate stays at 1, so every
+    # lifetime drawn from it lies beyond the data (inf).
+    draws = sp.KaplanMeier.fit([1, 2], c=[1, 1]).random(3)
+    assert np.all(np.isposinf(draws))
+
+
+def test_mean_rejects_negative_tau():
+    with pytest.raises(ValueError, match="tau"):
+        small_kaplan_meier().mean(tau=-1)
+    assert small_kaplan_meier().mean(tau=0) == 0.0

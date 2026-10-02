@@ -1,6 +1,11 @@
 """Data makers and small helpers shared by several test modules."""
 
+import warnings
+
 import numpy as np
+
+import surpyval as sp
+from surpyval import Turnbull
 
 
 def linear_degradation_units(
@@ -56,3 +61,35 @@ def competing_risks_regression_data(seed=1, n=120):
     x = np.minimum.reduce([t1, t2, tc])
     e = np.where(tc < np.minimum(t1, t2), None, np.where(t1 < t2, 1, 2))
     return x, Z, e.astype(object)
+
+
+def sharp_drop_long_tail_data():
+    # A sharp drop followed by a long flat tail makes an ordinary cubic
+    # spline overshoot below zero.
+    return np.array([1.0, 2.0, 3.0, 3.2, 3.4, 8.0, 12.0, 20.0])
+
+
+def no_warnings(func, *args, **kwargs):
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        return func(*args, **kwargs)
+
+
+# The 11-row mixed-censoring example from the docs review.
+TURNBULL_MIXED_CENSORING = dict(
+    x=[1, 2, [3, 6], 7, 8, 9, [5, 9], [4, 10], [7, 10], 11, 12],
+    c=[1, 1, 2, 0, 0, 0, 2, 2, 2, -1, 0],
+    n=[1, 2, 1, 3, 2, 2, 1, 1, 2, 1, 1],
+)
+
+
+def fit_turnbull_quietly(**kwargs):
+    with warnings.catch_warnings():
+        # Some of these fits are deliberately slow to converge; the
+        # warning is not what is under test.
+        warnings.simplefilter("ignore", UserWarning)
+        return Turnbull.fit(**kwargs)
+
+
+def small_kaplan_meier():
+    return sp.KaplanMeier.fit([1, 2, 3, 4, 5], c=[0, 1, 0, 0, 1])

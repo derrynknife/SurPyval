@@ -16,6 +16,7 @@ import warnings
 import numpy as np
 import pytest
 
+import surpyval as sp
 from surpyval import Turnbull
 from surpyval.univariate.nonparametric import _turnbull_npmle as nm
 
@@ -267,3 +268,21 @@ def test_criterion_is_cheap_on_a_large_sample():
     start = time.perf_counter()
     nm.npmle_existence(lo, hi, wl, wh, np.ones(N), M)
     assert time.perf_counter() - start < 1.0
+
+
+# ---------------------------------------------------------------------------
+# The non-identifiable warning's wording.
+# ---------------------------------------------------------------------------
+
+
+def test_turnbull_non_identifiable_warning_wording():
+    with pytest.warns(UserWarning, match="not identifiable") as record:
+        sp.Turnbull.fit(
+            x=[2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
+            c=[-1, 0, 0, -1, 0, 0],
+            tl=np.linspace(0.1, 1.0, 6),
+            turnbull_estimator="Kaplan-Meier",
+        )
+    message = str(record[0].message)
+    assert "needs left-censored" not in message
+    assert "left- or interval-censored" in message
