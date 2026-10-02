@@ -4,15 +4,17 @@ import datetime as _dt
 import warnings
 from collections import defaultdict
 from numbers import Number
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-from formulaic import Formula
-from formulaic.errors import (  # type: ignore[import-untyped]
-    DataMismatchWarning,
-)
-from pandas import DataFrame, isna
+
+if TYPE_CHECKING:
+    from pandas import DataFrame
+
+# pandas and formulaic are imported where they are used, not here: every
+# model imports this module, and they took half of ``import surpyval``
+# (#470).
 
 COX_PH_METHODS = ["breslow", "efron", "exact", "kalbfleisch-prentice", "kp"]
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
@@ -23,6 +25,27 @@ def optional_column(df: DataFrame, name: "str | None") -> "npt.NDArray | None":
     column is named -- for ``fit_from_df`` methods whose optional
     arguments (censoring, counts, truncation, ...) may not be given."""
     return None if name is None else df[name].to_numpy()
+
+
+def ffill_or_zero(values: npt.ArrayLike) -> npt.NDArray:
+    """Each ``nan`` replaced by the last value before it that is not, and
+    by 0 where there is none: pandas' ``Series(values).ffill().fillna(0)``,
+    without importing pandas (#470).
+
+    Examples
+    --------
+    >>> from surpyval.utils import ffill_or_zero
+    >>> ffill_or_zero([float("nan"), 0.2, float("nan"), 0.5, float("nan")])
+    array([0. , 0.2, 0.2, 0.5, 0.5])
+    """
+    values = np.asarray(values, dtype=float)
+    if values.size == 0:
+        return values.copy()
+    filled = ~np.isnan(values)
+    last = np.where(filled, np.arange(values.size), -1)
+    np.maximum.accumulate(last, out=last)
+    out = np.where(last >= 0, values[np.maximum(last, 0)], 0.0)
+    return out
 
 
 def _round_vals(x: npt.NDArray) -> npt.NDArray:
@@ -1721,6 +1744,8 @@ def is_missing_event(value: Any) -> bool:
     (``NaN``, pandas ``NA``)."""
     if value is None:
         return True
+    from pandas import isna
+
     try:
         return bool(isna(value))
     except (TypeError, ValueError):
@@ -1743,6 +1768,8 @@ def missing_events(values: npt.NDArray) -> npt.NDArray:
         for t in types
     ):
         return np.array([is_missing_event(v) for v in values], dtype=bool)
+    from pandas import isna
+
     return np.asarray(isna(values), dtype=bool)
 
 
@@ -1899,6 +1926,11 @@ def formula_model_matrix(source: Any, df: Any, **kwargs: Any) -> Any:
     So does, with a fitted spec, a level that had no rows in the fitted
     data; fitting a formula with such a level warns and records it (#377).
     """
+    from formulaic import Formula
+    from formulaic.errors import (  # type: ignore[import-untyped]
+        DataMismatchWarning,
+    )
+
     from surpyval.univariate.regression.regression_data import (
         record_empty_levels,
         refuse_empty_levels,
@@ -1989,6 +2021,8 @@ def wrangle_and_check_form_and_Z_cols(
         # reference-level coding, then drop the intercept column — the
         # baseline hazard plays that role, and a full one-hot is collinear
         # with it (#252). An explicit "0 + ..." formula opts out.
+        from formulaic import Formula
+
         form = Formula(formula)
         model_matrix, model_spec = formula_model_matrix(formula, df)
         if "Intercept" in model_matrix.columns:

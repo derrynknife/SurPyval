@@ -1,9 +1,8 @@
 import numpy as np
 import numpy.typing as npt
-from pandas import Series
 
 from surpyval.univariate.nonparametric.rank_adjust import rank_adjust
-from surpyval.utils import xcnt_handler
+from surpyval.utils import ffill_or_zero, xcnt_handler
 
 
 def filliben(
@@ -70,7 +69,7 @@ def filliben(
     F[np.isclose(ranks, N)] = 0.5 ** (1.0 / N)
     # Censored rows carry the previous failure's value (0 before the first
     # failure), as for the other rank heuristics, rather than NaN.
-    F = Series(F).ffill().fillna(0).values
+    F = ffill_or_zero(F)
 
     out = {k: v for k, v in zip(["x", "r", "d"], (x, r, d))}
     out["R"] = 1 - F

@@ -17,15 +17,20 @@ array would be (Conventions, "Missing values"). A duration or date column
 is refused, since its storage ticks would be read as numbers (#480).
 """
 
+from __future__ import annotations
+
 import functools
 import inspect
 import types
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
+
+if TYPE_CHECKING:
+    # Imported where it is used: every fitter imports this module (#470).
+    import pandas as pd
 
 from surpyval.utils import is_missing_event, refuse_time_values
 from surpyval.utils.deprecation import renamed_arguments
@@ -50,6 +55,8 @@ class fitter_method:
 
 
 def require_frame(df: Any) -> pd.DataFrame:
+    import pandas as pd
+
     if not isinstance(df, pd.DataFrame):
         raise ValueError(
             f"df must be a pandas DataFrame, got {type(df).__name__}"
@@ -645,6 +652,8 @@ class RegressionDataFrameMixin:
 
             Z, names, model_spec = design_matrix_from_df(df, None, formula)
         # A DataFrame Z: ``fit`` keeps its column names as feature_names.
+        import pandas as pd
+
         arrays["Z"] = pd.DataFrame(np.asarray(Z, dtype=float), columns=names)
         arg_names = {k: f"{k}_col" for k in arrays} | {
             "Z": "Z_cols" if formula is None else "formula"
