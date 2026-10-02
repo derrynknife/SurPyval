@@ -9,6 +9,9 @@ import pandas as pd
 import pytest
 
 from surpyval import CoxPH
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (
+    robust_covariance,
+)
 from surpyval.univariate.regression.proportional_hazards.tvc import handle_tvc
 
 
@@ -323,3 +326,83 @@ def test_fit_tvc_timeline_from_df_matches_arrays():
     )
     assert np.allclose(m_df.beta, m_arr.beta)
     assert m_df.feature_names == ["z"]
+
+
+# ---------------------------------------------------------------------------
+# Prediction and alignment (#259): the ``(xl, xr]``
+# convention, queries independent of each other, cluster labels
+# after the internal sort, a degenerate fit.
+# ---------------------------------------------------------------------------
+
+
+def _tvc_fit(seed=4, n=80):
+    rng = np.random.default_rng(seed)
+    rows_i, rows_xl, rows_xr, rows_c, rows_z = [], [], [], [], []
+    for i in range(n):
+        z1 = rng.normal()
+        t = rng.exponential(np.exp(-0.4 * z1)) * 4
+        change = min(3.0, 0.6 * t)
+        tend = min(t, 8.0)
+        rows_i += [i, i]
+        rows_xl += [0.0, change]
+        rows_xr += [change, tend]
+        rows_c += [1, 0 if t < 8.0 else 1]
+        rows_z += [[z1], [z1 + 1.0]]
+    return (
+        np.array(rows_i),
+        np.array(rows_xl),
+        np.array(rows_xr),
+        np.array(rows_c),
+        np.array(rows_z),
+    )
+
+
+def test_tvc_prediction_uses_old_covariate_at_change_time():
+    # (xl, xr] convention: a baseline jump exactly at a covariate change
+    # time belongs to the OLD covariate, matching the fitted likelihood.
+    i, xl, xr, c, Z = _tvc_fit()
+    m = CoxPH.fit_tvc(i, xl, xr, c, Z)
+    sched = m.Hf_tvc(
+        [3.0], Z=np.array([[0.0], [1.0]]), xl=np.array([0.0, 3.0])
+    )
+    const = m.Hf_tvc([3.0], Z=np.array([[0.0]]), xl=np.array([0.0]))
+    assert float(np.atleast_1d(sched)[0]) == pytest.approx(
+        float(np.atleast_1d(const)[0])
+    )
+
+
+def test_tvc_hf_query_independent_of_other_query_points():
+    i, xl, xr, c, Z = _tvc_fit()
+    m = CoxPH.fit_tvc(i, xl, xr, c, Z)
+    Zs = np.array([[0.0], [1.0]])
+    starts = np.array([0.0, 3.0])
+    single = float(np.atleast_1d(m.Hf_tvc([3.0], Z=Zs, xl=starts))[0])
+    paired = float(np.atleast_1d(m.Hf_tvc([3.0, 3.5], Z=Zs, xl=starts))[0])
+    assert single == pytest.approx(paired)
+
+
+def test_tvc_cluster_labels_aligned_after_internal_sort():
+    i, xl, xr, c, Z = _tvc_fit()
+    rng = np.random.default_rng(0)
+    perm = rng.permutation(len(i))
+    m_sorted = CoxPH.fit_tvc(i, xl, xr, c, Z)
+    m_shuffled = CoxPH.fit_tvc(i[perm], xl[perm], xr[perm], c[perm], Z[perm])
+    cov_sorted = robust_covariance(m_sorted, cluster=i)
+    cov_shuffled = robust_covariance(m_shuffled, cluster=i[perm])
+    assert np.allclose(cov_sorted, cov_shuffled)
+    # And a TVC fit defaults to clustering by subject.
+    assert np.allclose(robust_covariance(m_sorted), cov_sorted)
+
+
+def test_degenerate_tvc_fit_degrades_instead_of_crashing():
+    i = np.array([0, 0, 1, 1])
+    xl = np.array([0.0, 1.0, 0.0, 1.0])
+    xr = np.array([1.0, 2.0, 1.0, 2.0])
+    c = np.array([1, 0, 1, 0])
+    Z = np.array([[1.0], [1.0], [1.0], [1.0]])
+    # A constant covariate has no coefficient in a Cox model: the fit
+    # aliases it by name (#409, #476); it used to return NaN p-values
+    # without saying why.
+    with pytest.warns(UserWarning, match=r"column\(s\) 0 of Z cannot"):
+        model = CoxPH.fit_tvc(i, xl, xr, c, Z)
+    assert np.isnan(model.beta[0]) and np.isnan(model.p_values[0])

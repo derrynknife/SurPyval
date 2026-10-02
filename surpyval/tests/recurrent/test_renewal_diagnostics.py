@@ -202,3 +202,40 @@ def test_cvm_no_data_guard():
     )
     with pytest.raises(ValueError, match="fitted from data"):
         model.cramer_von_mises()
+
+
+# ---------------------------------------------------------------------------
+# The goodness-of-fit bootstrap keeps each item's observation
+# scheme.
+# ---------------------------------------------------------------------------
+
+
+def test_renewal_cvm_resimulates_time_truncated_items_to_their_window(
+    monkeypatch,
+):
+    # Item 1 is time truncated at 60, item 2 failure truncated at 44.
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44]
+    i = [1] * 6 + [2] * 4
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    model = GeneralizedOneRenewal.fit(x, i, c)
+
+    simulated = []
+    fitter = model._fitter
+    original_refit = fitter._refit
+
+    def spy(fitted, data):
+        simulated.append(data)
+        return original_refit(fitted, data)
+
+    monkeypatch.setattr(fitter, "_refit", spy)
+    model.cramer_von_mises(n_boot=5, random_state=3)
+
+    assert simulated
+    for data in simulated:
+        x1, c1, _ = data.get_events_for_item(1)
+        x2, c2, _ = data.get_events_for_item(2)
+        # time truncated: ends in a c=1 row at 60, random event count
+        assert c1[-1] == 1 and x1[-1] == 60
+        assert np.all(x1[:-1] < 60)
+        # failure truncated: the observed four events, all exact
+        assert len(x2) == 4 and np.all(c2 == 0)

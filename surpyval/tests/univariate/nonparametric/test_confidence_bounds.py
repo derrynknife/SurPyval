@@ -3,6 +3,15 @@ import pytest
 from scipy.stats import norm
 
 import surpyval
+from surpyval.tests._helpers import (
+    TURNBULL_MIXED_CENSORING,
+    fit_turnbull_quietly,
+    small_kaplan_meier,
+)
+from surpyval.univariate.nonparametric import (
+    greenwood_variance,
+    nelson_aalen_variance,
+)
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 
 
@@ -244,3 +253,79 @@ def test_fit_from_ecdf_cb_raises_informative_error():
     )
     with pytest.raises(ValueError, match="variance"):
         model.cb([2.0])
+
+
+# ---------------------------------------------------------------------------
+# Greenwood's variance treats round-off in the proportion
+# failing as exact, so the last value is undefined rather than
+# ~1e14.
+# ---------------------------------------------------------------------------
+
+
+class TestGreenwoodRoundOff:
+    def test_last_value_with_round_off_is_undefined(self):
+        # The EM's last r and d, equal but for round-off (and fractional).
+        r = np.array([3.0, 1.2142857142857106])
+        d = np.array([1.0, 1.2142857142857142])
+        var = greenwood_variance(r, d)
+        assert var[0] == pytest.approx(1 / 6)
+        assert np.isnan(var[1])
+        # Exactly as for exactly equal counts.
+        exact = greenwood_variance(np.array([3.0, 2.0]), np.array([1.0, 2.0]))
+        np.testing.assert_array_equal(np.isnan(var), np.isnan(exact))
+
+    def test_zero_count_with_round_off_is_no_event(self):
+        var = greenwood_variance(
+            np.array([17.0, 17.0]), np.array([2e-16, 1.0])
+        )
+        assert var[0] == 0.0
+        assert var[1] == pytest.approx(1 / (17 * 16))
+        var = nelson_aalen_variance(np.array([17.0]), np.array([2e-16]))
+        assert var[0] == 0.0
+
+    def test_turnbull_last_value_bounds(self):
+        model = fit_turnbull_quietly(
+            **TURNBULL_MIXED_CENSORING, turnbull_estimator="Kaplan-Meier"
+        )
+        assert np.isnan(model.greenwood[-1])
+        assert np.nanmax(np.abs(model.greenwood)) < 1e3
+        # Undefined at the last value: lower 0, upper the last finite one.
+        lower, upper = model.cb(12)
+        assert lower == 0.0
+        assert upper == pytest.approx(model.cb(11)[1])
+        # The estimate there is 0, not round-off below it.
+        assert model.sf(12) == 0.0
+
+    def test_integer_counts_unchanged(self):
+        r = np.array([10.0, 8.0, 5.0, 2.0])
+        d = np.array([2.0, 1.0, 3.0, 2.0])
+        with np.errstate(all="ignore"):
+            raw = np.cumsum(
+                np.where(
+                    np.isfinite(d / (r * (r - d))), d / (r * (r - d)), np.nan
+                )
+            )
+        np.testing.assert_array_equal(greenwood_variance(r, d), raw)
+
+
+# ---------------------------------------------------------------------------
+# ``cb`` and its relatives refuse an unknown ``on`` or
+# ``bound``.
+# ---------------------------------------------------------------------------
+
+
+def test_cb_rejects_unknown_on():
+    with pytest.raises(ValueError, match="'on'"):
+        small_kaplan_meier().cb(2, on="hf")
+
+
+def test_cb_and_friends_reject_unknown_bound():
+    model = small_kaplan_meier()
+    with pytest.raises(ValueError, match="'bound'"):
+        model.cb(2, bound="both")
+    with pytest.raises(ValueError, match="'bound'"):
+        model.R_cb(2, bound="both")
+    with pytest.raises(ValueError, match="'bound'"):
+        model.plot(bound="both")
+    with pytest.raises(ValueError, match="'bound'"):
+        model.bootstrap_cb(2, bound="both", n_boot=5)

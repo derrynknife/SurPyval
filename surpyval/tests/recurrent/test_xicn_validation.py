@@ -9,8 +9,16 @@ valid edge cases that must *not* be rejected.
 """
 
 import numpy as np
+import pandas as pd
 import pytest
 
+from surpyval.recurrent import (
+    HPP,
+    CauseSpecificNHPP,
+    CrowAMSAA,
+    NonParametricCounting,
+    ProportionalIntensityHPP,
+)
 from surpyval.utils.recurrent_utils import handle_xicn
 
 # --- empty / degenerate shapes -------------------------------------------
@@ -186,3 +194,51 @@ def test_valid_data_passes():
         n=np.array([1, 1, 1, 1]),
     )
     assert data.x.shape[0] == 4
+
+
+# ---------------------------------------------------------------------------
+# Censoring rows, item ids and per-item covariates.
+# ---------------------------------------------------------------------------
+
+
+def test_censoring_row_before_finite_tr_is_rejected():
+    kwargs = dict(
+        x=[1, 2, 3, 4],
+        i=[1, 1, 1, 2],
+        c=[0, 0, 1, 1],
+        e=["a", "b", None, None],
+        tr=[10, 10, 10, 10],
+        dist=HPP,
+    )
+    with pytest.raises(ValueError, match="before its right truncation"):
+        CauseSpecificNHPP.fit(**kwargs)
+    with pytest.raises(ValueError, match="before its right truncation"):
+        NonParametricCounting.fit([1, 2, 3], c=[0, 0, 1], tr=10)
+    # a c=1 row at tr is the same close, and is fine
+    NonParametricCounting.fit([1, 2, 10], c=[0, 0, 1], tr=10)
+
+
+def test_tied_censoring_row_and_event_do_not_depend_on_order():
+    a = NonParametricCounting.fit([1, 3, 3], [1, 1, 1], [0, 1, 0])
+    b = NonParametricCounting.fit([1, 3, 3], [1, 1, 1], [0, 0, 1])
+    assert np.array_equal(a.mcf_hat, b.mcf_hat)
+    fit_a = CrowAMSAA.fit([1, 3, 3, 2, 4], [1, 1, 1, 2, 2], [0, 1, 0, 0, 1])
+    fit_b = CrowAMSAA.fit([1, 3, 3, 2, 4], [1, 1, 1, 2, 2], [0, 0, 1, 0, 1])
+    assert np.allclose(fit_a.params, fit_b.params)
+
+
+def test_missing_or_mixed_item_ids_are_clear_errors():
+    with pytest.raises(ValueError, match="must not be missing"):
+        handle_xicn([1, 2], [None, None])
+    with pytest.raises(ValueError, match="must not be missing"):
+        handle_xicn([1, 2], [1, None])
+    mixed = pd.Series([1, "a"], dtype=object).to_numpy()
+    with pytest.raises(ValueError, match="one comparable kind"):
+        handle_xicn([1, 2], mixed)
+
+
+def test_covariates_must_be_constant_within_an_item():
+    with pytest.raises(ValueError, match="change between its rows"):
+        ProportionalIntensityHPP.fit([1, 2, 3], [[0], [1], [1]], [1, 1, 2])
+    # the same values on every row of an item are fine
+    ProportionalIntensityHPP.fit([1, 2, 3], [[0], [0], [1]], [1, 1, 2])

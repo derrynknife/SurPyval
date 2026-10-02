@@ -20,6 +20,7 @@ from surpyval.degradation.stress import (
     stress_design,
     validate_links,
 )
+from surpyval.tests._helpers import linear_degradation_units
 
 
 def _rt(d):
@@ -595,3 +596,18 @@ def test_stress_prediction_errors(linked_model, stage1_model):
     assert np.isfinite(
         stage1_model.predict_rul([5.0], [12.5], random_state=1).failure_time
     )
+
+
+# ---------------------------------------------------------------------------
+# A single stress level cannot estimate a stress effect.
+# ---------------------------------------------------------------------------
+
+
+def test_single_stress_level_refused() -> None:
+    x, y, i = linear_degradation_units()
+    with pytest.raises(ValueError, match="two\\s+distinct stress levels"):
+        DegradationAnalysis.fit(x, y, i, threshold=15.0, Z=np.ones(x.size))
+    with pytest.raises(ValueError, match="stress effect cannot be estimated"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=15.0, Z=np.ones(x.size), links={"b": "log"}
+        )

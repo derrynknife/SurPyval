@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from surpyval import CoxPH
+from surpyval.tests._helpers import weibull_ph_data
 
 
 @pytest.fixture(scope="module")
@@ -78,3 +79,18 @@ def test_ph_random_is_finite_for_a_tiny_hazard_multiplier():
         expected = 10.0 * (-np.log(u) / np.exp(z)) ** 0.5
         assert np.all(np.isfinite(x))
         assert np.allclose(x, expected, rtol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# A scalar covariate.
+# ---------------------------------------------------------------------------
+
+
+def test_cox_accepts_a_scalar_covariate():
+    x, Z = weibull_ph_data()
+    model = CoxPH.fit(x, Z)
+    for fn in ("sf", "hf", "Hf"):
+        np.testing.assert_allclose(
+            getattr(model, fn)([3.0], 0.5), getattr(model, fn)([3.0], [0.5])
+        )
+    np.testing.assert_allclose(model.phi(0.5), np.exp(0.5 * model.beta[0]))

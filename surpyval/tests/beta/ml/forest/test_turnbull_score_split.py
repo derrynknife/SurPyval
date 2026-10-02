@@ -33,20 +33,14 @@ from surpyval.beta.ml.forest.log_rank_split import (
     deaths_on_grid,
     log_rank_split,
 )
-from surpyval.beta.ml.forest.node import TerminalNode
 from surpyval.beta.ml.forest.turnbull_score_split import (
     log_rank_scores,
     turnbull_score,
     turnbull_score_split,
 )
+from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
-
-
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
 
 
 def _right_censored(n=80, seed=0):
@@ -224,7 +218,7 @@ def test_tree_finds_a_planted_binary_split():
     assert all(
         isinstance(leaf.model, NonParametric)
         and leaf.model.model == "Turnbull"
-        for leaf in _leaves(tree._root)
+        for leaf in tree_leaves(tree._root)
     )
     s = tree.sf(6.0, [[0.0, 0.5, 0.5], [1.0, 0.5, 0.5]])
     assert s[1] < s[0]
@@ -306,5 +300,5 @@ def test_left_truncated_right_censored_data_keeps_the_log_rank():
         max_depth=1,
     )
     assert all(
-        leaf.model.model == "Nelson-Aalen" for leaf in _leaves(tree._root)
+        leaf.model.model == "Nelson-Aalen" for leaf in tree_leaves(tree._root)
     )

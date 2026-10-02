@@ -20,8 +20,15 @@ from scipy.special import expit, logit
 from scipy.special import ndtri as z
 from scipy.stats import poisson
 
+import surpyval as surv
 import surpyval.univariate.parametric._likelihood_ratio as likelihood_ratio
+from surpyval.tests._helpers import (
+    fresh_conformance_fit,
+    neg_ll_at,
+    no_warnings,
+)
 from surpyval.tests.conformance.registry import CASE_BY_NAME
+from surpyval.univariate.parametric import _likelihood_ratio
 
 CRIT_95 = z(0.975) ** 2
 CRIT_80 = z(0.9) ** 2
@@ -43,17 +50,8 @@ def ew():
         return case.fit(case.data())
 
 
-def _nll(model, theta):
-    with np.errstate(all="ignore"):
-        return float(
-            model.dist._neg_ll_func(
-                model.surv_data, *theta, model.gamma, model.f0, model.p
-            )
-        )
-
-
 def _deviance(model, theta):
-    return 2.0 * (_nll(model, theta) - _nll(model, model.params))
+    return 2.0 * (neg_ll_at(model, theta) - neg_ll_at(model, model.params))
 
 
 def _brute_profile(model, name, value, points=7):
@@ -106,7 +104,7 @@ def test_nb_profile_of_r_levels_off_at_the_shifted_poisson(nb):
         return -np.sum(n * ll)
 
     res = minimize_scalar(nll, bounds=(0.1, 20), method="bounded")
-    nll_hat = _nll(nb, nb.params)
+    nll_hat = neg_ll_at(nb, nb.params)
     limit = 2 * (res.fun - nll_hat)
     assert limit == pytest.approx(2.34507, abs=1e-4)
     assert CRIT_80 < limit < CRIT_95
@@ -172,7 +170,7 @@ def test_ew_profile_follows_its_valleys(ew, name, value, want):
     idx = ew.dist.param_map[name]
     coord = ew._lr_coords()[0][idx]
     path = likelihood_ratio._LRPath()
-    nll_hat = _nll(ew, ew.params)
+    nll_hat = neg_ll_at(ew, ew.params)
     for w in np.linspace(coord.to_u(ew.params[idx]), coord.to_u(value), 25):
         nll = ew._profile_neg_ll(idx, coord.from_u(w), path=path)
     assert 2 * (nll - nll_hat) == pytest.approx(want, abs=1e-3)
@@ -299,3 +297,131 @@ def test_walk_finds_a_crossing_however_slowly_the_profile_rises(deviance):
     status, w = _walk(deviance, CRIT_95)
     assert status == "root"
     assert deviance(w) == pytest.approx(CRIT_95, abs=1e-8)
+
+
+# ---------------------------------------------------------------------------
+# #421: likelihood-ratio bands.
+# ---------------------------------------------------------------------------
+
+
+# -- #421: likelihood-ratio bands ------------------------------------------
+def test_lr_band_does_not_stall_on_the_far_side_of_the_estimate():
+    # A density at x peaks in the scale, and the warm-started search for
+    # the lower df bound stopped on that peak: Rayleigh's 99% df band at
+    # 14.6 was [0.0502, 0.0504], above the estimate 0.0359.
+    model = fresh_conformance_fit("Rayleigh")
+    x = np.array([3.2, 8.0, 14.6])
+    df = model.df(x)
+    for alpha in (0.01, 0.05, 0.2):
+        cb = no_warnings(model.cb, x, on="df", alpha_ci=alpha, method="lr")
+        assert np.all(cb[:, 0] <= df) and np.all(df <= cb[:, 1]), cb
+
+
+def test_lr_band_of_one_parameter_is_the_extreme_over_its_interval():
+    # With one free parameter the likelihood region is the profile
+    # interval, and the band is the extreme of the function over it. The
+    # search found one end or the other: Geometric's df(5) lower bound
+    # was 0.0740 in a sweep over [2, 5, 8] and 0.0652 queried alone.
+    model = fresh_conformance_fit("Geometric")
+    x = np.array([2.0, 5.0, 8.0])
+    for alpha in (0.05, 0.2):
+        band = model.cb(x, on="df", alpha_ci=alpha, method="lr")
+        lo, hi = model.param_cb("p", alpha_ci=alpha, method="lr")
+        grid = np.linspace(lo, hi, 2001)
+        want = np.array(
+            [
+                [f.min(), f.max()]
+                for f in (surv.Geometric.df(k, grid) for k in x)
+            ]
+        )
+        np.testing.assert_allclose(band, want, rtol=1e-5)
+        for k in range(x.size):
+            np.testing.assert_allclose(
+                model.cb(x[k], on="df", alpha_ci=alpha, method="lr"),
+                band[k],
+                rtol=1e-8,
+            )
+
+
+def test_lr_band_of_the_uniform_follows_the_support_edge():
+    # The likelihood is 0 once a > min(x) or b < max(x), a cliff the
+    # constrained search could not follow: the 95% Hf band at 14.6 was
+    # [1.533, 1.821], its lower end the 80% band's and its upper end the
+    # estimate. The searches now keep a and b beyond the data's
+    # extremes. A brute-force grid over (a, b) of the likelihood region
+    # of the (exact, #460) fixture gives [1.337, 1.949] (95%) and
+    # [1.578, 1.876] (80%).
+    model = fresh_conformance_fit("Uniform")
+    x = np.array([3.2, 8.0, 14.6])
+    wide = no_warnings(model.cb, x, on="Hf", alpha_ci=0.05, method="lr")
+    narrow = no_warnings(model.cb, x, on="Hf", alpha_ci=0.2, method="lr")
+    np.testing.assert_allclose(wide[2], [1.337, 1.949], rtol=5e-3)
+    np.testing.assert_allclose(narrow[2], [1.578, 1.876], rtol=5e-3)
+    Hf = model.Hf(x)
+    assert np.all(wide[:, 0] < narrow[:, 0]) and np.all(narrow[:, 0] < Hf)
+    assert np.all(Hf < narrow[:, 1]) and np.all(narrow[:, 1] < wide[:, 1])
+    # The profile bound on a ends at the smallest observation.
+    lo, hi = model.param_cb("a", method="lr")
+    assert lo < hi == model.params[0] == 2.411
+
+
+# ---------------------------------------------------------------------------
+# The band does not collapse onto the estimate; unsolved
+# searches are nan with a warning; bounds after a restore.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_lr_band_does_not_collapse_onto_the_estimate():
+    np.random.seed(1000)
+    model = G.fit(G.random(30, 0.3))
+    lower, upper = model.cb([2.0], method="lr")[0]
+    estimate = float(model.sf(2.0))
+    assert lower < estimate - 0.05 < estimate < upper
+    # The band's lower sf is the sf at the parameter's upper LR bound
+    p_hi = model.param_cb("p", method="lr")[1]
+    assert lower == pytest.approx((1 - p_hi) ** 2, rel=1e-3)
+
+
+def test_lr_band_is_nan_with_a_warning_when_every_search_fails(monkeypatch):
+    np.random.seed(1)
+    model = W.fit(W.random(30, 10, 3))
+
+    class Failed:
+        success = False
+        x = np.array([np.nan, np.nan])
+        fun = np.nan
+
+    monkeypatch.setattr(
+        _likelihood_ratio, "minimize", lambda *a, **k: Failed()
+    )
+    with pytest.warns(RuntimeWarning, match="could not be found"):
+        band = model.cb([5.0, 10.0], method="lr")
+    assert np.isnan(band).all()
+
+
+def test_lr_param_bound_is_nan_with_a_warning_when_unsolved(monkeypatch):
+    np.random.seed(1)
+    model = W.fit(W.random(30, 10, 3))
+    monkeypatch.setattr(
+        model, "_profile_neg_ll", lambda idx, v, path=None: np.nan
+    )
+    with pytest.warns(RuntimeWarning, match="could not be found"):
+        bound = model.param_cb("beta", method="lr")
+    assert np.isnan(bound).all()
+
+
+def test_lr_bounds_after_restoring_with_the_data():
+    np.random.seed(1)
+    model = W.fit(W.random(30, 10, 3))
+    restored = surv.from_dict(model.to_dict(with_data=True))
+    assert np.allclose(
+        restored.cb([5.0, 10.0], method="lr"),
+        model.cb([5.0, 10.0], method="lr"),
+    )
+    assert np.allclose(
+        restored.param_cb("beta", method="lr"),
+        model.param_cb("beta", method="lr"),
+    )

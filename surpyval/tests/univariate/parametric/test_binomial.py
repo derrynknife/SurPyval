@@ -12,7 +12,9 @@ import numpy as np
 import pytest
 from scipy.stats import binom
 
+import surpyval as surv
 from surpyval import Bernoulli, Binomial, FixedEventProbability, Parametric
+from surpyval.tests._helpers import no_warnings
 
 N, P = 5, 0.3
 
@@ -182,3 +184,27 @@ def test_class_level_support_admits_zero_events():
     # lower end is meaningful; it must still admit k = 0, as Poisson's
     # does. It read 0 -- Geometric's value, whose first mass is at k = 1.
     assert Binomial.support[0] < 0
+
+
+# ---------------------------------------------------------------------------
+# The Bernoulli fit takes general inputs (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_bernoulli_fit_works_for_general_inputs():
+    assert Bernoulli.fit([0, 1, 1, 0, 1]).params[0] == pytest.approx(0.6)
+    assert Bernoulli.fit([1, 1]).params[0] == 1.0
+    assert Bernoulli.fit([0, 1], n=[3, 1]).params[0] == pytest.approx(0.25)
+    with pytest.raises(ValueError):
+        Bernoulli.fit([0, 2, 1])
+    assert Bernoulli.from_params(0.3).params[0] == pytest.approx(0.3)
+
+
+# ---------------------------------------------------------------------------
+# The hazard beyond ``n`` is quiet.
+# ---------------------------------------------------------------------------
+
+
+def test_binomial_hazard_beyond_n_is_quiet():
+    hf = no_warnings(surv.Binomial.hf, np.array([3.0, 6, 7]), 5, 0.3)
+    assert hf[1:].tolist() == [0.0, 0.0]

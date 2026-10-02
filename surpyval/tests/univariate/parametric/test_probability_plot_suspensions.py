@@ -25,6 +25,8 @@ from surpyval.univariate.nonparametric import plotting_positions
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from surpyval import Beta, Exponential, GumbelLEV  # noqa: E402
+
 X = [10, 20, 30, 40, 50, 60]
 C = [0, 0, 0, 0, 1, 1]
 F_X = [0.15351828, 0.30695938, 0.46025942, 0.61325898]
@@ -197,4 +199,23 @@ def test_nonparametric_get_plot_data_marks_the_failures():
     ecdf = sp.NonParametric.fit_from_ecdf([1.0, 2.0, 3.0], [0.5, 0.5, 0.0])
     np.testing.assert_array_equal(
         ecdf.get_plot_data(plot_bounds=False)["failed"], [1, 0, 1]
+    )
+
+
+# ---------------------------------------------------------------------------
+# The probability-plot transforms round-trip (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_probability_plot_transform_roundtrips():
+    F = np.array([0.05, 0.3, 0.7, 0.95])
+    assert np.allclose(
+        Exponential.mpp_inv_y_transform(Exponential.mpp_y_transform(F)), F
+    )
+    assert np.allclose(
+        GumbelLEV.mpp_inv_y_transform(GumbelLEV.mpp_y_transform(F)), F
+    )
+    assert np.allclose(
+        Beta.mpp_inv_y_transform(Beta.mpp_y_transform(F, 2.0, 3.0), 2.0, 3.0),
+        F,
     )

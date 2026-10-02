@@ -6,6 +6,8 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+import surpyval as surv
+from surpyval.tests._helpers import no_warnings
 
 
 def _fitted_model(m=2, seed=0):
@@ -191,3 +193,40 @@ def test_fit_signatures():
     assert on_class["m"].default == 2
     on_model = inspect.signature(sp.MixtureModel(sp.Weibull).fit).parameters
     assert "dist" not in on_model and "self" not in on_model
+
+
+# ---------------------------------------------------------------------------
+# EM on interval data, a Geometric mixture, a restored mixture.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_mixture_em_on_interval_data_reaches_the_optimum():
+    np.random.seed(0)
+    x = np.concatenate([W.random(300, 5, 3), W.random(300, 30, 4)])
+    mm = surv.MixtureModel(W, 2)
+    no_warnings(mm.fit, xl=np.floor(x), xr=np.floor(x) + 1)
+    truth = mm.neg_ll_of(np.array([0.5, 0.5]), np.array([[5, 3], [30, 4.0]]))
+    # It stalled 114 units above the truth's negative log-likelihood
+    assert mm.loglike <= truth + 1e-6
+
+
+def test_geometric_mixture_fits_without_warnings():
+    np.random.seed(0)
+    x = np.concatenate([G.random(300, 0.5), G.random(300, 0.05)])
+    mm = surv.MixtureModel(G, 2)
+    no_warnings(mm.fit, x)
+    assert sorted(mm.params.ravel()) == pytest.approx([0.05, 0.5], abs=0.03)
+
+
+def test_restored_mixture_needs_its_data_for_plots_and_takes_lists_in_cs():
+    x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    mm = surv.MixtureModel(W, 2)
+    mm.fit(x)
+    restored = surv.from_dict(mm.to_dict())
+    assert np.allclose(restored.cs([1, 2], 5), mm.cs(np.array([1, 2]), 5))
+    for method in (restored.plot, restored.get_plot_data):
+        with pytest.raises(ValueError, match="needs the data"):
+            method()

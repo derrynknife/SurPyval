@@ -9,10 +9,13 @@ baseline fit produced by the plain parametric distribution. This anchors
 the regression likelihoods to SurPyval's known-correct base implementation.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
-from surpyval import ExponentialPH, Weibull, WeibullPH, WeibullPO
+from surpyval import ExponentialPH, LogNormalPH, Weibull, WeibullPH, WeibullPO
+from surpyval.tests._helpers import weibull_ph_data
 from surpyval.univariate.regression import AFT, AcceleratedLife
 from surpyval.univariate.regression.accelerated_life import Power
 
@@ -277,3 +280,26 @@ def test_cox_tvc_fit_reaches_own_mle_with_signed_covariate():
     ll = CoxPH.create_efron_ll_jac_hess(xr, Z, c, np.ones(len(xr)), xl)[0]
     direct = minimize(lambda b: ll(np.atleast_1d(b)), [0.0]).x[0]
     assert beta_fit == pytest.approx(direct, abs=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# A truncated fit's inference is quiet.
+# ---------------------------------------------------------------------------
+
+
+def test_truncated_fit_inference_and_lognormal_path_are_quiet():
+    x, Z = weibull_ph_data()
+    n = 100
+    i = np.r_[np.arange(n), np.arange(50)]
+    xl = np.r_[np.zeros(n), x[:50]]
+    xr = np.r_[x[:n], x[:50] + 5]
+    c = np.r_[np.ones(50), np.zeros(50), np.zeros(50)]
+    Zt = np.r_[np.zeros(n), np.ones(50)]
+    model = WeibullPH.fit_tvc(i, xl, xr, c, Zt)
+    lognormal = LogNormalPH.fit(x=x, Z=Z)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model.standard_errors()
+        model.cb([3.0], [0.0])
+        model.param_cb("beta_0")
+        lognormal.sf_tvc([1.0, 3.0], [[0.0], [1.0]], xl=[0.0, 2.0])

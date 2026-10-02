@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+import surpyval as surv
 from surpyval.univariate.parametric.fitters import mle as mle_module
 from surpyval.univariate.parametric.parametric import (
     MAXIMUM_STATES,
@@ -234,3 +235,18 @@ def test_fit_best_holds_back_the_candidates_own_warnings():
     assert not [m for m in messages if "did not reach a verified" in m]
     assert not [m for m in messages if m.startswith("No finite maximum")]
     assert len(messages) == 1 and messages[0].startswith("fit_best set")
+
+
+# ---------------------------------------------------------------------------
+# Every fit reports its optimizer.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+@pytest.mark.parametrize("how", ["MPP", "MOM", "MSE", "MPS"])
+def test_every_fit_reports_its_optimizer(how):
+    np.random.seed(1)
+    model = W.fit(W.random(30, 10, 3), how=how)
+    assert isinstance(model.optimizer, str) and model.optimizer

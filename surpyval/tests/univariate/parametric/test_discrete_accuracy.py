@@ -13,6 +13,7 @@ import pytest
 from scipy import stats
 
 import surpyval as sp
+from surpyval import Beta4
 from surpyval.tests.conformance.registry import CASES, fitted, query
 from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
@@ -408,3 +409,16 @@ def test_degenerate_distributions_give_nan_for_nan():
         for fn in ("sf", "ff", "df", "hf", "Hf", "qf"):
             got = getattr(dist, fn)(x)
             assert np.isnan(got[1]) and not np.isnan(got[0]), (dist, fn)
+
+
+# ---------------------------------------------------------------------------
+# Beta4 ``hf`` outside its support (#289).
+# ---------------------------------------------------------------------------
+
+
+class TestRound2FollowUps:
+    def test_beta4_hf_defined_outside_support(self):
+        out = Beta4.hf(np.array([-1.0, 3.0, 10.0]), 2, 3, 0, 5)
+        assert out[0] == 0.0
+        assert np.isfinite(out[1]) and out[1] > 0
+        assert np.isposinf(out[2])

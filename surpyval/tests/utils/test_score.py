@@ -99,3 +99,16 @@ def test_input_order_invariance():
     baseline = score(x, c, mortality)
     perm = rng.permutation(25)
     assert score(x[perm], c[perm], mortality[perm]) == pytest.approx(baseline)
+
+
+# ---------------------------------------------------------------------------
+# #276: a discordant tied pair scores zero.
+# ---------------------------------------------------------------------------
+
+
+def test_concordance_discordant_tied_pair_scores_zero():
+    # 276 (unit cases in tests/utils/test_score.py; pinned here too).
+    from surpyval.metrics import concordance_index as score
+
+    assert score([5.0, 5.0], [0, 1], [1.0, 2.0]) == 0.0
+    assert score([5.0, 5.0], [0, 1], [2.0, 1.0]) == 1.0

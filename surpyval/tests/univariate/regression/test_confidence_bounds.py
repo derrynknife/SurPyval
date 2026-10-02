@@ -11,14 +11,19 @@ that the interval width is calibrated, not just ordered.
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.special import ndtri
 
+import surpyval as surv
 from surpyval import (
     ExponentialPH,
+    Weibull,
     WeibullAFT,
     WeibullAH,
     WeibullPH,
     WeibullPO,
 )
+from surpyval.tests._helpers import fresh_conformance_fit
+from surpyval.utils.linalg import delta_method_se
 
 ALL_FAMILIES = [WeibullPH, WeibullAFT, WeibullAH, WeibullPO, ExponentialPH]
 
@@ -192,3 +197,76 @@ def test_plot_with_bounds_returns_axes():
     assert ax is not None
     # A band (fill_between) adds a PolyCollection to the axes.
     assert len(ax.collections) >= 1
+
+
+# ---------------------------------------------------------------------------
+# #418: the survival bound on the ``Hf`` scale has no ceiling,
+# and the ``sf`` bounds are the family-scale Wald bounds.
+# ---------------------------------------------------------------------------
+
+
+# -- #418: the regression survival bound on the Hf scale --------------------
+@pytest.mark.parametrize("name", ["GumbelPH", "GumbelAFT", "NormalPH"])
+def test_regression_Hf_bounds_have_no_ceiling(name):
+    # sf was clipped at 1e-15 on the logit scale, so the Hf bounds stopped
+    # at -log(1e-15) = 34.54: GumbelPH's Hf(22, [1, -0.2]) = 110.6 had the
+    # bounds [34.54, 34.54].
+    model = fresh_conformance_fit(name)
+    Z = np.array([1.0, -0.2])
+    H = model.Hf(22.0, Z)
+    assert H > 34.6
+    lo, hi = model.cb(22.0, Z, on="Hf")
+    assert lo <= H <= hi and hi > 34.6
+    # The interval closes onto the estimate as alpha_ci -> 1.
+    np.testing.assert_allclose(
+        model.cb(22.0, Z, on="Hf", alpha_ci=1 - 1e-6), [H, H], rtol=1e-5
+    )
+    # One-sided bounds are the matching ends of the two-sided one.
+    two = model.cb(22.0, Z, on="Hf", alpha_ci=0.1)
+    for k, side in enumerate(("lower", "upper")):
+        np.testing.assert_allclose(
+            model.cb(22.0, Z, on="Hf", alpha_ci=0.05, bound=side),
+            two[k],
+            rtol=1e-12,
+        )
+
+
+def test_regression_sf_bounds_are_the_family_scale_wald_bounds():
+    # The survival bound is the Wald bound on the baseline family's scale
+    # (log H for a Weibull, #504), formed from the cumulative hazard.
+    np.random.seed(7)
+    Z = np.random.binomial(1, 0.5, 120).reshape(-1, 1).astype(float)
+    x = surv.Weibull.random(120, 10, 2) * np.exp(-0.5 * Z[:, 0])
+    model = surv.WeibullPH.fit(x, Z)
+    t, z = np.array([3.0, 8.0, 15.0]), np.array([[1.0]])
+    params, cov = np.asarray(model.params), model.covariance()
+
+    def log_H(p):
+        s = model.model.sf(t, z, *p)
+        return np.log(-np.log(s))
+
+    se = delta_method_se(log_H, params, cov)
+    q = ndtri(0.975)
+    v = log_H(params)[:, None] + np.array([q, -q]) * se[:, None]
+    np.testing.assert_allclose(model.cb(t, z), np.exp(-np.exp(v)), rtol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Invalid ``cb`` arguments raise ``ValueError`` (#261).
+# ---------------------------------------------------------------------------
+
+
+def test_invalid_cb_arguments_raise_value_error():
+    np.random.seed(8)
+    m = Weibull.fit(Weibull.random(80, 10, 3))
+    with pytest.raises(ValueError):
+        m.cb([5.0], on="bogus")
+    with pytest.raises(ValueError):
+        m.param_cb("alpha", bound="both")
+
+
+def test_interval_bound_below_support_raises():
+    with pytest.raises(ValueError):
+        Weibull.fit(xl=np.array([-0.5, 1, 2]), xr=np.array([0.5, 2, 3]))
+    with pytest.raises(ValueError):
+        Weibull.fit(np.array([0.0, 1.0, 2.0, 5.0]), c=np.array([-1, 0, 0, 0]))

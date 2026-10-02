@@ -17,6 +17,11 @@ from surpyval.recurrent import (  # noqa: E402
     GeneralizedRenewal,
 )
 from surpyval.recurrent.renewal.ari import ari_reduction  # noqa: E402
+from surpyval.tests._helpers import (  # noqa: E402
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+)
 from surpyval.utils.recurrent_utils import handle_xicn  # noqa: E402
 
 X = np.array([3, 9, 20, 35, 56, 4, 11, 25, 44, 70], dtype=float)
@@ -362,3 +367,28 @@ def test_ari_saved_before_the_rename_still_loads():
         assert model.to_dict() == saved
     assert model.model.dist is Duane
     np.testing.assert_array_equal(model.params, [0.5, 20.0, 1.5])
+
+
+# ---------------------------------------------------------------------------
+# Infeasible starts.
+# ---------------------------------------------------------------------------
+
+
+def test_ari_fit_skips_infeasible_start_without_warnings():
+    # The rho = 0.9 start drives the intensity negative (zero likelihood);
+    # Nelder-Mead from it used to warn about inf - inf.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = ARI.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, m=1)
+    assert 0 < model.rho < 1
+
+
+def test_infeasible_user_init_is_reported():
+    with pytest.raises(ValueError, match="zero likelihood"):
+        ARI.fit(
+            REPAIR_FLEET_X,
+            REPAIR_FLEET_I,
+            REPAIR_FLEET_C,
+            m=1,
+            init=[0.9, 7.8, 0.74],
+        )

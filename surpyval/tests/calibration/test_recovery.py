@@ -28,6 +28,7 @@ import pytest
 
 import surpyval as sp
 from surpyval.recurrent import ARA, GeneralizedOneRenewal
+from surpyval.tests._helpers import random_right_censoring
 from surpyval.tests.calibration._montecarlo import check_bias
 
 # --- univariate MLE with truncation and interval censoring ---------------
@@ -148,15 +149,10 @@ def _design(rng, n):
     return np.column_stack([rng.binomial(1, 0.5, n), rng.normal(0, 1, n)])
 
 
-def _censored(t, rng, c_max):
-    cens = rng.uniform(0, c_max, t.size)
-    return np.minimum(t, cens), (cens < t).astype(int)
-
-
 def _cox_data(rng, n, beta):
     Z = _design(rng, n)
     t = 10.0 * (rng.exponential(size=n) / np.exp(Z @ beta)) ** (1 / 1.5)
-    x, c = _censored(t, rng, 25.0)
+    x, c = random_right_censoring(t, rng, 25.0)
     return x, Z, c
 
 
@@ -195,7 +191,7 @@ def test_buckley_james_recovery():
     for r in range(reps):
         Z = _design(rng, n)
         t = np.exp(2.0 - Z @ beta + rng.normal(0, 0.5, n))
-        x, c = _censored(t, rng, 25.0)
+        x, c = random_right_censoring(t, rng, 25.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             est[r] = sp.BuckleyJames.fit(x=x, Z=Z, c=c).params
@@ -212,7 +208,7 @@ def test_lin_ying_recovery():
         Z = _design(rng, n)
         Z[:, 1] = np.abs(Z[:, 1])
         t = rng.exponential(1 / (0.1 + Z @ beta))
-        x, c = _censored(t, rng, 25.0)
+        x, c = random_right_censoring(t, rng, 25.0)
         model = sp.AdditiveHazards.fit(x=x, Z=Z, c=c)
         est[r] = model.params
         se[r] = model.standard_errors()
@@ -232,7 +228,7 @@ def test_frailty_recovery():
         Z = rng.binomial(1, 0.5, (groups.size, 1))
         H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
         t = 10.0 * H ** (1 / 1.5)
-        x, c = _censored(t, rng, 30.0)
+        x, c = random_right_censoring(t, rng, 30.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = sp.WeibullFrailty.fit(x, Z=Z, c=c, groups=groups)
@@ -256,7 +252,7 @@ def test_lognormal_frailty_recovery():
         Z = rng.binomial(1, 0.5, (groups.size, 1))
         H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
         t = 10.0 * H ** (1 / 1.5)
-        x, c = _censored(t, rng, 30.0)
+        x, c = random_right_censoring(t, rng, 30.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = fitter.fit(x, Z=Z, c=c, groups=groups)
@@ -280,7 +276,7 @@ def test_cox_frailty_recovery():
         Z = rng.binomial(1, 0.5, (groups.size, 1))
         H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
         t = 10.0 * H ** (1 / 1.5)
-        x, c = _censored(t, rng, 30.0)
+        x, c = random_right_censoring(t, rng, 30.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = sp.CoxFrailty.fit(x, Z=Z, c=c, groups=groups)

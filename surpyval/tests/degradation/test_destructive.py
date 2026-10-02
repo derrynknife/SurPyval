@@ -10,11 +10,12 @@ AICc transform selection, bootstrap bounds, and serialisation.
 """
 
 import json
+from typing import Any, cast
 
 import numpy as np
 import pytest
 
-from surpyval import LogNormal, Normal
+from surpyval import Logistic, LogNormal, Normal
 from surpyval.degradation import (
     DestructiveDegradation,
     DestructiveDegradationModel,
@@ -171,3 +172,74 @@ def test_validation_errors():
 def test_from_dict_rejects_wrong_model():
     with pytest.raises(ValueError, match="DestructiveDegradationModel"):
         DestructiveDegradationModel.from_dict({"model": "Other"})
+
+
+# ---------------------------------------------------------------------------
+# Input checks, and any location-scale distribution
+# round-trips.
+# ---------------------------------------------------------------------------
+
+
+def _destructive_data() -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(0)
+    age = rng.uniform(1, 40, 60)
+    return age, 100 - 1.5 * age + rng.normal(0, 5, 60)
+
+
+def test_destructive_bad_input_refused() -> None:
+    age, y = _destructive_data()
+    with pytest.raises(ValueError, match="positive support"):
+        DestructiveDegradation.fit(age, y - 60, threshold=1.0)
+    with pytest.raises(ValueError, match="threshold"):
+        DestructiveDegradation.fit(
+            age, y, threshold=np.nan, distribution=Normal
+        )
+    with pytest.raises(ValueError, match="finite"):
+        DestructiveDegradation.fit(
+            np.r_[age, np.nan],
+            np.r_[y, 50.0],
+            threshold=40.0,
+            distribution=Normal,
+        )
+    for transform in ("log", "reciprocal"):
+        with pytest.raises(ValueError, match="time transform"):
+            DestructiveDegradation.fit(
+                np.r_[0.0, age],
+                np.r_[100.0, y],
+                threshold=40.0,
+                distribution=Normal,
+                transform=transform,
+            )
+    # "best" skips the transforms that are not finite at t = 0
+    best = DestructiveDegradation.fit(
+        np.r_[0.0, age],
+        np.r_[100.0, y],
+        threshold=40.0,
+        distribution=Normal,
+        transform="best",
+    )
+    assert best.transform_scores is not None
+    assert set(best.transform_scores) == {"linear", "sqrt"}
+    # a 0-d threshold is a number
+    assert (
+        DestructiveDegradation.fit(
+            age, y, threshold=cast(Any, np.array(40.0)), distribution=Normal
+        ).threshold
+        == 40.0
+    )
+
+
+def test_destructive_any_distribution_round_trips() -> None:
+    age, y = _destructive_data()
+    model = DestructiveDegradation.fit(
+        age, y, threshold=40.0, distribution=Logistic
+    )
+    restored = DestructiveDegradationModel.from_dict(
+        json.loads(json.dumps(model.to_dict()))
+    )
+    t = np.array([20.0, 40.0])
+    assert np.allclose(restored.sf(t), model.sf(t))
+    by_name = DestructiveDegradation.fit(
+        age, y, threshold=40.0, distribution="Logistic"
+    )
+    assert np.allclose(by_name.sf(t), model.sf(t))
