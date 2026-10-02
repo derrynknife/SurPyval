@@ -1430,7 +1430,7 @@ class RenewalModel(
         )
         failed = [f for f in (perfect, minimal) if f is not None and f.message]
         if failed:
-            from surpyval.utils import _caller_stacklevel
+            from surpyval.utils.warnings import caller_stacklevel
 
             warnings.warn(
                 "The repair test is not available: {}. The other "
@@ -1438,7 +1438,7 @@ class RenewalModel(
                     "; ".join(f.message for f in failed)
                 ),
                 UserWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
         self._repair_fit_cache = (perfect, minimal)
         return perfect, minimal

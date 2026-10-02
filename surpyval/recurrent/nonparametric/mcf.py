@@ -11,12 +11,14 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.nonparametric._support import (
+    check_support,
+    on_support,
+    support_from_dict,
+)
 from surpyval.univariate.nonparametric.nonparametric import (
     _BOUNDS,
     _check_option,
-    _check_support,
-    _on_support,
-    _support_from_dict,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
@@ -140,7 +142,7 @@ class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
             var_arr = None
         out.var = var_arr
         out.origin = float(model_dict.get("origin", 0.0))
-        support = _support_from_dict(model_dict)
+        support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
         return out
@@ -198,7 +200,7 @@ class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
         >>> model.set_support(-10, 100).mcf([-20, -5, 30, 80, 120])
         array([nan, 0. , 2. , 3.5, nan])
         """
-        self.support = _check_support(
+        self.support = check_support(
             lower,
             upper,
             self._origin(),
@@ -216,7 +218,7 @@ class NonParametricCounting(RecurrentDataFrameMixin, SerialisableMixin):
         :meth:`set_support`); the MCF and its bounds start at 0."""
         if self.support is None:
             return f(x)
-        return _on_support(
+        return on_support(
             self.support, self._origin(), float(self.x.max()), x, f, 0.0
         )
 

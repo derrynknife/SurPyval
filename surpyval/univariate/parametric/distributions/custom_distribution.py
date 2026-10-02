@@ -11,12 +11,12 @@ from autograd import elementwise_grad
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData

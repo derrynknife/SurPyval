@@ -49,7 +49,8 @@ modules() {
     cases=""
     case "$1" in
     nonparametric)
-        mutate="$np/nonparametric.py $np/kaplan_meier.py $np/nelson_aalen.py
+        mutate="$np/nonparametric.py $np/_support.py $np/_bands.py
+                $np/kaplan_meier.py $np/nelson_aalen.py
                 $np/fleming_harrington.py"
         tests="surpyval/tests/univariate/nonparametric
                surpyval/tests/reference/test_nonparametric.py
@@ -72,7 +73,9 @@ modules() {
                $conformance"
         cases="CoxPH,CoxPH[strata]" ;;
     parametric_fitter)
-        mutate="surpyval/univariate/parametric/parametric_fitter.py"
+        mutate="surpyval/univariate/parametric/parametric_fitter.py
+                surpyval/univariate/parametric/optimised_fit.py
+                surpyval/univariate/parametric/_fit_inputs.py"
         tests="surpyval/tests/univariate/parametric
                surpyval/tests/reference/test_parametric.py
                surpyval/tests/properties/test_parametric.py

@@ -23,7 +23,8 @@ from surpyval.utils import is_missing_event, missing_events
 cr_module = importlib.import_module(
     "surpyval.univariate.competing_risks.nonparametric.competing_risks"
 )
-utils_module = importlib.import_module("surpyval.utils")
+# ``missing_events`` looks ``is_missing_event`` up in its own module.
+data_formats = importlib.import_module("surpyval.utils.data_formats")
 
 
 def _loop_d_e(model, x, c, n, e):
@@ -151,7 +152,7 @@ def test_fit_does_not_scan_the_times_per_row(monkeypatch):
     )
     numpy_without_where.where = refuse
     monkeypatch.setattr(cr_module, "np", numpy_without_where)
-    monkeypatch.setattr(utils_module, "is_missing_event", refuse)
+    monkeypatch.setattr(data_formats, "is_missing_event", refuse)
     x = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     e = ["a", "b", "a", None, "a", "b", "a", None, "b", "a"]
     model = CompetingRisks.fit(x, e)

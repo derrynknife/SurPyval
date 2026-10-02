@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 import surpyval as surv
-from surpyval.utils import _round_vals
+from surpyval.utils.numeric import _round_vals
 
 matplotlib.use("Agg")
 

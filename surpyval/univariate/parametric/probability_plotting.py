@@ -15,7 +15,7 @@ import warnings
 import autograd.numpy as np
 
 from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.utils import _round_vals
+from surpyval.utils.numeric import _round_vals
 
 
 def adjust_heuristic(
