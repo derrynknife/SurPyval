@@ -177,6 +177,25 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Fixed: likelihood-ratio bounds widen with the confidence level
+  (#535).** An ExpoWeibull 99% likelihood-ratio interval did not contain
+  the 95% one, because the search stopped on a local extreme of the long,
+  curved likelihood region. The 99% ``hf(13)`` lower bound was 0.1046,
+  above the 95% one of 0.1017, and the ``qf(0.95)`` upper bound was 36.44,
+  below the 95% one of 40.37. The search now follows each bound outward
+  through the regions at 1/4, 1/2, 3/4 and all of the critical value, and
+  gives 0.0714 and 80.6; the region approaches 0.0708 and 87.0 as alpha
+  goes to 0. Every other registered model's likelihood-ratio bounds are
+  unchanged to the bit.
+- **Breaking: ARI takes its baseline intensity as baseline= (#507).** In
+  ``ARA``, ``GeneralizedRenewal`` and ``GeneralizedOneRenewal``, ``dist`` is
+  a lifetime distribution, but in ``ARI`` it was the baseline intensity
+  model (``CrowAMSAA``, ``Duane``, ``CoxLewis``), so ``dist=sp.Weibull`` was
+  an easy mistake. ``fit``, ``fit_from_recurrent_data``, ``fit_from_df``
+  and ``fit_from_parameters`` now take ``baseline=`` (and
+  ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
+  old names work until v0.23 with a ``DeprecationWarning``. Saved models
+  are unchanged, and old files load as before.
 - **Added: a semi-parametric proportional odds model (#341).**
   ``surpyval.ProportionalOdds`` is the proportional-odds counterpart of
   ``CoxPH``: the covariates multiply the survival odds of a baseline left
