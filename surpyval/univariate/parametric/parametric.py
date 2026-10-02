@@ -3055,7 +3055,17 @@ class Parametric(
         the region, by SLSQP, from the estimate and then from the points
         of the region farther out that the parameters' own walks found),
         and a result is taken only if it checks out as that crossing and
-        is at least as far out as every point of the region known. Failing
+        is at least as far out as every point of the region known. The
+        points known include the extremes over the narrower regions at
+        1/4, 1/2 and 3/4 of the critical value and at the value itself,
+        each searched from the one before (continuation in the level,
+        ``_LR_LADDER``), so the search follows the extreme out as the
+        region grows rather than stopping on a nearer local extreme of a
+        long, curved region: an ExpoWeibull 99% ``hf(13)`` lower bound of
+        0.1046 above the 95% one of 0.1017, and a ``qf(0.95)`` upper bound
+        of 36.4 below the 95% one of 40.4, are 0.0714 and 80.6, near the
+        0.0708 and 87.0 that the region approaches at the end of
+        ``alpha``'s coordinate (#535). Failing
         that, the profile of ``psi`` is walked out from the farthest point
         known (``_lr_walk``); where it stays below ``crit``, or levels off
         below it, to the end of the scale, the band reaches the edge of
@@ -3462,6 +3472,10 @@ class Parametric(
         # The first step: the Wald standard error on the psi scale.
         hess_inv = getattr(self, "hess_inv", None)
         step = np.nan
+        # The Cholesky factor of the Wald covariance in the search
+        # coordinates: the level ladder also searches in the coordinates
+        # it whitens (``ladder``).
+        chol = None
         if hess_inv is not None and np.ndim(hess_inv) == 2:
             slopes = np.array(
                 [coords[j].slope(theta_hat[j]) for j in free], dtype=float
@@ -3470,6 +3484,12 @@ class Parametric(
             cov_u = cov_u / np.outer(slopes, slopes)
             grad = _central_gradient(psi_u, u_hat)
             step = float(np.sqrt(grad @ cov_u @ grad))
+            try:
+                chol = np.linalg.cholesky(cov_u)
+            except np.linalg.LinAlgError:
+                chol = None
+            if chol is not None and not np.all(np.isfinite(chol)):
+                chol = None
         if not (np.isfinite(step) and step > 0):
             step = 1.0
 
@@ -3495,22 +3515,50 @@ class Parametric(
                 walks.append(walk)
 
         def extreme(
-            direction: float, start: npt.NDArray, level: float
+            direction: float,
+            start: npt.NDArray,
+            level: float,
+            whiten: bool = False,
         ) -> npt.NDArray | None:
             # Where SLSQP stops in its search for the extreme of psi over
             # the region {deviance <= level}; ``None`` where it fails.
+            # ``whiten``: searched in z, u = u_hat + chol z (held in the
+            # box), where the region is near a ball about the estimate.
+            if whiten:
+                if chol is None:
+                    return None
+                L = chol
+
+                def to_u(z: npt.NDArray) -> npt.NDArray:
+                    return self._lr_start(u_hat + L @ z, box)
+
+                z0 = np.linalg.solve(L, np.asarray(start) - u_hat)
+                z_bounds = None
+            else:
+
+                def to_u(z: npt.NDArray) -> npt.NDArray:
+                    return z
+
+                z0, z_bounds = start, bounds
+
+            def f(z: npt.NDArray) -> float:
+                return psi_u(to_u(z))
+
+            def g(z: npt.NDArray) -> float:
+                return dev_u(to_u(z))
+
             try:
                 res = minimize(
-                    lambda u: -direction * psi_u(u),
-                    start,
+                    lambda z: -direction * f(z),
+                    z0,
                     method="SLSQP",
-                    jac=lambda u: -direction * _central_gradient(psi_u, u),
-                    bounds=bounds,
+                    jac=lambda z: -direction * _central_gradient(f, z),
+                    bounds=z_bounds,
                     constraints=[
                         {
                             "type": "ineq",
-                            "fun": lambda u: level - dev_u(u),
-                            "jac": lambda u: -_central_gradient(dev_u, u),
+                            "fun": lambda z: level - g(z),
+                            "jac": lambda z: -_central_gradient(g, z),
                         }
                     ],
                     options={"ftol": 1e-10, "maxiter": 100},
@@ -3519,7 +3567,7 @@ class Parametric(
                 return None
             if not np.all(np.isfinite(res.x)):
                 return None
-            return np.asarray(res.x)
+            return to_u(np.asarray(res.x))
 
         def direct(direction: float, start: npt.NDArray) -> float | None:
             # The extreme of psi over the region, sought directly (SLSQP),
@@ -3600,44 +3648,61 @@ class Parametric(
             # stays in its valley, where one from the estimate or from a
             # walk's tip can stop on a nearer local extreme of a long,
             # curved region (an ExpoWeibull hf(13) lower bound of 0.1046
-            # at 99%, though 0.1017 is in the 95% region, #535). A search
-            # that stops outside its region (SLSQP's tolerance, or its
-            # iteration limit in a narrow valley) is taken back onto its
-            # boundary along the line from the step before.
-            u_step, far = u_start, -np.inf
+            # at 99%, though 0.1017 is in the 95% region, #535). Each rung
+            # is searched in the search coordinates and in those the Wald
+            # covariance whitens (SLSQP is sensitive to the scaling, and
+            # in a narrow valley neither alone is reliable: the 99%
+            # qf(0.95) upper bound stopped at 25.3 and at 35.3, and at
+            # 82.3 the better of the two at each rung, of the 87.0 that
+            # tracing the region slice by slice finds), and the more
+            # extreme answer taken, or the rung's start where neither is
+            # further out. An answer outside its region (SLSQP's
+            # tolerance, or its iteration limit) is taken back onto the
+            # boundary along the line from the rung's start.
+            u_step, psi_step = u_start, psi_hat
+            far = -np.inf
             for frac in (*self._LR_LADDER, 1.0):
                 level = frac * crit
-                x = extreme(direction, u_step, level)
-                if x is None:
-                    break
-                if not dev_u(x) <= level:
-                    if not dev_u(u_step) <= level:
-                        break
-                    ray = x - u_step
-
-                    def excess(r: float) -> float:
-                        d = dev_u(u_step + r * ray)
-                        return min(d, _LR_UNREACHABLE) - level
-
-                    try:
-                        r = brentq(
-                            excess,
-                            0.0,
-                            1.0,
-                            xtol=1e-14,
-                            rtol=1e-14,
-                        )
-                    except ValueError:
-                        break
-                    x = u_step + r * ray
-                psi_x = psi_u(x)
-                if not np.isfinite(psi_x):
-                    break
-                known.append((psi_x, x))
-                ladder_ids.add(id(x))
-                far = max(far, direction * psi_x)
-                u_step = x
+                best_x, best_psi = None, psi_step
+                for whiten in (False, True):
+                    x = extreme(direction, u_step, level, whiten)
+                    if x is None:
+                        continue
+                    if not dev_u(x) <= level:
+                        x = onto_boundary(u_step, x, level)
+                        if x is None:
+                            continue
+                    psi_x = psi_u(x)
+                    if np.isfinite(psi_x) and (
+                        direction * (psi_x - best_psi) > 0
+                    ):
+                        best_x, best_psi = x, psi_x
+                if best_x is None:
+                    continue
+                known.append((best_psi, best_x))
+                ladder_ids.add(id(best_x))
+                far = max(far, direction * best_psi)
+                u_step, psi_step = best_x, best_psi
             return far
+
+        def onto_boundary(
+            inside: npt.NDArray, outside: npt.NDArray, level: float
+        ) -> npt.NDArray | None:
+            # Where the line from ``inside`` (deviance <= level) to
+            # ``outside`` meets {deviance = level}; ``None`` if it cannot
+            # be found.
+            if not dev_u(inside) <= level:
+                return None
+            ray = outside - inside
+
+            def excess(r: float) -> float:
+                return min(dev_u(inside + r * ray), _LR_UNREACHABLE) - level
+
+            try:
+                r = brentq(excess, 0.0, 1.0, xtol=1e-14, rtol=1e-14)
+            except ValueError:
+                return None
+            return inside + r * ray
 
         def solve_side(direction: float) -> float:
             quick = from_trace(direction)
@@ -3659,14 +3724,16 @@ class Parametric(
                     best is None or direction * quick > direction * best
                 ):
                     best = quick
+            # As far out as every point known, and as the ladder's to
+            # within its tolerance (a ladder that ends on the same extreme
+            # by another path leaves the answer as it was).
             far = max(
                 direction * k[0] for k in known if id(k[1]) not in ladder_ids
             )
             if (
                 best is not None
                 and direction * best >= far
-                and direction * best
-                >= far_ladder - 1e-6 * max(1.0, abs(best))
+                and direction * best >= far_ladder - 1e-6 * max(1.0, abs(best))
             ):
                 return best
             # The bound is at least as far out as every point of the
