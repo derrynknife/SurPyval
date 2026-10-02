@@ -1112,7 +1112,8 @@ class Parametric(
             # Only a zero-inflated model's survival reaches 0 (an LFP's
             # stays at 1 - p), and past 0 its 1 - f0 cancels: the hazard
             # is the base's, where df / sf was 0 / 0 (#561).
-            base = self.dist.hf(x - self.gamma, *self.params)
+            xg = np.asarray(x, dtype=float) - self.gamma
+            base = self.dist.hf(xg, *self.params)
             with np.errstate(invalid="ignore", divide="ignore"):
                 return np.where(gone, base, self.df(x) / sf)[()]
 

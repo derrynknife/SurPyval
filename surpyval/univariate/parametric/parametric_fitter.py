@@ -223,14 +223,15 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn(self, x, *params)
         x_arr = np.asarray(x, dtype=float)
         missing = np.isnan(x_arr)
-        top = (
-            np.isposinf(x_arr)
-            if at_infinity is not None
+        top = None
+        replaced = missing
+        if (
+            at_infinity is not None
             and self.discrete
             and self.support[1] == np.inf
-            else np.zeros(x_arr.shape, dtype=bool)
-        )
-        replaced = missing | top
+        ):
+            top = np.isposinf(x_arr)
+            replaced = missing | top
         if not np.any(replaced):
             return fn(self, x, *params)
         # A point asked for alongside is one the function accepts; failing
@@ -244,7 +245,7 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             lo, hi = self._support_edges(*params)
             fill = lo if np.isfinite(lo) else (hi if np.isfinite(hi) else 0.0)
         out = fn(self, np.where(replaced, fill, x_arr), *params)
-        if np.any(top):
+        if top is not None and np.any(top):
             out = np.where(top, at_infinity, out)
         out = np.where(missing, np.nan, out)
         return out[()] if isinstance(out, np.ndarray) else out
