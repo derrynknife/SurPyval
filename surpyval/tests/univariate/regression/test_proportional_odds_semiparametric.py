@@ -338,3 +338,28 @@ def test_no_convergence_warning_on_ordinary_fits():
             x, c = np.minimum(T, C)[:200], (T > C)[:200].astype(int)
             model = sp.ProportionalOdds.fit(x, Z[:200], c=c)
             assert model.n_iter < 10
+
+
+def test_truncated_fit_with_a_non_concave_start_is_not_aliased():
+    # With delayed entry the profile likelihood need not be concave at
+    # beta = 0. Its information there was the aliasing check's yardstick,
+    # and a negative eigenvalue aliased a continuous covariate (one fit in
+    # 1000 of the left-truncation study). Aliasing is decided by the
+    # covariates themselves now, and the fit reaches the maximum.
+    rng = np.random.default_rng(384)
+    Z = np.column_stack([rng.binomial(1, 0.5, 40), rng.normal(size=40)])
+    U = rng.uniform(size=40)
+    T = 10 * (U / (1 - U) * np.exp(Z @ [1.0, -0.5])) ** 0.5
+    tl = rng.uniform(0, 5, 40)
+    keep = T > tl
+    C = np.maximum(rng.uniform(0, 30, 40), tl + 0.01)
+    x, c = np.minimum(T, C)[keep], (T > C)[keep].astype(float)
+    Z, tl = Z[keep], tl[keep]
+    w = np.ones(x.size)
+    lik = _POLikelihood(x, c, w, tl, Z - Z.mean(axis=0))
+    _, der = _inner(lik, np.zeros(2), lik.start(x, w, tl), 1e-12)
+    assert np.linalg.eigvalsh(lik.schur(der)).min() < 0
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = sp.ProportionalOdds.fit(x, Z, c=c, tl=tl)
+    np.testing.assert_allclose(model.beta, [0.5132, -0.9434], atol=1e-4)

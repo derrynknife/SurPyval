@@ -165,6 +165,9 @@ class _POLikelihood:
         K_x = np.searchsorted(self.t, x, side="right")
         K_tl = np.searchsorted(self.t, tl, side="right")
         entered = K_tl > 0
+        # A row with no event time in its window (tl, x] has terms that
+        # cancel: the likelihood does not depend on it.
+        self.informative = K_x > K_tl
         self.K = np.concatenate([K_x, K_tl[entered]])
         self.a = np.concatenate([-(1.0 + delta) * n, n[entered]])
         self.Zt = np.concatenate([Z, Z[entered]])
@@ -442,20 +445,28 @@ def _validate(
 
 
 def _po_aliased(
-    info: npt.NDArray, Z: npt.NDArray, n: npt.NDArray, n_events: float
-) -> npt.NDArray:
+    Z: npt.NDArray, n: npt.NDArray, n_events: float
+) -> tuple[npt.NDArray, npt.NDArray]:
     """The columns whose coefficients the likelihood cannot determine
-    (#476), from ``info``, the profile information at ``beta = 0``: a
-    constant column (the baseline odds absorb it, as a Cox baseline
-    absorbs a constant), or a linear combination of the others. Each
-    column's information is judged against its spread over the data,
-    as for Cox (:func:`~..proportional_hazards.cox_ph._cox_aliased`)."""
-    info = np.atleast_2d(np.asarray(info, dtype=float))
-    if info.shape[0] == 0:
-        return np.array([], dtype=int)
+    (#476), and the scale of the information about each coefficient.
+
+    The likelihood depends on ``Z`` only through ``eta = -beta'Z``, and a
+    shift of ``eta`` common to every row is absorbed by the baseline odds
+    (a constant factor on ``G0``). A direction of ``beta`` along which
+    ``Z beta`` is constant over the rows ``Z`` (those the likelihood
+    depends on) is therefore not determined: a constant column, or a
+    linear combination of the others. These are the null directions of
+    the ``n``-weighted Gram matrix of the centred rows, as for the
+    parametric models; the profile information at ``beta = 0``, Cox's
+    yardstick, need not be positive definite here.
+
+    The scale is the number of events times each column's weighted
+    variance, the yardstick of
+    :func:`~..proportional_hazards.cox_ph._cox_aliased`."""
     Zc = Z - _covariate_center(Z, n)
-    spread = n_events * (n @ Zc**2) / n.sum()
-    return aliased_columns(info, Z.shape[0], constant_columns(Z), spread)
+    gram = (Zc * n[:, None]).T @ Zc
+    aliased = aliased_columns(gram, Z.shape[0], constant_columns(Z))
+    return aliased, n_events * np.diag(gram) / n.sum()
 
 
 _LOG_MAX = float(np.log(np.finfo(float).max))
@@ -1067,13 +1078,9 @@ class ProportionalOdds_:
         mean = _covariate_center(Z, n)
         Zc = Z - mean
         inner_tol = min(tol, 1e-10) * 1e-2
-        # The baseline at beta = 0, the start, and the information there,
-        # which decides the aliased columns.
         lik = _POLikelihood(x, c, n, tl, Zc)
-        with np.errstate(all="ignore"):
-            u, der = _inner(lik, np.zeros(p), lik.start(x, n, tl), inner_tol)
-            info0 = _safe_schur(lik, der)
-        aliased = _po_aliased(info0, Z, n, float(lik.d.sum()))
+        rows = lik.informative
+        aliased, scale = _po_aliased(Z[rows], n[rows], float(lik.d.sum()))
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
             warn_aliased(
@@ -1084,16 +1091,18 @@ class ProportionalOdds_:
                 "of the others)",
             )
             lik = _POLikelihood(x, c, n, tl, Zc[:, kept])
-        info0 = info0[np.ix_(kept, kept)]
         gamma = np.zeros(kept.size)
         converged, n_iter = True, 0
         S = np.zeros((0, 0))
-        if kept.size:
-            with np.errstate(all="ignore"):
+        with np.errstate(all="ignore"):
+            # The baseline at beta = 0 is the start.
+            u, der = _inner(lik, gamma, lik.start(x, n, tl), inner_tol)
+            if kept.size:
                 gamma, u, der, S, converged, n_iter = _profile_fit(
                     lik, u, gamma, tol, _OUTER_MAX_ITER
                 )
-            _check_maximum(S, info0, kept, converged, n_iter)
+        if kept.size:
+            _check_maximum(S, scale[kept], kept, converged, n_iter)
 
         cov_k = _inverse_information(S)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -1223,7 +1232,7 @@ def _inverse_information(S: npt.NDArray) -> npt.NDArray:
 
 def _check_maximum(
     S: npt.NDArray,
-    info0: npt.NDArray,
+    scale: npt.NDArray,
     kept: npt.NDArray,
     converged: bool,
     n_iter: int,
@@ -1236,12 +1245,12 @@ def _check_maximum(
     increasing as that coefficient grows, and the information for it
     collapses (the survival odds of the separated rows go to 0 or
     infinity, and the likelihood flattens in that direction). A
-    coefficient whose profile information has fallen below ``1e-8`` of
-    its value at ``beta = 0`` is taken to have run away; on an ordinary
-    fit the information at the maximum is of the order of that at the
-    start."""
+    coefficient whose profile information ``S`` has fallen below ``1e-8``
+    of ``scale``, the number of events times the covariate's variance (of
+    the order of the information about it, which on an ordinary fit is a
+    fraction of that), is taken to have run away."""
     d = np.diag(np.atleast_2d(S)) if S.size else np.zeros(0)
-    d0 = np.diag(np.atleast_2d(info0)) if info0.size else np.zeros(0)
+    d0 = np.asarray(scale, dtype=float)
     collapsed = np.flatnonzero(
         (d0 > 0) & ~(np.nan_to_num(d, nan=0.0) > 1e-8 * d0)
     )
