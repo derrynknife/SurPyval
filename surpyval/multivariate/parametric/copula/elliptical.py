@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as onp
 import numpy.typing as npt
-from scipy.special import gammaln, ndtr, ndtri, stdtr, stdtrit
+from scipy.special import ndtr, ndtri, poch, stdtr, stdtrit
 from scipy.stats import multivariate_normal
 
 from surpyval.multivariate.parametric.copula.copula import _EPS, Copula
@@ -134,6 +134,20 @@ def _tanh_sinh(step: float = 1.0 / 16.0, reach: float = 3.25) -> tuple:
 _TS_Z, _TS_ZC, _TS_W = _tanh_sinh()
 
 
+def _log_t_constant(nu: float) -> float:
+    """The normalising constant of the t copula density, :math:`\\log
+    \\frac{\\Gamma(\\nu/2 + 1)\\Gamma(\\nu/2)}{\\Gamma((\\nu + 1)/2)^2}
+    = \\log\\frac{\\nu}{2} - 2 \\log \\frac{\\Gamma(\\nu/2 + 1/2)}
+    {\\Gamma(\\nu/2)}`, which tends to 0 like :math:`1 / (2\\nu)`.
+
+    The ratio is scipy's Pochhammer symbol; three ``gammaln`` of about
+    ``nu log nu`` each cancelled to an error of 5e-7 at ``nu = 1.3e8``,
+    which summed over the rows put the t copula 1.4e-4 above the
+    Gaussian copula, its limit, in log-likelihood.
+    """
+    return float(onp.log(nu / 2.0) - 2.0 * onp.log(poch(nu / 2.0, 0.5)))
+
+
 class StudentTCopula(Copula):
     """Student-t copula: correlation ``rho in (-1, 1)`` and degrees of
     freedom ``nu > 0`` (symmetric tail dependence).
@@ -243,14 +257,10 @@ class StudentTCopula(Copula):
         one_m_r2 = 1.0 - rho**2
         quad = (x**2 + y**2 - 2.0 * rho * x * y) / (nu * one_m_r2)
         log_joint = (
-            gammaln((nu + 2.0) / 2.0)
-            + gammaln(nu / 2.0)
-            - 2.0 * gammaln((nu + 1.0) / 2.0)
+            _log_t_constant(nu)
             - 0.5 * onp.log(one_m_r2)
             - (nu + 2.0) / 2.0 * onp.log1p(quad)
-            + (nu + 1.0)
-            / 2.0
-            * (onp.log1p(x**2 / nu) + onp.log1p(y**2 / nu))
+            + (nu + 1.0) / 2.0 * (onp.log1p(x**2 / nu) + onp.log1p(y**2 / nu))
         )
         return onp.exp(log_joint)
 
@@ -263,21 +273,26 @@ class StudentTCopula(Copula):
         It is the integral of the h-function over the first margin,
 
         .. math::
-            C(u, v) = \\int_0^u P(V \\le v \\mid U = s) \\, ds,
+            C(u, v) = \\int_0^u P(V \\le v \\mid U = s) \\, ds
+            = v - \\int_u^1 P(V \\le v \\mid U = s) \\, ds
 
-        evaluated by tanh-sinh quadrature (105 nodes), split where the
-        integrand changes fastest -- where the conditional median of
-        ``Y`` passes ``y``, at :math:`s^* = T_\\nu(y / \\rho)` -- so that
-        a sharp step at strong dependence sits at the end of a piece,
-        where the rule's nodes crowd. The rule also absorbs the algebraic
-        singularity of the integrand at ``s = 0`` (it approaches the
-        tail-dependence limit as a power of ``s``). It agrees with the
+        (the shorter of the two is used), evaluated by tanh-sinh
+        quadrature (105 nodes per piece), split where the integrand
+        changes fastest -- where the conditional median of ``Y`` passes
+        ``y``, at :math:`s^* = T_\\nu(y / \\rho)` -- so that a sharp step
+        at strong dependence sits at the end of a piece, where the rule's
+        nodes crowd. The rule also absorbs the algebraic singularities of
+        the integrand at ``s = 0`` and ``1`` (it approaches the
+        tail-dependence limits as a power of ``s``). It agrees with the
         exact bivariate t CDF of Genz (2004; R's
         ``mvtnorm::pmvt(algorithm = TVPACK())``, integer ``nu`` only) to
-        about 1e-11 (1.3e-10 at ``rho = 0.999``). scipy's ``multivariate_t.cdf`` is a randomised
-        quasi-Monte Carlo integration: about 1e-4 off at its default
-        tolerances and different on every call, which an optimiser
-        cannot use.
+        about 1e-11 (7e-11 at ``rho = 0.999``), and with mpmath's
+        30-digit integration at non-integer ``nu`` to 1e-15. scipy's
+        ``multivariate_t.cdf`` is a randomised quasi-Monte Carlo
+        integration: about 1e-4 off at its default tolerances and
+        different on every call, which an optimiser cannot use;
+        vinecopulib interpolates linearly between the integers either side
+        of a non-integer ``nu`` (1.4e-4 off at ``nu = 2.5``).
         """
         u, v, rho, nu = self._args(u, v, rho, nu)
         shape = u.shape
@@ -287,9 +302,16 @@ class StudentTCopula(Copula):
         y = self._quantile(nu, v, 1.0 - v)
         # The split point, kept inside [0, u]: a piece of zero length
         # contributes nothing.
-        split = onp.clip(stdtr(nu, y / rho), 0.0, u)
+        # Above u = 1/2 the shorter integral is taken, over (u, 1):
+        # C(u, v) = v - int_u^1 P(V <= v | U = s) ds.
+        upper = u > 0.5
+        a = onp.where(upper, u, 0.0)
+        b = onp.where(upper, 1.0, u)
+        # The split point, kept inside [a, b]: a piece of zero length
+        # contributes nothing.
+        split = onp.clip(stdtr(nu, y / rho), a, b)
         total = onp.zeros_like(u)
-        for lo, hi in ((onp.zeros_like(u), split), (split, u)):
+        for lo, hi in ((a, split), (split, b)):
             width = (hi - lo)[:, None]
             # node s and 1 - s, each accurate at its own end
             s = lo[:, None] + width * _TS_Z[None, :]
@@ -298,6 +320,7 @@ class StudentTCopula(Copula):
             x = self._quantile(nu, s, s_c)
             h = self._h(y[:, None], x, rho, nu)
             total += onp.sum(width * _TS_W[None, :] * h, axis=1)
+        total = onp.where(upper, v - total, total)
         return onp.clip(total, 0.0, onp.minimum(u, v)).reshape(shape)
 
     def kendall_tau(  # type: ignore[override]
@@ -324,12 +347,18 @@ class StudentTCopula(Copula):
         """
         rho = float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
         nu = float(nu)
-        x = self._quantile(nu, _TS_Z, _TS_ZC)
-        z = self._quantile(nu + 1.0, _TS_Z, _TS_ZC)
+        x = self._quantile(nu, _TS_Z, _TS_ZC)[:, None]
         sigma = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
-        cond_mean = stdtr(
-            nu, rho * x[:, None] + sigma[:, None] * z[None, :]
-        ) @ _TS_W
+        # The q-integral is split where the argument of T_nu crosses 0:
+        # far in the tails (x large) the integrand steps there from 0 to 1.
+        cut = stdtr(nu + 1.0, -rho * x / sigma)
+        cond_mean = onp.zeros(len(_TS_Z))
+        for lo, hi in ((onp.zeros_like(cut), cut), (cut, onp.ones_like(cut))):
+            width = hi - lo
+            q = lo + width * _TS_Z[None, :]
+            q_c = (1.0 - hi) + width * _TS_ZC[None, :]
+            z = self._quantile(nu + 1.0, onp.clip(q, 1e-300, None), q_c)
+            cond_mean += width[:, 0] * (stdtr(nu, rho * x + sigma * z) @ _TS_W)
         return float(12.0 * onp.sum(_TS_W * _TS_Z * cond_mean) - 3.0)
 
     def tail_dependence(  # type: ignore[override]
