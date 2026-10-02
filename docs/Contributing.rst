@@ -60,6 +60,25 @@ run does. When one finds a failure, it prints a minimal example: pin it in
 Describe any change a user would notice in ``docs/changelog.rst``, under the
 unreleased version at the top.
 
+Where a test goes
+-----------------
+
+The tests are organised by feature. ``surpyval/tests`` follows the package
+(``univariate/parametric``, ``univariate/regression``, ``recurrent``,
+``degradation`` and so on), and each module in it covers one model,
+estimator or behaviour: ``test_turnbull.py``, ``test_mcf.py``,
+``test_information_criteria.py``. **A fix's regression test goes in the
+test module of the feature it fixes, with the issue number in the test's
+name** (``test_issue_310_lognormal_no_longer_runs_away``), so that the next
+person to change the feature finds it beside the others. Do not start a
+module for a round of fixes or a piece of work (``test_parametric_fixes3.py``,
+``test_serialisation_round4.py``, ``test_tvc_phase2.py``): record the round
+in the commit message and the changelog instead. Start a new module only for
+a feature that has none yet. A data maker or helper that more than one
+module needs goes in ``surpyval/tests/_helpers.py`` rather than being
+copied. ``surpyval/tests/review`` and ``surpyval/tests/mutation`` keep the
+per-module layout described below.
+
 The conformance suite
 ---------------------
 
@@ -94,13 +113,16 @@ through each property that applies to it:
 
 ``test_completeness.py`` walks the public namespaces and fails for any public
 class or fitter that is neither registered nor listed in ``OUT_OF_SCOPE``
-with a reason. So **a new model is registered**: add a ``Case`` to
-``registry.py`` (the family helpers there -- ``continuous``, ``regression``
-and the rest -- do most of it), giving a small deterministic fixture, the fit,
-how its functions are called, and its alternate fit paths. If a property
-cannot hold for it, exclude it in ``exclude`` with the reason (a step
-function has no density, a point mass no quantile inverse). If it should hold
-and does not, that is a bug: list it in ``KNOWN_FAILURES`` with a one-line
+with a reason. So **a new model is registered**: add a ``Case`` in
+``registry_cases.py`` (the family helpers in ``registry_families.py`` --
+``continuous``, ``regression`` and the rest -- do most of it), giving a small
+deterministic fixture (``registry_fixtures.py``), the fit, how its functions
+are called, and its alternate fit paths. ``registry.py`` gathers them,
+applies the known failures and holds ``OUT_OF_SCOPE``; import from it. If a
+property cannot hold for it, exclude it in ``exclude`` with the reason (a
+step function has no density, a point mass no quantile inverse). If it should
+hold and does not, that is a bug: list it in ``KNOWN_FAILURES``
+(``registry_known_failures.py``) with a one-line
 description, which makes it a strict xfail -- the suite stays green, and
 turns red the day the bug is fixed, as the reminder to remove the entry.
 Only a failure whose outcome depends on the numpy / scipy build (an
