@@ -216,6 +216,31 @@ bands change (#477).
   on first use, and pandas and formulaic are imported only where used
   (1.16 s to 0.86 s). Every name, ``dir(surpyval)`` and attribute access
   such as ``surpyval.recurrent.laplace`` work as before.
+- **Faster no-maximum check (#501).** A coefficient at or near 0, which
+  Newton's step leaves unchecked, had its profile read with a third
+  derivative and two full Hessians: 65% of a 100,000-row LogNormal AFT
+  fit. It now uses Hessian-vector products. The criterion and its verdicts
+  are unchanged, and its curvature is exact where the old one lost
+  digits. The fit takes 2.7 s instead of 4.8 s.
+- **Faster likelihood-ratio bounds (#519).** The searches evaluate the
+  distribution's formulas without the guards the data cannot trip
+  (bit-identical values), and for two-parameter models the region's
+  boundary is traced once and each search starts from it. A Weibull
+  ``cb(method="lr")`` at 20 points on 1,000 units takes 2.4 s instead of
+  9.4 s, and at one point 0.56 s instead of 1.1 s. Bounds are unchanged
+  to 2.3e-7. A steep LogNormal hazard bound that ended 5e-8 outside the
+  region now sits on its boundary.
+- **Incomplete beta tails (#520).** Where a small tail's ``x`` rounds
+  towards 1, as with a NegativeBinomial ``r`` near 1e-172, the continued
+  fraction ran to 100,000 terms (4.6 s per call) and was 0.5 nats off.
+  That tail now comes from the other side's power series, to 1e-15 of
+  mpmath, in milliseconds, and an unconverged continued fraction gives
+  nan instead of a wrong value.
+- **Faster degradation bootstrap bounds (#522).** Each refit reuses the
+  units' path fits and warm-starts the life fit from the full-data
+  estimate, and every refit still reaches a verified maximum. 200 units
+  with 200 resamples take 5.4 s instead of 9.7 s, and the bounds change by
+  at most 4e-7.
 - **MCF variance in linear time (#521).** The Lawless-Nadeau variance and
   each item's observation window took a pass over all times or rows per
   item. At 5,000 items the fit takes 0.27 s instead of 1.8 s, with the
