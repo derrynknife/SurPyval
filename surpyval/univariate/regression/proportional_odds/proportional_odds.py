@@ -85,7 +85,11 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
-from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
+from surpyval.utils.no_maximum import (
+    restored_maximum,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -539,6 +543,10 @@ class ProportionalOddsModel(
     log_likelihood: float = np.nan
     #: Newton iterations of the profile likelihood.
     n_iter: int = 0
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"unknown"``
+    #: for a model restored from a dict saved without it.
+    maximum: str = "unknown"
     #: The rows fitted, ``{"x", "c", "n", "Z", "tl"}``, for
     #: ``concordance`` and the printout; not saved.
     _fit_data: "dict | None" = None
@@ -898,6 +906,7 @@ class ProportionalOddsModel(
             "G0": np.asarray(self.G0, dtype=float).tolist(),
             "log_likelihood": float(self.log_likelihood),
             "n_iter": int(self.n_iter),
+            "maximum": self.maximum,
         }
         if np.any(self._center()):
             out["center"] = self._center().tolist()
@@ -935,6 +944,7 @@ class ProportionalOddsModel(
         )
         out.log_likelihood = float(model_dict.get("log_likelihood", np.nan))
         out.n_iter = int(model_dict.get("n_iter", 0))
+        out.maximum = restored_maximum(model_dict)
         out._data_summary = model_dict.get("data_summary")
         restore_covariate_meta(out, model_dict)
         return out
@@ -1067,8 +1077,9 @@ class ProportionalOdds_:
                 gamma, u, der, S, converged, n_iter = _profile_fit(
                     lik, u, gamma, tol, _OUTER_MAX_ITER
                 )
+        maximum = "verified"
         if kept.size:
-            _check_maximum(S, scale[kept], kept, converged, n_iter)
+            maximum = _check_maximum(S, scale[kept], kept, converged, n_iter)
 
         cov_k = _inverse_information(S)
         with np.errstate(invalid="ignore", divide="ignore"):
@@ -1111,6 +1122,7 @@ class ProportionalOdds_:
         model.center = model_center
         model.log_likelihood = float(der["value"])
         model.n_iter = int(n_iter)
+        model.maximum = maximum
         model._fit_data = {"x": x, "c": c, "n": n, "Z": Z, "tl": tl}
         return model
 
@@ -1202,9 +1214,13 @@ def _check_maximum(
     kept: npt.NDArray,
     converged: bool,
     n_iter: int,
-) -> None:
+) -> str:
     """One warning when the profile likelihood has no finite maximum or
-    the iteration did not converge.
+    the iteration did not converge, and the model's ``maximum``: ``"no
+    finite maximum"``, ``"unverified"`` or, for an iteration that converged
+    -- a Newton step from a positive-definite profile information ``S``
+    shorter than ``tol`` standard errors (:func:`_profile_fit`) --
+    ``"verified"``.
 
     The criterion is Cox's (``_warn_if_monotone``): where a covariate
     separates the events from the survivors, the likelihood keeps
@@ -1230,13 +1246,16 @@ def _check_maximum(
             "meaningless",
             "consider removing or coarsening the covariate",
         )
-    elif not converged:
+        return "no finite maximum"
+    if not converged:
         warn_unverified(
             "The ProportionalOdds fit",
             "the profile likelihood's Newton-Raphson iteration stopped after "
             "{} step(s) without reaching its tolerance".format(n_iter),
             "check the covariates for extreme values, or rescale them",
         )
+        return "unverified"
+    return "verified"
 
 
 ProportionalOdds = ProportionalOdds_()
