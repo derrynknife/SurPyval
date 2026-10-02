@@ -40,12 +40,12 @@ from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
 )
 from surpyval.utils import (
-    _get_idx,
     validate_cif_event,
     validate_cr_df_inputs,
     validate_cr_inputs,
     validate_event,
 )
+from surpyval.utils.data_formats import _get_idx
 from surpyval.utils.shapes import keeps_query_shape
 
 

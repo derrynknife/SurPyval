@@ -8,7 +8,8 @@ import numpy.typing as npt
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
-from surpyval.utils import _handled_xcnt_to_xrd, xcnt_handler, xrd_handler
+from surpyval.utils import xcnt_handler, xrd_handler
+from surpyval.utils.data_formats import _handled_xcnt_to_xrd
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 
 

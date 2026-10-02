@@ -33,11 +33,11 @@ from surpyval.univariate.regression.regression_data import (
     restore_covariate_meta,
     serialise_covariate_meta,
 )
-from surpyval.utils import _caller_stacklevel
 from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.warnings import caller_stacklevel
 
 
 def _warn_zero_probability(
@@ -71,7 +71,7 @@ def _warn_zero_probability(
         "(n_trees), or use kind='exponential', whose leaves give every "
         "time a density.",
         UserWarning,
-        stacklevel=_caller_stacklevel(),
+        stacklevel=caller_stacklevel(),
     )
 
 
@@ -493,7 +493,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
                 f"tree, so no tree can score them out of bag; they are "
                 f"left out of the out-of-bag log-likelihood ({reason}).",
                 UserWarning,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
         return oob, RowTerms(self.data), time_origin(self.data), n_oob
 

@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from surpyval.beta.ml.forest.deviance_split import (
     needs_full_likelihood_split,
 )
-from surpyval.utils import _entered_before
+from surpyval.utils.data_formats import _entered_before
 from surpyval.utils.surpyval_data import SurpyvalData
 
 

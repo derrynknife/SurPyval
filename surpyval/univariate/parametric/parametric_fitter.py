@@ -9,10 +9,10 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
-from surpyval.utils import _check_x_not_empty
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import _check_x_not_empty
 
 # The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
 # its public names are importable from here as they always were.

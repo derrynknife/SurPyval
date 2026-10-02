@@ -16,7 +16,8 @@ import pytest
 from surpyval import LogNormal, Weibull
 from surpyval.utils import group_xcnt
 
-utils_module = importlib.import_module("surpyval.utils")
+# ``xcnt_handler`` looks ``group_xcnt`` up in its own module.
+data_formats = importlib.import_module("surpyval.utils.data_formats")
 INF = np.inf
 
 
@@ -149,7 +150,7 @@ def test_tied_fits_bit_identical(monkeypatch, dist):
     tl = rng.choice([0.0, 0.05], 3000)
     new = dist.fit(x, c, tl=tl)
     with monkeypatch.context() as patch:
-        patch.setattr(utils_module, "group_xcnt", _three_sorts)
+        patch.setattr(data_formats, "group_xcnt", _three_sorts)
         old = dist.fit(x, c, tl=tl)
     np.testing.assert_array_equal(new.params, old.params)
     for field in "xcnt":

@@ -44,7 +44,6 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.univariate.regression.tvc_schedule import StepSchedule
-from surpyval.utils import _caller_stacklevel
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import (
     psd_precision,
@@ -54,6 +53,7 @@ from surpyval.utils.linalg import (
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.warnings import caller_stacklevel
 
 from ._bounds import (
     analytic_cb,
@@ -2618,7 +2618,7 @@ class DegradationAnalysis_:
                 + "; population_method='reml' estimates it by restricted "
                 "maximum likelihood instead, though it may also land on the "
                 "boundary",
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
 
         reml_diagnostics: dict = {}
@@ -2716,7 +2716,7 @@ class DegradationAnalysis_:
                     " and ".join(on_boundary)
                 )
                 + _BOUNDARY_CONSEQUENCE,
-                stacklevel=_caller_stacklevel(),
+                stacklevel=caller_stacklevel(),
             )
 
         events = np.isfinite(pseudo) & (pseudo > 0)

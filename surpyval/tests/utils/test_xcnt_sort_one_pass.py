@@ -17,6 +17,7 @@ import surpyval as sp
 from surpyval.utils import xcnt_sort
 
 utils_module = importlib.import_module("surpyval.utils")
+data_formats = importlib.import_module("surpyval.utils.data_formats")
 np_fitter = importlib.import_module(
     "surpyval.univariate.nonparametric.nonparametric_fitter"
 )
@@ -81,6 +82,7 @@ def test_a_fit_handles_its_data_once(monkeypatch, fitter):
         return handler(*args, **kwargs)
 
     monkeypatch.setattr(utils_module, "xcnt_handler", counting)
+    monkeypatch.setattr(data_formats, "xcnt_handler", counting)
     monkeypatch.setattr(np_fitter, "xcnt_handler", counting)
     rng = np.random.default_rng(1)
     x = np.round(10 * rng.weibull(1.5, 300), 1) + 0.1
