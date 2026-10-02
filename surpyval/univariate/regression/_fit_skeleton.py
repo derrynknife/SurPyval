@@ -42,10 +42,11 @@ from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._aliasing import aliased_columns, constant_columns, warn_aliased
+from ._covariate_link import CovariateLink
 from .parametric_regression_model import ParametricRegressionModel
 
 
-class LogLinearPhi:
+class LogLinearPhi(CovariateLink):
     """The ``exp(beta'Z)`` covariate link shared by PH, AFT and PO —
     previously defined inline in at least seven places (#295).
 
@@ -60,9 +61,8 @@ class LogLinearPhi:
     NAME_E = "Log Linear [e^(beta'Z)]"
     NAME_EXP = "Log Linear [exp(beta'Z)]"
 
-    def __init__(self, name: str, phi_param_map: dict) -> None:
-        self.name = name
-        self.phi_param_map = phi_param_map
+    def __init__(self, name: str, phi_param_map: dict[str, int]) -> None:
+        super().__init__(name, phi_param_map)
 
     @staticmethod
     def phi(Z: Numeric, *params: Boxable) -> Boxable:
@@ -872,6 +872,7 @@ def assemble_regression_model(
     model.reg_model = reg_model
     model.kind = kind
     model.distribution = fitter.dist
+    model.dist = fitter.dist
     params_arr = np.array(params)
     aliased = getattr(fixed, "aliased", ())
     if aliased:

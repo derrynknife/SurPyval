@@ -19,6 +19,11 @@ import numpy.typing as npt
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_option
 
+if TYPE_CHECKING:
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+
 
 class TVCEvaluationMixin:
     """The time-varying-covariate evaluation of a
@@ -36,7 +41,7 @@ class TVCEvaluationMixin:
         # below type check without the mixin pretending to own them.
         k_dist: int
         kind: str
-        distribution: Any
+        distribution: ParametricFitter
         model: Any
         center: "npt.NDArray | None"
 

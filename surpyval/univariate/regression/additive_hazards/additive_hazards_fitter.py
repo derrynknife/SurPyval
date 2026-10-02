@@ -60,6 +60,7 @@ from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
@@ -82,13 +83,6 @@ from ..tvc_fit import TVCFitMixin
 
 class _OverBudget(Exception):
     """The search on the exact gradient ran out of its budget."""
-
-
-class _AdditiveReg:
-    # Lightweight namespace for the fitted model's ``reg_model`` attribute;
-    # the model repr reads ``.name``.
-    name: str
-    phi_param_map: object
 
 
 class AdditiveHazardsFitter(
@@ -576,9 +570,8 @@ class AdditiveHazardsFitter(
         ):
             warn_unverified("The additive hazards fit")
 
-        reg_model = _AdditiveReg()
-        reg_model.name = "Additive [beta'Z]"
-        reg_model.phi_param_map = pmap
+        # beta'Z is added to the hazard: the link has no multiplier phi.
+        reg_model = CovariateLink("Additive [beta'Z]", pmap)
 
         model = assemble_regression_model(
             self,
