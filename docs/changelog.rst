@@ -321,6 +321,15 @@ bands change (#477).
   names are constants in ``regression/_kinds.py``, and the model branches on
   ``_is_accelerated_life()`` and ``_is_additive()`` instead of comparing
   ``kind`` with string literals; ``kind`` and its values are unchanged.
+- **Development: tests organised by feature (maintainability sweep,
+  phase 3).** The 59 test modules named after fix rounds
+  (``*_fixesN.py``, ``*_roundN.py``, ``test_tvc_phase2.py``, ...) are
+  renamed as, or merged into, feature modules; the 17,023 collected tests
+  are unchanged apart from their paths. Helpers copied between modules
+  live once in ``surpyval/tests/_helpers.py``, the conformance registry is
+  split into fixtures, family helpers, cases and known failures (still
+  imported through ``registry.py``), and :doc:`Contributing` says where a
+  fix's regression test goes.
 - **Development: refactors are proven bit-identical.**
   ``scripts/refactor/snapshot.py`` records what every registered model
   computes and says (fits, predictions, every bound, ``to_dict``,
