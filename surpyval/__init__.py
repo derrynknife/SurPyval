@@ -2,6 +2,9 @@ __version__ = "0.21.0"
 
 from autograd import numpy as np
 
+# Before anything differentiates: a broadcast-aware derivative rule for
+# ``np.where`` (autograd's does not unbroadcast; #562).
+import surpyval.utils.autograd_where_compat  # noqa: F401  # isort: skip
 from surpyval.distribution import (
     Distribution,
     MultivariateDistribution,
