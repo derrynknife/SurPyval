@@ -55,9 +55,7 @@ def test_derivatives_match_finite_differences():
     I_m, I_p = np.eye(m), np.eye(2)
 
     def num_grad(f, v, eye):
-        return np.array(
-            [(f(v + h * e) - f(v - h * e)) / (2 * h) for e in eye]
-        )
+        return np.array([(f(v + h * e) - f(v - h * e)) / (2 * h) for e in eye])
 
     g_u = num_grad(lambda v: lik.value(v, gamma), u, I_m)
     g_g = num_grad(lambda v: lik.value(u, v), gamma, I_p)
@@ -191,8 +189,10 @@ def test_delayed_entry_splits_exactly():
     s = 0.5 * x[:20]
     xs = np.r_[x, s]
     cs = np.r_[c, np.ones(20)]
-    tl = np.r_[np.where(np.arange(80) < 20, np.r_[s, np.zeros(60)], -np.inf),
-               np.full(20, -np.inf)]
+    tl = np.r_[
+        np.where(np.arange(80) < 20, np.r_[s, np.zeros(60)], -np.inf),
+        np.full(20, -np.inf),
+    ]
     split = sp.ProportionalOdds.fit(xs, np.r_[Z, Z[:20]], c=cs, tl=tl)
     np.testing.assert_allclose(split.beta, whole.beta, rtol=1e-8)
     np.testing.assert_allclose(split.se, whole.se, rtol=1e-6)

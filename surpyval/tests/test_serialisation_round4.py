@@ -39,6 +39,7 @@ from surpyval import (
     NeverOccurs,
     NonParametric,
     Parametric,
+    ProportionalOdds,
     RoystonParmar,
     SurpyvalData,
     Turnbull,
@@ -291,6 +292,7 @@ def _build(name):
         "frailty": _frailty,
         "additive_hazards": lambda: AdditiveHazards.fit(*_semipar_data(2)[:2]),
         "buckley_james": lambda: BuckleyJames.fit(*_semipar_data(3)[:2]),
+        "proportional_odds": lambda: ProportionalOdds.fit(*_semipar_data(4)),
         "mixture": _mixture,
         "royston_parmar": lambda: RoystonParmar.fit(
             np.random.default_rng(1).weibull(2, 60) * 10, df=3
@@ -374,6 +376,7 @@ CASES = [
     "frailty",
     "additive_hazards",
     "buckley_james",
+    "proportional_odds",
     "mixture",
     "royston_parmar",
     "fine_gray",

@@ -207,9 +207,7 @@ class _POLikelihood:
         N_ug = -g[:, None] * _rev_cumsum(B)[1:]
         N_gg = -(self.Zt * (apq * (1.0 - p))[:, None]).T @ self.Zt
         return {
-            "value": float(
-                self.d @ u + self.zsum @ gamma + self.a @ log1ps
-            ),
+            "value": float(self.d @ u + self.zsum @ gamma + self.a @ log1ps),
             "g": g,
             "grad_u": grad_u,
             "grad_gamma": grad_g,
@@ -630,7 +628,7 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
     # -- the baseline at the query times -------------------------------
 
     def _parts(
-        self, x: npt.NDArray, Z: "npt.ArrayLike | pd.DataFrame", grid: bool
+        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame", grid: bool
     ) -> tuple:
         """``(log g, log G, log G_prev, eta)`` broadcast for the query:
         the log jump at the last baseline time at or before ``x``, the
@@ -877,8 +875,7 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
             + "\n========================================="
             + "\nType                : Proportional Odds"
             + "\nKind                : NPMLE (Murphy, Rossini & van der "
-            "Vaart)"
-            + "\nParameterization    : Semi-Parametric"
+            "Vaart)" + "\nParameterization    : Semi-Parametric"
         )
         data_line = self._data_repr()
         if data_line:

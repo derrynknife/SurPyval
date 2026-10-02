@@ -3780,7 +3780,8 @@ the original does.
 The **semi-parametric** regression models save and load the same way, each on
 its own result class: Cox proportional hazards
 (``SemiParametricRegressionModel``), the Lin-Ying additive-hazards model
-(``AdditiveHazardsModel``), and the Buckley-James AFT (``BuckleyJamesModel``).
+(``AdditiveHazardsModel``), the semi-parametric proportional odds model
+(``ProportionalOddsModel``), and the Buckley-James AFT (``BuckleyJamesModel``).
 Because their baseline is nonparametric, what is stored is the fitted
 coefficients plus the baseline step arrays (or, for Buckley-James, the residual
 survival), so the reloaded model predicts identically:
