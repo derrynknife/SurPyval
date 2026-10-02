@@ -19,9 +19,9 @@ from surpyval.degradation import DegradationAnalysis
 from surpyval.degradation._bounds import (
     _delta_se,
     _life_loglik,
-    _logit_bound,
     _num_hessian,
 )
+from surpyval.utils.linalg import sf_link_bound
 
 
 def _linear_degradation(seed, n_units=20, noise=2.0, n_points=5, t_max=8.0):
@@ -191,8 +191,8 @@ def test_coverage_improves_over_mle_only():
         an = m.cb([t0], on="sf", method="analytic")[0]
         se = _mle_only_se(m, [t0])
         sf_hat = m.sf([t0])
-        mlo = _logit_bound(sf_hat, se, 0.05, "lower")[0]
-        mhi = _logit_bound(sf_hat, se, 0.05, "upper")[0]
+        mlo = sf_link_bound(sf_hat, se, 0.05, "lower", "logit")[0]
+        mhi = sf_link_bound(sf_hat, se, 0.05, "upper", "logit")[0]
         an_hits += an[0] <= true_sf <= an[1]
         mle_hits += mlo <= true_sf <= mhi
     an_cov = an_hits / reps
