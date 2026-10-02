@@ -38,7 +38,7 @@ def test_negative_binomial_tail_at_a_tiny_r(k, p, reference):
     start = time.perf_counter()
     got = sp.NegativeBinomial.log_sf(np.array([k]), R_TINY, p)[0]
     assert time.perf_counter() - start < 1.0
-    assert got == pytest.approx(reference, rel=1e-12)
+    assert got == pytest.approx(reference, rel=1e-12, abs=0)
 
 
 @pytest.mark.parametrize(
@@ -51,8 +51,8 @@ def test_negative_binomial_tail_at_a_tiny_r(k, p, reference):
     ],
 )
 def test_the_logs_where_the_fraction_does_not_converge(a, b, x, lower, upper):
-    assert ag.betaincln(a, b, x) == pytest.approx(lower, rel=1e-12)
-    assert ag.betainccln(a, b, x) == pytest.approx(upper, rel=1e-12)
+    assert ag.betaincln(a, b, x) == pytest.approx(lower, rel=1e-12, abs=0)
+    assert ag.betainccln(a, b, x) == pytest.approx(upper, rel=1e-12, abs=0)
 
 
 def test_the_gradient_there_matches_mpmath():
@@ -60,13 +60,13 @@ def test_the_gradient_there_matches_mpmath():
     # primitives``), d/dx analytical; mpmath's derivatives at 60 digits.
     a, b, x = 1e-5, 3.0, 1e-6
     assert grad(ag.betainccln, 0)(a, b, x) == pytest.approx(
-        99993.893112071685214, rel=1e-7
+        99993.893112071685214, rel=1e-7, abs=0
     )
     assert grad(ag.betainccln, 1)(a, b, x) == pytest.approx(
-        -0.03206588240171898434, rel=1e-7
+        -0.03206588240171898434, rel=1e-7, abs=0
     )
     assert grad(ag.betainccln, 2)(a, b, x) == pytest.approx(
-        -81193.203421695007418, rel=1e-12
+        -81193.203421695007418, rel=1e-12, abs=0
     )
 
 

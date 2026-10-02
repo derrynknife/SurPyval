@@ -415,4 +415,4 @@ def test_the_profile_curvature_from_products_is_exact():
     for t in (-14.9, -15.0, -15.2):
         point = np.array([t, -15.0])
         S = skeleton._profile_curvature(f, point, 0, H, v)
-        assert S == pytest.approx(np.exp(t), rel=1e-14)
+        assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)
