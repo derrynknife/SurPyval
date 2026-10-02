@@ -16,9 +16,9 @@ from __future__ import annotations
 
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,

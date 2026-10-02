@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import brentq
 
-from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,

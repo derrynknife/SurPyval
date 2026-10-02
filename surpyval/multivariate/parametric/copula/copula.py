@@ -23,12 +23,12 @@ from __future__ import annotations
 import functools
 from typing import Any
 
+import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
 from scipy.optimize import minimize
 
-from surpyval import np
 from surpyval.utils.dataframe import (
     call_fit,
     frame_column,

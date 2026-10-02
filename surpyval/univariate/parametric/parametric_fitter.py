@@ -6,12 +6,12 @@ from math import comb
 from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
 import surpyval
-from surpyval import np
 from surpyval.utils import _check_x_not_empty
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
@@ -2729,7 +2729,7 @@ turnbull_estimator
                 )
 
             init = np.atleast_1d(init)
-            if fixed and len(init) == len(not_fixed):  # type: ignore[arg-type]
+            if fixed and len(init) == len(not_fixed):
                 # The initial guess covers only the free parameters;
                 # merge it with the fixed values to get the full vector
                 full_init = np.zeros(len(model.param_map))
@@ -2754,7 +2754,7 @@ turnbull_estimator
             fitting_info["fixed_idx"] = fixed_idx
 
             init = transform(init)
-            init = init[not_fixed]  # type: ignore[index]
+            init = init[not_fixed]
             fitting_info["init"] = init
         else:
             # Probability plotting method does not need an initial estimate

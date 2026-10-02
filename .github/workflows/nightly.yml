@@ -58,17 +58,17 @@ jobs:
 
       - name: pytest
         run:
-          python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
+          python -m pytest -n auto --run-ml
 
       - name: doctests
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
 
       - name: doctests (numeric comparison forced)
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
           --doctest-force-numeric
 
   # The docs job of actions.yml: the hosted (Read the Docs) build, Python

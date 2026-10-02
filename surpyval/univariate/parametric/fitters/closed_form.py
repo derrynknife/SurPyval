@@ -26,12 +26,11 @@ closed-form fit carries the same information as an optimised one --
 ``aic_c`` and ``cb`` break on the fitted model.
 """
 
+import autograd.numpy as np
 import numpy as onp
 from autograd import hessian
 from numdifftools import Hessian  # type: ignore
 from numpy.linalg import LinAlgError, inv, pinv
-
-from surpyval import np
 
 
 def _neg_ll_at(dist: Any, data: SurpyvalData, params: npt.NDArray) -> float:

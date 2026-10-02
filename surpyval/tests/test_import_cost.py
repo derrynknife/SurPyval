@@ -71,12 +71,12 @@ def test_lazy_names_are_the_packages_names() -> None:
     import surpyval
     import surpyval.univariate.regression as regression
 
-    lazy = surpyval._LAZY  # type: ignore[attr-defined]
+    lazy = surpyval._LAZY
     exported = {
         k for k, v in lazy.items() if v == "surpyval.univariate.regression"
     }
     # The life models moved to ``surpyval.life_models``
-    moved = set(surpyval._MOVED_TO_LIFE_MODELS)  # type: ignore[attr-defined]
+    moved = set(surpyval._MOVED_TO_LIFE_MODELS)
     moved |= {"GeneralLogLinear"}
     assert exported | moved == set(regression.__all__)
     assert not exported & moved

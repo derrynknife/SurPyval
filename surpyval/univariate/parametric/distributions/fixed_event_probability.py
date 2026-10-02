@@ -17,7 +17,8 @@ so there is no density and no invertible quantile. There is no failure
 0/1 event indicator: ``p`` for every order.
 """
 
-from surpyval import np
+import autograd.numpy as np
+
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )

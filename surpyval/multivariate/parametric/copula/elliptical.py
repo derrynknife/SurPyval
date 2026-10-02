@@ -38,8 +38,7 @@ class GaussianCopula(Copula):
     def _clip_rho(rho: float) -> float:
         return float(onp.clip(rho, -_RHO_MAX, _RHO_MAX))
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, rho: Any) -> Any:
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
@@ -60,19 +59,16 @@ class GaussianCopula(Copula):
         out = onp.asarray(out).reshape(a.shape)
         return onp.where(missing, onp.nan, out)
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, rho: Any) -> Any:
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
         return ndtr((b - rho * a) / onp.sqrt(1.0 - rho**2))
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, rho: Any) -> Any:
         return self.du(v, u, rho)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, rho: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, rho: Any) -> Any:
         rho = self._clip_rho(rho)
         a = ndtri(onp.clip(onp.asarray(u, dtype=float), 1e-12, 1 - 1e-12))
         b = ndtri(onp.clip(onp.asarray(v, dtype=float), 1e-12, 1 - 1e-12))
@@ -230,25 +226,16 @@ class StudentTCopula(Copula):
         scale = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
         return stdtr(nu + 1.0, (y - rho * x) / scale)
 
-    # Named parameters narrow the variadic base contract.
-    def du(  # type: ignore[override]
-        self, u: Any, v: Any, rho: Any, nu: Any
-    ) -> Any:
+    def du(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         u, v, rho, nu = self._args(u, v, rho, nu)
         x = self._quantile(nu, u, 1.0 - u)
         y = self._quantile(nu, v, 1.0 - v)
         return self._h(y, x, rho, nu)
 
-    # Named parameters narrow the variadic base contract.
-    def dv(  # type: ignore[override]
-        self, u: Any, v: Any, rho: Any, nu: Any
-    ) -> Any:
+    def dv(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         return self.du(v, u, rho, nu)
 
-    # Named parameters narrow the variadic base contract.
-    def pdf(  # type: ignore[override]
-        self, u: Any, v: Any, rho: Any, nu: Any
-    ) -> Any:
+    def pdf(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         """The density, the bivariate t density over the product of its
         margins' densities, in log space."""
         u, v, rho, nu = self._args(u, v, rho, nu)
@@ -264,10 +251,7 @@ class StudentTCopula(Copula):
         )
         return onp.exp(log_joint)
 
-    # Named parameters narrow the variadic base contract.
-    def cdf(  # type: ignore[override]
-        self, u: Any, v: Any, rho: Any, nu: Any
-    ) -> Any:
+    def cdf(self, u: Any, v: Any, rho: Any, nu: Any) -> Any:
         """The copula, the bivariate t CDF at the margins' t quantiles.
 
         It is the integral of the h-function over the first margin,

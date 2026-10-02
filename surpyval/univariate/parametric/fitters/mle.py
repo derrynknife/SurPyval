@@ -3,13 +3,13 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..parametric import Parametric
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
 from numdifftools import Hessian  # type: ignore
 from scipy.optimize import OptimizeResult, minimize
 
-from surpyval import np
 from surpyval.univariate.parametric.fitters import (
     _usable,
     is_local_minimum,

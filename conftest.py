@@ -142,7 +142,7 @@ def _check_output(self, want, got, optionflags):
 # builds its own ``LiteralsOutputChecker`` subclass and calls up to this
 # method, so overriding here survives both plain ``doctest`` and pytest,
 # and does not depend on pytest's internals.
-_patched = _check_output  # type: ignore[assignment]
+_patched = _check_output
 doctest.OutputChecker.check_output = _patched  # type: ignore[method-assign]
 
 
@@ -215,9 +215,7 @@ def pytest_configure(config):
             "markers", f"{mark}: {description}; opt in with {flag}"
         )
     if config.getoption("--doctest-force-numeric"):
-        doctest.OutputChecker.check_output = (  # type: ignore[method-assign]
-            _forced_check_output  # type: ignore[assignment]
-        )
+        doctest.OutputChecker.check_output = _forced_check_output
 
 
 def pytest_collection_modifyitems(config, items):

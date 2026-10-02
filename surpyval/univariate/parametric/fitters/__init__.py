@@ -1,11 +1,10 @@
 import warnings
 from typing import Any, Callable, Sequence
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 from scipy.optimize import minimize
-
-from surpyval import np
 
 
 def fallback_minimize(

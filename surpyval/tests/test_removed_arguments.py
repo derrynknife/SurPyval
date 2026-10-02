@@ -5,10 +5,18 @@ An old argument name is now an unknown argument, so the call raises
 Python's own ``TypeError``, and ``surpyval.experimental`` no longer
 exists (``surpyval.beta.ml`` holds the survival tree and forest). A few
 representative old names from each area are checked here.
+
+The names deprecated since are removed in
+``surpyval.utils.deprecation.REMOVED_IN``: the last test fails once the
+package's version reaches it while any deprecation shim is left, so the
+removal is not forgotten.
 """
 
+import ast
 import importlib
+import re
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -17,6 +25,7 @@ import surpyval as sp
 from surpyval.recurrent import CrowAMSAA, NonParametricCounting
 from surpyval.tests.conformance.registry import CASE_BY_NAME, fitted
 from surpyval.univariate.competing_risks import CompetingRisks, FineGray
+from surpyval.utils.deprecation import REMOVED_IN
 
 X = np.array([5.0, 10.0, 20.0])
 
@@ -92,3 +101,87 @@ def test_experimental_alias_is_gone():
     from surpyval.beta.ml import RandomSurvivalForest, SurvivalTree
 
     assert SurvivalTree is not None and RandomSurvivalForest is not None
+
+
+# ---------------------------------------------------------------------------
+# The next removal: nothing deprecated outlives REMOVED_IN
+# ---------------------------------------------------------------------------
+# What keeps an old name alive: the renaming helpers of
+# surpyval.utils.deprecation, REMOVED_IN itself (every hand-written
+# deprecation message quotes it), and a DeprecationWarning.
+_SHIM_NAMES = frozenset(
+    {
+        "REMOVED_IN",
+        "renamed_arguments",
+        "RenamedAttribute",
+        "renamed_class_attribute",
+        "CallableList",
+        "DeprecationWarning",
+    }
+)
+
+
+def _deprecation_shims(source):
+    """The lines of ``source`` that refer to a deprecation shim."""
+    lines = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Name):
+            name = node.id
+        elif isinstance(node, ast.Attribute):
+            name = node.attr
+        elif isinstance(node, ast.alias):
+            name = node.name
+        else:
+            continue
+        if name in _SHIM_NAMES:
+            lines.add(node.lineno)
+    return sorted(lines)
+
+
+def _package_shims():
+    """``path:line`` of every deprecation shim in the package (the
+    machinery in ``utils/deprecation.py`` and the tests aside)."""
+    package = Path(sp.__file__).parent
+    found = []
+    for path in sorted(package.rglob("*.py")):
+        relative = path.relative_to(package).as_posix()
+        if relative.startswith("tests/") or relative == (
+            "utils/deprecation.py"
+        ):
+            continue
+        for line in _deprecation_shims(path.read_text(encoding="utf-8")):
+            found.append(f"surpyval/{relative}:{line}")
+    return found
+
+
+def _release(version):
+    return tuple(int(part) for part in re.findall(r"\d+", version)[:3])
+
+
+def test_deprecation_shims_are_found():
+    source = """
+from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+import warnings
+
+@renamed_arguments(old="new")
+def f(new=1):
+    return new
+
+def g():
+    warnings.warn("g is going", DeprecationWarning)
+    return 2
+"""
+    assert _deprecation_shims(source) == [2, 5, 10]
+    assert _deprecation_shims("import warnings\nx = 1\n") == []
+
+
+def test_deprecated_names_are_removed_by_removed_in():
+    if _release(sp.__version__) < _release(REMOVED_IN):
+        return
+    shims = _package_shims()
+    assert not shims, (
+        f"surpyval {sp.__version__} has reached REMOVED_IN ({REMOVED_IN}), "
+        "but deprecated names are still accepted. Remove each shim (and its "
+        "tests and documentation), or move REMOVED_IN on for a deprecation "
+        "meant to last longer:\n" + "\n".join(shims)
+    )

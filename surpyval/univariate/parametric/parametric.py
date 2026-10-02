@@ -6,6 +6,7 @@ from copy import copy, deepcopy
 from math import comb
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd import jacobian
 from scipy.optimize import (
@@ -18,7 +19,7 @@ from scipy.special import ndtri as z
 from scipy.stats import uniform
 
 import surpyval as surv
-from surpyval import ParametricDistribution, np
+from surpyval import ParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema, to_native
 from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
@@ -1049,7 +1050,7 @@ class Parametric(
                 )
             p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
-            param_bounds = (0, 1)
+            param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
@@ -3386,7 +3387,7 @@ class Parametric(
                     trace.append(u_hat + r * offset / size)
         return trace
 
-    def _cb_lr_psi_bounds(
+    def _cb_lr_psi_bounds(  # noqa: C901 (72; to be split into steps)
         self,
         psi_of: Callable[[npt.NDArray], float],
         free: list[int],

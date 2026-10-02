@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.stats import gumbel_l
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,

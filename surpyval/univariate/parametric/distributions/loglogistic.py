@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import expit
 from scipy.stats import fisk
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,

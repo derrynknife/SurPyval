@@ -3,10 +3,10 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import factorial
 
-from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters.closed_form import (
     entry_times,

@@ -169,7 +169,7 @@ def _information(model: "SemiParametricRegressionModel") -> np.ndarray:
     log-likelihood) at the fitted ``beta``."""
     # ``model.jac`` is the jac/hess closure returned by the fitter (the class
     # attribute is loosely annotated as an array); [1] is the Hessian.
-    _, hess = model.jac(model.beta)  # type: ignore[operator]
+    _, hess = model.jac(model.beta)
     return np.atleast_2d(hess)
 
 

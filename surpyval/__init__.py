@@ -101,10 +101,9 @@ from typing import TYPE_CHECKING, Any  # isort: skip # noqa: E402
 # generically named copulas (`surpyval.multivariate.Gaussian`, `Frank`,
 # ...). Competing risks lives under each paradigm it applies to:
 # `surpyval.univariate.competing_risks` and
-# `surpyval.recurrent.competing_risks`. Pre-stable models are tiered by
-# maturity: `surpyval.beta` (functionally complete, interface not yet
-# stable -- the survival tree and random survival forest in
-# `surpyval.beta.ml`) and `surpyval.alpha` (exploratory).
+# `surpyval.recurrent.competing_risks`. Pre-stable models live in
+# `surpyval.beta` (functionally complete, interface not yet stable --
+# the survival tree and random survival forest in `surpyval.beta.ml`).
 _LAZY = {
     **dict.fromkeys(
         (

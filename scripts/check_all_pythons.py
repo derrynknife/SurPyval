@@ -53,7 +53,6 @@ CHECKS: list[tuple[str, list[str]]] = [
             "-n",
             "auto",
             "-q",
-            "--ignore=surpyval/tests/alpha",
             "--run-ml",
         ],
     ),
@@ -66,7 +65,6 @@ CHECKS: list[tuple[str, list[str]]] = [
             "surpyval",
             "-q",
             "--ignore=surpyval/tests",
-            "--ignore=surpyval/alpha",
         ],
     ),
     (
@@ -78,7 +76,6 @@ CHECKS: list[tuple[str, list[str]]] = [
             "surpyval",
             "-q",
             "--ignore=surpyval/tests",
-            "--ignore=surpyval/alpha",
             "--doctest-force-numeric",
         ],
     ),

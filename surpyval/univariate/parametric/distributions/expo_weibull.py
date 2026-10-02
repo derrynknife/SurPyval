@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy import integrate
 
-from surpyval import np
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
