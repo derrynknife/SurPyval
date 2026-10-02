@@ -18,6 +18,7 @@ import pytest
 from autograd import grad, hessian, make_jvp
 
 import surpyval  # noqa: F401  (registers the rule)
+from surpyval.tests._helpers import richardson_gradient, richardson_hessian
 
 MASK = np.array([[True, False, True], [False, True, True]])
 OTHER = np.arange(6.0).reshape(2, 3) / 4 + 0.5
@@ -61,38 +62,25 @@ CASES = {
         np.array([0.7, 0.2, -0.4, 1.3]),
         lambda t: anp.where(MASK[0], t[0], t[1:] * t[0]),
     ),
+    # the accelerated-life substitution before #555: a (1,) life put in
+    # one slot of a (2,) parameter row
+    "substitution": (
+        np.array([1.3, 0.4]),
+        lambda t: anp.where(
+            np.array([True, False]),
+            anp.exp(t[1] * np.array([0.7])),
+            anp.array([t[0], t[0]]),
+        ),
+    ),
 }
 
 
-def _fd_gradient(f, t, h=1e-4):
-    def central(step):
-        g = np.empty(t.size)
-        for i in range(t.size):
-            e = np.zeros(t.size)
-            e[i] = step
-            g[i] = (f(t + e) - f(t - e)) / (2 * step)
-        return g
-
-    return (4 * central(h / 2) - central(h)) / 3
+def _fd_gradient(f, t):
+    return richardson_gradient(f, t, 1e-4)
 
 
-def _fd_hessian(f, t, h=1e-3):
-    def central(step):
-        k = t.size
-        H = np.empty((k, k))
-        for i in range(k):
-            for j in range(k):
-                ei, ej = np.zeros(k), np.zeros(k)
-                ei[i], ej[j] = step, step
-                H[i, j] = (
-                    f(t + ei + ej)
-                    - f(t + ei - ej)
-                    - f(t - ei + ej)
-                    + f(t - ei - ej)
-                ) / (4 * step**2)
-        return H
-
-    return (4 * central(h / 2) - central(h)) / 3
+def _fd_hessian(f, t):
+    return richardson_hessian(f, t, 1e-3)
 
 
 @pytest.mark.parametrize("case", sorted(CASES))
