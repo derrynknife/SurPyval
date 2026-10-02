@@ -195,7 +195,7 @@ def test_guard_unsupported_censoring():
 def test_guard_unknown_family():
     # A ValueError naming the choices (principle 2); "lognormal" is a
     # family since #343 (it raised NotImplementedError before).
-    with pytest.raises(ValueError, match="'gamma', 'lognormal'"):
+    with pytest.raises(ValueError, match="'gamma' or 'lognormal'"):
         Frailty(Weibull, family="weibull")
 
 
