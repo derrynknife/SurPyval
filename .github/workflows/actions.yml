@@ -20,6 +20,10 @@ on:
 
 env:
   SRC: surpyval # Source directory to run jobs on
+  # What the style checks cover: the package, the root conftest and the
+  # maintenance scripts. (mypy checks the package; the others are not
+  # annotated.)
+  LINT: surpyval conftest.py scripts
 
 jobs:
   lint:
@@ -38,13 +42,16 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: flake8
-        run: flake8 $SRC
+        run: flake8 $LINT
+
+      - name: isort
+        run: isort --check-only $LINT
 
       - name: mypy
         run: mypy $SRC
 
       - name: black
-        run: black --check $SRC
+        run: black --check $LINT
 
   # The conformance suite runs on every pull request, like lint, rather
   # than waiting for the release pull request with the rest of the tests.

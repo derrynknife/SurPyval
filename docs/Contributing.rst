@@ -19,10 +19,16 @@ the pre-commit hooks:
 Code style is enforced rather than requested. The pre-commit hooks
 (``.pre-commit-config.yaml``) run isort, pyupgrade (Python 3.11+ syntax),
 black (line length 79), flake8 and mypy on every commit, and the lint job in
-continuous integration runs ``flake8``, ``mypy`` and ``black --check`` on the
-``surpyval`` package. mypy is strict about annotations: every function in the
-package must be type annotated (``disallow_untyped_defs``); only the tests,
-``conftest.py`` and ``scripts/`` are exempt.
+continuous integration runs ``flake8``, ``isort --check-only`` and ``black
+--check`` on the ``surpyval`` package, ``conftest.py`` and ``scripts/``, and
+``mypy`` on the package. flake8 also caps each function's McCabe complexity
+at 70 (``max-complexity`` in ``pyproject.toml``). mypy reports a ``type:
+ignore`` that silences nothing, a redundant cast and an ``==`` between types
+that cannot be equal; an ignore needed under one Python's numpy stubs but not
+another's carries the ``unused-ignore`` code as well. mypy is strict about
+annotations: every function in the package must be type annotated
+(``disallow_untyped_defs``); only the tests, ``conftest.py`` and ``scripts/``
+are exempt.
 
 To run the tests as continuous integration does:
 

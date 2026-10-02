@@ -389,10 +389,7 @@ def _gamma(x, alpha, beta):
     z = beta * x
     ff, sf = _gamma_pq(alpha, z)
     log_df = (
-        alpha * mp.log(beta)
-        + (alpha - 1) * mp.log(x)
-        - z
-        - mp.loggamma(alpha)
+        alpha * mp.log(beta) + (alpha - 1) * mp.log(x) - z - mp.loggamma(alpha)
     )
     return sf, ff, mp.exp(log_df)
 
@@ -545,9 +542,7 @@ def _uniform(x, a, b):
 
 
 def _hypo_coefficients(rates):
-    return [
-        mp.fprod(r / (r - rj) for r in rates if r != rj) for rj in rates
-    ]
+    return [mp.fprod(r / (r - rj) for r in rates if r != rj) for rj in rates]
 
 
 def _hypoexponential(x, *rates):
@@ -668,7 +663,8 @@ CONTINUOUS = [
         _expo_weibull,
         _positive,
         _power_edge(lambda a, b, m: mpf(b) * m, lambda a, b, m: 1 / mpf(a)),
-        qf=lambda u, uc, a, b, m: a * _expo_weibull_L(u, uc, m) ** (1 / mpf(b)),
+        qf=lambda u, uc, a, b, m: a
+        * _expo_weibull_L(u, uc, m) ** (1 / mpf(b)),
         start=_pos_start(lambda a, b, m: a),
     ),
     Continuous(
@@ -894,8 +890,7 @@ DISCRETE = [
         "NegativeBinomial",
         # r = 1e3 with p = 1e-3 as well: its mass sits at k ~ 1e6, between
         # the others'
-        _product((1e-3, 1.0, 1e3), (1e-6, 0.5, 1 - 1e-6))
-        + [(1e3, 1e-3)],
+        _product((1e-3, 1.0, 1e3), (1e-6, 0.5, 1 - 1e-6)) + [(1e3, 1e-3)],
         _negative_binomial,
         1,
     ),
@@ -1158,9 +1153,7 @@ def _case(spec, params, rng, checks):
             # the limits there are exact (0, 1, inf or a parameter)
             s = {k: mpf(0) for k in FUNCTIONS}
         else:
-            s = _sensitivities(
-                spec, base, xm, p, perturb_x=not spec.discrete
-            )
+            s = _sensitivities(spec, base, xm, p, perturb_x=not spec.discrete)
         if rng.random() < CHECK_FRACTION:
             with mp.workdps(CHECK_DPS):
                 again = spec.values(xm, p)

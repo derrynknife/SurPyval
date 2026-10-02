@@ -3387,7 +3387,7 @@ class Parametric(
                     trace.append(u_hat + r * offset / size)
         return trace
 
-    def _cb_lr_psi_bounds(
+    def _cb_lr_psi_bounds(  # noqa: C901 (72; to be split into steps)
         self,
         psi_of: Callable[[npt.NDArray], float],
         free: list[int],
