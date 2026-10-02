@@ -49,7 +49,8 @@ modules() {
     cases=""
     case "$1" in
     nonparametric)
-        mutate="$np/nonparametric.py $np/kaplan_meier.py $np/nelson_aalen.py
+        mutate="$np/nonparametric.py $np/_support.py $np/_bands.py
+                $np/kaplan_meier.py $np/nelson_aalen.py
                 $np/fleming_harrington.py"
         tests="surpyval/tests/univariate/nonparametric
                surpyval/tests/reference/test_nonparametric.py

@@ -29,13 +29,13 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     ordered_labels,
 )
+from surpyval.univariate.nonparametric._support import (
+    check_support,
+    on_support,
+    support_from_dict,
+)
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
-from surpyval.univariate.nonparametric.nonparametric import (
-    _check_support,
-    _on_support,
-    _support_from_dict,
-)
 from surpyval.univariate.regression.regression_data import (
     check_finite_event_times,
 )
@@ -155,7 +155,7 @@ class CompetingRisks(SerialisableMixin):
         out.how = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
-        support = _support_from_dict(model_dict)
+        support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
         return out
@@ -215,7 +215,7 @@ class CompetingRisks(SerialisableMixin):
         >>> model.cif([-1, 0.5, 5, 15, 25], 'a').round(4)
         array([   nan, 0.    , 0.3167, 0.6083,    nan])
         """
-        self.support = _check_support(
+        self.support = check_support(
             lower,
             upper,
             float(self.x[0]),
@@ -231,7 +231,7 @@ class CompetingRisks(SerialisableMixin):
         :meth:`set_support`)."""
         if self.support is None:
             return f(x)
-        return _on_support(
+        return on_support(
             self.support, float(self.x[0]), float(self.x[-1]), x, f, start
         )
 
