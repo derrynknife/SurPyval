@@ -115,13 +115,12 @@ mypy_path = "stubs"
 # per-module ratchet list the coverage was built up under.
 disallow_untyped_defs = true
 
-# The test suite and the alpha (pre-release, no API contract) tree are
-# exercised, not typed; they are exempt from the annotation requirement
-# but still type-checked against the package's annotations.
+# The test suite, conftest.py and the scripts are exercised, not typed;
+# they are exempt from the annotation requirement but still
+# type-checked against the package's annotations.
 [[tool.mypy.overrides]]
 module = [
     'surpyval.tests.*',
-    'surpyval.alpha.*',
     'conftest',
     'scripts.*',
 ]

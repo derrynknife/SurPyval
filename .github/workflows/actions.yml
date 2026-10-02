@@ -126,10 +126,6 @@ jobs:
           pip install -r requirements_dev.txt
 
       - name: pytest
-        # The alpha-stage modules are not part of the release contract
-        # and are excluded from the deployment test run. (Beta-stage
-        # tests, e.g. the survival forest's, do run.)
-        #
         # Run across all available cores: the suite is dominated by a
         # handful of Monte Carlo and bootstrap tests, so it parallelises
         # well -- 13m21 to 4m10 on four cores locally. Coverage comes
@@ -145,8 +141,7 @@ jobs:
         # in. They are skipped by default because they are 97 of the
         # suite's 180 seconds locally, but deployment still tests them.
         run:
-          python -m pytest -n auto --cov=surpyval --cov-report=
-          --ignore=surpyval/tests/alpha --run-ml
+          python -m pytest -n auto --cov=surpyval --cov-report= --run-ml
 
       # Execute the ``>>>`` examples in the docstrings and compare their
       # printed output. This is what a user (or an agent) sees from
@@ -157,14 +152,13 @@ jobs:
       # doctest collection does not disturb coverage or xdist.
       #
       # ``surpyval/tests`` is excluded because the test modules have no
-      # user-facing examples, and ``surpyval/alpha`` because it is not
-      # part of the release contract (same reason the suite skips it).
+      # user-facing examples.
       # Option flags are set in pyproject.toml; conftest.py adds the
       # numeric comparison that lets the examples record real output.
       - name: doctests
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
 
       # The numeric comparison above only runs for an example whose
       # output has actually drifted -- a handful on any one machine, and
@@ -175,7 +169,7 @@ jobs:
       - name: doctests (numeric comparison forced)
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
           --doctest-force-numeric
 
       - name: coverage

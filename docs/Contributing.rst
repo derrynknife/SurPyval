@@ -21,15 +21,15 @@ Code style is enforced rather than requested. The pre-commit hooks
 black (line length 79), flake8 and mypy on every commit, and the lint job in
 continuous integration runs ``flake8``, ``mypy`` and ``black --check`` on the
 ``surpyval`` package. mypy is strict about annotations: every function in the
-package must be type annotated (``disallow_untyped_defs``); only the tests and
-the ``surpyval.alpha`` tree are exempt.
+package must be type annotated (``disallow_untyped_defs``); only the tests,
+``conftest.py`` and ``scripts/`` are exempt.
 
 To run the tests as continuous integration does:
 
 .. code-block:: bash
 
-    python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
-    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests --ignore=surpyval/alpha
+    python -m pytest -n auto --run-ml
+    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests
 
 The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
