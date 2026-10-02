@@ -1,5 +1,7 @@
-"""Regression tests for the third review of the data layer (handlers and
-converters in ``surpyval.utils``)."""
+"""The data handlers and converters in ``surpyval.utils``: refusing
+missing and malformed values, sorting and checking ``xrd`` data, and
+two-column (interval) rows whose ends are equal.
+"""
 
 import warnings
 
@@ -30,6 +32,8 @@ from surpyval.univariate.competing_risks import (
 )
 
 nan = np.nan
+
+
 inf = np.inf
 
 
@@ -134,9 +138,16 @@ def test_xrd_empty_and_nan_are_refused():
 
 # --- two-column x with no interval rows ------------------------------------
 
+
 x1 = np.array([2, 3, 5, 7, 8, 11, 13, 17, 19, 23, 29, 31.0])
+
+
 c1 = np.array([0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1])
+
+
 x2 = np.c_[x1, x1]
+
+
 q = np.array([4.0, 10.0, 20.0])
 
 

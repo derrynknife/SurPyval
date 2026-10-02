@@ -7,6 +7,7 @@ members of the distributions package.
 """
 
 import numpy as np
+import pytest
 
 import surpyval
 from surpyval import InstantlyOccurs, NeverOccurs
@@ -109,3 +110,26 @@ def test_exact_event_time_still_fits_and_serialises():
     np.testing.assert_allclose(model.params, [5.0])
     restored = surpyval.from_dict(model.to_dict())
     np.testing.assert_allclose(restored.params, model.params)
+
+
+# ---------------------------------------------------------------------------
+# JSON round trip and the class tag check.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("dist", [NeverOccurs, InstantlyOccurs])
+def test_degenerate_to_json_round_trip(tmp_path, dist):
+    path = tmp_path / "d.json"
+    dist.to_json(path)
+    assert surpyval.from_json(path) is dist
+    assert dist.from_json(path) is dist
+    assert surpyval.from_dict(dist.to_dict()) is dist
+
+
+def test_degenerate_from_dict_checks_the_tag(tmp_path):
+    with pytest.raises(ValueError, match="InstantlyOccurs"):
+        InstantlyOccurs.from_dict(NeverOccurs.to_dict())
+    path = tmp_path / "n.json"
+    NeverOccurs.to_json(path)
+    with pytest.raises(ValueError, match="InstantlyOccurs"):
+        InstantlyOccurs.from_json(path)
