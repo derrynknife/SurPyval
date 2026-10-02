@@ -20,8 +20,8 @@ from autograd import grad, hessian
 
 import surpyval as sp
 import surpyval.univariate.competing_risks.regression.fine_gray as fine_gray
+import surpyval.univariate.regression._inference as inference
 import surpyval.univariate.regression.frailty.frailty_fitter as frailty
-import surpyval.univariate.regression.parametric_regression_model as prm
 from surpyval.tests.conformance.registry import CASE_BY_NAME, reg_data
 from surpyval.univariate.regression._fit_skeleton import (
     centred_copy,
@@ -142,7 +142,7 @@ def test_the_kept_hessian_is_the_natural_space_hessian(name):
 
 
 def test_covariance_reads_no_numerical_hessian_and_is_kept(monkeypatch):
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     model = _registry("WeibullPH")
     model.standard_errors()
     model.cb([5.0, 10.0], Z=[1.0, 0.0])
@@ -164,7 +164,7 @@ def test_covariance_reads_no_numerical_hessian_and_is_kept(monkeypatch):
 def test_a_model_with_moved_parameters_falls_back(monkeypatch):
     # (LogNormalPH is fitted on the covariates as given, so its covariance
     # is computed at ``params``.)
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     model = _registry("LogNormalPH")
     fitted = model.params
     exact = model.covariance()
@@ -179,7 +179,7 @@ def test_a_model_with_moved_parameters_falls_back(monkeypatch):
 
 
 def test_a_model_with_other_data_falls_back(monkeypatch):
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     model = _registry("WeibullAFT")
     model.covariance()
     model.data = copy.copy(model.data)
@@ -188,7 +188,7 @@ def test_a_model_with_other_data_falls_back(monkeypatch):
 
 
 def test_accelerated_life_uses_the_numerical_hessian(monkeypatch):
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     model = _registry("WeibullAL[Power]")
     assert model._information is None
     model.standard_errors()
@@ -207,7 +207,7 @@ def test_aft_time_varying_fit_uses_the_numerical_hessian(monkeypatch):
         )
     )
     assert model._information is None
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     se = model.standard_errors()
     assert len(calls) == 1 and np.all(np.isfinite(se)) and np.all(se > 0)
 
@@ -238,7 +238,7 @@ def test_fixed_and_centred_fits(monkeypatch, fitter, options, maps_back):
     assert (center is not None) == (maps_back or "center" in options)
     assert fixed == tuple(sorted(options.get("fixed", {})))
     _assert_same_hessian(kept, _direct_hessian(model))
-    calls = _count_numerical(monkeypatch, prm)
+    calls = _count_numerical(monkeypatch, inference)
     exact = model.covariance()
     assert calls == []
     for name in options.get("fixed", {}):

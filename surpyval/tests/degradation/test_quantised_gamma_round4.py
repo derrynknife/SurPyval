@@ -236,9 +236,9 @@ def test_gauge_input_checks() -> None:
             GammaProcess.fit(x, y, i, 10.0, gauge=bad)
     with pytest.raises(ValueError, match="not on the grid"):
         GammaProcess.fit(x, y, i, 10.0, gauge=0.3)
-    with pytest.raises(ValueError, match="rounding must be"):
+    with pytest.raises(ValueError, match="'rounding' must be one of"):
         GammaProcess.fit(x, y, i, 10.0, gauge=0.5, rounding="up")
-    with pytest.raises(ValueError, match="gauge_method must be"):
+    with pytest.raises(ValueError, match="'gauge_method' must be one of"):
         GammaProcess.fit(x, y, i, 10.0, gauge=0.5, gauge_method="fast")
     for kwargs in (
         {"rounding": "floor"},

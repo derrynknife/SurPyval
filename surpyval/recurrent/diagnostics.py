@@ -30,6 +30,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import check_option
 
 
 def _validate_diagnostic_data(data: Any, what: str) -> None:
@@ -260,10 +261,7 @@ def trend_test(
 
     _validate_diagnostic_data(data, "trend_test")
     tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
-    if test not in tests:
-        raise ValueError(
-            "`test` must be one of {}; got {!r}".format(sorted(tests), test)
-        )
+    check_option("test", test, tests)
 
     # The trend tests assume every system is observed from time 0.
     x, i, T = [], [], {}

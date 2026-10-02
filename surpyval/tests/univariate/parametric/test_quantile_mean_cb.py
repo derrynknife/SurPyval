@@ -128,8 +128,8 @@ def test_a_discrete_quantile_inverts_the_band_on_ff():
     [
         ({"p": 0.0}, "'p' must be in"),
         ({"p": 1.0}, "'p' must be in"),
-        ({"p": 0.1, "bound": "both"}, "bound must be"),
-        ({"p": 0.1, "method": "boot"}, "Unknown confidence-bound"),
+        ({"p": 0.1, "bound": "both"}, "'bound' must be one of"),
+        ({"p": 0.1, "method": "boot"}, "'method' must be one of"),
         ({"p": 0.1, "alpha_ci": 1.2}, "'alpha_ci'"),
     ],
 )

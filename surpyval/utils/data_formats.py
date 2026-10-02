@@ -609,9 +609,7 @@ def format_truncation(
                 " use 't'"
             )
         if tl_arr.shape[0] != n_rows or tr_arr.shape[0] != n_rows:
-            raise ValueError(
-                "Truncation array must be same length as variable array"
-            )
+            raise ValueError("'tl' and 'tr' must be the same length as 'x'")
         t = np.vstack([tl_arr, tr_arr]).T
     else:
         try:
@@ -903,9 +901,7 @@ def xcnt_handler(
             raise ValueError("Censoring flag array must be one dimensional")
 
         if c.shape[0] != x.shape[0]:
-            raise ValueError(
-                "censoring flag array must be same length as variable array"
-            )
+            raise ValueError("'c' must be the same length as 'x'")
 
         if x.ndim == 2:
             if any(c[x[:, 0] == x[:, 1]] == 2):
@@ -959,9 +955,7 @@ def xcnt_handler(
         if n.ndim != 1:
             raise ValueError("Count array must be one dimensional")
         if n.shape[0] != x.shape[0]:
-            raise ValueError(
-                "count array must be same length as variable array."
-            )
+            raise ValueError("'n' must be the same length as 'x'")
         # isfinite as well: floor(inf) == inf, so an infinite count passed
         # the whole-number test and became garbage in the integer cast.
         if not (np.isfinite(n) & np.equal(n, np.floor(n))).all():

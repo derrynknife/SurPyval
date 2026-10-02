@@ -19,7 +19,6 @@ from surpyval.utils.covariates import (
     formula_model_matrix,
     numeric_columns,
     optional_column,
-    wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.data_formats import (
     _check_truncation_bounds,
@@ -62,6 +61,7 @@ from surpyval.utils.validation import (
     check_e_and_x,
     check_left_or_int_cens,
     check_no_censoring,
+    check_option,
     check_Z_and_x,
     no_left_or_int,
     validate_1d,
@@ -115,8 +115,7 @@ def validate_coxph(
     tl: "npt.ArrayLike | None",
     method: str,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    if method not in COX_PH_METHODS:
-        raise ValueError("Method must be in {}".format(COX_PH_METHODS))
+    check_option("tie_method", method, COX_PH_METHODS)
 
     # The Cox partial likelihood accommodates left-truncation (delayed entry)
     # by adjusting the risk sets, but has no way to incorporate right or

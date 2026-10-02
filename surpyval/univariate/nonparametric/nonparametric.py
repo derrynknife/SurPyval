@@ -10,9 +10,9 @@ from scipy.stats import norm
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option
 
 from ._bands import BandsMixin
 from ._support import (
@@ -32,7 +32,6 @@ _QF_TOL = 1e-9
 
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
-_BOUNDS = ("two-sided", "upper", "lower")
 
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
@@ -41,26 +40,16 @@ _INTERP: tuple[str, ...] = ("step", "linear", "cubic", "nearest")
 _INTERP += ("nearest-up", "zero", "slinear", "quadratic", "previous", "next")
 
 
-def _check_option(name: str, value: Any, accepted: tuple) -> None:
-    """Refuse an option ``value`` not in ``accepted``, naming the
-    argument and the values it takes (principle 2) -- the one message
-    for an unknown option value."""
-    if not isinstance(value, str) or value not in accepted:
-        raise ValueError(
-            "'{}' must be one of {}; got {!r}".format(name, accepted, value)
-        )
-
-
 def _check_bound(bound: str) -> None:
     # An unknown ``bound`` (e.g. 'both') used to reach the statistic's
     # if/elif chain and fail as an UnboundLocalError.
-    _check_option("bound", bound, _BOUNDS)
+    check_option("bound", bound, BOUNDS)
 
 
 def _check_interp(interp: str) -> None:
     # An unknown ``interp`` used to reach scipy, which raised
     # NotImplementedError (#416).
-    _check_option("interp", interp, _INTERP)
+    check_option("interp", interp, _INTERP)
 
 
 class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
@@ -756,12 +745,13 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
         # ``[upper, lower]`` order, i.e. with the lower above the upper.
-        if on not in _CB_ON:
-            raise ValueError(
-                "'on' must be one of {}; got {!r}. Non-parametric bounds "
-                "are not available on the density or the hazard rate "
-                "('df', 'hf').".format(_CB_ON, on)
-            )
+        check_option(
+            "on",
+            on,
+            _CB_ON,
+            "Non-parametric bounds are not available on the density or "
+            "the hazard rate ('df', 'hf').",
+        )
         _check_bound(bound)
         _check_interp(interp)
         # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
@@ -851,18 +841,19 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         dist: str,
     ) -> npt.NDArray:
         # ``R_cb`` without the bounds (see ``set_support``).
-        if bound_type not in ["exp", "normal"]:
-            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
-        if dist != "z":
-            raise ValueError(
-                "'dist' must be 'z'. The 't' option (Student-t with the "
-                "at-risk count as degrees of freedom) has been removed: it "
-                "had no asymptotic justification, was undefined at the last "
-                "event, and widened bounds arbitrarily as the risk set "
-                "shrank. For small-sample or Turnbull confidence bounds use "
-                "`bootstrap_cb`, and for a simultaneous band use `band`."
-            )
+        check_option(
+            "dist",
+            dist,
+            ("z",),
+            "The 't' option (Student-t with the at-risk count as degrees "
+            "of freedom) has been removed: it had no asymptotic "
+            "justification, was undefined at the last event, and widened "
+            "bounds arbitrarily as the risk set shrank. For small-sample or "
+            "Turnbull confidence bounds use `bootstrap_cb`, and for a "
+            "simultaneous band use `band`.",
+        )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "
@@ -1347,166 +1338,6 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
             "upper": mu + z * se,
             "tau": float(tau),
         }
-
-    @keeps_query_shape
-    def bootstrap_cb(
-        self,
-        x: npt.ArrayLike,
-        bound: str = "two-sided",
-        alpha_ci: float = 0.05,
-        n_boot: int = 200,
-        random_state: int | None = None,
-    ) -> npt.NDArray:
-        r"""
-        Confidence bounds of the survival function computed with a
-        non-parametric bootstrap: the data are resampled with
-        replacement, the model is refitted with the same estimator, and
-        the percentile interval across the refits is taken at each x.
-
-        This is the recommended way to compute bounds for the Turnbull
-        estimator. The Greenwood-style bounds from ``cb()`` treat the
-        expected (fractional) at risk and death counts from the
-        Turnbull EM as if they were observed counts, which ignores the
-        uncertainty in the EM allocation itself; the bootstrap does
-        not.
-
-        Note that the Turnbull NPMLE only identifies the probability
-        mass within each Turnbull interval, not how it is distributed
-        inside one. Point estimates and bounds evaluated strictly
-        inside an interval therefore reflect the step convention rather
-        than an estimate of the underlying continuous survival
-        function, and are best evaluated at the interval bounds.
-
-        Parameters
-        ----------
-
-        x : array like or scalar
-            The values at which the confidence bounds will be
-            calculated.
-        bound : ('two-sided', 'upper', 'lower'), str, optional
-            Compute either the two-sided, upper or lower confidence
-            bound(s). Defaults to two-sided.
-        alpha_ci : scalar, optional
-            The level of significance at which the bound will be
-            computed. Defaults to 0.05.
-        n_boot : int, optional
-            The number of bootstrap resamples. Defaults to 200. Larger
-            values give smoother bounds at a linear cost in runtime;
-            note that refitting the Turnbull estimator is relatively
-            expensive. A Turnbull model refits each resample with its own
-            ``turnbull_estimator``, ``tol`` and ``max_iter``.
-        random_state : int or numpy.random.Generator, optional
-            Seed or generator for reproducible resampling. ``None`` (the
-            default) seeds from numpy's global RNG, so ``np.random.seed``
-            controls it.
-
-        Returns
-        -------
-
-        cb : numpy array
-            For two-sided bounds an array of shape (len(x), 2) with
-            ``[lower, upper]`` columns; otherwise an array of the
-            requested bound at each x. As for ``cb``, the bounds are NaN
-            below the first and above the last observed value, and at a
-            missing x; with a support set (see ``set_support``) they are 1
-            from ``lower`` to the first value, the bounds at the last
-            value from there to ``upper``, and NaN outside them.
-
-        Raises
-        ------
-
-        ValueError
-            If the model does not hold the data it was fitted with: a
-            model from ``from_xrd`` or ``fit_from_ecdf``, or one restored
-            from a dictionary written without ``with_data=True``. Also if
-            ``bound`` is unknown or ``n_boot`` is not a positive integer.
-
-        Examples
-        --------
-        >>> from surpyval import KaplanMeier
-        >>> model = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8],
-        ...                         c=[0, 1, 0, 0, 1, 0, 0, 1])
-        >>> model.bootstrap_cb([2, 4, 6], n_boot=100, random_state=1)
-        array([[0.625     , 1.        ],
-               [0.19739583, 0.875     ],
-               [0.        , 0.75      ]])
-        """
-        if getattr(self, "data", None) is None or "x" not in self.data:
-            raise ValueError(
-                "Bootstrap requires the data the model was fitted "
-                + "with. Models created with 'from_xrd' or "
-                + "'fit_from_ecdf' cannot be bootstrapped, and a model "
-                + "restored with 'from_dict' needs the data saved with "
-                + "it: to_dict(with_data=True)."
-            )
-        _check_bound(bound)
-        # Checked up front: n_boot = 0 used to fail as an IndexError from
-        # the empty quantile, and a fractional one as a TypeError from
-        # range().
-        if isinstance(n_boot, bool) or not isinstance(
-            n_boot, (int, np.integer)
-        ):
-            raise ValueError(
-                "'n_boot' must be a positive integer; got {!r}".format(n_boot)
-            )
-        if n_boot < 1:
-            raise ValueError(
-                "'n_boot' must be a positive integer; got {}".format(n_boot)
-            )
-        # Imported here as the package imports this module on init.
-        from surpyval.univariate import nonparametric as nonp
-        from surpyval.utils import xcnt_to_xrd
-
-        x_data = self.data["x"]
-        c_data = self.data["c"]
-        n_data = self.data["n"]
-        t_data = self.data["t"]
-
-        # Refit each resample exactly as the original was fitted. Models
-        # saved before ``tol``/``max_iter`` were recorded fall back to the
-        # ``fit()`` defaults.
-        tb_kwargs: dict[str, Any] = {}
-        if self.model == "Turnbull":
-            tb_kwargs["estimator"] = self.data["estimator"]
-            tb_kwargs["tol"] = self.data.get("tol", 1e-10)
-            tb_kwargs["max_iter"] = self.data.get("max_iter", 1000)
-
-        rng = as_generator(random_state)
-        N = int(n_data.sum())
-        probs = n_data / n_data.sum()
-
-        def resampled(x: npt.ArrayLike) -> npt.NDArray:
-            x_eval = np.atleast_1d(x).astype(float)
-            with np.errstate(all="ignore"):
-                R_boot = np.empty((n_boot, x_eval.size))
-                for b in range(n_boot):
-                    n_b = rng.multinomial(N, probs)
-                    keep = n_b > 0
-                    if self.model == "Turnbull":
-                        fitted = nonp.turnbull(
-                            x_data[keep],
-                            c_data[keep],
-                            n_b[keep],
-                            t_data[keep],
-                            **tb_kwargs,
-                        )
-                        x_b, R_b = fitted["x"], fitted["R"]
-                    else:
-                        x_b, r_b, d_b = xcnt_to_xrd(
-                            x_data[keep], c_data[keep], n_b[keep], t_data[keep]
-                        )
-                        R_b = nonp.FIT_FUNCS[self.model](r_b, d_b)
-                    idx = np.searchsorted(x_b, x_eval, side="right") - 1
-                    R_boot[b, :] = np.where(
-                        idx < 0, 1.0, R_b[np.clip(idx, 0, len(x_b) - 1)]
-                    )
-
-            return percentile_bounds(R_boot, alpha_ci, bound)
-
-        # NaN outside the data or, with a support set, 1 before the first
-        # value and the bounds at the last value carried to ``upper``, as
-        # ``cb`` gives.
-        return self._bounds_within_support(x, resampled, 1.0)
 
     @keeps_query_shape
     def smoothed_hf(

@@ -58,6 +58,7 @@ from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import alpha_ci_error, check_option
 
 from ._clock import StressClock, covariates_by_name, stress_row
 from ._measurements import validate_xy
@@ -859,9 +860,7 @@ class FirstPassageProcessModel(SerialisableMixin):
         """
         if not 0.0 < float(alpha_ci) < 1.0:
             # 1.5 used to give an inverted interval
-            raise ValueError(
-                "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         current = float(current_degradation)
         if np.isnan(current):
             # it used to hang the quantile search
@@ -1783,17 +1782,8 @@ class GammaProcess:
                     gauge
                 )
             )
-        if rounding not in ("nearest", "floor"):
-            raise ValueError(
-                'rounding must be "nearest" or "floor", got {!r}'.format(
-                    rounding
-                )
-            )
-        if gauge_method not in ("exact", "independent"):
-            raise ValueError(
-                'gauge_method must be "exact" or "independent", got '
-                "{!r}".format(gauge_method)
-            )
+        check_option("rounding", rounding, ("nearest", "floor"))
+        check_option("gauge_method", gauge_method, ("exact", "independent"))
         s: "npt.NDArray | None" = None
         if Z is None:
             if stress_ref is not None:

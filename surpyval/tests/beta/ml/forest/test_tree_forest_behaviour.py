@@ -277,6 +277,15 @@ def test_forest_Hf_ensemble_method_averages_hazard(signal_forest):
     np.testing.assert_allclose(forest.Hf(X_GRID, Z_FAST), mean_Hf)
 
 
+def test_forest_refuses_an_unknown_ensemble_method(signal_forest):
+    # Anything but 'Hf' (say 'hf', or 'mean') was taken as 'sf' in silence.
+    forest, *_ = signal_forest
+    with pytest.raises(
+        ValueError, match="'ensemble_method' must be one of 'sf' or 'Hf'"
+    ):
+        forest.sf(X_GRID, Z_FAST, ensemble_method="hf")
+
+
 def test_forest_prediction_shapes(signal_forest):
     forest, *_ = signal_forest
     single = forest.sf(X_GRID, Z_FAST)

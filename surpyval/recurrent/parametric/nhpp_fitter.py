@@ -8,14 +8,16 @@ from scipy.optimize import OptimizeResult, minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent._bounded import unconstraining_maps
-from surpyval.recurrent._convergence import better_result, warn_unconverged
+from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.validation import check_option
 
 
 def nhpp_log_likelihood(
@@ -143,10 +145,7 @@ class NHPPFitter(IntensityModel):
             An instance of the ParametricRecurrenceModel class containing the
             fitted model, estimated parameters, and other relevant attributes.
         """
-        if how not in ("MLE", "MSE"):
-            raise ValueError(
-                "how must be 'MLE' or 'MSE'; got {!r}".format(how)
-            )
+        check_option("how", how, ("MLE", "MSE"))
         validate_nhpp_data(data, self)
         x_unqiue, r, d = data.to_xrd()
         mcf_hat = np.cumsum(d / r)
@@ -208,9 +207,7 @@ class NHPPFitter(IntensityModel):
         if init is not None:
             res = better_result(res, search(default_init))
         if not (res.success and res.fun < 1e300):
-            warn_unconverged(
-                "The {} fit".format(getattr(self, "name", "NHPP"))
-            )
+            warn_unverified("The {} fit".format(getattr(self, "name", "NHPP")))
         params = to_natural(res.x)
 
         model = ParametricRecurrenceModel()

@@ -32,6 +32,8 @@ from autograd.tracer import Box, getval
 from scipy.integrate import quad
 from scipy.special import roots_hermite, wrightomega
 
+from surpyval.utils.validation import check_option
+
 FAMILIES = ("gamma", "lognormal")
 
 # Gauss-Hermite nodes of the log-normal integral. The rule is centred on
@@ -55,12 +57,7 @@ _EPS = float(np.finfo(float).eps)
 
 def check_family(family: Any) -> str:
     """The frailty family's name, or a ``ValueError`` naming the choices."""
-    if family not in FAMILIES:
-        raise ValueError(
-            "family must be one of {}; got {!r}.".format(
-                ", ".join(repr(f) for f in FAMILIES), family
-            )
-        )
+    check_option("family", family, FAMILIES)
     return str(family)
 
 

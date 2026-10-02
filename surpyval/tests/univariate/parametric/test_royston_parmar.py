@@ -135,7 +135,7 @@ def test_explicit_knots():
 
 def test_guards():
     x = Weibull.random(100, 10.0, 1.8)
-    with pytest.raises(ValueError, match="scale must be"):
+    with pytest.raises(ValueError, match="'scale' must be one of"):
         RoystonParmar.fit(x, scale="weird")
     with pytest.raises(ValueError, match="positive"):
         RoystonParmar.fit(np.array([-1.0, 2.0, 3.0]))

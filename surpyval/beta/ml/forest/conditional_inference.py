@@ -147,6 +147,7 @@ from surpyval.beta.ml.forest.deviance_split import (
 )
 from surpyval.beta.ml.forest.turnbull_score_split import log_rank_scores
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import check_option
 
 SELECTIONS = ("greedy", "ctree")
 
@@ -158,12 +159,14 @@ _MAX_TEST_CUTS = 64
 
 def parse_selection(selection: str, alpha_split: float) -> str:
     """Validate ``selection`` and ``alpha_split``; the selection name."""
-    if selection not in SELECTIONS:
-        raise ValueError(
-            f"selection={selection!r} is invalid. Must be 'greedy' (the "
-            "best cut over every feature) or 'ctree' (conditional "
-            "inference: the feature by a p-value, then its cut)."
-        )
+    check_option(
+        "selection",
+        selection,
+        SELECTIONS,
+        "'greedy' takes the best cut over every feature; 'ctree' "
+        "(conditional inference) picks the feature by a p-value, then its "
+        "cut.",
+    )
     if (
         isinstance(alpha_split, bool)
         or not isinstance(alpha_split, (int, float, np.integer, np.floating))

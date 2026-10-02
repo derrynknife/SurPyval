@@ -14,6 +14,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import option_error
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -265,9 +266,8 @@ class ParametricRecurrenceModel(
             return e
         elif kind == "martingale":
             return diagnostics.martingale_residuals(self.data, self.cif)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(

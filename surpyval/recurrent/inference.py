@@ -10,6 +10,7 @@ import numpy as np
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
+from surpyval.utils.warnings import warn_no_covariance
 
 
 def bic_sample_size(data: Any) -> float:
@@ -195,15 +196,12 @@ class LikelihoodInferenceMixin:
             H = numerical_hessian(neg_ll_free, full[free])
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
-            warnings.warn(
-                "Hessian could not be evaluated (the optimum may be at a "
-                "parameter boundary); covariance is unavailable."
-            )
+            warn_no_covariance()
             return out
         try:
             out[np.ix_(free, free)] = np.linalg.inv(H)
         except np.linalg.LinAlgError:
-            warnings.warn("Hessian is singular; covariance is unavailable.")
+            warn_no_covariance()
         return out
 
     def standard_errors(self) -> np.ndarray:

@@ -53,14 +53,15 @@ from surpyval.serialisation import (
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import covariate_center
-from ..proportional_hazards.cox_ph import (
-    CoxPH,
-    _baseline_at_origin,
-    _newton_raphson,
+from ..proportional_hazards.cox_likelihood import (
+    baseline_at_origin,
+    newton_raphson,
 )
+from ..proportional_hazards.cox_ph import CoxPH
 from ..regression_data import (
     design_matrix_from_df,
     restore_covariate_meta,
@@ -145,7 +146,7 @@ class _CoxFrailtyEM:
             return beta, f(beta)
         with np.errstate(all="ignore"):
             score, info = jac(beta)
-            res = _newton_raphson(f, jac, beta, 1e-12, score, info)
+            res = newton_raphson(f, jac, beta, 1e-12, score, info)
             if res is None:
                 # As CoxPH falls back where Newton-Raphson gives up (a
                 # likelihood with no finite maximum, #392).
@@ -428,11 +429,13 @@ class CoxFrailtyFitter:
         >>> model.beta.round(4), round(model.theta, 4)
         (array([ 0.0052, -1.5832]), 0.4078)
         """
-        if tie_method not in _TIE_METHODS:
-            raise ValueError(
-                "tie_method must be 'efron' or 'breslow' for a frailty fit;"
-                " got {!r}.".format(tie_method)
-            )
+        check_option(
+            "tie_method",
+            tie_method,
+            _TIE_METHODS,
+            "The frailty fit has no exact or Kalbfleisch-Prentice "
+            "likelihood.",
+        )
         if theta is not None and not (np.isfinite(theta) and theta >= 0):
             raise ValueError(
                 "theta must be a finite, non-negative frailty variance; "
@@ -535,7 +538,7 @@ class CoxFrailtyFitter:
         # The baseline at Z = 0 and u = 1, as CoxPH reports it.
         times, r, d, h0 = em.baseline(beta, log_u[inv])
         if kept.size:
-            r, h0 = _baseline_at_origin(beta, center, Zk, r, h0)
+            r, h0 = baseline_at_origin(beta, center, Zk, r, h0)
 
         model = CoxFrailtyModel()
         model.tie_method = tie_method

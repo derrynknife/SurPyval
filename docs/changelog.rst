@@ -239,7 +239,14 @@ bands change (#477).
   ``degradation/rul.py``. Old import paths keep working.
   ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
   converters and helpers; everything else it exports is internal. A test
-  stops new imports of another package's private names.
+  stops new imports of another package's private names. In the same way,
+  the parametric regression model's time-varying evaluation is in
+  ``univariate/regression/_tvc_evaluation.py`` and its covariance and Wald
+  bounds in ``_inference.py``; the Cox partial likelihood (tie terms,
+  likelihood generators and the Newton-Raphson solver) is in
+  ``proportional_hazards/cox_likelihood.py``; the fitted
+  ``DegradationModel`` is in ``degradation/degradation_model.py``; and
+  ``bootstrap_cb`` is in ``nonparametric/_bands.py`` beside ``band``.
 - **A model's formula is the str you gave.** Cox, Buckley-James and the
   competing-risks PH model kept a parsed ``formulaic.Formula`` in
   ``model.formula``, every other model the str; now all of them keep the
@@ -255,7 +262,33 @@ bands change (#477).
   models' input errors share one wording and name the offending input
   ("y must contain only finite values"; "x, y, and i must have the same
   length; got 55, 54, and 55").
-- **Development: duplicated code merged (consolidation sweep, phases 1-2).**
+- **Error and warning wording unified (messages only; no numbers change).**
+  Code that matches the old texts must update its patterns.
+
+  - An unknown option value (``bound``, ``on``, ``how``, ``method``,
+    ``tie_method``, ``kind`` and the other enumerated arguments) raises
+    ``'<name>' must be one of 'a', 'b' or 'c'; got <value>``.
+  - ``alpha_ci`` outside (0, 1): ``'alpha_ci' must be strictly between 0
+    and 1; got <value>``.
+  - An unknown cause: ``Unknown cause 'x'; the causes are [...]``
+    (``CauseSpecificMCF.mcf`` and ``mcf_cb`` raised ``KeyError``; they now
+    raise ``ValueError``). A missing cause: ``<what> is of one cause at a
+    time; pass `event`.``
+  - No covariance, a singular information matrix, unknown parameter names
+    in ``param_cb`` and ``fixed`` (the univariate fit now lists every
+    unknown name), and ``c``, ``n``, ``tl`` or ``tr`` of the wrong length
+    (``'c' must be the same length as 'x'``) each have one wording.
+  - ``fit_from_df`` given neither ``Z_cols`` nor ``formula``: ``One of
+    'Z_cols' or 'formula' must be provided``.
+  - Every fit that stops short of a verified maximum gives one warning,
+    "... did not reach a verified maximum of the likelihood (<reason>)",
+    at the caller's line. The univariate "Precision was lost" and the
+    regression and NHPP "did not converge" warnings are this warning now,
+    and ``quiet_maximum_warnings`` holds it back for every fit, not only
+    the univariate MLE.
+  - ``RandomSurvivalForest.sf`` refuses an unknown ``ensemble_method``; it
+    used ``'sf'`` for anything other than ``'Hf'``.
+- **Development: duplicated code merged (consolidation sweep, phases 1-3).**
   Fitted numbers are bit-identical, checked with the equivalence harness.
   The PH, AFT and PO fits share ``fit_log_linear`` and
   ``split_log_linear``; the accelerated-life and AFT time-varying fits are
@@ -265,7 +298,11 @@ bands change (#477).
   centring and one ``LinearPredictorMixin``; the plain and
   proportional-intensity NHPP fitters, and HPP, share one log-likelihood
   (#350); the bootstrap tails share ``percentile_bounds`` (#351); and the
-  degradation inputs are checked by one ``validate_xy`` (#352). The
+  degradation inputs are checked by one ``validate_xy`` (#352); option
+  checks go through ``utils.validation.check_option`` and unverified-maximum
+  warnings through ``utils.no_maximum.warn_unverified``; and the
+  ``fit_from_df`` design matrices are built by ``design_matrix_from_df``
+  alone (``wrangle_and_check_form_and_Z_cols`` is removed). The
   accelerated-life fitter now has the deprecated ``param_names`` alias
   the other fitters have.
 - **Development: refactors are proven bit-identical.**

@@ -55,6 +55,12 @@ from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    no_covariance_error,
+    option_error,
+)
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -112,7 +118,7 @@ def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
         return log_S, log_S + log_1mS
     if scale == "normal":
         return norm.logsf(eta), norm.logpdf(eta)
-    raise ValueError(f"scale must be one of {_SCALES}; got {scale!r}")
+    raise option_error("scale", scale, _SCALES)
 
 
 def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
@@ -321,15 +327,10 @@ class RoystonParmarModel(SerialisableMixin):
             two-sided bound at ``2 * alpha_ci``.
         """
         if self.covariance is None:
-            raise ValueError("Confidence bounds need a covariance (MLE fit).")
-        if on not in ("sf", "R", "ff", "F", "Hf"):
-            raise ValueError("cb 'on' supports 'sf', 'ff' and 'Hf'.")
+            raise no_covariance_error()
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError(
-                "bound must be 'two-sided', 'lower' or 'upper'; got "
-                f"{bound!r}"
-            )
+        check_option("bound", bound, BOUNDS)
         # ff = 1 - sf and Hf = -log(sf) decrease in sf, so their lower
         # bound is the transformed upper bound on sf, and vice versa. The
         # one-sided bounds used to return the other side (#415).
@@ -517,8 +518,7 @@ class RoystonParmar_(UnivariateDataFrameMixin):
             Explicit knot locations *on the log-time scale* (including the two
             boundary knots), overriding the quantile-based default.
         """
-        if scale not in _SCALES:
-            raise ValueError(f"scale must be one of {_SCALES}; got {scale!r}")
+        check_option("scale", scale, _SCALES)
 
         from surpyval.utils.surpyval_data import SurpyvalData
 

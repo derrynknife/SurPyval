@@ -37,6 +37,7 @@ from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import check_option
 from surpyval.utils.warnings import caller_stacklevel
 
 
@@ -371,6 +372,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             vector with a missing (NaN) value gives NaN, and leaves the
             other rows unaffected.
         """
+        # Anything but 'Hf' used to be taken silently as 'sf'.
+        check_option("ensemble_method", ensemble_method, ("sf", "Hf"))
         if ensemble_method == "Hf":
             Hf = self._apply_model_function_to_trees("Hf", x, Z)
             return np.exp(-Hf)

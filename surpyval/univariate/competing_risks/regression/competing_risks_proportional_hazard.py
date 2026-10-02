@@ -25,7 +25,6 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
-from surpyval.univariate.nonparametric.nonparametric import _check_option
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
@@ -34,16 +33,22 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
+    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
 from surpyval.utils import (
+    finite_covariate_mask,
     is_missing_event,
     validate_fine_gray_inputs,
-    wrangle_and_check_form_and_Z_cols,
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    check_option,
+    missing_cause_error,
+    unknown_cause_error,
+)
 
 from .fine_gray import (
     FineGrayModel,
@@ -57,7 +62,7 @@ def _check_interp(interp: str) -> None:
     # The baselines are step functions and are only evaluated as steps:
     # any other interp, even 'bogus', used to be accepted and ignored, so
     # interp='linear' silently gave the step curve (#416).
-    _check_option("interp", interp, ("step",))
+    check_option("interp", interp, ("step",))
 
 
 class CompetingRisksProportionalHazards(
@@ -255,11 +260,9 @@ class CompetingRisksProportionalHazards(
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
         # explicit cause (the Fine-Gray CIF is defined one cause at a time).
         if event is None:
-            raise ValueError(
-                "A Fine-Gray model predicts one cause at a time; pass `event`."
-            )
+            raise missing_cause_error("A Fine-Gray model's prediction")
         if event not in self._fg_models:
-            raise ValueError("Unrecognised event type for this model")
+            raise unknown_cause_error(event, self._fg_models)
         return self._fg_models[event]
 
     def _f(
@@ -285,7 +288,7 @@ class CompetingRisksProportionalHazards(
 
         if event is not None:
             if event not in self.event_idx_map:
-                raise ValueError("Unrecognised event type for this model")
+                raise unknown_cause_error(event, self.event_idx_map)
             e_i = self.event_idx_map[event]
             return self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
         # All causes combined: each cause contributes with its OWN
@@ -423,12 +426,10 @@ class CompetingRisksProportionalHazards(
         covariates for a model fitted with ``fit_from_df``. ``event`` must
         be one of the fitted causes.
         """
-        if event is None or event not in self.event_idx_map:
-            causes = list(self.event_idx_map)
-            raise ValueError(
-                f"`event` must be one of the fitted causes {causes}, got "
-                f"{event!r}."
-            )
+        if event is None:
+            raise missing_cause_error("The CIF")
+        if event not in self.event_idx_map:
+            raise unknown_cause_error(event, self.event_idx_map)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
@@ -591,9 +592,11 @@ class CompetingRisksProportionalHazards(
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, mask, form, feature_names, model_spec = (
-            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
         )
+        mask = finite_covariate_mask(Z)
+        Z = Z[mask]
         sub = df.loc[mask]
         x = sub[x_col].values
         # A censored row's cause is ``None``; accept a blank/NaN cell for it.
@@ -613,7 +616,7 @@ class CompetingRisksProportionalHazards(
                 tie_method=tie_method,
                 center=center,
             )
-        fitted.formula = form
+        fitted.formula = formula
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
         return fitted
@@ -712,6 +715,7 @@ class CompetingRisksProportionalHazards(
         >>> model.cif([5, 10], [[1]], "a").round(4)
         array([0.59  , 0.7369])
         """
+        check_option("model", model, ("Cox", "Fine-Gray"))
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
         # A fixed order for the causes (a set's iteration order depends on
@@ -766,7 +770,7 @@ class CompetingRisksProportionalHazards(
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
 
-        elif model == "Fine-Gray":
+        else:
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
             # per cause. The authoritative predictions come from these models
             # (see ``_fg_models`` and the ``cif``/``sf`` branches below); the
@@ -792,8 +796,6 @@ class CompetingRisksProportionalHazards(
             # One warning for every cause whose partial likelihood has no
             # finite maximum (#392).
             _warn_if_monotone(fits)
-        else:
-            raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
         warn_collected(found, "in the fit of each cause")
 
         out.results = results

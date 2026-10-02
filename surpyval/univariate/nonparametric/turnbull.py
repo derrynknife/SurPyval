@@ -7,6 +7,7 @@ import numpy.typing as npt
 from surpyval.univariate.nonparametric.nonparametric_fitter import (
     NonParametricFitter,
 )
+from surpyval.utils.validation import check_option
 
 from ._turnbull_npmle import (
     DOES_NOT_EXIST,
@@ -35,12 +36,7 @@ TURNBULL_ESTIMATORS: dict[str, Callable[..., npt.NDArray]] = {
 
 def check_turnbull_estimator(estimator: str) -> None:
     """Raise a ``ValueError`` if ``estimator`` is not a Turnbull option."""
-    if estimator not in TURNBULL_ESTIMATORS:
-        raise ValueError(
-            "'turnbull_estimator' must be one of {}; got {!r}".format(
-                ", ".join(repr(k) for k in TURNBULL_ESTIMATORS), estimator
-            )
-        )
+    check_option("turnbull_estimator", estimator, TURNBULL_ESTIMATORS)
 
 
 def _innermost(

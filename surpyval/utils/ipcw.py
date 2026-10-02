@@ -23,6 +23,8 @@ scikit-survival's reverse Kaplan-Meier).
 import numpy as np
 import numpy.typing as npt
 
+from surpyval.utils.validation import check_option
+
 
 def censoring_survival(
     x: npt.NDArray,
@@ -77,11 +79,7 @@ def censoring_survival(
     >>> censoring_survival(x, censored, ties="events_first")[1]  # 1 - 1/2
     array([1. , 0.5, 0.5])
     """
-    if ties not in ("censoring_first", "events_first"):
-        raise ValueError(
-            "ties must be 'censoring_first' or 'events_first', "
-            "got {!r}".format(ties)
-        )
+    check_option("ties", ties, ("censoring_first", "events_first"))
     x = np.asarray(x, dtype=float)
     censored = np.asarray(censored, dtype=bool)
     if n is None:

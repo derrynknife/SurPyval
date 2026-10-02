@@ -106,7 +106,7 @@ def test_cb_tvc_conditional(exp_ph):
 
 
 def test_cb_tvc_refusals(exp_ph):
-    with pytest.raises(ValueError, match="hazard and density along a path"):
+    with pytest.raises(ValueError, match="not the hazard or the density"):
         exp_ph.cb_tvc([1.0], _ramp(0, 1), on="hf")
     with pytest.raises(ValueError, match="bound"):
         exp_ph.cb_tvc([1.0], _ramp(0, 1), bound="both")

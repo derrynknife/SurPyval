@@ -29,6 +29,7 @@ from surpyval.utils.dataframe import RegressionDataFrameMixin
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import option_error
 
 Random = np.random.Generator | np.random.RandomState
 
@@ -621,7 +622,9 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     resolved = kind.lower().replace("_", "-")
     if resolved in ("weibull", "exponential", "non-parametric"):
         return resolved
-    raise ValueError(
-        f"kind={kind!r} is invalid. Must be 'weibull', 'exponential' or "
-        "'non-parametric'."
+    raise option_error(
+        "kind",
+        kind,
+        ("weibull", "exponential", "non-parametric"),
+        "Case does not matter, and '_' may stand for '-'.",
     )

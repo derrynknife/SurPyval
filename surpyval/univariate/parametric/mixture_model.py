@@ -20,7 +20,7 @@ from surpyval.serialisation import (
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import renamed_arguments
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -500,12 +500,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             if self._polish():
                 return
         if not converged:
-            warnings.warn(
-                "EM algorithm reached max iterations before converging, "
-                "and the answer is not a verified maximum of the "
-                "likelihood (a zero gradient, curving down in every "
-                "direction); the parameters returned are the best point "
-                "found."
+            warn_unverified(
+                "The mixture fit",
+                "EM reached its iteration limit",
+                "check the fit",
             )
 
     def _em_steps(self, tol: float, max_iter: int) -> bool:

@@ -20,6 +20,7 @@ import numpy.typing as npt
 from scipy.stats import chi2
 
 from surpyval.utils.linalg import safe_inv
+from surpyval.utils.validation import check_option, option_error
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..semi_parametric_regression_model import (
@@ -228,12 +229,11 @@ def compute_residuals(
       observation's influence on the coefficients and underlies the
       cluster-robust variance.
     """
-    kind = kind.lower()
-    if kind not in _RESIDUAL_KINDS:
-        raise ValueError(
-            f"Unknown residual kind {kind!r}; expected one of "
-            f"{_RESIDUAL_KINDS}."
+    if not (isinstance(kind, str) and kind.lower() in _RESIDUAL_KINDS):
+        raise option_error(
+            "kind", kind, _RESIDUAL_KINDS, "Case does not matter."
         )
+    kind = kind.lower()
     data = _require_cox(model)
     beta = np.asarray(model.beta, dtype=float)
     x, c, n, Z, tl = (
@@ -497,9 +497,7 @@ def _transform_times(
         # Without the fit data fall back to the ECDF of the event times.
         ranks = np.searchsorted(np.sort(t), t, side="right")
         return ranks.astype(float) / t.size
-    raise ValueError(
-        f"Unknown transform {transform!r}; expected one of {_TRANSFORMS}."
-    )
+    raise option_error("transform", transform, _TRANSFORMS)
 
 
 def check_ph(
@@ -541,10 +539,7 @@ def check_ph(
     row would be. The ``"log"`` transform needs positive event times.
     """
     data = _require_cox(model)
-    if transform not in _TRANSFORMS:
-        raise ValueError(
-            f"Unknown transform {transform!r}; expected one of {_TRANSFORMS}."
-        )
+    check_option("transform", transform, _TRANSFORMS)
     beta = np.asarray(model.beta, dtype=float)
     x, c, n = data["x"], data["c"], data["n"]
 

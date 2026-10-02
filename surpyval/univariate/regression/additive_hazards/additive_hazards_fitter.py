@@ -56,6 +56,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -573,13 +574,7 @@ class AdditiveHazardsFitter(
             or self._warn_if_on_positivity_boundary(data, params)
             or converged
         ):
-            warnings.warn(
-                "The additive hazards fit did not reach a verified maximum "
-                "of the likelihood (a zero gradient, curving down in every "
-                "direction); the parameters returned are the best point "
-                "found. Check the fit, or try another `init`.",
-                stacklevel=2,
-            )
+            warn_unverified("The additive hazards fit")
 
         reg_model = _AdditiveReg()
         reg_model.name = "Additive [beta'Z]"

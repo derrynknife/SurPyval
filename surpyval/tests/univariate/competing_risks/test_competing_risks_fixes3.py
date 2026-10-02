@@ -311,11 +311,13 @@ def _crph_data(seed=1, n=120):
 
 
 @pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
-@pytest.mark.parametrize("event", [3, None])
-def test_crph_cif_unknown_event_is_a_clear_error(how, event):
+@pytest.mark.parametrize(
+    "event, match", [(3, "Unknown cause 3"), (None, "pass `event`")]
+)
+def test_crph_cif_unknown_event_is_a_clear_error(how, event, match):
     x, Z, e = _crph_data()
     model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
-    with pytest.raises(ValueError, match="one of the fitted causes"):
+    with pytest.raises(ValueError, match=match):
         model.cif([1.0], [0, 0], event)
 
 

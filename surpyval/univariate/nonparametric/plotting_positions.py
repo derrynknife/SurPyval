@@ -10,6 +10,7 @@ from surpyval.univariate.nonparametric.fleming_harrington import (
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
 from surpyval.utils import ffill_or_zero, xcnt_handler, xcnt_to_xrd
+from surpyval.utils.validation import check_option
 
 # Estimator-form heuristics share one dispatch; the (A, B) constants
 # define the rank-based plotting-position formula F = (rank - A) / (N + B).
@@ -149,12 +150,7 @@ def plotting_positions(
 
     x, c, n, t = xcnt_handler(x, c, n, t)
 
-    if heuristic not in nonp.PLOTTING_METHODS:
-        raise ValueError(
-            "Unknown heuristic {!r}; use one of {}.".format(
-                heuristic, ", ".join(nonp.PLOTTING_METHODS)
-            )
-        )
+    check_option("heuristic", heuristic, nonp.PLOTTING_METHODS)
 
     if ((-1 in c) or (2 in c)) & (heuristic != "Turnbull"):
         raise ValueError(

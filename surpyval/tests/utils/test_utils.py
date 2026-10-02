@@ -319,14 +319,12 @@ def test_xcnt_handler():
     # Test with c input not matching the shape of x
     with pytest.raises(
         ValueError,
-        match="censoring flag array must be same length as variable array",
+        match="'c' must be the same length as 'x'",
     ):
         xcnt_handler(x=[1, 2, 3], c=[0, 1])
 
     # Test with n input not matching the shape of x
-    with pytest.raises(
-        ValueError, match="count array must be same length as variable array."
-    ):
+    with pytest.raises(ValueError, match="'n' must be the same length as 'x'"):
         xcnt_handler(x=[1, 2, 3], n=[1, 2])
 
     # Test with t, tl and tr

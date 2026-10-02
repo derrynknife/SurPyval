@@ -128,13 +128,13 @@ def test_ipcw_matters_versus_naive_no_censoring():
 
 def test_cause_required_when_multiple_event_types():
     x, Z, e, c = _simulate_fine_gray(500, 7)
-    with pytest.raises(ValueError, match="specify `event`"):
+    with pytest.raises(ValueError, match="pass `event`"):
         FineGray.fit(x, Z, e, c=c)
 
 
 def test_unknown_cause_rejected():
     x, Z, e, c = _simulate_fine_gray(500, 8)
-    with pytest.raises(ValueError, match="not observed"):
+    with pytest.raises(ValueError, match="Unknown cause 99"):
         FineGray.fit(x, Z, e, c=c, event=99)
 
 
