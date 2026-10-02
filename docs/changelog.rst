@@ -196,6 +196,34 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
+  (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have
+  censoring- and truncation-aware likelihoods, Kendall's tau, Spearman's
+  rho and tail dependence, conditional-inversion sampling and
+  serialisation. The Student-t CDF is a deterministic integral within
+  1e-11 of Genz's exact algorithm (scipy's ``multivariate_t.cdf`` is
+  randomised and about 1e-4 off). A Student-t fit to data with no tail
+  dependence warns that ``nu`` has no finite maximum and recommends the
+  Gaussian copula. ``rotation=`` (90, 180, 270) for the Clayton, Gumbel
+  and Joe copulas gives dependence in the other tail; 180 is the survival
+  copula. Parameter recovery was checked over 200 replications with
+  censoring for every family.
+- **Fixed: copula accuracy (#291).** A numerical review of every copula
+  against reference values (pyvinecopulib, R's mvtnorm, 50-digit mpmath):
+
+  - Spearman's rho for Clayton and Gumbel was estimated from 50,000
+    simulated pairs, up to 5e-3 off (Clayton at theta 0.5: 0.2901 for
+    0.2949). The default Kendall's tau and Spearman's rho of any copula are
+    now integrals, accurate to about 1e-11.
+  - Gumbel's h-function and density underflowed near the upper corner:
+    the density was inf at (0.98, 0.98) for theta 100. They are now closed
+    forms in log space, within 1e-9 of 50-digit references.
+  - **Breaking:** with margins passed already fitted, the data were not
+    checked: a NaN returned the starting value with a NaN likelihood, and
+    negative counts, ``xl > xr`` and values outside the truncation window
+    were used. Each series is now checked like univariate data, and the
+    error names the series.
+
 - **Added: log-normal shared frailty (#343).** ``Frailty(dist,
   family="lognormal")`` fits :math:`u = e^w`, :math:`w \sim N(0, \theta)`,
   as frailtypack, coxme and ``survival::frailty(dist="gaussian")`` define
