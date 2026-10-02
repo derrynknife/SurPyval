@@ -948,10 +948,13 @@ def warn_if_not_converged(res: Any) -> None:
 # negative there is no maximum either: the additive hazards likelihood rises
 # linearly as a no-event level's coefficient falls, without bound.
 #
-# Reading a profile costs third derivatives, several times an ordinary fit's
-# own work, so a coefficient's is read only when Newton's method has not
-# already shown the fit to be a maximum in it (``_cleared``, which costs one
-# Hessian, needed for the profile anyway). The coefficient's part of the
+# Reading a profile costs about three gradients, traced for Hessian-vector
+# products at the polished point and a quarter of a Newton step either side
+# (#501: it took a third derivative and two full Hessians, two to five times
+# as long on a 100,000-row AFT), so a coefficient's is read only when
+# Newton's method has not already shown the fit to be a maximum in it
+# (``_cleared``, which costs one Hessian, needed for the covariance
+# anyway). The coefficient's part of the
 # Newton step -H^{-1} g is at the level of the optimiser's tolerance at a
 # maximum. On the way to a supremum it is 1/s, however far the optimiser
 # went: write the gradient as H d plus the tail's s A e^{-st} along the flat
@@ -1031,24 +1034,32 @@ def runaway_coefficients(
     H, g = derivatives
     cleared = _cleared(at, H, g)
     out = []
+    at_start: "tuple[Any] | None" = None  # derivatives at start, if needed
     for k, j in enumerate(coefs):
         if cleared[j]:
             continue
         axis = np.zeros(at.size)
         axis[j] = 1.0
+        lines = [(at, axis)]
+        if np.all(np.isfinite(H)):
+            lines.insert(0, _profile(neg_ll, at, H, j))
+        runaway = None
         with np.errstate(all="ignore"):
-            d = None
-            if np.all(np.isfinite(H)):
-                point, v = _profile(neg_ll, at, H, j)
+            for point, v in lines:
                 d = _line_derivatives(neg_ll, point, v)
-            if d is None:
-                point, v = at, axis
-                d = _line_derivatives(neg_ll, point, v)
-            if d is None or d[0] == 0.0:
-                continue
-            runaway = _no_convergence(neg_ll, point, v, d, j)
+                if d is None:
+                    continue
+                if d[0] != 0.0:
+                    runaway = _no_convergence(neg_ll, point, v, d, j, H)
+                if runaway is not None or d[0] == 0.0:
+                    break
         if runaway:
-            if start is None or not _flat_at_start(neg_ll, start, v):
+            if start is None:
+                out.append(k)
+                continue
+            if at_start is None:
+                at_start = (_start_derivatives(neg_ll, start),)
+            if not _flat_at_start(neg_ll, start, v, at_start[0]):
                 out.append(k)
     return out
 
@@ -1090,15 +1101,16 @@ def _no_convergence(
     neg_ll: Callable,
     point: npt.NDArray,
     v: npt.NDArray,
-    d: "tuple[float, float, float]",
+    d: "tuple[float, ...]",
     j: int,
-) -> bool:
+    H: npt.NDArray,
+) -> "bool | None":
     """Whether Newton's method cannot be shown to converge along the
     profile of parameter ``j`` through ``point`` (direction ``v``, with
-    ``v[j] = 1``), where the objective's first derivatives are ``d``: it
-    has no curvature, or Kantorovich's ``h = |f'''| |f'| / f''^2`` is above
-    1/2 with the curvature falling the way the likelihood rises (see
-    above).
+    ``v[j] = 1``), where the objective's first two derivatives are ``d``:
+    it has no curvature, or Kantorovich's ``h = |f'''| |f'| / f''^2`` is
+    above 1/2 with the curvature falling the way the likelihood rises (see
+    above). ``H`` is the Hessian at the fit, near ``point``.
 
     ``f'''`` is the rate of change of the profile's curvature, the Schur
     complement of the Hessian in ``j``, from the curvature a quarter of a
@@ -1108,27 +1120,48 @@ def _no_convergence(
     fixed coefficient warned on one Python and not on another. The
     curvature needs second derivatives only, which are well conditioned
     there. Where it cannot be formed, the line's own third derivative is
-    used."""
-    d1, d2, d3 = d
+    used, and ``None`` (no verdict along this line) is returned where that
+    is not finite either."""
+    d1, d2 = d[:2]
     if not d2 > 0.0:
         return True
     half = 0.125 * abs(d1 / d2)
+    d3 = None
     if half > 0.0:
-        ahead = _profile_curvature(neg_ll, point + half * v, j)
-        behind = _profile_curvature(neg_ll, point - half * v, j)
+        ahead = _profile_curvature(neg_ll, point + half * v, j, H, v)
+        behind = _profile_curvature(neg_ll, point - half * v, j, H, v)
         if ahead is not None and behind is not None:
             d3 = (ahead - behind) / (2.0 * half)
+    if d3 is None:
+        line = _line_derivatives(neg_ll, point, v, order=3)
+        if line is None:
+            return None
+        d3 = line[2]
     return d1 * d3 > 0.5 * d2**2
 
 
 def _profile_curvature(
-    neg_ll: Callable, point: npt.NDArray, j: int
+    neg_ll: Callable,
+    point: npt.NDArray,
+    j: int,
+    H: "npt.NDArray | None" = None,
+    v: "npt.NDArray | None" = None,
 ) -> "float | None":
     """The curvature of the profile of parameter ``j`` at ``point``: the
     Schur complement ``H_jj - H_jo H_oo^+ H_oj`` of its Hessian, over the
     other parameters the likelihood depends on there (a frailty variance
     held at its limit has a zero row). ``None`` where the Hessian is not
-    finite or cannot be taken."""
+    finite or cannot be taken.
+
+    With ``H``, the Hessian at a point near ``point`` (the fit), and ``v``
+    the profile direction there, the complement is found without forming
+    the Hessian at ``point`` (:func:`_schur_by_products`), which costs
+    one or two Hessian-vector products instead of one per parameter; the
+    Hessian is formed where that does not converge."""
+    if H is not None and v is not None:
+        S = _schur_by_products(neg_ll, point, j, H, v)
+        if S is not None:
+            return S
     derivatives = search_derivatives(neg_ll, point)
     if derivatives is None or not np.all(np.isfinite(derivatives[0])):
         return None
@@ -1141,8 +1174,98 @@ def _profile_curvature(
     return float(H[j, j] - H_oj @ np.linalg.pinv(H_oo) @ H_oj)
 
 
+#: The relative accuracy to which :func:`_schur_by_products` finds a
+#: profile's curvature: far below the relative change of the curvature over
+#: a quarter of a Newton step that the Kantorovich test reads (``h / 4``,
+#: about 1/4 at a runaway, against a threshold of 1/8), and at the level of
+#: the rounding of a full Hessian's Schur complement, which loses digits to
+#: cancellation where the profile is flat (1e-8 of it on a runaway in
+#: ``test_no_maximum.py``, where the products are exact).
+_SCHUR_RTOL = 1e-12
+
+
+def _schur_by_products(
+    neg_ll: Callable,
+    point: npt.NDArray,
+    j: int,
+    H: npt.NDArray,
+    v: npt.NDArray,
+) -> "float | None":
+    """The Schur complement of :func:`_profile_curvature` at ``point``, by
+    Hessian-vector products there. It is the minimum of ``w' H(point) w``
+    over the ``w`` with ``w_j = 1`` (and 0 for a parameter whose row of
+    ``H`` is zero), which conjugate gradients find from the fit's profile
+    direction ``v``, preconditioned by ``H``'s block of the other
+    parameters, the Hessian a short step away. Near a maximum ``v`` is the
+    answer to rounding and one product is taken; on a runaway's plateau,
+    a few. The error in the minimum is ``r' H_oo^{-1} r`` for the residual
+    ``r``, which is run down to :data:`_SCHUR_RTOL` of it. ``None`` where
+    a product is not finite or it has not converged in as many steps as
+    there are parameters, plus one."""
+    others = [i for i in range(H.shape[0]) if i != j and np.any(H[i] != 0.0)]
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            hvp = make_hvp(neg_ll)(point)[0]
+            w = np.zeros(point.size)
+            w[j] = 1.0
+            w[others] = v[others]
+            Hw = np.asarray(hvp(w), dtype=float)
+            if not others:
+                return float(Hw[j]) if np.isfinite(Hw[j]) else None
+            M = np.linalg.pinv(H[np.ix_(others, others)])
+            r = -Hw[others]
+            z = M @ r
+            rz = float(r @ z)
+            p = z
+            for _ in range(len(others) + 2):
+                S = float(w @ Hw)
+                if not (np.isfinite(S) and np.all(np.isfinite(Hw))):
+                    return None
+                if abs(rz) <= _SCHUR_RTOL * abs(S):
+                    return S
+                u = np.zeros(point.size)
+                u[others] = p
+                Hu = np.asarray(hvp(u), dtype=float)
+                pAp = float(p @ Hu[others])
+                if not (np.isfinite(pAp) and pAp > 0.0 and rz > 0.0):
+                    return None
+                alpha = rz / pAp
+                w = w + alpha * u
+                Hw = Hw + alpha * Hu
+                r = r - alpha * Hu[others]
+                z = M @ r
+                rz, rz_old = float(r @ z), rz
+                p = z + (rz / rz_old) * p
+    except (TypeError, ValueError, ArithmeticError, np.linalg.LinAlgError):
+        return None
+    return None
+
+
+def _start_derivatives(
+    neg_ll: Callable, start: npt.ArrayLike
+) -> "tuple[npt.NDArray, npt.NDArray] | None":
+    """The gradient and Hessian of ``neg_ll`` at ``start``, for
+    :func:`_flat_at_start`; ``None`` where they cannot be taken or are not
+    finite."""
+    x0 = np.asarray(start, dtype=float)
+    try:
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "Output seems independent")
+            g0 = np.asarray(grad(neg_ll)(x0), dtype=float)
+            H0 = np.asarray(hessian(neg_ll)(x0), dtype=float)
+    except (TypeError, ValueError, ArithmeticError):
+        return None
+    if not (np.all(np.isfinite(g0)) and np.all(np.isfinite(H0))):
+        return None
+    return g0, H0
+
+
 def _flat_at_start(
-    neg_ll: Callable, start: npt.ArrayLike, v: npt.NDArray
+    neg_ll: Callable,
+    start: npt.ArrayLike,
+    v: npt.NDArray,
+    derivatives: Any = False,
 ) -> bool:
     """Whether ``neg_ll`` has neither slope nor curvature along ``v`` at
     ``start``, to rounding: its derivatives along ``v`` within ``size *
@@ -1152,18 +1275,14 @@ def _flat_at_start(
     supremum does depend on it, most of all near the start; one whose
     covariates are collinear (each level of a factor coded, with no
     intercept) does not, anywhere, and is no concern of this check (CoxPH
-    warns of it as collinear)."""
-    x0 = np.asarray(start, dtype=float)
-    try:
-        with np.errstate(all="ignore"), warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "Output seems independent")
-            g0 = np.asarray(grad(neg_ll)(x0), dtype=float)
-            H0 = np.asarray(hessian(neg_ll)(x0), dtype=float)
-    except (TypeError, ValueError, ArithmeticError):
+    warns of it as collinear). ``derivatives`` are those of
+    :func:`_start_derivatives` at ``start``, if the caller has them."""
+    if derivatives is False:
+        derivatives = _start_derivatives(neg_ll, start)
+    if derivatives is None:
         return False
-    if not (np.all(np.isfinite(g0)) and np.all(np.isfinite(H0))):
-        return False
-    tol = x0.size * float(np.finfo(float).eps)
+    g0, H0 = derivatives
+    tol = g0.size * float(np.finfo(float).eps)
     size = float(np.dot(v, v))
     slope = abs(float(np.dot(g0, v)))
     curvature = abs(float(v @ H0 @ v))
@@ -1210,10 +1329,13 @@ def _profile(
 
 
 def _line_derivatives(
-    neg_ll: Callable, point: npt.NDArray, v: npt.NDArray
-) -> "tuple[float, float, float] | None":
-    """The first three derivatives of ``neg_ll`` at ``point`` along ``v``,
-    or ``None`` where they are not finite (or cannot be taken)."""
+    neg_ll: Callable, point: npt.NDArray, v: npt.NDArray, order: int = 2
+) -> "tuple[float, ...] | None":
+    """The first ``order`` (2 or 3) derivatives of ``neg_ll`` at ``point``
+    along ``v``, or ``None`` where they are not finite (or cannot be
+    taken). The third is taken only where :func:`_no_convergence` cannot
+    form the profile's curvature: it costs several times the first two
+    (#501)."""
     if not np.all(np.isfinite(v)):
         return None
     moving = v != 0
@@ -1231,16 +1353,20 @@ def _line_derivatives(
             )
         )
 
-    out = None
+    out: "tuple[float, ...]"
     for along in (line,) if moving.all() else (line, moving_only):
         try:
             with warnings.catch_warnings():
                 # autograd says so of a derivative that is constant (a
                 # likelihood linear along the line); it is 0, not a fault
                 warnings.filterwarnings("ignore", "Output seems independent")
-                d1 = grad(along)(0.0)
-                d2, d3 = value_and_grad(grad(grad(along)))(0.0)
-            out = float(d1), float(d2), float(d3)
+                if order == 2:
+                    d1, d2 = value_and_grad(grad(along))(0.0)
+                    out = float(d1), float(d2)
+                else:
+                    d1 = grad(along)(0.0)
+                    d2, d3 = value_and_grad(grad(grad(along)))(0.0)
+                    out = float(d1), float(d2), float(d3)
         except (TypeError, ValueError, ArithmeticError):
             return None
         if np.all(np.isfinite(out)):
