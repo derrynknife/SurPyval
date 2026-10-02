@@ -92,13 +92,13 @@ def test_an_ordinary_fit_does_not_warn(name):
 
 
 def test_the_issue_example():
-    # d["Z"][:, 0] = d["c"] == 1; WeibullPH.fit(**d) gave -16.31 (now
-    # -15.78; -14.72 before the univariate seed's search took its units
-    # from its start, #366: on the runaway where the search stops is
-    # arbitrary) silently.
+    # d["Z"][:, 0] = d["c"] == 1; WeibullPH.fit(**d) gave -16.31 silently.
+    # On the runaway where the search stops is arbitrary (-15.78 with
+    # scipy 1.17, -15.08 with 1.18): what matters is the warning, and that
+    # the coefficient has run far out.
     model, w = _fit(lambda: sp.WeibullPH.fit(**_no_events(reg_data())))
     assert [str(x.message)[: len(NO_MAXIMUM)] for x in w] == [NO_MAXIMUM]
-    assert model.phi_params[0] == pytest.approx(-15.78, abs=0.01)
+    assert model.phi_params[0] < -10
 
 
 def test_fit_from_df_points_at_the_caller():
@@ -315,18 +315,26 @@ def _count_profiles(monkeypatch):
         lambda: sp.LogNormalAFT.fit(**reg_data()),
         lambda: sp.LogisticPO.fit(**reg_data()),
         lambda: sp.WeibullAH.fit(**reg_data()),
-        lambda: sp.WeibullFrailty.fit(**grouped_reg_data()),
         lambda: FineGray.fit(**_competing(reg_data()), event="a"),
     ],
-    ids=["PH", "AFT", "PO", "AH", "Frailty", "FineGray"],
+    ids=["PH", "AFT", "PO", "AH", "FineGray"],
 )
 def test_an_ordinary_fit_reads_no_profile(monkeypatch, fit):
-    # Its Newton step is at the optimiser's tolerance in every coefficient
-    # (the frailty variance of these data sits at its limit of 0, which the
-    # step leaves out), so the third derivatives are never taken.
+    # Its Newton step is at the optimiser's tolerance in every coefficient,
+    # so the third derivatives are never taken.
     calls = _count_profiles(monkeypatch)
     _, w = _fit(fit)
     assert calls == [] and not w, [str(x.message) for x in w]
+
+
+def test_an_ordinary_frailty_fit_is_quiet():
+    # The frailty variance of these data sits at its limit of 0. Whether
+    # the Newton step then reaches the optimiser's tolerance in every
+    # coefficient depends on where scipy's BFGS stops (1.17 yes; 1.18 stops
+    # at a gradient of 1.6e-5 and reads two profiles): either way the
+    # verdict is an ordinary maximum, without a warning.
+    _, w = _fit(lambda: sp.WeibullFrailty.fit(**grouped_reg_data()))
+    assert not w, [str(x.message) for x in w]
 
 
 @pytest.mark.parametrize(

@@ -336,6 +336,7 @@ bands change (#477).
   it. The default stays the simple, standard method, and changes only
   when it is wrong for the usual case.
 - **Fixed: survival along a continuous path at far-out times.**
+
   - **Hazard shut off by the path.** ``sf_tvc`` along a ``CovariatePath``
     started with one quadrature panel from the last earlier edge to the
     query. When the path shuts the hazard off, all of the hazard sits near

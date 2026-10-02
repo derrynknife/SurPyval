@@ -254,7 +254,7 @@ which is one minus the conditional survival, ``cs(2, 60)``: the probability of s
     print(f"expected loss        : ${expected_loss:,.2f}")
     print(f"ignoring survival to 60 would give P = {model.ff(62) - model.ff(60):.4f}")
 
-From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.33. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
+From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.32. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
 
 .. jupyter-execute::
     :hide-code:
@@ -262,7 +262,7 @@ From the results above, you can see that the probability of death over the two y
 
     assert round(p_death, 3) == 0.030, p_death
     assert f"{expected_loss:,.2f}" == "3,019.39", expected_loss
-    assert f"{1.1 * expected_loss:,.2f}" == "3,321.33"
+    assert f"{1.1 * expected_loss:,.2f}" == "3,321.32"
     assert f"{1.1 * expected_loss / 24:,.2f}" == "138.39"
     _under = 1 - (model.ff(62) - model.ff(60)) / p_death
     assert round(_under, 2) == 0.15, _under

@@ -1041,10 +1041,12 @@ def runaway_coefficients(
         axis = np.zeros(at.size)
         axis[j] = 1.0
         lines = [(at, axis)]
-        if np.all(np.isfinite(H)):
-            lines.insert(0, _profile(neg_ll, at, H, j))
         runaway = None
         with np.errstate(all="ignore"):
+            # The profile's trial points can sit where the hazard is 0
+            # (log 0): a non-finite value ends its polish, quietly.
+            if np.all(np.isfinite(H)):
+                lines.insert(0, _profile(neg_ll, at, H, j))
             for point, v in lines:
                 d = _line_derivatives(neg_ll, point, v)
                 if d is None:
