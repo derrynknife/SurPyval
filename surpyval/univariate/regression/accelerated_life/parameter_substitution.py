@@ -31,7 +31,10 @@ from .._fit_skeleton import (
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
+    finish_search,
     finite_start,
+    free_coefficients,
+    keep_information,
     make_objective,
     mirror_distribution,
     require_finite_fit,
@@ -154,25 +157,34 @@ class ParameterSubstitutionFitter(
         x = np.array(x)
         Z_arr = self._stress_matrix(Z)
 
-        dist_params = np.array(params[0 : self.k_dist])
-        phi_params = np.array(params[self.k_dist :])
-
         Hf = np.zeros_like(x)
         stresses = np.unique(Z_arr, axis=0)
         for stress in stresses:
-            life_param_mask = (
-                np.arange(len(dist_params))
-                == self.param_map[self.life_parameter]
-            )
-            dist_params_i = np.where(
-                life_param_mask,
-                self.param_transform(self.phi(stress, *phi_params)),
-                dist_params,
-            )
+            dist_params_i = self._dist_params_at(stress, params)
             mask = (Z_arr == stress).all(axis=1)
             Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
 
         return self._nan_at_unknown_stress(Hf, Z_arr)
+
+    def _dist_params_at(
+        self, stress: npt.NDArray, params: tuple
+    ) -> list[Boxable]:
+        """The distribution's parameters at the stress row ``stress``:
+        those in ``params``, with the life parameter's slot replaced by
+        the (transformed) life the life model gives there.
+
+        Built as a list, not by ``np.where`` over the slots: autograd's
+        ``where`` does not reduce its gradient to the shape of a broadcast
+        argument (the life, one value against a row of them), and its
+        second derivative through one is wrong -- a LogNormal ``Power``
+        model's exact information was 4e-5 off in ``n``, its ``Hf``'s
+        second derivative 13% off (#555)."""
+        life = self.param_transform(self.phi(stress, *params[self.k_dist :]))
+        life_idx = self.param_map[self.life_parameter]
+        return [
+            np.reshape(life, ()) if k == life_idx else params[k]
+            for k in range(self.k_dist)
+        ]
 
     @staticmethod
     def _nan_at_unknown_stress(values: Boxable, Z_arr: npt.NDArray) -> Boxable:
@@ -187,20 +199,9 @@ class ParameterSubstitutionFitter(
         x = np.array(x)
         Z_arr = self._stress_matrix(Z)
 
-        dist_params = np.array(params[0 : self.k_dist])
-        phi_params = np.array(params[self.k_dist :])
-
         hf = np.zeros_like(x)
         for stress in np.unique(Z_arr, axis=0):
-            life_param_mask = (
-                np.arange(len(dist_params))
-                == self.param_map[self.life_parameter]
-            )
-            dist_params_i = np.where(
-                life_param_mask,
-                self.param_transform(self.phi(stress, *phi_params)),
-                dist_params,
-            )
+            dist_params_i = self._dist_params_at(stress, params)
             mask = (Z_arr == stress).all(axis=1)
             hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
 
@@ -233,9 +234,6 @@ class ParameterSubstitutionFitter(
         numpy's global generator, so ``np.random.seed`` reproduces it; an
         int or a ``numpy.random.Generator`` gives a stream of its own.
         """
-        dist_params = np.array(params[0 : self.k_dist])
-        phi_params = np.array(params[self.k_dist :])
-
         x = []
         Z_out = []
         # A scalar or 1-D stress is one stress variable: make it a column,
@@ -249,16 +247,7 @@ class ParameterSubstitutionFitter(
         rng = None if random_state is None else as_generator(random_state)
 
         for stress in np.unique(Z_arr, axis=0):
-            life_param_mask = (
-                np.arange(len(dist_params))
-                == self.param_map[self.life_parameter]
-            )
-            dist_params_i = np.where(
-                life_param_mask,
-                self.param_transform(self.phi(stress, *phi_params)),
-                dist_params,
-            )
-
+            dist_params_i = self._dist_params_at(stress, params)
             U = uniform_draws(size, rng)
             x.append(self.dist.qf(U, *dist_params_i))
             if np.isscalar(stress):
@@ -588,6 +577,7 @@ class ParameterSubstitutionFitter(
 
             n_obs = float(np.sum(data.n))
             res, verified = _search(fun, init, n_obs)
+            start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
             # parameter x1e6 ended 14.7 below the maximum (#428). The
@@ -604,9 +594,11 @@ class ParameterSubstitutionFitter(
                     alt, alt_verified = _search(fun, default, n_obs)
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
+                        start = default
 
         require_finite_fit(float(res.fun))
-        if n_levels < len(free_phi):
+        identifiable = n_levels >= len(free_phi)
+        if not identifiable:
             # Fewer levels than free life-model parameters: the likelihood
             # is flat along a ridge of them, wherever the search stopped.
             warnings.warn(
@@ -625,8 +617,6 @@ class ParameterSubstitutionFitter(
                 ),
                 stacklevel=_caller_stacklevel(),
             )
-        elif not verified:
-            warn_unverified("The accelerated life fit")
         # Store the full merged fixed dict (baseline-derived + fitter-level
         # + user-supplied), not just the fitter's own -- otherwise standard
         # errors are reported for parameters that were held fixed (#261).
@@ -647,5 +637,21 @@ class ParameterSubstitutionFitter(
             phi_param_map,
             held,
         )
+        if identifiable:
+            # One warning for what the search found, as for the other
+            # regressions (#392, #555): a life-model parameter that runs
+            # off (stress levels with no failures at one end, say), or
+            # else a search that did not reach a verified maximum. (A
+            # ridge of non-identifiable parameters was said above.)
+            no_maximum, derivatives = finish_search(
+                fun, res, free_coefficients(self, fixed, phi_param_map), start
+            )
+            if not (no_maximum or verified):
+                warn_unverified("The accelerated life fit")
+            # The exact observed information for the covariance, which
+            # was a numerical Hessian.
+            keep_information(
+                model, no_maximum, derivatives, inv_trans, const, res.x, None
+            )
         model.fun = fun
         return model

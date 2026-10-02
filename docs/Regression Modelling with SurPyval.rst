@@ -2288,7 +2288,8 @@ scale 2 and shape 1) and :math:`\beta = 1`, which the fit recovers.
     assert np.all(np.abs(ph.params / [2, 1, 1] - 1) < 0.05), ph.params
 
 **Accelerated failure time** also fits start-stop data through the same
-``fit_tvc`` interface. AFT rescales the *time axis* rather than the hazard, so a
+``fit_tvc`` interface (and ``fit_tvc_timeline`` and the ``_from_df`` forms of
+both). AFT rescales the *time axis* rather than the hazard, so a
 subject's likelihood depends on its accumulated *accelerated age*
 :math:`\psi = \sum e^{\beta'z}\,(b - a)` across intervals and cannot be
 reshaped into independent left-truncated rows the way PH/AH/PO can; ``WeibullAFT``

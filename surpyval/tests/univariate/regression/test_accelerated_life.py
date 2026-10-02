@@ -22,8 +22,12 @@ from surpyval import (
     LogNormal,
     Weibull,
 )
-from surpyval.life_models import Power
-from surpyval.tests._helpers import fitted_accelerated_life_model
+from surpyval.life_models import Eyring, Power
+from surpyval.tests._helpers import (
+    finite_difference_covariance,
+    fitted_accelerated_life_model,
+    no_warnings,
+)
 from surpyval.univariate.regression import (
     DualPower,
     ExponentialLifeModel,
@@ -349,4 +353,58 @@ def test_accelerated_life_and_gamma_frailty_accept_ragged_x():
     np.testing.assert_allclose(
         GammaFrailty.fit(two_col, groups=groups).dist_params,
         GammaFrailty.fit(exact, groups=groups).dist_params,
+    )
+
+
+def _separated_stress_data():
+    """Two stress levels, no failure at the higher: the life there has no
+    finite estimate, so neither has the life model's."""
+    rng = np.random.default_rng(3)
+    x = np.r_[Weibull.random(30, 10, 3, random_state=rng), np.full(30, 12.0)]
+    c = np.r_[np.zeros(30), np.ones(30)]
+    return x, np.repeat([20.0, 40.0], 30), c
+
+
+@pytest.mark.parametrize(
+    "life_model", [Power, InversePower, ExponentialLifeModel]
+)
+def test_555_separated_stresses_warn_no_finite_maximum_once(life_model):
+    # The life-model parameters ran off (Power's n to 17, a to 3e-22)
+    # silently, or with the unverified-maximum warning (InversePower).
+    # They now warn as the other regressions do, once, at the caller.
+    x, stress, c = _separated_stress_data()
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        AcceleratedLife(Weibull, life_model).fit(x, Z=stress, c=c)
+    assert len(w) == 1, [str(a.message) for a in w]
+    assert str(w[0].message).startswith(
+        "No finite maximum: the likelihood keeps increasing as "
+        "coefficient(s) ["
+    )
+    assert w[0].filename == __file__
+
+
+def _three_stresses():
+    np.random.seed(1)
+    stress = np.repeat([20.0, 30.0, 40.0], 40)
+    return Weibull.random(120, 10, 3) * (100.0 / stress), stress
+
+
+@pytest.mark.parametrize("dist", [Weibull, LogNormal])
+@pytest.mark.parametrize(
+    "life_model", [Power, InversePower, ExponentialLifeModel, Eyring]
+)
+def test_555_the_covariance_is_the_exact_information(dist, life_model):
+    # The covariance was a numerical Hessian, 2e-5 to 2e-4 (relative to
+    # the standard errors) from a Richardson-extrapolated one; it is now
+    # the exact information of the fit, which agrees with that to 1e-7.
+    # (Through np.where, autograd's Hessian of a LogNormal model was 6e-3
+    # off: see ParameterSubstitutionFitter._dist_params_at.)
+    x, stress = _three_stresses()
+    model = no_warnings(AcceleratedLife(dist, life_model).fit, x, Z=stress)
+    assert model._information is not None
+    cov, ref = finite_difference_covariance(model)
+    se = np.sqrt(np.diag(ref))
+    np.testing.assert_allclose(
+        cov / np.outer(se, se), ref / np.outer(se, se), rtol=0, atol=2e-6
     )
