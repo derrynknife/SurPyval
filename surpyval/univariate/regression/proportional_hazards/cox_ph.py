@@ -313,6 +313,49 @@ class _RiskSetRows:
         return total[self.exit + 1] - total[self.entered]
 
 
+class _CoxRiskSets:
+    """The data of an Efron or Breslow partial likelihood in event-time
+    order (:func:`_sort_by_event_time`), with the risk-set bookkeeping both
+    generators share: the grouping by exit and by entry time, the deaths
+    ``n_d`` at each unique time, where each row sits on the time axis
+    (``rows``) and the summed covariates of the deaths ``S_d``.
+    ``n_d_x`` (the deaths of each row) and ``n`` are columns."""
+
+    def __init__(
+        self,
+        x: npt.NDArray,
+        Z: npt.NDArray,
+        c: npt.NDArray,
+        n: npt.NDArray,
+        tl: npt.NDArray,
+    ) -> None:
+        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
+        self.Z = Z
+        self.gb_x = _GroupBy(x)
+        self.gb_tl = _GroupBy(tl)
+        death_n = np.where(c == 0, n, 0)
+        self.n_d = self.gb_x.sum(death_n)[1]
+        self.death_n = death_n
+        self.risk_n = n
+        self.n_d_x = death_n.reshape(-1, 1)
+        self.n = n.reshape(-1, 1)
+        # For each unique event time, how many unique entry times precede
+        # it: feeds the not-yet-entered suffix-sum gather.
+        self.pos = np.searchsorted(
+            self.gb_tl.unique, self.gb_x.unique, side="left"
+        )
+        self.rows = _RiskSetRows(x, self.gb_x.unique, tl)
+        self.S_d = self.gb_x.sum(self.n_d_x * Z)[1]
+
+    def entered(self, R: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+        """The at-risk sums ``R`` of the row weights ``w`` less the mass
+        not yet entered. ``w`` may be Z-weighted, so signed: the exact
+        gather of ``not_yet_entered`` (#250)."""
+        if not self.rows.truncated:
+            return R
+        return R - not_yet_entered(self.pos, self.gb_tl.sum(self.n * w)[1])
+
+
 def _cox_information(
     Z: npt.NDArray,
     rows: _RiskSetRows,
@@ -1128,52 +1171,34 @@ class CoxPH_:
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
-        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
-
-        # Groupby object for repeated use
-        gb_x = _GroupBy(x)
-        gb_tl = _GroupBy(tl)
-        n_d_x = np.where(c == 0, n, 0)
-        n_d = gb_x.sum(n_d_x)[1]
-        death_n = n_d_x
-        risk_n = n
-        n_d_x = n_d_x.reshape(-1, 1)
-        n = n.reshape(-1, 1)
-
-        x_ = gb_x.unique
-        x_tl = gb_tl.unique
-        # For each unique event time, how many unique entry times precede it:
-        # feeds the not-yet-entered suffix-sum gather below.
-        pos = np.searchsorted(x_tl, x_, side="left")
-        rows = _RiskSetRows(x, x_, tl)
+        rs = _CoxRiskSets(x, Z, c, n, tl)
+        Z, gb_x, n_d_x, n, n_d = rs.Z, rs.gb_x, rs.n_d_x, rs.n, rs.n_d
+        death_n, risk_n, rows, S_d = rs.death_n, rs.risk_n, rs.rows, rs.S_d
 
         # Efron's tie terms depend on the deaths only.
-        m = len(x_)
+        m = len(gb_x.unique)
         ties = _EfronTies(n_d)
         one, tied = ties.one, ties.tied
 
         def log_like(beta: npt.NDArray) -> float:
             beta_z = Z @ beta
 
-            S_d = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
+            S_dz = gb_x.sum(n_d_x * beta_z.reshape(-1, 1))[1].reshape(-1, 1)
             e_beta_z = np.exp(beta_z).reshape(-1, 1)
 
-            x_, Ri = gb_x.sum(n * e_beta_z)
+            Ri = gb_x.sum(n * e_beta_z)[1]
 
             Ri = Ri[::-1].cumsum(axis=0)[::-1]
 
             # Subtract the not-yet-entered mass from the risk sums.
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            Ri = rs.entered(Ri, e_beta_z)
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
 
             efron_denom = ties.log_denominator(Ri.reshape(m), Di.reshape(m))
 
-            like = S_d.sum() - efron_denom.sum()
+            like = S_dz.sum() - efron_denom.sum()
             return -like
-
-        S_d = gb_x.sum(n_d_x * Z)[1]
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             # This line troubled me for longer than I care
@@ -1189,12 +1214,9 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
 
-            # Subtract the not-yet-entered mass from the risk sums. The
-            # Z-weighted sums are signed, so this must be the exact gather —
-            # see ``not_yet_entered`` (#250).
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = rs.entered(Ri, e_beta_z)
+            ZRi = rs.entered(ZRi, z_e_beta_z)
 
             Di = gb_x.sum(n_d_x * e_beta_z)[1]
             ZDi = gb_x.sum(n_d_x * z_e_beta_z)[1]
@@ -1257,22 +1279,9 @@ class CoxPH_:
         # Left-truncation is handled by subtracting the pre-entry risk set
         # (``Ri - TRi``) below, so delayed-entry data is fitted correctly.
 
-        x, Z, c, n, tl = _sort_by_event_time(x, Z, c, n, tl)
-
-        gb_x = _GroupBy(x)
-        gb_tl = _GroupBy(tl)
-        n_d_x = np.where(c == 0, n, 0)
-        n_d = gb_x.sum(n_d_x)[1]
-        risk_n = n
-        n_d_x = n_d_x.reshape(-1, 1)
-        n = n.reshape(-1, 1)
-
-        x_ = gb_x.unique
-        x_tl = gb_tl.unique
-        # For each unique event time, how many unique entry times precede it:
-        # feeds the not-yet-entered suffix-sum gather below.
-        pos = np.searchsorted(x_tl, x_, side="left")
-        rows = _RiskSetRows(x, x_, tl)
+        rs = _CoxRiskSets(x, Z, c, n, tl)
+        Z, gb_x, n_d_x, n, n_d = rs.Z, rs.gb_x, rs.n_d_x, rs.n, rs.n_d
+        risk_n, rows, S_d = rs.risk_n, rs.rows, rs.S_d
         # The times with a death, the only ones the information sums over.
         active = n_d > 0
         n_d_active = n_d[active]
@@ -1287,8 +1296,7 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
 
             # Subtract the not-yet-entered mass from the risk sums.
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
+            Ri = rs.entered(Ri, e_beta_z)
 
             Ri = np.log(Ri)
             Ri = n_d.reshape(-1, 1) * Ri
@@ -1296,8 +1304,6 @@ class CoxPH_:
             like = di_beta_z - Ri
 
             return -like.sum()
-
-        S_d = gb_x.sum(n_d_x.reshape(-1, 1) * Z)[1]
 
         def jac_hess(beta: npt.NDArray) -> tuple:
             # Only call this once.. Yay.
@@ -1309,12 +1315,9 @@ class CoxPH_:
             Ri = at_risk_beta_Z(e_beta_z, n, gb_x)
             ZRi = at_risk_beta_Z(z_e_beta_z, n, gb_x)
 
-            # Subtract the not-yet-entered mass from the risk sums. The
-            # Z-weighted sums are signed, so this must be the exact gather —
-            # see ``not_yet_entered`` (#250).
-            if rows.truncated:
-                Ri = Ri - not_yet_entered(pos, gb_tl.sum(n * e_beta_z)[1])
-                ZRi = ZRi - not_yet_entered(pos, gb_tl.sum(n * z_e_beta_z)[1])
+            # Subtract the not-yet-entered mass from the risk sums.
+            Ri = rs.entered(Ri, e_beta_z)
+            ZRi = rs.entered(ZRi, z_e_beta_z)
 
             EZ = ZRi / Ri
             EZ = n_d.reshape(-1, 1) * EZ
