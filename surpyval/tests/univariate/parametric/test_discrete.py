@@ -333,6 +333,38 @@ def test_discretize_mle_recovers_parameters(dist, params):
     assert np.allclose(model.params, params, rtol=0.1)
 
 
+@pytest.mark.parametrize("dist", [Weibull, Gamma, LogNormal])
+def test_562_discretize_hessian_is_finite_at_the_first_bin(dist):
+    # P(K = 1) = R(0) - R(1): R(0) through the continuous formula has a
+    # non-finite Hessian in the parameters (a Weibull's (0 / alpha)**beta
+    # gives 0 * inf), so the fit's Hessian was NaN wherever k = 1 was
+    # observed (and its covariance fell back to a numerical one).
+    from autograd import hessian
+
+    from surpyval.tests._helpers import richardson_hessian
+
+    discrete = Discretize(dist)
+    k = np.array([1.0, 1.0, 2.0, 3.0, 5.0])
+    params = np.array([2.0, 1.5] if dist is not LogNormal else [1.0, 0.6])
+
+    def neg_ll(p):
+        return -np.sum(np.log(discrete.df(k, *p)))
+
+    H = hessian(neg_ll)(params)
+    assert np.all(np.isfinite(H))
+    # (to 5e-5: the Gamma's shape derivatives are central differences,
+    # utils/autograd_gamma_compat.py, good to 7e-6 here)
+    np.testing.assert_allclose(
+        H, richardson_hessian(neg_ll, params, 1e-3), rtol=5e-5
+    )
+    # and the values are as before: R(0) = 1
+    np.testing.assert_allclose(
+        discrete.df(k, *params),
+        1 - dist.sf(k, *params) - (k > 1) * (1 - dist.sf(k - 1, *params)),
+        rtol=1e-12,
+    )
+
+
 def test_discretize_rejects_negative_support():
     # Discretize is for non-negative lifetimes; the Normal spans the reals.
     with pytest.raises(ValueError, match="non-negative"):
