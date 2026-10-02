@@ -452,6 +452,51 @@ behind the Clayton copula's AIC of 34160 (the AMH by 490, the Joe by 1930).
     assert amh.params[0] == 1.0, amh.params
     assert min(joe.aic(), amh.aic()) > fits["Clayton"].aic() + 400
 
+Rotated copulas
+~~~~~~~~~~~~~~~
+
+The Clayton, Gumbel and Joe copulas each put their tail dependence in one
+tail. The ``rotation`` option of ``fit`` and ``from_params`` turns them
+round, in the convention of R's ``VineCopula``: ``rotation=180`` is the
+*survival* copula, with the tail dependence moved to the other tail (a
+Clayton that links the long lives, a Gumbel or Joe that links the early
+failures), and ``rotation=90`` or ``270`` gives *negative* dependence with
+the family's shape. The parameter keeps its usual range. Here a survival
+Clayton copula is told apart from a Gumbel, which also has its tail
+dependence in the upper tail:
+
+.. jupyter-execute::
+
+    upper = Clayton.from_params(2.0, margins=truth.margins, rotation=180)
+    up_data = upper.random(2000, random_state=6)
+    for fam, rotation in [(Clayton, 0), (Clayton, 180), (Gumbel, 0)]:
+        m = fam.fit(up_data, margins=[surv.Weibull, surv.LogNormal],
+                    rotation=rotation)
+        print("%-34s theta=%.3f tails=%s AIC=%.1f" % (
+            m.copula, m.params[0], np.round(m.tail_dependence(), 3), m.aic()))
+
+The unrotated Clayton copula, all lower tail, fits these data worst; the
+rotated one recovers :math:`\theta = 2` and beats the Gumbel. A rotated
+model's ``repr`` and dictionary record the rotation, so ``from_dict``
+rebuilds it. The Frank, Gaussian, Student-t and AMH copulas are not rotated:
+the first three are their own 180-degree rotations (and a 90-degree one is
+the same family with the opposite dependence), and the AMH's would be a
+copula with the same weak range.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _up = {
+        (f.name, r): f.fit(up_data, margins=[surv.Weibull, surv.LogNormal],
+                           rotation=r)
+        for f, r in [(Clayton, 0), (Clayton, 180), (Gumbel, 0)]
+    }
+    _aic = {k: m.aic() for k, m in _up.items()}
+    assert min(_aic, key=_aic.get) == ("Clayton", 180), _aic
+    assert max(_aic, key=_aic.get) == ("Clayton", 0), _aic
+    assert abs(_up[("Clayton", 180)].params[0] - 2) < 0.2
+
 Censoring and truncation
 ------------------------
 

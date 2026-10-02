@@ -79,11 +79,12 @@ class IndependenceCopula(Copula):
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
         init: "npt.ArrayLike | None" = None,
+        rotation: int = 0,
     ) -> Any:
         """
         Fit the margins only (the independence copula has no parameter);
         arguments as for :meth:`Copula.fit`, with ``how`` ignored (``init``,
-        if given, must be empty).
+        if given, must be empty; the copula is not rotated).
         """
         # No parameter to estimate; only the margins are fitted.
         return super().fit(
@@ -96,6 +97,7 @@ class IndependenceCopula(Copula):
             xl=xl,
             xr=xr,
             init=init,
+            rotation=rotation,
         )
 
     def _fit_theta(
@@ -122,6 +124,7 @@ class ClaytonCopula(Copula):
     name = "Clayton"
     bounds = ((0, None),)
     parameter_names = ["theta"]
+    rotatable = True
     dependence_limits = {1: "theta grows without bound"}
 
     # Everything is computed through ``log(base)``, ``base = u ** -theta +
@@ -190,6 +193,7 @@ class GumbelCopula(Copula):
     name = "Gumbel"
     bounds = ((1, None),)
     parameter_names = ["theta"]
+    rotatable = True
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}
 
@@ -447,6 +451,7 @@ class JoeCopula(Copula):
     name = "Joe"
     bounds = ((1, None),)
     parameter_names = ["theta"]
+    rotatable = True
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}
 

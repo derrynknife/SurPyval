@@ -337,6 +337,18 @@ the Gaussian copula; data with no tail dependence send the fitted
 recommends the Gaussian copula. The parameters are R's
 ``copula::tCopula(param = rho, df = nu)``.
 
+**Rotations.** Turning a copula round gives a new one: the 180-degree
+rotation, :math:`C_{180}(u_1, u_2) = u_1 + u_2 - 1 + C(1 - u_1, 1 - u_2)`,
+is the *survival copula*, the copula of :math:`(1 - U_1, 1 - U_2)`, with the
+lower and upper tail dependence swapped; the 90- and 270-degree rotations,
+:math:`u_2 - C(1 - u_1, u_2)` and :math:`u_1 - C(u_1, 1 - u_2)`, negate
+Kendall's tau and Spearman's rho and put the family's tail in a corner where
+one series is short and the other long. SurPyval rotates the Clayton, Gumbel
+and Joe copulas with the ``rotation`` option of ``fit`` and ``from_params``
+(R's ``VineCopula`` convention, with the parameter kept in its own range as
+in pyvinecopulib); a survival Clayton links long lives, a survival Gumbel or
+Joe early failures.
+
 In SurPyval, Kendall's tau is computed in closed form for every family
 (Frank's through a numerically evaluated Debye integral), and so are
 Spearman's rho for the Gaussian, Independence, Frank and AMH copulas (Frank's

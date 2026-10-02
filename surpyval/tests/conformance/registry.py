@@ -2031,23 +2031,29 @@ _COPULA_FAMILIES = (
 )
 
 
+# The rotation option (#157), on one family: (case name, family, rotation)
+_ROTATED_COPULAS = (("ClaytonCopula[rotation=180]", "Clayton", 180),)
+
+
 def _copulas():
     out = []
-    for name in _COPULA_FAMILIES:
+    plain = [(f"{name}Copula", name, 0) for name in _COPULA_FAMILIES]
+    for case_name, name, rotation in plain + list(_ROTATED_COPULAS):
         fitter = getattr(mv, name)
+        rotated = {"rotation": rotation} if rotation else {}
 
-        def from_params(d, f=fitter):
-            m = f.fit(**d, margins=[sp.Weibull, sp.Weibull])
-            return f.from_params(m.params, margins=m.margins)
+        def from_params(d, f=fitter, r=rotated):
+            m = f.fit(**d, margins=[sp.Weibull, sp.Weibull], **r)
+            return f.from_params(m.params, margins=m.margins, **r)
 
         out.append(
             Case(
-                name=f"{name}Copula",
+                name=case_name,
                 fitters=(f"surpyval.multivariate.{name}",),
                 model_class="surpyval.multivariate.CopulaModel",
                 interface=BIVARIATE,
                 data=copula_data,
-                fit=_fit(fitter, margins=[sp.Weibull, sp.Weibull]),
+                fit=_fit(fitter, margins=[sp.Weibull, sp.Weibull], **rotated),
                 functions=("sf", "cdf", "pdf"),
                 x=X_COP,
                 rows=("x", "n"),
@@ -2204,6 +2210,12 @@ def _df_paths():
     for name in _COPULA_FAMILIES:
         paths[f"{name}Copula"] = _copula_df(
             getattr(mv, name), margins=[sp.Weibull, sp.Weibull]
+        )
+    for case_name, name, rotation in _ROTATED_COPULAS:
+        paths[case_name] = _copula_df(
+            getattr(mv, name),
+            margins=[sp.Weibull, sp.Weibull],
+            rotation=rotation,
         )
     return paths
 

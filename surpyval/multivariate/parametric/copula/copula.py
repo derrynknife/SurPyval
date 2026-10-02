@@ -72,6 +72,9 @@ class Copula:
     #: Empty for a family that is not known to reach either.
     dependence_limits: dict = {}
 
+    def __repr__(self) -> str:
+        return f"{self.name} copula"
+
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # A family written against the pre-0.22 name, ``param_names``,
         # still works until v0.23, with a DeprecationWarning.
@@ -483,6 +486,7 @@ class Copula:
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
         init: "npt.ArrayLike | None" = None,
+        rotation: int = 0,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
@@ -513,6 +517,21 @@ class Copula:
             entry of ``parameter_names``, each strictly inside the family's
             ``bounds``. By default each family starts from its own guess
             (the built-in families match the empirical Kendall's tau).
+        rotation : {0, 90, 180, 270}, optional
+            Rotate the copula by this many degrees, in the convention of R's
+            ``VineCopula`` (families 13, 23, 33 for the Clayton, ...):
+            ``180`` is the survival copula, ``C(u, v) = u + v - 1 + C_0(1 -
+            u, 1 - v)``, with the tail dependence moved to the other tail
+            (a Clayton's to the upper tail, a Gumbel's or Joe's to the
+            lower); ``90``, ``C(u, v) = v - C_0(1 - u, v)``, and ``270``,
+            ``C(u, v) = u - C_0(u, 1 - v)``, give negative dependence with
+            the family's shape, its tail in a corner where one series is
+            short and the other long. The parameter keeps its own range
+            (pyvinecopulib's convention; ``VineCopula`` writes it negated
+            for 90 and 270). Only the Clayton, Gumbel and Joe copulas are
+            rotated; for a radially symmetric family (Frank, Gaussian,
+            Student-t) ``180`` is the family itself and ``90`` its negative
+            parameter. Default 0, the family as it is.
 
         Returns
         -------
@@ -548,6 +567,18 @@ class Copula:
         >>> round(float(model.kendall_tau()), 3)
         0.534
         """
+        if rotation:
+            return self.rotated(rotation).fit(
+                x,
+                c=c,
+                n=n,
+                t=t,
+                margins=margins,
+                how=how,
+                xl=xl,
+                xr=xr,
+                init=init,
+            )
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
         )
@@ -657,7 +688,7 @@ class Copula:
         )
         return True
 
-    def from_params(self, params: Any, margins: Any) -> Any:
+    def from_params(self, params: Any, margins: Any, rotation: int = 0) -> Any:
         """
         Build a
         :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`
@@ -674,6 +705,8 @@ class Copula:
         margins : sequence of length 2
             Fitted (or ``from_params``) univariate models, one per
             dimension, each exposing ``ff`` and ``df``.
+        rotation : {0, 90, 180, 270}, optional
+            The rotation of the copula, as for :meth:`fit`.
 
         Returns
         -------
@@ -696,6 +729,8 @@ class Copula:
             CopulaModel,
         )
 
+        if rotation:
+            return self.rotated(rotation).from_params(params, margins)
         params = self._check_params(params)
         margins = list(margins)
         if len(margins) != 2:
@@ -716,6 +751,49 @@ class Copula:
     #: (Gumbel's ``theta = 1`` is the independence copula). The fitter
     #: never reaches a bound, but ``from_params`` may be given one.
     closed_bounds: tuple = ()
+
+    #: The rotation of the copula in degrees (see :meth:`rotated`): 0 for
+    #: the family as it is.
+    rotation: int = 0
+    #: Whether :meth:`rotated` applies: the families whose rotations are
+    #: new copulas (the asymmetric Archimedean ones).
+    rotatable: bool = False
+
+    def rotated(self, rotation: int) -> "Copula":
+        """The family rotated by ``rotation`` degrees (0, 90, 180 or 270),
+        in R's ``VineCopula`` convention; see the ``rotation`` option of
+        :meth:`fit`, which uses it. ``rotated(0)`` is the family itself.
+
+        Examples
+        --------
+        >>> from surpyval.multivariate import Clayton
+        >>> survival = Clayton.rotated(180)
+        >>> survival.tail_dependence(2.0)
+        (0.0, 0.7071067811865476)
+        >>> Clayton.rotated(90).kendall_tau(2.0)
+        -0.5
+        """
+        if rotation not in (0, 90, 180, 270):
+            raise ValueError(
+                f"rotation must be 0, 90, 180 or 270 degrees, got "
+                f"{rotation!r}."
+            )
+        base = getattr(self, "base", self)
+        if self.rotation:
+            rotation = (self.rotation + rotation) % 360
+        if rotation == 0:
+            return base
+        if not base.rotatable:
+            raise ValueError(
+                f"The {base.name} copula is not rotated: only the Clayton, "
+                "Gumbel and Joe copulas are (a radially symmetric family is "
+                "its own 180-degree rotation, and its 90-degree one is the "
+                "family with the opposite dependence)."
+            )
+        cache = base.__dict__.setdefault("_rotations", {})
+        if rotation not in cache:
+            cache[rotation] = RotatedCopula(base, rotation)
+        return cache[rotation]
 
     def _check_params(self, params: npt.ArrayLike) -> npt.NDArray:
         """Validate copula parameters given directly: one finite value per
@@ -1056,6 +1134,107 @@ def _quadrature_grid(nodes: int = 400) -> tuple:
     x, w = 0.5 * (x + 1.0), 0.5 * w
     u, v = onp.meshgrid(x, x, indexing="ij")
     return u.ravel(), v.ravel(), onp.outer(w, w).ravel()
+
+
+class RotatedCopula(Copula):
+    """A copula family rotated by 90, 180 or 270 degrees (R's
+    ``VineCopula`` convention); made by :meth:`Copula.rotated` and the
+    ``rotation`` option of ``fit`` and ``from_params``.
+
+    With ``C_0`` the family, the rotations are
+
+    * 90: ``C(u, v) = v - C_0(1 - u, v)``,
+    * 180: ``C(u, v) = u + v - 1 + C_0(1 - u, 1 - v)`` (the survival
+      copula),
+    * 270: ``C(u, v) = u - C_0(u, 1 - v)``,
+
+    and every primitive, measure and draw follows from the family's. The
+    parameters, their names and bounds are the family's.
+    """
+
+    def __init__(self, base: Copula, rotation: int) -> None:
+        self.base = base
+        self.rotation = rotation
+        self.name = base.name
+        self.bounds = base.bounds
+        self.parameter_names = list(base.parameter_names)
+        self.closed_bounds = base.closed_bounds
+        # A quarter turn swaps the comonotone and countermonotone limits
+        flip = -1 if rotation in (90, 270) else 1
+        self.dependence_limits = {
+            flip * sign: limit
+            for sign, limit in base.dependence_limits.items()
+        }
+
+    def __repr__(self) -> str:
+        return f"{self.name} copula rotated {self.rotation} degrees"
+
+    def _flips(self) -> tuple[bool, bool]:
+        """Whether the first and the second coordinate are reflected."""
+        return self.rotation in (90, 180), self.rotation in (180, 270)
+
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        c = self.base.cdf(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        if f0 and f1:
+            return u + v - 1.0 + c
+        return (v if f0 else u) - c
+
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.du(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f1 else h
+
+    def dv(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.dv(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f0 else h
+
+    def pdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        return self.base.pdf(
+            1.0 - u if f0 else u, 1.0 - v if f1 else v, *params
+        )
+
+    def kendall_tau(self, *params: float) -> float:
+        tau = self.base.kendall_tau(*params)
+        return -tau if self.rotation in (90, 270) else tau
+
+    def spearman_rho(self, *params: float) -> float:
+        rho = self.base.spearman_rho(*params)
+        return -rho if self.rotation in (90, 270) else rho
+
+    def tail_dependence(self, *params: float) -> tuple:
+        """``(lambda_L, lambda_U)``: the family's, swapped by a half turn.
+        A quarter turn moves the family's tail dependence to a corner where
+        one series is short and the other long, which neither coefficient
+        measures, so both are 0."""
+        lower, upper = self.base.tail_dependence(*params)
+        if self.rotation == 180:
+            return (upper, lower)
+        return (0.0, 0.0)
+
+    def sample_uv(
+        self,
+        size: int,
+        params: Any,
+        random_state: "int | None" = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        u, v = self.base.sample_uv(size, params, random_state)
+        f0, f1 = self._flips()
+        return (1.0 - u if f0 else u), (1.0 - v if f1 else v)
+
+    def _bounds_transforms(self) -> tuple:
+        return self.base._bounds_transforms()
+
+    def _init_theta(self, dims: list) -> npt.NDArray:
+        # The family's guess from the data reflected back to its own
+        # orientation.
+        reflected = [
+            {**dim, "u": 1.0 - dim["u"]} if flip else dim
+            for dim, flip in zip(dims, self._flips())
+        ]
+        return self.base._init_theta(reflected)
 
 
 def _broadcast_pair(u: Any, v: Any) -> tuple:
