@@ -184,7 +184,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             # Worker processes do not share numpy's global stream, so the
             # trees draw from streams of their own, seeded by one draw
             # from it: ``np.random.seed`` still reproduces the forest.
-            seed = int(rng.randint(0, 2**63 - 1, dtype=np.int64))
+            seed = int(np.random.randint(0, 2**63 - 1, dtype=np.int64))
             tree_states = list(np.random.default_rng(seed).spawn(n_trees))
 
         # Quiet (principle 22): joblib reports progress only if asked.

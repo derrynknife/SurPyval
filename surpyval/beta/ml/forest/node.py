@@ -423,8 +423,9 @@ def point_time_data(data: SurpyvalData) -> SurpyvalData:
     out = SurpyvalData(
         np.asarray(data.x)[:, 0], data.c, data.n, data.t, handle=False
     )
-    if getattr(data, "Z", None) is not None:
-        out.add_covariates(data.Z)
+    Z = getattr(data, "Z", None)
+    if Z is not None:
+        out.add_covariates(Z)
     return out
 
 
