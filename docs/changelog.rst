@@ -227,6 +227,19 @@ bands change (#477).
 
 - **Removed: the empty surpyval.alpha package**, which has held no models
   since v0.17.0, and the unused ``surpyval.utils.validate_tv_coxph_df_inputs``.
+- **Development: large modules split (maintainability sweep, phase 1).**
+  Code was moved only, checked bit-exact with the equivalence harness.
+  The likelihood-ratio bounds are in
+  ``univariate/parametric/_likelihood_ratio.py``, the optimised fits in
+  ``optimised_fit.py`` and their input checks and starts in
+  ``_fit_inputs.py``; the non-parametric support helpers in ``_support.py``
+  and its bands in ``_bands.py``; ``surpyval/utils/__init__.py`` is split
+  into ``data_formats``, ``validation``, ``covariates``, ``numeric`` and
+  ``warnings``; and the remaining-useful-life classes are in
+  ``degradation/rul.py``. Old import paths keep working.
+  ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
+  converters and helpers; everything else it exports is internal. A test
+  stops new imports of another package's private names.
 - **Development: refactors are proven bit-identical.**
   ``scripts/refactor/snapshot.py`` records what every registered model
   computes and says (fits, predictions, every bound, ``to_dict``,
