@@ -177,6 +177,20 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Added: a semi-parametric proportional odds model (#341).**
+  ``surpyval.ProportionalOdds`` is the proportional-odds counterpart of
+  ``CoxPH``: the covariates multiply the survival odds of a baseline left
+  to the data, :math:`S(x|Z)/F(x|Z) = e^{\beta'Z} S_0(x)/F_0(x)`. It is
+  fitted by nonparametric maximum likelihood (Murphy, Rossini and van der
+  Vaart 1997), with an exact solve for the baseline at each step, and its
+  standard errors come from the profile likelihood. A positive coefficient
+  means a longer life, as in ``LogisticPO``; R's ``timereg::prop.odds``
+  reports the negatives. It takes observed and right-censored data with
+  left truncation, and refuses other censoring with a ``ValueError``.
+  The coefficients agree with R's ``survival::coxph`` with a unit gamma
+  frailty per subject (the same model) to 1e-6 on the lung data and 1e-7
+  on the Rossi data, and the intervals covered 94-96% in 1,000-replication
+  studies.
 - **Changed: the life models are in surpyval.life_models.** ``Power``,
   ``InversePower``, ``Eyring``, ``InverseEyring``, ``Linear``,
   ``InverseExponential``, ``DualPower``, ``DualExponential``,
