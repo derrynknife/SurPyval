@@ -855,7 +855,52 @@ def xcnt_handler(
             [-inf,  inf]]))
     """
 
-    # logic for 'variables'
+    x = _xcnt_x(x, xl, xr)
+    c = _xcnt_censoring(c, x)
+    n = _xcnt_counts(n, x)
+
+    t = format_truncation(t, tl, tr, x.shape[0])
+
+    if (t[:, 1] <= t[:, 0]).any():
+        raise ValueError(
+            "All left truncated values must be less than right truncated"
+            + " values"
+        )
+
+    if x.ndim == 2:
+        x, c = _one_sided_rows(x, c)
+
+    _check_truncation_bounds(x, c, t)
+
+    x = x.astype(float)
+    c = c.astype(int)
+    n = n.astype(int)
+    t = t.astype(float)
+
+    # Right censoring with a finite right truncation is not contradictory
+    # data (#195): the unit was detected, so its event is at or before
+    # ``tr``, and it was censored, so the event is after ``x``. Together
+    # that is simply ``x < X <= tr`` -- the ordinary setup of a
+    # flux-limited or reporting-delay sample, e.g. a detector that
+    # registers an event but cannot resolve where in the remaining window
+    # it fell. The likelihood gives such a row the conditional
+    # ``F(tr) - F(x)``, not the unconditional ``S(x)`` (which includes the
+    # ``X > tr`` region the truncation excludes and has no maximum, #310),
+    # so the fit is well posed and no warning is given.
+
+    if group_and_sort:
+        x, c, n, t = group_xcnt(x, c, n, t)
+        x, c, n, t = xcnt_sort(x, c, n, t)
+
+    return x, c, n, t
+
+
+def _xcnt_x(
+    x: "npt.ArrayLike | None",
+    xl: "npt.ArrayLike | None",
+    xr: "npt.ArrayLike | None",
+) -> npt.NDArray:
+    """``x`` as a checked, non-empty array, built from ``xl``/``xr``."""
     if (x is None) and (xl is None) and (xr is None):
         raise ValueError(
             "Must enter some data! Use either 'x' or both 'xl and 'xr'"
@@ -885,153 +930,136 @@ def xcnt_handler(
 
     x = coerce_xcnt_x(x)
 
-    # Without this an empty sample built a model (Kaplan-Meier) that
-    # failed later on first use, or failed inside a reduction with
-    # "zero-size array to reduction operation" (parametric).
+    # An empty sample is refused here: otherwise it builds a model
+    # (Kaplan-Meier) that fails on first use, or fails inside a reduction
+    # with "zero-size array to reduction operation" (parametric).
     if x.shape[0] == 0:
         raise ValueError("'x' is empty: at least one observation is needed")
+    return x
 
-    # logic for censoring flag
-    if c is not None:
-        c = np.atleast_1d(np.array(c))
-        if c.ndim == 2 and c.shape[1] == 1:
-            # A single column, as for ``x`` (#485)
-            c = c[:, 0]
-        if c.ndim != 1:
-            raise ValueError("Censoring flag array must be one dimensional")
 
-        if c.shape[0] != x.shape[0]:
-            raise ValueError("'c' must be the same length as 'x'")
-
-        if x.ndim == 2:
-            if any(c[x[:, 0] == x[:, 1]] == 2):
-                raise ValueError(
-                    "Censor flag indicates interval censored but only has one"
-                    + " failure time"
-                )
-
-            if any(c[x[:, 0] != x[:, 1]] != 2):
-                mask1 = x[:, 0] != x[:, 1]
-                mask2 = c != 2
-                m = mask1 & mask2
-                raise ValueError(
-                    "Censor flag indicates not interval censored but has"
-                    + " interval window.\nx:\n"
-                    + f"{x[m, :]}\n"
-                    + "censor flags:\n"
-                    + f"{c[m]}"
-                )
-
-            if any((c == 2) & (x[:, 0] == x[:, 1])):
-                raise ValueError(
-                    "Censor flag provided, but case where interval flagged as"
-                    + " non interval censoring"
-                )
-
-            if any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
-                raise ValueError(
-                    "Censoring value must only be one of -1, 0, 1, or 2"
-                )
-
-        else:
-            if any((c != 0) & (c != 1) & (c != -1)):
-                raise ValueError(
-                    "Censoring value must only be one of -1, 0, 1 for single"
-                    + " dimension input"
-                )
-
-    else:
-        c = np.zeros(x.shape[0])
-        if x.ndim != 1:
-            c[x[:, 0] != x[:, 1]] = 2
-
-    if n is not None:
-        try:
-            n = np.atleast_1d(np.array(n, dtype=float))
-        except (ValueError, TypeError):
-            raise ValueError("Count array 'n' must contain integer values")
-        if n.ndim == 2 and n.shape[1] == 1:
-            n = n[:, 0]
-        if n.ndim != 1:
-            raise ValueError("Count array must be one dimensional")
-        if n.shape[0] != x.shape[0]:
-            raise ValueError("'n' must be the same length as 'x'")
-        # isfinite as well: floor(inf) == inf, so an infinite count passed
-        # the whole-number test and became garbage in the integer cast.
-        if not (np.isfinite(n) & np.equal(n, np.floor(n))).all():
-            raise ValueError("Count array 'n' must contain integer values")
-        if not (n > 0).all():
-            raise ValueError("count array can't be 0 or less")
-    else:
-        # Do check here for groupby and binning
-        n = np.ones(x.shape[0])
-
-    t = format_truncation(t, tl, tr, x.shape[0])
-
-    if (t[:, 1] <= t[:, 0]).any():
+def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
+    """The flags of a two-column ``x``: 2 exactly on the interval rows."""
+    if any(c[x[:, 0] == x[:, 1]] == 2):
         raise ValueError(
-            "All left truncated values must be less than right truncated"
-            + " values"
+            "Censor flag indicates interval censored but only has one"
+            + " failure time"
         )
 
-    # One-sided rows are converted *before* the truncation checks: they
-    # compared their infinite end with the bound, so ``[5, inf]`` with
-    # ``tr=10`` was refused although the equivalent one-column fit (5,
-    # right censored) was accepted.
+    if any(c[x[:, 0] != x[:, 1]] != 2):
+        mask1 = x[:, 0] != x[:, 1]
+        mask2 = c != 2
+        m = mask1 & mask2
+        raise ValueError(
+            "Censor flag indicates not interval censored but has"
+            + " interval window.\nx:\n"
+            + f"{x[m, :]}\n"
+            + "censor flags:\n"
+            + f"{c[m]}"
+        )
+
+    if any((c == 2) & (x[:, 0] == x[:, 1])):
+        raise ValueError(
+            "Censor flag provided, but case where interval flagged as"
+            + " non interval censoring"
+        )
+
+    if any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
+        raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
+
+
+def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+    """The censoring flags, checked against ``x``, or the default.
+
+    The default is observed (0), and interval censored (2) for the rows
+    of a two-column ``x`` with different ends.
+    """
+    if c is None:
+        c_arr = np.zeros(x.shape[0])
+        if x.ndim != 1:
+            c_arr[x[:, 0] != x[:, 1]] = 2
+        return c_arr
+
+    c_arr = np.atleast_1d(np.array(c))
+    if c_arr.ndim == 2 and c_arr.shape[1] == 1:
+        # A single column, as for ``x`` (#485)
+        c_arr = c_arr[:, 0]
+    if c_arr.ndim != 1:
+        raise ValueError("Censoring flag array must be one dimensional")
+
+    if c_arr.shape[0] != x.shape[0]:
+        raise ValueError("'c' must be the same length as 'x'")
+
     if x.ndim == 2:
-        if np.isinf(x).all(axis=1).any():
-            raise ValueError(
-                "Interval censored entry has no info: in range (-inf, inf)"
-            )
-        # Convert interval censored from (v, to inf) to
-        # a right censored point
-        mask = np.isinf(x[:, 1])
-        x[mask, 1] = x[mask, 0]
-        c[mask] = 1
+        _check_interval_flags(c_arr, x)
+    elif any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
+        raise ValueError(
+            "Censoring value must only be one of -1, 0, 1 for single"
+            + " dimension input"
+        )
+    return c_arr
 
-        # Convert interval censored from (-inf to v) to
-        # a left censored point
-        mask = np.isinf(x[:, 0])
-        x[mask, 0] = x[mask, 1]
-        c[mask] = -1
 
-        # With no interval left the second column carries nothing, so hand
-        # back the one-column form every fitter accepts. Kaplan-Meier,
-        # Nelson-Aalen, the probability-plot and moment fitters,
-        # xcnt_to_xrd and several regression fitters only take a 1-D x,
-        # and used to crash ("object too deep for desired array") on
-        # ``xl``/``xr`` data with no real intervals, e.g. from a DataFrame
-        # with separate left and right columns.
-        if (x[:, 0] == x[:, 1]).all():
-            x = x[:, 0].copy()
+def _xcnt_counts(n: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
+    """The counts as positive whole numbers, or one per row."""
+    if n is None:
+        # Do check here for groupby and binning
+        return np.ones(x.shape[0])
+    try:
+        n_arr = np.atleast_1d(np.array(n, dtype=float))
+    except (ValueError, TypeError):
+        raise ValueError("Count array 'n' must contain integer values")
+    if n_arr.ndim == 2 and n_arr.shape[1] == 1:
+        n_arr = n_arr[:, 0]
+    if n_arr.ndim != 1:
+        raise ValueError("Count array must be one dimensional")
+    if n_arr.shape[0] != x.shape[0]:
+        raise ValueError("'n' must be the same length as 'x'")
+    # isfinite as well: floor(inf) == inf, so an infinite count would pass
+    # the whole-number test and become garbage in the integer cast.
+    if not (np.isfinite(n_arr) & np.equal(n_arr, np.floor(n_arr))).all():
+        raise ValueError("Count array 'n' must contain integer values")
+    if not (n_arr > 0).all():
+        raise ValueError("count array can't be 0 or less")
+    return n_arr
 
-    _check_truncation_bounds(x, c, t)
 
-    x = x.astype(float)
-    c = c.astype(int)
-    n = n.astype(int)
-    t = t.astype(float)
+def _one_sided_rows(
+    x: npt.NDArray, c: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """A two-column ``x`` with its infinite ends made one-sided censoring.
 
-    # Right censoring with a finite right truncation used to warn here
-    # as contradictory data (#195). It is not: the unit was detected, so
-    # its event is at or before ``tr``, and it was censored, so the
-    # event is after ``x``. Together that is simply ``x < X <= tr`` --
-    # the ordinary setup of a flux-limited or reporting-delay sample,
-    # e.g. a detector that registers an event but cannot resolve where
-    # in the remaining window it fell.
-    #
-    # The unbounded likelihoods that motivated the warning were not
-    # caused by the data. Right-censored rows were being given the
-    # unconditional ``S(x)``, which includes the ``X > tr`` region the
-    # truncation excludes, and that is what had no maximum (#310). With
-    # the conditional ``F(tr) - F(x)`` the fit is well posed and
-    # consistent, so the warning has been withdrawn.
+    ``[v, inf]`` becomes right censored at ``v`` and ``[-inf, v]`` left
+    censored at ``v`` (``x`` and ``c`` are changed in place). This runs
+    before the truncation checks, so ``[5, inf]`` with ``tr=10`` is
+    checked as the equivalent one-column row (5, right censored), not by
+    its infinite end.
+    """
+    if np.isinf(x).all(axis=1).any():
+        raise ValueError(
+            "Interval censored entry has no info: in range (-inf, inf)"
+        )
+    # Convert interval censored from (v, to inf) to
+    # a right censored point
+    mask = np.isinf(x[:, 1])
+    x[mask, 1] = x[mask, 0]
+    c[mask] = 1
 
-    if group_and_sort:
-        x, c, n, t = group_xcnt(x, c, n, t)
-        x, c, n, t = xcnt_sort(x, c, n, t)
+    # Convert interval censored from (-inf to v) to
+    # a left censored point
+    mask = np.isinf(x[:, 0])
+    x[mask, 0] = x[mask, 1]
+    c[mask] = -1
 
-    return x, c, n, t
+    # With no interval left the second column carries nothing, so hand
+    # back the one-column form every fitter accepts: Kaplan-Meier,
+    # Nelson-Aalen, the probability-plot and moment fitters,
+    # xcnt_to_xrd and several regression fitters only take a 1-D x, and
+    # ``xl``/``xr`` data with no real intervals (e.g. from a DataFrame
+    # with separate left and right columns) is common.
+    if (x[:, 0] == x[:, 1]).all():
+        x = x[:, 0].copy()
+    return x, c
 
 
 def xcn_to_fs(
