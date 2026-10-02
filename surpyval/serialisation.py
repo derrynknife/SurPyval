@@ -91,7 +91,7 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.recurrent.regression.proportional_intensity"
     ),
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
-    "DegradationModel": "surpyval.degradation.degradation_analysis",
+    "DegradationModel": "surpyval.degradation.degradation_model",
     "InducedFailureDistribution": "surpyval.degradation.rul",
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
