@@ -181,6 +181,54 @@ def test_from_df_and_timeline_match_arrays():
     assert np.allclose(m_tl.params, m_arr.params, atol=1e-4)
 
 
+def test_553_timeline_from_df_equals_counting_process_fit():
+    # The AFT family had fit_tvc_timeline but not its DataFrame form,
+    # which the PH, AH and PO families and Cox have (#553). A timeline is
+    # the same data as its start-stop rows, so the fits are the same.
+    import pandas as pd
+
+    Z, x, _ = _plain_data(seed=7, n=120)
+    n = x.shape[0]
+    mid = x * 0.4
+    ss = pd.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 2),
+            "xl": np.column_stack([0 * x, mid]).ravel(),
+            "xr": np.column_stack([mid, x]).ravel(),
+            "c": np.tile([1, 0], n),
+            "z": np.column_stack([Z, Z + 0.3]).ravel(),
+            "n": 1,
+        }
+    )
+    tl = pd.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 3),
+            "time": np.column_stack([0 * x, mid, x]).ravel(),
+            "z": np.column_stack([Z, Z + 0.3, Z + 0.3]).ravel(),
+            "c": np.tile([1, 1, 0], n),
+            "n": 1,
+        }
+    )
+    m_ss = WeibullAFT.fit_tvc_from_df(ss, "id", "xl", "xr", "c", "z", "n")
+    m_tl = WeibullAFT.fit_tvc_timeline_from_df(
+        tl, "id", "time", "z", "c", "n"
+    )
+    np.testing.assert_allclose(m_tl.params, m_ss.params, rtol=1e-10)
+    np.testing.assert_allclose(
+        m_tl.covariance(), m_ss.covariance(), rtol=1e-8
+    )
+    assert m_tl.is_tvc and m_tl.feature_names == ["z"]
+    # options reach the fit: fixed and center, and a formula for Z_cols
+    fixed = WeibullAFT.fit_tvc_timeline_from_df(
+        tl, "id", "time", None, "c", formula="z", fixed={"beta_0": 0.1}
+    )
+    assert fixed.params[-1] == 0.1 and fixed.formula == "z"
+    centred = WeibullAFT.fit_tvc_timeline_from_df(
+        tl, "id", "time", "z", "c", center=True
+    )
+    assert centred.center is not None
+
+
 def test_core_mle_unchanged():
     # The shared MLE path must be untouched: ordinary AFT and PH still fit and
     # give sensible parameters after the TVC mixin was added.

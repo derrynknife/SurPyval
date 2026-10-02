@@ -287,6 +287,66 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             center=center,
         )
 
+    def fit_tvc_timeline_from_df(
+        self,
+        df: Any,
+        i_col: str,
+        x_col: str,
+        Z_cols: "str | list[str] | None",
+        c_col: str,
+        n_col: "str | None" = None,
+        fixed: "dict[str, float] | None" = None,
+        center: bool = False,
+        formula: "str | None" = None,
+    ) -> ParametricRegressionModel:
+        """
+        :meth:`fit_tvc_timeline` from a covariate-timeline ``DataFrame``,
+        as for the proportional hazards models and Cox.
+
+        ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns
+        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and
+        ``n``. The covariates are ``Z_cols``, a column name or a list of
+        them, or instead (pass ``Z_cols=None``) ``formula``, as for
+        :meth:`fit_tvc_from_df`; the model records ``feature_names`` (and
+        the ``formula`` and its encoding). ``fixed`` and ``center`` are as
+        for :meth:`fit_tvc`. The timeline is the same data as its
+        start-stop rows, so the fit is that of :meth:`fit_tvc_from_df`.
+
+        Examples
+        --------
+        Each unit runs at its own stress ``z``, which steps up by 0.5 half
+        way through its life; the last row of a unit gives its exit time
+        and status:
+
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval import WeibullAFT
+        >>> rng = np.random.default_rng(1)
+        >>> z = rng.normal(size=100)
+        >>> T = rng.weibull(2.0, 100) * 5 * np.exp(-0.5 * z)
+        >>> df = pd.DataFrame({
+        ...     "id": np.repeat(np.arange(100), 3),
+        ...     "time": np.column_stack([0 * T, T / 2, T]).ravel(),
+        ...     "z": np.column_stack([z, z + 0.5, z + 0.5]).ravel(),
+        ...     "c": 0,
+        ... })
+        >>> model = WeibullAFT.fit_tvc_timeline_from_df(
+        ...     df, "id", "time", "z", "c"
+        ... )
+        >>> model.feature_names
+        ['z']
+        """
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            fixed=fixed,
+            center=center,
+        )
+
     def _fit_tvc_arrays(
         self,
         x: npt.NDArray,

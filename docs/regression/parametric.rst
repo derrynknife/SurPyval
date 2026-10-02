@@ -78,7 +78,7 @@ Pre-built instances: ``ExponentialAFT``, ``NormalAFT``, ``WeibullAFT``,
 .. autofunction:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFT
 
 .. autoclass:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFTFitter
-    :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, Hf, hf, sf, ff, df
+    :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, fit_tvc_timeline_from_df, Hf, hf, sf, ff, df
 
 
 Proportional Odds (PO)

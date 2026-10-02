@@ -1,8 +1,8 @@
 """``formula=`` for the parametric regressions' time-varying ``_from_df``
 fits, as for Cox's (#485).
 
-``fit_tvc_from_df`` (PH, AH, PO and AFT) and ``fit_tvc_timeline_from_df``
-(PH, AH and PO) took only ``Z_cols``, so a categorical column (a
+``fit_tvc_from_df`` and ``fit_tvc_timeline_from_df`` (PH, AH, PO and,
+since #553, AFT) took only ``Z_cols``, so a categorical column (a
 ``"yes"`` / ``"no"`` column, say) had to be coded by hand. They now take a
 ``formulaic`` formula instead, with the design of ``fit_from_df``: the
 model keeps ``feature_names``, ``formula`` and its encoding, predicts from
@@ -20,7 +20,7 @@ import pytest
 import surpyval as sp
 
 START_STOP = ["WeibullPH", "WeibullAH", "WeibullPO", "WeibullAFT"]
-TIMELINE = ["WeibullPH", "WeibullAH", "WeibullPO"]
+TIMELINE = ["WeibullPH", "WeibullAH", "WeibullPO", "WeibullAFT"]
 
 
 def _start_stop(n=150):
