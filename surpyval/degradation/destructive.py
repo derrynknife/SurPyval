@@ -61,6 +61,7 @@ from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option
 
 from ._measurements import validate_xy
 
@@ -300,17 +301,9 @@ class DestructiveDegradationModel(SerialisableMixin):
         """
         # 'R' and 'F' are the aliases every other ``cb`` takes; they
         # were refused here (#416).
-        valid = ("sf", "R", "ff", "F", "Hf")
-        if on not in valid:
-            raise ValueError(
-                "'on' must be one of {}; got {!r}".format(valid, on)
-            )
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         on = {"R": "sf", "F": "ff"}.get(on, on)
-        bounds = ("two-sided", "lower", "upper")
-        if bound not in bounds:
-            raise ValueError(
-                "'bound' must be one of {}; got {!r}".format(bounds, bound)
-            )
+        check_option("bound", bound, BOUNDS)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         rng = as_generator(random_state)
         if self.data is None:
@@ -688,9 +681,9 @@ class DestructiveDegradation_:
             xt, yt = (x[obs], y[obs]) if obs.sum() >= 3 else (x, y)
             slope = np.polyfit(xt, yt, 1)[0]
             direction = "increasing" if slope >= 0 else "decreasing"
-        elif direction not in ("increasing", "decreasing"):
-            raise ValueError(
-                "direction must be 'auto', 'increasing' or 'decreasing'"
+        else:
+            check_option(
+                "direction", direction, ("auto", "increasing", "decreasing")
             )
 
         if transform == "best":
@@ -720,12 +713,9 @@ class DestructiveDegradation_:
             transform = best
             transform_scores = scores
         else:
-            if transform not in _TRANSFORMS:
-                raise ValueError(
-                    "transform must be one of {} or 'best'".format(
-                        sorted(_TRANSFORMS)
-                    )
-                )
+            check_option(
+                "transform", transform, (*sorted(_TRANSFORMS), "best")
+            )
             if not _transform_ok(transform, x):
                 raise ValueError(
                     "the {!r} time transform, {}, is not finite at every "

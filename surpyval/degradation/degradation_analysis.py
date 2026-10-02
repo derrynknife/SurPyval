@@ -36,6 +36,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
 )
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import psd_project, safe_inv
+from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
 
 from ._clock import stress_row
@@ -262,11 +263,9 @@ class DegradationAnalysis_:
             raise ValueError("threshold must be a finite number")
         threshold = float(threshold)
 
-        if population_method not in ("moments", "reml"):
-            raise ValueError(
-                "population_method must be 'moments' or 'reml', got "
-                "'{}'".format(population_method)
-            )
+        check_option(
+            "population_method", population_method, ("moments", "reml")
+        )
 
         units = np.unique(i_arr)
         if len(units) < 2:
@@ -276,11 +275,7 @@ class DegradationAnalysis_:
             )
 
         if acceleration not in (None, "clock"):
-            raise ValueError(
-                "acceleration must be None or 'clock', got {!r}".format(
-                    acceleration
-                )
-            )
+            raise option_error("acceleration", acceleration, (None, "clock"))
         if acceleration is None and stress_ref is not None:
             raise ValueError(
                 "stress_ref is the reference stress of acceleration='clock' "

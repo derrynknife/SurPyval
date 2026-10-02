@@ -7,13 +7,14 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval.recurrent._bounded import unconstraining_maps
-from surpyval.recurrent._convergence import better_result, warn_unconverged
+from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
@@ -261,7 +262,7 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         if user_init:
             res = better_result(res, search(default_init()))
         if not (res.success and res.fun < 1e300):
-            warn_unconverged("The proportional intensity fit")
+            warn_unverified("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res
         fitted = np.where(free, full(res.x), np.nan)

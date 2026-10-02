@@ -10,7 +10,6 @@ information, exact where the fit kept it), ``standard_errors``,
 
 from __future__ import annotations
 
-import warnings
 from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
@@ -26,6 +25,8 @@ from surpyval.utils.linalg import (
     wald_bound_on_support,
 )
 from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
+from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.warnings import warn_no_covariance
 
 from ._bounds import logit_sf_bound
 
@@ -205,11 +206,7 @@ class InferenceMixin:
             except np.linalg.LinAlgError:
                 bad = True
         if bad:
-
-            warnings.warn(
-                "The information matrix could not be inverted (the optimum "
-                "may be at a parameter boundary); covariance is unavailable."
-            )
+            warn_no_covariance()
             return np.full((n, n), np.nan)
         cov[np.ix_(free, free)] = cov_free
         self._covariance_cache = (point, cov.copy())
@@ -397,11 +394,8 @@ class InferenceMixin:
             The confidence bound(s) on ``on`` at each ``x``.
         """
         self._check_inference()
-        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
-        if on not in valid:
-            raise ValueError("`on` must be one of {}".format(valid))
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option("on", on, CB_ON)
+        check_option("bound", bound, BOUNDS)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         # In the parameterisation of the centred fit when there is one
         # (#463): the bounds are the same function of the data, and there

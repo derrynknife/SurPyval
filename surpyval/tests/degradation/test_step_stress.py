@@ -273,7 +273,9 @@ def test_path_and_plot_use_the_units_clock(model, data):
 
 def test_clock_argument_validation(data):
     x, y, i, Z = data
-    with pytest.raises(ValueError, match="must be None or 'clock'"):
+    with pytest.raises(
+        ValueError, match="'acceleration' must be one of None or 'clock'"
+    ):
         DegradationAnalysis.fit(
             x, y, i, threshold=THRESHOLD, Z=Z, acceleration="time"
         )

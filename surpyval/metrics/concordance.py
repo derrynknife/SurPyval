@@ -17,6 +17,7 @@ import numpy as np
 import numpy.typing as npt
 
 from surpyval.utils import validate_1d as _as_1d
+from surpyval.utils.validation import check_option
 
 __all__ = ["concordance_index"]
 
@@ -188,8 +189,7 @@ def concordance_index(
     >>> concordance_index(x, c, risk, ties="harrell")
     0.75
     """
-    if ties not in TIES:
-        raise ValueError(f"'ties' must be one of {TIES}, got {ties!r}")
+    check_option("ties", ties, TIES)
     x_arr = _as_1d(x, "x")
     c_arr = _as_1d(c, "c")
     s = np.asarray(risk, dtype=float).ravel()

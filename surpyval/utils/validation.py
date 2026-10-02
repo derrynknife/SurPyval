@@ -11,10 +11,150 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.covariates import wrangle_and_check_form_and_Z_cols
+from surpyval.utils.covariates import finite_covariate_mask
 from surpyval.utils.data_formats import resolve_cr_censoring, xcnt_handler
 
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
+
+# The sides a confidence bound can take, everywhere a ``bound`` is asked.
+BOUNDS = ("two-sided", "lower", "upper")
+
+# The functions a parametric model's ``cb`` bounds ('R' and 'F' are the
+# aliases of 'sf' and 'ff').
+CB_ON = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+
+
+def format_options(accepted: Any) -> str:
+    """The values in ``accepted`` as a phrase, ``'a', 'b' or 'c'``, for
+    the messages that list what an option or name takes.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import format_options
+    >>> format_options(("two-sided", "lower", "upper"))
+    "'two-sided', 'lower' or 'upper'"
+    >>> format_options(("z",))
+    "'z'"
+    """
+    shown = [repr(a) for a in accepted]
+    if len(shown) < 2:
+        return "".join(shown)
+    return "{} or {}".format(", ".join(shown[:-1]), shown[-1])
+
+
+def option_error(
+    name: str, value: Any, accepted: Any, note: str | None = None
+) -> ValueError:
+    """The ``ValueError`` :func:`check_option` raises, for the code that
+    finds an unknown value at the end of its own ``if``/``elif`` chain.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import option_error
+    >>> option_error("scale", "logit", ("hazard", "odds", "normal"))
+    ValueError("'scale' must be one of 'hazard', 'odds' or 'normal'; got 'logit'")
+    """  # noqa: E501
+    one_of = "" if len(accepted) == 1 else "one of "
+    message = "'{}' must be {}{}; got {!r}".format(
+        name, one_of, format_options(accepted), value
+    )
+    if note:
+        message += ". " + note
+    return ValueError(message)
+
+
+def check_option(
+    name: str, value: Any, accepted: Any, note: str | None = None
+) -> None:
+    """Refuse an option ``value`` that is not one of ``accepted``, with
+    the one message every enumerated option uses (principles 2 and 21):
+    ``'<name>' must be one of <accepted>; got <value>`` (``must be
+    <accepted>`` when only one value is accepted), followed by ``note``
+    when given (why a value is refused, or what to use instead).
+
+    The options are strings, so anything that is not a string (an
+    array, ``None``, a number) is refused too, rather than compared.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import BOUNDS, check_option
+    >>> check_option("bound", "lower", BOUNDS)
+    >>> check_option("bound", "both", BOUNDS)
+    Traceback (most recent call last):
+    ...
+    ValueError: 'bound' must be one of 'two-sided', 'lower' or 'upper'; got 'both'
+    >>> check_option("dist", "t", ("z",))
+    Traceback (most recent call last):
+    ...
+    ValueError: 'dist' must be 'z'; got 't'
+    """  # noqa: E501
+    if not (isinstance(value, str) and value in accepted):
+        raise option_error(name, value, accepted, note)
+
+
+def alpha_ci_error(alpha_ci: Any, note: str | None = None) -> ValueError:
+    """The one refusal of an ``alpha_ci`` outside (0, 1), for every
+    method that takes it.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import alpha_ci_error
+    >>> alpha_ci_error(1.5)
+    ValueError("'alpha_ci' must be strictly between 0 and 1; got 1.5")
+    """
+    message = "'alpha_ci' must be strictly between 0 and 1; got {!r}".format(
+        alpha_ci
+    )
+    if note:
+        message += ". " + note
+    return ValueError(message)
+
+
+def unknown_cause_error(cause: Any, causes: Any) -> ValueError:
+    """The one refusal of a cause (event type) a competing-risks model or
+    its data does not have.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import unknown_cause_error
+    >>> unknown_cause_error("c", ["a", "b"])
+    ValueError("Unknown cause 'c'; the causes are ['a', 'b']")
+    """
+    return ValueError(
+        "Unknown cause {!r}; the causes are {}".format(cause, list(causes))
+    )
+
+
+def no_covariance_error(
+    why: str = "the Hessian was singular at the optimum",
+) -> ValueError:
+    """The one refusal of a standard error or Wald bound from a model that
+    carries no parameter covariance.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import no_covariance_error
+    >>> print(no_covariance_error())
+    The model carries no parameter covariance (the Hessian was singular at the optimum); its standard errors and confidence bounds are unavailable.
+    """  # noqa: E501
+    return ValueError(
+        "The model carries no parameter covariance ({}); its standard "
+        "errors and confidence bounds are unavailable.".format(why)
+    )
+
+
+def missing_cause_error(what: str) -> ValueError:
+    """The one refusal of a cause-specific call made without its cause.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import missing_cause_error
+    >>> missing_cause_error("The CIF")
+    ValueError('The CIF is of one cause at a time; pass `event`.')
+    """
+    return ValueError(
+        "{} is of one cause at a time; pass `event`.".format(what)
+    )
 
 
 def _check_x_not_empty(func: Callable) -> Callable:
@@ -133,20 +273,19 @@ def validate_cr_inputs(
 
     # Two baselines
     # TODO: Add fleming-harrington
-    if method not in FG_BASELINE_OPTIONS:
-        raise ValueError("Unrecognised baseline method")
+    check_option("how", method, FG_BASELINE_OPTIONS)
 
     return x, c, n, e
 
 
 def validate_event(mapping: dict, event: Any) -> None:
     if event is not None and event not in mapping:
-        raise ValueError("Event type not in model")
+        raise unknown_cause_error(event, mapping)
 
 
 def validate_cif_event(event: Any) -> None:
     if event is None:
-        raise ValueError("CIF needs event type, not None")
+        raise missing_cause_error("The CIF")
 
 
 def validate_coxph_df_inputs(
@@ -159,11 +298,15 @@ def validate_coxph_df_inputs(
     tl_col: "str | None" = None,
     strata_col: "str | None" = None,
 ) -> tuple:
-    # TODO: Return the count of dropped rows?
-
-    Z, mask, form, feature_names, model_spec = (
-        wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+    from surpyval.univariate.regression.regression_data import (
+        design_matrix_from_df,
     )
+
+    # Rows with a missing covariate drop (with one warning), and the times,
+    # flags, counts, entry times and strata with them.
+    Z, feature_names, model_spec = design_matrix_from_df(df, Z_cols, formula)
+    mask = finite_covariate_mask(Z)
+    Z = Z[mask]
 
     x = df.loc[mask, x_col].values
 
@@ -185,4 +328,4 @@ def validate_coxph_df_inputs(
 
     x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
 
-    return x, c, n, tl, strata, Z, form, feature_names, model_spec
+    return x, c, n, tl, strata, Z, formula, feature_names, model_spec

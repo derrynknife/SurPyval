@@ -89,6 +89,10 @@ from surpyval.utils.dataframe import (
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    missing_cause_error,
+    unknown_cause_error,
+)
 
 
 def _fit_cause(
@@ -802,15 +806,12 @@ class FineGray_:
         causes = ordered_labels(e)
         if event is None:
             if len(causes) != 1:
-                raise ValueError(
-                    "Data has multiple event types "
-                    f"({causes}); specify `event`."
+                raise missing_cause_error(
+                    f"A Fine-Gray model (the data have causes {causes})"
                 )
             event = causes[0]
         elif event not in causes:
-            raise ValueError(
-                f"Cause {event!r} not observed; causes are {causes}."
-            )
+            raise unknown_cause_error(event, causes)
 
         fit = _fit_cause(x, Z, e, c, n, event, center)
         _warn_if_monotone([fit])

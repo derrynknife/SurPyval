@@ -20,6 +20,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
+from surpyval.utils.validation import check_option
 
 
 @singleton_fitter
@@ -249,11 +250,12 @@ class HPP(CountingProcess):
         out.bounds = ((0, None),)
         out.support = (-np.inf, np.inf)
         out.name = "Homogeneous Poisson Process"
-        if how != "MLE":
-            raise ValueError(
-                "The HPP is fitted by maximum likelihood only; how must be "
-                "'MLE', got {!r}".format(how)
-            )
+        check_option(
+            "how",
+            how,
+            ("MLE",),
+            "The HPP is fitted by maximum likelihood only.",
+        )
         out.how = "MLE"
         validate_nhpp_data(data, self)
 

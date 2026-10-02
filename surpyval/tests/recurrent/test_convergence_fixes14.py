@@ -80,5 +80,5 @@ def test_an_unconverged_nhpp_fit_warns(monkeypatch):
         return OptimizeResult({**res, "success": False})
 
     monkeypatch.setattr(nhpp_fitter, "minimize", capped)
-    with pytest.warns(UserWarning, match="did not converge"):
+    with pytest.warns(UserWarning, match="did not reach a verified maximum"):
         sp.recurrent.Duane.fit(**recurrent_data())

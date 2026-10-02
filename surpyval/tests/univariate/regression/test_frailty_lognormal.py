@@ -342,5 +342,5 @@ def test_summary_serialisation_and_data_frame():
 
 
 def test_unknown_family_raises_a_value_error():
-    with pytest.raises(ValueError, match="family must be one of"):
+    with pytest.raises(ValueError, match="'family' must be one of"):
         Frailty(Weibull, family="weibull")

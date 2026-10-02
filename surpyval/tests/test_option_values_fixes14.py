@@ -103,7 +103,7 @@ def test_cause_specific_cox_takes_only_step(interp):
     model = fitted(case)
     Z = case.Z[0]
     for name in ("sf", "ff", "Hf", "hf", "df"):
-        with pytest.raises(ValueError, match=r"'interp' must be one of"):
+        with pytest.raises(ValueError, match=r"'interp' must be 'step'"):
             getattr(model, name)([5.0], Z, interp=interp)
     step = model.sf([5.0], Z, interp="step")
     np.testing.assert_array_equal(step, model.sf([5.0], Z))

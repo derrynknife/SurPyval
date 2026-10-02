@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.no_maximum import maximum_warnings_quiet
+from surpyval.utils.no_maximum import maximum_warnings_quiet, warn_unverified
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._fit_inputs import FitInputsMixin, normalise_how
@@ -26,17 +26,6 @@ from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mse import mse
 from .parametric import Parametric
-
-# What a maximum-likelihood fit says when no start led to a verified
-# maximum (see ``is_local_minimum`` in ``fitters``).
-_UNVERIFIED_MLE = (
-    "The maximum-likelihood search did not reach a verified maximum (a "
-    "point where the gradient is zero and the log-likelihood curves down "
-    "in every direction); the parameters returned are the best point it "
-    "found. The likelihood may have no maximum -- a parameter running "
-    "off to a limit of its range -- or the search may have stalled. Check "
-    "the fit, or try another `init`."
-)
 
 
 def _search_units(
@@ -747,23 +736,25 @@ turnbull_estimator
         # two-parameter family (the Weibull, the Gamma, ...) from this
         # warning.
         warning = results.pop("_warning", None)
+        reason = results.pop("_unverified_reason", None)
         edges_only = bool(
             np.isnan(np.asarray(self.support, dtype=float)).all()
         ) and getattr(self, "support_param_index", None) == tuple(
             range(self.k)
         )
-        if (
+        unverified = (
             warning is None
             and not results.pop("_verified", True)
             and not edges_only
-        ):
-            warning = _UNVERIFIED_MLE
+        )
         results.pop("_verified", None)
         # What the fit reached, recorded as ``model.maximum`` so that a
         # caller (``fit_best``) need not read it from the warnings; it
         # follows them exactly. An answer with nothing to verify (a closed
         # form, a Uniform's extreme observations) is a maximum.
-        maximum = "verified" if warning is None else "unverified"
+        maximum = (
+            "unverified" if warning is not None or unverified else "verified"
+        )
         # A family whose likelihood can be highest in a limit of its
         # parameters says so instead (one warning per fit).
         if (
@@ -772,6 +763,7 @@ turnbull_estimator
             and self._warn_if_at_limit(surv_data, results, zi, lfp)
         ):
             warning = None
+            unverified = False
             maximum = "no finite maximum"
         # So does an offset fit that ran its offset onto the first
         # failure, whatever the family (#487).
@@ -783,9 +775,12 @@ turnbull_estimator
             )
         ):
             warning = None
+            unverified = False
             maximum = "no finite maximum"
         if warning is not None and not maximum_warnings_quiet():
             warnings.warn(warning, stacklevel=3)
+        if unverified:
+            warn_unverified("The maximum-likelihood search", reason)
         # Only maximum likelihood seeks a maximum of the likelihood
         model.maximum = maximum if how == "MLE" else "not applicable"
 

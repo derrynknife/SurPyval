@@ -21,6 +21,7 @@ from surpyval.univariate.regression._aliasing import (
 from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import option_error
 
 
 def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
@@ -319,9 +320,8 @@ class ProportionalIntensityModel(
             return e
         elif kind == "martingale":
             return diagnostics.martingale_residuals(self.data, cif_map)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(

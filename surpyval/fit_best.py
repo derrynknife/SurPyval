@@ -27,6 +27,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
 from surpyval.utils.no_maximum import quiet_maximum_warnings
+from surpyval.utils.validation import check_option
 
 # Typed as OptimisedFitMixin, not ParametricFitter: every entry has
 # `.fit(x, c, n, t)` called on it below, and Bernoulli, Binomial and
@@ -188,10 +189,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     include_set = _candidate_names(include, "include")
     exclude_set = _candidate_names(exclude, "exclude")
 
-    if metric not in METRICS:
-        raise ValueError(
-            '`metric` must be one of "{}"'.format('", "'.join(METRICS))
-        )
+    check_option("metric", metric, METRICS)
 
     if (len(include_set) > 0) and (len(exclude_set) > 0):
         raise ValueError("Provide either an include or an exclude, not both.")

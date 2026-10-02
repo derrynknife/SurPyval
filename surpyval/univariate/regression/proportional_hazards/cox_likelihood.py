@@ -28,6 +28,7 @@ from pandas import isna
 from scipy.optimize import OptimizeResult
 
 from surpyval.utils import is_missing_event
+from surpyval.utils.validation import check_option
 
 from .._fit_skeleton import LOG_MAX, baseline_at_origin_error
 
@@ -1173,8 +1174,5 @@ class CoxLikelihoodMixin:
             ),
             "kp": self.create_kalbfleisch_prentice_ll_jac_hess,
         }
-        if tie_method not in generators:
-            raise ValueError(
-                "tie_method must be one of {}".format(sorted(generators))
-            )
+        check_option("tie_method", tie_method, generators)
         return generators[tie_method]

@@ -31,6 +31,12 @@ from surpyval.univariate.regression.tvc_schedule import StepSchedule
 from surpyval.utils.linalg import psd_precision, psd_root
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    BOUNDS,
+    alpha_ci_error,
+    check_option,
+    option_error,
+)
 
 from ._bounds import (
     analytic_cb,
@@ -1096,9 +1102,7 @@ class DegradationModel(SerialisableMixin):
                 "instead"
             )
         if not 0.0 < float(alpha_ci) < 1.0:
-            raise ValueError(
-                "alpha_ci must be between 0 and 1, got {!r}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         if int(n_samples) < 1:
             raise ValueError(
                 "n_samples must be a positive integer, got {!r}".format(
@@ -1753,11 +1757,8 @@ class DegradationModel(SerialisableMixin):
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
-        valid = ("sf", "R", "ff", "F", "Hf")
-        if on not in valid:
-            raise ValueError("`on` must be one of {}".format(valid))
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        check_option("bound", bound, BOUNDS)
         if self._is_clock:
             self._clock(Z)  # validates the stress
             Z = self._covariates(Z)
@@ -1773,7 +1774,7 @@ class DegradationModel(SerialisableMixin):
                 return bootstrap_cb(
                     self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
-            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+            raise option_error("method", method, ("analytic", "bootstrap"))
         Z = self._predict_Z(Z)
         if self.is_accelerated:
             if method == "analytic":
@@ -1789,14 +1790,14 @@ class DegradationModel(SerialisableMixin):
                 return bootstrap_cb(
                     self, x, on, alpha_ci, bound, n_boot, random_state, Z=Z
                 )
-            raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+            raise option_error("method", method, ("analytic", "bootstrap"))
         if method == "analytic":
             return analytic_cb(self, x, on, alpha_ci, bound)
         elif method == "bootstrap":
             return bootstrap_cb(
                 self, x, on, alpha_ci, bound, n_boot, random_state
             )
-        raise ValueError("`method` must be 'analytic' or 'bootstrap'")
+        raise option_error("method", method, ("analytic", "bootstrap"))
 
     def plot(self, ax: Any = None) -> Any:
         """

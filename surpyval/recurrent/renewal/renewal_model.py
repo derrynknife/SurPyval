@@ -21,6 +21,8 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
+from surpyval.utils.validation import alpha_ci_error, option_error
+from surpyval.utils.warnings import warn_no_covariance
 
 #: The values of the restoration parameter at which each family is a
 #: perfect and a minimal repair process (#513): the Kijima ``q`` of the
@@ -874,9 +876,8 @@ class RenewalModel(
                 observed = int((c[mask] == 0).sum())
                 residuals.append(observed - float(increments[mask].sum()))
             return np.array(residuals)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(
@@ -1120,15 +1121,12 @@ class RenewalModel(
         n = mle.size
         out = np.full((n, n), np.nan)
         if not np.all(np.isfinite(H)):
-            warnings.warn(
-                "Hessian could not be evaluated (the optimum may be at a "
-                "parameter boundary); covariance is unavailable."
-            )
+            warn_no_covariance()
             return out
         try:
             out[1:, 1:] = np.linalg.inv(H)
         except np.linalg.LinAlgError:
-            warnings.warn("Hessian is singular; covariance is unavailable.")
+            warn_no_covariance()
         return out
 
     def param_cb(
@@ -1192,10 +1190,7 @@ class RenewalModel(
             return super().param_cb(name, alpha_ci, bound)
         self._check_fitted()
         if not 0 < alpha_ci < 1:
-            raise ValueError(
-                "'alpha_ci' must be strictly between 0 and 1; got "
-                "{}".format(alpha_ci)
-            )
+            raise alpha_ci_error(alpha_ci)
         alpha, signs = bound_signs(alpha_ci, bound)
         crit = float(chi2.ppf(1.0 - 2.0 * alpha, 1)) if alpha < 0.5 else 0.0
         lower, upper = self._restoration_bounds

@@ -105,7 +105,7 @@ def test_trend_test_matches_standalone_mixed_windows():
 
 def test_trend_test_validation():
     model = HPP.fit(_events())
-    with pytest.raises(ValueError, match="`test` must be"):
+    with pytest.raises(ValueError, match="'test' must be one of"):
         model.trend_test(test="nope")
     truncated = CrowAMSAA.fit(
         [12, 15, 19, 21], i=[1] * 4, c=[0, 0, 0, 1], tl=10.0

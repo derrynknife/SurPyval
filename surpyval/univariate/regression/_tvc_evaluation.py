@@ -17,6 +17,7 @@ import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option
 
 
 class TVCEvaluationMixin:
@@ -1130,16 +1131,14 @@ class TVCEvaluationMixin:
         from .tvc_path import CovariatePath
 
         self._check_inference()
-        valid = ("sf", "R", "ff", "F", "Hf")
-        if on not in valid:
-            raise ValueError(
-                "`on` must be one of {} for cb_tvc: the survival, failure "
-                "probability and cumulative hazard along a path are "
-                "bounded (the hazard and density along a path are "
-                "not)".format(valid)
-            )
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        check_option(
+            "on",
+            on,
+            ("sf", "R", "ff", "F", "Hf"),
+            "cb_tvc bounds the survival, failure probability and cumulative "
+            "hazard along a path, not the hazard or the density.",
+        )
+        check_option("bound", bound, BOUNDS)
         self._check_tvc_evaluable()
         xq: npt.NDArray = np.atleast_1d(np.asarray(x, dtype=float))
         shape = xq.shape + ((2,) if bound == "two-sided" else ())

@@ -44,6 +44,11 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import is_missing_event
 from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    no_covariance_error,
+)
 
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
@@ -271,7 +276,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
         if self.covariance is None:
-            raise ValueError("No covariance was stored for this model.")
+            raise no_covariance_error()
         se = _standard_error(np.diag(self.covariance))
         return {name: float(s) for name, s in zip(self.parameter_names, se)}
 
@@ -288,7 +293,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         unbounded coefficients) so the interval stays valid.
         """
         if self.covariance is None:
-            raise ValueError("No covariance was stored for this model.")
+            raise no_covariance_error()
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -301,17 +306,16 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
+        check_option("bound", bound, BOUNDS)
         if bound == "two-sided":
             q = _z(1 - alpha_ci / 2)
             signs = np.array([-1.0, 1.0])
         elif bound == "lower":
             q = _z(1 - alpha_ci)
             signs = np.array([-1.0])
-        elif bound == "upper":
+        else:
             q = _z(1 - alpha_ci)
             signs = np.array([1.0])
-        else:
-            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
         if positive:
             if est <= 0:
                 # A boundary estimate (theta -> 0: no detectable frailty)

@@ -11,6 +11,7 @@ from scipy.stats import pearsonr
 
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters import offset_step
+from surpyval.utils.validation import check_option
 
 
 def _rr_fit(a: npt.NDArray, b: npt.NDArray) -> Any:
@@ -108,8 +109,7 @@ def mpp(model: "Parametric") -> dict[str, Any]:
     rr = model.fitting_info["rr"]
     turnbull_estimator = model.fitting_info["turnbull_estimator"]
 
-    if rr not in ["x", "y"]:
-        raise ValueError("rr must be either 'x' or 'y'")
+    check_option("rr", rr, ("x", "y"))
 
     if hasattr(dist, "mpp"):
         results = dist.mpp(

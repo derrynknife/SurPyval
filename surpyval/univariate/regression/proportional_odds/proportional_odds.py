@@ -69,7 +69,6 @@ Journal of the American Statistical Association 95, 449-465.
 
 from __future__ import annotations
 
-import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Any
 
@@ -84,12 +83,9 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import (
-    _caller_stacklevel,
-)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -1230,14 +1226,11 @@ def _check_maximum(
             "consider removing or coarsening the covariate",
         )
     elif not converged:
-        warnings.warn(
-            "ProportionalOdds did not converge: the profile likelihood's "
-            "Newton-Raphson iteration stopped after {} step(s) without "
-            "reaching its tolerance, so the estimates may not be the "
-            "maximum. Check the covariates for extreme values, or rescale "
-            "them.".format(n_iter),
-            UserWarning,
-            stacklevel=_caller_stacklevel(),
+        warn_unverified(
+            "The ProportionalOdds fit",
+            "the profile likelihood's Newton-Raphson iteration stopped after "
+            "{} step(s) without reaching its tolerance".format(n_iter),
+            "check the covariates for extreme values, or rescale them",
         )
 
 

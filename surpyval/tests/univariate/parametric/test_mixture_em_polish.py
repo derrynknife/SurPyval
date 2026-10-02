@@ -124,4 +124,4 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
         model.initialise_params()
         model._em(max_iter=4, budget=2)
     assert len(caught) == 1
-    assert "not a verified maximum" in str(caught[0].message)
+    assert "did not reach a verified maximum" in str(caught[0].message)

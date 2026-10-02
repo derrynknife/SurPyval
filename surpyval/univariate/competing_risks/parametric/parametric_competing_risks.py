@@ -51,6 +51,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import unknown_cause_error
 
 
 def _validate(
@@ -385,11 +386,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     def _check_event(self, event: Any) -> None:
         if event not in self.models:
-            raise ValueError(
-                "Unknown cause {!r}; fitted causes are {}.".format(
-                    event, list(self.causes)
-                )
-            )
+            raise unknown_cause_error(event, self.causes)
 
     # -- construction -----------------------------------------------------
 

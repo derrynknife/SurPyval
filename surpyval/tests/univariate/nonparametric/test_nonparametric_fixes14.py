@@ -378,5 +378,5 @@ def test_band_over_a_single_time_is_the_pointwise_arcsine_interval():
 
 def test_band_refuses_an_unknown_bound_type_naming_the_choices():
     model = sp.KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8])
-    with pytest.raises(ValueError, match="'arcsine', 'exp', 'normal'"):
+    with pytest.raises(ValueError, match="'arcsine', 'exp' or 'normal'"):
         model.band(bound_type="log")
