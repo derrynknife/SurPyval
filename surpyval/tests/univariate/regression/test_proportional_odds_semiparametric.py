@@ -317,3 +317,24 @@ def test_summary_param_cb_and_frame_entry_points_agree():
     restored = sp.ProportionalOddsModel.from_json(framed.to_json())
     np.testing.assert_array_equal(restored.sf(x, df), framed.sf(x, df))
     np.testing.assert_array_equal(restored.cov, framed.cov)
+
+
+def test_no_convergence_warning_on_ordinary_fits():
+    # The Newton decrement is exactly 0 at the maximum of some fits; it was
+    # taken for a profile that is not concave there, and 6 of 1000
+    # ordinary fits ran out of iterations at their maximum and warned that
+    # they had not converged (two of them among these 120).
+    rng = np.random.default_rng(20261202)
+    beta = np.array([1.0, -0.5])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        for _ in range(120):
+            Z = np.column_stack(
+                [rng.binomial(1, 0.5, 400), rng.normal(size=400)]
+            )
+            U = rng.uniform(size=400)
+            T = 10 * (U / (1 - U) * np.exp(Z @ beta)) ** 0.5
+            C = rng.uniform(0, 30, 400)
+            x, c = np.minimum(T, C)[:200], (T > C)[:200].astype(int)
+            model = sp.ProportionalOdds.fit(x, Z[:200], c=c)
+            assert model.n_iter < 10

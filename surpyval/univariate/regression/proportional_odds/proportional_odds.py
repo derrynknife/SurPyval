@@ -290,9 +290,11 @@ def _inner(
         grad = der["grad_u"]
         step = None
         try:
+            # Raises where the Hessian is not negative definite; there the
+            # decrement can be 0 only by rounding, at the maximum.
             step = lik.solve_uu(der, grad)
-            lam2 = float(grad @ step)
-            if not (np.isfinite(lam2) and lam2 > 0):
+            lam2 = max(float(grad @ step), 0.0)
+            if not (np.isfinite(lam2) and np.all(np.isfinite(step))):
                 step = None
         except (LinAlgError, ValueError):
             step = None
@@ -339,25 +341,24 @@ def _profile_fit(
     ``gamma``. Returns ``(gamma, u, der, S, converged, iterations)``."""
     inner_tol = min(tol, 1e-10) * 1e-2
     u, der = _inner(lik, gamma, u, inner_tol)
-    S = lik.schur(der)
+    S = _safe_schur(lik, der)
     lam_prev = np.inf
     for it in range(1, max_iter + 1):
         grad = der["grad_gamma"]
         try:
-            step = np.linalg.solve(S, grad)
+            # The Newton step where the profile information is positive
+            # definite (its Cholesky factor exists).
+            L = np.linalg.cholesky(S)
+            step = np.linalg.solve(L.T, np.linalg.solve(L, grad))
+            newton = bool(np.all(np.isfinite(step)))
         except np.linalg.LinAlgError:
-            step = np.full(grad.shape, np.nan)
-        lam2 = float(grad @ step)
-        if not (np.all(np.isfinite(step)) and np.isfinite(lam2) and lam2 > 0):
+            newton = False
+        if not newton:
             # The profile is not concave here: a gradient step, scaled by
             # the diagonal of the information where it is positive.
-            scale = np.where(np.diag(S) > 0, np.diag(S), 1.0)
-            step = grad / scale
-            lam2 = float(grad @ step)
-            newton = False
-        else:
-            newton = True
-        lam = np.sqrt(max(lam2, 0.0))
+            diag = np.nan_to_num(np.diag(S), nan=0.0)
+            step = grad / np.where(diag > 0, diag, 1.0)
+        lam = np.sqrt(max(float(grad @ step), 0.0))
         if newton and (lam <= tol or (lam <= 1e-8 and lam >= lam_prev / 2)):
             return gamma, u, der, S, True, it - 1
         f = der["value"]
@@ -372,12 +373,19 @@ def _profile_fit(
         else:
             return gamma, u, der, S, False, it
         gamma, u, der = gamma_new, u_new, der_new
-        try:
-            S = lik.schur(der)
-        except (LinAlgError, ValueError):
-            S = np.full((gamma.size, gamma.size), np.nan)
+        S = _safe_schur(lik, der)
         lam_prev = lam if (newton and t == 1.0) else np.inf
     return gamma, u, der, S, False, max_iter
+
+
+def _safe_schur(lik: _POLikelihood, der: dict) -> npt.NDArray:
+    """:meth:`_POLikelihood.schur`, ``nan`` where the baseline's Hessian
+    cannot be solved."""
+    try:
+        return lik.schur(der)
+    except (LinAlgError, ValueError):
+        k = der["N_gg"].shape[0]
+        return np.full((k, k), np.nan)
 
 
 def _validate(
@@ -1067,10 +1075,7 @@ class ProportionalOdds_:
         lik = _POLikelihood(x, c, n, tl, Zc)
         with np.errstate(all="ignore"):
             u, der = _inner(lik, np.zeros(p), lik.start(x, n, tl), inner_tol)
-            try:
-                info0 = lik.schur(der)
-            except (LinAlgError, ValueError):
-                info0 = np.full((p, p), np.nan)
+            info0 = _safe_schur(lik, der)
         aliased = _po_aliased(info0, Z, n, float(lik.d.sum()))
         kept = np.setdiff1d(np.arange(p), aliased)
         if aliased.size:
