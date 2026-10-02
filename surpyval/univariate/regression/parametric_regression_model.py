@@ -22,6 +22,13 @@ from surpyval.utils.shapes import (
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
 from ._inference import InferenceMixin
+from ._kinds import (
+    ACCELERATED_FAILURE_TIME,
+    ACCELERATED_LIFE,
+    ADDITIVE_HAZARD,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     prepare_Z,
@@ -48,10 +55,10 @@ if TYPE_CHECKING:
 # therefore every prediction -- can be rebuilt from the distribution's name.
 # Maps kind -> (public fitter factory name, covariate-link form).
 _SERIALISABLE_KINDS: "dict[str, tuple[str, str]]" = {
-    "Accelerated Failure Time": ("AFT", "exp"),
-    "Proportional Hazard": ("PH", "exp"),
-    "Proportional Odds": ("PO", "exp"),
-    "Additive Hazard": ("AH", "additive"),
+    ACCELERATED_FAILURE_TIME: ("AFT", "exp"),
+    PROPORTIONAL_HAZARD: ("PH", "exp"),
+    PROPORTIONAL_ODDS: ("PO", "exp"),
+    ADDITIVE_HAZARD: ("AH", "additive"),
 }
 
 # The covariate-link (``reg_model``) names those families produce. A model
@@ -127,9 +134,9 @@ class ParametricRegressionModel(
     k: int
     #: The number of baseline distribution parameters.
     k_dist: int
-    #: The family: ``"Proportional Hazard"``, ``"Accelerated Failure
-    #: Time"``, ``"Proportional Odds"``, ``"Additive Hazard"`` or
-    #: ``"Accelerated Life"``.
+    #: The family, one of the names in ``_kinds``: ``"Proportional
+    #: Hazard"``, ``"Accelerated Failure Time"``, ``"Proportional Odds"``,
+    #: ``"Additive Hazard"`` or ``"Accelerated Life"``.
     kind: str
     #: ``{name: value}`` of the parameters held fixed in the fit (an
     #: accelerated life model's placeholder for its life parameter
@@ -243,7 +250,7 @@ class ParametricRegressionModel(
             },
         }
 
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
                 LIFE_MODELS,
             )
@@ -388,7 +395,7 @@ class ParametricRegressionModel(
         k_dist = int(model_dict["k_dist"])
 
         reg_model: "CovariateLink | LifeModel"
-        if kind == "Accelerated Life":
+        if kind == ACCELERATED_LIFE:
             # Rebuild the parameter-substitution fitter from the distribution
             # and the built-in life model; the fitter carries the life-model's
             # phi and the distribution's life-parameter transforms, so it
@@ -481,7 +488,7 @@ class ParametricRegressionModel(
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
-        if kind != "Accelerated Life":
+        if kind != ACCELERATED_LIFE:
             # A dict without one has its baseline at Z = 0 (#463).
             out.center = np.array(
                 model_dict.get("center", np.zeros(len(params) - k_dist)),
@@ -559,6 +566,18 @@ class ParametricRegressionModel(
             return int(np.shape(Z)[1])
         return len(self.params) - self.k_dist
 
+    def _is_accelerated_life(self) -> bool:
+        """Whether this is an accelerated life model: a life model gives
+        the distribution's life parameter, and the covariate parameters
+        are the life model's, not one coefficient per column."""
+        return self.kind == ACCELERATED_LIFE
+
+    def _is_additive(self) -> bool:
+        """Whether the covariates add ``beta'Z`` to the hazard (additive
+        hazards), which nothing keeps positive, rather than act through
+        a multiplier."""
+        return self.kind == ADDITIVE_HAZARD
+
     def _has_center(self) -> bool:
         """Whether the baseline is at a nonzero covariate ``center``."""
         return self.center is not None and bool(np.any(self.center))
@@ -575,16 +594,16 @@ class ParametricRegressionModel(
 
     #: What ``exp(coef)`` is, for a log-linear link, by kind.
     _EXP_MEANING = {
-        "Proportional Hazard": "the hazard ratio",
-        "Accelerated Failure Time": "the acceleration factor",
-        "Proportional Odds": "the survival odds ratio",
+        PROPORTIONAL_HAZARD: "the hazard ratio",
+        ACCELERATED_FAILURE_TIME: "the acceleration factor",
+        PROPORTIONAL_ODDS: "the survival odds ratio",
     }
 
     @property
     def life_parameter(self) -> "str | None":
         """The distribution parameter an accelerated life model replaces by
         its life model (``None`` for the other families)."""
-        if self.kind != "Accelerated Life":
+        if not self._is_accelerated_life():
             return None
         return getattr(self.model, "life_parameter", None)
 
@@ -601,7 +620,7 @@ class ParametricRegressionModel(
         parameters of its life model."""
         n_phi = len(self.params) - self.k_dist
         pmap = dict(self.reg_model.phi_param_map or {})
-        return self.kind != "Accelerated Life" and pmap == {
+        return not self._is_accelerated_life() and pmap == {
             "beta_{}".format(i): i for i in range(n_phi)
         }
 
@@ -800,7 +819,7 @@ class ParametricRegressionModel(
         # The life parameter an accelerated-life model substitutes is held
         # at a placeholder value, not a parameter of the model.
         placeholder = set()
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             placeholder = set(getattr(self.model, "fixed", None) or {})
         fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
         if fixed:
@@ -912,7 +931,7 @@ class ParametricRegressionModel(
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
             out = fn(x, Z, *self._eval_params())
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)

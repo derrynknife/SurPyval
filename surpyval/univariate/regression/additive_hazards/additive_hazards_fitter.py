@@ -75,6 +75,7 @@ from .._fit_skeleton import (
     prepare_regression_fit,
     uniform_draws,
 )
+from .._kinds import ADDITIVE_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -575,7 +576,7 @@ class AdditiveHazardsFitter(
 
         model = assemble_regression_model(
             self,
-            "Additive Hazard",
+            ADDITIVE_HAZARD,
             reg_model,
             data,
             res,

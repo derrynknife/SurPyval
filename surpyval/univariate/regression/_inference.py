@@ -80,6 +80,8 @@ class InferenceMixin:
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
+        def _is_accelerated_life(self) -> bool: ...
+        def _is_additive(self) -> bool: ...
         def _life_relation(self) -> str: ...
 
         def _prepare_Z(
@@ -268,7 +270,7 @@ class InferenceMixin:
         coefficients are unbounded)."""
         n_phi = len(self.params) - self.k_dist
         phi_bounds: Any = ((None, None),) * n_phi
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
             if callable(declared):
                 declared = declared(np.asarray(self.data.Z))
@@ -417,7 +419,7 @@ class InferenceMixin:
             )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             # Not below the support, where nothing has happened yet.
             self._warn_if_hazard_negative(
                 x,

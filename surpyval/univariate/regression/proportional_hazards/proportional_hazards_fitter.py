@@ -25,6 +25,7 @@ from .._fit_skeleton import (
     optimise_ph,
     uniform_draws,
 )
+from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -373,7 +374,7 @@ class ProportionalHazardsFitter(
             init,
             fixed,
             center,
-            kind="Proportional Hazard",
+            kind=PROPORTIONAL_HAZARD,
             optimiser=optimise_ph,
             reg_model=self._reg_model,
             phi_bounds=self.phi_bounds,
