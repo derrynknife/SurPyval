@@ -327,6 +327,42 @@ def _central_gradient(f: Callable[..., Any], u: npt.NDArray) -> npt.NDArray:
     return grad
 
 
+def _unguarded(dist: Any, name: str) -> Callable[..., Any]:
+    """The distribution's function ``name`` without the wrappers of
+    ``parametric_fitter`` (``_array_inputs`` and ``_support_guarded``),
+    unbound: called as ``f(dist, x, *params)``."""
+    fn = getattr(type(dist), name)
+    while hasattr(fn, "__wrapped__"):
+        fn = fn.__wrapped__
+    return fn
+
+
+def _lean_neg_ll(dist: Any, lean: tuple, theta: npt.NDArray) -> float:
+    """The negative log-likelihood of ``Parametric._lr_lean_data``'s data
+    ``lean`` at core parameters ``theta``: the terms of
+    ``ParametricFitter._log_likelihood`` for a distribution without an
+    offset, zero inflation or a limited failure population, as they
+    compute them (a term with no data is exactly 0 there and is left
+    out), but without the guards, which these data pass."""
+    observed, right, left, interval, truncated, extra = lean
+    params = tuple(theta)
+    ll: Any = 0
+    if observed is not None:
+        x, n = observed
+        ll = (n * _unguarded(dist, "log_df")(dist, x, *params)).sum()
+    if right is not None:
+        x, n = right
+        ll = ll + np.sum(n * _unguarded(dist, "log_sf")(dist, x, *params))
+    if left is not None:
+        x, n = left
+        ll = ll + np.sum(n * _unguarded(dist, "log_ff")(dist, x, *params))
+    if interval is not None:
+        ll = ll + dist.ll_interval_or_truncated(*interval, *params, *extra)
+    if truncated is not None:
+        ll = ll - dist.ll_interval_or_truncated(*truncated, *params, *extra)
+    return float(-ll)
+
+
 def draw_state(random_state: Any = None) -> Any:
     """The ``random_state`` to give a numpy or scipy draw.
 
@@ -1180,11 +1216,108 @@ class Parametric(
 
     def _lr_raw_neg_ll(self, theta: npt.NDArray) -> float:
         with np.errstate(all="ignore"):
+            lean = self._lr_lean_data()
+            if lean is not None:
+                return _lean_neg_ll(self.dist, lean, theta)
             return float(
                 self.dist._neg_ll_func(
                     self.surv_data, *theta, self.gamma, self.f0, self.p
                 )
             )
+
+    def _lr_plain(self) -> bool:
+        """Whether the likelihood-ratio searches may evaluate the
+        distribution's formulas without their guards where the data or
+        query are inside its support and not missing (see
+        ``_lr_lean_data``): a continuous distribution of
+        ``ParametricFitter``'s, with a support that does not depend on its
+        parameters, and no offset, zero inflation or limited failure
+        population."""
+        from .parametric_fitter import ParametricFitter
+
+        dist = self.dist
+        if not isinstance(dist, ParametricFitter) or dist.discrete:
+            return False
+        lo, hi = (float(v) for v in dist.support)
+        return (
+            not (np.isnan(lo) or np.isnan(hi))
+            and self.gamma == 0
+            and self.f0 == 0
+            and self.p == 1
+        )
+
+    def _lr_function(self, name: str) -> Callable[..., Any]:
+        """The distribution's function ``name`` as the likelihood-ratio
+        band evaluates it, ``f(x, *theta)``: without its guards where
+        every ``x`` is inside the support (which they leave unchanged
+        there; see ``_lr_lean_data``), and as it is otherwise."""
+        full = getattr(self.dist, name)
+        if not self._lr_plain():
+            return full
+        dist = self.dist
+        raw = _unguarded(dist, name)
+        lo, hi = (float(v) for v in dist.support)
+
+        def f(x: npt.NDArray, *theta: Any) -> Any:
+            # (False for a missing x, which takes the full path.)
+            if np.all(x >= lo) and np.all(x <= hi):
+                return raw(dist, x, *theta)
+            return full(x, *theta)
+
+        return f
+
+    def _lr_lean_data(self) -> tuple | None:
+        """The data of the lean likelihood the likelihood-ratio searches
+        evaluate (``_lean_neg_ll``), or ``None`` where they use the
+        distribution's own ``_neg_ll_func``.
+
+        The searches take thousands of evaluations, and most of each one's
+        time went on checks that cannot change its value on these data:
+        every observation inside the support, none missing (the guards of
+        ``_support_guarded`` and ``_array_inputs``), and no offset, zero
+        inflation or limited failure population (the terms they add are
+        exactly 0). The lean likelihood calls the distribution's own
+        formulas without them, on the same arrays, in the same order, so
+        its value is the same to the last bit, about 2.5 times as fast
+        (#519). Interval-censored and truncated terms are the
+        distribution's own. A discrete distribution, a support that
+        depends on the parameters (the Uniform's), or data outside the
+        support or missing take the full path.
+        """
+        data = self.surv_data
+        kept = self.__dict__.get("_lr_lean")
+        if kept is not None and kept[0] is data:
+            return kept[1]
+        lean = None
+        plain = self._lr_plain()
+        if plain:
+            lo, hi = (float(v) for v in self.dist.support)
+            terms = []
+            for x, n in (
+                (data.x_o, data.n_o),
+                (data.x_r, data.n_r),
+                (data.x_l, data.n_l),
+            ):
+                x = np.atleast_1d(np.array(x))
+                inside = not np.any(np.isnan(x)) and not (
+                    np.any(x < lo) or np.any(x > hi)
+                )
+                plain = plain and inside
+                terms.append(
+                    None if x.size == 0 else (x - self.gamma, np.asarray(n))
+                )
+            others = [
+                (data.x_il, data.x_ir, data.n_i),
+                (data.tl_unique, data.tr_unique, data.n_t_unique),
+            ]
+            if plain:
+                lean = (
+                    *terms,
+                    *(None if np.size(t[0]) == 0 else t for t in others),
+                    (self.gamma, self.f0, self.p),
+                )
+        self.__dict__["_lr_lean"] = (data, lean)
+        return lean
 
     def _lr_coords(self) -> tuple[list[_LRCoord], list[tuple[Any, Any]]]:
         """Each core parameter's likelihood-ratio search coordinate
@@ -2927,6 +3060,12 @@ class Parametric(
         known (``_lr_walk``); where it stays below ``crit``, or levels off
         below it, to the end of the scale, the band reaches the edge of
         the function's range. Each end is solved once per level and kept.
+        With two free parameters the region's boundary is traced once
+        (``_lr_trace``), and each side is first sought from its most
+        extreme traced point alone, taken when the answer is at least as
+        far out as every traced point (and moved onto the boundary where
+        SLSQP stopped just outside it); a Weibull band at 20 times on
+        1000 units took 9.4 s, and takes 2.4 s (#519).
 
         The search for the extreme from a warm start alone stopped wherever
         it first met the region's boundary: ExpoWeibull and
@@ -2981,12 +3120,12 @@ class Parametric(
             want_lower, want_upper = want_upper, want_lower
 
         if survival:
+            sf, ff = self._lr_function("sf"), self._lr_function("ff")
 
             def psi_of(time: Any, theta: npt.NDArray) -> float:
                 x = np.atleast_1d(time) - self.gamma
                 return float(
-                    np.log(self.dist.sf(x, *theta)[0])
-                    - np.log(self.dist.ff(x, *theta)[0])
+                    np.log(sf(x, *theta)[0]) - np.log(ff(x, *theta)[0])
                 )
 
             ends = (_LN_TINY, -_LN_TINY)
@@ -2997,7 +3136,7 @@ class Parametric(
             else:
                 value = lambda v: np.logaddexp(0.0, -v)  # noqa: E731
         else:
-            rate = self.dist.hf if on == "hf" else self.dist.df
+            rate = self._lr_function("hf" if on == "hf" else "df")
             discrete = bool(self.dist.discrete)
 
             def psi_of(time: Any, theta: npt.NDArray) -> float:
@@ -3074,12 +3213,15 @@ class Parametric(
         else:
             return upper
 
-    def _lr_region(
-        self, free: list[int], crit: float
-    ) -> tuple[list[tuple[Any, Any]], list[list[npt.NDArray]]]:
-        """The box a likelihood-ratio band's searches run in, and the
-        points they may start from (one list per walk), at the critical
-        value ``crit``.
+    def _lr_region(self, free: list[int], crit: float) -> tuple[
+        list[tuple[Any, Any]],
+        list[list[npt.NDArray]],
+        list[npt.NDArray] | None,
+    ]:
+        """The box a likelihood-ratio band's searches run in, the points
+        they may start from (one list per walk), and the region's boundary
+        traced where it can be (``_lr_trace``), at the critical value
+        ``crit``.
 
         The box is the one the parameters' own intervals at this level
         make: the region's extent in each parameter is that parameter's
@@ -3117,7 +3259,117 @@ class Parametric(
                 for j in free
                 for d in (-1.0, 1.0)
             ]
-        return box, seeds
+            trace = self._lr_trace(free, crit, seeds)
+        return box, seeds, trace
+
+    #: Rays along which ``_lr_trace`` finds a two-parameter region's
+    #: boundary, at angles evenly spaced in the Wald metric.
+    _LR_TRACE_RAYS = 64
+
+    def _lr_trace(
+        self, free: list[int], crit: float, seeds: list[list[npt.NDArray]]
+    ) -> list[npt.NDArray] | None:
+        """Points on the boundary of a two-parameter likelihood-ratio
+        region, ``{u : deviance(u) = crit}`` in the search coordinates, or
+        ``None`` where it is not traced.
+
+        The boundary is found by bracketing and ``brentq`` along rays from
+        the estimate, at angles evenly spaced in the Wald metric (in which
+        the region is near a circle), and along the ray through each point
+        of the region that the parameters' walks found (``seeds``) inside
+        it, whose tips reach its far corners. ``_cb_lr_psi_bounds`` starts
+        its search for a function's extreme over the region from the
+        traced point where the function is most extreme, and takes the
+        answer without the searches from the walks' tips when it is at
+        least as far out as every traced point (#519; Meeker and Escobar,
+        *Statistical Methods for Reliability Data*, trace the region so to
+        draw it).
+
+        ``None`` with more or fewer than two free parameters, without a
+        positive definite covariance, where a ray does not meet the
+        boundary or the deviance cannot be computed on it, or where a
+        walk's point lies beyond the boundary on its ray: the region is
+        not star-shaped about the estimate, and the rays can miss part of
+        it.
+        """
+        if len(free) != 2:
+            return None
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None or np.ndim(hess_inv) != 2:
+            return None
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = self._lr_neg_ll(theta_hat)
+        coords, _ = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
+        slopes = np.array(
+            [coords[j].slope(theta_hat[j]) for j in free], dtype=float
+        )
+        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
+        cov_u = cov_u / np.outer(slopes, slopes)
+        try:
+            L = np.linalg.cholesky(cov_u)
+        except np.linalg.LinAlgError:
+            return None
+        if not (np.all(np.isfinite(L)) and np.isfinite(nll_hat)):
+            return None
+
+        def excess(u: npt.NDArray) -> float:
+            # The deviance less crit: inf where the likelihood is 0, nan
+            # where it cannot be right (see ``_lr_neg_ll``).
+            theta = theta_hat.copy()
+            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
+            nll = self._lr_neg_ll(theta)
+            if nll == np.inf:
+                return np.inf
+            return 2.0 * (nll - nll_hat) - crit
+
+        def crossing(d: npt.NDArray) -> float | None:
+            # The radius along u_hat + r d at which the deviance is crit.
+            r_lo, r_hi = 0.0, float(np.sqrt(crit))
+            f_hi = excess(u_hat + r_hi * d)
+            for _ in range(60):
+                if not np.isfinite(f_hi):
+                    return None
+                if f_hi > 0.0:
+                    break
+                r_lo, r_hi = r_hi, 2.0 * r_hi
+                f_hi = excess(u_hat + r_hi * d)
+            else:
+                return None
+            r = brentq(
+                lambda r: excess(u_hat + r * d),
+                r_lo,
+                r_hi,
+                xtol=1e-12 * r_hi,
+                rtol=1e-12,
+            )
+            # Just inside: a point of the region.
+            return float(r) * (1.0 - 1e-10)
+
+        trace = []
+        with np.errstate(all="ignore"):
+            rays = self._LR_TRACE_RAYS
+            for k in range(rays):
+                angle = 2.0 * np.pi * k / rays
+                d = L @ np.array([np.cos(angle), np.sin(angle)])
+                r = crossing(d)
+                if r is None:
+                    return None
+                trace.append(u_hat + r * d)
+            for group in seeds:
+                for seed in group:
+                    if not excess(np.asarray(seed, dtype=float)) <= 0.0:
+                        continue
+                    offset = np.asarray(seed, dtype=float) - u_hat
+                    size = float(np.linalg.norm(np.linalg.solve(L, offset)))
+                    if not (np.isfinite(size) and size > 0.0):
+                        continue
+                    r = crossing(offset / size)
+                    if r is None or r < size * (1.0 - 1e-6):
+                        return None
+                    trace.append(u_hat + r * offset / size)
+        return trace
 
     def _cb_lr_psi_bounds(
         self,
@@ -3129,6 +3381,7 @@ class Parametric(
         ends: tuple[float, float],
         box: list[tuple[Any, Any]],
         seeds: list[list[npt.NDArray]],
+        trace: list[npt.NDArray] | None = None,
     ) -> tuple[float, float]:
         """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
         the free core parameters, searched in ``box``: ``(lower,
@@ -3279,7 +3532,50 @@ class Parametric(
                 return None
             return psi_star
 
+        traced = None
+        if trace is not None:
+            traced = [(psi_u(u), u) for u in trace]
+            if not all(np.isfinite(k[0]) for k in traced):
+                traced = None
+
+        def from_trace(direction: float) -> float | None:
+            # The search from the traced point of the region where psi is
+            # most extreme, taken when it is at least as far out as every
+            # traced point and every point known (see ``_lr_trace``).
+            if traced is None:
+                return None
+            top_psi, top_u = max(traced, key=lambda k: direction * k[0])
+            quick = direct(direction, self._lr_start(top_u, box))
+            if quick is None:
+                return None
+            # SLSQP may stop outside the region by its tolerance (a
+            # deviance up to _LR_NOISE over crit, which ``direct`` allows):
+            # psi is then taken where the ray to that point meets the
+            # boundary. Where psi is steep that is the difference between
+            # 2e-8 and 1e-6 of the bound (a LogNormal hf(0.5) lower bound
+            # against its boundary's minimum, found by brute force).
+            end = reached[-1][1]
+            if dev_u(end) > crit:
+                ray = end - u_hat
+                r = brentq(
+                    lambda r: dev_u(u_hat + r * ray) - crit,
+                    0.0,
+                    1.0,
+                    xtol=1e-14,
+                    rtol=1e-14,
+                )
+                quick = psi_u(u_hat + r * ray)
+                known[-1] = (quick, u_hat + r * ray)
+            far = max(direction * k[0] for k in known)
+            slack = 1e-9 * max(1.0, abs(top_psi))
+            if direction * quick >= max(far, direction * top_psi - slack):
+                return quick
+            return None
+
         def solve_side(direction: float) -> float:
+            quick = from_trace(direction)
+            if quick is not None:
+                return quick
             # The search starts from the estimate and from the farthest
             # points of the two walks that reach farthest (the region can
             # have more than one local extreme: an ExpoWeibull hf(13) of
