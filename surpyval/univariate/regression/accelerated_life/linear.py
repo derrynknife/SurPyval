@@ -5,6 +5,30 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class Linear_(LifeModel):
+    r"""
+    The linear life model: life changes in proportion to the stress,
+
+    .. math::
+        L(V) = a + b V.
+
+    A first-order approximation, for a narrow range of stresses: a fitted
+    line can reach zero or negative life outside the stresses tested,
+    where a life is undefined.
+
+    Parameters (as the fitted model reports them):
+
+    - ``a``: the life at zero stress.
+    - ``b``: the change in life per unit of stress (negative when life
+      falls as stress rises).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import life_models
+    >>> life_models.Linear.phi(np.array([1.0, 2.0]), 100.0, -20.0)
+    array([80., 60.])
+    """
+
     def __init__(self) -> None:
         super().__init__(
             "Linear",

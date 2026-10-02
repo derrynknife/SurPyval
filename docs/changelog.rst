@@ -185,7 +185,10 @@ bands change (#477).
   exponential (Arrhenius) life model is ``life_models.Exponential``: at the
   top level that name is the distribution, so it was
   ``ExponentialLifeModel``. The old top-level names still work until
-  v0.23, with a ``DeprecationWarning`` naming the new one.
+  v0.23, with a ``DeprecationWarning`` naming the new one. Every life model's
+  docstring now gives its formula, what each parameter means (``a`` of
+  the Arrhenius model is :math:`E_a / k_B`, for example), its constraints
+  and an example.
 - **Breaking: GeneralLogLinear fixed, with a constant term, and exported
   (#530, #345).** ``AcceleratedLife(dist, GeneralLogLinear).fit`` raised
   an autograd broadcast ``ValueError`` on any data. The life model is now

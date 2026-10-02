@@ -5,6 +5,35 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class PowerExponential_(LifeModel):
+    r"""
+    The power-exponential life model, for a thermal and a non-thermal
+    stress (temperature with voltage, say): Arrhenius in the first, a
+    power law in the second,
+
+    .. math::
+        L(U, V) = c\, e^{a / U} V^{n},
+
+    with ``U`` the absolute temperature, in kelvin, and ``V`` the other
+    stress (positive), the two columns of ``Z``.
+
+    Parameters (as the fitted model reports them):
+
+    - ``c`` (> 0): a scale constant, the life at unit ``V`` as the
+      temperature grows without bound.
+    - ``a``: the activation energy over Boltzmann's constant, in kelvin,
+      as for :class:`Exponential`.
+    - ``n``: the power of ``V``: doubling ``V`` multiplies the life by
+      :math:`2^{n}`.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval import life_models
+    >>> Z = np.array([[358.0, 2.0]])
+    >>> life_models.PowerExponential.phi(Z, 1e-5, 8000.0, -1.5).round(1)
+    array([17920.9])
+    """
+
     n_stresses = 2
     positive_stress_columns = (1,)
 
