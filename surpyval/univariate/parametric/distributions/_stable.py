@@ -16,10 +16,9 @@ these functions.
 
 from typing import Any, Callable
 
-from autograd.scipy.stats import norm
-
 from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
+from surpyval.utils import normal as norm
 
 # ln 2: log(1 - e^-r) is taken as log1p(-e^-r) above it and as
 # log(-expm1(-r)) below it, each exact on its own side (Maechler, 2012).

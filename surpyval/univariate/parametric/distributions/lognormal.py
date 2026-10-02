@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import numpy.typing as npt
-from autograd.scipy.stats import norm
 from scipy.optimize import brentq
-from scipy.stats import norm as scipy_norm
 
 from surpyval import np
 from surpyval.univariate import parametric as para
@@ -18,6 +16,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
     _offset_start,
 )
+from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import normal_hazard, on_support, positive_or_one
@@ -311,7 +310,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.qf(u, 3, 4)
         array([0.11928899, 0.69316658, 2.46550819, 7.29078766])
         """
-        return np.exp(scipy_norm.ppf(u, mu, sigma))
+        return np.exp(norm.ppf(u, mu, sigma))
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
