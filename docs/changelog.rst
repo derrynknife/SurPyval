@@ -305,6 +305,22 @@ bands change (#477).
   alone (``wrangle_and_check_form_and_Z_cols`` is removed). The
   accelerated-life fitter now has the deprecated ``param_names`` alias
   the other fitters have.
+- **Development: fitted regression models declare their attributes
+  (maintainability sweep, phase 2).** ``ParametricRegressionModel`` and the
+  Cox, ProportionalOdds, Lin-Ying, Buckley-James and Fine-Gray model classes
+  declare every attribute their builders set, with its type and meaning.
+  The covariate links (``Phi``, the additive link and ``from_dict``'s
+  namespace) are one ``CovariateLink`` (``name``, ``phi_param_map``,
+  ``phi``; ``Phi`` remains as an alias so old pickles load). ``fit`` now
+  also sets ``dist``, and ``from_dict`` sets ``distribution_param_map`` and
+  ``phi_param_map``, which only the fits set before. A new conformance
+  property, ``attributes``, checks that ``fit``, ``fit_from_df``, a formula,
+  ``fit_tvc`` and ``from_dict`` give a model the same declared attributes
+  (``from_dict`` less the data and what was computed from it) and nothing
+  undeclared; before this change it failed 33 cases. The regression family
+  names are constants in ``regression/_kinds.py``, and the model branches on
+  ``_is_accelerated_life()`` and ``_is_additive()`` instead of comparing
+  ``kind`` with string literals; ``kind`` and its values are unchanged.
 - **Development: refactors are proven bit-identical.**
   ``scripts/refactor/snapshot.py`` records what every registered model
   computes and says (fits, predictions, every bound, ``to_dict``,

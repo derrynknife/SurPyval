@@ -22,7 +22,6 @@ import pytest
 
 import surpyval as sp
 from surpyval.tests.conformance.registry import (
-    CASE_BY_NAME,
     cases_for,
     refit,
 )
@@ -124,23 +123,3 @@ def test_every_attribute_is_declared(case, builder):
     model = _builders(case)[builder](case.data())
     undeclared = set(vars(model)) - declared(type(model))
     assert not undeclared, sorted(undeclared)
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "#TBD: a model restored by from_dict lacks the attributes "
-        "RESTORED_WITHOUT lists (the data and what came with them): the "
-        "dict does not store them. Whether to declare them None there "
-        "is the maintainer's decision."
-    ),
-)
-@pytest.mark.parametrize(
-    "name", ["WeibullPH", "WeibullAL[Power]", "CoxPH", "AdditiveHazards"]
-)
-def test_a_restored_model_has_every_attribute(name):
-    case = CASE_BY_NAME[name]
-    data = case.data()
-    ref = attributes(refit(case, data))
-    got = attributes(_from_dict(case)(data))
-    assert got == ref, f"missing: {sorted(ref - got)}"
