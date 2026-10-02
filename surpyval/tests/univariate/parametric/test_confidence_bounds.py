@@ -8,6 +8,7 @@ from autograd import hessian, jacobian
 from scipy.special import ndtri as z
 
 import surpyval as surv
+from surpyval.tests._helpers import fresh_conformance_fit, no_warnings
 
 
 @pytest.fixture(scope="module")
@@ -609,3 +610,157 @@ def test_standard_errors_are_scale_equivariant(name, params):
     ), f"{name} parameters moved by {factor}, which is none of {allowed}"
 
     assert se_scaled == pytest.approx(se_base * factor, rel=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# #413: rate bounds where the rate is 0; #414: the discrete
+# hazard's bound is about the model's hazard; #411: a Wald bound
+# that does not exist warns and is nan.
+# ---------------------------------------------------------------------------
+
+
+# -- #413: rate bounds where the rate is 0 ----------------------------------
+def test_rate_bounds_are_zero_below_an_offset():
+    # hf and df are 0 below gamma; their log-scale bounds were log(0),
+    # [nan, nan]. Both bounds are now 0.
+    np.random.seed(3)
+    x = surv.Weibull.random(40, 10, 2) + 5
+    model = surv.Weibull.fit(x, offset=True)
+    assert model.gamma > 4.0
+    for on in ("hf", "df"):
+        cb = no_warnings(model.cb, [1.0, 4.0], on=on)
+        np.testing.assert_array_equal(cb, np.zeros((2, 2)))
+        for side in ("lower", "upper"):
+            np.testing.assert_array_equal(
+                no_warnings(model.cb, [1.0, 4.0], on=on, bound=side),
+                [0.0, 0.0],
+            )
+    # And inside the support they are still a proper interval.
+    t = model.gamma + 5.0
+    lo, hi = model.cb(t, on="hf")
+    assert 0 < lo < model.hf(t) < hi
+
+
+def test_discrete_hazard_bounds_are_zero_where_there_is_no_mass():
+    # The Geometric has no mass at k = 0, so hf(0) = 0; the bounds were
+    # [nan, nan].
+    np.random.seed(4)
+    model = surv.Geometric.fit(surv.Geometric.random(60, 0.3))
+    assert model.hf(0) == 0.0
+    np.testing.assert_array_equal(
+        no_warnings(model.cb, 0, on="hf"), [0.0, 0.0]
+    )
+
+
+# -- #414: the discrete hazard's bound is about the model's hazard ----------
+@pytest.mark.parametrize(
+    "dist, params",
+    [
+        (surv.Poisson, (4.0,)),
+        (surv.Geometric, (0.25,)),
+        (surv.DiscreteWeibull, (0.9, 1.5)),
+    ],
+)
+def test_discrete_hazard_bounds_contain_the_hazard(dist, params):
+    # hf(k) = df(k) / sf(k - 1); the bound was built on df(k) / sf(k):
+    # Poisson(4) at k = 6: hf 0.371 but the bound was about 0.588.
+    np.random.seed(5)
+    model = dist.fit(dist.random(200, *params))
+    k = np.array([2.0, 4.0, 6.0])
+    hf = model.hf(k)
+    np.testing.assert_allclose(hf, model.df(k) / model.sf(k - 1), rtol=1e-12)
+    cb = model.cb(k, on="hf")
+    assert np.all(cb[:, 0] <= hf) and np.all(hf <= cb[:, 1])
+    # A discrete hazard is a probability: the bounds stay in [0, 1].
+    assert np.all((cb >= 0) & (cb <= 1))
+    # The interval closes onto the hazard as alpha_ci -> 1.
+    np.testing.assert_allclose(
+        model.cb(k, on="hf", alpha_ci=1 - 1e-6), np.c_[hf, hf], rtol=1e-5
+    )
+
+
+def test_discrete_lfp_hazard_is_conditioned_on_the_step_before():
+    # Parametric.hf of a limited-failure (or zero-inflated) discrete model
+    # was df(k) / sf(k), not the discrete hazard df(k) / sf(k - 1) that
+    # the distributions and the other models use.
+    model = surv.Poisson.from_params([3.0], p=0.8)
+    k = np.array([0.0, 2.0, 5.0])
+    np.testing.assert_allclose(
+        model.hf(k), model.df(k) / model.sf(k - 1), rtol=1e-12
+    )
+
+
+def test_param_cb_at_the_edge_of_an_interval_support():
+    # ARI's fixture fit puts rho at exactly 1.0, the upper end of (0, 1):
+    # param_cb('rho') raised ZeroDivisionError (the logit of 1), then gave
+    # nan with a warning. Since #461 its interval runs from its one-sided
+    # profile-likelihood bound to the boundary.
+    model = fresh_conformance_fit("ARI")
+    two_sided = no_warnings(model.param_cb, "rho")
+    lower = no_warnings(model.param_cb, "rho", bound="lower")
+    assert two_sided[1] == 1 and 0 < two_sided[0] < 1
+    assert lower.shape == (1,) and two_sided[0] < lower[0] < 1
+
+
+def test_parametric_param_cb_with_a_negative_variance_warns():
+    np.random.seed(8)
+    model = surv.Weibull.fit(surv.Weibull.random(30, 10, 3))
+    model.hess_inv = np.array([[-1.0, 0.0], [0.0, 0.1]])
+    with pytest.warns(RuntimeWarning, match="'alpha' is undefined") as rec:
+        cb = model.param_cb("alpha")
+    assert np.all(np.isnan(cb)) and len(rec) == 1
+    assert rec[0].filename == __file__
+    # The other parameter's bound is unaffected, and silent.
+    assert np.all(np.isfinite(no_warnings(model.param_cb, "beta")))
+
+
+def test_function_cb_with_a_negative_variance_warns():
+    # A covariance that is not positive definite makes the delta-method
+    # variance negative: the bounds were a silent [nan, nan]. (The censored
+    # Uniform fit that showed it is refused since #460, so the covariance
+    # is broken by hand here.)
+    model = fresh_conformance_fit("Weibull")
+    model.cov_matrix = -np.abs(np.asarray(model.hess_inv))
+    with pytest.warns(RuntimeWarning, match=r"df at x = \[1.0, 5.0\]") as rec:
+        cb = model.cb([1.0, 5.0], on="df")
+    assert len(rec) == 1 and rec[0].filename == __file__
+    assert np.all(np.isnan(cb))
+
+
+# ---------------------------------------------------------------------------
+# ``param_cb`` on the offset.
+# ---------------------------------------------------------------------------
+
+
+def test_param_cb_gamma_gives_a_clear_error():
+    np.random.seed(0)
+    x = surv.Weibull.random(50, 10, 2) + 5
+    with pytest.raises(ValueError, match="only estimated for offset"):
+        surv.Weibull.fit(x).param_cb("gamma")
+    with pytest.raises(ValueError, match="threshold parameter"):
+        surv.Weibull.fit(x, offset=True).param_cb("gamma")
+    with pytest.raises(ValueError, match="Unknown parameter 'shape'"):
+        surv.Weibull.fit(x).param_cb("shape")
+
+
+# ---------------------------------------------------------------------------
+# ``param_cb`` on a fixed parameter; an unknown ``bound``.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_param_cb_on_a_fixed_parameter_agrees_between_methods():
+    model = W.fit([1.0, 2, 3, 4, 5, 6], fixed={"beta": 2.0})
+    assert np.array_equal(model.param_cb("beta"), [2.0, 2.0])
+    assert np.array_equal(model.param_cb("beta", method="lr"), [2.0, 2.0])
+    assert np.array_equal(
+        model.param_cb("beta", bound="lower", method="lr"), [2.0]
+    )
+
+
+def test_cb_rejects_an_unknown_bound():
+    model = W.fit([1.0, 2, 3, 4, 5])
+    with pytest.raises(ValueError, match="'bound' must be one of"):
+        model.cb([2.0], bound="both")

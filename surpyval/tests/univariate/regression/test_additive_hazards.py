@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from surpyval import AdditiveHazards
+from surpyval import AdditiveHazards, ExponentialAH
 
 
 def _simulate(N, seed, lambda0=0.5, beta=(0.30, -0.15), tau=6.0):
@@ -193,3 +193,33 @@ class TestRound2FollowUps:
         hf = float(np.ravel(m.hf([5.0], np.array([0.05])))[0])
         assert np.isfinite(hf)
         assert hf < 100.0
+
+
+# ---------------------------------------------------------------------------
+# #277: Lin-Ying ``hf``/``df`` on the hazard scale; ``phi()`` on
+# additive models.
+# ---------------------------------------------------------------------------
+
+
+class TestLinYingHazardRate:
+    def test_hf_df_on_hazard_scale(self):
+        # 277: hf used to return ~beta'Z (the baseline jump vanishes as
+        # n grows); it must estimate h0(t) + beta'Z.
+        np.random.seed(2)
+        n = 20000
+        Z = np.random.uniform(size=(n, 1))
+        t = np.random.exponential(1 / (0.5 + 0.7 * Z[:, 0]))
+        m = AdditiveHazards.fit(x=t, Z=Z)
+        z = np.array([0.5])
+        hf = np.ravel(m.hf([0.5, 1.0, 1.5], z))
+        assert np.all(np.abs(hf - 0.85) < 0.12)
+        df = float(np.ravel(m.df([1.0], z))[0])
+        assert df == pytest.approx(0.85 * np.exp(-0.85), rel=0.15)
+
+    def test_parametric_ah_phi_raises_not_implemented(self):
+        np.random.seed(4)
+        Z = np.random.uniform(size=(300, 1))
+        t = np.random.exponential(1 / (0.5 + 0.7 * Z[:, 0]))
+        m = ExponentialAH.fit(x=t, Z=Z)
+        with pytest.raises(NotImplementedError, match="additive"):
+            m.phi(np.array([0.5]))

@@ -20,6 +20,7 @@ from scipy.stats import chi2
 
 import surpyval as sp
 from surpyval.recurrent import ARA, GeneralizedRenewal
+from surpyval.tests._helpers import fresh_conformance_fit, no_warnings
 from surpyval.tests.conformance.registry import CASES, fitted
 
 X = np.array([1, 3, 6, 9, 10, 1.4, 3, 6.7, 8.9, 11, 1, 2])
@@ -137,3 +138,23 @@ def numerical_hessian_inverse(model):
     from surpyval.utils.linalg import numerical_hessian
 
     return np.linalg.inv(numerical_hessian(model._neg_ll, model._mle))
+
+
+# ---------------------------------------------------------------------------
+# #411: the conformance fixture's fit, ``q`` at 2.7e-16.
+# ---------------------------------------------------------------------------
+
+
+# -- #411: a Wald bound that does not exist warns and is nan ----------------
+def test_param_cb_at_a_restoration_boundary_is_one_sided():
+    # GeneralizedRenewal's fixture fit puts q at 2.7e-16, where the inverse
+    # Hessian's diagonal is negative: param_cb was [nan, nan] with only
+    # numpy's raw "invalid value encountered in sqrt". Since #461 q gets
+    # its one-sided profile-likelihood interval from the boundary, and
+    # alpha the Wald interval of the model held there, without a warning.
+    model = fresh_conformance_fit("GeneralizedRenewal")
+    with np.errstate(all="raise"):
+        q = no_warnings(model.param_cb, "q")
+        alpha = no_warnings(model.param_cb, "alpha")
+    assert q[0] == 0 and 0 < q[1] < 1
+    assert np.all(np.isfinite(alpha)) and alpha[0] < alpha[1]

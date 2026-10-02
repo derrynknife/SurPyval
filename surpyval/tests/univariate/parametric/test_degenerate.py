@@ -10,7 +10,8 @@ import numpy as np
 import pytest
 
 import surpyval
-from surpyval import InstantlyOccurs, NeverOccurs
+import surpyval as surv
+from surpyval import ExactEventTime, InstantlyOccurs, NeverOccurs
 
 X = np.array([0.0, 1.0, 5.0, 100.0])
 
@@ -133,3 +134,48 @@ def test_degenerate_from_dict_checks_the_tag(tmp_path):
     NeverOccurs.to_json(path)
     with pytest.raises(ValueError, match="InstantlyOccurs"):
         InstantlyOccurs.from_json(path)
+
+
+# ---------------------------------------------------------------------------
+# ``ExactEventTime``: an informative error, and its quantile,
+# mean and moments (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_exact_event_time_informative_error():
+    with pytest.raises(ValueError, match="right-censored"):
+        ExactEventTime.fit(np.array([1.0, 2.0, 3.0]), c=np.array([1, 1, 1]))
+
+
+def test_exact_event_time_has_a_quantile_mean_and_moments():
+    # A point mass has no density and no hazard rate -- df and hf raise,
+    # and say why -- but its quantile, mean and moments are all exact and
+    # trivial. They were simply missing, so a caller reaching for the mean
+    # of a known event time got an AttributeError.
+    T = 5.0
+    np.testing.assert_allclose(
+        np.asarray(ExactEventTime.qf([0.01, 0.5, 0.99], T), dtype=float), T
+    )
+    assert ExactEventTime.mean(T) == T
+    assert ExactEventTime.moment(1, T) == T
+    assert ExactEventTime.moment(3, T) == T**3
+    # And the ones that genuinely do not exist still refuse.
+    for method in ("df", "hf"):
+        with pytest.raises(NotImplementedError):
+            getattr(ExactEventTime, method)(np.array([1.0]), T)
+
+
+# ---------------------------------------------------------------------------
+# ``ExactEventTime`` checks; ``FixedEventProbability.mean``.
+# ---------------------------------------------------------------------------
+
+
+def test_exact_event_time_refuses_contradictory_checks():
+    with pytest.raises(ValueError, match="contradict"):
+        surv.ExactEventTime.fit([5, 3], [1, -1])
+
+
+def test_fixed_event_probability_mean_is_its_first_moment():
+    model = surv.FixedEventProbability.from_params([0.3])
+    assert model.mean() == pytest.approx(0.3)
+    assert model.mean() == pytest.approx(model.moment(1))

@@ -293,3 +293,45 @@ def test_truncated_draws_are_still_refused_with_lfp_or_zi():
         Weibull.from_params([10, 3], p=0.8).random(5, a=1.0)
     with pytest.raises(NotImplementedError):
         Weibull.from_params([10, 3], f0=0.1).random_data(5, b=20.0)
+
+
+# ---------------------------------------------------------------------------
+# ``var()`` of LFP / zero-inflated models.
+# ---------------------------------------------------------------------------
+
+
+def test_var_follows_the_defective_convention_of_mean():
+    lfp = surv.Weibull.from_params([10.0, 2.0], p=0.7)
+    # The lifetime's variance is infinite with a cure fraction (#404); the
+    # defective one scores the cured units at 0.
+    assert np.isinf(lfp.var())
+    assert lfp.var(defective=True) == pytest.approx(
+        lfp.moment(2, defective=True) - lfp.mean(defective=True) ** 2
+    )
+    zi = surv.Weibull.from_params([10.0, 2.0], f0=0.2)
+    assert zi.var() == pytest.approx(zi.moment(2) - zi.mean() ** 2)
+    # the zero-inflated variance is the mixture's, checked by simulation
+    np.random.seed(0)
+    draws = zi.random(400_000)
+    assert zi.var() == pytest.approx(np.var(draws), rel=1e-2)
+    # plain and offset models are unchanged
+    plain = surv.Weibull.from_params([10.0, 3.0])
+    assert plain.var() == pytest.approx(10.533288486847923)
+    shifted = surv.Weibull.from_params([10.0, 3.0], gamma=5.0)
+    assert shifted.var() == pytest.approx(10.533288486847923)
+
+
+# ---------------------------------------------------------------------------
+# The zero-inflation mass arrives at zero.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_zero_inflation_mass_arrives_at_zero():
+    for dist, params in ((W, [10, 2]), (G, [0.3])):
+        model = dist.from_params(params, f0=0.1)
+        assert model.ff(-1) == 0.0
+        assert model.sf(-1) == 1.0
+        assert model.ff(0) == pytest.approx(0.1)

@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import (
     Beta,
     Beta4,
@@ -718,3 +719,78 @@ def test_a_fit_never_returns_non_finite_parameters():
     ):
         with pytest.raises(ValueError):
             dist.fit(x)
+
+
+# ---------------------------------------------------------------------------
+# Negative LogNormal ``mu``, and MPP with offsets and censoring
+# (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_lognormal_fits_negative_mu():
+    # mu (mean of log-data) is any real; a (0, None) bound crashed every
+    # fit with geometric mean < 1.
+    np.random.seed(0)
+    m = LogNormal.fit(LogNormal.random(500, -0.5, 0.5))
+    assert m.params[0] == pytest.approx(-0.5, abs=0.1)
+
+
+def test_exponential_offset_mpp_rr_x_inversion():
+    np.random.seed(0)
+    x = Exponential.random(2000, 0.5) + 10
+    m = Exponential.fit(x, how="MPP", rr="x", offset=True)
+    assert m.params[0] == pytest.approx(0.5, rel=0.3)
+    assert m.gamma == pytest.approx(10.0, abs=0.5)
+
+
+def test_gamma_censored_mpp_rr_x_does_not_crash():
+    # Was a LinAlgError: rr="x" regressed the filtered y against the raw
+    # x whenever censoring filtered any point (#257). Gamma declines MPP
+    # entirely now (#158), so the crashing path is unreachable -- the
+    # refusal arrives before any regression is attempted.
+    np.random.seed(1)
+    x = Gamma.random(300, 3, 2)
+    c = (x > 2.5).astype(int)
+    with pytest.raises(ValueError, match="does not work with probability"):
+        Gamma.fit(np.minimum(x, 2.5), c=c, how="MPP", rr="x")
+
+
+@pytest.mark.parametrize("rr", ["x", "y"])
+def test_gamma_offset_mpp_recovers_offset(rr):
+    # Gamma no longer offers MPP at all (#158): the probability plot's
+    # own y-axis is the inverse incomplete gamma, which needs the shape
+    # being estimated, so the fit regressed against an axis built from a
+    # guess and returned a confident wrong answer. It now refuses.
+    np.random.seed(2)
+    x = Gamma.random(300, 3, 2) + 10
+    with pytest.raises(ValueError, match="does not work with probability"):
+        Gamma.fit(x, how="MPP", rr=rr, offset=True)
+
+    # The offset recovery this test existed to protect still holds under
+    # the estimators Gamma does support.
+    m = Gamma.fit(x, offset=True)
+    assert m.gamma == pytest.approx(10.0, abs=1.5)
+    assert m.params[0] == pytest.approx(3.0, rel=0.5)
+
+
+# ---------------------------------------------------------------------------
+# An MPP offset stays below the first failure; ``fit_from_ecdf``
+# needs a distribution with a line.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_exponential_mpp_offset_stays_below_the_first_failure():
+    np.random.seed(1)
+    x = E.random(500, 0.1) + 5
+    model = E.fit(x, offset=True, how="MPP")
+    assert model.gamma < x.min()
+    assert np.isfinite(model.neg_ll())
+
+
+def test_fit_from_ecdf_refuses_distributions_without_a_line():
+    for dist in (surv.Gamma, E, surv.Beta):
+        with pytest.raises(ValueError, match="cannot be fitted to an ECDF"):
+            dist.fit_from_ecdf([1, 2, 3, 4], [0.1, 0.3, 0.6, 0.9])

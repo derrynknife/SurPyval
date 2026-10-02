@@ -12,6 +12,7 @@ import pytest
 import scipy.stats as st
 from scipy.stats import geom, nbinom, poisson
 
+import surpyval as surv
 from surpyval import (
     Bernoulli,
     BetaGeometric,
@@ -693,3 +694,103 @@ def test_beta_geometric_mean_agrees_with_its_first_moment():
         assert BetaGeometric.moment(1, a, b) == pytest.approx(
             BetaGeometric.mean(a, b)
         )
+
+
+# ---------------------------------------------------------------------------
+# Offsets are refused for discrete distributions; the
+# Beta-Geometric method of moments.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dist, x",
+    [
+        (surv.DiscreteWeibull, [6, 7, 7, 8, 9, 11]),
+        (surv.Geometric, [6, 7, 7, 8, 9, 11]),
+        (surv.Discretize(surv.Weibull), [6, 7, 7, 8, 9, 11]),
+    ],
+)
+def test_discrete_distributions_cannot_be_offset(dist, x):
+    with pytest.raises(ValueError, match="discrete distribution"):
+        dist.fit(x, offset=True)
+
+
+def test_beta_geometric_mom_matches_the_moments():
+    np.random.seed(0)
+    x = surv.BetaGeometric.random(2000, 5.0, 3.0)
+    model = surv.BetaGeometric.fit(x, how="MOM")
+    assert not np.allclose(model.params, [1.0, 1.0])
+    assert model.params[0] > 2
+    np.testing.assert_allclose(model.moment(1), x.mean(), rtol=1e-10)
+    np.testing.assert_allclose(model.moment(2), (x**2).mean(), rtol=1e-10)
+
+
+def test_beta_geometric_second_moment_is_exact():
+    a, b = 5.0, 3.0
+    c = a + b - 1
+    exact = 2 * c * (c - 1) / ((a - 1) * (a - 2)) - c / (a - 1)
+    assert surv.BetaGeometric.moment(2, a, b) == pytest.approx(exact)
+    assert exact == pytest.approx(5.25)
+
+
+def test_beta_geometric_mom_refuses_underdispersed_data():
+    with pytest.raises(ValueError, match="no Beta-Geometric solution"):
+        surv.BetaGeometric.fit([1, 2] * 50, how="MOM")
+
+
+# ---------------------------------------------------------------------------
+# Exact moments; non-integer data are refused; ``discretize``
+# round-trips.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_beta_geometric_higher_moments_are_exact():
+    BG = surv.BetaGeometric
+    assert BG.moment(3, 5, 3) == pytest.approx(33.25, rel=1e-12)
+    assert BG.moment(3, 4, 3) == pytest.approx(92.0, rel=1e-12)
+    assert BG.moment(4, 3.5, 2) == np.inf
+
+
+@pytest.mark.parametrize(
+    "dist, params",
+    [
+        (G, (0.3,)),
+        (surv.Poisson, (2.5,)),
+        (surv.NegativeBinomial, (3.0, 0.4)),
+        (surv.BetaGeometric, (5.0, 3.0)),
+    ],
+)
+def test_discrete_first_moment_is_the_mean(dist, params):
+    assert dist.moment(1, *params) == dist.mean(*params)
+
+
+def test_discrete_moments_are_exact():
+    assert G.moment(2, 0.2) == pytest.approx(45.0, rel=1e-14)
+    assert G.moment(3, 0.3) == pytest.approx(158.88888888888889, rel=1e-14)
+    assert surv.Poisson.moment(3, 2.5) == pytest.approx(36.875, rel=1e-14)
+    assert surv.NegativeBinomial.moment(2, 3.0, 0.4) == pytest.approx(
+        41.5, rel=1e-14
+    )
+
+
+@pytest.mark.parametrize(
+    "dist, x",
+    [
+        (G, [1.5, 2.2, 3.7, 1.1]),
+        (surv.Poisson, [-0.5, 1, 2, 3]),
+        (surv.Discretize(W), [1, 2, 2.5, 3]),
+    ],
+)
+def test_discrete_fits_refuse_non_integer_data(dist, x):
+    with pytest.raises(ValueError, match="whole numbers"):
+        dist.fit(x)
+
+
+def test_discretize_round_trips():
+    model = surv.Discretize(W).fit([1, 2, 2, 3, 4, 5, 3, 2])
+    restored = surv.from_dict(model.to_dict())
+    assert restored.dist.name == "Discretize(Weibull)"
+    assert np.allclose(restored.sf([1, 3, 5]), model.sf([1, 3, 5]))

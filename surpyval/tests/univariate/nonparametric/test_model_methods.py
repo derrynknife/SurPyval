@@ -11,7 +11,12 @@ import pytest  # noqa: E402
 
 import surpyval  # noqa: E402
 import surpyval as sp  # noqa: E402
-from surpyval import NonParametric  # noqa: E402
+from surpyval import (  # noqa: E402
+    CoxPH,
+    KaplanMeier,
+    NelsonAalen,
+    NonParametric,
+)
 from surpyval.tests._helpers import (  # noqa: E402
     TURNBULL_MIXED_CENSORING,
     fit_turnbull_quietly,
@@ -20,6 +25,9 @@ from surpyval.tests._helpers import (  # noqa: E402
     small_kaplan_meier,
 )
 from surpyval.univariate import nonparametric as nonp  # noqa: E402
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (  # noqa: E402, E501
+    check_ph,
+)
 
 
 def test_qf_uncensored():
@@ -386,3 +394,34 @@ def test_mean_rejects_negative_tau():
     with pytest.raises(ValueError, match="tau"):
         small_kaplan_meier().mean(tau=-1)
     assert small_kaplan_meier().mean(tau=0) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# #282: scalar inputs and a single observation.
+# ---------------------------------------------------------------------------
+
+
+class TestNonParametricScalars:
+    def test_scalar_hf_df_finite(self):
+        na = NelsonAalen.fit([1.0, 2, 3, 4, 5])
+        assert float(np.ravel(na.hf(2.5))[0]) == pytest.approx(0.25)
+        assert np.isfinite(float(np.ravel(na.df(2.5))[0]))
+        # Matches what the array path returns for the same point.
+        grid = np.ravel(na.hf([1.5, 2.5]))
+        assert float(np.ravel(na.hf(2.5))[0]) == pytest.approx(grid[1])
+
+    def test_single_observation_cb_drawable(self):
+        km = KaplanMeier.fit([5.0])
+        cb = np.asarray(km.cb([5.0], on="sf"), dtype=float)
+        assert np.all(np.isfinite(cb))
+
+    def test_check_ph_no_spurious_truncation_warning(self):
+        import warnings as _w
+
+        np.random.seed(7)
+        x = np.random.exponential(2.0, 60)
+        Z = np.random.normal(size=(60, 1))
+        m = CoxPH.fit(x=x, Z=Z, tl=np.zeros(60))
+        with _w.catch_warnings():
+            _w.simplefilter("error")
+            check_ph(m)

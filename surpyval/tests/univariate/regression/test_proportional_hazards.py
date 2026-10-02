@@ -847,3 +847,43 @@ def test_cox_fit_is_unaffected_by_the_order_of_the_rows():
         np.testing.assert_allclose(
             a.jac(a.beta)[1], b.jac(b.beta)[1], rtol=1e-9, atol=1e-10
         )
+
+
+# ---------------------------------------------------------------------------
+# #271: parametric PH ``random()`` samples the model's own
+# distribution and supports multi-covariate models.
+# ---------------------------------------------------------------------------
+
+
+class TestPHRandom:
+    def test_random_matches_model_sf(self):
+        # 271: draws must come from S(x|Z) = S0(x)^phi.
+        np.random.seed(1)
+        u = np.random.uniform(size=3000)
+        Z = np.random.binomial(1, 0.5, 3000).reshape(-1, 1)
+        phi = np.exp(1.0 * Z[:, 0])
+        t = 10 * (-np.log(u) / phi) ** 0.5
+        m = WeibullPH.fit(x=t, Z=Z)
+
+        np.random.seed(2)
+        xs, zs = m.random(100_000, np.array([[1.0]]))
+        for tt in (2.0, 4.0, 6.0):
+            emp = (np.asarray(xs) > tt).mean()
+            mod = float(np.ravel(m.sf(tt, np.array([[1.0]])))[0])
+            assert emp == pytest.approx(mod, abs=0.01)
+
+    def test_random_two_covariates(self):
+        # 271: used to raise a broadcast ValueError for >= 2 covariates.
+        np.random.seed(3)
+        t = 10 * np.random.weibull(2, 500)
+        Z = np.hstack(
+            [
+                np.random.binomial(1, 0.5, 500).reshape(-1, 1),
+                np.random.normal(size=(500, 1)),
+            ]
+        )
+        m = WeibullPH.fit(x=t, Z=Z)
+        x, z_out = m.random(7, np.array([[1.0, 0.5]]))
+        assert np.shape(x) == (7,)
+        assert np.shape(z_out) == (7, 2)
+        assert np.all(np.isfinite(x))

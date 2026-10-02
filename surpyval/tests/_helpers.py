@@ -6,6 +6,7 @@ import numpy as np
 
 import surpyval as sp
 from surpyval import Turnbull
+from surpyval.tests.conformance.registry import CASE_BY_NAME
 
 
 def linear_degradation_units(
@@ -93,3 +94,11 @@ def fit_turnbull_quietly(**kwargs):
 
 def small_kaplan_meier():
     return sp.KaplanMeier.fit([1, 2, 3, 4, 5], c=[0, 1, 0, 0, 1])
+
+
+def fresh_conformance_fit(name):
+    # A fresh fit of a conformance fixture, not the shared cached one.
+    case = CASE_BY_NAME[name]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return case.fit(case.data())

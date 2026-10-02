@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+from surpyval import Logistic
 
 
 def _quiet(f, *args):
@@ -215,3 +216,13 @@ def test_censored_and_truncated_fits_give_finite_bounds(name):
             model = dist.fit(x, **kw)
         for param in dist.parameter_names:
             assert np.all(np.isfinite(model.param_cb(param))), (kw, param)
+
+
+# ---------------------------------------------------------------------------
+# The Logistic's log functions deep in the tail (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_logistic_log_functions_deep_tail():
+    assert np.isfinite(Logistic.log_sf(np.array([-800000.0]), 0.0, 1.0)).all()
+    assert np.isfinite(Logistic.log_ff(np.array([800000.0]), 0.0, 1.0)).all()

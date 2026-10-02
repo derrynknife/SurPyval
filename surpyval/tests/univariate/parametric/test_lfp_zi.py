@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import (
     Beta,
     Gamma,
@@ -10,8 +11,10 @@ from surpyval import (
     LogLogistic,
     LogNormal,
     Normal,
+    Rayleigh,
     Weibull,
 )
+from surpyval.tests._helpers import no_warnings
 
 
 def test_zi():
@@ -249,3 +252,131 @@ def test_entropy_raises_with_a_probability_atom():
         Weibull.from_params([10.0, 2.0], p=0.6).entropy()
     with pytest.raises(ValueError, match="probability atom"):
         LogNormal.from_params([2.0, 0.4], f0=0.2).entropy()
+
+
+# ---------------------------------------------------------------------------
+# Rayleigh fits with LFP and ZI (#257).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("structural", ["lfp", "zi"])
+def test_rayleigh_fits_with_lfp_and_zi(structural):
+    np.random.seed(0)
+    x = Rayleigh.random(200, 10.0)
+    if structural == "zi":
+        x = np.concatenate([x, np.zeros(10)])
+    model = Rayleigh.fit(x, **{structural: True})
+    # The sigma estimate is unaffected; the point is that it runs at all.
+    assert model.params[0] == pytest.approx(9.92, abs=0.5)
+
+
+# ---------------------------------------------------------------------------
+# A distribution parameter named ``p`` (Geometric,
+# NegativeBinomial) beside the LFP proportion.
+# ---------------------------------------------------------------------------
+
+
+def test_param_cb_on_a_distribution_parameter_named_p():
+    np.random.seed(0)
+    model = surv.Geometric.fit(surv.Geometric.random(200, 0.15))
+    wald = model.param_cb("p")
+    lr = model.param_cb("p", method="lr")
+    p_hat = model.params[0]
+    for bound in (wald, lr):
+        assert bound[0] < p_hat < bound[1]
+        assert 0 < bound[0] and bound[1] < 1
+
+
+@pytest.mark.parametrize(
+    "dist, x, c",
+    [
+        (surv.Geometric, [1, 2, 2, 3, 5, 8, 10], [0, 0, 0, 0, 0, 1, 1]),
+        (
+            surv.NegativeBinomial,
+            [1, 2, 2, 3, 3, 4, 5, 6, 8, 10, 12, 12],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1],
+        ),
+    ],
+)
+def test_lfp_fit_for_a_distribution_parameter_named_p(dist, x, c):
+    model = dist.fit(x, c=c, lfp=True)
+    assert model.lfp_name == "lfp_p"
+    assert len(model.params) == dist.k
+    assert 0 < model.p < 1
+    # the two p's are distinct parameters with distinct bounds
+    assert model.param_cb("p")[0] < model.params[dist.param_map["p"]]
+    lfp_bound = model.param_cb("lfp_p")
+    assert lfp_bound[0] < model.p < lfp_bound[1]
+    assert "Max Proportion (lfp_p)" in repr(model)
+
+
+def test_lfp_proportion_can_be_fixed_by_its_own_name():
+    model = surv.Geometric.fit(
+        [1, 2, 2, 3, 5, 8, 10],
+        c=[0, 0, 0, 0, 0, 1, 1],
+        lfp=True,
+        fixed={"lfp_p": 0.8},
+    )
+    assert model.p == pytest.approx(0.8)
+    # the Weibull's LFP proportion keeps its usual name
+    weibull = surv.Weibull.fit(
+        [1, 2, 3, 4, 5, 6], c=[0, 0, 0, 0, 1, 1], lfp=True, fixed={"p": 0.8}
+    )
+    assert weibull.lfp_name == "p"
+    assert weibull.p == pytest.approx(0.8)
+
+
+# ---------------------------------------------------------------------------
+# LFP and ZI fit quietly without zeros.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_lfp_and_zi_without_zeros_fit_quietly():
+    no_warnings(
+        W.fit,
+        [1.0, 2, 3, 4, 5, 6, 7, 8],
+        [0, 0, 0, 0, 0, 1, 1, 1],
+        lfp=True,
+        zi=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# #269: LFP with left truncation uses the mixture survival in
+# the truncation normaliser.
+# ---------------------------------------------------------------------------
+
+
+class TestLFPTruncation:
+    def test_lfp_left_truncated_recovers_parameters(self):
+        # 269: the old normaliser (p - f0) * (1 - F0(tl)) made the
+        # likelihood unbounded; the fit returned alpha ~ 1e-42.
+        np.random.seed(11)
+        N = 30000
+        is_mortal = np.random.uniform(size=N) < 0.6
+        t = np.where(is_mortal, 10 * np.random.weibull(2, N), np.inf)
+        entry = 3.0
+        t_seen = t[t > entry]
+        observed = t_seen < 20
+        x = np.where(observed, t_seen, 20.0)
+        c = (~observed).astype(int)
+
+        model = Weibull.fit(x=x, c=c, tl=np.full(len(x), entry), lfp=True)
+        alpha, beta = model.params
+        assert alpha == pytest.approx(10.0, rel=0.05)
+        assert beta == pytest.approx(2.0, rel=0.05)
+        assert model.p == pytest.approx(0.6, abs=0.03)
+
+    def test_plain_interval_likelihood_unchanged(self):
+        # The f0 terms cancel for finite bounds: a plain interval-censored
+        # fit must be unaffected by the 269 change.
+        np.random.seed(12)
+        t = 10 * np.random.weibull(2, 2000)
+        xl = np.floor(t)
+        xr = xl + 1.0
+        model = Weibull.fit(x=np.column_stack([xl, xr]), c=np.full(2000, 2))
+        assert model.params[0] == pytest.approx(10.0, rel=0.05)
+        assert model.params[1] == pytest.approx(2.0, rel=0.1)

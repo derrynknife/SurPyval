@@ -9,6 +9,7 @@ fits passed unshifted truncation bounds to the shifted distribution.
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import Weibull
 
 
@@ -91,3 +92,21 @@ class TestRound2FollowUps:
             2.0,
         )
         assert np.isinf(v)
+
+
+# ---------------------------------------------------------------------------
+# MPS error messages.
+# ---------------------------------------------------------------------------
+
+
+def test_mps_truncation_messages_have_no_space_run():
+    x = [1.0, 2.0, 3.0, 4.0, 5.0]
+    with pytest.raises(ValueError) as err:
+        surv.Weibull.fit(x, how="MPS", tl=[0, 0, 0.5, 0, 0])
+    assert "  " not in str(err.value)
+    assert str(err.value) == (
+        "Left truncated value can only be single number when using MPS"
+    )
+    with pytest.raises(ValueError) as err:
+        surv.Weibull.fit(x, how="MPS", tr=[10, 10, 10, 10, 9])
+    assert "  " not in str(err.value)

@@ -331,3 +331,21 @@ def test_lognormal_offset_mom_matches_three_moments_exactly() -> None:
     w = np.exp(model.params[1] ** 2)
     skew = np.mean(centred**3) / np.mean(centred**2) ** 1.5
     assert (w + 2) * np.sqrt(w - 1) == pytest.approx(skew, rel=1e-10)
+
+
+# ---------------------------------------------------------------------------
+# MPS and MSE are scale invariant.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+@pytest.mark.parametrize("how", ["MPS", "MSE"])
+@pytest.mark.parametrize("k", [1e3, 1e-3])
+def test_mps_and_mse_are_scale_invariant(how, k):
+    np.random.seed(3)
+    x = W.random(200, 10, 2)
+    base = W.fit(x, how=how).params
+    scaled = W.fit(x * k, how=how).params
+    assert scaled / [k, 1] == pytest.approx(base, rel=1e-5)

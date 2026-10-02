@@ -12,7 +12,9 @@ import pytest
 from scipy.stats import lognorm
 
 import surpyval as sp
+import surpyval as surv
 from surpyval.tests.conformance.registry import reg_data, stress_data, uni_data
+from surpyval.univariate.parametric.fitters import fallback_minimize
 
 UNVERIFIED = "did not reach a verified maximum"
 # The Beta4 case can also end on the edge where its likelihood is infinite,
@@ -235,3 +237,45 @@ def test_an_additive_hazards_fit_with_no_maximum_says_so():
 def test_an_additive_hazards_fit_at_its_maximum_is_silent():
     model = _silent(sp.WeibullAH.fit, **reg_data())
     assert np.isfinite(model.params).all()
+
+
+# ---------------------------------------------------------------------------
+# ``fallback_minimize`` ends on Nelder-Mead.
+# ---------------------------------------------------------------------------
+
+
+def test_fallback_minimize_last_rung_is_nelder_mead():
+    # A jacobian that is wrong everywhere makes BFGS fail and a zero
+    # hessian skips Newton-CG, so the last rung must finish the job. The
+    # objective has a kink at its minimum, where finite-difference BFGS
+    # (the old last rung) loses precision and fails too.
+    def fun(v):
+        return abs(v[0] - 3.0) + abs(v[1] + 1.0)
+
+    def bad_jac(v):
+        return np.array([1.0, 1.0])
+
+    def zero_hess(v):
+        return np.zeros((2, 2))
+
+    res = fallback_minimize(fun, np.array([0.0, 0.0]), (), bad_jac, zero_hess)
+    assert res.success
+    # Nelder-Mead reports no gradient; either BFGS would
+    assert "jac" not in res
+    np.testing.assert_allclose(res.x, [3.0, -1.0], atol=1e-3)
+
+
+# ---------------------------------------------------------------------------
+# MSE keeps the better optimum across its fallbacks.
+# ---------------------------------------------------------------------------
+
+
+def test_mse_keeps_the_better_optimum_across_its_fallbacks():
+    np.random.seed(3)
+    x = surv.Normal.random(200, 5.0, 2.0)
+    cens = float(np.quantile(x, 0.85))
+    c = (x > cens).astype(int)
+    xc = np.where(x > cens, cens, x)
+    base = surv.Normal.fit(xc, c, how="MSE").params
+    small = surv.Normal.fit(xc * 1e-3, c, how="MSE").params
+    assert small * 1e3 == pytest.approx(base, rel=1e-5)

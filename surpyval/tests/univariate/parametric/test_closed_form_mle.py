@@ -11,6 +11,7 @@ and ``cb``.
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import Exponential, LogNormal, Normal, Uniform, Weibull
 
 SEED = 20260801
@@ -279,3 +280,23 @@ def test_uniform_offers_no_covariance():
     assert model.cov_matrix is None
     with pytest.raises(ValueError, match="covariance"):
         model.cb([3.0, 5.0])
+
+
+# ---------------------------------------------------------------------------
+# A closed-form model has the support a restored one has.
+# ---------------------------------------------------------------------------
+
+
+def test_closed_form_models_have_the_support_a_restored_one_has():
+    for model in (
+        surv.Bernoulli.fit([0, 1, 1, 0, 1]),
+        surv.FixedEventProbability.fit([0, 1, 1]),
+        surv.ExactEventTime.fit([2, 3, 5], [1, 1, -1]),
+        surv.Binomial.from_params([5, 0.3]),
+    ):
+        restored = surv.from_dict(model.to_dict())
+        assert np.array_equal(model.support, restored.support)
+    assert np.array_equal(
+        surv.from_dict(surv.Binomial.from_params([5, 0.3]).to_dict()).support,
+        [-1, 6],
+    )

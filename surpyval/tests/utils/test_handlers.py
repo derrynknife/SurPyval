@@ -350,3 +350,46 @@ def test_fsli_handler_messages():
     with pytest.raises(ValueError) as err:
         fsli_handler(i=[[2, 1]])
     assert "  " not in str(err.value)
+
+
+# ---------------------------------------------------------------------------
+# #281: the ``xrd_to_xcnt`` late-entry guard, and #282's data
+# containers.
+# ---------------------------------------------------------------------------
+
+
+class TestDataHandling:
+    def test_xrd_to_xcnt_rejects_late_entry(self):
+        # 281: np.abs silently converted late-entry data into a
+        # different study.
+        with pytest.raises(ValueError, match="risk set increases"):
+            xrd_to_xcnt(
+                np.array([1.0, 2, 3, 4]),
+                np.array([2, 3, 2, 1]),
+                np.array([1, 1, 1, 1]),
+            )
+
+    def test_xrd_to_xcnt_monotone_unchanged(self):
+        x, c, n, t = xrd_to_xcnt(
+            np.array([1.0, 2, 3, 4]),
+            np.array([4, 3, 2, 1]),
+            np.array([1, 1, 1, 1]),
+        )
+        assert np.asarray(x).tolist() == [1.0, 2.0, 3.0, 4.0]
+        assert np.asarray(c).tolist() == [0, 0, 0, 0]
+
+    def test_surpyval_data_scalar_interval_index(self):
+        d = SurpyvalData([1, 2, [2, 5], 3, 6], c=[0, 1, 2, 0, 0])
+        row = d[2]
+        assert row.x.ndim == 2  # keeps the interval row structure
+
+    def test_surpyval_data_slice_keeps_covariates(self):
+        d = SurpyvalData([3, 1, 2], Z=[[1], [2], [3]])
+        assert d[0:2].Z is not None
+        assert d[0:2].Z.shape == (2, 1)
+
+    def test_to_xrd_cache_respects_estimator(self):
+        d = SurpyvalData([1, 2, 3, 4], c=[1, 0, 0, 0])
+        a = d.to_xrd(estimator="Nelson-Aalen")
+        b = d.to_xrd(estimator="Kaplan-Meier")
+        assert a is not b

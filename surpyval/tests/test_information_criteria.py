@@ -22,6 +22,7 @@ import surpyval as surv
 from surpyval import Exponential, Weibull, WeibullAFT, WeibullPH
 from surpyval.multivariate import Clayton
 from surpyval.recurrent import HPP
+from surpyval.tests._helpers import no_warnings
 from surpyval.univariate.parametric.royston_parmar import RoystonParmar
 
 N = 80
@@ -317,3 +318,81 @@ def test_copula_old_dict_restores_with_its_row_count(clayton_sample):
     assert restored.bic() == pytest.approx(
         model.k * np.log(200) + 2 * model.neg_ll()
     )
+
+
+# ---------------------------------------------------------------------------
+# AIC and BIC count only the estimated parameters.
+# ---------------------------------------------------------------------------
+
+
+def test_information_criteria_exclude_fixed_parameters():
+    np.random.seed(0)
+    x = surv.Weibull.random(50, 10, 2)
+    model = surv.Weibull.fit(x, fixed={"beta": 2})
+    n_obs = len(x)
+    assert model.aic() == pytest.approx(2 * 1 + 2 * model.neg_ll())
+    assert model.bic() == pytest.approx(np.log(n_obs) + 2 * model.neg_ll())
+    assert model.aic_c() == pytest.approx(
+        model.aic() + (2 * 1 + 2 * 1) / (n_obs - 1 - 1)
+    )
+    # the fixed-shape Weibull and the Rayleigh are the same model with
+    # the same single free parameter, so they score the same
+    rayleigh = surv.Rayleigh.fit(x)
+    fixed = surv.Weibull.fit(x, fixed={"beta": 2})
+    assert fixed.aic() == pytest.approx(rayleigh.aic(), rel=1e-6)
+    # a free fit still counts both
+    free = surv.Weibull.fit(x)
+    assert free.aic() == pytest.approx(2 * 2 + 2 * free.neg_ll())
+
+
+def test_fixed_offset_and_lfp_are_not_counted_either():
+    np.random.seed(0)
+    x = surv.Weibull.random(60, 10, 2) + 5
+    model = surv.Weibull.fit(x, offset=True, fixed={"gamma": 4.0})
+    assert model.aic() == pytest.approx(2 * 2 + 2 * model.neg_ll())
+
+
+def test_restored_model_keeps_the_estimated_parameter_count():
+    np.random.seed(0)
+    x = surv.Weibull.random(50, 10, 2)
+    model = surv.Weibull.fit(x, fixed={"beta": 2})
+    d = model.to_dict(with_data=True)
+    assert d["fixed"] == ["beta"]
+    restored = surv.from_dict(d)
+    assert restored.aic() == pytest.approx(model.aic())
+    assert restored.bic() == pytest.approx(model.bic())
+    assert restored.to_dict(with_data=True)["fixed"] == ["beta"]
+    # no fixed parameters: no key
+    assert "fixed" not in surv.Weibull.fit(x).to_dict()
+
+
+# ---------------------------------------------------------------------------
+# BIC without exact failures; AIC_c without enough observations.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_bic_is_finite_without_exact_failures():
+    model = W.fit(xl=np.arange(1, 20), xr=np.arange(2, 21))
+    bic = no_warnings(model.bic)
+    assert np.isfinite(bic)
+    assert bic == pytest.approx(2 * np.log(19) + 2 * model.neg_ll())
+
+
+def test_bic_counts_exact_failures_only_for_exact_and_right_censored():
+    model = W.fit([1.0, 2, 3, 4, 5, 6], c=[0, 0, 0, 0, 1, 1])
+    assert model.bic() == pytest.approx(2 * np.log(4) + 2 * model.neg_ll())
+
+
+@pytest.mark.parametrize("x", [[1.0, 2.0, 3.0], [1.0, 2.0]])
+def test_aic_c_is_nan_without_enough_observations(x):
+    model = W.fit(x) if len(x) == 3 else W.fit(x, fixed={"beta": 2.0})
+    if len(x) == 2:
+        # k = 1, N = 2: N = k + 1
+        assert np.isnan(no_warnings(model.aic_c))
+    else:
+        # k = 2, N = 3: N = k + 1
+        assert np.isnan(no_warnings(model.aic_c))
+    assert not model.aic_c() < model.aic()

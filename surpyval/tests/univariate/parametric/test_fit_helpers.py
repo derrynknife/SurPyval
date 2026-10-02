@@ -14,7 +14,12 @@ from surpyval import (
     Beta,
     Beta4,
     Exponential,
+    Gumbel,
+    GumbelLEV,
+    Logistic,
+    LogNormal,
     Normal,
+    Rayleigh,
     Uniform,
     Weibull,
 )
@@ -217,3 +222,61 @@ def test_set_support_uniform_is_data_dependent():
     model = _make_model([2.0, 7.0])
     Uniform._set_support(model, offset=False)
     assert np.array_equal(model.support, [2.0, 7.0])
+
+
+# ---------------------------------------------------------------------------
+# Rayleigh's initial guess is a sequence;
+# ``_parameter_initialiser`` takes a ``SurpyvalData`` (#257).
+# ---------------------------------------------------------------------------
+
+
+# --- Rayleigh's initial guess had to be a sequence ------------------------
+#
+# Rayleigh is the only single-parameter distribution here, and its
+# _parameter_initialiser returned a bare scalar for the non-offset case.
+# `np.array(init)` in _initial_guess then produced a 0-dimensional array
+# rather than a length-1 one, and the lfp and zi paths concatenate the p
+# and f0 seeds onto it -- which a 0-d array cannot do.
+
+
+def test_rayleigh_initial_guess_is_a_sequence():
+    seed = Rayleigh._parameter_initialiser(
+        SurpyvalData(np.array([1.0, 2.0, 3.0, 4.0]))
+    )
+    assert np.array(seed).ndim == 1
+
+
+# --- _parameter_initialiser takes a SurpyvalData -------------------------
+#
+# It used to take (x, c=None, n=None, t=None, offset=False), and every
+# implementation re-established the conventions that SurpyvalData had
+# already guaranteed -- inconsistently. Normal indexed with c and Gumbel
+# tested membership on it before either was defaulted, so both raised
+# TypeError for the signature the base class documented; every caller
+# inside the package passed c and n, which is why it went unnoticed.
+# There is now nothing to default: the argument is the normalised
+# object, so c, n and t are always arrays.
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_takes_surpyval_data(dist):
+    x = np.array([1.0, 2.0, 3.0, 4.0, 5.5])
+    seed = dist._parameter_initialiser(SurpyvalData(x))
+    assert np.asarray(seed).ndim == 1
+    assert np.isfinite(np.asarray(seed, dtype=float)).all()
+
+
+@pytest.mark.parametrize(
+    "dist",
+    [Normal, Gumbel, GumbelLEV, Weibull, LogNormal, Logistic, Rayleigh],
+)
+def test_parameter_initialiser_rejects_loose_arrays(dist):
+    # The old signature is gone rather than deprecated. Passing a bare
+    # array reaches the ``.x`` attribute access and fails loudly, which
+    # is the point: a silent partial acceptance is what let the c=None
+    # divergence above survive.
+    with pytest.raises(AttributeError):
+        dist._parameter_initialiser(np.array([1.0, 2.0, 3.0]))
