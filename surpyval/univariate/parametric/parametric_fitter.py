@@ -2286,7 +2286,12 @@ turnbull_estimator
             # alternatives are tried too.
             user_init = init is not None and len(np.atleast_1d(init)) > 0
             starts: list = []
-            if how == "MLE" and user_init:
+            from surpyval.utils.refits import warm_starts_on
+
+            # A warm start (``utils.refits.warm_starts``) that reached a
+            # verified maximum is not searched from the default too.
+            warm = warm_starts_on() and results.get("_verified", False)
+            if how == "MLE" and user_init and not warm:
                 starts = [[]]
             if how == "MLE" and not fixed:
                 if not user_init or not results["_verified"]:
