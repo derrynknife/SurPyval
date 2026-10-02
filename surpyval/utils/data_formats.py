@@ -975,10 +975,10 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     of a two-column ``x`` with different ends.
     """
     if c is None:
-        c_arr = np.zeros(x.shape[0])
+        default = np.zeros(x.shape[0])
         if x.ndim != 1:
-            c_arr[x[:, 0] != x[:, 1]] = 2
-        return c_arr
+            default[x[:, 0] != x[:, 1]] = 2
+        return default
 
     c_arr = np.atleast_1d(np.array(c))
     if c_arr.ndim == 2 and c_arr.shape[1] == 1:
