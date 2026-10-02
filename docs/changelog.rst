@@ -200,6 +200,30 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Fixed: rows censored with a finite truncation bound are read as the
+  intervals they are in the fit checks (#559).** Data whose every row is
+  right censored with a finite ``tr`` (or left censored with a finite
+  ``tl``) was refused as having no failure, from the raw censoring codes.
+  The checks and the start guess now read each row as the likelihood does.
+  Such data still bounds no failure from one side, so its likelihood has
+  no finite maximum unless a parameter is fixed: a free two-parameter fit
+  is refused, as the same rows written as intervals are; a fit with a
+  parameter fixed equals the interval fit; and the Exponential, Rayleigh,
+  Poisson, Geometric, NegativeBinomial and DiscreteWeibull fits, which
+  stopped at ``failure_rate = 3.6e-7`` or ``sigma = 313.5`` and reported
+  it verified, warn "No finite maximum". MPS still refuses data with no
+  exact value.
+- **Fixed: distribution functions are quiet in the far tail and right at
+  infinity (#561).** ``Weibull.sf`` far in the tail warned "overflow
+  encountered in power" though its 0 was right; an overflow or division by
+  zero inside a distribution function is no longer warned about (an
+  invalid operation still is). A sweep of every registered distribution at
+  extreme ``x`` and parameters also found 218 wrong ``nan`` values, each
+  now the right value: a Gamma's or Poisson's ``sf(inf)``, a Weibull's
+  ``df(1e300)``, Gumbel's ``df(inf)``, a NegativeBinomial past 1.3e154
+  trials, a discretised Weibull's hazard from k = 1e6, a zero-inflated
+  model's hazard at large ``x``. Hazards take their limits at infinity (a
+  Gamma's rate, a NegativeBinomial's p). Fitted results are bit-identical.
 - **Fixed: derivatives through ``np.where`` with a broadcast argument
   (#562).** autograd's rule for ``np.where(c, x, y)`` did not reduce the
   gradient to the shape of a broadcast ``x`` or ``y``: the gradient came
