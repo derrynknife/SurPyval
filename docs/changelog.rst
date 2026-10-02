@@ -189,6 +189,16 @@ bands change (#477).
   2.2 s, was 16.5 s). The chosen splits are unchanged, so seeded forests
   predict exactly as before. Data with left or interval censoring or
   truncation still runs an optimiser for each candidate.
+- **A forest's first prediction is about 20 times faster.** Each Weibull
+  or exponential leaf was fitted by a full ``Weibull.fit`` the first time a
+  prediction reached it: 93 s for a 20-tree forest on 1,000 rows, five
+  times as long as growing it. On observed and right-censored data a leaf
+  is now the maximum found as the split search finds a child's (the
+  exponential rate in closed form, the Weibull from its profile
+  likelihood, with the shape searched as widely as ``Weibull.fit`` does),
+  built from its parameters: 4.3 s. The parameters agree with
+  ``Weibull.fit`` to its tolerance (about 1e-5), so predictions move in
+  their last digits. Such a leaf has no ``cb()`` of its own.
 - **Changed: trees and forests know their covariate names (#192).**
   ``fit_from_df`` takes a ``formula`` as well as ``Z_cols``, and ``fit``
   takes a ``DataFrame`` ``Z``; the fitted model keeps ``feature_names`` and

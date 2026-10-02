@@ -404,7 +404,16 @@ class _ChildLikelihoods:
     numbers.
     """
 
-    def __init__(self, data: SurpyvalData, model: str, theta0: float):
+    def __init__(
+        self,
+        data: SurpyvalData,
+        model: str,
+        theta0: float,
+        fit_parent: bool = True,
+    ):
+        # fit_parent=False skips the node's own maximum (parent_ll and
+        # the Weibull's warm start), for a caller that only wants the
+        # closed forms (leaf_mle).
         self.model = model
         self.parts = _exp_neg_ll_parts(data)
         # Each likelihood term's row: a child's terms are the node's at
@@ -430,6 +439,8 @@ class _ChildLikelihoods:
                 _LOG_BETA_BOUNDS,
             )
             start = np.array([log_alpha0, 0.0])
+            if not fit_parent:
+                return
             if self.closed:
                 ll, theta = self._weibull(np.ones((1, data.x.size), bool))
                 if np.isfinite(ll[0]):
@@ -441,6 +452,8 @@ class _ChildLikelihoods:
             )
         else:
             self.bounds = (theta0 - 15.0, theta0 + 15.0)
+            if not fit_parent:
+                return
             if self.closed:
                 ll = self._exponential(np.ones((1, data.x.size), bool))
                 if np.isfinite(ll[0]):
@@ -510,7 +523,11 @@ class _ChildLikelihoods:
             ll = r * theta - np.exp(theta) * exposure
         return np.where(r > 0, ll, np.nan)
 
-    def _weibull(self, rows: NDArray) -> tuple[NDArray, NDArray]:
+    def _weibull(
+        self,
+        rows: NDArray,
+        log_beta_bounds: "tuple[float, float]" = _LOG_BETA_BOUNDS,
+    ) -> tuple[NDArray, NDArray]:
         # The profile log-likelihood in b = log(beta), with the scale at
         # its maximum A = alpha^beta = S(beta) / r, S = sum n x^beta:
         #   l(b) = r b - r log(S / r) + (beta - 1) L - r,
@@ -544,8 +561,8 @@ class _ChildLikelihoods:
             return g, dg
 
         everyone = np.arange(r.size)
-        lo = np.full(r.size, _LOG_BETA_BOUNDS[0])
-        hi = np.full(r.size, _LOG_BETA_BOUNDS[1])
+        lo = np.full(r.size, log_beta_bounds[0])
+        hi = np.full(r.size, log_beta_bounds[1])
         # The window's edges: a root outside it puts the optimum there.
         at_lo = ~(slope(lo, everyone)[0] > 0)
         at_hi = slope(hi, everyone)[0] >= 0
@@ -591,6 +608,55 @@ class _ChildLikelihoods:
         # Newton starts from the node's optimum (the parent's shape)
         start = getattr(self, "start", None)
         return 0.0 if start is None else float(start[1])
+
+
+# A leaf's Weibull shape window (see leaf_mle): far wider than the split
+# search's, since a leaf is not compared with its siblings.
+_LEAF_LOG_BETA_BOUNDS = (-10.0, 10.0)
+
+
+def leaf_mle(data: SurpyvalData, model: str) -> "NDArray | None":
+    r"""The maximum likelihood parameters of the working model fitted to
+    a leaf's ``data``, found as :class:`_ChildLikelihoods` finds a child's:
+    the exponential rate :math:`r / \sum n x` in closed form, the Weibull
+    ``[alpha, beta]`` from the profile likelihood. The same maximum as
+    ``Weibull.fit`` / ``Exponential.fit`` (to machine precision rather than
+    an optimiser's tolerance), for the cost of a few array operations.
+
+    The split search keeps the Weibull shape within ``beta`` 0.05 to 20,
+    so that every child is scored over one window; a leaf is a model in
+    its own right, and its shape is searched up to :math:`e^{\pm 10}`, as
+    widely as ``Weibull.fit`` finds it (failures bunched together in a
+    bootstrap sample give shapes in the hundreds).
+
+    ``None`` where that does not apply, for the caller to fit the leaf in
+    full: data other than observed and right-censored, a leaf without a
+    failure, a Weibull whose shape reaches that wider window, where the
+    likelihood may have no finite maximum, or a Weibull with fewer than
+    two distinct failure times, which ``Weibull.fit`` refuses (#462).
+    """
+    if not _closed_form(data):
+        return None
+    theta0 = _exp_theta0(data)
+    if theta0 is None:
+        return None
+    lik = _ChildLikelihoods(data, model, theta0, fit_parent=False)
+    rows = np.ones((1, np.size(data.x)), bool)
+    if model == "weibull":
+        if np.unique(lik.x[lik.observed == 1]).size < 2:
+            return None
+        ll, theta = lik._weibull(rows, _LEAF_LOG_BETA_BOUNDS)
+        log_alpha, log_beta = theta[0]
+        if not (
+            np.isfinite(ll[0])
+            and _LEAF_LOG_BETA_BOUNDS[0] < log_beta < _LEAF_LOG_BETA_BOUNDS[1]
+        ):
+            return None
+        return np.exp([log_alpha, log_beta])
+    r = float(np.sum(lik.n * lik.observed))
+    if r <= 0:
+        return None
+    return np.array([r / float(np.sum(lik.n * lik.x))])
 
 
 # The degrees of freedom a split adds: the working model's parameters.
