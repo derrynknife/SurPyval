@@ -1366,7 +1366,13 @@ class ParametricRegressionModel(
             if frozen is not None and "edges" in frozen:
                 mesh, rounds = frozen["edges"], 0
             else:
-                mesh, rounds = path_mesh(path, np.unique(inner)), None
+                # The model's own time scale, where the hazard can sit
+                # however far out the query is.
+                params, center = self._tvc_theta(theta)
+                scale = self._tvc_time_scale(
+                    0.0, self._centred(z0, center), params
+                )
+                mesh, rounds = path_mesh(path, np.unique(inner), scale), None
             res = integrate_panels(
                 self._path_panel_terms(path, theta),
                 mesh,

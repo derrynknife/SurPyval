@@ -270,6 +270,22 @@ Behaviour and API
     by ``conformance/test_documentation.py``: every public item has a
     docstring with an example, and a new one without fails.
 
+24. **Simple by default; more as an option.** When a method reaches its
+    limit -- data it cannot handle, an approximation that breaks down, a
+    question that needs a heavier computation -- the new approach is added
+    as an option beside it, not put in its place. The default stays the
+    simple, standard method that serves the usual case, so a plain call
+    stays fast and easy to explain, and its results do not move. A
+    default changes only when it is wrong for the usual case (principle
+    15; for example a band that did not hold its level, #390), not because
+    a better method exists for a harder one. For example, trees split
+    greedily by default and take conditional inference with
+    ``selection="ctree"``; ``cb`` gives Wald bounds and ``bootstrap_cb``
+    resamples.
+
+    *Judgement*, applied in review: a change to a default says which
+    principle the old default broke.
+
 Adding to the list
 ------------------
 

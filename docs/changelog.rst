@@ -177,6 +177,23 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Design principle 24: simple by default, more as an option.** When a
+  method reaches its limit, the new approach is added as an option beside
+  it. The default stays the simple, standard method, and changes only
+  when it is wrong for the usual case.
+- **Fixed: survival along a continuous path at far-out times.**
+  - **Hazard shut off by the path.** ``sf_tvc`` along a ``CovariatePath``
+    started with one quadrature panel from the last earlier edge to the
+    query. When the path shuts the hazard off, all of the hazard sits near
+    the model's time scale, and that panel never sampled it. For example,
+    with a Weibull(10, 2) PH model and ``Z = -0.2t``, ``sf_tvc(1e21)``
+    gave 1.0, or sf(1) when queried with t = 1, against the exact
+    exp(-0.5) = 0.6065. The starting mesh now has edges a factor of 2
+    apart from below the model's time scale up to the query, about 110
+    panels for 1e21.
+  - **Hazard that overflows.** A hazard that grows without bound along
+    the path overflowed to inf - inf and gave NaN with a raw numpy
+    warning. It now gives survival 0.
 - **Fixed: an additive hazards model's cb below 0.** It gave a band where
   ``sf`` is 1 (WeibullAH ``cb(-1, z)`` was [0.81, 0.97]); it is now [1, 1].
 - **Survival forests grow 8-90 times faster (#190, #518).** The Weibull
