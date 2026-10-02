@@ -40,6 +40,41 @@ from surpyval.utils.shapes import flatten_query
 from surpyval.utils.surpyval_data import SurpyvalData
 
 
+def _warn_zero_probability(
+    ll: NDArray, consequence: str, lost: int = 0, shuffles: int = 0
+) -> None:
+    """One warning (#533) giving the number of out-of-bag rows the
+    ensemble gives zero probability (a log-likelihood of ``-inf``; NaN is
+    a row no tree left out, warned of by ``_oob_setup``), what that does
+    to the result, and, for the permutation importance, the number of a
+    shuffle's row scorings that a shuffle took to zero probability."""
+    scored = ~np.isnan(ll)
+    zero = int((scored & ~np.isfinite(ll)).sum())
+    if not zero and not lost:
+        return
+    parts = []
+    if zero:
+        parts.append(
+            f"{zero} of {int(scored.sum())} out-of-bag rows have zero "
+            "probability under the trees that left them out (their leaves "
+            f"put no density at their times), so {consequence}"
+        )
+    if lost:
+        parts.append(
+            f"{lost} scorings of a row became zero probability when a "
+            f"feature was shuffled ({shuffles} shuffles), and are left out "
+            "of that shuffle's drop"
+        )
+    warnings.warn(
+        "; ".join(parts) + ". With few trees a row can land only in "
+        "leaves too steep or narrow to cover it: grow more trees "
+        "(n_trees), or use kind='exponential', whose leaves give every "
+        "time a density.",
+        UserWarning,
+        stacklevel=_caller_stacklevel(),
+    )
+
+
 class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     """Random survival forest: an ensemble of survival trees.
 
@@ -534,7 +569,11 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         out-of-bag prediction; it is left out of the mean, with one
         warning giving the count (every row, and a NaN result, with
         ``bootstrap=False``). A row the ensemble gives zero probability
-        makes the mean ``-inf``.
+        makes the mean ``-inf``, with one warning giving the count of such
+        rows: with few trees a row can land only in leaves that put no
+        density at its time (a steep Weibull leaf grown on bunched
+        failures, or a step leaf); grow more trees, or use
+        ``kind="exponential"``, whose leaves give every time a density.
 
         Returns
         -------
@@ -565,6 +604,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         """
         oob, terms, origin, n_oob = self._oob_setup()
         ll = self._oob_rows_log_likelihood(oob, terms, origin, n_oob, {})
+        _warn_zero_probability(ll, "the mean is -inf")
         return weighted_mean(ll, terms.n)
 
     def feature_importances(
@@ -581,6 +621,16 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         averaged over ``n_repeats`` shuffles: about zero for a feature the
         forest does not use, positive for one it relies on, and on the
         scale of the log-likelihood per observation.
+
+        Each drop is the mean over the same rows before and after the
+        shuffle, the rows whose out-of-bag log-likelihood is finite in
+        both. A row the ensemble gives zero probability (see
+        :meth:`oob_log_likelihood`) has a log-likelihood of ``-inf``, and
+        a drop from or to ``-inf`` is no number at all: such a row is left
+        out (of every feature's importance if it is ``-inf`` unshuffled,
+        of that shuffle's drop if it becomes ``-inf`` only when shuffled),
+        with one warning giving the counts. Grow more trees, or use
+        ``kind="exponential"``, so that every row is scored.
 
         Parameters
         ----------
@@ -634,23 +684,33 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         rng = as_generator(random_state)
         oob, terms, origin, n_oob = self._oob_setup()
         curves: dict = {}
-        baseline = weighted_mean(
-            self._oob_rows_log_likelihood(oob, terms, origin, n_oob, curves),
-            terms.n,
-        )
+        ll0 = self._oob_rows_log_likelihood(oob, terms, origin, n_oob, curves)
+        # The rows scored before the shuffle, and the shuffles' scorings
+        # of them lost to a zero probability (#533).
+        finite0 = np.isfinite(ll0)
+        lost = 0
         importances = np.zeros(self.Z.shape[1])
         for j in range(self.Z.shape[1]):
-            drops = [
-                baseline
-                - weighted_mean(
-                    self._oob_rows_log_likelihood(
-                        oob, terms, origin, n_oob, curves, permute=(j, rng)
-                    ),
-                    terms.n,
+            drops = []
+            for _ in range(int(n_repeats)):
+                ll = self._oob_rows_log_likelihood(
+                    oob, terms, origin, n_oob, curves, permute=(j, rng)
                 )
-                for _ in range(int(n_repeats))
-            ]
+                keep = finite0 & np.isfinite(ll)
+                lost += int((finite0 & ~keep).sum())
+                # The drop over the same rows before and after: with every
+                # row finite, the drop of the whole out-of-bag mean.
+                drops.append(
+                    weighted_mean(np.where(keep, ll0, np.nan), terms.n)
+                    - weighted_mean(np.where(keep, ll, np.nan), terms.n)
+                )
             importances[j] = np.mean(drops)
+        _warn_zero_probability(
+            ll0,
+            "they are left out of every feature's importance",
+            lost,
+            self.Z.shape[1] * int(n_repeats),
+        )
         return pd.Series(
             importances, index=self.feature_labels, name="importance"
         )

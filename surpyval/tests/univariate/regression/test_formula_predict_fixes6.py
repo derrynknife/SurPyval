@@ -23,7 +23,8 @@ import pandas as pd
 import pytest
 
 import surpyval
-from surpyval import AcceleratedLife, Linear, Weibull
+from surpyval import AcceleratedLife, Weibull
+from surpyval.life_models import Linear
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )

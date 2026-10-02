@@ -173,30 +173,30 @@ def test_regression_sf_bounds_are_the_family_scale_wald_bounds():
 
 
 # -- #411: a Wald bound that does not exist warns and is nan ----------------
-def test_param_cb_with_a_negative_variance_warns():
+def test_param_cb_at_a_restoration_boundary_is_one_sided():
     # GeneralizedRenewal's fixture fit puts q at 2.7e-16, where the inverse
     # Hessian's diagonal is negative: param_cb was [nan, nan] with only
-    # numpy's raw "invalid value encountered in sqrt".
+    # numpy's raw "invalid value encountered in sqrt". Since #461 q gets
+    # its one-sided profile-likelihood interval from the boundary, and
+    # alpha the Wald interval of the model held there, without a warning.
     model = _fresh("GeneralizedRenewal")
-    for name in ("alpha", "q"):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            with np.errstate(all="raise"):
-                cb = model.param_cb(name)
-        assert np.all(np.isnan(cb)) and cb.shape == (2,)
-        assert len(caught) == 1, [str(w.message) for w in caught]
-        message = str(caught[0].message)
-        assert f"'{name}'" in message and "undefined" in message
-        assert caught[0].filename == __file__
+    with np.errstate(all="raise"):
+        q = _quiet(model.param_cb, "q")
+        alpha = _quiet(model.param_cb, "alpha")
+    assert q[0] == 0 and 0 < q[1] < 1
+    assert np.all(np.isfinite(alpha)) and alpha[0] < alpha[1]
 
 
-def test_param_cb_at_the_edge_of_an_interval_support_warns():
+def test_param_cb_at_the_edge_of_an_interval_support():
     # ARI's fixture fit puts rho at exactly 1.0, the upper end of (0, 1):
-    # param_cb('rho') raised ZeroDivisionError (the logit of 1).
+    # param_cb('rho') raised ZeroDivisionError (the logit of 1), then gave
+    # nan with a warning. Since #461 its interval runs from its one-sided
+    # profile-likelihood bound to the boundary.
     model = _fresh("ARI")
-    with pytest.warns(RuntimeWarning, match="'rho' is undefined"):
-        cb = model.param_cb("rho", bound="lower")
-    assert cb.shape == (1,) and np.isnan(cb[0])
+    two_sided = _quiet(model.param_cb, "rho")
+    lower = _quiet(model.param_cb, "rho", bound="lower")
+    assert two_sided[1] == 1 and 0 < two_sided[0] < 1
+    assert lower.shape == (1,) and two_sided[0] < lower[0] < 1
 
 
 def test_parametric_param_cb_with_a_negative_variance_warns():

@@ -467,7 +467,7 @@ def test_fit_from_df_passes_center():
         ref.sf(TIMES, (Z + _shift(1e5))[:1]),
     )
     # The accelerated life models have no linear predictor to centre.
-    life = sp.AcceleratedLife(sp.Weibull, sp.Power)
+    life = sp.AcceleratedLife(sp.Weibull, sp.life_models.Power)
     with pytest.raises(ValueError, match="center=True is not available"):
         life.fit_from_df(df.assign(z=df["z"] - 9e4), "x", "z", center=True)
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import warnings
 from typing import Any, Callable
 
@@ -115,6 +116,17 @@ class ParameterSubstitutionFitter(
             assert inverse_param_transform is not None
             self.param_transform = param_transform
             self.inverse_param_transform = inverse_param_transform
+
+    def _with_life_model(
+        self, life_model: LifeModel
+    ) -> "ParameterSubstitutionFitter":
+        """This fitter with ``life_model`` in place of its own (the
+        resolved form of a life model with a parameter per stress
+        column, see ``LifeModel.resolve``)."""
+        out = copy.copy(self)
+        out.life_model = life_model
+        out.phi = life_model.phi
+        return out
 
     def _stress_matrix(self, Z: Numeric) -> npt.NDArray:
         """``Z`` as a 2-D array with one row per stress vector.
@@ -385,7 +397,8 @@ class ParameterSubstitutionFitter(
         Z : array_like
             The stress of each observation: a 1-D array for a one-stress
             life model, or one column per stress (two for ``DualPower``,
-            ``DualExponential``, ``PowerExponential``). Designed for a few
+            ``DualExponential``, ``PowerExponential``; any number for
+            ``GeneralLogLinear``, one coefficient each). Designed for a few
             controlled stress levels: without ``init`` the starting point
             comes from fitting the distribution at each distinct stress
             level, so at least two levels are needed. ``Power``,
@@ -423,7 +436,8 @@ class ParameterSubstitutionFitter(
         --------
 
         >>> import numpy as np
-        >>> from surpyval import Weibull, AcceleratedLife, Power
+        >>> from surpyval import Weibull, AcceleratedLife
+        >>> from surpyval.life_models import Power
         >>> np.random.seed(1)
         >>> stress = np.repeat([20.0, 30.0, 40.0], 40)
         >>> x = Weibull.random(120, 10, 3) * (100.0 / stress)
@@ -442,6 +456,15 @@ class ParameterSubstitutionFitter(
         Z_arr = np.asarray(Z, dtype=float)
         if Z_arr.ndim == 1:
             Z_arr = Z_arr.reshape(-1, 1)
+        if Z_arr.ndim == 2:
+            # A life model with a parameter per stress column
+            # (GeneralLogLinear) is fitted, and carried by the model, in
+            # its form for Z's columns.
+            life_model = self.life_model.resolve(Z_arr.shape[1])
+            if life_model is not self.life_model:
+                return self._with_life_model(life_model).fit(
+                    x, Z_arr, c=c, n=n, t=t, init=init, fixed=fixed
+                )
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
         data.add_covariates(Z_arr)

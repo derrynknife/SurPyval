@@ -2541,6 +2541,17 @@ class DegradationAnalysis_:
         link_design_by_unit = []
         link_estimation_covs = []
 
+        # A bootstrap refit's units are the model's own (see
+        # ``utils.refits.DEGRADATION_REFIT``, #522); not where the clock,
+        # fitted to all the units, sets their times.
+        from surpyval.utils.refits import DEGRADATION_REFIT, warm_starts
+
+        refit = DEGRADATION_REFIT.get()
+        kept = (
+            refit["units"]
+            if refit is not None and acceleration is None
+            else None
+        )
         for idx, unit in enumerate(units):
             mask = i_arr == unit
             x_unit, y_unit = x_path[mask], y_arr[mask]
@@ -2551,17 +2562,25 @@ class DegradationAnalysis_:
                         unit, n_params, path_model.name
                     )
                 )
-            params = path_model.fit(x_unit, y_unit)
+            key = (x_unit.tobytes(), y_unit.tobytes())
+            if kept is not None and key in kept:
+                params, crossing, rss, inv_jtj, jacobian = kept[key]
+            else:
+                params = path_model.fit(x_unit, y_unit)
+                crossing = path_model.inv_path(threshold, *params)
+                residuals = y_unit - path_model.path(x_unit, *params)
+                rss = residuals @ residuals
+                jacobian = path_model.jacobian(x_unit, *params)
+                inv_jtj = safe_inv(jacobian.T @ jacobian)
+                if kept is not None:
+                    kept[key] = (params, crossing, rss, inv_jtj, jacobian)
             path_params[idx] = params
-            pseudo[idx] = path_model.inv_path(threshold, *params)
+            pseudo[idx] = crossing
             last_time[idx] = x_unit.max()
 
-            residuals = y_unit - path_model.path(x_unit, *params)
-            rss_total += residuals @ residuals
+            rss_total += rss
             dof_total += len(x_unit) - n_params
-            jacobian = path_model.jacobian(x_unit, *params)
-            jtj = jacobian.T @ jacobian
-            estimation_cov_sum += safe_inv(jtj)
+            estimation_cov_sum += inv_jtj
             y_by_unit.append(y_unit)
             x_by_unit.append(x_unit)
             design_by_unit.append(jacobian)
@@ -2751,7 +2770,13 @@ class DegradationAnalysis_:
         )
         c = np.where(events, 0, np.where(started, -1, 1))
 
-        if Z_units is None:
+        life_init = None if refit is None else refit.get("life_init")
+        if Z_units is None and life_init is not None and how == "MLE":
+            with warm_starts():
+                life_model = distribution.fit(
+                    x=pseudo_failure_times, c=c, how=how, init=life_init
+                )
+        elif Z_units is None:
             life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
         else:
             reg = (

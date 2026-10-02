@@ -177,6 +177,74 @@ bands change (#477).
   Exponential, Gamma and LogNormal (location families still refuse,
   saying why). AFT and accelerated life integrate one period of a
   periodic path, so 10 million cycles take about 1 ms.
+- **Changed: the life models are in surpyval.life_models.** ``Power``,
+  ``InversePower``, ``Eyring``, ``InverseEyring``, ``Linear``,
+  ``InverseExponential``, ``DualPower``, ``DualExponential``,
+  ``PowerExponential``, ``GeneralLogLinear`` and the ``LifeModel`` base
+  class are used as ``AcceleratedLife(Weibull, life_models.Power)``. The
+  exponential (Arrhenius) life model is ``life_models.Exponential``: at the
+  top level that name is the distribution, so it was
+  ``ExponentialLifeModel``. The old top-level names still work until
+  v0.23, with a ``DeprecationWarning`` naming the new one.
+- **Breaking: GeneralLogLinear fixed, with a constant term, and exported
+  (#530, #345).** ``AcceleratedLife(dist, GeneralLogLinear).fit`` raised
+  an autograd broadcast ``ValueError`` on any data. The life model is now
+  L(Z) = c exp(sum of beta_j Z_j), with one coefficient per column of
+  ``Z``; with no constant, L(0) was 1 in whatever unit the times were in
+  (principle 6). With the Weibull it reaches the Weibull AFT maximum
+  (log-likelihood -422.414831 in both). It is importable as
+  ``sp.life_models.GeneralLogLinear``, round-trips through JSON (a model saved now
+  cannot be read by 0.21), and is in the conformance registry.
+  ``LifeModel.resolve(n_stresses)`` builds the model for a number of
+  columns, so its parameter map and bounds are the types ``LifeModel``
+  declares.
+- **Forest importance no longer silently NaN (#533).** When an out-of-bag
+  row had zero ensemble probability, ``feature_importances`` returned NaN
+  for every feature without a warning (3 trees, 1 row of 46). Each drop is
+  now over the rows that are finite before and after the shuffle, the same
+  as before when every row is, and one warning gives the counts and
+  recommends more trees or ``kind="exponential"``. ``oob_log_likelihood``
+  warns the same way when it returns -inf.
+- **Normal and LogNormal 2-4 times faster (#469).** ``sf``, ``ff``, ``df``,
+  ``qf`` and their logs use ``scipy.special`` directly instead of
+  ``scipy.stats.norm``, with bit-identical values: ``Normal.sf`` on 1,024
+  values takes 41 µs instead of 96 µs, ``qf`` 33 µs instead of 110 µs,
+  and a censored fit 30 ms instead of 42 ms. The density no longer emits
+  numpy's overflow warning at \|x\| near 1e300.
+- **import surpyval is 0.3 s faster (#470).** The regression,
+  competing-risks, recurrent and degradation models and the metrics load
+  on first use, and pandas and formulaic are imported only where used
+  (1.16 s to 0.86 s). Every name, ``dir(surpyval)`` and attribute access
+  such as ``surpyval.recurrent.laplace`` work as before.
+- **Faster no-maximum check (#501).** A coefficient at or near 0, which
+  Newton's step leaves unchecked, had its profile read with a third
+  derivative and two full Hessians: 65% of a 100,000-row LogNormal AFT
+  fit. It now uses Hessian-vector products. The criterion and its verdicts
+  are unchanged, and its curvature is exact where the old one lost
+  digits. The fit takes 2.7 s instead of 4.8 s.
+- **Faster likelihood-ratio bounds (#519).** The searches evaluate the
+  distribution's formulas without the guards the data cannot trip
+  (bit-identical values), and for two-parameter models the region's
+  boundary is traced once and each search starts from it. A Weibull
+  ``cb(method="lr")`` at 20 points on 1,000 units takes 2.4 s instead of
+  9.4 s, and at one point 0.56 s instead of 1.1 s. Bounds are unchanged
+  to 2.3e-7. A steep LogNormal hazard bound that ended 5e-8 outside the
+  region now sits on its boundary.
+- **Incomplete beta tails (#520).** Where a small tail's ``x`` rounds
+  towards 1, as with a NegativeBinomial ``r`` near 1e-172, the continued
+  fraction ran to 100,000 terms (4.6 s per call) and was 0.5 nats off.
+  That tail now comes from the other side's power series, to 1e-15 of
+  mpmath, in milliseconds, and an unconverged continued fraction gives
+  nan instead of a wrong value.
+- **Faster degradation bootstrap bounds (#522).** Each refit reuses the
+  units' path fits and warm-starts the life fit from the full-data
+  estimate, and every refit still reaches a verified maximum. 200 units
+  with 200 resamples take 5.4 s instead of 9.7 s, and the bounds change by
+  at most 4e-7.
+- **MCF variance in linear time (#521).** The Lawless-Nadeau variance and
+  each item's observation window took a pass over all times or rows per
+  item. At 5,000 items the fit takes 0.27 s instead of 1.8 s, with the
+  same variance to 2e-13.
 - **Design principle 24: simple by default, more as an option.** When a
   method reaches its limit, the new approach is added as an option beside
   it. The default stays the simple, standard method, and changes only

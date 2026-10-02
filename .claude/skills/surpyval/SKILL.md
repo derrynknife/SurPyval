@@ -231,8 +231,9 @@ silently wrong numbers, not errors.
 - **Additive hazards** (Lin–Ying) — covariates *add* to the hazard rather than
   multiply; better on an absolute-risk scale.
 - **Proportional odds** — effects that fade over time (converging hazards).
-- **Accelerated life** (`sp.AcceleratedLife(sp.Weibull, sp.Power)`) — a life-stress
-  relationship at a few controlled stress levels (at least two). The life
+- **Accelerated life** (`sp.AcceleratedLife(sp.Weibull, sp.life_models.Power)`) —
+  a life-stress relationship at a few controlled stress levels (at least two);
+  the life models are in `sp.life_models` (Arrhenius is `life_models.Exponential`). The life
   parameter (the Weibull's `alpha`) is replaced by the life model: it prints as
   `L(Z)`, and its slot in `params` is a placeholder 1, not a fitted value.
 

@@ -130,9 +130,7 @@ class RecurrentEventData:
             # A finite right-truncation time closes the item's window just
             # as an end-of-observation (c=1) row there would, so it joins
             # the time grid (with no events) exactly as that row would.
-            item_tr = np.array(
-                [self.tr[self.i == item][0] for item in self.items]
-            )
+            item_tr = np.asarray(self.tr)[self.item_rows()[0]]
             truncated_exit = exit_[np.isfinite(item_tr)]
             x_unique = np.unique(
                 np.concatenate([x_out, truncated_exit])
@@ -189,14 +187,41 @@ class RecurrentEventData:
             ``(entry, exit)``, one value per item.
         """
         x_upper = self.x if self.x.ndim == 1 else self.x[:, 1]
-        entry, exit_ = [], []
-        for item in self.items:
-            mask = self.i == item
-            entry.append(float(self.tl[mask][0]))
-            last = float(x_upper[mask].max())
-            tr_item = float(self.tr[mask][0])
-            exit_.append(max(last, tr_item) if np.isfinite(tr_item) else last)
-        return np.array(entry, dtype=float), np.array(exit_, dtype=float)
+        # From each item's first row and its rows' largest time, without a
+        # pass over the rows per item, which was O(items x rows) (#521).
+        first, inverse = self.item_rows()
+        entry = np.asarray(self.tl, dtype=float)[first]
+        last = np.full(len(first), -np.inf)
+        np.maximum.at(last, inverse, np.asarray(x_upper, dtype=float))
+        tr_item = np.asarray(self.tr, dtype=float)[first]
+        exit_ = np.where(np.isfinite(tr_item), np.maximum(last, tr_item), last)
+        return entry, exit_
+
+    def item_rows(self) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        The first row of each item and the item of each row, as positions
+        in :attr:`items` (which is sorted).
+
+        Returns
+        -------
+        tuple of numpy.ndarray
+            ``(first, inverse)``: ``first[k]`` is the index of item
+            ``items[k]``'s first row, and ``inverse[j]`` the position in
+            ``items`` of row ``j``'s item.
+
+        Examples
+        --------
+        >>> from surpyval import handle_xicn
+        >>> data = handle_xicn([1, 2, 3, 4], i=[2, 1, 2, 1])
+        >>> data.items, data.i
+        ([1, 2], array([1, 1, 2, 2]))
+        >>> data.item_rows()
+        (array([0, 2]), array([0, 0, 1, 1]))
+        """
+        _, first, inverse = np.unique(
+            self.i, return_index=True, return_inverse=True
+        )
+        return first, inverse.reshape(-1)
 
     @property
     def event_types(self) -> list:

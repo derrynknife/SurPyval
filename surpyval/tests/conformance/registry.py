@@ -963,7 +963,7 @@ LIFE_MODELS = (
     "Eyring",
     "InverseEyring",
     "Linear",
-    "ExponentialLifeModel",
+    "Exponential",
     "InverseExponential",
 )
 DUAL_LIFE_MODELS = ("DualExponential", "DualPower", "PowerExponential")
@@ -973,7 +973,7 @@ def _accelerated_life_family():
     out = []
     for lm in LIFE_MODELS + DUAL_LIFE_MODELS:
         dual = lm in DUAL_LIFE_MODELS
-        fitter = sp.AcceleratedLife(sp.Weibull, getattr(sp, lm))
+        fitter = sp.AcceleratedLife(sp.Weibull, getattr(sp.life_models, lm))
         out.append(
             regression(
                 f"WeibullAL[{lm}]",
@@ -981,7 +981,7 @@ def _accelerated_life_family():
                 data=functools.partial(stress_data, 2 if dual else 1),
                 x=X_STRESS,
                 Z=Z_STRESS2 if dual else Z_STRESS,
-                fitters=(f"surpyval.{lm}",)
+                fitters=(f"surpyval.life_models.{lm}",)
                 + (("surpyval.AcceleratedLife",) if lm == "Power" else ()),
                 slow=frozenset() if lm == "Power" else REFIT_PROPERTIES,
                 coefficients=None,
@@ -994,6 +994,22 @@ def _accelerated_life_family():
                 },
             )
         )
+    # One coefficient per stress column (#530): any number of columns,
+    # of any sign, so the ordinary regression data serve.
+    out.append(
+        regression(
+            "WeibullAL[GeneralLogLinear]",
+            sp.AcceleratedLife(sp.Weibull, sp.life_models.GeneralLogLinear),
+            fitters=("surpyval.life_models.GeneralLogLinear",),
+            slow=REFIT_PROPERTIES,
+            coefficients=None,
+            exclude={
+                "aliasing": "model.aliased are positions in phi_params, "
+                "after the constant c, not columns of Z; the aliasing is "
+                "tests/univariate/regression/test_general_log_linear.py's"
+            },
+        )
+    )
     return out
 
 
@@ -3093,7 +3109,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
-    "surpyval.LifeModel": _BASE,
+    "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,
     "surpyval.multivariate.Copula": _BASE,
     "surpyval.degradation.PathModel": _BASE,

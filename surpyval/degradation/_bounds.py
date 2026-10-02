@@ -289,9 +289,8 @@ def bootstrap_cb(
     variability, not path re-selection. Refits whose curve is not
     finite everywhere are dropped rather than poisoning the quantiles.
     """
-    import warnings
-
-    from .degradation_analysis import DegradationAnalysis
+    from surpyval.univariate.parametric.parametric import Parametric
+    from surpyval.utils.refits import DEGRADATION_REFIT
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
     rng = as_generator(random_state)
@@ -305,8 +304,6 @@ def bootstrap_cb(
     if missing.all():
         shape = missing.shape + ((2,) if bound == "two-sided" else ())
         return np.full(shape, np.nan)
-    n_units = len(model.units)
-    curves = []
     # A step-stress (clock) model refits its clock on every resample: each
     # unit carries its own stress rows, the reference stress is held so the
     # refits describe the same reference-stress life, and gamma is
@@ -319,6 +316,72 @@ def bootstrap_cb(
             "stress_ref": model.stress_ref,
             "population_method": model.population_method,
         }
+    # A resample's units are the model's own: their path fits are reused,
+    # and its life fit starts from the model's (see ``utils.refits``),
+    # which made the 200 refits of a 200-unit analysis take 5.4 s, from
+    # 9.7 s (#522).
+    life = model.life_model
+    refit: dict = {
+        "units": {},
+        "life_init": (
+            np.asarray(life.params, dtype=float)
+            if isinstance(life, Parametric)
+            and not (life.offset or life.lfp or life.zi)
+            else None
+        ),
+    }
+    token = DEGRADATION_REFIT.set(refit)
+    try:
+        curves = _bootstrap_curves(
+            model, x, Z, method_name, missing, n_boot, rng, clock_kwargs
+        )
+    finally:
+        DEGRADATION_REFIT.reset(token)
+    if len(curves) < 2:
+        detail = (
+            " (a resample may not span enough stress levels to identify "
+            "the covariate fit)"
+            if Z is not None
+            else ""
+        )
+        if model._distribution is None:
+            detail = (
+                " (the model does not know the lifetime-distribution "
+                "fitter the refits need)"
+            )
+        raise RuntimeError(
+            "The degradation bootstrap produced too few successful refits "
+            "to form a confidence bound" + detail + "."
+        )
+    curves_arr = np.asarray(curves)
+    if bound == "two-sided":
+        lo = np.quantile(curves_arr, alpha_ci / 2.0, axis=0)
+        hi = np.quantile(curves_arr, 1.0 - alpha_ci / 2.0, axis=0)
+        return np.stack([lo, hi], axis=-1)
+    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
+    return np.quantile(curves_arr, q, axis=0)
+
+
+def _bootstrap_curves(
+    model: Any,
+    x: npt.NDArray,
+    Z: "npt.ArrayLike | None",
+    method_name: str,
+    missing: npt.NDArray,
+    n_boot: int,
+    rng: Any,
+    clock_kwargs: dict,
+) -> list:
+    """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
+    ``model``'s units, each refitted and its ``method_name`` curve taken at
+    ``x`` (and ``Z``), those not finite where the model's own is dropped."""
+    import warnings
+
+    from .degradation_analysis import DegradationAnalysis
+
+    n_units = len(model.units)
+    clock = bool(clock_kwargs)
+    curves = []
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
@@ -357,29 +420,7 @@ def bootstrap_cb(
                     curves.append(np.where(missing, np.nan, curve))
             except Exception:
                 continue
-    if len(curves) < 2:
-        detail = (
-            " (a resample may not span enough stress levels to identify "
-            "the covariate fit)"
-            if Z is not None
-            else ""
-        )
-        if model._distribution is None:
-            detail = (
-                " (the model does not know the lifetime-distribution "
-                "fitter the refits need)"
-            )
-        raise RuntimeError(
-            "The degradation bootstrap produced too few successful refits "
-            "to form a confidence bound" + detail + "."
-        )
-    curves_arr = np.asarray(curves)
-    if bound == "two-sided":
-        lo = np.quantile(curves_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(curves_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
-    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
-    return np.quantile(curves_arr, q, axis=0)
+    return curves
 
 
 def _on_method(on: str) -> str:

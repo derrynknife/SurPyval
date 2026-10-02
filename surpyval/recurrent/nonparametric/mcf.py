@@ -672,6 +672,10 @@ def _observation_origin(data: RecurrentEventData) -> float:
     return float(min(0.0, finite.min())) if finite.size else 0.0
 
 
+# The blocks the Lawless-Nadeau sum is centred in (see there).
+_LN_BLOCKS = 64
+
+
 def _lawless_nadeau_var(
     data: RecurrentEventData,
     x: npt.NDArray,
@@ -703,34 +707,146 @@ def _lawless_nadeau_var(
     (``n_k``); ``d`` must count the same events. The cause-specific MCF
     passes the rows of one cause, so the other causes' events count as
     non-events while the risk set stays shared.
+
+    The sum is formed without a pass over the time grid per item, which
+    was O(items x times) (#521). With :math:`W(t) = \\sum_{t_j \\le t}
+    \\hat{m}(t_j) / r(t_j)`, a cluster's (an item's, or a windowed item's
+    windows') running sum is :math:`C(t) = D(t) - \\alpha(t) W(t)`: its
+    events' :math:`n / r` and its windows' :math:`W` at entry and exit
+    make up :math:`D`, and :math:`\\alpha` counts its windows open at
+    :math:`t`. Both change only at its own rows and window ends, so
+    :math:`\\sum C^2 = \\sum D^2 - 2 W \\sum \\alpha D + W^2 \\sum
+    \\alpha^2` is accumulated from the changes, in O(rows + times), with
+    :math:`D` and :math:`W` measured from the start of each of a few
+    blocks of the time grid so that the three sums do not cancel (the
+    result agrees with the sum over items to about 1e-13).
     """
     x_out = data.midpoints if data.x.ndim == 2 else data.x
     is_event = (data.c == 0) | (data.c == 2) | (data.c == -1)
     if counted is not None:
         is_event = is_event & counted
+    m = len(x)
+    if m == 0:
+        return np.zeros(0)
     col = np.searchsorted(x, x_out)
     dm = np.where(r > 0, d / np.where(r > 0, r, 1), 0.0)
     inv_r = np.where(r > 0, 1.0 / np.where(r > 0, r, 1), 0.0)
+    W = np.cumsum(inv_r * dm)
     window_map = getattr(data, "window_map", None) or {}
     # The same windows the risk set ``r`` was built from, so each item's
     # at-risk indicator agrees with its share of ``r`` (including a
     # right-truncation close past its last row).
     entry, exit_ = data.item_observation_windows()
-
-    clusters: dict = {}
-    for item, entry_k, exit_k in zip(data.items, entry, exit_):
-        rows = data.i == item
-        at_risk = (entry_k <= x) & (x <= exit_k)
-        n_k = np.bincount(
-            col[rows & is_event],
-            weights=data.n[rows & is_event],
-            minlength=len(x),
+    # Each item's at-risk run of the grid, lo..hi (empty when lo > hi).
+    lo = np.searchsorted(x, entry, side="left")
+    hi = np.searchsorted(x, exit_, side="right") - 1
+    # Items split into observation windows are regrouped under their
+    # original item, as one cluster.
+    keys: dict = {}
+    cluster = np.array(
+        [
+            keys.setdefault(
+                window_map[item][0] if item in window_map else item, len(keys)
+            )
+            for item in data.items
+        ],
+        dtype=np.intp,
+    )
+    # Each row's item, as its position in ``data.items``.
+    row_item = data.item_rows()[1]
+    # An event counts where its item is at risk, as the at-risk indicator
+    # multiplied it before.
+    ev = is_event & (col >= lo[row_item]) & (col <= hi[row_item])
+    open_ = lo <= hi
+    closes = open_ & (hi + 1 < m)
+    W_before = np.where(lo > 0, W[np.maximum(lo - 1, 0)], 0.0)
+    # The changes to (D, alpha) of each cluster, and the grid time from
+    # which each holds: its events, its windows opening and closing.
+    where = np.concatenate([col[ev], lo[open_], hi[closes] + 1])
+    owner = np.concatenate(
+        [
+            cluster[row_item[ev]],
+            cluster[open_],
+            cluster[closes],
+        ]
+    )
+    d_D = np.concatenate(
+        [
+            np.asarray(data.n, dtype=float)[ev] * inv_r[col[ev]],
+            W_before[open_],
+            -W[hi[closes]],
+        ]
+    )
+    d_alpha = np.concatenate(
+        [
+            np.zeros(int(ev.sum())),
+            np.ones(int(open_.sum())),
+            -np.ones(int(closes.sum())),
+        ]
+    )
+    if where.size == 0:
+        return np.zeros(m)
+    # Each cluster's state after each of its changes, in time order: a
+    # running sum within each cluster, taken a step at a time across all
+    # clusters at once (a cumsum over every cluster, less its value at
+    # the cluster's start, loses the digits the clusters before it carry).
+    order = np.lexsort((where, owner))
+    where, owner = where[order], owner[order]
+    D, alpha = d_D[order], d_alpha[order]
+    first = np.flatnonzero(np.r_[True, owner[1:] != owner[:-1]])
+    length = np.diff(np.r_[first, owner.size])
+    D_prev, alpha_prev = np.zeros_like(D), np.zeros_like(alpha)
+    for step in range(1, int(length.max())):
+        at = first[length > step] + step
+        D_prev[at], alpha_prev[at] = D[at - 1], alpha[at - 1]
+        D[at] += D[at - 1]
+        alpha[at] += alpha[at - 1]
+    # Summed over the clusters, C^2 = D^2 - 2 W alpha D + W^2 alpha^2
+    # loses to cancellation what D^2 and W^2 are larger than C^2: much,
+    # where the items' counts are alike. So the time grid is cut into
+    # blocks of equal growth in W, and in block b each cluster is centred
+    # on the block's start, g = D - alpha W(s_b), with u = W(t) - W(s_b):
+    # C = g - alpha u, with g and u no larger than C and W's growth over
+    # the block.
+    starts = np.unique(
+        np.searchsorted(W, W[-1] * np.arange(_LN_BLOCKS) / _LN_BLOCKS)
+    )
+    starts = np.unique(np.r_[0, starts[starts < m]])
+    block = np.searchsorted(starts, np.arange(m), side="right") - 1
+    W_start = W[starts]
+    # Each change, centred on its own block: what it adds to the sums.
+    W_b = W_start[block[where]]
+    g_new = D - alpha * W_b
+    g_old = D_prev - alpha_prev * W_b
+    diff = [
+        np.bincount(where, g_new * g_new - g_old * g_old, minlength=m),
+        np.bincount(where, alpha * g_new - alpha_prev * g_old, minlength=m),
+        np.bincount(
+            where, alpha * alpha - alpha_prev * alpha_prev, minlength=m
+        ),
+    ]
+    if starts.size > 1:
+        # Each cluster's state carried into a block (after its last
+        # change before the block starts) moves to the new centre there.
+        n_clusters = len(keys)
+        key = owner.astype(np.int64) * (m + 1) + where
+        b = np.arange(1, starts.size)
+        query = (
+            np.arange(n_clusters, dtype=np.int64)[:, None] * (m + 1)
+            + starts[b][None, :]
         )
-        dev = at_risk * inv_r * (n_k - dm)
-        key = window_map[item][0] if item in window_map else item
-        clusters[key] = clusters.get(key, 0.0) + dev
-
-    total = np.zeros(len(x))
-    for dev in clusters.values():
-        total += np.cumsum(dev) ** 2
-    return total
+        last = np.searchsorted(key, query, side="left") - 1
+        carried = (last >= 0) & (
+            owner[np.maximum(last, 0)] == np.arange(n_clusters)[:, None]
+        )
+        last = last[carried]
+        b = np.broadcast_to(b, carried.shape)[carried]
+        D_c, alpha_c = D[last], alpha[last]
+        g_to = D_c - alpha_c * W_start[b]
+        g_from = D_c - alpha_c * W_start[b - 1]
+        at = starts[b]
+        diff[0] += np.bincount(at, g_to * g_to - g_from * g_from, minlength=m)
+        diff[1] += np.bincount(at, alpha_c * (g_to - g_from), minlength=m)
+    s_gg, s_ag, s_aa = (np.cumsum(v) for v in diff)
+    u = W - W_start[block]
+    return s_gg - 2.0 * u * s_ag + u * u * s_aa

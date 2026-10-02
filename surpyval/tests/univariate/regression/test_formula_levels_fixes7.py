@@ -25,7 +25,8 @@ import pandas as pd
 import pytest
 
 import surpyval
-from surpyval import AcceleratedLife, Linear, Power, Weibull
+from surpyval import AcceleratedLife, Weibull
+from surpyval.life_models import Linear, Power
 from surpyval.serialisation import required_schema
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,

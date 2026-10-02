@@ -57,7 +57,8 @@ def AcceleratedLife(
     --------
     >>> import numpy as np
     >>> from surpyval import Weibull
-    >>> from surpyval import AcceleratedLife, Power
+    >>> from surpyval import AcceleratedLife
+    >>> from surpyval.life_models import Power
     >>> np.random.seed(1)
     >>> stress = np.repeat([20.0, 30.0, 40.0], 40).reshape(-1, 1)
     >>> x = Weibull.random(120, 10, 3) * (100.0 / stress[:, 0])

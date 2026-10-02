@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import numpy.typing as npt
-from autograd.scipy.stats import norm
-from scipy.stats import norm as scipy_norm
 
 from surpyval import np
 from surpyval.univariate import parametric as para
@@ -16,6 +14,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._stable import normal_hazard
@@ -304,7 +303,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.qf(u, 3, 4)
         array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
-        return scipy_norm.ppf(u, mu, sigma)
+        return norm.ppf(u, mu, sigma)
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -364,6 +363,8 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.moment(2, 3, 4)
         np.float64(25.0)
         """
+        from scipy.stats import norm as scipy_norm
+
         return scipy_norm.moment(m, mu, sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:

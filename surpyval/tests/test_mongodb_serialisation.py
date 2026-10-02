@@ -34,7 +34,6 @@ from surpyval import (
     CoxPH,
     KaplanMeier,
     MixtureModel,
-    Power,
     Turnbull,
     Weibull,
     WeibullPH,
@@ -44,6 +43,7 @@ from surpyval.degradation import (
     GammaProcess,
     WienerProcess,
 )
+from surpyval.life_models import Power
 from surpyval.recurrent import (
     CrowAMSAA,
     GeneralizedRenewal,

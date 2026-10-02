@@ -2,7 +2,6 @@ from typing import Callable
 
 import numpy as np
 import numpy.typing as npt
-from pandas import Series
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.fleming_harrington import (
@@ -10,7 +9,7 @@ from surpyval.univariate.nonparametric.fleming_harrington import (
 )
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen
-from surpyval.utils import xcnt_handler, xcnt_to_xrd
+from surpyval.utils import ffill_or_zero, xcnt_handler, xcnt_to_xrd
 
 # Estimator-form heuristics share one dispatch; the (A, B) constants
 # define the rank-based plotting-position formula F = (rank - A) / (N + B).
@@ -223,7 +222,7 @@ def plotting_positions(
             )
 
         F = (ranks - A) / (N + B)
-        R = 1 - Series(F).ffill().fillna(0).values
+        R = 1 - ffill_or_zero(F)
         out = {}
         out["x"] = x_
         out["r"] = r
