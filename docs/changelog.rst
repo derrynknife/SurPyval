@@ -196,6 +196,28 @@ bands change (#477).
   ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
   old names work until v0.23 with a ``DeprecationWarning``. Saved models
   are unchanged, and old files load as before.
+- **Added: log-normal shared frailty (#343).** ``Frailty(dist,
+  family="lognormal")`` fits :math:`u = e^w`, :math:`w \sim N(0, \theta)`,
+  as frailtypack, coxme and ``survival::frailty(dist="gaussian")`` define
+  it, so ``theta`` is the variance of :math:`\log u` and the median
+  frailty is 1. Each group's likelihood is integrated by 30-node adaptive
+  Gauss-Hermite quadrature, centred on the group's mode: within 3e-10 of
+  scipy's adaptive quadrature for :math:`\theta \le 1`. On the kidney
+  data it matches R's lme4 (``nAGQ = 25``) to 6e-13 in the log-likelihood.
+  Gamma stays the default. ``frailty_variance`` (Var(u)/E(u)^2) and the new
+  ``kendall_tau`` compare the two families on one scale. **Breaking:** an
+  unknown ``family`` raises ``ValueError`` (it was ``NotImplementedError``).
+- **Added: shared frailty with a Cox baseline (#342).** ``CoxFrailty``
+  fits a gamma frailty with an unspecified baseline, by EM over the
+  frailties with ``CoxPH``'s partial likelihood as the M-step (accelerated
+  by SQUAREM), and ``theta`` maximising the profile likelihood. It
+  reproduces R's ``coxph(... + frailty(id, dist="gamma"))`` on the kidney
+  data: theta 0.40777, the ``female`` coefficient -1.5832 with standard
+  error 0.4484, and I-likelihood -181.6386, with Efron ties (Breslow too).
+  It predicts marginally or for an observed group, and saves and loads.
+  In 200 simulated fits its coefficient and theta intervals covered 94% and
+  97%. ``load_kidney()`` adds the kidney catheter data (McGilchrist and
+  Aisbett 1991; R's ``survival::kidney``).
 - **Added: a semi-parametric proportional odds model (#341).**
   ``surpyval.ProportionalOdds`` is the proportional-odds counterpart of
   ``CoxPH``: the covariates multiply the survival odds of a baseline left
