@@ -102,7 +102,7 @@ def test_a_lognormal_run_into_the_corner_warns():
     results = {"params": np.array([-0.1, 12.4]), "gamma": 55.0 - 1e-12}
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        flagged = fitter._warn_if_offset_at_limit(  # type: ignore
+        flagged = fitter._warn_if_offset_at_limit(
             data, results, {}, False, False
         )
     assert flagged

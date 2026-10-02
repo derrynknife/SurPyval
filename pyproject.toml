@@ -115,6 +115,15 @@ mypy_path = "stubs"
 # per-module ratchet list the coverage was built up under.
 disallow_untyped_defs = true
 
+# A ``type: ignore`` that no longer silences anything, a cast to the type
+# a value already has, and an ``==`` between types that can never be
+# equal are errors, so stale suppressions do not pile up. Where an
+# ignore is needed under one Python's numpy stubs but not another's, it
+# carries the ``unused-ignore`` code too.
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+
 # The test suite, conftest.py and the scripts are exercised, not typed;
 # they are exempt from the annotation requirement but still
 # type-checked against the package's annotations.

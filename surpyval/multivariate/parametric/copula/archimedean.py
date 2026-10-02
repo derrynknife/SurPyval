@@ -153,23 +153,19 @@ class ClaytonCopula(Copula):
         large = m + np.log(np.exp(x - m) + np.exp(y - m) - np.exp(-m))
         return np.where(m > cap, large, moderate)
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:
         return np.exp(-self._log_base(u, v, theta) / theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, theta: Any) -> Any:
         return np.exp(
             (-theta - 1.0) * np.log(u)
             + (-1.0 / theta - 1.0) * self._log_base(u, v, theta)
         )
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         return np.exp(
             np.log1p(theta)
             + (-theta - 1.0) * (np.log(u) + np.log(v))
@@ -213,12 +209,10 @@ class GumbelCopula(Copula):
             log_a = np.logaddexp(theta * log_x, theta * log_y) / theta
         return log_x, log_y, log_a
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:
         return np.exp(-np.exp(self._logs(u, v, theta)[2]))
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, theta: Any) -> Any:
         # dC/du = C A^(1 - theta) x^(theta - 1) / u
         log_x, _, log_a = self._logs(u, v, theta)
         return np.exp(
@@ -228,12 +222,10 @@ class GumbelCopula(Copula):
             - np.log(u)
         )
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = C (x y)^(theta - 1) A^(1 - 2 theta) (A + theta - 1) / (u v)
         log_x, log_y, log_a = self._logs(u, v, theta)
         a = np.exp(log_a)
@@ -279,8 +271,7 @@ class FrankCopula(Copula):
         -1: "theta falls without bound",
     }
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
         if theta == 0.0:
             return u * v
@@ -309,20 +300,17 @@ class FrankCopula(Copula):
                 log1p_a = onp.logaddexp(0.0, log_a - _logexpm1(eta))
         return -log1p_a / theta
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
         if theta == 0.0:
             return v * onp.ones_like(u)
         with onp.errstate(divide="ignore", invalid="ignore", over="ignore"):
             return onp.exp(_frank_log_du(u, v, theta))
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
         if theta == 0.0:
             return onp.ones_like(u)
@@ -474,13 +462,11 @@ class JoeCopula(Copula):
         )
         return log_ubar, log_vbar, onp.log(b), ab, log_A
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
         return -onp.expm1(self._parts(u, v, theta)[4] / theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, theta: Any) -> Any:
         # dC/du = ubar^(theta - 1) b A^(1/theta - 1)
         u, v, theta = _frank_args(u, v, theta)
         log_ubar, _, log_b, _, log_A = self._parts(u, v, theta)
@@ -488,12 +474,10 @@ class JoeCopula(Copula):
             (theta - 1.0) * log_ubar + log_b + (1.0 / theta - 1.0) * log_A
         )
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = (ubar vbar)^(theta - 1) A^(1/theta - 2) (theta - 1 + A)
         u, v, theta = _frank_args(u, v, theta)
         log_ubar, log_vbar, _, _, log_A = self._parts(u, v, theta)
@@ -575,23 +559,19 @@ class AMHCopula(Copula):
         it is small (``theta`` near 1 and ``u``, ``v`` near 0)."""
         return (1.0 - theta) + theta * (u + v * (1.0 - u))
 
-    # Named single parameter narrows the variadic base contract.
-    def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def cdf(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
         return u * v / self._d(u, v, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def du(self, u: Any, v: Any, theta: Any) -> Any:
         # dC/du = v (1 - theta (1 - v)) / D^2
         u, v, theta = _frank_args(u, v, theta)
         return v * ((1.0 - theta) + theta * v) / self._d(u, v, theta) ** 2
 
-    # Named single parameter narrows the variadic base contract.
-    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
-    # Named single parameter narrows the variadic base contract.
-    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = (1 + theta((1 + u)(1 + v) - 3) + theta^2 (1 - u)(1 - v)) / D^3,
         # its numerator regrouped as (1 - theta)(1 - theta + theta s) +
         # theta (1 + theta) q, s = u + v, q = u v, which is 2 u v (not a

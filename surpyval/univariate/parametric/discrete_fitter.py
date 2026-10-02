@@ -119,5 +119,5 @@ class DiscreteParametricFitter(ParametricFitter):
         x_arr = np.asarray(x, dtype=float)
         # hf and log_sf come from the concrete distribution; the
         # base declares them for typing on OptimisedFitMixin only.
-        hf = self.hf(x_arr, *params)  # type: ignore[attr-defined]
+        hf = self.hf(x_arr, *params)
         return np.log(hf) + self.log_sf(x_arr - 1.0, *params)

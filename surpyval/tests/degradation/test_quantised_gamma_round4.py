@@ -246,7 +246,7 @@ def test_gauge_input_checks() -> None:
         {"gauge_method": "independent"},
     ):
         with pytest.raises(ValueError, match="only meaningful with gauge"):
-            GammaProcess.fit(x, y, i, 10.0, **kwargs)  # type: ignore[arg-type]
+            GammaProcess.fit(x, y, i, 10.0, **kwargs)
     with pytest.raises(ValueError, match="decreases"):
         GammaProcess.fit(
             [0, 1, 2], [0.0, 1.0, 0.5], [1, 1, 1], 10.0, gauge=0.5

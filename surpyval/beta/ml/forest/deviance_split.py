@@ -674,6 +674,7 @@ def parse_min_split_gain(
     """Validate ``min_split_gain`` for a tree of ``kind``: a number at
     least 0, ``"aic"`` or ``"bic"``. Only the likelihood kinds use it, so a
     non-parametric tree accepts only the default 0."""
+    resolved: float | str
     if isinstance(min_split_gain, str):
         resolved = min_split_gain.lower()
         if resolved not in ("aic", "bic"):
@@ -693,7 +694,7 @@ def parse_min_split_gain(
             f"at least 0), 'aic' or 'bic'; got {min_split_gain!r}."
         )
     else:
-        resolved = float(min_split_gain)  # type: ignore[assignment]
+        resolved = float(min_split_gain)
     if kind == "non-parametric" and resolved != 0:
         raise ValueError(
             "min_split_gain applies to the likelihood splits of "

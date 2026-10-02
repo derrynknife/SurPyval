@@ -154,7 +154,7 @@ class ParametricRecurrenceModel(
 
     # Narrows the mixin mcf (no simulation arguments): the fitted
     # model evaluates its own CIF directly.
-    def mcf(self, x: ArrayLike) -> np.ndarray:  # type: ignore[override]
+    def mcf(self, x: ArrayLike) -> np.ndarray:
         """
         The mean cumulative function (MCF). For these counting processes the
         MCF equals the cumulative intensity, so this is a closed-form alias for

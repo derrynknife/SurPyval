@@ -726,7 +726,7 @@ class ProportionalIntensityModel(
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
     @keeps_query_shape
-    def mcf(  # type: ignore[override]
+    def mcf(
         self,
         x: ArrayLike,
         Z: ArrayLike,

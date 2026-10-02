@@ -1050,7 +1050,7 @@ class Parametric(
                 )
             p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
-            param_bounds = (0, 1)
+            param_bounds: tuple[float | None, float | None] = (0, 1)
         else:
             p_hat = self.params[idx]
             hess_inv = getattr(self, "hess_inv", None)
