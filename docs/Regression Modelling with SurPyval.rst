@@ -69,8 +69,10 @@ below points straight to the section that answers it.
      - ``AcceleratedLife(Weibull, life_models.Exponential)``, ...
      - `Accelerated Life (AL)`_
    * - model an effect that fades as time goes on
-     - ``LogisticPO``, ``PO(dist)``
-     - `Proportional Odds (PO)`_
+     - ``LogisticPO``, ``PO(dist)``; ``ProportionalOdds`` with no
+       distribution assumed
+     - `Proportional Odds (PO)`_,
+       `Semi-Parametric — Proportional Odds`_
    * - report an excess risk (extra failures per unit time)
      - ``AdditiveHazards``, ``WeibullAH``
      - `Semi-Parametric — Additive Hazards`_
@@ -211,7 +213,8 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
        semi-parametric ``BuckleyJames``
    * - Proportional Odds (PO)
      - Scales the survival odds :math:`O(x|Z) = O_0(x)\,\phi(Z)`
-     - ``WeibullPO``, ``LogisticPO``, …, ``PO(dist)``
+     - ``WeibullPO``, ``LogisticPO``, …, ``PO(dist)``, and the
+       semi-parametric ``ProportionalOdds``
    * - Additive Hazards (AH)
      - Adds to the hazard rate :math:`h(x|Z) = h_0(x) + \beta'Z`
      - ``AdditiveHazards`` (semi-parametric), ``WeibullAH``, …, ``AH(dist)``
@@ -238,9 +241,9 @@ fitter accepts:
 
 - the parametric families (PH, AFT, PO, AH and AL) accept every censoring
   type, and truncation through ``t`` (a two-column ``[tl, tr]`` array);
-- ``CoxPH`` takes observed and right-censored data, with left truncation
-  through a 1-D ``tl``, and refuses left- or interval-censored rows (the
-  partial likelihood has no term for them);
+- ``CoxPH`` and ``ProportionalOdds`` take observed and right-censored data,
+  with left truncation through a 1-D ``tl``, and refuse left- or
+  interval-censored rows (their likelihoods have no term for them);
 - the Lin-Ying (``AdditiveHazards``), Buckley-James and frailty fitters take
   observed and right-censored data only, and say so if given anything else.
 
@@ -1747,6 +1750,78 @@ falls more slowly from there, ending between the other two curves.
     assert np.allclose(_switch[:2], _never[:2])
     assert round(_switch[1], 2) == 0.5, _switch
     assert np.all((_never[2:] < _switch[2:]) & (_switch[2:] < _always[2:]))
+
+
+Semi-Parametric — Proportional Odds
+-----------------------------------
+
+``ProportionalOdds`` is to the PO models what ``CoxPH`` is to the PH ones:
+the covariates multiply the survival odds as above, but the baseline is left
+to the data. Its failure odds :math:`G_0(x) = F_0(x) / S_0(x)` are a
+non-decreasing step function that jumps at the event times:
+
+.. math::
+
+    S(x \mid Z) = \frac{1}{1 + G_0(x)\, e^{-\beta' Z}}
+
+Unlike Cox's, this baseline does not drop out of the likelihood, so it is
+estimated together with :math:`\beta` by nonparametric maximum likelihood
+(Murphy, Rossini and van der Vaart, 1997): for each :math:`\beta` the jumps
+of :math:`G_0` are solved for exactly, and :math:`\beta` maximises the
+resulting *profile* likelihood, whose curvature gives the standard errors.
+The model takes observed and right-censored data, with left truncation
+through a 1-D ``tl``. The sign convention is the parametric PO models': a
+positive coefficient means a *longer* life. (R's ``timereg::prop.odds`` and
+``mets::logitSurv`` model the odds of failure, so their coefficients are the
+negatives of these.)
+
+Fitted to the log-logistic data above, it recovers the coefficient the
+parametric ``PO(LogLogistic)`` fit found, with nearly the same standard
+error, and a baseline that tracks the log-logistic one without assuming it:
+
+.. jupyter-execute::
+
+    from surpyval import ProportionalOdds
+
+    spo = ProportionalOdds.fit(x=x_po, Z=z_po.reshape(-1, 1))
+    spo
+
+.. jupyter-execute::
+
+    print('semi-parametric beta_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
+    print('PO(LogLogistic) beta_0: %.3f (se %.3f)'
+          % (po.params[2], po.standard_errors()[2]))
+    t = np.array([5.0, 10.0, 20.0])
+    print('baseline survival, semi-parametric:', spo.sf(t, [0.0]).round(3))
+    print('baseline survival, log-logistic   :', po.sf(t, [0.0]).round(3))
+
+Both put the true coefficient of 1 well inside their intervals (1.007 with
+a standard error of 0.179, against 1.035 and 0.180), and the two baseline
+survival curves are within 0.02 of each other and 0.025 of the truth
+:math:`1 / (1 + (x/10)^3)`: 0.889, 0.5 and 0.111. The parametric fit is the
+better choice when its baseline is right; ``ProportionalOdds`` is the one to
+use when the shape of the baseline is what you cannot commit to.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(spo.beta[0], 3) == 1.007 and round(spo.se[0], 3) == 0.179
+    assert round(po.params[2], 3) == 1.035
+    assert round(po.standard_errors()[2], 3) == 0.180
+    _truth = 1 / (1 + (t / 10) ** 3)
+    assert np.all(np.abs(spo.sf(t, [0.0]) - po.sf(t, [0.0])) < 0.02)
+    assert np.all(np.abs(spo.sf(t, [0.0]) - _truth) < 0.025)
+    assert np.all(np.abs(po.sf(t, [0.0]) - _truth) < 0.02)
+
+The fitted model has the Cox model's interface: ``sf``, ``ff`` and ``Hf`` at
+covariate rows (``grid=True`` for a curve per row), ``hf`` and ``df`` as the
+jumps at the event times, ``summary()``, ``param_cb``, ``concordance`` and
+``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
+``formula``. Before the first event time the survival is 1, and after the
+last observed time it holds its last value. A covariate that separates the
+events from the survivors (a level with no events) leaves the likelihood
+without a maximum, and the fit warns "No finite maximum".
 
 
 Confidence Bounds

@@ -23,6 +23,7 @@ the data, and only the covariate effect is parameterised.
 
     regression/cox_ph
     regression/additive_hazards
+    regression/proportional_odds
     regression/buckley_james
 
 Parametric Models
