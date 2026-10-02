@@ -13,6 +13,7 @@ from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option
 
 from ._bands import BandsMixin
 from ._support import (
@@ -32,7 +33,6 @@ _QF_TOL = 1e-9
 
 # The functions ``cb`` can bound ('R' and 'F' are aliases of 'sf' and 'ff').
 _CB_ON = ("sf", "ff", "Hf", "R", "F")
-_BOUNDS = ("two-sided", "upper", "lower")
 
 
 # The ``interp`` values: the step estimate, and the interpolation kinds
@@ -41,26 +41,16 @@ _INTERP: tuple[str, ...] = ("step", "linear", "cubic", "nearest")
 _INTERP += ("nearest-up", "zero", "slinear", "quadratic", "previous", "next")
 
 
-def _check_option(name: str, value: Any, accepted: tuple) -> None:
-    """Refuse an option ``value`` not in ``accepted``, naming the
-    argument and the values it takes (principle 2) -- the one message
-    for an unknown option value."""
-    if not isinstance(value, str) or value not in accepted:
-        raise ValueError(
-            "'{}' must be one of {}; got {!r}".format(name, accepted, value)
-        )
-
-
 def _check_bound(bound: str) -> None:
     # An unknown ``bound`` (e.g. 'both') used to reach the statistic's
     # if/elif chain and fail as an UnboundLocalError.
-    _check_option("bound", bound, _BOUNDS)
+    check_option("bound", bound, BOUNDS)
 
 
 def _check_interp(interp: str) -> None:
     # An unknown ``interp`` used to reach scipy, which raised
     # NotImplementedError (#416).
-    _check_option("interp", interp, _INTERP)
+    check_option("interp", interp, _INTERP)
 
 
 class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
@@ -756,12 +746,13 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         # The guard used to test ``on in []`` and so never fired: any other
         # ``on`` (e.g. 'hf') fell through to the survival bounds in
         # ``[upper, lower]`` order, i.e. with the lower above the upper.
-        if on not in _CB_ON:
-            raise ValueError(
-                "'on' must be one of {}; got {!r}. Non-parametric bounds "
-                "are not available on the density or the hazard rate "
-                "('df', 'hf').".format(_CB_ON, on)
-            )
+        check_option(
+            "on",
+            on,
+            _CB_ON,
+            "Non-parametric bounds are not available on the density or "
+            "the hazard rate ('df', 'hf').",
+        )
         _check_bound(bound)
         _check_interp(interp)
         # Bounded here too (``R_cb`` is) so that 'ff' and 'Hf' start at
@@ -851,18 +842,19 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         dist: str,
     ) -> npt.NDArray:
         # ``R_cb`` without the bounds (see ``set_support``).
-        if bound_type not in ["exp", "normal"]:
-            raise ValueError("'bound_type' must be in ['exp', 'normal']")
+        check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
-        if dist != "z":
-            raise ValueError(
-                "'dist' must be 'z'. The 't' option (Student-t with the "
-                "at-risk count as degrees of freedom) has been removed: it "
-                "had no asymptotic justification, was undefined at the last "
-                "event, and widened bounds arbitrarily as the risk set "
-                "shrank. For small-sample or Turnbull confidence bounds use "
-                "`bootstrap_cb`, and for a simultaneous band use `band`."
-            )
+        check_option(
+            "dist",
+            dist,
+            ("z",),
+            "The 't' option (Student-t with the at-risk count as degrees "
+            "of freedom) has been removed: it had no asymptotic "
+            "justification, was undefined at the last event, and widened "
+            "bounds arbitrarily as the risk set shrank. For small-sample or "
+            "Turnbull confidence bounds use `bootstrap_cb`, and for a "
+            "simultaneous band use `band`.",
+        )
         if getattr(self, "greenwood", None) is None:
             raise ValueError(
                 "Model has no variance estimate so confidence bounds "

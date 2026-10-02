@@ -52,6 +52,7 @@ from ..regression_data import (
     serialise_covariate_meta,
 )
 from .families import frailty_cv2, kendall_tau, lognormal_log_integral
+from surpyval.utils.validation import BOUNDS, check_option
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -301,17 +302,16 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
+        check_option("bound", bound, BOUNDS)
         if bound == "two-sided":
             q = _z(1 - alpha_ci / 2)
             signs = np.array([-1.0, 1.0])
         elif bound == "lower":
             q = _z(1 - alpha_ci)
             signs = np.array([-1.0])
-        elif bound == "upper":
+        else:
             q = _z(1 - alpha_ci)
             signs = np.array([1.0])
-        else:
-            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
         if positive:
             if est <= 0:
                 # A boundary estimate (theta -> 0: no detectable frailty)

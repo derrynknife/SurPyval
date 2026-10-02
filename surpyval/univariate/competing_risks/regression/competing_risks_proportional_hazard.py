@@ -25,7 +25,6 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
-from surpyval.univariate.nonparametric.nonparametric import _check_option
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
     collect_aliased,
@@ -44,6 +43,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.ipcw import step_at as _step
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import check_option
 
 from .fine_gray import (
     FineGrayModel,
@@ -57,7 +57,7 @@ def _check_interp(interp: str) -> None:
     # The baselines are step functions and are only evaluated as steps:
     # any other interp, even 'bogus', used to be accepted and ignored, so
     # interp='linear' silently gave the step curve (#416).
-    _check_option("interp", interp, ("step",))
+    check_option("interp", interp, ("step",))
 
 
 class CompetingRisksProportionalHazards(
@@ -712,6 +712,7 @@ class CompetingRisksProportionalHazards(
         >>> model.cif([5, 10], [[1]], "a").round(4)
         array([0.59  , 0.7369])
         """
+        check_option("model", model, ("Cox", "Fine-Gray"))
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
         # A fixed order for the causes (a set's iteration order depends on
@@ -766,7 +767,7 @@ class CompetingRisksProportionalHazards(
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
 
-        elif model == "Fine-Gray":
+        else:
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
             # per cause. The authoritative predictions come from these models
             # (see ``_fg_models`` and the ``cif``/``sf`` branches below); the
@@ -792,8 +793,6 @@ class CompetingRisksProportionalHazards(
             # One warning for every cause whose partial likelihood has no
             # finite maximum (#392).
             _warn_if_monotone(fits)
-        else:
-            raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
         warn_collected(found, "in the fit of each cause")
 
         out.results = results

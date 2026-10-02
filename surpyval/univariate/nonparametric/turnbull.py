@@ -21,6 +21,7 @@ from ._turnbull_npmle import (
 from .fleming_harrington import _fleming_harrington as fh
 from .kaplan_meier import _kaplan_meier as km
 from .nelson_aalen import _nelson_aalen as na
+from surpyval.utils.validation import check_option
 
 # The estimators that can be applied to the Turnbull ladder. Checked up
 # front: an unknown name used to fall through to Fleming-Harrington in the
@@ -35,12 +36,7 @@ TURNBULL_ESTIMATORS: dict[str, Callable[..., npt.NDArray]] = {
 
 def check_turnbull_estimator(estimator: str) -> None:
     """Raise a ``ValueError`` if ``estimator`` is not a Turnbull option."""
-    if estimator not in TURNBULL_ESTIMATORS:
-        raise ValueError(
-            "'turnbull_estimator' must be one of {}; got {!r}".format(
-                ", ".join(repr(k) for k in TURNBULL_ESTIMATORS), estimator
-            )
-        )
+    check_option("turnbull_estimator", estimator, TURNBULL_ESTIMATORS)
 
 
 def _innermost(

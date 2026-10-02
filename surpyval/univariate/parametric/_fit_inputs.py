@@ -17,6 +17,7 @@ import numpy.typing as npt
 
 import surpyval
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import check_option
 
 from ..nonparametric import plotting_positions as pp
 from .fitters import offset_step
@@ -358,12 +359,7 @@ class FitInputsMixin:
             )
             raise ValueError(detail)
 
-        if how not in PARA_METHODS:
-            raise ValueError(
-                "`how` must be one of {} (in any case); got {!r}".format(
-                    PARA_METHODS, how
-                )
-            )
+        check_option("how", how, PARA_METHODS, "Case does not matter.")
 
         if how == "MPP" and not self.supports_mpp:
             detail = (

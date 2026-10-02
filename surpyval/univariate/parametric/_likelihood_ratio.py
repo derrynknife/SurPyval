@@ -25,6 +25,8 @@ from scipy.optimize import (
 from scipy.special import expit
 from scipy.special import ndtri as z
 
+from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+
 if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -696,6 +698,7 @@ class LikelihoodRatioMixin:
                 "available; use method='wald'."
             )
 
+        check_option("bound", bound, BOUNDS)
         if self._is_fixed_param(name):
             # A parameter fixed at fit time is known, not estimated: the
             # degenerate interval at its value, as the Wald method gives
@@ -703,17 +706,11 @@ class LikelihoodRatioMixin:
             value = float(self.params[idx])
             if bound == "two-sided":
                 return np.array([value, value])
-            if bound not in ("lower", "upper"):
-                raise ValueError(
-                    "bound must be 'two-sided', 'lower' or 'upper'"
-                )
             return np.array([value])
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2
-        elif bound in ("lower", "upper"):
-            crit = z(1.0 - alpha_ci) ** 2
         else:
-            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
+            crit = z(1.0 - alpha_ci) ** 2
 
         def solve_side(direction: Any) -> Any:
             value = self._lr_param_side(idx, crit, direction)
@@ -922,9 +919,7 @@ class LikelihoodRatioMixin:
         candidate core-parameter vector, so the profile optimiser can push it
         to the edge of the likelihood region.
         """
-        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
-        if on not in valid:
-            raise ValueError(f"'on' must be one of {valid}")
+        check_option("on", on, CB_ON)
 
         def g(t: Any, theta: npt.NDArray) -> Any:
             xt = np.atleast_1d(t) - self.gamma
@@ -995,11 +990,8 @@ class LikelihoodRatioMixin:
                 "for offset, limited-failure-population or zero-inflated "
                 "models; use method='wald'."
             )
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
-        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
-        if on not in valid:
-            raise ValueError(f"'on' must be one of {valid}")
+        check_option("bound", bound, BOUNDS)
+        check_option("on", on, CB_ON)
 
         if bound == "two-sided":
             crit = z(1.0 - alpha_ci / 2.0) ** 2

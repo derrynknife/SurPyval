@@ -16,6 +16,81 @@ from surpyval.utils.data_formats import resolve_cr_censoring, xcnt_handler
 
 FG_BASELINE_OPTIONS = ["Nelson-Aalen", "Kaplan-Meier"]
 
+# The sides a confidence bound can take, everywhere a ``bound`` is asked.
+BOUNDS = ("two-sided", "lower", "upper")
+
+# The functions a parametric model's ``cb`` bounds ('R' and 'F' are the
+# aliases of 'sf' and 'ff').
+CB_ON = ("sf", "R", "ff", "F", "Hf", "hf", "df")
+
+
+def format_options(accepted: Any) -> str:
+    """The values in ``accepted`` as a phrase, ``'a', 'b' or 'c'``, for
+    the messages that list what an option or name takes.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import format_options
+    >>> format_options(("two-sided", "lower", "upper"))
+    "'two-sided', 'lower' or 'upper'"
+    >>> format_options(("z",))
+    "'z'"
+    """
+    shown = [repr(a) for a in accepted]
+    if len(shown) < 2:
+        return "".join(shown)
+    return "{} or {}".format(", ".join(shown[:-1]), shown[-1])
+
+
+def option_error(
+    name: str, value: Any, accepted: Any, note: str | None = None
+) -> ValueError:
+    """The ``ValueError`` :func:`check_option` raises, for the code that
+    finds an unknown value at the end of its own ``if``/``elif`` chain.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import option_error
+    >>> option_error("scale", "logit", ("hazard", "odds", "normal"))
+    ValueError("'scale' must be one of 'hazard', 'odds' or 'normal'; got 'logit'")
+    """  # noqa: E501
+    one_of = "" if len(accepted) == 1 else "one of "
+    message = "'{}' must be {}{}; got {!r}".format(
+        name, one_of, format_options(accepted), value
+    )
+    if note:
+        message += ". " + note
+    return ValueError(message)
+
+
+def check_option(
+    name: str, value: Any, accepted: Any, note: str | None = None
+) -> None:
+    """Refuse an option ``value`` that is not one of ``accepted``, with
+    the one message every enumerated option uses (principles 2 and 21):
+    ``'<name>' must be one of <accepted>; got <value>`` (``must be
+    <accepted>`` when only one value is accepted), followed by ``note``
+    when given (why a value is refused, or what to use instead).
+
+    The options are strings, so anything that is not a string (an
+    array, ``None``, a number) is refused too, rather than compared.
+
+    Examples
+    --------
+    >>> from surpyval.utils.validation import BOUNDS, check_option
+    >>> check_option("bound", "lower", BOUNDS)
+    >>> check_option("bound", "both", BOUNDS)
+    Traceback (most recent call last):
+    ...
+    ValueError: 'bound' must be one of 'two-sided', 'lower' or 'upper'; got 'both'
+    >>> check_option("dist", "t", ("z",))
+    Traceback (most recent call last):
+    ...
+    ValueError: 'dist' must be 'z'; got 't'
+    """  # noqa: E501
+    if not (isinstance(value, str) and value in accepted):
+        raise option_error(name, value, accepted, note)
+
 
 def _check_x_not_empty(func: Callable) -> Callable:
     # Decorator to check that x is not empty

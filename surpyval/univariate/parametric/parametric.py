@@ -33,6 +33,12 @@ from surpyval.utils.linalg import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import (
+    BOUNDS,
+    CB_ON,
+    check_option,
+    option_error,
+)
 
 from ._likelihood_ratio import (
     _LN_MAX,
@@ -738,18 +744,8 @@ class Parametric(
         >>> model.param_cb("beta", method="lr")
         array([1.82826755, 3.27740643])
         """
-        if method.lower() in (
-            "lr",
-            "likelihood",
-            "likelihood-ratio",
-            "profile",
-        ):
+        if self._is_lr(method):
             return self._param_cb_lr(name, alpha_ci, bound)
-        elif method.lower() != "wald":
-            raise ValueError(
-                f"Unknown confidence-bound method '{method}'; "
-                "use 'wald' or 'lr'."
-            )
 
         is_core, idx = self._resolve_param_name(name)
         if not is_core:
@@ -774,20 +770,16 @@ class Parametric(
             var = hess_inv[idx, idx]
             param_bounds = self.dist.bounds[idx]
 
+        check_option("bound", bound, BOUNDS)
         if bound == "two-sided":
             alpha = alpha_ci / 2
             bounds = np.array([-1, 1])
         elif bound == "lower":
             alpha = alpha_ci
             bounds = np.array([-1])
-        elif bound == "upper":
+        else:
             alpha = alpha_ci
             bounds = np.array([1])
-        else:
-            raise ValueError(
-                "bound must be 'two-sided', 'lower' or 'upper'; got "
-                f"{bound!r}"
-            )
 
         # The edge only matters to the log and logit scales used below.
         edges = param_bounds if param_bounds in ((0, None), (0, 1)) else ()
@@ -1787,27 +1779,13 @@ class Parametric(
         # Checked up front, as param_cb does: an unrecognised value (say
         # 'both') used to fall through to the lower-bound branch and
         # return one bound as if it were what was asked for.
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError(
-                "bound must be 'two-sided', 'lower' or 'upper'; got "
-                f"{bound!r}"
-            )
-        if np.size(t) == 0 and on in ("sf", "R", "ff", "F", "Hf", "hf", "df"):
+        check_option("bound", bound, BOUNDS)
+        if np.size(t) == 0 and on in CB_ON:
             # Nothing to bound (the Jacobian of no values fails).
             return np.empty((0, 2) if bound == "two-sided" else (0,))
 
-        if method.lower() in (
-            "lr",
-            "likelihood",
-            "likelihood-ratio",
-            "profile",
-        ):
+        if self._is_lr(method):
             return self._cb_lr(t, on, alpha_ci, bound)
-        elif method.lower() != "wald":
-            raise ValueError(
-                f"Unknown confidence-bound method '{method}'; "
-                "use 'wald' or 'lr'."
-            )
 
         ctx = self._cb_context()
 
@@ -1830,10 +1808,7 @@ class Parametric(
             elif on in ["hf", "df"]:
                 cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
             else:
-                raise ValueError(
-                    "'on' must be one of 'sf', 'R', 'ff', 'F', 'Hf', 'hf' "
-                    f"or 'df'; got {on!r}"
-                )
+                raise option_error("on", on, CB_ON)
         finally:
             np.seterr(**old_err_state)
 
@@ -2003,20 +1978,19 @@ class Parametric(
         if m in ("lr", "likelihood", "likelihood-ratio", "profile"):
             return True
         if m != "wald":
-            raise ValueError(
-                f"Unknown confidence-bound method '{method}'; "
-                "use 'wald' or 'lr'."
+            check_option(
+                "method",
+                method,
+                ("wald", "lr"),
+                "Case does not matter, and 'likelihood', "
+                "'likelihood-ratio' and 'profile' also mean 'lr'.",
             )
         return False
 
     def _check_summary_cb(self, alpha_ci: float, bound: str) -> None:
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError(
-                "bound must be 'two-sided', 'lower' or 'upper'; got "
-                f"{bound!r}"
-            )
+        check_option("bound", bound, BOUNDS)
         if not 0 < alpha_ci < 1:
             raise ValueError(f"'alpha_ci' must be in (0, 1); got {alpha_ci}")
 

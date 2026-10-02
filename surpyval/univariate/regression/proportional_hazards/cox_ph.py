@@ -51,6 +51,7 @@ from .._fit_skeleton import (
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
+from surpyval.utils.validation import check_option
 
 nonparametric_dists = {
     "Nelson-Aalen": NelsonAalen,
@@ -1503,10 +1504,7 @@ class CoxPH_:
             ),
             "kp": self.create_kalbfleisch_prentice_ll_jac_hess,
         }
-        if tie_method not in generators:
-            raise ValueError(
-                "tie_method must be one of {}".format(sorted(generators))
-            )
+        check_option("tie_method", tie_method, generators)
         return generators[tie_method]
 
     def fit(
