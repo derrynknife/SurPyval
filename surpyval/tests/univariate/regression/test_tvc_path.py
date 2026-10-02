@@ -546,6 +546,30 @@ def test_no_raw_numpy_warnings():
             model.sf_tvc(np.array([0.0, 1e-300, 1.0, 50.0]), _ramp(0, 0.1))
 
 
+@pytest.mark.parametrize("times", [[1e21], [1.0, 1e21], [1e3, 1e12, 1e21]])
+def test_far_query_sees_the_hazard_near_the_time_scale(times):
+    # Z(u) = -0.2 u shuts the Weibull(10, 2) PH hazard off: H(inf) =
+    # (2 / 100) / 0.2^2 = 0.5, all of it near the model's time scale. A
+    # lone panel out to 1e21 never sampled it, and gave sf = 1 (or, after
+    # t = 1, sf(1)).
+    model = _model(sp.WeibullPH, [10, 2, 1.0])
+    path = CovariatePath.from_callable(lambda u: -0.2 * u)
+    got = model.sf_tvc(np.array(times), path)
+    np.testing.assert_allclose(got[-1], np.exp(-0.5), rtol=1e-8)
+
+
+def test_overflowing_hazard_gives_zero_survival():
+    # Z(u) = 0.2 u makes the hazard overflow by u = 1e4: survival is 0,
+    # not nan from inf - inf, and without raw numpy warnings.
+    model = _model(sp.WeibullPH, [10, 2, 1.0])
+    path = CovariatePath.from_callable(lambda u: 0.2 * u)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        got = model.sf_tvc(np.array([1.0, 1e4, 1e21]), path)
+    assert got[0] > 0
+    np.testing.assert_array_equal(got[1:], 0.0)
+
+
 # -- shapes, missing values and refusals -------------------------------------
 
 

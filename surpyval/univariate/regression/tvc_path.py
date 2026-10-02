@@ -100,8 +100,9 @@ _PANEL_CAP = 10**6
 #: Each halves the panels near an undeclared jump, so 50 rounds close in
 #: on one to rounding error.
 _MAX_ROUNDS = 50
-#: Geometric panels ``e_1 2^{-k}`` towards 0, for hazards singular there
-#: (a Weibull shape below 1, say).
+#: The geometric panels reach ``2^{-k}`` times the first edge (or the
+#: model's time scale) towards 0, for hazards singular there (a Weibull
+#: shape below 1, say); see :func:`path_mesh`.
 _GRADING = 40
 #: The rounding floor: a panel whose error estimate is below this many
 #: machine epsilons of its integral of ``|h|`` cannot be improved.
@@ -531,22 +532,49 @@ def _evaluate_panels(
 ) -> "tuple[npt.NDArray, ...]":
     exact, g, scale, flag = panel_terms(a, b)
     half = 0.5 * (b - a)
-    kronrod = half * (g @ _W_KRONROD)
-    gauss = half * (g @ _W_GAUSS)
-    err = np.abs(kronrod - gauss)
-    noise = _ROUNDING * half * (scale @ _W_KRONROD)
-    return exact + kronrod, err, noise, flag
+    with np.errstate(invalid="ignore", over="ignore"):
+        kronrod = half * (g @ _W_KRONROD)
+        gauss = half * (g @ _W_GAUSS)
+        err = np.abs(kronrod - gauss)
+        noise = _ROUNDING * half * (scale @ _W_KRONROD)
+        value = exact + kronrod
+    # A hazard that overflows on a panel (one growing exponentially along
+    # the path, far out) makes its integral +inf exactly; the correction,
+    # inf - inf, would say nan.
+    over = np.isposinf(exact) | np.isposinf(scale).any(axis=1)
+    if over.any():
+        value = np.where(over, np.inf, value)
+        err = np.where(over, 0.0, err)
+        noise = np.where(over, 0.0, noise)
+    return value, err, noise, flag
 
 
-def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
+def path_mesh(
+    path: CovariatePath,
+    points: npt.NDArray,
+    scale: "float | None" = None,
+) -> npt.NDArray:
     """
     The starting panel edges for integrating ``path`` up to the largest of
     the positive ``points``: 0, the path's breakpoints below it, the points
-    themselves (query times, and the conditioning age) and geometric edges
-    towards 0.
+    themselves (query times, and the conditioning age), and geometric edges
+    a factor of 2 apart from ``2^-_GRADING`` times the smaller of the first
+    edge and the model's time ``scale`` up to the largest point.
+
+    The geometric edges put panels at every scale between: the hazard
+    along a path can sit near the model's time scale however far out the
+    query is (a covariate that shuts it off), where one panel from there
+    to a query at 1e21 would never sample it. Graded towards 0 they also
+    resolve hazards singular there (a Weibull shape below 1, say).
     """
     t_max = float(np.max(points))
-    count = path._n_breakpoints(t_max) + points.size + _GRADING
+    edges = np.unique(np.concatenate([[0.0], path.breakpoints(t_max), points]))
+    low = edges[1]
+    if scale is not None and np.isfinite(scale) and 0 < scale < low:
+        low = scale
+    # In logs: a query time near the smallest float would overflow t / low
+    n_geometric = int(np.ceil(np.log2(t_max) - np.log2(low))) + _GRADING
+    count = path._n_breakpoints(t_max) + points.size + n_geometric
     if count > _PANEL_CAP:
         raise ValueError(
             "evaluating this CovariatePath up to t = {:g} needs about {:,} "
@@ -563,9 +591,8 @@ def path_mesh(path: CovariatePath, points: npt.NDArray) -> npt.NDArray:
                 ),
             )
         )
-    edges = np.unique(np.concatenate([[0.0], path.breakpoints(t_max), points]))
-    grading = edges[1] * 0.5 ** np.arange(1, _GRADING + 1)
-    return np.unique(np.concatenate([edges, grading]))
+    geometric = low * 2.0 ** (np.arange(n_geometric) - _GRADING)
+    return np.unique(np.concatenate([edges, geometric[geometric < t_max]]))
 
 
 def _missed(
