@@ -33,8 +33,9 @@ code.
 
 from __future__ import annotations
 
+import functools
 import types
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -166,9 +167,9 @@ from .._fit_skeleton import (  # noqa: E402
     LogLinearPhi,
     MirroredDistributionAttrs,
     alias_coefficients,
+    assemble_regression_model,
     check_fixed_and_init,
     optimise_nm_tnc,
-    require_finite_fit,
 )
 
 
@@ -311,7 +312,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         fixed = alias_coefficients(
             self, "Accelerated Failure Time", Z, n, fixed, phi_param_map
         )
-        aliased = getattr(fixed, "aliased", ())
 
         # Centred on the interval rows' means, as the ordinary AFT fit
         # (#463): exp(beta'z) on a covariate far from 0 overflows.
@@ -355,31 +355,6 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
             # which says so when neither rung converged.
             res = optimise_nm_tnc(fun, init)
-        require_finite_fit(float(res.fun))
-
-        params = inv_trans(const(res.x))
-        fit_centring = None
-        center_out = np.zeros(p)
-        if centring is not None:
-            # The baseline moved to Z = 0 when that is representable, as
-            # for the ordinary fit; the likelihood of the data as given is
-            # the check.
-            raw = AFTFitter(self.dist)
-            raw._tvc = {**grp, "Zep": Z}
-            params_c = np.asarray(params, dtype=float)
-            params, center_out, J = centring.finish(
-                params_c,
-                float(res.fun),
-                lambda *q: _aft_tvc_neg_ll(raw, None, *q),
-                bounds,
-                self.dist.name,
-            )
-            if J is not None:
-                fit_centring = (params_c, centring.center, J)
-        params = np.array(params, dtype=float)
-        if aliased:
-            # Reported as nan, R's NA (#476); the model predicts with 0.
-            params[[self.k_dist + phi_param_map[a] for a in aliased]] = np.nan
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -391,25 +366,31 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             group_and_sort=False,
         )
         edata.add_covariates(Z)
+        raw_neg_ll: "Callable | None" = None
+        if centring is not None:
+            # The baseline moved to Z = 0 when that is representable, as
+            # for the ordinary fit; the likelihood of the data as given is
+            # the check.
+            centring.raw = edata
+            raw = AFTFitter(self.dist)
+            raw._tvc = {**grp, "Zep": Z}
+            raw_neg_ll = functools.partial(_aft_tvc_neg_ll, raw, None)
 
-        model = ParametricRegressionModel()
-        model.model = like
-        model.reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, phi_param_map)
-        model.kind = "Accelerated Failure Time"
-        model.distribution = self.dist
-        model.params = np.array(params)
-        model.dist_params = np.array(params[: self.k_dist])
-        model.phi_params = np.array(params[self.k_dist :])
-        model.res = res
-        model._neg_ll = res.fun
-        model.fixed = {k: v for k, v in fixed.items() if k not in aliased}
-        model.k_dist = self.k_dist
-        # Estimated parameters only (an aliased coefficient is among
-        # ``fixed`` here); see ``assemble_regression_model``.
-        model.k = len(bounds) - len(fixed or {})
-        model.data = edata
-        model.center = center_out
-        model._fit_centring = fit_centring
+        # The fitter carrying the accumulated-age likelihood is the
+        # model's, so its bounds use that likelihood.
+        model = assemble_regression_model(
+            like,
+            "Accelerated Failure Time",
+            LogLinearPhi(LogLinearPhi.NAME_EXP, phi_param_map),
+            edata,
+            res,
+            inv_trans(const(res.x)),
+            bounds,
+            phi_param_map,
+            fixed,
+            centring=centring,
+            raw_neg_ll=raw_neg_ll,
+        )
         model.is_tvc = True
 
         # Report information criteria on the *subjects*, not the episode

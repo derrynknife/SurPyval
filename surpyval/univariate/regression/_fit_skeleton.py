@@ -800,12 +800,15 @@ def assemble_regression_model(
     fixed: dict,
     neg_ll: "float | None" = None,
     centring: "Centring | None" = None,
+    raw_neg_ll: "Callable | None" = None,
 ) -> ParametricRegressionModel:
     """Common tail of every parametric-regression ``fit``.
 
     With a ``centring``, ``data`` and ``params`` are those of the centred
     fit: the model keeps the data as given, and its parameters and
-    ``center`` are placed by :meth:`Centring.finish`.
+    ``center`` are placed by :meth:`Centring.finish`, which checks them
+    against the likelihood of the data as given, ``raw_neg_ll(*params)``
+    (by default ``fitter.neg_ll`` of ``centring.raw``).
     """
     require_finite_fit(float(res.fun) if neg_ll is None else neg_ll)
     fit_centring = None
@@ -816,7 +819,11 @@ def assemble_regression_model(
         params, center, J = centring.finish(
             params_c,
             float(res.fun) if neg_ll is None else neg_ll,
-            lambda *p: fitter.neg_ll(raw, *p),
+            (
+                (lambda *p: fitter.neg_ll(raw, *p))
+                if raw_neg_ll is None
+                else raw_neg_ll
+            ),
             bounds,
             fitter.dist.name,
         )
