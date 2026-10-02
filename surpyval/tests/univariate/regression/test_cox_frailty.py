@@ -272,4 +272,4 @@ def test_monotone_likelihood_warns_once():
         CoxFrailty.fit(x, Z=Z, c=c, groups=g)
     messages = [str(w.message) for w in caught]
     assert len(messages) == 1, messages
-    assert "Monotone partial likelihood" in messages[0]
+    assert "No finite maximum: the partial" in messages[0]

@@ -2,11 +2,17 @@ from typing import Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 
+from surpyval.recurrent._bounded import unconstraining_maps
 from surpyval.recurrent.inference import bic_sample_size
-from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.univariate.parametric.fitters import (
+    bounds_convert,
+    verified_maximum,
+    verify_or_polish,
+)
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.no_maximum import warn_unverified
 
 
 class RenewalFitMixin(RecurrentDataFrameMixin):
@@ -26,6 +32,39 @@ class RenewalFitMixin(RecurrentDataFrameMixin):
     the two convergence-failure errors, picking the best start, the bounded-to-
     unbounded parameter transform, and storing the inference attributes.
     """
+
+    @staticmethod
+    def _polish_unverified(
+        neg_ll: Callable, params: np.ndarray, bounds: list, n_obs: float
+    ) -> np.ndarray:
+        """``params``, the natural parameters a search reached, polished
+        where they are not a verified maximum (``verified_maximum``, which
+        holds a restoration parameter on its bound out): Nelder-Mead's
+        tolerances are absolute, and a G1 renewal fit on twelve failures
+        stopped with a scaled gradient of 3e-4. The polish is BFGS on
+        central differences (the likelihoods are not written for autograd)
+        in the space the searches run in (``unconstraining_maps``), kept
+        only where it improves the likelihood; ``_attach_inference`` then
+        says whether the answer is a verified maximum."""
+        x = np.asarray(params, dtype=float)
+        if not np.all(np.isfinite(x)):
+            return x
+        if verified_maximum(neg_ll, x, bounds, n_obs):
+            return x
+        to_natural, to_search = unconstraining_maps(list(bounds))
+
+        def fun(u: np.ndarray) -> float:
+            with np.errstate(all="ignore"):
+                value = neg_ll(to_natural(u))
+            return float(value) if np.isfinite(value) else 1e300
+
+        u0 = to_search(x)
+        start = OptimizeResult(x=u0, fun=fun(u0))
+        with np.errstate(all="ignore"):
+            polished, _ = verify_or_polish(fun, start, n_obs, numerical=True)
+        if polished.fun < float(neg_ll(x)):
+            return np.asarray(to_natural(polished.x), dtype=float)
+        return x
 
     @staticmethod
     def _initial_dist_params(data: Any, dist: Any) -> np.ndarray:
@@ -272,7 +311,13 @@ class RenewalFitMixin(RecurrentDataFrameMixin):
                     )
                 )
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
-        return res, inv_trans(res.x)
+        params = self._polish_unverified(
+            neg_ll,
+            inv_trans(res.x),
+            [restoration_bounds, *dist.bounds],
+            max(float(bic_sample_size(data)), 1.0),
+        )
+        return res, params
 
     def _attach_inference(
         self,
@@ -299,4 +344,17 @@ class RenewalFitMixin(RecurrentDataFrameMixin):
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
         model._n_obs = bic_sample_size(data)
+        # The multi-start Nelder-Mead's answer is accepted only as a
+        # verified maximum (principle 13): a restoration parameter on its
+        # bound held out where the likelihood is highest there.
+        if verified_maximum(
+            neg_ll,
+            model._mle,
+            model._parameter_bounds(),
+            max(float(model._n_obs), 1.0),
+        ):
+            model.maximum = "verified"
+        else:
+            model.maximum = "unverified"
+            warn_unverified("The {} fit".format(model.kind))
         return model

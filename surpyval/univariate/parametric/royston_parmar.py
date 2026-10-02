@@ -51,8 +51,14 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
@@ -188,6 +194,13 @@ class RoystonParmarModel(SerialisableMixin):
         # The sample size of bic() (see ic_sample_size), from the data at
         # fit time.
         self._ic_n = 0.0
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
+        # for a model restored from a dict saved without it.
+        self.maximum = "unknown"
+        # The negative log-likelihood of the spline coefficients the fit
+        # minimised; not saved.
+        self._objective: Any = None
 
     @property
     def parameter_names(self) -> list[str]:
@@ -419,6 +432,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
+            **maximum_entry(self.maximum),
             "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:
@@ -438,6 +452,7 @@ class RoystonParmarModel(SerialisableMixin):
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        out.maximum = restored_maximum(model_dict)
         if "ic_n" in model_dict:
             out._ic_n = float(model_dict["ic_n"])
         else:
@@ -642,16 +657,28 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         gamma = res.x
 
         covariance = None
+        n_obs = float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum())
         with np.errstate(all="ignore"):
+            steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
+            information = numerical_hessian(neg_ll, gamma, step=steps)
             try:
-                steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
-                cov = np.linalg.inv(
-                    numerical_hessian(neg_ll, gamma, step=steps)
-                )
+                cov = np.linalg.inv(information)
                 if np.all(np.isfinite(cov)):
                     covariance = cov
             except np.linalg.LinAlgError:
                 covariance = None
+            # Accepted as a maximum only where it is one: the gradient ~0
+            # and the information (the Hessian the covariance inverts)
+            # positive definite, per observation (principle 13).
+            verified = is_local_minimum(
+                neg_ll,
+                lambda g: numerical_gradient(neg_ll, g, 1e-2 * steps),
+                lambda g: information,
+                gamma,
+                obj_scale=max(n_obs, 1.0),
+            )
+        if not verified:
+            warn_unverified("The Royston-Parmar fit")
 
         model = RoystonParmarModel()
         model.scale = scale
@@ -664,6 +691,8 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
         model._ic_n = ic_sample_size(data.c, data.n)
+        model.maximum = "verified" if verified else "unverified"
+        model._objective = neg_ll
         return model
 
 

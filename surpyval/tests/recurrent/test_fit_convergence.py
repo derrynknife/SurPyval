@@ -68,20 +68,17 @@ def test_a_renewal_fit_from_a_far_start(fitter):
 
 
 def test_an_unconverged_nhpp_fit_warns(monkeypatch):
-    # Where the kept answer's optimiser did not converge, the fit says so
-    from scipy.optimize import OptimizeResult
-
+    # Where the kept answer is not a verified maximum, polished or not, the
+    # fit says so, and records it. (It used to read the optimiser's
+    # verdict, which says nothing either way: the fit checks the answer.)
     from surpyval.recurrent.parametric import nhpp_fitter
 
-    real = nhpp_fitter.minimize
-
-    def capped(*args, **kwargs):
-        res = real(*args, **kwargs)
-        return OptimizeResult({**res, "success": False})
-
-    monkeypatch.setattr(nhpp_fitter, "minimize", capped)
+    monkeypatch.setattr(
+        nhpp_fitter, "verify_or_polish", lambda fun, res, *a, **k: (res, 0)
+    )
     with pytest.warns(UserWarning, match="did not reach a verified maximum"):
-        sp.recurrent.Duane.fit(**recurrent_data())
+        model = sp.recurrent.Duane.fit(**recurrent_data())
+    assert model.maximum == "unverified"
 
 
 def _rossi():

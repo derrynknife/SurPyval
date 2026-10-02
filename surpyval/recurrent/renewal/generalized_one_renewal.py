@@ -7,6 +7,7 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
@@ -308,11 +309,17 @@ class GeneralizedOneRenewal(RenewalFitMixin):
                     )
                 )
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
+        params = self._polish_unverified(
+            neg_ll,
+            res.x,
+            [(-1, None), *dist.bounds],
+            max(float(bic_sample_size(data)), 1.0),
+        )
 
-        underlying_model = dist.from_params(list(res.x[1:]))
-        q = res.x[0]
+        underlying_model = dist.from_params(list(params[1:]))
+        q = params[0]
         out = self._make_model(underlying_model, q)
-        self._attach_inference(out, neg_ll, res.x, res, data)
+        self._attach_inference(out, neg_ll, params, res, data)
         return out
 
     def fit(

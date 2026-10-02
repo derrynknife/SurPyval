@@ -13,6 +13,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import CallableList, RenamedAttribute
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
     covariate_rows,
@@ -190,6 +191,12 @@ class ParametricRegressionModel(
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``): ``"verified"`` (a zero gradient and
+    #: a positive-definite Hessian), ``"unverified"`` or ``"no finite
+    #: maximum"``, each as the fit's warnings say (principles 12 and 13);
+    #: ``"unknown"`` for a model restored from a dict saved without it.
+    maximum: str = "unknown"
     #: Whether the model was fitted to time-varying covariates
     #: (``fit_tvc``, ``fit_tvc_timeline``), one data row per interval.
     is_tvc: bool = False
@@ -346,6 +353,7 @@ class ParametricRegressionModel(
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
+        out.update(maximum_entry(self.maximum))
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()
@@ -509,6 +517,7 @@ class ParametricRegressionModel(
             )
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
+        out.maximum = restored_maximum(model_dict)
         # Dicts written before "ic_n" existed carry no sample size, and
         # bic() / aic_c() then say they need the data.
         out._ic_n = cls._restored_ic_n(model_dict)

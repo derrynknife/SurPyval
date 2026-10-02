@@ -29,6 +29,10 @@ import numpy.typing as npt
 from autograd import elementwise_grad
 from scipy.optimize import minimize
 
+from surpyval.univariate.parametric.fitters import (
+    verified_maximum,
+    verify_or_polish,
+)
 from surpyval.utils.dataframe import (
     call_fit,
     frame_column,
@@ -39,7 +43,11 @@ from surpyval.utils.deprecation import (
     RenamedAttribute,
     renamed_class_attribute,
 )
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
 
@@ -605,7 +613,7 @@ class Copula:
 
         margin_models = self._fit_margins(margins, data)
         if how == "IFM":
-            theta = self._fit_theta(margin_models, data, init)
+            theta, verified = self._search_theta(margin_models, data, init)
             # A margin passed already fitted is used as it is, so only the
             # margins fitted here count as estimated parameters.
             # A non-parametric margin has no parameter vector: the
@@ -618,7 +626,7 @@ class Copula:
                 if hasattr(given, "fit") and not _is_nonparametric(m)
             )
         else:
-            theta, margin_models = self._fit_joint(
+            theta, margin_models, verified = self._fit_joint(
                 margins, margin_models, data, init
             )
             # The joint search re-estimates every free margin parameter,
@@ -627,18 +635,43 @@ class Copula:
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
-        # One warning per fit: perfect dependence explains any runaway.
-        if not self._warn_if_perfectly_dependent(data, theta):
-            self._warn_if_no_maximum(margin_models, data, theta)
-        return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
+        # One warning per fit: perfect dependence explains any runaway,
+        # and a likelihood with no maximum why the search was not
+        # verified.
+        if self._warn_if_perfectly_dependent(
+            data, theta
+        ) or self._warn_if_no_maximum(margin_models, data, theta):
+            maximum = "no finite maximum"
+        elif verified:
+            maximum = "verified"
+        else:
+            maximum = "unverified"
+            warn_unverified("The {} copula fit".format(self.name))
+        if how == "IFM":
+            # The two-stage estimate is a maximum where each stage is: the
+            # margins fitted here say what theirs reached (and warned).
+            maximum = combined_maximum(
+                [maximum]
+                + [
+                    getattr(m, "maximum", "not applicable")
+                    for m, given in zip(margin_models, margins)
+                    if hasattr(given, "fit")
+                ]
+            )
+        model = CopulaModel(
+            self, theta, margin_models, data=data, how=how, k=k
+        )
+        model.maximum = maximum
+        return model
 
     def _warn_if_no_maximum(
         self, margin_models: list, data: Any, theta: npt.NDArray
-    ) -> None:
+    ) -> bool:
         """A family whose likelihood can lack a finite maximum on data
         that are not perfectly dependent checks for it here (the Student-t
-        copula's degrees of freedom); by default there is nothing to
-        check."""
+        copula's degrees of freedom), and says whether it warned; by
+        default there is nothing to check."""
+        return False
 
     def _warn_if_perfectly_dependent(
         self, data: Any, theta: npt.NDArray
@@ -867,6 +900,28 @@ class Copula:
         data: Any,
         init: "npt.NDArray | None" = None,
     ) -> npt.NDArray:
+        """The copula's parameters for the fitted margins (the second
+        stage of IFM); see :meth:`_search_theta`."""
+        return self._search_theta(margin_models, data, init)[0]
+
+    def _search_theta(
+        self,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
+    ) -> tuple[npt.NDArray, bool]:
+        """``(theta, verified)``: the copula's parameters for the fitted
+        margins, by Nelder-Mead in the unbounded space, and whether they
+        are a verified maximum (principle 13; ``verified_maximum``, by
+        central differences: the likelihood is not written for autograd).
+        Nelder-Mead's tolerances are absolute, so an answer that is not
+        verified is polished (``verify_or_polish``). A parameter on a bound
+        of its family (the AMH's ``theta = 1``, a Clayton at its
+        independence end) is a maximum there when the likelihood does not
+        rise off it."""
+        if not self.parameter_names:
+            # (the independence copula: nothing to estimate)
+            return onp.zeros(0), True
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
@@ -897,7 +952,23 @@ class Copula:
         # them are noise (they were 230 raw warnings from a Gumbel fit).
         with onp.errstate(all="ignore"):
             res = minimize(obj, start, method="Nelder-Mead")
-        return onp.asarray(to_bounded(res.x), dtype=float)
+        theta = onp.asarray(to_bounded(res.x), dtype=float)
+        n_obs = float(onp.sum(data.n))
+        if not onp.isfinite(res.fun):
+            return theta, False
+
+        def natural(params: npt.NDArray) -> float:
+            return float(self.neg_ll(params, dims, data.n))
+
+        # A parameter on a bound of the family where the likelihood is
+        # highest (the AMH's theta = 1, a Clayton at its independence end)
+        # is checked there (``verified_maximum``).
+        if verified_maximum(natural, theta, self.bounds, n_obs):
+            return theta, True
+        with onp.errstate(all="ignore"):
+            res, _ = verify_or_polish(obj, res, n_obs, numerical=True)
+        theta = onp.asarray(to_bounded(res.x), dtype=float)
+        return theta, verified_maximum(natural, theta, self.bounds, n_obs)
 
     def _fit_joint(
         self,
@@ -952,8 +1023,15 @@ class Copula:
                 method="Nelder-Mead",
                 options={"xatol": 1e-6, "fatol": 1e-6},
             )
+            # Accepted as a maximum only where it is one (principle 13),
+            # polished where it is not, as in ``_search_theta``.
+            verified = False
+            if onp.isfinite(res.fun):
+                res, verified = verify_or_polish(
+                    obj, res, float(onp.sum(data.n)), numerical=True
+                )
         theta, models = unpack(res.x)
-        return onp.asarray(theta, dtype=float), models
+        return onp.asarray(theta, dtype=float), models, verified
 
     def _just_inside(self, theta: npt.NDArray) -> npt.NDArray:
         """``theta`` with any value on (or beyond) a finite bound moved

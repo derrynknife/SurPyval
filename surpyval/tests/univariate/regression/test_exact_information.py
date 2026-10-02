@@ -20,6 +20,7 @@ from autograd import grad, hessian
 
 import surpyval as sp
 import surpyval.univariate.competing_risks.regression.fine_gray as fine_gray
+import surpyval.univariate.regression._fit_skeleton as skeleton
 import surpyval.univariate.regression._inference as inference
 import surpyval.univariate.regression.frailty.frailty_fitter as frailty
 from surpyval.tests.conformance.registry import CASE_BY_NAME, reg_data
@@ -406,10 +407,11 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
 
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     # The subdistribution fit's standard errors invert the exact Hessian
-    # the no-maximum check took, rather than taking it again.
+    # the no-maximum check took (``judge_search``, which checks the
+    # maximum with it too), rather than taking it again.
     case = CASE_BY_NAME["FineGray"]
     calls, seen = [], []
-    original, take = fine_gray.hessian, fine_gray.search_derivatives
+    original, take = fine_gray.hessian, skeleton.search_derivatives
 
     def counted(f):
         calls.append(1)
@@ -420,7 +422,7 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
         return take(neg_ll, beta)
 
     monkeypatch.setattr(fine_gray, "hessian", counted)
-    monkeypatch.setattr(fine_gray, "search_derivatives", taking)
+    monkeypatch.setattr(skeleton, "search_derivatives", taking)
     model = _fit(lambda: case.fit(case.data()))
     assert calls == [] and len(seen) == 1
     neg_ll, beta = seen[0]

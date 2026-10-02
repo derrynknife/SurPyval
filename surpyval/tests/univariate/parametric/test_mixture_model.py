@@ -2,6 +2,8 @@
 Tests for the ``MixtureModel`` fitter.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -294,3 +296,50 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
     assert coded.loglike == pytest.approx(explicit.loglike, rel=1e-8)
     np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-4)
     np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-4)
+
+
+@pytest.mark.parametrize("kind", ["right", "left"])
+def test_560_truncated_fit_is_a_verified_maximum(kind):
+    # The truncated path took L-BFGS-B's answer unverified: the two forms
+    # of the same data reached parameters 2e-5 apart on a flat maximum.
+    # Polished and verified as the EM path is (#506), they agree to 1e-6,
+    # and each is a verified maximum, in silence.
+    x, t = _data_544()
+    c = np.zeros(80, int)
+    xl, xr, ci = x.copy(), x.copy(), c.copy()
+    rows = [3, 50]
+    if kind == "right":
+        c[rows] = 1
+        t[rows, 1] = x[rows] + 5
+        xr[rows] = t[rows, 1]
+    else:
+        c[rows] = -1
+        t[rows, 0] = x[rows] / 2
+        xl[rows] = t[rows, 0]
+    ci[rows] = 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        coded = sp.MixtureModel.fit(x, c=c, t=t, dist=sp.Weibull)
+        explicit = sp.MixtureModel.fit(
+            xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull
+        )
+    assert coded.maximum == explicit.maximum == "verified"
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-6)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-6)
+
+
+def test_a_point_mass_component_warns_once():
+    # A component collapsed onto a point mass has no finite maximum, which
+    # is also why EM ran to its iteration limit: one warning, "No finite
+    # maximum", where the fit used to give that one and "did not reach a
+    # verified maximum" as well (principle 22).
+    x = np.r_[np.full(10, 3.0), np.linspace(20.0, 40.0, 10)]
+    n = np.ones(20, int)
+    n[[2, 15]] = 2
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = sp.MixtureModel.fit(x, n=n, dist=sp.Weibull)
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1, messages
+    assert messages[0].startswith("No finite maximum"), messages
+    assert model.maximum == "no finite maximum"

@@ -370,16 +370,15 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         # verdict is no test: it reports a "precision loss" at the
         # maximum of the Rossi fit, and success where it never moved.
         n_obs = bic_sample_size(data)
-        if not (
-            res.fun < 1e300
-            and is_local_minimum(
-                neg_ll_free,
-                jacobian(neg_ll_free),
-                hessian(neg_ll_free),
-                res.x,
-                obj_scale=max(float(n_obs), 1.0),
-            )
-        ):
+        verified = res.fun < 1e300 and is_local_minimum(
+            neg_ll_free,
+            jacobian(neg_ll_free),
+            hessian(neg_ll_free),
+            res.x,
+            obj_scale=max(float(n_obs), 1.0),
+        )
+        out.maximum = "verified" if verified else "unverified"
+        if not verified:
             warn_unverified("The proportional intensity fit")
         out.res = res
         fitted = np.full(1 + num_covariates, np.nan)

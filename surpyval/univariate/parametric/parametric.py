@@ -30,6 +30,10 @@ from surpyval.utils.linalg import (
     wald_undefined,
     warn_wald_undefined,
 )
+from surpyval.utils.no_maximum import (  # noqa: F401 (re-exported)
+    MAXIMUM_STATES,
+    restored_maximum,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -69,20 +73,6 @@ _NO_COVARIANCE_WHY = (
 )
 
 _CBContext = namedtuple("_CBContext", ["phi_hat", "cov", "n_core"])
-
-# The values of ``Parametric.maximum``: whether the log-likelihood a model
-# reports is at a maximum (principles 12 and 13). The first three are what
-# a maximum-likelihood fit reached, and agree with its warnings: a fit
-# that warns "No finite maximum" is ``"no finite maximum"``, one that
-# warns its search did not reach a verified maximum is ``"unverified"``,
-# and a fit that warns neither is ``"verified"``.
-MAXIMUM_STATES = (
-    "verified",
-    "unverified",
-    "no finite maximum",
-    "not applicable",
-    "unknown",
-)
 
 
 def draw_state(random_state: Any = None) -> Any:
@@ -413,14 +403,7 @@ class Parametric(
         # Dicts written before ``"maximum"`` existed keep the constructor's
         # value: "unknown" for a maximum-likelihood fit, "not applicable"
         # for any other.
-        if "maximum" in model_dict:
-            maximum = model_dict["maximum"]
-            if maximum not in MAXIMUM_STATES:
-                raise ValueError(
-                    f"The dictionary's 'maximum' is {maximum!r}; it must be "
-                    f"one of {list(MAXIMUM_STATES)}."
-                )
-            out.maximum = maximum
+        out.maximum = restored_maximum(model_dict, out.maximum)
         out._data_summary = model_dict.get("data_summary")
 
         # Restore the support interval, which fit-time construction sets via

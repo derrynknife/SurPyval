@@ -17,13 +17,12 @@ it was fitted to, nor what came with them (``RESTORED_WITHOUT``).
 
 import inspect
 
-import numpy as np
 import pytest
 
-import surpyval as sp
 from surpyval.tests.conformance.registry import (
     cases_for,
     refit,
+    tvc_path,
 )
 
 # What a model restored by ``from_dict`` lacks, by class: the fitted data
@@ -53,25 +52,6 @@ def attributes(model):
     return {name for name in declared(type(model)) if hasattr(model, name)}
 
 
-def _tvc_path(case):
-    # One (0, x] interval per subject is the time-fixed data.
-    fitter = getattr(sp, case.name, None)
-    if not hasattr(fitter, "fit_tvc"):
-        return None
-
-    def fit_tvc(d):
-        n = np.asarray(d["n"])
-        return fitter.fit_tvc(
-            np.arange(n.sum()),
-            np.zeros(n.sum()),
-            np.repeat(d["x"], n),
-            np.repeat(d["c"], n),
-            np.repeat(d["Z"], n, axis=0),
-        )
-
-    return fit_tvc
-
-
 def _from_dict(case):
     def restore(d):
         model = refit(case, d)
@@ -82,7 +62,7 @@ def _from_dict(case):
 
 def _builders(case):
     out = {"fit": lambda d: refit(case, d), **case.paths}
-    tvc = _tvc_path(case)
+    tvc = tvc_path(case)
     if tvc is not None and "fit_tvc" not in out:
         out["fit_tvc"] = tvc
     if case.applies("serialise"):

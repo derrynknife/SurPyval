@@ -20,6 +20,7 @@ from surpyval.univariate.regression._aliasing import (
 )
 from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import option_error
 
@@ -118,6 +119,11 @@ class ProportionalIntensityModel(
     data: Any
     how: str
     res: Any
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
+    #: applicable"`` for a model built from its parameters, ``"unknown"``
+    #: for one restored from a dict saved without it.
+    maximum: str = "not applicable"
 
     def __repr__(self) -> str:
         out = (
@@ -165,6 +171,7 @@ class ProportionalIntensityModel(
                 "param_names": list(self._rate_names),
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+                **maximum_entry(self.maximum),
             }
         )
 
@@ -198,6 +205,7 @@ class ProportionalIntensityModel(
         out._rate_names = list(model_dict["param_names"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
+        out.maximum = restored_maximum(model_dict)
         return out
 
     @property

@@ -52,7 +52,12 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.validation import check_option
 
 from .._aliasing import covariate_columns, expand
@@ -453,14 +458,16 @@ class CoxFrailtyFitter:
         # this fit's: a monotone partial likelihood (#392) has no maximum
         # with a frailty either, and is said once, here.
         cox = None
-        monotone = False
+        # What the fit reached (``maximum``): the Cox fit's, unless the
+        # search for theta or EM says otherwise below.
+        maximum = "verified"
         if p_all:
             with warnings.catch_warnings(record=True) as caught:
                 warnings.simplefilter("always")
                 cox = CoxPH.fit(x, Zfull, c, w, tie_method=tie_method)
+            maximum = cox.maximum
             for caught_warning in caught:
                 message = str(caught_warning.message)
-                monotone |= message.startswith("Monotone partial likelihood")
                 warnings.warn(
                     message,
                     caught_warning.category,
@@ -472,6 +479,7 @@ class CoxFrailtyFitter:
         Zk = Zfull[:, kept]
         center = covariate_center(Zk, w) if kept.size else np.zeros(0)
         em = _CoxFrailtyEM(x, Zk - center, c, w, inv, n_groups, tie_method)
+        monotone = maximum == "no finite maximum"
         if monotone:
             # The coefficients run off to infinity whatever theta is: the
             # estimates mean nothing (said above), and EM would chase them
@@ -501,6 +509,7 @@ class CoxFrailtyFitter:
                 # (R reports a theta of 5e-9 there).
                 theta_hat = 0.0
             elif _LOG_THETA_BOUNDS[1] - res.x < 1e-3:
+                maximum = "no finite maximum"
                 warn_no_maximum(
                     "the frailty variance theta runs to the edge of its "
                     "search, 100, with the integrated likelihood still "
@@ -525,14 +534,14 @@ class CoxFrailtyFitter:
             log_u = np.zeros(n_groups)
             loglik = no_frailty
             cov_beta = em.beta_covariance(1e-12, beta, log_u)
-        if em.not_converged and not monotone:
-            warnings.warn(
-                "The EM iteration over the frailties did not converge "
-                "within {} iterations at {} value(s) of theta; the "
-                "estimates may be inaccurate.".format(
+        if em.not_converged and maximum == "verified":
+            maximum = "unverified"
+            warn_unverified(
+                "The Cox frailty fit",
+                "the EM iteration over the frailties did not converge "
+                "within {} iterations at {} value(s) of theta".format(
                     _EM_MAX_ITER, em.not_converged
                 ),
-                stacklevel=_caller_stacklevel(),
             )
 
         # The baseline at Z = 0 and u = 1, as CoxPH reports it.
@@ -567,6 +576,7 @@ class CoxFrailtyFitter:
         model.n_groups = n_groups
         model._data_summary = data_summary(c, w, x=x)
         model._fit_data = {"x": x, "c": c, "n": w, "Z": Zfull}
+        model.maximum = maximum
         return model
 
     def fit_from_df(
@@ -824,6 +834,7 @@ class CoxFrailtyModel(_SharedFrailty):
             "loglik": to_native(self.loglik),
             "loglik_no_frailty": to_native(self.loglik_no_frailty),
             "data_summary": self._data_summary,
+            **maximum_entry(self.maximum),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -858,6 +869,7 @@ class CoxFrailtyModel(_SharedFrailty):
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)
+        out.maximum = restored_maximum(model_dict)
         return out
 
 

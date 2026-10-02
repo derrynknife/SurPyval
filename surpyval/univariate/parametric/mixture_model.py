@@ -20,7 +20,12 @@ from surpyval.serialisation import (
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import renamed_arguments
-from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -172,6 +177,13 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         #: The observed-data *negative* log-likelihood at the current
         #: parameters (despite the name), which the EM iteration tracks.
         self.loglike: Any = None
+        #: What the fit reached, one of ``MAXIMUM_STATES``
+        #: (``surpyval.utils.no_maximum``), as its warnings say:
+        #: ``"verified"`` (a zero gradient and a positive-definite Hessian),
+        #: ``"unverified"`` or ``"no finite maximum"`` (a component collapsed
+        #: onto a point mass); ``"unknown"`` before a fit, or for a model
+        #: restored from a dict saved without it.
+        self.maximum: str = "unknown"
 
     # -- serialisation -----------------------------------------------------
 
@@ -192,6 +204,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             "m": int(self.m),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "w": np.asarray(self.w, dtype=float).tolist(),
+            **maximum_entry(self.maximum),
         }
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading
@@ -217,6 +230,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         out = cls(dist=dist, m=int(model_dict["m"]))
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
+        out.maximum = restored_maximum(model_dict)
         return out
 
     def __repr__(self) -> str:
@@ -482,7 +496,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
-    ) -> Any:
+    ) -> "str | None":
         """Fit by EM, polished by direct maximum likelihood (#506).
 
         EM moves linearly, and on a censored mixture it can crawl along a
@@ -494,22 +508,20 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         observed likelihood with its exact gradient (``_polish``), and
         accepted when that is a verified maximum: a zero gradient and a
         positive-definite Hessian. Only if it is not does EM go on to
-        ``max_iter``, polished again, and only if that fails too does the
-        fit warn.
+        ``max_iter``, polished again. Returns ``None`` for a verified
+        maximum, else why it is not (for ``warn_unverified``, which
+        :meth:`fit` gives unless the likelihood has no finite maximum).
         """
         converged = self._em_steps(tol, budget)
         if self._polish():
-            return
+            return None
         if not converged:
             converged = self._em_steps(tol, max_iter - budget)
             if self._polish():
-                return
+                return None
         if not converged:
-            warn_unverified(
-                "The mixture fit",
-                "EM reached its iteration limit",
-                "check the fit",
-            )
+            return "EM reached its iteration limit"
+        return "EM converged where the likelihood is not a verified maximum"
 
     def _em_steps(self, tol: float, max_iter: int) -> bool:
         """Up to ``max_iter`` EM iterations; whether two in a row came
@@ -748,18 +760,33 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             # The truncation correction couples the components through the
             # mixture window probability, so the label-based EM does not
             # apply; maximise the observed truncated likelihood directly,
-            # warm-started from the split-fit initialisation (#254).
+            # warm-started from the split-fit initialisation (#254), and
+            # polish and verify its answer as the EM path does (#560).
             self._direct_mle()
+            unverified = (
+                None
+                if self._polish()
+                else "L-BFGS-B's answer is not a verified maximum"
+            )
         else:
             try:
-                self._em()
+                unverified = self._em()
             finally:
                 self.__dict__.pop("_Q_jac_cache", None)
-        self._warn_if_point_mass()
+        # One warning: a component collapsed onto a point mass has no
+        # finite maximum, which is also why its search was not verified.
+        if self._warn_if_point_mass():
+            self.maximum = "no finite maximum"
+        elif unverified is not None:
+            self.maximum = "unverified"
+            warn_unverified("The mixture fit", unverified, "check the fit")
+        else:
+            self.maximum = "verified"
         return self
 
-    def _warn_if_point_mass(self) -> None:
-        """Warn when a component has collapsed onto a point mass (#392).
+    def _warn_if_point_mass(self) -> bool:
+        """Warn when a component has collapsed onto a point mass (#392),
+        and say whether it did.
 
         A mixture's likelihood grows without bound as one component
         concentrates on a single time (a spike explaining a cluster of
@@ -778,7 +805,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         """
         region_of = getattr(self.dist, "_point_mass_region", None)
         if region_of is None:
-            return
+            return False
         data = self.data
         log_r = self._log_resp(self.w, self.params)
         with np.errstate(all="ignore"):
@@ -811,7 +838,8 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 "tied values; model that cluster separately, or fit fewer "
                 "components",
             )
-            return
+            return True
+        return False
 
     def _direct_mle(self) -> Any:
         """Directly maximise the observed (truncation-corrected) negative

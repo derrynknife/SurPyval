@@ -50,6 +50,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import unknown_cause_error
 
@@ -331,6 +332,28 @@ class ParametricCompetingRisks(SerialisableMixin):
         return out
 
     # -- goodness of fit (the joint likelihood factorises over causes) ----
+
+    @property
+    def maximum(self) -> str:
+        """What the causes' fits reached, one of ``MAXIMUM_STATES``
+        (``surpyval.utils.no_maximum``): the worst of the causes' own
+        ``maximum``, since the joint likelihood is maximised a cause at a
+        time (principles 12 and 13).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
+        >>> e = ["a", "b", "a", "b", "a", "b", "a", "b"]
+        >>> ParametricCompetingRisks.fit(x, e, dist=Exponential).maximum
+        'verified'
+        """
+        return combined_maximum(
+            getattr(self.models[k], "maximum", "unknown") for k in self.causes
+        )
 
     def neg_ll(self) -> float:
         """Total negative log-likelihood: the sum over the per-cause fits."""

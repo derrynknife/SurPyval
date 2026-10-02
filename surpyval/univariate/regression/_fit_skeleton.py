@@ -12,7 +12,7 @@ separate: its life-model parameter juggling does not fit this shape.
 
 import copy
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -28,6 +28,7 @@ from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
     bounds_convert,
+    is_local_minimum,
     preconditioned_bfgs,
 )
 from surpyval.univariate.parametric.parametric_fitter import Boxable, Numeric
@@ -1477,33 +1478,173 @@ def free_coefficients(
     return [(pos, i - k_dist) for pos, i in enumerate(free) if i >= k_dist]
 
 
+class SearchVerdict(NamedTuple):
+    """What a regression fit's search reached (:func:`judge_search`)."""
+
+    #: The optimiser's answer, polished where it was not verified.
+    res: Any
+    #: The model's ``maximum``: ``"verified"``, ``"unverified"``, ``"no
+    #: finite maximum"`` or, for an objective autograd cannot
+    #: differentiate whose optimiser reported success, ``"unknown"``.
+    maximum: str
+    #: The Hessian and gradient of the objective at ``res.x``
+    #: (:func:`search_derivatives`), for :func:`keep_information`.
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None"
+    #: The numbers of the coefficients with no finite maximum.
+    runaway: "list[int]"
+
+    @property
+    def no_maximum(self) -> bool:
+        return self.maximum == "no finite maximum"
+
+
+def is_verified(
+    x: npt.ArrayLike,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
+    n_obs: float,
+    held: "tuple[int, ...]" = (),
+) -> bool:
+    """Whether ``x`` is a verified minimum of the objective whose Hessian
+    and gradient there are ``derivatives`` (:func:`search_derivatives`):
+    the test of ``is_local_minimum``, per observation (``n_obs``), on the
+    components of ``x`` other than ``held`` -- a parameter at a boundary of
+    its space, whose own condition the caller has checked -- and not
+    differentiating again."""
+    if derivatives is None:
+        return False
+    H, g = derivatives
+    at = np.asarray(x, dtype=float)
+    keep = [i for i in range(at.size) if i not in held]
+    sub = np.ix_(keep, keep)
+    return is_local_minimum(
+        lambda _: 0.0,  # (only the derivatives are read)
+        lambda _: g[keep],
+        lambda _: H[sub],
+        at[keep],
+        obj_scale=n_obs,
+    )
+
+
+def judge_search(
+    fun: Callable,
+    res: Any,
+    coefs: "list[tuple[int, int]]",
+    start: "npt.ArrayLike | None" = None,
+    n_obs: float = 1.0,
+    verified: "bool | None" = None,
+    held: "tuple[int, ...]" = (),
+) -> SearchVerdict:
+    """What the optimiser's answer ``res`` for the objective ``fun``, from
+    ``start``, is (principles 12 and 13), without a word: a likelihood with
+    no finite maximum in a coefficient (``coefs`` as
+    :func:`free_coefficients` gives them; see :func:`runaway_coefficients`),
+    else a verified maximum or not.
+
+    ``verified`` is the caller's own verdict, where it has checked the
+    answer itself (``verify_or_polish``); otherwise the answer is checked
+    here, with the Hessian and gradient the no-maximum check and the
+    covariance need anyway (:func:`is_verified`, ``held`` left out), and an
+    answer that is not verified is polished with BFGS in the units maximum
+    likelihood searches in (``preconditioned_bfgs``) and checked again, as
+    ``verify_or_polish`` does. A fit that stopped short (as
+    :func:`optimise_ph` and :func:`optimise_nm_tnc` flag it with
+    ``quiet=True``) is usually rescued that way; an ordinary fit is already
+    verified and is not touched. An objective autograd cannot differentiate
+    keeps the optimiser's verdict: ``"unverified"`` if it stopped short,
+    else ``"unknown"``."""
+    if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
+        # No answer to judge (``require_finite_fit`` refuses it)
+        return SearchVerdict(res, "unverified", None, [])
+    derivatives = search_derivatives(fun, res.x)
+    positions = [pos for pos, _ in coefs]
+    runaway = runaway_coefficients(fun, res.x, positions, start, derivatives)
+    if runaway:
+        numbers = [coefs[k][1] for k in runaway]
+        return SearchVerdict(res, "no finite maximum", derivatives, numbers)
+    if verified is None:
+        if derivatives is None:
+            stopped = getattr(res, "stopped_short", False)
+            state = "unverified" if stopped else "unknown"
+            return SearchVerdict(res, state, None, [])
+        verified = is_verified(res.x, derivatives, n_obs, held)
+        if not verified:
+            res, derivatives, verified = _polish(
+                fun, res, derivatives, n_obs, held
+            )
+    state = "verified" if verified else "unverified"
+    return SearchVerdict(res, state, derivatives, [])
+
+
+def _polish(
+    fun: Callable,
+    res: Any,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
+    n_obs: float,
+    held: "tuple[int, ...]",
+) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
+    """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
+    kept where it is no worse (see :func:`judge_search`)."""
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Output seems independent")
+        try:
+            polish = preconditioned_bfgs(
+                fun, res.x, (), jacobian(fun), obj_scale=n_obs
+            )
+        except (TypeError, ValueError, ArithmeticError):
+            polish = None
+    if (
+        polish is not None
+        and np.all(np.isfinite(polish.x))
+        and np.isfinite(polish.fun)
+        and polish.fun <= res.fun
+    ):
+        res = polish
+        derivatives = search_derivatives(fun, res.x)
+    return res, derivatives, is_verified(res.x, derivatives, n_obs, held)
+
+
+def say_verdict(
+    verdict: SearchVerdict, what: str = "The maximum-likelihood search"
+) -> None:
+    """The one warning for a :class:`SearchVerdict` that is not a verified
+    maximum: "No finite maximum", naming the coefficients, or that
+    ``what`` (the search, as the subject of a sentence) did not reach a
+    verified maximum, with what the optimiser reported if it stopped short
+    of one (:func:`optimise_ph`)."""
+    if verdict.no_maximum:
+        warn_no_maximum(
+            NO_MAXIMUM_WHAT.format(verdict.runaway),
+            NO_MAXIMUM_CONSEQUENCE,
+            NO_MAXIMUM_ADVICE,
+        )
+    elif verdict.maximum == "unverified":
+        res = verdict.res
+        reason = None
+        if getattr(res, "stopped_short", False) and not res.success:
+            reason = "the optimiser reported: {}".format(
+                str(getattr(res, "message", "")).rstrip(".")
+            )
+        warn_unverified(what, reason)
+
+
 def finish_search(
     fun: Callable,
     res: Any,
     coefs: "list[tuple[int, int]]",
     start: "npt.ArrayLike | None" = None,
-) -> "tuple[bool, tuple[npt.NDArray, npt.NDArray] | None]":
-    """Warn, once, of anything wrong with the optimiser's answer ``res``
-    for the objective ``fun`` from ``start``: a likelihood with no finite
-    maximum in a coefficient (``coefs`` as :func:`free_coefficients` gives
-    them; see :func:`runaway_coefficients`), or else a search that stopped
-    short (as :func:`optimise_ph` and :func:`optimise_nm_tnc` flag it with
-    ``quiet=True``). Returns whether the likelihood had no maximum, and the
-    Hessian and gradient of ``fun`` at ``res.x`` (``None`` where autograd
-    cannot take them), for :func:`keep_information`."""
-    derivatives = search_derivatives(fun, res.x)
-    positions = [pos for pos, _ in coefs]
-    runaway = runaway_coefficients(fun, res.x, positions, start, derivatives)
-    if runaway:
-        warn_no_maximum(
-            NO_MAXIMUM_WHAT.format([coefs[k][1] for k in runaway]),
-            NO_MAXIMUM_CONSEQUENCE,
-            NO_MAXIMUM_ADVICE,
-        )
-        return True, derivatives
-    if getattr(res, "stopped_short", False):
-        warn_if_not_converged(res)
-    return False, derivatives
+    n_obs: float = 1.0,
+    verified: "bool | None" = None,
+    what: str = "The maximum-likelihood search",
+    held: "tuple[int, ...]" = (),
+) -> SearchVerdict:
+    """:func:`judge_search`, then its one warning (:func:`say_verdict`),
+    for a fit whose model does not depend on the polish (or is built after
+    it). Returns the verdict: its ``res``, its ``maximum`` for the model,
+    and the Hessian and gradient of ``fun`` at ``res.x`` (``None`` where
+    autograd cannot take them), for :func:`keep_information`."""
+    verdict = judge_search(fun, res, coefs, start, n_obs, verified, held)
+    say_verdict(verdict, what)
+    return verdict
 
 
 def natural_information(
@@ -1732,6 +1873,17 @@ def fit_log_linear(
 
         res = optimiser(fun, init_t, quiet=True)
 
+        # What the search reached (#392), its answer polished where it was
+        # not a verified maximum; said once the model is built.
+        verdict = judge_search(
+            fun,
+            res,
+            free_coefficients(fitter, fixed, pmap),
+            init_t,
+            float(np.sum(data.n)),
+        )
+        res = verdict.res
+
     params = inv_trans(const(res.x))
 
     model = assemble_regression_model(
@@ -1748,11 +1900,16 @@ def fit_log_linear(
     )
     # After the model is built (which may refuse the data), one
     # warning for what the search found (#392).
-    no_maximum, derivatives = finish_search(
-        fun, res, free_coefficients(fitter, fixed, pmap), init_t
-    )
+    say_verdict(verdict)
+    model.maximum = verdict.maximum
     # The exact information for the model's covariance (#392).
     keep_information(
-        model, no_maximum, derivatives, inv_trans, const, res.x, centring
+        model,
+        verdict.no_maximum,
+        verdict.derivatives,
+        inv_trans,
+        const,
+        res.x,
+        centring,
     )
     return model

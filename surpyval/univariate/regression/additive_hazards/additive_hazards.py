@@ -193,6 +193,10 @@ class AdditiveHazardsModel(
     _b: npt.NDArray
     #: The rows fitted ``(x, c, n, Z)``, for ``concordance``; not saved.
     _fit_data: "tuple | None" = None
+    #: Lin and Ying's estimator solves its estimating equations, a linear
+    #: system, rather than maximising a likelihood: ``"not applicable"``
+    #: (one of ``MAXIMUM_STATES``, ``surpyval.utils.no_maximum``).
+    maximum: str = "not applicable"
     #: The family (``"Additive Hazards"``) and ``"Semi-Parametric"``, which the
     #: printout shows and ``to_dict`` stores.
     kind: str

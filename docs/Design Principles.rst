@@ -176,7 +176,19 @@ Estimation
     reason. A fit accepts an optimiser's answer only when it is a
     verified maximum (zero gradient, positive-definite Hessian), and a fit
     given ``init`` is also started from the default start. A likelihood
-    with no finite maximum warns so (#392), whatever the model.
+    with no finite maximum warns so (#392), whatever the model. And by
+    ``conformance/test_maximum.py``: every maximum-likelihood fit in the
+    registry -- the univariate distributions, mixtures, the parametric and
+    semi-parametric regressions, frailty, competing-risks, recurrence and
+    copula models -- records what it reached as its model's ``maximum``
+    (``"verified"``, ``"unverified"`` or ``"no finite maximum"``), warns
+    exactly when that is not a verified maximum, its fixture's fit, its
+    starved fit and its time-varying-covariate fit alike; and a verified
+    maximum passes an independent check at the reported parameters (the
+    gradient of the model's own likelihood ~0 and its Hessian positive
+    definite, a parameter on a boundary of its space held out where the
+    likelihood does not rise off it). Known gap: the degradation process
+    and destructive fits (#TBD-degradation-maximum).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.

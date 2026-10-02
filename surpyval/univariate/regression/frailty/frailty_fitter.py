@@ -41,6 +41,7 @@ from autograd.scipy.special import gammaln as _ad_gammaln
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.univariate.parametric.fitters import at_boundary_maximum
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
@@ -235,6 +236,26 @@ def _settle_on_zero_variance(fun: Callable, res: Any) -> Any:
         u, best = trial, f
     res.x, res.fun = u, best
     return res
+
+
+def _at_zero_variance(fun: Callable, res: Any, n_obs: float) -> bool:
+    """Whether the fit is a maximum on the boundary ``theta = 0``, where
+    the model is the one without frailty, so that ``theta`` is left out of
+    the check of its gradient and Hessian (``judge_search``'s ``held``).
+
+    ``theta`` is searched as ``log theta``, whose boundary is at minus
+    infinity, where the Hessian is singular (see ``at_boundary_maximum``).
+    The fit is there when the likelihood does not change, to rounding, as
+    ``theta`` moves further towards 0 (a factor ``e^10``, as
+    ``_settle_on_zero_variance`` steps), and a maximum there when moving
+    ``theta`` off it, to ``1e-6`` (its natural unit being 1), does not
+    raise the likelihood.
+    """
+    u = np.array(res.x, dtype=float)
+    toward, away = u.copy(), u.copy()
+    toward[-1] -= 10.0
+    away[-1] = np.log(1e-6)
+    return at_boundary_maximum(fun, u, toward, away, 1e-6, n_obs)
 
 
 @primitive
@@ -571,10 +592,17 @@ class FrailtyFitter:
                     res = polished
         require_finite_fit(float(res.fun))
         # One warning: a coefficient with no finite maximum (a level with no
-        # events, #392), or else a search that did not converge.
+        # events, #392), or else a search that did not reach a verified
+        # maximum -- with theta left out of that check where it is a
+        # maximum on its boundary, 0.
         res.stopped_short = not converged
-
-        no_maximum, derivatives = finish_search(
+        n_weighted = float(np.sum(w))
+        held = (
+            (res.x.size - 1,)
+            if _at_zero_variance(obj_unc, res, n_weighted)
+            else ()
+        )
+        verdict = finish_search(
             obj_traced,
             res,
             [
@@ -582,7 +610,11 @@ class FrailtyFitter:
                 for i in range(n_beta)
             ],
             u0,
+            n_weighted,
+            held=held,
         )
+        res = verdict.res
+        no_maximum, derivatives = verdict.no_maximum, verdict.derivatives
         nat = to_nat(res.x, n_beta)
 
         dist_params = nat[: self.k_dist]
@@ -667,6 +699,7 @@ class FrailtyFitter:
         model.n_obs_weighted = float(w.sum())
         model.n_groups = n_groups
         model._neg_ll = float(res.fun)
+        model.maximum = verdict.maximum
         return model
 
     def fit_from_df(

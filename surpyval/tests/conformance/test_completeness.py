@@ -162,20 +162,23 @@ def test_every_property_runs_on_some_model(prop):
 
 def test_every_known_failure_names_its_issue():
     """Each known failure is tracked by an issue, whose number leads its
-    xfail reason (from ``KNOWN_FAILURE_ISSUES`` or the reason itself)."""
+    xfail reason (from ``KNOWN_FAILURE_ISSUES`` or the reason itself); a
+    failure found in a pull request leads with ``#TBD-<name>`` until its
+    issue is filed."""
     import re
 
     from surpyval.tests.conformance.registry import KNOWN_INCONSISTENCIES
 
+    issue = r"#(\d+|TBD-[a-z-]+): "
     untracked = [
         f"{case.name}: {prop}"
         for case in CASES
         for prop, reason in case.xfail.items()
-        if not re.match(r"#\d+: ", reason)
+        if not re.match(issue, reason)
     ]
     untracked += [
         key
         for key, reason in KNOWN_INCONSISTENCIES.items()
-        if not re.match(r"#\d+: ", reason)
+        if not re.match(issue, reason)
     ]
     assert not untracked, untracked

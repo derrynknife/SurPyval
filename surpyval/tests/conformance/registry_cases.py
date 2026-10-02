@@ -1756,3 +1756,21 @@ def _with_convergence(case):
 
 
 CASES = [_with_convergence(c) for c in CASES]
+
+
+# Cases whose fit is not a likelihood maximisation, though other fits of
+# their model class are (the "maximum" property, test_maximum.py; whole
+# classes are in registry_families.NOT_A_LIKELIHOOD_FIT).
+_NOT_MAXIMISED: dict[str, str] = {
+    "Hypoexponential": "built from its parameters: its fit refuses data",
+}
+
+
+def _with_maximum(case):
+    if case.name not in _NOT_MAXIMISED:
+        return case
+    reason = _NOT_MAXIMISED[case.name]
+    return replace(case, exclude={**case.exclude, "maximum": reason})
+
+
+CASES = [_with_maximum(c) for c in CASES]

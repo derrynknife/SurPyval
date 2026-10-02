@@ -200,10 +200,11 @@ from .._fit_skeleton import (  # noqa: E402
     alias_coefficients,
     assemble_regression_model,
     check_fixed_and_init,
-    finish_search,
     free_coefficients,
+    judge_search,
     keep_information,
     optimise_nm_tnc,
+    say_verdict,
 )
 
 
@@ -449,6 +450,17 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             # The same search as the ordinary AFT fit (the gradient ladder,
             # then Nelder-Mead and TNC), which says what it found below.
             res = optimise_nm_tnc(fun, init, quiet=True)
+            # What it reached, polished where it was not a verified
+            # maximum; said once the model is built. The likelihood is one
+            # term per subject.
+            verdict = judge_search(
+                fun,
+                res,
+                free_coefficients(like, fixed, phi_param_map),
+                init,
+                float(np.sum(grp["weight"])),
+            )
+            res = verdict.res
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -491,11 +503,16 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         # with no events), or else a search that stopped short; and the
         # exact observed information for the covariance, which was a
         # numerical Hessian.
-        no_maximum, derivatives = finish_search(
-            fun, res, free_coefficients(like, fixed, phi_param_map), init
-        )
+        say_verdict(verdict)
+        model.maximum = verdict.maximum
         keep_information(
-            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+            model,
+            verdict.no_maximum,
+            verdict.derivatives,
+            inv_trans,
+            const,
+            res.x,
+            centring,
         )
 
         # Report information criteria on the *subjects*, not the episode

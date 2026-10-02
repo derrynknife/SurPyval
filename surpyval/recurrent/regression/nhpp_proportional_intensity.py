@@ -12,6 +12,7 @@ from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
+from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
@@ -261,7 +262,16 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # in silence (#429).
         if user_init:
             res = better_result(res, search(default_init()))
-        if not (res.success and res.fun < 1e300):
+        # Accepted only as a verified maximum: polished where it is not one
+        # (by central differences: the likelihood is in plain numpy), and
+        # said otherwise (principle 13).
+        verified = False
+        if res.fun < 1e300:
+            res, verified = verify_or_polish(
+                objective, res, bic_sample_size(data), numerical=True
+            )
+        out.maximum = "verified" if verified else "unverified"
+        if not verified:
             warn_unverified("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res

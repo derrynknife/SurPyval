@@ -10,6 +10,7 @@ import numpy.typing as npt
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 
 # Margin probabilities are kept strictly inside (0, 1), as in copula.py.
@@ -77,6 +78,11 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         # no data).
         self._neg_ll: "float | None" = None
         self._n_obs: "float | None" = None
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say: set by the
+        # fit; "not applicable" for a model built from its parameters,
+        # "unknown" for one restored from a dict saved without it.
+        self.maximum = "not applicable"
 
     @property
     def parameter_names(self) -> list[str]:
@@ -293,6 +299,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             "params": self.params.tolist(),
             "how": self.method,
             "margins": margins,
+            **maximum_entry(self.maximum),
         }
         if self.copula.rotation:
             out["rotation"] = int(self.copula.rotation)
@@ -346,6 +353,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             how=model_dict.get("how", "given"),
             k=model_dict.get("k"),
         )
+        model.maximum = restored_maximum(model_dict)
         # Dicts written before the likelihood was stored have none; such a
         # model (like a ``from_params`` one) has no likelihood to report.
         if "neg_ll" in model_dict:

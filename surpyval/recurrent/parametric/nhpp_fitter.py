@@ -14,6 +14,7 @@ from surpyval.recurrent.parametric.counting_process import IntensityModel
 from surpyval.recurrent.parametric.parametric_recurrence import (
     ParametricRecurrenceModel,
 )
+from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -206,8 +207,23 @@ class NHPPFitter(IntensityModel):
         # intensity overflows -- and that was returned in silence (#429).
         if init is not None:
             res = better_result(res, search(default_init))
-        if not (res.success and res.fun < 1e300):
-            warn_unverified("The {} fit".format(getattr(self, "name", "NHPP")))
+        what = "The {} fit".format(getattr(self, "name", "NHPP"))
+        maximum = "not applicable"
+        if how == "MLE":
+            # Nelder-Mead's tolerances are absolute, and its answer is
+            # accepted only as a verified maximum: polished where it is
+            # not one (the likelihood is in plain numpy, so by central
+            # differences), and said otherwise (principle 13).
+            verified = False
+            if res.fun < 1e300:
+                res, verified = verify_or_polish(
+                    search_ll, res, bic_sample_size(data), numerical=True
+                )
+            maximum = "verified" if verified else "unverified"
+            if not verified:
+                warn_unverified(what)
+        elif not (res.success and res.fun < 1e300):
+            warn_unverified(what)
         params = to_natural(res.x)
 
         model = ParametricRecurrenceModel()
@@ -217,6 +233,7 @@ class NHPPFitter(IntensityModel):
         model.data = data
         model.dist = self
         model.how = how
+        model.maximum = maximum
         # The MLE objective is already in natural parameter space, so it serves
         # directly as the likelihood used for AIC/BIC/standard errors. The MSE
         # fit has no likelihood, so leave the inference attributes unset (the
