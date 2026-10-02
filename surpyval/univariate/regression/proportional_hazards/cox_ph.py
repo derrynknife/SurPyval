@@ -43,7 +43,11 @@ from .._aliasing import (
     expand,
     warn_aliased,
 )
-from .._fit_skeleton import covariate_center
+from .._fit_skeleton import (
+    _LOG_MAX,
+    baseline_at_origin_error,
+    covariate_center,
+)
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
@@ -995,7 +999,6 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
     return neg_ll, jac_hess
 
 
-_LOG_MAX = float(np.log(np.finfo(float).max))
 _TINY = float(np.finfo(float).tiny)
 
 
@@ -1031,20 +1034,13 @@ def _baseline_at_origin(
         and bool(np.all(r_0[r > 0] >= _TINY))
     )
     if not ok:
-        raise ValueError(
-            "The {} at Z = 0 cannot be represented for these covariates: "
-            "their means are {} and the linear predictor there is "
-            "beta'center = {:.4g}, so the baseline at Z = 0 is exp({:.4g}) "
-            "times that at the means, which over- or underflows (as it "
-            "does when a covariate separates the events, and the "
-            "coefficients run off towards infinity). Fit with center=True "
-            "to report the baseline at the covariate means (model.center) "
-            "instead, or move the covariates nearer 0.".format(
-                what,
-                np.array2string(np.asarray(center), precision=4),
-                shift,
-                -shift,
-            )
+        raise baseline_at_origin_error(
+            what,
+            center,
+            shift,
+            -shift,
+            " (as it does when a covariate separates the events, and the "
+            "coefficients run off towards infinity)",
         )
     return r_0, h0_0
 

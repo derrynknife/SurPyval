@@ -67,6 +67,8 @@ from surpyval.univariate.regression._aliasing import (
     warn_aliased,
 )
 from surpyval.univariate.regression._fit_skeleton import (
+    _LOG_MAX,
+    baseline_at_origin_error,
     runaway_coefficients,
     search_derivatives,
 )
@@ -442,22 +444,12 @@ def _cumhaz_at_origin(
         out = np.exp(np.log(cumhaz) - shift)
     tiny = np.finfo(float).tiny
     if not (
-        np.all(np.abs(lp) < np.log(np.finfo(float).max))
+        np.all(np.abs(lp) < _LOG_MAX)
         and np.all(np.isfinite(out))
         and np.all(out[cumhaz > 0] >= tiny)
     ):
-        raise ValueError(
-            "The baseline cumulative subdistribution hazard at Z = 0 "
-            "cannot be represented for these covariates: their means are {} "
-            "and the linear predictor there is beta'center = {:.4g}, so "
-            "the baseline at Z = 0 is exp({:.4g}) times that at the means, "
-            "which over- or underflows. Fit with center=True to report the "
-            "baseline at the covariate means (model.center) instead, or "
-            "move the covariates nearer 0.".format(
-                np.array2string(np.asarray(center), precision=4),
-                shift,
-                -shift,
-            )
+        raise baseline_at_origin_error(
+            "baseline cumulative subdistribution hazard", center, shift, -shift
         )
     return out
 

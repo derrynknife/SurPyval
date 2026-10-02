@@ -104,7 +104,11 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
-from .._fit_skeleton import covariate_center
+from .._fit_skeleton import (
+    _LOG_MAX,
+    baseline_at_origin_error,
+    covariate_center,
+)
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
@@ -451,7 +455,6 @@ def _po_aliased(
     return aliased, n_events * np.diag(gram) / n.sum()
 
 
-_LOG_MAX = float(np.log(np.finfo(float).max))
 _LOG_TINY = float(np.log(np.finfo(float).tiny))
 
 
@@ -468,16 +471,9 @@ def _baseline_at_origin(
         np.all((out < _LOG_MAX) & (out > _LOG_TINY))
     )
     if not ok:
-        raise ValueError(
-            "The baseline odds at Z = 0 cannot be represented for these "
-            "covariates: their means are {} and the baseline at Z = 0 is "
-            "exp({:.4g}) times that at the means, which over- or "
-            "underflows. Fit with center=True to report the baseline at "
-            "the covariate means (model.center) instead, or move the "
-            "covariates nearer 0.".format(
-                np.array2string(np.asarray(center), precision=4), shift
-            )
-        )
+        # shift = -gamma'center = beta'center, the model's coefficients
+        # being beta = -gamma.
+        raise baseline_at_origin_error("baseline odds", center, shift, shift)
     return out
 
 

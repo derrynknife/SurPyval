@@ -313,6 +313,39 @@ _CENTER_HINT = (
     "(model.center) instead, or move the covariates nearer 0."
 )
 
+#: The largest linear predictor exp can take, log(largest float).
+_LOG_MAX = float(np.log(np.finfo(float).max))
+
+
+def baseline_at_origin_error(
+    what: str,
+    center: npt.ArrayLike,
+    lp_center: float,
+    log_ratio: float,
+    why: str = "",
+) -> ValueError:
+    """The refusal of a semi-parametric baseline fitted at the covariate
+    means that cannot be moved to ``Z = 0`` (#463): the ``what`` (``"baseline
+    hazard"``, ...) at ``Z = 0`` is ``exp(log_ratio)`` times that at the
+    ``center``, where the linear predictor is ``lp_center``, and over- or
+    underflows. ``why`` adds a reason in brackets. Cox, the semi-parametric
+    proportional odds model and Fine-Gray raise it; the parametric fits'
+    :meth:`Centring.finish` has its own, as their baseline moves through
+    its parameters."""
+    return ValueError(
+        "The {} at Z = 0 cannot be represented for these covariates: their "
+        "means are {} and the linear predictor there is beta'center = "
+        "{:.4g}, so the baseline at Z = 0 is exp({:.4g}) times that at the "
+        "means, which over- or underflows{}. {}".format(
+            what,
+            np.array2string(np.asarray(center), precision=4),
+            lp_center,
+            log_ratio,
+            why,
+            _CENTER_HINT,
+        )
+    )
+
 
 def covariate_center(Z: npt.ArrayLike, n: npt.ArrayLike) -> npt.NDArray:
     """The ``n``-weighted mean of the covariate rows, where a centred fit
@@ -1099,12 +1132,6 @@ def runaway_coefficients(
     return out
 
 
-#: The largest linear predictor exp can take, log(largest float): a
-#: runaway's Newton step is at least this fraction of its coefficient's
-#: size (see above).
-_LOG_FLOAT_RANGE = float(np.log(np.finfo(float).max))
-
-
 def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     """Which parameters Newton's method shows to be at a maximum at ``x``,
     ``H`` and ``g`` the Hessian and gradient there: those whose part of the
@@ -1128,7 +1155,9 @@ def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     except np.linalg.LinAlgError:
         return cleared
     with np.errstate(all="ignore"):
-        cleared[used] = np.abs(step) * _LOG_FLOAT_RANGE <= np.abs(x[used])
+        # A runaway's Newton step is at least 1 / _LOG_MAX of its
+        # coefficient's size (see above).
+        cleared[used] = np.abs(step) * _LOG_MAX <= np.abs(x[used])
     return cleared
 
 
