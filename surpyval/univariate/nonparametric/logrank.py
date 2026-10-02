@@ -4,7 +4,6 @@ import warnings
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
@@ -323,6 +322,8 @@ def logrank(
     # A missing label is not a group. NaN != NaN, so a NaN label used to
     # become an extra group whose rows every ``Z == g`` mask then missed:
     # the rows were dropped and the degrees of freedom went up by one.
+    import pandas as pd
+
     if pd.isna(Z).any():
         raise ValueError(
             "'Z' has missing (NaN or None) group labels; drop those rows "

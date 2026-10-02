@@ -1871,7 +1871,9 @@ Available life models
 
 The choice of life model depends on the physical failure mechanism. The
 letters in each formula are the parameter names the fitted model reports, and
-:math:`Z_1, Z_2` are the two columns of ``Z`` for the two-stress models:
+:math:`Z_1, Z_2` are the two columns of ``Z`` for the two-stress models
+(:math:`Z_0, Z_1, \ldots` its columns for ``GeneralLogLinear``, numbered from
+0 as its coefficients are):
 
 .. list-table::
    :header-rows: 1
@@ -1912,6 +1914,12 @@ letters in each formula are the parameter names the fitted model reports, and
    * - ``InverseExponential``
      - :math:`1 / (b \cdot e^{a/Z})`, the reciprocal of Arrhenius
      - Inverse Arrhenius relationship
+   * - ``GeneralLogLinear``
+     - :math:`c \cdot e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, one
+       ``beta_j`` per column of ``Z``
+     - Any number of stresses, each entering as given (pass ``1 / T`` or
+       ``log V`` as the column for an Arrhenius or power term); with a
+       Weibull or LogNormal it is that distribution's AFT model
 
 A note on units: the stress variable :math:`Z` for Arrhenius and Eyring should
 be in Kelvin (absolute temperature), not Celsius. The accelerated life fitter
@@ -3316,7 +3324,11 @@ the last one with its average hazard. That makes its density a density per
 unit of time, on the same scale as a parametric leaf's, so forests of different
 ``kind`` can be compared. ``feature_importances(random_state=...)`` shuffles
 one covariate at a time among the out-of-bag rows and reports how much the
-score drops, as a ``pandas.Series`` keyed by covariate name. Here the forest
+score drops, as a ``pandas.Series`` keyed by covariate name. With very few
+trees a row can land only in leaves that give it zero probability, which makes
+the score :math:`-\infty`; both methods then warn with the number of such rows,
+and the importances are computed over the rows scored before and after each
+shuffle. More trees, or ``kind="exponential"``, remove the problem. Here the forest
 is fitted with ``fit_from_df``, so the names are the DataFrame's columns:
 
 .. jupyter-execute::

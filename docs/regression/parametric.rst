@@ -180,6 +180,10 @@ parameter names as the fitted model reports them:
    * - ``PowerExponential``
      - :math:`c\, e^{a / Z_1} Z_2^{n}`
      - ``c`` (> 0), ``a``, ``n``
+   * - ``GeneralLogLinear``
+     - :math:`c\, e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, any number of
+       columns
+     - ``c`` (> 0), ``beta_0``, ``beta_1``, ...
 
 Custom life models can be created by subclassing ``LifeModel``::
 
