@@ -1047,6 +1047,28 @@ def _frailty_family():
                 intercept=("Proportional Hazard", base) in ORIGIN_MAPS,
             )
         )
+    # The log-normal frailty (#343), whose group integral is by quadrature.
+    lognormal = sp.Frailty(sp.Weibull, family="lognormal")
+    out.append(
+        replace(
+            out[0],
+            name="WeibullFrailty[lognormal]",
+            fitters=(),
+            fit=_fit(lognormal),
+            paths={
+                "fit_from_df": lambda d: lognormal.fit_from_df(
+                    pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                        x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                    ),
+                    x_col="x",
+                    group_col="g",
+                    Z_cols=["z0", "z1"],
+                    c_col="c",
+                    n_col="n",
+                )
+            },
+        )
+    )
     return out
 
 
@@ -1104,6 +1126,30 @@ def _semi_parametric():
             " in Conventions, 'Saving and Loading Models')",
         },
         rtol=1e-6,
+        coefficients=_beta,
+        intercept=True,
+    )
+    cox_frailty = regression(
+        "CoxFrailty",
+        sp.CoxFrailty,
+        data=grouped_reg_data,
+        model_class="surpyval.CoxFrailtyModel",
+        rows=("x", "Z", "c", "n", "groups"),
+        labels=("groups",),
+        paths={
+            "fit_from_df": lambda d: sp.CoxFrailty.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                group_col="g",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+            )
+        },
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
         coefficients=_beta,
         intercept=True,
     )
@@ -1167,7 +1213,7 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, ah, bj, po]
+    return [cox, strat, cox_frailty, ah, bj, po]
 
 
 _NO_COEFFICIENTS = (
@@ -2531,7 +2577,7 @@ def _bounds(case):
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "ParametricRegressionModel":
         return (Bound("cb", on=_ON_ALL), _PARAM_CB)
-    if cls in ("FrailtyModel", "ProportionalOddsModel"):
+    if cls in ("FrailtyModel", "ProportionalOddsModel", "CoxFrailtyModel"):
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
@@ -2875,6 +2921,7 @@ def _starve(case):
         "SemiParametricRegressionModel",
         "FineGrayModel",
         "ProportionalOddsModel",
+        "CoxFrailtyModel",
     ):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":
@@ -3122,6 +3169,7 @@ OUT_OF_SCOPE: dict[str, str] = {
     "surpyval.ProportionalOddsFitter": _BASE,
     "surpyval.AdditiveHazardsFitter": _BASE,
     "surpyval.FrailtyFitter": _BASE,
+    "surpyval.CoxFrailtyFitter": _BASE,
     "surpyval.ParameterSubstitutionFitter": _BASE,
     "surpyval.life_models.LifeModel": _BASE,
     "surpyval.recurrent.CountingProcess": _BASE,

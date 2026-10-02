@@ -193,8 +193,10 @@ def test_guard_unsupported_censoring():
 
 
 def test_guard_unknown_family():
-    with pytest.raises(NotImplementedError):
-        Frailty(Weibull, family="lognormal")
+    # A ValueError naming the choices (principle 2); "lognormal" is a
+    # family since #343 (it raised NotImplementedError before).
+    with pytest.raises(ValueError, match="'gamma', 'lognormal'"):
+        Frailty(Weibull, family="weibull")
 
 
 def test_exponential_frailty_available():

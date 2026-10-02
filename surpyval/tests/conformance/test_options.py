@@ -155,7 +155,8 @@ def _parameters(model):
         )
     if hasattr(model, "_param_vector"):  # a frailty model
         names = list(model.parameter_names)
-        dist = list(model.dist.bounds)
+        # (no distribution for a Cox baseline)
+        dist = [] if model.dist is None else list(model.dist.bounds)
         supports = [
             (
                 (0, None)
