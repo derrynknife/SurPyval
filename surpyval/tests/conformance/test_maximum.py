@@ -135,16 +135,19 @@ def _check(case, model, said, data):
         )
 
 
-def _params(key, where=None):
+def _params(key, where=None, slow=False):
     """The cases of the property, marked with their known failures of
-    ``key`` ("maximum", "maximum[starved]" or "maximum[tvc]")."""
+    ``key`` ("maximum", "maximum[starved]" or "maximum[tvc]"), and
+    ``slow`` where the case's refits are, or for every case."""
     out = []
     for case in CASES:
         if not case.applies("maximum") or key in case.exclude:
             continue
         if where is not None and not where(case):
             continue
-        marks = [pytest.mark.slow] if case.is_slow("maximum") else []
+        marks = []
+        if slow or case.is_slow("maximum"):
+            marks.append(pytest.mark.slow)
         if key in case.xfail:
             marks.append(
                 pytest.mark.xfail(strict=True, reason=case.xfail[key])
@@ -160,8 +163,12 @@ def test_a_fit_says_what_it_reached(case):
     _check(case, model, said, data)
 
 
+# The starved fits are the convergence property's, which the pull-request
+# job runs; their states are checked in the full suite (two thirds of this
+# module's time).
 @pytest.mark.parametrize(
-    "case", _params("maximum[starved]", lambda c: c.starve is not None)
+    "case",
+    _params("maximum[starved]", lambda c: c.starve is not None, slow=True),
 )
 def test_a_starved_fit_says_what_it_reached(case):
     try:
