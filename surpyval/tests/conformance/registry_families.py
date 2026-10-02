@@ -95,6 +95,11 @@ PROPERTIES: dict[str, str] = {
         "first time and holds (or is NaN) after the last, for every "
         "function alike"
     ),
+    # test_derivatives.py, for the cases of DIFFERENTIATED.
+    "derivatives": (
+        "the derivatives a fit or its inference takes (autograd's, or the "
+        "model's own) agree with finite differences at the fit"
+    ),
     # The option sweeps of test_options.py, over each case's ``bounds``
     # (see :class:`Bound`), ``interp`` and ``estimators``.
     "cb_declared": (
@@ -170,6 +175,51 @@ DECLARED_ATTRIBUTES = frozenset(
         ".FineGrayModel",
     }
 )
+
+# The model classes whose fit or inference differentiates its likelihood
+# (or, for a copula, its cdf; for a degradation path, the path), which the
+# "derivatives" property checks against finite differences; and the cases
+# of those classes that take no derivatives. The other models take none:
+# their estimators are closed-form or nonparametric (Kaplan-Meier, Lin-Ying
+# additive hazards, Buckley-James, the trees), or their fits search
+# without a gradient and take a numerical Hessian (Royston-Parmar, Cox
+# frailty, the NHPP and renewal fits, the Wiener, gamma-process and
+# destructive degradation fits); the semi-parametric proportional odds
+# fit's profile derivatives are internal to it; and the competing-risks
+# Cox and Fine-Gray models fit each cause by CoxPH and FineGray, which
+# are checked.
+DIFFERENTIATED = frozenset(
+    {
+        "surpyval.Parametric",
+        "surpyval.MixtureModel",
+        "surpyval.ParametricRegressionModel",
+        "surpyval.FrailtyModel",
+        "surpyval.SemiParametricRegressionModel",
+        "surpyval.univariate.competing_risks.regression.fine_gray"
+        ".FineGrayModel",
+        "surpyval.univariate.competing_risks.ParametricCompetingRisks",
+        "surpyval.recurrent.parametric.parametric_recurrence"
+        ".ParametricRecurrenceModel",
+        "surpyval.recurrent.regression.proportional_intensity"
+        ".ProportionalIntensityModel",
+        "surpyval.multivariate.CopulaModel",
+        "surpyval.degradation.DegradationModel",
+    }
+)
+_NO_DERIVATIVES = "the fit takes no derivatives: "
+NOT_DIFFERENTIATED = {
+    "Uniform": _NO_DERIVATIVES + "the MLE is the sample extremes",
+    "Binomial": _NO_DERIVATIVES + "a closed-form estimate",
+    "Bernoulli": _NO_DERIVATIVES + "a closed-form estimate",
+    "FixedEventProbability": _NO_DERIVATIVES + "a closed-form estimate",
+    "ExactEventTime": _NO_DERIVATIVES + "a closed-form estimate",
+    "Hypoexponential": _NO_DERIVATIVES + "the model is given its rates",
+    **dict.fromkeys(
+        ("CrowAMSAA", "Duane", "CoxLewis", "ProportionalIntensityNHPP"),
+        _NO_DERIVATIVES + "a search on finite-difference gradients, and "
+        "a numerical Hessian",
+    ),
+}
 
 # Properties that refit the model (the slow ones).
 REFIT_PROPERTIES = frozenset(
@@ -314,6 +364,11 @@ class Case:
         if prop == "estimators_agree" and self.large is None:
             return False
         if prop == "convergence" and self.starve is None:
+            return False
+        if prop == "derivatives" and (
+            self.model_class not in DIFFERENTIATED
+            or self.name in NOT_DIFFERENTIATED
+        ):
             return False
         if prop == "aliasing_constant" and not self.intercept:
             return False
