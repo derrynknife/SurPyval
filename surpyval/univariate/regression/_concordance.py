@@ -67,7 +67,9 @@ class ConcordanceMixin:
           can only matter for an accelerated life model whose life model
           sets a shape parameter;
         - ``BuckleyJames``: :math:`-\\beta'Z`, since the model is linear in
-          the log time.
+          the log time;
+        - ``ProportionalOdds``: :math:`-\\beta'Z`, the log of the odds of
+          failure relative to the baseline's.
 
         Parameters
         ----------

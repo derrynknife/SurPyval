@@ -508,6 +508,42 @@ for (spec in list(list("gamma", "iv_cens", "interval"),
 }
 
 # ---------------------------------------------------------------------------
+# survival: the semi-parametric proportional odds model (#341).
+# ---------------------------------------------------------------------------
+# The proportional odds model is a Cox model in which each subject has its
+# own unit-exponential (gamma, variance 1) frailty. For a fixed frailty
+# variance, coxph's penalised partial likelihood is maximised by the
+# coefficients that maximise the marginal likelihood (Therneau, Grambsch
+# and Pankratz 2003), which with ties = 'breslow' is the likelihood of
+# Murphy, Rossini and van der Vaart (1997): the coefficients are the
+# proportional odds NPMLE, on the odds of failure (the negatives of
+# SurPyval's, which are on the odds of survival).
+po_control <- paste("coxph.control(eps = 1e-12, toler.chol = 1e-13,",
+                    "iter.max = 1000, outer.max = 100)")
+po_values <- function(fit) list(coef = unname(coef(fit)))
+po_lung <- lung_cc
+po_lung$id <- seq_len(nrow(po_lung))
+po_ties <- ties_d
+po_ties$id <- seq_len(nrow(po_ties))
+po_settings <- list(
+    ties = "breslow",
+    frailty = "gamma with variance fixed at 1, one per subject"
+)
+record("survival", "po_frailty_lung", "lung", "survival",
+       paste("coxph(Surv(time, status) ~ age + sex + ph_ecog +",
+             "frailty(id, distribution = 'gamma', theta = 1),",
+             "data = po_lung, ties = 'breslow', control =",
+             po_control, ")"),
+       c(po_settings, list(missing = "the one row with ph.ecog missing is dropped")),
+       po_values)
+record("survival", "po_frailty_ties", "ties", "survival",
+       paste("coxph(Surv(x, status) ~ z1 + z2 +",
+             "frailty(id, distribution = 'gamma', theta = 1),",
+             "data = po_ties, ties = 'breslow', control =",
+             po_control, ")"),
+       po_settings, po_values)
+
+# ---------------------------------------------------------------------------
 # Write.
 # ---------------------------------------------------------------------------
 for (file in ls(store)) {
