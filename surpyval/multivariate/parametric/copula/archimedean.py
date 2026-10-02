@@ -1,11 +1,10 @@
 """Archimedean copula families: Independence, Clayton, Gumbel, Frank.
 
-All four have a closed-form CDF. Gumbel's is written in ``autograd.numpy``
-so the default autograd partial derivatives (``du``, ``dv``, ``pdf``) are
-exact; Independence, Clayton and Frank supply closed forms for them, and
-Clayton and Frank evaluate everything in log space so that strong
-dependence neither overflows nor cancels. Each family converts an empirical
-Kendall's tau into a starting parameter for the optimiser.
+All four have a closed-form CDF, and each supplies closed forms for its
+partial derivatives (``du``, ``dv``) and density (``pdf``); Clayton, Gumbel
+and Frank evaluate everything in log space so that strong dependence
+neither overflows nor cancels. Each family converts an empirical Kendall's
+tau into a starting parameter for the optimiser.
 """
 
 from __future__ import annotations
@@ -193,11 +192,52 @@ class GumbelCopula(Copula):
     closed_bounds = ("theta",)
     dependence_limits = {1: "theta grows without bound"}
 
+    # With x = -log u, y = -log v and A = (x^theta + y^theta)^(1/theta),
+    # C = exp(-A). Every primitive is formed from log x, log y and log A
+    # (a log-sum-exp), never from x^theta itself: near the upper corner
+    # x^theta underflowed to 0 (theta >= 20 at u = 1 - 1e-10, theta = 100
+    # already at u = 0.98) and the autograd derivatives of the old
+    # ``exp(-(x^theta + y^theta)^(1/theta))`` became 0 ** negative, an
+    # infinite or NaN density and h-function.
+    @staticmethod
+    def _logs(u: Any, v: Any, theta: Any) -> tuple:
+        log_x = np.log(-np.log(u))
+        log_y = np.log(-np.log(v))
+        log_a = np.logaddexp(theta * log_x, theta * log_y) / theta
+        return log_x, log_y, log_a
+
     # Named single parameter narrows the variadic base contract.
     def cdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
-        lu = (-np.log(u)) ** theta
-        lv = (-np.log(v)) ** theta
-        return np.exp(-((lu + lv) ** (1.0 / theta)))
+        return np.exp(-np.exp(self._logs(u, v, theta)[2]))
+
+    # Named single parameter narrows the variadic base contract.
+    def du(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # dC/du = C A^(1 - theta) x^(theta - 1) / u
+        log_x, _, log_a = self._logs(u, v, theta)
+        return np.exp(
+            -np.exp(log_a)
+            + (1.0 - theta) * log_a
+            + (theta - 1.0) * log_x
+            - np.log(u)
+        )
+
+    # Named single parameter narrows the variadic base contract.
+    def dv(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        return self.du(v, u, theta)
+
+    # Named single parameter narrows the variadic base contract.
+    def pdf(self, u: Any, v: Any, theta: Any) -> Any:  # type: ignore[override]
+        # c = C (x y)^(theta - 1) A^(1 - 2 theta) (A + theta - 1) / (u v)
+        log_x, log_y, log_a = self._logs(u, v, theta)
+        a = np.exp(log_a)
+        return np.exp(
+            -a
+            + (theta - 1.0) * (log_x + log_y)
+            + (1.0 - 2.0 * theta) * log_a
+            + np.log(a + theta - 1.0)
+            - np.log(u)
+            - np.log(v)
+        )
 
     def kendall_tau(self, theta: float) -> float:  # type: ignore[override]
         return 1.0 - 1.0 / theta
