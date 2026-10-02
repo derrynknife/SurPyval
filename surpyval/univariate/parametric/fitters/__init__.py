@@ -498,7 +498,7 @@ def bounds_convert(
     searched as a log for data in thousandths and linearly for data in
     thousands: a different search at every scale. The parametric fits
     pass each parameter's own starting distance from its bound instead
-    (see ``_search_units`` in ``parametric_fitter``), which makes the
+    (see ``_search_units`` in ``optimised_fit``), which makes the
     search the same whatever units the data is in.
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
