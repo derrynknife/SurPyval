@@ -221,7 +221,8 @@ unspecified, a frailty version for grouped data, and tree-based predictors:
        ``AcceleratedLife(Weibull, life_models.Eyring)``
    * - Shared frailty PH
      - PH with a random multiplier shared within a group
-     - ``WeibullFrailty``, …, ``Frailty(dist)``
+     - ``WeibullFrailty``, …, ``Frailty(dist)``, and the semi-parametric
+       ``CoxFrailty``
    * - Survival trees and forests (beta)
      - No link: recursive splits on the covariates
      - ``SurvivalTree``, ``RandomSurvivalForest`` in ``surpyval.beta.ml``
@@ -3036,6 +3037,52 @@ boundary has no meaningful Wald interval (``param_cb('theta')`` is then
     assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
     assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
     assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+
+**A Cox baseline.** ``CoxFrailty`` is the same shared gamma frailty with the
+baseline hazard left unspecified, as in ``CoxPH`` -- the semi-parametric
+member of the family, as ``CoxPH`` is of ``WeibullPH``. For a given ``theta``
+it is fitted by EM over the frailties: each group's posterior mean frailty
+(closed form for the gamma), then a ``CoxPH`` fit with the log-frailties as
+offsets and the frailty-weighted Breslow baseline. ``theta`` maximises the
+profile of the integrated likelihood. This is the fit of R's
+``coxph(Surv(time, status) ~ ... + frailty(id, dist = "gamma"))``, with
+Efron's ties by default (``tie_method="breslow"`` for Breslow's); on the
+kidney data it gives R's coefficients, standard errors, frailties and
+I-likelihood:
+
+.. jupyter-execute::
+
+    from surpyval import CoxFrailty
+
+    cox_frailty = CoxFrailty.fit_from_df(
+        kidney, x_col='time', c_col='censored', group_col='id',
+        Z_cols=['age', 'female'])
+    print(cox_frailty)
+
+The model predicts as the parametric one does: the marginal curve by
+default, a patient's own with ``group=``. The baseline (``x``, ``h0``,
+``H0``) is a step function, of a unit at ``Z = 0`` with frailty 1. Twice the
+gain of the I-likelihood over the Cox partial likelihood
+(``loglik_no_frailty``, its value at ``theta = 0``) tests for a frailty;
+``theta`` is on its boundary under the null, so the p-value is half the
+chi-square one:
+
+.. jupyter-execute::
+
+    from scipy.stats import chi2
+
+    lr = 2 * (cox_frailty.loglik - cox_frailty.loglik_no_frailty)
+    print('LR statistic %.2f, p = %.3f' % (lr, chi2.sf(lr, 1) / 2))
+    woman = pd.DataFrame({'age': [45.0], 'female': [1.0]})
+    print(cox_frailty.sf([30, 100], woman).round(3),
+          cox_frailty.sf([30, 100], woman, group=21).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert abs(cox_frailty.theta - 0.40777) < 1e-4
+    assert 5.0 < lr < 6.0 and 0.005 < chi2.sf(lr, 1) / 2 < 0.02
 
 
 Model Selection

@@ -249,7 +249,8 @@ class _CoxFrailtyEM:
                 break
             u2, beta2 = self.update(theta, u1, beta)
             s = (u2 - u1) - r
-            size_r, size_s = np.linalg.norm(r), np.linalg.norm(s)
+            size_r = float(np.linalg.norm(r))
+            size_s = float(np.linalg.norm(s))
             jump = None
             if size_s > 0:
                 a = -max(1.0, size_r / size_s)

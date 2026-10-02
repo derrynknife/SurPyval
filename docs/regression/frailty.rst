@@ -49,10 +49,28 @@ parametric regression models it reports ``neg_ll()``, ``aic()``,
 frailty fit can be compared directly with the proportional-hazards fit it
 reduces to at ``theta = 0``.
 
+``CoxFrailty`` fits the gamma frailty with the baseline left unspecified
+(a Cox baseline), by EM over the frailties with ``theta`` maximising the
+profile likelihood -- the fit of R's ``coxph(... + frailty(id, dist =
+"gamma"))``::
+
+    from surpyval import CoxFrailty
+    model = CoxFrailty.fit(x, Z=Z, c=c, groups=unit_id)
+
+It predicts like the parametric models, from a step baseline as ``CoxPH``
+does, and reports R's integrated likelihood (``loglik``) in place of the
+information criteria, which a nonparametric baseline does not have.
+
 .. autofunction:: surpyval.univariate.regression.frailty.Frailty
 
 .. autoclass:: surpyval.univariate.regression.frailty.frailty_fitter.FrailtyFitter
     :members: fit, fit_from_df
 
 .. autoclass:: surpyval.univariate.regression.frailty.frailty_model.FrailtyModel
+    :members:
+
+.. autoclass:: surpyval.univariate.regression.frailty.cox_frailty.CoxFrailtyFitter
+    :members: fit, fit_from_df
+
+.. autoclass:: surpyval.univariate.regression.frailty.cox_frailty.CoxFrailtyModel
     :members:
