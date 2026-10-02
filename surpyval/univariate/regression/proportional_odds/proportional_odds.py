@@ -107,8 +107,8 @@ from .._concordance import ConcordanceMixin
 from .._fit_skeleton import covariate_center
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
+    LinearPredictorMixin,
     design_matrix_from_df,
-    prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -481,7 +481,9 @@ def _baseline_at_origin(
     return out
 
 
-class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
+class ProportionalOddsModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     A fitted semi-parametric proportional odds model, returned by
     :meth:`ProportionalOdds.fit <ProportionalOdds_.fit>` and
@@ -560,31 +562,10 @@ class ProportionalOddsModel(ConcordanceMixin, SerialisableMixin):
         ``beta_1``, ... for the covariate coefficients."""
         return ["beta_{}".format(i) for i in range(len(self.params))]
 
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): a constant column, which the baseline odds
-        absorb, or a linear combination of the others. Their ``beta`` is
-        ``nan`` (R's ``NA``), and predictions take it as 0."""
-        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
-
-    def _coef(self) -> npt.NDArray:
-        beta = np.asarray(self.beta, dtype=float)
-        return np.where(np.isnan(beta), 0.0, beta)
-
-    def _center(self) -> npt.NDArray:
-        if self.center is None:
-            return np.zeros(np.asarray(self.beta).shape[0])
-        return np.asarray(self.center, dtype=float)
-
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        return prepare_Z(Z, self.feature_names, self._model_spec)
-
-    def _log_phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        if Z_arr.ndim == 0:
-            Z_arr = Z_arr.reshape(1)
-        return (Z_arr - self._center()) @ self._coef()
+    _ALIASED_WHY = (
+        "a constant column, which the baseline odds absorb, or a linear "
+        "combination of the others"
+    )
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         """

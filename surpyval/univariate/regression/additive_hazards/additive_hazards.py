@@ -66,8 +66,8 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
+    LinearPredictorMixin,
     design_matrix_from_df,
-    prepare_Z,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -134,7 +134,9 @@ def _aliased(
     return aliased_columns(A, Z.shape[0], constant_columns(Z), spread)
 
 
-class AdditiveHazardsModel(ConcordanceMixin, SerialisableMixin):
+class AdditiveHazardsModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     A fitted Lin & Ying additive hazards model, returned by
     :meth:`AdditiveHazards.fit`.
@@ -203,24 +205,15 @@ class AdditiveHazardsModel(ConcordanceMixin, SerialisableMixin):
     def _concordance_data(self) -> "tuple | None":
         return getattr(self, "_fit_data", None)
 
+    _ALIASED_WHY = (
+        "a constant column, which the baseline hazard absorbs, or a "
+        "linear combination of the others"
+    )
+    _ALIASED_ALSO = ", as are their standard errors and p-values"
+
     def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        Z = prepare_Z(Z, self.feature_names, self._model_spec)
-        return np.atleast_2d(Z)
-
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): a constant column, which the baseline hazard
-        absorbs, or a linear combination of the others. Their ``beta`` is
-        ``nan`` (R's ``NA``), as are their standard errors and p-values,
-        and predictions take it as 0."""
-        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
-
-    def _coef(self) -> npt.NDArray:
-        """``beta`` with an aliased coefficient as 0, as the predictions
-        use it."""
-        beta = np.asarray(self.beta, dtype=float)
-        return np.where(np.isnan(beta), 0.0, beta)
+        # One row per prediction, as the model's functions index it.
+        return np.atleast_2d(super()._prepare_Z(Z))
 
     def __repr__(self) -> str:
         out = (

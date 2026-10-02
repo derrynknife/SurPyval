@@ -63,6 +63,7 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from ..regression_data import (
+    LinearPredictorMixin,
     restore_covariate_meta,
     semi_parametric_inputs,
     serialise_covariate_meta,
@@ -197,7 +198,9 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(ConcordanceMixin, SerialisableMixin):
+class BuckleyJamesModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -255,29 +258,20 @@ class BuckleyJamesModel(ConcordanceMixin, SerialisableMixin):
         self.converged = converged
         self._data = data  # (Y, delta, Z, w) for the bootstrap
 
-    @property
-    def aliased(self) -> npt.NDArray:
-        """The columns of ``Z`` whose coefficients the data cannot
-        determine (#476): a constant column, which is the intercept the
-        fit profiles out, or a linear combination of the others. Their
-        ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
-        return np.flatnonzero(np.isnan(self.beta))
+    _ALIASED_WHY = (
+        "a constant column, which is the intercept the fit profiles out, "
+        "or a linear combination of the others"
+    )
 
     def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
         Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
-        beta = np.where(np.isnan(self.beta), 0.0, self.beta)
-        return -(Z_arr.reshape(x.size, -1) @ beta)
+        return -(Z_arr.reshape(x.size, -1) @ self._coef())
 
     def _concordance_data(self) -> "tuple | None":
         if self._data is None:
             return None
         Y, delta, Z, w = self._data
         return np.exp(Y), (delta == 0).astype(int), w, Z
-
-    def _prepare_Z(self, Z: Any) -> npt.NDArray:
-        from ..regression_data import prepare_Z
-
-        return prepare_Z(Z, self.feature_names, self._model_spec)
 
     def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
         # Right-continuous residual survival at query points ``r``.

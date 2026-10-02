@@ -13,7 +13,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -34,7 +33,7 @@ from surpyval.univariate.regression._aliasing import (
     warn_collected,
 )
 from surpyval.univariate.regression.regression_data import (
-    prepare_Z,
+    LinearPredictorMixin,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
@@ -61,7 +60,9 @@ def _check_interp(interp: str) -> None:
     _check_option("interp", interp, ("step",))
 
 
-class CompetingRisksProportionalHazards(SerialisableMixin):
+class CompetingRisksProportionalHazards(
+    LinearPredictorMixin, SerialisableMixin
+):
     """
     Competing-risks proportional-hazards regression.
 
@@ -249,24 +250,6 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         return (self._prepare_Z(Z) - self.center) @ np.where(
             np.isnan(beta), 0.0, beta
         )
-
-    @staticmethod
-    def _times_risk(base: npt.NDArray, log_risk: npt.NDArray) -> npt.NDArray:
-        """``base * exp(log_risk)`` on the log scale, so a tiny baseline at
-        ``Z = 0`` and a huge multiplier on covariates far from 0 do not
-        overflow (#463)."""
-        with np.errstate(divide="ignore", over="ignore"):
-            return np.exp(np.log(base) + log_risk)
-
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        """
-        Convert ``Z`` to a numeric design matrix: a DataFrame is read by
-        the covariate names (or expanded by the formula) recorded by
-        ``fit_from_df`` -- it used to be read by column position, and a
-        formula's raw columns were not expanded at all (#370); an array is
-        taken as it is, in the fitted column order.
-        """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
