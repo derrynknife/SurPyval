@@ -532,28 +532,25 @@ def _search_proportional_odds(model, data):
         return -float(der["value"])
 
     gamma = -np.asarray(model.beta, dtype=float)
-    steps = 1e-4 * np.maximum(np.abs(gamma), 1.0)
-
-    def jac(g):
-        g = np.asarray(g, float)
-        out = []
-        for j, s in enumerate(steps):
-            e = np.zeros_like(g)
-            e[j] = s
-            out.append((fun(g + e) - fun(g - e)) / (2 * s))
-        return np.array(out)
-
-    def hess(g):
-        g = np.asarray(g, float)
-        cols = []
-        for j, s in enumerate(steps):
-            e = np.zeros_like(g)
-            e[j] = s
-            cols.append((jac(g + e) - jac(g - e)) / (2 * s))
-        return np.array(cols).T
-
     n_events = float(n[c == 0].sum())
-    return [Search(fun, gamma, n_events, jac=jac, hess=hess)]
+    return [_numerical(fun, gamma, n_events)]
+
+
+def _numerical(fun, x, n_obs):
+    """A :class:`Search` of a likelihood autograd cannot differentiate,
+    by central differences (``numerical_gradient``, ``numerical_hessian``,
+    in steps relative to each component)."""
+    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+
+    x = np.asarray(x, dtype=float)
+    steps = 1e-5 * np.maximum(np.abs(x), 1.0)
+    return Search(
+        fun,
+        x,
+        n_obs,
+        jac=lambda v: numerical_gradient(fun, v, 1e-2 * steps),
+        hess=lambda v: numerical_hessian(fun, v, steps),
+    )
 
 
 def _search_fine_gray(model, data, name=""):
@@ -674,13 +671,7 @@ def _search_copula(model, data):
 def _search_royston_parmar(model, data):
     """The spline coefficients' likelihood the fit kept (``_objective``);
     they are searched as they are."""
-    return [
-        Search(
-            model._objective,
-            np.asarray(model.params, float),
-            float(model.n),
-        )
-    ]
+    return [_numerical(model._objective, model.params, float(model.n))]
 
 
 SEARCHES: dict[str, Callable] = {

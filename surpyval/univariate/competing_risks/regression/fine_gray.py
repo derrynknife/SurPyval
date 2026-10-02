@@ -40,7 +40,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
+from typing import Any, Callable, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -285,6 +285,7 @@ def _fit_cause(
         "res": res,
         "runaway": runaway,
         "maximum": maximum,
+        "objective": neg_ll,
     }
 
 
@@ -534,6 +535,10 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
     #: (``surpyval.utils.no_maximum``), as its warnings say; ``"unknown"``
     #: for a model restored from a dict saved without it.
     maximum: str
+    #: The negative weighted partial log-likelihood the fit maximised, of
+    #: the coefficients it did not alias, on the centred covariates (less
+    #: its value at 0); ``None`` on a restored model (not saved).
+    _objective: "Callable | None"
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -553,6 +558,7 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         self._neg_ll = fit["neg_ll"]
         self.res = fit["res"]
         self.maximum = fit.get("maximum", "unknown")
+        self._objective = fit.get("objective")
 
     _ALIASED_WHY = (
         "a constant column, which the baseline subdistribution hazard "

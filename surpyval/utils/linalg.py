@@ -101,6 +101,36 @@ def numerical_hessian(
     return H
 
 
+def numerical_gradient(
+    func: Callable[[npt.NDArray], float],
+    x: npt.NDArray,
+    step: "npt.NDArray | None" = None,
+) -> npt.NDArray:
+    """
+    Central finite-difference gradient of a scalar ``func`` at ``x``, with
+    the per-parameter ``step`` (default ``1e-6 * max(|x|, 1)``): with
+    :func:`numerical_hessian`, what checks that a derivative-free search
+    stopped at a maximum (``is_local_minimum``).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.linalg import numerical_gradient
+    >>> f = lambda v: v[0] ** 2 + 3 * v[1]
+    >>> numerical_gradient(f, np.array([1.0, 2.0])).round(6)
+    array([2., 3.])
+    """
+    x = np.asarray(x, dtype=float)
+    if step is None:
+        step = 1e-6 * np.maximum(np.abs(x), 1.0)
+    g = np.zeros(x.size)
+    for i in range(x.size):
+        e = np.zeros(x.size)
+        e[i] = step[i]
+        g[i] = (func(x + e) - func(x - e)) / (2.0 * step[i])
+    return g
+
+
 def delta_method_se(
     func: Callable[[npt.NDArray], Any],
     mle: npt.NDArray,
