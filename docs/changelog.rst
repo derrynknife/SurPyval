@@ -305,6 +305,44 @@ bands change (#477).
   alone (``wrangle_and_check_form_and_Z_cols`` is removed). The
   accelerated-life fitter now has the deprecated ``param_names`` alias
   the other fitters have.
+- **Development: fitted regression models declare their attributes
+  (maintainability sweep, phase 2).** ``ParametricRegressionModel`` and the
+  Cox, ProportionalOdds, Lin-Ying, Buckley-James and Fine-Gray model classes
+  declare every attribute their builders set, with its type and meaning.
+  The covariate links (``Phi``, the additive link and ``from_dict``'s
+  namespace) are one ``CovariateLink`` (``name``, ``phi_param_map``,
+  ``phi``; ``Phi`` remains as an alias so old pickles load). ``fit`` now
+  also sets ``dist``, and ``from_dict`` sets ``distribution_param_map`` and
+  ``phi_param_map``, which only the fits set before. A new conformance
+  property, ``attributes``, checks that ``fit``, ``fit_from_df``, a formula,
+  ``fit_tvc`` and ``from_dict`` give a model the same declared attributes
+  (``from_dict`` less the data and what was computed from it) and nothing
+  undeclared; before this change it failed 33 cases. The regression family
+  names are constants in ``regression/_kinds.py``, and the model branches on
+  ``_is_accelerated_life()`` and ``_is_additive()`` instead of comparing
+  ``kind`` with string literals; ``kind`` and its values are unchanged.
+- **Development: long functions split into named steps; flake8
+  ``max-complexity`` lowered from 70 to 25 (maintainability sweep, phase
+  2).** ``handle_xicn``, the tvc-schedule expression evaluator, the MLE
+  fitter, ``xcnt_handler``, ``turnbull``, ``DegradationAnalysis.fit``, the
+  fit-input validation and the harness's ``diff`` are split into named
+  steps, and the likelihood-ratio search behind ``cb(method="lr")`` is a
+  ``_PsiBoundSearch`` class rather than eleven closures. No result
+  changes: the equivalence harness is bit-identical, and old-against-new
+  runs over thousands of inputs per function give identical values,
+  warnings and error messages. Comments in these modules state current
+  behaviour rather than its history, and the copula and renewal
+  tolerances are named for what they are (``_U_CLIP``, ``_LOG_FLOOR``,
+  ``_MACHINE_EPS``).
+- **Development: tests organised by feature (maintainability sweep,
+  phase 3).** The 59 test modules named after fix rounds
+  (``*_fixesN.py``, ``*_roundN.py``, ``test_tvc_phase2.py``, ...) are
+  renamed as, or merged into, feature modules; the 17,023 collected tests
+  are unchanged apart from their paths. Helpers copied between modules
+  live once in ``surpyval/tests/_helpers.py``, the conformance registry is
+  split into fixtures, family helpers, cases and known failures (still
+  imported through ``registry.py``), and :doc:`Contributing` says where a
+  fix's regression test goes.
 - **Development: refactors are proven bit-identical.**
   ``scripts/refactor/snapshot.py`` records what every registered model
   computes and says (fits, predictions, every bound, ``to_dict``,

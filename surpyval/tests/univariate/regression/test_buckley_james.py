@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import surpyval as sp
 from surpyval import BuckleyJames, LogNormalAFT
+from surpyval.tests._helpers import counted_regression_data
 
 
 def _aft_data(N, seed, gamma=(0.8, -0.5), mu=1.5, sigma=0.6, cens_mu=2.2):
@@ -153,3 +155,55 @@ def test_fit_from_df_formula():
     )
     assert "age" in m.feature_names and "dose" in m.feature_names
     assert np.allclose(m.beta, beta, atol=0.08)
+
+
+# ---------------------------------------------------------------------------
+# Counts are frequency weights in the bootstrap.
+# ---------------------------------------------------------------------------
+
+
+def test_buckley_james_bootstrap_equals_expanded_data():
+    x, Z, n, c = counted_regression_data()
+    a = BuckleyJames.fit(x, Z, c=c, n=n)
+    b = BuckleyJames.fit(
+        np.repeat(x, n), np.repeat(Z, n, axis=0), c=np.repeat(c, n)
+    )
+    np.testing.assert_allclose(
+        a.bootstrap_ci(random_state=3, n_boot=50),
+        b.bootstrap_ci(random_state=3, n_boot=50),
+    )
+
+
+# ---------------------------------------------------------------------------
+# #426: one covariate row per time.
+# ---------------------------------------------------------------------------
+
+
+def _buckley_james():
+    rng = np.random.default_rng(2)
+    Z = rng.normal(size=(100, 2))
+    t = np.exp(2.0 - 0.5 * Z[:, 0] + 0.2 * Z[:, 1] + rng.normal(0, 0.5, 100))
+    c = (t > 12).astype(int)
+    return sp.BuckleyJames.fit(np.minimum(t, 12), Z, c=c)
+
+
+def test_buckley_james_pairs_one_row_per_time():
+    # It used to raise numpy's bare matmul error.
+    model = _buckley_james()
+    x = np.array([5.0, 10.0, 7.0])
+    Z = np.array([[0.0, 1.0], [1.0, 0.0], [-1.0, 0.5]])
+    alone = [model.sf(x[k : k + 1], Z[k])[0] for k in range(3)]
+    np.testing.assert_allclose(model.sf(x, Z), alone, rtol=1e-15)
+    np.testing.assert_allclose(model.ff(x, Z), 1 - np.array(alone))
+    # One row is still used at every time.
+    np.testing.assert_allclose(
+        model.sf(x, Z[:1]), model.sf(x, Z[0]), rtol=1e-15
+    )
+
+
+def test_buckley_james_refuses_a_mismatched_z():
+    model = _buckley_james()
+    with pytest.raises(ValueError, match="3 covariate rows but there are 2"):
+        model.sf([5.0, 10.0], np.zeros((3, 2)))
+    with pytest.raises(ValueError, match="vector of length 2"):
+        model.sf([5.0, 10.0], [0.0, 1.0, 2.0])

@@ -44,6 +44,7 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._kinds import ACCELERATED_FAILURE_TIME
 from ..parametric_regression_model import ParametricRegressionModel
 from ..tvc_fit import fit_tvc_df
 
@@ -310,13 +311,13 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         # A column the data cannot determine is held at 0 and reported as
         # nan, with one warning, as by the ordinary fit (#476).
         fixed = alias_coefficients(
-            self, "Accelerated Failure Time", Z, n, fixed, phi_param_map
+            self, ACCELERATED_FAILURE_TIME, Z, n, fixed, phi_param_map
         )
 
         # Centred on the interval rows' means, as the ordinary AFT fit
         # (#463): exp(beta'z) on a covariate far from 0 overflows.
         centring = Centring.plan(
-            self, "Accelerated Failure Time", Z, n, fixed, center
+            self, ACCELERATED_FAILURE_TIME, Z, n, fixed, center
         )
         mean = np.zeros(p) if centring is None else centring.center
 
@@ -380,7 +381,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         # model's, so its bounds use that likelihood.
         model = assemble_regression_model(
             like,
-            "Accelerated Failure Time",
+            ACCELERATED_FAILURE_TIME,
             LogLinearPhi(LogLinearPhi.NAME_EXP, phi_param_map),
             edata,
             res,

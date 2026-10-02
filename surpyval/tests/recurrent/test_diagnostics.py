@@ -1,17 +1,31 @@
 """Residual diagnostics, trend-test delegation and the Cramer-von Mises
 goodness-of-fit test on fitted parametric recurrent models."""
 
+import matplotlib
 import numpy as np
 import pytest
 
-from surpyval import Exponential
-from surpyval.recurrent import HPP, CoxLewis, CrowAMSAA, laplace, mil_hdbk_189c
+from surpyval.datasets import load_rossi_static
+from surpyval.recurrent import (
+    HPP,
+    CauseSpecificNHPP,
+    CoxLewis,
+    CrowAMSAA,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
+    ProportionalIntensityHPP,
+    ProportionalIntensityNHPP,
+    laplace,
+    mil_hdbk_189c,
+)
 from surpyval.recurrent.diagnostics import cvm_statistic
-
-
-def _events():
-    np.random.seed(1)
-    return Exponential.random(40, 1e-2).cumsum()
+from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.tests._helpers import (
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+    exponential_event_times,
+)
 
 
 def _multi_item_data():
@@ -26,14 +40,14 @@ def _multi_item_data():
 def test_hpp_cumulative_hazard_residuals_are_rescaled_gaps():
     # For an HPP the time-rescaling transform is linear, so the residuals
     # are exactly lambda times the interarrival gaps.
-    x = _events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     gaps = np.diff(np.concatenate([[0.0], x]))
     assert np.allclose(model.residuals(), model.params[0] * gaps)
 
 
 def test_pit_residuals_transform_of_cumulative_hazard():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     e = model.residuals()
     pit = model.residuals(kind="pit")
     assert np.allclose(pit, 1.0 - np.exp(-e))
@@ -61,7 +75,7 @@ def test_residuals_with_delayed_entry():
 
 
 def test_residuals_validation():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     with pytest.raises(ValueError, match="kind"):
         model.residuals(kind="nope")
     no_data = CrowAMSAA.from_params([1000.0, 1.2])
@@ -77,7 +91,7 @@ def test_residuals_validation():
 def test_trend_test_matches_standalone_failure_truncated():
     # A failure-truncated single system: the model method must reproduce
     # the standalone test's statistic exactly.
-    x = _events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     for name, func in (("laplace", laplace), ("mil_hdbk_189c", mil_hdbk_189c)):
         res = model.trend_test(test=name)
@@ -104,7 +118,7 @@ def test_trend_test_matches_standalone_mixed_windows():
 
 
 def test_trend_test_validation():
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     with pytest.raises(ValueError, match="'test' must be one of"):
         model.trend_test(test="nope")
     truncated = CrowAMSAA.fit(
@@ -127,7 +141,7 @@ def test_cvm_statistic_minimum_at_uniform_quantiles():
 def test_cramer_von_mises_reproducible_and_calibrated():
     # A correctly-specified HPP should not be rejected, and the same seed
     # must reproduce the same p-value.
-    model = HPP.fit(_events())
+    model = HPP.fit(exponential_event_times())
     gof = model.cramer_von_mises(n_boot=50, random_state=1)
     gof2 = model.cramer_von_mises(n_boot=50, random_state=1)
     assert gof.p_value == gof2.p_value
@@ -168,10 +182,66 @@ def test_cramer_von_mises_multi_item_and_cox_lewis():
 
 
 def test_cramer_von_mises_requires_likelihood_fit():
-    x = _events()
+    x = exponential_event_times()
     mse = CrowAMSAA.fit(x, how="MSE")
     with pytest.raises(ValueError, match="fitted from data"):
         mse.cramer_von_mises()
     no_data = CrowAMSAA.from_params([1000.0, 1.2])
     with pytest.raises(ValueError, match="fitted from data"):
         no_data.cramer_von_mises()
+
+
+# ---------------------------------------------------------------------------
+# Diagnostics on a model without its data say what they need.
+# ---------------------------------------------------------------------------
+
+
+matplotlib.use("Agg")
+
+
+def _rossi():
+    data = load_rossi_static()
+    x = data["week"].values
+    c = 1 - data["arrest"].values
+    i = np.arange(len(x))
+    Z = data[["fin", "age"]].values
+    return x, Z, i, c
+
+
+def _data_less_models():
+    x, Z, i, c = _rossi()
+    pi_nhpp = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
+    pi_hpp = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
+    ca = CrowAMSAA.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C)
+    g1 = GeneralizedOneRenewal.fit(
+        REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C
+    )
+    return {
+        "HPP.from_params": HPP.from_params([0.5]),
+        "CrowAMSAA restored": type(ca).from_dict(ca.to_dict()),
+        "PI-NHPP restored": type(pi_nhpp).from_dict(pi_nhpp.to_dict()),
+        "PI-HPP restored": type(pi_hpp).from_dict(pi_hpp.to_dict()),
+        "G1 restored": RenewalModel.from_dict(g1.to_dict()),
+        "GRP fit_from_parameters": GeneralizedRenewal.fit_from_parameters(
+            [10, 2], 0.3
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "method", ["residuals", "trend_test", "cramer_von_mises", "plot"]
+)
+def test_data_less_models_raise_informative_error(method):
+    for name, model in _data_less_models().items():
+        with pytest.raises(ValueError, match="requires a model fitted"):
+            getattr(model, method)()
+
+
+def test_restored_cause_specific_nhpp_plot_raises_informative_error():
+    e = ["A", "B", "A", "B", "A", None, "A", "B", "A", "A", None]
+    model = CauseSpecificNHPP.fit(
+        REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, e=e
+    )
+    restored = CauseSpecificNHPP.from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="requires a model fitted"):
+        restored.plot()

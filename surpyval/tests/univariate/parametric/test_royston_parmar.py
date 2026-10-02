@@ -7,6 +7,7 @@ import pytest
 
 import surpyval as surv
 from surpyval import LogNormal, RoystonParmar, Weibull
+from surpyval.tests._helpers import no_warnings
 
 
 def test_df1_hazard_scale_is_weibull():
@@ -221,3 +222,85 @@ def test_mixed_censoring_and_truncation_fits():
     s = rp.sf(t)
     assert np.all((s >= 0) & (s <= 1))
     assert np.all(np.diff(s) <= 1e-9)
+
+
+# ---------------------------------------------------------------------------
+# #415: one-sided bounds are the matching end of the band.
+# ---------------------------------------------------------------------------
+
+
+# -- #415: Royston-Parmar one-sided bounds ----------------------------------
+@pytest.fixture(scope="module")
+def royston_parmar():
+    np.random.seed(6)
+    x = surv.Weibull.random(150, 10, 1.6)
+    return surv.RoystonParmar.fit(x, df=2)
+
+
+@pytest.mark.parametrize("on", ["sf", "ff", "Hf"])
+def test_royston_parmar_one_sided_is_the_matching_end(royston_parmar, on):
+    # bound='lower' on ff and Hf returned the upper end (ff(10) = 0.436:
+    # two-sided at 0.1 [0.291, 0.615], lower at 0.05 0.615).
+    model = royston_parmar
+    x = np.array([4.0, 10.0, 20.0])
+    two = model.cb(x, on=on, alpha_ci=0.1)
+    est = getattr(model, on)(x)
+    assert np.all(two[:, 0] < est) and np.all(est < two[:, 1])
+    for k, side in enumerate(("lower", "upper")):
+        np.testing.assert_allclose(
+            model.cb(x, on=on, alpha_ci=0.05, bound=side),
+            two[:, k],
+            rtol=1e-12,
+        )
+
+
+def test_royston_parmar_refuses_an_unknown_bound(royston_parmar):
+    # bound='both' was taken as 'upper'.
+    with pytest.raises(ValueError, match="bound"):
+        royston_parmar.cb(10.0, bound="both")
+
+
+# ---------------------------------------------------------------------------
+# Edges.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_royston_parmar_edges():
+    np.random.seed(1)
+    model = surv.RoystonParmar.fit(W.random(50, 10, 2))
+    assert no_warnings(model.sf, -1.0) == 1.0
+    assert no_warnings(model.hf, 0.0) == 0.0
+    assert no_warnings(model.df, np.array([-1.0, 0.0]))[0] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# #274: Royston-Parmar keeps the best finite optimiser result
+# and validates knot placement.
+# ---------------------------------------------------------------------------
+
+
+class TestRoystonParmarGuards:
+    def test_double_truncation_returns_finite_model(self):
+        # 274: the unguarded BFGS polish used to replace the finite
+        # Nelder-Mead result with NaN on doubly-truncated data.
+        np.random.seed(21)
+        t = 10 * np.random.weibull(2, 20000)
+        x = t[(t > 3) & (t < 15)][:2000]
+        m = RoystonParmar.fit(x=x, tl=3, tr=15, df=1)
+        assert np.isfinite(m.neg_ll())
+        sf10 = float(np.ravel(m.sf(10))[0])
+        # True Weibull(10, 2) survival at 10 is exp(-1).
+        assert sf10 == pytest.approx(np.exp(-1), abs=0.05)
+
+    def test_too_few_distinct_events_raises(self):
+        # 274: one event + censored rows at the default df=3 used to
+        # return a silent NaN model.
+        with pytest.raises(ValueError, match="distinct event times"):
+            RoystonParmar.fit(x=[5.0, 6.0, 7.0, 8.0], c=[0, 1, 1, 1])
+
+    def test_tied_events_raise_instead_of_nan(self):
+        with pytest.raises(ValueError, match="distinct event times|distinct"):
+            RoystonParmar.fit(x=[1.0] * 10 + [2.0] * 10, df=3)

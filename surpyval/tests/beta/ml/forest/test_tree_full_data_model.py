@@ -34,7 +34,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     _wei_max_ll,
     needs_full_likelihood_split,
 )
-from surpyval.beta.ml.forest.node import TerminalNode
+from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -384,25 +384,19 @@ def test_needs_full_likelihood_split_detection():
 # -- leaves: parametric all the way down ------------------------------------
 
 
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
-
-
 @pytest.mark.parametrize("kind", ["weibull", "exponential"])
 def test_parametric_kind_has_no_nonparametric_leaves(kind):
     Z, x, c = _signal_data()
     x_in, c_in = _intervalise(x, c)
     tree = _fit_all_features(x=x_in, Z=Z, c=c_in, kind=kind)
-    for leaf in _leaves(tree._root):
+    for leaf in tree_leaves(tree._root):
         assert not isinstance(leaf.model, NonParametric)
 
 
 def test_non_parametric_kind_has_nonparametric_leaves():
     Z, x, c = _signal_data()
     tree = _fit_all_features(x=x, Z=Z, c=c, kind="non-parametric")
-    for leaf in _leaves(tree._root):
+    for leaf in tree_leaves(tree._root):
         assert isinstance(leaf.model, NonParametric)
 
 

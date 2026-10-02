@@ -12,6 +12,11 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+from surpyval import CoxPH
+from surpyval.univariate.regression.proportional_hazards.diagnostics import (
+    check_ph,
+    compute_residuals,
+)
 
 
 def _ph_data(seed=0, n=200, censor=0.25):
@@ -347,3 +352,63 @@ def test_residuals_do_not_loop_over_event_times(monkeypatch):
         model.compute_residuals(kind)
     model.check_ph()
     assert calls == []
+
+
+# ---------------------------------------------------------------------------
+# #279: Efron tie corrections in the Cox residuals, ``check_ph``
+# and the robust standard errors.
+# ---------------------------------------------------------------------------
+
+
+class TestEfronDiagnostics:
+    @staticmethod
+    def _tied_fit():
+        np.random.seed(11)
+        n = 120
+        Z = np.column_stack(
+            [np.random.binomial(1, 0.5, n), np.random.normal(size=n)]
+        )
+        u = np.random.uniform(size=n)
+        t = -np.log(u) / (0.3 * np.exp(0.7 * Z[:, 0] - 0.4 * Z[:, 1]))
+        x = np.ceil(np.clip(t, 0.5, 6)).astype(float)
+        c = (np.random.uniform(size=n) < 0.2).astype(int)
+        return x, c, Z
+
+    def test_residual_sums_vanish_at_mle(self):
+        # 279: these identities only hold when the residuals use the
+        # same tie handling as the fitted likelihood.
+        x, c, Z = self._tied_fit()
+        for method in ("efron", "breslow"):
+            m = CoxPH.fit(x=x, Z=Z, c=c, tie_method=method)
+            assert compute_residuals(m, "martingale").sum() == pytest.approx(
+                0.0, abs=1e-8
+            )
+            assert np.abs(
+                compute_residuals(m, "score").sum(axis=0)
+            ).max() == pytest.approx(0.0, abs=1e-8)
+
+    def test_check_ph_matches_lifelines_under_ties(self):
+        # Reference values from lifelines 0.30.3 on this exact dataset
+        # (km transform; identity and log also agree — lifelines is not
+        # a CI dependency, so the values are pinned).
+        x, c, Z = self._tied_fit()
+        m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
+        res = check_ph(m, transform="km")
+        stats = [e["statistic"] for e in res["per_covariate"]]
+        assert stats[0] == pytest.approx(1.3936, abs=2e-3)
+        assert stats[1] == pytest.approx(0.0013, abs=2e-3)
+
+    def test_dfbeta_tracks_exact_leave_one_out(self):
+        x, c, Z = self._tied_fit()
+        m = CoxPH.fit(x=x, Z=Z, c=c, tie_method="efron")
+        dfb = compute_residuals(m, "dfbeta")
+        # Spot-check 15 rows of exact leave-one-out influence.
+        rows = np.arange(0, 120, 8)
+        loo = np.zeros((rows.size, 2))
+        for r, i in enumerate(rows):
+            keep = np.ones(120, dtype=bool)
+            keep[i] = False
+            mi = CoxPH.fit(x=x[keep], Z=Z[keep], c=c[keep], tie_method="efron")
+            loo[r] = m.beta - mi.beta
+        corr = np.corrcoef(dfb[rows, 0], loo[:, 0])[0, 1]
+        assert corr > 0.99

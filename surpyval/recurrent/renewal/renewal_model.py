@@ -265,7 +265,7 @@ def _repair_conclusion(
 #: ``eps * exp(H)``, which is 5e-8 at 20 (an error of 3e-9 in ``H``).
 _QF_HAZARD_LIMIT = 20.0
 
-_EPS = float(np.finfo(float).eps)
+_MACHINE_EPS = float(np.finfo(float).eps)
 
 
 def solve_bracketed(
@@ -275,7 +275,7 @@ def solve_bracketed(
     g_lo: np.ndarray,
     g_hi: np.ndarray,
     xtol: float = 0.0,
-    rtol: float = 4 * _EPS,
+    rtol: float = 4 * _MACHINE_EPS,
     maxiter: int = 400,
 ) -> np.ndarray:
     """
@@ -470,7 +470,7 @@ def _invert_cumulative_hazard(
             hi[rest],
             g(lo[rest], rest),
             g_hi[rest],
-            xtol=4 * _EPS * 1e-300,
+            xtol=4 * _MACHINE_EPS * 1e-300,
         )
     return out
 

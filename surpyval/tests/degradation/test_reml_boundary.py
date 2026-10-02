@@ -84,3 +84,48 @@ def test_moments_warning_is_unchanged_in_substance():
     assert caught[0].filename == __file__
     _, caught = _fit(*_units(0), "moments")
     assert caught == []
+
+
+# ---------------------------------------------------------------------------
+# A REML clock fit on noise-free data is refused early.
+# ---------------------------------------------------------------------------
+
+
+def test_reml_clock_on_noise_free_data_refused_early() -> None:
+    levels = np.array([0.0, 0.5, 1.0])
+    times = np.arange(1.0, 31.0)
+    zrow = np.select([times <= 10, times <= 20], levels[:2], levels[2])
+    af = np.exp(2.0 * zrow)
+    rng = np.random.default_rng(0)
+    xs, ys, ids, Zs = [], [], [], []
+    for u in range(6):
+        a, b = rng.normal([1.0, 0.2], [0.2, 0.03])
+        tau = np.cumsum(np.diff(np.r_[0.0, times]) * af)
+        xs.append(times)
+        ys.append(a + b * tau)
+        ids.append(np.full(times.size, u))
+        Zs.append(zrow)
+    x, y, i, Z = map(np.concatenate, (xs, ys, ids, Zs))
+    for noise in (0.0, 1e-8):
+        yy = y + noise * rng.normal(size=y.size)
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            with pytest.raises(
+                ValueError, match="population_method='moments'"
+            ):
+                DegradationAnalysis.fit(
+                    x,
+                    yy,
+                    i,
+                    threshold=20.0,
+                    Z=Z,
+                    acceleration="clock",
+                    stress_ref=[0.0],
+                    population_method="reml",
+                )
+    # moments recovers the clock exactly
+    model = DegradationAnalysis.fit(
+        x, y, i, threshold=20.0, Z=Z, acceleration="clock", stress_ref=[0.0]
+    )
+    assert model.gamma is not None
+    assert model.gamma[0] == pytest.approx(2.0)

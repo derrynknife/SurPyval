@@ -181,3 +181,74 @@ def test_mcf_cb_rejects_bad_bound_type():
     model = NonParametricCounting.fit(x, i, c=c, tl=tl)
     with pytest.raises(ValueError, match="'bound_type' must be one of"):
         model.mcf_cb(3.0, bound_type="student")
+
+
+# ---------------------------------------------------------------------------
+# ``to_xrd`` with entry and exit windows matches a direct count.
+# ---------------------------------------------------------------------------
+
+
+def test_to_xrd_matches_a_direct_count():
+    rng = np.random.default_rng(3)
+    x, i, c, tl, tr = [], [], [], [], []
+    for item in range(12):
+        entry = float(rng.choice([0.0, 1.0, 2.5]))
+        close = float(rng.uniform(6, 12))
+        times = np.sort(np.round(rng.uniform(entry, close, 5), 1))
+        closed_by_row = item % 2 == 0
+        x += times.tolist() + ([close] if closed_by_row else [])
+        c += [0] * 5 + ([1] if closed_by_row else [])
+        rows = 6 if closed_by_row else 5
+        i += [item] * rows
+        tl += [entry] * rows
+        tr += [np.inf if closed_by_row else close] * rows
+    data = handle_xicn(x, i, c, tl=tl, tr=tr)
+    grid, r, d = data.to_xrd()
+    entry, exit_ = data.item_observation_windows()
+    events = data.c == 0
+    for k, t in enumerate(grid):
+        assert d[k] == data.n[(data.x == t) & events].sum()
+        assert r[k] == ((entry <= t) & (t <= exit_)).sum()
+
+
+# ---------------------------------------------------------------------------
+# Right truncation in the non-parametric MCF is a censoring row
+# at ``tr``.
+# ---------------------------------------------------------------------------
+
+
+def test_mcf_right_truncation_equals_censoring_row_at_tr():
+    x = [1, 2, 3, 2, 5, 4]
+    i = [1, 1, 1, 2, 2, 3]
+    tr = [6, 6, 6, 6, 6, 8]
+    truncated = NonParametricCounting.fit(x, i, tr=tr)
+    censored = NonParametricCounting.fit(
+        x + [6, 6, 8], i + [1, 2, 3], [0] * 6 + [1, 1, 1]
+    )
+    np.testing.assert_array_equal(truncated.x, censored.x)
+    np.testing.assert_array_equal(truncated.r, censored.r)
+    np.testing.assert_allclose(truncated.mcf_hat, censored.mcf_hat)
+    np.testing.assert_allclose(truncated.var, censored.var)
+    # item 3 is watched to 8, past its only event at 4
+    assert truncated.mcf(7) == pytest.approx(censored.mcf(7))
+    assert np.isnan(truncated.mcf(9))
+
+
+def test_cause_specific_mcf_right_truncation_equals_censoring_row_at_tr():
+    x = [1, 2, 3, 2, 5, 4]
+    i = [1, 1, 1, 2, 2, 3]
+    e = ["A", "B", "A", "B", "A", "A"]
+    truncated = CauseSpecificMCF.fit(x, i, e=e, tr=[6, 6, 6, 6, 6, 8])
+    censored = CauseSpecificMCF.fit(
+        x + [6, 6, 8],
+        i + [1, 2, 3],
+        [0] * 6 + [1, 1, 1],
+        e=e + [None] * 3,
+    )
+    for cause in ("A", "B"):
+        np.testing.assert_allclose(
+            truncated.models[cause].mcf_hat, censored.models[cause].mcf_hat
+        )
+        np.testing.assert_allclose(
+            truncated.models[cause].var, censored.models[cause].var
+        )

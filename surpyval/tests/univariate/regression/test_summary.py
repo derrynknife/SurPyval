@@ -16,7 +16,7 @@ from scipy.stats import norm
 
 import surpyval as sp
 from surpyval import Weibull
-from surpyval.datasets import load_rossi_static
+from surpyval.tests._helpers import rossi_with_censoring
 from surpyval.univariate.regression import AcceleratedLife
 from surpyval.univariate.regression.accelerated_life import Power
 
@@ -34,15 +34,9 @@ COLUMNS = [
 ]
 
 
-def _rossi():
-    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
-    df = load_rossi_static()
-    return df.assign(censored=1 - df["arrest"])
-
-
 def _cox():
     return sp.CoxPH.fit_from_df(
-        _rossi(), x_col="week", c_col="censored", Z_cols=COLS
+        rossi_with_censoring(), x_col="week", c_col="censored", Z_cols=COLS
     )
 
 
@@ -102,7 +96,7 @@ def test_cox_repr_names_the_covariates():
         "-1.983",
         "0.04742",
     ]
-    x = _rossi()
+    x = rossi_with_censoring()
     unnamed = sp.CoxPH.fit(x.week, x[COLS].to_numpy(), x.censored)
     assert "beta_6" in repr(unnamed)
 
@@ -123,7 +117,7 @@ def test_cox_standard_errors_are_saved():
 
 
 def test_parametric_summary_and_repr_separate_the_baseline():
-    df = _rossi()
+    df = rossi_with_censoring()
     model = sp.WeibullPH.fit_from_df(
         df, x_col="week", c_col="censored", Z_cols=["fin", "age", "prio"]
     )
@@ -161,7 +155,7 @@ def test_parametric_summary_and_repr_separate_the_baseline():
 
 
 def test_parametric_links_without_a_ratio():
-    df = _rossi()
+    df = rossi_with_censoring()
     x, c = df.week.to_numpy(), df.censored.to_numpy()
     additive = sp.WeibullAH.fit(x, df[["fin"]].to_numpy(), c)
     assert np.isnan(additive.summary()["exp(coef)"]).all()
@@ -183,7 +177,7 @@ def test_parametric_links_without_a_ratio():
 
 
 def test_fixed_and_aliased_parameters():
-    df = _rossi()
+    df = rossi_with_censoring()
     x, c = df.week.to_numpy(), df.censored.to_numpy()
     model = sp.WeibullPH.fit(x, df[["fin"]].to_numpy(), c, fixed={"beta": 1.4})
     row = model.summary().loc[("baseline", "beta")]
@@ -198,7 +192,7 @@ def test_fixed_and_aliased_parameters():
 
 
 def _frailty():
-    df = _rossi()
+    df = rossi_with_censoring()
     df["grp"] = np.arange(len(df)) % 40
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

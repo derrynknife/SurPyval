@@ -52,12 +52,12 @@ def _offset_start(x: npt.ArrayLike) -> float:
     """Starting offset: just below the smallest value, by a step on the
     data's own scale.
 
-    It was ``min(x) - 1``, a step of one *unit*, so the start depended on
-    the units the data were recorded in: at a scale of 1e-3 it sat a
-    thousand spreads below the data, where the likelihood is flat in the
-    offset and the search never moved it, and at 1e5 it was a hair below
-    the smallest value. The step is now the mean spacing of the sorted
-    finite values (see ``offset_step``), which scales with the data.
+    The step is the mean spacing of the sorted finite values (see
+    ``offset_step``), which scales with the data. A step of one *unit*
+    (``min(x) - 1``) would make the start depend on the units the data
+    were recorded in: at a scale of 1e-3 it sits a thousand spreads below
+    the data, where the likelihood is flat in the offset and the search
+    never moves it, and at 1e5 a hair below the smallest value.
 
     Every offset initialiser seeds its other parameters from the data
     shifted by this same value, since the fitter installs it as the
@@ -108,6 +108,29 @@ class OutsideSupportError(ValueError):
     ``fit_best`` pass over such a candidate quietly."""
 
 
+def _check_mps_data(surv_data: SurpyvalData) -> None:
+    """The data maximum product of spacings (MPS) can take."""
+    if (surv_data.c == 2).any():
+        # neg_mean_D has no interval-censored term; without this
+        # guard 2-D input dies deep in np.hstack with a cryptic
+        # dimensions error (#268).
+        raise ValueError(
+            "MPS does not support interval-censored observations; "
+            "use MLE (or MPP with the Turnbull heuristic) for "
+            "interval data."
+        )
+
+    if (surv_data.tl[0] != surv_data.tl).any():
+        raise ValueError(
+            "Left truncated value can only be single number when using MPS"
+        )
+
+    if (surv_data.tr[0] != surv_data.tr).any():
+        raise ValueError(
+            "Right truncated value can only be single number when using " "MPS"
+        )
+
+
 class FitInputsMixin:
     """The input checks and initial guesses of
     :class:`~surpyval.univariate.parametric.optimised_fit.OptimisedFitMixin`,
@@ -145,9 +168,9 @@ class FitInputsMixin:
         parameters and the likelihood has a flat direction: for a
         Weibull on a tied sample it is unbounded, since a spike of
         arbitrary height can sit on the repeated value, and the reported
-        answer is wherever the optimiser happened to stop. Three tied
-        observations at 10 returned ``beta = 512`` with ``success=True``
-        and no warning.
+        answer is wherever the optimiser happened to stop: three tied
+        observations at 10 would return ``beta = 512`` with
+        ``success=True`` and no warning.
 
         The count is of *free* parameters, not of the distribution's
         parameters, so fixing one buys back a degree of freedom: a
@@ -220,7 +243,7 @@ class FitInputsMixin:
         Such a time means the likelihood has no maximum (#392): a failure
         at 0.5 and one known only to be before 1 are both explained
         perfectly by a spike at 0.5, so a Weibull's likelihood grows
-        without bound with its shape, and the fit returned wherever it
+        without bound with its shape, and the fit would return wherever it
         stopped (``beta = 395.7``, a Normal ``sigma`` of 5e-324) in
         silence. Tied exact values are the special case the distinct-value
         count already refuses; this is the general one, as the Turnbull
@@ -244,8 +267,9 @@ class FitInputsMixin:
         censored or interval one up to ``tr``) extends to every time
         above ``tr``, and a set starting at ``tl`` (an interval from
         ``tl``) to every time below it. An exact failure at 1 observable
-        only up to 1, one at 2 and one known to be before 3 gave a Weibull
-        ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in silence.
+        only up to 1, one at 2 and one known to be before 3 would give a
+        Weibull ``beta`` of 455.6 (a Normal ``sigma`` of 0.037), in
+        silence.
         """
         if self.discrete or self.name not in _POINT_MASS_FAMILIES | (
             _OFFSET_POINT_MASS_FAMILIES if offset else frozenset()
@@ -298,6 +322,32 @@ class FitInputsMixin:
         heuristic: str,
         turnbull_estimator: str,
     ) -> Any:
+        self._check_offset_and_grid(surv_data, offset)
+        self._check_method(surv_data, how, offset, lfp, zi, fixed)
+        self._check_censoring_for_method(surv_data, how, heuristic)
+
+        if (
+            (heuristic == "Turnbull")
+            and (not ((-1 in surv_data.c) or (2 in surv_data.c)))
+            and ((~np.isfinite(surv_data.tr)).all())
+        ):
+            # The Turnbull method is extremely memory intensive.
+            # So if no left or interval censoring and no right-truncation
+            # then this is equivalent.
+            heuristic = turnbull_estimator
+
+        if (not offset) and (not zi):
+            self._check_inside_support(surv_data)
+
+        if how == "MPS":
+            _check_mps_data(surv_data)
+
+        return heuristic
+
+    def _check_offset_and_grid(
+        self, surv_data: SurpyvalData, offset: bool
+    ) -> None:
+        """Whether the family can be offset, and a discrete one's grid."""
         # Offsetting (a free location/threshold ``gamma``) only makes sense
         # for distributions supported on a half-line ``[0, inf)``. A
         # distribution with a finite upper bound (e.g. Beta on ``[0, 1]``)
@@ -312,9 +362,9 @@ class FitInputsMixin:
 
         # A discrete distribution's mass sits on the integers, and its
         # likelihood reads the data as integer counts: shifting it by a
-        # continuous ``gamma`` is not a member of the family. Declaring a
-        # support of ``[0, inf)`` let the check above through, and the fit
-        # then died deep in the optimiser with an unrelated zip() error.
+        # continuous ``gamma`` is not a member of the family. Its support
+        # of ``[0, inf)`` passes the check above, and the fit would then
+        # die deep in the optimiser with an unrelated zip() error.
         if offset and self.discrete:
             raise ValueError(
                 f"{self.name} is a discrete distribution and cannot be "
@@ -325,8 +375,8 @@ class FitInputsMixin:
         # A discrete distribution's mass sits on the integers, and between
         # them its sf is interpolated by some formulas (Geometric,
         # NegativeBinomial, ...) and floored by others (Poisson), so a
-        # non-integer observation has no consistent meaning: Geometric fit
-        # [1.5, 2.2, 3.7, 1.1] and returned p = 0.47.
+        # non-integer observation has no consistent meaning (Geometric
+        # would fit [1.5, 2.2, 3.7, 1.1] and return p = 0.47).
         if self.discrete:
             values = np.concatenate(
                 [np.ravel(surv_data.x), np.ravel(surv_data.t)]
@@ -341,9 +391,19 @@ class FitInputsMixin:
                     "use a continuous distribution."
                 )
 
+    def _check_method(
+        self,
+        surv_data: SurpyvalData,
+        how: str,
+        offset: bool,
+        lfp: bool,
+        zi: bool,
+        fixed: dict[str, float] | None,
+    ) -> None:
+        """Whether ``how`` (and the model options) can fit this data."""
         # Probability plotting is exempt. It is a regression through the
         # plotting positions, not a likelihood maximisation, so it has no
-        # unbounded direction to fall into and now always returns finite
+        # unbounded direction to fall into and always returns finite
         # parameters. It is also how several distributions seed
         # themselves, and that internal call does not carry the caller's
         # ``fixed``, so checking it would reject well posed fits.
@@ -399,6 +459,11 @@ class FitInputsMixin:
             )
             raise ValueError(detail)
 
+    @staticmethod
+    def _check_censoring_for_method(
+        surv_data: SurpyvalData, how: str, heuristic: str
+    ) -> None:
+        """Censoring the data has (or lacks) that leaves no fit."""
         if (surv_data.c == 1).all():
             # No failure: the likelihood keeps rising as the distribution
             # moves out past every suspension, with a shape fixed or not.
@@ -428,90 +493,59 @@ class FitInputsMixin:
             )
             raise ValueError(detail)
 
-        if (
-            (heuristic == "Turnbull")
-            and (not ((-1 in surv_data.c) or (2 in surv_data.c)))
-            and ((~np.isfinite(surv_data.tr)).all())
-        ):
-            # The Turnbull method is extremely memory intensive.
-            # So if no left or interval censoring and no right-truncation
-            # then this is equivalent.
-            heuristic = turnbull_estimator
-
-        if (not offset) and (not zi):
-            lower, upper = self.support
-            # One line that names the bounds as the check applies them: an
-            # observation must lie strictly inside, so the old "[0, inf]"
-            # read as though 0 were allowed while 0 was what it rejected.
-            detail = (
-                f"Some of your data is outside the support of the "
-                f"{self.name} distribution: observed values must lie "
-                f"strictly between {lower} and {upper}, i.e. in "
-                f"({lower}, {upper}), and a censored value must leave the "
-                f"event some probability. Are some of your observed values "
-                f"{lower}, -inf or inf?"
+    def _check_inside_support(self, surv_data: SurpyvalData) -> None:
+        """Every observation leaves the event some probability."""
+        lower, upper = self.support
+        # One line that names the bounds as the check applies them: an
+        # observation must lie strictly inside, so the bounds are written
+        # open ("[0, inf]" would read as though 0 were allowed while 0 is
+        # what it rejects).
+        detail = (
+            f"Some of your data is outside the support of the "
+            f"{self.name} distribution: observed values must lie "
+            f"strictly between {lower} and {upper}, i.e. in "
+            f"({lower}, {upper}), and a censored value must leave the "
+            f"event some probability. Are some of your observed values "
+            f"{lower}, -inf or inf?"
+        )
+        x_sd, c_sd = surv_data.x, surv_data.c
+        if x_sd.ndim == 2:
+            bad = (
+                ((x_sd[:, 0] <= lower) & (c_sd == 0))
+                | ((x_sd[:, 1] >= upper) & (c_sd == 0))
+                # An interval endpoint strictly below the support makes
+                # the CDF evaluate outside its domain: NaN likelihood
+                # everywhere and a silent initial-guess "fit" (#261).
+                | ((x_sd[:, 0] < lower) & (c_sd == 2))
+                # Survival past the end of the support, or a window
+                # wholly beyond it, has probability zero.
+                | ((x_sd[:, 0] >= upper) & ((c_sd == 1) | (c_sd == 2)))
             )
-            x_sd, c_sd = surv_data.x, surv_data.c
-            if x_sd.ndim == 2:
-                bad = (
-                    ((x_sd[:, 0] <= lower) & (c_sd == 0))
-                    | ((x_sd[:, 1] >= upper) & (c_sd == 0))
-                    # An interval endpoint strictly below the support made
-                    # the CDF evaluate outside its domain: NaN likelihood
-                    # everywhere and a silent initial-guess "fit" (#261).
-                    | ((x_sd[:, 0] < lower) & (c_sd == 2))
-                    # Survival past the end of the support, or a window
-                    # wholly beyond it, has probability zero.
-                    | ((x_sd[:, 0] >= upper) & ((c_sd == 1) | (c_sd == 2)))
+        else:
+            bad = (
+                ((x_sd <= lower) & (c_sd == 0))
+                | ((x_sd >= upper) & (c_sd == 0))
+                # A left-censored point at or below the support start
+                # is a zero-probability observation: the likelihood is
+                # -inf/NaN everywhere and the optimiser silently
+                # returns the initial guess (#261).
+                | ((x_sd <= lower) & (c_sd == -1))
+                # Likewise a right-censored point at or beyond the
+                # support's end (a Beta censored at 1.5 would return its
+                # start with an infinite likelihood).
+                | ((x_sd >= upper) & (c_sd == 1))
+            )
+        if bad.any():
+            # A failure at exactly 0 is a unit dead on arrival, which
+            # the zero-inflated model is for; a new user will not know
+            # the option exists (#514). It needs a support from 0.
+            at_zero = (x_sd if x_sd.ndim == 1 else x_sd.max(axis=1)) == 0
+            if lower == 0 and (bad & at_zero & (c_sd == 0)).any():
+                detail += (
+                    " For units that failed at time 0 (dead on "
+                    "arrival), fit with `zi=True`."
                 )
-            else:
-                bad = (
-                    ((x_sd <= lower) & (c_sd == 0))
-                    | ((x_sd >= upper) & (c_sd == 0))
-                    # A left-censored point at or below the support start
-                    # is a zero-probability observation: the likelihood is
-                    # -inf/NaN everywhere and the optimiser silently
-                    # returns the initial guess (#261).
-                    | ((x_sd <= lower) & (c_sd == -1))
-                    # Likewise a right-censored point at or beyond the
-                    # support's end (a Beta censored at 1.5 returned its
-                    # start with an infinite likelihood).
-                    | ((x_sd >= upper) & (c_sd == 1))
-                )
-            if bad.any():
-                # A failure at exactly 0 is a unit dead on arrival, which
-                # the zero-inflated model is for; a new user will not know
-                # the option exists (#514). It needs a support from 0.
-                at_zero = (x_sd if x_sd.ndim == 1 else x_sd.max(axis=1)) == 0
-                if lower == 0 and (bad & at_zero & (c_sd == 0)).any():
-                    detail += (
-                        " For units that failed at time 0 (dead on "
-                        "arrival), fit with `zi=True`."
-                    )
-                raise OutsideSupportError(detail)
-
-        if how == "MPS" and (surv_data.c == 2).any():
-            # neg_mean_D has no interval-censored term; without this
-            # guard 2-D input dies deep in np.hstack with a cryptic
-            # dimensions error (#268).
-            raise ValueError(
-                "MPS does not support interval-censored observations; "
-                "use MLE (or MPP with the Turnbull heuristic) for "
-                "interval data."
-            )
-
-        if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
-            raise ValueError(
-                "Left truncated value can only be single number when using MPS"
-            )
-
-        if (surv_data.tr[0] != surv_data.tr).any() and how == "MPS":
-            raise ValueError(
-                "Right truncated value can only be single number when using "
-                "MPS"
-            )
-
-        return heuristic
+            raise OutsideSupportError(detail)
 
     def _clamp_truncation_to_support(self, t: Any) -> Any:
         """Clamp the truncation bounds to the distribution's support.
@@ -734,12 +768,13 @@ class FitInputsMixin:
         """Refuse a ``fixed`` or ``init`` the fit cannot use, with a
         message that says why.
 
-        Without this an unknown name in ``fixed`` was a bare KeyError, a
-        fixed value outside its parameter's bounds (a negative scale, a
-        proportion above one, an offset past the first observation) sent
-        the optimiser a nan and ended in an "MLE Failed" warning and a
+        Without it, an unknown name in ``fixed`` would be a bare KeyError,
+        a fixed value outside its parameter's bounds (a negative scale, a
+        proportion above one, an offset past the first observation) would
+        send the optimiser a nan and end in an "MLE Failed" warning and a
         "non-finite parameters" error, and a wrongly sized or
-        out-of-bounds ``init`` failed in ``zip`` or with an IndexError.
+        out-of-bounds ``init`` would fail in ``zip`` or with an
+        IndexError.
         """
         names = sorted(model.param_map, key=model.param_map.__getitem__)
 

@@ -16,6 +16,10 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+from surpyval import CoxPH
+from surpyval.univariate.regression.semi_parametric_regression_model import (
+    SemiParametricRegressionModel,
+)
 
 
 def _confounded(seed, n=600, true_beta=0.8):
@@ -150,3 +154,32 @@ def test_fit_from_df_strata_col():
     assert m.is_stratified
     assert set(m.strata_labels) == {0, 1}
     assert abs(m.beta[0] - 0.7) < 0.2
+
+
+# ---------------------------------------------------------------------------
+# Time-varying prediction uses the stratum's baseline.
+# ---------------------------------------------------------------------------
+
+
+# -- 2. Stratified Cox time-varying prediction uses the stratum's baseline --
+
+
+def _stratified_cox() -> SemiParametricRegressionModel:
+    st = np.array([0, 0, 0, 1, 1, 1, 1, 0])
+    xs = np.array([1.0, 2.0, 3.0, 1.5, 2.5, 3.5, 4.5, 4.0])
+    zs = np.array([[0.0], [1.0], [0.5], [0.0], [1.0], [0.2], [0.7], [0.3]])
+    return CoxPH.fit(x=xs, Z=zs, strata=st)
+
+
+def test_stratified_predict_tvc_requires_and_uses_stratum():
+    ms = _stratified_cox()
+    with pytest.raises(ValueError, match="stratum"):
+        ms.predict_tvc([0.0], [10.0], [[0.0]], times=[3.0])
+    for s in (0, 1):
+        _, sf, _ = ms.predict_tvc(
+            [0.0], [10.0], [[0.0]], times=[3.0], stratum=s
+        )
+        np.testing.assert_allclose(sf, ms.sf([3.0], [0.0], stratum=s))
+    assert not np.isclose(
+        ms.sf([3.0], [0.0], stratum=0), ms.sf([3.0], [0.0], stratum=1)
+    )

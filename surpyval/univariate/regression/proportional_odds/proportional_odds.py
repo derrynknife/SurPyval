@@ -105,6 +105,7 @@ from .._fit_skeleton import (
     baseline_at_origin_error,
     covariate_center,
 )
+from .._kinds import PROPORTIONAL_ODDS
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
@@ -543,9 +544,13 @@ class ProportionalOddsModel(
     _fit_data: "dict | None" = None
     #: The printout's data line of a restored model.
     _data_summary: "str | None" = None
+    #: The family (``"Proportional Odds"``) and ``"Semi-Parametric"``,
+    #: which the printout shows and ``to_dict`` stores.
+    kind: str
+    parameterization: str
 
     def __init__(self) -> None:
-        self.kind = "Proportional Odds"
+        self.kind = PROPORTIONAL_ODDS
         self.parameterization = "Semi-Parametric"
 
     @property

@@ -10,9 +10,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from surpyval.tests._helpers import competing_risks_regression_data
+from surpyval.univariate.competing_risks import (
+    CompetingRisksProportionalHazards,
+)
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards as CRPH,
 )
+from surpyval.univariate.competing_risks import FineGray
 
 
 def _exponential_cr_data(N, seed, lam=(0.5, 0.3), beta=None, cens=6.0):
@@ -218,3 +223,124 @@ def test_cause_order_is_sorted_and_reproducible():
         single[cause] = CoxPH.fit(x, Z, c_e, tie_method="efron").res.x
     assert np.allclose(m.betas[0], single["shock"])
     assert np.allclose(m.betas[1], single["wear"])
+
+
+# ---------------------------------------------------------------------------
+# ``cif`` with an unknown event, and covariate rows paired with
+# the times; the number of covariate rows is checked.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
+@pytest.mark.parametrize(
+    "event, match", [(3, "Unknown cause 3"), (None, "pass `event`")]
+)
+def test_crph_cif_unknown_event_is_a_clear_error(how, event, match):
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
+    with pytest.raises(ValueError, match=match):
+        model.cif([1.0], [0, 0], event)
+
+
+@pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
+def test_crph_cif_pairs_covariate_rows_with_times(how):
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
+    paired = model.cif([1.0, 2.0], [[0, 0], [1, 1]], 1)
+    single = [
+        model.cif([1.0], [0, 0], 1)[0],
+        model.cif([2.0], [1, 1], 1)[0],
+    ]
+    np.testing.assert_allclose(paired, single)
+    with pytest.raises(ValueError, match="rows for 3 times"):
+        model.cif([1.0, 2.0, 3.0], [[0, 0], [1, 1]], 1)
+
+
+def test_wrong_number_of_covariate_rows_is_a_clear_error():
+    x, Z, e = competing_risks_regression_data()
+    with pytest.raises(ValueError, match="row"):
+        CompetingRisksProportionalHazards.fit(x, Z[:-1], e)
+    with pytest.raises(ValueError, match="row"):
+        FineGray.fit(x, Z[:-1], e, event=1)
+
+
+# ---------------------------------------------------------------------------
+# #384: the incidences and the survival agree.
+# ---------------------------------------------------------------------------
+
+
+_CR = dict(
+    x=np.array(
+        [
+            0.946,
+            1.734,
+            2.396,
+            3.002,
+            3.577,
+            4.137,
+            4.688,
+            5.239,
+            5.793,
+            6.356,
+            6.932,
+            7.527,
+            8.144,
+            8.792,
+            9.476,
+            10.207,
+            10.998,
+            11.865,
+            12.835,
+            13.947,
+            15.266,
+            16.922,
+            19.217,
+            23.277,
+        ]
+    ),
+    e=np.array([None, 1, 2, 1] * 6, dtype=object),
+    n=np.array([1, 1, 2, 1, 1, 2] + [1] * 18),
+    Z=np.array([[0.0], [1.0], [1.0]] * 8),
+)
+
+
+def test_cause_specific_incidences_sum_to_one_minus_sf():
+    # They were built on the product-limit survival while sf is exp(-H):
+    # on the conformance fixture at t = 30 they summed to 1.0 against
+    # 1 - sf = 0.975.
+    model = CompetingRisksProportionalHazards.fit(**_CR)
+    t = np.linspace(0, 30, 61)
+    for z in ([0.0], [1.0], [4.0]):
+        total = model.cif(t, z, 1) + model.cif(t, z, 2)
+        np.testing.assert_allclose(total, model.ff(t, z), rtol=1e-12)
+        assert np.all(total <= 1.0)
+
+
+def test_cause_specific_incidences_match_r_survival():
+    # R 4 survival 3.5-8, the multi-state Cox model (Breslow ties, case
+    # weights n):
+    #   fit <- coxph(Surv(x, factor(e)) ~ z, id = id, weights = n,
+    #                ties = "breslow")
+    #   summary(survfit(fit, newdata = data.frame(z = c(0, 1))),
+    #           times = c(5, 10, 20))$pstate
+    model = CompetingRisksProportionalHazards.fit(**_CR, tie_method="breslow")
+    np.testing.assert_allclose(
+        model.betas.ravel(), [-0.1717714, -0.1262021], rtol=1e-6
+    )
+    t = np.array([5.0, 10.0, 20.0])
+    expected = {
+        0.0: [
+            [0.69782892, 0.41618296, 0.08114849],
+            [0.1756588, 0.3638424, 0.5851259],
+            [0.1265123, 0.2199746, 0.3337256],
+        ],
+        1.0: [
+            [0.7342261, 0.4716303, 0.1155839],
+            [0.1514945, 0.3231542, 0.5495277],
+            [0.1142794, 0.2052155, 0.3348884],
+        ],
+    }
+    for z, (sf, cif1, cif2) in expected.items():
+        np.testing.assert_allclose(model.sf(t, [z]), sf, rtol=1e-6)
+        np.testing.assert_allclose(model.cif(t, [z], 1), cif1, rtol=1e-6)
+        np.testing.assert_allclose(model.cif(t, [z], 2), cif2, rtol=1e-6)

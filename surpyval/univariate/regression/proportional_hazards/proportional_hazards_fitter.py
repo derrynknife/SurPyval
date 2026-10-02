@@ -15,6 +15,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
@@ -24,17 +25,15 @@ from .._fit_skeleton import (
     optimise_ph,
     uniform_draws,
 )
+from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
 
-
-class Phi:
-    # Lightweight namespace whose attributes are populated by the fitter.
-    phi: Any
-    phi_param_map: Any
-    name: str
+# The name the PH covariate link had before it became the shared
+# ``CovariateLink``, kept so a model pickled then still loads.
+Phi = CovariateLink
 
 
 class ProportionalHazardsFitter(
@@ -375,7 +374,7 @@ class ProportionalHazardsFitter(
             init,
             fixed,
             center,
-            kind="Proportional Hazard",
+            kind=PROPORTIONAL_HAZARD,
             optimiser=optimise_ph,
             reg_model=self._reg_model,
             phi_bounds=self.phi_bounds,
@@ -386,11 +385,7 @@ class ProportionalHazardsFitter(
             log_linear=self.phi is LogLinearPhi.phi,
         )
 
-    def _reg_model(self, pmap: dict) -> "Phi":
+    def _reg_model(self, pmap: dict[str, int]) -> CovariateLink:
         # Keep this fitter's possibly-custom phi (and its historical
         # serialisation name) rather than assuming log-linear.
-        reg_model = Phi()
-        reg_model.phi = self.phi
-        reg_model.phi_param_map = pmap
-        reg_model.name = self.phi_name
-        return reg_model
+        return CovariateLink(self.phi_name, pmap, self.phi)

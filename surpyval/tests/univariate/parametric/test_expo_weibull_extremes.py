@@ -19,7 +19,9 @@ import warnings
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import ExpoWeibull
+from surpyval.tests._helpers import no_warnings
 from surpyval.tests.conformance.registry import CASE_BY_NAME
 
 _CTX = decimal.Context(prec=60, Emin=-999999, Emax=999999)
@@ -140,3 +142,48 @@ def test_lr_searches_never_see_a_likelihood_above_the_maximum(ew):
     finite = seen[np.isfinite(seen)]
     assert finite.size > 50
     assert 2.0 * (finite.min() - nll_hat) > -1e-6
+
+
+# ---------------------------------------------------------------------------
+# The tail is stable (#257).
+# ---------------------------------------------------------------------------
+
+
+def test_expo_weibull_tail_is_stable():
+    # 1 - (1 - e^-t)^mu underflowed to exactly 0 once e^-t < 1e-16.
+    s = float(ExpoWeibull.sf(8, 3, 4, 1.2))
+    assert 0.0 < s < 1e-18
+    assert np.isfinite(float(ExpoWeibull.Hf(8, 3, 4, 1.2)))
+    assert np.isfinite(float(ExpoWeibull.log_sf(8, 3, 4, 1.2)))
+    # Moderate-x values agree with the naive form.
+    naive = 1 - (1 - np.exp(-((2 / 3) ** 4))) ** 1.2
+    assert float(ExpoWeibull.sf(2, 3, 4, 1.2)) == pytest.approx(
+        naive, abs=1e-12
+    )
+
+
+# ---------------------------------------------------------------------------
+# The moments at any scale.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+@pytest.mark.parametrize("alpha", [1e-4, 1.0, 1e4])
+def test_expo_weibull_moments_at_any_scale(alpha):
+    EW = surv.ExpoWeibull
+    mean = no_warnings(EW.mean, alpha, 2.0, 1.5)
+    assert mean == pytest.approx(alpha * 1.0394154617791786, rel=1e-9)
+    m2 = no_warnings(EW.moment, 2, alpha, 2.0, 1.5)
+    assert m2 == pytest.approx(alpha**2 * EW.moment(2, 1.0, 2.0, 1.5))
+    entropy = no_warnings(EW.entropy, alpha, 2.0, 1.5)
+    assert entropy == pytest.approx(
+        EW.entropy(1.0, 2.0, 1.5) + np.log(alpha), abs=1e-9
+    )
+
+
+def test_expo_weibull_moments_match_the_weibull_at_mu_one():
+    assert surv.ExpoWeibull.moment(3, 7.0, 1.3, 1.0) == pytest.approx(
+        W.moment(3, 7.0, 1.3), rel=1e-10
+    )

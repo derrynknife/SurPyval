@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+import surpyval
 import surpyval as sp
 from surpyval.recurrent import CrowAMSAA, NonParametricCounting
 from surpyval.tests.conformance.registry import CASE_BY_NAME, fitted
@@ -185,3 +186,17 @@ def test_deprecated_names_are_removed_by_removed_in():
         "tests and documentation), or move REMOVED_IN on for a deprecation "
         "meant to last longer:\n" + "\n".join(shims)
     )
+
+
+# ---------------------------------------------------------------------------
+# The alpha series/parallel composition is removed (#284).
+# ---------------------------------------------------------------------------
+
+
+class TestAlphaCompositionRemoved:
+    def test_models_no_longer_importable(self):
+        # The alpha tier that held them was deleted too, once empty. (The
+        # package directory is checked rather than an import refused: an
+        # editable install of another checkout would still serve one.)
+        package = Path(surpyval.__file__).parent
+        assert not (package / "alpha").exists()

@@ -19,7 +19,8 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
-from surpyval.datasets import load_rossi_static
+from surpyval import AdditiveHazards, BuckleyJames
+from surpyval.tests._helpers import rossi_with_censoring, weibull_ph_data
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
@@ -28,14 +29,8 @@ from surpyval.univariate.competing_risks import (
 COLS = ["fin", "age", "race", "wexp", "mar", "paro", "prio"]
 
 
-def _rossi_df():
-    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
-    df = load_rossi_static()
-    return df.assign(censored=1 - df["arrest"])
-
-
 def _rossi():
-    df = _rossi_df()
+    df = rossi_with_censoring()
     return (
         df.week.to_numpy(),
         df[COLS].to_numpy(float),
@@ -122,7 +117,7 @@ def test_additive_hazards_constant_column_is_identified():
 
 
 def test_the_warning_names_the_columns_of_a_data_frame():
-    df = _rossi_df().assign(one=1.0)
+    df = rossi_with_censoring().assign(one=1.0)
     model, messages, caught = _fit(
         lambda: sp.CoxPH.fit_from_df(
             df, x_col="week", c_col="censored", Z_cols=["fin", "one", "age"]
@@ -141,7 +136,7 @@ def test_the_warning_names_the_columns_of_a_data_frame():
 def test_every_level_of_a_factor():
     # "0 + C(race)" codes every level; with the model's intercept (the Cox
     # baseline, the Weibull scale) their sum is aliased, as in R.
-    df = _rossi_df()
+    df = rossi_with_censoring()
     for fitter in (sp.CoxPH, sp.WeibullPH):
         model, messages, _ = _fit(
             lambda: fitter.fit_from_df(
@@ -467,3 +462,142 @@ def test_dual_stress_fixed_parameter_is_an_offset_not_aliased():
     assert not [m for m in messages if "cannot be estimated" in m]
     assert model.params[-1] == -0.2 and np.isfinite(model.params).all()
     assert model.params[-2] == pytest.approx(-1.174 + 0.2, abs=2e-3)
+
+
+# ---------------------------------------------------------------------------
+# Degenerate data in the semi-parametric regressions.
+# ---------------------------------------------------------------------------
+
+
+def test_degenerate_semiparametric_data():
+    x, Z = weibull_ph_data()
+    c = (x > 12).astype(int)
+    # A constant column, a single observation and collinear columns are
+    # aliased (nan, with one warning; #476), as in the other regressions.
+    for fit in (BuckleyJames.fit, AdditiveHazards.fit):
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            assert np.isnan(fit(x, np.ones(200), c=c).beta).all()
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            assert np.isnan(fit([3.0], [[1.0]]).beta).all()
+        with pytest.warns(UserWarning, match="cannot be estimated"):
+            model = fit(x, np.column_stack([Z, 2 * Z]), c=c)
+        np.testing.assert_array_equal(model.aliased, [1])
+    with pytest.raises(ValueError, match="at least one event"):
+        AdditiveHazards.fit(x, Z, c=np.ones(200))
+    with pytest.raises(ValueError, match="non-negative"):
+        AdditiveHazards.fit(np.r_[-1.0, x[1:]], Z, c=c)
+
+
+# ---------------------------------------------------------------------------
+# #409: Cox coefficients the partial likelihood cannot
+# determine.
+# ---------------------------------------------------------------------------
+
+
+_SEPARATED = dict(
+    x=np.array([6.5, 12.0, 2.0, 13.0]),
+    Z=np.array(
+        [[-2.0, 0.5, 1.0], [1.0, 1.5, 1.0], [2.0, 2.0, 1.0], [2.0, 1.0, 1.0]]
+    ),
+    c=np.array([0, 0, 0, 1]),
+    n=np.array([3, 2, 2, 3]),
+)
+
+
+def _cox_data(seed=0, n=50):
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 2))
+    x = rng.exponential(size=n) * np.exp(-Z[:, 0])
+    return x, Z
+
+
+# A coefficient the partial likelihood cannot determine is aliased, as R's
+# coxph does (#476): nan, the others fitted as without it, one warning.
+
+
+def test_cox_aliases_a_constant_column_on_separated_data():
+    # It gave the constant column a coefficient of 3.1e14 and an all-NaN
+    # baseline, with about ten raw numpy warnings.
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(**_SEPARATED, center=True)
+    assert np.isnan(model.beta[2]) and np.isnan(model.p_values[2])
+    assert np.isfinite(model.sf([5.0], [[0.5, 1.5, 1.0]])).all()
+
+
+@pytest.mark.parametrize("value", [1.0, 2000.0])
+def test_cox_aliases_a_constant_column(value):
+    # On data that do not separate it gave a spurious monotone-likelihood
+    # warning and a NaN p-value.
+    x, Z = _cox_data()
+    Z3 = np.column_stack([Z[:, 0], np.full(len(x), value), Z[:, 1]])
+    with pytest.warns(UserWarning, match=r"column\(s\) 1 of Z cannot"):
+        model = sp.CoxPH.fit(x, Z3)
+    ref = sp.CoxPH.fit(x, Z)
+    np.testing.assert_allclose(model.beta[[0, 2]], ref.beta, rtol=1e-10)
+    assert np.isnan(model.beta[1])
+
+
+def test_cox_aliases_the_later_of_collinear_columns():
+    # It returned p-values of 0 for all three, silently, then warned that
+    # the separate coefficients meant nothing. As R's coxph, the later
+    # column is aliased and the others are the fit without it.
+    x, Z = _cox_data()
+    Z3 = np.column_stack([Z, Z[:, 0] - 2 * Z[:, 1]])
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, Z3)
+    ref = sp.CoxPH.fit(x, Z)
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
+    np.testing.assert_allclose(model.p_values[:2], ref.p_values, rtol=1e-8)
+    assert np.isnan(model.beta[2]) and np.isnan(model.p_values[2])
+    q = np.array([[0.5, -1.0, 2.5]])
+    np.testing.assert_allclose(
+        model.sf([0.5, 1.0], q), ref.sf([0.5, 1.0], q[:, :2]), rtol=1e-10
+    )
+
+
+def test_cox_aliases_a_column_constant_within_each_stratum():
+    x, Z = _cox_data()
+    strata = np.repeat([0, 1], 25)
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, np.column_stack([Z, strata]), strata=strata)
+    ref = sp.CoxPH.fit(x, Z, strata=strata)
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
+    # Across strata it is an ordinary covariate.
+    assert np.isfinite(
+        sp.CoxPH.fit(x, np.column_stack([Z, strata])).beta
+    ).all()
+
+
+def test_cox_still_fits_an_offset_covariate():
+    # A covariate far from 0 but varying is identified.
+    x, Z = _cox_data()
+    rng = np.random.default_rng(1)
+    Z = np.column_stack([Z, 10.0 + 0.5 * rng.normal(size=len(x))])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = sp.CoxPH.fit(x, Z)
+    assert np.isfinite(model.p_values).all()
+
+
+def test_cox_aliases_a_column_of_zeros():
+    # Nothing estimates its coefficient: it was left at its start, 0.
+    x, Z = _cox_data()
+    with pytest.warns(UserWarning, match=r"column\(s\) 2 of Z cannot"):
+        model = sp.CoxPH.fit(x, np.column_stack([Z, np.zeros(len(x))]))
+    ref = sp.CoxPH.fit(x, Z)
+    assert np.isnan(model.beta[2])
+    np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-10)
+
+
+def test_cox_on_separated_data_warns_once_without_the_constant_column():
+    data = dict(_SEPARATED, Z=_SEPARATED["Z"][:, :2])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # The coefficients run off far enough that the baseline at Z = 0
+        # underflows (the default refuses that, #463); at the covariate
+        # means it is representable.
+        model = sp.CoxPH.fit(**data, center=True)
+        sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1 and messages[0].startswith("Monotone")
+    assert np.isfinite(sf).all()

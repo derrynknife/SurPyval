@@ -23,6 +23,7 @@ import pytest
 from autograd import grad, hessian
 
 import surpyval as sp
+from surpyval import CoxPH
 from surpyval.tests.conformance.registry import grouped_reg_data, reg_data
 from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.competing_risks.regression import (
@@ -424,3 +425,22 @@ def test_the_profile_curvature_from_products_is_exact():
         point = np.array([t, -15.0])
         S = skeleton._profile_curvature(f, point, 0, H, v)
         assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)
+
+
+# ---------------------------------------------------------------------------
+# Cox warns on a monotone likelihood.
+# ---------------------------------------------------------------------------
+
+
+def test_cox_warns_on_monotone_likelihood():
+    rng = np.random.default_rng(2)
+    x = np.r_[np.full(10, 1.0), np.full(10, 5.0)] + rng.uniform(0, 0.1, 20)
+    Z = np.r_[np.ones(10), np.zeros(10)]
+    c = np.r_[np.zeros(10), np.ones(10)]
+    with pytest.warns(UserWarning, match="Monotone partial likelihood"):
+        CoxPH.fit(x=x, Z=Z, c=c)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        CoxPH.fit(x=x, Z=Z, c=c, tl=np.r_[np.full(10, 0.5), np.zeros(10)])
+    kinds = {type(w.message) for w in caught}
+    assert kinds == {UserWarning}  # no RuntimeWarnings alongside it

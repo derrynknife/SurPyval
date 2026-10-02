@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 import surpyval as surv
+import surpyval as sp
 from surpyval.univariate.nonparametric.fleming_harrington import (
     fh_h,
     fh_var_h,
@@ -43,3 +44,17 @@ def test_turnbull_fh_equals_fleming_harrington_on_complete_data():
     direct = surv.FlemingHarrington.fit(x)
     np.testing.assert_allclose(turnbull.sf(x), direct.sf(x), rtol=1e-10)
     assert np.all(np.isfinite(turnbull.sf(x)))
+
+
+# ---------------------------------------------------------------------------
+# An exact infinite value is refused.
+# ---------------------------------------------------------------------------
+
+
+def test_exact_infinite_value_is_refused():
+    with pytest.raises(ValueError, match="finite"):
+        sp.KaplanMeier.fit([1, 2, np.inf])
+    with pytest.raises(ValueError, match="finite"):
+        sp.Turnbull.fit([1, 2, np.inf])
+    # Right censored at infinity is still accepted.
+    sp.KaplanMeier.fit([1, 2, np.inf], c=[0, 0, 1])

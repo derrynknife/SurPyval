@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+from surpyval import CoxPH
+from surpyval.tests._helpers import counted_regression_data
 
 
 def _cox(seed=0, n=300):
@@ -85,3 +87,25 @@ def test_robust_summary_carries_covariate_names():
     )
     m = sp.CoxPH.fit_from_df(df, x_col="time", Z_cols=["temp", "volt"])
     assert m.robust_summary()["covariate"] == ["temp", "volt"]
+
+
+# ---------------------------------------------------------------------------
+# Counts are frequency weights.
+# ---------------------------------------------------------------------------
+
+
+def test_cox_robust_se_and_rank_test_equal_expanded_data():
+    x, Z, n, c = counted_regression_data()
+    a = CoxPH.fit(x=x, Z=Z, c=c, n=n)
+    b = CoxPH.fit(
+        x=np.repeat(x, n), Z=np.repeat(Z, n, axis=0), c=np.repeat(c, n)
+    )
+    np.testing.assert_allclose(
+        a.robust_summary()["se"], b.robust_summary()["se"], rtol=1e-8
+    )
+    for transform in ("rank", "km", "identity"):
+        np.testing.assert_allclose(
+            a.check_ph(transform).loc["GLOBAL", "statistic"],
+            b.check_ph(transform).loc["GLOBAL", "statistic"],
+            rtol=1e-8,
+        )

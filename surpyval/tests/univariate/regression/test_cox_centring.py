@@ -23,6 +23,7 @@ import pytest
 import surpyval
 from surpyval import CoxPH
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import no_warnings
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
 )
@@ -52,14 +53,6 @@ def _shift(offset):
     return np.array([offset, 0.0])
 
 
-def _fit_quietly(fit, *args, **kwargs):
-    # No warning of any kind: before the fix a large offset gave a
-    # monotone-likelihood warning and raw overflow warnings.
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        return fit(*args, **kwargs)
-
-
 def _same_predictions(model, ref, s, rtol=1e-7):
     for zq in ([0.3, 1.0], [-1.2, 0.0]):
         zq = np.array(zq)
@@ -76,7 +69,7 @@ def test_offset_leaves_the_fit_and_predictions_unchanged(offset, tie_method):
     x, Z, c = _data()
     ref = CoxPH.fit(x, Z, c=c, tie_method=tie_method, center=True)
     s = _shift(offset)
-    model = _fit_quietly(
+    model = no_warnings(
         CoxPH.fit, x, Z + s, c=c, tie_method=tie_method, center=True
     )
 
@@ -97,7 +90,7 @@ def test_by_default_the_baseline_is_at_zero(offset, tie_method):
     x, Z, c = _data()
     s = _shift(offset)
     centred = CoxPH.fit(x, Z + s, c=c, tie_method=tie_method, center=True)
-    model = _fit_quietly(CoxPH.fit, x, Z + s, c=c, tie_method=tie_method)
+    model = no_warnings(CoxPH.fit, x, Z + s, c=c, tie_method=tie_method)
     np.testing.assert_array_equal(model.center, [0.0, 0.0])
     np.testing.assert_array_equal(model.beta, centred.beta)
     # The baseline at the means moved to Z = 0, R's basehaz(centered=FALSE).
@@ -130,7 +123,7 @@ def test_offset_with_the_exact_tie_methods(tie_method):
     ref = CoxPH.fit(x, Z, c=c, tie_method=tie_method)
     for offset, center in ((2000.0, True), (300.0, False)):
         s = _shift(offset)
-        model = _fit_quietly(
+        model = no_warnings(
             CoxPH.fit, x, Z + s, c=c, tie_method=tie_method, center=center
         )
         np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-7, atol=1e-9)
@@ -170,7 +163,7 @@ def test_delayed_entry_and_residuals(offset, center):
     tl = 0.2 * x
     s = _shift(offset)
     ref = CoxPH.fit(x, Z, c=c, tl=tl)
-    model = _fit_quietly(CoxPH.fit, x, Z + s, c=c, tl=tl, center=center)
+    model = no_warnings(CoxPH.fit, x, Z + s, c=c, tl=tl, center=center)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-8)
     np.testing.assert_allclose(
         model.sf(TIMES, [0.5, 1.0] + s), ref.sf(TIMES, [0.5, 1.0]), rtol=1e-7
@@ -201,9 +194,7 @@ def test_strata(offset, center):
     strata = np.arange(x.size) % 3
     s = _shift(offset)
     ref = CoxPH.fit(x, Z, c=c, strata=strata)
-    model = _fit_quietly(
-        CoxPH.fit, x, Z + s, c=c, strata=strata, center=center
-    )
+    model = no_warnings(CoxPH.fit, x, Z + s, c=c, strata=strata, center=center)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-8)
     # One centre, the mean over every stratum's rows.
     np.testing.assert_allclose(
@@ -225,9 +216,7 @@ def test_fit_tvc_and_its_predictions(offset, center):
     c = [1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 0]
     Z = np.array([0, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1], dtype=float)
     ref = CoxPH.fit_tvc(i, xl, xr, c, Z)
-    model = _fit_quietly(
-        CoxPH.fit_tvc, i, xl, xr, c, Z + offset, center=center
-    )
+    model = no_warnings(CoxPH.fit_tvc, i, xl, xr, c, Z + offset, center=center)
     np.testing.assert_allclose(model.beta, ref.beta, rtol=1e-8)
     # R's agreg centres on the mean of the interval rows.
     np.testing.assert_allclose(
@@ -267,7 +256,7 @@ def _cr_data():
 def test_competing_risks_cox_cif(offset, center):
     x, Z, e = _cr_data()
     ref = CompetingRisksProportionalHazards.fit(x, Z, e)
-    model = _fit_quietly(
+    model = no_warnings(
         CompetingRisksProportionalHazards.fit, x, Z + offset, e, center=center
     )
     np.testing.assert_allclose(model.betas, ref.betas, rtol=1e-8)

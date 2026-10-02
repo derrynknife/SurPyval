@@ -1,6 +1,13 @@
 import numpy as np
+import pytest
 
 import surpyval
+from surpyval.tests._helpers import no_warnings
+from surpyval.univariate.nonparametric import (
+    fleming_harrington,
+    kaplan_meier,
+    nelson_aalen,
+)
 
 # The expected survival/hazard values below were generated once with
 # lifelines (KaplanMeierFitter / NelsonAalenFitter with
@@ -360,3 +367,43 @@ def test_nelson_aalen_with_R():
     ]
     model = surpyval.NelsonAalen.fit(x1, c=c, n=n)
     assert np.allclose(model.R, sf_test3, 1e-5)
+
+
+# ---------------------------------------------------------------------------
+# #425: a step with no one at risk and no events changes
+# nothing, as R's survfit carries the estimate.
+# ---------------------------------------------------------------------------
+
+
+ESTIMATORS = (kaplan_meier, nelson_aalen, fleming_harrington)
+
+
+@pytest.mark.parametrize("estimator", ESTIMATORS)
+def test_no_one_at_risk_and_no_events_changes_nothing(estimator):
+    # 0 / 0 is no change, as R's survfit carries the estimate: the
+    # Kaplan-Meier and Nelson-Aalen used to drop to 0 (with a raw "invalid
+    # value" warning), where the Fleming-Harrington kept its value.
+    r, d = np.array([3.0, 0.0]), np.array([1.0, 0.0])
+    R = no_warnings(estimator, r, d)
+    assert R[1] == R[0] and 0 < R[0] < 1
+
+
+def test_the_three_estimators_agree_on_an_empty_step():
+    r, d = np.array([3.0, 0.0, 2.0]), np.array([1.0, 0.0, 1.0])
+    np.testing.assert_allclose(kaplan_meier(r, d), [2 / 3, 2 / 3, 1 / 3])
+    H = np.cumsum([1 / 3, 0.0, 1 / 2])
+    np.testing.assert_allclose(nelson_aalen(r, d), np.exp(-H))
+    np.testing.assert_allclose(fleming_harrington(r, d), np.exp(-H))
+
+
+@pytest.mark.parametrize("estimator", ESTIMATORS)
+def test_events_with_no_one_at_risk_are_refused(estimator):
+    with pytest.raises(ValueError, match="no one at risk"):
+        estimator(np.array([3.0, 0.0]), np.array([1.0, 1.0]))
+
+
+def test_fleming_harrington_all_at_risk_failing_stays_above_zero():
+    # Documented: the tie ladder is 1/3 + 1/2 + 1.
+    np.testing.assert_allclose(
+        fleming_harrington([3], [3]), np.exp(-(1 / 3 + 1 / 2 + 1))
+    )

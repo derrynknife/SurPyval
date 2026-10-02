@@ -14,6 +14,7 @@ import numpy as np
 import pytest
 
 import surpyval as sp
+import surpyval as surv
 
 SEVEN = np.arange(1, 8.0)
 WEIBULL_50 = np.random.default_rng(5).weibull(2, 50) * 100
@@ -75,3 +76,18 @@ def test_an_ordinary_call_warns_nothing_extra():
     model, messages = _fit_best(x, include=["Weibull", "Gamma", "LogNormal"])
     assert messages == []
     assert model.dist.name in ("Weibull", "Gamma", "LogNormal")
+
+
+# ---------------------------------------------------------------------------
+# ``fit_best`` checks the distribution names.
+# ---------------------------------------------------------------------------
+
+
+def test_fit_best_checks_distribution_names():
+    x = [1.0, 2, 3, 4, 5, 6]
+    assert surv.fit_best(x, include=["weibull"]).dist.name == "Weibull"
+    assert surv.fit_best(x, include="Weibull").dist.name == "Weibull"
+    with pytest.raises(ValueError, match="Unknown distribution"):
+        surv.fit_best(x, include=["Weibul"])
+    with pytest.raises(ValueError, match="Unknown distribution"):
+        surv.fit_best(x, exclude=["Geometric"])

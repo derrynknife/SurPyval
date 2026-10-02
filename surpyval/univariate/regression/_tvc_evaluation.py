@@ -19,6 +19,19 @@ import numpy.typing as npt
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import BOUNDS, check_option
 
+from ._kinds import (
+    ACCELERATED_FAILURE_TIME,
+    ACCELERATED_LIFE,
+    ADDITIVE_HAZARD,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
+
+if TYPE_CHECKING:
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+
 
 class TVCEvaluationMixin:
     """The time-varying-covariate evaluation of a
@@ -36,7 +49,7 @@ class TVCEvaluationMixin:
         # below type check without the mixin pretending to own them.
         k_dist: int
         kind: str
-        distribution: Any
+        distribution: ParametricFitter
         model: Any
         center: "npt.NDArray | None"
 
@@ -44,6 +57,8 @@ class TVCEvaluationMixin:
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _n_covariates(self) -> int: ...
+        def _is_accelerated_life(self) -> bool: ...
+        def _is_additive(self) -> bool: ...
 
         def _centred(
             self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
@@ -85,16 +100,16 @@ class TVCEvaluationMixin:
     # with the rate 1 / L(Z)) where its life parameter scales time; a
     # location life parameter is refused (see ``_check_tvc_evaluable``).
     _TVC_ADDITIVE_KINDS = (
-        "Proportional Hazard",
-        "Additive Hazard",
-        "Proportional Odds",
+        PROPORTIONAL_HAZARD,
+        ADDITIVE_HAZARD,
+        PROPORTIONAL_ODDS,
     )
     _TVC_EVALUABLE_KINDS = (
-        "Proportional Hazard",
-        "Additive Hazard",
-        "Proportional Odds",
-        "Accelerated Failure Time",
-        "Accelerated Life",
+        PROPORTIONAL_HAZARD,
+        ADDITIVE_HAZARD,
+        PROPORTIONAL_ODDS,
+        ACCELERATED_FAILURE_TIME,
+        ACCELERATED_LIFE,
     )
     #: The accelerated-life distributions whose life parameter is a scale
     #: of time (Weibull ``alpha``, the Exponential and Gamma rates
@@ -113,9 +128,7 @@ class TVCEvaluationMixin:
                 "(this model is '{}').".format(self.kind)
             )
         name = self.distribution.name
-        if self.kind == "Accelerated Life" and name not in (
-            self._TVC_SCALE_LIFE
-        ):
+        if self._is_accelerated_life() and name not in (self._TVC_SCALE_LIFE):
             raise NotImplementedError(
                 "An Accelerated Life model is evaluated along a changing "
                 "stress by cumulative exposure, S(t) = S_1(int_0^t du / "
@@ -135,7 +148,7 @@ class TVCEvaluationMixin:
     def _tvc_scales_time(self) -> bool:
         """Whether the covariate rescales time along a path (AFT, and
         accelerated life), rather than setting the current hazard."""
-        return self.kind in ("Accelerated Failure Time", "Accelerated Life")
+        return self.kind in (ACCELERATED_FAILURE_TIME, ACCELERATED_LIFE)
 
     def _tvc_theta(
         self, theta: "tuple | None"
@@ -153,7 +166,7 @@ class TVCEvaluationMixin:
         Zc = np.atleast_2d(np.asarray(Zc, dtype=float))
         phi_params = params[self.k_dist :]
         with np.errstate(all="ignore"):
-            if self.kind == "Accelerated Life":
+            if self._is_accelerated_life():
                 rate = 1.0 / np.asarray(
                     self.model.phi(Zc, *phi_params), dtype=float
                 )
@@ -388,7 +401,7 @@ class TVCEvaluationMixin:
             )
         else:
             H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg, theta)
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             falls |= H < 0
         falls &= ~missing
         return np.where(missing, np.nan, H), int(falls.sum()), None
@@ -537,7 +550,7 @@ class TVCEvaluationMixin:
                     A_g = H_at0 if g_pos else H_g_low
                     H = (A_x - A_g) + sum_between(edges, value, origin, ex)
                 reach = ex
-                if self.kind == "Additive Hazard":
+                if self._is_additive():
                     # A negative hazard at a node before x (#376).
                     fell = sum_between(
                         edges, res["flag"], 0.0, ex, signed=False
@@ -546,7 +559,7 @@ class TVCEvaluationMixin:
             accuracy = missed_target(
                 res, origin, reach, self._tvc_rtol, missing
             )
-        if self.kind == "Additive Hazard":
+        if self._is_additive():
             falls |= H_full < 0
         falls &= ~missing
         return np.where(missing, np.nan, H), int(falls.sum()), accuracy
@@ -561,7 +574,7 @@ class TVCEvaluationMixin:
         H = 0.)"""
         params = self._tvc_theta(theta)[0]
         dist = np.array(params[: self.k_dist], dtype=float)
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             slot = self.model.param_map[self.model.life_parameter]
             dist[slot] = self.model.param_transform(1.0)
         with np.errstate(divide="ignore"):
@@ -589,7 +602,7 @@ class TVCEvaluationMixin:
         M = self.model
         params, center = self._tvc_theta(theta)
         aft = self._tvc_scales_time()
-        additive = self.kind == "Additive Hazard"
+        additive = self._is_additive()
         starts_at_0 = float(self.distribution.support[0]) >= 0
 
         def flat(values: Any, n: int) -> npt.NDArray:
@@ -673,7 +686,7 @@ class TVCEvaluationMixin:
                         self.model.Hf(np.array([a]), zrow, *params),
                         dtype=float,
                     ).ravel()
-            if falls is not None and self.kind == "Additive Hazard":
+            if falls is not None and self._is_additive():
                 # A negative increment: the additive hazard fell in this
                 # segment before the query time (#376).
                 falls |= (hi - lo) < 0

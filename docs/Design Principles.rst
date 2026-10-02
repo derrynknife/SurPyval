@@ -178,7 +178,9 @@ Estimation
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.
 
-    *Checked* by ``conformance/test_fit_paths.py``.
+    *Checked* by ``conformance/test_fit_paths.py``, and for a regression
+    model's attributes (every builder, ``from_dict`` included, gives the
+    same declared attributes) by ``conformance/test_attributes.py``.
 
 15. **Defaults are the statistically best standard choice, and the same
     everywhere.** For example, every Cox fit defaults to Efron's tie

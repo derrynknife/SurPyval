@@ -9,6 +9,7 @@ algorithm reached max iterations ..."), pointed at different frames, and
 only the univariate one was held back by ``quiet_maximum_warnings``.
 """
 
+import os
 import warnings
 
 import numpy as np
@@ -111,8 +112,9 @@ def test_one_warning_at_the_caller_held_back_when_quiet(name, monkeypatch):
         case.fit(data)
     found = _unverified(caught)
     assert len(found) == 1, [str(w.message) for w in caught]
-    # At the caller: the registry's call of the fitter, not package code.
-    assert found[0].filename.endswith("registry.py")
+    # At the caller: the registry's call of the fitter (in one of the
+    # registry_*.py modules), not package code.
+    assert os.path.basename(found[0].filename).startswith("registry")
     # Inside ``quiet_maximum_warnings`` (``fit_best``) it is not given.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")

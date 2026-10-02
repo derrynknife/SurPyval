@@ -28,6 +28,7 @@ import pytest
 
 import surpyval as sp
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import no_warnings
 from surpyval.univariate.regression import StepSchedule
 from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS, Centring
 
@@ -72,14 +73,6 @@ def _data(size=200, seed=1, effect=0.8):
 def _shift(offset):
     # The first column moved, the second (binary) left alone.
     return np.array([offset, 0.0])
-
-
-def _fit_quietly(fit, *args, **kwargs):
-    # No warning of any kind: before the fix a large offset gave none
-    # either -- just a wrong answer.
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        return fit(*args, **kwargs)
 
 
 # The deliberate warning of an additive hazard queried where it is
@@ -133,7 +126,7 @@ def test_center_true_leaves_the_model_unchanged(
     x, Z, c = _data()
     ref = centred_references[name]
     s = _shift(offset)
-    model = _fit_quietly(getattr(sp, name).fit, x, Z + s, c=c, center=True)
+    model = no_warnings(getattr(sp, name).fit, x, Z + s, c=c, center=True)
     np.testing.assert_allclose(model.center, ref.center + s, rtol=1e-12)
     # The baseline is at the means, so every parameter is the same.
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-4, atol=1e-6)
@@ -159,7 +152,7 @@ def test_by_default_a_mapped_family_is_the_same_model(
     x, Z, c = _data()
     ref = references[name]
     s = _shift(offset)
-    model = _fit_quietly(getattr(sp, name).fit, x, Z + s, c=c)
+    model = no_warnings(getattr(sp, name).fit, x, Z + s, c=c)
     k = model.k_dist
     np.testing.assert_array_equal(model.center, [0.0, 0.0])
     np.testing.assert_allclose(
@@ -192,7 +185,7 @@ def test_the_reported_baseline_at_zero_across_offsets(name):
     ref = fitter.fit(x, Z, c=c)
     for offset in (300.0, 2000.0):
         s = _shift(offset)
-        model = _fit_quietly(fitter.fit, x, Z + s, c=c)
+        model = no_warnings(fitter.fit, x, Z + s, c=c)
         entry = ORIGIN_MAPS[(model.kind, model.distribution.name)]
         moved = Centring(s, model.k_dist, entry[1]).from_origin(model.params)
         np.testing.assert_allclose(moved, ref.params, rtol=2e-4, atol=1e-6)
@@ -393,11 +386,11 @@ def test_an_init_is_read_where_the_baseline_is_reported():
     s = _shift(100.0)
     # At Z = 0 by default (moved to the means for the search) ...
     ref = sp.WeibullPH.fit(x, Z + s, c=c)
-    model = _fit_quietly(sp.WeibullPH.fit, x, Z + s, c=c, init=ref.params)
+    model = no_warnings(sp.WeibullPH.fit, x, Z + s, c=c, init=ref.params)
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-6)
     # ... and at the means with center=True.
     ref = sp.WeibullPH.fit(x, Z + s, c=c, center=True)
-    model = _fit_quietly(
+    model = no_warnings(
         sp.WeibullPH.fit, x, Z + s, c=c, init=ref.params, center=True
     )
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-6)
@@ -413,7 +406,7 @@ def test_fixing_a_parameter_the_map_moves():
     fixed_scale = sp.WeibullPH.fit(x, Z + s, c=c, fixed={"alpha": 12.0})
     assert fixed_scale._fit_centring is None
     assert fixed_scale.params[0] == 12.0
-    fixed_shape = _fit_quietly(
+    fixed_shape = no_warnings(
         sp.WeibullPH.fit, x, Z + _shift(300.0), c=c, fixed={"beta": 1.3}
     )
     assert fixed_shape._fit_centring is not None
@@ -450,7 +443,7 @@ def test_a_custom_phi_is_centred_only_on_request():
     assert model._fit_centring is None
     np.testing.assert_array_equal(model.center, [0.0, 0.0])
     ref = fitter.fit(x, Z, c=c, center=True)
-    far = _fit_quietly(fitter.fit, x, Z + _shift(1e5), c=c, center=True)
+    far = no_warnings(fitter.fit, x, Z + _shift(1e5), c=c, center=True)
     np.testing.assert_allclose(far.params, ref.params, rtol=1e-6)
 
 
@@ -489,7 +482,7 @@ def test_time_varying_covariates(name, offset):
     Z = np.r_[np.zeros(n), np.ones((~one).sum())]
     fitter = getattr(sp, name)
     ref = fitter.fit_tvc(i, xl, xr, c, Z, center=True)
-    model = _fit_quietly(fitter.fit_tvc, i, xl, xr, c, Z + offset, center=True)
+    model = no_warnings(fitter.fit_tvc, i, xl, xr, c, Z + offset, center=True)
     np.testing.assert_allclose(model.params, ref.params, rtol=1e-4)
     path = StepSchedule.from_changepoints([0, 1], [[0.0], [1.0]])
     moved = StepSchedule.from_changepoints([0, 1], [[offset], [offset + 1.0]])

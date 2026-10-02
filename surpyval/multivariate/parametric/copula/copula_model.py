@@ -12,7 +12,8 @@ from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.utils.shapes import keeps_query_shape
 
-_EPS = 1e-10
+# Margin probabilities are kept strictly inside (0, 1), as in copula.py.
+_U_CLIP = 1e-10
 
 
 class CopulaModel(SerialisableMixin, MultivariateDistribution):
@@ -92,8 +93,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
         if x.shape[1] != 2:
             raise ValueError("x must have two columns (one per dimension)")
-        u = onp.clip(self.margins[0].ff(x[:, 0]), _EPS, 1 - _EPS)
-        v = onp.clip(self.margins[1].ff(x[:, 1]), _EPS, 1 - _EPS)
+        u = onp.clip(self.margins[0].ff(x[:, 0]), _U_CLIP, 1 - _U_CLIP)
+        v = onp.clip(self.margins[1].ff(x[:, 1]), _U_CLIP, 1 - _U_CLIP)
         return x, u, v
 
     def _copula_cdf(self, u: npt.NDArray, v: npt.NDArray) -> npt.NDArray:

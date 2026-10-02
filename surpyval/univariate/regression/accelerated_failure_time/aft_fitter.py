@@ -18,6 +18,7 @@ from .._fit_skeleton import (
     optimise_nm_tnc,
     split_log_linear,
 )
+from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -150,7 +151,7 @@ class AFTFitter(
             init,
             fixed,
             center,
-            kind="Accelerated Failure Time",
+            kind=ACCELERATED_FAILURE_TIME,
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )

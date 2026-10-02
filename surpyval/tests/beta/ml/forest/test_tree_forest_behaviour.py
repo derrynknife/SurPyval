@@ -24,6 +24,7 @@ import pytest
 from surpyval import Weibull
 from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
 from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.parametric import NeverOccurs
 
 X_GRID = np.linspace(0.25, 25.0, 12)
@@ -42,12 +43,6 @@ def _signal_data(n=100, seed=5, censoring=0.2):
     x = scale * rng.weibull(1.5, n)
     c = (rng.random(n) < censoring).astype(int)
     return x, Z, c
-
-
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
 
 
 def _tree_depth(node):
@@ -133,12 +128,12 @@ def test_max_depth_is_honoured(signal_tree):
 
 
 def test_min_leaf_samples_is_honoured(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         assert len(leaf.data.x) >= 15
 
 
 def test_min_leaf_failures_is_honoured(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         event_weight = leaf.data.n[leaf.data.c != 1].sum()
         assert event_weight >= 8
 
@@ -235,7 +230,7 @@ def test_count_weights_match_expanded_data():
 
 
 def test_weibull_kind_leaves_are_weibull(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         assert leaf.model.dist.name == "Weibull"
 
 
@@ -251,7 +246,7 @@ def test_exponential_kind_leaves_are_exponential():
         max_depth=2,
         kind="exponential",
     )
-    for leaf in _leaves(tree._root):
+    for leaf in tree_leaves(tree._root):
         assert leaf.model.dist.name == "Exponential"
 
 

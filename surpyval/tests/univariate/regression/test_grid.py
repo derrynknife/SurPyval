@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 import surpyval as sp
-from surpyval.datasets import load_rossi_static
+from surpyval.tests._helpers import rossi_with_censoring
 
 TIMES = np.array([10.0, 30.0, 50.0])
 SUBJECTS = np.array([[0.0, 20.0], [1.0, 20.0], [0.0, 40.0], [1.0, 35.0]])
@@ -21,14 +21,8 @@ FITTERS = ["CoxPH", "WeibullPH", "WeibullAFT", "WeibullPO", "WeibullAH"]
 FUNCTIONS = ["sf", "ff", "df", "hf", "Hf"]
 
 
-def _rossi():
-    # ``arrest`` is 1 for an arrest (#479); the censoring flag is 1 - arrest.
-    df = load_rossi_static()
-    return df.assign(censored=1 - df["arrest"])
-
-
 def _fit(name):
-    df = _rossi()
+    df = rossi_with_censoring()
     fitter = getattr(sp, name)
     return fitter.fit(
         df.week.values, df[["fin", "age"]].values, df.censored.values
@@ -75,7 +69,7 @@ def test_grid(name):
 
 
 def test_grid_from_a_data_frame_and_a_stratum():
-    df = _rossi()
+    df = rossi_with_censoring()
     model = sp.CoxPH.fit_from_df(
         df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
     )

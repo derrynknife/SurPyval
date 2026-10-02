@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 if TYPE_CHECKING:
     from ..parametric import Parametric
@@ -17,29 +17,54 @@ from surpyval.univariate.parametric.fitters import (
     search_floor,
 )
 
+# The optimiser ladder: gradient methods first, then the derivative-free
+# fallbacks. ``None`` stands for "no derivative"; "jac" and "hess" for the
+# autograd ones.
+_LADDER = (
+    ("BFGS", "jac", None),
+    ("TNC", "jac", None),
+    ("Newton-CG", "jac", "hess"),
+    ("Nelder-Mead", None, None),
+    ("Powell", None, None),
+)
 
-def mle(model: "Parametric") -> Any:
-    """
-    Maximum Likelihood Estimation (MLE)
+_MLE_FAILED = (
+    "MLE Failed; returning the optimiser's starting point "
+    "(a probability-plot fit, or a rougher initial guess where "
+    "the distribution has none) instead. "
+    "Try making the values of the data closer to "
+    "1 by dividing or multiplying by some constant."
+    "\n\nAlternately try setting the `init` keyword in"
+    " the `fit()`"
+    " method to a value you believe is closer."
+    "A good way to do this is to set any shape parameter to 1. "
+    "and any scale parameter to be the mean of the data "
+    "(or it's inverse)"
+    "\n\nModel returned with the initial guesses."
+)
 
+
+class _Search(NamedTuple):
+    """What the optimiser ladder found."""
+
+    res: Any
+    optimizer: str
+    verified: bool
+
+
+def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
+    """The objective: the negative log-likelihood of the search vector.
+
+    With ``transform`` the vector is in the unbounded search space and
+    the fixed parameters are filled in (``const``) before it is mapped to
+    the bounded parameters (``inv_trans``). The offset, zero-inflation and
+    LFP parameters are then split off the ends.
     """
     # Function that adds in any fixed parameters
     const = model.fitting_info["const"]
     # Inverse transform function for parameters. i.e. from (None, None) to
     # correct bounded values
     inv_trans = model.fitting_info["inv_trans"]
-    # Initial guess
-    init = model.fitting_info["init"]
-    # Offset, Limited Failure Population, Zero Inflated logic.
-    offset, lfp, zi = model.offset, model.lfp, model.zi
-
-    results = {}
-
-    """
-    Need to flag entries where truncation is inf or -inf so that the autograd
-    doesn't fail. Because autograd fails if it encounters any inf, nan, -inf
-    etc even if they don't affect the gradient. A must for autograd
-    """
 
     def fun(
         params: Any,
@@ -68,13 +93,18 @@ def mle(model: "Parametric") -> Any:
 
         return model.dist._neg_ll_func(model.surv_data, *params, gamma, f0, p)
 
-    use_initial = False
-    jac = jacobian(fun)
-    hess = hessian(fun)
+    return fun
 
-    # The Hessian at the verified answer (see ``is_local_minimum``) is the
-    # one the covariance needs too, where no parameter is held: kept, not
-    # taken twice. On a large sample it is the dearest part of the check.
+
+def _kept_hessian(
+    hess: Callable[..., Any],
+) -> tuple[Callable[..., Any], dict]:
+    """``hess`` that keeps its last value, and the dict it keeps it in.
+
+    The Hessian at the verified answer (see ``is_local_minimum``) is the
+    one the covariance needs too, where no parameter is held: kept, not
+    taken twice. On a large sample it is the dearest part of the check.
+    """
     hess_at: dict = {}
 
     def hess_kept(x: npt.NDArray, *args: Any) -> Any:
@@ -84,281 +114,333 @@ def mle(model: "Parametric") -> Any:
             hess_at[key] = hess(x, *args)
         return hess_at[key]
 
+    return hess_kept, hess_at
+
+
+def _rung_starts(method: str, init: npt.NDArray, first_success: Any) -> list:
+    """Where a rung starts its search.
+
+    From the first rung's answer that reported success, or from the
+    initial guess (Nelder-Mead from both, Powell from the guess).
+    """
+    if method == "Powell" or first_success is None:
+        return [init]
+    if method == "Nelder-Mead":
+        return [init, first_success[0].x]
+    return [first_success[0].x]
+
+
+def _run_rung(
+    fun: Callable[..., Any],
+    method: str,
+    x0: npt.NDArray,
+    args: tuple,
+    jac_i: Any,
+    hess_i: Any,
+    floor: Any,
+    obj_scale: float,
+) -> Any:
+    """One search of one rung of the ladder from ``x0``."""
+    opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
+    if method == "BFGS":
+        # Scaled per parameter (see ``search_floor``) and per
+        # observation: the negative log-likelihood itself
+        # moves with the data's units, so ``|f(x0)|`` is not a
+        # scale free normaliser for it (see
+        # ``preconditioned_bfgs``).
+        return preconditioned_bfgs(
+            fun,
+            x0,
+            args,
+            jac_i,
+            opts,
+            floor=floor,
+            obj_scale=obj_scale,
+        )
+    return minimize(
+        fun,
+        x0,
+        args=args,
+        method=method,
+        jac=jac_i,
+        hess=hess_i,
+        options=opts,
+    )
+
+
+def _search(
+    model: "Parametric",
+    fun: Callable[..., Any],
+    derivatives: tuple[Callable[..., Any], Callable[..., Any]],
+    hess_kept: Callable[..., Any],
+    init: npt.NDArray,
+    args: tuple,
+) -> _Search:
+    """Run the optimiser ladder, stopping at the first verified rung.
+
+    ``derivatives`` is ``(jac, hess)`` of ``fun``.
+
+    Gradient methods go first and the derivative-free pair (Nelder-Mead,
+    Powell) is the fallback for when they do not converge. Running every
+    rung on every fit would mostly confirm what an earlier rung had
+    already found: over 102 fits across eleven distributions the whole
+    ladder agreed on the objective to 1e-10. Nelder-Mead and Powell pay
+    for their robustness in function evaluations -- 50 and 22 of them
+    against BFGS's 21, each O(n) -- which on a million observations is
+    42% of the fit. The order and the early exit go together: stopping
+    early with the derivative-free methods first would halt at
+    Nelder-Mead, the most expensive rung and the one with the worst
+    objective. The derivative-free methods start from the cold initial
+    guess when they are reached, so the fits that need a second start
+    still get one.
+
+    "Converges" means the answer is verifiably a maximum -- its gradient
+    ~0 and its Hessian positive definite (see ``is_local_minimum``) --
+    not that the optimiser reported success: from a start far from the
+    maximum a gradient method reports success where the likelihood first
+    looks flat (a Weibull started at alpha = 1e7 stopped at beta = 0.099,
+    40 below the maximum; #427). So a rung stops the ladder only when the
+    best point so far is verified, which costs one gradient and one
+    Hessian; a fit the first rung solves stops there. If no rung is
+    verified, the answer is the first rung that reported success, or
+    failing that the best point found; ``verified`` is then False and the
+    caller tries other starts and, failing those, warns.
+    """
+    if len(init) == 0:
+        # Every parameter is fixed; there is nothing to optimise, and
+        # the answer is exact
+        res = OptimizeResult(
+            x=init,
+            success=True,
+            fun=fun(init, *args),
+            message="",
+        )
+        return _Search(res, "all parameters fixed", True)
+
+    jac, hess = derivatives
+    by_name = {None: None, "jac": jac, "hess": hess}
+    floor = search_floor(model)
+    obj_scale = float(np.sum(model.data["n"]))
     best = np.inf
     best_result = None
     best_method = None
-
-    with np.errstate(all="ignore"):
-        if len(init) == 0:
-            # Every parameter is fixed; there is nothing to optimise
-            res = OptimizeResult(
-                x=init,
-                success=True,
-                fun=fun(init, offset, lfp, zi, True),
-                message="",
+    verified = False
+    first_success = None
+    for method, jac_name, hess_name in _LADDER:
+        jac_i, hess_i = by_name[jac_name], by_name[hess_name]
+        for x0 in _rung_starts(method, init, first_success):
+            res = _run_rung(
+                fun, method, x0, args, jac_i, hess_i, floor, obj_scale
             )
-            best_result = res
-            best_method = method = "all parameters fixed"
-            methods = []
-        else:
-            methods = [
-                ("BFGS", jac, None),
-                ("TNC", jac, None),
-                ("Newton-CG", jac, hess),
-                ("Nelder-Mead", None, None),
-                ("Powell", None, None),
-            ]
+            if not _usable(res):
+                continue
+            if res.success and first_success is None:
+                first_success = (res, method)
+            if res.fun < best:
+                best_result, best_method, best = res, method, res.fun
+        if best_result is not None and is_local_minimum(
+            fun,
+            jac,
+            hess_kept,
+            best_result.x,
+            args,
+            floor=floor,
+            obj_scale=obj_scale,
+        ):
+            verified = True
+            break
 
-        # Gradient methods first, stopping at the first that converges;
-        # the derivative free pair is the fallback for when they do not.
-        #
-        # All five used to run on every fit, and the last four were
-        # almost always confirming what an earlier one had already found:
-        # over 102 fits across eleven distributions the whole ladder
-        # agreed on the objective to 1e-10. The cost was not small.
-        # Nelder-Mead and Powell are derivative free, so they pay for
-        # their robustness in function evaluations -- 50 and 22 of them
-        # against BFGS's 21 -- and every evaluation is O(n). On a
-        # million observations those two alone were 42% of the fit.
-        #
-        # Order and early exit have to change together. Stopping early
-        # without reordering halts at Nelder-Mead, which is both the
-        # most expensive rung and the one with the worst objective;
-        # reordering without stopping early saves nothing at all.
-        #
-        # The derivative free methods still start from the cold initial
-        # guess when they are reached, so the multi-start behaviour that
-        # motivated the original order survives for the fits that
-        # actually need it -- they are simply no longer paid for by the
-        # fits that do not.
-        #
-        # "Converges" means the answer is verifiably a maximum -- its
-        # gradient ~0 and its Hessian positive definite (see
-        # ``is_local_minimum``) -- not that the optimiser reported
-        # success. The ladder used to stop at the first rung reporting
-        # success, and from a start far from the maximum a gradient
-        # method reports it where the likelihood first looks flat: a
-        # Weibull started at alpha = 1e7 stopped at beta = 0.099, 40 below
-        # the maximum, in silence (#427). So a rung stops the ladder only
-        # when the best point so far is verified, which costs one
-        # gradient and one Hessian; a fit the first rung solves stops
-        # there, as before. Each rung starts where it always did: from the
-        # first rung's answer that reported success, or from the initial
-        # guess (Nelder-Mead from both, Powell from the guess). If no rung
-        # is verified, the answer is the first rung that reported success,
-        # as it used to be, or failing that the best point found;
-        # ``verified`` is then False and the caller tries other starts
-        # and, failing those, warns.
-        floor = search_floor(model)
-        obj_scale = float(np.sum(model.data["n"]))
-        args = (offset, lfp, zi, True)
-        # With nothing to optimise, the answer is exact
-        verified = len(init) == 0
-        first_success = None
-        for method, jac_i, hess_i in methods:
-            opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
-            if method == "Powell" or first_success is None:
-                starts = [init]
-            elif method == "Nelder-Mead":
-                starts = [init, first_success[0].x]
-            else:
-                starts = [first_success[0].x]
-            for x0 in starts:
-                if method == "BFGS":
-                    # Scaled per parameter (see ``search_floor``) and per
-                    # observation: the negative log-likelihood itself
-                    # moves with the data's units, so ``|f(x0)|`` is not a
-                    # scale free normaliser for it (see
-                    # ``preconditioned_bfgs``).
-                    res = preconditioned_bfgs(
-                        fun,
-                        x0,
-                        args,
-                        jac_i,
-                        opts,
-                        floor=floor,
-                        obj_scale=obj_scale,
-                    )
-                else:
-                    res = minimize(
-                        fun,
-                        x0,
-                        args=args,
-                        method=method,
-                        jac=jac_i,
-                        hess=hess_i,
-                        options=opts,
-                    )
-                if not _usable(res):
-                    continue
-                if res.success and first_success is None:
-                    first_success = (res, method)
-                if res.fun < best:
-                    best_result, best_method, best = res, method, res.fun
-            if best_result is not None and is_local_minimum(
-                fun,
-                jac,
-                hess_kept,
-                best_result.x,
-                args,
-                floor=floor,
-                obj_scale=obj_scale,
-            ):
-                verified = True
-                break
+    if not verified and first_success is not None:
+        best_result, best_method = first_success
+    if best_result is not None:
+        res = best_result
+        # A verified answer stands whatever its rung reported: BFGS
+        # often stops with "precision loss" at the maximum.
+        res.success = res.success or verified
+    return _Search(
+        res, best_method if best_method is not None else method, verified
+    )
 
-        if not verified and first_success is not None:
-            best_result, best_method = first_success
-        if best_result is not None:
-            res = best_result
-            # A verified answer stands whatever its rung reported: BFGS
-            # often stops with "precision loss" at the maximum.
-            res.success = res.success or verified
 
-        winning_message = (
-            best_result.get("message", "")
-            if best_result is not None
-            else res.get("message", "")
-        )
+def _unverified_outcome(search: _Search) -> tuple[Any, Any, bool]:
+    """``(warning, unverified_reason, use_initial)`` for the answer.
 
-        # The warning is the caller's to give (``results["_warning"]``,
-        # or ``warn_unverified`` with ``results["_unverified_reason"]``):
-        # it may try other starts, and only the answer it keeps speaks.
-        warning = None
-        unverified_reason = None
-        if verified:
-            pass
-        elif "Desired error not necessarily" in winning_message:
-            unverified_reason = (
+    The warning is the caller's to give (``results["_warning"]``, or
+    ``warn_unverified`` with ``results["_unverified_reason"]``): it may
+    try other starts, and only the answer it keeps speaks.
+    """
+    res = search.res
+    if search.verified:
+        return None, None, False
+    if "Desired error not necessarily" in res.get("message", ""):
+        return (
+            None,
+            (
                 "the optimiser stopped on a loss of precision; data "
                 "rescaled closer to 1 may help"
-            )
+            ),
+            False,
+        )
+    if (not res.success) or (np.isnan(res.x).any()):
+        return _MLE_FAILED, None, True
+    return None, None, False
 
-        elif (not res.success) or (np.isnan(res.x).any()):
-            warning = (
-                "MLE Failed; returning the optimiser's starting point "
-                "(a probability-plot fit, or a rougher initial guess where "
-                "the distribution has none) instead. "
-                "Try making the values of the data closer to "
-                "1 by dividing or multiplying by some constant."
-                "\n\nAlternately try setting the `init` keyword in"
-                " the `fit()`"
-                " method to a value you believe is closer."
-                "A good way to do this is to set any shape parameter to 1. "
-                "and any scale parameter to be the mean of the data "
-                "(or it's inverse)"
-                "\n\nModel returned with the initial guesses."
-            )
 
-            use_initial = True
+def _split_parameters(
+    params: Any, offset: bool, zi: bool, lfp: bool
+) -> tuple[Any, Any, Any, Any]:
+    """``(gamma, f0, p, params)``: the extra parameters split off the ends."""
+    if offset:
+        gamma = params[0]
+        params = params[1:]
+    else:
+        gamma = 0.0
 
-        if use_initial:
-            params = inv_trans(const(init))
-        else:
-            params = inv_trans(const(res.x))
+    if zi:
+        f0 = params[-1]
+        params = params[0:-1]
+    else:
+        f0 = 0.0
 
-        if offset:
-            gamma = params[0]
-            params = params[1:]
-        else:
-            gamma = 0.0
+    if lfp:
+        p = params[-1]
+        params = params[0:-1]
+    else:
+        p = 1.0
+    return gamma, f0, p, params
 
-        results["gamma"] = gamma
 
+def _covariance(
+    model: "Parametric",
+    u_full: npt.NDArray,
+    n_core: int,
+    extras: tuple[Any, Any, Any],
+    flags: tuple[bool, bool, bool],
+    hess_at: dict,
+) -> tuple[Any, Any]:
+    """``(cov_matrix, hess_inv)`` of the fitted parameters.
+
+    The covariance of the parameters is found from the Hessian in the
+    transformed (unbounded) space used during optimisation, then mapped
+    back to the bounded parameter space with the delta method. p and f0
+    are estimated parameters and are included in the covariance.
+    User-fixed parameters are known, not estimated, so they carry no
+    variance and the free parameters get their conditional variance.
+    gamma is also held at its estimate since the threshold parameter of
+    an offset model is non-regular and a Wald variance for it would be
+    misleading. ``extras`` is ``(gamma, f0, p)`` and ``flags`` is
+    ``(offset, zi, lfp)``.
+    """
+    gamma, f0, p = extras
+    offset, zi, lfp = flags
+    inv_trans = model.fitting_info["inv_trans"]
+    fixed_idx = model.fitting_info["fixed_idx"]
+    n_head = 1 if offset else 0
+    n_total = len(u_full)
+    var_idx = np.array(
+        [i for i in range(n_head, n_total) if i not in fixed_idx],
+        dtype=int,
+    )
+
+    # Embed the variance-carrying sub-vector into the full
+    # transformed vector; the matrix form keeps the held entries
+    # constant under autograd
+    embed = np.zeros((n_total, len(var_idx)))
+    embed[var_idx, np.arange(len(var_idx))] = 1.0
+    u_held = np.where(embed.sum(axis=1) == 0, u_full, 0.0)
+
+    def transformed_fun(u: npt.NDArray) -> Any:
+        theta = inv_trans(embed @ u + u_held)[n_head:]
         if zi:
-            f0 = params[-1]
-            params = params[0:-1]
+            *theta, f0_i = theta
         else:
-            f0 = 0.0
-        results["f0"] = f0
-
+            f0_i = f0
         if lfp:
-            p = params[-1]
-            params = params[0:-1]
+            *theta, p_i = theta
         else:
-            p = 1.0
+            p_i = p
+        return model.dist._neg_ll_func(
+            model.surv_data, *theta, gamma, f0_i, p_i
+        )
 
+    def u_to_phi(u: npt.NDArray) -> Any:
+        return inv_trans(embed @ u + u_held)[n_head:]
+
+    try:
+        if len(var_idx) == 0:
+            cov_matrix = np.zeros((n_total - n_head, n_total - n_head))
+        else:
+            u_var = u_full[var_idx]
+            kept = hess_at.get(np.asarray(u_var, dtype=float).tobytes())
+            if n_head == 0 and len(var_idx) == n_total and kept is not None:
+                hess_u = kept
+            else:
+                hess_u = hessian(transformed_fun)(u_var)
+            # A corrupted autograd Hessian (e.g. a primitive whose
+            # VJP silently drops second-order terms) shows up as
+            # asymmetry; recompute numerically rather than invert
+            # garbage (#270).
+            asym = np.max(np.abs(hess_u - hess_u.T)) > 1e-4 * max(
+                np.max(np.abs(hess_u)), 1.0
+            )
+            if np.isnan(hess_u).any() or asym:
+                hess_u = Hessian(transformed_fun)(u_var)
+            cov_u = inv(hess_u)
+            if np.isnan(cov_u).any():
+                cov_u = inv(Hessian(transformed_fun)(u_var))
+            jac_u = jacobian(u_to_phi)(u_var)
+            # Covariance of the extended vector (*params, p?, f0?);
+            # fixed parameters have zero rows and columns
+            cov_matrix = jac_u @ cov_u @ jac_u.T
+        hess_inv = cov_matrix[:n_core, :n_core]
+    except np.linalg.LinAlgError:
+        cov_matrix = None
+        hess_inv = None
+    return cov_matrix, hess_inv
+
+
+def mle(model: "Parametric") -> Any:
+    """
+    Maximum Likelihood Estimation (MLE)
+
+    """
+    const = model.fitting_info["const"]
+    inv_trans = model.fitting_info["inv_trans"]
+    # Initial guess
+    init = model.fitting_info["init"]
+    # Offset, Limited Failure Population, Zero Inflated logic.
+    offset, lfp, zi = model.offset, model.lfp, model.zi
+
+    results = {}
+
+    fun = _negative_log_likelihood(model)
+    jac = jacobian(fun)
+    hess = hessian(fun)
+    hess_kept, hess_at = _kept_hessian(hess)
+    args = (offset, lfp, zi, True)
+
+    with np.errstate(all="ignore"):
+        search = _search(model, fun, (jac, hess), hess_kept, init, args)
+        res = search.res
+        warning, unverified_reason, use_initial = _unverified_outcome(search)
+
+        u_full = const(init) if use_initial else const(res.x)
+        gamma, f0, p, params = _split_parameters(
+            inv_trans(u_full), offset, zi, lfp
+        )
+        results["gamma"] = gamma
+        results["f0"] = f0
         results["p"] = p
         results["params"] = params
 
-        # The covariance of the parameters is found from the Hessian in
-        # the transformed (unbounded) space used during optimisation,
-        # then mapped back to the bounded parameter space with the delta
-        # method. p and f0 are estimated parameters and are included in
-        # the covariance. User-fixed parameters are known, not
-        # estimated, so they carry no variance and the free parameters
-        # get their conditional variance. gamma is also held at its
-        # estimate since the threshold parameter of an offset model is
-        # non-regular and a Wald variance for it would be misleading.
-        fixed_idx = model.fitting_info["fixed_idx"]
-        u_full = const(init) if use_initial else const(res.x)
-        n_head = 1 if offset else 0
-        n_core = len(params)
-        n_total = len(u_full)
-        var_idx = np.array(
-            [i for i in range(n_head, n_total) if i not in fixed_idx],
-            dtype=int,
+        cov_matrix, hess_inv = _covariance(
+            model,
+            u_full,
+            len(params),
+            (gamma, f0, p),
+            (offset, zi, lfp),
+            hess_at,
         )
-
-        # Embed the variance-carrying sub-vector into the full
-        # transformed vector; the matrix form keeps the held entries
-        # constant under autograd
-        embed = np.zeros((n_total, len(var_idx)))
-        embed[var_idx, np.arange(len(var_idx))] = 1.0
-        u_held = np.where(embed.sum(axis=1) == 0, u_full, 0.0)
-
-        def transformed_fun(u: npt.NDArray) -> Any:
-            theta = inv_trans(embed @ u + u_held)[n_head:]
-            if zi:
-                *theta, f0_i = theta
-            else:
-                f0_i = f0
-            if lfp:
-                *theta, p_i = theta
-            else:
-                p_i = p
-            return model.dist._neg_ll_func(
-                model.surv_data, *theta, gamma, f0_i, p_i
-            )
-
-        def u_to_phi(u: npt.NDArray) -> Any:
-            return inv_trans(embed @ u + u_held)[n_head:]
-
-        try:
-            if len(var_idx) == 0:
-                cov_matrix = np.zeros((n_total - n_head, n_total - n_head))
-            else:
-                u_var = u_full[var_idx]
-                kept = hess_at.get(np.asarray(u_var, dtype=float).tobytes())
-                if (
-                    n_head == 0
-                    and len(var_idx) == n_total
-                    and kept is not None
-                ):
-                    hess_u = kept
-                else:
-                    hess_u = hessian(transformed_fun)(u_var)
-                # A corrupted autograd Hessian (e.g. a primitive whose
-                # VJP silently drops second-order terms) shows up as
-                # asymmetry; recompute numerically rather than invert
-                # garbage (#270).
-                asym = np.max(np.abs(hess_u - hess_u.T)) > 1e-4 * max(
-                    np.max(np.abs(hess_u)), 1.0
-                )
-                if np.isnan(hess_u).any() or asym:
-                    hess_u = Hessian(transformed_fun)(u_var)
-                cov_u = inv(hess_u)
-                if np.isnan(cov_u).any():
-                    cov_u = inv(Hessian(transformed_fun)(u_var))
-                jac_u = jacobian(u_to_phi)(u_var)
-                # Covariance of the extended vector (*params, p?, f0?);
-                # fixed parameters have zero rows and columns
-                cov_matrix = jac_u @ cov_u @ jac_u.T
-            hess_inv = cov_matrix[:n_core, :n_core]
-        except np.linalg.LinAlgError:
-            cov_matrix = None
-            hess_inv = None
-
         results["cov_matrix"] = cov_matrix
         results["hess_inv"] = hess_inv
         # On the fallback path the returned parameters are the initial
@@ -372,11 +454,9 @@ def mle(model: "Parametric") -> Any:
         results["_neg_ll"] = neg_ll_val
         results["log_likelihood"] = -neg_ll_val
         results["res"] = res
-        results["_verified"] = bool(verified) and not use_initial
+        results["_verified"] = bool(search.verified) and not use_initial
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
-        results["optimizer"] = (
-            best_method if best_method is not None else method
-        )
+        results["optimizer"] = search.optimizer
 
     return results

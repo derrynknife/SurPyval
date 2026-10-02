@@ -8,6 +8,7 @@ import matplotlib
 import numpy as np
 import pytest
 
+import surpyval
 import surpyval as sp
 
 matplotlib.use("Agg")
@@ -398,3 +399,14 @@ def test_cs_takes_given_and_the_old_name_warns():
     assert issubclass(caught[0].category, DeprecationWarning)
     assert caught[0].filename == __file__
     assert "use 'given'" in str(caught[0].message)
+
+
+# ---------------------------------------------------------------------------
+# The fixes of #276-#282 keep the public names.
+# ---------------------------------------------------------------------------
+
+
+def test_surpyval_namespace_unchanged():
+    # Guard: the fixes must not have removed public names.
+    for name in ("AdditiveHazards", "CoxPH", "Rayleigh", "Uniform"):
+        assert hasattr(surpyval, name)
