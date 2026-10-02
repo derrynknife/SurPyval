@@ -62,6 +62,10 @@ A few things worth knowing:
   candidate needs an optimiser and growing a forest takes much longer. A
   parametric leaf is fitted when the tree first predicts, so the first
   prediction of a ``"weibull"`` forest can take longer than growing it.
+- A forest grows its trees one after another by default. ``n_jobs`` (as in
+  joblib and scikit-learn; ``-1`` for every core) grows them in worker
+  processes; given a ``random_state`` the forest is the same whatever
+  ``n_jobs`` is.
 
 Random Survival Forest
 ----------------------
