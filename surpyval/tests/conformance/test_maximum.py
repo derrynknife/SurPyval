@@ -676,21 +676,50 @@ def _search_cause_specific_nhpp(model, data):
 
 
 def _search_copula(model, data):
-    """The copula's likelihood in its parameters, the margins as fitted
-    (the two-stage estimate), in ``bounds_convert``'s space, which the fit
-    searches."""
+    """The two-stage (IFM) estimate: each margin's own fit, and the
+    copula's likelihood in its parameters, the margins as fitted, in the
+    space the fit searches (``_bounds_transforms``). A parameter on a
+    closed bound of its family (the AMH's ``theta = 1``) is checked there
+    instead: the likelihood flat towards it and not rising off it."""
     copula, fitted = model.copula, model.data
+    out = []
+    for d, margin in enumerate(model.margins):
+        if getattr(margin, "maximum", None) == "verified":
+            out += _search_parametric(margin, None, name=f"margin {d}")
+    if not copula.parameter_names:
+        return out
     dims = [
         copula._prepare_dim(model.margins[d], *fitted.dimension(d))
         for d in range(fitted.D)
     ]
     to_unbounded, to_bounded = copula._bounds_transforms()
+    n_obs = float(np.sum(fitted.n))
+    theta = np.asarray(model.params, float)
+
+    def neg_ll(params):
+        return float(copula.neg_ll(params, dims, fitted.n))
+
+    closed = getattr(copula, "closed_bounds", ())
+    if closed and all(
+        any(b is not None and theta[j] == b for b in copula.bounds[j])
+        for j in range(theta.size)
+    ):
+        for j in range(theta.size):
+            bound = theta[j]
+            away = theta.copy()
+            away[j] = bound - 1e-6 * np.sign(bound)
+            rise = (neg_ll(theta) - neg_ll(away)) / 1e-6 / n_obs
+            assert rise < OPTIMUM_GTOL, (
+                f"{copula.parameter_names[j]} is on its bound {bound}, but "
+                f"the likelihood rises off it ({rise:.3g} per observation)"
+            )
+        return out
 
     def fun(phi):
         return copula.neg_ll(to_bounded(phi), dims, fitted.n)
 
-    x = np.asarray(to_unbounded(np.asarray(model.params, float)), float)
-    return [Search(fun, x, float(np.sum(fitted.n)))]
+    x = np.asarray(to_unbounded(theta), float)
+    return out + [Search(fun, x, n_obs, name="copula")]
 
 
 def _search_royston_parmar(model, data):
