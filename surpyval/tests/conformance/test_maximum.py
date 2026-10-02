@@ -48,7 +48,7 @@ from autograd import hessian, jacobian
 
 import surpyval as sp
 from surpyval.tests.conformance import leaks
-from surpyval.tests.conformance.registry import CASES, cases_for, tvc_path
+from surpyval.tests.conformance.registry import CASES, tvc_path
 from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
     bounds_convert,
@@ -636,24 +636,60 @@ def _search_parametric_competing_risks(model, data):
     return out
 
 
+def _on_bounds(neg_ll, x, bounds, n_obs):
+    """The components of ``x`` on a bound of their space where the
+    likelihood stops depending on them (it is the same, to rounding, a
+    millionth of the way closer); each must be a maximum there, the
+    likelihood not rising ``1e-6`` off the bound."""
+    x = np.asarray(x, dtype=float)
+    f = float(neg_ll(x))
+    held = []
+    for j, (lo, hi) in enumerate(bounds):
+        for bound, inward in ((lo, 1.0), (hi, -1.0)):
+            if bound is None:
+                continue
+            toward, away = x.copy(), x.copy()
+            toward[j] = bound + (x[j] - bound) * 1e-6
+            if abs(float(neg_ll(toward)) - f) > 1e-12 * max(abs(f), 1.0):
+                continue
+            away[j] = bound + inward * 1e-6
+            rise = (f - float(neg_ll(away))) / 1e-6 / n_obs
+            assert rise < OPTIMUM_GTOL, (
+                f"parameter {j} is on its bound {bound}, but the likelihood "
+                f"rises off it ({rise:.3g} per observation)"
+            )
+            held.append(j)
+            break
+    return held
+
+
 def _search_recurrence(model, data, name=""):
     """The process's likelihood in its natural parameters (``_neg_ll``,
     which the likelihood inference reads), in the canonical space, at the
-    parameters it estimated."""
+    parameters it estimated; a parameter on a bound of its space (an ARA
+    repair efficiency of 1, a Kijima ``q`` of 0) held out where it is a
+    maximum there (:func:`_on_bounds`)."""
     mle = np.asarray(model._mle, dtype=float)
-    free = np.flatnonzero(~np.isnan(mle))
     bounds = list(model._parameter_bounds())
     bounds += [(None, None)] * (mle.size - len(bounds))
+    estimated = np.flatnonzero(~np.isnan(mle))
+    with np.errstate(all="ignore"):
+        on_bounds = _on_bounds(
+            lambda v: model._neg_ll(np.where(np.isnan(mle), 0.0, v)),
+            mle,
+            bounds,
+            float(model._n_obs),
+        )
+    free = np.array([i for i in estimated if i not in on_bounds], dtype=int)
+    if free.size == 0:
+        return []
 
     def neg_ll(v):
-        full = [mle[i] if np.isnan(mle[i]) else None for i in range(mle.size)]
-        k = 0
-        for i in range(mle.size):
-            if full[i] is None:
-                full[i] = v[k]
-                k += 1
-            else:
-                full[i] = 0.0
+        # the free parameters from ``v``; those on a bound at their value,
+        # and an aliased coefficient (nan) at the 0 it predicts with
+        full = list(np.where(np.isnan(mle), 0.0, mle))
+        for k, i in enumerate(free):
+            full[i] = v[k]
         return model._neg_ll(anp.array(full))
 
     return [
@@ -749,14 +785,14 @@ SEARCHES: dict[str, Callable] = {
 
 
 def test_every_family_has_its_check():
+    # (a family whose fits are all known failures has none yet)
     missing = sorted(
         {
-            p.values[0].model_class.rpartition(".")[2]
-            for p in cases_for("maximum")
+            case.model_class.rpartition(".")[2]
+            for case in CASES
+            if case.applies("maximum") and "maximum" not in case.xfail
         }
         - set(SEARCHES)
-        - {"WienerProcessModel", "GammaProcessModel"}
-        - {"DestructiveDegradationModel"}
     )
     assert not missing, (
         "give these model classes their likelihood in SEARCHES: " f"{missing}"
