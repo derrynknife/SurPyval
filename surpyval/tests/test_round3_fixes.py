@@ -8,9 +8,12 @@ Regression tests for the round-3 review fixes:
 - #289: MPS tie densities, AH bandwidth on coincident events, Beta4 hf
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
+import surpyval
 from surpyval import AdditiveHazards, Beta4, Weibull
 from surpyval.recurrent import (
     CoxLewis,
@@ -23,10 +26,11 @@ from surpyval.recurrent import (
 
 class TestAlphaCompositionRemoved:
     def test_models_no_longer_importable(self):
-        with pytest.raises(ImportError):
-            from surpyval.alpha import SeriesModel  # noqa: F401
-        with pytest.raises(ImportError):
-            from surpyval.alpha import ParallelModel  # noqa: F401
+        # The alpha tier that held them was deleted too, once empty. (The
+        # package directory is checked rather than an import refused: an
+        # editable install of another checkout would still serve one.)
+        package = Path(surpyval.__file__).parent
+        assert not (package / "alpha").exists()
 
 
 class TestMCFConfidenceBounds:
