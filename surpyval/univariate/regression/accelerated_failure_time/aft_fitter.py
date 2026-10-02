@@ -14,14 +14,9 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
-    assemble_regression_model,
-    finish_search,
-    free_coefficients,
-    keep_information,
-    make_objective,
+    fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
-    prepare_regression_fit,
 )
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
@@ -152,7 +147,7 @@ class AFTFitter(
         >>> model.params.round(3)
         array([9.629, 1.751, 0.473])
         """
-        data, prep = prepare_regression_fit(
+        return fit_log_linear(
             self,
             x,
             Z,
@@ -161,53 +156,11 @@ class AFTFitter(
             t,
             init,
             fixed,
-            LogLinearPhi.phi_bounds,
-            LogLinearPhi.make_param_map,
+            center,
             kind="Accelerated Failure Time",
-            center=center,
+            optimiser=optimise_nm_tnc,
+            reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )
-        (
-            init_t,
-            bounds,
-            pmap,
-            transform,
-            inv_trans,
-            const,
-            fixed,
-            centring,
-        ) = prep
-
-        with np.errstate(all="ignore"):
-
-            fun = make_objective(self, data, inv_trans, const)
-
-            res = optimise_nm_tnc(fun, init_t, quiet=True)
-
-        params = inv_trans(const(res.x))
-        reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
-
-        model = assemble_regression_model(
-            self,
-            "Accelerated Failure Time",
-            reg_model,
-            data,
-            res,
-            params,
-            bounds,
-            pmap,
-            fixed,
-            centring=centring,
-        )
-        # After the model is built (which may refuse the data), one
-        # warning for what the search found (#392).
-        no_maximum, derivatives = finish_search(
-            fun, res, free_coefficients(self, fixed, pmap), init_t
-        )
-        # The exact information for the model's covariance (#392).
-        keep_information(
-            model, no_maximum, derivatives, inv_trans, const, res.x, centring
-        )
-        return model
 
 
 def AFT(distribution: Any) -> "AFTFitter":

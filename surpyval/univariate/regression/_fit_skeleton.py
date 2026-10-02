@@ -738,7 +738,7 @@ def finite_start(
                     "The log-likelihood is not finite at the supplied "
                     "`init`, so the fit cannot start there; starting from "
                     "the default initial values instead.",
-                    stacklevel=4,
+                    stacklevel=_caller_stacklevel(),
                 )
                 return alt
     raise ValueError(
@@ -1597,3 +1597,96 @@ def _is_stationary(g: "npt.NDArray | None", f: float) -> bool:
     if g is None:
         return True
     return bool(np.max(np.abs(g), initial=0.0) <= 1e-2 * max(1.0, abs(f)))
+
+
+def fit_log_linear(
+    fitter: Any,
+    x: npt.ArrayLike,
+    Z: npt.ArrayLike,
+    c: "npt.ArrayLike | None",
+    n: "npt.ArrayLike | None",
+    t: "npt.ArrayLike | None",
+    init: "npt.ArrayLike | None",
+    fixed: "dict[str, float] | None",
+    center: bool,
+    *,
+    kind: str,
+    optimiser: Callable,
+    reg_model: Callable[[dict], Any],
+    phi_bounds: "Callable[[npt.NDArray], tuple] | tuple" = (
+        LogLinearPhi.phi_bounds
+    ),
+    phi_param_map: "Callable[[npt.NDArray], dict] | dict" = (
+        LogLinearPhi.make_param_map
+    ),
+    phi_init: "Callable[[npt.NDArray], npt.NDArray] | None" = None,
+    log_linear: bool = True,
+) -> ParametricRegressionModel:
+    """The whole ``fit`` of the PH, AFT and PO families (#238, #302).
+
+    Prepares the data and the search (:func:`prepare_regression_fit`),
+    maximises the likelihood with ``optimiser`` (:func:`optimise_ph` or
+    :func:`optimise_nm_tnc`, called with ``quiet=True``), builds the model
+    of ``kind`` (:func:`assemble_regression_model`) with the covariate
+    link ``reg_model(pmap)``, then warns of anything wrong with the search
+    and keeps the exact information (#392). ``log_linear=False`` (a custom
+    PH ``phi``) fits without the move of the baseline to ``Z = 0``, which
+    only the log-linear link has (#463; :class:`Centring`). Each family
+    keeps its own ``fit`` signature and docstring and calls this.
+    """
+    data, prep = prepare_regression_fit(
+        fitter,
+        x,
+        Z,
+        c,
+        n,
+        t,
+        init,
+        fixed,
+        phi_bounds,
+        phi_param_map,
+        phi_init,
+        kind=kind if log_linear else None,
+        center=center,
+    )
+    (
+        init_t,
+        bounds,
+        pmap,
+        transform,
+        inv_trans,
+        const,
+        fixed,
+        centring,
+    ) = prep
+
+    with np.errstate(all="ignore"):
+
+        fun = make_objective(fitter, data, inv_trans, const)
+
+        res = optimiser(fun, init_t, quiet=True)
+
+    params = inv_trans(const(res.x))
+
+    model = assemble_regression_model(
+        fitter,
+        kind,
+        reg_model(pmap),
+        data,
+        res,
+        params,
+        bounds,
+        pmap,
+        fixed,
+        centring=centring,
+    )
+    # After the model is built (which may refuse the data), one
+    # warning for what the search found (#392).
+    no_maximum, derivatives = finish_search(
+        fun, res, free_coefficients(fitter, fixed, pmap), init_t
+    )
+    # The exact information for the model's covariance (#392).
+    keep_information(
+        model, no_maximum, derivatives, inv_trans, const, res.x, centring
+    )
+    return model

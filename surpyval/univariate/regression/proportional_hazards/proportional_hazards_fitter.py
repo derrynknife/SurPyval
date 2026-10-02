@@ -19,14 +19,9 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
-    assemble_regression_model,
-    finish_search,
-    free_coefficients,
-    keep_information,
-    make_objective,
+    fit_log_linear,
     mirror_distribution,
     optimise_ph,
-    prepare_regression_fit,
     uniform_draws,
 )
 from .._likelihood import regression_neg_ll
@@ -370,7 +365,7 @@ class ProportionalHazardsFitter(
         >>> model.params.round(4)
         array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])
         """
-        data, prep = prepare_regression_fit(
+        return fit_log_linear(
             self,
             x,
             Z,
@@ -379,61 +374,23 @@ class ProportionalHazardsFitter(
             t,
             init,
             fixed,
-            self.phi_bounds,
-            self.phi_param_map,
-            self.phi_init,
+            center,
+            kind="Proportional Hazard",
+            optimiser=optimise_ph,
+            reg_model=self._reg_model,
+            phi_bounds=self.phi_bounds,
+            phi_param_map=self.phi_param_map,
+            phi_init=self.phi_init,
             # Only the log-linear multiplier can be centred and reported at
             # Z = 0 (#463); a custom phi is centred only with center=True.
-            kind=(
-                "Proportional Hazard" if self.phi is LogLinearPhi.phi else None
-            ),
-            center=center,
+            log_linear=self.phi is LogLinearPhi.phi,
         )
-        (
-            init_t,
-            bounds,
-            pmap,
-            transform,
-            inv_trans,
-            const,
-            fixed,
-            centring,
-        ) = prep
 
-        with np.errstate(all="ignore"):
-
-            fun = make_objective(self, data, inv_trans, const)
-
-            res = optimise_ph(fun, init_t, quiet=True)
-
-        params = inv_trans(const(res.x))
-
+    def _reg_model(self, pmap: dict) -> "Phi":
         # Keep this fitter's possibly-custom phi (and its historical
         # serialisation name) rather than assuming log-linear.
         reg_model = Phi()
         reg_model.phi = self.phi
         reg_model.phi_param_map = pmap
         reg_model.name = self.phi_name
-
-        model = assemble_regression_model(
-            self,
-            "Proportional Hazard",
-            reg_model,
-            data,
-            res,
-            params,
-            bounds,
-            pmap,
-            fixed,
-            centring=centring,
-        )
-        # After the model is built (which may refuse the data), one
-        # warning for what the search found (#392).
-        no_maximum, derivatives = finish_search(
-            fun, res, free_coefficients(self, fixed, pmap), init_t
-        )
-        # The exact information for the model's covariance (#392).
-        keep_information(
-            model, no_maximum, derivatives, inv_trans, const, res.x, centring
-        )
-        return model
+        return reg_model
