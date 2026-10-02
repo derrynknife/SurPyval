@@ -1061,89 +1061,112 @@ def _fromhex(v: str) -> float:
     return float.fromhex(v) if v.startswith(("0x", "-0x")) else float(v)
 
 
+def _diff_float(a: dict, b: dict, path: str, rtol: float) -> Iterator[str]:
+    """An encoded float (``{"f": hex}``)."""
+    if not _close(_fromhex(a["f"]), _fromhex(b["f"]), rtol):
+        x, y = _fromhex(a["f"]), _fromhex(b["f"])
+        yield f"{path}: {x!r} != {y!r}"
+
+
+def _diff_array(a: dict, b: dict, path: str, rtol: float) -> Iterator[str]:
+    """An encoded array: dtype and shape, then its values."""
+    if a["a"] != b["a"] or a["s"] != b["s"]:
+        yield (f"{path}: array {a['a']}{a['s']} != {b['a']}{b['s']}")
+        return
+    if a["a"].startswith("float"):
+        bad = [
+            k
+            for k, (x, y) in enumerate(zip(a["v"], b["v"]))
+            if not _close(_fromhex(x), _fromhex(y), rtol)
+        ]
+        if bad:
+            k = bad[0]
+            x, y = _fromhex(a["v"][k]), _fromhex(b["v"][k])
+            yield (
+                f"{path}: {len(bad)} of {len(a['v'])} values differ;"
+                f" first [{k}]: {x!r} != {y!r}"
+            )
+        return
+    for k, (x, y) in enumerate(zip(a["v"], b["v"])):
+        yield from diff(x, y, f"{path}[{k}]", rtol)
+
+
+def _diff_items(a: list, b: list, path: str, rtol: float) -> Iterator[str]:
+    """Two sequences of the same length, item by item."""
+    if len(a) != len(b):
+        yield f"{path}: length {len(a)} != {len(b)}"
+        return
+    for k, (x, y) in enumerate(zip(a, b)):
+        yield from diff(x, y, f"{path}[{k}]", rtol)
+
+
+def _diff_keys(a: dict, b: dict, path: str, rtol: float) -> Iterator[str]:
+    """Two mappings, key by key."""
+    for key in a.keys() | b.keys():
+        sub = f"{path}.{key}" if path else str(key)
+        if key not in b:
+            yield f"{sub}: only in A: {_short(a[key])}"
+        elif key not in a:
+            yield f"{sub}: only in B: {_short(b[key])}"
+        else:
+            yield from diff(a[key], b[key], sub, rtol)
+
+
+def _diff_dict(a: dict, b: dict, path: str, rtol: float) -> Iterator[str]:
+    """An encoded value held in a dict: a float, an array, a mapping
+    (``{"d": items}``), a list (``{"l": items}``) or a plain record."""
+    if "f" in a and "f" in b and len(a) == len(b) == 1:
+        yield from _diff_float(a, b, path, rtol)
+    elif "a" in a and "a" in b and "v" in a and "v" in b:
+        yield from _diff_array(a, b, path, rtol)
+    elif "d" in a and "d" in b and len(a) == len(b) == 1:
+        da, db = dict(map(tuple, a["d"])), dict(map(tuple, b["d"]))
+        yield from _diff_keys(da, db, path, rtol)
+    elif "l" in a and "l" in b and len(a) == len(b) == 1:
+        yield from _diff_items(a["l"], b["l"], path, rtol)
+    else:
+        yield from _diff_keys(a, b, path, rtol)
+
+
+def _diff_names(a: list, b: list, path: str) -> Iterator[str]:
+    """A list of names (modules, test IDs): the set change."""
+    gone, new = sorted(set(a) - set(b)), sorted(set(b) - set(a))
+    for v in gone[:20]:
+        yield f"{path}: removed {v}"
+    for v in new[:20]:
+        yield f"{path}: added {v}"
+    more = len(gone) + len(new) - min(len(gone), 20) - min(len(new), 20)
+    if more > 0:
+        yield f"{path}: ... and {more} more"
+
+
+def _diff_text(a: str, b: str, path: str, rtol: float) -> Iterator[str]:
+    """Two strings; for a printout, its first differing line."""
+    if _text_close(a, b, rtol):
+        return
+    la, lb = a.splitlines(), b.splitlines()
+    if len(la) > 1 or len(lb) > 1:
+        for k, (sa, sb) in enumerate(zip(la, lb)):
+            if not _text_close(sa, sb, rtol):
+                yield f"{path} line {k + 1}: {_short(sa)} != {_short(sb)}"
+                return
+        yield f"{path}: {len(la)} lines != {len(lb)} lines"
+        return
+    yield f"{path}: {_short(a)} != {_short(b)}"
+
+
 def diff(a: Any, b: Any, path: str, rtol: float) -> Iterator[str]:
     """Every difference between two encoded values, as text lines."""
     if isinstance(a, dict) and isinstance(b, dict):
-        if "f" in a and "f" in b and len(a) == len(b) == 1:
-            if not _close(_fromhex(a["f"]), _fromhex(b["f"]), rtol):
-                x, y = _fromhex(a["f"]), _fromhex(b["f"])
-                yield f"{path}: {x!r} != {y!r}"
-            return
-        if "a" in a and "a" in b and "v" in a and "v" in b:
-            if a["a"] != b["a"] or a["s"] != b["s"]:
-                yield (f"{path}: array {a['a']}{a['s']} != {b['a']}{b['s']}")
-                return
-            if a["a"].startswith("float"):
-                bad = [
-                    k
-                    for k, (x, y) in enumerate(zip(a["v"], b["v"]))
-                    if not _close(_fromhex(x), _fromhex(y), rtol)
-                ]
-                if bad:
-                    k = bad[0]
-                    x, y = _fromhex(a["v"][k]), _fromhex(b["v"][k])
-                    yield (
-                        f"{path}: {len(bad)} of {len(a['v'])} values differ;"
-                        f" first [{k}]: {x!r} != {y!r}"
-                    )
-                return
-            for k, (x, y) in enumerate(zip(a["v"], b["v"])):
-                yield from diff(x, y, f"{path}[{k}]", rtol)
-            return
-        if "d" in a and "d" in b and len(a) == len(b) == 1:
-            a, b = dict(map(tuple, a["d"])), dict(map(tuple, b["d"]))
-        elif "l" in a and "l" in b and len(a) == len(b) == 1:
-            a, b = a["l"], b["l"]
-            if len(a) != len(b):
-                yield f"{path}: length {len(a)} != {len(b)}"
-                return
-            for k, (x, y) in enumerate(zip(a, b)):
-                yield from diff(x, y, f"{path}[{k}]", rtol)
-            return
-        for key in a.keys() | b.keys():
-            sub = f"{path}.{key}" if path else str(key)
-            if key not in b:
-                yield f"{sub}: only in A: {_short(a[key])}"
-            elif key not in a:
-                yield f"{sub}: only in B: {_short(b[key])}"
-            else:
-                yield from diff(a[key], b[key], sub, rtol)
-        return
-    if isinstance(a, list) and isinstance(b, list):
+        yield from _diff_dict(a, b, path, rtol)
+    elif isinstance(a, list) and isinstance(b, list):
         if all(isinstance(v, str) for v in a + b) and len(a) > 50:
-            # A list of names (modules, test IDs): report the set change.
-            gone, new = sorted(set(a) - set(b)), sorted(set(b) - set(a))
-            for v in gone[:20]:
-                yield f"{path}: removed {v}"
-            for v in new[:20]:
-                yield f"{path}: added {v}"
-            more = (
-                len(gone) + len(new) - min(len(gone), 20) - min(len(new), 20)
-            )
-            if more > 0:
-                yield f"{path}: ... and {more} more"
-            return
-        if len(a) != len(b):
-            yield f"{path}: length {len(a)} != {len(b)}"
-            return
-        for k, (x, y) in enumerate(zip(a, b)):
-            yield from diff(x, y, f"{path}[{k}]", rtol)
-        return
-    if isinstance(a, str) and isinstance(b, str):
-        if _text_close(a, b, rtol):
-            return
-        la, lb = a.splitlines(), b.splitlines()
-        if len(la) > 1 or len(lb) > 1:
-            # A printout: show its first differing line.
-            for k, (sa, sb) in enumerate(zip(la, lb)):
-                if not _text_close(sa, sb, rtol):
-                    yield f"{path} line {k + 1}: {_short(sa)} != {_short(sb)}"
-                    return
-            yield f"{path}: {len(la)} lines != {len(lb)} lines"
-            return
-        yield f"{path}: {_short(a)} != {_short(b)}"
-        return
-    if a != b or type(a) is not type(b):
+            yield from _diff_names(a, b, path)
+        else:
+            yield from _diff_items(a, b, path, rtol)
+    elif isinstance(a, str) and isinstance(b, str):
+        yield from _diff_text(a, b, path, rtol)
+    elif a != b or type(a) is not type(b):
         yield f"{path}: {_short(a)} != {_short(b)}"
 
 

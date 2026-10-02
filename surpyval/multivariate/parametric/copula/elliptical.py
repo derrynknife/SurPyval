@@ -19,7 +19,7 @@ import numpy.typing as npt
 from scipy.special import ndtr, ndtri, poch, stdtr, stdtrit
 from scipy.stats import multivariate_normal
 
-from surpyval.multivariate.parametric.copula.copula import _EPS, Copula
+from surpyval.multivariate.parametric.copula.copula import _U_CLIP, Copula
 from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 
@@ -366,15 +366,15 @@ class StudentTCopula(Copula):
         rho = float(onp.clip(params[0], -_RHO_MAX, _RHO_MAX))
         nu = float(params[1])
         rng = as_generator(random_state)
-        u = rng.uniform(_EPS, 1 - _EPS, size=size)
-        w = rng.uniform(_EPS, 1 - _EPS, size=size)
+        u = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
+        w = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         x = self._quantile(nu, u, 1.0 - u)
         z = self._quantile(nu + 1.0, w, 1.0 - w)
         sigma = onp.sqrt((nu + x**2) * (1.0 - rho**2) / (nu + 1.0))
         y = rho * x + sigma * z
         # T_nu(y), formed from the smaller tail for accuracy near 1
         v = onp.where(y <= 0, stdtr(nu, y), 1.0 - stdtr(nu, -y))
-        return u, onp.clip(v, _EPS, 1 - _EPS)
+        return u, onp.clip(v, _U_CLIP, 1 - _U_CLIP)
 
     def _bounds_transforms(self) -> tuple:
         # tanh for rho (as the Gaussian's) and log for nu.

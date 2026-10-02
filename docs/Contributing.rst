@@ -22,7 +22,8 @@ black (line length 79), flake8 and mypy on every commit, and the lint job in
 continuous integration runs ``flake8``, ``isort --check-only`` and ``black
 --check`` on the ``surpyval`` package, ``conftest.py`` and ``scripts/``, and
 ``mypy`` on the package. flake8 also caps each function's McCabe complexity
-at 70 (``max-complexity`` in ``pyproject.toml``). mypy reports a ``type:
+at 25 (``max-complexity`` in ``pyproject.toml``): a function over it is split
+into named steps. mypy reports a ``type:
 ignore`` that silences nothing, a redundant cast and an ``==`` between types
 that cannot be equal; an ignore needed under one Python's numpy stubs but not
 another's carries the ``unused-ignore`` code as well. mypy is strict about

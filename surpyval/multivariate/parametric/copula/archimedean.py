@@ -18,7 +18,7 @@ import numpy as onp
 import numpy.typing as npt
 from scipy.optimize import brentq
 
-from surpyval.multivariate.parametric.copula.copula import _EPS, Copula
+from surpyval.multivariate.parametric.copula.copula import _U_CLIP, Copula
 from surpyval.utils.rng import as_generator
 
 
@@ -352,14 +352,14 @@ class FrankCopula(Copula):
         with both sums formed in log space (exact for any ``theta``)."""
         theta = _frank_theta(params[0])
         rng = as_generator(random_state)
-        u = rng.uniform(_EPS, 1 - _EPS, size=size)
-        w = rng.uniform(_EPS, 1 - _EPS, size=size)
+        u = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
+        w = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         if theta == 0.0:
             return u, w
         log_w, log_1mw = onp.log(w), onp.log1p(-w)
         num = onp.logaddexp(log_w - theta, log_1mw - theta * u)
         den = onp.logaddexp(log_w, log_1mw - theta * u)
-        v = onp.clip(-(num - den) / theta, _EPS, 1 - _EPS)
+        v = onp.clip(-(num - den) / theta, _U_CLIP, 1 - _U_CLIP)
         return u, v
 
     # Near theta = 0 the closed forms subtract nearly equal numbers (the
