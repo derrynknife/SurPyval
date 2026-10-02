@@ -100,3 +100,22 @@ def test_the_requested_survival_estimator_is_reported():
     restored = CompetingRisks.from_dict(json.loads(json.dumps(km.to_dict())))
     assert restored.how == "Kaplan-Meier"
     assert np.allclose(restored.sf(q, 2), km.sf(q, 2))
+
+
+# ---------------------------------------------------------------------------
+# The query shape is kept; empty data are refused.
+# ---------------------------------------------------------------------------
+
+
+def test_nonparametric_sf_keeps_the_query_shape():
+    model = CompetingRisks.fit([1, 2, 3], ["a", "b", "a"])
+    query = np.array([[1, 2], [3, 4]])
+    out = model.sf(query)
+    assert out.shape == (2, 2)
+    np.testing.assert_allclose(out.ravel(), model.sf(query.ravel()))
+    assert model.cif(query, "a").shape == (2, 2)
+
+
+def test_empty_data_is_refused():
+    with pytest.raises(ValueError):
+        CompetingRisks.fit([], [])

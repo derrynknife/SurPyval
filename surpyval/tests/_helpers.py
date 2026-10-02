@@ -45,3 +45,14 @@ REPAIR_FLEET_I = [1] * 6 + [2] * 5
 
 
 REPAIR_FLEET_C = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+
+
+def competing_risks_regression_data(seed=1, n=120):
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(size=(n, 2))
+    t1 = rng.exponential(1 / (0.2 * np.exp(Z @ [0.5, -0.3])))
+    t2 = rng.exponential(1 / (0.1 * np.exp(Z @ [-0.4, 0.2])))
+    tc = rng.exponential(8, n)
+    x = np.minimum.reduce([t1, t2, tc])
+    e = np.where(tc < np.minimum(t1, t2), None, np.where(t1 < t2, 1, 2))
+    return x, Z, e.astype(object)

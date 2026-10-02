@@ -10,9 +10,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from surpyval.tests._helpers import competing_risks_regression_data
+from surpyval.univariate.competing_risks import (
+    CompetingRisksProportionalHazards,
+)
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards as CRPH,
 )
+from surpyval.univariate.competing_risks import FineGray
 
 
 def _exponential_cr_data(N, seed, lam=(0.5, 0.3), beta=None, cens=6.0):
@@ -218,3 +223,42 @@ def test_cause_order_is_sorted_and_reproducible():
         single[cause] = CoxPH.fit(x, Z, c_e, tie_method="efron").res.x
     assert np.allclose(m.betas[0], single["shock"])
     assert np.allclose(m.betas[1], single["wear"])
+
+
+# ---------------------------------------------------------------------------
+# ``cif`` with an unknown event, and covariate rows paired with
+# the times; the number of covariate rows is checked.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
+@pytest.mark.parametrize(
+    "event, match", [(3, "Unknown cause 3"), (None, "pass `event`")]
+)
+def test_crph_cif_unknown_event_is_a_clear_error(how, event, match):
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
+    with pytest.raises(ValueError, match=match):
+        model.cif([1.0], [0, 0], event)
+
+
+@pytest.mark.parametrize("how", ["Cox", "Fine-Gray"])
+def test_crph_cif_pairs_covariate_rows_with_times(how):
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model=how)
+    paired = model.cif([1.0, 2.0], [[0, 0], [1, 1]], 1)
+    single = [
+        model.cif([1.0], [0, 0], 1)[0],
+        model.cif([2.0], [1, 1], 1)[0],
+    ]
+    np.testing.assert_allclose(paired, single)
+    with pytest.raises(ValueError, match="rows for 3 times"):
+        model.cif([1.0, 2.0, 3.0], [[0, 0], [1, 1]], 1)
+
+
+def test_wrong_number_of_covariate_rows_is_a_clear_error():
+    x, Z, e = competing_risks_regression_data()
+    with pytest.raises(ValueError, match="row"):
+        CompetingRisksProportionalHazards.fit(x, Z[:-1], e)
+    with pytest.raises(ValueError, match="row"):
+        FineGray.fit(x, Z[:-1], e, event=1)

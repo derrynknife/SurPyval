@@ -12,6 +12,7 @@ validation and the per-cause distribution mapping behave.
 import numpy as np
 import pandas as pd
 import pytest
+from scipy.stats import norm
 
 from surpyval import Exponential, LogNormal, Weibull
 from surpyval.univariate.competing_risks import (
@@ -392,3 +393,99 @@ def test_nonparametric_also_derives_censoring():
     grid = np.array([10.0, 20.0, 30.0, 40.0])
     for k in (1, 2):
         assert np.allclose(derived.cif(grid, k), explicit.cif(grid, k))
+
+
+# ---------------------------------------------------------------------------
+# The cumulative incidences are accurate over a wide query,
+# sum to ``ff``, keep their shapes, and handle cure fractions.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _no_runtime_warnings():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        yield
+
+
+@pytest.mark.usefixtures("_no_runtime_warnings")
+def test_parametric_cif_accurate_over_a_wide_query():
+    model = ParametricCompetingRisks.from_fitted(
+        {
+            "a": Exponential.from_params([0.1]),
+            "b": Exponential.from_params([0.3]),
+        }
+    )
+    t = np.array([0.01, 0.1, 1.0, 1e4])
+    true = 0.1 / 0.4 * (1 - np.exp(-0.4 * t))
+    np.testing.assert_allclose(model.cif(t, "a"), true, rtol=1e-9)
+    # every value is independent of the other requested times
+    alone = [model.cif(ti, "a") for ti in t]
+    np.testing.assert_allclose(model.cif(t, "a"), alone, rtol=1e-12)
+
+
+@pytest.mark.usefixtures("_no_runtime_warnings")
+def test_parametric_cifs_sum_to_ff_with_infinite_density_at_zero():
+    model = ParametricCompetingRisks.from_fitted(
+        {
+            "a": Weibull.from_params([10, 0.5]),
+            "b": Weibull.from_params([20, 0.7]),
+        }
+    )
+    t = np.array([0.01, 1.0, 10.0, 100.0])
+    total = model.cif(t, "a") + model.cif(t, "b")
+    np.testing.assert_allclose(total, model.ff(t), rtol=1e-9)
+    p = model.probability_of_cause("a") + model.probability_of_cause("b")
+    assert p == pytest.approx(1.0, abs=1e-9)
+
+
+@pytest.mark.usefixtures("_no_runtime_warnings")
+def test_probability_of_cause_heavy_tailed_lognormals():
+    model = ParametricCompetingRisks.from_fitted(
+        {
+            "a": LogNormal.from_params([0, 3]),
+            "b": LogNormal.from_params([1, 3]),
+        }
+    )
+    pa = model.probability_of_cause("a")
+    pb = model.probability_of_cause("b")
+    # P(T_a < T_b) for independent lognormals
+    assert pa == pytest.approx(norm.cdf(1 / np.sqrt(18)), abs=1e-9)
+    assert pa + pb == pytest.approx(1.0, abs=1e-9)
+
+
+def test_parametric_cif_shapes_and_edges():
+    model = ParametricCompetingRisks.from_fitted(
+        {
+            "a": Weibull.from_params([10, 2]),
+            "b": Exponential.from_params([0.05]),
+        }
+    )
+    assert isinstance(model.cif(5.0, "a"), float)
+    grid = np.array([[1.0, 5.0], [10.0, 20.0]])
+    out = model.cif(grid, "a")
+    assert out.shape == (2, 2)
+    np.testing.assert_allclose(out.ravel(), model.cif(grid.ravel(), "a"))
+    assert model.cif([-5.0, 0.0], "a").tolist() == [0.0, 0.0]
+    assert model.cif(np.inf, "a") == pytest.approx(
+        model.probability_of_cause("a")
+    )
+
+
+def test_parametric_cure_fraction_probabilities():
+    cured = Weibull.from_params([5, 2], p=0.4)
+    model = ParametricCompetingRisks.from_fitted(
+        {"a": cured, "b": Weibull.from_params([8, 3], p=0.5)}
+    )
+    total = model.probability_of_cause("a") + model.probability_of_cause("b")
+    # 1 - P(never fails) = 1 - 0.6 * 0.5
+    assert total == pytest.approx(0.7, abs=1e-9)
+
+
+def test_parametric_fit_dist_dict_must_cover_every_cause():
+    with pytest.raises(ValueError, match="no distribution for the cause"):
+        ParametricCompetingRisks.fit(
+            [1, 2, 3, 4], ["a", "b", "a", "b"], dist={"a": Weibull}
+        )
