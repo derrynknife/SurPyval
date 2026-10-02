@@ -132,16 +132,6 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
         ),
         (
             "surpyval.univariate.regression.frailty.cox_frailty",
-            "surpyval.univariate.regression.proportional_hazards.cox_ph",
-            "_baseline_at_origin",
-        ),
-        (
-            "surpyval.univariate.regression.frailty.cox_frailty",
-            "surpyval.univariate.regression.proportional_hazards.cox_ph",
-            "_newton_raphson",
-        ),
-        (
-            "surpyval.univariate.regression.frailty.cox_frailty",
             "surpyval.utils",
             "_caller_stacklevel",
         ),
@@ -149,11 +139,6 @@ ALLOWED: frozenset[tuple[str, str, str]] = frozenset(
             "surpyval.univariate.regression.frailty.frailty_fitter",
             "surpyval.univariate.regression._fit_skeleton",
             "_gradient",
-        ),
-        (
-            "surpyval.univariate.regression.frailty.frailty_fitter",
-            "surpyval.univariate.regression.proportional_hazards.cox_ph",
-            "_strata_labels",
         ),
         (
             "surpyval.univariate.regression.frailty.frailty_fitter",

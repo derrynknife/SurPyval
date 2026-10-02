@@ -58,7 +58,7 @@ from .._fit_skeleton import (
     optimise_ph,
     require_finite_fit,
 )
-from ..proportional_hazards.cox_ph import _strata_labels
+from ..proportional_hazards.cox_likelihood import strata_labels
 from ..regression_data import design_matrix_from_df
 from .families import (
     check_family,
@@ -299,7 +299,7 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
     # Read element by element: a ``None`` label in an array of numbers
     # made ``np.unique`` raise a TypeError, and a NaN label was kept as
     # a group of its own (#388).
-    groups, missing = _strata_labels(
+    groups, missing = strata_labels(
         np.asarray(groups, dtype=object).ravel().tolist()
     )
     if groups.shape[0] != n_obs:
