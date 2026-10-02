@@ -199,7 +199,7 @@ def test_the_root_finder_takes_over_when_newton_gives_up():
     # The fallback (the solver before #516) reaches the same maximum.
     x, Z, c, n, tl, _ = _data("truncated_weighted")
     newton = CoxPH.fit(x, Z, c, n=n, tl=tl)
-    with mock.patch.object(cox_ph, "_newton_raphson", return_value=None):
+    with mock.patch.object(cox_ph, "newton_raphson", return_value=None):
         fallback = CoxPH.fit(x, Z, c, n=n, tl=tl)
     assert "Newton" not in str(fallback.res.message)
     np.testing.assert_allclose(fallback.beta, newton.beta, rtol=1e-9)
