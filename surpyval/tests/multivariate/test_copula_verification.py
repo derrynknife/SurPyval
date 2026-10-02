@@ -10,6 +10,7 @@ import warnings
 import numpy as np
 import pytest
 
+from surpyval import Weibull
 from surpyval.multivariate import Clayton, Copula, Frank, Gaussian, Gumbel
 
 # Spearman's rho, 12 * int int C(u, v) du dv - 3, by adaptive quadrature
@@ -109,3 +110,53 @@ def test_gumbel_primitives_near_the_upper_corner(u, v, theta, cdf, du, pdf):
         got = [float(f(u, v, theta)) for f in (Gumbel.cdf, Gumbel.du, Gumbel.pdf)]
     assert got == pytest.approx([cdf, du, pdf], rel=1e-9)
     assert float(Gumbel.dv(v, u, theta)) == pytest.approx(du, rel=1e-9)
+
+
+@pytest.fixture(scope="module")
+def clayton_sample():
+    margins = [
+        Weibull.from_params([10.0, 2.0]),
+        Weibull.from_params([20.0, 3.0]),
+    ]
+    X = Clayton.from_params([2.0], margins).random(100, random_state=0)
+    return X, margins
+
+
+def _bad_series(X):
+    nan = X.copy()
+    nan[3, 0] = np.nan
+    c = np.zeros(X.shape, int)
+    c[0] = 2
+    t = np.zeros(X.shape + (2,))
+    t[..., 1] = np.inf
+    t[0, 1, 0] = X[0, 1] + 1.0
+    return {
+        "NaN": ({"x": nan}, "Series 0: .*NaN"),
+        "negative n": (
+            {"x": X, "n": np.r_[-5, np.ones(99)]},
+            "Series 0: count array can't be 0 or less",
+        ),
+        "fractional n": (
+            {"x": X, "n": np.r_[0.5, np.ones(99)]},
+            "Series 0: Count array 'n' must contain integer values",
+        ),
+        "xl > xr": (
+            {"x": X, "c": c, "xl": X + 1.0, "xr": X - 1.0},
+            "Series 0: All left intervals must be less than or equal",
+        ),
+        "below tl": ({"x": X, "t": t}, "Series 1: All left truncated"),
+    }
+
+
+@pytest.mark.parametrize(
+    "case", ["NaN", "negative n", "fractional n", "xl > xr", "below tl"]
+)
+def test_data_checked_with_fitted_margins(clayton_sample, case):
+    # A margin fitted by the copula fit checked its series, but a margin
+    # passed already fitted did not: a NaN gave theta = 0.01 (the start)
+    # with a NaN likelihood, a count of -5 a negative weight (theta 2.25
+    # for 2.34), and xl > xr or a value below its truncation were used.
+    X, margins = clayton_sample
+    kwargs, match = _bad_series(X)[case]
+    with pytest.raises(ValueError, match=match):
+        Clayton.fit(margins=margins, **kwargs)

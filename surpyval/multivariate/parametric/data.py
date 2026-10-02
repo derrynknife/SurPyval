@@ -40,6 +40,16 @@ class MultivariateSurpyvalData:
     xl, xr : array-like, shape (N, D), optional
         Interval-censoring bounds, required where ``c == 2``.
 
+    Raises
+    ------
+    ValueError
+        If an array has the wrong shape, a censoring code is not one of
+        the four, or a series (with the counts and its own truncation
+        window) is not valid univariate data: a NaN value, a count that
+        is not a positive whole number, an interval with ``xl >= xr``, or
+        a value outside its truncation window. The message names the
+        series (``"Series 0: ..."``).
+
     Examples
     --------
     A list is read as one sequence per series. Here three rows of two
@@ -125,6 +135,41 @@ class MultivariateSurpyvalData:
         self.xr = xr.astype(float)
         self.N = N
         self.D = D
+        for d in range(D):
+            self._check_series(d)
+
+    def _check_series(self, d: int) -> None:
+        """Hold series ``d`` to the rules of univariate data.
+
+        Each series, with the rows' counts and its own truncation window,
+        must be valid data for a univariate fit (``xcnt_handler``): no
+        NaN, counts that are positive whole numbers, ``xl <= xr`` and
+        ``xl < xr`` where interval censored, and every value inside its
+        truncation window. A margin fitted here checked its series on
+        the way, but a margin passed already fitted did not, and a NaN
+        returned the copula parameter's starting value with a NaN
+        likelihood, a negative count was a negative weight and an
+        interval with ``xl > xr`` a negative probability (clipped).
+        """
+        from surpyval.utils import xcnt_handler
+
+        xd, cd, xld, xrd, tld, trd = self.dimension(d)
+        if (cd == 2).any():
+            # An interval row carries [xl, xr], a point row [x, x], as the
+            # margin fit is given them.
+            xd = np.column_stack(
+                [np.where(cd == 2, xld, xd), np.where(cd == 2, xrd, xd)]
+            )
+        try:
+            xcnt_handler(
+                x=xd,
+                c=cd,
+                n=self.n,
+                t=np.column_stack([tld, trd]),
+                group_and_sort=False,
+            )
+        except ValueError as error:
+            raise ValueError(f"Series {d}: {error}") from error
 
     @staticmethod
     def _as_2d(x: npt.ArrayLike) -> npt.NDArray:
