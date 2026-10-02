@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from scipy.stats import norm
 
@@ -433,19 +434,21 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
             model_dict, "SemiParametricRegressionModel", "a Cox model"
         )
         out = cls(model_dict["kind"], model_dict["parameterization"])
-        beta = np.array(model_dict["beta"], dtype=float)
+        # Plain numpy: autograd's ``array`` inspects a list item by item
+        # for its boxes, 90% of reading a Cox model of 1e5 rows.
+        beta = onp.array(model_dict["beta"], dtype=float)
         out.beta = beta
-        out.params = np.array(model_dict["params"], dtype=float)
+        out.params = onp.array(model_dict["params"], dtype=float)
         # A dict without a "center" (the default fit, or one written
         # before #459) has its baseline at Z = 0.
-        out.center = np.array(
+        out.center = onp.array(
             model_dict.get("center", np.zeros(beta.shape[0])), dtype=float
         )
-        out.x = np.array(model_dict["x"], dtype=float)
-        out.r = np.array(model_dict["r"], dtype=float)
-        out.d = np.array(model_dict["d"], dtype=float)
-        out.h0 = np.array(model_dict["h0"], dtype=float)
-        out.H0 = np.array(model_dict["H0"], dtype=float)
+        out.x = onp.array(model_dict["x"], dtype=float)
+        out.r = onp.array(model_dict["r"], dtype=float)
+        out.d = onp.array(model_dict["d"], dtype=float)
+        out.h0 = onp.array(model_dict["h0"], dtype=float)
+        out.H0 = onp.array(model_dict["H0"], dtype=float)
         # phi is fully determined by beta and center (the ``phi`` method).
         out.tie_method = model_dict["tie_method"]
         out.baseline_method = model_dict["baseline_method"]
@@ -454,7 +457,7 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
         # A bare null (no "non_finite" record) is how schema-1 dicts wrote
         # a row without delayed entry; it still reads as -inf.
         out.tl = (
-            np.array(
+            onp.array(
                 [-np.inf if v is None else v for v in model_dict["tl"]],
                 dtype=float,
             )
@@ -462,9 +465,9 @@ class SemiParametricRegressionModel(ConcordanceMixin, SerialisableMixin):
             else None
         )
         if "p_values" in model_dict:
-            out.p_values = np.array(model_dict["p_values"], dtype=float)
+            out.p_values = onp.array(model_dict["p_values"], dtype=float)
         if "se" in model_dict:
-            out.se = np.array(model_dict["se"], dtype=float)
+            out.se = onp.array(model_dict["se"], dtype=float)
         if "_neg_log_like" in model_dict:
             out._neg_log_like = float(model_dict["_neg_log_like"])
         restore_covariate_meta(out, model_dict)
