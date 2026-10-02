@@ -160,10 +160,9 @@ omit = ["*/surpyval/_leak_probe.py"]
 # Flake8
 [tool.flake8]
 ignore = ['E203', 'W503', 'E704', 'E741']
-# McCabe complexity: a ceiling on the worst functions, to be lowered to 25
-# once the long ones are split into named steps. The one function over it
-# carries a noqa until then.
-max-complexity = 70
+# McCabe complexity: a ceiling on a function's branches. A function that
+# reaches it is split into named steps rather than given a noqa.
+max-complexity = 25
 per-file-ignores = [
     '*/__init__.py:F401',
 ]
