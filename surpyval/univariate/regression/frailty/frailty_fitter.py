@@ -261,6 +261,100 @@ _NUMPY = SimpleNamespace(
 _AUTOGRAD = SimpleNamespace(np=anp, gammaln=_ad_gammaln, group_sum=_group_sum)
 
 
+def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
+    npt.NDArray,
+    "npt.NDArray | None",
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+    npt.NDArray,
+]:
+    """The data of a shared-frailty fit, checked: ``(x, Z, c, w, labels,
+    inv)``, with ``Z`` ``None`` when not given, ``w`` the counts, and
+    ``labels`` the distinct groups and ``inv`` each row's index into them.
+
+    Only observed (c=0) and right-censored (c=1) rows are taken. Rows with
+    a missing or infinite covariate, or a missing group label, are dropped
+    with a warning; at least one event and two groups are required.
+    """
+    # Through the data handler first, in the caller's row order: the
+    # documented ragged form ``[10, [11, 13], ...]`` is not a
+    # rectangular array, and ``np.asarray(x, dtype=float)`` on it raised
+    # a raw numpy error.
+    x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
+    c = np.asarray(c_h, dtype=int).ravel()
+    if not np.all(np.isin(c, (0, 1))):
+        raise ValueError(
+            "Frailty fitting supports only observed (c=0) and "
+            "right-censored (c=1) data."
+        )
+    x = np.asarray(x_h, dtype=float)
+    if x.ndim == 2:
+        # Two columns with no interval row: xl == xr on every row.
+        x = x[:, 0]
+    n_obs = x.shape[0]
+    w = np.asarray(n_h, dtype=float).ravel()
+    if groups is None:
+        raise ValueError("'groups' (a cluster label per row) is required.")
+    # Read element by element: a ``None`` label in an array of numbers
+    # made ``np.unique`` raise a TypeError, and a NaN label was kept as
+    # a group of its own (#388).
+    groups, missing = _strata_labels(
+        np.asarray(groups, dtype=object).ravel().tolist()
+    )
+    if groups.shape[0] != n_obs:
+        raise ValueError(
+            "'groups' has {} label(s) but there are {} observations; "
+            "give one group label per row.".format(groups.shape[0], n_obs)
+        )
+
+    if Z is not None:
+        Zm = np.atleast_2d(np.asarray(Z, dtype=float))
+        if Zm.shape[0] != n_obs and Zm.shape[1] == n_obs:
+            # A single covariate given as a row.
+            Zm = Zm.T
+        check_covariate_rows(Zm, n_obs)
+        keep = finite_covariate_mask(Zm)
+        if not keep.all():
+            x, c, w, groups, missing, Zm = (
+                a[keep] for a in (x, c, w, groups, missing, Zm)
+            )
+            n_obs = x.shape[0]
+    if missing.any():
+        # A row without a group has no frailty to share: it is dropped,
+        # as a row with a missing stratum label is in a stratified Cox
+        # model.
+        if missing.all():
+            raise ValueError(
+                "Every group label is missing; there is nothing to fit."
+            )
+        warnings.warn(
+            "Dropped {} of {} rows with a missing group label.".format(
+                int(missing.sum()), n_obs
+            ),
+            UserWarning,
+            stacklevel=_caller_stacklevel(),
+        )
+        keep = ~missing
+        x, c, w, groups = (a[keep] for a in (x, c, w, groups))
+        if Z is not None:
+            Zm = Zm[keep]
+        n_obs = x.shape[0]
+
+    if int((c == 0).sum()) == 0:
+        raise ValueError("At least one event (c=0) is required.")
+
+    labels, inv = np.unique(groups, return_inverse=True)
+    n_groups = labels.shape[0]
+    if n_groups < 2:
+        raise ValueError(
+            "The frailty variance is not identifiable from a single "
+            "group; at least two groups are required."
+        )
+
+    return x, (Zm if Z is not None else None), c, w, labels, inv
+
+
 class FrailtyFitter:
     """Configured fitter for a shared-frailty PH model on one distribution."""
 
@@ -374,88 +468,12 @@ class FrailtyFitter:
         >>> model.beta.round(3), round(model.theta, 3)
         (array([0.399]), 0.432)
         """
-        # Through the data handler first, in the caller's row order: the
-        # documented ragged form ``[10, [11, 13], ...]`` is not a
-        # rectangular array, and ``np.asarray(x, dtype=float)`` on it raised
-        # a raw numpy error.
-        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        c = np.asarray(c_h, dtype=int).ravel()
-        if not np.all(np.isin(c, (0, 1))):
-            raise ValueError(
-                "Frailty fitting supports only observed (c=0) and "
-                "right-censored (c=1) data."
-            )
-        x = np.asarray(x_h, dtype=float)
-        if x.ndim == 2:
-            # Two columns with no interval row: xl == xr on every row.
-            x = x[:, 0]
+        x, Zm, c, w, labels, inv = grouped_data(x, Z, c, n, groups)
         n_obs = x.shape[0]
-        w = np.asarray(n_h, dtype=float).ravel()
-        if groups is None:
-            raise ValueError("'groups' (a cluster label per row) is required.")
-        # Read element by element: a ``None`` label in an array of numbers
-        # made ``np.unique`` raise a TypeError, and a NaN label was kept as
-        # a group of its own (#388).
-        groups, missing = _strata_labels(
-            np.asarray(groups, dtype=object).ravel().tolist()
-        )
-        if groups.shape[0] != n_obs:
-            raise ValueError(
-                "'groups' has {} label(s) but there are {} observations; "
-                "give one group label per row.".format(groups.shape[0], n_obs)
-            )
-
-        if Z is not None:
-            Zc = np.atleast_2d(np.asarray(Z, dtype=float))
-            if Zc.shape[0] != n_obs and Zc.shape[1] == n_obs:
-                # A single covariate given as a row.
-                Zc = Zc.T
-            check_covariate_rows(Zc, n_obs)
-            keep = finite_covariate_mask(Zc)
-            if not keep.all():
-                x, c, w, groups, missing, Zc = (
-                    a[keep] for a in (x, c, w, groups, missing, Zc)
-                )
-                n_obs = x.shape[0]
-        if missing.any():
-            # A row without a group has no frailty to share: it is dropped,
-            # as a row with a missing stratum label is in a stratified Cox
-            # model.
-            if missing.all():
-                raise ValueError(
-                    "Every group label is missing; there is nothing to fit."
-                )
-            warnings.warn(
-                "Dropped {} of {} rows with a missing group label.".format(
-                    int(missing.sum()), n_obs
-                ),
-                UserWarning,
-                stacklevel=_caller_stacklevel(),
-            )
-            keep = ~missing
-            x, c, w, groups = (a[keep] for a in (x, c, w, groups))
-            if Z is not None:
-                Zc = Zc[keep]
-            n_obs = x.shape[0]
-
-        if int((c == 0).sum()) == 0:
-            raise ValueError("At least one event (c=0) is required.")
-
-        labels, inv = np.unique(groups, return_inverse=True)
         n_groups = labels.shape[0]
-        if n_groups < 2:
-            raise ValueError(
-                "The frailty variance is not identifiable from a single "
-                "group; at least two groups are required."
-            )
-
-        if Z is None:
-            Zc = np.zeros((n_obs, 0))
-            n_beta = 0
-            feature_names = None
-        else:
-            n_beta = Zc.shape[1]
-            feature_names = None
+        Zc = np.zeros((n_obs, 0)) if Zm is None else Zm
+        n_beta = Zc.shape[1]
+        feature_names = None
         # Coefficients the data cannot determine are aliased (#476): a
         # constant column where the baseline's scale is the intercept, or
         # a linear combination of the others. The fit runs on the other

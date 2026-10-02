@@ -7,6 +7,7 @@ from surpyval.univariate.parametric import (
     Weibull,
 )
 
+from .cox_frailty import CoxFrailty, CoxFrailtyFitter, CoxFrailtyModel
 from .frailty_fitter import FrailtyFitter
 from .frailty_model import FrailtyModel
 
@@ -76,6 +77,9 @@ LogNormalFrailty = FrailtyFitter.create(LogNormal)
 GammaFrailty = FrailtyFitter.create(Gamma)
 
 __all__ = [
+    "CoxFrailty",
+    "CoxFrailtyFitter",
+    "CoxFrailtyModel",
     "ExponentialFrailty",
     "Frailty",
     "FrailtyFitter",

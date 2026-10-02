@@ -35,6 +35,64 @@
         "theta": 0.330470161749112,
         "loglik": -333.745080284292
       }
+    },
+    "kidney_cox_gamma_efron": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + frailty(id, dist = 'gamma', theta = theta, sparse = FALSE), ties = 'efron'), theta maximising history[[1]]$c.loglik by optimize(tol = 1e-10) on log(theta)",
+      "settings": {
+        "ties": "efron",
+        "loglik": "R's I-likelihood, history[[1]]$c.loglik",
+        "se": "sqrt(diag(var)) with sparse = FALSE (the full information)",
+        "frailties": "coef(fit)[-(1:2)]: the log-frailties, by id",
+        "default_call": "coxph's own search (frailty(id, dist = 'gamma'), default control) stops at theta 0.4077962"
+      },
+      "values": {
+        "theta": 0.407769582313804,
+        "beta": [0.00522232024468084, -1.58323378634184],
+        "se": [0.0116534025594522, 0.448381548008085],
+        "loglik": -181.638626525392,
+        "log_frailties": [0.368122520718365, 0.254160828119638, 0.0888910055941485, -0.569478030931584, 0.158876495985523, 0.0488798089880622, 0.47346143294191, -0.458332584684656, -0.0666049137152923, -0.617225284598624, -0.13304462226175, 0.0438409843628085, 0.279687809317465, -0.44745079929039, -0.712851037353738, 0.102165916122994, -0.163216881020871, -0.155064681428806, -0.432655071473672, 0.0893085183295778, -2.23994882577884, -0.441826746116161, 0.352707815608297, 0.0670601079325582, -0.0393154629095516, -0.364696450739579, 0.0880716271415543, 0.3720872983997, 0.277676815304913, 0.256294174775782, 0.338045175448188, 0.177676114033349, 0.16881738327694, -0.124558373433669, 0.358855855944187, -0.200691908306473, 0.12096551774456, -0.431849663480733],
+        "loglik_cox": -184.344568139567
+      }
+    },
+    "kidney_cox_gamma_breslow": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + frailty(id, dist = 'gamma', theta = theta, sparse = FALSE), ties = 'breslow'), theta maximising history[[1]]$c.loglik by optimize(tol = 1e-10) on log(theta)",
+      "settings": {
+        "ties": "breslow",
+        "loglik": "R's I-likelihood, history[[1]]$c.loglik",
+        "se": "sqrt(diag(var)) with sparse = FALSE (the full information)",
+        "frailties": "coef(fit)[-(1:2)]: the log-frailties, by id",
+        "default_call": "coxph's own search (frailty(id, dist = 'gamma'), default control) stops at theta 0.3973151"
+      },
+      "values": {
+        "theta": 0.397313398258975,
+        "beta": [0.00546350307314466, -1.55639257033194],
+        "se": [0.0115806379475413, 0.444838713202242],
+        "loglik": -182.05335892518,
+        "log_frailties": [0.361726578508298, 0.248496373746363, 0.0972599380469034, -0.55460199913959, 0.13604492104216, 0.053989426430766, 0.460537570880917, -0.452387220098056, -0.0646487665708773, -0.591102380924266, -0.127362593582802, 0.0448899113096435, 0.277444738739841, -0.43598950570761, -0.691790714997082, 0.10411514785376, -0.158577528922099, -0.148757024372299, -0.42183460180614, 0.0869768359193564, -2.19340467402529, -0.428687300275225, 0.346803927680568, 0.0676375294171069, -0.0283162194452618, -0.356808416413289, 0.0927952021543934, 0.357260158456123, 0.278255816699224, 0.252374457555894, 0.332336114226864, 0.174868531354808, 0.151127129909823, -0.119317665647258, 0.353722358838775, -0.195045441132247, 0.119332657217367, -0.410223951718682],
+        "loglik_cox": -184.657093708687
+      }
+    },
+    "kidney_cox_gamma_no_frailty": {
+      "fixture": "kidney",
+      "software": "R survival",
+      "version": "3.5.8",
+      "call": "coxph(Surv(time, status) ~ age + female + I(disease == 'PKD') + frailty(id, dist = 'gamma'))",
+      "settings": {
+        "ties": "efron",
+        "loglik": "R's I-likelihood, history[[1]]$c.loglik"
+      },
+      "values": {
+        "theta": 5e-09,
+        "beta": [0.00773402580970657, -1.45695588832174, -1.56643424881152],
+        "loglik": -179.5140454762,
+        "loglik_cox": -179.514045007625
+      }
     }
   }
 }

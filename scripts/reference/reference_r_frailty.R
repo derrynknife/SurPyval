@@ -100,6 +100,60 @@ for (baseline in c("weibull", "exponential")) {
     )
 }
 
+# --- gamma frailty, Cox baseline (survival::coxph) -------------------------
+k$disease <- survival::kidney$disease
+ctl <- coxph.control(eps = 1e-10, toler.chol = 1e-13, iter.max = 500,
+                     outer.max = 50)
+fixed_theta <- function(theta, ties, rhs = "age + female") {
+    coxph(as.formula(paste(
+        "Surv(time, status) ~", rhs,
+        "+ frailty(id, dist = 'gamma', theta = theta, sparse = FALSE)")),
+        data = k, ties = ties, control = ctl)
+}
+for (ties in c("efron", "breslow")) {
+    best <- optimize(function(lt) fixed_theta(exp(lt), ties)$history[[1]]$c.loglik,
+                     c(log(0.05), log(3)), maximum = TRUE, tol = 1e-10)
+    theta <- exp(best$maximum)
+    fit <- suppressWarnings(fixed_theta(theta, ties))
+    cox <- coxph(Surv(time, status) ~ age + female, data = k, ties = ties)
+    default <- suppressWarnings(coxph(
+        Surv(time, status) ~ age + female + frailty(id, dist = "gamma"),
+        data = k, ties = ties))
+    refs[[paste0("kidney_cox_gamma_", ties)]] <- entry(
+        "survival",
+        paste0("coxph(Surv(time, status) ~ age + female + frailty(id, ",
+               "dist = 'gamma', theta = theta, sparse = FALSE), ties = '",
+               ties, "'), theta maximising history[[1]]$c.loglik by ",
+               "optimize(tol = 1e-10) on log(theta)"),
+        list(ties = ties,
+             loglik = "R's I-likelihood, history[[1]]$c.loglik",
+             se = "sqrt(diag(var)) with sparse = FALSE (the full information)",
+             frailties = "coef(fit)[-(1:2)]: the log-frailties, by id",
+             default_call = paste(
+                 "coxph's own search (frailty(id, dist = 'gamma'), default",
+                 "control) stops at theta", signif(default$history[[1]]$theta, 7))),
+        list(theta = theta, beta = unname(coef(fit)[1:2]),
+             se = unname(sqrt(diag(fit$var))[1:2]),
+             loglik = fit$history[[1]]$c.loglik,
+             log_frailties = unname(coef(fit)[-(1:2)]),
+             loglik_cox = cox$loglik[2])
+    )
+}
+# With the disease type as well the frailty vanishes (R's theta is 5e-9):
+# the fit is the Cox fit.
+pkd <- coxph(Surv(time, status) ~ age + female + I(disease == "PKD") +
+                 frailty(id, dist = "gamma"), data = k)
+refs[["kidney_cox_gamma_no_frailty"]] <- entry(
+    "survival",
+    paste("coxph(Surv(time, status) ~ age + female + I(disease == 'PKD')",
+          "+ frailty(id, dist = 'gamma'))"),
+    list(ties = "efron", loglik = "R's I-likelihood, history[[1]]$c.loglik"),
+    list(theta = pkd$history[[1]]$theta, beta = unname(coef(pkd)),
+         loglik = pkd$history[[1]]$c.loglik,
+         loglik_cox = coxph(Surv(time, status) ~ age + female +
+                                I(disease == "PKD"), data = k)$loglik[2])
+)
+
 out <- list(
     generator = "scripts/reference/reference_r_frailty.R",
     R = R.version.string,
