@@ -44,7 +44,6 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from scipy.optimize import minimize, minimize_scalar
-from scipy.special import gammaln
 
 from surpyval.serialisation import (
     require_model_tag,
@@ -75,7 +74,7 @@ _TIE_METHODS = ("efron", "breslow")
 # The search for theta, on its log: between 1e-6 (no detectable frailty;
 # the profile is then flat to rounding) and 100.
 _LOG_THETA_BOUNDS = (np.log(1e-6), np.log(100.0))
-_EM_TOL = 1e-10
+_EM_TOL = 1e-12
 _EM_MAX_ITER = 10000
 # The step, in log theta, of the profile's second difference that gives
 # theta's standard error.
@@ -112,6 +111,7 @@ class _CoxFrailtyEM:
         # fitter: where EM starts.
         self.cox_beta = np.zeros(self.p)
         self.not_converged = 0
+        self.max_iter = _EM_MAX_ITER
 
     # -- the M-step: CoxPH with offsets -----------------------------------
 
@@ -212,25 +212,55 @@ class _CoxFrailtyEM:
         nearest = min(self.solved, key=lambda t: abs(np.log(t / theta)))
         return self.solved[nearest]
 
+    def update(
+        self, theta: float, log_u: npt.NDArray, beta: npt.NDArray
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """One EM step from the log-frailties ``log_u``: the M-step (from
+        ``beta``), then the E-step, ``log((D + nu) / (A + nu))``, written
+        to stay accurate as ``theta -> 0``, where both sides tend to
+        ``nu``. Returns the new log-frailties and the coefficients."""
+        beta, _ = self.m_step(beta, log_u[self.inv])
+        A = self.group_hazard(beta, log_u[self.inv])
+        return np.log1p(self.D * theta) - np.log1p(A * theta), beta
+
     def em(
         self, theta: float, tol: float = _EM_TOL
     ) -> tuple[npt.NDArray, npt.NDArray, float]:
         """``(beta, log u, negative partial log-likelihood)`` at the EM
-        fixed point for ``theta``."""
+        fixed point for ``theta``: where one EM step changes no
+        log-frailty by more than ``tol``.
+
+        EM converges linearly, slowly where the frailties carry much of the
+        information (a large ``theta``, few events per group), so its steps
+        are extrapolated by SQUAREM (Varadhan and Roland 2008, scheme S3):
+        from two steps ``r = F(v) - v`` and ``s = F(F(v)) - 2 F(v) + v``,
+        the point ``v - 2 a r + a^2 s`` with ``a = -max(1, |r| / |s|)``,
+        then one more EM step. An extrapolation that is not finite, or
+        whose step is longer than ``r``, is replaced by the two plain
+        steps. The fixed point is EM's."""
         beta, log_u = self.start(theta)
-        nu = 1.0 / theta
         converged = False
-        for _ in range(_EM_MAX_ITER):
-            beta, _ = self.m_step(beta, log_u[self.inv])
-            A = self.group_hazard(beta, log_u[self.inv])
-            # log((D + nu) / (A + nu)), written to stay accurate as
-            # theta -> 0, where both sides tend to nu
-            new = np.log1p(self.D * theta) - np.log1p(A * theta)
-            change = float(np.max(np.abs(new - log_u)))
-            log_u = new
-            if change < tol:
+        for _ in range(self.max_iter):
+            u1, beta = self.update(theta, log_u, beta)
+            r = u1 - log_u
+            if float(np.max(np.abs(r))) < tol:
+                log_u = u1
                 converged = True
                 break
+            u2, beta2 = self.update(theta, u1, beta)
+            s = (u2 - u1) - r
+            size_r, size_s = np.linalg.norm(r), np.linalg.norm(s)
+            jump = None
+            if size_s > 0:
+                a = -max(1.0, size_r / size_s)
+                jump = log_u - 2.0 * a * r + a**2 * s
+            log_u, beta = u2, beta2
+            if jump is not None and np.all(np.isfinite(jump)):
+                u3, beta3 = self.update(theta, jump, beta2)
+                if np.all(np.isfinite(u3)) and (
+                    np.linalg.norm(u3 - jump) <= size_r
+                ):
+                    log_u, beta = u3, beta3
         if not converged:
             self.not_converged += 1
         beta, neg_pl = self.m_step(beta, log_u[self.inv])
@@ -415,16 +445,34 @@ class CoxFrailtyFitter:
 
         # The Cox fit without frailty: the start of EM, the profile at
         # theta = 0, and the aliasing of columns the partial likelihood
-        # cannot determine (CoxPH's, with its warning).
-        cox = (
-            CoxPH.fit(x, Zfull, c, w, tie_method=tie_method) if p_all else None
-        )
+        # cannot determine (CoxPH's, with its warning). Its warnings are
+        # this fit's: a monotone partial likelihood (#392) has no maximum
+        # with a frailty either, and is said once, here.
+        cox = None
+        monotone = False
+        if p_all:
+            with warnings.catch_warnings(record=True) as caught:
+                warnings.simplefilter("always")
+                cox = CoxPH.fit(x, Zfull, c, w, tie_method=tie_method)
+            for caught_warning in caught:
+                message = str(caught_warning.message)
+                monotone |= message.startswith("Monotone partial likelihood")
+                warnings.warn(
+                    message,
+                    caught_warning.category,
+                    stacklevel=_caller_stacklevel(),
+                )
         kept = np.arange(p_all)
         if cox is not None and cox.aliased.size:
             kept = np.setdiff1d(kept, cox.aliased)
         Zk = Zfull[:, kept]
         center = _covariate_center(Zk, w) if kept.size else np.zeros(0)
         em = _CoxFrailtyEM(x, Zk - center, c, w, inv, n_groups, tie_method)
+        if monotone:
+            # The coefficients run off to infinity whatever theta is: the
+            # estimates mean nothing (said above), and EM would chase them
+            # to its iteration limit at every theta.
+            em.max_iter = 20
         em.cox_beta = (
             np.asarray(cox.beta, dtype=float)[kept]
             if cox is not None
@@ -438,7 +486,7 @@ class CoxFrailtyFitter:
                 em.profile,
                 bounds=_LOG_THETA_BOUNDS,
                 method="bounded",
-                options={"xatol": 1e-6},
+                options={"xatol": 1e-7},
             )
             theta_hat = float(np.exp(res.x))
             if res.x - _LOG_THETA_BOUNDS[0] < 1e-3 and -res.fun <= (
@@ -473,7 +521,7 @@ class CoxFrailtyFitter:
             log_u = np.zeros(n_groups)
             loglik = no_frailty
             cov_beta = em.beta_covariance(1e-12, beta, log_u)
-        if em.not_converged:
+        if em.not_converged and not monotone:
             warnings.warn(
                 "The EM iteration over the frailties did not converge "
                 "within {} iterations at {} value(s) of theta; the "
@@ -651,9 +699,9 @@ class CoxFrailtyModel(_SharedFrailty):
     infection of patient 21, the most robust in the data:
 
     >>> model.sf([30, 100], [45, 1]).round(3)
-    array([0.83 , 0.577])
+    array([0.752, 0.577])
     >>> model.sf([30, 100], [45, 1], group=21).round(3)
-    array([0.986, 0.951])
+    array([0.968, 0.936])
     """
 
     def __init__(self) -> None:
@@ -707,7 +755,7 @@ class CoxFrailtyModel(_SharedFrailty):
             return None
         return data["x"], data["c"], data["n"], data["Z"]
 
-    # -- printout and serialisation --------------------------------------------
+    # -- printout and serialisation ----------------------------------------
 
     def __repr__(self) -> str:
         from .._summary import coefficient_repr, format_table

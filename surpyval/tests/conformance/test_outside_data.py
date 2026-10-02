@@ -50,6 +50,7 @@ RULES = {
     "Turnbull": "hold",
     "CoxPH": "hold",
     "CoxPH[strata]": "hold",
+    "CoxFrailty": "hold",
     "AdditiveHazards": "hold",
     "BuckleyJames": "hold",
     "SurvivalTree[non-parametric]": "hold",
@@ -73,6 +74,7 @@ _SEMI += "estimates only"
 WITHOUT_SET_SUPPORT = {
     "CoxPH": _SEMI,
     "CoxPH[strata]": _SEMI,
+    "CoxFrailty": _SEMI,
     "AdditiveHazards": _SEMI,
     "BuckleyJames": _SEMI,
     "CompetingRisksProportionalHazards[Cox]": _SEMI,

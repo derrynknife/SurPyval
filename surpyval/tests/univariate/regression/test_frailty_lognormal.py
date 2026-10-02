@@ -63,8 +63,9 @@ def _simulate(seed, family="lognormal", G=60, per=5, theta=0.5):
     else:
         u = rng.gamma(1 / theta, theta, G)
     Z = rng.normal(size=(G * per, 1))
-    t = 10.0 * (rng.exponential(size=G * per) / (np.exp(0.7 * Z[:, 0]) * u[g]))
-    t = t ** (1 / 1.5)
+    # Weibull(10, 1.5) baseline: H(t) = (t / 10)^1.5 times the multiplier
+    H = rng.exponential(size=G * per) / (np.exp(0.7 * Z[:, 0]) * u[g])
+    t = 10.0 * H ** (1 / 1.5)
     c = (t > 25.0).astype(int)
     return np.minimum(t, 25.0), c, Z, g
 

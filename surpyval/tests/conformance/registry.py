@@ -1129,6 +1129,30 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
+    cox_frailty = regression(
+        "CoxFrailty",
+        sp.CoxFrailty,
+        data=grouped_reg_data,
+        model_class="surpyval.CoxFrailtyModel",
+        rows=("x", "Z", "c", "n", "groups"),
+        labels=("groups",),
+        paths={
+            "fit_from_df": lambda d: sp.CoxFrailty.fit_from_df(
+                pd.DataFrame(d["Z"], columns=["z0", "z1"]).assign(
+                    x=d["x"], c=d["c"], n=d["n"], g=d["groups"]
+                ),
+                x_col="x",
+                group_col="g",
+                Z_cols=["z0", "z1"],
+                c_col="c",
+                n_col="n",
+            )
+        },
+        jump_functions=("hf", "df"),
+        exclude={"df_hf_sf": step},
+        coefficients=_beta,
+        intercept=True,
+    )
     ah = regression(
         "AdditiveHazards",
         sp.AdditiveHazards,
@@ -1179,7 +1203,7 @@ def _semi_parametric():
         coefficients=_beta,
         intercept=True,
     )
-    return [cox, strat, ah, bj]
+    return [cox, strat, cox_frailty, ah, bj]
 
 
 _NO_COEFFICIENTS = (
@@ -2543,7 +2567,7 @@ def _bounds(case):
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "ParametricRegressionModel":
         return (Bound("cb", on=_ON_ALL), _PARAM_CB)
-    if cls == "FrailtyModel":
+    if cls in ("FrailtyModel", "CoxFrailtyModel"):
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (
@@ -2883,7 +2907,11 @@ def _starve(case):
         return _far_start(case, lambda m: _scaled_start(m.params, 2))
     if cls in ("ParametricRegressionModel", "FrailtyModel"):
         return lambda d: fit(_no_event_level(d))
-    if cls in ("SemiParametricRegressionModel", "FineGrayModel"):
+    if cls in (
+        "SemiParametricRegressionModel",
+        "FineGrayModel",
+        "CoxFrailtyModel",
+    ):
         return lambda d: fit(_no_event_level(d))
     if cls == "CompetingRisksProportionalHazards":
         return lambda d: fit(_no_event_level(d))
