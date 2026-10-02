@@ -43,6 +43,34 @@ if TYPE_CHECKING:
     from .parametric_regression_model import ParametricRegressionModel
 
 
+def fit_tvc_df(
+    fit: Any,
+    df: "pd.DataFrame",
+    columns: dict[str, str],
+    Z_cols: "str | list[str] | None",
+    formula: "str | None",
+    n_col: "str | None",
+    **kwargs: Any,
+) -> Any:
+    """The body of every time-varying ``*_from_df`` fit (PH, AH, PO, AFT
+    and Cox): call the array fit ``fit`` with the columns of ``df`` that
+    ``columns`` names (``{argument: column}``), the covariates ``Z`` from
+    ``Z_cols`` or ``formula`` (:func:`design_matrix_from_df`, every row
+    kept: a TVC fit refuses a missing covariate rather than drop part of a
+    subject's path), the counts ``n`` from ``n_col``, and ``kwargs``; the
+    model records ``feature_names``, the ``formula`` (as given) and its
+    encoding, so it predicts from a DataFrame with the same design."""
+    Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
+    arrays = {arg: df[col].to_numpy() for arg, col in columns.items()}
+    n = None if n_col is None else df[n_col].to_numpy()
+    with covariate_columns(names, Z, spec):
+        model = fit(**arrays, Z=Z, n=n, **kwargs)
+    model.feature_names = names
+    model.formula = formula
+    model._model_spec = spec
+    return model
+
+
 class TVCFitMixin:
     """Adds ``fit_tvc`` (start-stop and timeline, array and DataFrame) to a
     parametric regression fitter whose cumulative hazard is additive over time
@@ -256,21 +284,15 @@ class TVCFitMixin:
         >>> model.feature_names
         ['dose[T.low]']
         """
-        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc(
-                df[i_col].to_numpy(),
-                df[xl_col].to_numpy(),
-                df[xr_col].to_numpy(),
-                df[c_col].to_numpy(),
-                Z,
-                None if n_col is None else df[n_col].to_numpy(),
-                **kwargs,
-            )
-        model.feature_names = names
-        model.formula = formula
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc,
+            df,
+            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            **kwargs,
+        )
 
     def fit_tvc_timeline_from_df(
         self,
@@ -294,17 +316,12 @@ class TVCFitMixin:
         ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
         ``ParametricRegressionModel``.
         """
-        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc_timeline(
-                df[i_col].to_numpy(),
-                df[x_col].to_numpy(),
-                Z,
-                df[c_col].to_numpy(),
-                None if n_col is None else df[n_col].to_numpy(),
-                **kwargs,
-            )
-        model.feature_names = names
-        model.formula = formula
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            **kwargs,
+        )

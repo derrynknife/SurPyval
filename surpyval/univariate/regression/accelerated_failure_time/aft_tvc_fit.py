@@ -43,9 +43,8 @@ from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._aliasing import covariate_columns
 from ..parametric_regression_model import ParametricRegressionModel
-from ..regression_data import design_matrix_from_df
+from ..tvc_fit import fit_tvc_df
 
 
 def _validate_full_coverage(
@@ -275,23 +274,16 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         predicts from a DataFrame with the same design. ``fixed`` and
         ``center`` are as for :meth:`fit_tvc`.
         """
-        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-        n = None if n_col is None else df[n_col].values
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc(
-                df[i_col].values,
-                df[xl_col].values,
-                df[xr_col].values,
-                df[c_col].values,
-                Z,
-                n=n,
-                fixed=fixed,
-                center=center,
-            )
-        model.feature_names = names
-        model.formula = formula
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc,
+            df,
+            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            fixed=fixed,
+            center=center,
+        )
 
     def _fit_tvc_arrays(
         self,

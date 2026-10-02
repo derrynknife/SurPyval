@@ -44,11 +44,9 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._fit_skeleton import covariate_center
-from ..regression_data import (
-    check_finite_event_times,
-    design_matrix_from_df,
-)
+from ..regression_data import check_finite_event_times
 from ..semi_parametric_regression_model import SemiParametricRegressionModel
+from ..tvc_fit import fit_tvc_df
 from .tvc import handle_tvc, handle_tvc_timeline
 
 nonparametric_dists = {
@@ -2065,22 +2063,16 @@ class CoxPH_:
         covariates as a ``formulaic`` formula, which codes categorical
         (e.g. ``"yes"`` / ``"no"``) columns.
         """
-        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc(
-                i=df[i_col].to_numpy(),
-                xl=df[xl_col].to_numpy(),
-                xr=df[xr_col].to_numpy(),
-                c=df[c_col].to_numpy(),
-                Z=Z,
-                n=None if n_col is None else df[n_col].to_numpy(),
-                tie_method=tie_method,
-                center=center,
-            )
-        model.feature_names = names
-        model.formula = formula
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc,
+            df,
+            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            tie_method=tie_method,
+            center=center,
+        )
 
     def fit_tvc_timeline(
         self,
@@ -2172,21 +2164,16 @@ class CoxPH_:
         ``Z_cols`` (pass ``None``), ``formula`` gives the covariates as a
         ``formulaic`` formula, as in :meth:`fit_from_df`.
         """
-        Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
-        with covariate_columns(names, Z, spec):
-            model = self.fit_tvc_timeline(
-                i=df[i_col].to_numpy(),
-                x=df[x_col].to_numpy(),
-                Z=Z,
-                c=df[c_col].to_numpy(),
-                n=None if n_col is None else df[n_col].to_numpy(),
-                tie_method=tie_method,
-                center=center,
-            )
-        model.feature_names = names
-        model.formula = formula
-        model._model_spec = spec
-        return model
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            tie_method=tie_method,
+            center=center,
+        )
 
 
 CoxPH = CoxPH_()
