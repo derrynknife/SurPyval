@@ -4,9 +4,11 @@ import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
+from surpyval.recurrent._convergence import verified_maximum
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.no_maximum import warn_unverified
 
 
 class RenewalFitMixin(RecurrentDataFrameMixin):
@@ -299,4 +301,17 @@ class RenewalFitMixin(RecurrentDataFrameMixin):
         model._neg_ll = neg_ll
         model._mle = np.asarray(mle, dtype=float)
         model._n_obs = bic_sample_size(data)
+        # The multi-start Nelder-Mead's answer is accepted only as a
+        # verified maximum (principle 13): a restoration parameter on its
+        # bound held out where the likelihood is highest there.
+        if verified_maximum(
+            neg_ll,
+            model._mle,
+            model._parameter_bounds(),
+            max(float(model._n_obs), 1.0),
+        ):
+            model.maximum = "verified"
+        else:
+            model.maximum = "unverified"
+            warn_unverified("The {} fit".format(model.kind))
         return model

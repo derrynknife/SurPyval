@@ -21,6 +21,7 @@ from surpyval.utils.linalg import (
     numerical_hessian,
     wald_bound_on_support,
 )
+from surpyval.utils.no_maximum import restored_maximum
 from surpyval.utils.validation import alpha_ci_error, option_error
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -677,6 +678,11 @@ class RenewalModel(
         # Expose the restoration parameter under its conventional name
         # (``q``/``rho``) so existing usage keeps working.
         setattr(self, restoration_name, restoration)
+        # What a maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say: set by the
+        # fit; "not applicable" for a model built from its parameters,
+        # "unknown" for one restored from a dict saved without it.
+        self.maximum = "not applicable"
 
     # -- serialisation -----------------------------------------------------
 
@@ -715,6 +721,7 @@ class RenewalModel(
             "params": np.asarray(self.model.params, dtype=float).tolist(),
             "restoration": float(self.restoration),
             "how": self.how,
+            "maximum": self.maximum,
         }
         if getattr(self, "kijima_type", None) is not None:
             out["kijima_type"] = self.kijima_type
@@ -751,6 +758,7 @@ class RenewalModel(
         # A reloaded fit still says it was fitted by MLE (it carries no
         # likelihood, as a reloaded parametric model does not).
         out.how = model_dict.get("how", "from_params")
+        out.maximum = restored_maximum(model_dict)
         return out
 
     @staticmethod
