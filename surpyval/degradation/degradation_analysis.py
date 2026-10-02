@@ -22,8 +22,9 @@ the reference-stress life distribution. See :mod:`.step_stress`.
 from __future__ import annotations
 
 import warnings
+from dataclasses import dataclass, field
 from numbers import Number
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import numpy.typing as npt
@@ -76,6 +77,34 @@ _BOUNDARY_CONSEQUENCE = (
     "unreliable there. More units, or a path model with fewer parameters, "
     "give the data a better chance to determine it"
 )
+
+
+@dataclass
+class _UnitFits:
+    """Each unit's path fit, and the sums the population estimates use."""
+
+    path_params: npt.NDArray
+    pseudo: npt.NDArray
+    last_time: npt.NDArray
+    estimation_cov_sum: npt.NDArray
+    link_params: npt.NDArray
+    rss_total: Any = 0.0
+    dof_total: int = 0
+    y_by_unit: list = field(default_factory=list)
+    x_by_unit: list = field(default_factory=list)
+    design_by_unit: list = field(default_factory=list)
+    link_design_by_unit: list = field(default_factory=list)
+    link_estimation_covs: list = field(default_factory=list)
+
+
+class _Population(NamedTuple):
+    """The moment estimate of the path-parameter population."""
+
+    mean: npt.NDArray
+    cov: npt.NDArray
+    sample_cov: npt.NDArray
+    measurement_var: Any
+    was_clipped: bool
 
 
 class DegradationAnalysis_:
@@ -254,33 +283,10 @@ class DegradationAnalysis_:
             pseudo failure times, and the fitted life model.
         """
         x_arr, y_arr, i_arr = self._handle_xyi(x, y, i)
-
-        # a 0-d array (e.g. ``np.array(15.0)`` or a reduction's result) is a
-        # number too; anything with a shape is not
-        if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
-            threshold = threshold.item()
-        if not isinstance(threshold, Number) or not np.isfinite(threshold):
-            raise ValueError("threshold must be a finite number")
-        threshold = float(threshold)
-
-        check_option(
-            "population_method", population_method, ("moments", "reml")
+        threshold = self._check_fit_arguments(
+            threshold, population_method, i_arr, acceleration, stress_ref
         )
-
         units = np.unique(i_arr)
-        if len(units) < 2:
-            raise ValueError(
-                "Degradation analysis requires at least 2 units; "
-                "got {}".format(len(units))
-            )
-
-        if acceleration not in (None, "clock"):
-            raise option_error("acceleration", acceleration, (None, "clock"))
-        if acceleration is None and stress_ref is not None:
-            raise ValueError(
-                "stress_ref is the reference stress of acceleration='clock' "
-                "and is only used with it"
-            )
         is_best = isinstance(path, str) and path.lower() == "best"
         if acceleration == "clock":
             self._check_clock_arguments(Z, links, is_best, distribution, x_arr)
@@ -326,30 +332,184 @@ class DegradationAnalysis_:
             links = validate_links(path_model, links)
             linked = LinkedPathModel(path_model, links)
 
-        n_params = len(path_model.parameter_names)
-        path_params = np.empty((len(units), n_params))
-        pseudo = np.empty(len(units))
-        last_time = np.empty(len(units))
-        rss_total = 0.0
-        dof_total = 0
-        estimation_cov_sum = np.zeros((n_params, n_params))
-        y_by_unit = []
-        x_by_unit = []
-        design_by_unit = []
-        link_params = np.empty((len(units), n_params))
-        link_design_by_unit = []
-        link_estimation_covs = []
-
         # A bootstrap refit's units are the model's own (see
         # ``utils.refits.DEGRADATION_REFIT``, #522); not where the clock,
         # fitted to all the units, sets their times.
-        from surpyval.utils.refits import DEGRADATION_REFIT, warm_starts
+        from surpyval.utils.refits import DEGRADATION_REFIT
 
         refit = DEGRADATION_REFIT.get()
         kept = (
             refit["units"]
             if refit is not None and acceleration is None
             else None
+        )
+        fits = self._fit_unit_paths(
+            x_path, y_arr, i_arr, units, path_model, threshold, linked, kept
+        )
+
+        population = self._moment_population(fits, len(units))
+        if population.was_clipped and population_method == "moments":
+            warnings.warn(
+                "The noise-corrected between-unit covariance of the path "
+                "parameters was not positive semi-definite (the estimation "
+                "noise is comparable to the between-unit scatter); its "
+                "negative eigenvalues were clipped to zero, so "
+                + _BOUNDARY_CONSEQUENCE
+                + "; population_method='reml' estimates it by restricted "
+                "maximum likelihood instead, though it may also land on the "
+                "boundary",
+                stacklevel=caller_stacklevel(),
+            )
+        path_param_mean = population.mean
+        path_param_cov = population.cov
+        measurement_var = population.measurement_var
+
+        reml_diagnostics: dict = {}
+        if population_method == "reml":
+            path_param_mean, path_param_cov, measurement_var = (
+                self._reml_population(
+                    fits,
+                    population,
+                    path_model,
+                    y_arr,
+                    clock_population,
+                    reml_diagnostics,
+                )
+            )
+
+        path_param_fixed = None
+        path_param_fixed_names = None
+        path_param_link_cov = None
+        link_diagnostics: dict = {}
+        if linked is not None:
+            assert Z_units is not None and links is not None
+            path_param_fixed, path_param_link_cov, link_var = (
+                self._fit_stress_population(
+                    linked,
+                    links,
+                    Z_units,
+                    fits.y_by_unit,
+                    fits.x_by_unit,
+                    fits.link_params,
+                    fits.link_design_by_unit,
+                    fits.link_estimation_covs,
+                    measurement_var,
+                    population_method,
+                    diagnostics=link_diagnostics,
+                )
+            )
+            path_param_fixed_names = fixed_effect_names(
+                linked.parameter_names,
+                path_model.parameter_names,
+                links,
+                Z_units.shape[1],
+            )
+            if population_method == "reml":
+                # the stress-conditional model is the population model
+                # of a linked fit; its noise estimate supersedes the
+                # pooled one
+                measurement_var = link_var
+        self._warn_reml_boundary(reml_diagnostics, link_diagnostics)
+
+        pseudo_failure_times, c = self._censor_units(
+            fits, path_model, threshold, y_arr, x_path, i_arr, units
+        )
+        life_model = self._fit_life_model(
+            distribution, how, pseudo_failure_times, c, Z_units, refit
+        )
+
+        model = DegradationModel(
+            x=x_arr,
+            y=y_arr,
+            i=i_arr,
+            units=units,
+            threshold=threshold,
+            path_model=path_model,
+            path_params=fits.path_params,
+            pseudo_failure_times=pseudo_failure_times,
+            c=c,
+            life_model=life_model,
+            measurement_var=measurement_var,
+            path_param_mean=path_param_mean,
+            path_param_cov=path_param_cov,
+            path_param_sample_cov=population.sample_cov,
+            population_method=population_method,
+            path_selection=path_selection,
+            Z=Z_rows if acceleration == "clock" else Z_units,
+            links=links,
+            path_param_fixed=path_param_fixed,
+            path_param_fixed_names=path_param_fixed_names,
+            path_param_link_cov=path_param_link_cov,
+            acceleration=acceleration,
+            gamma=gamma,
+            stress_ref=z_ref,
+        )
+        # Recorded so the bootstrap confidence bounds can rerun the pipeline
+        # (with the selected path model held fixed) on resampled units.
+        model._distribution = distribution
+        model._how = how
+        return model
+
+    @staticmethod
+    def _check_fit_arguments(
+        threshold: float,
+        population_method: str,
+        i_arr: npt.NDArray,
+        acceleration: "str | None",
+        stress_ref: Any,
+    ) -> float:
+        """Check ``fit``'s scalar options; the threshold as a float."""
+        # a 0-d array (e.g. ``np.array(15.0)`` or a reduction's result) is a
+        # number too; anything with a shape is not
+        if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
+            threshold = threshold.item()
+        if not isinstance(threshold, Number) or not np.isfinite(threshold):
+            raise ValueError("threshold must be a finite number")
+        threshold = float(threshold)
+
+        check_option(
+            "population_method", population_method, ("moments", "reml")
+        )
+
+        units = np.unique(i_arr)
+        if len(units) < 2:
+            raise ValueError(
+                "Degradation analysis requires at least 2 units; "
+                "got {}".format(len(units))
+            )
+
+        if acceleration not in (None, "clock"):
+            raise option_error("acceleration", acceleration, (None, "clock"))
+        if acceleration is None and stress_ref is not None:
+            raise ValueError(
+                "stress_ref is the reference stress of acceleration='clock' "
+                "and is only used with it"
+            )
+        return threshold
+
+    @staticmethod
+    def _fit_unit_paths(
+        x_path: npt.NDArray,
+        y_arr: npt.NDArray,
+        i_arr: npt.NDArray,
+        units: npt.NDArray,
+        path_model: PathModel,
+        threshold: float,
+        linked: "LinkedPathModel | None",
+        kept: "dict | None",
+    ) -> _UnitFits:
+        """Fit the path model to each unit, and each path's crossing.
+
+        ``kept`` holds a bootstrap refit's earlier fits, keyed by a unit's
+        measurements, and is filled with the ones made here.
+        """
+        n_params = len(path_model.parameter_names)
+        fits = _UnitFits(
+            path_params=np.empty((len(units), n_params)),
+            pseudo=np.empty(len(units)),
+            last_time=np.empty(len(units)),
+            estimation_cov_sum=np.zeros((n_params, n_params)),
+            link_params=np.empty((len(units), n_params)),
         )
         for idx, unit in enumerate(units):
             mask = i_arr == unit
@@ -373,132 +533,117 @@ class DegradationAnalysis_:
                 inv_jtj = safe_inv(jacobian.T @ jacobian)
                 if kept is not None:
                     kept[key] = (params, crossing, rss, inv_jtj, jacobian)
-            path_params[idx] = params
-            pseudo[idx] = crossing
-            last_time[idx] = x_unit.max()
+            fits.path_params[idx] = params
+            fits.pseudo[idx] = crossing
+            fits.last_time[idx] = x_unit.max()
 
-            rss_total += rss
-            dof_total += len(x_unit) - n_params
-            estimation_cov_sum += inv_jtj
-            y_by_unit.append(y_unit)
-            x_by_unit.append(x_unit)
-            design_by_unit.append(jacobian)
+            fits.rss_total += rss
+            fits.dof_total += len(x_unit) - n_params
+            fits.estimation_cov_sum += inv_jtj
+            fits.y_by_unit.append(y_unit)
+            fits.x_by_unit.append(x_unit)
+            fits.design_by_unit.append(jacobian)
 
             if linked is not None:
                 # the same fit on the link scale, with the Jacobian
                 # (and hence the estimation covariance) mapped there
                 eta = linked.to_link(params)
-                link_params[idx] = eta
+                fits.link_params[idx] = eta
                 link_jacobian = linked.jacobian(x_unit, *eta)
-                link_design_by_unit.append(link_jacobian)
-                link_estimation_covs.append(
+                fits.link_design_by_unit.append(link_jacobian)
+                fits.link_estimation_covs.append(
                     safe_inv(link_jacobian.T @ link_jacobian)
                 )
+        return fits
 
-        # Two-stage (Lu-Meeker) noise correction: the scatter of the
-        # per-unit estimates is Sigma + V_i, so subtracting the average
-        # estimation covariance leaves the between-unit covariance.
-        measurement_var = rss_total / dof_total if dof_total > 0 else 0.0
-        path_param_mean = path_params.mean(axis=0)
-        path_param_sample_cov = np.atleast_2d(
-            np.cov(path_params, rowvar=False, ddof=1)
+    @staticmethod
+    def _moment_population(fits: _UnitFits, n_units: int) -> _Population:
+        """The two-stage (Lu-Meeker) moment estimate of the population.
+
+        The scatter of the per-unit estimates is Sigma + V_i, so
+        subtracting the average estimation covariance leaves the
+        between-unit covariance.
+        """
+        measurement_var = (
+            fits.rss_total / fits.dof_total if fits.dof_total > 0 else 0.0
         )
-        mean_estimation_cov = measurement_var * estimation_cov_sum / len(units)
+        path_param_mean = fits.path_params.mean(axis=0)
+        path_param_sample_cov = np.atleast_2d(
+            np.cov(fits.path_params, rowvar=False, ddof=1)
+        )
+        mean_estimation_cov = (
+            measurement_var * fits.estimation_cov_sum / n_units
+        )
         path_param_cov, was_clipped = psd_project(
             path_param_sample_cov - mean_estimation_cov
         )
-        if was_clipped and population_method == "moments":
+        return _Population(
+            path_param_mean,
+            path_param_cov,
+            path_param_sample_cov,
+            measurement_var,
+            was_clipped,
+        )
+
+    @staticmethod
+    def _reml_population(
+        fits: _UnitFits,
+        population: _Population,
+        path_model: PathModel,
+        y_arr: npt.NDArray,
+        clock_population: "tuple | None",
+        diagnostics: dict,
+    ) -> tuple[npt.NDArray, npt.NDArray, float]:
+        """``(mean, cov, measurement_var)`` of the population by REML.
+
+        The moment estimates are the starting values; a
+        linear-in-parameters path is an exact linear mixed model, a
+        nonlinear one is fitted by FOCE linearisation. A clock fit has
+        already estimated its population with its clock.
+        """
+        measurement_var = population.measurement_var
+        noise_floor = np.finfo(float).eps * float(np.mean(y_arr**2))
+        if not measurement_var > noise_floor:
+            raise ValueError(
+                "population_method='reml' requires measurement noise, "
+                "but the pooled measurement variance is 0 (every unit's "
+                "path fitted its measurements exactly, or no unit has "
+                "more measurements than path parameters)"
+            )
+        if clock_population is not None:
+            reml_mean, reml_cov, reml_var, converged = clock_population
+        elif path_model.linear_in_parameters:
+            reml_mean, reml_cov, reml_var, converged = reml_estimate(
+                fits.y_by_unit,
+                fits.design_by_unit,
+                population.cov,
+                measurement_var,
+                diagnostics=diagnostics,
+            )
+        else:
+            reml_mean, reml_cov, reml_var, converged = reml_estimate_nonlinear(
+                fits.y_by_unit,
+                fits.x_by_unit,
+                path_model,
+                population.mean,
+                population.cov,
+                measurement_var,
+                fits.path_params,
+                diagnostics=diagnostics,
+            )
+        if not converged:
             warnings.warn(
-                "The noise-corrected between-unit covariance of the path "
-                "parameters was not positive semi-definite (the estimation "
-                "noise is comparable to the between-unit scatter); its "
-                "negative eigenvalues were clipped to zero, so "
-                + _BOUNDARY_CONSEQUENCE
-                + "; population_method='reml' estimates it by restricted "
-                "maximum likelihood instead, though it may also land on the "
-                "boundary",
-                stacklevel=caller_stacklevel(),
+                "The REML optimisation did not report convergence; the "
+                "population path-parameter estimates may be inaccurate",
+                stacklevel=3,
             )
+        return reml_mean, reml_cov, reml_var
 
-        reml_diagnostics: dict = {}
-        if population_method == "reml":
-            noise_floor = np.finfo(float).eps * float(np.mean(y_arr**2))
-            if not measurement_var > noise_floor:
-                raise ValueError(
-                    "population_method='reml' requires measurement noise, "
-                    "but the pooled measurement variance is 0 (every unit's "
-                    "path fitted its measurements exactly, or no unit has "
-                    "more measurements than path parameters)"
-                )
-            # the moment estimates are the starting values; a
-            # linear-in-parameters path is an exact linear mixed model,
-            # a nonlinear one is fitted by FOCE linearisation. A clock fit
-            # has already estimated its population with its clock.
-            if clock_population is not None:
-                reml_mean, reml_cov, reml_var, converged = clock_population
-            elif path_model.linear_in_parameters:
-                reml_mean, reml_cov, reml_var, converged = reml_estimate(
-                    y_by_unit,
-                    design_by_unit,
-                    path_param_cov,
-                    measurement_var,
-                    diagnostics=reml_diagnostics,
-                )
-            else:
-                reml_mean, reml_cov, reml_var, converged = (
-                    reml_estimate_nonlinear(
-                        y_by_unit,
-                        x_by_unit,
-                        path_model,
-                        path_param_mean,
-                        path_param_cov,
-                        measurement_var,
-                        path_params,
-                        diagnostics=reml_diagnostics,
-                    )
-                )
-            if not converged:
-                warnings.warn(
-                    "The REML optimisation did not report convergence; the "
-                    "population path-parameter estimates may be inaccurate",
-                    stacklevel=2,
-                )
-            path_param_mean = reml_mean
-            path_param_cov = reml_cov
-            measurement_var = reml_var
-
-        path_param_fixed = None
-        path_param_fixed_names = None
-        path_param_link_cov = None
-        link_diagnostics: dict = {}
-        if linked is not None:
-            assert Z_units is not None and links is not None
-            path_param_fixed, path_param_link_cov, link_var = (
-                self._fit_stress_population(
-                    linked,
-                    links,
-                    Z_units,
-                    y_by_unit,
-                    x_by_unit,
-                    link_params,
-                    link_design_by_unit,
-                    link_estimation_covs,
-                    measurement_var,
-                    population_method,
-                    diagnostics=link_diagnostics,
-                )
-            )
-            path_param_fixed_names = fixed_effect_names(
-                linked.parameter_names,
-                path_model.parameter_names,
-                links,
-                Z_units.shape[1],
-            )
-            if population_method == "reml":
-                # the stress-conditional model is the population model
-                # of a linked fit; its noise estimate supersedes the
-                # pooled one
-                measurement_var = link_var
+    @staticmethod
+    def _warn_reml_boundary(
+        reml_diagnostics: dict, link_diagnostics: dict
+    ) -> None:
+        """Warn if a REML between-unit covariance is singular."""
         on_boundary = [
             name
             for name, diagnostics in (
@@ -518,6 +663,24 @@ class DegradationAnalysis_:
                 stacklevel=caller_stacklevel(),
             )
 
+    def _censor_units(
+        self,
+        fits: _UnitFits,
+        path_model: PathModel,
+        threshold: float,
+        y_arr: npt.NDArray,
+        x_path: npt.NDArray,
+        i_arr: npt.NDArray,
+        units: npt.NDArray,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        """``(pseudo_failure_times, c)``: each unit's time and censoring.
+
+        A unit whose path crosses the threshold at a positive time fails
+        there; one already past it at its first measurement is left
+        censored there, and one that never reaches it right censored at
+        its last time (each with a warning).
+        """
+        pseudo = fits.pseudo
         events = np.isfinite(pseudo) & (pseudo > 0)
         if not events.any():
             raise ValueError(
@@ -530,7 +693,7 @@ class DegradationAnalysis_:
             )
         started = self._already_failed(
             path_model,
-            path_params,
+            fits.path_params,
             pseudo,
             events,
             threshold,
@@ -545,7 +708,7 @@ class DegradationAnalysis_:
                 "crossed it at or before time zero); these units are "
                 "treated as failed by then: left censored at their first "
                 "measurement time".format(units[started].tolist(), threshold),
-                stacklevel=2,
+                stacklevel=3,
             )
         never = ~(events | started)
         if never.any():
@@ -555,7 +718,7 @@ class DegradationAnalysis_:
                 "censored at their last observed time".format(
                     units[never].tolist(), threshold
                 ),
-                stacklevel=2,
+                stacklevel=3,
             )
 
         first_time = np.array(
@@ -565,57 +728,42 @@ class DegradationAnalysis_:
             ]
         )
         pseudo_failure_times = np.where(
-            events, pseudo, np.where(started, first_time, last_time)
+            events, pseudo, np.where(started, first_time, fits.last_time)
         )
         c = np.where(events, 0, np.where(started, -1, 1))
+        return pseudo_failure_times, c
+
+    @staticmethod
+    def _fit_life_model(
+        distribution: Any,
+        how: str,
+        pseudo_failure_times: npt.NDArray,
+        c: npt.NDArray,
+        Z_units: "npt.NDArray | None",
+        refit: "dict | None",
+    ) -> Any:
+        """The life model fitted to the pseudo failure times.
+
+        A regression on the units' stresses when there are any (a plain
+        distribution wrapped in ``AFT``); a bootstrap refit starts from
+        the original fit's parameters.
+        """
+        from surpyval.utils.refits import warm_starts
 
         life_init = None if refit is None else refit.get("life_init")
         if Z_units is None and life_init is not None and how == "MLE":
             with warm_starts():
-                life_model = distribution.fit(
+                return distribution.fit(
                     x=pseudo_failure_times, c=c, how=how, init=life_init
                 )
-        elif Z_units is None:
-            life_model = distribution.fit(x=pseudo_failure_times, c=c, how=how)
-        else:
-            reg = (
-                distribution
-                if _is_regression_fitter(distribution)
-                else AFT(distribution)
-            )
-            life_model = reg.fit(x=pseudo_failure_times, Z=Z_units, c=c)
-
-        model = DegradationModel(
-            x=x_arr,
-            y=y_arr,
-            i=i_arr,
-            units=units,
-            threshold=threshold,
-            path_model=path_model,
-            path_params=path_params,
-            pseudo_failure_times=pseudo_failure_times,
-            c=c,
-            life_model=life_model,
-            measurement_var=measurement_var,
-            path_param_mean=path_param_mean,
-            path_param_cov=path_param_cov,
-            path_param_sample_cov=path_param_sample_cov,
-            population_method=population_method,
-            path_selection=path_selection,
-            Z=Z_rows if acceleration == "clock" else Z_units,
-            links=links,
-            path_param_fixed=path_param_fixed,
-            path_param_fixed_names=path_param_fixed_names,
-            path_param_link_cov=path_param_link_cov,
-            acceleration=acceleration,
-            gamma=gamma,
-            stress_ref=z_ref,
+        if Z_units is None:
+            return distribution.fit(x=pseudo_failure_times, c=c, how=how)
+        reg = (
+            distribution
+            if _is_regression_fitter(distribution)
+            else AFT(distribution)
         )
-        # Recorded so the bootstrap confidence bounds can rerun the pipeline
-        # (with the selected path model held fixed) on resampled units.
-        model._distribution = distribution
-        model._how = how
-        return model
+        return reg.fit(x=pseudo_failure_times, Z=Z_units, c=c)
 
     @staticmethod
     def _already_failed(
