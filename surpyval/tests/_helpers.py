@@ -59,6 +59,54 @@ def fresh_conformance_fit(name):
         return case.fit(case.data())
 
 
+def finite_difference_covariance(model, rel_step=1e-3):
+    """A parametric regression model's covariance and an independent one.
+
+    Returns ``(covariance, reference)`` over the free parameters: the
+    model's own, and the inverse of a central-difference Hessian of its
+    negative log-likelihood at the same point (that of
+    ``_inference_state``), each step ``rel_step`` of the parameter (at
+    least 1e-2 of it) and extrapolated (Richardson) from that step and
+    half of it."""
+    from surpyval.univariate.regression._fit_skeleton import centred_copy
+
+    p_hat, center, cov = model._inference_state()
+    p_hat = np.asarray(p_hat, dtype=float)
+    free = [
+        i
+        for i, n in enumerate(model.parameter_names)
+        if n not in model._held()
+    ]
+    data = model.data
+    if center is not None and np.any(center):
+        data = centred_copy(data, center)
+
+    def f(v):
+        full = p_hat.copy()
+        full[free] = v
+        return float(model.model.neg_ll(data, *full))
+
+    def hessian(h):
+        x0, k = p_hat[free], len(free)
+        H = np.empty((k, k))
+        for i in range(k):
+            for j in range(k):
+                ei, ej = np.zeros(k), np.zeros(k)
+                ei[i], ej[j] = h[i], h[j]
+                H[i, j] = (
+                    f(x0 + ei + ej)
+                    - f(x0 + ei - ej)
+                    - f(x0 - ei + ej)
+                    + f(x0 - ei - ej)
+                ) / (4 * h[i] * h[j])
+        return 0.5 * (H + H.T)
+
+    h = rel_step * np.maximum(np.abs(p_hat[free]), 1e-2)
+    with np.errstate(all="ignore"):
+        H = (4 * hessian(h / 2) - hessian(h)) / 3
+    return cov[np.ix_(free, free)], np.linalg.inv(H)
+
+
 def neg_ll_at(model, theta):
     """A univariate model's negative log-likelihood at ``theta``."""
     with np.errstate(all="ignore"):

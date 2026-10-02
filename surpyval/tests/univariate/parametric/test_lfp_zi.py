@@ -380,3 +380,50 @@ class TestLFPTruncation:
         model = Weibull.fit(x=np.column_stack([xl, xr]), c=np.full(2000, 2))
         assert model.params[0] == pytest.approx(10.0, rel=0.05)
         assert model.params[1] == pytest.approx(2.0, rel=0.1)
+
+
+# ---------------------------------------------------------------------------
+# #548: the zero-inflation mass sits at 0, so a left truncation below 0
+# truncates nothing, and one at 0 excludes the mass.
+# ---------------------------------------------------------------------------
+
+
+def _zero_inflated_548():
+    rng = np.random.default_rng(0)
+    x = rng.weibull(1.5, 200) * 10
+    zero = rng.random(200) < 0.13
+    x[zero] = 0.0
+    c = np.zeros(200, int)
+    c[(rng.random(200) < 0.2) & ~zero] = 1
+    return x, c, zero
+
+
+@pytest.mark.parametrize("structural", [{}, {"lfp": True}, {"offset": True}])
+@pytest.mark.parametrize("tl", [-1.0, -50.0])
+def test_548_truncation_below_zero_is_no_truncation(structural, tl):
+    x, c, zero = _zero_inflated_548()
+    if structural.get("offset"):
+        x[~zero] += 3.0
+    plain = Weibull.fit(x, c=c, zi=True, **structural)
+    # At tl = -1 the mass at 0 was counted as already gone: f0 ran from
+    # 0.135 to 1 and the negative log-likelihood from 562.0 to -508.7
+    truncated = no_warnings(Weibull.fit, x, c=c, zi=True, tl=tl, **structural)
+    assert truncated.f0 == plain.f0
+    np.testing.assert_array_equal(truncated.params, plain.params)
+    assert truncated.gamma == plain.gamma and truncated.p == plain.p
+    assert truncated._neg_ll == plain._neg_ll
+
+
+def test_548_window_counts_the_mass_from_zero():
+    # The likelihood's window (lo, hi]: the mass f0 at 0 is inside
+    # (-1, 5] and outside (0, 5], as in the fitted model's ff
+    model = Weibull.from_params([10, 1.5], f0=0.2)
+    params = (10, 1.5, 0.0, 0.2, 1.0)
+    for lo, hi in [(-1.0, 5.0), (0.0, 5.0), (-1.0, np.inf), (0.0, np.inf)]:
+        log_window = Weibull.ll_interval_or_truncated(
+            np.array([lo]), np.array([hi]), np.array([1]), *params
+        )
+        expected = (1.0 if np.isinf(hi) else model.ff(hi)) - model.ff(lo)
+        assert np.exp(log_window) == pytest.approx(expected, rel=1e-12)
+    assert model.ff(-1.0) == 0.0
+    assert model.ff(0.0) == pytest.approx(0.2)

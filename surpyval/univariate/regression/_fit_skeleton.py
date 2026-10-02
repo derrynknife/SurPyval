@@ -1628,8 +1628,8 @@ def optimise_nm_tnc(
     best = res2 if res2.success else res
     g = _gradient(fun, best.x)
     if g is None:
-        # An objective autograd cannot differentiate (the AFT
-        # time-varying likelihood): the optimiser's verdict is all there is.
+        # An objective autograd cannot differentiate: the optimiser's
+        # verdict is all there is.
         best.stopped_short = not best.success
         if not quiet:
             warn_if_not_converged(best)

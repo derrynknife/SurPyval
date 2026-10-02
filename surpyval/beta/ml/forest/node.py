@@ -407,6 +407,28 @@ def node_from_dict(node_dict: dict) -> Node:
     )
 
 
+def point_time_data(data: SurpyvalData) -> SurpyvalData:
+    """``data`` with its event times as a 1-D array when no row needs
+    two of them.
+
+    Interval-censored data stores ``x`` as ``[left, right]`` rows. A node
+    split off such data can hold only observed and right-censored rows
+    (``left == right``), yet keep the 2-D layout, which the risk-set
+    code (the log-rank split, the Nelson-Aalen leaf) reads as 1-D times
+    (#543). Such a node is returned with ``x`` as its rows' times, as if
+    it had been given on its own; any other ``data`` is returned as is.
+    """
+    if np.ndim(data.x) != 2 or needs_full_likelihood_split(data):
+        return data
+    out = SurpyvalData(
+        np.asarray(data.x)[:, 0], data.c, data.n, data.t, handle=False
+    )
+    Z = getattr(data, "Z", None)
+    if Z is not None:
+        out.add_covariates(Z)
+    return out
+
+
 def build_tree(
     data: SurpyvalData,
     Z: NDArray,
@@ -451,6 +473,12 @@ def build_tree(
     """
     if rng is None:
         rng = np.random.mtrand._rand
+
+    if kind == "non-parametric":
+        # A node of observed / right-censored rows split off interval
+        # data takes the log-rank split and a Nelson-Aalen leaf, which
+        # read 1-D times (#543).
+        data = point_time_data(data)
 
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:

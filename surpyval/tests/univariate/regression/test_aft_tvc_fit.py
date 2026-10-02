@@ -11,15 +11,19 @@ These tests pin the properties that make that likelihood correct:
 * splitting a subject into equal-covariate contiguous episodes leaves the fit
   unchanged (accelerated age accrues the same either way);
 * a genuine time-varying effect is recovered;
-* the confidence-bound path (a numerical Hessian of the *custom* likelihood)
-  produces a valid covariance;
+* the covariance is the exact information of the *custom* likelihood, and
+  data with no finite maximum warn (#555);
 * the ordinary AFT/PH fits -- the shared MLE code -- are untouched.
 """
+
+import warnings
 
 import numpy as np
 import pytest
 
+import surpyval as sp
 from surpyval import WeibullAFT, WeibullPH
+from surpyval.tests._helpers import finite_difference_covariance, no_warnings
 from surpyval.univariate.regression.accelerated_failure_time import (
     aft_tvc_fit,
 )
@@ -181,6 +185,50 @@ def test_from_df_and_timeline_match_arrays():
     assert np.allclose(m_tl.params, m_arr.params, atol=1e-4)
 
 
+def test_553_timeline_from_df_equals_counting_process_fit():
+    # The AFT family had fit_tvc_timeline but not its DataFrame form,
+    # which the PH, AH and PO families and Cox have (#553). A timeline is
+    # the same data as its start-stop rows, so the fits are the same.
+    import pandas as pd
+
+    Z, x, _ = _plain_data(seed=7, n=120)
+    n = x.shape[0]
+    mid = x * 0.4
+    ss = pd.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 2),
+            "xl": np.column_stack([0 * x, mid]).ravel(),
+            "xr": np.column_stack([mid, x]).ravel(),
+            "c": np.tile([1, 0], n),
+            "z": np.column_stack([Z, Z + 0.3]).ravel(),
+            "n": 1,
+        }
+    )
+    tl = pd.DataFrame(
+        {
+            "id": np.repeat(np.arange(n), 3),
+            "time": np.column_stack([0 * x, mid, x]).ravel(),
+            "z": np.column_stack([Z, Z + 0.3, Z + 0.3]).ravel(),
+            "c": np.tile([1, 1, 0], n),
+            "n": 1,
+        }
+    )
+    m_ss = WeibullAFT.fit_tvc_from_df(ss, "id", "xl", "xr", "c", "z", "n")
+    m_tl = WeibullAFT.fit_tvc_timeline_from_df(tl, "id", "time", "z", "c", "n")
+    np.testing.assert_allclose(m_tl.params, m_ss.params, rtol=1e-10)
+    np.testing.assert_allclose(m_tl.covariance(), m_ss.covariance(), rtol=1e-8)
+    assert m_tl.is_tvc and m_tl.feature_names == ["z"]
+    # options reach the fit: fixed and center, and a formula for Z_cols
+    fixed = WeibullAFT.fit_tvc_timeline_from_df(
+        tl, "id", "time", None, "c", formula="z", fixed={"beta_0": 0.1}
+    )
+    assert fixed.params[-1] == 0.1 and fixed.formula == "z"
+    centred = WeibullAFT.fit_tvc_timeline_from_df(
+        tl, "id", "time", "z", "c", center=True
+    )
+    assert centred.center is not None
+
+
 def test_core_mle_unchanged():
     # The shared MLE path must be untouched: ordinary AFT and PH still fit and
     # give sensible parameters after the TVC mixin was added.
@@ -241,3 +289,58 @@ def test_contiguous_from_zero_still_fits():
     i, xl, xr, c, Z = _contiguous_tvc_data()
     m = WeibullAFT.fit_tvc(i, xl, xr, c, Z)
     assert np.all(np.isfinite(m.params))
+
+
+def _two_interval_data(seed, n, no_events_level=False):
+    """Each subject's covariate steps up by 0.3 at 40% of its life; a
+    second covariate is 1 on a random half of the subjects or, with
+    ``no_events_level``, on exactly the censored ones."""
+    rng = np.random.default_rng(seed)
+    Z = rng.normal(0, 1, n)
+    x = np.abs(rng.weibull(1.5, n) * 10 * np.exp(-0.3 * Z)) + 0.5
+    censored = rng.uniform(size=n) < 0.3
+    level = censored if no_events_level else rng.integers(0, 2, n)
+    i = np.repeat(np.arange(n), 2)
+    xl = np.column_stack([0 * x, 0.4 * x]).ravel()
+    xr = np.column_stack([0.4 * x, x]).ravel()
+    c = np.column_stack([np.ones(n), censored]).ravel().astype(int)
+    Zr = np.column_stack(
+        [np.column_stack([Z, Z + 0.3]).ravel(), np.repeat(level, 2)]
+    ).astype(float)
+    return i, xl, xr, c, Zr
+
+
+@pytest.mark.parametrize("name", ["WeibullAFT", "LogNormalAFT"])
+def test_555_a_level_with_no_events_warns_once(name):
+    # The time-varying AFT fit had no runaway check: the coefficient of a
+    # level with no events stopped at -9.4 (Weibull) or -6.8 (LogNormal)
+    # in silence. It now warns as the ordinary fit does.
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        getattr(sp, name).fit_tvc(*_two_interval_data(0, 60, True))
+    assert len(w) == 1, [str(a.message) for a in w]
+    assert str(w[0].message).startswith(
+        "No finite maximum: the likelihood keeps increasing as "
+        "coefficient(s) [1]"
+    )
+    assert w[0].filename == __file__
+
+
+@pytest.mark.parametrize("center", [False, True])
+@pytest.mark.parametrize(
+    "name", ["WeibullAFT", "LogNormalAFT", "ExponentialAFT"]
+)
+def test_555_the_covariance_is_the_exact_information(name, center):
+    # The covariance was a numerical Hessian, 2e-4 to 1e-3 (relative to
+    # the standard errors) from a Richardson-extrapolated one; it is now
+    # the exact information, which agrees with that to 1e-6. An ordinary
+    # fit gives no warning.
+    model = no_warnings(
+        getattr(sp, name).fit_tvc, *_two_interval_data(1, 200), center=center
+    )
+    assert model._information is not None
+    cov, ref = finite_difference_covariance(model)
+    se = np.sqrt(np.diag(ref))
+    np.testing.assert_allclose(
+        cov / np.outer(se, se), ref / np.outer(se, se), rtol=0, atol=2e-6
+    )

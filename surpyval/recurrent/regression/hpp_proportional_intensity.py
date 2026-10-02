@@ -2,14 +2,19 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-import numpy as np
+import autograd.numpy as np
+import numpy as onp
+from autograd import hessian, jacobian
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
@@ -89,6 +94,25 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
 
     def inv_cif(self, cif: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return np.asarray(cif, dtype=float) / rate
+
+    @staticmethod
+    def _default_start(data: Any) -> np.ndarray:
+        """The default start: the rate of observed events per unit of
+        follow-up, ``log``-transformed as the search runs, and every
+        coefficient 0."""
+        # Use the right endpoint for interval-censored (2D) observations
+        # when estimating each item's latest event time for the initial
+        # rate guess.
+        _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
+        _, _inv = np.unique(data.i, return_inverse=True)
+        _max_x = np.full(_inv.max() + 1, -np.inf)
+        onp.maximum.at(_max_x, _inv, _x_max)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rate = (data.n[data.c == 0]).sum() / _max_x.sum()
+        if not (np.isfinite(rate) and rate > 0):
+            # e.g. only counts (c=-1 / c=2) and no exact events
+            rate = 1.0
+        return np.append(np.log(rate), np.zeros(data.Z.shape[1]))
 
     def create_negll_func(self, data: Any) -> Callable:
         Z = data.Z
@@ -284,36 +308,25 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         # ran to a rate of 0 with log(0) warnings.
         validate_nhpp_data(data, self)
         num_covariates = data.Z.shape[1]
+        user_init = init is not None
         if init is None:
-            # Use the right endpoint for interval-censored (2D) observations
-            # when estimating each item's latest event time for the initial
-            # rate guess.
-            _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
-            _, _inv = np.unique(data.i, return_inverse=True)
-            _max_x = np.full(_inv.max() + 1, -np.inf)
-            np.maximum.at(_max_x, _inv, _x_max)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                rate = (data.n[data.c == 0]).sum() / _max_x.sum()
-            if not (np.isfinite(rate) and rate > 0):
-                # e.g. only counts (c=-1 / c=2) and no exact events
-                rate = 1.0
-            init = np.append(np.log(rate), np.zeros(num_covariates))
+            start = self._default_start(data)
         else:
             # User-supplied starting values were previously overwritten
             # unconditionally (#288). The first value is the baseline
             # rate on its natural scale; optimisation runs on log(rate).
-            init = np.atleast_1d(np.asarray(init, dtype=float))
-            if init.size != 1 + num_covariates:
+            given = onp.atleast_1d(onp.asarray(init, dtype=float))
+            if given.size != 1 + num_covariates:
                 raise ValueError(
                     f"init must have {1 + num_covariates} values (baseline "
-                    f"rate + {num_covariates} coefficients); got {init.size}."
+                    f"rate + {num_covariates} coefficients); got {given.size}."
                 )
-            if not (np.isfinite(init[0]) and init[0] > 0):
+            if not (onp.isfinite(given[0]) and given[0] > 0):
                 raise ValueError(
                     "the baseline rate in init must be positive and finite; "
-                    f"got {init[0]!r}"
+                    f"got {given[0]!r}"
                 )
-            init = np.append(np.log(init[0]), init[1:])
+            start = onp.append(onp.log(given[0]), given[1:])
 
         neg_ll = self.create_negll_func(data)
 
@@ -323,12 +336,51 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         free = np.ones(1 + num_covariates, dtype=bool)
         free[1 + aliased] = False
 
-        def neg_ll_free(values: np.ndarray) -> float:
-            params = np.zeros(1 + num_covariates)
-            params[free] = values
-            return neg_ll(params)
+        def full(values: np.ndarray) -> np.ndarray:
+            # (Built by concatenation, so autograd can differentiate it.)
+            parts, k = [], 0
+            for is_free in free:
+                parts.append(values[k : k + 1] if is_free else np.zeros(1))
+                k += int(is_free)
+            return np.concatenate(parts)
 
-        res = minimize(neg_ll_free, init[free])
+        def neg_ll_free(values: np.ndarray) -> float:
+            return neg_ll(full(values))
+
+        def objective(values: np.ndarray) -> float:
+            value = neg_ll_free(values)
+            return float(value) if np.isfinite(value) else 1e300
+
+        def search(start: np.ndarray) -> Any:
+            # From a poor start exp(beta'Z) overflows: the search sees a
+            # large finite value there, and no raw warning escapes (from
+            # the likelihood or from BFGS's update with those values).
+            with np.errstate(all="ignore"):
+                return minimize(objective, start[free])
+
+        res = search(start)
+        # A start the user gave is followed by the default one, and the
+        # better answer kept, as for the NHPP fit (#429, #554): from a
+        # coefficient of 5 on the Rossi data exp(beta'Z) overflows, the
+        # search cannot move, and the start was returned in silence.
+        if user_init:
+            res = better_result(res, search(self._default_start(data)))
+        # The answer is kept only as a verified maximum (zero gradient,
+        # negative-definite Hessian of the log-likelihood). BFGS's own
+        # verdict is no test: it reports a "precision loss" at the
+        # maximum of the Rossi fit, and success where it never moved.
+        n_obs = bic_sample_size(data)
+        if not (
+            res.fun < 1e300
+            and is_local_minimum(
+                neg_ll_free,
+                jacobian(neg_ll_free),
+                hessian(neg_ll_free),
+                res.x,
+                obj_scale=max(float(n_obs), 1.0),
+            )
+        ):
+            warn_unverified("The proportional intensity fit")
         out.res = res
         fitted = np.full(1 + num_covariates, np.nan)
         fitted[free] = res.x
@@ -342,7 +394,7 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         # and covariate coefficients.
         out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
         out._mle = np.concatenate([out.params, out.coeffs])
-        out._n_obs = bic_sample_size(data)
+        out._n_obs = n_obs
         # The baseline hazard is this fitter's own constant-rate model, so the
         # fitted model's ``cif``/``iif``/``inv_cif`` (and everything built on
         # them: simulation, ``cif_cb``, ``plot``) delegate back to it.

@@ -184,7 +184,7 @@ def test_po_and_aft_expose_tvc():
         "fit_tvc_timeline_from_df",
     ):
         assert hasattr(PO(Weibull), method)
-    assert hasattr(AFT(Weibull), "fit_tvc")
+        assert hasattr(AFT(Weibull), method)
 
 
 def test_left_truncated_likelihood_does_not_reward_a_vanishing_scale():

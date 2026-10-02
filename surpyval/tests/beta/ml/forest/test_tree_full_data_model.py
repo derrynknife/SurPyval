@@ -421,3 +421,70 @@ def test_forest_on_interval_censored_data():
     s_fast = float(np.atleast_1d(forest.sf(5.0, np.array([1.0, 0.0])))[0])
     s_slow = float(np.atleast_1d(forest.sf(5.0, np.array([0.0, 0.0])))[0])
     assert s_fast < s_slow
+
+
+# -- #543: a point-time node split off interval data -------------------------
+
+
+def _mixed_543():
+    """The issue's data: exact, right- and interval-censored rows."""
+    rng = np.random.default_rng(0)
+    x = rng.weibull(1.5, 40) * 10
+    X = np.column_stack([x, x])
+    c = np.zeros(40, int)
+    X[:5, 1] = X[:5, 0] + 2
+    c[:5] = 2
+    c[5:10] = 1
+    return X, rng.normal(size=(40, 2)), c
+
+
+def test_543_non_parametric_tree_on_mixed_interval_data():
+    # A child holding only exact and right-censored rows kept the 2-D
+    # ``x`` of its interval-censored parent, and the risk-set log-rank
+    # split raised numpy's "object too deep for desired array".
+    X, Z, c = _mixed_543()
+    for selection in ("greedy", "ctree"):
+        tree = SurvivalTree.fit(
+            x=X, Z=Z, c=c, kind="non-parametric", selection=selection
+        )
+        sf = tree.sf([1.0, 5.0, 10.0, 20.0], Z)
+        assert np.all((sf >= 0) & (sf <= 1))
+        assert np.all(np.diff(sf, axis=1) <= 0)
+    forest = RandomSurvivalForest.fit(
+        x=X, Z=Z, c=c, kind="non-parametric", n_trees=5, random_state=1
+    )
+    sf = forest.sf([1.0, 5.0, 10.0, 20.0], Z)
+    assert np.all(np.isfinite(sf)) and np.all(np.diff(sf, axis=1) <= 0)
+
+
+def test_543_point_node_split_as_if_given_alone():
+    # A node of exact / right-censored rows taken from interval data is
+    # split and leafed exactly as the same rows given with 1-D times.
+    from surpyval.beta.ml.forest.node import build_tree, tree_lines
+
+    X, Z, c = _mixed_543()
+    data = SurpyvalData(X, c, group_and_sort=False)
+    rows = c != 2
+    sliced = data[rows]
+    assert np.ndim(sliced.x) == 2
+    alone = SurpyvalData(X[rows, 0], c[rows], group_and_sort=False)
+    trees = [
+        build_tree(
+            d,
+            Z[rows],
+            curr_depth=0,
+            max_depth=np.inf,
+            min_leaf_samples=5,
+            min_leaf_failures=2,
+            n_features_split=2,
+            kind="non-parametric",
+            rng=np.random.default_rng(3),
+        )
+        for d in (sliced, alone)
+    ]
+    assert tree_lines(trees[0], None) == tree_lines(trees[1], None)
+    times = np.array([1.0, 5.0, 10.0])
+    np.testing.assert_array_equal(
+        trees[0].apply_model_function("sf", times, Z[rows]),
+        trees[1].apply_model_function("sf", times, Z[rows]),
+    )

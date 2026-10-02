@@ -155,8 +155,7 @@ Estimation
     to data drawn from itself (nightly). Where the likelihood has no
     finite maximum, univariate MLE refuses and the regression, frailty,
     Fine-Gray, copula, mixture and degradation fits warn "No finite
-    maximum" (#392); known gaps: the AFT ``fit_tvc`` path, and abutting
-    intervals such as (1, 3] and (3, 5], whose likelihood has a flat
+    maximum" (#392); known gap: abutting intervals such as (1, 3] and (3, 5], whose likelihood has a flat
     ridge. ``conformance/test_aliasing.py`` refits every registered model
     that has coefficients with a repeated covariate column, and with a
     constant one where it has an intercept, and requires the aliasing and

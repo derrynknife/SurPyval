@@ -26,9 +26,12 @@ modify ``AFTFitter.fit`` or the shared ``regression_neg_ll``. It builds a fresh
 ``Hf``, ``sf_tvc`` -- is inherited unchanged) and overrides only its ``neg_ll``
 with the accumulated-age likelihood on that single instance. The fitted
 ``ParametricRegressionModel`` therefore carries the *correct* likelihood, so
-the generic confidence-bound path (a finite-difference Hessian of
-``model.model.neg_ll(model.data, ...)``) is right without any change to that
-code.
+the generic confidence-bound path is right without any change to that code.
+The likelihood is differentiable by autograd, so the fit ends as the ordinary
+one does (``finish_search`` and ``keep_information``): a coefficient with no
+finite maximum is warned of, and the covariance is the exact observed
+information (#555), not a finite-difference Hessian of
+``model.model.neg_ll(model.data, ...)``.
 """
 
 from __future__ import annotations
@@ -37,8 +40,10 @@ import functools
 import types
 from typing import Any, Callable
 
-import numpy as np
+import autograd.numpy as np
+import numpy
 import numpy.typing as npt
+from autograd.extend import defvjp, primitive
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
@@ -126,6 +131,27 @@ def _grouped_episodes(
     }
 
 
+@primitive
+def _subject_sums(values: npt.NDArray, starts: npt.NDArray) -> npt.NDArray:
+    """The sum of ``values`` over each subject's contiguous rows, the
+    subjects' first rows at ``starts`` (ascending)."""
+    return numpy.add.reduceat(values, starts)
+
+
+def _subject_sums_vjp(
+    ans: npt.NDArray, values: npt.NDArray, starts: npt.NDArray
+) -> Callable:
+    # Each row's sum is its subject's: the gradient of a row is that of
+    # its subject's sum. (Indexing, so autograd differentiates it again
+    # for the Hessian.)
+    sizes = numpy.diff(numpy.append(starts, numpy.shape(values)[0]))
+    subject = numpy.repeat(numpy.arange(len(starts)), sizes)
+    return lambda g: g[subject]
+
+
+defvjp(_subject_sums, _subject_sums_vjp)
+
+
 def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     """
     Negative log-likelihood of the accelerated-failure-time model along each
@@ -136,27 +162,31 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     -- the grouped episode arrays captured at fit time live on ``self._tvc`` --
     so the generic confidence-bound path, which re-calls this with the model's
     stored data, recomputes the accumulated-age likelihood correctly.
+
+    Written in ``autograd.numpy``, with the per-subject sums an autograd
+    primitive, so that the fit has its exact gradient and Hessian: the
+    no-maximum check and the covariance read them (#555).
     """
     tvc = self._tvc
     k_dist = self.k_dist
     dist_params = params[:k_dist]
-    beta = np.array(params[k_dist:], dtype=float)
+    beta = np.array(params[k_dist:])
 
     # Acceleration factor per episode, accumulated to each subject's total
     # accelerated age via a segment sum over its (contiguous) episode rows.
-    phi_ep = np.exp(tvc["Zep"] @ beta)
-    psi = np.add.reduceat(phi_ep * tvc["widths"], tvc["starts"])
-    psi = np.maximum(psi, np.finfo(float).tiny)
+    phi_ep = np.exp(np.dot(tvc["Zep"], beta))
+    psi = _subject_sums(phi_ep * tvc["widths"], tvc["starts"])
+    psi = np.maximum(psi, numpy.finfo(float).tiny)
 
-    H0 = np.asarray(self.Hf_dist(psi, *dist_params), dtype=float)
+    H0 = self.Hf_dist(psi, *dist_params)
     ll = -(tvc["weight"] * H0).sum()
 
     event = tvc["event"]
     if event.any():
-        h0 = np.asarray(self.hf_dist(psi, *dist_params), dtype=float)
+        h0 = self.hf_dist(psi, *dist_params)
         phi_term = phi_ep[tvc["term"]]
         log_haz = np.log(
-            np.maximum(phi_term[event] * h0[event], np.finfo(float).tiny)
+            np.maximum(phi_term[event] * h0[event], numpy.finfo(float).tiny)
         )
         ll = ll + (tvc["weight"][event] * log_haz).sum()
 
@@ -170,6 +200,9 @@ from .._fit_skeleton import (  # noqa: E402
     alias_coefficients,
     assemble_regression_model,
     check_fixed_and_init,
+    finish_search,
+    free_coefficients,
+    keep_information,
     optimise_nm_tnc,
 )
 
@@ -287,6 +320,66 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             center=center,
         )
 
+    def fit_tvc_timeline_from_df(
+        self,
+        df: Any,
+        i_col: str,
+        x_col: str,
+        Z_cols: "str | list[str] | None",
+        c_col: str,
+        n_col: "str | None" = None,
+        fixed: "dict[str, float] | None" = None,
+        center: bool = False,
+        formula: "str | None" = None,
+    ) -> ParametricRegressionModel:
+        """
+        :meth:`fit_tvc_timeline` from a covariate-timeline ``DataFrame``,
+        as for the proportional hazards models and Cox.
+
+        ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns
+        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and
+        ``n``. The covariates are ``Z_cols``, a column name or a list of
+        them, or instead (pass ``Z_cols=None``) ``formula``, as for
+        :meth:`fit_tvc_from_df`; the model records ``feature_names`` (and
+        the ``formula`` and its encoding). ``fixed`` and ``center`` are as
+        for :meth:`fit_tvc`. The timeline is the same data as its
+        start-stop rows, so the fit is that of :meth:`fit_tvc_from_df`.
+
+        Examples
+        --------
+        Each unit runs at its own stress ``z``, which steps up by 0.5 half
+        way through its life; the last row of a unit gives its exit time
+        and status:
+
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval import WeibullAFT
+        >>> rng = np.random.default_rng(1)
+        >>> z = rng.normal(size=100)
+        >>> T = rng.weibull(2.0, 100) * 5 * np.exp(-0.5 * z)
+        >>> df = pd.DataFrame({
+        ...     "id": np.repeat(np.arange(100), 3),
+        ...     "time": np.column_stack([0 * T, T / 2, T]).ravel(),
+        ...     "z": np.column_stack([z, z + 0.5, z + 0.5]).ravel(),
+        ...     "c": 0,
+        ... })
+        >>> model = WeibullAFT.fit_tvc_timeline_from_df(
+        ...     df, "id", "time", "z", "c"
+        ... )
+        >>> model.feature_names
+        ['z']
+        """
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
+            fixed=fixed,
+            center=center,
+        )
+
     def _fit_tvc_arrays(
         self,
         x: npt.NDArray,
@@ -353,9 +446,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             def fun(pars: npt.NDArray) -> float:
                 return like.neg_ll(None, *inv_trans(const(pars)))
 
-            # The same Nelder-Mead then TNC ladder as the ordinary AFT fit,
-            # which says so when neither rung converged.
-            res = optimise_nm_tnc(fun, init)
+            # The same search as the ordinary AFT fit (the gradient ladder,
+            # then Nelder-Mead and TNC), which says what it found below.
+            res = optimise_nm_tnc(fun, init, quiet=True)
 
         # Episode-level data container so generic consumers (repr, plotting)
         # have the usual attributes; the likelihood does not read it.
@@ -393,6 +486,17 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             raw_neg_ll=raw_neg_ll,
         )
         model.is_tvc = True
+        # One warning for what the search found, as for the ordinary fit
+        # (#392, #555): a coefficient that runs off (a covariate level
+        # with no events), or else a search that stopped short; and the
+        # exact observed information for the covariance, which was a
+        # numerical Hessian.
+        no_maximum, derivatives = finish_search(
+            fun, res, free_coefficients(like, fixed, phi_param_map), init
+        )
+        keep_information(
+            model, no_maximum, derivatives, inv_trans, const, res.x, centring
+        )
 
         # Report information criteria on the *subjects*, not the episode
         # rows: the accumulated-age likelihood is one term per subject. The

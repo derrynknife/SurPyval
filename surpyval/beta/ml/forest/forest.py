@@ -76,6 +76,19 @@ def _warn_zero_probability(
     )
 
 
+def _check_n_jobs(n_jobs: Any) -> None:
+    """``n_jobs`` is joblib's: a non-zero integer, -1 for every core."""
+    if (
+        isinstance(n_jobs, bool)
+        or not isinstance(n_jobs, (int, np.integer))
+        or n_jobs == 0
+    ):
+        raise ValueError(
+            "n_jobs must be a non-zero integer (-1 for every core), got "
+            f"{n_jobs!r}"
+        )
+
+
 class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
     """Random survival forest: an ensemble of survival trees.
 
@@ -117,7 +130,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         random_state: Any = None,
         feature_names: list[str] | None = None,
         min_split_gain: float | str = 0.0,
+        n_jobs: int = 1,
     ) -> None:
+        _check_n_jobs(n_jobs)
         self.selection = parse_selection(selection, alpha_split)
         self.alpha_split = float(alpha_split)
         Z, self.feature_names = covariate_matrix(Z, feature_names)
@@ -165,7 +180,17 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         # Kept for the out-of-bag methods: the rows each tree did not see.
         self.bootstrap_indices: list[NDArray] | None = bootstrap_indices
 
-        self.trees: list[SurvivalTree] = Parallel(prefer="threads", verbose=1)(
+        if random_state is None and n_jobs != 1:
+            # Worker processes do not share numpy's global stream, so the
+            # trees draw from streams of their own, seeded by one draw
+            # from it: ``np.random.seed`` still reproduces the forest.
+            seed = int(np.random.randint(0, 2**63 - 1, dtype=np.int64))
+            tree_states = list(np.random.default_rng(seed).spawn(n_trees))
+
+        # Quiet (principle 22): joblib reports progress only if asked.
+        # With n_jobs=1 the trees are grown one after another in this
+        # process; otherwise in joblib's worker processes.
+        self.trees: list[SurvivalTree] = Parallel(n_jobs=n_jobs)(
             delayed(SurvivalTree)(
                 data=self.data[bootstrap_indices[i]],
                 Z=self.Z[bootstrap_indices[i]],
@@ -206,6 +231,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         alpha_split: float = 0.05,
         min_split_gain: float | str = 0.0,
         random_state: Any = None,
+        n_jobs: int = 1,
     ) -> "RandomSurvivalForest":
         """
         Fit a random survival forest.
@@ -282,6 +308,18 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             state, so ``np.random.seed`` reproduces the forest; a seed or
             ``Generator`` gives the forest a stream of its own (and each
             tree a child stream of it) and leaves the global one alone.
+            The forest is the same whatever ``n_jobs`` is, except with
+            ``None`` (see ``n_jobs``).
+        n_jobs : int, optional
+            The number of worker processes the trees are grown in, as in
+            joblib and scikit-learn: 1 (the default) grows them one after
+            another in this process, -1 uses every core. The trees and
+            their predictions do not depend on it given a seed. With
+            ``random_state=None`` and ``n_jobs`` other than 1, the trees'
+            feature draws come from streams seeded by one draw from
+            NumPy's global state (worker processes do not share it), so
+            ``np.random.seed`` still reproduces the forest for that
+            ``n_jobs``, but not the ``n_jobs=1`` forest.
 
         Returns
         -------
@@ -339,6 +377,7 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             random_state,
             feature_names,
             min_split_gain,
+            n_jobs,
         )
 
     def sf(

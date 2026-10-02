@@ -10,9 +10,6 @@ package's seed rule (Design Principle 19):
   neither depending on nor advancing the global one.
 """
 
-import contextlib
-import io
-
 import numpy as np
 import pytest
 
@@ -31,10 +28,8 @@ def _data(n=80, seed=0):
 
 
 def _forest(**kwargs):
-    # The forest reports progress through joblib on stderr.
     kwargs = {"n_trees": 4, "max_depth": 2, "kind": "exponential", **kwargs}
-    with contextlib.redirect_stderr(io.StringIO()):
-        return RandomSurvivalForest.fit(**_data(), **kwargs)
+    return RandomSurvivalForest.fit(**_data(), **kwargs)
 
 
 def _tree(**kwargs):
@@ -155,3 +150,39 @@ def test_unseeded_tree_follows_np_random_seed():
         np.random.seed(s)
         trees.add(tuple(_splits(_tree()._root)))
     assert len(trees) > 1
+
+
+# -- #546: quiet by default; n_jobs ------------------------------------------
+
+
+def test_546_forest_fit_prints_nothing(capfd):
+    # joblib's progress log ("[Parallel(n_jobs=1)]: Done ...") was printed
+    # on every fit (verbose=1 was hard-coded).
+    _forest(random_state=0)
+    out, err = capfd.readouterr()
+    assert out == "" and err == ""
+
+
+def test_546_n_jobs_does_not_change_a_seeded_forest(capfd):
+    a = _forest_fingerprint(_forest(random_state=3))
+    b = _forest_fingerprint(_forest(random_state=3, n_jobs=2))
+    _assert_same(a, b)
+    out, err = capfd.readouterr()
+    assert out == "" and err == ""
+
+
+def test_546_unseeded_parallel_forest_follows_np_random_seed():
+    np.random.seed(5)
+    a = _forest_fingerprint(_forest(n_jobs=2))
+    np.random.seed(5)
+    b = _forest_fingerprint(_forest(n_jobs=2))
+    _assert_same(a, b)
+    # The bootstraps are drawn first, as with n_jobs=1
+    np.random.seed(5)
+    assert a[0] == _forest_fingerprint(_forest())[0]
+
+
+@pytest.mark.parametrize("n_jobs", [0, 1.5, True, "2"])
+def test_546_invalid_n_jobs_raises(n_jobs):
+    with pytest.raises(ValueError, match="n_jobs"):
+        _forest(random_state=0, n_jobs=n_jobs)
