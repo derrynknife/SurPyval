@@ -52,7 +52,15 @@ _LR_UNREACHABLE = 1e6
 # The most likelihoods a model keeps for its likelihood-ratio searches
 # (``_lr_raw_neg_ll``; a 50-point Weibull band asks for 16,000).
 _LR_MEMO_SIZE = 100_000
+# How many times a search that stops short of converging is continued
+# (``_PsiBoundSearch.extreme_far``), and the relative steps of its
+# central differences: ``_LR_FD_FINE`` where a continued search stalls.
 _LR_CONTINUE = 10
+_LR_FD_STEP = 1e-6
+_LR_FD_FINE = 1e-8
+# A continued search that moves psi out by less than this (relative to
+# psi beyond 1) has stalled: a tenth of the hair ``checks_out`` tests.
+_LR_GAIN = 1e-7
 
 
 def _warn_unsettled(where: str) -> None:
@@ -299,11 +307,14 @@ def _lr_walk(
     return "fail", np.nan
 
 
-def _central_gradient(f: Callable[..., Any], u: npt.NDArray) -> npt.NDArray:
-    """Central-difference gradient of ``f`` at ``u``."""
+def _central_gradient(
+    f: Callable[..., Any], u: npt.NDArray, rel_step: float = 1e-6
+) -> npt.NDArray:
+    """Central-difference gradient of ``f`` at ``u``, in steps of
+    ``rel_step`` (relative to each coordinate beyond 1)."""
     grad = np.empty(len(u))
     for j in range(len(u)):
-        h = 1e-6 * max(1.0, abs(u[j]))
+        h = rel_step * max(1.0, abs(u[j]))
         up, down = np.array(u, dtype=float), np.array(u, dtype=float)
         up[j] += h
         down[j] -= h
@@ -466,6 +477,7 @@ class _PsiBoundSearch:
         # Whether the last ``extreme_far`` converged; the answers whose
         # search did not; and the sides whose bound is such an answer.
         self.converged = True
+        self.fd_step = _LR_FD_STEP
         self.unsettled: set[float] = set()
         self.unsettled_sides: set[float] = set()
 
@@ -691,19 +703,20 @@ class _PsiBoundSearch:
         # 1e-8, as the walks solve it, and ``from_trace`` takes a point
         # outside back onto the boundary.
         c = _LR_DEV_SCALE if scaled or face is not None else 1.0
+        h = self.fd_step
 
         try:
             res = minimize(
                 lambda z: -direction * f(z),
                 z0,
                 method="SLSQP",
-                jac=lambda z: -direction * _central_gradient(f, z),
+                jac=lambda z: -direction * _central_gradient(f, z, h),
                 bounds=z_bounds,
                 constraints=[
                     {
                         "type": "ineq",
                         "fun": lambda z: c * (level - g(z)),
-                        "jac": lambda z: -c * _central_gradient(g, z),
+                        "jac": lambda z: -c * _central_gradient(g, z, h),
                     }
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
@@ -765,32 +778,56 @@ class _PsiBoundSearch:
         On a long, flat valley of the region (an ExpoWeibull's as beta
         -> inf, #601) SLSQP spent its 100 iterations creeping along it;
         stopped there, outside the region by 7e-5 of deviance, its point
-        was dropped, and a bound 2.7% short of the extreme taken.
+        was dropped, and a bound 2.7% short of the extreme taken. Where
+        a continued search stalls, it goes on with gradients in steps of
+        ``_LR_FD_FINE``: the valley narrows as it goes (the ExpoWeibull's
+        ``alpha`` closes on the largest observation to within 1 /
+        ``beta``), and steps of 1e-6 stop resolving it at ``beta`` ~ 1e6,
+        where the deviance is still 1e-4 above its limit (a bound 1e-6
+        to 1e-5 short); steps of 1e-8 follow it to 1e-8.
         """
         self.converged = True
         x = self.extreme(direction, start, level, whiten, scaled, face)
+        if x is None or self.last_status == 0:
+            return x
+        # The most extreme point of the region the search has reached
         u_from = np.asarray(start, dtype=float)
-        for _ in range(_LR_CONTINUE):
-            if x is None or self.last_status == 0:
-                return x
-            if not self.dev_u(x) <= level + _LR_NOISE:
-                x = self.onto_boundary(u_from, x, level)
-                if x is None:
-                    return None
-            if not direction * (self.psi_u(x) - self.psi_u(u_from)) > 0:
-                # Stalled: SLSQP stops at a vertex of the box (a Uniform's
-                # support edge), or where its differences no longer
-                # resolve the valley.
-                return x
-            u_from = x
-            x = self.extreme(direction, x, level, whiten, scaled, face)
-            if x is None:
+
+        def inside(x: npt.NDArray | None) -> npt.NDArray:
+            # x, or the nearest point to it on the boundary (or where the
+            # line to it from u_from meets the boundary), if that is
+            # further out than u_from; otherwise u_from.
+            if x is not None and not self.dev_u(x) <= level + _LR_NOISE:
+                back = self.back_onto_boundary(x, level)
+                if back is None:
+                    back = self.onto_boundary(u_from, x, level)
+                x = back
+            if x is None or direction * (
+                self.psi_u(x) - self.psi_u(u_from)
+            ) < 0:
                 return u_from
-        # Still moving out after every continuation: not settled.
-        self.converged = x is not None and self.last_status == 0
-        if x is not None and not self.dev_u(x) <= level + _LR_NOISE:
-            return self.onto_boundary(u_from, x, level)
-        return x
+            return x
+
+        try:
+            for _ in range(_LR_CONTINUE):
+                x = inside(x)
+                gain = direction * (self.psi_u(x) - self.psi_u(u_from))
+                if not gain > _LR_GAIN * max(1.0, abs(self.psi_u(x))):
+                    # Stalled: at a vertex of the box (a Uniform's support
+                    # edge), or where the differences no longer resolve
+                    # the valley.
+                    if self.fd_step == _LR_FD_FINE:
+                        return x
+                    self.fd_step = _LR_FD_FINE
+                u_from = x
+                x = self.extreme(direction, x, level, whiten, scaled, face)
+                if x is None or self.last_status == 0:
+                    return inside(x)
+            # Still moving out after every continuation: not settled.
+            self.converged = False
+            return inside(x)
+        finally:
+            self.fd_step = _LR_FD_STEP
 
     def direct(
         self, direction: float, start: npt.NDArray, scaled: bool = False
@@ -799,7 +836,7 @@ class _PsiBoundSearch:
         ``scaled`` as ``extreme``), when it checks out (``checks_out``);
         otherwise ``None``."""
         x = self.extreme_far(direction, start, self.crit, scaled=scaled)
-        for _ in range(_LR_CONTINUE):
+        for _ in range(3):
             if x is None:
                 return None
             quick = self.checks_out(direction, x)
@@ -979,7 +1016,41 @@ class _PsiBoundSearch:
             r = brentq(excess, 0.0, 1.0, xtol=1e-14, rtol=1e-14)
         except ValueError:
             return None
-        return inside + r * ray
+        # On the boundary from inside: brentq's root can be either side
+        # of it by its tolerance, and a point outside cannot be started
+        # from (#601).
+        for _ in range(5):
+            if excess(r) <= 0.0:
+                return inside + r * ray
+            r *= 1.0 - 1e-12
+        return None
+
+    def back_onto_boundary(
+        self, outside: npt.NDArray, level: float
+    ) -> npt.NDArray | None:
+        """The point of {deviance <= level} nearest ``outside``, a point
+        just outside it, by Newton's steps along the gradient of the
+        deviance (in steps of ``_LR_FD_FINE``); ``None`` where they do
+        not reach it in five.
+
+        Where a search ends just outside the region, far down a valley,
+        the line back to its start can cross the boundary far from it:
+        an ExpoWeibull's sf(8) upper bound lost 3e-6 that way (#601).
+        """
+        x = np.asarray(outside, dtype=float)
+        for _ in range(5):
+            excess = self.dev_u(x) - level
+            if excess <= 0.0:
+                return x
+            grad = _central_gradient(self.dev_u, x, _LR_FD_FINE)
+            size = float(grad @ grad)
+            if not (np.isfinite(size) and size > 0):
+                return None
+            # (overshooting a hair, so as to land inside)
+            x = x - 1.000001 * excess * grad / size
+            if not np.all(np.isfinite(x)):
+                return None
+        return x if self.dev_u(x) <= level else None
 
     def faces(self) -> list[tuple[int, float]]:
         """The faces of the box at the end of a parameter's coordinate:
@@ -1053,15 +1124,23 @@ class _PsiBoundSearch:
         if not faces:
             return best
         far_u = max(self.known, key=lambda k: direction * k[0])[1]
-        for face in faces:
-            m = self.onto_face(*face, far_u)
+        found = []
+        for k, end in faces:
+            # From the deepest point of the parameter's walk down the
+            # valley to that edge (``_lr_walk_on``)
+            side = int(end == self.free_coords[k].ends[1])
+            walk = self.seeds[2 * k + side] if self.seeds else []
+            if walk and self.dev_u(walk[-1]) <= self.crit:
+                found.append(self.direct(direction, walk[-1]))
+            # and over the face itself
+            m = self.onto_face(k, end, far_u)
             if m is None:
                 continue
             self.known.append((self.psi_u(m), m))
-            x = self.extreme_far(direction, m, self.crit, face=face)
-            if x is None:
-                continue
-            quick = self.checks_out(direction, x)
+            x = self.extreme_far(direction, m, self.crit, face=(k, end))
+            if x is not None:
+                found.append(self.checks_out(direction, x))
+        for quick in found:
             if quick is not None and (
                 best is None or direction * quick > direction * best
             ):
@@ -2097,8 +2176,73 @@ class LikelihoodRatioMixin:
                 for j in free
                 for d in (-1.0, 1.0)
             ]
+            for k, j in enumerate(free):
+                for s, d in enumerate((-1.0, 1.0)):
+                    edge = coords[j].to_u(self._lr_param_side(j, crit, d))
+                    if not np.isfinite(edge):
+                        seeds[2 * k + s] += self._lr_walk_on(
+                            free, k, d, crit, seeds[2 * k + s]
+                        )
             trace = self._lr_trace(free, crit, seeds)
         return box, seeds, trace
+
+    def _lr_walk_on(
+        self,
+        free: list[int],
+        k: int,
+        direction: float,
+        crit: float,
+        walk: list[npt.NDArray],
+    ) -> list[npt.NDArray]:
+        """More points of the region along the valley the profile of the
+        free parameter ``free[k]`` follows to the edge of its space, where
+        its likelihood-ratio interval ends: the profile solved further
+        out than its walk went, in steps doubling to the end of the
+        coordinate (continued from the points before), for as long as it
+        is inside the region and still changing (by 1e-9 of deviance).
+
+        The walk stops once the profile levels off below the critical
+        value (``_lr_walk``), and a band's extreme can lie far beyond
+        that, down the same valley: an ExpoWeibull's ``qf(0.05)`` lower
+        bound is 0.5517 there, as ``beta -> inf``, and 0.8487 on the
+        nearer side, which a search from the walk's points found (#601).
+        """
+        j = free[k]
+        coords, _ = self._lr_coords()
+        coord = coords[j]
+        others = [i for i in range(len(free)) if i != k]
+        end = coord.ends[1] if direction > 0 else coord.ends[0]
+        path = _LRPath()
+        for u in walk:
+            path.add(u[k], u[others])
+        nll_hat = self._lr_neg_ll(np.asarray(self.params, dtype=float))
+        w = coord.to_u(float(self.params[j]))
+        dev = 0.0
+        if path.w:
+            i = int(np.argmax(direction * np.asarray(path.w)))
+            w, dev = path.w[i], 2.0 * (path.f[i] - nll_hat)
+        out = []
+        step = 1.0
+        for _ in range(12):
+            if not direction * (end - w) > 0:
+                break
+            w_next = w + direction * step
+            if direction * (w_next - end) >= 0:
+                w_next = end
+            step *= 2.0
+            dev_next = 2.0 * (
+                self._profile_neg_ll(j, coord.from_u(w_next), path=path)
+                - nll_hat
+            )
+            if not dev_next <= crit or len(path.w) == 0:
+                break
+            u = np.empty(len(free))
+            u[k], u[others] = w_next, path.u[-1]
+            out.append(u)
+            if abs(dev_next - dev) < 1e-9:
+                break
+            w, dev = w_next, dev_next
+        return out
 
     #: Rays along which ``_lr_trace`` finds a two-parameter region's
     #: boundary, at angles evenly spaced in the Wald metric.
