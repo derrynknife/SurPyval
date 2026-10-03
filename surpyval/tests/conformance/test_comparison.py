@@ -82,3 +82,40 @@ def test_model_comparison_values_are_spelt_alike(case):
             if name in values and np.isfinite(values[name]):
                 # The same likelihood, penalised by a positive amount
                 assert values[name] > 2 * nll, name
+
+
+# The old spellings of a dict's likelihood and covariance entries, which
+# ``from_dict`` still reads (#605); every ``to_dict`` writes "_neg_ll" and
+# "covariance".
+OLD_DICT_KEYS = ("neg_ll", "_neg_log_like", "loglik", "log_likelihood", "cov")
+OLD_DICT_KEYS += ("cov_matrix",)
+
+
+@pytest.mark.parametrize("case", cases_for("comparison"))
+def test_605_one_spelling_of_the_comparison_values(case):
+    """Where a model has ``aic()`` it has ``aic_c()`` and
+    ``log_likelihood`` too; its covariance is ``covariance()``, which
+    gives a square array or raises ``ValueError`` saying why there is
+    none; and its dictionary stores them under one key each (#605)."""
+    model = fitted(case)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        if _has(model, "aic"):
+            for name in ("aic_c", "neg_ll", "bic"):
+                assert callable(getattr(model, name, None)), name
+            assert hasattr(type(model), "log_likelihood")
+        if _has(model, "covariance"):
+            covariance = getattr(model, "covariance")
+            assert callable(covariance), "covariance is not a method"
+            try:
+                cov = np.asarray(covariance())
+            except ValueError:
+                pass
+            else:
+                assert cov.ndim == 2 and cov.shape[0] == cov.shape[1]
+    try:
+        stored = model.to_dict()
+    except (AttributeError, NotImplementedError, ValueError):
+        return  # not serialisable (the serialise property says which)
+    old = sorted(set(stored) & set(OLD_DICT_KEYS))
+    assert not old, f"to_dict stores {old}"
