@@ -54,8 +54,8 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.linalg import safe_inv
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
 from .._aliasing import (

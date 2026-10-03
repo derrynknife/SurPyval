@@ -381,8 +381,8 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     # the sample size every SurPyval BIC uses (``_ic_n``, from the data at
     # fit time; see ic_sample_size).
 
-    @property  # type: ignore[override]
-    def k(self) -> int:
+    @property
+    def k(self) -> int:  # type: ignore[override]
         return len(self.params)
 
     #: The coefficients' covariance, ``covariance()`` (#605): an attribute
@@ -424,7 +424,7 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
             **maximum_entry(self.maximum),
-            "ic_n": float(self._ic_n),
+            "ic_n": float(self._ic_sample_size()),
         }
         if self._covariance is not None:
             out["covariance"] = np.asarray(self._covariance, float).tolist()

@@ -164,7 +164,9 @@ class RenamedAttribute:
     def _warn(self, owner: type) -> None:
         warnings.warn(
             "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}'.".format(owner.__name__, self.old, self.removed_in, self.new),
+            "'{}'.".format(
+                owner.__name__, self.old, self.removed_in, self.new
+            ),
             DeprecationWarning,
             stacklevel=3,
         )
@@ -624,7 +626,9 @@ class RenamedToMethod:
     def _warn(self, owner: type) -> None:
         warnings.warn(
             "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}()'.".format(owner.__name__, self.old, REMOVED_IN_NEXT, self.new),
+            "'{}()'.".format(
+                owner.__name__, self.old, REMOVED_IN_NEXT, self.new
+            ),
             DeprecationWarning,
             stacklevel=3,
         )

@@ -87,8 +87,14 @@ def test_model_comparison_values_are_spelt_alike(case):
 # The old spellings of a dict's likelihood and covariance entries, which
 # ``from_dict`` still reads (#605); every ``to_dict`` writes "_neg_ll" and
 # "covariance".
-OLD_DICT_KEYS = ("neg_ll", "_neg_log_like", "loglik", "log_likelihood", "cov")
-OLD_DICT_KEYS += ("cov_matrix",)
+OLD_DICT_KEYS = (
+    "neg_ll",
+    "_neg_log_like",
+    "loglik",
+    "log_likelihood",
+    "cov",
+    "cov_matrix",
+)
 
 
 @pytest.mark.parametrize("case", cases_for("comparison"))

@@ -84,7 +84,6 @@ from surpyval.univariate.regression.regression_data import (
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.covariates import coefficient_floor
-from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.dataframe import (
     call_fit,
     cause_column,
@@ -92,6 +91,7 @@ from surpyval.utils.dataframe import (
     frame_columns,
     require_frame,
 )
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.no_maximum import (

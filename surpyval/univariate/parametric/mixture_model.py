@@ -265,6 +265,12 @@ class MixtureModel(
             "one component's log-likelihood of each observation)",
         )
 
+    @log_likelihood.setter
+    def log_likelihood(self, value: float) -> None:
+        # As every model's: it records the negative log-likelihood.
+        mixin: Any = InformationCriteriaMixin
+        mixin.log_likelihood.fset(self, value)
+
     @property
     def loglike(self) -> float:
         """Deprecated: the fitted *negative* log-likelihood, despite its
