@@ -535,3 +535,85 @@ def test_reml_on_paths_with_very_different_time_scales():
     )
     assert m.path_param_mean == pytest.approx([1.0, 0.002], rel=0.05)
     assert np.sqrt(m.measurement_var) == pytest.approx(0.05, rel=0.05)
+
+
+# -- #588: every unit's conditional mode at once ---------------------------
+
+
+@pytest.mark.parametrize(
+    "path, truth",
+    [
+        ("linear", [1.0, 0.05]),
+        ("exponential", [1.0, 0.01]),
+        ("power", [0.5, 0.7]),
+        ("gompertz", [10.0, 3.0, 0.05]),
+    ],
+)
+def test_588_conditional_modes_match_the_unit_by_unit_search(path, truth):
+    from surpyval.degradation.path_models import PathModel, get_path_model
+    from surpyval.degradation.population import (
+        _conditional_mode,
+        _conditional_modes,
+    )
+
+    model = get_path_model(path)
+    rng = np.random.default_rng(588)
+    truth = np.array(truth)
+    xs, ys, starts = [], [], []
+    for k in range(9):
+        # units with different numbers of readings, so the batch is ragged
+        t = np.arange(1.0, 11.0 + 3 * (k % 4))
+        theta = truth * rng.normal(1.0, 0.05, truth.size)
+        xs.append(t)
+        ys.append(model.path(t, *theta) + rng.normal(0, 0.02, t.size))
+        starts.append(truth * rng.normal(1.0, 0.1, truth.size))
+    starts = np.array(starts)
+    precision = np.diag(1.0 / (0.1 * truth) ** 2)
+    means = truth * np.linspace(0.95, 1.05, 9)[:, None]
+    batched = _conditional_modes(model, xs, ys, means, precision, 4e-4, starts)
+    one_by_one = np.array(
+        [
+            _conditional_mode(model, x, y, m, precision, 4e-4, s)
+            for x, y, m, s in zip(xs, ys, means, starts)
+        ]
+    )
+    # the same search to its tolerance: steps of 1e-10 of the parameters'
+    # size (the sums are taken in another order)
+    tol = 1e-8 * (1.0 + np.abs(one_by_one).max(axis=1, keepdims=True))
+    assert np.all(np.abs(batched - one_by_one) <= tol)
+
+    class Custom(PathModel):
+        # a path model of the user's own is searched unit by unit
+        name = "custom"
+        parameter_names = model.parameter_names
+
+        def path(self, x, *params):
+            return model.path(x, *params)
+
+        def inv_path(self, y, *params):
+            return model.inv_path(y, *params)
+
+    custom = _conditional_modes(
+        Custom(), xs, ys, means, precision, 4e-4, starts
+    )
+    np.testing.assert_allclose(custom, one_by_one, rtol=1e-6)
+
+
+def test_588_the_step_stress_fit_evaluates_its_paths_in_batches(monkeypatch):
+    # The FOCE iteration searched each unit's conditional mode in a Python
+    # loop: 13,308 calls of the path for this fit, 1.1 million per
+    # bootstrap band. All units are now searched at once.
+    from surpyval.degradation.path_models import LinearPath_
+
+    calls = []
+    original = LinearPath_.path
+
+    def counting(self, x, *params):
+        calls.append(1)
+        return original(self, x, *params)
+
+    monkeypatch.setattr(LinearPath_, "path", counting)
+    x, y, i, Z = simulate(n_units=12)
+    model = fit(x, y, i, Z, population_method="reml")
+    assert model.gamma[0] == pytest.approx(G_TRUE, abs=150)
+    assert len(calls) < 3000

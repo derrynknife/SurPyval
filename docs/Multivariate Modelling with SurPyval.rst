@@ -573,7 +573,10 @@ model:
          model.cdf([[10, 20]]) - model.cdf([[10, 15]]))
 
 Each pair agrees. The fit applies exactly these expressions, row by row, and
-the same four building blocks cover all sixteen combinations of codes.
+the same four building blocks cover all sixteen combinations of codes. (Where
+a right-censored row's probability is small, the fit evaluates it without the
+subtraction written above, which would lose its digits; see the joint
+survival function in :doc:`Multivariate Analysis`.)
 
 .. jupyter-execute::
     :hide-code:

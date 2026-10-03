@@ -452,7 +452,13 @@ def _conditional_mode(
     Minimises ``||y - f(x, theta)||^2 / sigma^2 +
     (theta - mu)' Sigma^-1 (theta - mu)`` by damped Gauss-Newton with a
     backtracking line search, started from the unit's unpenalised
-    least-squares fit ``theta0``.
+    least-squares fit ``theta0``. It stops once a step would move no
+    parameter by more than ``1e-10`` of the parameters' size, before or
+    after taking it (the line search could not resolve a smaller one, and
+    used to spend 40 halvings finding that out on every converged unit,
+    #588), or when no step along the Gauss-Newton direction improves the
+    objective. :func:`_conditional_modes` is the same search for many
+    units at once.
     """
     theta = np.array(theta0, dtype=float)
 
@@ -475,6 +481,8 @@ def _conditional_mode(
             step = np.linalg.solve(hess, grad)
         except np.linalg.LinAlgError:
             break
+        if _negligible(step, theta):
+            break
         alpha, improved = 1.0, False
         for _ in range(40):
             candidate = theta - alpha * step
@@ -486,10 +494,206 @@ def _conditional_mode(
             alpha *= 0.5
         if not improved:
             break
-        scale = 1.0 + np.max(np.abs(theta))
-        if np.max(np.abs(alpha * step)) <= 1e-10 * scale:
+        if _negligible(alpha * step, theta):
             break
     return theta
+
+
+def _negligible(step: npt.NDArray, theta: npt.NDArray) -> "bool | Any":
+    """Whether ``step`` (one per row, for many units) moves no parameter by
+    more than ``1e-10`` of the parameters' size, the conditional-mode
+    search's tolerance."""
+    scale = 1.0 + np.max(np.abs(theta), axis=-1)
+    return np.max(np.abs(step), axis=-1) <= 1e-10 * scale
+
+
+def _elementwise(path_model: Any) -> bool:
+    """Whether ``path_model`` is one of the built-in path models, whose
+    ``path`` and ``jacobian`` act element by element on the times and the
+    parameters, so that one call evaluates many units' paths (each row its
+    own parameters)."""
+    from .path_models import PATH_MODELS
+
+    return any(type(path_model) is type(m) for m in PATH_MODELS.values())
+
+
+class _PaddedUnits:
+    """Many units' measurements padded to one ``(units, n)`` grid, for
+    evaluating their paths in one call of an element-wise path model.
+
+    Each unit's rows beyond its own measurements repeat its last time (so
+    the path is finite there wherever it is at that time) and are masked
+    out of every sum.
+    """
+
+    def __init__(self, path_model: Any, xs: list, ys: list) -> None:
+        self.path_model = path_model
+        lengths = np.array([len(x) for x in xs])
+        n = int(lengths.max())
+        self.mask = np.arange(n)[None, :] < lengths[:, None]
+        last = np.array([x[-1] for x in xs], dtype=float)
+        self.x = np.repeat(last[:, None], n, axis=1)
+        self.y = np.zeros((len(xs), n))
+        for k, (x, y) in enumerate(zip(xs, ys)):
+            self.x[k, : len(x)] = x
+            self.y[k, : len(y)] = y
+        self.shape = self.x.shape
+
+    def _flat(self, theta: npt.NDArray, units: npt.NDArray) -> tuple:
+        n = self.shape[1]
+        x = self.x[units].ravel()
+        params = [np.repeat(theta[:, j], n) for j in range(theta.shape[1])]
+        return x, params
+
+    def resid(self, theta: npt.NDArray, units: npt.NDArray) -> npt.NDArray:
+        """The residuals ``y - f(x, theta)`` of ``units`` (``theta`` one
+        row per unit), 0 in the padding."""
+        x, params = self._flat(theta, units)
+        with np.errstate(all="ignore"):
+            fitted = np.asarray(self.path_model.path(x, *params), dtype=float)
+        fitted = fitted.reshape(len(units), -1)
+        return np.where(self.mask[units], self.y[units] - fitted, 0.0)
+
+    def jacobian(self, theta: npt.NDArray, units: npt.NDArray) -> npt.NDArray:
+        """The path Jacobians of ``units``, ``(units, n, p)``, 0 in the
+        padding."""
+        x, params = self._flat(theta, units)
+        jac = np.asarray(self.path_model.jacobian(x, *params), dtype=float)
+        jac = jac.reshape(len(units), self.shape[1], -1)
+        return np.where(self.mask[units][..., None], jac, 0.0)
+
+
+def _conditional_modes(
+    path_model: Any,
+    xs: list,
+    ys: list,
+    means: npt.NDArray,
+    prior_precision: npt.NDArray,
+    sigma2: float,
+    theta0: npt.NDArray,
+    max_iter: int = 50,
+) -> npt.NDArray:
+    """
+    :func:`_conditional_mode` of every unit (its times ``xs[k]``,
+    measurements ``ys[k]``, prior mean ``means[k]`` and start
+    ``theta0[k]``), one row per unit.
+
+    The units are independent given the population, so for a built-in
+    (element-wise) path model the damped Gauss-Newton search runs for all
+    of them at once, each unit with its own step length and stopping as it
+    converges: the same search, with the sums taken in a different order
+    (#588). A custom path model is searched unit by unit.
+    """
+    theta = np.array(theta0, dtype=float)
+    means = np.broadcast_to(np.asarray(means, dtype=float), theta.shape)
+    if not _elementwise(path_model):
+        for k, (x, y) in enumerate(zip(xs, ys)):
+            theta[k] = _conditional_mode(
+                path_model,
+                x,
+                y,
+                means[k],
+                prior_precision,
+                sigma2,
+                theta[k],
+                max_iter,
+            )
+        return theta
+    units = _PaddedUnits(path_model, xs, ys)
+
+    def penalised(t: npt.NDArray, idx: npt.NDArray) -> npt.NDArray:
+        resid = units.resid(t, idx)
+        delta = t - means[idx]
+        return np.einsum("un,un->u", resid, resid) / sigma2 + np.einsum(
+            "ui,ij,uj->u", delta, prior_precision, delta
+        )
+
+    everyone = np.arange(len(theta))
+    with np.errstate(all="ignore"):
+        obj = penalised(theta, everyone)
+    active = np.isfinite(obj)
+    for _ in range(max_iter):
+        idx = np.flatnonzero(active)
+        if not idx.size:
+            break
+        jac = units.jacobian(theta[idx], idx)
+        resid = units.resid(theta[idx], idx)
+        grad = (
+            -np.einsum("unp,un->up", jac, resid) / sigma2
+            + (theta[idx] - means[idx]) @ prior_precision.T
+        )
+        hess = np.einsum("unp,unq->upq", jac, jac) / sigma2 + prior_precision
+        step, solved = _batched_solve(hess, grad)
+        stop = ~solved | _negligible(step, theta[idx])
+        active[idx[stop]] = False
+        idx, step = idx[~stop], step[~stop]
+        alpha = _line_search(penalised, theta, obj, idx, step)
+        # a unit whose search found no improvement, or whose accepted step
+        # was negligible, has converged
+        moved = alpha > 0
+        active[idx[~moved]] = False
+        done = _negligible(alpha[moved, None] * step[moved], theta[idx[moved]])
+        active[idx[moved][done]] = False
+    return theta
+
+
+def _batched_solve(
+    hess: npt.NDArray, grad: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The Gauss-Newton steps ``hess[k]^-1 grad[k]``, and which could be
+    solved (a singular ``hess[k]`` stops that unit's search, as
+    ``np.linalg.solve`` raising does in :func:`_conditional_mode`)."""
+    try:
+        return np.linalg.solve(hess, grad[..., None])[..., 0], np.ones(
+            len(grad), dtype=bool
+        )
+    except np.linalg.LinAlgError:
+        pass
+    step = np.zeros_like(grad)
+    solved = np.ones(len(grad), dtype=bool)
+    for k in range(len(grad)):
+        try:
+            step[k] = np.linalg.solve(hess[k], grad[k])
+        except np.linalg.LinAlgError:
+            solved[k] = False
+    return step, solved
+
+
+def _line_search(
+    penalised: Any,
+    theta: npt.NDArray,
+    obj: npt.NDArray,
+    idx: npt.NDArray,
+    step: npt.NDArray,
+) -> npt.NDArray:
+    """Backtrack each unit ``idx[k]`` along ``-step[k]``, halving from a
+    full step up to 40 times until the objective falls, as
+    :func:`_conditional_mode` does; ``theta`` and ``obj`` are updated in
+    place where it does. Returns the step lengths taken (0 where none
+    improved)."""
+    alpha = np.ones(len(idx))
+    taken = np.zeros(len(idx))
+    searching = np.arange(len(idx))
+    for _ in range(40):
+        if not searching.size:
+            break
+        units = idx[searching]
+        candidate = theta[units] - alpha[searching, None] * step[searching]
+        finite = np.isfinite(candidate).all(axis=1)
+        new_obj = np.full(searching.size, np.nan)
+        if finite.any():
+            with np.errstate(all="ignore"):
+                new_obj[finite] = penalised(candidate[finite], units[finite])
+        with np.errstate(invalid="ignore"):
+            better = np.isfinite(new_obj) & (
+                new_obj < obj[units] - 1e-14 * np.abs(obj[units])
+            )
+        theta[units[better]] = candidate[better]
+        obj[units[better]] = new_obj[better]
+        taken[searching[better]] = alpha[searching[better]]
+        searching = searching[~better]
+        alpha[searching] *= 0.5
+    return taken
 
 
 def reml_estimate_nonlinear(
@@ -552,19 +756,23 @@ def reml_estimate_nonlinear(
     for _ in range(max_outer):
         prior_precision = _prior_precision(covariance, sigma2)
         # Step 1: conditional modes given the current population.
+        prior_means = (
+            gamma
+            if d_mat_list is None
+            else np.array([d @ gamma for d in d_mat_list])
+        )
+        theta_hat = _conditional_modes(
+            path_model,
+            x_list,
+            y_list,
+            prior_means,
+            prior_precision,
+            sigma2,
+            theta_hat,
+        )
         w_list, jac_list, a_list = [], [], []
         for k, (y_i, x_i) in enumerate(zip(y_list, x_list)):
-            prior_mean = gamma if d_mat_list is None else d_mat_list[k] @ gamma
-            theta_i = _conditional_mode(
-                path_model,
-                x_i,
-                y_i,
-                prior_mean,
-                prior_precision,
-                sigma2,
-                theta_hat[k],
-            )
-            theta_hat[k] = theta_i
+            theta_i = theta_hat[k]
             # Step 2: linearise the path about the mode.
             jac = np.asarray(path_model.jacobian(x_i, *theta_i), dtype=float)
             fitted = np.asarray(path_model.path(x_i, *theta_i), dtype=float)

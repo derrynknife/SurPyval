@@ -381,7 +381,7 @@ def test_destructive_json_file_and_package_dispatch(tmp_path):
 def test_destructive_old_dict_without_data_still_loads():
     model = _destructive_model()
     d = json_round_trip(model.to_dict())
-    for key in ("data", "neg_ll", "transform_scores"):
+    for key in ("data", "_neg_ll", "transform_scores"):
         del d[key]
     restored = DestructiveDegradationModel.from_dict(d)
     t = np.array([30.0, 50.0])

@@ -29,7 +29,6 @@ closed-form fit carries the same information as an optimised one --
 import autograd.numpy as np
 import numpy as onp
 from autograd import hessian
-from numdifftools import Hessian  # type: ignore
 from numpy.linalg import LinAlgError, inv, pinv
 
 
@@ -51,6 +50,8 @@ def parameter_covariance(
     unlike the optimiser path, which must work in the unbounded
     transformed space it searched.
     """
+    from numdifftools import Hessian  # type: ignore
+
     params = onp.asarray(params, dtype=float)
 
     def fun(p: npt.NDArray) -> Any:
@@ -121,7 +122,7 @@ def closed_form_results(
         "p": 1.0,
         "_neg_ll": neg_ll,
         "log_likelihood": -neg_ll,
-        "cov_matrix": cov,
+        "_covariance": cov,
         "hess_inv": cov,
         "res": None,
         "optimizer": optimizer,

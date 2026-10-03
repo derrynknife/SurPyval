@@ -66,7 +66,10 @@ Every competing-risks fit takes the same core arrays:
   censored. If you do pass ``c``, every row with ``c == 1`` must have a missing
   cause and every other row must have one, otherwise a ``ValueError`` explains
   the mismatch;
-- ``n`` -- optional counts, when each row stands for several identical units.
+- ``n`` -- optional counts, when each row stands for several identical units;
+- ``tl`` -- for ``ParametricCompetingRisks``, the optional age at which each
+  row came under observation (left truncation; see `Assembling a model from
+  separately fitted causes`_).
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
 
@@ -453,13 +456,15 @@ models -- a ``{cause: model}`` dict, or a list whose causes become ``0, 1,
 The one rule: fit each model to the *cause-specific view* of the data, with
 that cause's failures observed and every other row right-censored.
 
-This is also how to handle **delayed entry (left truncation)**, which the
-competing-risks ``fit`` methods do not take as an argument. Suppose the
-components were only put under observation at a random age ``entry``, so that
-units which failed before entering were never seen. Ignoring the entry ages
-biases the fit; fitting each cause with ``tl=entry`` and assembling the result
-is the exact maximum-likelihood fit (the truncated likelihood factorises by
-cause too):
+**Delayed entry (left truncation).** Suppose the components were only put
+under observation at a random age ``entry`` (when the maintenance records
+start, say), so that units which failed before entering were never seen.
+Ignoring the entry ages biases the fit; ``ParametricCompetingRisks.fit`` takes
+them as ``tl`` (and ``fit_from_df`` as ``tl_col``), which is the exact
+maximum-likelihood fit: the truncated likelihood factorises by cause too, so it
+is the same as fitting each cause with ``tl=entry`` and assembling the result
+with ``from_fitted``. (Right truncation and interval censoring do not factorise
+by cause, and ``fit`` takes neither.)
 
 .. jupyter-execute::
 
@@ -476,11 +481,10 @@ cause too):
         x_t, e_t, dist={"wear": surv.Weibull, "shock": surv.Exponential}
     )
 
-    per_cause = {}
-    for k, dist in [("wear", surv.Weibull), ("shock", surv.Exponential)]:
-        c_k = np.where(e_t == k, 0, 1)           # cause-specific view
-        per_cause[k] = dist.fit(x_t, c=c_k, tl=tl)
-    adjusted = ParametricCompetingRisks.from_fitted(per_cause)
+    adjusted = ParametricCompetingRisks.fit(
+        x_t, e_t, dist={"wear": surv.Weibull, "shock": surv.Exponential},
+        tl=tl,
+    )
 
     print("true shock rate    : %.5f" % (1 / 150))
     print("ignoring entry     : %.5f" % naive.models["shock"].params[0])
@@ -504,6 +508,10 @@ wear-out. The truncation-aware fit recovers both.
     assert naive.probability_of_cause("wear") > _pw + 0.05
     assert abs(adjusted.models["shock"].params[0] / _rate - 1) < 0.05
     assert abs(adjusted.probability_of_cause("wear") - _pw) < 0.02
+    # The same as fitting each cause's view with the entry ages.
+    for _k, _dist in [("wear", surv.Weibull), ("shock", surv.Exponential)]:
+        _alone = _dist.fit(x_t, c=np.where(e_t == _k, 0, 1), tl=tl)
+        assert np.allclose(_alone.params, adjusted.models[_k].params)
 
 Simulating competing-risks data
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -786,11 +794,18 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
     print("se       :", np.round(model.se, 3))
     print("p-values :", model.p_values)
     print("SHR      :", np.round(np.exp(model.beta), 3))
-    print("cov      :\n", np.round(model.cov, 4))
+    print("cov      :\n", np.round(model.covariance(), 4))
 
 The standard errors come from the inverse Hessian of the weighted partial
 likelihood (the robust variance of Fine and Gray is not implemented), so treat
-them as approximate. Because the model targets the incidence directly, ``cif``
+them as approximate. ``covariance()`` is that inverse, and ``log_likelihood``
+the maximised weighted partial log-likelihood (``cmprsk::crr``'s ``loglik``),
+whose ``aic()`` and ``bic()`` (with the events of the cause as BIC's sample
+size) compare Fine-Gray models of the same cause on the same data; a
+``CompetingRisksProportionalHazards`` fitted with ``model="Fine-Gray"`` has
+none, as its causes' partial likelihoods are not parts of one likelihood,
+while one fitted with ``model="Cox"`` has the sum of its cause-specific
+partial likelihoods, R's multi-state ``coxph``'s. Because the model targets the incidence directly, ``cif``
 reads off the cumulative incidence of the cause at any covariate value (one
 covariate vector per call). The dashed lines are the true CIFs:
 

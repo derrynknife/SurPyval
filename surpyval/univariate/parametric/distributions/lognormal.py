@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import brentq
@@ -61,6 +63,14 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
                 0.999,
             ],
         )
+
+    def _offset_limit_family(self) -> Any:
+        """The ``Normal``: as the offset runs to -inf with sigma -> 0,
+        ``gamma + exp(mu + sigma Z)`` tends to a Normal distribution
+        (#599; see ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Normal
+
+        return Normal
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

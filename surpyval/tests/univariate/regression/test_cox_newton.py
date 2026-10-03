@@ -415,7 +415,7 @@ def test_fits_match_the_code_before_516(case):
     old = OLD_FITS[case]
     np.testing.assert_allclose(model.beta, old["beta"], rtol=RTOL)
     np.testing.assert_allclose(model.se, old["se"], rtol=RTOL)
-    np.testing.assert_allclose(model._neg_log_like, old["neg_ll"], rtol=1e-13)
+    np.testing.assert_allclose(model.neg_ll(), old["neg_ll"], rtol=1e-13)
     np.testing.assert_allclose(H, old["H"], rtol=RTOL)
     np.testing.assert_allclose(sf, old["sf"], rtol=RTOL)
 

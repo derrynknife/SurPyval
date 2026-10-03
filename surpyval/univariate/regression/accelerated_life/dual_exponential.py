@@ -38,6 +38,7 @@ class DualExponential_(LifeModel):
     """
 
     n_stresses = 2
+    phi_takes_rows = True
 
     def __init__(self) -> None:
         """

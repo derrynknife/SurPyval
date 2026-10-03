@@ -11,7 +11,6 @@ import numpy.typing as npt
 from autograd import grad, jacobian
 from scipy.special import expit
 from scipy.special import ndtri as z
-from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution
@@ -22,7 +21,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.deprecation import RenamedToMethod, renamed_arguments
 from surpyval.utils.linalg import (
     cb_link,
     param_name,
@@ -44,13 +43,14 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
     option_error,
+    warn_outside_unit_interval,
 )
 
 from ._likelihood_ratio import (
     _LN_MAX,
     _LN_TINY,
     LikelihoodRatioMixin,
-    _central_gradient,
+    central_gradient,
 )
 from .probability_plotting import (
     adjust_heuristic,
@@ -92,6 +92,8 @@ def uniform_draws(
     size: int | tuple[int, ...], random_state: Any = None
 ) -> npt.NDArray:
     """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    from scipy.stats import uniform
+
     return uniform.rvs(size=size, random_state=draw_state(random_state))
 
 
@@ -282,7 +284,8 @@ class Parametric(
     f0: float
     support: tuple[float, float]
     hess_inv: npt.NDArray
-    cov_matrix: npt.NDArray
+    #: The covariance of every estimated parameter, ``covariance()``.
+    _covariance: "npt.NDArray | None" = None
     surv_data: "SurpyvalData"
     fitting_info: dict[str, Any]
     optimizer: str
@@ -291,6 +294,9 @@ class Parametric(
     # The printout's "Data" line of a model restored without its
     # data (#508)
     _data_summary: "str | None" = None
+    # ``(events, trials)`` of a Bernoulli, FixedEventProbability or
+    # Binomial fit: what its bounds on ``p`` are computed from (#580).
+    _event_counts: "tuple[float, float] | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -298,6 +304,9 @@ class Parametric(
     _bic: float
     _aic: float
     _aic_c: float
+
+    #: ``covariance()``'s name before v0.23 (#605), for one release.
+    cov_matrix = RenamedToMethod("covariance", "_covariance")
 
     def __init__(
         self,
@@ -437,8 +446,11 @@ class Parametric(
         if "hess_inv" in model_dict:
             out.hess_inv = np.array(model_dict["hess_inv"])
 
-        if "cov_matrix" in model_dict:
-            out.cov_matrix = np.array(model_dict["cov_matrix"])
+        # "cov_matrix" is the key of a dict written before v0.23.
+        for key in ("covariance", "cov_matrix"):
+            if key in model_dict:
+                out._covariance = np.array(model_dict[key])
+                break
 
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
@@ -465,6 +477,9 @@ class Parametric(
         # for any other.
         out.maximum = restored_maximum(model_dict, out.maximum)
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("event_counts") is not None:
+            events, trials = model_dict["event_counts"]
+            out._event_counts = (float(events), float(trials))
 
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
@@ -552,8 +567,9 @@ class Parametric(
 
         if getattr(self, "hess_inv", None) is not None:
             out["hess_inv"] = self.hess_inv.tolist()
-        if getattr(self, "cov_matrix", None) is not None:
-            out["cov_matrix"] = self.cov_matrix.tolist()
+        if self._covariance is not None:
+            # The key every model's dict stores it under (#605).
+            out["covariance"] = np.asarray(self._covariance).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
         # Informational: a reader that predates it ignores it and restores
@@ -566,6 +582,10 @@ class Parametric(
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # Informational too: the counts the bounds on a Bernoulli,
+        # FixedEventProbability or Binomial p come from (#580).
+        if self._event_counts is not None:
+            out["event_counts"] = [float(v) for v in self._event_counts]
 
         fixed_idx = sorted(self._user_fixed_idx())
         if fixed_idx:
@@ -720,17 +740,46 @@ class Parametric(
             data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper, x=x
         )
 
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of the fitted parameters: the distribution's, in
+        the order of ``parameter_names``, then the limited-failure
+        proportion ``p`` and the zero-inflation fraction ``f0`` where the
+        model has them (a held parameter has a zero row and column). The
+        inverse of the observed information at the maximum, carried to
+        the parameters through their transforms; what Wald bounds use.
+        ``cov_matrix``, its name before v0.23, still gives it, with a
+        ``DeprecationWarning``, until v0.24.
+
+        Raises a ``ValueError`` where the model has none: one built with
+        ``from_params``, one whose information was singular, or a
+        closed-form fit with no Wald covariance (``Uniform``).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(100, 10, 3))
+        >>> np.sqrt(np.diag(model.covariance())).round(4)
+        array([0.3589, 0.2286])
+        """
+        if self._covariance is None:
+            raise no_covariance_error(_NO_COVARIANCE_WHY)
+        return self._covariance
+
     def param_cb(
         self,
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: str = "wald",
+        method: str | None = None,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
 
-        Two interval methods are available via ``method``:
+        Two interval methods are available via ``method``, and ``"wald"``
+        is the default (``method=None``):
 
         - ``"wald"`` (default) -- a symmetric bound from the parameter's
           standard error, computed on a scale chosen from the parameter's
@@ -751,6 +800,15 @@ class Parametric(
           ``r`` does as the model tends to a Poisson), the bound is that
           edge: 0, 1 or ``inf``. A side whose bound cannot be found is
           ``nan``, with a warning.
+
+        The probability ``p`` of a ``Bernoulli``,
+        ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
+        event and trial counts instead, and there the default is
+        ``"exact"``, the Clopper-Pearson interval (as R's ``binom.test``
+        and scipy's ``binomtest``), which holds its level at any sample
+        size and gives the zero-failure (success-run) bound; ``"wald"``
+        (on the logit scale) and ``"lr"`` are the options (see
+        ``Bernoulli.fit``).
 
         A parameter fixed at fit time is known, so both methods give the
         degenerate interval at its value. A Wald bound does not exist
@@ -776,7 +834,9 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default) or ``"lr"``, as above.
+            ``"wald"`` (the default) or ``"lr"``, as above; ``"exact"``
+            (the default), ``"wald"`` or ``"lr"`` for the probability
+            models.
 
         Returns
         -------
@@ -794,14 +854,17 @@ class Parametric(
         >>> model.param_cb("beta", method="lr")
         array([1.82826755, 3.27740643])
         """
+        probability_cb = getattr(self.dist, "_probability_cb", None)
+        if probability_cb is not None:
+            return probability_cb(self, name, alpha_ci, bound, method)
+        if method is None:
+            method = "wald"
         if self._is_lr(method):
             return self._param_cb_lr(name, alpha_ci, bound)
 
         is_core, idx = self._resolve_param_name(name)
         if not is_core:
-            cov = getattr(self, "cov_matrix", None)
-            if cov is None:
-                raise no_covariance_error(_NO_COVARIANCE_WHY)
+            cov = self.covariance()
             p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
             param_bounds: tuple[float | None, float | None] = (0, 1)
@@ -852,7 +915,7 @@ class Parametric(
         Returns ``(True, i)`` for the distribution's own ``i``-th
         parameter and ``(False, j)`` for the limited-failure proportion or
         the zero-inflation fraction, ``j`` being its index in the extended
-        covariance ``cov_matrix`` (core parameters, then ``p``, then
+        covariance, ``covariance()`` (core parameters, then ``p``, then
         ``f0``). The distribution's parameters are looked up first, so a
         ``Geometric`` ``p`` is never mistaken for the LFP proportion (which
         is then ``lfp_p``, see ``__init__``). Anything else -- the offset,
@@ -1243,7 +1306,9 @@ class Parametric(
         ``p`` is infinite (that proportion of the population never fails). For
         a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
         so quantiles at or below ``f0`` return 0. A probability outside
-        [0, 1] gives NaN, as scipy's ``ppf`` does.
+        [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
+        most often a percentage given for a probability: ``qf(10)`` for
+        the B10 life, which is ``qf(0.1)``); NaN gives NaN.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -1275,8 +1340,9 @@ class Parametric(
         q = np.where((self.p < 1) & (u >= self.p), np.inf, q)
         # A probability outside [0, 1] has no quantile: NaN, as scipy's
         # ``ppf`` and ``CustomDistribution.qf`` (#437) give. It was inf
-        # above 1 and 0 below 0, even for a Normal (#485).
-        q = np.where((u < 0) | (u > 1), np.nan, q)
+        # above 1 and 0 below 0, even for a Normal (#485). It is a
+        # mistake, not a missing value, so it is warned of (#576).
+        q = np.where(warn_outside_unit_interval(u), np.nan, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 
@@ -1830,6 +1896,7 @@ class Parametric(
         t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+        self._refuse_probability_model("cb")
         # Checked up front, as param_cb does: an unrecognised value (say
         # 'both') used to fall through to the lower-bound branch and
         # return one bound as if it were what was asked for.
@@ -1935,7 +2002,7 @@ class Parametric(
         mean.
         """
         probs = np.asarray(p, dtype=float)
-        self._check_summary_cb(alpha_ci, bound)
+        self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
         if not np.all((probs > 0) & (probs < 1)):
@@ -2002,7 +2069,7 @@ class Parametric(
         The nonparametric models' ``mean_cb`` bounds their (restricted)
         mean; :meth:`quantile_cb` bounds a quantile.
         """
-        self._check_summary_cb(alpha_ci, bound)
+        self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
             inf = np.inf
@@ -2018,7 +2085,7 @@ class Parametric(
             return (p - f0) * (self.dist.mean(*core) + self.gamma)
 
         with np.errstate(all="ignore"):
-            grad = _central_gradient(mean_of, ctx.phi_hat)
+            grad = central_gradient(mean_of, ctx.phi_hat)
             var = np.atleast_1d(grad @ ctx.cov @ grad)
             value = np.atleast_1d(mean_of(ctx.phi_hat))
         # The mass f0 at 0 of a zero-inflated model is below any offset
@@ -2041,12 +2108,29 @@ class Parametric(
             )
         return False
 
-    def _check_summary_cb(self, alpha_ci: float, bound: str) -> None:
+    def _check_summary_cb(
+        self, alpha_ci: float, bound: str, what: str = "this bound"
+    ) -> None:
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+        self._refuse_probability_model(what)
         check_option("bound", bound, BOUNDS)
         if not 0 < alpha_ci < 1:
             raise alpha_ci_error(alpha_ci)
+
+    def _refuse_probability_model(self, what: str) -> None:
+        """The one message for the bounds a Bernoulli,
+        FixedEventProbability or Binomial fit does not have (#580): its
+        uncertainty is that of ``p``, which ``param_cb`` bounds."""
+        if getattr(self.dist, "_probability_cb", None) is None:
+            return
+        raise ValueError(
+            "{} is not available for a {} model, whose one estimated "
+            "parameter is the event probability p: bound it with "
+            "param_cb('p') (exact Clopper-Pearson bounds by default). The "
+            "probability of no event, 1 - p, has the bounds 1 - upper and "
+            "1 - lower.".format(what, self.dist.name)
+        )
 
     def _summary_scale(self, zero_floor: bool = False) -> tuple:
         """The scale a quantile or the mean is bounded on, from the
@@ -2271,7 +2355,7 @@ class Parametric(
         ``(*params, p?, f0?)`` so that the uncertainty of the LFP and
         zero-inflation parameters widens the bounds. gamma is held fixed:
         the threshold parameter is non-regular, so it carries no Wald
-        variance. Models deserialized without a ``cov_matrix`` fall back to
+        variance. Models deserialized without a covariance fall back to
         treating p and f0 as fixed.
         """
         n_core = len(self.params)
@@ -2282,7 +2366,7 @@ class Parametric(
             phi_hat.append(self.f0)
         phi_hat = np.array(phi_hat)
 
-        cov = getattr(self, "cov_matrix", None)
+        cov = self._covariance
         if cov is None:
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:

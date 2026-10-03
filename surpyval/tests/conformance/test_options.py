@@ -839,6 +839,7 @@ _TIME_FUNCTIONS: tuple[str, ...] = (
     "cb",
 )
 _TIME_FUNCTIONS += ("cif_cb", "mcf_cb", "bootstrap_cb", "band")
+_TIME_FUNCTIONS += ("iif_cb", "mtbf", "mtbf_cb")
 
 
 def _default_is(name, value):

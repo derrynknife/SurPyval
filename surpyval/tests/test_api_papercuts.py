@@ -120,10 +120,13 @@ def test_column_vectors_are_accepted():
 
 
 def test_qf_outside_unit_interval_is_nan():
-    # Weibull qf(1.5) was inf, and a Normal's qf(-0.1) was 0
+    # Weibull qf(1.5) was inf, and a Normal's qf(-0.1) was 0; NaN now,
+    # with a warning (#576)
     model = sp.Weibull.from_params([1, 2])
-    assert np.isnan(model.qf(1.5)) and np.isnan(model.qf(-0.1))
-    q = sp.Normal.from_params([0, 1]).qf([-0.1, 0, 0.5, 1, 1.1])
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+        assert np.isnan(model.qf(1.5)) and np.isnan(model.qf(-0.1))
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+        q = sp.Normal.from_params([0, 1]).qf([-0.1, 0, 0.5, 1, 1.1])
     np.testing.assert_array_equal(q, [np.nan, -np.inf, 0, np.inf, np.nan])
     # a bounded support ends where it ends
     np.testing.assert_array_equal(
@@ -410,3 +413,27 @@ def test_surpyval_namespace_unchanged():
     # Guard: the fixes must not have removed public names.
     for name in ("AdditiveHazards", "CoxPH", "Rayleigh", "Uniform"):
         assert hasattr(surpyval, name)
+
+
+def test_576_qf_warns_of_a_probability_outside_the_unit_interval():
+    # qf(10) for the B10 life gave NaN in silence
+    model = sp.Weibull.from_params([10, 3])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        q = model.qf([0.1, 10.0, np.nan])
+    assert np.isnan(q[1:]).all() and q[0] == model.qf(0.1)
+    (warning,) = caught
+    assert warning.filename == __file__
+    text = str(warning.message)
+    assert "1 of the 3 probabilities given is outside [0, 1] (10.0)" in text
+    assert "B10 life pass 0.1" in text
+    # NaN is a missing probability, not a mistake: no warning
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        assert np.isnan(model.qf(np.nan))
+        model.qf([0.0, 1.0])
+    # The Royston-Parmar model, whose root finder raised a scipy error
+    rp = sp.RoystonParmar.fit(sp.Weibull.random(40, 10, 2, random_state=1))
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+        out = rp.qf(np.array([0.5, 1.5]))
+    assert np.isfinite(out[0]) and np.isnan(out[1])

@@ -188,13 +188,20 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         return list(self._ends_on_extremes(surv_data, params, False))
 
     def _warn_runaway(
-        self, surv_data: SurpyvalData, runaway: list[str], results: dict
+        self,
+        surv_data: SurpyvalData,
+        runaway: list[str],
+        results: dict,
+        offset: bool = False,
+        by_limit: bool = False,
     ) -> None:
         """The Beta4's own words for a search stopped at an edge
         (:meth:`_at_unbounded_edge`)."""
         ends = self._ends_on_extremes(surv_data, results["params"], False)
         if not set(runaway) <= set(ends):
-            return super()._warn_runaway(surv_data, runaway, results)
+            return super()._warn_runaway(
+                surv_data, runaway, results, offset, by_limit
+            )
         warn_no_maximum(
             "the Beta4 likelihood is unbounded: a shape below 1 makes the "
             "density infinite at a support end, and the search ran "

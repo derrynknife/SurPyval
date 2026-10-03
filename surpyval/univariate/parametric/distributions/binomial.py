@@ -4,7 +4,6 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.stats import binom
 
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
@@ -19,6 +18,7 @@ from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
 
 from ..parametric import Parametric
 from ._discrete_tails import refine_quantile
+from ._single_probability import event_counts, probability_bounds
 
 
 class Binomial_(DiscreteParametricFitter):
@@ -100,6 +100,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.df(2, 5, 0.3)
         np.float64(0.3086999999999998)
         """
+        from scipy.stats import binom
+
         return binom.pmf(x, n, p)
 
     def ff(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -133,6 +135,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.ff(2, 5, 0.3)
         np.float64(0.83692)
         """
+        from scipy.stats import binom
+
         return binom.cdf(x, n, p)
 
     def sf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -165,6 +169,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.sf(2, 5, 0.3)
         np.float64(0.16308)
         """
+        from scipy.stats import binom
+
         return binom.sf(x, n, p)
 
     def hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -259,6 +265,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.qf(0.5, 5, 0.3)
         np.float64(1.0)
         """
+        from scipy.stats import binom
+
         u_arr = np.asarray(u, dtype=float)
         k = refine_quantile(
             binom.ppf(u_arr, n, p),
@@ -300,6 +308,8 @@ class Binomial_(DiscreteParametricFitter):
         # scipy's log mass is formed on the log scale, so it stays finite
         # where the mass underflows (it read -inf from 1e-400 on, #458);
         # the fallback from hf and sf here lost it the same way.
+        from scipy.stats import binom
+
         return binom.logpmf(x, n, p)
 
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
@@ -345,6 +355,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.moment(1, 5, 0.3)
         np.float64(1.5)
         """
+        from scipy.stats import binom
+
         return binom.moment(m, n, p)
 
     def entropy(self, n: Boxable, p: Boxable) -> Boxable:
@@ -358,6 +370,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.entropy(5, 0.3)
         np.float64(1.413614855283445)
         """
+        from scipy.stats import binom
+
         return binom.entropy(n, p)
 
     def random(  # type: ignore[override]
@@ -392,6 +406,8 @@ class Binomial_(DiscreteParametricFitter):
         random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
         """
+        from scipy.stats import binom
+
         # A fitted model holds n as a float (5.0), which numpy's binomial
         # draw refused: "Cannot cast scalar from dtype('float64') to
         # dtype('int64')".
@@ -438,6 +454,10 @@ class Binomial_(DiscreteParametricFitter):
 
         model : Parametric
             A parametric model with the fitted ``[n_trials, p]`` parameters.
+            Its ``param_cb("p")`` bounds ``p`` from the events in all the
+            trials, ``sum(x)`` in ``n_trials * len(x)``, exactly
+            (Clopper-Pearson) by default, as ``Bernoulli`` does;
+            ``param_cb("n")`` is the known ``n_trials``.
 
         Examples
         --------
@@ -445,6 +465,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> model = Binomial.fit([2, 3, 1, 4], n_trials=5)
         >>> model.params
         array([5. , 0.5])
+        >>> model.param_cb("p").round(4)
+        array([0.272, 0.728])
         """
         x_arr = np.atleast_1d(np.asarray(x))
 
@@ -472,8 +494,40 @@ class Binomial_(DiscreteParametricFitter):
         model.maximum = "verified"
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
+        # The events in all the trials: the bounds on p come from these
+        # (#580).
+        model._event_counts = (
+            float((x_arr * n).sum()),
+            float(n_trials * n.sum()),
+        )
         self._set_support(model, False)
         return model
+
+    def _probability_cb(
+        self,
+        model: Parametric,
+        name: str,
+        alpha_ci: float,
+        bound: str,
+        method: str | None,
+    ) -> npt.NDArray:
+        """``model.param_cb`` (#580): bounds on ``p`` from the events in
+        all the trials (see ``Bernoulli.fit``); the number of trials ``n``
+        is known, so its interval is the degenerate one at its value."""
+        if name == "n":
+            from surpyval.utils.linalg import bound_signs
+
+            _, signs = bound_signs(alpha_ci, bound)
+            return np.full(signs.shape, float(model.params[0]))
+        if name != "p":
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of ['n', 'p']".format(
+                    name
+                )
+            )
+        return probability_bounds(
+            *event_counts(model), alpha_ci, bound, method, name
+        )
 
     def _set_support(self, model: Any, offset: bool) -> None:
         """Exclusive bounds either side of the outcomes ``{0, ..., n}``

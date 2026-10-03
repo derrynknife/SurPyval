@@ -274,9 +274,16 @@ def _encode_floats(
     return out
 
 
-def _encode(value: Any, pointer: str, found: dict[str, list[str]]) -> Any:
+def _encode(
+    value: Any,
+    pointer: str,
+    found: dict[str, list[str]],
+    stamped: bool = False,
+) -> Any:
     """``value`` with native types and its non-finite floats as ``None``,
-    recording each replaced float's pointer in ``found``."""
+    recording each replaced float's pointer in ``found``. With
+    ``stamped``, a nested dictionary that carries a ``"schema"`` (a model
+    dictionary ``to_dict`` has already finished) is taken as it is."""
     if isinstance(value, np.ndarray):
         # Numeric arrays -- a fitted model's curves and data -- in one
         # pass, not one recursive call per item (#515).
@@ -296,13 +303,16 @@ def _encode(value: Any, pointer: str, found: dict[str, list[str]]) -> Any:
         if _all_of_types(value, _PLAIN_SCALARS):
             return list(value)
     if isinstance(value, dict):
+        if stamped and "schema" in value:
+            return value
         return {
-            k: _encode(v, f"{pointer}/{_pointer_token(k)}", found)
+            k: _encode(v, f"{pointer}/{_pointer_token(k)}", found, stamped)
             for k, v in value.items()
         }
     if isinstance(value, (list, tuple)):
         items = [
-            _encode(v, f"{pointer}/{j}", found) for j, v in enumerate(value)
+            _encode(v, f"{pointer}/{j}", found, stamped)
+            for j, v in enumerate(value)
         ]
         return tuple(items) if isinstance(value, tuple) else items
     if isinstance(value, float) and not math.isfinite(value):
@@ -311,7 +321,7 @@ def _encode(value: Any, pointer: str, found: dict[str, list[str]]) -> Any:
     return value
 
 
-def encode_non_finite(model_dict: dict) -> dict:
+def encode_non_finite(model_dict: dict, stamped: bool = False) -> dict:
     """Make a serialised dictionary strict JSON, in place.
 
     ``json.dumps`` writes ``inf``, ``-inf`` and ``nan`` as the literals
@@ -347,12 +357,16 @@ def encode_non_finite(model_dict: dict) -> dict:
     >>> from surpyval.serialisation import encode_non_finite
     >>> encode_non_finite({"H": [0.5, np.inf], "var": np.nan})
     {'H': [0.5, None], 'var': None, 'non_finite': {'inf': ['/H/1'], 'nan': ['/var']}}
+
+    With ``stamped``, the nested model dictionaries that ``to_dict`` has
+    already finished (each carries its ``"schema"``) are not walked again:
+    they are strict JSON already, with records of their own.
     """  # noqa: E501
     found: dict[str, list[str]] = {kind: [] for kind in _NON_FINITE_KINDS}
     for key in list(model_dict):
         if key != NON_FINITE_KEY:
             model_dict[key] = _encode(
-                model_dict[key], "/" + _pointer_token(key), found
+                model_dict[key], "/" + _pointer_token(key), found, stamped
             )
     if any(found.values()):
         record = dict(model_dict.get(NON_FINITE_KEY) or {})
@@ -600,7 +614,7 @@ def decode_non_finite(model_dict: dict) -> dict:
     return _decode(model_dict, None, "")
 
 
-def required_schema(model_dict: dict) -> int:
+def required_schema(model_dict: dict, stamped: bool = False) -> int:
     """The oldest schema version that reads ``model_dict`` correctly.
 
     2 if the dictionary, or a model dictionary nested in it, records
@@ -609,12 +623,16 @@ def required_schema(model_dict: dict) -> int:
     missing entries, holds a regression formula that only a schema-2
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
-    ``"support"`` of a non-parametric estimate's ``set_support`` or the
-    ``"band_n"`` of its ``band``, or the nonzero covariate ``"center"`` of
+    ``"support"`` of a non-parametric estimate's ``set_support``, the
+    ``"band_n"`` of its ``band`` or the ``"algorithm"`` of a Turnbull fit
+    by the EM-ICM, or the nonzero covariate ``"center"`` of
     a regression model fitted with ``center=True``, which a schema-1
     reader would silently ignore; 1
     otherwise, the layout SurPyval v0.20 reads. This is the version
-    :func:`stamp_schema` writes.
+    :func:`stamp_schema` writes. With ``stamped``, a nested model
+    dictionary that carries its ``"schema"`` counts by that version
+    rather than being searched again (it is 2 exactly when something in
+    it needs schema 2).
 
     Examples
     --------
@@ -630,10 +648,12 @@ def required_schema(model_dict: dict) -> int:
     >>> required_schema({"beta": [0.5], "center": [2000.0]})
     2
     """
-    dicts = _nested_dicts(model_dict)
+    stamped_versions: list = []
+    dicts = _nested_dicts(model_dict, stamped_versions if stamped else None)
     return (
         SCHEMA_VERSION
-        if any(
+        if SCHEMA_VERSION in stamped_versions
+        or any(
             _has_non_finite(d)
             or _formula_without_levels(d)
             or _has_support(d)
@@ -644,16 +664,21 @@ def required_schema(model_dict: dict) -> int:
     )
 
 
-def _nested_dicts(value: Any) -> list:
+def _nested_dicts(value: Any, stamped: "list | None" = None) -> list:
     """Every dictionary in ``value``, itself included. A list of scalars
     (a model's data) is not walked item by item: walking each of a
     Kaplan-Meier model's 700,000 values, once for each of the four
-    checks of ``required_schema``, was 80% of saving it."""
+    checks of ``required_schema``, was 80% of saving it. Given a list
+    ``stamped``, a nested dictionary with a ``"schema"`` is not walked:
+    its version is appended to ``stamped`` instead."""
     found = []
     stack = [value]
     while stack:
         item = stack.pop()
         if isinstance(item, dict):
+            if stamped is not None and item is not value and "schema" in item:
+                stamped.append(item["schema"])
+                continue
             found.append(item)
             stack.extend(item.values())
         elif isinstance(item, (list, tuple)) and not _is_flat(item):
@@ -672,10 +697,13 @@ def _center_nonzero(d: dict) -> bool:
 
 def _has_support(d: dict) -> bool:
     """Whether ``d`` (a cause-specific MCF's per-cause estimates are
-    nested) has a ``"support"`` or a ``"band_n"``, which only the
-    non-parametric estimates' ``to_dict`` writes (from ``set_support``,
-    and for ``band`` on left truncated data)."""
-    return any(d.get(key) is not None for key in ("support", "band_n"))
+    nested) has a ``"support"``, a ``"band_n"`` or an ``"algorithm"``,
+    which only the non-parametric estimates' ``to_dict`` writes (from
+    ``set_support``, for ``band`` on left truncated data, and for a
+    Turnbull fit by the EM-ICM, #620)."""
+    return any(
+        d.get(key) is not None for key in ("support", "band_n", "algorithm")
+    )
 
 
 def _formula_without_levels(d: dict) -> bool:
@@ -694,7 +722,7 @@ def _has_non_finite(d: dict) -> bool:
     return NON_FINITE_KEY in d
 
 
-def stamp_schema(model_dict: dict) -> dict:
+def stamp_schema(model_dict: dict, stamped: bool = False) -> dict:
     """Finish a ``to_dict`` output: make it strict JSON (non-finite floats
     as ``null``, see :func:`encode_non_finite`) and stamp the
     serialisation schema version. Every ``to_dict`` ends with it.
@@ -705,9 +733,19 @@ def stamp_schema(model_dict: dict) -> dict:
     misread, or carries something only a schema-2 reader restores, and 1
     otherwise, so that SurPyval releases reading schema 1 can still load
     it.
+
+    ``stamped=True`` is for a document made of model dictionaries that
+    are finished already (a forest's trees, a tree's leaves): those are
+    taken as they are rather than walked again, for the same document
+    (#549). Every ``to_dict`` that nests finished dictionaries may pass
+    it.
     """
-    encode_non_finite(model_dict)
-    model_dict["schema"] = required_schema(model_dict)
+    if stamped:
+        encode_non_finite(model_dict, stamped=True)
+        model_dict["schema"] = required_schema(model_dict, stamped=True)
+    else:
+        encode_non_finite(model_dict)
+        model_dict["schema"] = required_schema(model_dict)
     return model_dict
 
 

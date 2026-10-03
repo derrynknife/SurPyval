@@ -40,9 +40,8 @@ each observation's contribution by ``S(t_l) - S(t_r)``.
 from typing import Any
 
 import numpy as np
-from scipy.optimize import brentq, minimize
+from scipy.optimize import minimize
 from scipy.special import ndtri as _ndtri
-from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -50,15 +49,20 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import ArrayMethod
 from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
     warn_unverified,
 )
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
@@ -66,6 +70,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
     option_error,
+    warn_outside_unit_interval,
 )
 
 _SCALES = ("hazard", "odds", "normal")
@@ -115,6 +120,8 @@ def _place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
 
 def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
     """``(log S, log(-dS/deta))`` at linear predictor ``eta`` for a scale."""
+    from scipy.stats import norm
+
     if scale == "hazard":
         log_S = -np.exp(eta)
         return log_S, eta + log_S
@@ -128,11 +135,24 @@ def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
 
 
 def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
+    from scipy.stats import norm
+
     if scale == "hazard":
         return np.exp(-np.exp(eta))
     if scale == "odds":
         return 1.0 / (1.0 + np.exp(eta))
     return norm.sf(eta)
+
+
+def _eta_of_probability(p: npt.NDArray, scale: str) -> npt.NDArray:
+    """The linear predictor at which ``ff = p`` (``sf = 1 - p``), the
+    inverse of ``_sf_from_eta``: ``-inf`` at ``p = 0``, ``inf`` at
+    ``p = 1``."""
+    if scale == "hazard":
+        return np.log(-np.log1p(-p))
+    if scale == "odds":
+        return np.log(p) - np.log1p(-p)
+    return _ndtri(p)
 
 
 def _sf_at(
@@ -153,7 +173,7 @@ def _sf_at(
     return out
 
 
-class RoystonParmarModel(SerialisableMixin):
+class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     """A fitted Royston-Parmar flexible parametric model.
 
     Carries the spline ``knots``, the coefficients ``params`` (``gamma``), the
@@ -186,7 +206,7 @@ class RoystonParmarModel(SerialisableMixin):
         self.scale = "hazard"
         self.knots = np.array([])
         self.params = np.array([])
-        self.covariance: "np.ndarray | None" = None
+        self._covariance: "np.ndarray | None" = None
         self.support = (0.0, np.inf)
         self.n = 0
         self.n_events = 0
@@ -265,24 +285,63 @@ class RoystonParmarModel(SerialisableMixin):
 
     @keeps_query_shape
     def qf(self, p: Any) -> np.ndarray:
-        """Quantile function: the time at which ``ff(x) = p``."""
-        out = np.empty_like(p)
-        for i, pi in enumerate(p):
-            if np.isnan(pi):
-                # A missing probability has a missing quantile; the root
-                # finder raised on it (#382).
-                out[i] = np.nan
-                continue
-            target = 1.0 - pi  # sf(x) = 1 - p
-            lo = self.knots[0] - 20.0
-            hi = self.knots[-1] + 20.0
-            out[i] = np.exp(
-                brentq(
-                    lambda lx: float(np.ravel(self.sf(np.exp(lx)))[0])
-                    - target,
-                    lo,
-                    hi,
-                )
+        """Quantile function: the time at which ``ff(x) = p``; 0 at
+        ``p = 0`` and ``inf`` at ``p = 1``.
+
+        Solved for every probability at once on the link scale, where
+        the spline is: the linear predictor that gives ``ff = p`` is
+        found in log time, in closed form beyond the boundary knots
+        (where the spline is a straight line) and between them by
+        ``solve_bracketed``, to a relative precision of about ``1e-15``
+        in time. A ``brentq`` per probability on ``sf`` took 1-3 s for
+        2000 draws (#595), and lost precision for a ``p`` near 0, where
+        ``sf`` rounds to 1."""
+        p = np.asarray(p, dtype=float)
+        out = np.full(p.shape, np.nan)
+        # As for the other parametric models: NaN, with a warning, where
+        # p is outside [0, 1]; the root finder raised a bare scipy error
+        # (#576). A missing probability has a missing quantile; the root
+        # finder raised on it (#382).
+        outside = warn_outside_unit_interval(p)
+        valid = ~np.isnan(p) & ~outside
+        with np.errstate(divide="ignore"):
+            target = _eta_of_probability(p[valid], self.scale)
+        out[valid] = np.exp(self._log_time_of_eta(target))
+        return out
+
+    def _log_time_of_eta(self, target: npt.NDArray) -> npt.NDArray:
+        """The log times at which the linear predictor reaches each
+        ``target``. Beyond the boundary knots the spline is linear in log
+        time with the slope it has at the knot, so those are closed form
+        (a slope that is not positive never reaches them: NaN); between
+        the knots they are solved together, by ``solve_bracketed``."""
+        k_lo, k_hi = self.knots[0], self.knots[-1]
+        ends = np.array([k_lo, k_hi])
+        e_lo, e_hi = _rcs_basis(ends, self.knots) @ self.params
+        s_lo, s_hi = _rcs_deriv(ends, self.knots) @ self.params
+        out = np.full(target.shape, np.nan)
+        below = target <= e_lo
+        above = ~below & (target >= e_hi)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if s_lo > 0:
+                out[below] = k_lo + (target[below] - e_lo) / s_lo
+            if s_hi > 0:
+                out[above] = k_hi + (target[above] - e_hi) / s_hi
+        inside = np.flatnonzero(~below & ~above)
+        if inside.size:
+
+            def gap(lx: npt.NDArray, sel: npt.NDArray) -> npt.NDArray:
+                eta = _rcs_basis(lx, self.knots) @ self.params
+                return eta - target[inside[sel]]
+
+            # Absolute in log time: relative in time.
+            out[inside] = solve_bracketed(
+                gap,
+                np.full(inside.size, k_lo),
+                np.full(inside.size, k_hi),
+                e_lo - target[inside],
+                e_hi - target[inside],
+                xtol=4 * np.finfo(float).eps,
             )
         return out
 
@@ -339,8 +398,7 @@ class RoystonParmarModel(SerialisableMixin):
             one-sided bound at ``alpha_ci`` is the matching end of the
             two-sided bound at ``2 * alpha_ci``.
         """
-        if self.covariance is None:
-            raise no_covariance_error()
+        cov = self.covariance()
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).
         check_option("bound", bound, BOUNDS)
@@ -352,7 +410,7 @@ class RoystonParmarModel(SerialisableMixin):
         x = np.atleast_1d(np.asarray(x, dtype=float))
         B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
-        var = np.einsum("ij,jk,ik->i", B, self.covariance, B)
+        var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
 
         if bound == "two-sided":
@@ -373,30 +431,18 @@ class RoystonParmarModel(SerialisableMixin):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
         return -np.log(band[:, ::-1] if band.ndim == 2 else band)
 
-    # -- information criteria ---------------------------------------------
+    # -- information criteria (InformationCriteriaMixin) -------------------
+    # neg_ll(), log_likelihood, aic(), aic_c() and bic(), the last two with
+    # the sample size every SurPyval BIC uses (``_ic_n``, from the data at
+    # fit time; see ic_sample_size).
 
     @property
-    def k(self) -> int:
+    def k(self) -> int:  # type: ignore[override]
         return len(self.params)
 
-    def neg_ll(self) -> float:
-        """The negative log-likelihood at the fitted coefficients."""
-        return self._neg_ll
-
-    def aic(self) -> float:
-        """Akaike's information criterion, ``2k + 2 neg_ll``."""
-        return 2 * self.k + 2 * self._neg_ll
-
-    def bic(self) -> float:
-        """The Bayesian information criterion, ``k log(d) + 2 neg_ll``.
-
-        ``d`` is the number of observed failures -- exact, left- and
-        interval-censored observations, weighted by their counts -- or the
-        number of observations when there is none: the sample size every
-        SurPyval BIC uses (it was the number of observations here, so a
-        spline fit's BIC was not comparable with the parametric fits').
-        """
-        return self.k * np.log(self._ic_n) + 2 * self._neg_ll
+    #: The coefficients' covariance, ``covariance()`` (#605): an attribute
+    #: before v0.23, which still reads it, with a DeprecationWarning.
+    covariance = ArrayMethod("_covariance", no_covariance_error)
 
     def summary(self) -> str:
         """A text summary of the fit: link scale, knots, likelihood and
@@ -433,10 +479,10 @@ class RoystonParmarModel(SerialisableMixin):
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
             **maximum_entry(self.maximum),
-            "ic_n": float(self._ic_n),
+            "ic_n": float(self._ic_sample_size()),
         }
-        if self.covariance is not None:
-            out["covariance"] = np.asarray(self.covariance, float).tolist()
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(self._covariance, float).tolist()
         return stamp_schema(out)
 
     @classmethod
@@ -460,8 +506,64 @@ class RoystonParmarModel(SerialisableMixin):
             # are the only failures the dict records.
             out._ic_n = ic_sample_size([0], [out.n_events], n_rows=out.n)
         if "covariance" in model_dict:
-            out.covariance = np.array(model_dict["covariance"], dtype=float)
+            out._covariance = np.array(model_dict["covariance"], dtype=float)
         return out
+
+
+class _SplineNegLL:
+    """The negative log-likelihood of the spline coefficients ``g``.
+
+    An object rather than a closure over the fit's basis matrices, so the
+    fitted model, which keeps it as ``_objective``, pickles (#573). Each
+    group of arrays is a kind of row (its basis matrices are ``None``
+    when the data have none of that kind)."""
+
+    def __init__(
+        self,
+        scale: str,
+        knots: npt.NDArray,
+        observed: tuple,
+        right: tuple,
+        left: tuple,
+        interval: tuple,
+        truncated: tuple,
+    ) -> None:
+        self.scale = scale
+        self.knots = knots
+        self.observed = observed
+        self.right = right
+        self.left = left
+        self.interval = interval
+        self.truncated = truncated
+
+    def __call__(self, g: npt.NDArray) -> Any:
+        scale, knots = self.scale, self.knots
+        B_o, Bd_o, n_o, lx_o = self.observed
+        B_r, n_r = self.right
+        B_l, n_l = self.left
+        B_il, B_ir, n_i = self.interval
+        x_tl, x_tr, n_t = self.truncated
+        ll = 0.0
+        if B_o is not None:  # events: log f = log(-dS) + log s' - log t
+            eta = B_o @ g
+            sp = Bd_o @ g
+            _, log_negdS = _scale_terms(eta, scale)
+            ll += np.sum(n_o * (log_negdS + np.log(sp) - lx_o))
+        if B_r is not None:  # right-censored: log S
+            log_S_r, _ = _scale_terms(B_r @ g, scale)
+            ll += np.sum(n_r * log_S_r)
+        if B_l is not None:  # left-censored: log F = log(1 - S)
+            log_S_l, _ = _scale_terms(B_l @ g, scale)
+            ll += np.sum(n_l * np.log1p(-np.exp(log_S_l)))
+        if B_il is not None:  # interval-censored: log(S(l) - S(r))
+            S_il = _sf_from_eta(B_il @ g, scale)
+            S_ir = _sf_from_eta(B_ir @ g, scale)
+            ll += np.sum(n_i * np.log(S_il - S_ir))
+        if x_tl.size:  # truncation: divide by P(entry <= T <= exit)
+            S_tl = _sf_at(x_tl, knots, g, scale)
+            S_tr = _sf_at(x_tr, knots, g, scale)
+            ll -= np.sum(n_t * np.log(S_tl - S_tr))
+        return -ll
 
 
 class RoystonParmar_(UnivariateDataFrameMixin):
@@ -609,28 +711,15 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
         B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
-        def neg_ll(g: npt.NDArray) -> Any:
-            ll = 0.0
-            if B_o is not None:  # events: log f = log(-dS) + log s' - log t
-                eta = B_o @ g
-                sp = Bd_o @ g
-                _, log_negdS = _scale_terms(eta, scale)
-                ll += np.sum(n_o * (log_negdS + np.log(sp) - lx_o))
-            if B_r is not None:  # right-censored: log S
-                log_S_r, _ = _scale_terms(B_r @ g, scale)
-                ll += np.sum(n_r * log_S_r)
-            if B_l is not None:  # left-censored: log F = log(1 - S)
-                log_S_l, _ = _scale_terms(B_l @ g, scale)
-                ll += np.sum(n_l * np.log1p(-np.exp(log_S_l)))
-            if B_il is not None:  # interval-censored: log(S(l) - S(r))
-                S_il = _sf_from_eta(B_il @ g, scale)
-                S_ir = _sf_from_eta(B_ir @ g, scale)
-                ll += np.sum(n_i * np.log(S_il - S_ir))
-            if x_tl.size:  # truncation: divide by P(entry <= T <= exit)
-                S_tl = _sf_at(x_tl, knots, g, scale)
-                S_tr = _sf_at(x_tr, knots, g, scale)
-                ll -= np.sum(n_t * np.log(S_tl - S_tr))
-            return -ll
+        neg_ll = _SplineNegLL(
+            scale,
+            knots,
+            (B_o, Bd_o, n_o, lx_o),
+            (B_r, n_r),
+            (B_l, n_l),
+            (B_il, B_ir, n_i),
+            (x_tl, x_tr, n_t),
+        )
 
         # Initialise from the Weibull/log-normal that the no-knot model is.
         init = np.zeros(n_params)
@@ -684,7 +773,7 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         model.scale = scale
         model.knots = knots
         model.params = gamma
-        model.covariance = covariance
+        model._covariance = covariance
         model.n = int(
             round(float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum()))
         )

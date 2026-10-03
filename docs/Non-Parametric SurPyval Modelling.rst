@@ -27,9 +27,11 @@ method that takes data in the xcnt format described in :doc:`Types of Data`:
 - ``n``: the number of items with each value (defaults to 1 each);
 - ``t``: a 2-D array of ``[left, right]`` truncation limits, or equivalently ``tl`` and ``tr`` (scalars apply to every value).
 
-There are four more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
-and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol`` and ``max_iter`` (see
-`Arbitrarily Truncated and Censored Data`_). The other estimators ignore those three.
+There are five more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
+and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol``, ``max_iter`` and
+``turnbull_algorithm`` (the EM-ICM without truncation and the EM with it, by default; see
+`Arbitrarily Truncated and Censored Data`_). The other estimators
+ignore those four.
 
 ``fit()`` returns a :class:`~surpyval.univariate.nonparametric.nonparametric.NonParametric` model (see its API page for every method), and every model has the same
 methods (``sf``, ``ff``, ``Hf``, ``cb``, ``plot`` and so on) whichever estimator made it.
@@ -413,7 +415,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     assert np.allclose(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
                        model.bootstrap_cb([3], n_boot=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol``, ``max_iter`` and (when it is not the EM) the ``turnbull_algorithm`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -651,17 +653,31 @@ reliability can we claim with a given confidence?
     from surpyval import success_run
 
     print('10 successes, 95% confidence:', round(success_run(10), 4))
-    print('59 successes, 95% confidence:', round(success_run(59, confidence=0.95), 4))
-    print('22 successes, alpha of 0.1:  ', round(success_run(22, alpha=0.1), 4))
+    print('59 successes, 95% confidence:', round(success_run(59, alpha_ci=0.05), 4))
+    print('22 successes, 90% confidence:', round(success_run(22, alpha_ci=0.1), 4))
 
-So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. Pass either
-``confidence`` or ``alpha``, not both; the default is 95% confidence.
+So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. The level
+is ``alpha_ci``, the total tail probability, as for every bound in SurPyval (default 0.05, 95%
+confidence; the older ``confidence`` and ``alpha`` arguments still work in v0.23, with a
+deprecation warning). The same bound, as an upper bound on the failure probability, is the
+exact (Clopper-Pearson) bound of a ``Bernoulli`` fit with no failures, which also covers the
+case of a few failures:
+
+.. jupyter-execute::
+
+    from surpyval import Bernoulli
+
+    # failures coded 1: none in 59 demands, then 2 in 120
+    print(1 - Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper"))
+    print(Bernoulli.fit([1, 0], n=[2, 118]).param_cb("p", alpha_ci=0.1))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert success_run(59) >= 0.95 > success_run(58)
+    _clean = Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper")
+    assert abs(1 - _clean[0] - success_run(59)) < 1e-12
 
 Left Truncated Data
 -------------------
@@ -778,14 +794,17 @@ Each row of ``x`` is an interval ``[left, right]`` in which the item failed; an 
 censoring flags are worked out from the intervals, so ``c`` is not needed. (The same data can be
 given as ``TB.fit(xl=low, xr=upp)``.)
 
-``max_iter`` is raised from its default of 1000 here to leave headroom: with the default
-Fleming-Harrington option this data takes nearly 900 iterations. The EM
-stops when no piece's probability mass changes by more than ``tol`` (default ``1e-10``) in an
-iteration; loosening ``tol`` is the other way to stop sooner, at the cost of accuracy. The Turnbull EM converges slowly when many observations are
-right censored to infinity, as more than half of these are, and it warns
-rather than failing silently if it runs out of iterations before
-reaching ``tol``. If you see that warning, raising ``max_iter`` is
-usually the answer; if it persists, the data may not identify a unique
+These data are not truncated, so the fit uses the EM-ICM of R's ``Icens`` and ``icenReg``
+packages (``turnbull_algorithm='auto'``, the default): it reaches the non-parametric MLE in 17
+iterations and stops when it is there, when the Karush-Kuhn-Tucker conditions of the maximum hold
+to ``tol`` (default ``1e-10``; see :doc:`Non-Parametric Estimation`). With truncation the default
+is Turnbull's EM, which can be slow: it stops when no piece's probability mass changes by more
+than ``tol`` in an iteration, and converges slowly when many observations are right censored to
+infinity, as more than half of these are. Fitted with ``turnbull_algorithm='EM'`` these data take
+nearly 900 iterations (with the default Fleming-Harrington option), which is why ``max_iter`` is
+raised from its default of 1000 here to leave headroom. The EM warns rather than failing silently
+if it runs out of iterations before reaching ``tol``; if you see that warning, raising
+``max_iter`` is usually the answer, and if it persists, the data may not identify a unique
 estimate at all. The fitted model records what happened:
 
 .. jupyter-execute::
@@ -796,7 +815,10 @@ estimate at all. The fitted model records what happened:
     :hide-code:
     :hide-output:
 
-    assert model.converged and 800 < model.iters < 900, model.iters
+    assert model.converged and model.turnbull_algorithm == "EMICM"
+    assert model.iters < 50, model.iters
+    _em = TB.fit(x, max_iter=10_000, turnbull_algorithm="EM")
+    assert _em.converged and 800 < _em.iters < 900, _em.iters
     assert np.isinf(upp).mean() > 0.5
 
 And finally, an example with completely arbitrary censoring:
@@ -832,12 +854,12 @@ This is done even though we might not have a complete failure occur in an interv
 
 You can see that some values are 0 and that others are fractional: the EM has shared each
 censored item's failure out over the times it could have failed at, so ``d`` and ``r`` are
-*expected* counts. The risk set starts at all 17 items, but ``d`` adds up to about 16.95: with the
-default Fleming-Harrington option the curve never reaches zero, so a small share of the two right
-censored items' failures is placed beyond the last value (see the theory page). A few things to know when reading them:
+*expected* counts: those of the non-parametric MLE, to which the default Fleming-Harrington
+option is then applied (see the theory page). The risk set starts at all 17 items and ``d`` adds
+up to 17. A few things to know when reading them:
 
 - ``x`` holds the endpoints of the Turnbull pieces. Exactly observed times appear twice, because the failure mass at such a time sits in the zero-width piece between the two copies.
-- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.57 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
+- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.58 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
 - Where the estimate falls across a piece, the data do not say *where* in the piece: the drawn step (holding the value until the right end) is a convention. The full set of piece boundaries is ``model.bounds``, and ``model.R_upper`` and ``model.R_lower`` hold the survival at the start and end of each piece, which is the range any curve through that piece could take:
 
 .. jupyter-execute::
@@ -853,9 +875,9 @@ censored items' failures is placed beyond the last value (see the theory page). 
 
     # r[0] is a sum of the EM's fractional expected counts, so it is 17
     # only to rounding (the summation order depends on the CPU).
-    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 16.95
+    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 17
     _k = np.flatnonzero(model.x == 6)[0]
-    assert round(model.d[_k], 2) == 1.57, model.d
+    assert round(model.d[_k], 2) == 1.58, model.d
     assert model.x[6] == model.x[7] == 7          # the (7, 7] piece
 
 The second piece, (7, 7], is the zero-width piece holding the failures observed at exactly 7. The
@@ -1197,6 +1219,33 @@ scale), which is exactly the alternative the plain log-rank is built for, so it 
     _p = [logrank(x, group, weighting=w).p_value
           for w in ['gehan', 'tarone-ware']] + [early.p_value, late.p_value]
     assert result.p_value < min(_p), (result.p_value, _p)
+
+With **delayed entry** -- units that came under observation part-way through their lives, such as
+equipment whose records start when a database was set up -- pass each unit's entry time as ``tl``.
+A unit is then at risk only from its entry, at the event times ``t`` with ``tl < t <= x``, as in
+``KaplanMeier`` and ``CoxPH`` with ``tl``. Without it, a unit would be counted at risk before it was
+seen, at failures it could not have been part of. R's ``survdiff`` takes right censored data only;
+with entry times the test is the score test of the Cox model of the group (``coxph`` with
+``ties = "exact"`` in R), which it matches. Here the units of group 1 entered at age 3:
+
+.. jupyter-execute::
+
+    np.random.seed(5)
+    x_late = np.concatenate([3 + np.random.weibull(2, 40) * 10, np.random.weibull(2, 40) * 7])
+    group_late = np.repeat([1, 2], 40)
+    entry = np.where(group_late == 1, 3.0, 0.0)
+    print('ignoring entry: p = %.3g' % logrank(x_late, group_late).p_value)
+    print('with tl       : p = %.3g' % logrank(x_late, group_late, tl=entry).p_value)
+
+Ignoring the entry time puts the group 1 units at risk at every early failure of group 2, before
+they were seen, which inflates the difference between the groups.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (logrank(x_late, group_late, tl=entry).statistic
+            < logrank(x_late, group_late).statistic)
 
 Stratified log-rank
 ^^^^^^^^^^^^^^^^^^^

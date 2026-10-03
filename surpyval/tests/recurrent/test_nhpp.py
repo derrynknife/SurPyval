@@ -97,4 +97,4 @@ def test_mse_fit_says_why_it_has_no_likelihood():
     model = CrowAMSAA.fit(x, c=[0] * 7 + [1], how="MSE")
     assert "MSE" in repr(model)
     with pytest.raises(ValueError, match="how='MSE'"):
-        model.aic
+        model.aic()

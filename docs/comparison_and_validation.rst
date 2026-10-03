@@ -4,8 +4,9 @@ Comparison Tests and Validation Metrics
 Tools that compare models or groups rather than fit one: hypothesis tests
 of whether groups share a survival (or cumulative-incidence) curve, the
 restricted-mean difference between two groups, automatic selection of the
-best-fitting distribution, and metrics that score how well a model's
-predicted survival matches held-out data. All are importable directly
+best-fitting distribution, forecasts of a fleet's failures from its current
+ages, and metrics that score how well a model's predicted survival matches
+held-out data. All are importable directly
 from ``surpyval``. The tests are explained with the estimators they
 build on in :doc:`Non-Parametric Estimation` (log-rank, restricted mean)
 and :doc:`Competing Risks Analysis` (Gray's test); model selection in
@@ -48,6 +49,20 @@ Fit every candidate continuous distribution and keep the one with the
 best information criterion:
 
 .. autofunction:: surpyval.fit_best.fit_best
+
+Forecasting from the current state
+----------------------------------
+
+The expected failures of units in service at their current ages over a
+horizon, from any univariate or regression model, with a prediction
+interval for the count (worked examples in
+:doc:`Parametric SurPyval Modelling` and
+:doc:`Regression Modelling with SurPyval`):
+
+.. autofunction:: surpyval.forecasting.forecast
+
+.. autoclass:: surpyval.forecasting.Forecast
+   :members: unit_expected
 
 Prediction-validation metrics
 -----------------------------

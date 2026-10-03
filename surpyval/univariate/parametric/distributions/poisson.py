@@ -4,7 +4,6 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.scipy.special import gammaincc, gammaln
-from scipy.stats import poisson
 
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
@@ -125,6 +124,8 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, mu: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
+        from scipy.stats import poisson
+
         u_arr = np.asarray(u, dtype=float)
         k = refine_quantile(
             poisson.ppf(u_arr, mu),
@@ -185,6 +186,8 @@ class Poisson_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> Poisson.random(5, 3.0)
         array([2., 1., 1., 3., 3.])
         """
+        from scipy.stats import poisson
+
         state = draw_state(random_state)
         return poisson.rvs(mu, size=size, random_state=state).astype(float)
 

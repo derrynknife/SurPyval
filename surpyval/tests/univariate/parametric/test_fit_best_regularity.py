@@ -6,6 +6,11 @@ default candidates, and any candidate that is not a verified maximum (it
 warns "No finite maximum", or that its search did not reach a verified
 maximum) is set aside: ranked only when no regular candidate fitted, and
 named in one warning.
+
+And fit_best takes its data as ``fit`` does (#570): checked once, so an
+input error raises as ``fit`` raises it, with ``tl``, ``tr``, ``xl`` and
+``xr`` passed through; a candidate that cannot be fitted is named in the
+warning with a short reason, not the data.
 """
 
 import warnings
@@ -93,3 +98,72 @@ def test_fit_best_checks_distribution_names():
         surv.fit_best(x, include=["Weibul"])
     with pytest.raises(ValueError, match="Unknown distribution"):
         surv.fit_best(x, exclude=["Geometric"])
+
+
+# -- the data, as fit takes them (#570) ------------------------------------
+def test_570_an_input_error_raises_as_fit_raises_it():
+    # A right-censored row written as [xl, inf] with c=1: Weibull.fit
+    # raises; fit_best returned None, warning the data eleven times.
+    x = np.array([[1.0, np.inf], [2.0, 3.0], [4.0, 4.0]])
+    c = np.array([1, 2, 0])
+    with pytest.raises(ValueError) as single:
+        sp.Weibull.fit(x=x, c=c)
+    with pytest.raises(ValueError) as best:
+        sp.fit_best(x=x, c=c)
+    assert str(best.value) == str(single.value)
+
+
+def test_570_a_failure_every_candidate_shares_is_raised():
+    # No failure at all: every family refuses alike, so it is the data
+    x = WEIBULL_50
+    with pytest.raises(ValueError, match="only right censored") as error:
+        sp.fit_best(x, c=np.ones_like(x))
+    with pytest.raises(ValueError) as single:
+        sp.Weibull.fit(x, c=np.ones_like(x))
+    assert str(error.value) == str(single.value)
+
+
+def test_570_data_outside_every_candidate_support_raises():
+    with pytest.raises(ValueError, match="outside the support of every"):
+        sp.fit_best(-WEIBULL_50, include=["Weibull", "Gamma"])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"tl": 20.0},
+        {"tl": np.where(np.arange(50) % 2 == 0, 20.0, 0.0)},
+        {"tr": 400.0},
+    ],
+    ids=["tl-scalar", "tl-array", "tr"],
+)
+def test_570_truncation_is_passed_through(kwargs):
+    x = WEIBULL_50[WEIBULL_50 > 20]
+    kwargs = {
+        k: v[WEIBULL_50 > 20] if np.ndim(v) else v for k, v in kwargs.items()
+    }
+    model = sp.fit_best(x, include=["Weibull"], **kwargs)
+    np.testing.assert_array_equal(
+        model.params, sp.Weibull.fit(x, **kwargs).params
+    )
+
+
+def test_570_interval_ends_are_passed_through():
+    xl, xr = np.floor(WEIBULL_50 / 10) * 10, np.ceil(WEIBULL_50 / 10) * 10
+    model = sp.fit_best(xl=xl, xr=xr, include=["Weibull", "Gamma"])
+    single = getattr(sp, model.dist.name).fit(xl=xl, xr=xr)
+    np.testing.assert_array_equal(model.params, single.params)
+
+
+def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
+    # A message that quotes the data (as the censoring check's does) is
+    # cut to its first line; the warning names the family and the reason.
+    def refuse(*args, **kwargs):
+        raise ValueError("Gamma cannot be fitted here.\nx:\n" + "1.0 " * 500)
+
+    monkeypatch.setattr(sp.Gamma, "fit", refuse)
+    model, messages = _fit_best(WEIBULL_50, include=["Weibull", "Gamma"])
+    assert model.dist.name == "Weibull"
+    (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
+    assert "Gamma (ValueError: Gamma cannot be fitted here.)" in skipped
+    assert "\n" not in skipped and len(skipped) < 200

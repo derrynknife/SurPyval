@@ -87,8 +87,8 @@ def test_undetermined_column_is_aliased(F, kw, extra):
     assert np.isnan(se[-1])
     np.testing.assert_allclose(se[:-1], ref.standard_errors(), rtol=1e-5)
     assert model.log_likelihood == pytest.approx(ref.log_likelihood)
-    assert model.aic == pytest.approx(ref.aic)
-    assert model.bic == pytest.approx(ref.bic)
+    assert model.aic() == pytest.approx(ref.aic())
+    assert model.bic() == pytest.approx(ref.bic())
 
 
 def test_issue_example_no_longer_splits_the_coefficient():

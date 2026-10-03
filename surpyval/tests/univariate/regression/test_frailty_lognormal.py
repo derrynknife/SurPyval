@@ -344,3 +344,18 @@ def test_summary_serialisation_and_data_frame():
 def test_unknown_family_raises_a_value_error():
     with pytest.raises(ValueError, match="'family' must be one of"):
         Frailty(Weibull, family="weibull")
+
+
+def test_617_a_huge_cumulative_hazard_does_not_overflow():
+    # The likelihood-ratio searches evaluate the likelihood far out (a
+    # group's H of 1e200): the check for a negligible theta squared it,
+    # an OverflowError for a Python float.
+    D = np.array([0.0, 2.0])
+    with np.errstate(all="ignore"):
+        value = lognormal_log_integral(D, np.full(2, 1e200), 0.5)
+    assert np.all(np.isfinite(value)) and np.all(value < -1e5)
+    # Still the no-frailty limit -H for a negligible theta.
+    assert lognormal_log_integral(D, np.full(2, 3.0), 1e-20).tolist() == [
+        -3.0,
+        -3.0,
+    ]

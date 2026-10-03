@@ -11,6 +11,7 @@ separate: its life-model parameter juggling does not fit this shape.
 """
 
 import copy
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
@@ -21,8 +22,10 @@ from autograd.differential_operators import make_vjp
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
+    Gradient,
     bounds_convert,
     is_local_minimum,
+    minimize_with_gradient,
     preconditioned_bfgs,
 )
 from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
@@ -36,6 +39,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
@@ -107,12 +111,23 @@ def make_objective(
     """The optimiser objective every regression fitter used to build
     inline: the fitter's negative log-likelihood evaluated in the
     transformed (unconstrained, fixed-parameters-removed) search space.
+
+    A ``functools.partial`` of a module-level function rather than a
+    closure, so the accelerated life model, which keeps it as ``fun``,
+    pickles (#573).
     """
+    return functools.partial(_objective, fitter, data, inv_trans, const)
 
-    def fun(params: npt.NDArray) -> Boxable:
-        return fitter.neg_ll(data, *inv_trans(const(params)))
 
-    return fun
+def _objective(
+    fitter: Any,
+    data: SurpyvalData,
+    inv_trans: Callable,
+    const: Callable,
+    params: npt.NDArray,
+) -> Boxable:
+    """``make_objective``'s objective at ``params``."""
+    return fitter.neg_ll(data, *inv_trans(const(params)))
 
 
 class MirroredDistributionAttrs:
@@ -596,6 +611,19 @@ def alias_coefficients(
     return out
 
 
+def check_baseline_support(fitter: Any, data: SurpyvalData) -> None:
+    """Refuse times outside the support of the fitter's baseline
+    distribution (#565), with the univariate fits' check and wording
+    (``OutsideSupportError``, a ``ValueError``), and also a censored time
+    below the support's lower end: a Weibull, Gamma or Exponential AFT
+    took a negative censored time, and its likelihood's derivatives were
+    nan there. A baseline on the whole line (Normal, Gumbel, Logistic)
+    refuses nothing."""
+    check = getattr(fitter.dist, "_check_inside_support", None)
+    if check is not None:
+        check(data, every_row=True)
+
+
 def prepare_regression_fit(
     fitter: Any,
     x: npt.ArrayLike,
@@ -635,6 +663,8 @@ def prepare_regression_fit(
         Z = np.asarray(Z_in).reshape(-1, 1)
     data, Z = drop_nonfinite_covariates(data, Z)
     data.add_covariates(Z)
+    # After the rows with a missing covariate are dropped (principle 3)
+    check_baseline_support(fitter, data)
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
@@ -896,7 +926,10 @@ def assemble_regression_model(
 
 
 def optimise_ph(
-    fun: Callable, init_t: npt.NDArray, quiet: bool = False
+    fun: Callable,
+    init_t: npt.NDArray,
+    quiet: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """Preconditioned BFGS on the analytic gradient, TNC as the fallback.
 
@@ -927,20 +960,22 @@ def optimise_ph(
 
     A result that is not verifiably an optimum is flagged
     ``stopped_short``, and warned of unless ``quiet`` (the caller then
-    warns through :func:`finish_search`).
+    warns through :func:`finish_search`). ``floor`` is BFGS's least unit
+    per component (:func:`coefficient_floor`).
     """
-    jac = jacobian(fun)
+    # The value and the gradient from one pass (#593)
+    jac = Gradient(fun)
 
     best = None
     for method in ("BFGS", "TNC", "Nelder-Mead"):
         x0 = init_t if best is None else best.x
         if method == "BFGS":
             res = preconditioned_bfgs(
-                fun, x0, jac=jac, options={"maxiter": 1000}
+                fun, x0, jac=jac, options={"maxiter": 1000}, floor=floor
             )
         elif method == "TNC":
-            res = minimize(
-                fun, x0, method="TNC", jac=jac, options={"maxfun": 1000}
+            res = minimize_with_gradient(
+                fun, x0, (), jac, method="TNC", options={"maxfun": 1000}
             )
         else:
             res = minimize(
@@ -1046,10 +1081,12 @@ def is_verified(
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
     n_obs: float,
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> bool:
     """Whether ``x`` is a verified minimum of the objective whose Hessian
     and gradient there are ``derivatives`` (:func:`search_derivatives`):
-    the test of ``is_local_minimum``, per observation (``n_obs``), on the
+    the test of ``is_local_minimum``, per observation (``n_obs``) and in
+    units of ``max(|x|, floor)`` (:func:`coefficient_floor`), on the
     components of ``x`` other than ``held`` -- a parameter at a boundary of
     its space, whose own condition the caller has checked -- and not
     differentiating again."""
@@ -1059,11 +1096,13 @@ def is_verified(
     at = np.asarray(x, dtype=float)
     keep = [i for i in range(at.size) if i not in held]
     sub = np.ix_(keep, keep)
+    floors = np.broadcast_to(np.asarray(floor, dtype=float), at.shape)
     return is_local_minimum(
         lambda _: 0.0,  # (only the derivatives are read)
         lambda _: g[keep],
         lambda _: H[sub],
         at[keep],
+        floor=floors[keep],
         obj_scale=n_obs,
     )
 
@@ -1076,6 +1115,7 @@ def judge_search(
     n_obs: float = 1.0,
     verified: "bool | None" = None,
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> SearchVerdict:
     """What the optimiser's answer ``res`` for the objective ``fun``, from
     ``start``, is (principles 12 and 13), without a word: a likelihood with
@@ -1094,7 +1134,8 @@ def judge_search(
     ``quiet=True``) is usually rescued that way; an ordinary fit is already
     verified and is not touched. An objective autograd cannot differentiate
     keeps the optimiser's verdict: ``"unverified"`` if it stopped short,
-    else ``"unknown"``."""
+    else ``"unknown"``. ``floor`` is each component's least unit for the
+    check and the polish (:func:`coefficient_floor`)."""
     if not (np.isfinite(res.fun) and np.all(np.isfinite(res.x))):
         # No answer to judge (``require_finite_fit`` refuses it)
         return SearchVerdict(res, "unverified", None, [])
@@ -1109,10 +1150,10 @@ def judge_search(
             stopped = getattr(res, "stopped_short", False)
             state = "unverified" if stopped else "unknown"
             return SearchVerdict(res, state, None, [])
-        verified = is_verified(res.x, derivatives, n_obs, held)
+        verified = is_verified(res.x, derivatives, n_obs, held, floor)
         if not verified:
             res, derivatives, verified = _polish(
-                fun, res, derivatives, n_obs, held
+                fun, res, derivatives, n_obs, held, floor
             )
     state = "verified" if verified else "unverified"
     return SearchVerdict(res, state, derivatives, [])
@@ -1124,6 +1165,7 @@ def _polish(
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
     n_obs: float,
     held: "tuple[int, ...]",
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> "tuple[Any, tuple[npt.NDArray, npt.NDArray] | None, bool]":
     """``(res, derivatives, verified)`` after a BFGS polish of ``res``,
     kept where it is no worse (see :func:`judge_search`)."""
@@ -1131,7 +1173,7 @@ def _polish(
         warnings.filterwarnings("ignore", "Output seems independent")
         try:
             polish = preconditioned_bfgs(
-                fun, res.x, (), jacobian(fun), obj_scale=n_obs
+                fun, res.x, (), Gradient(fun), floor=floor, obj_scale=n_obs
             )
         except (TypeError, ValueError, ArithmeticError):
             polish = None
@@ -1143,7 +1185,11 @@ def _polish(
     ):
         res = polish
         derivatives = search_derivatives(fun, res.x)
-    return res, derivatives, is_verified(res.x, derivatives, n_obs, held)
+    return (
+        res,
+        derivatives,
+        is_verified(res.x, derivatives, n_obs, held, floor),
+    )
 
 
 def say_verdict(
@@ -1179,13 +1225,17 @@ def finish_search(
     verified: "bool | None" = None,
     what: str = "The maximum-likelihood search",
     held: "tuple[int, ...]" = (),
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> SearchVerdict:
     """:func:`judge_search`, then its one warning (:func:`say_verdict`),
     for a fit whose model does not depend on the polish (or is built after
-    it). Returns the verdict: its ``res``, its ``maximum`` for the model,
-    and the Hessian and gradient of ``fun`` at ``res.x`` (``None`` where
-    autograd cannot take them), for :func:`keep_information`."""
-    verdict = judge_search(fun, res, coefs, start, n_obs, verified, held)
+    it), with ``floor`` as there. Returns the verdict: its ``res``, its
+    ``maximum`` for the model, and the Hessian and gradient of ``fun`` at
+    ``res.x`` (``None`` where autograd cannot take them), for
+    :func:`keep_information`."""
+    verdict = judge_search(
+        fun, res, coefs, start, n_obs, verified, held, floor
+    )
     say_verdict(verdict, what)
     return verdict
 
@@ -1279,7 +1329,10 @@ def keep_information(
 
 
 def optimise_nm_tnc(
-    fun: Callable, init_t: npt.NDArray, quiet: bool = False
+    fun: Callable,
+    init_t: npt.NDArray,
+    quiet: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> Any:
     """AFT/PO's historical ladder: Nelder-Mead, then TNC kept only on
     success -- and, when that ladder has not reached a stationary point,
@@ -1298,10 +1351,10 @@ def optimise_nm_tnc(
     derivative-free evaluations on a 5-covariate Weibull AFT, where the
     gradient ladder needs a few dozen and reaches the same maximum 4-6x
     sooner (#499). A result it cannot verify falls through to the ladder
-    below, unchanged.
+    below, unchanged. ``floor`` is passed to :func:`optimise_ph`.
     """
     if _gradient(fun, init_t) is not None:
-        fast = optimise_ph(fun, init_t, quiet=True)
+        fast = optimise_ph(fun, init_t, quiet=True, floor=floor)
         stopped_short = getattr(fast, "stopped_short", False)
         if np.isfinite(fast.fun) and not stopped_short:
             return fast
@@ -1321,7 +1374,7 @@ def optimise_nm_tnc(
     if best.success and _is_stationary(g, best.fun):
         return best
     # (optimise_ph warns if it cannot converge, unless quiet.)
-    polished = optimise_ph(fun, best.x, quiet)
+    polished = optimise_ph(fun, best.x, quiet, floor)
     if np.isfinite(polished.fun) and polished.fun <= best.fun:
         return polished
     best.stopped_short = getattr(polished, "stopped_short", False)
@@ -1410,20 +1463,27 @@ def fit_log_linear(
         centring,
     ) = prep
 
+    coefs = free_coefficients(fitter, fixed, pmap)
+    # Each coefficient searched and judged in its own covariate's units
+    # (#577); a custom ``phi``'s parameters need not be one per column.
+    floor = (
+        coefficient_floor(len(init_t), coefs, data.Z) if log_linear else 1.0
+    )
     with np.errstate(all="ignore"):
 
         fun = make_objective(fitter, data, inv_trans, const)
 
-        res = optimiser(fun, init_t, quiet=True)
+        res = optimiser(fun, init_t, quiet=True, floor=floor)
 
         # What the search reached (#392), its answer polished where it was
         # not a verified maximum; said once the model is built.
         verdict = judge_search(
             fun,
             res,
-            free_coefficients(fitter, fixed, pmap),
+            coefs,
             init_t,
             float(np.sum(data.n)),
+            floor=floor,
         )
         res = verdict.res
 

@@ -86,6 +86,14 @@ PROPERTIES: dict[str, str] = {
         "leaves the global stream alone"
     ),
     "serialise": "strict-JSON to_dict / from_dict keeps every prediction",
+    "pickle": (
+        "a fitted model pickles, and the unpickled model predicts, bounds "
+        "and saves (to_dict) exactly as the original (#573)"
+    ),
+    "pickle_paths": (
+        "the model of every alternate fit path (fit_from_df, a formula, "
+        "fit_tvc, ...) pickles and predicts exactly as before (#573)"
+    ),
     "fit_paths": "the alternate fit paths give the same model",
     "warn_once": (
         "a fit or a prediction gives each of its deliberate warnings at "
@@ -160,6 +168,12 @@ PROPERTIES: dict[str, str] = {
         "a likelihood fit's ``maximum`` says what it reached, it warns "
         "exactly when that is not a verified maximum, and a verified "
         "maximum has a zero gradient and a positive-definite Hessian"
+    ),
+    # test_comparison.py, for every case.
+    "comparison": (
+        "neg_ll(), aic(), aic_c() and bic() are methods and log_likelihood "
+        "a number, -neg_ll(), wherever a model has them; aic() is "
+        "2 k + 2 neg_ll() for a whole k (#572)"
     ),
     # test_attributes.py, for the model classes in DECLARED_ATTRIBUTES.
     "attributes": (
@@ -276,6 +290,7 @@ REFIT_PROPERTIES = frozenset(
         "aliasing_constant",
         "attributes",
         "maximum",
+        "pickle_paths",
     }
 )
 

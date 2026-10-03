@@ -119,10 +119,12 @@ def test_turnbull_rows_without_mass_are_kept_but_not_failed():
         model = sp.Weibull.fit(INTERVALS)
         d = model.get_plot_data(heuristic="Turnbull")
     # Every endpoint of the Turnbull pieces, as before v0.22, including
-    # (1, 0) and (4, 0.307), where the estimate has no mass.
+    # those where the estimate has no mass: (1, 0), (4, 0.307) and, as
+    # the EM-ICM (the default without truncation) reaches the maximum
+    # exactly, 5 and 8, which the EM left a residue on.
     np.testing.assert_array_equal(d["x_"], [1, 2, 3, 4, 4, 5, 6, 8])
-    np.testing.assert_array_equal(d["failed"], [0, 1, 1, 0, 1, 1, 1, 1])
-    np.testing.assert_array_equal(d["x_"][d["failed"]], [2, 3, 4, 5, 6, 8])
+    np.testing.assert_array_equal(d["failed"], [0, 1, 1, 0, 1, 0, 1, 0])
+    np.testing.assert_array_equal(d["x_"][d["failed"]], [2, 3, 4, 6])
 
 
 @pytest.mark.parametrize("show", [False, True])
@@ -145,7 +147,7 @@ def test_plot_draws_only_the_turnbull_points_with_mass():
         warnings.simplefilter("ignore")
         model = sp.Weibull.fit(INTERVALS)
         ax = model.plot(heuristic="Turnbull")
-    np.testing.assert_array_equal(_points(ax)[:, 0], [2, 3, 4, 5, 6, 8])
+    np.testing.assert_array_equal(_points(ax)[:, 0], [2, 3, 4, 6])
 
 
 def test_a_model_without_data_draws_no_points():
@@ -194,7 +196,9 @@ def test_nonparametric_get_plot_data_marks_the_failures():
     np.testing.assert_array_equal(d["x_"], x)
     np.testing.assert_array_equal(d["failed"], [1, 0, 1, 0, 1, 1])
     turnbull = sp.Turnbull.fit(INTERVALS).get_plot_data()
-    np.testing.assert_array_equal(turnbull["failed"], [0, 1, 1, 0, 1, 1, 1, 1])
+    np.testing.assert_array_equal(turnbull["failed"], [0, 1, 1, 0, 1, 0, 1, 0])
+    em = sp.Turnbull.fit(INTERVALS, turnbull_algorithm="EM").get_plot_data()
+    np.testing.assert_array_equal(em["failed"], [0, 1, 1, 0, 1, 1, 1, 1])
     # A model from an ECDF has no d: its failures are where F steps up.
     ecdf = sp.NonParametric.fit_from_ecdf([1.0, 2.0, 3.0], [0.5, 0.5, 0.0])
     np.testing.assert_array_equal(

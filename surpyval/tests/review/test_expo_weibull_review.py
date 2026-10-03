@@ -77,6 +77,19 @@ def test_qf_near_one_with_a_large_mu_is_finite():
     np.testing.assert_allclose(got, 4.2951408668099291e-5, rtol=1e-8)
 
 
+def test_601_qf_is_finite_where_its_scale_factor_overflows():
+    # alpha * exp(log(t) / beta) was 2.2e-308 * inf, though the quantile
+    # is 19.4: the likelihood-ratio searches reach such parameters at the
+    # end of alpha's coordinate, and read the quantile as inf there.
+    alpha, beta, mu = np.finfo(float).tiny, 0.0076, 3e95
+    t = -np.log(-np.expm1(np.log(0.95) / mu))
+    want = np.exp(np.log(alpha) + np.log(t) / beta)
+    np.testing.assert_allclose(
+        ExpoWeibull.qf(0.95, alpha, beta, mu), want, rtol=1e-12
+    )
+    assert 19 < want < 20
+
+
 def test_values_at_zero_are_the_limits():
     # beta * mu below, at and above 1: the density at 0 is inf, 1 / alpha
     # and 0; the rest are those of an empty CDF.

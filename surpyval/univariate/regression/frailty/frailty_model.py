@@ -43,7 +43,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import is_missing_event
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.deprecation import ArrayMethod, RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
     BOUNDS,
@@ -52,6 +52,7 @@ from surpyval.utils.validation import (
 )
 
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
 from ..regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -75,7 +76,12 @@ def _standard_error(variance: Any) -> np.ndarray:
     return np.sqrt(np.where(variance >= 0, variance, np.nan))
 
 
-class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
+class _SharedFrailty(
+    ConditionalSurvivalMixin,
+    InformationCriteriaMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
+):
     """What the fitted shared-frailty models have in common: the frailty
     (its family, variance ``theta`` and each group's posterior), the
     coefficients, the marginal and conditional predictions, and the
@@ -95,7 +101,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         self._model_spec: Any = None
         self.group_labels: list = []
         self.frailties: dict = {}
-        self.covariance: "np.ndarray | None" = None
+        self._covariance: "np.ndarray | None" = None
         self.parameter_names: "list[str]" = []
         self.n_obs: int = 0
         self.n_events: int = 0
@@ -113,6 +119,20 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
         # for a model restored from a dict saved without it.
         self.maximum: str = "unknown"
+
+    #: The parameters' covariance, ``covariance()``, in the order of
+    #: ``parameter_names`` (#605): an attribute before v0.23, which still
+    #: reads it, with a DeprecationWarning.
+    covariance = ArrayMethod("_covariance", no_covariance_error)
+
+    # -- information criteria (InformationCriteriaMixin) -------------------
+
+    def _ic_sample_size_from_data(self) -> float:
+        # The shared rule (ic_sample_size) on the fitted data, which the
+        # stored weighted counts summarise: a frailty fit takes only
+        # events (c=0) and right-censored rows (c=1).
+        n_censored = self.n_obs_weighted - self.n_events_weighted
+        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
 
     # -- covariate / frailty resolution ------------------------------------
 
@@ -280,9 +300,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
 
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
-        if self.covariance is None:
-            raise no_covariance_error()
-        se = _standard_error(np.diag(self.covariance))
+        se = _standard_error(np.diag(self.covariance()))
         return {name: float(s) for name, s in zip(self.parameter_names, se)}
 
     def param_cb(
@@ -297,8 +315,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         for the positive baseline parameters and ``theta``, natural for the
         unbounded coefficients) so the interval stays valid.
         """
-        if self.covariance is None:
-            raise no_covariance_error()
+        cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -307,7 +324,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
             )
         idx = self.parameter_names.index(name)
         est = self._param_vector()[idx]
-        se = float(_standard_error(self.covariance[idx, idx]))
+        se = float(_standard_error(cov[idx, idx]))
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
@@ -401,10 +418,10 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         k = self.k_dist
         n_beta = self.beta.size
         se = np.full(params.shape, np.nan)
-        if self.covariance is not None:
+        if self._covariance is not None:
             with np.errstate(all="ignore"):
                 se = np.asarray(
-                    _standard_error(np.diag(self.covariance)), dtype=float
+                    _standard_error(np.diag(self._covariance)), dtype=float
                 )
         level = "{:g}%".format(100 * (1 - alpha_ci))
         columns = list(coefficient_table([], [], [], alpha_ci).columns)
@@ -482,7 +499,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         raise NotImplementedError
 
 
-class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
+class FrailtyModel(_SharedFrailty):
     """A fitted shared-frailty proportional-hazards model.
 
     See :class:`FrailtyFitter` for how one is produced. Prediction methods
@@ -538,14 +555,151 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
     # sets) it for one release, with a DeprecationWarning.
     param_names = RenamedAttribute("parameter_names")
 
-    # -- information criteria (InformationCriteriaMixin) -------------------
+    #: The rows fitted, ``{"x", "c", "w", "Z", "inv"}`` (``Z`` the columns
+    #: whose coefficients were estimated, ``inv`` each row's group), for
+    #: ``param_cb(method="lr")``; not saved by :meth:`to_dict`.
+    _fit_data: "dict | None" = None
+    #: The likelihood-ratio searches of ``param_cb(method="lr")``, with
+    #: what they have found, while the parameters stay as they are; not
+    #: pickled (``__getstate__``).
+    _lr_search: Any = None
 
-    def _ic_sample_size_from_data(self) -> float:
-        # The shared rule (ic_sample_size) on the fitted data, which the
-        # stored weighted counts summarise: a frailty fit takes only
-        # events (c=0) and right-censored rows (c=1).
-        n_censored = self.n_obs_weighted - self.n_events_weighted
-        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
+    def __getstate__(self) -> dict:
+        # The searches' caches are rebuilt where they are needed (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_search", None)
+        return state
+
+    # -- inference ---------------------------------------------------------
+
+    def param_cb(
+        self,
+        name: str,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> np.ndarray:
+        """Confidence bound(s) on a named parameter.
+
+        Two methods, as for the parametric regression models; ``"wald"``
+        is the default:
+
+        - ``"wald"`` -- from the stored covariance, on a scale chosen from
+          the parameter's support (log for the positive baseline
+          parameters and ``theta``, natural for the unbounded
+          coefficients) so the interval stays valid.
+        - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval
+          (#617): the values whose profile deviance of the marginal
+          likelihood, every other parameter re-fitted, stays below the
+          :math:`\\chi^2_1` critical value (aliases ``"likelihood"``,
+          ``"likelihood-ratio"``, ``"profile"``). It need not be symmetric
+          about the estimate; where the deviance stays below the critical
+          value to the edge of the space (``theta`` down to 0, no
+          detectable frailty), the bound is that edge. A side that cannot
+          be found is ``nan``, with a warning. It needs the data the model
+          was fitted to, which a model restored from a dict does not keep.
+
+        ``theta = 0`` is the edge of its space: where the true ``theta`` is
+        0 the deviance of ``theta`` is half a point mass at 0 and half a
+        :math:`\\chi^2_1` (Self and Liang 1987), so the likelihood-ratio
+        interval, which takes the :math:`\\chi^2_1` critical value, is
+        conservative there.
+
+        Parameters
+        ----------
+        name : str
+            One of :attr:`parameter_names`.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            As above. Default ``'wald'``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(4)
+        >>> groups = np.repeat(np.arange(30), 6)
+        >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+        >>> Z = rng.binomial(1, 0.5, (180, 1))
+        >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+        >>> model = WeibullFrailty.fit(10 * H**0.5, Z=Z, groups=groups)
+        >>> model.param_cb("theta").round(3)
+        array([0.226, 0.825])
+        >>> model.param_cb("theta", method="lr").round(3)
+        array([0.22 , 0.819])
+        """
+        from .._likelihood_ratio import is_lr
+
+        if not is_lr(method):
+            return super().param_cb(name, alpha_ci, bound)
+        from .._likelihood_ratio import profile_interval
+
+        check_option("bound", bound, BOUNDS)
+        if name not in self.parameter_names:
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of {}".format(
+                    name, self.parameter_names
+                )
+            )
+        return profile_interval(self._lr_region(), name, alpha_ci, bound)
+
+    def _lr_region(self) -> Any:
+        """The likelihood-ratio searches over the marginal likelihood of
+        every parameter (``LikelihoodRegion``), kept while the parameters
+        are as they are; an aliased coefficient is held (its bound is
+        ``nan``)."""
+        from .._likelihood_ratio import LikelihoodRegion
+        from .frailty_fitter import FrailtyFitter
+
+        data = self._fit_data
+        if data is None:
+            raise ValueError(
+                "Likelihood-ratio bounds need the data the model was fitted "
+                "to, which a model restored from a dict does not keep; use "
+                "method='wald'."
+            )
+        # (an aliased coefficient, nan, is held at 0)
+        params = np.nan_to_num(self._param_vector(), nan=0.0)
+        point = params.tobytes()
+        search = self._lr_search
+        if search is not None and search.point == point:
+            return search
+        k = self.k_dist
+        aliased = k + self.aliased
+        n_beta = self.beta.size - aliased.size
+        kept = np.setdiff1d(np.arange(params.size), aliased)
+        fitter = FrailtyFitter.create(self.dist, self.family)
+
+        def neg_ll(theta: np.ndarray) -> float:
+            return fitter._neg_ll_natural(
+                theta[kept],
+                data["x"],
+                data["c"],
+                data["w"],
+                data["Z"],
+                data["inv"],
+                n_beta,
+            )
+
+        bounds = [
+            *self.dist.bounds,
+            *((None, None),) * self.beta.size,
+            (0, None),
+        ]
+        search = LikelihoodRegion(
+            neg_ll,
+            params,
+            list(self.parameter_names),
+            bounds,
+            set(aliased.tolist()),
+            self._covariance,
+            point,
+        )
+        self._lr_search = search
+        return search
 
     # -- the parametric baseline -----------------------------------------
 
@@ -620,8 +774,8 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
             "_neg_ll": to_native(self._neg_ll),
             **maximum_entry(self.maximum),
         }
-        if self.covariance is not None:
-            out["covariance"] = np.asarray(self.covariance, float).tolist()
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(self._covariance, float).tolist()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -665,6 +819,6 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
-            out.covariance = np.array(model_dict["covariance"], dtype=float)
+            out._covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)
         return out

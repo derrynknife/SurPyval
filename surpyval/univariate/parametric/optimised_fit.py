@@ -28,6 +28,7 @@ from .fitters.mle import mle
 from .fitters.mom import mom
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
+from .fitters.mps import offset_start as mps_offset_start
 from .fitters.mse import mse
 from .parametric import Parametric
 
@@ -618,7 +619,7 @@ turnbull_estimator
         how = normalise_how(how)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
-        tl, tr = self._clamp_truncation_to_support(t)
+        tl, tr = self._clamp_truncation_to_support(t, offset)
 
         # Validate inputs
         heuristic = self._validate_fit_inputs(
@@ -697,35 +698,42 @@ turnbull_estimator
                     starts += self._alternative_starts(
                         surv_data, offset, zi, lfp, heuristic
                     )
-            if starts:
-                for start in starts:
-                    alt_model = Parametric(self, how, data, offset, lfp, zi)
-                    alt_model.surv_data = surv_data
-                    alt_info: dict = {}
-                    alt = self._fit_numerically(
-                        alt_model,
-                        alt_info,
-                        surv_data,
-                        tl,
-                        tr,
-                        how,
-                        offset,
-                        zi,
-                        lfp,
-                        fixed,
-                        heuristic,
-                        start,
-                        rr,
-                        on_d_is_0,
-                        turnbull_estimator,
-                    )
-                    best = results.get("_neg_ll", np.inf)
-                    value = alt.get("_neg_ll", np.inf)
-                    if np.isfinite(value) and value < best - 1e-9 * max(
-                        1.0, abs(value)
-                    ):
-                        results = alt
-                        model.fitting_info = alt_info
+
+            def from_start(start: Any) -> tuple[dict, dict]:
+                alt_model = Parametric(self, how, data, offset, lfp, zi)
+                alt_model.surv_data = surv_data
+                alt_info: dict = {}
+                alt = self._fit_numerically(
+                    alt_model,
+                    alt_info,
+                    surv_data,
+                    tl,
+                    tr,
+                    how,
+                    offset,
+                    zi,
+                    lfp,
+                    fixed,
+                    heuristic,
+                    start,
+                    rr,
+                    on_d_is_0,
+                    turnbull_estimator,
+                )
+                return alt, alt_info
+
+            for start in starts:
+                results = self._better_fit(model, results, *from_start(start))
+            # A parameter left on a bound of its range (a ``p`` of 1) where
+            # the likelihood rises off it is searched once more, from the
+            # middle of its range (``_OnBounds.off``): in its own units the
+            # search cannot leave the bound, where the parameter no longer
+            # moves the likelihood (#579).
+            off_bound = results.get("_off_bound")
+            if how == "MLE" and not fixed and off_bound is not None:
+                results = self._better_fit(
+                    model, results, *from_start(off_bound)
+                )
         else:
             model.fitting_info = fitting_info
 
@@ -752,6 +760,7 @@ turnbull_estimator
             and not edges_only
         )
         results.pop("_verified", None)
+        results.pop("_off_bound", None)
         # What the fit reached, recorded as ``model.maximum`` so that a
         # caller (``fit_best``) need not read it from the warnings; it
         # follows them exactly. An answer with nothing to verify (a closed
@@ -784,8 +793,9 @@ turnbull_estimator
         # And any search that found a parameter running off (``mle``,
         # #584), where the family has not said so in its own words above.
         runaway = results.pop("_runaway", [])
+        by_limit = results.pop("_runaway_by_limit", False)
         if runaway and maximum != "no finite maximum":
-            self._warn_runaway(surv_data, runaway, results)
+            self._warn_runaway(surv_data, runaway, results, offset, by_limit)
             warning = None
             unverified = False
             maximum = "no finite maximum"
@@ -865,6 +875,21 @@ turnbull_estimator
 
         return model
 
+    @staticmethod
+    def _better_fit(
+        model: Parametric, results: dict, alt: dict, alt_info: dict
+    ) -> dict:
+        """``alt``, the results of a fit from another start (with its
+        ``fitting_info``, ``alt_info``), where its likelihood is higher
+        than that of ``results`` beyond rounding; else ``results``. The
+        model takes the ``fitting_info`` of the results kept."""
+        best = results.get("_neg_ll", np.inf)
+        value = alt.get("_neg_ll", np.inf)
+        if np.isfinite(value) and value < best - 1e-9 * max(1.0, abs(value)):
+            model.fitting_info = alt_info
+            return alt
+        return results
+
     def _warn_if_at_limit(
         self,
         surv_data: SurpyvalData,
@@ -890,37 +915,77 @@ turnbull_estimator
         return []
 
     def _warn_runaway(
-        self, surv_data: SurpyvalData, runaway: "list[str]", results: dict
+        self,
+        surv_data: SurpyvalData,
+        runaway: "list[str]",
+        results: dict,
+        offset: bool = False,
+        by_limit: bool = False,
     ) -> None:
         """Warn that the maximum-likelihood search found the parameters
         ``runaway`` running off (``fitters.mle._runaway``, #584): the
         likelihood keeps increasing towards a limit of the family that
-        none of its members reaches, so it has no finite maximum."""
+        none of its members reaches, so it has no finite maximum.
+        ``offset`` says whether the fit has one, and ``by_limit`` whether
+        the runaway was found by the family's limit fitting the data at
+        least as well as anything the search reached, rather than by
+        Newton's test (#616)."""
         values = dict(
             zip(self.parameter_names, np.atleast_1d(results["params"]))
         )
         values.update(gamma=results["gamma"], p=results["p"], f0=results["f0"])
         named = ", ".join(f"{name} ({values[name]:.4g})" for name in runaway)
         one = len(runaway) == 1
+        how_found = (
+            f"no {self.name} the search reached fits the data better than "
+            "that limit"
+            if by_limit
+            else "Newton's method cannot "
+            f"converge along {'its' if one else 'their'} "
+            f"profile{'' if one else 's'} where the search stopped"
+        )
         warn_no_maximum(
             f"the {self.name} likelihood keeps increasing as {named} "
             f"run{'s' if one else ''} on, towards a limit of the family "
-            "that none of its members reaches: Newton's method cannot "
-            f"converge along {'its' if one else 'their'} "
-            f"profile{'' if one else 's'} where the search stopped",
+            f"that none of its members reaches: {how_found}",
             "The reported parameters are where the search stopped, and "
             "their standard errors and bounds are meaningless",
-            self._runaway_advice(runaway, values),
+            self._runaway_advice(runaway, values, offset),
         )
 
-    def _runaway_advice(self, runaway: "list[str]", values: dict) -> str:
+    def _runaway_advice(
+        self, runaway: "list[str]", values: dict, offset: bool = False
+    ) -> str:
         """What to do instead of a fit whose parameters ``runaway`` run
-        off (their ``values`` where the search stopped), for
-        :meth:`_warn_runaway`; a family that knows its limit says so."""
+        off (their ``values`` where the search stopped; ``offset`` whether
+        the fit has one), for :meth:`_warn_runaway`; a family that knows
+        its limit says so."""
+        limit = self._offset_limit_family()
+        if offset and limit is not None:
+            # An offset fit runs off only towards the family's limit: the
+            # offset towards -inf (towards the first failure its range
+            # ends; see ``fitters.mle._Judge.keep``) or the shape that
+            # makes up for it
+            return (
+                f"as gamma runs to -inf the {self.name} approaches a "
+                f"{limit.name} distribution, which fits these data at least "
+                f"as well as any {self.name} the search reached: fit "
+                f"surpyval.{limit.name} instead"
+            )
         return (
             "a simpler family, or one that contains the limit, may describe "
             "the data: compare their fits (surpyval.fit_best)"
         )
+
+    def _offset_limit_family(self) -> "Any":
+        """The family this distribution tends to as its offset runs to
+        -inf, with its shape making up for it (``None`` by default): a
+        fit whose offset runs that way is running off towards it where
+        the limit fits the data at least as well (``fitters.mle``,
+        #599). The LogNormal and the Gamma tend to the Normal, the
+        Weibull to the smallest extreme value distribution (``Gumbel``)
+        and the LogLogistic to the ``Logistic``."""
+        return None
 
     def _warn_if_offset_at_limit(
         self,
@@ -1014,7 +1079,7 @@ turnbull_estimator
                 results["p"] = rest.pop()
             results["_neg_ll"] = neg_ll
             results["log_likelihood"] = -neg_ll
-            results["cov_matrix"] = None
+            results["_covariance"] = None
             results["hess_inv"] = None
         if origin is None:
             return False
@@ -1117,6 +1182,11 @@ turnbull_estimator
                 init = self._initial_guess(
                     surv_data, offset, zi, lfp, heuristic
                 )
+                if how == "MPS" and offset and not fixed:
+                    # One at which the spacings are not all 0 (#616)
+                    init = mps_offset_start(
+                        self, surv_data, tl[0], tr[0], init
+                    )
 
             init = np.atleast_1d(init)
             if fixed and len(init) == len(not_fixed):

@@ -377,8 +377,151 @@ def _closed_form(data: SurpyvalData) -> bool:
     )
 
 
-# Scored at once: candidates x rows of the node, at most this many.
+def _segment_sums(values: NDArray, counts: NDArray) -> NDArray:
+    """The sum of each run of ``counts[k]`` consecutive ``values`` (0 for
+    an empty run)."""
+    starts = np.zeros(counts.size, dtype=np.intp)
+    np.cumsum(counts[:-1], out=starts[1:])
+    if counts.all():
+        return np.add.reduceat(values, starts)
+    out = np.zeros(counts.size)
+    full = counts > 0
+    if full.any():
+        out[full] = np.add.reduceat(values, starts[full])
+    return out
+
+
+def _weibull_profile(
+    log_x: NDArray,
+    n: NDArray,
+    observed: NDArray,
+    counts: NDArray,
+    shift: "NDArray | float",
+    start: "NDArray | float",
+    log_beta_bounds: "tuple[float, float]",
+) -> tuple[NDArray, NDArray, NDArray]:
+    r"""The Weibull maximum of each of several groups of observed and
+    right-censored rows, by the profile likelihood in :math:`b = \log
+    \beta`.
+
+    The groups are runs of consecutive elements: ``counts[k]`` rows of
+    log time ``log_x``, count ``n`` and failure flag ``observed`` (1 or
+    0) for group ``k``. With the scale at its maximum
+    :math:`A = \alpha^\beta = S(\beta) / r`, :math:`S = \sum n
+    x^\beta`, the profile log-likelihood is
+
+    .. math::
+
+        l(b) = r b - r \log(S / r) + (\beta - 1) L - r,
+
+    :math:`L` the sum of :math:`n \log x` over the failures. It is
+    concave in :math:`\beta`, so its derivative
+    :math:`g(b) = \beta (r / \beta - r S'/S + L)` has one root,
+    bracketed by its sign within ``log_beta_bounds`` and found by Newton
+    steps from ``start`` (a bisection whenever a step leaves the
+    bracket), every group at once. Sums of :math:`x^\beta` are taken
+    relative to :math:`e^{\text{shift}}` (each group's own, or one for
+    all), so they cannot overflow.
+
+    Returns each group's maximised log-likelihood (with its number of
+    failures ``r``, to judge it by), :math:`\log \alpha` and :math:`b`.
+    Each group's sums are over its own rows only, so the work is the
+    total number of rows, however they are grouped (#549).
+    """
+    size = counts.size
+    shift = np.broadcast_to(np.asarray(shift, dtype=float), (size,))
+    r = _segment_sums(n * observed, counts)
+    L = _segment_sums(n * observed * log_x, counts)
+    centred = log_x - np.repeat(shift, counts)
+    everyone = np.arange(size)
+
+    def moments(b: NDArray, idx: NDArray) -> tuple[NDArray, ...]:
+        # The sums of n x^beta (relative to the shift) times 1, log x and
+        # (log x)^2, for the groups idx
+        beta = np.exp(b)
+        if idx.size == size:
+            weight, c, sizes = n, centred, counts
+        else:
+            chosen = np.zeros(size, bool)
+            chosen[idx] = True
+            rows = np.repeat(chosen, counts)
+            weight, c, sizes = n[rows], centred[rows], counts[idx]
+        w = np.repeat(beta, sizes)
+        w *= c
+        np.exp(w, out=w)
+        w *= weight
+        wc = w * c
+        s0 = _segment_sums(w, sizes)
+        s1 = _segment_sums(wc, sizes)
+        s2 = _segment_sums(wc * c, sizes)
+        return beta, s0, s1, s2
+
+    def slope(b: NDArray, idx: NDArray) -> tuple[NDArray, ...]:
+        # g(b) and its derivative for the groups idx, and the sum s0
+        beta, s0, s1, s2 = moments(b, idx)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mean = s1 / s0 + shift[idx]
+            var = s2 / s0 - (s1 / s0) ** 2
+            g = beta * (r[idx] / beta - r[idx] * mean + L[idx])
+            dg = g - r[idx] - r[idx] * beta**2 * var
+        return g, dg, s0
+
+    lo = np.full(size, log_beta_bounds[0])
+    hi = np.full(size, log_beta_bounds[1])
+    b = np.clip(start, lo, hi) + np.zeros(size)
+    g, dg, s0 = slope(b, everyone)
+    # The window's edge on the side the slope points to: a root beyond it
+    # puts the optimum there. (g decreases, so the slope at the start
+    # settles the other edge.)
+    rising = g > 0
+    edge = np.where(rising, hi, lo)
+    g_edge, _, s0_edge = slope(edge, everyone)
+    at_edge = np.where(rising, g_edge >= 0, ~(g_edge > 0))
+    b = np.where(at_edge, edge, b)
+    s0 = np.where(at_edge, s0_edge, s0)
+    # Where each group was last evaluated (b_eval, with its sum s0): its
+    # optimum is taken there, a final step below 1e-14 of it left untaken,
+    # which spares an evaluation of every group.
+    b_eval = b.copy()
+    active = np.flatnonzero(~at_edge)
+    g, dg = g[active], dg[active]
+    for _ in range(200):
+        if active.size == 0:
+            break
+        # Shrink the bracket by the sign of the slope
+        lo[active] = np.where(g > 0, b[active], lo[active])
+        hi[active] = np.where(g > 0, hi[active], b[active])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            newton = b[active] - g / dg
+        inside = (newton >= lo[active]) & (newton <= hi[active])
+        step = np.where(inside, newton, 0.5 * (lo[active] + hi[active]))
+        # At an exact root, stay there
+        step = np.where(g == 0, b[active], step)
+        done = (g == 0) | (
+            np.abs(step - b[active]) <= 1e-14 * (1.0 + np.abs(b[active]))
+        )
+        b[active] = step
+        active = active[~done]
+        if active.size:
+            g, dg, s0[active] = slope(b[active], active)
+            b_eval[active] = b[active]
+    b = b_eval
+    beta = np.exp(b)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_S = beta * shift + np.log(s0)
+        log_r = np.log(r)
+        ll = r * b - r * (log_S - log_r) + (beta - 1.0) * L - r
+        log_alpha = (log_S - log_r) / beta
+    return np.where(r > 0, ll, np.nan), log_alpha, b
+
+
+# Scored at once: candidates x rows of the node, at most this many (the
+# rows of both children of each candidate).
 _BLOCK = 1 << 20
+
+# Above this many (candidates x node rows), a node's own maximum is found
+# before its children's (see _ChildLikelihoods.split_scores).
+_OWN_PASS = 1 << 15
 
 
 class _ChildLikelihoods:
@@ -391,7 +534,9 @@ class _ChildLikelihoods:
     profiling out the scale, :math:`\hat\alpha^\beta = \sum n x^\beta /
     r`, and solving the one-dimensional score equation of the concave
     profile log-likelihood in :math:`\log\beta` by safeguarded Newton
-    steps, all children at once. Both are restricted to the same
+    steps, all children at once (each from its own rows, and with the
+    node's own maximum in the same pass when it is not yet known, #549;
+    see :func:`_weibull_profile`). Both are restricted to the same
     parameter window the bounded optimisers search, and give their
     optimum to machine precision, where the optimisers stopped at their
     tolerances, so the deviances move in the last digits only. A child
@@ -438,50 +583,70 @@ class _ChildLikelihoods:
                 (log_alpha0 - 15.0, log_alpha0 + 15.0),
                 _LOG_BETA_BOUNDS,
             )
-            start = np.array([log_alpha0, 0.0])
-            if not fit_parent:
-                return
-            if self.closed:
-                ll, theta = self._weibull(np.ones((1, data.x.size), bool))
-                if np.isfinite(ll[0]):
-                    self.parent_ll = float(ll[0])
-                    self.start = theta[0]
-                    return
-            self.parent_ll, self.start = _wei_max_ll_parts(
-                self.parts, self.box, start
-            )
+            self._default_start = np.array([log_alpha0, 0.0])
         else:
             self.bounds = (theta0 - 15.0, theta0 + 15.0)
-            if not fit_parent:
-                return
-            if self.closed:
-                ll = self._exponential(np.ones((1, data.x.size), bool))
-                if np.isfinite(ll[0]):
-                    self.parent_ll = float(ll[0])
-                    return
+        self.has_parent = False
+        if fit_parent:
+            self._fit_parent(self._closed_lls(np.ones((1, data.x.size), bool)))
+
+    def _fit_parent(self, closed: "tuple[NDArray, NDArray] | None") -> None:
+        # The node's own maximum (parent_ll, and the Weibull's start for
+        # the optimiser), from the closed forms' first row where they give
+        # it, else by the optimiser.
+        if closed is not None and np.isfinite(closed[0][0]):
+            self.parent_ll = float(closed[0][0])
+            if self.model == "weibull":
+                self.start = closed[1][0]
+        elif self.model == "weibull":
+            self.parent_ll, self.start = _wei_max_ll_parts(
+                self.parts, self.box, self._default_start
+            )
+        else:
             self.parent_ll = _exp_max_ll_parts(self.parts, self.bounds)
+        self.has_parent = True
 
     def split_scores(self, left: NDArray) -> NDArray:
         """``ll(left child) + ll(right child)`` for each row of the
-        boolean matrix ``left`` (candidates x node rows)."""
+        boolean matrix ``left`` (candidates x node rows).
+
+        Without the node's own maximum yet, it is found first for a large
+        node, and with the first block of children, in the same pass, for
+        a small one (#549)."""
         out = np.empty(left.shape[0])
-        step = max(1, _BLOCK // (2 * left.shape[1]))
+        if not self.has_parent and left.size > _OWN_PASS:
+            # A large node's own maximum first: its children's searches
+            # start from its shape and take a quarter fewer of the costly
+            # passes over their rows. A small node's is found with them, in
+            # one call.
+            everyone = np.ones((1, left.shape[1]), bool)
+            self._fit_parent(self._closed_lls(everyone))
+        step = max(1, _BLOCK // left.shape[1])
         for i in range(0, left.shape[0], step):
             block = left[i : i + step]
-            ll = self.child_lls(np.concatenate([block, ~block]))
-            out[i : i + step] = ll[: block.shape[0]] + ll[block.shape[0] :]
+            rows = np.concatenate([block, ~block])
+            if not self.has_parent:
+                everyone = np.ones((1, left.shape[1]), bool)
+                rows = np.concatenate([everyone, rows])
+            ll = self.child_lls(rows)
+            out[i : i + step] = ll[-2 * block.shape[0] : -block.shape[0]]
+            out[i : i + step] += ll[-block.shape[0] :]
         return out
 
     def child_lls(self, rows: NDArray) -> NDArray:
         """The maximised log-likelihood of each child, a row of the
-        boolean matrix ``rows`` (children x node rows)."""
-        if self.closed:
-            if self.model == "weibull":
-                ll = self._weibull(rows)[0]
-            else:
-                ll = self._exponential(rows)
-        else:
+        boolean matrix ``rows`` (children x node rows). Without the node's
+        own maximum yet, the first row must be the whole node, and gives
+        it."""
+        closed = self._closed_lls(rows)
+        if not self.has_parent:
+            self._fit_parent(closed)
+            rows = rows[1:]
+            closed = None if closed is None else (closed[0][1:], closed[1])
+        if closed is None:
             ll = np.full(rows.shape[0], np.nan)
+        else:
+            ll = closed[0].copy()
         # The children the closed forms do not cover: the optimiser.
         for j in np.flatnonzero(~np.isfinite(ll)):
             parts = self._child_parts(rows[j])
@@ -490,6 +655,20 @@ class _ChildLikelihoods:
             else:
                 ll[j] = _exp_max_ll_parts(parts, self.bounds)
         return ll
+
+    def _closed_lls(self, rows: NDArray) -> "tuple[NDArray, NDArray] | None":
+        # The closed forms' maximised log-likelihood of each row of
+        # ``rows`` (NaN where they do not give it) and, for the Weibull,
+        # its (log alpha, log beta); None off the closed forms.
+        if not self.closed:
+            return None
+        # Quiet (principle 22): a value the closed forms cannot give is
+        # NaN, and the optimiser takes that child.
+        with np.errstate(all="ignore"):
+            if self.model == "weibull":
+                return self._weibull(rows)
+            ll = self._exponential(rows)
+        return ll, ll[:, None]
 
     def _child_parts(self, rows: NDArray) -> tuple:
         # The node's likelihood terms at the child's rows.
@@ -528,84 +707,30 @@ class _ChildLikelihoods:
         rows: NDArray,
         log_beta_bounds: "tuple[float, float]" = _LOG_BETA_BOUNDS,
     ) -> tuple[NDArray, NDArray]:
-        # The profile log-likelihood in b = log(beta), with the scale at
-        # its maximum A = alpha^beta = S(beta) / r, S = sum n x^beta:
-        #   l(b) = r b - r log(S / r) + (beta - 1) L - r,
-        # L = sum of n log x over the failures. It is concave in beta, so
-        # its derivative g(b) = beta (r / beta - r S'/S + L) has one
-        # root, bracketed by its sign and found by Newton steps (a
-        # bisection whenever a step leaves the bracket). Sums of x^beta
-        # are taken relative to the largest x, so they cannot overflow.
-        weight = rows * self.n
-        r = weight @ self.observed
-        L = weight @ (self.observed * self.log_x)
-        shift = self.log_x.max()
-        centred = self.log_x - shift
-
-        def moments(b: NDArray, idx: NDArray) -> tuple[NDArray, ...]:
-            beta = np.exp(b)
-            w = weight[idx] * np.exp(beta[:, None] * centred[None, :])
-            s0 = w.sum(axis=1)
-            s1 = (w * centred).sum(axis=1)
-            s2 = (w * centred**2).sum(axis=1)
-            return beta, s0, s1, s2
-
-        def slope(b: NDArray, idx: NDArray) -> tuple[NDArray, NDArray]:
-            # g(b) and its derivative, for the children idx
-            beta, s0, s1, s2 = moments(b, idx)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                mean = s1 / s0 + shift
-                var = s2 / s0 - (s1 / s0) ** 2
-                g = beta * (r[idx] / beta - r[idx] * mean + L[idx])
-                dg = g - r[idx] - r[idx] * beta**2 * var
-            return g, dg
-
-        everyone = np.arange(r.size)
-        lo = np.full(r.size, log_beta_bounds[0])
-        hi = np.full(r.size, log_beta_bounds[1])
-        # The window's edges: a root outside it puts the optimum there.
-        at_lo = ~(slope(lo, everyone)[0] > 0)
-        at_hi = slope(hi, everyone)[0] >= 0
-        b = np.where(
-            at_lo,
-            lo,
-            np.where(at_hi, hi, np.clip(self._start_log_beta(), lo, hi)),
+        # The profile likelihood of each child (see _weibull_profile),
+        # from the child's own rows: the node's rows in order, one run per
+        # child, rather than a (children x node rows) matrix holding a
+        # zero weight for every row a child leaves out.
+        child, row = np.nonzero(rows)
+        ll, log_alpha, b = _weibull_profile(
+            self.log_x[row],
+            self.n[row],
+            self.observed[row],
+            np.bincount(child, minlength=rows.shape[0]),
+            self.log_x.max(),
+            self._start_log_beta(),
+            log_beta_bounds,
         )
-        active = np.flatnonzero(~(at_lo | at_hi))
-        for _ in range(200):
-            if active.size == 0:
-                break
-            g, dg = slope(b[active], active)
-            # Shrink the bracket by the sign of the slope
-            lo[active] = np.where(g > 0, b[active], lo[active])
-            hi[active] = np.where(g > 0, hi[active], b[active])
-            with np.errstate(divide="ignore", invalid="ignore"):
-                newton = b[active] - g / dg
-            inside = (newton >= lo[active]) & (newton <= hi[active])
-            step = np.where(inside, newton, 0.5 * (lo[active] + hi[active]))
-            # At an exact root, stay there
-            step = np.where(g == 0, b[active], step)
-            done = (g == 0) | (
-                np.abs(step - b[active]) <= 1e-14 * (1.0 + np.abs(b[active]))
-            )
-            b[active] = step
-            active = active[~done]
-        beta, s0, _, _ = moments(b, everyone)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            log_S = beta * shift + np.log(s0)
-            log_r = np.log(r)
-            ll = r * b - r * (log_S - log_r) + (beta - 1.0) * L - r
-            log_alpha = (log_S - log_r) / beta
         good = (
-            (r > 0)
-            & np.isfinite(ll)
+            np.isfinite(ll)
             & (log_alpha >= self.box[0][0])
             & (log_alpha <= self.box[0][1])
         )
         return np.where(good, ll, np.nan), np.column_stack([log_alpha, b])
 
     def _start_log_beta(self) -> float:
-        # Newton starts from the node's optimum (the parent's shape)
+        # Newton starts from the node's optimum (the parent's shape) once
+        # it is known
         start = getattr(self, "start", None)
         return 0.0 if start is None else float(start[1])
 
@@ -635,28 +760,61 @@ def leaf_mle(data: SurpyvalData, model: str) -> "NDArray | None":
     likelihood may have no finite maximum, or a Weibull with fewer than
     two distinct failure times, which ``Weibull.fit`` refuses (#462).
     """
-    if not _closed_form(data):
-        return None
-    theta0 = _exp_theta0(data)
-    if theta0 is None:
-        return None
-    lik = _ChildLikelihoods(data, model, theta0, fit_parent=False)
-    rows = np.ones((1, np.size(data.x)), bool)
-    if model == "weibull":
-        if np.unique(lik.x[lik.observed == 1]).size < 2:
-            return None
-        ll, theta = lik._weibull(rows, _LEAF_LOG_BETA_BOUNDS)
-        log_alpha, log_beta = theta[0]
-        if not (
-            np.isfinite(ll[0])
-            and _LEAF_LOG_BETA_BOUNDS[0] < log_beta < _LEAF_LOG_BETA_BOUNDS[1]
-        ):
-            return None
-        return np.exp([log_alpha, log_beta])
-    r = float(np.sum(lik.n * lik.observed))
-    if r <= 0:
-        return None
-    return np.array([r / float(np.sum(lik.n * lik.x))])
+    return leaf_mles([data], model)[0]
+
+
+def leaf_mles(datas: "list[SurpyvalData]", model: str) -> list:
+    """:func:`leaf_mle` of each of several leaves, all in one pass of the
+    profile likelihood rather than one per leaf (#549): a tree's leaves
+    are fitted together, for the cost of a few array operations over all
+    their rows."""
+    out: list = [None] * len(datas)
+    take, theta0s = [], []
+    for k, data in enumerate(datas):
+        if not _closed_form(data):
+            continue
+        theta0 = _exp_theta0(data)
+        if theta0 is None:
+            continue
+        if model == "weibull":
+            x = np.asarray(data.x, dtype=float)[np.asarray(data.c) == 0]
+            if np.unique(x).size < 2:
+                continue
+        take.append(k)
+        theta0s.append(theta0)
+    if not take:
+        return out
+    x = [np.asarray(datas[k].x, dtype=float) for k in take]
+    n = [np.asarray(datas[k].n, dtype=float) for k in take]
+    observed = [(np.asarray(datas[k].c) == 0).astype(float) for k in take]
+    if model == "exponential":
+        for k, x_k, n_k, o_k in zip(take, x, n, observed):
+            r = float(np.sum(n_k * o_k))
+            if r > 0:
+                out[k] = np.array([r / float(np.sum(n_k * x_k))])
+        return out
+    log_x = [np.log(x_k) for x_k in x]
+    ll, log_alpha, log_beta = _weibull_profile(
+        np.concatenate(log_x),
+        np.concatenate(n),
+        np.concatenate(observed),
+        np.array([x_k.size for x_k in x]),
+        np.array([v.max() for v in log_x]),
+        0.0,
+        _LEAF_LOG_BETA_BOUNDS,
+    )
+    # Each leaf's scale within its own window, as a child's is
+    log_alpha0 = -np.asarray(theta0s)
+    good = (
+        np.isfinite(ll)
+        & (log_alpha >= log_alpha0 - 15.0)
+        & (log_alpha <= log_alpha0 + 15.0)
+        & (_LEAF_LOG_BETA_BOUNDS[0] < log_beta)
+        & (log_beta < _LEAF_LOG_BETA_BOUNDS[1])
+    )
+    for j in np.flatnonzero(good):
+        out[take[j]] = np.exp([log_alpha[j], log_beta[j]])
+    return out
 
 
 # The degrees of freedom a split adds: the working model's parameters.
@@ -794,16 +952,15 @@ def deviance_split(
     total_events = event_weight.sum()
 
     # All candidates -- and both children of each -- are scored over the
-    # parent's search window (and, for the Weibull model, warm-started
-    # from the parent's optimum), so their maximised log-likelihoods are
+    # parent's search window, so their maximised log-likelihoods are
     # directly comparable and the split gain is non-negative by
     # likelihood additivity.
     theta0 = _exp_theta0(data)
     if theta0 is None:
         return best_u, best_v
-    search = _ChildLikelihoods(data, model, theta0)
-    parent_ll = search.parent_ll
+    search = _ChildLikelihoods(data, model, theta0, fit_parent=False)
 
+    features, cuts, lefts = [], [], []
     for u in feature_indices_in:
         Z_u = Z[:, u]
         values = _candidate_values(Z_u)
@@ -817,14 +974,24 @@ def deviance_split(
             & (events_left >= min_leaf_failures)
             & (total_events - events_left >= min_leaf_failures)
         )
-        if not ok.any():
-            continue
-        score = np.full(values.size, -np.inf)
-        score[ok] = search.split_scores(left[ok])
+        if ok.any():
+            features.append(int(u))
+            cuts.append(values[ok])
+            lefts.append(left[ok])
+    if not features:
+        return best_u, best_v
+
+    # Every feature's candidates, and the node itself, in one pass (#549)
+    scores = np.split(
+        search.split_scores(np.concatenate(lefts)),
+        np.cumsum([v.size for v in cuts])[:-1],
+    )
+    parent_ll = search.parent_ll
+    for u, values, score in zip(features, cuts, scores):
         k = int(np.argmax(score))
         if score[k] > best_score:
             best_score = float(score[k])
-            best_u = int(u)
+            best_u = u
             best_v = float(values[k])
 
     # A split that does not improve on the parent's log-likelihood by a

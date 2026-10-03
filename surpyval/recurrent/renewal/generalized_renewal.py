@@ -14,6 +14,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     rows_by_position,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
@@ -411,6 +412,11 @@ class GeneralizedRenewal(RenewalFitMixin):
         q, *dist_params = params
         model = dist.from_params(list(dist_params))
         out = self._make_model(model, q, kijima)
+        # The likelihood kept as what it is built from, so the model
+        # pickles (#573).
+        neg_ll = Rebuilt(
+            self.create_negll_func, (data, dist, kijima), built=neg_ll
+        )
         self._attach_inference(out, neg_ll, [q, *dist_params], res, data)
         return out
 

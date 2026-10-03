@@ -886,6 +886,30 @@ The underlying caution still stands, though, and it is worth keeping in mind for
     _m = surv.Weibull.fit(_x, offset=True, how="MPS")
     assert round(_m.gamma, 1) == 49.8 and round(_m.params[1], 2) == 0.95
 
+- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached. Maximum product of spacings is no way out here: its product of spacings rises towards the Normal's in the same way, and an ``how="MPS"`` fit warns "No finite maximum" too.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _x = [-1.0, 8.84, 9.956, 10.953, 11.903, 12.846, 13.816, 14.85, 15.997,
+          17.347, 19.096, 21.954]
+    _c = [0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0]
+    _n = [1, 1, 2, 1, 1, 1, 1, 3, 1, 1, 1, 1]
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.LogNormal.fit(_x, _c, _n, offset=True)
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert "surpyval.Normal" in str(_caught[0].message)
+    assert _m.gamma < -100
+    _normal = surv.Normal.fit(_x, _c, _n).neg_ll()
+    assert round(-_normal, 2) == -42.27 and _m.neg_ll() > _normal
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.LogNormal.fit(_x, _c, _n, offset=True, how="MPS")
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert "surpyval.Normal" in str(_caught[0].message)
+
 ``test_offset_divergence.py`` in the test suite pins this down for offset Gamma and Rayleigh fits with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, and ``MOM`` (on the Rayleigh) to 10%, with the implied distributions essentially identical either way.
 
 Fixing parameters
@@ -1241,16 +1265,21 @@ Comparing distributions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 To choose a distribution, fit the candidates to the same data and compare an
-information criterion; lower is better. ``fit_best(x, c, n, t)`` does this by
+information criterion; lower is better. ``fit_best(x, c, n, t)`` (which also
+takes ``tl``, ``tr``, ``xl`` and ``xr``, as ``fit`` does) does this by
 maximum likelihood for eleven continuous distributions -- ``Beta``,
 ``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
 ``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
 ``GumbelLEV``, the discrete distributions or offset models) -- and returns the
 winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
 (the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
-``exclude`` (lists of names, not both) narrow the candidates. A candidate that
-cannot be fitted -- the Beta when the data leave :math:`[0, 1]`, say -- is
-skipped with a warning, and ``None`` is returned if none can.
+``exclude`` (lists of names, not both) narrow the candidates. The data are
+checked once, as ``fit`` checks them, so a mistake in them raises the error
+``fit`` would give. A candidate whose support does not hold the data -- the
+Beta when the data leave :math:`(0, 1)` -- is passed over quietly; one that
+cannot be fitted to them is skipped, named with its reason in one warning,
+and ``None`` is returned if none can (an error every candidate gives alike
+is about the data, and is raised).
 
 The information criteria assume a *regular* maximum of the likelihood, so two
 kinds of candidate are set aside, and ranked only when no regular candidate
@@ -1360,7 +1389,7 @@ On occasion, it can appear as though there are one, or two different distributio
 
     F(x) = \sum_{j=1}^{m} w_{j} F_{j}(x), \qquad f(x) = \sum_{j=1}^{m} w_{j} f_{j}(x).
 
-SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one; the model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
+SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one. Those further rounds, up to a thousand of them, can be accelerated with ``fit(..., em="squarem")`` (SQUAREM: it extrapolates along the path two rounds take, and keeps the result only where the likelihood is no lower than after those two rounds); a fit verified after the first few rounds is the same either way, so the default stays plain EM. The model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
 
 .. jupyter-execute::
 
@@ -1425,7 +1454,7 @@ The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9),
 
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit, and polishes and checks the answer as it does EM's.
 
-A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and ``loglike``, which despite its name is the *negative* log-likelihood of the fit. It has no ``hf``, ``qf``, confidence bounds or information criteria, but an AIC is easily formed by hand: a mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one). Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it still works until v0.24, with a ``DeprecationWarning``.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
 
 .. jupyter-execute::
 
@@ -1437,9 +1466,8 @@ A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, 
     wmm = surv.MixtureModel.fit(x, c=c, dist=surv.Weibull, m=2)
     print("weights:", wmm.w.round(3))
 
-    k_mix = wmm.m * wmm.dist.k + wmm.m - 1
     print("AIC single Weibull :", surv.Weibull.fit(x, c).aic())
-    print("AIC 2-Weibull mix  :", 2 * k_mix + 2 * wmm.loglike)
+    print("AIC 2-Weibull mix  :", wmm.aic())
 
     restored = surv.from_dict(wmm.to_dict())
     print(restored.sf([5, 10]), wmm.sf([5, 10]))
@@ -1450,12 +1478,13 @@ The mixture's AIC is lower by about 42, decisive evidence for two populations, a
     :hide-code:
     :hide-output:
 
-    _gap = surv.Weibull.fit(x, c).aic() - (2 * k_mix + 2 * wmm.loglike)
+    _gap = surv.Weibull.fit(x, c).aic() - wmm.aic()
+    assert wmm.aic() == 2 * (2 * 2 + 1) - 2 * wmm.log_likelihood
     assert round(_gap) == 42, _gap
     assert np.allclose(np.sort(wmm.w), [0.4, 0.6], atol=0.02), wmm.w
     assert np.allclose(restored.sf([5, 10]), wmm.sf([5, 10]))
 
-This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts by sorting the data, cutting its distinct values into :math:`m` consecutive blocks and fitting one component to each, with equal weights; with poorly separated components, check that the answer makes sense.
+This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts twice and keeps the better answer (a verified maximum before one that is not). The first start sorts the data, cuts its distinct values into :math:`m` consecutive blocks and fits one component to each, with equal weights. The second cuts only the failures, by count, into :math:`m` blocks, gives every survivor to the last component and weights each component by its share of the units: the usual reliability shape of a few early (infant-mortality) failures plus wear-out, which on field data with many survivors the first start can miss. With poorly separated components, still check that the answer makes sense.
 
 
 Limited Failure Population
@@ -2064,6 +2093,39 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
         surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params[0], 0.6)
     assert np.isclose(event.params[0], (3 + 4) / 2)
 
+The probability ``p`` of a ``Bernoulli``, ``FixedEventProbability`` or
+``Binomial`` fit has confidence bounds from its counts of events and trials,
+``param_cb("p")``. The default is the exact (Clopper-Pearson) interval, the
+usual one for demand-failure probabilities and reliability demonstration (as
+R's ``binom.test`` and scipy's ``binomtest``): it holds its level at any
+sample size, and with no failures it still gives the upper bound, which is
+then the whole answer. ``method="wald"`` (on the logit scale; undefined at
+:math:`\hat p = 0` or 1) and ``method="lr"`` (likelihood ratio) are options.
+These models have no other bounds: ``cb``, ``quantile_cb`` and ``mean_cb``
+raise, pointing to ``param_cb``.
+
+.. jupyter-execute::
+
+    # inverter start-ups: 3 failures (coded 1) in 1200 demands
+    starts = surv.Bernoulli.fit([1, 0], n=[3, 1197])
+    print("p, 90% exact :", starts.param_cb("p", alpha_ci=0.1).round(5))
+    print("p, 90% Wald  :", starts.param_cb("p", alpha_ci=0.1,
+                                            method="wald").round(5))
+
+    # no failures in 1200: the 90% upper bound is 1 - 0.1 ** (1 / 1200)
+    clean = surv.Bernoulli.fit([0], n=[1200])
+    print("upper, none  :", clean.param_cb("p", alpha_ci=0.1,
+                                           bound="upper").round(6))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(starts.param_cb("p", alpha_ci=0.1), [0.00068, 0.00645],
+                       atol=5e-6)
+    assert np.isclose(clean.param_cb("p", alpha_ci=0.1, bound="upper")[0],
+                      1 - 0.1 ** (1 / 1200))
+
 See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
 :doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
 :doc:`univariate/degenerate` for their full APIs.
@@ -2222,6 +2284,71 @@ reading the band from ``cb(t, on='ff')`` across: a pointwise band on
     assert _lo_w < model.qf(0.1) and _lo_lr < model.qf(0.1)
     _m = model.mean_cb()
     assert _m[0] < model.mean() < _m[1]
+
+
+Forecasting failures in service
+-------------------------------
+
+A fitted model describes a unit from new; the units in service have already
+survived to their ages. A unit at age :math:`a` fails within the next :math:`h`
+with probability :math:`(F(a + h) - F(a)) / (1 - F(a))`, one minus the
+conditional survival ``cs(h, a)``, and :func:`surpyval.forecast` sums that over
+a fleet or a set of cohorts, with a prediction interval for the count from its
+exact (Poisson-binomial) distribution. It takes the units' ``age``, the
+``horizon`` (one time ahead, or the end of each period), the number of units at
+each age ``n``, and optionally a ``limit``: an age past which failures are not
+counted, such as the end of a warranty.
+
+Here 24 monthly shipments of 1,000 units are under a 24-month warranty. A
+Weibull is fitted to the returns so far (each unit returned at its failure age,
+or still in service at its cohort's age), and the next six months' returns are
+forecast for the survivors of each cohort:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    rng = np.random.default_rng(11)
+    cohort_age = np.arange(1, 25)                 # months since shipment
+    T = 200 * rng.weibull(1.4, (24, 1000))         # true failure ages
+    failed = T <= cohort_age[:, None]
+    x_w = np.where(failed, T, cohort_age[:, None]).ravel()
+    warranty = surv.Weibull.fit(x_w, c=(~failed).ravel().astype(int))
+    print('fitted alpha, beta :', warranty.params.round(3))
+
+    returns = surv.forecast(
+        warranty, age=cohort_age, n=1000 - failed.sum(axis=1),
+        horizon=[1, 2, 3, 4, 5, 6], limit=24,
+    )
+    print(returns)
+
+The rows give, for each month ahead, the expected returns by then with a 95%
+prediction interval, and the returns in that month alone. The oldest cohort
+is at the end of its warranty and adds nothing; the next leaves it after one
+month, so it adds to the first month only.
+``returns.probability`` holds each cohort's chance of a return and
+``returns.unit_expected`` its expected count.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _a = cohort_age.astype(float)
+    _n = 1000 - failed.sum(axis=1)
+    _end = np.minimum(_a + 6, 24.0)
+    _p = (warranty.ff(_end) - warranty.ff(_a)) / warranty.sf(_a)
+    assert np.isclose(returns.expected[-1], np.sum(_n * _p), rtol=1e-10)
+    assert np.all(returns.probability[-1] == 0)
+    assert np.all(returns.probability[-2] == returns.probability[-2, 0])
+    assert returns.probability[-2, 0] > 0
+    assert returns.lower[-1] < returns.expected[-1] < returns.upper[-1]
+
+The interval is that of the count with the model taken as known; it does not
+include the uncertainty of the fit. In-warranty counts often barely separate
+candidate models (a Weibull, a mixture, a limited-failure population) while
+their extrapolations differ, so forecast from each plausible model and compare.
+The same function forecasts from a regression model, with each unit's
+covariates (see :doc:`Regression Modelling with SurPyval`).
 
 
 Creating a custom Distribution

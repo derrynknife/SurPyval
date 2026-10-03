@@ -16,6 +16,7 @@ from surpyval.recurrent.parametric.parametric_recurrence import (
 )
 from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_event_data import RecurrentEventData
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 from surpyval.utils.validation import check_option
@@ -239,7 +240,10 @@ class NHPPFitter(IntensityModel):
         # fit has no likelihood, so leave the inference attributes unset (the
         # inference methods then raise).
         if ll_func is not None:
-            model._neg_ll = ll_func
+            # Kept as what it is built from, so the model pickles (#573)
+            model._neg_ll = Rebuilt(
+                self.create_negll_func, (data,), built=ll_func
+            )
             model._mle = np.asarray(params, dtype=float)
             model._n_obs = bic_sample_size(data)
         return model

@@ -19,6 +19,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import warn_outside_unit_interval
 
 from ._concordance import ConcordanceMixin
 from ._covariate_link import CovariateLink
@@ -30,6 +31,7 @@ from ._kinds import (
     PROPORTIONAL_HAZARD,
     PROPORTIONAL_ODDS,
 )
+from ._prediction import ConditionalSurvivalMixin, quantiles_by_inversion
 from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     prepare_Z,
@@ -73,6 +75,7 @@ _SERIALISABLE_REG_NAMES = {
 
 
 class ParametricRegressionModel(
+    ConditionalSurvivalMixin,
     TVCEvaluationMixin,
     InferenceMixin,
     ConcordanceMixin,
@@ -228,8 +231,20 @@ class ParametricRegressionModel(
     _information: "tuple | None" = None
     #: ``(point, covariance)`` of the last covariance computed.
     _covariance_cache: "tuple | None" = None
+    #: The likelihood-ratio searches of ``cb`` / ``param_cb`` with
+    #: ``method="lr"`` (``_likelihood_ratio.lr_search``), with what they
+    #: have found, kept while the parameters and data stay as they are;
+    #: not pickled (``__getstate__``).
+    _lr_searches: "list | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
+
+    def __getstate__(self) -> dict:
+        # The likelihood-ratio searches, with the regions and bounds they
+        # have found, are rebuilt where a bound is asked for again (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_searches", None)
+        return state
 
     # -- serialisation -----------------------------------------------------
 
@@ -1280,6 +1295,108 @@ class ParametricRegressionModel(
         array([0.0189, 0.0638, 0.2972])
         """
         return self._eval(self.model.Hf, x, Z, 0.0, grid)
+
+    @keeps_query_shape
+    def qf(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
+    ) -> npt.NDArray:
+        r"""
+        The quantile function: the time by which a proportion ``p`` of the
+        units with covariates ``Z`` have failed, ``ff(qf(p, Z), Z) = p``
+        (the B10 life of a unit is ``qf(0.1, Z)``; #571).
+
+        Parameters
+        ----------
+
+        p : array like or scalar
+            The probabilities, in [0, 1].
+
+        Z : array like or DataFrame
+            The covariates, paired with ``p`` as :meth:`sf` pairs them with
+            ``x``: one row per probability (or a single row for every
+            probability, or a single probability for every row). A model
+            fitted with ``fit_from_df`` also accepts a DataFrame.
+
+        grid : bool, optional
+            ``True`` gives every ``p`` for every row of ``Z``, with shape
+            ``(len(Z),) + p.shape``. Default ``False``: rows and
+            probabilities paired.
+
+        Returns
+        -------
+
+        qf : scalar or numpy array
+            The quantiles.
+
+        Notes
+        -----
+        Every family is inverted the same way, from the model's own
+        cumulative hazard: the time at which :math:`H(t \mid Z)` reaches
+        :math:`-\log(1 - p)`, solved to a relative ``1e-12`` for every
+        probability at once. ``qf(0, Z)`` is the start of the
+        distribution's support and ``qf(1, Z)`` its end; a probability
+        outside [0, 1] gives NaN with a warning, as for the univariate
+        models, and NaN gives NaN. Where the hazard of an additive model
+        turns negative the cumulative hazard is not monotone, and the
+        quantile is one of its crossings (``hf`` warns there).
+
+        Examples
+        --------
+
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> b10 = model.qf(0.1, [[0], [1]])
+        >>> b10.round(4)
+        array([2.6636, 1.6593])
+        >>> model.ff(b10, [[0], [1]]).round(12)
+        array([0.1, 0.1])
+        """
+        u = np.asarray(p, dtype=float)
+        Z = self._prepare_Z(Z)
+        rows = covariate_rows(Z, self._n_covariates())
+        shape = None
+        if grid:
+            shape = (rows.shape[0], u.size)
+            u = np.tile(u, shape[0])
+            rows = np.repeat(rows, shape[1], axis=0)
+        else:
+            check_paired_rows(u.size, rows.shape[0])
+            size = max(u.size, rows.shape[0])
+            u = np.broadcast_to(u, (size,))
+            rows = np.broadcast_to(rows, (size, rows.shape[1]))
+        rows = np.asarray(self._centred(rows), dtype=float)
+        outside = warn_outside_unit_interval(u)
+        u = np.where(outside, np.nan, u)
+        params = self._eval_params()
+        dist_params = params[: self.k_dist]
+        with np.errstate(all="ignore"):
+            # The baseline's quantile, a start for each search.
+            start = np.asarray(
+                self.distribution.qf(np.clip(u, 0.0, 1.0), *dist_params),
+                dtype=float,
+            ) * np.ones(u.shape)
+        out = quantiles_by_inversion(
+            lambda t, k: self.model.Hf(t, rows[k], *params),
+            u,
+            self.distribution.support,
+            start,
+        )
+        if self._is_additive():
+            finite = np.isfinite(out)
+            self._warn_if_hazard_negative(
+                np.where(finite, out, 0.0), rows, finite, stacklevel=5
+            )
+        if shape is not None:
+            out = out.reshape(shape)
+        return out
 
     def random(
         self,

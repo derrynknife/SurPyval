@@ -48,12 +48,15 @@ from surpyval.utils import (
     finite_covariate_mask,
     xcnt_handler,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import (
     _gradient,
     alias_coefficients,
+    check_baseline_support,
     finish_search,
     natural_information,
     optimise_ph,
@@ -491,6 +494,11 @@ class FrailtyFitter:
         (array([0.399]), 0.432)
         """
         x, Zm, c, w, labels, inv = grouped_data(x, Z, c, n, groups)
+        # The times inside the baseline's support, as for the other
+        # parametric regressions (#565)
+        check_baseline_support(
+            self, SurpyvalData(x, c, w, None, group_and_sort=False)
+        )
         n_obs = x.shape[0]
         n_groups = labels.shape[0]
         Zc = np.zeros((n_obs, 0)) if Zm is None else Zm
@@ -559,6 +567,11 @@ class FrailtyFitter:
             )
 
         u0 = to_unc(init_nat, n_beta)
+        # Each coefficient searched and judged in its own covariate's
+        # units (#577)
+        floor = coefficient_floor(
+            u0.size, [(self.k_dist + i, i) for i in range(n_beta)], Zc
+        )
         res = None
         with np.errstate(all="ignore"):
             # The gradient ladder first, on the likelihood's exact gradient,
@@ -568,7 +581,7 @@ class FrailtyFitter:
             # when it is a verified optimum; otherwise the derivative-free
             # search below runs as before.
             if _gradient(obj_traced, u0) is not None:
-                fast = optimise_ph(obj_traced, u0, quiet=True)
+                fast = optimise_ph(obj_traced, u0, quiet=True, floor=floor)
                 if np.isfinite(fast.fun) and not getattr(
                     fast, "stopped_short", False
                 ):
@@ -612,6 +625,7 @@ class FrailtyFitter:
             u0,
             n_weighted,
             held=held,
+            floor=floor,
         )
         res = verdict.res
         no_maximum, derivatives = verdict.no_maximum, verdict.derivatives
@@ -690,7 +704,7 @@ class FrailtyFitter:
         model.feature_names = feature_names
         model.group_labels = list(labels)
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
-        model.covariance = covariance
+        model._covariance = covariance
         model.parameter_names = parameter_names
         model.k = len(parameter_names) - len(aliased)
         model.n_obs = n_obs
@@ -700,6 +714,8 @@ class FrailtyFitter:
         model.n_groups = n_groups
         model._neg_ll = float(res.fun)
         model.maximum = verdict.maximum
+        # (the columns of Z whose coefficients were estimated)
+        model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
     def fit_from_df(

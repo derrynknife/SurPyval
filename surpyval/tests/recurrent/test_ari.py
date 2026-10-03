@@ -65,8 +65,8 @@ def test_ari_fit_and_information_criteria():
     n = model._n_obs
     ll = model.log_likelihood
     assert np.isclose(ll, -model.res.fun)
-    assert np.isclose(model.aic, 2 * k - 2 * ll)
-    assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
+    assert np.isclose(model.aic(), 2 * k - 2 * ll)
+    assert np.isclose(model.bic(), k * np.log(n) - 2 * ll)
     assert model.parameter_names == ["rho", "alpha", "beta"]
     assert "ARI" in repr(model)
 
@@ -100,7 +100,7 @@ def test_ari_inference_requires_fit_from_data():
         [60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA
     )
     with pytest.raises(ValueError, match="fitted from data"):
-        model.aic
+        model.aic()
 
 
 # -- the vectorised likelihood against the scalar original -------------

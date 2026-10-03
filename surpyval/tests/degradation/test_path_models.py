@@ -161,3 +161,55 @@ def test_quadratic_inv_path_near_zero_curvature() -> None:
     assert QuadraticPath.inv_path(100.0, 0.0, -1.0, 1.0) == pytest.approx(
         (1 + np.sqrt(401)) / 2
     )
+
+
+# #621: the offset exponential start that bends against nearly straight
+# measurements runs to the straight-line limit (b -> inf, c -> 0); it is
+# stopped there, and the answer is the full searches'.
+
+
+def _straight_units(n_units=20):
+    rng = np.random.default_rng(0)
+    t = np.arange(1, 9, dtype=float)
+    return t, [
+        rng.lognormal(0, 0.3) * t + rng.normal(0, 0.1, t.size)
+        for _ in range(n_units)
+    ]
+
+
+def _full_searches(t, y):
+    # Every start searched to the end, the better kept (the fit before)
+    from scipy.optimize import curve_fit
+
+    best, best_rss = None, np.inf
+    for p0 in OffsetExponentialPath._initial_guess(t, y):
+        try:
+            params, _ = curve_fit(
+                OffsetExponentialPath.path, t, y, p0=p0, maxfev=10_000
+            )
+        except RuntimeError:
+            continue
+        rss = float(np.sum((y - OffsetExponentialPath.path(t, *params)) ** 2))
+        if rss < best_rss:
+            best, best_rss = params, rss
+    return best
+
+
+def test_621_offset_exponential_stops_the_search_running_to_the_line(
+    monkeypatch,
+):
+    t, units = _straight_units()
+    expected = [_full_searches(t, y) for y in units]
+    calls = [0]
+    path = OffsetExponentialPath.path
+
+    def counted(*args):
+        calls[0] += 1
+        return path(*args)
+
+    monkeypatch.setattr(OffsetExponentialPath, "path", counted)
+    for y, want in zip(units, expected):
+        np.testing.assert_array_equal(OffsetExponentialPath.fit(t, y), want)
+    # 2,500 evaluations a unit for the start running to the line, and
+    # 200 to 700 for the other, were 64,000 for these 20 units (now 26,000)
+    assert calls[0] < 30_000

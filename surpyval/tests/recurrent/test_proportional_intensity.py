@@ -72,7 +72,7 @@ def test_duane_proportional_intensity_reaches_the_crow_amsaa_optimum(
         warnings.simplefilter("ignore", RuntimeWarning)
         duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=Duane)
         crow = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
-    assert duane.aic == pytest.approx(crow.aic, abs=0.01)
+    assert duane.aic() == pytest.approx(crow.aic(), abs=0.01)
     assert duane.coeffs == pytest.approx(crow.coeffs, abs=1e-3)
 
 

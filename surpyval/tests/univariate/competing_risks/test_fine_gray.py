@@ -208,3 +208,77 @@ def test_fine_gray_cif_pairs_covariate_rows():
     np.testing.assert_allclose(
         paired, [fg.cif([1.0], [0, 0])[0], fg.cif([2.0], [1, 1])[0]]
     )
+
+
+# cmprsk 2.2-11, crr(x, code, cbind(z1, z2), failcode = k) on
+# competing_risks_regression_data(): its loglik, the log pseudo-likelihood
+# at the fit, and the events of cause k.
+CRR_LOGLIK = {1: (-241.875318320354808, 61), 2: (-123.918829886760818, 30)}
+
+
+@pytest.mark.parametrize("event", sorted(CRR_LOGLIK))
+def test_604_fine_gray_log_likelihood_is_crrs(event):
+    import surpyval as sp
+
+    x, Z, e = competing_risks_regression_data()
+    model = FineGray.fit(x, Z, e, event=event)
+    loglik, events = CRR_LOGLIK[event]
+    assert isinstance(model.log_likelihood, float)
+    assert model.log_likelihood == pytest.approx(loglik, rel=1e-9)
+    assert model.neg_ll() == -model.log_likelihood
+    # k the coefficients; BIC's n the events of the cause of interest
+    assert model.aic() == pytest.approx(4 - 2 * loglik, rel=1e-9)
+    assert model.bic() == pytest.approx(
+        2 * np.log(events) - 2 * loglik, rel=1e-9
+    )
+    restored = sp.from_dict(model.to_dict())
+    assert restored.bic() == model.bic()
+    assert restored.aic_c() == model.aic_c()
+
+
+def test_604_fine_gray_competing_risks_model_has_no_likelihood():
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e, model="Fine-Gray")
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        with pytest.raises(ValueError, match="FineGray model"):
+            getattr(model, name)()
+
+
+@pytest.mark.parametrize("scale", [1e4, 1e6])
+def test_606_large_scale_covariates_reach_the_same_maximum(scale):
+    # exp(beta'Z) overflowed at the first BFGS step on covariates of order
+    # 1e4, and the fit raised "SVD did not converge" in safe_inv. In the
+    # covariates' units the fit is the same model: coefficients divided by
+    # the scale, the same likelihood and incidence.
+    x, Z, e = competing_risks_regression_data()
+    model = FineGray.fit(x, Z, e, event=1)
+    big = FineGray.fit(x, Z * scale, e, event=1)
+    assert big.maximum == "verified"
+    np.testing.assert_allclose(big.beta * scale, model.beta, rtol=1e-8)
+    np.testing.assert_allclose(big.se * scale, model.se, rtol=1e-6)
+    assert big.neg_ll() == pytest.approx(model.neg_ll(), rel=1e-12)
+    np.testing.assert_allclose(
+        big.cif([1.0, 5.0], Z[0] * scale), model.cif([1.0, 5.0], Z[0])
+    )
+    both = CompetingRisksProportionalHazards.fit(
+        x, Z * scale, e, model="Fine-Gray"
+    )
+    np.testing.assert_allclose(both.betas[0] * scale, model.beta, rtol=1e-8)
+
+
+def test_605_fine_gray_covariance_is_a_method_and_cov_deprecated():
+    import surpyval as sp
+
+    x, Z, e = competing_risks_regression_data()
+    model = FineGray.fit(x, Z, e, event=1)
+    cov = model.covariance()
+    np.testing.assert_allclose(np.sqrt(np.diag(cov)), model.standard_errors())
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        np.testing.assert_array_equal(model.cov, cov)
+    d = model.to_dict()
+    assert "covariance" in d and "cov" not in d and "_neg_ll" in d
+    # A dict written before v0.23
+    d["cov"], d["neg_ll"] = d.pop("covariance"), d.pop("_neg_ll")
+    restored = sp.from_dict(d)
+    np.testing.assert_array_equal(restored.covariance(), cov)
+    assert restored.neg_ll() == model.neg_ll()

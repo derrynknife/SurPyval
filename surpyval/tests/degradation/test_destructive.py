@@ -243,3 +243,39 @@ def test_destructive_any_distribution_round_trips() -> None:
         age, y, threshold=40.0, distribution="Logistic"
     )
     assert np.allclose(by_name.sf(t), model.sf(t))
+
+
+# -- #564: the fit says what it reached -------------------------------------
+
+
+def test_564_destructive_fit_records_and_saves_its_maximum(monkeypatch):
+    import warnings
+
+    import surpyval.degradation._maximum as maximum_module
+
+    t, y = _increasing(n=60)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = DestructiveDegradation.fit(t, y, threshold=10.0)
+        best = DestructiveDegradation.fit(
+            t, y, threshold=10.0, transform="best"
+        )
+    assert model.maximum == "verified" and best.maximum == "verified"
+    assert DestructiveDegradationModel.from_dict(model.to_dict()).maximum == (
+        "verified"
+    )
+    old = model.to_dict()
+    del old["maximum"]
+    assert DestructiveDegradationModel.from_dict(old).maximum == "unknown"
+    # noise-free readings: no finite maximum, and only that warning
+    with pytest.warns(UserWarning, match="No finite maximum") as caught:
+        flat = DestructiveDegradation.fit(t, np.exp(1 + 0.05 * t), 10.0)
+    assert flat.maximum == "no finite maximum" and len(caught) == 1
+    # an answer that cannot be verified says so, once
+    monkeypatch.setattr(
+        maximum_module, "verify_or_polish", lambda f, r, n, **k: (r, False)
+    )
+    with pytest.warns(UserWarning, match="did not reach a verified") as w:
+        stalled = DestructiveDegradation.fit(t, y, threshold=10.0)
+    assert stalled.maximum == "unverified" and len(w) == 1
+    assert "destructive degradation fit" in str(w[0].message)

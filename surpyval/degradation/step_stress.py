@@ -37,7 +37,7 @@ import numpy.typing as npt
 from scipy.optimize import minimize, minimize_scalar
 
 from .population import (
-    _conditional_mode,
+    _conditional_modes,
     _prior_precision,
     reml_estimate_woodbury,
 )
@@ -246,28 +246,34 @@ def _foce(
     objective = np.inf
     for _ in range(max_outer):
         precision = _prior_precision(state.cov, state.sigma2)
+        taus = [unit.tau(g) for unit in units]
+        starts = np.array(
+            [
+                _mode_start(
+                    path_model,
+                    tau,
+                    unit.y,
+                    state.mean,
+                    precision,
+                    state.sigma2,
+                    state.theta[k],
+                )
+                for k, (unit, tau) in enumerate(zip(units, taus))
+            ]
+        )
+        # every unit's conditional mode on its clock, all at once (#588)
+        state.theta = _conditional_modes(
+            path_model,
+            taus,
+            [unit.y for unit in units],
+            state.mean,
+            precision,
+            state.sigma2,
+            starts,
+        )
         w_list, jac_list, a_list = [], [], []
-        for k, unit in enumerate(units):
-            tau = unit.tau(g)
-            start = _mode_start(
-                path_model,
-                tau,
-                unit.y,
-                state.mean,
-                precision,
-                state.sigma2,
-                state.theta[k],
-            )
-            theta = _conditional_mode(
-                path_model,
-                tau,
-                unit.y,
-                state.mean,
-                precision,
-                state.sigma2,
-                start,
-            )
-            state.theta[k] = theta
+        for k, (unit, tau) in enumerate(zip(units, taus)):
+            theta = state.theta[k]
             jac = np.asarray(path_model.jacobian(tau, *theta), dtype=float)
             fitted = np.asarray(path_model.path(tau, *theta), dtype=float)
             w = unit.y - fitted + jac @ theta

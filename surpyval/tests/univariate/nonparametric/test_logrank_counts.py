@@ -24,8 +24,10 @@ logrank_module = importlib.import_module(
 )
 
 
-def _dense_logrank_z_v(x, Z, c, n, groups, weighting, rho, gamma):
-    """The implementation before #515, verbatim, as the reference."""
+def _dense_logrank_z_v(x, Z, c, n, groups, weighting, rho, gamma, tl=None):
+    """The implementation before #515, verbatim, as the reference (it has
+    no entry times, ``tl``, #576)."""
+    assert tl is None
     k = groups.size
     x_g, c_g, n_g = [], [], []
     for g in groups:

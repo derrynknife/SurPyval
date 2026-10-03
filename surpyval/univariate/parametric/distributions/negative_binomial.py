@@ -6,7 +6,6 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
-from scipy.stats import nbinom
 
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
@@ -153,6 +152,8 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, r: Boxable, p: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
+        from scipy.stats import nbinom
+
         u_arr = np.asarray(u, dtype=float)
         k = refine_quantile(
             nbinom.ppf(u_arr, r, p) + 1.0,
@@ -224,6 +225,8 @@ class NegativeBinomial_(OptimisedFitMixin, DiscreteParametricFitter):
         >>> NegativeBinomial.random(5, 3.0, 0.4)
         array([ 7.,  4.,  2., 20.,  3.])
         """
+        from scipy.stats import nbinom
+
         state = draw_state(random_state)
         return nbinom.rvs(r, p, size=size, random_state=state) + 1.0
 

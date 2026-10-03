@@ -132,7 +132,14 @@ def test_554_an_unverified_hpp_proportional_intensity_fit_warns(
             x=np.asarray(x0, dtype=float), fun=fun(x0), success=True
         )
 
+    def unpolished(fun, res, *args, **kwargs):
+        # (the polish would rescue it: test_577_...)
+        return res, False
+
     monkeypatch.setattr(hpp_proportional_intensity, "minimize", stuck)
+    monkeypatch.setattr(
+        hpp_proportional_intensity, "verify_or_polish", unpolished
+    )
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         sp.recurrent.ProportionalIntensityHPP.fit(**_rossi())
@@ -141,3 +148,18 @@ def test_554_an_unverified_hpp_proportional_intensity_fit_warns(
     assert message.startswith("The proportional intensity fit did not")
     assert "verified maximum" in message
     assert caught[0].filename == __file__
+
+
+def test_577_hpp_proportional_intensity_with_small_scale_covariates():
+    # BFGS on finite differences stops on an absolute tolerance, which a
+    # covariate in millionths meets 0.06 short of the maximum (47.164 vs
+    # 47.106 on the registry's fixture), and the answer was kept as a
+    # verified maximum. Each coefficient is now judged in its covariate's
+    # units, and the answer polished where it is not a maximum.
+    fitter = sp.recurrent.ProportionalIntensityHPP
+    data = _rossi()
+    ref = _silent(fitter.fit, **data)
+    small = _silent(fitter.fit, **{**data, "Z": data["Z"] * 1e-6})
+    assert small.maximum == ref.maximum == "verified"
+    np.testing.assert_allclose(_ll(small), _ll(ref), rtol=1e-8)
+    np.testing.assert_allclose(small.coeffs * 1e-6, ref.coeffs, rtol=1e-4)

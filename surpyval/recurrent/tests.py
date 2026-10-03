@@ -27,16 +27,26 @@ Two classical statistics are provided:
 Both functions take the same ``(x, i, T)`` data description and an
 ``alternative`` direction, and return a :class:`TrendTestResult`.
 
-Systems are assumed to be observed from time ``0``. When the observation time
-``T`` is not supplied each system is treated as *failure-truncated* (observed
-up to its last event), and that last event -- which is the truncation point,
-not a random event -- is dropped from the statistic. When ``T`` is supplied the
-data are *time-truncated* (observed up to a fixed ``T``) and every event is
-used.
+Each system ``q`` is observed over a window :math:`(s_q, T_q]`. The start
+:math:`s_q` is ``0`` unless ``tl`` gives a later one (*delayed entry*, or
+left truncation: records that begin when monitoring starts, or a system that
+enters the study late). When the observation time ``T`` is not supplied each
+system is treated as *failure-truncated* (observed up to its last event), and
+that last event -- which is the truncation point, not a random event -- is
+dropped from the statistic. When ``T`` is supplied the data are
+*time-truncated* (observed up to a fixed ``T``) and every event is used.
+
+Under the HPP null, given the number of events in a window, the events are
+independent and uniform on it; both statistics are built on that, so each
+window contributes on its own scale (the pooled form of Ascher and Feingold
+1984 and Kvaloy and Lindqvist 1998).
 
 References
 ----------
 Ascher, H. and Feingold, H. (1984), "Repairable Systems Reliability".
+Kvaloy, J. T. and Lindqvist, B. H. (1998), "TTT-based tests for trend in
+repairable systems data", Reliability Engineering and System Safety 60,
+13-28.
 Modarres, M., Kaminskiy, M. and Krivtsov, V. (2017), "Reliability Engineering
 and Risk Analysis", 3rd ed., Chapter 10.
 MIL-HDBK-189C (2011), "Reliability Growth Management".
@@ -163,7 +173,7 @@ def _validate_alternative(alternative: str, alpha_ci: float) -> None:
 
 
 def _resolve_truncation(
-    T: npt.ArrayLike | dict | None, unique_i: npt.NDArray
+    T: npt.ArrayLike | dict | None, unique_i: npt.NDArray, name: str = "T"
 ) -> dict | None:
     """
     Normalise the observation-time argument into a ``{system_id: T}`` mapping,
@@ -171,7 +181,9 @@ def _resolve_truncation(
     its own last event).
 
     ``T`` may be a scalar (the same window for every system), a dict keyed by
-    system id, or an array with one entry per (sorted-unique) system.
+    system id, or an array with one entry per (sorted-unique) system. The
+    observation start ``tl`` takes the same forms (``name`` is the argument
+    the messages name).
     """
     if T is None:
         return None
@@ -179,19 +191,47 @@ def _resolve_truncation(
         missing = [q for q in unique_i if q not in T]
         if missing:
             raise ValueError(
-                "`T` is missing an observation time for system(s) "
-                "{}".format(missing)
+                "`{}` is missing an observation time for system(s) "
+                "{}".format(name, missing)
             )
         return {q: float(T[q]) for q in unique_i}
     if np.ndim(T) == 0:
         return {q: float(T) for q in unique_i}  # type: ignore[arg-type]
     T_arr = np.asarray(T, dtype=float)
-    if T_arr.shape[0] != unique_i.shape[0]:
+    if T_arr.ndim != 1 or T_arr.shape[0] != unique_i.shape[0]:
         raise ValueError(
-            "array `T` must have one entry per system ({} systems, {} "
-            "entries)".format(unique_i.shape[0], T_arr.shape[0])
+            "array `{}` must have one entry per system ({} systems, {} "
+            "entries)".format(name, unique_i.shape[0], T_arr.size)
         )
     return {q: float(T_arr[k]) for k, q in enumerate(unique_i)}
+
+
+def _row_starts(
+    tl: npt.ArrayLike | dict | None, i_arr: npt.NDArray, n_rows: int
+) -> npt.ArrayLike | dict | None:
+    """
+    Resolve ``tl`` given with the per-row ``c`` form: as in the fitters it
+    may be one value per row (the same for every row of a system), which is
+    turned into one value per system; a scalar or a dict passes through.
+    """
+    if tl is None or isinstance(tl, dict) or np.ndim(tl) == 0:
+        return tl
+    tl_arr = np.asarray(tl, dtype=float)
+    if tl_arr.shape != (n_rows,):
+        raise ValueError(
+            "with `c`, `tl` must be a scalar or one entry per row of `x` "
+            "({} rows, {} entries)".format(n_rows, tl_arr.size)
+        )
+    starts = {}
+    for q in np.unique(i_arr):
+        values = tl_arr[i_arr == q]
+        if not np.all(values == values[0]):
+            raise ValueError(
+                "`tl` must be the same on every row of a system; system "
+                "{!r} has {}".format(q, np.unique(values).tolist())
+            )
+        starts[q] = float(values[0])
+    return starts
 
 
 def _events_and_windows(
@@ -199,12 +239,14 @@ def _events_and_windows(
     i: npt.ArrayLike | None,
     T: npt.ArrayLike | dict | None,
     c: npt.ArrayLike | None,
+    tl: npt.ArrayLike | dict | None = None,
 ) -> tuple:
     """
     Resolve the fitters' ``c`` into events and windows, and catch a ``c``
     passed as ``T`` (#485): ``laplace(x, i, c)``, copied from
     ``CrowAMSAA.fit(x, i, c)``, failed with "array `T` must have one entry
-    per system".
+    per system". Returns ``(x, i, T, tl)``; with ``c``, a per-row ``tl`` is
+    resolved to one start per system.
     """
     if c is None:
         if T is not None and not isinstance(T, dict) and np.ndim(T) == 1:
@@ -222,7 +264,7 @@ def _events_and_windows(
                     "systems); pass the flags by keyword instead, "
                     "c=...".format(n_rows, n_systems)
                 )
-        return x, i, T
+        return x, i, T, tl
     if T is not None:
         raise ValueError("Give either `T` or `c`, not both")
     x_arr = np.asarray(x, dtype=float)
@@ -253,17 +295,22 @@ def _events_and_windows(
             continue
         xs.extend(events)
         items.extend([q] * events.size)
-    return np.asarray(xs), np.asarray(items), windows
+    starts = _row_starts(tl, i_arr, x_arr.shape[0])
+    return np.asarray(xs), np.asarray(items), windows, starts
 
 
 def _prepare(
-    x: npt.ArrayLike, i: npt.ArrayLike | None, T: npt.ArrayLike | dict | None
-) -> tuple[list[tuple[npt.NDArray, float]], int, int]:
+    x: npt.ArrayLike,
+    i: npt.ArrayLike | None,
+    T: npt.ArrayLike | dict | None,
+    tl: npt.ArrayLike | dict | None = None,
+) -> tuple[list[tuple[npt.NDArray, float, float]], int, int]:
     """
     Group the event times by system and resolve each system's observation
-    window. Returns a list of ``(events_used, T_q)`` per system (with the
-    truncating final event dropped for failure-truncated data), the total
-    number of events used, and the number of systems.
+    window. Returns a list of ``(events_used, s_q, T_q)`` per system (with
+    the truncating final event dropped for failure-truncated data; ``s_q``
+    is the window's start, 0 without ``tl``), the total number of events
+    used, and the number of systems.
     """
     x = np.asarray(x, dtype=float)
     if x.ndim != 1:
@@ -272,11 +319,6 @@ def _prepare(
         raise ValueError("`x` is empty; no event times to test")
     if not np.all(np.isfinite(x)):
         raise ValueError("event times must be finite")
-    if np.any(x <= 0):
-        raise ValueError(
-            "event times must be strictly positive; systems are assumed to be "
-            "observed from time 0"
-        )
 
     if i is None:
         i = np.ones(x.shape[0])
@@ -287,11 +329,29 @@ def _prepare(
 
     unique_i = np.unique(i)
     windows = _resolve_truncation(T, unique_i)
+    starts = _resolve_truncation(tl, unique_i, "tl")
+    if starts is None:
+        if np.any(x <= 0):
+            raise ValueError(
+                "event times must be strictly positive; systems are observed "
+                "from time 0 unless `tl` gives each one's start"
+            )
+        starts = {q: 0.0 for q in unique_i}
+    elif not all(np.isfinite(s) for s in starts.values()):
+        raise ValueError(
+            "`tl` (each system's observation start) must be finite"
+        )
 
-    systems: list[tuple[npt.NDArray, float]] = []
+    systems: list[tuple[npt.NDArray, float, float]] = []
     n_used = 0
     for q in unique_i:
         xq = np.sort(x[i == q])
+        sq = starts[q]
+        if np.any(xq <= sq):
+            raise ValueError(
+                "system {!r} has event time(s) at or before its observation "
+                "start tl={}; its window is (tl, T]".format(q, sq)
+            )
         if windows is None:
             # Failure-truncated: the last event is the truncation point.
             Tq = float(xq[-1])
@@ -304,11 +364,12 @@ def _prepare(
                     "time T={}".format(q, Tq)
                 )
             used = xq[xq <= Tq]
-        if Tq <= 0:
+        if Tq <= sq:
             raise ValueError(
-                "observation time for system {!r} must be positive".format(q)
+                "observation time for system {!r} must be after its start "
+                "(tl={}, T={})".format(q, sq, Tq)
             )
-        systems.append((used, Tq))
+        systems.append((used, sq, Tq))
         n_used += used.size
 
     if n_used < 2:
@@ -326,6 +387,7 @@ def laplace(
     alternative: str = "two-sided",
     *,
     c: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | dict | None = None,
     alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
@@ -333,23 +395,27 @@ def laplace(
 
     Under the null hypothesis that the events of each system follow a
     homogeneous Poisson process, the event times are uniformly distributed on
-    the observation window, so their mean sits at the centre. The standardised
-    departure of the observed event-time total from its null expectation,
+    the observation window :math:`(s_q, T_q]`, so their mean sits at the
+    centre. The standardised departure of the observed event-time total from
+    its null expectation,
 
     .. math::
-        U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q T_q / 2}
-                 {\sqrt{\sum_q n_q T_q^2 / 12}},
+        U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q (s_q + T_q) / 2}
+                 {\sqrt{\sum_q n_q (T_q - s_q)^2 / 12}},
 
-    is asymptotically standard normal. ``U > 0`` (events bunched late) is
+    is asymptotically standard normal (Ascher and Feingold 1984; the pooled
+    form of Kvaloy and Lindqvist 1998). Without ``tl`` every
+    :math:`s_q = 0`, the textbook statistic. ``U > 0`` (events bunched late) is
     evidence of an *increasing* intensity (deterioration); ``U < 0`` of a
     *decreasing* intensity (reliability growth).
 
     Parameters
     ----------
     x : array_like
-        Event (failure) times, all strictly positive (systems are observed
-        from time 0). For multiple systems, the times of every system are
-        concatenated and identified by ``i``.
+        Event (failure) times, each after its system's observation start
+        (strictly positive when there is no ``tl``). For multiple systems,
+        the times of every system are concatenated and identified by
+        ``i``.
     i : array_like, optional
         System / item id for each event in ``x``. Defaults to a single system.
     T : scalar, array_like or dict, optional
@@ -367,6 +433,12 @@ def laplace(
         the end of a system's observation), in place of ``T``, as
         ``CrowAMSAA.fit(x, i, c)`` takes them. A system with a ``c = 1``
         row is observed to that time; one without is failure-truncated.
+    tl : scalar, array_like or dict, optional
+        Keyword only: each system's observation start :math:`s_q`, for
+        delayed entry (left truncation), in the forms ``T`` takes; with
+        ``c`` it may instead be one value per row, as the fitters take it
+        (the same on every row of a system). Events must fall after it.
+        Default: every system is observed from time 0.
     alpha_ci : float, optional
         The significance level at which ``trend`` is judged (default
         0.05, keyword only): the result names a trend only when
@@ -393,19 +465,32 @@ def laplace(
     'none'
     >>> laplace(x, T=60, alternative="increasing", alpha_ci=0.2).trend
     'increasing'
+
+    A second system that entered the study at time 30 and was watched to
+    80 adds its events on its own window, ``(30, 80]``:
+
+    >>> x2 = [35, 48, 60, 66, 71, 75, 78]
+    >>> res = laplace(
+    ...     x + x2, i=[1] * 9 + [2] * 7, T={1: 60, 2: 80}, tl={1: 0, 2: 30}
+    ... )
+    >>> round(res.statistic, 4), res.n_events
+    (1.6748, 16)
     """
     _validate_alternative(alternative, alpha_ci)
-    x, i, T = _events_and_windows(x, i, T, c)
-    systems, n_used, n_systems = _prepare(x, i, T)
+    x, i, T, tl = _events_and_windows(x, i, T, c, tl)
+    systems, n_used, n_systems = _prepare(x, i, T, tl)
 
     total = 0.0
     expected = 0.0
     variance = 0.0
-    for used, Tq in systems:
+    for used, sq, Tq in systems:
+        # Under the null each event is uniform on its window (s_q, T_q]:
+        # mean (s_q + T_q) / 2, variance (T_q - s_q)^2 / 12. With s_q = 0
+        # these are T_q / 2 and T_q^2 / 12 exactly, as before.
         nq = used.size
         total += float(used.sum())
-        expected += nq * Tq / 2.0
-        variance += nq * Tq**2 / 12.0
+        expected += nq * (sq + Tq) / 2.0
+        variance += nq * (Tq - sq) ** 2 / 12.0
 
     if variance <= 0:
         raise ValueError(
@@ -441,6 +526,7 @@ def mil_hdbk_189c(
     alternative: str = "two-sided",
     *,
     c: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | dict | None = None,
     alpha_ci: float = 0.05,
 ) -> TrendTestResult:
     r"""
@@ -459,12 +545,25 @@ def mil_hdbk_189c(
     :math:`\hat\beta < 1`) a *decreasing* intensity (reliability growth). It is
     the most powerful test against a power-law alternative.
 
+    With delayed entry (``tl``) system :math:`q` is observed on
+    :math:`(s_q, T_q]`, and time is measured from its start: the statistic
+    is :math:`2 \sum_q \sum_j \ln\{(T_q - s_q) / (t_{qj} - s_q)\}`. Under
+    the HPP null the :math:`(t_{qj} - s_q) / (T_q - s_q)` are independent
+    uniforms, so it is still exactly :math:`\chi^2_{2N}` and the test holds
+    its size. It is then most powerful against a power law in the time since
+    each system's start, and no longer equals :math:`2N / \hat\beta` of a
+    power law fitted in age (``CrowAMSAA.fit(..., tl=...)``); a trend in age
+    is monotone in the time since the start too, so the direction it reports
+    still holds. The Laplace test, whose centring needs no time origin, is
+    the default for such data.
+
     Parameters
     ----------
     x : array_like
-        Event (failure) times, all strictly positive (systems are observed
-        from time 0). For multiple systems, the times of every system are
-        concatenated and identified by ``i``.
+        Event (failure) times, each after its system's observation start
+        (strictly positive when there is no ``tl``). For multiple systems,
+        the times of every system are concatenated and identified by
+        ``i``.
     i : array_like, optional
         System / item id for each event in ``x``. Defaults to a single system.
     T : scalar, array_like or dict, optional
@@ -482,6 +581,12 @@ def mil_hdbk_189c(
         the end of a system's observation), in place of ``T``, as
         ``CrowAMSAA.fit(x, i, c)`` takes them. A system with a ``c = 1``
         row is observed to that time; one without is failure-truncated.
+    tl : scalar, array_like or dict, optional
+        Keyword only: each system's observation start :math:`s_q`, for
+        delayed entry (left truncation), in the forms ``T`` takes; with
+        ``c`` it may instead be one value per row, as the fitters take it
+        (the same on every row of a system). Events must fall after it.
+        Default: every system is observed from time 0.
     alpha_ci : float, optional
         The significance level at which ``trend`` is judged (default
         0.05, keyword only): the result names a trend only when
@@ -503,15 +608,26 @@ def mil_hdbk_189c(
     18
     >>> res.direction, res.trend, round(res.p_value, 3)
     ('increasing', 'none', 0.203)
+
+    With a second system observed on ``(30, 80]``:
+
+    >>> x2 = [35, 48, 60, 66, 71, 75, 78]
+    >>> res = mil_hdbk_189c(
+    ...     x + x2, i=[1] * 9 + [2] * 7, T={1: 60, 2: 80}, tl={1: 0, 2: 30}
+    ... )
+    >>> round(res.statistic, 4), res.dof
+    (19.921, 32)
     """
     _validate_alternative(alternative, alpha_ci)
-    x, i, T = _events_and_windows(x, i, T, c)
-    systems, n_used, n_systems = _prepare(x, i, T)
+    x, i, T, tl = _events_and_windows(x, i, T, c, tl)
+    systems, n_used, n_systems = _prepare(x, i, T, tl)
 
     statistic = 0.0
     dof = 0
-    for used, Tq in systems:
-        statistic += 2.0 * float(np.sum(np.log(Tq / used)))
+    for used, sq, Tq in systems:
+        # (t - s_q) / (T_q - s_q) is uniform under the null, so minus its
+        # log is Exp(1); with s_q = 0 this is log(T_q / t) exactly.
+        statistic += 2.0 * float(np.sum(np.log((Tq - sq) / (used - sq))))
         dof += 2 * used.size
 
     # Mean of a chi-squared is its dof; departures below indicate an

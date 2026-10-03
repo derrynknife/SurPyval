@@ -4,7 +4,6 @@ import warnings
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.utils import xcnt_handler
@@ -95,6 +94,7 @@ def _logrank_z_v(
     weighting: str,
     rho: float,
     gamma: float,
+    tl: npt.NDArray | None = None,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Per-stratum (or whole-sample) weighted log-rank ``(z, V, E)``.
 
@@ -103,20 +103,26 @@ def _logrank_z_v(
     (unweighted) expected event counts, using the fixed group order
     ``groups`` so contributions from different strata are aligned and can be
     summed. A group absent from this stratum simply contributes zeros.
+
+    With ``tl`` (entry times) a row is at risk at ``t`` from its entry,
+    ``tl < t <= x``, the risk sets of ``CoxPH`` (``cox_at_risk_mask``)
+    and of ``KaplanMeier`` with ``tl``.
     """
     k = groups.size
-    x_g, c_g, n_g = [], [], []
+    x_g, c_g, n_g, tl_g = [], [], [], []
     for g in groups:
         mask = Z == g
         x_i = np.atleast_1d(x)[mask]
         c_i = None if c is None else np.atleast_1d(c)[mask]
         n_i = None if n is None else np.atleast_1d(n)[mask]
+        tl_i = None if tl is None else np.atleast_1d(tl)[mask]
         if x_i.size == 0:
             x_g.append(np.array([]))
             c_g.append(np.array([]))
             n_g.append(np.array([]))
+            tl_g.append(np.array([]))
             continue
-        x_i, c_i, n_i, _ = xcnt_handler(x=x_i, c=c_i, n=n_i)
+        x_i, c_i, n_i, t_i = xcnt_handler(x=x_i, c=c_i, n=n_i, tl=tl_i)
         if ((c_i != 0) & (c_i != 1)).any():
             raise ValueError(
                 "Log-rank test can only be used with observed and "
@@ -125,6 +131,7 @@ def _logrank_z_v(
         x_g.append(x_i)
         c_g.append(c_i)
         n_g.append(n_i)
+        tl_g.append(t_i[:, 0])
 
     event_pool = [x_i[c_i == 0] for x_i, c_i in zip(x_g, c_g) if x_i.size > 0]
     event_times = (
@@ -143,7 +150,7 @@ def _logrank_z_v(
     # exact and the arrays are identical to the dense ones.
     r_gt = np.zeros((k, m))
     d_gt = np.zeros((k, m))
-    for j, (x_i, c_i, n_i) in enumerate(zip(x_g, c_g, n_g)):
+    for j, (x_i, c_i, n_i, tl_i) in enumerate(zip(x_g, c_g, n_g, tl_g)):
         if x_i.size == 0:
             continue
         order = np.argsort(x_i, kind="stable")
@@ -151,6 +158,17 @@ def _logrank_z_v(
         # at_or_after[i]: the count of the rows from sorted position i on.
         at_or_after = np.concatenate([np.cumsum(n_i[order][::-1])[::-1], [0]])
         r_gt[j] = at_or_after[np.searchsorted(x_sorted, event_times, "left")]
+        if tl is not None:
+            # Less the rows not yet entered, tl >= t (each of which has
+            # x > tl >= t, so it was counted above).
+            order = np.argsort(tl_i, kind="stable")
+            tl_sorted = tl_i[order]
+            entered_later = np.concatenate(
+                [np.cumsum(n_i[order][::-1])[::-1], [0]]
+            )
+            r_gt[j] -= entered_later[
+                np.searchsorted(tl_sorted, event_times, "left")
+            ]
         events = c_i == 0
         d_gt[j] = np.bincount(
             np.searchsorted(event_times, x_i[events]),
@@ -205,6 +223,7 @@ def logrank(
     rho: float = 0,
     gamma: float = 0,
     strata: npt.ArrayLike | None = None,
+    tl: npt.ArrayLike | float | None = None,
 ) -> "LogRankResult":
     r"""
     The k-sample (weighted) log-rank test for the equality of survival
@@ -265,6 +284,16 @@ def logrank(
         of freedom are counted as for an unstratified test, from the
         expected events summed over the strata. NaN or None labels are
         refused.
+    tl : array like or scalar, optional
+        The entry (left truncation) time of each observation, or one
+        time for all of them. A unit is at risk from its entry, at the
+        event times ``t`` with ``tl < t <= x`` (the risk sets of
+        ``KaplanMeier`` and ``CoxPH`` with ``tl``), so a unit that came
+        under observation part-way through its life is not counted
+        before it was seen. Without ``tl`` every unit is at risk from
+        time 0. The test is then the score test of a ``CoxPH`` fit of
+        the group with ``tl`` (exactly so without tied event times; R's
+        ``survdiff`` takes right censored data only).
 
     Returns
     -------
@@ -304,12 +333,23 @@ def logrank(
     >>> print(round(res.statistic, 3), round(res.p_value, 4))
     2.723 0.0989
 
+    With delayed entry: suppose the first four units of each group came
+    under observation at time 6 (``tl``), so they are not at risk at the
+    failures at 5:
+
+    >>> tl = [6, 6, 6, 6] + [0] * 7 + [0, 0, 6, 6, 6, 6] + [0] * 6
+    >>> res = logrank(x, Z, c=c, tl=tl)
+    >>> print(round(res.statistic, 3), round(res.p_value, 4))
+    3.366 0.0666
+
     References
     ----------
 
     Klein, J. P. and Moeschberger, M. L. (2003), "Survival Analysis:
     Techniques for Censored and Truncated Data", 2nd ed., Chapter 7.
     """
+    from scipy.stats import chi2
+
     weightings = ["log-rank", "gehan", "tarone-ware", "fleming-harrington"]
     if weighting not in weightings:
         raise ValueError("'weighting' must be in {}".format(weightings))
@@ -337,9 +377,14 @@ def logrank(
     x = np.atleast_1d(x)
     c_arr = None if c is None else np.atleast_1d(c)
     n_arr = None if n is None else np.atleast_1d(n)
+    tl_arr = None
+    if tl is not None:
+        tl_arr = np.asarray(tl, dtype=float)
+        if tl_arr.ndim == 0:
+            tl_arr = np.full(x.shape[0], float(tl_arr))
     # Checked here: a short ``c`` or ``n`` used to fail as an IndexError
     # from the boolean group mask.
-    for name, arr in (("c", c_arr), ("n", n_arr)):
+    for name, arr in (("c", c_arr), ("n", n_arr), ("tl", tl_arr)):
         if arr is not None and arr.shape != x.shape:
             raise ValueError(
                 "'{}' must have one entry for each observation; got {} "
@@ -368,7 +413,7 @@ def logrank(
     n_strata = None
     if strata is None:
         z, V, E = _logrank_z_v(
-            x, Z, c_arr, n_arr, groups, weighting, rho, gamma
+            x, Z, c_arr, n_arr, groups, weighting, rho, gamma, tl_arr
         )
     else:
         strata = np.asarray(strata)
@@ -397,6 +442,7 @@ def logrank(
                 weighting,
                 rho,
                 gamma,
+                None if tl_arr is None else tl_arr[mask],
             )
             z += z_s
             V += V_s

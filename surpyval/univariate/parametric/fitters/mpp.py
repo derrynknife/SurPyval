@@ -1,3 +1,4 @@
+import warnings
 from copy import copy
 from typing import TYPE_CHECKING, Any
 
@@ -7,7 +8,6 @@ if TYPE_CHECKING:
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize, minimize_scalar
-from scipy.stats import pearsonr
 
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters import offset_step
@@ -196,8 +196,19 @@ def mpp(model: "Parametric") -> dict[str, Any]:
         step = offset_step(x)
 
         def fun(u: npt.NDArray) -> Any:
+            from scipy.stats import pearsonr
+
             g = x_min - step * np.exp(-u[0])
-            out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
+            with warnings.catch_warnings():
+                # Far below the data the transformed times are constant
+                # to rounding, and scipy says so of every correlation
+                # the search takes there: the fit's own words are enough
+                # (principle 22). A smallest extreme value sample sent an
+                # offset Weibull's search there (#616).
+                warnings.filterwarnings(
+                    "ignore", "An input array is (nearly )?constant"
+                )
+                out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out
 
         res = minimize(fun, np.zeros(1))

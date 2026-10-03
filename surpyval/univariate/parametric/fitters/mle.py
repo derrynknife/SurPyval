@@ -8,13 +8,14 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
-from numdifftools import Hessian  # type: ignore
-from scipy.optimize import OptimizeResult, minimize
+from scipy.optimize import OptimizeResult
 
 from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
+    Gradient,
     _usable,
     is_local_minimum,
+    minimize_with_gradient,
     preconditioned_bfgs,
     search_floor,
 )
@@ -59,6 +60,13 @@ class _Search(NamedTuple):
     #: the likelihood has no finite maximum (see ``_runaway``); empty
     #: where none was found.
     runaway: tuple[int, ...] = ()
+    #: A start off the bound of a parameter whose likelihood rises off it
+    #: (``_OnBounds.off``), for the caller to search from (#579).
+    off_bound: "npt.NDArray | None" = None
+    #: Whether the runaway is the offset's, found at the end of the ladder
+    #: by the family's limit fitting the data at least as well as the
+    #: answer, rather than by Newton's test (see ``_search``, #616).
+    by_limit: bool = False
 
 
 def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
@@ -170,14 +178,8 @@ def _run_rung(
             obj_scale=obj_scale,
             callback=callback,
         )
-    return minimize(
-        fun,
-        x0,
-        args=args,
-        method=method,
-        jac=jac_i,
-        hess=hess_i,
-        options=opts,
+    return minimize_with_gradient(
+        fun, x0, args, jac_i, method=method, hess=hess_i, options=opts
     )
 
 
@@ -216,6 +218,25 @@ def _runaway(
         )
 
 
+class _OnBounds(NamedTuple):
+    """The parameters of a search's point that are on a bound of their
+    space (``_Judge.on_bounds``)."""
+
+    #: Their positions in the search vector.
+    held: tuple[int, ...] = ()
+    #: The steepest rise of the likelihood off its bound among them, per
+    #: observation and per unit of the parameter (0 where it falls off
+    #: every bound).
+    rise: float = 0.0
+    #: The natural parameters with each one the likelihood rises off moved
+    #: off its bound to the middle of its range, where its searched value
+    #: moves it most (a start just inside the bound, ``p = 0.99``, is where
+    #: the search's tolerance is met at once, the likelihood so flat in
+    #: it): a start for another search (``optimised_fit``); ``None`` where
+    #: it rises off none.
+    off: "npt.NDArray | None" = None
+
+
 class _Judge(NamedTuple):
     """How ``_search`` judges a rung's best point.
 
@@ -225,7 +246,11 @@ class _Judge(NamedTuple):
     whose ``mu`` ran off took 23 s, every rung; #584). So after the first
     rung that stops short of a verified maximum, the point it reached is
     checked as the regression fits check theirs (``_runaway``), and a
-    runaway ends the search. Otherwise the ladder goes on as before.
+    runaway ends the search. Otherwise the ladder goes on as before, and
+    a later rung's point is checked too where it is on the way to the
+    family's limit as the offset runs to -inf (``toward_limit``): the
+    first rung can stop somewhere unrelated to the runaway a later one
+    finds (#616).
     """
 
     fun: Callable[..., Any]
@@ -243,6 +268,9 @@ class _Judge(NamedTuple):
     space: tuple
     #: The runaways found while watching a search, by the point's bytes.
     found: dict
+    #: The negative log-likelihood of the family's limit as an offset
+    #: runs to -inf, fitted to the data, or ``None`` (``_offset_limit``).
+    limit: Callable[[], "float | None"]
 
     def watch(self) -> Callable[[npt.NDArray], None]:
         """A BFGS callback that checks its iterates for a runaway
@@ -279,7 +307,11 @@ class _Judge(NamedTuple):
           the rise has become too small to follow; one that stopped
           anywhere else (its line search failed against a wall where the
           likelihood is not defined, its iterations ran out on a slope)
-          says nothing about where the likelihood goes.
+          says nothing about where the likelihood goes. Or, for an
+          offset running to -inf, the family's limit there fits the data
+          at least as well as the point reached (``toward_limit``): the
+          rise then goes on to that limit, though it may never look flat
+          on the way (#599).
         - The likelihood rises towards an infinite end of the parameter's
           range. Towards a finite bound the rise ends at the bound, a
           maximum on the edge of the space (an Exponential's offset at
@@ -291,7 +323,8 @@ class _Judge(NamedTuple):
         size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
 
         def keep(j: int, slope: float) -> bool:
-            if not abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL:
+            flat = abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL
+            if not flat and not self.toward_limit(x):
                 return False
             ahead = np.array(x, dtype=float)
             # (each parameter's map is monotone and its own)
@@ -308,6 +341,117 @@ class _Judge(NamedTuple):
 
         return keep
 
+    def toward_limit(self, x: npt.NDArray) -> bool:
+        """Whether ``x`` is on the way to the family's limit as its offset
+        runs to -inf (``_offset_limit``): the search has moved the offset
+        down from where it started, and the limit fits the data at least
+        as well as ``x`` does. ``keep`` checks that the parameter running
+        off rises towards an infinite end: the offset itself, or the
+        shape that makes up for it.
+
+        An offset LogNormal or Gamma fitted to data with a long left tail
+        (an observation at -1 below the rest at 9 to 22) runs its offset
+        down towards their limit, the Normal (the Gamma's shape up with
+        it, the LogNormal's sigma down to 0); but the likelihood
+        approaches the Normal's only as ``1 / |gamma|``, so a search
+        stopped at gamma = -2765 was still 7 times the verification's
+        tolerance from flat, every rung of the ladder ran, and the fits
+        ended "unverified" after 4-17 s (#599)."""
+        if not self.args[0]:
+            return False
+        natural = self.space[0]
+        with np.errstate(all="ignore"):
+            moved_down = float(natural(x)[0]) < float(natural(self.init)[0])
+        if not moved_down:
+            return False
+        limit = self.limit()
+        if limit is None:
+            return False
+        with np.errstate(all="ignore"):
+            here = float(self.fun(x, *self.args))
+        return bool(limit <= here)
+
+    def on_bounds(self, x: npt.NDArray) -> _OnBounds:
+        """The parameters at ``x`` on a bound of a range bounded at both
+        ends (a limited-failure ``p`` of 1, a zero-inflation ``f0`` of 0),
+        and whether the likelihood rises off it.
+
+        Such a parameter is searched as a scaled arctanh, whose bounds are
+        at infinity: on its way to a bound the parameter reaches it in
+        floating point, the likelihood stops depending on its searched
+        value, and its gradient and curvature there are zero or rounding.
+        So a zero gradient says nothing about it, and the Hessian's
+        positive rounding passed the verification: a Weibull with
+        ``lfp=True`` on monthly return counts ran ``p`` to 1, where the
+        likelihood rises as ``p`` moves off it, and reported a verified
+        maximum 3.8 below the one at ``p = 0.059`` (#579). A parameter is
+        on its bound where the likelihood is the same, to rounding, a
+        millionth of the way closer to it (as ``verified_maximum`` tests
+        it), and the likelihood rises off the bound where it is higher
+        (beyond rounding) a millionth of the range into it, the other
+        parameters as they are."""
+        natural, bounds, free, _ = self.space
+        offset, lfp, zi = self.args[:3]
+        if not any(None not in bounds[i] for i in free):
+            # No parameter has a range bounded at both ends
+            return _OnBounds()
+
+        def at(values: npt.NDArray) -> float:
+            # The likelihood of the natural parameters
+            return float(self.fun(values, offset, lfp, zi, False))
+
+        with np.errstate(all="ignore"):
+            values = natural(x)
+            f = at(values)
+        if not np.isfinite(f):
+            return _OnBounds()
+        level = 1e-12 * max(abs(f), 1.0)
+        held, rise, off = [], 0.0, None
+        for k, i in enumerate(free):
+            low, high = bounds[i]
+            if low is None or high is None:
+                continue
+            width = float(high) - float(low)
+            for bound, inward in ((low, 1.0), (high, -1.0)):
+                toward, away = values.copy(), values.copy()
+                toward[i] = bound + (values[i] - bound) * 1e-6
+                away[i] = bound + inward * 1e-6 * width
+                with np.errstate(all="ignore"):
+                    f_toward, f_away = at(toward), at(away)
+                if not abs(f_toward - f) <= level:
+                    continue
+                held.append(k)
+                if f_away < f - level:
+                    slope = (f - f_away) / (1e-6 * width) / self.obj_scale
+                    rise = max(rise, slope)
+                    off = np.array(values if off is None else off)
+                    off[i] = bound + inward * 0.5 * width
+                break
+        return _OnBounds(tuple(held), rise, off)
+
+    def _verified_without(self, x: npt.NDArray, held: tuple) -> bool:
+        """Whether ``x`` is a verified maximum in its components other
+        than ``held`` (``is_local_minimum`` on them)."""
+        keep = [k for k in range(len(x)) if k not in held]
+        if not keep:
+            return True
+        with np.errstate(all="ignore"):
+            g = np.asarray(self.jac(x, *self.args), dtype=float)[keep]
+            H = np.atleast_2d(
+                np.asarray(self.hess_kept(x, *self.args), dtype=float)
+            )[np.ix_(keep, keep)]
+        floor = np.broadcast_to(
+            np.asarray(self.floor, dtype=float), np.shape(x)
+        )
+        return is_local_minimum(
+            lambda _: 0.0,  # (only the derivatives are read)
+            lambda _: g,
+            lambda _: H,
+            np.asarray(x, dtype=float)[keep],
+            floor=floor[keep],
+            obj_scale=self.obj_scale,
+        )
+
     def verdict(self, x: npt.NDArray, check: bool) -> tuple[bool, tuple]:
         """``(verified, runaway)`` at ``x``, a rung's best point: whether
         it is a verified maximum (``is_local_minimum``) and, if not and
@@ -318,12 +462,23 @@ class _Judge(NamedTuple):
         step against the parameters' sizes): a likelihood that flattens
         towards a supremum can pass the verification far out on the way
         to it (a Normal at mu = -2.9e8, #594). Then it is a runaway, not
-        a maximum."""
+        a maximum.
+
+        A parameter on a bound of its space (``on_bounds``) is held out
+        of the test, and it is a maximum there where the likelihood does
+        not rise off the bound by more than the verification's tolerance
+        (``OPTIMUM_GTOL`` per observation, as ``at_boundary_maximum``).
+        Where it rises at all, the fit also searches from off the bound
+        (``optimised_fit``) and keeps the better answer."""
         fun, args = self.fun, self.args
         keep = self.keep(x)
         # The gradient the verification takes, kept for the check
         jac_kept, _ = _kept_hessian(self.jac)
-        if is_local_minimum(
+        on = self.on_bounds(x)
+        if on.held:
+            if on.rise < OPTIMUM_GTOL and self._verified_without(x, on.held):
+                return True, ()
+        elif is_local_minimum(
             fun,
             jac_kept,
             self.hess_kept,
@@ -373,6 +528,38 @@ def _space(model: "Parametric") -> tuple:
     return natural, model.bounds, free, edge
 
 
+def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
+    """The negative log-likelihood, on the model's data, of the family its
+    distribution tends to as an offset runs to -inf
+    (``_offset_limit_family``: the Normal for a LogNormal or a Gamma),
+    fitted by maximum likelihood when first asked for; ``None`` for a fit
+    without an offset (or with a limited failure population or zero
+    inflation, which the limit has not), for a family with no such limit,
+    and where the limit's own fit is not a verified maximum."""
+    kept: list = []
+
+    def neg_ll() -> "float | None":
+        if not kept:
+            kept.append(None)
+            family = getattr(model.dist, "_offset_limit_family", None)
+            family = family() if family is not None else None
+            if not model.offset or model.lfp or model.zi or family is None:
+                return None
+            from surpyval.utils.no_maximum import quiet_maximum_warnings
+
+            with warnings.catch_warnings(), quiet_maximum_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    limit = family.fit_from_surpyval_data(model.surv_data)
+                except (ValueError, ArithmeticError):
+                    return None
+            if limit.maximum == "verified":
+                kept[0] = float(limit._neg_ll)
+        return kept[0]
+
+    return neg_ll
+
+
 def _search(
     model: "Parametric",
     fun: Callable[..., Any],
@@ -413,9 +600,13 @@ def _search(
 
     A likelihood with no finite maximum ends the search where it is found
     (see ``_Judge``): at the first rung that stops short of a verified
-    maximum, inside BFGS (``_Judge.watch``), or at a verified answer that
-    is really on the way to a supremum. The answer is then the point
-    checked, and ``runaway`` names the parameters running off.
+    maximum, inside BFGS (``_Judge.watch``), at a later rung's point on
+    the way to an offset family's limit, or at a verified answer that is
+    really on the way to a supremum. The answer is then the point
+    checked, and ``runaway`` names the parameters running off. An offset
+    fit whose ladder ends unverified at a best point no better than the
+    family's limit (``_Judge.toward_limit``) has its offset running off
+    too (``by_limit``, #616).
     """
     if len(init) == 0:
         # Every parameter is fixed; there is nothing to optimise, and
@@ -440,7 +631,16 @@ def _search(
     runaway: tuple[int, ...] = ()
     checked = False
     judge = _Judge(
-        fun, jac, hess_kept, args, init, floor, obj_scale, _space(model), {}
+        fun,
+        jac,
+        hess_kept,
+        args,
+        init,
+        floor,
+        obj_scale,
+        _space(model),
+        {},
+        _offset_limit(model),
     )
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]
@@ -465,24 +665,46 @@ def _search(
         if best_result is None:
             continue
         # After the first rung that stops short of a verified maximum: is
-        # the likelihood running off? Then no rung can verify it.
-        verified, runaway = judge.verdict(best_result.x, not checked)
+        # the likelihood running off? Then no rung can verify it. A later
+        # rung's point is checked where it is on the way to the family's
+        # limit (#616).
+        verified, runaway = judge.verdict(
+            best_result.x, not checked or judge.toward_limit(best_result.x)
+        )
         checked = True
         if verified or runaway:
             break
 
+    # The ladder ran out with the best point reached no better than the
+    # family's limit as the offset runs to -inf: no member the search
+    # found fits the data better than the limit, which the family only
+    # approaches, though Newton's test could not show the rise there (its
+    # derivatives are rounding far out, #616). The offset is the parameter
+    # that runs off.
+    by_limit = bool(
+        not (verified or runaway)
+        and best_result is not None
+        and judge.toward_limit(best_result.x)
+    )
+    if by_limit:
+        runaway = (0,)
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
+    off_bound = None
     if best_result is not None:
         res = best_result
         # A verified answer stands whatever its rung reported: BFGS
         # often stops with "precision loss" at the maximum.
         res.success = res.success or verified
+        if not runaway:
+            off_bound = judge.on_bounds(res.x).off
     return _Search(
         res,
         best_method if best_method is not None else method,
         verified,
         runaway,
+        off_bound,
+        by_limit,
     )
 
 
@@ -556,6 +778,8 @@ def _covariance(
     misleading. ``extras`` is ``(gamma, f0, p)`` and ``flags`` is
     ``(offset, zi, lfp)``.
     """
+    from numdifftools import Hessian  # type: ignore
+
     gamma, f0, p = extras
     offset, zi, lfp = flags
     inv_trans = model.fitting_info["inv_trans"]
@@ -651,7 +875,8 @@ def mle(model: "Parametric") -> Any:
     results = {}
 
     fun = _negative_log_likelihood(model)
-    jac = jacobian(fun)
+    # The value and the gradient from one pass (#593)
+    jac = Gradient(fun)
     hess = hessian(fun)
     hess_kept, hess_at = _kept_hessian(hess)
     args = (offset, lfp, zi, True)
@@ -678,7 +903,7 @@ def mle(model: "Parametric") -> Any:
             (offset, zi, lfp),
             hess_at,
         )
-        results["cov_matrix"] = cov_matrix
+        results["_covariance"] = cov_matrix
         results["hess_inv"] = hess_inv
         # On the fallback path the returned parameters are the initial
         # guess, so the reported likelihood must be evaluated there — not
@@ -695,6 +920,8 @@ def mle(model: "Parametric") -> Any:
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
         results["_runaway"] = _runaway_names(model, search.runaway)
+        results["_runaway_by_limit"] = search.by_limit
+        results["_off_bound"] = search.off_bound
         results["optimizer"] = search.optimizer
 
     return results

@@ -52,6 +52,21 @@ class Bernoulli_(  # type: ignore[misc]
     array([0.8])
     >>> model.sf([0, 1])
     array([0.8, 0. ])
+
+    ``param_cb("p")`` bounds ``p`` from the counts, by default with the
+    exact (Clopper-Pearson) interval. Three failures (coded 1 here) in
+    1200 demands, and a 90% interval on the failure probability:
+
+    >>> demands = Bernoulli.fit([1, 0], n=[3, 1197])
+    >>> demands.param_cb("p", alpha_ci=0.1).round(5)
+    array([0.00068, 0.00645])
+
+    With no failures at all the upper bound is the whole answer, and equals
+    ``1 - alpha_ci ** (1 / n)``, the complement of ``success_run``:
+
+    >>> clean = Bernoulli.fit([0], n=[1200])
+    >>> clean.param_cb("p", alpha_ci=0.1, bound="upper").round(6)
+    array([0.001917])
     """
 
     @staticmethod

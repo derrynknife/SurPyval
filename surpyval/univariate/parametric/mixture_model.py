@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian
+from autograd import grad, hessian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
 from scipy.optimize import minimize
 from scipy.special import logsumexp
@@ -17,9 +17,18 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    CallableFloat,
+    MadePrivate,
+    renamed_arguments,
+)
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -29,6 +38,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import check_option
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -42,8 +52,15 @@ if TYPE_CHECKING:
 # The log-likelihood floor of one observation under one component: far
 # below any log-likelihood an observation the component can explain has,
 # and finite, so the EM objective stays finite (see
-# ``MixtureModel.log_likelihood``).
+# ``MixtureModel._component_log_likelihood``).
 LOG_FLOOR = -1e4
+
+
+#: The values of ``MixtureModel.fit``'s ``em`` option.
+EM_METHODS = ("plain", "squarem")
+
+# What a fit keeps while it runs, and drops when it ends.
+_FIT_CACHES = ("_Q_jac_cache", "_Q_value_and_grad_cache", "_log_resp_cache")
 
 
 class _NonFiniteGradient(ArithmeticError):
@@ -95,18 +112,21 @@ class _FitMethod:
             *,
             dist: Any = None,
             m: int = 2,
+            em: str = "plain",
         ) -> Any:
             if isinstance(x, objtype):
                 # ``MixtureModel.fit(model, x, ...)``: the unbound call of
                 # the instance method, which worked before #482.
-                return func(x, c, n, t, tl, tr, xl, xr)
+                return func(x, c, n, t, tl, tr, xl, xr, em=em)
             if dist is None:
                 raise ValueError(
                     "MixtureModel.fit needs `dist`, the distribution of "
                     "every component, e.g. "
                     "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
                 )
-            return func(objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr)
+            return func(
+                objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr, em=em
+            )
 
         # Keep the docstring but show this signature (with ``dist`` and
         # ``m``), not the instance method's.
@@ -114,7 +134,12 @@ class _FitMethod:
         return fit
 
 
-class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
+class MixtureModel(
+    InformationCriteriaMixin,
+    UnivariateDataFrameMixin,
+    SerialisableMixin,
+    Distribution,
+):
     """
     A class for creating a Mixture Model fitter.
 
@@ -153,6 +178,20 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
     Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)
     """
 
+    # How ``fit`` runs the EM iterations (its ``em`` option), and
+    # whether the M-step is solved to full precision (SQUAREM's).
+    _em_method = "plain"
+    _exact_m_step = False
+
+    # The EM iteration's steps, public before v0.23 (#605): internal to
+    # the fit, they still work with a DeprecationWarning until v0.24.
+    likelihood = MadePrivate("_likelihood")
+    Q = MadePrivate("_Q")
+    expectation = MadePrivate("_expectation")
+    maximisation = MadePrivate("_maximisation")
+    EM = MadePrivate("_em_iteration")
+    initialise_params = MadePrivate("_initialise_params")
+
     @property
     def parameter_names(self) -> list[str]:
         """The names of the columns of ``params``: the component
@@ -174,9 +213,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         self.params: Any = None
         self.w: Any = None
         self.p: Any = None
-        #: The observed-data *negative* log-likelihood at the current
-        #: parameters (despite the name), which the EM iteration tracks.
-        self.loglike: Any = None
+        # The observed-data negative log-likelihood at the current
+        # parameters, which the EM iteration tracks: the fitted one after
+        # a fit (``neg_ll()``, ``log_likelihood``).
+        self._neg_ll: Any = None
         #: What the fit reached, one of ``MAXIMUM_STATES``
         #: (``surpyval.utils.no_maximum``), as its warnings say:
         #: ``"verified"`` (a zero gradient and a positive-definite Hessian),
@@ -184,6 +224,67 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         #: onto a point mass); ``"unknown"`` before a fit, or for a model
         #: restored from a dict saved without it.
         self.maximum: str = "unknown"
+
+    # -- model comparison (#572) --------------------------------------------
+
+    def _ic_k(self) -> int:
+        """The number of free parameters: ``k`` per component and the
+        ``m - 1`` free weights (they sum to one)."""
+        return int(self.m * self.dist.k + self.m - 1)
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self.data is None:
+            raise ValueError("Must have been fit with data")
+        return ic_sample_size(self.data.c, self.data.n)
+
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised log-likelihood of the fit, ``-neg_ll()``, as on
+        a parametric model.
+
+        .. versionchanged:: 0.23
+           It was a method, ``log_likelihood(params)``, giving one
+           component's log-likelihood of each observation; that call
+           still works until v0.24, with a ``DeprecationWarning``.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> round(wmm.log_likelihood, 4)
+        -48.7105
+        >>> round(wmm.aic(), 4), wmm.aic() == 2 * 5 - 2 * wmm.log_likelihood
+        (107.4211, True)
+        """
+        return CallableFloat(
+            -self.neg_ll(),
+            "MixtureModel.log_likelihood",
+            old=self._component_log_likelihood,
+            note=" (the fitted log-likelihood; 'log_likelihood(params)' was "
+            "one component's log-likelihood of each observation)",
+        )
+
+    @log_likelihood.setter
+    def log_likelihood(self, value: float) -> None:
+        # As every model's: it records the negative log-likelihood.
+        mixin: Any = InformationCriteriaMixin
+        mixin.log_likelihood.fset(self, value)
+
+    @property
+    def loglike(self) -> float:
+        """Deprecated: the fitted *negative* log-likelihood, despite its
+        name. Use :meth:`neg_ll` for it, or ``log_likelihood`` for the
+        log-likelihood; it will be removed in v0.24."""
+        warnings.warn(
+            "MixtureModel.loglike is the negative log-likelihood, despite "
+            "its name, and is deprecated; it will be removed in "
+            f"v{REMOVED_IN_NEXT}. Use 'neg_ll()' for it, or "
+            "'log_likelihood' for the log-likelihood.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._neg_ll
 
     # -- serialisation -----------------------------------------------------
 
@@ -194,7 +295,11 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         Stores the base distribution's name, the number of components ``m``,
         the per-component parameters and the mixing weights, so the reloaded
         model reproduces ``sf``/``ff``/``df``/``mean``/``random`` exactly. The
-        fitted data and EM responsibilities are not stored.
+        fitted data and EM responsibilities are not stored; the fitted
+        negative log-likelihood and the sample size of the information
+        criteria are, so the restored model's :meth:`neg_ll`,
+        ``log_likelihood``, :meth:`aic`, :meth:`aic_c` and :meth:`bic` are
+        the fitted model's.
         """
         from .parametric import is_custom_distribution
 
@@ -206,6 +311,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             "w": np.asarray(self.w, dtype=float).tolist(),
             **maximum_entry(self.maximum),
         }
+        # What the information criteria need, as ``Parametric`` stores it
+        if self._neg_ll is not None:
+            out["_neg_ll"] = float(self._neg_ll)
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading
             out["custom"] = True
@@ -231,6 +342,9 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
         out.maximum = restored_maximum(model_dict)
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        out._ic_n = cls._restored_ic_n(model_dict)
         return out
 
     def __repr__(self) -> str:
@@ -279,12 +393,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             data.c, data.n, data.tl, data.tr, lower, upper, x=data.x
         )
 
-    def likelihood(self, params: Any) -> Any:
+    def _likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
         counts ``n`` enter the log-likelihood as multipliers -- raising the
         per-component likelihood to ``n`` *before* mixing is wrong, since
         ``sum_i w_i f_i^n != (sum_i w_i f_i)^n`` (#254)."""
-        self._require_fit_data("likelihood()")
+        self._require_fit_data("_likelihood()")
         data = self.data
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
@@ -302,12 +416,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         like[data.mask_i] = like_i
         return like
 
-    def log_likelihood(self, params: Any) -> Any:
+    def _component_log_likelihood(self, params: Any) -> Any:
         """Per-observation log-likelihood of one component, floored at
         ``LOG_FLOOR``.
 
         Formed from the distribution's log functions rather than as the
-        log of :meth:`likelihood`: a density or interval probability that
+        log of :meth:`_likelihood`: a density or interval probability that
         underflows to 0 made ``log`` return -inf, a responsibility times
         -inf made the M-step objective infinite, and the optimiser
         stopped after one step (a two-Weibull mixture on interval data
@@ -315,7 +429,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         floor keeps an observation a component cannot explain at a finite,
         heavily penalised value instead.
         """
-        self._require_fit_data("log_likelihood()")
+        self._require_fit_data("_component_log_likelihood()")
         data = self.data
         dist = self.dist
         # Each kind of row in one piece, put back in the rows' order by
@@ -334,9 +448,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
             if data.mask_i.any():
-                window = dist.ff(data.x_ir, *params) - dist.ff(
-                    data.x_il, *params
-                )
+                window = dist.ff(data.x_ir, *params) - self._ff_lower(params)
                 positive = window > 0
                 pieces.append(
                     np.where(
@@ -349,9 +461,33 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             out = np.where(np.isnan(out), LOG_FLOOR, out)
         return np.maximum(out, LOG_FLOOR)
 
+    def _ff_lower(self, params: Any) -> Any:
+        """One component's CDF at the interval rows' lower ends, exactly 0
+        at or below the support's lower edge without evaluating it there.
+
+        The value is the same, but the derivative is not: a Weibull's
+        ``(0 / alpha) ** beta`` has a NaN gradient in ``alpha`` for
+        ``beta < 1`` (``inf * 0``), so with one ``[0, 1]`` interval row the
+        M-step fell back to finite differences and the polish stopped
+        after one evaluation, unable to verify (or reach) the maximum
+        (#582). Those rows are evaluated at their upper end instead (a
+        point inside the support, whose value is discarded), as
+        ``ParametricFitter.ll_interval_or_truncated`` does.
+        """
+        data = self.data
+        lower = float(self.dist.support[0])
+        if np.isnan(lower):
+            return self.dist.ff(data.x_il, *params)
+        inside = data.x_il > lower
+        if inside.all():
+            return self.dist.ff(data.x_il, *params)
+        safe = np.where(inside, data.x_il, data.x_ir)
+        return np.where(inside, self.dist.ff(safe, *params), 0.0)
+
     def _row_order(self) -> npt.NDArray:
         """The index that puts the rows grouped by kind (exact, right,
-        left, interval, as :meth:`log_likelihood` builds them) back in
+        left, interval, as :meth:`_component_log_likelihood` builds
+        them) back in
         the data's order."""
         data = self.data
         masks = (data.mask_o, data.mask_r, data.mask_l, data.mask_i)
@@ -364,7 +500,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         with np.errstate(divide="ignore"):
             log_w = np.log(w)
         return np.array(
-            [log_w[i] + self.log_likelihood(params[i]) for i in range(self.m)]
+            [
+                log_w[i] + self._component_log_likelihood(params[i])
+                for i in range(self.m)
+            ]
         )
 
     def _window_prob(self, params_i: npt.NDArray) -> Any:
@@ -391,11 +530,14 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         in the log domain, and truncated observations are conditioned on
         their window through the mixture probability of the window."""
         self._require_fit_data("neg_ll_of()")
+        return self._neg_ll_from(self._log_resp(w, params), w, params)
+
+    def _neg_ll_from(self, log_r: Any, w: Any, params: Any) -> Any:
+        """:meth:`neg_ll_of` from ``log_r = _log_resp(w, params)``."""
         # log-sum-exp over the components, so the mixture density of an
         # observation is not lost to underflow in any one of them. In
         # autograd's functions, so the polish can differentiate it (#506).
         with np.errstate(all="ignore"):
-            log_r = self._log_resp(w, params)
             ll = np.sum(self.data.n * ag_logsumexp(log_r, axis=0))
             if self._truncated:
                 win = 0.0
@@ -404,38 +546,55 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 ll = ll - np.sum(self.data.n * np.log(win))
         return -ll
 
-    def Q(self, params: Any) -> Any:
+    def _Q(self, params: Any) -> Any:
         """EM M-step objective: the (negative) expected complete-data
         log-likelihood over the component labels -- counts times
         responsibilities times each component's log-likelihood."""
-        self._require_fit_data("Q()")
+        self._require_fit_data("_Q()")
         params = params.reshape(self.m, self.dist.k)
         total = 0.0
         for i in range(self.m):
-            # Finite by construction (see log_likelihood), so a zero
-            # responsibility contributes exactly 0 and none gives inf.
-            loglike = self.log_likelihood(params[i])
+            # Finite by construction (see _component_log_likelihood), so a
+            # zero responsibility contributes exactly 0 and none inf.
+            loglike = self._component_log_likelihood(params[i])
             total -= np.sum(self.data.n * self.p[i] * loglike)
         return total
 
-    def expectation(self) -> Any:
+    def _expectation(self) -> Any:
         """EM E-step: set each observation's responsibilities ``p`` (the
         probability it belongs to each component, given the current fit)
         and the count-weighted mixing weights ``w``."""
         # Normalised in the log domain: dividing likelihoods that had all
         # underflowed to 0 gave 0/0 responsibilities (and the overflow
         # and invalid-value warnings of a discrete mixture).
-        log_r = self._log_resp(self.w, self.params)
+        cached = self.__dict__.pop("_log_resp_cache", None)
+        if (
+            cached is not None
+            and cached[0] is self.w
+            and cached[1] is self.params
+        ):
+            # What the last EM iteration computed for its likelihood, at
+            # these same weights and parameters (#589).
+            log_r = cached[2]
+        else:
+            log_r = self._log_resp(self.w, self.params)
         with np.errstate(all="ignore"):
             self.p = np.exp(log_r - logsumexp(log_r, axis=0))
         # Mixing weights are count-weighted responsibility totals.
         self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
-    def maximisation(self) -> Any:
+    def _maximisation(self) -> Any:
         """EM M-step: refit every component's parameters by minimising
-        :meth:`Q` with the current responsibilities held fixed, on its
+        :meth:`_Q` with the current responsibilities held fixed, on its
         exact (autograd) gradient (#506); finite differences of it were
-        60% of a fit's time."""
+        60% of a fit's time.
+
+        ``Q`` and its gradient come from one autograd pass
+        (``value_and_grad``), which computes the value anyway; scipy
+        asking for them separately evaluated ``Q`` twice at every point,
+        and ``Q`` at the start is the search's first evaluation (#589).
+        Both are the same numbers as before, so the step is too.
+        """
         bounds = self.dist.bounds * self.m
         x0 = self.params.ravel()
         jac = self._Q_jac()
@@ -445,9 +604,25 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 # A bound of 0 (a scale or shape) held just inside: the
                 # gradient there is 0 / 0.
                 inner = [(1e-10 if lo == 0 else lo, hi) for lo, hi in bounds]
+                value_and_jac = self._Q_value_and_grad()
+                at_x0: list = []
+
+                def fun(p: npt.NDArray) -> Any:
+                    q, g = value_and_jac(p)
+                    g = np.asarray(g, dtype=float)
+                    if not np.all(np.isfinite(g)):
+                        raise _NonFiniteGradient
+                    if not at_x0 and np.array_equal(p, x0):
+                        at_x0.append(q)
+                    return q, g
+
                 try:
                     res = minimize(
-                        self.Q, x0, jac=_finite_gradient(jac), bounds=inner
+                        fun,
+                        x0,
+                        jac=True,
+                        bounds=inner,
+                        options=self._m_step_options(),
                     )
                 except _NonFiniteGradient:
                     res = None
@@ -455,25 +630,25 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 # a point mass, whose shape runs off to 1e4 and beyond) or
                 # the step makes Q worse, finite differences as before.
                 if res is not None:
-                    q0 = self.Q(x0)
+                    q0 = at_x0[0] if at_x0 else self._Q(x0)
                     slack = 1e-8 * max(1.0, abs(q0))
                     if not (
                         np.all(np.isfinite(res.x)) and res.fun <= q0 + slack
                     ):
                         res = None
             if res is None:
-                res = minimize(self.Q, x0, bounds=bounds)
+                res = minimize(self._Q, x0, bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
     def _Q_jac(self) -> "Callable[..., Any] | None":
-        """The gradient of :meth:`Q` by autograd, or ``None`` (finite
+        """The gradient of :meth:`_Q` by autograd, or ``None`` (finite
         differences) for a distribution autograd cannot differentiate."""
         # Kept for the fit in progress (``fit`` drops it: a closure would
         # stop the model being pickled); False where autograd fails.
         cached = self.__dict__.get("_Q_jac_cache")
         if cached is not None:
             return cached or None
-        jac = grad(self.Q)
+        jac = grad(self._Q)
         try:
             with np.errstate(all="ignore"), warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -484,15 +659,33 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         self._Q_jac_cache = jac if usable else False
         return jac if usable else None
 
-    def EM(self) -> Any:
-        """One EM iteration (:meth:`expectation` then
-        :meth:`maximisation`), after which ``loglike`` holds the observed
+    def _m_step_options(self) -> dict:
+        """L-BFGS-B's options in the M-step: scipy's defaults for plain
+        EM, tight ones for SQUAREM (see :meth:`_squarem_steps`)."""
+        if self._exact_m_step:
+            return {"ftol": 1e-15, "gtol": 1e-10}
+        return {}
+
+    def _Q_value_and_grad(self) -> Callable[..., Any]:
+        """:meth:`_Q` and its autograd gradient in one pass, kept for the
+        fit in progress like :meth:`_Q_jac`."""
+        cached = self.__dict__.get("_Q_value_and_grad_cache")
+        if cached is None:
+            cached = value_and_grad(self._Q)
+            self._Q_value_and_grad_cache = cached
+        return cached
+
+    def _em_iteration(self) -> Any:
+        """One EM iteration (:meth:`_expectation` then
+        :meth:`_maximisation`), after which ``_neg_ll`` holds the observed
         negative log-likelihood."""
-        self.expectation()
-        self.maximisation()
+        self._expectation()
+        self._maximisation()
         # Convergence is tracked on the observed likelihood, not the
-        # M-step objective.
-        self.loglike = self.neg_ll_of(self.w, self.params)
+        # M-step objective. Its log-responsibilities are the next E-step's.
+        log_r = self._log_resp(self.w, self.params)
+        self._log_resp_cache = (self.w, self.params, log_r)
+        self._neg_ll = self._neg_ll_from(log_r, self.w, self.params)
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
@@ -511,31 +704,201 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         ``max_iter``, polished again. Returns ``None`` for a verified
         maximum, else why it is not (for ``warn_unverified``, which
         :meth:`fit` gives unless the likelihood has no finite maximum).
+
+        A mixture's likelihood has more than one maximum, so this short
+        run is made from two starts where they differ (#582): the current
+        weights and parameters (:meth:`_initialise_params`), and the split
+        of :meth:`_failure_split_start`. The better is kept
+        (:meth:`_better_start`) and, only if it is not verified, run on:
+        by SQUAREM where ``fit`` was given ``em="squarem"``
+        (:meth:`_squarem_steps`; #589). The short run is plain EM either
+        way, so a fit verified after it is the same with either option.
         """
-        converged = self._em_steps(tol, budget)
-        if self._polish():
+        verified, converged = self._em_from_starts(tol, budget)
+        if verified:
             return None
         if not converged:
-            converged = self._em_steps(tol, max_iter - budget)
+            converged = self._em_steps(
+                tol, max_iter - budget, self._em_method == "squarem"
+            )
             if self._polish():
                 return None
         if not converged:
             return "EM reached its iteration limit"
         return "EM converged where the likelihood is not a verified maximum"
 
-    def _em_steps(self, tol: float, max_iter: int) -> bool:
+    def _em_from_starts(self, tol: float, budget: int) -> tuple[bool, bool]:
+        """Up to ``budget`` EM iterations then the polish, from each start
+        in turn, leaving the model at the better end point (see
+        :meth:`_em`); whether that is a verified maximum, and whether its
+        EM run converged."""
+        starts = [(self.w, self.params)]
+        other = self._failure_split_start()
+        if other is not None and not np.allclose(other[1], self.params):
+            starts.append(other)
+        best: tuple | None = None
+        for w, params in starts:
+            self.w, self.params = w, params
+            converged = self._em_steps(tol, budget)
+            verified = self._polish()
+            end = (verified, float(self._neg_ll), converged)
+            if best is None or self._better_start(end, best[0]):
+                best = (end, self.w, self.params, self.p)
+        assert best is not None
+        (verified, loglike, converged), self.w, self.params, self.p = best
+        self._neg_ll = loglike
+        return verified, converged
+
+    def _better_start(self, end: tuple, best: tuple) -> bool:
+        """Whether the end point ``end`` of a start, ``(verified,
+        negative log-likelihood, converged)``, beats ``best``: a verified
+        maximum beats one that is not (a likelihood that grows without
+        bound as a component collapses onto a point mass is higher, and
+        no answer), and otherwise the higher likelihood wins, by more than
+        1e-6 per observation where both are verified -- so that two
+        polishes of the same maximum, which agree to about that, keep the
+        first start's (the fit as it was before #582)."""
+        if end[0] != best[0]:
+            return bool(end[0])
+        margin = 1e-6 * float(np.sum(self.data.n)) if end[0] else 0.0
+        return end[1] < best[1] - margin
+
+    def _failure_split_start(self) -> "tuple[npt.NDArray, Any] | None":
+        """A second EM start (#582): the failures, by count, cut into
+        ``m`` consecutive blocks, each component fitted to one block, and
+        every survivor (right-censored row) given to the last.
+
+        :meth:`_initialise_params` cuts the *rows* into blocks, survivors
+        and all. On field data -- a few early failures, a long tail of
+        survivors, counts per row -- that mixes the early failures with
+        survivors, and the fit went to a different maximum: a 3%
+        defective sub-population plus wear-out fitted as 26% with a
+        1,000-year life. Here the first component starts on the earliest
+        failures, with their share of the units as its weight, and the
+        last component holds the survivors, which is the usual reliability
+        shape (infant mortality plus wear-out). ``None`` where a block
+        cannot be fitted (fewer than ``k + 1`` distinct failure rows for
+        it).
+        """
+        data, m, k = self.data, self.m, self.dist.k
+        failed = np.flatnonzero(data.c != 1)
+        if len(failed) < m * (k + 1):
+            return None
+        cum = np.cumsum(data.n[failed])
+        blocks = []
+        start = 0
+        for i in range(1, m):
+            end = int(np.searchsorted(cum, cum[-1] * i / m)) + 1
+            end = max(end, start + k + 1)
+            blocks.append(failed[start:end])
+            start = end
+        if len(failed) - start < k + 1:
+            return None
+        survivors = np.flatnonzero(data.c == 1)
+        blocks.append(np.concatenate([failed[start:], survivors]))
+        params = np.zeros((m, k))
+        w = np.zeros(m)
+        try:
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for i, rows in enumerate(blocks):
+                    rows = np.sort(rows)
+                    params[i] = self.dist.fit(
+                        x=data.x[rows], c=data.c[rows], n=data.n[rows]
+                    ).params
+                    w[i] = data.n[rows].sum()
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            return None
+        if not np.all(np.isfinite(params)):
+            return None
+        return w / w.sum(), params
+
+    def _em_steps(
+        self, tol: float, max_iter: int, accelerate: bool = False
+    ) -> bool:
         """Up to ``max_iter`` EM iterations; whether two in a row came
-        within ``tol`` of each other in the negative log-likelihood."""
+        within ``tol`` of each other in the negative log-likelihood.
+        ``accelerate`` runs them by :meth:`_squarem_steps`."""
         if max_iter < 1:
             return False
-        self.EM()
-        f0 = self.loglike
+        if accelerate:
+            self._exact_m_step = True
+            try:
+                return self._squarem_steps(tol, max_iter)
+            finally:
+                self._exact_m_step = False
+        self._em_iteration()
+        f0 = self._neg_ll
         for _ in range(max_iter - 1):
-            self.EM()
-            f1 = self.loglike
+            self._em_iteration()
+            f1 = self._neg_ll
             if np.abs(f0 - f1) <= tol:
                 return True
             f0 = f1
+        return False
+
+    def _squarem_steps(self, tol: float, max_iter: int) -> bool:
+        """Up to ``max_iter`` EM iterations accelerated by SQUAREM (#589;
+        Varadhan and Roland, 2008, scheme S3); whether two EM iterations
+        in a row came within ``tol`` of each other, as for plain EM.
+
+        Each cycle takes two EM steps from ``theta0`` (in the coordinates
+        of :meth:`_pack`), ``theta1`` and ``theta2``, and from
+        ``r = theta1 - theta0`` and ``v = theta2 - theta1 - r``
+        extrapolates to ``theta0 - 2 a r + a**2 v`` with
+        ``a = -|r| / |v|`` (at most -1; ``a = -1`` is ``theta2``), then
+        takes one EM step from there. Where that ends below ``theta2`` in
+        likelihood (or cannot be evaluated), the cycle ends at ``theta2``
+        instead, so no cycle does worse than two plain EM steps. Where EM
+        crawls along a flat direction, the extrapolation takes the many
+        small steps at once.
+
+        The M-steps are solved to full precision here (``ftol`` 1e-15,
+        ``gtol`` 1e-10, against scipy's 2.2e-9 and 1e-5): the
+        extrapolation assumes the steps are those of one smooth map, and
+        steps that stop at scipy's tolerances wander by more than EM's
+        own progress near the maximum. With them, plain EM on a censored
+        two-Weibull mixture also stalled 1.3e-4 below the maximum after
+        1000 iterations; this reaches it in about 40.
+        """
+        used = 0
+        while used < max_iter:
+            theta0 = self._pack(self.w, self.params)
+            self._em_iteration()
+            f1, used = self._neg_ll, used + 1
+            if used >= max_iter:
+                return False
+            theta1 = self._pack(self.w, self.params)
+            self._em_iteration()
+            f2, used = self._neg_ll, used + 1
+            if np.abs(f1 - f2) <= tol:
+                return True
+            if used >= max_iter:
+                return False
+            state2 = (self.w, self.params, f2)
+            theta2 = self._pack(self.w, self.params)
+            r = theta1 - theta0
+            v = theta2 - theta1 - r
+            norm_v = float(np.sqrt(np.sum(v**2)))
+            if not (np.all(np.isfinite(v)) and norm_v > 0):
+                continue
+            a = min(-float(np.sqrt(np.sum(r**2))) / norm_v, -1.0)
+            if a == -1.0:
+                continue
+            try:
+                with np.errstate(all="ignore"):
+                    self.w, self.params = (
+                        np.asarray(z, dtype=float)
+                        for z in self._unpack(theta0 - 2 * a * r + a**2 * v)
+                    )
+                    self._em_iteration()
+                ok = bool(np.isfinite(self._neg_ll) and self._neg_ll <= f2)
+            except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+                ok = False
+            used += 1
+            if not ok:
+                self.w, self.params, self._neg_ll = state2
+                self.__dict__.pop("_log_resp_cache", None)
         return False
 
     def _pack(self, w: npt.NDArray, params: npt.NDArray) -> npt.NDArray:
@@ -617,13 +980,13 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 self.w, self.params = self._unpack(x)
                 self.w = np.asarray(self.w, dtype=float)
                 self.params = np.asarray(self.params, dtype=float)
-                self.loglike = float(res.fun)
+                self._neg_ll = float(res.fun)
             try:
                 return is_local_minimum(fun, jac, hess, x, obj_scale=n_obs)
             except Exception:
                 return False
 
-    def initialise_params(self) -> Any:
+    def _initialise_params(self) -> Any:
         """The EM starting point: cut the (sorted) data into ``m``
         consecutive blocks, fit one component to each block, and weight
         the components equally."""
@@ -650,6 +1013,8 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         tr: npt.ArrayLike | None = None,
         xl: npt.ArrayLike | None = None,
         xr: npt.ArrayLike | None = None,
+        *,
+        em: str = "plain",
     ) -> Any:
         """
         Fit the mixture to data.
@@ -707,6 +1072,18 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         m : int, optional
             The number of components (default 2). Keyword only, and only
             on the class call.
+        em : {'plain', 'squarem'}, optional
+            How the EM iterations run (keyword only). ``'plain'`` (the
+            default) is the EM algorithm itself; ``'squarem'`` accelerates
+            it with SQUAREM (Varadhan and Roland, 2008), which extrapolates
+            along the path two EM steps take and keeps the result only
+            where the likelihood is no lower than after those two steps.
+            It needs far fewer iterations where EM crawls (a fit that
+            cannot verify its maximum after the first 20, and runs on
+            towards 1000), and ends at the same verified maximum where
+            both reach one, to the precision of its verification; it may,
+            like any change of path, reach a different local maximum.
+            Truncated data is fitted directly, not by EM, and ignores it.
 
         Returns
         -------
@@ -743,6 +1120,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
               beta: [ 1.83105154 12.01392721]
         """
 
+        check_option("em", em, EM_METHODS)
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
         # Count observations from the validated data so ``xl``/``xr``-only
@@ -751,10 +1129,15 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             raise ValueError("More parameters than data points")
 
         self.data = data
+        self._em_method = em
+        # A refit in place: the criteria are recomputed from the new fit
+        self._ic_n = None
+        for name in ("_aic", "_aic_c", "_bic"):
+            self.__dict__.pop(name, None)
         self._truncated = bool(np.isfinite(data.t).any())
         self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
-        self.initialise_params()
+        self._initialise_params()
 
         if self._truncated:
             # The truncation correction couples the components through the
@@ -772,7 +1155,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             try:
                 unverified = self._em()
             finally:
-                self.__dict__.pop("_Q_jac_cache", None)
+                # Closures and arrays of the fit in progress (a closure
+                # would stop the model being pickled)
+                for name in _FIT_CACHES:
+                    self.__dict__.pop(name, None)
         # One warning: a component collapsed onto a point mass has no
         # finite maximum, which is also why its search was not verified.
         if self._warn_if_point_mass():
@@ -871,7 +1257,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         with np.errstate(all="ignore"):
             res = minimize(obj, x0, bounds=bounds)
         self.w, self.params = unpack(res.x)
-        self.loglike = float(res.fun)
+        self._neg_ll = float(res.fun)
 
     def mean(self, *args: Any, **kwargs: Any) -> Any:
         r"""

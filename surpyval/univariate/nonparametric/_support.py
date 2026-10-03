@@ -13,7 +13,6 @@ from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-from scipy.interpolate import PchipInterpolator, interp1d
 
 
 def check_support(
@@ -110,6 +109,8 @@ def interp_function(
     # previous one, so a Turnbull ``interp='linear'`` curve kept its steps
     # at the exact times instead of interpolating across them as the
     # Kaplan-Meier's does.
+    from scipy.interpolate import PchipInterpolator, interp1d
+
     x = np.asarray(x, dtype=float)
     y = np.asarray(y, dtype=float)
     keep = np.append(np.diff(x) > 0, True)

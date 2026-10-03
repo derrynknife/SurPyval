@@ -12,6 +12,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
     leaf_mle,
+    leaf_mles,
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.log_rank_split import log_rank_split
@@ -200,11 +201,18 @@ class TerminalNode(Node):
     for a parametric
     leaf with no failures. On observed and right-censored data a
     parametric leaf is the maximum found as the split search finds a
-    child's, built from its parameters (so it has no ``cb()`` of its own).
+    child's, built from its parameters (so it has no ``cb()`` of its own);
+    a tree finds those for all its leaves together as it is grown
+    (:func:`fit_leaves`).
     """
 
-    def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
-        self.data = deepcopy(data)
+    def __init__(
+        self, data: SurpyvalData, kind: str = "weibull", copy: bool = True
+    ) -> None:
+        # A tree's leaves are given rows the tree has already copied
+        # (``copy=False``): a deep copy per leaf was an eighth of growing
+        # a non-parametric forest (#549).
+        self.data = deepcopy(data) if copy else data
         self.kind = kind
 
     def _nonparametric_model(self) -> Any:
@@ -348,6 +356,48 @@ class TerminalNode(Node):
         return node
 
 
+def fit_leaves(root: Node) -> None:
+    """Fit the parametric leaves of the tree under ``root`` together.
+
+    Each leaf's model is what :attr:`TerminalNode.model` would fit on
+    first use; the leaves whose maximum :func:`leaf_mle` finds (observed
+    and right-censored rows) are found in one pass for the whole tree,
+    rather than one leaf at a time (#549). Any other leaf stays to be
+    fitted on first use, as before.
+    """
+    leaves = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, IntermediateNode):
+            stack += [node.right_child, node.left_child]
+        elif (
+            isinstance(node, TerminalNode)
+            and node.kind != "non-parametric"
+            and node.data is not None
+            and "model" not in node.__dict__
+        ):
+            leaves.append(node)
+    batches: dict = {"weibull": [], "exponential": []}
+    for leaf in leaves:
+        n_failures = leaf.data.n[leaf.data.c != 1].sum()
+        if n_failures == 0:
+            leaf.__dict__["model"] = NeverOccurs
+        elif leaf.kind == "weibull" and n_failures > 1:
+            batches["weibull"].append(leaf)
+        else:
+            batches["exponential"].append(leaf)
+    for model, dist in (("weibull", Weibull), ("exponential", Exponential)):
+        batch = batches[model]
+        # Quiet: a leaf the closed forms cannot fit is left to be fitted
+        # on first use, as before, with whatever that says.
+        with np.errstate(all="ignore"):
+            fitted = leaf_mles([leaf.data for leaf in batch], model)
+        for leaf, params in zip(batch, fitted):
+            if params is not None:
+                leaf.__dict__["model"] = dist.from_params(params)
+
+
 def route_to_leaves(
     node: Node, Z: NDArray
 ) -> list[tuple["TerminalNode", NDArray]]:
@@ -482,7 +532,7 @@ def build_tree(
 
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(data, kind)
+        return TerminalNode(data, kind, copy=False)
 
     # Choose the random n_features_split subset of features, without
     # replacement
@@ -499,7 +549,7 @@ def build_tree(
             data, Z, kind, min_leaf_samples, min_leaf_failures, candidates
         )
         if chosen == -1 or not p_value < alpha_split:
-            return TerminalNode(data, kind)
+            return TerminalNode(data, kind, copy=False)
         candidates = np.array([chosen])
 
     # Figure out best feature-value split
@@ -528,7 +578,7 @@ def build_tree(
     # If the split rule can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(data, kind)
+        return TerminalNode(data, kind, copy=False)
 
     # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(

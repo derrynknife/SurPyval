@@ -152,7 +152,7 @@ def _hpp_failure_truncated(rng, systems, events):
     return times.ravel(), np.repeat(np.arange(systems), events)
 
 
-@pytest.mark.parametrize("truncation", ["time", "failure"])
+@pytest.mark.parametrize("truncation", ["time", "failure", "delayed"])
 @pytest.mark.parametrize(
     "test, slack",
     [(laplace, 0.01), (mil_hdbk_189c, 0.0)],
@@ -161,15 +161,25 @@ def _hpp_failure_truncated(rng, systems, events):
 def test_trend_test_size(test, slack, truncation):
     # Null: a homogeneous Poisson process. MIL-HDBK-189C is exact under it
     # (chi-squared on 2N or 2(N - 1) degrees of freedom), so no slack.
-    rng = np.random.default_rng(521 if truncation == "time" else 522)
+    # "delayed": each system enters at a random time and is watched for 20
+    # (#575), so the windows (s_q, s_q + 20] do not start at 0.
+    seeds = {"time": 521, "failure": 522, "delayed": 524}
+    rng = np.random.default_rng(seeds[truncation])
     reps = 30000
     rejected = 0
     for _ in range(reps):
-        if truncation == "time":
+        if truncation in ("time", "delayed"):
             m = rng.poisson(20.0, 3)
-            x = np.concatenate([np.sort(rng.uniform(0, 20.0, k)) for k in m])
+            s = rng.uniform(0, 50.0, 3) if truncation == "delayed" else 0.0
+            s = np.broadcast_to(s, 3)
+            x = np.concatenate(
+                [
+                    np.sort(rng.uniform(s[q], s[q] + 20.0, k))
+                    for q, k in enumerate(m)
+                ]
+            )
             i = np.repeat(np.arange(3), m)
-            res = test(x, i=i, T=20.0)
+            res = test(x, i=i, T=s + 20.0, tl=s)
         else:
             x, i = _hpp_failure_truncated(rng, 3, 20)
             res = test(x, i=i)

@@ -3,8 +3,65 @@ from typing import Any, Callable, Sequence
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import hessian, jacobian
+from autograd import hessian, value_and_grad
 from scipy.optimize import OptimizeResult, minimize
+
+
+class Gradient:
+    """The gradient of a scalar ``fun`` by autograd, taken with its value.
+
+    A drop-in for ``autograd.jacobian(fun)``: ``Gradient(fun)(x, *args)``
+    is the same gradient, to the bit. It also gives ``value_and_grad(x,
+    *args)``, both from one autograd pass, and keeps the last point's
+    pair, so asking again at the same point costs nothing.
+
+    The optimisers used to be given ``fun`` and its gradient separately,
+    and at each point evaluated the likelihood once for its value and
+    again inside the gradient's pass, which computes the value anyway: a
+    sixth of each step on a Weibull of 1,000 rows, a fifth at 100,000
+    (#593). :func:`minimize_with_gradient` passes them as one callable
+    (scipy's ``jac=True``). The value of the pass is the plain function's
+    value, so an optimiser takes the same path to the same point.
+    """
+
+    def __init__(self, fun: Callable[..., Any]) -> None:
+        self.fun = fun
+        self._value_and_grad = value_and_grad(fun)
+        self._kept: "tuple[bytes, tuple, Any, npt.NDArray] | None" = None
+
+    def value_and_grad(self, x: npt.ArrayLike, *args: Any) -> tuple:
+        """``(fun(x, *args), gradient)``, from one pass."""
+        key = np.asarray(x, dtype=float).tobytes()
+        kept = self._kept
+        if (
+            kept is None
+            or kept[0] != key
+            or len(kept[1]) != len(args)
+            or any(a is not b for a, b in zip(kept[1], args))
+        ):
+            value, grad = self._value_and_grad(x, *args)
+            kept = self._kept = (key, args, value, grad)
+        # A copy, so a caller that changes it in place cannot change it
+        # for the next one
+        return kept[2], np.array(kept[3])
+
+    def __call__(self, x: npt.ArrayLike, *args: Any) -> npt.NDArray:
+        return self.value_and_grad(x, *args)[1]
+
+
+def minimize_with_gradient(
+    fun: Callable[..., Any],
+    x0: npt.ArrayLike,
+    args: tuple[Any, ...] = (),
+    jac: Any = None,
+    **kwargs: Any,
+) -> Any:
+    """``scipy.optimize.minimize(fun, x0, args, jac=jac, **kwargs)``, with
+    the value and the gradient from one pass where ``jac`` is the
+    :class:`Gradient` of ``fun`` (scipy's ``jac=True``, #593)."""
+    if isinstance(jac, Gradient) and jac.fun is fun:
+        return minimize(jac.value_and_grad, x0, args=args, jac=True, **kwargs)
+    return minimize(fun, x0, args=args, jac=jac, **kwargs)
 
 
 def fallback_minimize(
@@ -15,6 +72,7 @@ def fallback_minimize(
     hess: Callable[..., Any] | None,
     newton_tol: float | None = None,
     floor: "float | npt.ArrayLike" = 1.0,
+    give_up: "Callable[[Any], bool] | None" = None,
 ) -> Any:
     """
     Minimise ``fun`` with BFGS and the supplied jacobian, escalating to
@@ -41,7 +99,10 @@ def fallback_minimize(
     while reporting success, so there is nothing to escalate to and
     Nelder-Mead should take over instead.
 
-    ``floor`` is passed through to ``preconditioned_bfgs``.
+    ``floor`` is passed through to ``preconditioned_bfgs``. ``give_up``,
+    where given, is asked of a BFGS result that failed whether the
+    objective has no finite optimum to escalate for; it is returned at
+    once if so (an offset MPS fit running to its family's limit, #616).
     """
     assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
@@ -59,15 +120,17 @@ def fallback_minimize(
             or np.isnan(res.x).any()
             or (not np.isfinite(res.fun))
         )
+        if failed and give_up is not None and give_up(res):
+            return res
         if failed and np.any(hess(np.array(init, dtype=float), *args)):
-            newton = minimize(
+            newton = minimize_with_gradient(
                 fun,
                 init,
+                args,
+                jac,
                 method="Newton-CG",
-                jac=jac,
                 hess=hess,
                 tol=newton_tol,
-                args=args,
             )
             # Only an improvement replaces what BFGS found. BFGS often
             # reports "precision loss" *at* the optimum, and a Newton-CG
@@ -180,6 +243,7 @@ def verify_or_polish(
     n_obs: float,
     objective: "Callable[[npt.NDArray], Any] | None" = None,
     numerical: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[Any, bool]:
     """``res``, a minimum of ``fun`` found some other way, and whether it
     is verifiably a minimum of ``objective`` (``fun`` by default; see
@@ -196,41 +260,58 @@ def verify_or_polish(
 
     ``numerical=True`` is for an objective autograd cannot differentiate
     (one written in plain numpy): its derivatives are then central
-    differences (:func:`numerical_derivatives`).
+    differences (:func:`numerical_derivatives`). ``floor`` is each
+    component's least unit for the check and the polish, as in
+    ``is_local_minimum`` (a regression coefficient's is its covariate's,
+    ``coefficient_floor`` in ``univariate/regression/_fit_skeleton.py``).
     """
     objective = fun if objective is None else objective
     x0 = np.asarray(res.x, dtype=float)
     if numerical:
-        jac, hess = numerical_derivatives(objective, x0)
-        polish_jac = numerical_derivatives(fun, x0)[0]
+        jac, hess = numerical_derivatives(objective, x0, floor)
+        polish_jac = numerical_derivatives(fun, x0, floor)[0]
     else:
-        jac, hess = jacobian(objective), hessian(objective)
-        polish_jac = jacobian(fun)
-    if is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs):
+        jac, hess = Gradient(objective), hessian(objective)
+        polish_jac = jac if objective is fun else Gradient(fun)
+    if is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    ):
         return res, True
     with np.errstate(all="ignore"), warnings.catch_warnings():
         # A penalised objective is constant where the model is invalid,
         # and autograd says so for every gradient taken there
         warnings.filterwarnings("ignore", "Output seems independent")
         polish = preconditioned_bfgs(
-            fun, res.x, (), polish_jac, obj_scale=n_obs
+            fun, res.x, (), polish_jac, floor=floor, obj_scale=n_obs
         )
     if _usable(polish) and polish.fun <= res.fun:
         res = polish
-    return res, is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs)
+    return res, is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    )
 
 
 def numerical_derivatives(
-    fun: Callable[[npt.NDArray], Any], x: npt.ArrayLike
+    fun: Callable[[npt.NDArray], Any],
+    x: npt.ArrayLike,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[Callable[..., Any], Callable[..., Any]]:
     """``(jac, hess)`` of ``fun`` by central differences, for an objective
     autograd cannot differentiate: steps of ``1e-5`` of each component of
-    ``x`` (at least ``1e-5``) for the Hessian, a hundredth of that for the
-    gradient, fixed from ``x`` so that both are the same function wherever
-    they are evaluated."""
+    ``x`` (at least ``1e-5`` of its ``floor``, as in ``is_local_minimum``)
+    for the Hessian, a hundredth of that for the gradient, fixed from ``x``
+    so that both are the same function wherever they are evaluated.
+
+    A step from a floor of 1 is too small for a component whose unit is
+    large: a proportional-intensity coefficient of a covariate in
+    millionths, polished from 0 to -2.3e5, had its gradient differenced in
+    steps of 1e-7, where the likelihood changed below its rounding, and a
+    point 1.7% short of the maximum passed as verified (#577)."""
     from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 
-    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, dtype=float)), 1.0)
+    steps = 1e-5 * np.maximum(
+        np.abs(np.asarray(x, dtype=float)), np.asarray(floor, dtype=float)
+    )
 
     def jac(v: npt.NDArray, *args: Any) -> npt.NDArray:
         return numerical_gradient(lambda u: float(fun(u)), v, 1e-2 * steps)
@@ -517,6 +598,8 @@ def preconditioned_bfgs(
 
     With ``jac=None`` scipy differences the scaled objective, so the
     finite-difference step is relative to each component's scale too.
+    With ``jac=Gradient(fun)`` each point's value and gradient come from
+    one pass (:class:`Gradient`, #593).
 
     ``callback``, where given, is called with each iterate (unscaled),
     and may end the search by raising ``StopIteration``.
@@ -549,15 +632,34 @@ def preconditioned_bfgs(
 
         extra["callback"] = unscaled
 
-    res = minimize(
-        scaled_fun,
-        x0 / scale,
-        args=args,
-        method="BFGS",
-        jac=None if jac is None else scaled_jac,
-        options=opts,
-        **extra,
-    )
+    if isinstance(jac, Gradient) and jac.fun is fun:
+        # The value and the gradient from one pass (#593)
+        gradient = jac
+
+        def scaled_value_and_grad(v: npt.NDArray, *inner: Any) -> tuple:
+            value, grad = gradient.value_and_grad(scale * v, *inner)
+            scaled = (scale * np.asarray(grad, dtype=float)) / divisor
+            return value / divisor, scaled
+
+        res = minimize(
+            scaled_value_and_grad,
+            x0 / scale,
+            args=args,
+            method="BFGS",
+            jac=True,
+            options=opts,
+            **extra,
+        )
+    else:
+        res = minimize(
+            scaled_fun,
+            x0 / scale,
+            args=args,
+            method="BFGS",
+            jac=None if jac is None else scaled_jac,
+            options=opts,
+            **extra,
+        )
     res.x = res.x * scale
     res.fun = res.fun * divisor
     return res
@@ -597,6 +699,55 @@ def inv_rev_adj_relu(x: npt.NDArray) -> Any:
     return np.where(x < -1, -x - 1, np.log(-x))
 
 
+class ParameterMap:
+    """One parameter's map to the unbounded search space and back.
+
+    ``forward`` maps a parameter to the search space and ``inverse``
+    back (see ``add_to_funcs`` for the maps). An object rather than a
+    pair of closures so a fitted model, whose ``fitting_info`` keeps the
+    maps, can be pickled (#573).
+    """
+
+    def __init__(
+        self, low: float | None, upp: float | None, unit: float = 1.0
+    ) -> None:
+        self.low = low
+        self.upp = upp
+        self.unit = unit
+
+    def forward(self, x: Any) -> Any:
+        low, upp, unit = self.low, self.upp, self.unit
+        if (low is None) and (upp is None):
+            return x
+        elif (low == 0) and (upp == 1):
+            D = 10
+            return D * np.arctanh((2 * x) - 1)
+        elif (low is not None) and (upp is not None):
+            D = 10
+            lo, width = float(low), float(upp) - float(low)
+            return D * np.arctanh((2 * (x - lo) / width) - 1)
+        elif upp is None:
+            return inv_adj_relu((x - np.copy(low)) / unit)
+        else:
+            return inv_rev_adj_relu((x - np.copy(upp)) / unit)
+
+    def inverse(self, x: Any) -> Any:
+        low, upp, unit = self.low, self.upp, self.unit
+        if (low is None) and (upp is None):
+            return x
+        elif (low == 0) and (upp == 1):
+            D = 10
+            return (np.tanh(x / D) + 1) / 2
+        elif (low is not None) and (upp is not None):
+            D = 10
+            lo, width = float(low), float(upp) - float(low)
+            return lo + width * (np.tanh(x / D) + 1) / 2
+        elif upp is None:
+            return unit * adj_relu(x) + np.copy(low)
+        else:
+            return np.copy(upp) + unit * rev_adj_relu(x)
+
+
 def add_to_funcs(
     low: float | None,
     upp: float | None,
@@ -608,32 +759,65 @@ def add_to_funcs(
     """Append the map of one parameter to the unbounded search space, and
     its inverse.
 
-    A parameter with one bound is searched as the log of its distance
-    from the bound where that distance is below ``unit``, and linearly
-    beyond it (``adj_relu``). ``unit`` is 1 unless the caller passes one:
-    see ``bounds_convert``.
+    An unbounded parameter is searched as itself. One between 0 and 1 is
+    searched as ``10 * arctanh(2x - 1)``, and one in any other finite
+    interval by the same map on ``(x - low) / (upp - low)``. A parameter
+    with one bound is searched as the log of its distance from the bound
+    where that distance is below ``unit``, and linearly beyond it
+    (``adj_relu``). ``unit`` is 1 unless the caller passes one: see
+    ``bounds_convert``.
     """
-    if (low is None) and (upp is None):
-        funcs.append(lambda x: x)
-        inv_f.append(lambda x: x)
-    elif (low == 0) and (upp == 1):
-        D = 10
-        funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
-        inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
-    elif (low is not None) and (upp is not None):
-        # Any other finite interval: the same scaled arctanh map on
-        # (x - low) / (upp - low). Previously this fell through to the
-        # identity, so the bound was silently not enforced.
-        D = 10
-        lo, width = float(low), float(upp) - float(low)
-        funcs.append(lambda x: D * np.arctanh((2 * (x - lo) / width) - 1))
-        inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
-    elif upp is None:
-        funcs.append(lambda x: (inv_adj_relu((x - np.copy(low)) / unit)))
-        inv_f.append(lambda x: (unit * adj_relu(x) + np.copy(low)))
-    elif low is None:
-        funcs.append(lambda x: inv_rev_adj_relu((x - np.copy(upp)) / unit))
-        inv_f.append(lambda x: np.copy(upp) + unit * rev_adj_relu(x))
+    mapping = ParameterMap(low, upp, unit)
+    funcs.append(mapping.forward)
+    inv_f.append(mapping.inverse)
+
+
+class EachParameter:
+    """Apply one map per parameter: ``bounds_convert``'s transforms.
+
+    A module-level callable rather than a closure, so it pickles
+    (#573)."""
+
+    def __init__(self, funcs: list[Callable[..., Any]]) -> None:
+        self.funcs = funcs
+
+    def __call__(self, params: npt.NDArray) -> Any:
+        return np.array(
+            [f(p) for p, f in zip(params, self.funcs, strict=True)]
+        )
+
+
+class HoldFixed:
+    """Insert the fixed parameters, mapped to the search space, among the
+    free ones: ``bounds_convert``'s ``const`` when some are fixed."""
+
+    def __init__(
+        self,
+        n_params: int,
+        fixed: dict[str, float],
+        param_map: dict[str, int],
+        forward: list[Callable[..., Any]],
+        not_fixed: npt.NDArray,
+    ) -> None:
+        self.n_params = n_params
+        self.fixed = fixed
+        self.param_map = param_map
+        self.forward = forward
+        self.not_fixed = not_fixed
+
+    def __call__(self, p: npt.NDArray) -> Any:
+        params: list[Any] = [0] * (self.n_params)
+        for k, v in self.fixed.items():
+            params[self.param_map[k]] = self.forward[self.param_map[k]](v)
+        for i, v in zip(self.not_fixed, p):
+            params[i] = v
+        return np.array(params)
+
+
+def identity(x: Any) -> Any:
+    """``x`` itself: the map of a parameter searched as it is, and
+    ``bounds_convert``'s ``const`` when nothing is fixed."""
+    return x
 
 
 def bounds_convert(
@@ -659,6 +843,9 @@ def bounds_convert(
     pass each parameter's own starting distance from its bound instead
     (see ``_search_units`` in ``optimised_fit``), which makes the
     search the same whatever units the data is in.
+
+    The maps returned are module-level objects, not closures, so a model
+    that keeps them pickles (#573).
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
     unbounded_to_bounded_transforms: list[Callable[..., Any]] = []
@@ -673,49 +860,29 @@ def bounds_convert(
             1.0 if units is None else float(units[i]),
         )
 
-    def transform_params_to_unbounded(params: npt.NDArray) -> Any:
-        return np.array(
-            [
-                f(p)
-                for p, f in zip(
-                    params, bounded_to_unbounded_transforms, strict=True
-                )
-            ]
-        )
-
-    def transform_unbounded_value_to_params(params: npt.NDArray) -> Any:
-        return np.array(
-            [
-                f(p)
-                for p, f in zip(
-                    params, unbounded_to_bounded_transforms, strict=True
-                )
-            ]
-        )
+    transform_params_to_unbounded = EachParameter(
+        bounded_to_unbounded_transforms
+    )
+    transform_unbounded_value_to_params = EachParameter(
+        unbounded_to_bounded_transforms
+    )
 
     n_params = len(param_map)
 
+    const: Callable[..., Any]
     if fixed is not None:
         fixed_idx = [param_map[x] for x in fixed.keys()]
         not_fixed = [x for x in range(n_params) if x not in fixed_idx]
         not_fixed = np.array(not_fixed, dtype=int)
-
-        def constraints(p: npt.NDArray) -> Any:
-            params = [0] * (n_params)
-            for k, v in fixed.items():
-                params[param_map[k]] = bounded_to_unbounded_transforms[
-                    param_map[k]
-                ](v)
-            for i, v in zip(not_fixed, p):
-                params[i] = v
-            return np.array(params)
-
-        const: Callable[..., Any] = constraints
+        const = HoldFixed(
+            n_params,
+            fixed,
+            param_map,
+            bounded_to_unbounded_transforms,
+            not_fixed,
+        )
     else:
-
-        def const(x: npt.NDArray) -> Any:
-            return x
-
+        const = identity
         fixed_idx = []
         not_fixed = np.array([x for x in range(n_params)])
 
