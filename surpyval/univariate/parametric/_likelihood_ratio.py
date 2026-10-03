@@ -615,8 +615,10 @@ class _PsiBoundSearch:
         tol = 1e-7 * max(1.0, abs(target))
         for x0 in starts:
             z0 = (self.model._lr_start(x0, self.box) - origin) / scale
-            # Continued from where SLSQP stops short of converging, for
-            # as long as the likelihood rises there (#601).
+            # Continued from where SLSQP stops short of converging just
+            # outside the region (within 0.05 of deviance), for as long
+            # as the likelihood rises there: whether a point is in the
+            # region turns on it (#601).
             for _ in range(_LR_CONTINUE):
                 try:
                     res = minimize(
@@ -638,7 +640,8 @@ class _PsiBoundSearch:
                 if not (gap <= tol and nll < best):
                     break
                 best, best_u = nll, u
-                if res.status == 0:
+                excess = 2.0 * (nll - self.nll_hat) - self.crit
+                if res.status == 0 or not 0.0 <= excess < 0.05:
                     break
                 z0 = np.asarray(res.x)
         return best, best_u
@@ -1025,6 +1028,24 @@ class _PsiBoundSearch:
             r *= 1.0 - 1e-12
         return None
 
+    def reach(self, direction: float, start: npt.NDArray) -> None:
+        """One search for the extreme from ``start``, a point of the
+        region, its end (taken onto the boundary if outside) added to
+        the points known: the bound must reach at least as far, and
+        where it is further out than the answer the other searches
+        give, the search goes on from it (``_retry_beyond``)."""
+        x = self.extreme(direction, start, self.crit)
+        if x is None:
+            return
+        if not self.dev_u(x) <= self.crit:
+            back = self.back_onto_boundary(x, self.crit)
+            x = self.onto_boundary(start, x, self.crit) if back is None else back
+            if x is None:
+                return
+        psi_x = self.psi_u(x)
+        if np.isfinite(psi_x):
+            self.known.append((psi_x, x))
+
     def back_onto_boundary(
         self, outside: npt.NDArray, level: float
     ) -> npt.NDArray | None:
@@ -1067,80 +1088,35 @@ class _PsiBoundSearch:
                 out.append((k, float(b_hi)))
         return out
 
-    def onto_face(
-        self, k: int, end: float, start: npt.NDArray
-    ) -> npt.NDArray | None:
-        """The point of least deviance on the face ``u[k] = end``, sought
-        from ``start`` moved onto it; ``None`` where it is outside the
-        region."""
-        others = [j for j in range(len(self.free)) if j != k]
-        coord = self.free_coords[k]
-        # The parameter's profile at the end, continued from its walk to
-        # that edge (``_profile_neg_ll``): the nuisance parameters follow
-        # their valley there, which no search from the region's interior
-        # reaches.
-        path = _LRPath()
-        if len(self.seeds) == 2 * len(self.free):
-            for seed in self.seeds[2 * k + int(end == coord.ends[1])]:
-                path.add(seed[k], seed[others])
-        solved = len(path.w)
-        self.model._profile_neg_ll(self.free[k], coord.from_u(end), path)
-        candidates = []
-        if len(path.w) > solved:
-            u = np.empty(len(self.free))
-            u[k], u[others] = end, path.u[-1]
-            candidates.append(u)
-        # and from ``start`` moved onto the face
-        to_u, z0, z_bounds = self._face_coords((k, end), start)
+    def probe_edges(self, direction: float) -> float | None:
+        """The region down the valleys to the edges of the parameters'
+        spaces: the points the bound must reach at least as far as, added
+        to the points known, and the extreme over a face of the box that
+        checks out (or ``None``).
 
-        def dev(z: npt.NDArray) -> float:
-            d = self.dev_u(to_u(z))
-            return d if np.isfinite(d) else _LR_UNREACHABLE
-
-        try:
-            res = minimize(
-                dev,
-                z0,
-                method="L-BFGS-B",
-                jac="3-point",
-                bounds=z_bounds,
-                options={"ftol": 1e-13, "gtol": 1e-9, "maxiter": 1000},
-            )
-            candidates.append(to_u(np.asarray(res.x)))
-        except (ValueError, np.linalg.LinAlgError):
-            pass
-        inside = [u for u in candidates if self.dev_u(u) <= self.crit]
-        if not inside:
-            return None
-        return min(inside, key=self.dev_u)
-
-    def probe_faces(self, direction: float) -> float | None:
-        """The extreme of psi over each face of the box where a
-        parameter's interval reaches the edge of its space, sought from
-        the point of least deviance there, added to the points known:
-        the most extreme that checks out, or ``None``."""
+        Where a parameter's interval reaches the edge of its space, its
+        profile has been solved further out (``_lr_walk_on``). A search
+        from the deepest point found (``reach``) finds an extreme far
+        down the valley, which the searches from the estimate and the
+        walks' tips miss: the ExpoWeibull's 95% ``qf(0.2)`` band was
+        [2.72, 7.63] for [2.22, 7.94], found as ``beta -> inf`` (#601).
+        Where the profile is still changing at the end of the
+        coordinate, the extreme can be there, on the face of the box,
+        approached only (its 99% ``qf(0.95)`` upper bound, 87.02 at
+        ``alpha`` = 2.2e-308): it is sought over that face, from the
+        walk's point on it.
+        """
         best = None
-        faces = self.faces()
-        if not faces:
-            return best
-        far_u = max(self.known, key=lambda k: direction * k[0])[1]
-        found = []
-        for k, end in faces:
-            # From the deepest point of the parameter's walk down the
-            # valley to that edge (``_lr_walk_on``)
+        for k, end in self.faces():
             side = int(end == self.free_coords[k].ends[1])
             walk = self.seeds[2 * k + side] if self.seeds else []
-            if walk and self.dev_u(walk[-1]) <= self.crit:
-                found.append(self.direct(direction, walk[-1]))
-            # and over the face itself
-            m = self.onto_face(k, end, far_u)
-            if m is None:
+            if not (walk and self.dev_u(walk[-1]) <= self.crit):
                 continue
-            self.known.append((self.psi_u(m), m))
-            x = self.extreme_far(direction, m, self.crit, face=(k, end))
-            if x is not None:
-                found.append(self.checks_out(direction, x))
-        for quick in found:
+            self.reach(direction, walk[-1])
+            if walk[-1][k] != end:
+                continue
+            x = self.extreme_far(direction, walk[-1], self.crit, face=(k, end))
+            quick = None if x is None else self.checks_out(direction, x)
             if quick is not None and (
                 best is None or direction * quick > direction * best
             ):
@@ -1162,7 +1138,7 @@ class _PsiBoundSearch:
         if quick is not None:
             return quick
         far_ladder = self.ladder(direction)
-        on_face = self.probe_faces(direction)
+        on_face = self.probe_edges(direction)
         # The search starts from the estimate and from the farthest
         # points of the two walks that reach farthest (the region can
         # have more than one local extreme), and the most extreme
