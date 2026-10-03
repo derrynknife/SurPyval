@@ -2348,7 +2348,9 @@ include the uncertainty of the fit. In-warranty counts often barely separate
 candidate models (a Weibull, a mixture, a limited-failure population) while
 their extrapolations differ, so forecast from each plausible model and compare.
 The same function forecasts from a regression model, with each unit's
-covariates (see :doc:`Regression Modelling with SurPyval`).
+covariates (see :doc:`Regression Modelling with SurPyval`), and from the
+recurrent-event models, where a repaired unit can fail again and every
+failure is counted (see :doc:`Recurrent Event Modelling with SurPyval`).
 
 
 Creating a custom Distribution

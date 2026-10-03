@@ -55,9 +55,12 @@ Forecasting from the current state
 
 The expected failures of units in service at their current ages over a
 horizon, from any univariate or regression model, with a prediction
-interval for the count (worked examples in
-:doc:`Parametric SurPyval Modelling` and
-:doc:`Regression Modelling with SurPyval`):
+interval for the count, and every failure of repairable units from a
+recurrent-event model (a Poisson process, or a renewal model simulated from
+each unit's own history) (worked examples in
+:doc:`Parametric SurPyval Modelling`,
+:doc:`Regression Modelling with SurPyval` and
+:doc:`Recurrent Event Modelling with SurPyval`):
 
 .. autofunction:: surpyval.forecasting.forecast
 

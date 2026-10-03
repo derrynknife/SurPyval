@@ -5,6 +5,7 @@ from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
+from numpy.typing import ArrayLike
 from scipy.optimize import brentq, minimize
 from scipy.stats import chi2
 
@@ -460,6 +461,33 @@ class DiscountedMemory:
         self.total = np.zeros(n)
         self.recent: list = []
 
+    @classmethod
+    def from_history(
+        cls, histories: "list[np.ndarray]", rho: float, m: "int | float"
+    ) -> "DiscountedMemory":
+        """The memory of sequences that have each recorded their own
+        values already, ``histories[k]`` oldest first (of any lengths):
+        for sequences continued from units' current states."""
+        memory = cls(len(histories), rho, m)
+        if memory.infinite:
+            for k, values in enumerate(histories):
+                total = 0.0
+                for value in np.asarray(values, dtype=float):
+                    total = value + memory.decay * total
+                memory.total[k] = total
+            return memory
+        depth = min(memory.m, max((len(h) for h in histories), default=0))
+        # The last ``depth`` values of each, aligned at the newest; a
+        # sequence with fewer has zeros (no term) before them.
+        rows = np.zeros((depth, memory.n))
+        for k, values in enumerate(histories):
+            start = max(len(values) - depth, 0)
+            recent = np.asarray(values, dtype=float)[start:]
+            if depth and recent.size:
+                rows[depth - recent.size :, k] = recent
+        memory.recent = list(rows)
+        return memory
+
     def value(self, idx: np.ndarray) -> np.ndarray:
         if self.infinite:
             return self.total[idx]
@@ -478,6 +506,58 @@ class DiscountedMemory:
         self.recent.append(row)
         if len(self.recent) > self.m:
             self.recent.pop(0)
+
+
+@dataclass
+class UnitStates:
+    """Units' current states under a fitted renewal model: what the
+    prediction of each unit's next failures starts from
+    (:meth:`RenewalModel.unit_states` gives them as a table).
+
+    Every array has one entry per unit, and times are on the model's clock
+    (from new, or from entry for an item with delayed entry).
+    """
+
+    #: The units' labels (the fitted data's items), or ``None`` for units
+    #: given by their ages.
+    units: "list | None"
+    #: Each unit's failure times so far, oldest first.
+    failures: "list[np.ndarray]"
+    #: The time now: the end of each unit's history.
+    now: np.ndarray
+    #: The time since the unit's last failure (or since new / entry).
+    since_failure: np.ndarray
+    #: The unit's virtual age just after its last repair (0 for G1 and
+    #: ARI, which have none).
+    after_repair: np.ndarray
+    #: The age the lifetime distribution sees now: the virtual age now
+    #: (GRP, ARA), the time since the last failure divided by
+    #: ``(1 + q) ** j`` (G1), ``nan`` for ARI.
+    age: np.ndarray
+    #: The factor the next gap is scaled by: ``(1 + q) ** j`` for G1, 1
+    #: otherwise.
+    scale: np.ndarray
+    #: The intensity reduction in force (ARI), 0 otherwise.
+    reduction: np.ndarray
+
+    @property
+    def failure_count(self) -> np.ndarray:
+        """The number of failures of each unit so far."""
+        return np.array([f.size for f in self.failures], dtype=int)
+
+    def take(self, rows: np.ndarray) -> "UnitStates":
+        """The states of the units ``rows`` (repeats allowed)."""
+        rows = np.asarray(rows, dtype=int)
+        return UnitStates(
+            units=None,
+            failures=[self.failures[r] for r in rows],
+            now=self.now[rows],
+            since_failure=self.since_failure[rows],
+            after_repair=self.after_repair[rows],
+            age=self.age[rows],
+            scale=self.scale[rows],
+            reduction=self.reduction[rows],
+        )
 
 
 class RenewalModel(
@@ -893,6 +973,312 @@ class RenewalModel(
         return diagnostics.cramer_von_mises_renewal(
             self, n_boot=n_boot, random_state=random_state
         )
+
+    # -- prediction from each unit's current state (#615) ------------------
+
+    def _states(self, age: "ArrayLike | None" = None) -> UnitStates:
+        """The units' current states: the fitted data's items at the end
+        of their histories (``age=None``), or units that have run ``age``
+        since new without a failure."""
+        if age is None:
+            self._check_has_data("Prediction from each unit's history")
+            data = self.data
+            item = np.asarray(data.i)
+            order = np.argsort(item, kind="stable")
+            x = np.asarray(data.x, dtype=float)[order]
+            failed = np.asarray(data.c)[order] == 0
+            _, first = np.unique(item[order], return_index=True)
+            units = list(data.items)
+            times = np.split(x, first[1:])
+            events = np.split(failed, first[1:])
+            failures = [np.sort(t[e]) for t, e in zip(times, events)]
+            now = np.array([t.max() for t in times], dtype=float)
+        else:
+            now = np.atleast_1d(np.asarray(age, dtype=float)).reshape(-1)
+            if not np.all(np.isfinite(now)) or np.any(now < 0):
+                raise ValueError(
+                    "age must be finite times of at least 0 (each unit's "
+                    "time since new, with no failure yet); got "
+                    "{}".format(now[~(np.isfinite(now) & (now >= 0))][:5])
+                )
+            units = None
+            failures = [np.zeros(0) for _ in now]
+        return self._state_of(units, failures, now)
+
+    def _state_of(
+        self, units: "list | None", failures: list, now: np.ndarray
+    ) -> UnitStates:
+        """The states of units with the failure times ``failures`` (each
+        oldest first) at the times ``now``, under this model's family."""
+        k = len(failures)
+        last = np.array([f[-1] if f.size else 0.0 for f in failures])
+        since = now - last
+        after = np.zeros(k)
+        scale = np.ones(k)
+        reduction = np.zeros(k)
+        family = self._family()
+        rate = float(self.restoration)
+        if family == "GeneralizedRenewal":
+            from .generalized_renewal import kijima_ii_from_prev_interarrival
+
+            for r, f in enumerate(failures):
+                if not f.size:
+                    continue
+                if self.kijima_type == "i":
+                    # v_n = v_{n-1} + q x_n, so q times the last failure
+                    after[r] = rate * f[-1]
+                else:
+                    gaps = np.diff(f, prepend=0.0)
+                    after[r] = kijima_ii_from_prev_interarrival(gaps, rate)[-1]
+            age = after + since
+        elif family == "ARA":
+            from .ara import ara_virtual_ages
+
+            for r, f in enumerate(failures):
+                if f.size:
+                    # The age at the start of the gap after the last failure
+                    after[r] = ara_virtual_ages(
+                        np.append(f, now[r]), rate, self.m
+                    )[-1]
+            age = after + since
+        elif family == "GeneralizedOneRenewal":
+            scale = (1.0 + rate) ** np.array([f.size for f in failures])
+            age = since / scale
+        else:
+            from .ari import ari_reduction
+
+            for r, f in enumerate(failures):
+                if f.size:
+                    lam = np.asarray(self.model.iif(f), dtype=float)
+                    reduction[r] = ari_reduction(lam, rate, self.m)
+            age = np.full(k, np.nan)
+        return UnitStates(
+            units=units,
+            failures=failures,
+            now=now,
+            since_failure=since,
+            after_repair=after,
+            age=age,
+            scale=scale,
+            reduction=reduction,
+        )
+
+    def unit_states(self, age: "ArrayLike | None" = None) -> pd.DataFrame:
+        """
+        Each unit's current state: where the prediction of its next
+        failures (:meth:`next_failure_sf`, :meth:`next_failure_hf`,
+        :func:`surpyval.forecast`) starts from.
+
+        Parameters
+        ----------
+        age : array_like, optional
+            By default the units are the fitted data's items, each at the
+            end of its history (its last row: its end of observation, or
+            its last failure). Give ``age`` for units that have instead
+            run that long since new (or since entry) without a failure.
+
+        Returns
+        -------
+        pandas.DataFrame
+            One row per unit (indexed by the item label), with ``time``,
+            the time now on the model's clock (from new, or from entry
+            for an item with delayed entry); ``failures``, its number of
+            failures so far; ``since_failure``, the time since its last
+            failure (or since new); and the family's state: the
+            ``virtual_age`` now (GRP and ARA; for G1 the time since the
+            last failure on the base lifetime's axis, with the ``scale``
+            ``(1 + q) ** failures`` of its next gap) or the intensity
+            ``reduction`` in force (ARI).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.unit_states(age=[0.0, 4.0])
+           time  failures  since_failure  virtual_age
+        0   0.0         0            0.0          0.0
+        1   4.0         0            4.0          4.0
+        """
+        states = self._states(age)
+        table = pd.DataFrame(
+            {
+                "time": states.now,
+                "failures": states.failure_count,
+                "since_failure": states.since_failure,
+            },
+            index=states.units,
+        )
+        family = self._family()
+        if family == "ARI":
+            table["reduction"] = states.reduction
+        else:
+            table["virtual_age"] = states.age
+        if family == "GeneralizedOneRenewal":
+            table["scale"] = states.scale
+        if states.units is not None:
+            table.index.name = "item"
+        return table
+
+    def _next_failure_hazard(
+        self, states: UnitStates, x: np.ndarray
+    ) -> np.ndarray:
+        """``(units, len(x))``: the cumulative intensity each unit
+        accumulates over ``(now, now + x]`` if it does not fail."""
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            if self._family() == "ARI":
+                now = states.now[:, None]
+                cif = self.model.cif
+                return (
+                    np.asarray(cif(now + x), dtype=float)
+                    - np.asarray(cif(now + 0.0 * x), dtype=float)
+                    - states.reduction[:, None] * x
+                )
+            hazard, _ = _lifetime_functions(self.model)
+            age = states.age[:, None]
+            scaled = x / states.scale[:, None]
+            return hazard(age + scaled) - hazard(age + 0.0 * scaled)
+
+    @staticmethod
+    def _ahead(x: ArrayLike) -> np.ndarray:
+        values = np.asarray(x, dtype=float)
+        if not np.all(values[~np.isnan(values)] >= 0):
+            raise ValueError(
+                "x is time ahead of now, so it cannot be negative; got "
+                "{}".format(values[values < 0][:5])
+            )
+        return values
+
+    def next_failure_sf(
+        self, x: ArrayLike, age: "ArrayLike | None" = None
+    ) -> np.ndarray:
+        """
+        The chance that each unit runs a further ``x`` from now without a
+        failure, given its history: the survival function of the time to
+        its next failure.
+
+        From each unit's current state (:meth:`unit_states`): for the
+        virtual-age models (``GeneralizedRenewal``, ``ARA``) the lifetime
+        distribution's conditional survival from the unit's virtual age
+        now, :math:`S(v + x) / S(v)`; for G1, the same for the base
+        lifetime from the time since the last failure, on the time scale
+        :math:`(1 + q)^j` of the unit's next gap; for ARI,
+        :math:`\\exp(-[\\Lambda_0(t + x) - \\Lambda_0(t) - R\\, x])` with
+        the intensity reduction :math:`R` in force.
+
+        Parameters
+        ----------
+        x : array_like
+            Times ahead of now (at least 0).
+        age : array_like, optional
+            Units that have run this long since new without a failure, in
+            place of the fitted data's items (see :meth:`unit_states`).
+
+        Returns
+        -------
+        numpy.ndarray
+            ``(units, len(x))``, one row per unit (in the order of
+            :meth:`unit_states`); ``(units,)`` for a scalar ``x``.
+
+        Examples
+        --------
+        Under a Weibull lifetime (``alpha = 10``, ``beta = 2``), the
+        chance of 5 more hours without a failure for a new unit and for
+        one that has run 6 hours since new, :math:`e^{-(1.1^2 - 0.6^2)}`:
+
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_sf(5.0, age=[0.0, 6.0]).round(4)
+        array([0.7788, 0.4274])
+
+        For a fitted model, ``age`` is left out and the units are the
+        fitted items, each from the state its own failures left it in.
+        """
+        values = self._ahead(x)
+        states = self._states(age)
+        flat = np.atleast_1d(values).reshape(-1)
+        out = np.exp(-self._next_failure_hazard(states, flat))
+        return out[:, 0] if values.ndim == 0 else out
+
+    def next_failure_hf(
+        self, x: ArrayLike, age: "ArrayLike | None" = None
+    ) -> np.ndarray:
+        """
+        Each unit's intensity a further ``x`` from now, if it has not
+        failed by then: the hazard function of the time to its next
+        failure (its conditional intensity until that failure).
+
+        For the virtual-age models the lifetime hazard at the virtual age
+        :math:`h(v + x)`; for G1 the base hazard on the next gap's time
+        scale, :math:`h_0(s / c + x / c) / c` with :math:`c = (1 + q)^j`;
+        for ARI :math:`\\lambda_0(t + x) - R`. See :meth:`next_failure_sf`
+        for the arguments and the shape of the result.
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import GeneralizedRenewal
+        >>> model = GeneralizedRenewal.fit_from_parameters([10.0, 2.0], 0.5)
+        >>> model.next_failure_hf(0.0, age=[0.0, 5.0]).round(4)
+        array([0. , 0.1])
+        """
+        values = self._ahead(x)
+        states = self._states(age)
+        flat = np.atleast_1d(values).reshape(-1)[None, :]
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            if self._family() == "ARI":
+                out = (
+                    np.asarray(
+                        self.model.iif(states.now[:, None] + flat), dtype=float
+                    )
+                    - states.reduction[:, None]
+                )
+            else:
+                scale = states.scale[:, None]
+                out = (
+                    np.asarray(
+                        self.model.hf(states.age[:, None] + flat / scale),
+                        dtype=float,
+                    )
+                    / scale
+                )
+        return out[:, 0] if values.ndim == 0 else out
+
+    def _simulate_from_states(
+        self,
+        states: UnitStates,
+        until: float,
+        items: int,
+        random_state: Any,
+        tol: float = 1e-8,
+        max_events: int = 10_000,
+    ) -> "tuple[np.ndarray, np.ndarray, np.ndarray]":
+        """Simulate ``items`` futures of every unit from its state, over
+        ``(now, now + until]``. Returns, for each simulated failure, its
+        unit, its replicate and its time ahead of now."""
+        from surpyval.recurrent.simulation import (
+            MAX_EVENTS_WARNING,
+            STALLED_WARNING,
+            simulate_sequences,
+        )
+        from surpyval.utils.rng import as_generator
+
+        k = len(states.now)
+        rows = np.repeat(np.arange(k), items)
+        run = simulate_sequences(
+            self._sampler_factory(self, rows.size, states.take(rows)),
+            rows.size,
+            as_generator(random_state),
+            close=np.full(rows.size, float(until)),
+            tol=tol,
+            max_events=max_events,
+        )
+        if run.stalled:
+            warnings.warn(STALLED_WARNING, stacklevel=3)
+        if run.hit_max_events:
+            warnings.warn(MAX_EVENTS_WARNING.format(max_events), stacklevel=3)
+        failed = run.c == 0
+        sequence = run.i[failed]
+        return rows[sequence], sequence % items, run.x[failed]
 
     def __repr__(self) -> str:
         title = f"{self.kind} SurPyval Model"

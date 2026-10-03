@@ -18,8 +18,8 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    measure_from_entry,
     reject_gapped_observation,
-    reject_left_truncation,
     validate_lifetime_dist,
     validate_memory,
     validate_renewal_censoring,
@@ -150,7 +150,9 @@ class ARA(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
+        if state is not None:
+            return ARA._state_sampler(model, state)
         rho = model.rho
         # The arrival times so far, discounted over the last m of them.
         memory = DiscountedMemory(n, rho, model.m)
@@ -162,6 +164,29 @@ class ARA(RenewalFitMixin):
             gap = conditional_gaps(model.model, age, u)
             arrival = latest + gap
             last_arrival[idx] = arrival
+            memory.record(idx, arrival)
+            return gap
+
+        return step
+
+    @staticmethod
+    def _state_sampler(model: Any, state: Any) -> Callable:
+        """The sampler of sequences that start from units' current states
+        (``UnitStates``): the memory holds each unit's own failure times,
+        and its first gap is its residual life from its virtual age
+        now."""
+        rho = model.rho
+        memory = DiscountedMemory.from_history(state.failures, rho, model.m)
+        last_arrival = np.array(state.now - state.since_failure, dtype=float)
+        since = np.array(state.since_failure, dtype=float)
+
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            latest = last_arrival[idx] + since[idx]
+            age = latest - rho * memory.value(idx)
+            gap = conditional_gaps(model.model, age, u)
+            arrival = latest + gap
+            last_arrival[idx] = arrival
+            since[idx] = 0.0
             memory.record(idx, arrival)
             return gap
 
@@ -250,6 +275,9 @@ class ARA(RenewalFitMixin):
 
         data : RecurrentEventData
             Data containing the recurrence details.
+            An item with delayed entry (a ``tl``) is taken to be as
+            new at entry, with its times counted from there (see
+            :meth:`fit`).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         m : int or float, optional
@@ -267,8 +295,9 @@ class ARA(RenewalFitMixin):
         validate_lifetime_dist(dist, type(self).__name__)
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
-        reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # Delayed entry: as new at entry (#615).
+        data = measure_from_entry(data, type(self).__name__)
         validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
@@ -304,6 +333,7 @@ class ARA(RenewalFitMixin):
         dist: Any = Weibull,
         m: "int | float" = 1,
         init: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
     ) -> "RenewalModel":
         """
         Fit the ARA model.
@@ -330,6 +360,15 @@ class ARA(RenewalFitMixin):
             Default is 1 (equivalent to Kijima-I).
         init : list, optional
             Initial parameters ``[rho, *dist_params]`` for the optimizer.
+        tl : array_like or scalar, optional
+            Delayed entry: the time each item's observation began, when
+            its failures before then were not recorded (a scalar for every
+            item, or one value per row, the same on every row of an item).
+            The item is taken to be **as new at entry** -- virtual age 0 at
+            ``tl``, as after an overhaul -- so its times count from there
+            and its history before entry plays no part. That is exact for
+            an item renewed at entry and an assumption otherwise; the
+            fitted model's ``data`` hold the times from entry.
 
         Returns
         -------
@@ -355,7 +394,7 @@ class ARA(RenewalFitMixin):
         >>> round(float(model.rho), 3)
         1.0
         """
-        data = handle_xicn(x, i, c, n)
+        data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, dist, m, init=init)
 
     def fit_from_parameters(
