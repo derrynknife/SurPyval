@@ -1277,3 +1277,33 @@ def test_604_cox_aliased_coefficient_is_not_counted():
         doubled = CoxPH.fit(x, np.column_stack([Z, Z[:, 0]]), c=c)
     # R's logLik.coxph counts sum(!is.na(coef))
     assert doubled.aic() == pytest.approx(model.aic(), rel=1e-10)
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("seed", range(6))
+def test_551_information_operator_is_the_generators(ties, seed):
+    # CoxInformation gives the information as Z' (M Z): the generators'
+    # matrix, with ties, counts and delayed entry.
+    from surpyval.univariate.regression.proportional_hazards import (
+        cox_likelihood as cl,
+    )
+
+    rng = np.random.default_rng(seed)
+    N, p = 150, 3
+    Z = rng.normal(size=(N, p))
+    beta = rng.normal(size=p) * 0.5
+    x = (
+        np.ceil(rng.exponential(1, N) * 4) / 4
+        if seed % 2
+        else rng.exponential(1, N)
+    )
+    c = (rng.uniform(size=N) < 0.3).astype(int)
+    n = rng.integers(1, 4, N).astype(float)
+    tl = np.full(N, -np.inf)
+    if seed >= 3:
+        tl = np.where(rng.uniform(size=N) < 0.5, -np.inf, 0.5 * x)
+    _, jac_hess = CoxPH._resolve_func_generator(ties)(x, Z, c, n, tl)
+    info = cl.CoxInformation(x, c, n, Z @ beta, ties, tl=tl)
+    np.testing.assert_allclose(
+        Z.T @ info.apply(Z), jac_hess(beta)[1], rtol=1e-12, atol=1e-12
+    )

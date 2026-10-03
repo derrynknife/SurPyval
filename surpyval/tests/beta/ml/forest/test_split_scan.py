@@ -10,9 +10,11 @@ likelihood terms sliced to the child, bit for bit what it did on a new
 subset.
 
 ``log_rank_split`` scores every threshold of a feature from cumulative
-at-risk and death counts in one pass; it must reproduce, bit for bit, the
-statistic :func:`log_rank` computes for each candidate subset, and so
-choose exactly the same split, ties included.
+at-risk and death counts in one pass; on a small node it must reproduce,
+bit for bit, the statistic :func:`log_rank` computes for each candidate
+subset, and so choose exactly the same split, ties included. A large node
+is scored in O(N log N) from the same sums taken in another order (#549):
+the statistics to rounding, the undefined ones exactly.
 """
 
 import numpy as np
@@ -103,6 +105,80 @@ def test_scan_statistics_bit_identical(seed, block, monkeypatch):
     np.testing.assert_array_equal(
         scan, np.where(np.isnan(direct), -np.inf, direct)
     )
+
+
+def _large_case(seed, N=600):
+    # Big enough for the sorted scan; ties, counts and delayed entry as
+    # in _case.
+    rng = np.random.default_rng(seed)
+    Z = rng.uniform(0, 1, (N, 2))
+    if seed % 3 == 0:
+        Z = np.round(Z * 8) / 8
+    x = rng.exponential(10, N) * np.exp(Z[:, 0])
+    if seed % 2 == 0:
+        x = np.round(x) + 1
+    c = (rng.uniform(size=N) < 0.3).astype(int)
+    if seed % 5 == 0:
+        # Every early row censored: left children wholly at risk at the
+        # first deaths (some variances exactly zero)
+        c[x < np.quantile(x, 0.3)] = 1
+    n = rng.integers(1, 4, N) if seed % 7 == 0 else None
+    t = None
+    if seed % 4 == 1:
+        tl = rng.uniform(0, 0.8, N) * x
+        tl[rng.uniform(size=N) < 0.5] = 0
+        t = np.column_stack([tl, np.full(N, np.inf)])
+    return SurpyvalData(x, c, n, t, group_and_sort=False), Z
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_549_sorted_scan_matches_log_rank(seed):
+    # The O(N log N) scan of a large node gives log_rank's statistic for
+    # every threshold to rounding, and exactly the same undefined ones.
+    import surpyval.beta.ml.forest.log_rank_split as module
+
+    data, Z = _large_case(seed)
+    Z_u = Z[:, 0]
+    values = np.unique(Z_u)[:-1]
+    order = np.argsort(Z_u, kind="stable")
+    n_left = np.searchsorted(Z_u[order], values, side="right")
+    scan = _LogRankScan(data)
+    assert scan.sortable
+    got = module._sorted_statistics(scan, order, n_left)
+    direct = np.array([log_rank(0, v, data, Z) for v in values])
+    defined = np.isfinite(direct)
+    np.testing.assert_array_equal(np.isfinite(got), defined)
+    scale = np.abs(direct[defined]).max()
+    np.testing.assert_allclose(
+        got[defined], direct[defined], rtol=0, atol=1e-11 * scale
+    )
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_549_sorted_scan_same_split(seed):
+    data, Z = _large_case(seed, N=300)
+    new = log_rank_split(data, Z, 5, 2, [0, 1])
+    old = reference_log_rank_split(data, Z, 5, 2, [0, 1])
+    assert (int(new[0]), float(new[1])) == (int(old[0]), float(old[1]))
+
+
+def test_549_large_node_is_not_scanned_densely(monkeypatch):
+    # The dense scan holds a (rows x event times) matrix per threshold
+    # block: quadratic in the node's size, 485 s for a 20-tree forest of
+    # 10,000 rows. A large node is scored without it.
+    import surpyval.beta.ml.forest.log_rank_split as module
+
+    sizes = []
+    dense = module._LogRankScan._left_counts
+
+    def recording(self, order, n_left):
+        sizes.append(int(n_left.max()) * int(self.keep.sum()))
+        return dense(self, order, n_left)
+
+    monkeypatch.setattr(module._LogRankScan, "_left_counts", recording)
+    data, Z = _large_case(3, N=2000)
+    log_rank_split(data, Z, 5, 2, [0, 1])
+    assert max(sizes, default=0) <= module._DENSE_LIMIT
 
 
 # ---------------------------------------------------------------------------
@@ -226,3 +302,41 @@ def test_other_data_slices_the_node_terms_bit_for_bit(model, kind):
     assert dev.deviance_split(
         data, Z, 5, 2, [0, 1], model=model
     ) == reference_deviance_split(data, Z, 5, 2, [0, 1], model)
+
+
+@pytest.mark.parametrize("model", ["exponential", "weibull"])
+def test_549_one_pass_per_node(model, monkeypatch):
+    # The node's own maximum and every feature's children are found in
+    # one pass, where the node and each feature took one of their own.
+    data, Z = _deviance_case(3)
+    Z = np.column_stack([Z, Z[:, ::-1]])
+    calls = []
+    closed = dev._ChildLikelihoods._closed_lls
+
+    def spy(self, rows):
+        calls.append(rows.shape[0])
+        return closed(self, rows)
+
+    monkeypatch.setattr(dev._ChildLikelihoods, "_closed_lls", spy)
+    got = dev.deviance_split(data, Z, 5, 2, [0, 1, 2, 3], model=model)
+    assert len(calls) == 1
+    monkeypatch.undo()
+    assert got == reference_deviance_split(data, Z, 5, 2, [0, 1, 2, 3], model)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_549_weibull_children_from_their_own_rows(seed):
+    # Each child's profile likelihood sums over its own rows only: the
+    # same maximum as the bounded optimiser on that child, and as the
+    # profile on a (children x rows) matrix gave, to the last digits.
+    data, Z = _deviance_case(seed)
+    theta0 = dev._exp_theta0(data)
+    search = dev._ChildLikelihoods(data, "weibull", theta0)
+    masks = np.array([Z[:, 0] <= v for v in np.quantile(Z[:, 0], [0.3, 0.6])])
+    rows = np.concatenate([masks, ~masks])
+    got, theta = search._weibull(rows)
+    for j, mask in enumerate(rows):
+        child = data[mask]
+        mle = sp.Weibull.fit(child.x, child.c, child.n)
+        np.testing.assert_allclose(np.exp(theta[j]), mle.params, rtol=1e-5)
+        assert got[j] >= -mle.neg_ll() - 1e-9 * abs(mle.neg_ll())

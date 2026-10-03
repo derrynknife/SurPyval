@@ -789,7 +789,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
             "trees": [tree.to_dict() for tree in self.trees],
         }
         serialise_covariate_meta(self, out)
-        return stamp_schema(out)
+        # The trees are finished dictionaries already (#549)
+        return stamp_schema(out, stamped=True)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "RandomSurvivalForest":

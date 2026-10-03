@@ -3319,7 +3319,10 @@ profile of the integrated likelihood. This is the fit of R's
 ``coxph(Surv(time, status) ~ ... + frailty(id, dist = "gamma"))``, with
 Efron's ties by default (``tie_method="breslow"`` for Breslow's); on the
 kidney data it gives R's coefficients, standard errors, frailties and
-I-likelihood:
+I-likelihood. The standard errors are R's ``sparse = FALSE`` ones, from the
+full information in the coefficients and every group's frailty, found
+without forming it (a Schur complement, solved by conjugate gradients), so
+they cost little more than the fit even with many thousands of groups:
 
 .. jupyter-execute::
 
@@ -3696,8 +3699,11 @@ parametric leaves and handles left and interval censoring and truncation. On
 observed and right-censored data like these its split search costs the same
 order as the log-rank's, because each candidate child's Weibull maximum
 likelihood is found directly (the scale in closed form, the shape from the
-one-dimensional profile likelihood); its leaves are Weibull fits, made when
-the forest first predicts. With left or interval censoring or truncation every
+one-dimensional profile likelihood, every child of a node in one pass); its
+leaves are Weibull fits, all of a tree's found together as the tree is grown.
+The log-rank split of a large node is scored from sorted counts, so a
+non-parametric forest's cost grows as :math:`n \log n`, not :math:`n^2`.
+With left or interval censoring or truncation every
 candidate needs an optimiser, and it is much slower. Fitted trees and forests
 serialise like every other model (next section).
 

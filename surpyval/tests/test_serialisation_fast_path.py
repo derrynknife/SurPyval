@@ -228,9 +228,12 @@ def capture_encoder_input(monkeypatch):
     captured = []
     real = ser.encode_non_finite
 
-    def capturing(model_dict):
+    def capturing(model_dict, stamped=False):
+        # A tree or forest takes its finished leaves or trees as they are
+        # (stamped=True, #549); the old encoder walks them again, to the
+        # same document.
         captured.append(copy.deepcopy(model_dict))
-        return real(model_dict)
+        return real(model_dict, stamped=stamped)
 
     monkeypatch.setattr(ser, "encode_non_finite", capturing)
     return captured

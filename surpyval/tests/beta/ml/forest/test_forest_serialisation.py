@@ -171,3 +171,64 @@ def test_parametric_offset_to_dict_is_bson_native():
         Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0, 8.0], offset=True),
     ):
         _assert_bson_native(model.to_dict())
+
+
+def test_549_each_document_is_stamped_once(monkeypatch):
+    # A leaf's dictionary is finished by its own to_dict; the tree's and
+    # the forest's take it as it is rather than walking it again (three
+    # walks of every leaf, 7 s of saving a 20-tree forest of 10,000 rows),
+    # for the same document.
+    import surpyval.beta.ml.forest.forest as forest_module
+    import surpyval.beta.ml.forest.tree as tree_module
+    import surpyval.serialisation as ser
+
+    x, Z, c = _data(1, n=150)
+    forest = RandomSurvivalForest.fit(
+        x=x, Z=Z, c=c, n_trees=3, kind="weibull", random_state=0
+    )
+    walked = []
+    encode = ser._encode
+
+    def spy(value, pointer, found, *args):
+        if pointer.endswith("/params"):
+            walked.append(pointer)
+        return encode(value, pointer, found, *args)
+
+    monkeypatch.setattr(ser, "_encode", spy)
+    document = forest.to_dict()
+    monkeypatch.undo()
+    leaves = sum(
+        json.dumps(tree).count('"node": "terminal"')
+        for tree in document["trees"]
+    )
+    assert len(walked) == leaves
+
+    # The same bytes as walking everything, as stamp_schema always did
+    def walk_all(model_dict, stamped=False):
+        return ser.stamp_schema(model_dict)
+
+    monkeypatch.setattr(forest_module, "stamp_schema", walk_all)
+    monkeypatch.setattr(tree_module, "stamp_schema", walk_all)
+    assert json.dumps(forest.to_dict()) == json.dumps(document)
+
+
+def test_549_stamped_document_matches_a_full_walk():
+    # Nested finished dictionaries with records of their own, and
+    # non-finite values in the outer document: the outer record and
+    # schema are what walking everything gives.
+    import copy
+
+    from surpyval.serialisation import stamp_schema
+
+    inner = stamp_schema({"H": [0.5, np.inf], "x": np.array([1.0, np.nan])})
+    plain = stamp_schema({"params": [1.0, 2.0]})
+    outer = {
+        "a": np.float64(np.inf),
+        "nodes": [{"leaf": inner}, {"leaf": plain, "p": np.nan}],
+    }
+    walked = stamp_schema(copy.deepcopy(outer))
+    stamped = stamp_schema(copy.deepcopy(outer), stamped=True)
+    assert json.dumps(stamped) == json.dumps(walked)
+    assert stamped["schema"] == 2
+    lone = {"nodes": [{"leaf": copy.deepcopy(plain)}]}
+    assert stamp_schema(lone, stamped=True)["schema"] == 1

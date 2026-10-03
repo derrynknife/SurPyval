@@ -1,3 +1,4 @@
+from copy import deepcopy
 from math import log2, sqrt
 from typing import Any
 
@@ -11,6 +12,7 @@ from surpyval.beta.ml.forest.node import (
     IntermediateNode,
     Node,
     build_tree,
+    fit_leaves,
     node_from_dict,
     tree_lines,
 )
@@ -179,6 +181,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         self.formula: str | None = None
         self._model_spec: Any = None
         self.data, self.Z = drop_missing_covariate_rows(data, Z_in)
+        if self.data is data:
+            # The leaves keep the rows they are given without copying
+            # them, so the tree holds its own copy of the caller's data.
+            self.data = deepcopy(data)
 
         n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]
@@ -203,6 +209,9 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             alpha_split=self.alpha_split,
             min_split_gain=self.min_split_gain,
         )
+        # The parametric leaves all at once, rather than one by one on
+        # first use (#549)
+        fit_leaves(self._root)
 
     @classmethod
     def fit(
@@ -522,7 +531,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             "root": self._root.to_dict(),
         }
         serialise_covariate_meta(self, out)
-        return stamp_schema(out)
+        # The leaves are finished model dictionaries already (#549)
+        return stamp_schema(out, stamped=True)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SurvivalTree":
