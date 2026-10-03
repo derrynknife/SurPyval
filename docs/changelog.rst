@@ -1,6 +1,28 @@
 Changelog
 =========
 
+v0.23 (unreleased)
+------------------
+
+- **Faster accelerated-degradation sampling (#585).**
+  ``DegradationModel.qf`` and ``random`` on an accelerated model searched
+  for each probability on its own, calling the regression model's ``sf``
+  about 35 times per draw: ``random(5000)`` took 13 s. All probabilities
+  are now bisected together, with the same brackets and tolerance: 8 ms,
+  and the draws are identical.
+- **Faster process-model quantiles (#585).** The Wiener and gamma process
+  models' ``qf``, the gamma process's ``random`` and ``predict_rul`` ran
+  one ``brentq`` per probability (Wiener ``qf`` of 5,000 probabilities:
+  3.2 s); they are now solved together to ``brentq``'s tolerance in 11 ms,
+  agreeing to 1e-11. A gamma process's ``qf`` of a probability below its
+  bracket (e.g. ``1e-300``) raised ``ValueError``; it now returns the
+  quantile.
+- **Faster PH sampling at tiny hazard multipliers (#585).** Draws whose
+  quantile rounds to ``inf`` were each solved by their own ``brentq``
+  (``GammaPH.random(2000)`` at ``z = -60``: 20.7 s); they are solved
+  together in 0.03 s. A draw beyond the largest float is now ``inf``, as
+  ``qf`` gives, instead of raising ``ValueError``.
+
 v0.22 (3 October 2026)
 ----------------------
 
