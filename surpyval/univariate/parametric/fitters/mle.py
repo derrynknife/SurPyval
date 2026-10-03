@@ -260,17 +260,20 @@ class _Judge(NamedTuple):
     init: npt.NDArray
     floor: Any
     obj_scale: float
-    #: ``(natural, bounds, free, edge)``: the map from the search vector
-    #: to the full vector of natural parameters, their bounds, the
+    #: ``(natural, bounds, free, edge, corner)``: the map from the search
+    #: vector to the full vector of natural parameters, their bounds, the
     #: position in it of each searched (free) parameter, and the positions
     #: of those at an edge where the likelihood is unbounded at a point of
-    #: the search (see ``_space``).
+    #: the search: a family's own edges, and an offset run onto the first
+    #: failure (see ``_space``).
     space: tuple
     #: The runaways found while watching a search, by the point's bytes.
     found: dict
     #: The negative log-likelihood of the family's limit as an offset
     #: runs to -inf, fitted to the data, or ``None`` (``_offset_limit``).
     limit: Callable[[], "float | None"]
+    #: The model being fitted.
+    model: Any = None
 
     def watch(self) -> Callable[[npt.NDArray], None]:
         """A BFGS callback that checks its iterates for a runaway
@@ -319,7 +322,7 @@ class _Judge(NamedTuple):
           no maximum there check it themselves (``_warn_if_at_limit``,
           ``_warn_if_offset_at_limit``).
         """
-        natural, bounds, free, _ = self.space
+        natural, bounds, free = self.space[:3]
         size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
 
         def keep(j: int, slope: float) -> bool:
@@ -371,6 +374,57 @@ class _Judge(NamedTuple):
             here = float(self.fun(x, *self.args))
         return bool(limit <= here)
 
+    def corner(self, x: npt.NDArray) -> "OptimizeResult | None":
+        """Where a search that stopped short of a verified maximum at
+        ``x`` is going, if that is onto the first failure with the offset
+        (#622): the result to end the search with, else ``None``.
+
+        That is ``x`` itself where its offset is already there and the
+        density at its origin is not finite and positive
+        (``_offset_corner``): the likelihood is unbounded there. And it is
+        the point on the first failure with the other parameters as at
+        ``x`` (within half the distance ``_offset_corner`` allows), where
+        the search has moved the offset up from its start with a density
+        infinite at its origin (a Weibull, Gamma or LogLogistic shape
+        below 1) and the likelihood there is higher than at ``x``: the
+        search was stopped on its way there by the steepening rise (BFGS's
+        line search fails on it), and with such a density the likelihood
+        of data without truncation keeps rising as the offset moves up
+        however the other parameters are set (each density, survival and
+        interval term rises as its point moves towards the origin), so
+        the corner is where the search goes and the rest of the ladder
+        took it there in 5,000 to 15,000 evaluations. An interior maximum
+        has a shape above 1, where the first rung's search does not stop
+        on its way into the corner."""
+        natural, _, free = self.space[:3]
+        if not self.args[0] or 0 not in free:
+            return None
+        model = self.model
+        if self.space[4](x):
+            with np.errstate(all="ignore"):
+                f = float(self.fun(x, *self.args))
+            return OptimizeResult(x=x, fun=f, success=False, message="")
+        gap = model.dist._first_failure_gap(model.surv_data)
+        if gap is None:
+            return None
+        x1, close = gap
+        with np.errstate(all="ignore"):
+            values = np.array(natural(x), dtype=float)
+            start = float(natural(self.init)[0])
+            core = values[1 : 1 + len(model.dist.parameter_names)]
+            f0 = float(np.asarray(model.dist.df(np.array([0.0]), *core))[0])
+        if not (np.isposinf(f0) and start < values[0] < x1):
+            return None
+        values[0] = x1 - 0.5 * close
+        u = np.asarray(model.fitting_info["transform"](values), dtype=float)
+        u = u[free]
+        with np.errstate(all="ignore"):
+            f_x = float(self.fun(x, *self.args))
+            f_u = float(self.fun(u, *self.args))
+        if not (np.all(np.isfinite(u)) and f_u < f_x):
+            return None
+        return OptimizeResult(x=u, fun=f_u, success=False, message="")
+
     def on_bounds(self, x: npt.NDArray) -> _OnBounds:
         """The parameters at ``x`` on a bound of a range bounded at both
         ends (a limited-failure ``p`` of 1, a zero-inflation ``f0`` of 0),
@@ -390,7 +444,7 @@ class _Judge(NamedTuple):
         it), and the likelihood rises off the bound where it is higher
         (beyond rounding) a millionth of the range into it, the other
         parameters as they are."""
-        natural, bounds, free, _ = self.space
+        natural, bounds, free = self.space[:3]
         offset, lfp, zi = self.args[:3]
         if not any(None not in bounds[i] for i in free):
             # No parameter has a range bounded at both ends
@@ -525,7 +579,18 @@ def _space(model: "Parametric") -> tuple:
         at = model.dist._at_unbounded_edge(model.surv_data, values)
         return tuple(k for k, i in enumerate(free) if names[i] in at)
 
-    return natural, model.bounds, free, edge
+    def corner(u: npt.NDArray) -> tuple[int, ...]:
+        # The offset's position in the search vector, where it has run
+        # onto the first failure (``_offset_corner``)
+        if not model.offset or 0 not in free:
+            return ()
+        with np.errstate(all="ignore"):
+            values = natural(u)
+        core = values[1 : 1 + len(model.dist.parameter_names)]
+        at = model.dist._offset_corner(model.surv_data, values[0], core)
+        return (0,) if at is not None else ()
+
+    return natural, model.bounds, free, edge, corner
 
 
 def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
@@ -558,6 +623,16 @@ def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
         return kept[0]
 
     return neg_ll
+
+
+def _infinite_at_edge(res: Any, judge: _Judge) -> bool:
+    """Whether a search's result with an infinite likelihood (a negative
+    log-likelihood of ``-inf``) stopped with its offset run onto the first
+    failure (``_offset_corner``), where a density infinite at its origin
+    is evaluated."""
+    if not (np.all(np.isfinite(res.x)) and np.isneginf(res.fun)):
+        return False
+    return bool(judge.space[4](res.x))
 
 
 def _search(
@@ -641,6 +716,7 @@ def _search(
         _space(model),
         {},
         _offset_limit(model),
+        model,
     )
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]
@@ -657,11 +733,20 @@ def _search(
                 judge.watch() if not checked else None,
             )
             if not _usable(res):
+                if not checked and _infinite_at_edge(res, judge):
+                    # The first search ran onto the first failure, where
+                    # the likelihood is infinite (#622; see
+                    # ``_Judge.corner``)
+                    best_result, best_method, best = res, method, -np.inf
+                    runaway = (0,)
+                    break
                 continue
             if res.success and first_success is None:
                 first_success = (res, method)
             if res.fun < best:
                 best_result, best_method, best = res, method, res.fun
+        if runaway:
+            break
         if best_result is None:
             continue
         # After the first rung that stops short of a verified maximum: is
@@ -671,8 +756,13 @@ def _search(
         verified, runaway = judge.verdict(
             best_result.x, not checked or judge.toward_limit(best_result.x)
         )
-        checked = True
+        first, checked = not checked, True
         if verified or runaway:
+            break
+        # Or onto the first failure with the offset (#622)
+        corner = judge.corner(best_result.x) if first else None
+        if corner is not None:
+            best_result, runaway = corner, (0,)
             break
 
     # The ladder ran out with the best point reached no better than the

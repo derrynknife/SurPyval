@@ -259,3 +259,46 @@ def test_616_offset_mps_weibull_finds_its_optimum():
     gumbel = sp.Gumbel.fit(X_599, C_599, N_599, how="MPS")
     assert model.res.success
     assert model.res.fun < gumbel.res.fun
+
+
+def _count_evaluations(monkeypatch):
+    """A list whose length is the number of likelihood evaluations."""
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+
+    calls = []
+    neg_ll = ParametricFitter._neg_ll_func
+
+    def counted(self, *args, **kwargs):
+        calls.append(1)
+        return neg_ll(self, *args, **kwargs)
+
+    monkeypatch.setattr(ParametricFitter, "_neg_ll_func", counted)
+    return calls
+
+
+# A Weibull of shape 0.8 offset by 5: no interior maximum
+X_SHAPE_08 = 5 + sp.Weibull.random(
+    30, 10, 0.8, random_state=np.random.default_rng(0)
+)
+
+
+@pytest.mark.parametrize("x", [X, X_SHAPE_08], ids=["487", "shape-0.8"])
+@pytest.mark.parametrize("dist", [sp.Weibull, sp.Gamma, sp.LogLogistic])
+def test_622_a_run_into_the_first_failure_ends_quickly(dist, x, monkeypatch):
+    # The first search stops on its way onto the first failure with a
+    # shape below 1 (BFGS's line search fails on the steepening rise), or
+    # there. The rest of the ladder then took it into the corner: 4,700
+    # to 15,000 likelihood evaluations and 2-6 s, ending "No finite
+    # maximum", "unverified" or "MLE Failed" as the last rung happened to
+    # stop. Now the search ends there, with one warning.
+    calls = _count_evaluations(monkeypatch)
+    model, rec = _fit(dist, x=x)
+    assert len(calls) < 500
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    assert str(rec[0].message).startswith(NO_MAXIMUM)
+    assert "how='MPS'" in str(rec[0].message)
+    assert rec[0].filename == __file__
+    assert model.maximum == "no finite maximum"
+    assert model.gamma == pytest.approx(np.min(x), abs=1e-6)
