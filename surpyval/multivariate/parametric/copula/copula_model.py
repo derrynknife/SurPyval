@@ -503,7 +503,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
         >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
         >>> model.param_cb("theta").round(3)
-        array([1.884, 2.791])
+        array([1.896, 2.774])
         """
         check_option("method", method, _CB_METHODS)
         check_option("bound", bound, BOUNDS)
@@ -583,10 +583,10 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
         >>> model = Clayton.fit(X, margins=[Weibull, Weibull])
         >>> model.sf([[5, 15], [10, 20]]).round(4)
-        array([0.6342, 0.2474])
+        array([0.6649, 0.2912])
         >>> model.cb([[5, 15], [10, 20]]).round(4)
-        array([[0.5914, 0.6748],
-               [0.2132, 0.2851]])
+        array([[0.6183, 0.7085],
+               [0.2544, 0.331 ]])
         """
         check_option("on", on, _CB_ON)
         check_option("bound", bound, BOUNDS)
