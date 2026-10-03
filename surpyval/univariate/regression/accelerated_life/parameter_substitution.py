@@ -66,7 +66,10 @@ def _search(
 
 
 def _coefficient_units(
-    fitter: Any, fixed: dict, phi_param_map: dict, Z: npt.ArrayLike
+    fitter: Any,
+    fixed: dict,
+    phi_param_map: dict,
+    Z: "npt.ArrayLike | None",
 ) -> npt.NDArray:
     """The search's ``floor``: each free life-model parameter that is a
     column's coefficient (``LifeModel.coefficient_columns``) in its
@@ -98,6 +101,13 @@ class ParameterSubstitutionFitter(
     and Gamma (``beta``). Create one with
     ``AcceleratedLife(distribution, life_model)`` rather than directly.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "accelerated life fitter"
+    name_suffix = "AL"
+
+    def _repr_details(self) -> "list[str]":
+        return [*super()._repr_details(), self.life_model.name + " life model"]
 
     def __init__(
         self,

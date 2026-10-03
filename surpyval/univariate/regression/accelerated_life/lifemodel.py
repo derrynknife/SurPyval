@@ -2,8 +2,10 @@ from abc import ABC, abstractmethod
 
 from numpy import ndarray
 
+from surpyval.utils.fitter_repr import FitterRepr
 
-class LifeModel(ABC):
+
+class LifeModel(FitterRepr, ABC):
     """
     Base class for the stress-life relationships used by
     ``AcceleratedLife``: a function :math:`L(Z)` giving the life parameter
@@ -37,6 +39,9 @@ class LifeModel(ABC):
     >>> Power.phi(np.array([1.0, 2.0, 4.0]), 1000.0, -2.0)
     array([1000.  ,  250.  ,   62.5])
     """
+
+    #: The ``repr``: ``Power: life model`` (#614)
+    fitter_kind = "life model"
 
     #: The number of stress columns ``Z`` has (``None`` when it depends on
     #: the data, as for ``GeneralLogLinear``). Lets a single 1-D row

@@ -117,6 +117,10 @@ class ProportionalHazardsFitter(
     array([10.15 ,  2.081,  0.604])
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional hazards fitter"
+    name_suffix = "PH"
+
     def __init__(
         self,
         name: str,

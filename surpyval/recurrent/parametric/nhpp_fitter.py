@@ -90,6 +90,9 @@ def nhpp_log_likelihood(
 
 
 class NHPPFitter(IntensityModel):
+
+    #: The ``repr`` (#614)
+    fitter_kind = "non-homogeneous Poisson process fitter"
     #: Natural-space parameter bounds, set by each concrete intensity model.
     bounds: tuple
 

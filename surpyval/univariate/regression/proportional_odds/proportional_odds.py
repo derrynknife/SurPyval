@@ -89,6 +89,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -1074,7 +1075,7 @@ class ProportionalOddsModel(
         return out
 
 
-class ProportionalOdds_:
+class ProportionalOdds_(FitterRepr):
     """
     The semi-parametric proportional odds model: the covariates multiply
     the survival odds of a baseline left to the data,
@@ -1092,6 +1093,9 @@ class ProportionalOdds_:
     ``ProportionalOdds`` is an instance of this class; its ``fit``
     returns a :class:`ProportionalOddsModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric proportional odds fitter"
 
     def fit(
         self,

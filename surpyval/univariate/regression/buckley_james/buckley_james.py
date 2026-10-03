@@ -48,6 +48,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import finite_covariate_mask
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -533,7 +534,7 @@ class BuckleyJamesModel(
         return "\n".join(lines)
 
 
-class BuckleyJames_:
+class BuckleyJames_(FitterRepr):
     """
     The Buckley-James semi-parametric accelerated failure time estimator:
     a least-squares regression of :math:`\\log x` on the covariates in
@@ -548,6 +549,9 @@ class BuckleyJames_:
     its ``fit`` returns a
     :class:`~surpyval.univariate.regression.buckley_james.buckley_james.BuckleyJamesModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric accelerated failure time fitter"
 
     def fit(
         self,

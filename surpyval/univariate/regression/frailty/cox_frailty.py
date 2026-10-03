@@ -53,6 +53,7 @@ from surpyval.serialisation import (
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -453,7 +454,7 @@ class _CoxFrailtyEM:
         return float(theta**2 / curvature)
 
 
-class CoxFrailtyFitter:
+class CoxFrailtyFitter(FitterRepr):
     """
     The shared gamma frailty model with a Cox (unspecified) baseline: the
     semi-parametric counterpart of :func:`~surpyval.Frailty`, as ``CoxPH``
@@ -468,6 +469,12 @@ class CoxFrailtyFitter:
     which gives R's ``coxph(Surv(time, status) ~ ... + frailty(id, dist =
     "gamma"))`` (see :meth:`fit`). ``CoxFrailty`` is an instance.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric shared frailty fitter"
+
+    def _repr_name(self) -> str:
+        return "CoxFrailty"
 
     def fit(
         self,

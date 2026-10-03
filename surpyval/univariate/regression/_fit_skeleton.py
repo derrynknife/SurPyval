@@ -41,6 +41,7 @@ from surpyval.utils import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -130,10 +131,12 @@ def _objective(
     return fitter.neg_ll(data, *inv_trans(const(params)))
 
 
-class MirroredDistributionAttrs:
+class MirroredDistributionAttrs(FitterRepr):
     """Class-level declarations for the attributes
     :func:`mirror_distribution` sets, so a fitter that inherits this
-    alongside its other mixins has them visible to the type checker."""
+    alongside its other mixins has them visible to the type checker; and
+    the fitter's ``repr``, ``WeibullAFT: accelerated failure time fitter
+    (Weibull baseline)`` (#614)."""
 
     dist: Any
     k_dist: int
@@ -144,6 +147,18 @@ class MirroredDistributionAttrs:
     # The pre-0.22 name of ``parameter_names``: reads it for one release,
     # with a DeprecationWarning.
     param_names = RenamedAttribute("parameter_names")
+    #: The end of the public name of a family's fitter after its
+    #: distribution's, for a fitter without a ``name`` (``WeibullAFT``).
+    name_suffix: str = ""
+
+    def _repr_name(self) -> str:
+        name = getattr(self, "name", None)
+        if isinstance(name, str) and name:
+            return name
+        return str(getattr(self.dist, "name", "")) + self.name_suffix
+
+    def _repr_details(self) -> "list[str]":
+        return baseline_name(self)
 
 
 def mirror_distribution(fitter: Any, distribution: Any) -> None:

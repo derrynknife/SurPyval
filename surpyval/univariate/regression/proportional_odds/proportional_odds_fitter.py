@@ -57,6 +57,10 @@ class ProportionalOddsFitter(
     ``PO`` factory.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional odds fitter"
+    name_suffix = "PO"
+
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
         self.Hf_dist = distribution.Hf

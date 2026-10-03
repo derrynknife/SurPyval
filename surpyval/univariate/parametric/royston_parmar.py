@@ -56,6 +56,7 @@ from surpyval.univariate.information_criteria import (
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import ArrayMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -566,7 +567,7 @@ class _SplineNegLL:
         return -ll
 
 
-class RoystonParmar_(UnivariateDataFrameMixin):
+class RoystonParmar_(FitterRepr, UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
 
@@ -585,6 +586,9 @@ class RoystonParmar_(UnivariateDataFrameMixin):
     >>> model.sf([5, 10]).round(4)
     array([0.8029, 0.4131])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "flexible parametric (spline) fitter"
 
     def fit(
         self,

@@ -55,6 +55,7 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -493,7 +494,7 @@ class AdditiveHazardsModel(
         return self._covariance
 
 
-class AdditiveHazards_:
+class AdditiveHazards_(FitterRepr):
     """
     The Lin & Ying semi-parametric additive hazards model: the covariates
     *add* a constant risk difference to a baseline hazard that is left to
@@ -508,6 +509,9 @@ class AdditiveHazards_:
     :class:`~surpyval.univariate.regression.additive_hazards.additive_hazards.AdditiveHazardsModel`.
     For a parametric baseline see the ``AH`` family.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric additive hazards fitter"
 
     def fit(
         self,

@@ -49,6 +49,7 @@ from surpyval.utils import (
     xcnt_handler,
 )
 from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -380,8 +381,14 @@ def grouped_data(x: Any, Z: Any, c: Any, n: Any, groups: Any) -> tuple[
     return x, (Zm if Z is not None else None), c, w, labels, inv
 
 
-class FrailtyFitter:
+class FrailtyFitter(FitterRepr):
     """Configured fitter for a shared-frailty PH model on one distribution."""
+
+    #: The ``repr`` (#614)
+    fitter_kind = "shared frailty fitter"
+
+    def _repr_details(self) -> "list[str]":
+        return [*baseline_name(self), self.family + " frailty"]
 
     def __init__(self, name: str, dist: Any, family: str = "gamma") -> None:
         family = check_family(family)

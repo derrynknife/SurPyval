@@ -12,10 +12,11 @@ from surpyval.univariate.parametric.fitters import (
     verify_or_polish,
 )
 from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 
 
-class RenewalFitMixin(RecurrentDataFrameMixin):
+class RenewalFitMixin(FitterRepr, RecurrentDataFrameMixin):
     """
     Shared maximum-likelihood scaffolding for the imperfect-repair fitters
     (``GeneralizedRenewal``, ``GeneralizedOneRenewal``, ``ARA``, ``ARI``).
@@ -32,6 +33,9 @@ class RenewalFitMixin(RecurrentDataFrameMixin):
     the two convergence-failure errors, picking the best start, the bounded-to-
     unbounded parameter transform, and storing the inference attributes.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "imperfect repair fitter"
 
     @staticmethod
     def _polish_unverified(

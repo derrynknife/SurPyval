@@ -16,6 +16,7 @@ from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -27,7 +28,7 @@ from .proportional_intensity import (
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -86,6 +87,12 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
        beta_0  :  0.45194475814452534
     <BLANKLINE>
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_details(self) -> "list[str]":
+        return ["NHPP baseline"]
 
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z

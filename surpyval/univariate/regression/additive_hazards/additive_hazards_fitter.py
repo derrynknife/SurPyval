@@ -129,6 +129,10 @@ class AdditiveHazardsFitter(
     hazard positive by construction, is then the safer choice.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "additive hazards fitter"
+    name_suffix = "AH"
+
     def __init__(self, name: str, dist: Any) -> None:
         self.name = name
         mirror_distribution(self, dist)

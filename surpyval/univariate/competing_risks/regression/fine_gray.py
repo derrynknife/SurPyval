@@ -93,6 +93,7 @@ from surpyval.utils.dataframe import (
     require_frame,
 )
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.no_maximum import (
@@ -824,7 +825,7 @@ class FineGrayModel(
         return "\n".join(lines)
 
 
-class FineGray_:
+class FineGray_(FitterRepr):
     """
     The Fine-Gray subdistribution-hazards regression for one cause of a
     competing-risks problem: the covariates act proportionally on the
@@ -846,6 +847,9 @@ class FineGray_:
     class; its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric subdistribution hazards fitter"
 
     def fit_from_df(
         self,

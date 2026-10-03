@@ -69,6 +69,9 @@ class HPP(CountingProcess):
            2169.4775629 , 2603.37307548])
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "homogeneous Poisson process fitter"
+
     def __init__(self) -> None:
         self.parameter_names = ["lambda"]
         self.has_scale = True

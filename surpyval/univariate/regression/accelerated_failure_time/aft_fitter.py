@@ -47,6 +47,10 @@ class AFTFitter(
     the ``AFT`` factory.
     """
 
+    #: The ``repr`` (#614)
+    fitter_kind = "accelerated failure time fitter"
+    name_suffix = "AFT"
+
     def __init__(self, distribution: Any) -> None:
         mirror_distribution(self, distribution)
         self.Hf_dist = distribution.Hf

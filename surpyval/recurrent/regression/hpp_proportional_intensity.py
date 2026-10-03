@@ -15,6 +15,7 @@ from surpyval.univariate.parametric.fitters import verify_or_polish
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -32,7 +33,7 @@ def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
 
 
 @singleton_fitter
-class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -86,6 +87,15 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
     >>> model.cif(52, Z[:1])
     np.float64(0.32584697690680187)
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_name(self) -> str:
+        return "ProportionalIntensityHPP"
+
+    def _repr_details(self) -> "list[str]":
+        return ["HPP baseline"]
 
     # Display name of the (constant) baseline hazard rate model, used by
     # ``ProportionalIntensityModel``'s repr via ``dist.name``.

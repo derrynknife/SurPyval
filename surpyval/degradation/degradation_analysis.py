@@ -36,6 +36,7 @@ from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
 from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import psd_project, safe_inv
 from surpyval.utils.validation import check_option, option_error
 from surpyval.utils.warnings import caller_stacklevel
@@ -107,7 +108,7 @@ class _Population(NamedTuple):
     was_clipped: bool
 
 
-class DegradationAnalysis_:
+class DegradationAnalysis_(FitterRepr):
     """
     Pseudo-failure-time degradation analysis.
 
@@ -148,6 +149,9 @@ class DegradationAnalysis_:
     >>> model.pseudo_failure_times
     array([451.61290323, 500.        , 318.18181818, 378.37837838])
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "degradation fitter"
 
     def fit(
         self,

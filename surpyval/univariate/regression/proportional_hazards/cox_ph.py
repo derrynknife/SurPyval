@@ -35,6 +35,7 @@ from surpyval.utils import (
     validate_coxph,
     validate_coxph_df_inputs,
 )
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.pickling import Rebuilt
 
@@ -334,7 +335,7 @@ def warn_monotone(which: str) -> None:
     )
 
 
-class CoxPH_(CoxLikelihoodMixin):
+class CoxPH_(FitterRepr, CoxLikelihoodMixin):
     """
     The Cox proportional hazards model: a baseline hazard left entirely
     to the data, multiplied by :math:`e^{\\beta' Z}`,
@@ -358,6 +359,9 @@ class CoxPH_(CoxLikelihoodMixin):
     ``CoxPH`` is an instance of this class; its fit methods return a
     :class:`~surpyval.univariate.regression.semi_parametric_regression_model.SemiParametricRegressionModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric proportional hazards fitter"
 
     # Best reference I can find that covers all the
     # possibilities for estimating betas
