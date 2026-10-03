@@ -1,26 +1,27 @@
+from __future__ import annotations
+
 import functools
 from math import comb
-from numbers import Number
 from typing import TYPE_CHECKING, Any, Callable
 
+import autograd.numpy as np
 import numpy.typing as npt
-import pandas as pd
 from autograd.numpy.numpy_boxes import ArrayBox
 from scipy.integrate import quad
 
-import surpyval
-from surpyval import np
-from surpyval.utils import _check_x_not_empty
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import _check_x_not_empty
 
-from ..nonparametric import plotting_positions as pp
-from .fitters import bounds_convert, offset_step
-from .fitters.closed_form import closed_form_results
-from .fitters.mle import mle
-from .fitters.mom import mom
-from .fitters.mpp import mpp, mpp_from_ecfd
-from .fitters.mps import mps
-from .fitters.mse import mse
+# The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
+# its public names are importable from here as they always were.
+from ._fit_inputs import (  # noqa: F401
+    PARA_METHODS,
+    OutsideSupportError,
+    normalise_how,
+)
+from .optimised_fit import METHOD_FUNC_DICT, OptimisedFitMixin  # noqa: F401
 from .parametric import Parametric, uniform_draws
 
 # The two types a distribution function deals in. They are separate
@@ -67,73 +68,6 @@ Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
 
 
-def _offset_start(x: npt.ArrayLike) -> float:
-    """Starting offset: just below the smallest value, by a step on the
-    data's own scale.
-
-    It was ``min(x) - 1``, a step of one *unit*, so the start depended on
-    the units the data were recorded in: at a scale of 1e-3 it sat a
-    thousand spreads below the data, where the likelihood is flat in the
-    offset and the search never moved it, and at 1e5 it was a hair below
-    the smallest value. The step is now the mean spacing of the sorted
-    finite values (see ``offset_step``), which scales with the data.
-
-    Every offset initialiser seeds its other parameters from the data
-    shifted by this same value, since the fitter installs it as the
-    starting offset: shape and scale seeds taken against a different
-    shift describe a different distribution from the one the search
-    starts at.
-    """
-    finite = np.asarray(x, dtype=float).ravel()
-    return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
-
-
-def _offset_search_units(
-    init: npt.NDArray,
-    bounds: "tuple[tuple[float | None, float | None], ...]",
-) -> list[float]:
-    """Per-parameter ``units`` for ``bounds_convert`` in an offset fit.
-
-    A parameter with one bound is searched as the log of its distance
-    from the bound below one unit, and linearly above it. With a unit of
-    1 the switch sits at a fixed *value*, so which half a parameter is
-    searched in depends on the data's units: a Weibull scale is searched
-    as a log for data in thousandths and linearly for data in thousands.
-    The search is then a different one at every scale. For most fits
-    both routes lead to the same optimum, but an offset fit has a ridge
-    along which the offset, scale and shape trade off, and there they do
-    not: an ExpoWeibull MSE fit to data in ten-thousandths wandered for
-    800 iterations and ended 13% of the data's spread from the fit to
-    the same data in its own units, and a LogLogistic scale that started
-    several times too large was stepped so far into the log half, in
-    data units of thousands, that it underflowed.
-
-    Each one-sided parameter's unit is therefore its own starting
-    distance from its bound -- for the offset, the step below the
-    smallest observation (see ``_offset_start``). Every such parameter
-    starts at the switch, a searched value of 0, and the search in them
-    is the same whatever the data's units: a scale's start and its unit
-    both scale with the data, a shape's are both unchanged. A parameter
-    that starts on its bound (or at a non-finite value) keeps a unit of
-    1; the other kinds of bound ignore the unit.
-
-    Only offset fits use this, to leave every other fit's search exactly
-    as it was.
-    """
-    units = [1.0] * len(bounds)
-    for i, (low, upp) in enumerate(bounds):
-        if (low is None) == (upp is None):
-            continue
-        if upp is None:
-            assert low is not None
-            distance = float(init[i]) - float(low)
-        else:
-            distance = float(upp) - float(init[i])
-        if np.isfinite(distance) and distance > 0:
-            units[i] = distance
-    return units
-
-
 def reject_structural_params(
     dist_name: str,
     gamma: Any = None,
@@ -158,27 +92,6 @@ def reject_structural_params(
                 f"closed-form estimator with no offset, limited failure "
                 f"population or zero inflation."
             )
-
-
-def _imputed_data(
-    x: npt.NDArray, c: npt.NDArray, n: npt.NDArray
-) -> SurpyvalData:
-    """Wrap ``_initial_guess``'s working copy as a ``SurpyvalData``.
-
-    ``group_and_sort=False`` because this is not user input. The rows
-    have already been validated once, and merging duplicates or
-    reordering them would change what the initialisers see for no gain.
-
-    The truncation bounds are deliberately left at their defaults rather
-    than carried over from the data being seeded. The imputation moves
-    interval- and left-censored points to a midpoint, which can put an
-    observation at or before its own left-truncation time -- a
-    contradiction ``xcnt_handler`` rejects outright (#260). Seeding is
-    not inference, so the untruncated copy is the right one: it is what
-    every initialiser has always been given, since no caller ever passed
-    ``t`` down.
-    """
-    return SurpyvalData(x=x, c=c, n=n, group_and_sort=False)
 
 
 # What each distribution function is outside the support of a continuous
@@ -246,18 +159,113 @@ def _support_guarded(
     return guarded
 
 
-def _optimizer_label(how: str, res: Any) -> str:
-    """What found a non-MLE fit's answer, for ``model.optimizer``."""
-    if how == "MPP":
-        return "least squares"
-    if res is None:
-        # MOM solved in closed form (``_mom``), or with nothing to solve
-        return "closed-form"
-    return str(getattr(res, "optimizer", "BFGS"))
+def _as_array(value: Any) -> Any:
+    """A list or tuple as a float array; anything else (a scalar, an array,
+    an autograd box) as it is."""
+    if isinstance(value, (list, tuple)):
+        return np.asarray(value, dtype=float)
+    return value
 
 
-PARA_METHODS = ["MPP", "MLE", "MPS", "MSE", "MOM"]
-METHOD_FUNC_DICT = {"MPP": mpp, "MOM": mom, "MLE": mle, "MPS": mps, "MSE": mse}
+# The distribution functions of a time ``x`` (and ``qf`` of a probability)
+# that ``_array_inputs`` wraps.
+_QUERY_FUNCTIONS = tuple(_OUTSIDE_SUPPORT) + ("qf",)
+
+# Each function's limit as x goes to infinity, where every distribution
+# has the same one (its value past an upper support edge): all but the
+# hazard, whose limit is the family's own.
+_AT_INFINITY: dict[str, float] = {
+    name: above
+    for name, (_, above) in _OUTSIDE_SUPPORT.items()
+    if name != "hf"
+}
+
+
+def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap a distribution function so that a list or tuple argument
+    becomes an array, and a missing (NaN) query point gives NaN there.
+
+    The formulas are written for arrays: given a Python list, ``list *
+    int`` repeated the list before numpy saw it (``Gamma.sf([5, 10], 8,
+    3)`` returned six values) and ``list / int`` raised (#424). And a
+    missing query is answered as missing (principle 3): a constant
+    hazard's ``hf(nan)`` was its rate, a Uniform's ``sf(nan)`` 1 and
+    Bernoulli's ``sf(nan)`` raised (#382). The function is evaluated with
+    the NaNs replaced by a point it accepts, then NaN is put back, so
+    nothing else about the other points changes.
+
+    An overflow or a division by zero inside a formula is the formula
+    reaching the infinite limit it is evaluated toward, not something
+    the caller needs to hear about (principle 22): far in a Weibull's tail
+    ``(x / alpha) ** beta`` overflows to ``inf``, and ``exp(-inf)`` is the
+    0 the survival function is, but numpy warned "overflow encountered in
+    power" (#561). Those two are not warned about here; an invalid
+    operation (``inf - inf``, ``0 * inf``, giving a NaN) still is, since
+    its value is wrong.
+
+    A discrete distribution on the integers up to infinity takes its
+    limits at ``x = inf`` (``_AT_INFINITY``) rather than evaluating its
+    formulas there, where the incomplete gamma and beta functions and
+    ``q ** inf`` gave NaN: a Poisson's ``sf(inf)`` was NaN, not 0 (#561).
+    The hazard's limit there is the family's own, and is computed.
+    """
+    at_infinity = _AT_INFINITY.get(fn.__name__)
+
+    @functools.wraps(fn)
+    def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+        with np.errstate(over="ignore", divide="ignore"):
+            return evaluate(self, x, *params)
+
+    def evaluate(self: "ParametricFitter", x: Any, *params: Any) -> Any:
+        x = _as_array(x)
+        params = tuple(_as_array(p) for p in params)
+        if isinstance(x, ArrayBox):
+            return fn(self, x, *params)
+        x_arr = np.asarray(x, dtype=float)
+        missing = np.isnan(x_arr)
+        top = None
+        replaced = missing
+        if (
+            at_infinity is not None
+            and self.discrete
+            and self.support[1] == np.inf
+        ):
+            top = np.isposinf(x_arr)
+            replaced = missing | top
+        if not np.any(replaced):
+            return fn(self, x, *params)
+        # A point asked for alongside is one the function accepts; failing
+        # that, the middle probability or the support's finite edge.
+        known = x_arr[~replaced]
+        if known.size:
+            fill = float(known[0])
+        elif fn.__name__ == "qf":
+            fill = 0.5
+        else:
+            lo, hi = self._support_edges(*params)
+            fill = lo if np.isfinite(lo) else (hi if np.isfinite(hi) else 0.0)
+        out = fn(self, np.where(replaced, fill, x_arr), *params)
+        if top is not None and np.any(top):
+            out = np.where(top, at_infinity, out)
+        out = np.where(missing, np.nan, out)
+        return out[()] if isinstance(out, np.ndarray) else out
+
+    wrapped._array_inputs = True  # type: ignore[attr-defined]
+    return wrapped
+
+
+def _log1mexp(d: Any) -> Any:
+    """``log(1 - exp(-d))`` for ``d >= 0``, exact at both ends: through
+    ``expm1`` below ``log 2`` and ``log1p`` above it (Maechler, 2012). Each
+    branch sees only arguments it is finite on, for autograd's sake; ``d =
+    inf`` gives 0."""
+    small = d < np.log(2.0)
+    d_small = np.where(small, d, 1.0)
+    d_large = np.where(small, 1.0, d)
+    return np.where(
+        small, np.log(-np.expm1(-d_small)), np.log1p(-np.exp(-d_large))
+    )
+
 
 DEFAULT_Y_TICKS = [
     0.0001,
@@ -287,7 +295,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter:
+class ParametricFitter(UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -342,6 +350,10 @@ class ParametricFitter:
     # validation and callers branch on the trait.
     discrete = False
 
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, still
+    # reads (and sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
+
     if TYPE_CHECKING:
         # The distribution functions every subclass supplies and this
         # base calls -- ``cs`` divides two ``sf``s, ``log_sf`` negates
@@ -377,12 +389,17 @@ class ParametricFitter:
         # ``_support_guarded``). The discrete ones guard their integer
         # supports themselves, as their docstrings describe.
         super().__init_subclass__(**kwargs)
-        if cls.discrete:
-            return
-        for name, (below, above) in _OUTSIDE_SUPPORT.items():
+        if not cls.discrete:
+            for name, (below, above) in _OUTSIDE_SUPPORT.items():
+                fn = cls.__dict__.get(name)
+                if callable(fn) and not getattr(fn, "_support_guarded", False):
+                    setattr(cls, name, _support_guarded(fn, below, above))
+        # Then every distribution's functions take lists and NaNs (see
+        # ``_array_inputs``), outermost, so the guard sees an array.
+        for name in _QUERY_FUNCTIONS:
             fn = cls.__dict__.get(name)
-            if callable(fn) and not getattr(fn, "_support_guarded", False):
-                setattr(cls, name, _support_guarded(fn, below, above))
+            if callable(fn) and not getattr(fn, "_array_inputs", False):
+                setattr(cls, name, _array_inputs(fn))
 
     def _support_edges(self, *params: Any) -> tuple[float, float]:
         """The support ``(lower, upper)`` at ``params``: the declared one,
@@ -396,13 +413,14 @@ class ParametricFitter:
             hi = float(_raw(params[self.support_param_index[1]]))
         return lo, hi
 
+    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
         k: int,
         bounds: tuple[tuple[int | float | None, int | float | None], ...],
         support: tuple[int | float, int | float],
-        param_names: list[str],
+        parameter_names: list[str],
         param_map: dict[str, int],
         plot_x_scale: str,
         y_ticks: list[float] | None = None,
@@ -411,7 +429,7 @@ class ParametricFitter:
         self.k = k
         self.bounds = bounds
         self.support = support
-        self.param_names = param_names
+        self.parameter_names = parameter_names
         self.param_map = param_map
         self.plot_x_scale = plot_x_scale
         self.y_ticks = DEFAULT_Y_TICKS if y_ticks is None else y_ticks
@@ -474,8 +492,16 @@ class ParametricFitter:
 
         Used by the likelihood; many distributions override it with a
         closed form that stays finite where ``df`` itself underflows.
+
+        Where the cumulative hazard is infinite (far in a tail whose
+        hazard grows without bound) it is -inf, not ``inf - inf`` (#561).
         """
-        return np.log(self.hf(x, *params)) - self.Hf(x, *params)
+        H = self.Hf(x, *params)
+        gone = H == np.inf
+        if not np.any(gone):
+            return np.log(self.hf(x, *params)) - H
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, -np.inf, np.log(self.hf(x, *params)) - H)
 
     def log_sf(self, x: Numeric, *params: Any) -> Any:
         r"""Log of the survival function, :math:`\ln R(x) = -H(x)`."""
@@ -487,31 +513,37 @@ class ParametricFitter:
         small."""
         return np.log(-np.expm1(-self.Hf(x, *params)))
 
-    def cs(self, x: Numeric, X: Numeric, *params: Any) -> Any:
+    @renamed_arguments(X="given")
+    def cs(self, x: Numeric, given: Numeric, *params: Any) -> Any:
         r"""
 
         Conditional survival function: the probability of surviving a
-        further ``x`` given survival to ``X`` already.
+        further ``x`` given survival to ``given`` already.
 
         .. math::
-            R(x, X) = \frac{R(x + X)}{R(X)}
+            R(x, given) = \frac{R(x + given)}{R(given)}
 
         This is the definition for every distribution, so it lives here
         rather than being restated on each one. ``Exponential``
         overrides it because the exponential is memoryless and
-        :math:`R(x, X) = R(x)`, which is both cheaper and free of the
+        :math:`R(x, given) = R(x)`, which is both cheaper and free of the
         cancellation the ratio suffers in the far tail.
+
+        .. versionchanged:: 0.22
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
 
         x : numpy array or scalar
-            The additional time to survive, measured from ``X``
-        X : numpy array or scalar
+            The additional time to survive, measured from ``given``
+        given : numpy array or scalar
             The time already survived
         *params : numpy array like or scalar
             The parameters of the distribution, in the order given by
-            its ``param_names``
+            its ``parameter_names``
 
         Returns
         -------
@@ -528,7 +560,7 @@ class ParametricFitter:
         array([2.52537548e-04, 3.00394073e-10, 2.45288508e-19, 1.48999440e-32,
                5.42544000e-51])
         """
-        return self.sf(x + X, *params) / self.sf(X, *params)
+        return self.sf(x + given, *params) / self.sf(given, *params)
 
     def _plot_x_bounds(self, x: npt.NDArray, params: Any) -> Any:
         """Return (x_scale_min, x_scale_max) for probability plots.
@@ -643,26 +675,84 @@ class ParametricFitter:
 
         lo_finite = np.isfinite(xl)
         hi_finite = np.isfinite(xr)
+        # A lower bound at or below the support's lower edge (a ``tl`` of
+        # 0 for a lifetime distribution) is a CDF of exactly 0, so it is
+        # taken as 0 rather than evaluated: its value is the same, but
+        # the formula's second derivative there is nan (``0 * log 0`` in
+        # a Weibull's), which sent the fit's covariance to the numerical
+        # Hessian, 45% of a left-truncated Weibull fit at 1e5 rows.
+        lo_evaluated = lo_finite
+        stand_in = 1.0
+        if not self.discrete:
+            edge, top = self._support_edges(*dist_params)
+            if np.isfinite(edge):
+                lo_evaluated = lo_finite & (xl - _raw(gamma) > edge)
+                # Inside the support, should no bound be left to stand in
+                stand_in = (
+                    0.5 * (edge + top) if np.isfinite(top) else edge + 1.0
+                ) + float(_raw(gamma))
 
         # ``xl`` and ``xr`` are data, never traced, so this substitution
         # is invisible to autograd -- it only changes what the CDF is
         # asked to evaluate.
-        present = np.concatenate([xl[lo_finite], xr[hi_finite]])
-        stand_in = float(present[0]) if present.size else 1.0
-        xl_safe = np.where(lo_finite, xl, stand_in)
+        present = np.concatenate([xl[lo_evaluated], xr[hi_finite]])
+        if present.size:
+            stand_in = float(present[0])
+        xl_safe = np.where(lo_evaluated, xl, stand_in)
         xr_safe = np.where(hi_finite, xr, stand_in)
 
+        # The zero-inflation mass ``f0`` sits at 0 in observed time (see
+        # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
+        # 0 nothing has failed, and a window opening below 0 contains the
+        # mass. Counting it at a ``tl`` of -1 made a no-op truncation
+        # divide by ``1 - f0``, and f0 ran to 1 (#548). (With ``f0 = 0``
+        # this is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
-            f0 + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
+            f0 * (xr >= 0) + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
             1.0,
         )
         lower = np.where(
             lo_finite,
-            f0 + (p - f0) * self.ff(xl_safe - gamma, *dist_params),
+            f0 * (xl >= 0)
+            + (p - f0)
+            * np.where(
+                lo_evaluated, self.ff(xl_safe - gamma, *dist_params), 0.0
+            ),
             0.0,
         )
-        return np.sum(n * np.log(np.maximum(upper - lower, 0.0)))
+        window = np.maximum(upper - lower, 0.0)
+
+        # In the upper tail ``F(l) - F(r)`` is a difference of two numbers
+        # near 1, and once ``F(l)`` rounds to 1 it is 0: a left-truncated
+        # LogNormal at mu = -5 had a log-likelihood of +inf, where it is
+        # -23.73 (#412). Where ``F(l) > 1/2`` the window is taken from the
+        # survival function in log space instead,
+        # ``log S(l) + log(1 - S(r) / S(l))``, exact however small S is.
+        # Each form is evaluated only where it is used (a stand-in
+        # elsewhere), so the other cannot put a NaN into the gradient.
+        upper_tail = (
+            lo_finite & (_raw(lower) > 0.5)
+            if not self.discrete and _raw(f0) == 0 and _raw(p) == 1
+            else np.zeros(len(n), dtype=bool)
+        )
+        if not np.any(upper_tail):
+            return np.sum(n * np.log(window))
+        in_tail = float(xl[upper_tail][0])
+        log_sl = self.log_sf(
+            np.where(upper_tail, xl_safe, in_tail) - gamma, *dist_params
+        )
+        log_sr = np.where(
+            upper_tail & hi_finite,
+            self.log_sf(
+                np.where(upper_tail & hi_finite, xr_safe, in_tail) - gamma,
+                *dist_params,
+            ),
+            -np.inf,
+        )
+        tail = log_sl + _log1mexp(np.maximum(log_sl - log_sr, 0.0))
+        body = np.log(np.where(upper_tail, 1.0, window))
+        return np.sum(n * np.where(upper_tail, tail, body))
 
     def _log_likelihood(self, data: SurpyvalData, *params: Any) -> Any:
         return (
@@ -745,7 +835,7 @@ class ParametricFitter:
         parameters. A distribution whose parameter count is set by the
         parameters themselves (``Hypoexponential``: one rate per stage)
         overrides this to return an instance with the matching ``k``,
-        ``param_names`` and ``bounds``, so a model built from a
+        ``parameter_names`` and ``bounds``, so a model built from a
         serialised dictionary reports the right parameter count.
         """
         return self
@@ -887,10 +977,8 @@ class ParametricFitter:
                 upper_limit = upp
 
             if not (lower_limit < params[i] < upper_limit):
-                param_names = ", ".join(self.param_names)
-                detail = (
-                    f"Params {param_names} must be in" f" bounds {self.bounds}"
-                )
+                names = ", ".join(self.parameter_names)
+                detail = f"Params {names} must be in" f" bounds {self.bounds}"
                 raise ValueError(detail)
         self._check_params(params)
         return model
@@ -908,1484 +996,9 @@ for _name in ("log_df", "log_sf", "log_ff"):
     setattr(
         ParametricFitter,
         _name,
-        _support_guarded(
-            ParametricFitter.__dict__[_name], *_OUTSIDE_SUPPORT[_name]
+        _array_inputs(
+            _support_guarded(
+                ParametricFitter.__dict__[_name], *_OUTSIDE_SUPPORT[_name]
+            )
         ),
     )
-
-
-class OptimisedFitMixin:
-    """The estimation machinery: ``fit`` and everything it needs.
-
-    Separated from :class:`ParametricFitter` so that the distributions
-    which do *not* have it are not claiming to. ``Bernoulli``,
-    ``Binomial`` and ``ExactEventTime`` estimate their parameters in
-    closed form; they take ``x`` and at most ``c``, ``n`` and ``t``, and
-    have no use for ``how``, ``offset``, ``zi``, ``lfp``, ``fixed`` or
-    the truncation arguments. While this lived on the base class those
-    three overrode ``fit`` with a narrower signature, which is a Liskov
-    violation mypy reports and, more to the point, a real one:
-    ``Bernoulli.fit(x, c=...)`` raises TypeError, so code written
-    against a ``ParametricFitter`` breaks on exactly those three.
-
-    Every distribution is still a ``ParametricFitter`` -- that is what
-    the ``isinstance`` gates in the model, mixture, regression, frailty
-    and renewal code check, and what carries the distribution functions
-    and the likelihood. This mixin adds the estimation methods on top,
-    for the 22 that have them.
-
-    Declare a parameter as ``OptimisedFitMixin`` when it must be
-    fittable by a chosen method; declare it as ``ParametricFitter`` when
-    only the distribution functions are needed.
-    """
-
-    if TYPE_CHECKING:
-        # Supplied by ParametricFitter, which every user of this mixin
-        # also inherits. Declared rather than defined so the methods
-        # below type check without the mixin pretending to own them.
-        name: str
-        k: int
-        bounds: tuple[tuple[int | float | None, int | float | None], ...]
-        support: tuple[int | float, int | float]
-        param_names: list[str]
-        param_map: dict[str, int]
-        discrete: bool
-        supports_mpp: bool
-        support_param_index: tuple[int, int]
-
-        # Every implementation returns a 1-D float array. It used to
-        # be a tuple in nine, an array in six, a list in one and a
-        # fitted model's .params in five -- and a bare scalar in
-        # Rayleigh, which made the seed 0-dimensional and broke the
-        # lfp and zi paths outright.
-        def _parameter_initialiser(
-            self, data: SurpyvalData, offset: bool = False
-        ) -> npt.NDArray: ...
-        def _neg_ll_func(self, data: Any, *params: Any) -> Any: ...
-        def _log_likelihood(self, data: Any, *params: Any) -> Any: ...
-        def _moment(self, n: Any, *p: Any, offset: bool = False) -> Any: ...
-        def _set_support(self, model: Any, offset: Any) -> Any: ...
-        def sf(self, x: Any, *params: Any) -> Any: ...
-        def ff(self, x: Any, *params: Any) -> Any: ...
-        def df(self, x: Any, *params: Any) -> Any: ...
-        def hf(self, x: Any, *params: Any) -> Any: ...
-        def Hf(self, x: Any, *params: Any) -> Any: ...
-        def qf(self, u: Any, *params: Any) -> Any: ...
-        def mpp_x_transform(self, x: Any, *args: Any) -> Any: ...
-        def mpp_y_transform(self, y: Any, *params: Any) -> Any: ...
-        def mpp_inv_y_transform(self, y: Any, *params: Any) -> Any: ...
-
-    def neg_mean_D(
-        self, x: npt.NDArray, c: Any, n: Any, tl: Any, tr: Any, *params: Any
-    ) -> Any:
-        r"""The maximum-product-of-spacings objective that ``how='MPS'``
-        minimises: minus the mean log spacing, with the tie, censoring
-        and truncation terms described in :doc:`/Parametric Estimation`.
-
-        ``x`` must be sorted, ``c`` and ``n`` are the matching censoring
-        flags and counts, and ``tl`` and ``tr`` are the single truncation
-        window shared by every observation (``-inf`` and ``inf`` when
-        there is none). Returns ``inf`` where the window has no
-        probability.
-        """
-        mask = c == 0
-        x_obs = x[mask]
-        n_obs = n[mask]
-
-        # Assumes already ordered
-        if np.isfinite(tl):
-            F_tl = self.ff(tl, *params)
-        else:
-            F_tl = 0.0
-
-        if np.isfinite(tr):
-            F_tr = self.ff(tr, *params)
-        else:
-            F_tr = 1.0
-
-        F = self.ff(x_obs, *params)
-
-        all_F = np.hstack([F_tl, F, F_tr])
-        denom = F_tr - F_tl
-        if denom < np.finfo(float).eps:
-            return np.inf
-        D_0_1_normed = (all_F - F_tl) / denom
-        D = np.diff(D_0_1_normed)
-
-        # Censored contributions, conditioned on the truncation window:
-        # under truncation the sample comes from the conditional
-        # distribution, so survivor/CDF terms are renormalised exactly
-        # like the spacings (previously they were left unconditioned,
-        # biasing every truncated + censored fit, #268).
-        Dr = (F_tr - self.ff(x[c == 1], *params)) / denom
-        Dl = (self.ff(x[c == -1], *params) - F_tl) / denom
-
-        # Cheng-Amin sum form: one log-spacing per distinct observed
-        # value (plus the two boundary spacings), (n - 1) conditional
-        # density terms for ties, and one conditional survivor/CDF term
-        # per censored unit -- all in a single sum. The previous form
-        # divided the spacings block and the censored/ties block by
-        # different counts, which made the estimator inconsistent for
-        # censored or tied data (#268); dividing the single sum by the
-        # total count only scales the objective.
-        obj = np.sum(np.log(D))
-        if (n_obs > 1).any():
-            # Evaluate the tie densities only at genuinely tied points:
-            # untied points contribute 0 * log(0) = NaN when the density
-            # underflows, poisoning the objective where a clean inf
-            # penalty is wanted (#289).
-            tied = n_obs > 1
-            Df = self.df(x_obs[tied], *params) / denom
-            obj = obj + np.sum((n_obs[tied] - 1) * np.log(Df))
-        if (c == 1).any():
-            obj = obj + np.sum(n[c == 1] * np.log(Dr))
-        if (c == -1).any():
-            obj = obj + np.sum(n[c == -1] * np.log(Dl))
-        return -obj / n.sum()
-
-    def mom_moment_gen(
-        self, *params: Any, offset: bool = False, k: int | None = None
-    ) -> Any:
-        """The first ``k`` raw moments at ``params`` (leading with the
-        offset when ``offset``). ``k`` defaults to one per parameter; the
-        method of moments passes the number of *free* parameters, since a
-        fixed parameter needs no equation of its own."""
-        if k is None:
-            k = self.k + 1 if offset else self.k
-        moments = np.zeros(k)
-        for i in range(0, k):
-            n = i + 1
-            moments[i] = self._moment(n, *params, offset=offset)
-        return moments
-
-    def _check_identifiable(
-        self,
-        surv_data: SurpyvalData,
-        offset: bool,
-        lfp: bool,
-        zi: bool,
-        fixed: dict[str, float] | None,
-    ) -> Any:
-        """
-        Reject data that cannot pin down the free parameters.
-
-        A right censored observation says only "later than this", so it
-        constrains a fitted curve without locating a point on it. What
-        locates a point is an exact observation, a left censored one, or
-        an interval. Fewer *distinct* such values than there are free
-        parameters and the likelihood has a flat direction: for a
-        Weibull on a tied sample it is unbounded, since a spike of
-        arbitrary height can sit on the repeated value, and the reported
-        answer is wherever the optimiser happened to stop. Three tied
-        observations at 10 returned ``beta = 512`` with ``success=True``
-        and no warning.
-
-        The count is of *free* parameters, not of the distribution's
-        parameters, so fixing one buys back a degree of freedom: a
-        Weibull fit to a single observation with ``beta`` fixed is well
-        posed and recovers ``alpha = (sum x^beta / n) ** (1 / beta)``.
-        That is why this cannot be a per-distribution constant.
-        """
-        n_free = (
-            self.k
-            + int(bool(offset))
-            + int(bool(lfp))
-            + int(bool(zi))
-            - len(fixed or {})
-        )
-        if n_free <= 0:
-            return
-
-        x, c = surv_data.x, surv_data.c
-        informative = np.asarray(c) != 1
-        if not informative.any():
-            return
-        rows = np.asarray(x)[informative]
-        if rows.ndim == 1:
-            distinct = np.unique(rows).size
-        else:
-            distinct = np.unique(rows, axis=0).shape[0]
-
-        if distinct < n_free:
-            raise ValueError(
-                f"{self.name} has {n_free} free parameter(s) but the data "
-                f"contains only {distinct} distinct non-right-censored "
-                f"value(s). The likelihood has a flat (or unbounded) "
-                f"direction, so no unique fit exists. Provide more "
-                f"distinct observations, fix a parameter with "
-                f"`fixed=`, or choose a distribution with fewer "
-                f"parameters."
-            )
-
-    def _validate_fit_inputs(
-        self,
-        surv_data: SurpyvalData,
-        how: str,
-        offset: bool,
-        lfp: bool,
-        zi: bool,
-        fixed: dict[str, float] | None,
-        heuristic: str,
-        turnbull_estimator: str,
-    ) -> Any:
-        # Offsetting (a free location/threshold ``gamma``) only makes sense
-        # for distributions supported on a half-line ``[0, inf)``. A
-        # distribution with a finite upper bound (e.g. Beta on ``[0, 1]``)
-        # or a data-dependent support cannot be offset: shifting the lower
-        # bound while pinning the upper one is not a member of the family.
-        # Use the 4-parameter Beta instead if you need a shifted/scaled
-        # Beta on an arbitrary ``[a, b]`` interval.
-        offsettable = (self.support[0] == 0) and np.isinf(self.support[1])
-        if offset and not offsettable:
-            detail = f"{self.name} distribution cannot be offset"
-            raise ValueError(detail)
-
-        # A discrete distribution's mass sits on the integers, and its
-        # likelihood reads the data as integer counts: shifting it by a
-        # continuous ``gamma`` is not a member of the family. Declaring a
-        # support of ``[0, inf)`` let the check above through, and the fit
-        # then died deep in the optimiser with an unrelated zip() error.
-        if offset and self.discrete:
-            raise ValueError(
-                f"{self.name} is a discrete distribution and cannot be "
-                "offset; subtract a known integer shift from the data "
-                "instead."
-            )
-
-        # A discrete distribution's mass sits on the integers, and between
-        # them its sf is interpolated by some formulas (Geometric,
-        # NegativeBinomial, ...) and floored by others (Poisson), so a
-        # non-integer observation has no consistent meaning: Geometric fit
-        # [1.5, 2.2, 3.7, 1.1] and returned p = 0.47.
-        if self.discrete:
-            values = np.concatenate(
-                [np.ravel(surv_data.x), np.ravel(surv_data.t)]
-            ).astype(float)
-            values = values[np.isfinite(values)]
-            off_grid = values[values != np.round(values)]
-            if off_grid.size:
-                raise ValueError(
-                    f"{self.name} is a discrete distribution, so its data "
-                    "(and any truncation bounds) must be whole numbers; "
-                    f"got {off_grid[0]:g}. Round or bin the data first, or "
-                    "use a continuous distribution."
-                )
-
-        # Probability plotting is exempt. It is a regression through the
-        # plotting positions, not a likelihood maximisation, so it has no
-        # unbounded direction to fall into and now always returns finite
-        # parameters. It is also how several distributions seed
-        # themselves, and that internal call does not carry the caller's
-        # ``fixed``, so checking it would reject well posed fits.
-        if how != "MPP":
-            self._check_identifiable(surv_data, offset, lfp, zi, fixed)
-
-        if fixed and how == "MPP":
-            detail = (
-                "Probability plotting (MPP) does not support"
-                " fixing parameters"
-            )
-            raise ValueError(detail)
-
-        if how not in PARA_METHODS:
-            raise ValueError('"how" must be one of: ' + str(PARA_METHODS))
-
-        if how == "MPP" and not self.supports_mpp:
-            detail = (
-                f"{self.name} distribution does not work"
-                " with probability plot fitting; use how='MLE', 'MSE' or"
-                " 'MOM' instead"
-            )
-            raise ValueError(detail)
-
-        if how == "MPS" and self.discrete:
-            detail = (
-                f"{self.name} is a discrete distribution; maximum product"
-                " of spacings (MPS) is defined by increments of a"
-                " continuous CDF, and repeated integer observations make"
-                " the spacings degenerate. Use how='MLE' instead."
-            )
-            raise ValueError(detail)
-
-        if np.isfinite(surv_data.t).any() and how == "MSE":
-            detail = "Mean square error doesn't yet support truncation"
-            raise NotImplementedError(detail)
-
-        if np.isfinite(surv_data.t).any() and how == "MOM":
-            detail = "Method of moments doesn't support truncation"
-            raise ValueError(detail)
-
-        if (lfp or zi) and (how != "MLE"):
-            detail = (
-                "Limited failure or zero-inflated models"
-                " can only be made with MLE"
-            )
-            raise ValueError(detail)
-
-        if zi and (self.support[0] != 0):
-            detail = (
-                "zero-inflated models can only work with models starting at 0"
-            )
-            raise ValueError(detail)
-
-        if (surv_data.c == 1).all():
-            raise ValueError("Cannot have only right censored data")
-
-        if (surv_data.c == -1).all():
-            raise ValueError("Cannot have only left censored data")
-
-        if surpyval.utils.check_no_censoring(surv_data.c) and (how == "MOM"):
-            raise ValueError("Method of moments doesn't support censoring")
-
-        if (
-            (surpyval.utils.no_left_or_int(surv_data.c))
-            and (how == "MPP")
-            and (not heuristic == "Turnbull")
-        ):
-            detail = (
-                "Probability plotting estimation with left or "
-                "interval censoring only works with Turnbull heuristic"
-            )
-            raise ValueError(detail)
-
-        if (
-            (heuristic == "Turnbull")
-            and (not ((-1 in surv_data.c) or (2 in surv_data.c)))
-            and ((~np.isfinite(surv_data.tr)).all())
-        ):
-            # The Turnbull method is extremely memory intensive.
-            # So if no left or interval censoring and no right-truncation
-            # then this is equivalent.
-            heuristic = turnbull_estimator
-
-        if (not offset) and (not zi):
-            lower, upper = self.support
-            # One line that names the bounds as the check applies them: an
-            # observation must lie strictly inside, so the old "[0, inf]"
-            # read as though 0 were allowed while 0 was what it rejected.
-            detail = (
-                f"Some of your data is outside the support of the "
-                f"{self.name} distribution: observed values must lie "
-                f"strictly between {lower} and {upper}, i.e. in "
-                f"({lower}, {upper}), and a censored value must leave the "
-                f"event some probability. Are some of your observed values "
-                f"{lower}, -inf or inf?"
-            )
-            x_sd, c_sd = surv_data.x, surv_data.c
-            if x_sd.ndim == 2:
-                bad = (
-                    ((x_sd[:, 0] <= lower) & (c_sd == 0))
-                    | ((x_sd[:, 1] >= upper) & (c_sd == 0))
-                    # An interval endpoint strictly below the support made
-                    # the CDF evaluate outside its domain: NaN likelihood
-                    # everywhere and a silent initial-guess "fit" (#261).
-                    | ((x_sd[:, 0] < lower) & (c_sd == 2))
-                    # Survival past the end of the support, or a window
-                    # wholly beyond it, has probability zero.
-                    | ((x_sd[:, 0] >= upper) & ((c_sd == 1) | (c_sd == 2)))
-                )
-            else:
-                bad = (
-                    ((x_sd <= lower) & (c_sd == 0))
-                    | ((x_sd >= upper) & (c_sd == 0))
-                    # A left-censored point at or below the support start
-                    # is a zero-probability observation: the likelihood is
-                    # -inf/NaN everywhere and the optimiser silently
-                    # returns the initial guess (#261).
-                    | ((x_sd <= lower) & (c_sd == -1))
-                    # Likewise a right-censored point at or beyond the
-                    # support's end (a Beta censored at 1.5 returned its
-                    # start with an infinite likelihood).
-                    | ((x_sd >= upper) & (c_sd == 1))
-                )
-            if bad.any():
-                raise ValueError(detail)
-
-        if how == "MPS" and (surv_data.c == 2).any():
-            # neg_mean_D has no interval-censored term; without this
-            # guard 2-D input dies deep in np.hstack with a cryptic
-            # dimensions error (#268).
-            raise ValueError(
-                "MPS does not support interval-censored observations; "
-                "use MLE (or MPP with the Turnbull heuristic) for "
-                "interval data."
-            )
-
-        if (surv_data.tl[0] != surv_data.tl).any() and how == "MPS":
-            raise ValueError(
-                "Left truncated value can only be single number when using MPS"
-            )
-
-        if (surv_data.tr[0] != surv_data.tr).any() and how == "MPS":
-            raise ValueError(
-                "Right truncated value can only be single number when using "
-                "MPS"
-            )
-
-        return heuristic
-
-    def fit(
-        self,
-        x: npt.ArrayLike | None = None,
-        c: npt.ArrayLike | None = None,
-        n: npt.ArrayLike | None = None,
-        t: npt.ArrayLike | None = None,
-        how: str = "MLE",
-        offset: bool = False,
-        zi: bool = False,
-        lfp: bool = False,
-        tl: npt.ArrayLike | Number | None = None,
-        tr: npt.ArrayLike | Number | None = None,
-        xl: npt.ArrayLike | None = None,
-        xr: npt.ArrayLike | None = None,
-        fixed: dict[str, float] | None = None,
-        heuristic: str = "Nelson-Aalen",
-        init: npt.ArrayLike = [],
-        rr: str = "y",
-        on_d_is_0: bool = False,
-        turnbull_estimator: str = "Fleming-Harrington",
-    ) -> Parametric:
-        """
-
-        Fit the distribution to data and return the fitted model.
-
-        This is the central call of SurPyval. Pass as many or as few of the
-        arguments as the data needs: the event times ``x`` (or ``xl`` and
-        ``xr``) are the only required input, and any mix of censoring,
-        counts and truncation can be added to them.
-
-        Parameters
-        ----------
-
-        x : array like, optional
-            Array of observations of the random variables. If x is
-            :code:`None`, xl and xr must be provided.
-        c : array like, optional
-            Array of censoring flag. -1 is left censored, 0 is observed, 1 is
-            right censored, and 2 is intervally censored. If not provided
-            will assume all values are observed.
-        n : array like, optional
-            Array of counts for each x. If data is provided as counts, then
-            this can be provided. If :code:`None` will assume each
-            observation is 1.
-        t : 2D-array like, optional
-            2D array like of the left and right values at which the
-            respective observation was truncated. If not provided it assumes
-            that no truncation occurs.
-        how : {'MLE', 'MPP', 'MOM', 'MSE', 'MPS'}, optional
-            Method to estimate parameters, these are:
-
-                - MLE, Maximum Likelihood Estimation (the default)
-                - MPP, Method of Probability Plotting
-                - MOM, Method of Moments
-                - MSE, Mean Square Error between the fitted CDF and a
-                  non-parametric estimate
-                - MPS, Maximum Product Spacing
-
-            Only MLE supports every kind of censoring and truncation, and
-            only MLE can fit ``zi`` and ``lfp`` models; MOM and MSE do not
-            support truncation.
-
-        offset : boolean, optional
-            If :code:`True` finds the shifted distribution. If not provided
-            assumes not a shifted distribution. Only works with continuous
-            distributions that are supported on the half-real line.
-
-        zi : boolean, optional
-            If :code:`True` fits a zero-inflated model: an extra parameter
-            ``f0``, the proportion of the population that fails at time 0.
-            MLE only, and only for distributions supported from 0. Defaults
-            to :code:`False`.
-
-        lfp : boolean, optional
-            If :code:`True` fits a limited-failure-population model: an
-            extra parameter ``p``, the proportion of the population that
-            will ever fail (``1 - p`` never fails). MLE only. Defaults to
-            :code:`False`.
-
-        tl : array like or scalar, optional
-            Values of left truncation for observations. If it is a scalar
-            value assumes each observation is left truncated at the value.
-            If an array, it is the respective 'late entry' of the observation
-
-        tr : array like or scalar, optional
-            Values of right truncation for observations. If it is a scalar
-            value assumes each observation is right truncated at the value.
-            If an array, it is the respective right truncation value for each
-            observation
-
-        xl : array like, optional
-            Array like of the left array for 2-dimensional input of x. This
-            is useful for data that is all intervally censored. Must be used
-            with the :code:`xr` input.
-
-        xr : array like, optional
-            Array like of the right array for 2-dimensional input of x. This
-            is useful for data that is all intervally censored. Must be used
-            with the :code:`xl` input.
-
-        fixed : dict, optional
-            Dictionary of parameters and their values to fix. Fixes parameter
-            by name.
-
-        heuristic : str, optional
-            Plotting method to use, if using the probability plotting,
-            MPP, method. One of the heuristics accepted by
-            ``plotting_positions`` (``"Blom"``, ``"Median"``,
-            ``"Kaplan-Meier"``, ``"Turnbull"``, ...). Defaults to
-            ``"Nelson-Aalen"``.
-
-        init : array like, optional
-            initial guess of parameters. Instead of finding an initial guess
-            for the optimization you can provide one. Can be useful to see if
-            optimization is failing due to poor initial guess.
-
-        rr : {'y', 'x'}, str, optional
-            The dimension on which to minimise the spacing between the line
-            and the observation. If 'y' the mean square error between the
-            line and vertical distance to each point is minimised. If 'x' the
-            mean square error between the line and horizontal distance to each
-            point is minimised.
-
-        on_d_is_0 : boolean, optional
-            For MPP: whether to keep the points at which nothing failed (a
-            time with only censored units, such as a right-censored highest
-            value) in the regression. If :code:`False` (the default), every
-            point where there are 0 deaths is excluded from the regression;
-            if :code:`True` all points are included, whether or not there
-            was a death there.
-
-        turnbull_estimator : str, optional
-            If using the Turnbull heuristic, the estimator used with the
-            Turnbull estimates of r and d: ``'Fleming-Harrington'`` (the
-            default), ``'Nelson-Aalen'`` or ``'Kaplan-Meier'``.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the fitted parameters and methods for
-            all functions of the distribution using the fitted parameters.
-
-        Examples
-        --------
-        >>> from surpyval import Weibull
-        >>> import numpy as np
-        >>> np.random.seed(1)
-        >>> x = Weibull.random(100, 10, 4)
-        >>> model = Weibull.fit(x)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Parameters          :
-             alpha: 9.815018791049368
-              beta: 3.798740470368033
-        >>> Weibull.fit(x, how='MPS', fixed={'alpha' : 10})
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MPS
-        Parameters          :
-             alpha: 10.0
-              beta: 3.670796510564323
-        >>> Weibull.fit(xl=np.floor(x), xr=np.ceil(x), how='MPP',
-        ...             heuristic='Turnbull')
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MPP
-        Parameters          :
-             alpha: 9.834445729732789
-              beta: 3.2602770099790424
-        >>> c = np.zeros_like(x)
-        >>> c[x > 13] = 1
-        >>> x[x > 13] = 13
-        >>> c = c[x > 6]
-        >>> x = x[x > 6]
-        >>> Weibull.fit(x=x, c=c, tl=6)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Parameters          :
-             alpha: 9.893584496413128
-              beta: 3.78688602908912
-        """
-
-        surv_data = SurpyvalData(
-            x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr
-        )
-        return self.fit_from_surpyval_data(
-            surv_data,
-            how=how,
-            offset=offset,
-            zi=zi,
-            lfp=lfp,
-            fixed=fixed,
-            heuristic=heuristic,
-            init=init,
-            rr=rr,
-            on_d_is_0=on_d_is_0,
-            turnbull_estimator=turnbull_estimator,
-        )
-
-    def fit_from_df(
-        self,
-        df: pd.DataFrame,
-        x: str | None = None,
-        c: str | None = None,
-        n: str | None = None,
-        xl: str | None = None,
-        xr: str | None = None,
-        tl: str | float | None = None,
-        tr: str | float | None = None,
-        **fit_options: Any,
-    ) -> Parametric:
-        r"""
-        Fit the distribution to data held in the columns of a
-        :class:`pandas.DataFrame`.
-
-        The column names are passed in place of the arrays :meth:`fit`
-        takes; every other :meth:`fit` option can be passed as a keyword.
-
-        Parameters
-        ----------
-
-        df : DataFrame
-            DataFrame of data to be used to create surpyval model
-
-        x : string, optional
-            column name for the column in df containing the variable data.
-            If not provided must provide both xl and xr.
-
-        c : string, optional
-            column name for the column in df containing the censor flag of x.
-            If not provided assumes all values of x are observed.
-
-        n : string, optional
-            column name in for the column in df containing the counts of x.
-            If not provided assumes each x is one observation.
-
-        tl : string or scalar, optional
-            If string, column name in for the column in df containing the left
-            truncation data. If scalar assumes each x is left truncated by
-            that value. If not provided assumes x is not left truncated.
-
-        tr : string or scalar, optional
-            If string, column name in for the column in df containing the
-            right truncation data. If scalar assumes each x is right truncated
-            by that value. If not provided assumes x is not right truncated.
-
-        xl : string, optional
-            column name for the column in df containing the left interval for
-            interval censored data. If left interval is -Inf, assumes left
-            censored. If xl[i] == xr[i] assumes observed. Cannot be provided
-            with x, must be provided with xr.
-
-        xr : string, optional
-            column name for the column in df containing the right interval
-            for interval censored data. If right interval is Inf, assumes
-            right censored. If xl[i] == xr[i] assumes observed. Cannot be
-            provided with x, must be provided with xl.
-
-        fit_options : dict, optional
-            dictionary of fit options that will be passed to the :code:`fit`
-            method, see that method for options.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the fitted parameters and methods for
-            all functions of the distribution using the fitted parameters.
-
-
-        Examples
-        --------
-        >>> import surpyval as surv
-        >>> from surpyval.datasets import load_bofors_steel
-        >>> df = load_bofors_steel()
-        >>> model = surv.Weibull.fit_from_df(df, x='x', n='n', offset=True)
-        >>> print(model)
-        Parametric SurPyval Model
-        =========================
-        Distribution        : Weibull
-        Fitted by           : MLE
-        Offset (gamma)      : 39.76557772434183
-        Parameters          :
-             alpha: 7.141983615103902
-              beta: 2.62047590823775
-        """
-
-        if not isinstance(df, pd.DataFrame):
-            raise ValueError("df must be a pandas DataFrame")
-
-        if (x is not None) and ((xl is not None) or (xr is not None)):
-            raise ValueError("Cannot use `x` and (`xl` and `xr`) together")
-
-        if x is not None:
-            x = df[x].astype(float)
-        else:
-            xl = df[xl].astype(float)
-            xr = df[xr].astype(float)
-            x = np.vstack([xl, xr]).T
-
-        if c is not None:
-            c = df[c].values.astype(int)
-
-        if n is not None:
-            n = df[n].values.astype(int)
-
-        if tl is not None:
-            if isinstance(tl, str):
-                tl = df[tl].values.astype(float)
-            elif np.isscalar(tl):
-                tl = (np.ones(df.shape[0]) * tl).astype(float)
-            else:
-                raise ValueError("`tl` must be scalar or column label string")
-        else:
-            tl = np.ones(df.shape[0]) * -np.inf
-
-        if tr is not None:
-            if isinstance(tr, str):
-                tr = df[tr].values.astype(float)
-            elif np.isscalar(tr):
-                tr = (np.ones(df.shape[0]) * tr).astype(float)
-            else:
-                detail = "`tr` must be scalar or a column label string"
-                raise ValueError(detail)
-        else:
-            tr = np.ones(df.shape[0]) * np.inf
-
-        t = np.vstack([tl, tr]).T
-
-        return self.fit(x=x, c=c, n=n, t=t, **fit_options)
-
-    def fit_from_ecdf(self, x: npt.ArrayLike, F: npt.ArrayLike) -> Parametric:
-        r"""
-        Fit the distribution to points of an empirical CDF by probability
-        plotting.
-
-        The points ``(x, F)`` are transformed to the distribution's
-        probability-plot axes and a straight line is fitted through them
-        by least squares (the ``how='MPP'`` regression with ``rr='y'``,
-        but on the CDF values given rather than on plotting positions
-        computed from data). Points with ``F`` equal to 0 or 1 cannot be
-        transformed and are left out. Only distributions that support
-        ``how='MPP'`` can be fitted this way.
-
-        Parameters
-        ----------
-        x : array like
-            The values at which the CDF is known.
-        F : array like
-            The CDF at each ``x``, between 0 and 1, of the same length as
-            ``x``.
-
-        Returns
-        -------
-        Parametric
-            A model whose ``method`` is ``'given ecdf'``. It holds no
-            data, so it has no likelihood, information criteria or
-            confidence bounds.
-
-        Raises
-        ------
-        ValueError
-            If ``x`` and ``F`` differ in length, or an ``F`` is NaN or
-            outside [0, 1].
-
-        Examples
-        --------
-        >>> from surpyval import Weibull
-        >>> model = Weibull.fit_from_ecdf([1, 2, 3, 4], [0.1, 0.3, 0.6, 0.9])
-        >>> model.params
-        array([2.96150944, 2.1761779 ])
-        """
-        # The regression needs the distribution's linearising transforms
-        # and the map from the fitted line back to its parameters
-        # (``unpack_rr``); without them the call died with an IndexError,
-        # AttributeError or TypeError depending on the distribution.
-        if not (self.supports_mpp and hasattr(self, "unpack_rr")):
-            raise ValueError(
-                f"{self.name} cannot be fitted to an ECDF: it has no "
-                "straight-line probability plot to regress the points on. "
-                "Fit it to the data instead (how='MLE')."
-            )
-        # A value outside [0, 1] or NaN was dropped by the transform's
-        # NaN without a word (F = [0.1, 0.3, 1.2, 0.9] fitted alpha 2.886
-        # to the other three), and unequal lengths died in an IndexError.
-        x_arr = np.asarray(x, dtype=float).ravel()
-        F_arr = np.asarray(F, dtype=float).ravel()
-        if x_arr.size != F_arr.size:
-            raise ValueError(
-                f"x and F must have the same length: x has {x_arr.size} "
-                f"values and F has {F_arr.size}."
-            )
-        bad = ~((F_arr >= 0) & (F_arr <= 1))
-        if bad.any():
-            raise ValueError(
-                "F must lie in [0, 1]: got "
-                f"{F_arr[bad].tolist()} at x = {x_arr[bad].tolist()}."
-            )
-        model = Parametric(self, "given ecdf", None, False, False, False)
-        res = mpp_from_ecfd(self, x_arr, F_arr)
-        model.params = np.array(res["params"])
-        model.support = self.support
-
-        return model
-
-    def fit_from_non_parametric(self, non_parametric_model: Any) -> Parametric:
-        r"""
-        Fit the distribution to a fitted non-parametric model by
-        probability plotting.
-
-        Equivalent to :meth:`fit_from_ecdf` with ``x`` the model's
-        failure times (those with a death, ``d > 0``) and ``F = 1 - R``
-        its estimate there, so a Kaplan-Meier model gives the same
-        parameters as ``fit(x, c, n, t, how='MPP',
-        heuristic='Kaplan-Meier')`` on its data, censored or not.
-
-        Parameters
-        ----------
-        non_parametric_model : NonParametric
-            A fitted ``KaplanMeier``, ``NelsonAalen``,
-            ``FlemingHarrington`` or ``Turnbull`` model.
-
-        Returns
-        -------
-        Parametric
-            A model whose ``method`` is ``'given ecdf'`` (see
-            :meth:`fit_from_ecdf`).
-
-        Examples
-        --------
-        >>> from surpyval import KaplanMeier, Weibull
-        >>> km = KaplanMeier.fit([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])
-        >>> Weibull.fit_from_non_parametric(km).params
-        array([5.9544901 , 1.35505406])
-        """
-        # Only the times with a failure are plotted, as ``how='MPP'``
-        # does by default (``on_d_is_0=False``): the censored times kept
-        # the step of R before them and pulled the line (alpha 10.711
-        # where the documented equivalent gives 10.597, #438).
-        x = np.asarray(non_parametric_model.x, dtype=float)
-        F = 1 - np.asarray(non_parametric_model.R, dtype=float)
-        keep = (np.asarray(non_parametric_model.d) > 0) & np.isfinite(x)
-        return self.fit_from_ecdf(x[keep], F[keep])
-
-    def _clamp_truncation_to_support(self, t: Any) -> Any:
-        """Clamp the truncation bounds to the distribution's support.
-
-        Returns the left and right truncation arrays with any value that
-        falls outside a *finite* support edge moved onto that edge. An
-        infinite support edge leaves the corresponding bound untouched.
-        """
-        tl = t[:, 0]
-        tr = t[:, 1]
-
-        if np.isfinite(self.support[0]):
-            tl = np.where(tl < self.support[0], self.support[0], tl)
-
-        if np.isfinite(self.support[1]):
-            tr = np.where(tr > self.support[1], self.support[1], tr)
-
-        return tl, tr
-
-    def _initial_guess(
-        self,
-        data: SurpyvalData,
-        offset: bool,
-        zi: bool,
-        lfp: bool,
-        heuristic: str,
-    ) -> npt.NDArray:
-        """Derive an initial parameter vector for the iterative fitters.
-
-        Builds a working copy of the data with interval- and
-        left-censored points imputed to point observations, asks the
-        distribution's ``_parameter_initialiser`` for a seed, and appends
-        the limited-failure (``p``) and zero-inflation (``f0``) seeds when
-        those models are requested. The returned vector is in the natural
-        (untransformed) parameter space.
-
-        The working copy is rewrapped as a ``SurpyvalData`` before it is
-        handed on, rather than the caller's own object being forwarded:
-        the imputation rewrites ``x`` and ``c``, and the masks below drop
-        rows, so the caller's object no longer describes it.
-        """
-        x, c, n = data.x, data.c, data.n
-        if x.ndim == 2:
-            # If x has 2 dims, then there is intervally
-            # censored data. Simply take the midpoint to
-            # get the initial estimate.
-            x_init = x.mean(axis=1)
-            c_init = np.copy(c)
-            c_init[c_init == 2] = 0
-            n_init = np.copy(n)
-        else:
-            x_init = np.copy(x)
-            c_init = np.copy(c)
-            n_init = np.copy(n)
-
-        # If there is left censoring, assume that the
-        # left censored value is the midpoint between
-        # the censored value and the lowest x value
-        x_init[c_init == -1] = (x_init[c_init == -1] + x.min()) / 2
-        c_init[c_init == -1] = 0
-
-        # check if the one support is -inf or inf and the other is
-        # finite. If it isn't, then the distribution cannot be offset.
-        # i.e if both finite or both infinite, then cannot be offset,
-        # zero-inflated, or limited failure.
-        if (
-            np.all(np.isinf(self.support))
-            or np.all(np.isfinite(self.support))
-            or np.all(np.isnan(self.support))
-        ):
-            with np.errstate(all="ignore"):
-                init = np.array(
-                    self._parameter_initialiser(
-                        _imputed_data(x_init, c_init, n_init)
-                    )
-                )
-        else:
-            with np.errstate(all="ignore"):
-                # Remove x where x is out of support
-                # This is if data for a zi or lfp model is present
-                if not offset:
-                    in_support_mask = (x_init > self.support[0]) & (
-                        x_init < self.support[1]
-                    )
-
-                    # Reduce x, c, and n to the case where it is in the
-                    # support of the distribution
-                    x_init = x_init[in_support_mask]
-                    c_init = c_init[in_support_mask]
-                    n_init = n[in_support_mask]
-                elif zi:
-                    # Exact zeros belong to the zero-inflation
-                    # mass; including them would drag the offset
-                    # initial guess below zero
-                    nonzero_mask = x_init != 0
-                    x_init = x_init[nonzero_mask]
-                    c_init = c_init[nonzero_mask]
-                    n_init = n_init[nonzero_mask]
-
-                # Create an initial estimate with the new points
-                init = self._parameter_initialiser(
-                    _imputed_data(x_init, c_init, n_init), offset=offset
-                )
-                init = np.array(init)
-
-                if offset:
-                    x_nonzero = x[x != 0] if zi else x
-                    init[0] = _offset_start(x_nonzero)
-
-        if lfp:
-            _, _, _, F = pp(x_init, c_init, n_init, heuristic="Nelson-Aalen")
-
-            max_F = np.max(F)
-            # Kept off the bounds 0 and 1, which the optimiser's arctanh
-            # transform maps to -inf and inf.
-            init = np.concatenate(
-                [init, [np.clip(min(0.6, max_F), 1e-3, 0.999)]]
-            )
-
-        if zi:
-            if x.ndim == 2:
-                x_0 = x[c == 0, 0]
-            else:
-                x_0 = x[c == 0]
-
-            n_0 = n[c == 0]
-            total_failures_at_zero = n_0[x_0 == 0].sum()
-
-            f_0_init = total_failures_at_zero / n.sum()
-            # With no failures at zero the natural seed is 0, the edge of
-            # f0's bounds, which the optimiser's arctanh transform maps to
-            # -inf: every evaluation then warned (35 RuntimeWarnings for a
-            # small lfp + zi fit). Start just inside instead.
-            init = np.concatenate([init, [np.clip(f_0_init, 1e-3, 0.999)]])
-
-        return init
-
-    def _alternative_base_starts(
-        self, data: SurpyvalData, offset: bool
-    ) -> "list[npt.NDArray]":
-        """
-        Further starting points for the distribution's own parameters
-        (leading with the offset when ``offset``), tried in addition to the
-        default one when fitting by maximum likelihood; none by default.
-        """
-        return []
-
-    def _alternative_starts(
-        self,
-        surv_data: SurpyvalData,
-        offset: bool,
-        zi: bool,
-        lfp: bool,
-        heuristic: str,
-    ) -> "list[npt.NDArray]":
-        """
-        Complete alternative starting vectors for a maximum-likelihood fit:
-        the distribution's own alternatives, with the default's ``p`` /
-        ``f0`` seeds appended, and for a limited failure population a start
-        from the failures alone.
-        """
-        bases = self._alternative_base_starts(surv_data, offset)
-        starts: list = []
-        if bases:
-            with np.errstate(all="ignore"):
-                default = np.atleast_1d(
-                    self._initial_guess(surv_data, offset, zi, lfp, heuristic)
-                )
-            tail = default[len(default) - int(lfp) - int(zi) :]
-            starts += [np.concatenate([np.asarray(b), tail]) for b in bases]
-        if lfp and not zi:
-            failures = self._lfp_failures_start(surv_data, offset)
-            if failures is not None:
-                starts.append(failures)
-        return starts
-
-    def _lfp_failures_start(
-        self, surv_data: SurpyvalData, offset: bool
-    ) -> "npt.NDArray | None":
-        """
-        A limited-failure-population starting point from the failures
-        alone: the distribution's own initialiser on the observed failures
-        (treated as a complete sample of the susceptible units), and ``p``
-        at the observed failure fraction. ``None`` when there are too few
-        distinct failures to seed from.
-        """
-        x = np.asarray(surv_data.x, dtype=float)
-        c = np.asarray(surv_data.c)
-        n = np.asarray(surv_data.n, dtype=float)
-        if x.ndim != 1:
-            return None
-        observed = c == 0
-        if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
-            return None
-        with np.errstate(all="ignore"):
-            try:
-                base = np.array(
-                    self._parameter_initialiser(
-                        _imputed_data(
-                            x[observed],
-                            np.zeros(int(observed.sum()), dtype=int),
-                            n[observed],
-                        ),
-                        offset=offset,
-                    ),
-                    dtype=float,
-                )
-            except Exception:
-                return None
-        if offset:
-            base[0] = _offset_start(x)
-        if not np.all(np.isfinite(base)):
-            return None
-        p0 = float(np.clip(n[observed].sum() / n.sum(), 1e-3, 0.999))
-        return np.concatenate([base, [p0]])
-
-    def fit_from_surpyval_data(
-        self,
-        surv_data: SurpyvalData,
-        how: str = "MLE",
-        offset: bool = False,
-        zi: bool = False,
-        lfp: bool = False,
-        fixed: dict[str, float] | None = None,
-        heuristic: str = "Nelson-Aalen",
-        init: npt.ArrayLike = [],
-        rr: str = "y",
-        on_d_is_0: bool = False,
-        turnbull_estimator: str = "Fleming-Harrington",
-    ) -> Parametric:
-        """
-
-        Fit the distribution to data already held in a
-        :class:`~surpyval.utils.surpyval_data.SurpyvalData` object.
-
-        :meth:`fit` builds a ``SurpyvalData`` from its arrays and calls this
-        method; call it directly to reuse one prepared data object across
-        several fits.
-
-        Parameters
-        ----------
-
-        surv_data : SurpyvalData
-            Survival data in the SurpyvalData class.
-        how, offset, zi, lfp, fixed, heuristic, init, rr, on_d_is_0, \
-turnbull_estimator
-            As for :meth:`fit`.
-
-        Returns
-        -------
-
-        Parametric
-            A parametric model with the fitted parameters and methods for
-            all functions of the distribution using the fitted parameters.
-
-        Examples
-        --------
-        >>> from surpyval import Weibull, SurpyvalData
-        >>> data = SurpyvalData(x=[1, 3, 4, 7, 9], c=[0, 0, 0, 0, 1])
-        >>> model = Weibull.fit_from_surpyval_data(data)
-        >>> model.params.round(3)
-        array([6.022, 1.351])
-        """
-        x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
-        # Clamp the truncation values to the (possibly finite) support edges
-        tl, tr = self._clamp_truncation_to_support(t)
-
-        # Validate inputs
-        heuristic = self._validate_fit_inputs(
-            surv_data,
-            how,
-            offset,
-            lfp,
-            zi,
-            fixed,
-            heuristic,
-            turnbull_estimator,
-        )
-
-        # Passed checks
-        data = {"x": x, "c": c, "n": n, "t": t}
-
-        model = Parametric(self, how, data, offset, lfp, zi)
-        model.surv_data = surv_data
-        self._check_fixed_and_init(model, fixed, init, how)
-        fitting_info: dict = {}
-
-        # An exact analytic MLE, where one exists for this distribution and
-        # this data, is attempted *before* the initial guess and bounds
-        # machinery below -- both of which exist only to seed and run the
-        # optimiser. Returns None whenever the closed form does not apply,
-        # and the numerical path proceeds untouched.
-        results = self._try_closed_form_mle(
-            surv_data, how, offset, lfp, zi, fixed
-        )
-
-        if results is None:
-            results = self._fit_numerically(
-                model,
-                fitting_info,
-                surv_data,
-                tl,
-                tr,
-                how,
-                offset,
-                zi,
-                lfp,
-                fixed,
-                heuristic,
-                init,
-                rr,
-                on_d_is_0,
-                turnbull_estimator,
-            )
-            # Some likelihoods have more than one optimum, and the default
-            # start can lead to the worse one: a limited failure population
-            # (p and the failure distribution trade off), or a custom
-            # distribution whose default start is a grid choice. With a
-            # default start, the optimiser is also run from the
-            # alternatives each offers, and the best likelihood is kept.
-            if (
-                how == "MLE"
-                and not fixed
-                and (init is None or len(np.atleast_1d(init)) == 0)
-            ):
-                for start in self._alternative_starts(
-                    surv_data, offset, zi, lfp, heuristic
-                ):
-                    alt_model = Parametric(self, how, data, offset, lfp, zi)
-                    alt_model.surv_data = surv_data
-                    alt_info: dict = {}
-                    alt = self._fit_numerically(
-                        alt_model,
-                        alt_info,
-                        surv_data,
-                        tl,
-                        tr,
-                        how,
-                        offset,
-                        zi,
-                        lfp,
-                        fixed,
-                        heuristic,
-                        start,
-                        rr,
-                        on_d_is_0,
-                        turnbull_estimator,
-                    )
-                    best = results.get("_neg_ll", np.inf)
-                    value = alt.get("_neg_ll", np.inf)
-                    if np.isfinite(value) and value < best - 1e-9 * max(
-                        1.0, abs(value)
-                    ):
-                        results = alt
-                        model.fitting_info = alt_info
-        else:
-            model.fitting_info = fitting_info
-
-        for k, v in results.items():
-            setattr(model, k, v)
-
-        # Every fit says how its answer was found, not only MLE and the
-        # closed forms: ``optimizer`` was missing after MPP, MOM, MPS and
-        # MSE fits.
-        if not hasattr(model, "optimizer"):
-            model.optimizer = _optimizer_label(how, results.get("res"))
-
-        # A fit must never hand back a non-finite parameter. When the
-        # optimiser fails, the reported parameters are the initial guess
-        # (#261), so any initialiser that produced a nan or an inf had
-        # it laundered into what looked like a fitted model: an offset
-        # Gamma on a tied sample returned ``(inf, inf)`` in silence. The
-        # initialisers that could do that are fixed, but this is the
-        # backstop, since a non-finite parameter is never a valid answer
-        # whatever produced it.
-        _params = np.atleast_1d(np.asarray(model.params, dtype=float))
-        _extra = [getattr(model, name, None) for name in ("gamma", "p", "f0")]
-        _extra = [float(v) for v in _extra if v is not None]
-        if not (np.isfinite(_params).all() and np.isfinite(_extra).all()):
-            raise ValueError(
-                f"{self.name} fit produced non-finite parameters "
-                f"({np.asarray(model.params)}). The optimiser did not "
-                f"reach a valid solution; check the data for degenerate "
-                f"or extreme values."
-            )
-
-        # Only maximum likelihood and the closed forms report a
-        # log-likelihood, because only they compute one on the way to
-        # the answer. That left ``neg_ll``, ``aic``, ``bic`` and
-        # ``aic_c`` raising AttributeError for every MPS, MSE, MOM and
-        # MPP fit -- so the usual way of choosing between distributions
-        # was unavailable for four of the five methods.
-        #
-        # The log-likelihood is a property of the parameters and the
-        # data, not of the search that found them, so evaluate it here.
-        # Guarded by ``hasattr`` so the methods that already report one
-        # keep theirs untouched: maximum likelihood's is the optimiser's
-        # own final objective, which on its fallback path is deliberately
-        # taken at the initial guess rather than at the failed result
-        # (#261), and recomputing would quietly undo that.
-        if not hasattr(model, "_neg_ll"):
-            with np.errstate(all="ignore"):
-                model._neg_ll = float(
-                    self._neg_ll_func(
-                        surv_data,
-                        *model.params,
-                        model.gamma,
-                        model.f0,
-                        model.p,
-                    )
-                )
-
-        # Expose each fitted parameter by name (e.g. ``model.alpha``), but
-        # never overwrite the reserved offset / limited-failure /
-        # zero-inflation attributes, which the survival functions rely on.
-        # A distribution may legitimately name a parameter ``p`` (e.g.
-        # ``Geometric``, ``NegativeBinomial``); those remain available via
-        # ``model.params``.
-        reserved = {"gamma", "p", "f0"}
-        for k, v in zip(self.param_names, model.params):
-            if k not in reserved:
-                setattr(model, k, v)
-
-        self._set_support(model, offset)
-
-        return model
-
-    def _check_fixed_and_init(
-        self, model: Parametric, fixed: Any, init: Any, how: str
-    ) -> None:
-        """Refuse a ``fixed`` or ``init`` the fit cannot use, with a
-        message that says why.
-
-        Without this an unknown name in ``fixed`` was a bare KeyError, a
-        fixed value outside its parameter's bounds (a negative scale, a
-        proportion above one, an offset past the first observation) sent
-        the optimiser a nan and ended in an "MLE Failed" warning and a
-        "non-finite parameters" error, and a wrongly sized or
-        out-of-bounds ``init`` failed in ``zip`` or with an IndexError.
-        """
-        names = sorted(model.param_map, key=model.param_map.__getitem__)
-
-        def outside(name: str, value: Any) -> str | None:
-            lo, hi = model.bounds[model.param_map[name]]
-            lo_v = -np.inf if lo is None else lo
-            hi_v = np.inf if hi is None else hi
-            if np.isfinite(value) and lo_v < value < hi_v:
-                return None
-            return f"{name} = {value} lies outside its bounds ({lo_v}, {hi_v})"
-
-        for name, value in (fixed or {}).items():
-            if name not in model.param_map:
-                hint = {
-                    "gamma": " (an offset needs offset=True)",
-                    "f0": " (zero inflation needs zi=True)",
-                    model.lfp_name: (
-                        " (the limited-failure proportion needs lfp=True)"
-                    ),
-                }.get(name, "")
-                raise ValueError(
-                    f"Unknown parameter {name!r} in `fixed`{hint}; this "
-                    f"{self.name} model has {names}."
-                )
-            problem = outside(name, value)
-            if problem is not None:
-                raise ValueError(f"Cannot fix {name}: {problem}.")
-
-        if how == "MPP" or init is None or len(np.atleast_1d(init)) == 0:
-            return
-        init_arr = np.atleast_1d(np.asarray(init, dtype=float))
-        n_free = len(names) - len(fixed or {})
-        free = [name for name in names if name not in (fixed or {})]
-        if fixed and len(init_arr) == n_free:
-            checked = list(zip(free, init_arr))
-        elif len(init_arr) == len(names):
-            checked = list(zip(names, init_arr))
-        else:
-            expected = (
-                f"{n_free} (one per free parameter, {free}) or "
-                f"{len(names)}"
-                if fixed
-                else f"{len(names)}"
-            )
-            raise ValueError(
-                f"`init` has {len(init_arr)} value(s) but this {self.name} "
-                f"model needs {expected}: {names}."
-            )
-        for name, value in checked:
-            if fixed and name in fixed:
-                continue
-            problem = outside(name, value)
-            if problem is not None:
-                raise ValueError(f"Bad `init`: {problem}.")
-
-    def _try_closed_form_mle(
-        self,
-        surv_data: SurpyvalData,
-        how: str,
-        offset: bool,
-        lfp: bool,
-        zi: bool,
-        fixed: dict[str, float] | None,
-    ) -> "dict | None":
-        """An exact analytic MLE, or ``None`` to use the optimiser.
-
-        Two conditions have to hold, and they live in different places
-        because they are different kinds of question.
-
-        The *structural* ones are checked here: an offset ``gamma``, a
-        limited-failure ``p``, zero-inflation ``f0`` or any user-fixed
-        parameter each adds structure the analytic solutions do not
-        solve for. These are properties of the requested model rather
-        than of the data, and they are identical for every distribution.
-
-        The *data-shape* condition is left to the distribution's own
-        ``_closed_form_mle``, which alone knows what it can solve -- the
-        Exponential accepts right censoring and left truncation, the
-        Normal needs complete data -- and which signals inapplicability
-        by returning ``None``.
-        """
-        if how != "MLE":
-            return None
-        if offset or lfp or zi or fixed:
-            return None
-
-        solver = getattr(self, "_closed_form_mle", None)
-        if solver is None:
-            return None
-
-        params = solver(surv_data)
-        if params is None:
-            return None
-
-        # A distribution whose "closed form" is, for some data, a
-        # dedicated search reports that search as the optimiser.
-        label = getattr(self, "_closed_form_optimizer", None)
-        optimizer = "closed-form" if label is None else label(surv_data)
-        return closed_form_results(self, surv_data, params, optimizer)
-
-    def _fit_numerically(
-        self,
-        model: Any,
-        fitting_info: Any,
-        surv_data: SurpyvalData,
-        tl: Any,
-        tr: Any,
-        how: str,
-        offset: bool,
-        zi: bool,
-        lfp: bool,
-        fixed: dict[str, float] | None,
-        heuristic: str,
-        init: Any,
-        rr: str,
-        on_d_is_0: bool,
-        turnbull_estimator: str,
-    ) -> dict:
-        """Seed an initial guess, convert bounds and run the estimator."""
-        if how == "MPS":
-            # Need to set the scalar truncation values
-            # if the MPS method is used.
-            # since it has already been checked that they are all the same
-            # we need only get the first item of each truncation array.
-            model.tl = tl[0]
-            model.tr = tr[0]
-
-        if how != "MPP":
-            _, _, _, _, not_fixed = bounds_convert(
-                surv_data.x, model.bounds, fixed, model.param_map
-            )
-            # ``len``-based check: comparing an ndarray to ``[]`` raises a
-            # broadcast error (#261).
-            if init is None or len(np.atleast_1d(init)) == 0:
-                init = self._initial_guess(
-                    surv_data, offset, zi, lfp, heuristic
-                )
-
-            init = np.atleast_1d(init)
-            if fixed and len(init) == len(not_fixed):  # type: ignore[arg-type]
-                # The initial guess covers only the free parameters;
-                # merge it with the fixed values to get the full vector
-                full_init = np.zeros(len(model.param_map))
-                full_init[not_fixed] = init
-                for name, value in fixed.items():
-                    full_init[model.param_map[name]] = value
-                init = full_init
-
-            # An offset fit searches every parameter with one bound in
-            # units of its own starting distance from that bound (see
-            # ``_offset_search_units``); any other fit in units of 1.
-            units = (
-                _offset_search_units(init, model.bounds) if offset else None
-            )
-            transform, inv_trans, const, fixed_idx, not_fixed = bounds_convert(
-                surv_data.x, model.bounds, fixed, model.param_map, units
-            )
-            fitting_info["inv_trans"] = inv_trans
-            fitting_info["const"] = const
-            fitting_info["fixed_idx"] = fixed_idx
-
-            init = transform(init)
-            init = init[not_fixed]  # type: ignore[index]
-            fitting_info["init"] = init
-        else:
-            # Probability plotting method does not need an initial estimate
-            fitting_info["rr"] = rr
-            fitting_info["heuristic"] = heuristic
-            fitting_info["on_d_is_0"] = on_d_is_0
-            fitting_info["turnbull_estimator"] = turnbull_estimator
-            fitting_info["init"] = None
-
-        model.fitting_info = fitting_info
-
-        return METHOD_FUNC_DICT[how](model)

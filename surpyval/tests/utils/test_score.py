@@ -1,15 +1,16 @@
-"""Tests for the concordance index in ``surpyval.utils.score``.
+"""Tests for the concordance index, ``surpyval.metrics.concordance_index``
+(formerly ``surpyval.utils.score.score``).
 
-``score`` computes Harrell's c-index for mortality-like risk scores: a
-higher score predicts an earlier event. Pairs are compared with the
-earlier time first, which must not depend on the order the samples are
-passed in.
+It computes Harrell's c-index (with Therneau's tied-event convention by
+default) for mortality-like risk scores: a higher score predicts an
+earlier event. Pairs are compared with the earlier time first, which must
+not depend on the order the samples are passed in.
 """
 
 import numpy as np
 import pytest
 
-from surpyval.utils.score import score
+from surpyval.metrics import concordance_index as score
 
 
 def test_perfect_concordance_is_one():
@@ -66,10 +67,28 @@ def test_tied_time_event_vs_censored():
 
 
 def test_tied_time_both_events():
+    # Harrell's original convention: a usable pair, 1 for tied scores,
+    # else 0.5.
     x = [5.0, 5.0]
     c = [0, 0]
-    assert score(x, c, [3.0, 3.0]) == 1.0  # tied scores for a tied pair
-    assert score(x, c, [1.0, 2.0]) == 0.5
+    assert score(x, c, [3.0, 3.0], ties="harrell") == 1.0
+    assert score(x, c, [1.0, 2.0], ties="harrell") == 0.5
+    # Therneau's (the default, as R and lifelines): not a pair.
+    with pytest.raises(ValueError, match="No usable pairs"):
+        score(x, c, [1.0, 2.0])
+    assert score(x + [6.0], c + [1], [1.0, 2.0, 0.0]) == 1.0
+
+
+def test_deprecated_score_keeps_harrell():
+    # surpyval.utils.score.score is deprecated and keeps the convention
+    # it always had (Harrell's), where concordance_index now defaults to
+    # Therneau's.
+    from surpyval.utils.score import score as old_score
+
+    x, c, s = [1.0, 1, 2, 3], [0, 0, 0, 1], [0.9, 0.5, 0.7, 0.2]
+    with pytest.warns(DeprecationWarning):
+        assert old_score(x, c, s) == 0.75
+    assert score(x, c, s) == 0.8
 
 
 def test_input_order_invariance():
@@ -80,3 +99,16 @@ def test_input_order_invariance():
     baseline = score(x, c, mortality)
     perm = rng.permutation(25)
     assert score(x[perm], c[perm], mortality[perm]) == pytest.approx(baseline)
+
+
+# ---------------------------------------------------------------------------
+# #276: a discordant tied pair scores zero.
+# ---------------------------------------------------------------------------
+
+
+def test_concordance_discordant_tied_pair_scores_zero():
+    # 276 (unit cases in tests/utils/test_score.py; pinned here too).
+    from surpyval.metrics import concordance_index as score
+
+    assert score([5.0, 5.0], [0, 1], [1.0, 2.0]) == 0.0
+    assert score([5.0, 5.0], [0, 1], [2.0, 1.0]) == 1.0

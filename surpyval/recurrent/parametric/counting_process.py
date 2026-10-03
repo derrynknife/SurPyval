@@ -1,8 +1,15 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 import numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
+
+from surpyval.utils.dataframe import RecurrentDataFrameMixin
+from surpyval.utils.deprecation import (
+    RenamedAttribute,
+    renamed_class_attribute,
+)
 
 # The NHPP likelihoods differentiate these functions with autograd, so a
 # parameter (and hence any value computed from one) may be a plain array,
@@ -12,7 +19,7 @@ from autograd.numpy.numpy_boxes import ArrayBox
 Boxable = npt.NDArray | float | ArrayBox
 
 
-class CountingProcess(ABC):
+class CountingProcess(RecurrentDataFrameMixin, ABC):
     """
     Abstract base class for parametric counting-process intensity models.
 
@@ -26,8 +33,8 @@ class CountingProcess(ABC):
     - ``log_iif`` the natural logarithm of the instantaneous intensity,
       used directly in the log-likelihood.
 
-    Concrete subclasses also expose a ``param_names`` attribute listing the
-    names of the model's parameters. This shared base lets fitters such as
+    Concrete subclasses also expose a ``parameter_names`` attribute listing
+    the names of the model's parameters. This shared base lets fitters such as
     :class:`ProportionalIntensityNHPP` verify, with a simple ``isinstance``
     check, that the intensity model handed to them really is a counting
     process.
@@ -41,7 +48,7 @@ class CountingProcess(ABC):
     >>> from surpyval.recurrent import CountingProcess, CrowAMSAA
     >>> isinstance(CrowAMSAA, CountingProcess)
     True
-    >>> CrowAMSAA.param_names
+    >>> CrowAMSAA.parameter_names
     ['alpha', 'beta']
     >>> x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
     >>> model = CrowAMSAA.fit(x)
@@ -50,9 +57,25 @@ class CountingProcess(ABC):
     """
 
     #: Names of the model's parameters (see the class docstring).
-    param_names: list
+    parameter_names: list
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
+    # sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        renamed_class_attribute(cls, "param_names", "parameter_names")
+
     #: ``(low, high)`` bounds per parameter, ``None`` for unbounded.
     bounds: tuple
+
+    #: Whether the cumulative intensity times any positive constant is the
+    #: same model with other parameters (it has a free scale, as ``HPP``'s
+    #: rate, ``Duane``'s ``b``, ``CrowAMSAA``'s ``alpha`` and
+    #: ``CoxLewis``'s ``alpha`` are). A proportional-intensity regression
+    #: on it then has an intercept, so a constant covariate column is
+    #: aliased (#502). False unless a model says so.
+    has_scale: bool = False
 
     @abstractmethod
     def iif(self, x: Boxable, *params: Boxable) -> Boxable:
@@ -105,4 +128,4 @@ class IntensityModel(CountingProcess):
         that is the default; a subclass whose parameters need a data-
         driven start overrides this.
         """
-        return np.ones(len(self.param_names), dtype=float)
+        return np.ones(len(self.parameter_names), dtype=float)

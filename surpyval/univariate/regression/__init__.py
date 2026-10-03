@@ -15,6 +15,7 @@ from .accelerated_life import (
     DualPower,
     ExponentialLifeModel,
     Eyring,
+    GeneralLogLinear,
     InverseExponential,
     InverseEyring,
     InversePower,
@@ -39,6 +40,9 @@ from .additive_hazards import (
 )
 from .buckley_james import BuckleyJames, BuckleyJamesModel
 from .frailty import (
+    CoxFrailty,
+    CoxFrailtyFitter,
+    CoxFrailtyModel,
     ExponentialFrailty,
     Frailty,
     FrailtyFitter,
@@ -68,17 +72,24 @@ from .proportional_odds import (
     LogisticPO,
     LogNormalPO,
     NormalPO,
+    ProportionalOdds,
     ProportionalOddsFitter,
+    ProportionalOddsModel,
     WeibullPO,
 )
 from .semi_parametric_regression_model import SemiParametricRegressionModel
+from .tvc_path import CovariatePath
 from .tvc_schedule import StepSchedule, StepValuedError
 
 __all__ = [
     # Result classes that hold to_dict / from_dict / to_json / from_json
     "ParametricRegressionModel",
     "SemiParametricRegressionModel",
+    "ProportionalOddsModel",
     "FrailtyModel",
+    "CoxFrailty",
+    "CoxFrailtyFitter",
+    "CoxFrailtyModel",
     # Shared-frailty proportional hazards (Gamma frailty)
     "Frailty",
     "FrailtyFitter",
@@ -86,8 +97,9 @@ __all__ = [
     "GammaFrailty",
     "LogNormalFrailty",
     "WeibullFrailty",
-    # Time-varying-covariate step schedule for sf_tvc evaluation
+    # Time-varying-covariate paths for sf_tvc evaluation: steps, continuous
     "StepSchedule",
+    "CovariatePath",
     "StepValuedError",
     # Buckley-James semi-parametric AFT
     "BuckleyJames",
@@ -110,6 +122,7 @@ __all__ = [
     "DualPower",
     "ExponentialLifeModel",
     "Eyring",
+    "GeneralLogLinear",
     "InverseExponential",
     "InverseEyring",
     "InversePower",
@@ -139,7 +152,7 @@ __all__ = [
     "PH",
     "ProportionalHazardsFitter",
     "WeibullPH",
-    # PO
+    # PO — semi-parametric (NPMLE) and parametric
     "ExponentialPO",
     "GammaPO",
     "GumbelPO",
@@ -147,6 +160,7 @@ __all__ = [
     "LogNormalPO",
     "NormalPO",
     "PO",
+    "ProportionalOdds",
     "ProportionalOddsFitter",
     "WeibullPO",
 ]

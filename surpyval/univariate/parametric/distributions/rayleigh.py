@@ -1,29 +1,40 @@
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 
-from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import log1mexp, log_ratio, on_support, positive_or_one
+
+_LOG2 = float(np.log(2.0))
+
 
 class Rayleigh_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # log(-log sf), on which this family is a straight line in
+    # log time (#477).
+    _cb_link = "loglog"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
             bounds=((0, None),),
             support=(0, np.inf),
-            param_names=["sigma"],
+            parameter_names=["sigma"],
             param_map={"sigma": 0},
             plot_x_scale="linear",
             y_ticks=[
@@ -172,7 +183,9 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.df(x, 3)
         array([0.10510661, 0.17794165, 0.20217689, 0.18271657, 0.138529  ])
         """
-        return (x / (sigma**2)) * self.sf(x, sigma)
+        sf = self.sf(x, sigma)
+        # 0 where sf is, not inf * 0 far in the tail (#561)
+        return np.where(sf == 0, 0.0, x / (sigma**2)) * sf
 
     def hf(self, x: Numeric, sigma: Boxable) -> Boxable:
         r"""
@@ -268,7 +281,10 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         >>> Rayleigh.qf(u, 3)
         array([1.37713082, 2.00414169, 2.53380129, 3.03230296, 3.53223007])
         """
-        return sigma * np.sqrt(2 * np.log(1 / (1 - u)))
+        # log1p(-u), not log(1 / (1 - u)): 1 - u rounds to 1, and the
+        # quantile to 0, below u = 1e-16 (#447). u = 1 is inf.
+        with np.errstate(divide="ignore"):
+            return sigma * np.sqrt(-2.0 * np.log1p(-u))
 
     def mean(self, sigma: Boxable) -> Boxable:
         r"""
@@ -343,10 +359,28 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
         return euler_gamma / 2 + 1 + np.log(sigma / (np.sqrt(2)))
 
     def log_df(self, x: Numeric, sigma: Boxable) -> Boxable:
-        return np.log(x) - 2 * np.log(sigma) - 0.5 * (x / sigma) ** 2
+        # -inf at x = 0, without a log(0) warning
+        x_pos = positive_or_one(x)
+        # and -inf at x = inf, not inf - inf (#561)
+        at_inf = x_pos == np.inf
+        if np.any(at_inf):
+            x_pos = np.where(at_inf, 1.0, x_pos)
+        inside = np.log(x_pos) - 2 * np.log(sigma) - 0.5 * (x_pos / sigma) ** 2
+        if np.any(at_inf):
+            inside = np.where(at_inf, -np.inf, inside)
+        return on_support(x, inside, -np.inf)
 
     def log_sf(self, x: Numeric, sigma: Boxable) -> Boxable:
         return -0.5 * (x / sigma) ** 2
+
+    def log_ff(self, x: Numeric, sigma: Boxable) -> Boxable:
+        # log(1 - e^-t) with t = (x / sigma)^2 / 2, from t and log t:
+        # exact where F rounds to 1 (the generic log(-expm1(-t)) is 0
+        # there, #442) and finite where t underflows (#443).
+        x_pos = positive_or_one(x)
+        log_t = 2.0 * log_ratio(x_pos, sigma) - _LOG2
+        log_ff, _ = log1mexp(0.5 * (x_pos / sigma) ** 2, log_t)
+        return on_support(x, log_ff, -np.inf)
 
     def mpp(
         self,

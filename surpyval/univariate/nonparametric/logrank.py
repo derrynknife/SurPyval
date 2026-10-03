@@ -1,6 +1,9 @@
+from __future__ import annotations
+
+import warnings
+
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
@@ -131,16 +134,29 @@ def _logrank_z_v(
     if m == 0:
         return np.zeros(k), np.zeros((k, k)), np.zeros(k)
 
+    # Counts at risk and events per group and event time. These were
+    # dense ``x_i[:, None] >= event_times`` arrays, O(n * m) in time and
+    # memory: 13 s and 2 GB for 3e4 rows, and out of memory at 1e5 (#515).
+    # The at-risk count is a suffix sum of the counts over the sorted
+    # times, read off with ``searchsorted``, and the events are binned
+    # with ``bincount``. The counts are whole numbers, so both sums are
+    # exact and the arrays are identical to the dense ones.
     r_gt = np.zeros((k, m))
     d_gt = np.zeros((k, m))
     for j, (x_i, c_i, n_i) in enumerate(zip(x_g, c_g, n_g)):
         if x_i.size == 0:
             continue
-        r_gt[j] = (n_i[:, None] * (x_i[:, None] >= event_times)).sum(axis=0)
-        d_gt[j] = (
-            n_i[:, None]
-            * ((x_i[:, None] == event_times) & (c_i == 0)[:, None])
-        ).sum(axis=0)
+        order = np.argsort(x_i, kind="stable")
+        x_sorted = x_i[order]
+        # at_or_after[i]: the count of the rows from sorted position i on.
+        at_or_after = np.concatenate([np.cumsum(n_i[order][::-1])[::-1], [0]])
+        r_gt[j] = at_or_after[np.searchsorted(x_sorted, event_times, "left")]
+        events = c_i == 0
+        d_gt[j] = np.bincount(
+            np.searchsorted(event_times, x_i[events]),
+            weights=n_i[events],
+            minlength=m,
+        )
 
     r_t = r_gt.sum(axis=0)
     d_t = d_gt.sum(axis=0)
@@ -166,11 +182,16 @@ def _logrank_z_v(
     with np.errstate(all="ignore"):
         hyper = np.where(r_t > 1, d_t * (r_t - d_t) / (r_t - 1), 0.0)
         prop = np.where(r_t > 0, r_gt / r_t, 0.0)
-    V = np.zeros((k, k))
+    # V[a, b] = sum_t w**2 * hyper * prop[a] * (delta_ab - prop[b]), one row
+    # at a time: the same products in the same order as the double loop
+    # over (a, b) this replaced, so V is bit-identical, with O(k * m)
+    # memory.
+    weighted = w**2 * hyper * prop
+    V = np.empty((k, k))
     for a in range(k):
-        for b in range(k):
-            delta = 1.0 if a == b else 0.0
-            V[a, b] = (w**2 * hyper * prop[a] * (delta - prop[b])).sum()
+        delta = 0.0 - prop
+        delta[a] = 1.0 - prop[a]
+        V[a] = (weighted[a] * delta).sum(axis=1)
 
     return z, V, expected.sum(axis=1)
 
@@ -301,6 +322,8 @@ def logrank(
     # A missing label is not a group. NaN != NaN, so a NaN label used to
     # become an extra group whose rows every ``Z == g`` mask then missed:
     # the rows were dropped and the degrees of freedom went up by one.
+    import pandas as pd
+
     if pd.isna(Z).any():
         raise ValueError(
             "'Z' has missing (NaN or None) group labels; drop those rows "
@@ -324,6 +347,24 @@ def logrank(
             )
 
     k = groups.size
+    # Groups are categories. When most of them hold a single unit the
+    # labels are almost certainly a continuous variable, or an argument in
+    # the wrong slot: logrank(x, x * 1.3) ran a 50-group test with 49
+    # degrees of freedom on 50 observations, in silence (#485).
+    units = np.ones(x.shape) if n_arr is None else n_arr.astype(float)
+    sizes = np.array([units[Z == g].sum() for g in groups])
+    singletons = int(np.sum(sizes <= 1))
+    if singletons > k / 2:
+        warnings.warn(
+            "logrank: {} of the {} groups in `Z` have a single member ({} "
+            "observations in all), so `Z` looks like a continuous "
+            "variable, or another argument in its place (the "
+            "signature is logrank(x, Z, c, n)). `Z` should hold group "
+            "labels; to test a continuous covariate, fit CoxPH.".format(
+                singletons, k, int(sizes.sum())
+            ),
+            stacklevel=2,
+        )
     n_strata = None
     if strata is None:
         z, V, E = _logrank_z_v(

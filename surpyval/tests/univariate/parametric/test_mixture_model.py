@@ -2,10 +2,14 @@
 Tests for the ``MixtureModel`` fitter.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
 import surpyval as sp
+import surpyval as surv
+from surpyval.tests._helpers import no_warnings
 
 
 def _fitted_model(m=2, seed=0):
@@ -23,7 +27,10 @@ def test_unfitted_attributes_are_none():
     assert mm.params is None
     assert mm.w is None
     assert mm.data is None
-    assert repr(mm) == "Unable to fit values"
+    # #482: the pre-fit repr said "Unable to fit values"
+    assert repr(mm) == (
+        "Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)"
+    )
 
 
 def test_fit_populates_params_and_weights():
@@ -128,3 +135,213 @@ def test_df_accepts_integer_input():
     mm = _fitted_model()
     vals = mm.df([1, 5, 10])
     assert np.all(np.isfinite(vals)) and np.all(vals >= 0)
+
+
+# -- #482: fit returns the model, and works on the class ------------------
+
+_X482 = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+
+
+def test_fit_on_a_model_returns_that_model():
+    # ``model = mm.fit(x)`` gave None, so ``model.sf`` raised AttributeError
+    mm = sp.MixtureModel(dist=sp.Weibull, m=2)
+    model = mm.fit(_X482)
+    assert model is mm
+    assert np.isfinite(model.sf(10))
+
+
+def test_fit_on_the_class_builds_and_fits():
+    old = sp.MixtureModel(dist=sp.Weibull, m=2)
+    old.fit(_X482)  # the in-place form still works
+    new = sp.MixtureModel.fit(_X482, dist=sp.Weibull, m=2)
+    assert isinstance(new, sp.MixtureModel)
+    assert new.m == 2 and new.dist is sp.Weibull
+    np.testing.assert_allclose(new.params, old.params)
+    np.testing.assert_allclose(new.w, old.w)
+    three = sp.MixtureModel.fit(_X482, dist=sp.Weibull, m=3)
+    assert three.params.shape == (3, 2)
+
+
+def test_fit_on_the_class_passes_every_data_argument():
+    c = [0] * 15 + [1, 1]
+    old = sp.MixtureModel(dist=sp.Weibull, m=2)
+    old.fit(_X482, c, tl=0.5)
+    new = sp.MixtureModel.fit(_X482, c, tl=0.5, dist=sp.Weibull)
+    np.testing.assert_allclose(new.params, old.params)
+    # truncated data is fitted by direct maximisation, and says so
+    assert "Fitted by           : MLE" in repr(new)
+    assert "Fitted by           : EM" in repr(
+        sp.MixtureModel.fit(_X482, dist=sp.Weibull)
+    )
+
+
+def test_fit_on_the_class_needs_dist():
+    with pytest.raises(ValueError, match="dist"):
+        sp.MixtureModel.fit(_X482)
+
+
+def test_unbound_call_with_a_model_still_works():
+    mm = sp.MixtureModel(dist=sp.Weibull, m=2)
+    assert sp.MixtureModel.fit(mm, _X482) is mm
+    assert mm.params is not None
+
+
+def test_fit_signatures():
+    import inspect
+
+    on_class = inspect.signature(sp.MixtureModel.fit).parameters
+    assert list(on_class)[:2] == ["x", "c"]
+    assert on_class["dist"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert on_class["m"].default == 2
+    on_model = inspect.signature(sp.MixtureModel(sp.Weibull).fit).parameters
+    assert "dist" not in on_model and "self" not in on_model
+
+
+# ---------------------------------------------------------------------------
+# EM on interval data, a Geometric mixture, a restored mixture.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_mixture_em_on_interval_data_reaches_the_optimum():
+    np.random.seed(0)
+    x = np.concatenate([W.random(300, 5, 3), W.random(300, 30, 4)])
+    mm = surv.MixtureModel(W, 2)
+    no_warnings(mm.fit, xl=np.floor(x), xr=np.floor(x) + 1)
+    truth = mm.neg_ll_of(np.array([0.5, 0.5]), np.array([[5, 3], [30, 4.0]]))
+    # It stalled 114 units above the truth's negative log-likelihood
+    assert mm.loglike <= truth + 1e-6
+
+
+def test_geometric_mixture_fits_without_warnings():
+    np.random.seed(0)
+    x = np.concatenate([G.random(300, 0.5), G.random(300, 0.05)])
+    mm = surv.MixtureModel(G, 2)
+    no_warnings(mm.fit, x)
+    assert sorted(mm.params.ravel()) == pytest.approx([0.05, 0.5], abs=0.03)
+
+
+def test_restored_mixture_needs_its_data_for_plots_and_takes_lists_in_cs():
+    x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    mm = surv.MixtureModel(W, 2)
+    mm.fit(x)
+    restored = surv.from_dict(mm.to_dict())
+    assert np.allclose(restored.cs([1, 2], 5), mm.cs(np.array([1, 2]), 5))
+    for method in (restored.plot, restored.get_plot_data):
+        with pytest.raises(ValueError, match="needs the data"):
+            method()
+
+
+# ---------------------------------------------------------------------------
+# #544: a censored row with a finite truncation bound on its censored side
+# is the interval between them (#310); the EM's pieces lost it.
+# ---------------------------------------------------------------------------
+
+
+def _data_544():
+    rng = np.random.default_rng(544)
+    x = np.sort(
+        np.concatenate([rng.weibull(3, 40) * 5, rng.weibull(4, 40) * 20])
+    )
+    t = np.column_stack([np.zeros(80), np.full(80, np.inf)])
+    return x, t
+
+
+@pytest.mark.parametrize("kind", ["right", "left"])
+def test_544_censored_row_with_truncation_is_its_interval(kind):
+    x, t = _data_544()
+    c = np.zeros(80, int)
+    xl, xr, ci = x.copy(), x.copy(), c.copy()
+    rows = [3, 50]
+    if kind == "right":
+        # right censored at x, truncated at tr: the interval [x, tr]
+        c[rows] = 1
+        t[rows, 1] = x[rows] + 5
+        xr[rows] = t[rows, 1]
+    else:
+        # left censored at x, truncated at tl: the interval [tl, x]
+        c[rows] = -1
+        t[rows, 0] = x[rows] / 2
+        xl[rows] = t[rows, 0]
+    ci[rows] = 2
+
+    # It raised IndexError: the converted rows fell out of the row order
+    coded = sp.MixtureModel.fit(x, c=c, t=t, dist=sp.Weibull)
+    explicit = sp.MixtureModel.fit(xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull)
+
+    # The same likelihood at any parameters: row by row (the two forms
+    # sort the rows differently), and in total
+    for params in (explicit.params, [[3.0, 2.0], [10.0, 1.0]]):
+        params = np.asarray(params)
+        np.testing.assert_allclose(
+            np.sort(coded.likelihood(params[0])),
+            np.sort(explicit.likelihood(params[0])),
+            rtol=1e-12,
+        )
+        # each row's log-likelihood is its likelihood's log
+        np.testing.assert_allclose(
+            coded.log_likelihood(params[1]),
+            np.log(coded.likelihood(params[1])),
+            rtol=1e-12,
+        )
+        assert coded.neg_ll_of(explicit.w, params) == pytest.approx(
+            explicit.neg_ll_of(explicit.w, params), rel=1e-12
+        )
+    # and so the same fit: the maximum to 1e-8; the parameters to the
+    # tolerance of the truncated path's optimiser (L-BFGS-B), as the
+    # maximum is flat: the two fits' log-likelihoods differ by 3e-8 (of
+    # 243) where their parameters differ by 2e-5
+    assert coded.loglike == pytest.approx(explicit.loglike, rel=1e-8)
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-4)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-4)
+
+
+@pytest.mark.parametrize("kind", ["right", "left"])
+def test_560_truncated_fit_is_a_verified_maximum(kind):
+    # The truncated path took L-BFGS-B's answer unverified: the two forms
+    # of the same data reached parameters 2e-5 apart on a flat maximum.
+    # Polished and verified as the EM path is (#506), they agree to 1e-6,
+    # and each is a verified maximum, in silence.
+    x, t = _data_544()
+    c = np.zeros(80, int)
+    xl, xr, ci = x.copy(), x.copy(), c.copy()
+    rows = [3, 50]
+    if kind == "right":
+        c[rows] = 1
+        t[rows, 1] = x[rows] + 5
+        xr[rows] = t[rows, 1]
+    else:
+        c[rows] = -1
+        t[rows, 0] = x[rows] / 2
+        xl[rows] = t[rows, 0]
+    ci[rows] = 2
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        coded = sp.MixtureModel.fit(x, c=c, t=t, dist=sp.Weibull)
+        explicit = sp.MixtureModel.fit(
+            xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull
+        )
+    assert coded.maximum == explicit.maximum == "verified"
+    # Both are verified maxima of a flat likelihood: they agree to 5e-7
+    # here and 1.1e-6 on other CPUs (they differed by 1.8e-5 before #560).
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-5)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-5)
+
+
+def test_a_point_mass_component_warns_once():
+    # A component collapsed onto a point mass has no finite maximum, which
+    # is also why EM ran to its iteration limit: one warning, "No finite
+    # maximum", where the fit used to give that one and "did not reach a
+    # verified maximum" as well (principle 22).
+    x = np.r_[np.full(10, 3.0), np.linspace(20.0, 40.0, 10)]
+    n = np.ones(20, int)
+    n[[2, 15]] = 2
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = sp.MixtureModel.fit(x, n=n, dist=sp.Weibull)
+    messages = [str(w.message) for w in caught]
+    assert len(messages) == 1, messages
+    assert messages[0].startswith("No finite maximum"), messages
+    assert model.maximum == "no finite maximum"

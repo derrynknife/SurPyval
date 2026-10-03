@@ -4,6 +4,7 @@ from scipy.stats import CensoredData
 from scipy.stats import logrank as scipy_logrank
 
 import surpyval
+import surpyval as sp
 
 
 def _to_scipy(obs, c):
@@ -106,3 +107,43 @@ def test_logrank_bad_weighting():
     Z = np.array([0, 0, 1, 1])
     with pytest.raises(ValueError):
         surpyval.logrank(x, Z, weighting="not-a-weighting")
+
+
+# ---------------------------------------------------------------------------
+# Groups never at risk, missing labels and length checks.
+# ---------------------------------------------------------------------------
+
+
+def test_logrank_ignores_a_group_never_at_risk():
+    base = sp.logrank([1, 2, 3, 4, 5, 6], list("bbbccc"))
+    extra = sp.logrank(
+        [1, 2, 3, 4, 5, 6, 0.5], list("bbbccca"), c=[0] * 6 + [1]
+    )
+    assert extra.dof == 1
+    assert extra.statistic == pytest.approx(base.statistic)
+    assert extra.p_value == pytest.approx(base.p_value)
+    assert extra.p_value == pytest.approx(0.0246, abs=1e-4)
+
+
+def test_logrank_without_informative_groups():
+    # Group 1 is censored before the first event, so every risk set holds
+    # group 0 only and there is nothing to compare.
+    res = sp.logrank([2, 3, 1, 1.5], [0, 0, 1, 1], c=[0, 0, 1, 1])
+    assert (res.statistic, res.dof, res.p_value) == (0.0, 0, 1.0)
+
+
+@pytest.mark.parametrize("label", [np.nan, None])
+def test_logrank_refuses_missing_group_labels(label):
+    with pytest.raises(ValueError, match="missing"):
+        sp.logrank([1, 2, 3, 4], np.array([0, 0, 1, label], dtype=object))
+
+
+def test_logrank_refuses_missing_strata_labels():
+    with pytest.raises(ValueError, match="strata"):
+        sp.logrank([1, 2, 3, 4], [0, 0, 1, 1], strata=[0, np.nan, 0, np.nan])
+
+
+@pytest.mark.parametrize("arg", ["c", "n"])
+def test_logrank_checks_c_and_n_lengths(arg):
+    with pytest.raises(ValueError, match=f"'{arg}'"):
+        sp.logrank([1, 2, 3, 4], [0, 0, 1, 1], **{arg: [0, 0, 1]})

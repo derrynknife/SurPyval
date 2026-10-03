@@ -10,6 +10,8 @@ consistent, that a non-increasing population produces a "never fails" mass,
 that it is reproducible, and that it is refused for accelerated models.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -17,6 +19,7 @@ from surpyval.degradation import DegradationAnalysis
 from surpyval.degradation.degradation_analysis import (
     InducedFailureDistribution,
 )
+from surpyval.tests._helpers import linear_degradation_units_with_extremes
 
 
 def _simulate_linear(threshold, units, seed, b_mean=1.0, b_sd=0.25):
@@ -137,3 +140,22 @@ def test_induced_life_rejected_for_accelerated_model():
     )
     with pytest.raises(ValueError, match="accelerated"):
         model.induced_life()
+
+
+# ---------------------------------------------------------------------------
+# A unit already past the threshold at its first measurement
+# counts as failed at time zero.
+# ---------------------------------------------------------------------------
+
+
+def test_induced_life_counts_started_draws_as_failures_at_zero() -> None:
+    x, y, i = linear_degradation_units_with_extremes()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    induced = model.induced_life(random_state=0)
+    at_zero = induced.ff(0.0)
+    assert at_zero > 0
+    assert np.all(induced.samples[induced.samples <= 0] == 0.0)
+    # every draw is a failure at zero, a positive crossing, or never fails
+    assert induced.prob_never_fails + induced.ff(1e9) == pytest.approx(1.0)

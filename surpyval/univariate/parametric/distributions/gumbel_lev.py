@@ -1,8 +1,10 @@
+from __future__ import annotations
+
+import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.stats import gumbel_r
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -10,6 +12,8 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import log1mexp
 
 
 class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
@@ -19,7 +23,7 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
             k=2,
             bounds=((None, None), (0, None)),
             support=(-np.inf, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
         )
@@ -72,7 +76,10 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         >>> GumbelLEV.sf(x, 3, 2)
         array([0.93401196, 0.80770435, 0.63212056, 0.45476079, 0.30779937])
         """
-        return 1 - self.ff(x, mu, sigma)
+        # -expm1(-e^-z), not 1 - F: the difference is 0 once the
+        # survival function is below 1e-16 (#442)
+        r, _ = self._r(x, mu, sigma)
+        return -np.expm1(-r)
 
     def ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -151,8 +158,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         >>> GumbelLEV.df(x, 3, 2)
         array([0.08968704, 0.15852096, 0.18393972, 0.16535215, 0.12732319])
         """
-        z = (x - mu) / sigma
-        return (1.0 / sigma) * np.exp(-(z + np.exp(-z)))
+        return (1.0 / sigma) * np.exp(self._log_kernel((x - mu) / sigma))
+
+    @staticmethod
+    def _log_kernel(z: Boxable) -> Boxable:
+        """``-(z + exp(-z))``, the log density without its
+        ``-log(sigma)``: -inf at ``z = -inf``, not ``-(-inf + inf)``
+        (#561)."""
+        bottom = z == -np.inf
+        if not np.any(bottom):
+            return -(z + np.exp(-z))
+        z = np.where(bottom, 0.0, z)
+        return np.where(bottom, -np.inf, -(z + np.exp(-z)))
 
     def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -188,7 +205,18 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         >>> GumbelLEV.hf(x, 3, 2)
         array([0.09602344, 0.19626112, 0.29098835, 0.36360248, 0.41365643])
         """
-        return self.df(x, mu, sigma) / self.sf(x, mu, sigma)
+        # f / R with the e^-z of both cancelled algebraically, r = e^-z:
+        # h = (1 / sigma) e^-r r / (1 - e^-r). The quotient of the two
+        # functions is 0 / 0 once both underflow (#443, #444).
+        r, log_r = self._r(x, mu, sigma)
+        # where e^-z overflows the hazard is e^-r r / sigma = 0
+        overflow = r == np.inf
+        if np.any(overflow):
+            r = np.where(overflow, 1.0, r)
+            log_r = np.where(overflow, 0.0, log_r)
+        _, ratio = log1mexp(r, log_r)
+        hf = np.exp(-np.log(sigma) - r - ratio)
+        return np.where(overflow, 0.0, hf)[()] if np.any(overflow) else hf
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -224,7 +252,8 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         >>> GumbelLEV.Hf(x, 3, 2)
         array([0.06826603, 0.21355919, 0.45867515, 0.78798374, 1.1783071 ])
         """
-        return -np.log(self.sf(x, mu, sigma))
+        # 0 - rather than a unary minus, which gives -0.0
+        return 0.0 - self.log_sf(x, mu, sigma)
 
     def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -293,15 +322,26 @@ class GumbelLEV_(OptimisedFitMixin, ParametricFitter):
         """
         return mu + sigma * euler_gamma
 
+    @staticmethod
+    def _r(x: Numeric, mu: Boxable, sigma: Boxable) -> tuple:
+        """``r = e^-z``, the cumulative hazard of the CDF
+        (``F = e^-r``), and its log ``-z``."""
+        z = (x - mu) / sigma
+        with np.errstate(over="ignore"):
+            return np.exp(-z), -z
+
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return -self.Hf(x, mu, sigma)
+        # log(1 - e^-r) from r and log r: exact where the survival
+        # function rounds to 1 (#442), and finite where it underflows
+        # (#443).
+        r, log_r = self._r(x, mu, sigma)
+        return log1mexp(r, log_r)[0]
 
     def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -np.exp(-(x - mu) / sigma)
 
     def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        z = (x - mu) / sigma
-        return -np.log(sigma) - (z + np.exp(-z))
+        return -np.log(sigma) + self._log_kernel((x - mu) / sigma)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

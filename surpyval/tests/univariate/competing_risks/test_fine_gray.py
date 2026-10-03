@@ -10,6 +10,7 @@ naive (unweighted) subdistribution risk set would be biased.
 import numpy as np
 import pytest
 
+from surpyval.tests._helpers import competing_risks_regression_data
 from surpyval.univariate.competing_risks import (
     CompetingRisksProportionalHazards,
     FineGray,
@@ -128,13 +129,13 @@ def test_ipcw_matters_versus_naive_no_censoring():
 
 def test_cause_required_when_multiple_event_types():
     x, Z, e, c = _simulate_fine_gray(500, 7)
-    with pytest.raises(ValueError, match="specify `event`"):
+    with pytest.raises(ValueError, match="pass `event`"):
         FineGray.fit(x, Z, e, c=c)
 
 
 def test_unknown_cause_rejected():
     x, Z, e, c = _simulate_fine_gray(500, 8)
-    with pytest.raises(ValueError, match="not observed"):
+    with pytest.raises(ValueError, match="Unknown cause 99"):
         FineGray.fit(x, Z, e, c=c, event=99)
 
 
@@ -193,3 +194,17 @@ def test_crph_cox_path_still_runs():
     crph = CompetingRisksProportionalHazards.fit(x, Z, e, c=c, model="Cox")
     cif = crph.cif(np.array([0.5, 1.0, 2.0]), [0.1, -0.1], 1)
     assert np.all(np.isfinite(cif))
+
+
+# ---------------------------------------------------------------------------
+# ``cif`` pairs covariate rows with the times.
+# ---------------------------------------------------------------------------
+
+
+def test_fine_gray_cif_pairs_covariate_rows():
+    x, Z, e = competing_risks_regression_data()
+    fg = FineGray.fit(x, Z, e, event=1)
+    paired = fg.cif([1.0, 2.0], [[0, 0], [1, 1]])
+    np.testing.assert_allclose(
+        paired, [fg.cif([1.0], [0, 0])[0], fg.cif([2.0], [1, 1])[0]]
+    )

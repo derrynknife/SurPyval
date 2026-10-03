@@ -33,6 +33,8 @@ two-point cycle rather than a fixed point -- a known feature of the estimator
 -- which is detected and resolved by averaging the cycle.
 """
 
+from __future__ import annotations
+
 import warnings
 from typing import Any
 
@@ -44,18 +46,25 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils import (
-    check_covariate_rows,
-    finite_covariate_mask,
-    wrangle_and_check_form_and_Z_cols,
-    xcnt_handler,
-)
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils import finite_covariate_mask
+from surpyval.utils.data_summary import data_summary
+from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    covariate_columns,
+    expand,
+    warn_aliased,
+)
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
+    LinearPredictorMixin,
+    design_matrix_from_df,
     restore_covariate_meta,
+    semi_parametric_inputs,
     serialise_covariate_meta,
 )
 
@@ -139,34 +148,22 @@ def _wls_slope(Z: npt.NDArray, Y: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
     return np.linalg.solve(A, b.ravel())
 
 
-def _check_design(Z: npt.NDArray, w: npt.NDArray) -> None:
-    """Refuse covariates the least-squares step cannot resolve.
+def _aliased(Z: npt.NDArray, w: npt.NDArray) -> npt.NDArray:
+    """The columns whose coefficients the least-squares step cannot
+    determine (#476), to be aliased (see
+    :mod:`surpyval.univariate.regression._aliasing`).
 
-    The slope is fitted with the intercept profiled out, so a covariate
-    must vary across the observations: a constant covariate (or a single
-    observation) leaves nothing after centring, and collinear covariates
-    leave a singular system. Both used to escape as a bare
-    ``LinAlgError: Singular matrix``.
+    The slope is fitted with the intercept profiled out, so a constant
+    column (or any column of a single observation) is that intercept, and
+    a column that is a linear combination of the others adds nothing to
+    them: the centred Gram matrix is singular in their direction. Such a
+    design escaped as a bare ``LinAlgError: Singular matrix``, and was
+    then refused with a ``ValueError``; it is aliased, as R's ``lm``
+    aliases it.
     """
     Zc = Z - (w[:, None] * Z).sum(axis=0) / w.sum()
-    A = (w[:, None] * Zc).T @ Zc
-    scale = (w[:, None] * Z**2).sum(axis=0)
-    flat = np.diag(A) <= 1e-12 * np.maximum(scale, np.finfo(float).tiny)
-    if np.any(flat):
-        raise ValueError(
-            "Covariate(s) {} are constant across the observations (or there "
-            "are too few observations), so the Buckley-James slope cannot "
-            "be estimated: the intercept is profiled out, and a constant "
-            "covariate is exactly that intercept.".format(
-                np.flatnonzero(flat).tolist()
-            )
-        )
-    d = np.sqrt(np.diag(A))
-    if np.linalg.matrix_rank(A / np.outer(d, d), tol=1e-10) < A.shape[0]:
-        raise ValueError(
-            "The covariates are collinear, so the Buckley-James slope "
-            "cannot be estimated; drop the redundant covariate(s)."
-        )
+    gram = (w[:, None] * Zc).T @ Zc
+    return aliased_columns(gram, Z.shape[0], constant_columns(Z))
 
 
 def _fit_beta(
@@ -200,7 +197,9 @@ def _fit_beta(
     return beta, it, converged
 
 
-class BuckleyJamesModel(SerialisableMixin):
+class BuckleyJamesModel(
+    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+):
     """
     A fitted Buckley-James accelerated-failure-time model.
 
@@ -211,14 +210,14 @@ class BuckleyJamesModel(SerialisableMixin):
 
     Examples
     --------
-    On the Rossi recidivism data, where ``arrest`` is already the
-    censoring flag, prior convictions (``prio``) shorten the time to
-    arrest and financial aid (``fin``) lengthens it:
+    On the Rossi recidivism data, where ``arrest`` is 1 for an arrest (so
+    the censoring flag is ``1 - arrest``), prior convictions (``prio``)
+    shorten the time to arrest and financial aid (``fin``) lengthens it:
 
     >>> from surpyval import BuckleyJames
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> Z = df[["fin", "age", "prio"]].values
     >>> model = BuckleyJames.fit(x, Z, c=c)
     >>> model.beta.round(4)
@@ -229,9 +228,37 @@ class BuckleyJamesModel(SerialisableMixin):
     array([0.9444, 0.8113])
     """
 
-    feature_names = None
-    formula = None
-    _model_spec = None
+    feature_names: "list[str] | None" = None
+    formula: "str | None" = None
+    _model_spec: Any = None
+
+    #: The covariate coefficients (``params`` and ``coef`` are the same
+    #: array), in the accelerated-failure convention.
+    beta: npt.NDArray
+    params: npt.NDArray
+    coef: npt.NDArray
+    #: The residual Kaplan-Meier the predictions read: the sorted
+    #: residuals and the survival at each.
+    _resid: npt.NDArray
+    _resid_surv: npt.NDArray
+    #: The iterations the fit took, and whether it converged.
+    n_iter: int
+    converged: bool
+    #: The Buckley-James estimator solves its estimating equations by
+    #: iterated least squares rather than maximising a likelihood: ``"not
+    #: applicable"`` (one of ``MAXIMUM_STATES``,
+    #: ``surpyval.utils.no_maximum``); ``converged`` says how it ended.
+    maximum: str = "not applicable"
+    #: The fitted ``(Y, delta, Z, w)``, for ``bootstrap_ci`` and
+    #: ``concordance``; ``None`` when not kept.
+    _data: "tuple | None"
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: ``beta_0``,
+        ``beta_1``, ... for the covariate coefficients, as in the
+        parametric regression models."""
+        return ["beta_{}".format(i) for i in range(len(self.params))]
 
     def __init__(
         self,
@@ -251,10 +278,20 @@ class BuckleyJamesModel(SerialisableMixin):
         self.converged = converged
         self._data = data  # (Y, delta, Z, w) for the bootstrap
 
-    def _prepare_Z(self, Z: Any) -> npt.NDArray:
-        from ..regression_data import prepare_Z
+    _ALIASED_WHY = (
+        "a constant column, which is the intercept the fit profiles out, "
+        "or a linear combination of the others"
+    )
 
-        return prepare_Z(Z, self.feature_names, self._model_spec)
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        return -(Z_arr.reshape(x.size, -1) @ self._coef())
+
+    def _concordance_data(self) -> "tuple | None":
+        if self._data is None:
+            return None
+        Y, delta, Z, w = self._data
+        return np.exp(Y), (delta == 0).astype(int), w, Z
 
     def _resid_sf(self, r: npt.NDArray) -> npt.NDArray:
         # Right-continuous residual survival at query points ``r``.
@@ -334,20 +371,48 @@ class BuckleyJamesModel(SerialisableMixin):
         restore_covariate_meta(out, model_dict)
         return out
 
+    def _linear_predictor(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        """``beta'Z`` for each time in ``x``: ``Z`` is one covariate vector
+        (used at every time) or one row per time, paired in the order
+        given, as for the other regression models (#426)."""
+        Z_arr = np.asarray(self._prepare_Z(Z), dtype=float)
+        p = self.beta.size
+        if Z_arr.ndim == 0:
+            Z_arr = Z_arr.reshape(1)
+        if Z_arr.ndim == 1:
+            Z_arr = Z_arr.reshape(1, -1)
+        if Z_arr.ndim != 2 or Z_arr.shape[1] != p:
+            raise ValueError(
+                "Z must be one covariate vector of length {} or one such "
+                "row per time; got an array of shape {}.".format(
+                    p, np.shape(Z)
+                )
+            )
+        if Z_arr.shape[0] not in (1, x.size):
+            raise ValueError(
+                "Z has {} covariate rows but there are {} times; give one "
+                "covariate vector, or one row per time.".format(
+                    Z_arr.shape[0], x.size
+                )
+            )
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        return Z_arr @ np.where(np.isnan(self.beta), 0.0, self.beta)
+
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Survival ``P(T > x | Z) = S_eps(log x - beta'Z)`` for a single
-        covariate vector ``Z``."""
+        """Survival ``P(T > x | Z) = S_eps(log x + beta'Z)``; ``Z`` is one
+        covariate vector (used at every time) or one row per time in
+        ``x``, paired in the order given."""
         x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = self._prepare_Z(Z)
-        Z = np.asarray(Z, dtype=float).ravel()
         # beta is the accelerated-failure (negated) slope, so the residual
         # r = log t - gamma'Z = log t + beta'Z. At and below time 0 nothing
         # has failed: survival 1 (log(0) = -inf gives that already, but
         # warned, and a negative time gave nan).
         positive = x > 0
         with np.errstate(divide="ignore"):
-            r = np.log(np.where(positive, x, 1.0)) + Z @ self.beta
+            r = np.log(np.where(positive, x, 1.0)) + self._linear_predictor(
+                x, Z
+            )
         # A missing covariate (a DataFrame row with a nan) gives nan, as in
         # the other families; the residual lookup read it as the last step
         # (survival 0). So does a missing time, which ``positive`` read as
@@ -357,18 +422,17 @@ class BuckleyJamesModel(SerialisableMixin):
 
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Failure probability ``1 - sf(x, Z)`` for a single covariate
-        vector ``Z``."""
+        """Failure probability ``1 - sf(x, Z)``; ``Z`` as for
+        :meth:`sf`."""
         return 1.0 - self.sf(x, Z)
 
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike, Z: npt.ArrayLike) -> npt.NDArray:
-        """Cumulative hazard ``-log sf(x, Z)`` for a single covariate
-        vector ``Z``."""
+        """Cumulative hazard ``-log sf(x, Z)``; ``Z`` as for
+        :meth:`sf`."""
         with np.errstate(divide="ignore"):
             return -np.log(self.sf(x, Z))
 
-    @renamed_arguments(seed="random_state")
     def bootstrap_ci(
         self,
         alpha_ci: float = 0.05,
@@ -406,6 +470,10 @@ class BuckleyJamesModel(SerialisableMixin):
                 "carry"
             )
         Y, delta, Z, w = self._data
+        p = self.beta.size
+        # The aliased columns (#476) are left out of every refit.
+        kept = np.flatnonzero(~np.isnan(self.beta))
+        Z = Z[:, kept]
         rng = as_generator(random_state)
         # The counts ``w`` are frequency weights: a row with count 3 is
         # three observations, as the fit itself treats it. The bootstrap
@@ -428,13 +496,11 @@ class BuckleyJamesModel(SerialisableMixin):
                 w_b = w[idx] * counts[idx]
             try:
                 g, _, _ = _fit_beta(Y[idx], delta[idx], Z[idx], w_b, 1e-5, 100)
-                boot.append(-g)  # report in the accelerated-failure sign
+                # Report in the accelerated-failure sign.
+                boot.append(expand(-g, kept, p))
             except np.linalg.LinAlgError:
                 continue
-        boot_arr = np.asarray(boot)
-        lo = np.quantile(boot_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(boot_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
+        return percentile_bounds(boot, alpha_ci)
 
     def __repr__(self) -> str:
         lines = [
@@ -442,6 +508,17 @@ class BuckleyJamesModel(SerialisableMixin):
             "================================",
             "Kind                : Semi-Parametric AFT",
             f"Converged           : {self.converged} ({self.n_iter} iters)",
+        ]
+        if self._data is not None:
+            # The data line (#508); the fit keeps the event flag, 1 for a
+            # failure, and the counts; Y is the log time, whose distinct
+            # values are the distinct times.
+            Y, delta, _, w = self._data
+            lines.append(
+                "Data                : "
+                + data_summary(1 - np.asarray(delta, dtype=int), w, x=Y)
+            )
+        lines += [
             "Coefficients (positive => accelerates failure):",
         ]
         names = self.feature_names or [
@@ -480,6 +557,15 @@ class BuckleyJames_:
         """
         Fit the Buckley-James AFT model.
 
+        Rows with a missing or infinite covariate are dropped, with a
+        warning. A column that is constant across the observations (or a
+        single observation) cannot be separated from the intercept, nor
+        one that is a linear combination of the others from them: such a
+        column is aliased, as in :class:`~surpyval.CoxPH`. Its coefficient
+        is ``nan`` (``model.aliased`` lists it), the others are those of
+        the fit without it, predictions take it as 0, and one warning
+        names it.
+
         Parameters
         ----------
         x : array_like
@@ -491,12 +577,6 @@ class BuckleyJames_:
             censoring are not supported. Defaults to all observed.
         n : array_like, optional
             Counts per row (frequency weights). Defaults to 1.
-
-        Rows with a missing or infinite covariate are dropped, with a
-        warning. A covariate that is constant across the observations (or
-        a single observation) cannot be separated from the intercept, and
-        collinear covariates cannot be separated from each other; both
-        raise a ``ValueError``.
         tol : float, optional
             Convergence tolerance on the coefficient step. Default 1e-5.
         max_iter : int, optional
@@ -528,40 +608,44 @@ class BuckleyJames_:
         >>> model.sf([5, 10], [0.0]).round(4)
         array([0.7366, 0.2693])
         """
-        x_h, c_h, n_h, _ = xcnt_handler(x, c, n, group_and_sort=False)
-        c_a = np.asarray(c_h, dtype=float)
-        if np.any((c_a != 0) & (c_a != 1)):
-            raise ValueError(
+        x_a, c_a, n_a, _, Z_a = semi_parametric_inputs(
+            x,
+            Z,
+            c,
+            n,
+            censoring=(
                 "Buckley-James supports only observed (c=0) and "
                 "right-censored (c=1) data."
-            )
-        x_a = np.asarray(x_h, dtype=float)
-        if x_a.ndim == 2:
-            # Two columns with no interval row: xl == xr on every row.
-            x_a = x_a[:, 0]
-        Z_a = np.asarray(Z, dtype=float)
-        if Z_a.ndim == 1:
-            Z_a = Z_a.reshape(-1, 1)
-        elif Z_a.ndim != 2:
-            raise ValueError("Covariate matrix must be two dimensional")
-        check_covariate_rows(Z_a, x_a.shape[0])
-        # Rows with a NaN / infinite covariate are dropped with a warning,
-        # as in every regression fitter (NaN rows used to go silently).
-        mask = finite_covariate_mask(Z_a)
-        x_a, c_a, Z_a = x_a[mask], c_a[mask], Z_a[mask]
-        n_a = np.asarray(n_h, dtype=float)[mask]
+            ),
+        )
 
         if np.any(x_a <= 0):
             raise ValueError(
                 "Buckley-James models log(time); all times must be positive."
             )
-        _check_design(Z_a, n_a)
+        p = Z_a.shape[1]
+        aliased = _aliased(Z_a, n_a)
+        kept = np.setdiff1d(np.arange(p), aliased)
+        if aliased.size:
+            warn_aliased(
+                aliased,
+                "they are constant (the intercept, which the least-squares "
+                "step profiles out) or a linear combination of the other "
+                "columns",
+            )
+        Z_k = Z_a[:, kept]
 
         Y = np.log(x_a)
         delta = (c_a == 0).astype(float)
         # gamma is the textbook ``log T = gamma'Z + eps`` slope; report its
         # negative so a positive coefficient accelerates failure.
-        gamma, n_iter, converged = _fit_beta(Y, delta, Z_a, n_a, tol, max_iter)
+        if kept.size:
+            gamma, n_iter, converged = _fit_beta(
+                Y, delta, Z_k, n_a, tol, max_iter
+            )
+        else:
+            # Every column aliased: nothing to iterate.
+            gamma, n_iter, converged = np.zeros(0), 0, True
         if not converged:
             warnings.warn(
                 "Buckley-James did not converge in {} iterations; returning "
@@ -569,10 +653,15 @@ class BuckleyJames_:
             )
 
         # Final residual distribution used for prediction.
-        resid, resid_surv, _ = _residual_km(Y - Z_a @ gamma, delta, n_a)
+        resid, resid_surv, _ = _residual_km(Y - Z_k @ gamma, delta, n_a)
 
         return BuckleyJamesModel(
-            -gamma, resid, resid_surv, n_iter, converged, (Y, delta, Z_a, n_a)
+            expand(-gamma, kept, p),
+            resid,
+            resid_surv,
+            n_iter,
+            converged,
+            (Y, delta, Z_a, n_a),
         )
 
     def fit_from_df(
@@ -611,16 +700,20 @@ class BuckleyJames_:
             The fitted model, which keeps the covariate names (or formula)
             so it predicts from DataFrame rows.
         """
-        Z, mask, form, feature_names, model_spec = (
-            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
         )
+        mask = finite_covariate_mask(Z)
+        Z = Z[mask]
         sub = df.loc[mask]
         x = sub[x_col].values
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
-        model.formula = form
+        # The aliasing warning (#476) names the columns.
+        with covariate_columns(feature_names, Z, model_spec):
+            model = self.fit(x, Z, c=c, n=n, tol=tol, max_iter=max_iter)
+        model.formula = formula
         model.feature_names = feature_names
         model._model_spec = model_spec
         return model

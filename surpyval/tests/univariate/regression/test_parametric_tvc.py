@@ -184,7 +184,7 @@ def test_po_and_aft_expose_tvc():
         "fit_tvc_timeline_from_df",
     ):
         assert hasattr(PO(Weibull), method)
-    assert hasattr(AFT(Weibull), "fit_tvc")
+        assert hasattr(AFT(Weibull), method)
 
 
 def test_left_truncated_likelihood_does_not_reward_a_vanishing_scale():
@@ -414,3 +414,27 @@ def test_po_tvc_aic_c_is_invariant_to_episode_splitting():
     )
     assert split.aic_c() == pytest.approx(whole.aic_c(), rel=1e-6)
     assert split.params == pytest.approx(whole.params, rel=1e-4)
+
+
+# ---------------------------------------------------------------------------
+# AIC_c of a time-varying fit counts subjects.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fitter", [WeibullPH, WeibullAH])
+def test_tvc_aic_c_is_invariant_to_episode_splitting(fitter):
+    rng = np.random.default_rng(5)
+    n = 80
+    x = 10 * rng.weibull(1.5, n)
+    z = rng.binomial(1, 0.5, n).astype(float)
+    whole = fitter.fit_tvc(np.arange(n), np.zeros(n), x, np.zeros(n), z)
+    i = np.r_[np.arange(n), np.arange(n)]
+    split = fitter.fit_tvc(
+        i,
+        np.r_[np.zeros(n), x / 2],
+        np.r_[x / 2, x],
+        np.r_[np.ones(n), np.zeros(n)],
+        np.r_[z, z],
+    )
+    assert split.aic_c() == pytest.approx(whole.aic_c(), rel=1e-6)
+    assert split.n_subjects == n

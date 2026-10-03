@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import (
     Gamma,
     Gumbel,
@@ -25,7 +26,7 @@ def test_fixed():
         Normal,
     ]:
         for method in ["MLE", "MSE", "MPS", "MOM"]:
-            for param in dist.param_names:
+            for param in dist.parameter_names:
                 x = dist.random(100, 10, 2)
                 fixed_value = np.random.randint(2, 10)
                 model = dist.fit(x, fixed={param: fixed_value}, how=method)
@@ -78,3 +79,37 @@ def test_mpp_fixed_raises():
     x = Weibull.random(100, 10, 2)
     with pytest.raises(ValueError, match="MPP"):
         Weibull.fit(x, how="MPP", fixed={"beta": 2.0})
+
+
+# ---------------------------------------------------------------------------
+# ``fixed`` and ``init`` are validated.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        (
+            dict(fixed={"shape": 1}),
+            r"Unknown parameter\(s\) \['shape'\] in `fixed`",
+        ),
+        (dict(fixed={"p": 0.5}), "needs lfp=True"),
+        (dict(fixed={"gamma": 0.5}), "needs offset=True"),
+        (dict(fixed={"alpha": -1}), "Cannot fix alpha"),
+        (dict(lfp=True, fixed={"p": 1.5}), "Cannot fix p"),
+        (dict(offset=True, fixed={"gamma": 1.5}), "Cannot fix gamma"),
+        (dict(init=[1.0]), "`init` has 1 value"),
+        (dict(init=[-1.0, 2.0]), "Bad `init`: alpha"),
+    ],
+)
+def test_fixed_and_init_are_validated(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        W.fit([1.0, 2, 3, 4, 5], **kwargs)
+
+
+def test_init_for_the_free_parameters_only_still_works():
+    model = W.fit([1.0, 2, 3, 4, 5], fixed={"alpha": 3.0}, init=[2.0])
+    assert model.params[0] == 3.0

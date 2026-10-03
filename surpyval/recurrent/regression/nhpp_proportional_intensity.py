@@ -1,22 +1,31 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
-from scipy.special import gammaln
 
-from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent._bounded import unconstraining_maps
+from surpyval.recurrent._convergence import better_result
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
+from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
+from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
-from .proportional_intensity import ProportionalIntensityModel
+from .proportional_intensity import (
+    ProportionalIntensityModel,
+    alias_covariates,
+)
 
 
 @singleton_fitter
-class ProportionalIntensityNHPP:
+class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a non-homogeneous Poisson
     process: each item's intensity is a parametric baseline intensity
@@ -79,91 +88,37 @@ class ProportionalIntensityNHPP:
     def create_negll_func(self, data: Any, dist: Any) -> Callable:
         Z = data.Z
         s = data.split_for_nhpp_likelihood()
-        x_o, x_o_prev = s["x_o"], s["x_o_prev"]
-        x_right, x_right_prev = s["x_right"], s["x_right_prev"]
-        x_left, n_left = s["x_left"], s["n_left"]
-        x_left_prev = s["x_left_prev"]
-        x_i_l, x_i_r, n_i = s["x_i_l"], s["x_i_r"], s["n_i"]
-        x_close_last, x_close_tr = s["x_close_last"], s["x_close_tr"]
 
         # Covariate rows gathered with the same masks; the zeros((1, p))
         # placeholders keep the dot products defined when a censoring
         # type is absent (the matching x arrays are empty, so the terms
         # vanish in the sums).
         p_cov = Z.shape[1]
-        Z_o = Z[s["mask_o"]] if s["mask_o"].any() else np.zeros((1, p_cov))
-        Z_right = (
-            Z[s["mask_right"]]
-            if s["mask_right"].any()
-            else np.zeros((1, p_cov))
-        )
-        Z_left = (
-            Z[s["mask_left"]] if s["mask_left"].any() else np.zeros((1, p_cov))
-        )
-        Z_i = Z[s["mask_i"]] if s["mask_i"].any() else np.zeros((1, p_cov))
-        Z_close = Z[s["close_idx"]]
-
-        # Using the empty arrays avoids the need for if statements in the
-        # likelihood function. It also means that the likelihood function
-        # will not encounter any invalid values since taking the log of 0
-        # will not occur.
+        Z_pieces = {
+            key: Z[mask] if mask.any() else np.zeros((1, p_cov))
+            for key, mask in [
+                ("o", s["mask_o"]),
+                ("right", s["mask_right"]),
+                ("left", s["mask_left"]),
+                ("i", s["mask_i"]),
+            ]
+        }
+        Z_pieces["close"] = Z[s["close_idx"]]
+        k_dist = len(dist.parameter_names)
 
         def negll_func(params: np.ndarray) -> float:
-            dist_params = params[: len(dist.param_names)]
-            beta_coeffs = params[len(dist.param_names) :]
-            # ll of directly observed
-            phi_exponents_observed = np.dot(Z_o, beta_coeffs)
-            delta_cif_o = dist.cif(x_o_prev, *dist_params) - dist.cif(
-                x_o, *dist_params
+            dist_params = params[:k_dist]
+            beta_coeffs = params[k_dist:]
+            eta = {
+                key: np.dot(Z_piece, beta_coeffs)
+                for key, Z_piece in Z_pieces.items()
+            }
+            return -nhpp_log_likelihood(
+                lambda x: dist.cif(x, *dist_params),
+                lambda x: dist.log_iif(x, *dist_params),
+                s,
+                eta,
             )
-            ll = (
-                dist.log_iif(x_o, *dist_params)
-                + phi_exponents_observed
-                + (np.exp(phi_exponents_observed) * delta_cif_o)
-            ).sum()
-
-            # ll of right censored
-            phi_right = np.exp(np.dot(Z_right, beta_coeffs))
-            delta_cif_right = dist.cif(x_right_prev, *dist_params) - dist.cif(
-                x_right, *dist_params
-            )
-            ll += (phi_right * delta_cif_right).sum()
-
-            # ll of left censored: the count over (entry, x]
-            delta_cif_left = dist.cif(x_left, *dist_params) - dist.cif(
-                x_left_prev, *dist_params
-            )
-            phi_exponents_left = np.dot(Z_left, beta_coeffs)
-            phi_left = np.exp(phi_exponents_left)
-            ll += (
-                n_left * phi_exponents_left
-                + n_left * np.log(delta_cif_left)
-                - phi_left * delta_cif_left
-                - gammaln(n_left + 1)
-            ).sum()
-
-            # ll of interval censored
-            delta_cif_interval = dist.cif(x_i_r, *dist_params) - dist.cif(
-                x_i_l, *dist_params
-            )
-            phi_exponents_interval = np.dot(Z_i, beta_coeffs)
-            phi_interval = np.exp(phi_exponents_interval)
-
-            ll += (
-                n_i * phi_exponents_interval
-                + n_i * np.log(delta_cif_interval)
-                - phi_interval * delta_cif_interval
-                - gammaln(n_i + 1)
-            ).sum()
-
-            # right window-close: extend each item's integral to its tr
-            phi_close = np.exp(np.dot(Z_close, beta_coeffs))
-            delta_cif_close = dist.cif(x_close_last, *dist_params) - dist.cif(
-                x_close_tr, *dist_params
-            )
-            ll += (phi_close * delta_cif_close).sum()
-
-            return -ll
 
         return negll_func
 
@@ -178,7 +133,7 @@ class ProportionalIntensityNHPP:
         ignores the covariates is the natural start, with coefficients 0;
         if it fails, the old unit start is used.
         """
-        fallback = np.ones(len(dist.param_names))
+        fallback = np.ones(len(dist.parameter_names))
         try:
             with np.errstate(all="ignore"):
                 base = dist.fit_from_recurrent_data(data)
@@ -234,11 +189,16 @@ class ProportionalIntensityNHPP:
         out.data = data
 
         num_covariates = data.Z.shape[1]
-        expected = len(dist.param_names) + num_covariates
-        if init is None:
-            init = np.append(
+        expected = len(dist.parameter_names) + num_covariates
+
+        def default_init() -> np.ndarray:
+            return np.append(
                 self._baseline_start(data, dist), np.zeros(num_covariates)
             )
+
+        user_init = init is not None
+        if init is None:
+            init = default_init()
         else:
             # User-supplied starting values were previously overwritten
             # unconditionally (#288).
@@ -246,11 +206,21 @@ class ProportionalIntensityNHPP:
             if init.size != expected:
                 raise ValueError(
                     f"init must have {expected} values "
-                    f"({len(dist.param_names)} baseline parameters + "
+                    f"({len(dist.parameter_names)} baseline parameters + "
                     f"{num_covariates} coefficients); got {init.size}."
                 )
 
         neg_ll = self.create_negll_func(data, dist)
+
+        # A coefficient the data cannot determine is held at 0 and reported
+        # as nan (#502). A constant column is one only where the baseline
+        # has a scale, which is then the intercept.
+        n_dist = len(dist.parameter_names)
+        aliased = alias_covariates(
+            data.Z, intercept=getattr(dist, "has_scale", False)
+        )
+        free = np.ones(expected, dtype=bool)
+        free[n_dist + aliased] = False
 
         # Search on an unconstrained scale: a baseline parameter bounded
         # below (Duane's b, Crow-AMSAA's alpha and beta) is optimised as the
@@ -259,33 +229,59 @@ class ProportionalIntensityNHPP:
         # well short of the optimum on as few as nine parameters. A
         # gradient search does the work and Nelder-Mead polishes it.
         bounds = list(dist.bounds) + [(None, None)] * num_covariates
+        bounds = [b for b, keep in zip(bounds, free) if keep]
         to_natural, to_search = unconstraining_maps(bounds)
+
+        def full(values: np.ndarray) -> np.ndarray:
+            params = np.zeros(expected)
+            params[free] = values
+            return params
 
         def objective(u: np.ndarray) -> float:
             with np.errstate(all="ignore"):
-                value = neg_ll(to_natural(u))
+                value = neg_ll(full(to_natural(u)))
             return float(value) if np.isfinite(value) else 1e300
 
-        u0 = to_search(init)
-        res = minimize(objective, u0, method="BFGS")
-        res = minimize(
-            objective,
-            res.x,
-            method="Nelder-Mead",
-            options={
-                "maxfev": 2000 * expected,
-                "xatol": 1e-8,
-                "fatol": 1e-10,
-            },
-        )
+        def search(start: np.ndarray) -> Any:
+            res = minimize(objective, to_search(start[free]), method="BFGS")
+            return minimize(
+                objective,
+                res.x,
+                method="Nelder-Mead",
+                options={
+                    "maxfev": 2000 * int(free.sum()),
+                    "xatol": 1e-8,
+                    "fatol": 1e-10,
+                },
+            )
+
+        res = search(init)
+        # A start the user gave is followed by the default one, and the
+        # better answer kept: from Duane's alpha x1e6 the intensity
+        # overflows, the search cannot move, and the start was returned
+        # in silence (#429).
+        if user_init:
+            res = better_result(res, search(default_init()))
+        # Accepted only as a verified maximum: polished where it is not one
+        # (by central differences: the likelihood is in plain numpy), and
+        # said otherwise (principle 13).
+        verified = False
+        if res.fun < 1e300:
+            res, verified = verify_or_polish(
+                objective, res, bic_sample_size(data), numerical=True
+            )
+        out.maximum = "verified" if verified else "unverified"
+        if not verified:
+            warn_unverified("The proportional intensity fit")
         res.x = to_natural(res.x)
         out.res = res
-        out.params = res.x[: len(dist.param_names)]
-        out.coeffs = res.x[len(dist.param_names) :]
+        fitted = np.where(free, full(res.x), np.nan)
+        out.params = fitted[:n_dist]
+        out.coeffs = fitted[n_dist:]
         out.name = "Non-Homogeneous Poisson Process"
         out.kind = "NHPP"
         out.parameterization = "Parametric"
-        out.param_names = dist.param_names
+        out._rate_names = list(dist.parameter_names)
         # Keep a reference to this fitter and the baseline so the Cramer-von
         # Mises bootstrap can refit the full regression model per replicate.
         out._fitter = self
@@ -294,7 +290,7 @@ class ProportionalIntensityNHPP:
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
         out._neg_ll = neg_ll
-        out._mle = np.asarray(res.x, dtype=float)
+        out._mle = fitted
         out._n_obs = bic_sample_size(data)
 
         return out

@@ -402,11 +402,12 @@ def _design(case, n):
     return out
 
 
-def _regression(own_random, step=False, keep=None, positive=False):
+def _regression(own_random, step=False, keep=None, positive=False, sf=None):
     """Draws at the fixture's rows, by the model's ``random`` where it
-    has one, else by inverting its ``sf`` at each row. ``keep(truth, Z)``
-    selects the rows to draw at. ``positive``: the draws are conditioned
-    on a positive time and fitted as left truncated at 0 (see
+    has one, else by inverting its ``sf`` at each row (or ``sf(case,
+    truth, t, row, kw)`` when given). ``keep(truth, Z)`` selects the rows
+    to draw at. ``positive``: the draws are conditioned on a positive time
+    and fitted as left truncated at 0 (see
     ``test_additive_hazards_random_below_zero``)."""
 
     def simulate(case, truth, n):
@@ -433,7 +434,7 @@ def _regression(own_random, step=False, keep=None, positive=False):
             kw = {} if strata is None else {"stratum": key[-1]}
 
             def S(t, row=row, kw=kw):
-                return _sf_at(case, truth, t, row, kw)
+                return (sf or _sf_at)(case, truth, t, row, kw)
 
             inv = _inverse(S, scale, step=step)
             samplers.append(lambda size, g, inv=inv: inv(g.uniform(size=size)))
@@ -473,6 +474,30 @@ def _sf_at(case, model, t, row, kw=None):
     if kw:
         return np.asarray(model.sf(t, row, **kw), dtype=float)
     return np.asarray(reg.call(case, model, "sf", t, Z=row), dtype=float)
+
+
+def _interpolated_odds(case, model, t, row, kw=None):
+    """``sf`` of a semi-parametric proportional odds model at one row with
+    its failure odds ``F / S`` interpolated linearly between their jumps
+    (from 0 at time 0; held after the last). The odds at every row are the
+    baseline's times a constant, so this is a proportional odds model
+    still, with a continuous baseline: data drawn from it have no ties.
+    (Drawn from the step function itself, 300 units share its 25 jump
+    times, and the estimate's documented attenuation under heavy ties
+    biases the refitted curve by up to 0.065 at its tail.)"""
+    d = case.data()
+    events = np.unique(np.asarray(d["x"])[np.asarray(d["c"]) == 0])
+    s = _sf_at(case, model, events, row, kw)
+    odds = np.interp(t, np.r_[0.0, events], np.r_[0.0, (1.0 - s) / s])
+    return 1.0 / (1.0 + odds)
+
+
+def _interpolated_odds_curve(case, truth, grid):
+    # The true curve of a plan drawing from _interpolated_odds, in
+    # default_curve's order.
+    return np.concatenate(
+        [_interpolated_odds(case, truth, grid, row) for row in _z_rows(case)]
+    )
 
 
 def _positive_additive_rows(truth, Z):
@@ -827,6 +852,22 @@ def _copula_params(model):
     ]
 
 
+def _copula_params_except(name):
+    """:func:`_copula_params` without the copula parameter ``name`` (one
+    whose true value is on the edge of its space; see the plan's note)."""
+
+    def params(model):
+        keep = [
+            value
+            for key, value in zip(model.parameter_names, model.params)
+            if key != name
+        ]
+        margins = [m.params for m in model.margins]
+        return np.r_[keep, np.concatenate(margins)]
+
+    return params
+
+
 def _copula_grid(case, truth, data):
     # Pairs of the margins' quartiles and median.
     q = np.quantile(data["x"], [0.25, 0.5, 0.75], axis=0)
@@ -917,7 +958,13 @@ for _name in (
 PLANS["ConformanceGompertz"] = Plan(
     _uni_censored, 300, 40, params=_parametric_params
 )
-PLANS["Uniform"] = Plan(_uni_censored, 300, 100, note=_ENDPOINTS)
+PLANS["Uniform"] = Plan(
+    _uni_plain,
+    300,
+    100,
+    note=_ENDPOINTS
+    + " (complete data: the MLE refuses censored values, #460)",
+)
 PLANS["Beta4"] = Plan(
     _uni_censored,
     300,
@@ -926,14 +973,7 @@ PLANS["Beta4"] = Plan(
     "1 (a density positive at a), so alpha and beta are estimated jointly "
     "with a and inherit their bias (1.5 and 1.2 sd at n = 300)",
 )
-PLANS["BetaGeometric"] = Plan(
-    _uni_censored,
-    300,
-    100,
-    note="the fixture's fit is at the geometric limit (alpha, beta ~ 1e5 "
-    "with a fixed ratio), where only the ratio is identified: the curve "
-    "only",
-)
+PLANS["BetaGeometric"] = Plan(_uni_censored, 300, 100)
 for _name in ("Binomial", "Bernoulli", "FixedEventProbability"):
     PLANS[_name] = Plan(_uni_plain, 300, 100, params=_parametric_params)
 PLANS["ExactEventTime"] = Plan(_inspected, 300, 100, params=_parametric_params)
@@ -1012,23 +1052,31 @@ for _kind in ("PH", "AFT", "PO", "AH"):
                 else ""
             ),
         )
-for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS:
+for _lm in reg.LIFE_MODELS + reg.DUAL_LIFE_MODELS + ("GeneralLogLinear",):
     PLANS[f"WeibullAL[{_lm}]"] = Plan(
         _regression(own_random=True),
         _REG_N,
         _REG_REPS,
         params=lambda m: np.asarray(m.params, dtype=float),
     )
-for _base in ("Weibull", "Exponential", "Gamma", "LogNormal"):
-    PLANS[_base + "Frailty"] = Plan(
+_NO_FRAILTY = (
+    "the fixture's frailty variance is 0, on its boundary: the data are "
+    "drawn from the (then frailty-free) sf"
+)
+for _name in (
+    "WeibullFrailty",
+    "ExponentialFrailty",
+    "GammaFrailty",
+    "LogNormalFrailty",
+    "WeibullFrailty[lognormal]",
+):
+    PLANS[_name] = Plan(
         _regression(own_random=False),
         _REG_N,
         _REG_REPS,
         params=_frailty_params,
-        note="the fixture's frailty variance is 0, on its boundary: the "
-        "data are drawn from the (then frailty-free) sf, and theta, whose "
-        "estimate has a mass at 0 and is biased upwards by design, is not "
-        "held to the bias rule",
+        note=_NO_FRAILTY + ", and theta, whose estimate has a mass at 0 and "
+        "is biased upwards by design, is not held to the bias rule",
     )
 _SEMI = "semi-parametric: the curve only"
 for _name in ("CoxPH", "CoxPH[strata]", "BuckleyJames"):
@@ -1038,6 +1086,21 @@ for _name in ("CoxPH", "CoxPH[strata]", "BuckleyJames"):
         _REG_REPS,
         note=_SEMI,
     )
+PLANS["ProportionalOdds"] = Plan(
+    _regression(own_random=False, sf=_interpolated_odds),
+    _REG_N,
+    _REG_REPS,
+    truth_curve=_interpolated_odds_curve,
+    note=_SEMI + "; drawn with the baseline odds interpolated linearly "
+    "between their jumps, a proportional odds model with no ties (see "
+    "_interpolated_odds)",
+)
+PLANS["CoxFrailty"] = Plan(
+    _regression(own_random=False, step=True),
+    _REG_N,
+    _REG_REPS,
+    note=_SEMI + "; " + _NO_FRAILTY,
+)
 
 for _name in ("CompetingRisks[Nelson-Aalen]", "CompetingRisks[Kaplan-Meier]"):
     PLANS[_name] = Plan(_cr, 300, 60)
@@ -1145,10 +1208,44 @@ PLANS["DestructiveDegradation"] = Plan(
     grid=_quantile_grid,
 )
 
-for _name in ("Independence", "Clayton", "Gumbel", "Frank", "Gaussian"):
-    PLANS[_name + "Copula"] = Plan(
+for _name in (
+    "IndependenceCopula",
+    "ClaytonCopula",
+    "GumbelCopula",
+    "FrankCopula",
+    "GaussianCopula",
+    "JoeCopula",
+    "ClaytonCopula[rotation=180]",
+):
+    PLANS[_name] = Plan(
         _copula, 300, 60, params=_copula_params, grid=_copula_grid
     )
+_COPULA_EDGE = (
+    "the fixture's {} is {}, {}: it is not held to the bias rule (its "
+    "estimate piles up at the edge), the other parameters and the margins "
+    "are"
+)
+PLANS["AMHCopula"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params_except("theta"),
+    grid=_copula_grid,
+    note=_COPULA_EDGE.format(
+        "theta",
+        "1",
+        "the upper end of the family's [-1, 1] (its data are more "
+        "dependent than AMH reaches)",
+    ),
+)
+PLANS["StudentTCopula"] = Plan(
+    _copula,
+    300,
+    60,
+    params=_copula_params_except("nu"),
+    grid=_copula_grid,
+    note=_COPULA_EDGE.format("nu", "1.3e14", "the Gaussian limit (nu -> inf)"),
+)
 
 
 _NO_DATA = "built from its parameters (or a constant), not fitted to data"

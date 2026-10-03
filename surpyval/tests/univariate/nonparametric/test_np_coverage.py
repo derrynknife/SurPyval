@@ -11,6 +11,8 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 import surpyval  # noqa: E402
+import surpyval as sp  # noqa: E402
+from surpyval import NonParametric  # noqa: E402
 
 # --- from_xrd -------------------------------------------------------------
 
@@ -96,3 +98,52 @@ def test_plot_non_step_interp_without_bounds():
     model.plot(ax=ax, interp="linear", plot_bounds=False)
     assert len(ax.collections) == 0
     plt.close("all")
+
+
+# ---------------------------------------------------------------------------
+# ``set_lower_limit``, ``fit_from_ecdf`` and ``success_run``
+# argument checks.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("limit", [1, 2, np.nan])
+def test_set_lower_limit_must_be_below_the_data(limit):
+    with pytest.raises(ValueError, match="set_lower_limit"):
+        sp.KaplanMeier.fit([1, 2, 3], set_lower_limit=limit)
+
+
+def test_set_lower_limit_below_the_data_still_works():
+    model = sp.KaplanMeier.fit([1, 2, 3], set_lower_limit=0)
+    np.testing.assert_array_equal(model.x, [0, 1, 2, 3])
+
+
+@pytest.mark.parametrize(
+    "x, R",
+    [
+        ([2, 1, 3], [0.8, 0.5, 0.1]),
+        ([1, 2, 3], [0.5, 0.8, 0.1]),
+        ([1, 2, 3], [1.2, 0.5, 0.1]),
+        ([1, 2, 3], [0.8, 0.5]),
+        ([1, 2, 3], [0.8, np.nan, 0.1]),
+    ],
+)
+def test_fit_from_ecdf_rejects_invalid_curves(x, R):
+    with pytest.raises(ValueError):
+        NonParametric.fit_from_ecdf(x, R)
+
+
+def test_fit_from_ecdf_can_plot_without_bounds():
+    model = NonParametric.fit_from_ecdf([1, 2, 3], [0.8, 0.5, 0.1])
+    fig, ax = plt.subplots()
+    model.plot(ax=ax, plot_bounds=False)
+    plt.close(fig)
+    assert model.get_plot_data(plot_bounds=False)["cbs"] is None
+    with pytest.raises(ValueError, match="variance"):
+        model.plot(plot_bounds=True)
+
+
+def test_success_run_needs_a_positive_run():
+    with pytest.raises(ValueError, match="'n'"):
+        sp.success_run(0)
+    with pytest.raises(ValueError, match="between 0 and 1"):
+        sp.success_run(5, alpha=1.5)

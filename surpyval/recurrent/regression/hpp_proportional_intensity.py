@@ -1,19 +1,30 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
-import numpy as np
+import autograd.numpy as np
+import numpy as onp
+from autograd import hessian, jacobian
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
+from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
+from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
-from .proportional_intensity import ProportionalIntensityModel
+from .proportional_intensity import (
+    ProportionalIntensityModel,
+    alias_covariates,
+)
 
 
 @singleton_fitter
-class ProportionalIntensityHPP:
+class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -32,9 +43,8 @@ class ProportionalIntensityHPP:
     --------
 
     One event (or censoring) per subject, so the fit is an exponential
-    regression. In the bundled copy of the Rossi data ``arrest`` is 1 for
-    a subject still free at the end of follow-up, so it is already the
-    censoring flag ``c``:
+    regression. In the Rossi data ``arrest`` is 1 for a subject arrested
+    during follow-up, so the censoring flag is ``c = 1 - arrest``:
 
     >>> import numpy as np
     >>> from surpyval.datasets import load_rossi_static
@@ -42,7 +52,7 @@ class ProportionalIntensityHPP:
     >>>
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> c = data['arrest'].values
+    >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(data))
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
@@ -74,7 +84,10 @@ class ProportionalIntensityHPP:
     name = "Constant"
 
     def iif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
-        return np.ones_like(np.asarray(x, dtype=float)) * rate
+        # NaN at a missing time (it was the rate there, #382).
+        return (
+            np.where(np.isnan(np.asarray(x, dtype=float)), np.nan, 1.0) * rate
+        )
 
     def cif(self, x: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return rate * np.asarray(x, dtype=float)
@@ -82,107 +95,74 @@ class ProportionalIntensityHPP:
     def inv_cif(self, cif: ArrayLike, rate: ArrayLike) -> ArrayLike:
         return np.asarray(cif, dtype=float) / rate
 
+    @staticmethod
+    def _default_start(data: Any) -> np.ndarray:
+        """The default start: the rate of observed events per unit of
+        follow-up, ``log``-transformed as the search runs, and every
+        coefficient 0."""
+        # Use the right endpoint for interval-censored (2D) observations
+        # when estimating each item's latest event time for the initial
+        # rate guess.
+        _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
+        _, _inv = np.unique(data.i, return_inverse=True)
+        _max_x = np.full(_inv.max() + 1, -np.inf)
+        onp.maximum.at(_max_x, _inv, _x_max)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rate = (data.n[data.c == 0]).sum() / _max_x.sum()
+        if not (np.isfinite(rate) and rate > 0):
+            # e.g. only counts (c=-1 / c=2) and no exact events
+            rate = 1.0
+        return np.append(np.log(rate), np.zeros(data.Z.shape[1]))
+
     def create_negll_func(self, data: Any) -> Callable:
-        x, c, n = data.x, data.c, data.n
         Z = data.Z
-        x_prev = data.get_previous_x()
+        # The pieces of the NHPP likelihood (#350): per censoring type, the
+        # times and previous times, the row masks to gather the covariates
+        # with, and the right-truncation window close.
+        s = data.split_for_nhpp_likelihood()
+        p_cov = Z.shape[1]
 
-        has_observed = True if 0 in c else False
-        has_right_censoring = True if 1 in c else False
-        has_left_censoring = True if -1 in c else False
-        has_interval_censoring = True if x.ndim == 2 else False
+        def rows(mask: np.ndarray) -> np.ndarray:
+            # A zeros((1, p)) placeholder keeps the dot products defined
+            # when a censoring type is absent (its times are empty, so its
+            # terms vanish from the sums).
+            return Z[mask] if mask.any() else np.zeros((1, p_cov))
 
-        x_l = x if x.ndim == 1 else x[:, 0]
-        x_r = x[:, 1] if x.ndim == 2 else None
-        x_prev_r = x_prev[:, 1] if x_prev.ndim == 2 else x_prev
+        # The HPP's cumulative intensity is rate * x: the sums the data fix
+        # are taken once here, the covariate terms in the likelihood.
+        len_observed = len(s["x_o"])
+        # Don't change the order of the subtraction: the analytic
+        # simplification of the log-likelihood shows that this is the
+        # correct order when using "+" for the term.
+        x_o = s["x_o_prev"] - s["x_o"]
+        Z_o = rows(s["mask_o"])
 
-        # This code splits each observation type, if it exists, into its own
-        # array. This is done to avoid having to simplify the log-likelihood
-        # function to account for the different types of observations.
+        x_right = s["x_right_prev"] - s["x_right"]
+        Z_right = rows(s["mask_right"])
 
-        # Further by calculating the sum of the needed arrays, we can avoid
-        # having to do array sums in the log-likelihood function. This will be
-        # faster, especially for large datasets.
+        # The count covers the item's window from its entry (``tl``, or the
+        # origin 0) -- the row is the item's first, so its previous time is
+        # that entry.
+        x_left = s["x_left"] - s["x_left_prev"]
+        n_left = s["n_left"]
+        Z_left = rows(s["mask_left"])
+        n_log_x_left_sum = (n_left * np.log(x_left)).sum()
+        n_left_sum = n_left.sum()
+        n_l_factorial_sum = gammaln(n_left + 1).sum()
 
-        # Although this code is a bit more complex it results in a longer time
-        # to create the log-likelihood function, but a faster time to evaluate
-        # the log-likelihood function.
-
-        # In conclusion, this is a ridiculous optimisation that is probably
-        # not worth the effort that went into it.
-        if has_observed:
-            x_o = x_l[c == 0]
-            x_prev_o = x_prev_r[c == 0]
-            len_observed = len(x_o)
-            # Don't change the order of the subtraction
-            # Doing the analytic simplification of the log-likelihood
-            # shows that this is the correct order when using "+" for the
-            # specific term.
-            x_o = x_prev_o - x_o
-            Z_o = Z[c == 0]
-        else:
-            x_o = 0.0
-            len_observed = 0
-            Z_o = np.zeros((1, Z.shape[1]))
-
-        if has_right_censoring:
-            x_right = x_l[c == 1]
-            x_right_prev = x_prev_r[c == 1]
-            x_right = x_right_prev - x_right
-            Z_right = Z[c == 1]
-        else:
-            Z_right = np.zeros((1, Z.shape[1]))
-            x_right = 0.0
-
-        if has_left_censoring:
-            # The count covers the item's window from its entry (``tl``, or
-            # the origin 0) -- the row is the item's first, so its previous
-            # time is that entry.
-            x_left = x_l[c == -1] - x_prev_r[c == -1]
-            n_left = n[c == -1]
-            Z_left = Z[c == -1]
-            log_xl = np.log(x_left)
-            n_log_x_left = n_left * log_xl
-            n_log_x_left_sum = n_log_x_left.sum()
-            n_left_sum = n_left.sum()
-            n_l_factorial = gammaln(n_left + 1)
-            n_l_factorial_sum = n_l_factorial.sum()
-        else:
-            n_log_x_left_sum = 0.0
-            x_left = 0.0
-            n_left_sum = 0.0
-            n_left = 0.0
-            n_l_factorial_sum = 0.0
-            Z_left = np.zeros((1, Z.shape[1]))
-
-        if has_interval_censoring:
-            # interval data implies 2-D x, so the right column exists
-            assert x_r is not None
-            x_i_l = x_l[c == 2]
-            x_i_r = x_r[c == 2]
-            delta_xi = x_i_r - x_i_l
-            Z_i = Z[c == 2]
-
-            n_interval = n[c == 2]
-            n_interval_sum = n_interval.sum()
-
-            n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
-            n_i_factorial_sum = gammaln(n_interval + 1).sum()
-        else:
-            n_interval = 0.0
-            n_interval_sum = 0.0
-            n_log_x_interval_sum = 0.0
-            n_i_factorial_sum = 0.0
-            Z_i = np.zeros((1, Z.shape[1]))
-            delta_xi = 0.0
+        delta_xi = s["x_i_r"] - s["x_i_l"]
+        n_interval = s["n_i"]
+        Z_i = rows(s["mask_i"])
+        n_interval_sum = n_interval.sum()
+        n_log_x_interval_sum = (n_interval * np.log(delta_xi)).sum()
+        n_i_factorial_sum = gammaln(n_interval + 1).sum()
 
         # Right window-close: for items with a finite right-truncation time
         # ``tr`` the integral closes at ``tr``. For the constant-rate HPP the
         # extension contributes rate * phi * (x_last - tr). Empty for
         # untruncated data.
-        x_close_last, x_close_tr, close_idx = data.get_right_truncation_close()
-        x_close = x_close_last - x_close_tr
-        Z_close = Z[close_idx]
+        x_close = s["x_close_last"] - s["x_close_tr"]
+        Z_close = Z[s["close_idx"]]
 
         def negll_func(params: np.ndarray) -> float:
             log_rate = params[0]
@@ -320,7 +300,7 @@ class ProportionalIntensityHPP:
         out = ProportionalIntensityModel()
         out.data = data
 
-        out.param_names = ["lambda"]
+        out._rate_names = ["lambda"]
         out.bounds = ((0, None),)
         out.support = (-np.inf, np.inf)
 
@@ -328,43 +308,83 @@ class ProportionalIntensityHPP:
         # ran to a rate of 0 with log(0) warnings.
         validate_nhpp_data(data, self)
         num_covariates = data.Z.shape[1]
+        user_init = init is not None
         if init is None:
-            # Use the right endpoint for interval-censored (2D) observations
-            # when estimating each item's latest event time for the initial
-            # rate guess.
-            _x_max = data.x if data.x.ndim == 1 else data.x[:, 1]
-            _, _inv = np.unique(data.i, return_inverse=True)
-            _max_x = np.full(_inv.max() + 1, -np.inf)
-            np.maximum.at(_max_x, _inv, _x_max)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                rate = (data.n[data.c == 0]).sum() / _max_x.sum()
-            if not (np.isfinite(rate) and rate > 0):
-                # e.g. only counts (c=-1 / c=2) and no exact events
-                rate = 1.0
-            init = np.append(np.log(rate), np.zeros(num_covariates))
+            start = self._default_start(data)
         else:
             # User-supplied starting values were previously overwritten
             # unconditionally (#288). The first value is the baseline
             # rate on its natural scale; optimisation runs on log(rate).
-            init = np.atleast_1d(np.asarray(init, dtype=float))
-            if init.size != 1 + num_covariates:
+            given = onp.atleast_1d(onp.asarray(init, dtype=float))
+            if given.size != 1 + num_covariates:
                 raise ValueError(
                     f"init must have {1 + num_covariates} values (baseline "
-                    f"rate + {num_covariates} coefficients); got {init.size}."
+                    f"rate + {num_covariates} coefficients); got {given.size}."
                 )
-            if not (np.isfinite(init[0]) and init[0] > 0):
+            if not (onp.isfinite(given[0]) and given[0] > 0):
                 raise ValueError(
                     "the baseline rate in init must be positive and finite; "
-                    f"got {init[0]!r}"
+                    f"got {given[0]!r}"
                 )
-            init = np.append(np.log(init[0]), init[1:])
+            start = onp.append(onp.log(given[0]), given[1:])
 
         neg_ll = self.create_negll_func(data)
 
-        res = minimize(neg_ll, init)
+        # A coefficient the data cannot determine is held at 0 and reported
+        # as nan (#502); the rate is the intercept.
+        aliased = alias_covariates(data.Z, intercept=True)
+        free = np.ones(1 + num_covariates, dtype=bool)
+        free[1 + aliased] = False
+
+        def full(values: np.ndarray) -> np.ndarray:
+            # (Built by concatenation, so autograd can differentiate it.)
+            parts, k = [], 0
+            for is_free in free:
+                parts.append(values[k : k + 1] if is_free else np.zeros(1))
+                k += int(is_free)
+            return np.concatenate(parts)
+
+        def neg_ll_free(values: np.ndarray) -> float:
+            return neg_ll(full(values))
+
+        def objective(values: np.ndarray) -> float:
+            value = neg_ll_free(values)
+            return float(value) if np.isfinite(value) else 1e300
+
+        def search(start: np.ndarray) -> Any:
+            # From a poor start exp(beta'Z) overflows: the search sees a
+            # large finite value there, and no raw warning escapes (from
+            # the likelihood or from BFGS's update with those values).
+            with np.errstate(all="ignore"):
+                return minimize(objective, start[free])
+
+        res = search(start)
+        # A start the user gave is followed by the default one, and the
+        # better answer kept, as for the NHPP fit (#429, #554): from a
+        # coefficient of 5 on the Rossi data exp(beta'Z) overflows, the
+        # search cannot move, and the start was returned in silence.
+        if user_init:
+            res = better_result(res, search(self._default_start(data)))
+        # The answer is kept only as a verified maximum (zero gradient,
+        # negative-definite Hessian of the log-likelihood). BFGS's own
+        # verdict is no test: it reports a "precision loss" at the
+        # maximum of the Rossi fit, and success where it never moved.
+        n_obs = bic_sample_size(data)
+        verified = res.fun < 1e300 and is_local_minimum(
+            neg_ll_free,
+            jacobian(neg_ll_free),
+            hessian(neg_ll_free),
+            res.x,
+            obj_scale=max(float(n_obs), 1.0),
+        )
+        out.maximum = "verified" if verified else "unverified"
+        if not verified:
+            warn_unverified("The proportional intensity fit")
         out.res = res
-        out.params = np.atleast_1d(np.exp(res.x[0]))
-        out.coeffs = np.atleast_1d(res.x[1:])
+        fitted = np.full(1 + num_covariates, np.nan)
+        fitted[free] = res.x
+        out.params = np.atleast_1d(np.exp(fitted[0]))
+        out.coeffs = np.atleast_1d(fitted[1:])
         out.name = "Homogeneous Poisson Process"
         out.kind = "HPP"
         out.parameterization = "Parametric"
@@ -373,7 +393,7 @@ class ProportionalIntensityHPP:
         # and covariate coefficients.
         out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
         out._mle = np.concatenate([out.params, out.coeffs])
-        out._n_obs = bic_sample_size(data)
+        out._n_obs = n_obs
         # The baseline hazard is this fitter's own constant-rate model, so the
         # fitted model's ``cif``/``iif``/``inv_cif`` (and everything built on
         # them: simulation, ``cif_cb``, ``plot``) delegate back to it.

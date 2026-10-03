@@ -1,11 +1,27 @@
+import warnings
+
 import matplotlib
 import numpy as np
 import pytest
 
 matplotlib.use("Agg")
 
-from surpyval.recurrent import ARI, CrowAMSAA, Duane  # noqa: E402
+import surpyval as sp  # noqa: E402
+from surpyval.recurrent import (  # noqa: E402
+    ARA,
+    ARI,
+    CoxLewis,
+    CrowAMSAA,
+    Duane,
+    GeneralizedOneRenewal,
+    GeneralizedRenewal,
+)
 from surpyval.recurrent.renewal.ari import ari_reduction  # noqa: E402
+from surpyval.tests._helpers import (  # noqa: E402
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+)
 from surpyval.utils.recurrent_utils import handle_xicn  # noqa: E402
 
 X = np.array([3, 9, 20, 35, 56, 4, 11, 25, 44, 70], dtype=float)
@@ -43,7 +59,7 @@ def test_ari_rho_zero_matches_nhpp(dist):
 
 
 def test_ari_fit_and_information_criteria():
-    model = ARI.fit(X, I, m=1, dist=CrowAMSAA)
+    model = ARI.fit(X, I, m=1, baseline=CrowAMSAA)
     assert 0.0 <= model.rho <= 1.0
     k = model._mle.size
     n = model._n_obs
@@ -56,7 +72,9 @@ def test_ari_fit_and_information_criteria():
 
 
 def test_ari_mcf_simulation_monotonic():
-    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=CrowAMSAA)
+    model = ARI.fit_from_parameters(
+        [60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA
+    )
     mcf = model.mcf(
         np.array([5.0, 10.0, 20.0, 30.0]), items=800, random_state=0
     )
@@ -78,7 +96,9 @@ def test_ari_rejects_unsupported_censoring():
 
 
 def test_ari_inference_requires_fit_from_data():
-    model = ARI.fit_from_parameters([60.0, 2.0], rho=0.3, m=1, dist=CrowAMSAA)
+    model = ARI.fit_from_parameters(
+        [60.0, 2.0], rho=0.3, m=1, baseline=CrowAMSAA
+    )
     with pytest.raises(ValueError, match="fitted from data"):
         model.aic
 
@@ -136,7 +156,7 @@ PARAM_GRID = [
 
 @pytest.mark.parametrize("m", [1, 2, 3, np.inf])
 def test_vectorised_negll_matches_the_scalar_original(m):
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=m, dist=CrowAMSAA)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=m, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(6, items=12, random_state=1)
     negll = ARI.create_negll_func(data, CrowAMSAA, m)
     for params in PARAM_GRID:
@@ -182,7 +202,7 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
     # test before taking logs rather than warning its way to a nan. Note
     # a rising baseline (beta > 1) stays positive even at rho = 1, so
     # the case has to be built from a flat or falling one.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(6, items=10, random_state=2)
     negll = ARI.create_negll_func(data, CrowAMSAA, 1)
     got = negll(np.array(params))
@@ -193,8 +213,182 @@ def test_negll_is_infinite_when_the_intensity_is_not_positive(params):
 
 def test_fit_scales_to_many_items():
     # 250 items took 19 seconds under the per-event loop.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     data = truth.count_terminated_simulation_data(8, items=250, random_state=5)
-    model = ARI.fit_from_recurrent_data(data, dist=CrowAMSAA, m=1)
+    model = ARI.fit_from_recurrent_data(data, baseline=CrowAMSAA, m=1)
     assert 0.0 <= model.rho <= 1.0
     assert np.isfinite(model.model.params).all()
+
+
+# -- #495: ARI's dist is an intensity model, ARA's a lifetime distribution --
+
+
+@pytest.mark.parametrize(
+    "dist", [sp.Weibull, sp.Exponential, sp.LogNormal, sp.Gamma]
+)
+def test_ari_refuses_a_lifetime_distribution_clearly(dist):
+    # It failed with AttributeError: 'Weibull_' object has no attribute
+    # 'parameter_initialiser', from inside the fit.
+    with pytest.raises(ValueError, match="baseline intensity model") as err:
+        ARI.fit(X, I, baseline=dist)
+    message = str(err.value)
+    assert "CrowAMSAA" in message and "ARA" in message
+    with pytest.raises(ValueError, match="baseline intensity model"):
+        ARI.fit_from_recurrent_data(handle_xicn(X, I), baseline=dist)
+    with pytest.raises(ValueError, match="baseline intensity model"):
+        ARI.fit_from_parameters([10.0, 2.0], 0.5, baseline=dist)
+
+
+def test_ari_refuses_anything_else_clearly():
+    with pytest.raises(ValueError, match="must be a recurrence intensity"):
+        ARI.fit(X, I, baseline="CrowAMSAA")
+
+
+@pytest.mark.parametrize("fitter", [ARA, GeneralizedRenewal])
+def test_lifetime_fitters_refuse_an_intensity_model_clearly(fitter):
+    # ARA.fit(x, i, dist=CrowAMSAA) said "Item 0.0 has more than one
+    # right censored time".
+    with pytest.raises(ValueError, match="not an intensity model.*ARI"):
+        fitter.fit(X, I, dist=CrowAMSAA)
+    with pytest.raises(ValueError, match="not an intensity model"):
+        fitter.fit_from_parameters([10.0, 2.0], 0.5, dist=CrowAMSAA)
+
+
+def test_g1_refuses_an_intensity_model_clearly():
+    with pytest.raises(ValueError, match="not an intensity model"):
+        GeneralizedOneRenewal.fit(X, I, dist=Duane)
+    with pytest.raises(ValueError, match="not an intensity model"):
+        GeneralizedOneRenewal.fit_from_parameters([10.0, 2.0], 0.5, dist=Duane)
+
+
+@pytest.mark.parametrize("dist", [CrowAMSAA, Duane, CoxLewis])
+def test_ari_still_takes_every_intensity_model(dist):
+    model = ARI.fit(X, I, baseline=dist)
+    assert model.model.dist is dist
+    assert 0.0 <= model.rho <= 1.0
+
+
+# -- #507: ARI's baseline intensity is `baseline=`, not `dist=` --------------
+
+
+def _old_name(call):
+    # The result of ``call`` and the one DeprecationWarning it raised.
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        out = call()
+    deprecations = [w for w in caught if w.category is DeprecationWarning]
+    assert len(deprecations) == 1, [str(w.message) for w in caught]
+    return out, deprecations[0]
+
+
+@pytest.mark.parametrize(
+    "method", ["fit", "fit_from_recurrent_data", "fit_from_df"]
+)
+def test_ari_takes_its_baseline_as_baseline(method):
+    # In ARA, GeneralizedRenewal and GeneralizedOneRenewal `dist` is a
+    # lifetime distribution; in ARI it was the baseline intensity model,
+    # so `dist=sp.Weibull` was a natural mistake. `dist=` still works,
+    # warning, until v0.23, and gives the same fit.
+    import pandas as pd
+
+    def call(**kw):
+        if method == "fit":
+            return ARI.fit(X, I, m=1, **kw)
+        if method == "fit_from_recurrent_data":
+            return ARI.fit_from_recurrent_data(handle_xicn(X, I), m=1, **kw)
+        df = pd.DataFrame({"x": X, "i": I})
+        return ARI.fit_from_df(df, x_col="x", i_col="i", m=1, **kw)
+
+    new = call(baseline=Duane)
+    assert new.model.dist is Duane
+    old, warning = _old_name(lambda: call(dist=Duane))
+    message = str(warning.message)
+    assert "'dist' is deprecated" in message and "'baseline'" in message
+    assert "0.23" in message
+    # The warning points at the caller's line, not into SurPyval.
+    assert warning.filename == __file__
+    np.testing.assert_array_equal(old.params, new.params)
+    with pytest.raises(ValueError, match="pass 'baseline' only"):
+        call(baseline=Duane, dist=Duane)
+
+
+def test_ari_fit_from_parameters_takes_baseline():
+    new = ARI.fit_from_parameters(
+        baseline_params=[20.0, 1.5], rho=0.5, baseline=Duane
+    )
+    assert new.model.dist is Duane
+    old, warning = _old_name(
+        lambda: ARI.fit_from_parameters([20.0, 1.5], 0.5, dist=Duane)
+    )
+    assert "'baseline'" in str(warning.message)
+    assert warning.filename == __file__
+    old_params, warning = _old_name(
+        lambda: ARI.fit_from_parameters(
+            dist_params=[20.0, 1.5], rho=0.5, baseline=Duane
+        )
+    )
+    assert "'baseline_params'" in str(warning.message)
+    for model in (old, old_params):
+        np.testing.assert_array_equal(model.params, new.params)
+
+
+def test_ari_signatures_name_the_baseline():
+    import inspect
+
+    for method in ("fit", "fit_from_recurrent_data", "fit_from_parameters"):
+        params = inspect.signature(getattr(ARI, method)).parameters
+        assert "baseline" in params and "dist" not in params, method
+        assert params["baseline"].default is CrowAMSAA
+
+
+def test_ari_lifetime_distribution_error_names_baseline():
+    with pytest.raises(ValueError, match="`baseline` is the baseline"):
+        ARI.fit(X, I, baseline=sp.Weibull)
+
+
+def test_ari_saved_before_the_rename_still_loads():
+    # The layout written before #507 (and still written): the baseline's
+    # name under "dist".
+    from surpyval.recurrent.renewal.renewal_model import RenewalModel
+
+    saved = {
+        "model": "RenewalModel",
+        "family": "ARI",
+        "dist": "Duane",
+        "params": [20.0, 1.5],
+        "restoration": 0.5,
+        "how": "from_params",
+        "m": 1,
+        "schema": 1,
+    }
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", DeprecationWarning)
+        model = RenewalModel.from_dict(dict(saved))
+        assert model.to_dict() == saved
+    assert model.model.dist is Duane
+    np.testing.assert_array_equal(model.params, [0.5, 20.0, 1.5])
+
+
+# ---------------------------------------------------------------------------
+# Infeasible starts.
+# ---------------------------------------------------------------------------
+
+
+def test_ari_fit_skips_infeasible_start_without_warnings():
+    # The rho = 0.9 start drives the intensity negative (zero likelihood);
+    # Nelder-Mead from it used to warn about inf - inf.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = ARI.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, m=1)
+    assert 0 < model.rho < 1
+
+
+def test_infeasible_user_init_is_reported():
+    with pytest.raises(ValueError, match="zero likelihood"):
+        ARI.fit(
+            REPAIR_FLEET_X,
+            REPAIR_FLEET_I,
+            REPAIR_FLEET_C,
+            m=1,
+            init=[0.9, 7.8, 0.74],
+        )

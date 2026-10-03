@@ -1,15 +1,30 @@
-import warnings
-from typing import Any
+from __future__ import annotations
 
+import functools
+import warnings
+from typing import TYPE_CHECKING, Any, Callable
+
+import autograd.numpy as np
 import numpy.typing as npt
+from autograd import grad, hessian
+from autograd.scipy.special import logsumexp as ag_logsumexp
 from scipy.optimize import minimize
 from scipy.special import logsumexp
 
-from surpyval import Distribution, np
+from surpyval import Distribution
 from surpyval.serialisation import (
     SerialisableMixin,
     require_model_tag,
     stamp_schema,
+)
+from surpyval.utils.data_summary import data_summary
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_no_maximum,
+    warn_unverified,
 )
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
@@ -21,6 +36,9 @@ from .probability_plotting import (
     probability_plot_data,
 )
 
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+
 # The log-likelihood floor of one observation under one component: far
 # below any log-likelihood an observation the component can explain has,
 # and finite, so the EM objective stays finite (see
@@ -28,7 +46,75 @@ from .probability_plotting import (
 LOG_FLOOR = -1e4
 
 
-class MixtureModel(SerialisableMixin, Distribution):
+class _NonFiniteGradient(ArithmeticError):
+    """An autograd gradient that is not finite (see ``_finite_gradient``)."""
+
+
+def _finite_gradient(jac: Callable[..., Any]) -> Callable[..., Any]:
+    """``jac``, raising ``_NonFiniteGradient`` where it is not finite, which
+    L-BFGS-B would otherwise follow to the bounds."""
+
+    def checked(x: npt.NDArray) -> npt.NDArray:
+        g = np.asarray(jac(x), dtype=float)
+        if not np.all(np.isfinite(g)):
+            raise _NonFiniteGradient
+        return g
+
+    return checked
+
+
+class _FitMethod:
+    """``MixtureModel.fit`` as both an instance and a class method (#482).
+
+    On a model (``MixtureModel(dist, m).fit(x)``) it fits in place, as it
+    always has, and returns the model. On the class
+    (``MixtureModel.fit(x, dist=Weibull, m=2)``) it builds the model from
+    ``dist`` and ``m`` and fits it, the ``Dist.fit(x)`` form of every other
+    fitter.
+    """
+
+    def __init__(self, func: Callable[..., Any]) -> None:
+        self.func = func
+        functools.update_wrapper(self, func)  # type: ignore[arg-type]
+
+    def __get__(self, obj: Any, objtype: Any = None) -> Any:
+        if obj is not None:
+            return functools.partial(self.func, obj)
+        func = self.func
+
+        @functools.wraps(func)
+        def fit(
+            x: npt.ArrayLike | None = None,
+            c: npt.ArrayLike | None = None,
+            n: npt.ArrayLike | None = None,
+            t: npt.ArrayLike | None = None,
+            tl: npt.ArrayLike | None = None,
+            tr: npt.ArrayLike | None = None,
+            xl: npt.ArrayLike | None = None,
+            xr: npt.ArrayLike | None = None,
+            *,
+            dist: Any = None,
+            m: int = 2,
+        ) -> Any:
+            if isinstance(x, objtype):
+                # ``MixtureModel.fit(model, x, ...)``: the unbound call of
+                # the instance method, which worked before #482.
+                return func(x, c, n, t, tl, tr, xl, xr)
+            if dist is None:
+                raise ValueError(
+                    "MixtureModel.fit needs `dist`, the distribution of "
+                    "every component, e.g. "
+                    "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
+                )
+            return func(objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr)
+
+        # Keep the docstring but show this signature (with ``dist`` and
+        # ``m``), not the instance method's.
+        del fit.__wrapped__
+        return fit
+
+
+class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
     """
     A class for creating a Mixture Model fitter.
 
@@ -49,7 +135,30 @@ class MixtureModel(SerialisableMixin, Distribution):
     m : int, optional
         The number of sub-distributions to be used in the mixture model.
         Defaults to 2.
+
+    Examples
+    --------
+    Fit in one call, like any other fitter:
+
+    >>> import surpyval as surv
+    >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+    >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+    >>> wmm.w.round(3)
+    array([0.618, 0.382])
+
+    or build the (unfitted) model first and fit it, which returns the
+    same model:
+
+    >>> surv.MixtureModel(dist=surv.Weibull, m=2)
+    Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)
     """
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of the columns of ``params``: the component
+        distribution's ``parameter_names``. ``params`` has one row per
+        component (``m`` rows); the weights are ``w``."""
+        return list(self.dist.parameter_names)
 
     def __init__(self, dist: Any, m: int = 2) -> None:
         self.m = m
@@ -68,6 +177,13 @@ class MixtureModel(SerialisableMixin, Distribution):
         #: The observed-data *negative* log-likelihood at the current
         #: parameters (despite the name), which the EM iteration tracks.
         self.loglike: Any = None
+        #: What the fit reached, one of ``MAXIMUM_STATES``
+        #: (``surpyval.utils.no_maximum``), as its warnings say:
+        #: ``"verified"`` (a zero gradient and a positive-definite Hessian),
+        #: ``"unverified"`` or ``"no finite maximum"`` (a component collapsed
+        #: onto a point mass); ``"unknown"`` before a fit, or for a model
+        #: restored from a dict saved without it.
+        self.maximum: str = "unknown"
 
     # -- serialisation -----------------------------------------------------
 
@@ -88,6 +204,7 @@ class MixtureModel(SerialisableMixin, Distribution):
             "m": int(self.m),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "w": np.asarray(self.w, dtype=float).tolist(),
+            **maximum_entry(self.maximum),
         }
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading
@@ -113,6 +230,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         out = cls(dist=dist, m=int(model_dict["m"]))
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
+        out.maximum = restored_maximum(model_dict)
         return out
 
     def __repr__(self) -> str:
@@ -120,23 +238,46 @@ class MixtureModel(SerialisableMixin, Distribution):
             param_string = "\n".join(
                 [
                     f"{name:>10}: {p}"
-                    for p, name in zip(self.params.T, self.dist.param_names)
+                    for p, name in zip(
+                        self.params.T, self.dist.parameter_names
+                    )
                 ]
             )
             weight_string = ",\n\t".join([str(w) for w in self.w])
+            # Truncated data is fitted by direct maximisation, not EM; a
+            # model restored by ``from_dict`` does not know how it was fit.
+            fitted_by = {True: "MLE", False: "EM", None: "-"}[
+                getattr(self, "_truncated", None)
+            ]
             out = (
                 "Parametric Mixture SurPyval Model"
                 "\n================================="
                 f"\nDistribution        : {self.dist.name}"
                 f"\nSub-Distributions   : {self.m}"
-                "\nFitted by           : EM"
+                f"\nFitted by           : {fitted_by}"
+                f"{self._data_repr()}"
                 f"\nWeights             : \n\t{weight_string}"
                 f"\nParameters          :\n{param_string}"
             )
 
             return out
         else:
-            return "Unable to fit values"
+            return (
+                "Unfitted Parametric Mixture SurPyval Model "
+                f"({self.dist.name}, m = {self.m})"
+            )
+
+    def _data_repr(self) -> str:
+        """The "Data" line of the printout (#508): the units the model was
+        fitted to, weighted by ``n``, by kind of censoring and truncation;
+        nothing for a model restored without its data."""
+        data = self.data
+        if data is None or getattr(data, "c", None) is None:
+            return ""
+        lower, upper = self.dist.support
+        return "\nData                : " + data_summary(
+            data.c, data.n, data.tl, data.tr, lower, upper, x=data.x
+        )
 
     def likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
@@ -152,10 +293,13 @@ class MixtureModel(SerialisableMixin, Distribution):
             data.x_il, *params
         )
         like = np.zeros(len(self.data.x))
-        like[data.c == 0] = like_o
-        like[data.c == 1] = like_r
-        like[data.c == -1] = like_l
-        like[data.c == 2] = like_i
+        # The observation masks, not the raw codes: a censored row with a
+        # finite truncation bound on its censored side is an interval
+        # (#310, #544).
+        like[data.mask_o] = like_o
+        like[data.mask_r] = like_r
+        like[data.mask_l] = like_l
+        like[data.mask_i] = like_i
         return like
 
     def log_likelihood(self, params: Any) -> Any:
@@ -174,27 +318,51 @@ class MixtureModel(SerialisableMixin, Distribution):
         self._require_fit_data("log_likelihood()")
         data = self.data
         dist = self.dist
-        out = np.zeros(len(data.x))
+        # Each kind of row in one piece, put back in the rows' order by
+        # indexing rather than assignment, so that autograd can
+        # differentiate it (the EM's M-step and the polish take its
+        # gradient, #506). The kinds are the observation masks, not the raw
+        # codes: a right-censored row with a finite ``tr`` is the interval
+        # [x, tr] and a left-censored row with a finite ``tl`` is [tl, x]
+        # (#310), and grouping by code lost them (#544).
+        pieces = []
         with np.errstate(all="ignore"):
-            if (data.c == 0).any():
-                out[data.c == 0] = dist.log_df(data.x_o, *params)
-            if (data.c == 1).any():
-                out[data.c == 1] = dist.log_sf(data.x_r, *params)
-            if (data.c == -1).any():
-                out[data.c == -1] = dist.log_ff(data.x_l, *params)
-            if (data.c == 2).any():
+            if data.mask_o.any():
+                pieces.append(dist.log_df(data.x_o, *params))
+            if data.mask_r.any():
+                pieces.append(dist.log_sf(data.x_r, *params))
+            if data.mask_l.any():
+                pieces.append(dist.log_ff(data.x_l, *params))
+            if data.mask_i.any():
                 window = dist.ff(data.x_ir, *params) - dist.ff(
                     data.x_il, *params
                 )
-                out[data.c == 2] = np.log(np.maximum(window, 0.0))
-        out = np.nan_to_num(out, nan=LOG_FLOOR, neginf=LOG_FLOOR)
+                positive = window > 0
+                pieces.append(
+                    np.where(
+                        positive,
+                        np.log(np.where(positive, window, 1.0)),
+                        LOG_FLOOR,
+                    )
+                )
+            out = np.concatenate(pieces)[self._row_order()]
+            out = np.where(np.isnan(out), LOG_FLOOR, out)
         return np.maximum(out, LOG_FLOOR)
+
+    def _row_order(self) -> npt.NDArray:
+        """The index that puts the rows grouped by kind (exact, right,
+        left, interval, as :meth:`log_likelihood` builds them) back in
+        the data's order."""
+        data = self.data
+        masks = (data.mask_o, data.mask_r, data.mask_l, data.mask_i)
+        grouped = np.concatenate([np.flatnonzero(mask) for mask in masks])
+        return np.argsort(grouped)
 
     def _log_resp(self, w: npt.NDArray, params: Any) -> Any:
         """``log w_i + log L_i`` for every component (rows) and
         observation (columns)."""
         with np.errstate(divide="ignore"):
-            log_w = np.log(np.asarray(w, dtype=float))
+            log_w = np.log(w)
         return np.array(
             [log_w[i] + self.log_likelihood(params[i]) for i in range(self.m)]
         )
@@ -204,14 +372,18 @@ class MixtureModel(SerialisableMixin, Distribution):
         truncation window ``(tl, tr]`` -- the per-component piece of the
         truncation correction."""
         tl, tr = self.data.tl, self.data.tr
-        lo = np.zeros(len(self.data.x))
+        lo = 0.0
         fin = np.isfinite(tl)
         if fin.any():
-            lo[fin] = self.dist.ff(tl[fin], *params_i)
-        hi = np.ones(len(self.data.x))
+            lo = np.where(
+                fin, self.dist.ff(np.where(fin, tl, 0.0), *params_i), 0.0
+            )
+        hi = 1.0
         fin = np.isfinite(tr)
         if fin.any():
-            hi[fin] = self.dist.ff(tr[fin], *params_i)
+            hi = np.where(
+                fin, self.dist.ff(np.where(fin, tr, 0.0), *params_i), 1.0
+            )
         return hi - lo
 
     def neg_ll_of(self, w: npt.NDArray, params: Any) -> Any:
@@ -220,14 +392,16 @@ class MixtureModel(SerialisableMixin, Distribution):
         their window through the mixture probability of the window."""
         self._require_fit_data("neg_ll_of()")
         # log-sum-exp over the components, so the mixture density of an
-        # observation is not lost to underflow in any one of them.
+        # observation is not lost to underflow in any one of them. In
+        # autograd's functions, so the polish can differentiate it (#506).
         with np.errstate(all="ignore"):
-            ll = np.sum(self.data.n * logsumexp(self._log_resp(w, params), 0))
+            log_r = self._log_resp(w, params)
+            ll = np.sum(self.data.n * ag_logsumexp(log_r, axis=0))
             if self._truncated:
-                win = np.zeros(len(self.data.x))
+                win = 0.0
                 for i in range(self.m):
-                    win += w[i] * self._window_prob(params[i])
-                ll -= np.sum(self.data.n * np.log(win))
+                    win = win + w[i] * self._window_prob(params[i])
+                ll = ll - np.sum(self.data.n * np.log(win))
         return -ll
 
     def Q(self, params: Any) -> Any:
@@ -259,10 +433,56 @@ class MixtureModel(SerialisableMixin, Distribution):
 
     def maximisation(self) -> Any:
         """EM M-step: refit every component's parameters by minimising
-        :meth:`Q` with the current responsibilities held fixed."""
+        :meth:`Q` with the current responsibilities held fixed, on its
+        exact (autograd) gradient (#506); finite differences of it were
+        60% of a fit's time."""
         bounds = self.dist.bounds * self.m
-        res = minimize(self.Q, self.params.ravel(), bounds=bounds)
+        x0 = self.params.ravel()
+        jac = self._Q_jac()
+        res = None
+        with np.errstate(all="ignore"):
+            if jac is not None:
+                # A bound of 0 (a scale or shape) held just inside: the
+                # gradient there is 0 / 0.
+                inner = [(1e-10 if lo == 0 else lo, hi) for lo, hi in bounds]
+                try:
+                    res = minimize(
+                        self.Q, x0, jac=_finite_gradient(jac), bounds=inner
+                    )
+                except _NonFiniteGradient:
+                    res = None
+                # Where the gradient breaks down (a component heading for
+                # a point mass, whose shape runs off to 1e4 and beyond) or
+                # the step makes Q worse, finite differences as before.
+                if res is not None:
+                    q0 = self.Q(x0)
+                    slack = 1e-8 * max(1.0, abs(q0))
+                    if not (
+                        np.all(np.isfinite(res.x)) and res.fun <= q0 + slack
+                    ):
+                        res = None
+            if res is None:
+                res = minimize(self.Q, x0, bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
+
+    def _Q_jac(self) -> "Callable[..., Any] | None":
+        """The gradient of :meth:`Q` by autograd, or ``None`` (finite
+        differences) for a distribution autograd cannot differentiate."""
+        # Kept for the fit in progress (``fit`` drops it: a closure would
+        # stop the model being pickled); False where autograd fails.
+        cached = self.__dict__.get("_Q_jac_cache")
+        if cached is not None:
+            return cached or None
+        jac = grad(self.Q)
+        try:
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                g = np.asarray(jac(self.params.ravel()), dtype=float)
+            usable = bool(np.all(np.isfinite(g)))
+        except Exception:
+            usable = False
+        self._Q_jac_cache = jac if usable else False
+        return jac if usable else None
 
     def EM(self) -> Any:
         """One EM iteration (:meth:`expectation` then
@@ -274,21 +494,134 @@ class MixtureModel(SerialisableMixin, Distribution):
         # M-step objective.
         self.loglike = self.neg_ll_of(self.w, self.params)
 
-    def _em(self, tol: float = 1e-10, max_iter: int = 1000) -> Any:
-        i = 0
+    def _em(
+        self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
+    ) -> "str | None":
+        """Fit by EM, polished by direct maximum likelihood (#506).
+
+        EM moves linearly, and on a censored mixture it can crawl along a
+        flat direction of the likelihood for all ``max_iter`` iterations
+        (it stops when two iterations' negative log-likelihoods are within
+        ``tol``), warning that it had not converged at what was already
+        the maximum, after 17 s. So after ``budget`` iterations, or
+        sooner where it converges, its answer is polished by BFGS on the
+        observed likelihood with its exact gradient (``_polish``), and
+        accepted when that is a verified maximum: a zero gradient and a
+        positive-definite Hessian. Only if it is not does EM go on to
+        ``max_iter``, polished again. Returns ``None`` for a verified
+        maximum, else why it is not (for ``warn_unverified``, which
+        :meth:`fit` gives unless the likelihood has no finite maximum).
+        """
+        converged = self._em_steps(tol, budget)
+        if self._polish():
+            return None
+        if not converged:
+            converged = self._em_steps(tol, max_iter - budget)
+            if self._polish():
+                return None
+        if not converged:
+            return "EM reached its iteration limit"
+        return "EM converged where the likelihood is not a verified maximum"
+
+    def _em_steps(self, tol: float, max_iter: int) -> bool:
+        """Up to ``max_iter`` EM iterations; whether two in a row came
+        within ``tol`` of each other in the negative log-likelihood."""
+        if max_iter < 1:
+            return False
         self.EM()
         f0 = self.loglike
-        self.EM()
-        f1 = self.loglike
-        while (np.abs(f0 - f1) > tol) and (i < max_iter):
-            f0 = f1
+        for _ in range(max_iter - 1):
             self.EM()
             f1 = self.loglike
-            i += 1
-        if i >= max_iter:
-            warnings.warn(
-                "EM algorithm reached max iterations before converging"
-            )
+            if np.abs(f0 - f1) <= tol:
+                return True
+            f0 = f1
+        return False
+
+    def _pack(self, w: npt.NDArray, params: npt.NDArray) -> npt.NDArray:
+        """The weights and parameters as the unconstrained vector the
+        polish searches: ``m - 1`` log-ratios of the weights to the last
+        one, then each component's parameters, a bounded one as the log
+        of its distance from the bound (or the logit between two)."""
+        w = np.asarray(w, dtype=float)
+        free = []
+        # A weight of 0 or a parameter on its bound maps to an infinite
+        # coordinate, which the caller checks for.
+        with np.errstate(all="ignore"):
+            logits = np.log(w[:-1]) - np.log(w[-1])
+            for row in np.asarray(params, dtype=float):
+                for value, (lo, hi) in zip(row, self.dist.bounds):
+                    if lo is not None and hi is not None:
+                        u = (value - lo) / (hi - lo)
+                        free.append(np.log(u) - np.log1p(-u))
+                    elif lo is not None:
+                        free.append(np.log(value - lo))
+                    elif hi is not None:
+                        free.append(np.log(hi - value))
+                    else:
+                        free.append(value)
+        return np.concatenate([logits, np.array(free, dtype=float)])
+
+    def _unpack(self, theta: Any) -> Any:
+        """The inverse of :meth:`_pack` (autograd-differentiable): the
+        weights by softmax, and the parameters back on their scale."""
+        m, k = self.m, self.dist.k
+        logits = np.concatenate([theta[: m - 1], np.zeros(1)])
+        log_w = logits - ag_logsumexp(logits)
+        rows = []
+        for i in range(m):
+            row = []
+            for j, (lo, hi) in enumerate(self.dist.bounds):
+                u = theta[m - 1 + i * k + j]
+                if lo is not None and hi is not None:
+                    row.append(lo + (hi - lo) / (1.0 + np.exp(-u)))
+                elif lo is not None:
+                    row.append(lo + np.exp(u))
+                elif hi is not None:
+                    row.append(hi - np.exp(u))
+                else:
+                    row.append(u)
+            rows.append(row)
+        return np.exp(log_w), np.array(rows)
+
+    def _polish(self) -> bool:
+        """Direct maximum likelihood from the current weights and
+        parameters (#506): BFGS on the observed negative log-likelihood,
+        in the unconstrained coordinates of :meth:`_pack` and on its
+        autograd gradient, the answer kept where it is better. Whether
+        the result is a verified maximum (``is_local_minimum``: a zero
+        gradient and a positive-definite Hessian)."""
+        from .fitters import is_local_minimum, preconditioned_bfgs
+
+        def fun(theta: Any) -> Any:
+            w, params = self._unpack(theta)
+            return self.neg_ll_of(w, params)
+
+        n_obs = float(np.sum(self.data.n))
+        jac, hess = grad(fun), hessian(fun)
+        x0 = self._pack(self.w, self.params)
+        if not np.all(np.isfinite(x0)):
+            # A weight of 0, or a parameter on its bound: no interior
+            # point to polish from.
+            return False
+        with np.errstate(all="ignore"), warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            try:
+                f0 = float(fun(x0))
+                res = preconditioned_bfgs(fun, x0, (), jac, obj_scale=n_obs)
+            except Exception:
+                return False
+            x = x0
+            if np.all(np.isfinite(res.x)) and res.fun <= f0:
+                x = res.x
+                self.w, self.params = self._unpack(x)
+                self.w = np.asarray(self.w, dtype=float)
+                self.params = np.asarray(self.params, dtype=float)
+                self.loglike = float(res.fun)
+            try:
+                return is_local_minimum(fun, jac, hess, x, obj_scale=n_obs)
+            except Exception:
+                return False
 
     def initialise_params(self) -> Any:
         """The EM starting point: cut the (sorted) data into ``m``
@@ -306,6 +639,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         self.params = params
         self.w = np.ones(shape=(self.m)) / self.m
 
+    @_FitMethod
     def fit(
         self,
         x: npt.ArrayLike | None = None,
@@ -318,13 +652,15 @@ class MixtureModel(SerialisableMixin, Distribution):
         xr: npt.ArrayLike | None = None,
     ) -> Any:
         """
-        Fit the mixture to data, in place.
+        Fit the mixture to data.
 
-        Unlike the single-distribution fitters, this does not return a new
-        model: it sets the fitted ``params`` (one row per sub-distribution)
-        and mixing weights ``w`` on this object, which is then used as the
-        model. Untruncated data is fitted by the EM algorithm; truncated
-        data by direct maximisation of the truncated likelihood.
+        Call it on the class, ``MixtureModel.fit(x, ..., dist=Weibull,
+        m=2)``, to build and fit a model in one step, as with every other
+        fitter; or on a model built with ``MixtureModel(dist, m)``, which
+        it fits in place. Either way it returns the fitted model, with the
+        ``params`` (one row per sub-distribution) and mixing weights ``w``.
+        Untruncated data is fitted by the EM algorithm; truncated data by
+        direct maximisation of the truncated likelihood.
 
         Parameters
         ----------
@@ -365,27 +701,40 @@ class MixtureModel(SerialisableMixin, Distribution):
             Array like of the right array for 2-dimensional input of x. This
             is useful for data that is all intervally censored. Must be used
             with the :code:`xl` input.
+        dist : surpyval distribution
+            The distribution of every component. Keyword only, and only on
+            the class call (a model already has its ``dist``).
+        m : int, optional
+            The number of components (default 2). Keyword only, and only
+            on the class call.
 
         Returns
         -------
 
-        None
-            The fit is stored on this object.
+        MixtureModel
+            The fitted model (on a model, the model itself).
+
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when a component has collapsed onto a
+            point mass (every row it explains is consistent with one time),
+            where a mixture's likelihood grows without bound.
 
         Examples
         --------
 
         >>> import surpyval as surv
         >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17 ,17, 18, 19]
-        >>> # Create a Weibull Mixture Model fitter with 2 sub-distributions
-        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-        >>> wmm.fit(x)
+        >>> # A Weibull Mixture Model with 2 sub-distributions
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
         >>> wmm
         Parametric Mixture SurPyval Model
         =================================
         Distribution        : Weibull
         Sub-Distributions   : 2
         Fitted by           : EM
+        Data                : 17 units: 17 events at 15 unique times
         Weights             :
                 0.6184891886499861,
                 0.381510811350014
@@ -411,10 +760,86 @@ class MixtureModel(SerialisableMixin, Distribution):
             # The truncation correction couples the components through the
             # mixture window probability, so the label-based EM does not
             # apply; maximise the observed truncated likelihood directly,
-            # warm-started from the split-fit initialisation (#254).
+            # warm-started from the split-fit initialisation (#254), and
+            # polish and verify its answer as the EM path does (#560).
             self._direct_mle()
+            unverified = (
+                None
+                if self._polish()
+                else "L-BFGS-B's answer is not a verified maximum"
+            )
         else:
-            self._em()
+            try:
+                unverified = self._em()
+            finally:
+                self.__dict__.pop("_Q_jac_cache", None)
+        # One warning: a component collapsed onto a point mass has no
+        # finite maximum, which is also why its search was not verified.
+        if self._warn_if_point_mass():
+            self.maximum = "no finite maximum"
+        elif unverified is not None:
+            self.maximum = "unverified"
+            warn_unverified("The mixture fit", unverified, "check the fit")
+        else:
+            self.maximum = "verified"
+        return self
+
+    def _warn_if_point_mass(self) -> bool:
+        """Warn when a component has collapsed onto a point mass (#392),
+        and say whether it did.
+
+        A mixture's likelihood grows without bound as one component
+        concentrates on a single time (a spike explaining a cluster of
+        tied values while the others explain the rest), so a fit that
+        heads there has no finite maximum and stops wherever the search
+        gives up: with 10 of 20 rows at 3.0 a Weibull component came back
+        with beta 8955, in silence.
+
+        The criterion is the univariate one (``_point_mass_region``,
+        which refuses such data for a single distribution), applied to
+        the rows each component still explains -- those it gives a
+        positive responsibility, to double precision. When one time is
+        consistent with every one of them, the component is a spike. A
+        component of an ordinary fit explains rows at several distinct
+        times, and is never flagged.
+        """
+        region_of = getattr(self.dist, "_point_mass_region", None)
+        if region_of is None:
+            return False
+        data = self.data
+        log_r = self._log_resp(self.w, self.params)
+        with np.errstate(all="ignore"):
+            resp = np.exp(log_r - logsumexp(log_r, axis=0))
+        for i in range(self.m):
+            rows = (resp[i] > 0) & (data.n > 0)
+            if not rows.any():
+                continue
+            explained = SurpyvalData(
+                x=data.x[rows], c=data.c[rows], n=data.n[rows], t=data.t[rows]
+            )
+            region = region_of(explained, False, False)
+            if region is None:
+                continue
+            params = ", ".join(
+                f"{name} = {value:.4g}"
+                for name, value in zip(
+                    self.dist.parameter_names, self.params[i]
+                )
+            )
+            explained_rows = int(data.n[rows].sum())
+            warn_no_maximum(
+                f"mixture component {i} ({params}) has collapsed onto a "
+                f"point mass: a single time {region} is consistent with "
+                f"every one of the {explained_rows} rows it explains, and "
+                "a mixture's likelihood grows without bound as a "
+                "component concentrates on one time",
+                "The reported parameters and weights are meaningless",
+                "a component is a point mass: the data hold a cluster of "
+                "tied values; model that cluster separately, or fit fewer "
+                "components",
+            )
+            return True
+        return False
 
     def _direct_mle(self) -> Any:
         """Directly maximise the observed (truncation-corrected) negative
@@ -461,8 +886,7 @@ class MixtureModel(SerialisableMixin, Distribution):
         --------
         >>> import surpyval as surv
         >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
-        >>> wmm = surv.MixtureModel(dist=surv.Weibull, m=2)
-        >>> wmm.fit(x)
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
         >>> round(float(wmm.mean()), 4)
         9.8294
         """
@@ -581,9 +1005,15 @@ class MixtureModel(SerialisableMixin, Distribution):
         """
         return 1 - self.ff(x)
 
-    def cs(self, x: Any, X: Any, *args: Any, **kwargs: Any) -> Any:
+    @renamed_arguments(X="given")
+    def cs(self, x: Any, given: Any, *args: Any, **kwargs: Any) -> Any:
         """
         The conditional survival function of the fitted model.
+
+        .. versionchanged:: 0.22
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
 
         Parameters
         ----------
@@ -592,20 +1022,20 @@ class MixtureModel(SerialisableMixin, Distribution):
             The values at which the conditional survival function will be
             evaluated.
 
-        X : array like
+        given : array like
             The values at which the item is known to have survived to.
 
         Returns
         -------
 
         array like
-            The conditional survival function evaluated at x given X.
+            The conditional survival function evaluated at x given given.
         """
-        # As arrays: ``x + X`` on a list concatenated (or raised) rather
+        # As arrays: ``x + given`` on a list concatenated (or raised) rather
         # than adding.
         x = np.asarray(x, dtype=float)
-        X = np.asarray(X, dtype=float)
-        return self.sf(x + X) / self.sf(X)
+        given = np.asarray(given, dtype=float)
+        return self.sf(x + given) / self.sf(given)
 
     def _require_fit_data(self, what: str) -> None:
         # The likelihood pieces also run mid-fit, before ``params`` is
@@ -626,7 +1056,13 @@ class MixtureModel(SerialisableMixin, Distribution):
 
     def get_plot_data(self, heuristic: str = "Nelson-Aalen") -> Any:
         """The plotting positions and fitted curve that :meth:`plot`
-        draws, computed from the fitted data with ``heuristic``."""
+        draws, computed from the fitted data with ``heuristic``.
+
+        As for :meth:`Parametric.get_plot_data`: ``x_`` and ``F`` are
+        every row of the plotting positions, suspensions included,
+        ``failed`` is a boolean mask of the rows that record a failure
+        (the points :meth:`plot` draws), and ``x_censored`` holds the
+        suspension times."""
         self._require_data("get_plot_data()")
         return probability_plot_data(
             dist=self.dist,
@@ -639,9 +1075,21 @@ class MixtureModel(SerialisableMixin, Distribution):
             params=self.params,
         )
 
-    def plot(self, heuristic: str = "Nelson-Aalen", ax: Any = None) -> Any:
+    def plot(
+        self,
+        heuristic: str = "Nelson-Aalen",
+        ax: Any = None,
+        show_censored: bool = False,
+        color: Any = None,
+        label: "str | None" = None,
+        **kwargs: Any,
+    ) -> Axes:
         """
-        A method to do a probability plot
+        A method to do a probability plot.
+
+        The points are the failures, at their plotting positions; a
+        suspension (right-censored unit) has no point of its own, as for
+        :meth:`Parametric.plot`.
 
         Parameters
         ----------
@@ -656,11 +1104,39 @@ class MixtureModel(SerialisableMixin, Distribution):
             The axis onto which the plot will be created. Optional, if not
             provided a new axes will be created.
 
+        show_censored : bool, optional
+            Mark the suspension (right-censored) times with ticks along
+            the time axis. Defaults to False.
+
+        color : matplotlib color, optional
+            The colour of the points and the fitted line. By default the
+            next colour of the axes' colour cycle, so that models plotted
+            on the same axes differ.
+
+        label : str, optional
+            The legend label of the fitted line.
+
+        **kwargs
+            Other keyword arguments for the fitted line (a
+            ``matplotlib.lines.Line2D``).
+
         Returns
         -------
         matplotlib.axes.Axes
-            a matplotlib axes containing the plot
+            a matplotlib axes containing the plot; the x label is "Time"
+            unless the axes already have one.
 
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> import matplotlib.pyplot as plt
+        >>> fig, ax = plt.subplots()
+        >>> ax = wmm.plot(ax=ax, label="two Weibulls")
+        >>> ax.get_legend_handles_labels()[1]
+        ['two Weibulls']
+        >>> plt.close(fig)
         """
         if ax is None:
             import matplotlib.pyplot as plt
@@ -681,4 +1157,8 @@ class MixtureModel(SerialisableMixin, Distribution):
             lambda x: self.dist.mpp_y_transform(x, *self.params),
             lambda x: self.dist.mpp_inv_y_transform(x, *self.params),
             title=f"{self.dist.name} Mixture Probability Plot",
+            show_censored=show_censored,
+            color=color,
+            label=label,
+            **kwargs,
         )

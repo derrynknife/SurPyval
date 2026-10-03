@@ -1,23 +1,18 @@
 """The hypoexponential distribution: a sum of exponential stages."""
 
-import json
-
 import numpy as np
 import pytest
 from scipy import integrate
 
 import surpyval
 from surpyval import Exponential, Gamma, Hypoexponential, Parametric
+from surpyval.tests._helpers import json_round_trip
 from surpyval.univariate.parametric.distributions.hypoexponential import (
     DISTINCT_RATES_TOL,
     Hypoexponential_,
 )
 
 RATES = (0.5, 1.5, 3.0)
-
-
-def _rt(d):
-    return json.loads(json.dumps(d))
 
 
 # -- closed forms -----------------------------------------------------------
@@ -140,7 +135,7 @@ def test_from_params_builds_a_variable_arity_model():
     five = Hypoexponential.from_params([1.0, 2.0, 3.0, 4.0, 5.0])
     assert isinstance(two, Parametric)
     assert (two.k, five.k) == (2, 5)
-    assert five.dist.param_names == [
+    assert five.dist.parameter_names == [
         "lambda_1",
         "lambda_2",
         "lambda_3",
@@ -170,19 +165,21 @@ def test_serialisation_round_trip():
     d = model.to_dict()
     assert d["distribution"] == "Hypoexponential"
     assert d["param_names"] == ["lambda_1", "lambda_2", "lambda_3"]
-    restored = surpyval.from_dict(_rt(d))
+    restored = surpyval.from_dict(json_round_trip(d))
     assert isinstance(restored, Parametric)
     assert restored.k == 3
-    assert restored.dist.param_names == model.dist.param_names
+    assert restored.dist.parameter_names == model.dist.parameter_names
     x = np.linspace(0.0, 10.0, 21)
     assert np.array_equal(restored.sf(x), model.sf(x))
     assert np.array_equal(restored.ff(x), model.ff(x))
     assert restored.mean() == model.mean()
     # the class-level reader and JSON file paths agree too
-    assert np.array_equal(Parametric.from_dict(_rt(d)).sf(x), model.sf(x))
+    assert np.array_equal(
+        Parametric.from_dict(json_round_trip(d)).sf(x), model.sf(x)
+    )
     # a different arity round-trips to a different arity
     six = Hypoexponential.from_params([1, 2, 3, 4, 5, 6])
-    assert surpyval.from_dict(_rt(six.to_dict())).k == 6
+    assert surpyval.from_dict(json_round_trip(six.to_dict())).k == 6
 
 
 def test_serialisation_round_trip_json_file(tmp_path):

@@ -1,5 +1,7 @@
 """The fitted joint model from ``Copula.fit`` / ``Copula.from_params``."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as onp
@@ -8,9 +10,11 @@ import numpy.typing as npt
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 
-_EPS = 1e-10
+# Margin probabilities are kept strictly inside (0, 1), as in copula.py.
+_U_CLIP = 1e-10
 
 
 class CopulaModel(SerialisableMixin, MultivariateDistribution):
@@ -74,6 +78,19 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         # no data).
         self._neg_ll: "float | None" = None
         self._n_obs: "float | None" = None
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say: set by the
+        # fit; "not applicable" for a model built from its parameters,
+        # "unknown" for one restored from a dict saved without it.
+        self.maximum = "not applicable"
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: the copula family's
+        ``parameter_names`` (``["theta"]``, ``["rho"]``, or ``[]`` for the
+        independence copula). The margins' parameters are on the margins.
+        """
+        return list(self.copula.parameter_names)
 
     # -- internal ---------------------------------------------------------
     def _uv(
@@ -82,8 +99,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         x = onp.atleast_2d(onp.asarray(x, dtype=float))
         if x.shape[1] != 2:
             raise ValueError("x must have two columns (one per dimension)")
-        u = onp.clip(self.margins[0].ff(x[:, 0]), _EPS, 1 - _EPS)
-        v = onp.clip(self.margins[1].ff(x[:, 1]), _EPS, 1 - _EPS)
+        u = onp.clip(self.margins[0].ff(x[:, 0]), _U_CLIP, 1 - _U_CLIP)
+        v = onp.clip(self.margins[1].ff(x[:, 1]), _U_CLIP, 1 - _U_CLIP)
         return x, u, v
 
     def _copula_cdf(self, u: npt.NDArray, v: npt.NDArray) -> npt.NDArray:
@@ -282,7 +299,10 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             "params": self.params.tolist(),
             "how": self.method,
             "margins": margins,
+            **maximum_entry(self.maximum),
         }
+        if self.copula.rotation:
+            out["rotation"] = int(self.copula.rotation)
         if self._has_likelihood():
             out["neg_ll"], out["ic_n"] = self._fit_stats()
             out["k"] = self._fitted_k()
@@ -293,11 +313,21 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         """Rebuild a copula model from a :meth:`to_dict` dictionary."""
         import surpyval
 
-        from .archimedean import Clayton, Frank, Gumbel, Independence
-        from .elliptical import Gaussian
+        from .archimedean import AMH, Clayton, Frank, Gumbel, Independence, Joe
+        from .elliptical import Gaussian, StudentT
 
         families = {
-            c.name: c for c in (Independence, Clayton, Gumbel, Frank, Gaussian)
+            c.name: c
+            for c in (
+                Independence,
+                Clayton,
+                Gumbel,
+                Frank,
+                Gaussian,
+                Joe,
+                AMH,
+                StudentT,
+            )
         }
         copula_name = model_dict["copula"]
         if copula_name not in families:
@@ -314,14 +344,16 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
                     "so this copula model cannot be rebuilt."
                 )
             margins.append(surpyval.from_dict(m))
+        family = families[copula_name].rotated(model_dict.get("rotation", 0))
         model = cls(
-            families[copula_name],
+            family,
             model_dict["params"],
             margins,
             data=None,
             how=model_dict.get("how", "given"),
             k=model_dict.get("k"),
         )
+        model.maximum = restored_maximum(model_dict)
         # Dicts written before the likelihood was stored have none; such a
         # model (like a ``from_params`` one) has no likelihood to report.
         if "neg_ll" in model_dict:
@@ -337,16 +369,18 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
 
     def __repr__(self) -> str:
         param_str = ", ".join(
-            f"{n}={p:.4g}"
-            for n, p in zip(self.copula.param_names, self.params)
+            f"{n}={p:.4g}" for n, p in zip(self.parameter_names, self.params)
         )
         margin_names = [
             getattr(getattr(m, "dist", m), "name", "?") for m in self.margins
         ]
+        family = self.copula.name
+        if self.copula.rotation:
+            family += f" (rotated {self.copula.rotation} degrees)"
         return (
             "Copula SurPyval Model"
             "\n====================="
-            f"\nCopula    : {self.copula.name}"
+            f"\nCopula    : {family}"
             f"\nParameters: {param_str if param_str else '(none)'}"
             f"\nMargins   : {', '.join(margin_names)}"
             f"\nFitted by : {self.method}"

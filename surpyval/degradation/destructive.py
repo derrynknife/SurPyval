@@ -40,6 +40,8 @@ moves), the standard destructive-degradation / degradation-distribution model
 (Meeker & Escobar).
 """
 
+from __future__ import annotations
+
 from numbers import Number
 from typing import Any
 
@@ -54,9 +56,14 @@ from surpyval.serialisation import (
 )
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.dataframe import call_fit, frame_column, require_frame
+from surpyval.utils.linalg import percentile_bounds
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import BOUNDS, check_option
+
+from ._measurements import validate_xy
 
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
@@ -92,6 +99,46 @@ def _transform_ok(transform: str, x: npt.NDArray) -> bool:
     """Whether the time transform is finite at every time in ``x``."""
     with np.errstate(all="ignore"):
         return bool(np.isfinite(_TRANSFORMS[transform][0](x)).all())
+
+
+def _warn_if_noise_free(model: Any, x: npt.NDArray) -> None:
+    """Warn when the fitted spread has collapsed onto the path (#392).
+
+    Measurements that lie exactly on a path ``loc(t)`` (noise-free
+    readings, and censored ones on the right side of it) leave the
+    likelihood without a finite maximum: it keeps increasing as ``sigma``
+    shrinks, and the fit stopped where rounding error in the residuals
+    finally stood in for noise (``sigma = 9.9e-16`` on ``y = exp(4 - 0.02
+    x)``), in silence.
+
+    The criterion: at every measurement time the fitted distribution's
+    interquartile range is below ``sqrt(eps)`` (1.5e-8) of its median's
+    size. A maximum of the likelihood fixes a parameter to only half the
+    digits of a double (the log-likelihood is quadratic there, so a
+    relative change ``d`` moves it by about ``d**2``), so a spread that
+    small is 0 to the precision of the fit: the readings are on the path.
+    Any real measurement noise is orders of magnitude larger.
+    """
+    times = np.unique(x)
+    with np.errstate(all="ignore"):
+        low = model.degradation_quantile(0.25, times)
+        high = model.degradation_quantile(0.75, times)
+        mid = np.abs(model.degradation_quantile(0.5, times))
+        tight = np.abs(high - low) <= np.sqrt(np.finfo(float).eps) * mid
+    if not np.all(tight):
+        return
+    b0, b1 = model.beta
+    path = f"{b0:.6g} + {b1:.6g}*{_TRANSFORMS[model.transform][1]}"
+    warn_no_maximum(
+        f"every measurement lies on the fitted path, location {path} "
+        "(noise-free readings), so the likelihood keeps increasing as the "
+        "scale sigma shrinks",
+        f"The reported sigma = {model.sigma:.4g} (where the search "
+        "stopped), its standard error and the bounds are meaningless",
+        "the degradation is deterministic, every unit crossing the "
+        "threshold at the same time; model it as such rather than with a "
+        "response distribution",
+    )
 
 
 class DestructiveDegradationModel(SerialisableMixin):
@@ -154,7 +201,6 @@ class DestructiveDegradationModel(SerialisableMixin):
         t = np.atleast_1d(np.asarray(t, dtype=float))
         return self.beta[0] + self.beta[1] * self._phi(t)
 
-    @renamed_arguments(q="p", t="x")
     def degradation_quantile(
         self, p: npt.ArrayLike, x: npt.ArrayLike
     ) -> npt.NDArray:
@@ -174,14 +220,12 @@ class DestructiveDegradationModel(SerialisableMixin):
         out = np.asarray(self.distribution.qf(p, loc, self.sigma), dtype=float)
         return out[0] if np.ndim(x) == 0 else out
 
-    @renamed_arguments(t="x")
     def median_degradation(self, x: npt.ArrayLike) -> npt.NDArray:
         """Median destructive measurement at time ``x``."""
         return self.degradation_quantile(0.5, x)
 
     # -- induced lifetime distribution at the threshold -------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: npt.ArrayLike) -> npt.NDArray:
         """Failure (CDF) of the lifetime induced by crossing the threshold."""
@@ -198,19 +242,16 @@ class DestructiveDegradationModel(SerialisableMixin):
             )
         return out
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Reliability of the induced lifetime distribution."""
         return 1.0 - self.ff(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: npt.ArrayLike) -> npt.NDArray:
         """Cumulative hazard of the induced lifetime distribution."""
         return -np.log(np.maximum(self.sf(x), np.finfo(float).tiny))
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: npt.ArrayLike) -> npt.NDArray:
         """
@@ -223,7 +264,6 @@ class DestructiveDegradationModel(SerialisableMixin):
 
     # -- confidence bounds (bootstrap) ------------------------------------
 
-    @renamed_arguments(t="x", seed="random_state")
     @keeps_query_shape
     def cb(
         self,
@@ -246,7 +286,8 @@ class DestructiveDegradationModel(SerialisableMixin):
         x : array_like
             Times at which to evaluate the bound(s).
         on : {'sf', 'ff', 'Hf'}, optional
-            The lifetime function to bound. Default ``'sf'``.
+            The lifetime function to bound (``'R'`` and ``'F'`` are
+            accepted for ``'sf'`` and ``'ff'``). Default ``'sf'``.
         alpha_ci : float, optional
             Total tail probability. Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
@@ -258,10 +299,11 @@ class DestructiveDegradationModel(SerialisableMixin):
             Seed or generator for the resampling. ``None`` (the default) seeds
             from numpy's global RNG, so ``np.random.seed`` controls it.
         """
-        if on not in ("sf", "ff", "Hf"):
-            raise ValueError("`on` must be one of 'sf', 'ff', 'Hf'")
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
+        # 'R' and 'F' are the aliases every other ``cb`` takes; they
+        # were refused here (#416).
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        on = {"R": "sf", "F": "ff"}.get(on, on)
+        check_option("bound", bound, BOUNDS)
         x = np.atleast_1d(np.asarray(x, dtype=float))
         rng = as_generator(random_state)
         if self.data is None:
@@ -292,15 +334,7 @@ class DestructiveDegradationModel(SerialisableMixin):
             draws.append(getattr(m, on)(x))
         if not draws:
             raise RuntimeError("every bootstrap resample failed to fit")
-        draws_arr = np.vstack(draws)
-
-        if bound == "lower":
-            return np.quantile(draws_arr, alpha_ci, axis=0)
-        if bound == "upper":
-            return np.quantile(draws_arr, 1.0 - alpha_ci, axis=0)
-        lo = np.quantile(draws_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(draws_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
+        return percentile_bounds(np.vstack(draws), alpha_ci, bound)
 
     # -- serialisation ----------------------------------------------------
 
@@ -469,6 +503,67 @@ class DestructiveDegradation_:
         sigma = float(np.exp(res.x[2]))
         return beta, sigma, float(res.fun)
 
+    def fit_from_df(
+        self,
+        df: Any,
+        x_col: str = "x",
+        y_col: str = "y",
+        c_col: "str | None" = None,
+        **fit_kwargs: Any,
+    ) -> "DestructiveDegradationModel":
+        """
+        Fit a destructive degradation model from the columns of a
+        :class:`pandas.DataFrame`, with the argument names of
+        ``DegradationAnalysis.fit_from_df``.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            One row per unit tested.
+        x_col : str, optional
+            Column of the measurement times. Defaults to ``"x"``.
+        y_col : str, optional
+            Column of the measurements. Defaults to ``"y"``.
+        c_col : str, optional
+            Column of the measurements' censoring flags. Default all
+            observed.
+        **fit_kwargs
+            Remaining arguments passed to :meth:`fit`: ``threshold``
+            (required), and optionally ``distribution``, ``transform`` and
+            ``direction``.
+
+        Returns
+        -------
+        DestructiveDegradationModel
+            The model :meth:`fit` returns for the same arrays.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> import pandas as pd
+        >>> from surpyval.degradation import DestructiveDegradation
+        >>> rng = np.random.default_rng(1)
+        >>> age = np.repeat([10.0, 20.0, 30.0, 40.0], 6)
+        >>> df = pd.DataFrame({
+        ...     "age": age,
+        ...     "strength": np.exp(4.0 - 0.02 * age + rng.normal(0, 0.1, 24)),
+        ... })
+        >>> model = DestructiveDegradation.fit_from_df(
+        ...     df, x_col="age", y_col="strength", threshold=20
+        ... )
+        >>> model.sf([50, 80]).round(4)
+        array([0.4956, 0.    ])
+        """
+        df = require_frame(df)
+        arrays = {
+            "x": frame_column(df, x_col, "x_col", time=True),
+            "y": frame_column(df, y_col, "y_col"),
+        }
+        if c_col is not None:
+            arrays["c"] = frame_column(df, c_col, "c_col")
+        names = {"x": "x_col", "y": "y_col", "c": "c_col"}
+        return call_fit(self, arrays, names, fit_kwargs)
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -516,6 +611,13 @@ class DestructiveDegradation_:
             ``ff``, ...) give the probability of having crossed
             ``threshold`` by each time.
 
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when every measurement lies on the fitted
+            path (noise-free readings): the fitted spread is then 0 to the
+            precision of the fit, and ``sigma`` is meaningless.
+
         Examples
         --------
         Six units broken at each of four ages; strength falls
@@ -541,15 +643,19 @@ class DestructiveDegradation_:
         array([0.4956, 0.    ])
         """
         dist = _resolve_distribution(distribution)
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        y = np.atleast_1d(np.asarray(y, dtype=float))
-        c = (
-            np.zeros(x.shape[0], dtype=int)
-            if c is None
-            else np.atleast_1d(np.asarray(c, dtype=int))
+        # Bad input used to fit silently to nonsense or fail deep inside
+        # the least-squares start (``LinAlgError: SVD did not converge``,
+        # with LAPACK noise on stderr); it is refused up front instead.
+        x, y, c = validate_xy(
+            x,
+            y,
+            (
+                np.zeros(np.size(x), dtype=int)
+                if c is None
+                else np.asarray(c, dtype=int)
+            ),
+            i_name="c",
         )
-        if not (x.shape[0] == y.shape[0] == c.shape[0]):
-            raise ValueError("x, y and c must have the same length")
         if x.shape[0] < 3:
             raise ValueError(
                 "destructive degradation needs at least 3 units to identify "
@@ -557,11 +663,6 @@ class DestructiveDegradation_:
             )
         if not np.isin(c, (-1, 0, 1)).all():
             raise ValueError("c must be 0 (observed), 1 (right) or -1 (left)")
-        # Bad input used to fit silently to nonsense or fail deep inside
-        # the least-squares start (``LinAlgError: SVD did not converge``,
-        # with LAPACK noise on stderr); refuse it up front instead.
-        if not (np.isfinite(x).all() and np.isfinite(y).all()):
-            raise ValueError("x and y must contain only finite values")
         if isinstance(threshold, np.ndarray) and threshold.ndim == 0:
             threshold = threshold.item()
         if not isinstance(threshold, Number) or not np.isfinite(threshold):
@@ -580,9 +681,9 @@ class DestructiveDegradation_:
             xt, yt = (x[obs], y[obs]) if obs.sum() >= 3 else (x, y)
             slope = np.polyfit(xt, yt, 1)[0]
             direction = "increasing" if slope >= 0 else "decreasing"
-        elif direction not in ("increasing", "decreasing"):
-            raise ValueError(
-                "direction must be 'auto', 'increasing' or 'decreasing'"
+        else:
+            check_option(
+                "direction", direction, ("auto", "increasing", "decreasing")
             )
 
         if transform == "best":
@@ -612,12 +713,9 @@ class DestructiveDegradation_:
             transform = best
             transform_scores = scores
         else:
-            if transform not in _TRANSFORMS:
-                raise ValueError(
-                    "transform must be one of {} or 'best'".format(
-                        sorted(_TRANSFORMS)
-                    )
-                )
+            check_option(
+                "transform", transform, (*sorted(_TRANSFORMS), "best")
+            )
             if not _transform_ok(transform, x):
                 raise ValueError(
                     "the {!r} time transform, {}, is not finite at every "
@@ -628,7 +726,7 @@ class DestructiveDegradation_:
             beta, sigma, nll = self._fit_one(dist, transform, x, y, c)
             transform_scores = None
 
-        return DestructiveDegradationModel(
+        model = DestructiveDegradationModel(
             distribution=dist,
             transform=transform,
             direction=direction,
@@ -639,6 +737,8 @@ class DestructiveDegradation_:
             neg_ll=nll,
             transform_scores=transform_scores,
         )
+        _warn_if_noise_free(model, x)
+        return model
 
 
 #: Singleton fitter -- call ``DestructiveDegradation.fit(...)``.

@@ -100,3 +100,45 @@ def test_the_requested_survival_estimator_is_reported():
     restored = CompetingRisks.from_dict(json.loads(json.dumps(km.to_dict())))
     assert restored.how == "Kaplan-Meier"
     assert np.allclose(restored.sf(q, 2), km.sf(q, 2))
+
+
+# ---------------------------------------------------------------------------
+# The query shape is kept; empty data are refused.
+# ---------------------------------------------------------------------------
+
+
+def test_nonparametric_sf_keeps_the_query_shape():
+    model = CompetingRisks.fit([1, 2, 3], ["a", "b", "a"])
+    query = np.array([[1, 2], [3, 4]])
+    out = model.sf(query)
+    assert out.shape == (2, 2)
+    np.testing.assert_allclose(out.ravel(), model.sf(query.ravel()))
+    assert model.cif(query, "a").shape == (2, 2)
+
+
+def test_empty_data_is_refused():
+    with pytest.raises(ValueError):
+        CompetingRisks.fit([], [])
+
+
+# ---------------------------------------------------------------------------
+# #278: the Aalen-Johansen CIF uses product-limit weights
+# (CIF <= 1).
+# ---------------------------------------------------------------------------
+
+
+class TestCIFProductLimit:
+    def test_na_method_cif_sums_to_one(self):
+        # 278: default Nelson-Aalen method paired d/r with exp(-H) and
+        # the total incidence exceeded 1 (1.216 here).
+        cr = CompetingRisks.fit(
+            x=[1, 1, 1, 2, 2, 3], e=["a", "a", "b", "a", "b", "a"]
+        )
+        total = float(np.ravel(cr.cif(3, "a"))[0]) + float(
+            np.ravel(cr.cif(3, "b"))[0]
+        )
+        assert total == pytest.approx(1.0, abs=1e-12)
+
+    def test_extreme_case_capped_at_one(self):
+        cr = CompetingRisks.fit(x=[1] * 9 + [2], e=["a"] * 10)
+        assert float(np.ravel(cr.cif(2, "a"))[0]) == pytest.approx(1.0)

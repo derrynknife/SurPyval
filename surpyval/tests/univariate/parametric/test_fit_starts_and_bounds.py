@@ -1,6 +1,7 @@
 """Parameter bounds, default starting points, and restored models."""
 
 import json
+import warnings
 
 import numpy as np
 import pytest
@@ -98,8 +99,10 @@ def test_a_restored_model_keeps_its_likelihood():
     assert restored.aic() == model.aic()
     # the dict stores the criteria's sample size too
     assert restored.bic() == model.bic()
+    # the plotting points need the data; plot() itself draws the curve
+    # alone for a model without data (#485)
     with pytest.raises(ValueError, match="with_data=True"):
-        restored.plot()
+        restored.get_plot_data()
     with_data = surv.from_dict(
         json.loads(json.dumps(model.to_dict(with_data=True)))
     )
@@ -117,3 +120,67 @@ def test_fit_best_says_why_when_no_candidate_has_a_finite_aic_c():
     with pytest.raises(ValueError, match="metric='aic'"):
         surv.fit_best(x, c=c, metric="aic_c", include=["Weibull"])
     assert surv.fit_best(x, c=c, metric="aic", include=["Weibull"]) is not None
+
+
+# ---------------------------------------------------------------------------
+# Data outside the support; ``from_params`` validation; a
+# restored model's plot data.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_right_censoring_below_the_support_does_not_break_the_fit():
+    # A unit censored before the support starts carries no information,
+    # R = 1; its log-survival was nan and the fit fell back to its start
+    # with an "MLE Failed" warning.
+    np.random.seed(2)
+    x = W.random(100, 10, 2)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        model = W.fit(np.append(x, -1.0), np.append(np.zeros(100), 1))
+    assert model.params == pytest.approx(W.fit(x).params, rel=1e-6)
+
+
+@pytest.mark.parametrize(
+    "call, match",
+    [
+        (lambda: W.from_params([10, 2], p=1.5), "must be in"),
+        (lambda: W.from_params([10, 2], f0=-0.1), "must be in"),
+        (lambda: W.from_params([10, 2], p=0.3, f0=0.4), "less than p"),
+        (lambda: surv.Normal.from_params([1, 2], f0=0.1), "starting at 0"),
+        (lambda: surv.Beta4.from_params([2, 3, 5, 1]), "a < b"),
+        (lambda: surv.Uniform.from_params([4, 1]), "a < b"),
+    ],
+)
+def test_from_params_validates(call, match):
+    with pytest.raises(ValueError, match=match):
+        call()
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda: surv.Beta.fit([0.2, 0.3, 0.5, 1.5], [0, 0, 0, 1]),
+        lambda: surv.Poisson.fit([-2, 1, 2, 3]),
+    ],
+)
+def test_out_of_support_data_is_refused(call):
+    with pytest.raises(ValueError, match="outside the support"):
+        call()
+
+
+def test_support_message_is_one_clear_line():
+    with pytest.raises(ValueError) as err:
+        W.fit([0.0, 1, 2, 3])
+    message = str(err.value)
+    assert message.startswith("Some of your data")
+    assert "(0, inf)" in message and "[0, inf]" not in message
+
+
+def test_restored_model_get_plot_data_needs_the_data():
+    np.random.seed(1)
+    model = W.fit(W.random(30, 10, 3))
+    with pytest.raises(ValueError, match="needs the data"):
+        surv.from_dict(model.to_dict()).get_plot_data()

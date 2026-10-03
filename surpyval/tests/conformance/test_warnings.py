@@ -169,32 +169,19 @@ def test_every_known_leak_has_a_reason():
         assert reason.strip(), key
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=leaks.KNOWN_LEAKS[
-        (
-            "univariate/parametric/distributions/logistic.py:sf",
-            "invalid value encountered in divide",
-        )
-    ],
-)
 def test_logistic_sf_far_below_the_location():
+    # #410: sf was e / (1 + e) with e = exp(-(x - mu) / sigma), inf / inf
+    # = NaN with a raw warning once (mu - x) / sigma > 709. It is now the
+    # logistic function of -(x - mu) / sigma.
     sf = _no_leak(sp.Logistic.sf, np.array([0.0, 1000.0]), 1000.0, 1.0)
     np.testing.assert_allclose(sf, [1.0, 0.5], rtol=1e-12)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=leaks.KNOWN_LEAKS[
-        (
-            "utils/linalg.py:wald_bound_on_support",
-            "invalid value encountered in sqrt",
-        )
-    ],
-)
 def test_wald_bound_at_a_boundary_estimate():
-    # Either a bound or a deliberate warning saying why there is none
-    # ends the leak; the NaN alone is not pinned.
+    # #411: q = 2.7e-16 on its bound, with variances -0.031 and -10.6 on
+    # the inverse Hessian's diagonal, gave [nan, nan] with numpy's raw
+    # sqrt warning. It is now nan with a warning saying why (a deliberate
+    # warning, not a leak).
     # A fresh fit, not the shared cached one: another test's param_cb on
     # that object can leave its covariance computed, and the leak would
     # then not recur here.
@@ -206,31 +193,25 @@ def test_wald_bound_at_a_boundary_estimate():
         _no_leak(model.param_cb, name)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=leaks.KNOWN_LEAKS[
-        (
-            "univariate/nonparametric/nonparametric.py:df",
-            "invalid value encountered in multiply",
-        )
-    ],
-)
 def test_kaplan_meier_df_where_survival_reaches_zero():
+    # #408: df was hf * exp(-Hf), inf * 0 = NaN with a raw warning, at and
+    # after the time the estimate reaches zero. It is now the drop in sf
+    # over the step hf takes: 1/3 for the step to zero at 3, carried past
+    # it as hf carries the infinite jump.
     model = sp.KaplanMeier.fit([1.0, 2.0, 3.0])
     x = np.array([2.5, 3.5, 4.5])
     with warnings.catch_warnings():
         warnings.simplefilter("always")
         with leaks.watch() as found:
             df = model.df(x)
-    # Neither value is pinned: a step's probability (1/3 then 0) is the
-    # natural answer, but any finite probability ends the NaN.
     assert found == [], leaks.report(found)
     assert np.all(np.isfinite(df)) and np.all((0 <= df) & (df <= 1)), df
+    np.testing.assert_allclose(df, [1 / 3, 1 / 3, 1 / 3], rtol=1e-12)
 
 
 # Separated data (one event, at the largest covariate values) with an
 # intercept column, which the partial likelihood cannot identify; found
-# by properties/test_regression.py::test_rows_are_independent.
+# by properties/test_regression.py::test_rows_are_independent (#409).
 _COX_CONSTANT = dict(
     x=np.array([6.5, 12.0, 2.0, 13.0]),
     Z=np.array(
@@ -241,37 +222,46 @@ _COX_CONSTANT = dict(
 )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=leaks.KNOWN_LEAKS[
-        (
-            "univariate/regression/semi_parametric_regression_model.py:phi",
-            "overflow encountered in exp",
-        )
-    ],
-)
 def test_cox_constant_column_on_separated_data():
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")  # the monotone-likelihood warning
-        model = sp.CoxPH.fit(**_COX_CONSTANT)
-    with warnings.catch_warnings():
+    # #409: the constant column's coefficient ran off to 3.1e14, so
+    # exp(beta'Z) overflowed (about ten raw numpy warnings) and every
+    # prediction was NaN. The column has no coefficient in a Cox model:
+    # it is aliased (#476), with one warning naming it.
+    with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         with leaks.watch() as found:
-            sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5, 1.0]]))
+            model = sp.CoxPH.fit(**_COX_CONSTANT, center=True)
     assert found == [], leaks.report(found)
+    # The other two columns separate the data: that is the second problem,
+    # and the second warning.
+    assert [str(w.message)[:28] for w in caught] == [
+        "Covariate column(s) 2 of Z c",
+        "No finite maximum: the parti",
+    ]
+    assert np.isnan(model.beta[2])
+    # Without it the data are still separated: the one warning is the
+    # monotone-likelihood one, and the predictions are finite. (The
+    # coefficients run off far enough that the baseline at Z = 0
+    # underflows, which the default refuses, #463; at the covariate means
+    # it is representable.)
+    data = dict(_COX_CONSTANT, Z=_COX_CONSTANT["Z"][:, :2])
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with leaks.watch() as found:
+            model = sp.CoxPH.fit(**data, center=True)
+            sf = model.sf(np.array([5.0]), np.array([[0.5, 1.5]]))
+    assert found == [], leaks.report(found)
+    assert [str(w.message)[:28] for w in caught] == [
+        "No finite maximum: the parti"
+    ]
     assert np.all(np.isfinite(sf)), sf
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="#412: the log-likelihood of left-truncated data is log f(x) - "
-    "log(1 - F(tl)), so once F(tl) rounds to 1 it is +inf (or NaN, "
-    "inf - inf) with a raw divide warning, where the exact value is "
-    "finite: LogNormal, x = [2, 3], tl = 1, mu = -5, sigma = 0.6 gives "
-    "+inf, exactly -23.73 (tests/utils/test_truncated_censoring.py sees "
-    "the NaN, parametric_fitter.py:_log_likelihood)",
-)
 def test_truncated_log_likelihood_where_the_truncation_point_underflows():
+    # #412: the log-likelihood of left-truncated data was log f(x) -
+    # log(1 - F(tl)), so once F(tl) rounded to 1 it was +inf (or NaN,
+    # inf - inf) with a raw divide warning: LogNormal, x = [2, 3], tl = 1,
+    # mu = -5, sigma = 0.6 gave +inf, where it is exactly -23.73.
     x, tl = np.array([2.0, 3.0]), np.ones(2)
     data = sp.SurpyvalData(
         x=x,

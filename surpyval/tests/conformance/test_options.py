@@ -44,6 +44,7 @@ from surpyval.tests.conformance.registry import (
     ALPHAS,
     CASES,
     KNOWN_INCONSISTENCIES,
+    NON_STRICT,
     Q_PROBS,
     WITH_COVARIATES,
     call,
@@ -61,7 +62,17 @@ NOT_SWEPT = {
     "R_cb": "the survival bounds behind cb in [upper, lower] order "
     "(documented); cb(on='sf') is the method to call",
     "life_parameter_covariance": "a covariance, not an interval",
+    "summary": "a table of the parameters' Wald intervals (param_cb's for "
+    "the baseline; checked in regression/test_summary.py, #484)",
+    "trend_test": "a hypothesis test: alpha_ci is the level its trend is "
+    "concluded at (#481), not an interval's",
+    "repair_test": "a hypothesis test: alpha_ci is the level its "
+    "conclusion about the repair is drawn at, not an interval's",
+    "cb_tvc": "needs a covariate path; checked against cb along a constant "
+    "path, for every bound and on=, in conformance/test_tvc.py (#172)",
 }
+# "confidence" was the recurrent models' level until v0.22; a method
+# that took it again would be an unswept uncertainty method.
 _LEVEL_NAMES = ("alpha_ci", "confidence")
 
 
@@ -80,11 +91,17 @@ def _bound_params(prop, where=None):
             if where is not None and not where(case, spec):
                 continue
             marks = list(param.marks)
-            reason = case.xfail.get(f"{prop}[{spec.name}]")
+            key = f"{prop}[{spec.name}]"
+            reason = case.xfail.get(key)
             if reason:
-                marks.append(pytest.mark.xfail(strict=True, reason=reason))
+                # Non-strict where the outcome depends on the build
+                strict = key not in NON_STRICT.get(case.name, ())
+                marks.append(pytest.mark.xfail(strict=strict, reason=reason))
             if spec.slow:
                 marks.append(pytest.mark.slow)
+            if spec.nightly:
+                # Opt in with --run-calibration (the root conftest).
+                marks.append(pytest.mark.calibration)
             params.append(
                 pytest.param(
                     case, spec, id=f"{case.name}-{spec.name}", marks=marks
@@ -114,20 +131,32 @@ def _query(case, spec):
 
 
 def _level(spec, alpha):
-    return {spec.level: 1.0 - alpha if spec.level == "confidence" else alpha}
+    return {spec.level: alpha}
 
 
 def _parameters(model):
     """(names, estimates, supports) of the parameters ``param_cb`` takes."""
-    if hasattr(model, "parameter_names"):
-        names = model.parameter_names
-        names = list(names() if callable(names) else names)
+    if hasattr(model, "_parameter_bounds"):
+        names = list(model.parameter_names)
         values = getattr(model, "_mle", None)
         values = model.params if values is None else values
-        return names, np.asarray(values, float), model._parameter_bounds()
-    if hasattr(model, "param_names"):  # a frailty model
-        names = list(model.param_names)
-        dist = list(model.dist.bounds)
+        supports = model._parameter_bounds()
+        # An accelerated life model's life parameter is given by its life
+        # model, not estimated, and param_cb refuses it (#489).
+        keep = [
+            k
+            for k, n in enumerate(names)
+            if n != getattr(model, "life_parameter", None)
+        ]
+        return (
+            [names[k] for k in keep],
+            np.asarray(values, float)[keep],
+            [supports[k] for k in keep],
+        )
+    if hasattr(model, "_param_vector"):  # a frailty model
+        names = list(model.parameter_names)
+        # (no distribution for a Cox baseline)
+        dist = [] if model.dist is None else list(model.dist.bounds)
         supports = [
             (
                 (0, None)
@@ -137,7 +166,7 @@ def _parameters(model):
             for k, n in enumerate(names)
         ]
         return names, np.asarray(model._param_vector(), float), supports
-    names = list(model.dist.param_names)
+    names = list(model.dist.parameter_names)
     values = list(model.params)
     supports = list(model.dist.bounds)
     if model.lfp:
@@ -470,7 +499,7 @@ def test_ff_and_Hf_bounds_are_the_sf_bounds_transformed(case, spec):
                 sf = bounds(case, spec, "two-sided", alpha, "sf")
                 got = bounds(case, spec, "two-sided", alpha, fname)
                 np.testing.assert_allclose(
-                    got,
+                    _underflow(got, g(sf[..., ::-1])),
                     g(sf[..., ::-1]),
                     rtol=max(spec.rtol, 1e-10),
                     atol=1e-12,
@@ -479,13 +508,25 @@ def test_ff_and_Hf_bounds_are_the_sf_bounds_transformed(case, spec):
                 if not spec.sides:
                     continue
                 for side, other in (("lower", "upper"), ("upper", "lower")):
+                    want = g(bounds(case, spec, other, alpha, "sf"))
                     np.testing.assert_allclose(
-                        bounds(case, spec, side, alpha, fname),
-                        g(bounds(case, spec, other, alpha, "sf")),
+                        _underflow(
+                            bounds(case, spec, side, alpha, fname), want
+                        ),
+                        want,
                         rtol=max(spec.rtol, 1e-10),
                         atol=1e-12,
                         err_msg=f"{fname} {side} at {alpha}",
                     )
+
+
+def _underflow(got, want):
+    """``got`` with inf where ``want`` is -log of an sf bound that
+    underflowed to 0: an Hf bound computed on its own scale is finite
+    there (#418), and must be past -log of the smallest double."""
+    under = np.isposinf(want) & np.isfinite(got)
+    assert np.all(got[under] > 744.0), got[under]
+    return np.where(under, np.inf, got)
 
 
 def _function_bound(case, spec):

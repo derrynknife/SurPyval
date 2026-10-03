@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np
@@ -9,12 +11,15 @@ from surpyval.recurrent.renewal.renewal_model import (
     DiscountedMemory,
     RenewalModel,
     conditional_gaps,
+    event_positions,
+    rows_by_position,
 )
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_lifetime_dist,
     validate_memory,
     validate_renewal_censoring,
     validate_renewal_times,
@@ -55,13 +60,53 @@ def ara_virtual_ages(
         The virtual age at the start of each interarrival.
     """
     T = np.asarray(arrival_times, dtype=float)
-    length = T.size
-    v = np.zeros(length)
-    for i in range(1, length):
-        upper = i if np.isinf(m) else min(int(m), i)
-        j = np.arange(upper)
-        v[i] = T[i - 1] - rho * np.sum(((1.0 - rho) ** j) * T[i - 1 - j])
-    return v
+    return ARAVirtualAges(T, np.zeros(T.size, dtype=int), m)(rho)
+
+
+class ARAVirtualAges:
+    """
+    ``ara_virtual_ages`` for many items at once, laid end to end.
+
+    ``arrival_times`` holds every item's cumulative event times with the
+    rows grouped by item (``item``), as ``handle_xicn`` leaves them. The
+    layout depends only on the data, so it is worked out once here and
+    the likelihood then calls the object with each trial ``rho``.
+
+    The rows are grouped by how many terms their sum has, ``min(m, i)``
+    at event position ``i``: one group per position below ``m`` and one
+    for every later position. Each group is a single array operation
+    across all the items, so a fit no longer runs a Python step per event
+    (#515). Each row's terms are gathered in the order the one-item loop
+    took them and summed along a row, so the ages are bit-for-bit those of
+    that loop.
+    """
+
+    def __init__(
+        self, arrival_times: np.ndarray, item: np.ndarray, m: "int | float"
+    ) -> None:
+        self.T = np.asarray(arrival_times, dtype=float)
+        by_position = rows_by_position(event_positions(item))
+        if np.isinf(m):
+            # Every position has its own number of terms: all of them.
+            groups = list(enumerate(by_position))[1:]
+        else:
+            m = int(m)
+            groups = list(enumerate(by_position[:m]))[1:]
+            if len(by_position) > m:
+                groups.append((m, np.concatenate(by_position[m:])))
+        self.groups = groups
+        self.max_terms = max((k for k, _ in self.groups), default=0)
+
+    def __call__(self, rho: float) -> np.ndarray:
+        T = self.T
+        v = np.zeros(T.size)
+        weights = (1.0 - rho) ** np.arange(self.max_terms)
+        for n_terms, rows in self.groups:
+            # Row r's terms are T[r - 1], T[r - 2], ... (newest first).
+            lagged = T[rows[:, None] - 1 - np.arange(n_terms)]
+            discounted = np.sum(weights[:n_terms] * lagged, axis=1)
+            v[rows] = T[rows - 1] - rho * discounted
+        return v
 
 
 @singleton_fitter
@@ -76,6 +121,16 @@ class ARA(RenewalFitMixin):
     ``GeneralizedRenewal`` already provides: ``m = 1`` is Kijima-I (ARA1) and
     ``m = inf`` is Kijima-II (ARA-infinity). The interesting cases are the
     finite memories ``m >= 2``.
+
+    The repair efficiency ``rho`` lies in ``[0, 1]``: ``rho = 1`` is a
+    repair as good as new (whatever the memory ``m``: the virtual age
+    returns to 0, an ordinary renewal process) and ``rho = 0`` one as bad as
+    old (minimal repair, the non-homogeneous Poisson process of the
+    distribution's cumulative hazard); ``rho = 1 - q`` for the Kijima ``q``
+    of ``GeneralizedRenewal``. The fitted model prints ``rho`` with its
+    standard error and Wald interval, and the conclusion of
+    ``repair_test()``, the likelihood-ratio tests of the fit against
+    perfect repair (``rho = 1``) and minimal repair (``rho = 0``).
 
     Like the other renewal models there is no closed-form intensity, so the
     cumulative intensity is obtained by simulation (see ``mcf`` and ``plot``).
@@ -134,12 +189,8 @@ class ARA(RenewalFitMixin):
         Aligned with ``data`` rows; iid Exp(1) over the observed intervals
         under the fitted model.
         """
-        _, idx = np.unique(data.i, return_index=True)
-        arrival_by_item = np.split(data.x, idx)[1:]
         interarrival = data.get_interarrival_times()
-        virtual_ages = np.concatenate(
-            [ara_virtual_ages(a, model.rho, model.m) for a in arrival_by_item]
-        )
+        virtual_ages = ARAVirtualAges(data.x, data.i, model.m)(model.rho)
         x_new = interarrival + virtual_ages
         # H(0) = 0 exactly, but some distributions take log(0) on the way.
         with np.errstate(divide="ignore"):
@@ -158,8 +209,7 @@ class ARA(RenewalFitMixin):
     def create_negll_func(
         self, data: Any, dist: Any, m: "int | float"
     ) -> Callable:
-        _, idx = np.unique(data.i, return_index=True)
-        arrival_by_item = np.split(data.x, idx)[1:]
+        virtual_ages_at = ARAVirtualAges(data.x, data.i, m)
         interarrival = data.get_interarrival_times()
         c = data.c
 
@@ -167,9 +217,7 @@ class ARA(RenewalFitMixin):
             rho = params[0]
             dist_params = params[1:]
 
-            virtual_ages = np.concatenate(
-                [ara_virtual_ages(a, rho, m) for a in arrival_by_item]
-            )
+            virtual_ages = virtual_ages_at(rho)
             x_new = interarrival + virtual_ages
 
             # Every item starts at virtual age 0, where some distributions
@@ -215,6 +263,7 @@ class ARA(RenewalFitMixin):
         RenewalModel
             A fitted renewal model.
         """
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
         reject_left_truncation(data, type(self).__name__)
@@ -222,8 +271,8 @@ class ARA(RenewalFitMixin):
         validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, m)
-        dist_params0 = (
-            self._initial_dist_params(data, dist) if init is None else None
+        dist_params0 = self._default_start(
+            lambda: self._initial_dist_params(data, dist), init
         )
         res, params = self._fit_restoration_ml(
             data,
@@ -334,6 +383,7 @@ class ARA(RenewalFitMixin):
         RenewalModel
             A model built from the supplied parameters, for simulation.
         """
+        validate_lifetime_dist(dist, type(self).__name__)
         validate_memory(m)
         validate_restoration(rho, "rho", (0, 1))
         model = dist.from_params(params)

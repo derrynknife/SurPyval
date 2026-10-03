@@ -29,8 +29,8 @@ from typing import Any, Callable
 import numpy as np
 from numpy.typing import ArrayLike
 
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import check_option
 
 
 def _validate_diagnostic_data(data: Any, what: str) -> None:
@@ -244,7 +244,11 @@ def _conditional_uniforms(data: Any, cif: Any) -> tuple[np.ndarray, int]:
 
 
 def trend_test(
-    data: Any, test: str = "laplace", alternative: str = "two-sided"
+    data: Any,
+    test: str = "laplace",
+    alternative: str = "two-sided",
+    *,
+    alpha_ci: float = 0.05,
 ) -> Any:
     """
     Trend test for recurrent-event data: the null hypothesis is that the
@@ -257,10 +261,7 @@ def trend_test(
 
     _validate_diagnostic_data(data, "trend_test")
     tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
-    if test not in tests:
-        raise ValueError(
-            "`test` must be one of {}; got {!r}".format(sorted(tests), test)
-        )
+    check_option("test", test, tests)
 
     # The trend tests assume every system is observed from time 0.
     x, i, T = [], [], {}
@@ -279,7 +280,7 @@ def trend_test(
         x.extend(events)
         i.extend([item_id] * events.size)
         T[item_id] = close
-    return tests[test](x, i=i, T=T, alternative=alternative)
+    return tests[test](x, i=i, T=T, alternative=alternative, alpha_ci=alpha_ci)
 
 
 def cvm_statistic(u: ArrayLike) -> float:
@@ -414,7 +415,6 @@ def _simulate_window(
     return times, close
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -467,7 +467,6 @@ def cramer_von_mises(
     return _cvm_pvalue(data, model.cif, simulate_refit, n_boot, random_state)
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises_regression(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":
@@ -524,9 +523,14 @@ def cramer_von_mises_regression(
             tl=np.asarray(tl_b, dtype=float),
         )
         sim_data.Z = np.asarray(Z_b, dtype=float)
-        refit = model._fitter.fit_from_recurrent_data(
-            sim_data, model._fitter_dist
-        )
+        # The fit warned once of an aliased column (#502); its refits, on
+        # the same covariates, do not repeat it.
+        from surpyval.univariate.regression._aliasing import collect_aliased
+
+        with collect_aliased():
+            refit = model._fitter.fit_from_recurrent_data(
+                sim_data, model._fitter_dist
+            )
         refit_cif = {
             it: (
                 lambda x, r=refit, Z=sim_data.Z[sim_data.i == it][0]: r.cif(
@@ -540,7 +544,6 @@ def cramer_von_mises_regression(
     return _cvm_pvalue(data, item_cif, simulate_refit, n_boot, random_state)
 
 
-@renamed_arguments(seed="random_state")
 def cramer_von_mises_renewal(
     model: Any, n_boot: int = 200, random_state: "int | None" = None
 ) -> "GoodnessOfFitResult":

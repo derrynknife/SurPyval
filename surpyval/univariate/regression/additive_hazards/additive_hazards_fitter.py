@@ -28,46 +28,63 @@ strongly protective covariate -- the fit ends pressed against that barrier,
 with the hazard nearly zero at one failure, ``beta`` held there and the
 baseline distorted to compensate. Such a fit is returned with a warning (the
 fit raises only if the optimiser cannot end at a finite likelihood at all).
-Positivity is not checked between the observed times. When covariate effects
-are strongly protective a proportional hazards model, whose exponential form
-keeps the hazard positive by construction, is the safer choice.
+Positivity is not enforced between the observed times or at other covariate
+rows: a prediction (``sf``, ``Hf``, ``cb``, the time-varying ``sf_tvc``, ...)
+where the hazard is negative returns the model's values -- ``sf`` above 1,
+``ff`` and ``df`` negative -- with one ``RuntimeWarning`` saying so (#376).
+When covariate effects are strongly protective a proportional hazards model,
+whose exponential form keeps the hazard positive by construction, is the
+safer choice.
 """
+
+from __future__ import annotations
 
 import warnings
 from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from autograd import hessian, jacobian
 from scipy.optimize import minimize
 
+from surpyval.univariate.parametric.fitters import (
+    is_local_minimum,
+    preconditioned_bfgs,
+    verify_or_polish,
+)
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
+    _gradient,
     assemble_regression_model,
+    free_coefficients,
+    judge_search,
+    keep_information,
     make_objective,
     mirror_distribution,
     prepare_regression_fit,
+    say_verdict,
     uniform_draws,
 )
+from .._kinds import ADDITIVE_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
 
 
-class _AdditiveReg:
-    # Lightweight namespace for the fitted model's ``reg_model`` attribute;
-    # the model repr reads ``.name``.
-    name: str
-    phi_param_map: object
+class _OverBudget(Exception):
+    """The search on the exact gradient ran out of its budget."""
 
 
 class AdditiveHazardsFitter(
@@ -257,11 +274,15 @@ class AdditiveHazardsFitter(
     #: ``_warn_if_on_positivity_boundary``).
     BOUNDARY_INFORMATION_SHARE = 0.5
     BOUNDARY_HAZARD_FRACTION = 0.25
+    #: Gradients the search on the exact gradient may take before the fit
+    #: falls back to its derivative-free search (see ``_gradient_first``).
+    GRADIENT_FIRST_BUDGET = 400
 
     def _warn_if_on_positivity_boundary(
         self, data: SurpyvalData, params: npt.NDArray
-    ) -> None:
-        """Warn when the fit is held at the positivity boundary.
+    ) -> bool:
+        """Warn when the fit is held at the positivity boundary, and say
+        whether it did.
 
         Each failure contributes ``log h`` to the likelihood, so a hazard
         driven towards zero at one of them is a barrier: with a strongly
@@ -297,23 +318,95 @@ class AdditiveHazardsFitter(
         protected = (h > 0) & (h < self.BOUNDARY_HAZARD_FRACTION * h0)
         total = info.sum()
         if not np.any(protected) or not np.isfinite(total) or total <= 0:
-            return
+            return False
         i = int(np.argmax(np.where(protected, info, -np.inf)))
-        if info[i] / total > self.BOUNDARY_INFORMATION_SHARE:
-            warnings.warn(
-                "The additive hazards fit ended on the positivity boundary: "
-                "the fitted hazard h_0(x) + beta'Z at the observed failure "
-                "x = {:.4g} is {:.3g}, {:.2%} of the baseline hazard there, "
-                "and that one failure carries {:.0%} of the information "
-                "about beta. The covariate effect is too protective for the "
-                "additive model to fit without the hazard nearly vanishing, "
-                "so beta sits at the boundary and the baseline is "
-                "distorted. A proportional hazards model (e.g. {}PH) keeps "
-                "the hazard positive by construction.".format(
-                    x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
-                ),
-                stacklevel=3,
+        if info[i] / total <= self.BOUNDARY_INFORMATION_SHARE:
+            return False
+        warnings.warn(
+            "The additive hazards fit ended on the positivity boundary: "
+            "the fitted hazard h_0(x) + beta'Z at the observed failure "
+            "x = {:.4g} is {:.3g}, {:.2%} of the baseline hazard there, "
+            "and that one failure carries {:.0%} of the information "
+            "about beta. The covariate effect is too protective for the "
+            "additive model to fit without the hazard nearly vanishing, "
+            "so beta sits at the boundary and the baseline is "
+            "distorted. A proportional hazards model (e.g. {}PH) keeps "
+            "the hazard positive by construction.".format(
+                x[i], h[i], h[i] / h0[i], info[i] / total, self.dist.name
+            ),
+            stacklevel=3,
+        )
+        return True
+
+    @staticmethod
+    def _gradient_first(
+        fun: Any, true_neg_ll: Any, init: npt.ArrayLike, n_obs: float
+    ) -> tuple[Any, bool]:
+        """A search on the likelihood's exact gradient first, as the AFT
+        and PO fits do (#499), and whether its answer is a verified
+        maximum of the likelihood.
+
+        The fit began with Nelder-Mead and then TNC on finite differences,
+        2.3 s for a WeibullAH at 10 000 rows against 0.36 s for the
+        WeibullPH, whose search uses the exact gradient (#515). This runs
+        the first rung of the proportional hazards ladder, BFGS in the
+        units maximum likelihood searches in (``preconditioned_bfgs``),
+        from ``init``, inside the valid region (the default, ``beta = 0``,
+        is the baseline alone, whose hazard is positive): the penalty in
+        ``fun`` keeps every accepted step there, as the line search backs
+        off a step that crosses the barrier. The answer is kept only when
+        it is a verified maximum -- zero gradient and positive-definite
+        Hessian of the unpenalised likelihood (``is_local_minimum``). A
+        fit that ends on the positivity boundary, or whose likelihood has
+        no maximum, is neither, and the caller runs its derivative-free
+        search as before; the later rungs of the ladder are not run, as
+        they only cost time there.
+
+        The search has a budget of ``GRADIENT_FIRST_BUDGET`` gradients.
+        An ordinary fit takes 10 to 85; on a likelihood with no maximum
+        the line searches chase the runaway coefficient with thousands
+        (3500 on 70 rows, ten times the whole old fit), and the answer
+        could never be verified anyway.
+        """
+        start: npt.NDArray = np.asarray(init, dtype=float)
+        if (
+            not np.isfinite(true_neg_ll(start))
+            or _gradient(fun, start) is None
+        ):
+            return None, False
+        grad = jacobian(fun)
+        spent = [0]
+
+        def budgeted(u: npt.NDArray) -> Any:
+            spent[0] += 1
+            if spent[0] > AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET:
+                raise _OverBudget
+            return grad(u)
+
+        with warnings.catch_warnings():
+            # The penalty is constant outside the valid region, and
+            # autograd says so for any gradient taken there.
+            warnings.filterwarnings("ignore", "Output seems independent")
+            try:
+                res = preconditioned_bfgs(
+                    fun,
+                    start,
+                    jac=budgeted,
+                    options={"maxiter": 1000},
+                    obj_scale=n_obs,
+                )
+            except _OverBudget:
+                return None, False
+            if not np.isfinite(res.fun):
+                return None, False
+            verified = is_local_minimum(
+                true_neg_ll,
+                jacobian(true_neg_ll),
+                hessian(true_neg_ll),
+                res.x,
+                obj_scale=n_obs,
             )
+        return (res, True) if verified else (None, False)
 
     # -- factory ----------------------------------------------------------
 
@@ -347,6 +440,7 @@ class AdditiveHazardsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the parametric additive hazards model by maximum likelihood.
@@ -372,6 +466,15 @@ class AdditiveHazardsFitter(
             covariate coefficients).
         fixed : dict, optional
             Parameters to hold fixed, by name.
+        center : bool, optional
+            ``False`` (the default) fits ``h_0(x) + beta'Z``, the baseline
+            at ``Z = 0``. ``True`` fits ``h_0(x) + beta'(Z - center)``, the
+            baseline at the covariate means (stored as ``model.center``),
+            with ``init`` and ``fixed`` read there too. The two are
+            different models: ``h_0`` plus a constant is not a hazard of
+            the baseline's family (and for the Exponential the positivity
+            bound moves), so, unlike the log-linear families, the additive
+            model is never centred by default.
 
         Returns
         -------
@@ -405,8 +508,13 @@ class AdditiveHazardsFitter(
             fixed,
             LogLinearPhi.phi_bounds,
             LogLinearPhi.make_param_map,
+            center=center,
         )
-        init, bounds, pmap, transform, inv_trans, const, fixed = prep
+        # Centred only with center=True (no ``kind``): the additive term
+        # beta'Z does not reparameterise away from its origin, as the
+        # baseline plus a constant leaves the baseline's family (#463).
+        init, bounds, pmap, transform, inv_trans, const, fixed = prep[:7]
+        centring = prep[7]
 
         with np.errstate(all="ignore"):
 
@@ -415,15 +523,24 @@ class AdditiveHazardsFitter(
             def fun(params: npt.NDArray) -> Boxable:
                 # Where the additive hazard goes non-positive the log-
                 # likelihood is genuinely -inf; return a large finite penalty
-                # (not a solver constraint) so the derivative-free optimiser
-                # stays in the region where the model is valid rather than
+                # (not a solver constraint) so the optimisers, the gradient
+                # search too, stay where the model is valid rather than
                 # stalling on nan gradients. The initial guess (beta = 0) has
                 # the strictly-positive baseline hazard, so it is valid.
                 val = true_neg_ll(params)
                 return val if np.isfinite(val) else 1e15
 
-            res = minimize(fun, init, method="Nelder-Mead")
-            res = minimize(fun, res.x, method="TNC")
+            n_obs = float(np.sum(data.n))
+            res, converged = self._gradient_first(
+                fun, true_neg_ll, init, n_obs
+            )
+            if not converged:
+                res = minimize(fun, init, method="Nelder-Mead")
+                res = minimize(fun, res.x, method="TNC")
+                # TNC's result was never checked: a Gamma baseline stopped
+                # at alpha ~ 1e-282 on a "linear search failed", silently
+                # (#427).
+                res, converged = verify_or_polish(fun, res, n_obs, true_neg_ll)
 
             params = inv_trans(const(res.x))
 
@@ -440,15 +557,31 @@ class AdditiveHazardsFitter(
                 "positive by construction and may be more appropriate for "
                 "this data.".format(self.dist.name)
             )
-        self._warn_if_on_positivity_boundary(data, params)
+        # One warning: a likelihood with no finite maximum in a coefficient
+        # (a level with no events drives it to -inf, the likelihood rising
+        # linearly, #392) says so, and that is why the fit also ends on the
+        # boundary or unverified. Otherwise a fit held at the positivity
+        # boundary is no stationary point, and its warning says why; any
+        # other that is not a maximum says so.
+        coefs = free_coefficients(self, fixed, pmap)
+        verdict = judge_search(
+            true_neg_ll, res, coefs, init, n_obs, verified=converged
+        )
+        maximum = verdict.maximum
+        if verdict.no_maximum:
+            say_verdict(verdict)
+        elif self._warn_if_on_positivity_boundary(data, params):
+            # (said in its own words: held by the barrier, not stationary)
+            maximum = "unverified"
+        elif not converged:
+            warn_unverified("The additive hazards fit")
 
-        reg_model = _AdditiveReg()
-        reg_model.name = "Additive [beta'Z]"
-        reg_model.phi_param_map = pmap
+        # beta'Z is added to the hazard: the link has no multiplier phi.
+        reg_model = CovariateLink("Additive [beta'Z]", pmap)
 
-        return assemble_regression_model(
+        model = assemble_regression_model(
             self,
-            "Additive Hazard",
+            ADDITIVE_HAZARD,
             reg_model,
             data,
             res,
@@ -457,4 +590,17 @@ class AdditiveHazardsFitter(
             pmap,
             fixed,
             neg_ll=final_neg_ll,
+            centring=centring,
         )
+        model.maximum = maximum
+        # The exact information for the model's covariance (#392).
+        keep_information(
+            model,
+            verdict.no_maximum,
+            verdict.derivatives,
+            inv_trans,
+            const,
+            res.x,
+            centring,
+        )
+        return model

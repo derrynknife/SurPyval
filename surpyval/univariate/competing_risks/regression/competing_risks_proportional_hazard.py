@@ -7,12 +7,12 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
-import warnings
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-import pandas as pd
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -20,33 +20,59 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.competing_risks.aalen_johansen import (
-    aalen_johansen_iif,
-)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
     ordered_labels,
 )
 from surpyval.univariate.regression import CoxPH
+from surpyval.univariate.regression._aliasing import (
+    collect_aliased,
+    covariate_columns,
+    warn_collected,
+)
 from surpyval.univariate.regression.regression_data import (
-    prepare_Z,
+    LinearPredictorMixin,
+    design_matrix_from_df,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
 from surpyval.utils import (
+    finite_covariate_mask,
     is_missing_event,
     validate_fine_gray_inputs,
-    wrangle_and_check_form_and_Z_cols,
 )
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
 from surpyval.utils.ipcw import step_at as _step
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    maximum_entry,
+    restored_maximum,
+)
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    check_option,
+    missing_cause_error,
+    unknown_cause_error,
+)
 
-from .fine_gray import FineGray, FineGrayModel, paired_covariate_rows
+from .fine_gray import (
+    FineGrayModel,
+    _fit_cause,
+    _warn_if_monotone,
+    paired_covariate_rows,
+)
 
 
-class CompetingRisksProportionalHazards(SerialisableMixin):
+def _check_interp(interp: str) -> None:
+    # The baselines are step functions and are only evaluated as steps:
+    # any other interp, even 'bogus', used to be accepted and ignored, so
+    # interp='linear' silently gave the step curve (#416).
+    check_option("interp", interp, ("step",))
+
+
+class CompetingRisksProportionalHazards(
+    LinearPredictorMixin, SerialisableMixin
+):
     """
     Competing-risks proportional-hazards regression.
 
@@ -61,9 +87,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     the covariates ``Z`` and, for one cause, its label ``event``: an array
     in the fitted column order or, for a model fitted with ``fit_from_df``,
     a DataFrame of the raw covariate columns (a ``formula`` is applied to
-    it, as for ``CoxPH``). A fitted model can be saved with
-    ``to_dict``/``to_json`` and restored with ``from_dict``/``from_json``
-    (or ``surpyval.from_dict``).
+    it, as for ``CoxPH``). The baselines are step functions, so the
+    ``interp`` of ``sf``, ``ff``, ``Hf``, ``hf`` and ``df`` takes only
+    ``"step"``; another value raises a ``ValueError``. A fitted model can
+    be saved with ``to_dict``/``to_json`` and restored with
+    ``from_dict``/``from_json`` (or ``surpyval.from_dict``).
     """
 
     # Populated by ``fit``; declared for the type checker. ``model`` is
@@ -80,30 +108,23 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     n_event_types: int
     h0_e: "npt.NDArray"
     H0_e: "npt.NDArray"
+    #: The covariate point the baselines ``h0_e`` are at, and ``phi_e``
+    #: relative to: zeros (``Z = 0``) by default, the covariate means for a
+    #: fit with ``center=True`` (#459, #463). The per-cause fits centre on
+    #: the means either way.
+    center: "npt.NDArray"
     phi: Any
     phi_e: Any
     _fg_models: dict
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``): the worst of the causes' fits, as
+    #: their warnings say; ``"unknown"`` for a model restored from a dict
+    #: saved without it.
+    maximum: str = "unknown"
     # Covariate metadata, set by ``fit_from_df``; ``None`` after ``fit``.
     feature_names: "list | None" = None
-    formula: Any = None
+    formula: "str | None" = None
     _model_spec: Any = None
-
-    @property
-    def how(self) -> str:
-        """Deprecated: ``model``, the model fitted (``"Cox"`` or
-        ``"Fine-Gray"``), under its old name."""
-        warnings.warn(
-            "CompetingRisksProportionalHazards.how is deprecated and will "
-            "be removed in v{}; use .model.".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.model
-
-    def __dir__(self) -> list[str]:
-        # The deprecated alias is left out of listings (tab completion,
-        # anything that walks ``dir``), which would otherwise warn.
-        return [name for name in super().__dir__() if name != "how"]
 
     # -- serialisation -----------------------------------------------------
 
@@ -113,7 +134,8 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
         Stores the causes (``event_idx_map``), the per-cause coefficients
         ``betas`` and the per-cause baseline step arrays on the shared time
-        grid ``x``; for ``model="Fine-Gray"`` also each cause's
+        grid ``x`` (with the covariate ``center`` they are at); for
+        ``model="Fine-Gray"`` also each cause's
         :class:`FineGrayModel` (its own ``to_dict``), from which the
         Fine-Gray predictions come. The reloaded model reproduces every
         prediction (``cif``, ``sf``, ``ff``, ``Hf``, ``hf``, ``df``) for any
@@ -148,7 +170,13 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             "x": np.asarray(self.x, dtype=float).tolist(),
             "betas": np.asarray(self.betas, dtype=float).tolist(),
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
+            **maximum_entry(self.maximum),
         }
+        if np.any(self.center):
+            # A baseline at the covariate means (center=True) is stored,
+            # which makes the dict schema 2 (#459): a schema-1 reader would
+            # read the baselines as at Z = 0.
+            out["center"] = np.asarray(self.center, dtype=float).tolist()
         if self.model == "Fine-Gray":
             # The Fine-Gray predictions come from the per-cause models (the
             # shared grid only mirrors their baselines), so store them whole,
@@ -187,45 +215,66 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 )
             }
         model.results = None
+        betas = np.array(model_dict["betas"], dtype=float)
         model._finish(
-            np.array(model_dict["betas"], dtype=float),
+            betas,
             np.array(model_dict["h0_e"], dtype=float),
+            # No "center" (a default fit, or one saved before #459): the
+            # baselines are at Z = 0.
+            np.array(
+                model_dict.get("center", np.zeros(betas.shape[1])),
+                dtype=float,
+            ),
         )
+        model.maximum = restored_maximum(model_dict)
         restore_covariate_meta(model, model_dict)
         return model
 
-    def _finish(self, betas: npt.NDArray, baselines: npt.NDArray) -> None:
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine in some cause's fit (#476): a constant column, which
+        the cause's baseline hazard absorbs, or a linear combination of
+        the others. Their coefficients are
+        ``nan`` in that cause's row of ``betas`` (R's ``NA``), and
+        predictions take them as 0."""
+        betas = np.atleast_2d(np.asarray(self.betas, dtype=float))
+        return np.flatnonzero(np.isnan(betas).any(axis=0))
+
+    def _finish(
+        self,
+        betas: npt.NDArray,
+        baselines: npt.NDArray,
+        center: npt.NDArray,
+    ) -> None:
         # The attributes derived from the per-cause coefficients and baseline
         # increments, shared by ``fit`` and ``from_dict`` so a reloaded model
         # is rebuilt exactly as the fitted one was.
         self.betas = betas
         self.beta = betas.sum(axis=0)
-        self.phi_e = lambda Z, e_i: np.exp(
-            self._prepare_Z(Z) @ self.betas[e_i, :]
-        )
-        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ self.beta)
+        self.center = center
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        coef = np.where(np.isnan(self.beta), 0.0, self.beta)
+        # Relative to the centre, where the baselines are (#459).
+        self.phi_e = lambda Z, e_i: np.exp(self._log_phi_e(Z, e_i))
+        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ coef)
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
 
-    def _prepare_Z(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
-        """
-        Convert ``Z`` to a numeric design matrix: a DataFrame is read by
-        the covariate names (or expanded by the formula) recorded by
-        ``fit_from_df`` -- it used to be read by column position, and a
-        formula's raw columns were not expanded at all (#370); an array is
-        taken as it is, in the fitted column order.
-        """
-        return prepare_Z(Z, self.feature_names, self._model_spec)
+    def _log_phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
+        """The log of cause ``e_i``'s hazard multiplier ``phi_e``."""
+        beta = self.betas[e_i, :]
+        return (self._prepare_Z(Z) - self.center) @ np.where(
+            np.isnan(beta), 0.0, beta
+        )
 
     def _fg_model(self, event: Any) -> Any:
         # Resolve the per-cause Fine-Gray subdistribution model, requiring an
         # explicit cause (the Fine-Gray CIF is defined one cause at a time).
         if event is None:
-            raise ValueError(
-                "A Fine-Gray model predicts one cause at a time; pass `event`."
-            )
+            raise missing_cause_error("A Fine-Gray model's prediction")
         if event not in self._fg_models:
-            raise ValueError("Unrecognised event type for this model")
+            raise unknown_cause_error(event, self._fg_models)
         return self._fg_models[event]
 
     def _f(
@@ -251,15 +300,18 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
 
         if event is not None:
             if event not in self.event_idx_map:
-                raise ValueError("Unrecognised event type for this model")
+                raise unknown_cause_error(event, self.event_idx_map)
             e_i = self.event_idx_map[event]
-            return base[e_i] * self.phi_e(Z, e_i)
+            return self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
         # All causes combined: each cause contributes with its OWN
         # coefficients, so the all-cause (cumulative) hazard is the sum of
         # H0_e(t) * exp(beta_e'Z), not a single summed-coefficient term.
-        return sum(
-            base[e_i] * self.phi_e(Z, e_i)
-            for e_i in self.event_idx_map.values()
+        return np.sum(
+            [
+                self._times_risk(base[e_i], self._log_phi_e(Z, e_i))
+                for e_i in self.event_idx_map.values()
+            ],
+            axis=0,
         )
 
     @keeps_query_shape
@@ -275,6 +327,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         cause's (``event``) or the sum over causes (``event=None``). Not
         available for a Fine-Gray model.
         """
+        _check_interp(interp)
         if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution hazard has no pointwise "
@@ -297,6 +350,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         (``event=None``). For a Fine-Gray model, the cumulative
         subdistribution hazard of ``event``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             # Cumulative subdistribution hazard H0_k(x) * exp(beta'Z) = -log S.
@@ -313,9 +367,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
     ) -> npt.NDArray:
         """
         :math:`e^{-H}` at ``x`` for covariates ``Z``: the all-cause survival
-        (``event=None``) or one cause's net survival (the other causes
+        (``event=None``), which is one minus the sum of the causes'
+        :meth:`cif`, or one cause's net survival (the other causes
         treated as censoring). For a Fine-Gray model, ``1 - cif``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             return self._fg_model(event).sf(x, Z)
@@ -333,6 +389,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``1 - sf`` at ``x`` for covariates ``Z``. For a Fine-Gray model,
         the cumulative incidence of ``event``.
         """
+        _check_interp(interp)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             return self.cif(x, Z, event)
@@ -350,6 +407,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ``hf * sf`` at ``x`` for covariates ``Z``. Not available for a
         Fine-Gray model.
         """
+        _check_interp(interp)
         if self.model == "Fine-Gray":
             raise ValueError(
                 "The Fine-Gray subdistribution density has no pointwise form "
@@ -368,9 +426,11 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         Cumulative incidence of cause ``event`` at ``x`` for covariates
         ``Z``: the probability of failing from that cause by ``x`` with the
         other causes acting. The cause-specific (``model="Cox"``) model
-        integrates the cause's hazard against the all-cause product-limit
-        survival; the Fine-Gray model evaluates the subdistribution
-        directly.
+        builds it step by step from the causes' hazard increments, as R's
+        ``survfit`` does for a multi-state ``coxph`` (the Aalen-Johansen
+        estimate with each step's matrix exponential), so the causes'
+        incidences sum to ``ff = 1 - exp(-H)``; the Fine-Gray model
+        evaluates the subdistribution directly.
 
         ``Z`` is one covariate vector (a 1-D array or a single row), used
         at every time, or one row per time in ``x`` (row ``i`` with
@@ -378,72 +438,85 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         covariates for a model fitted with ``fit_from_df``. ``event`` must
         be one of the fitted causes.
         """
-        if event is None or event not in self.event_idx_map:
-            causes = list(self.event_idx_map)
-            raise ValueError(
-                f"`event` must be one of the fitted causes {causes}, got "
-                f"{event!r}."
-            )
+        if event is None:
+            raise missing_cause_error("The CIF")
+        if event not in self.event_idx_map:
+            raise unknown_cause_error(event, self.event_idx_map)
         Z = self._prepare_Z(Z)
         if self.model == "Fine-Gray":
             # Direct subdistribution CIF: 1 - exp(-H0_k(x) exp(beta'Z)).
             return self._fg_model(event).cif(x, Z)
 
+        e_i = self.event_idx_map[event]
+
+        def incidence(z: npt.NDArray) -> npt.NDArray:
+            return self._incidence_steps(z)[e_i].cumsum()
+
+        return self._per_covariate_row(x, Z, incidence, 0.0)
+
+    def _per_covariate_row(
+        self, x: npt.ArrayLike, Z: npt.ArrayLike, curve: Any, start: float
+    ) -> npt.NDArray:
+        """A step function of the shared time grid ``self.x`` that depends
+        on the covariates, ``curve(z)``, read at each time in ``x`` with
+        its paired covariate row: ``Z`` is one row for every time or one
+        row per time. ``start`` is its value before the first time."""
         x_flat = np.atleast_1d(np.asarray(x, dtype=float)).ravel()
         rows = paired_covariate_rows(Z, x_flat.size, self.betas.shape[1])
-        e_i = self.event_idx_map[event]
         out = np.empty(x_flat.size)
-        # One incidence curve per distinct covariate row, read at the times
-        # paired with that row.
+        # One curve per distinct covariate row, read at the times paired
+        # with that row.
         uniq, inverse = np.unique(rows, axis=0, return_inverse=True)
         inverse = np.ravel(inverse)
         for u, z in enumerate(uniq):
             at = np.flatnonzero(inverse == u)
-            S, shares = self._product_limit_survival(z)
-            cif = aalen_johansen_iif(S, shares[e_i]).cumsum()
+            values = curve(z)
             idx = np.searchsorted(self.x, x_flat[at], side="right") - 1
             # Times before the first event would wrap to the last value
             # (#253).
-            out[at] = np.where(idx < 0, 0.0, cif[np.maximum(idx, 0)])
-        # A missing (NaN) time is nan, not the incidence at t = inf.
+            out[at] = np.where(idx < 0, start, values[np.maximum(idx, 0)])
+        # A missing (NaN) time is nan, not the value at t = inf.
         return np.where(np.isnan(x_flat), np.nan, out)
 
-    def _product_limit_survival(
-        self, Z: npt.ArrayLike
-    ) -> tuple[npt.NDArray, npt.NDArray]:
+    def _incidence_steps(self, Z: npt.ArrayLike) -> npt.NDArray:
         """
-        All-cause survival at the event times as a product limit, and each
-        cause's share of the hazard increment, for the incidence weights.
+        Each cause's step in cumulative incidence at the event times, for
+        one covariate row: an array of shape ``(n_causes, len(self.x))``.
 
-        Only the product-limit survival ``prod (1 - dH(t_j))`` satisfies the
-        telescoping identity ``sum_j S(t_j-) dH(t_j) = 1 - S(t)``, so weighting
-        the cause-specific increments with ``exp(-H)`` inflated the incidence
-        and let the causes sum past 1 (#278). A Breslow increment can also
-        exceed 1 at a covariate value far from the data (a small risk set
-        times a large multiplier); such a step exhausts the survivors, and
-        each cause takes its proportional share of them. The causes'
-        incidences then sum to exactly ``1 - S``.
-
-        Returns ``(S, shares)`` with ``shares[e]`` cause ``e``'s effective
-        hazard increments.
+        Over a step the causes' hazards add ``dH_k`` each and ``dH`` in
+        all, and the transition probabilities are those of the matrix
+        exponential of the step's hazards, as R's ``survfit`` computes
+        them for a multi-state ``coxph``: a unit still event-free before
+        the step, with probability ``S(t-) = exp(-H(t-))``, fails from
+        cause ``k`` over it with probability
+        ``S(t-) (dH_k / dH) (1 - exp(-dH))``. The incidences then sum to
+        ``1 - exp(-H) = ff`` exactly, and a step stays a probability
+        however large the increment (a Breslow increment times a large
+        multiplier can exceed 1). The incidence used to be built on the
+        product-limit survival ``prod (1 - dH)`` while ``sf`` is
+        ``exp(-H)``, so the two disagreed (1.0 against 0.975, #384); the
+        product ``prod (1 - dH)`` also needs a clip where ``dH > 1``.
         """
         increments = np.array(
             [
                 np.broadcast_to(
-                    self.h0_e[e_i] * self.phi_e(Z, e_i), self.x.shape
+                    self._times_risk(self.h0_e[e_i], self._log_phi_e(Z, e_i)),
+                    self.x.shape,
                 )
                 for e_i in range(self.n_event_types)
             ],
             dtype=float,
         )
         total = increments.sum(axis=0)
-        scale = np.where(total > 1.0, 1.0 / np.where(total > 0, total, 1), 1.0)
-        shares = increments * scale
-        S = np.cumprod(1.0 - shares.sum(axis=0))
-        return np.clip(S, 0.0, 1.0), shares
+        # exp(-H(t-)): the survival just before each step.
+        before = np.exp(-np.concatenate([[0.0], np.cumsum(total)[:-1]]))
+        positive = total > 0
+        share = np.where(
+            positive, increments / np.where(positive, total, 1.0), 0.0
+        )
+        return before * -np.expm1(-total) * share
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit_from_df(
         cls,
         df: Any,
@@ -455,6 +528,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         formula: "str | None" = None,
         model: str = "Cox",
         tie_method: str = "efron",
+        center: bool = False,
     ) -> "CompetingRisksProportionalHazards":
         """
         Fit a competing-risks proportional-hazards model from a pandas
@@ -485,6 +559,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             Tie handling for the ``model='Cox'`` path, passed to
             :meth:`CoxPH.fit`: ``'efron'`` (default), ``'breslow'``,
             ``'exact'`` or ``'kalbfleisch-prentice'`` (alias ``'kp'``).
+        center : bool, optional
+            Report the baselines at the covariate means (``model.center``)
+            instead of at ``Z = 0``; see :meth:`fit`.
 
         Returns
         -------
@@ -521,15 +598,17 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         ['g[T.b]', 'g[T.c]']
         >>> new = pd.DataFrame({"g": ["a", "b", "c"]})
         >>> model.cif(np.full(3, 5.0), new, "a").round(4)
-        array([0.3757, 0.6465, 0.2553])
+        array([0.3752, 0.6449, 0.2551])
         >>> restored = surpyval.from_dict(model.to_dict())
         >>> bool(np.allclose(restored.cif(np.full(3, 5.0), new, "a"),
         ...                  model.cif(np.full(3, 5.0), new, "a")))
         True
         """
-        Z, mask, form, feature_names, model_spec = (
-            wrangle_and_check_form_and_Z_cols(Z_cols, formula, df)
+        Z, feature_names, model_spec = design_matrix_from_df(
+            df, Z_cols, formula
         )
+        mask = finite_covariate_mask(Z)
+        Z = Z[mask]
         sub = df.loc[mask]
         x = sub[x_col].values
         # A censored row's cause is ``None``; accept a blank/NaN cell for it.
@@ -538,14 +617,23 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         c = sub[c_col].values if c_col is not None else None
         n = sub[n_col].values if n_col is not None else None
 
-        fitted = cls.fit(x, Z, e, c=c, n=n, model=model, tie_method=tie_method)
-        fitted.formula = form
+        with covariate_columns(feature_names, Z, model_spec):
+            fitted = cls.fit(
+                x,
+                Z,
+                e,
+                c=c,
+                n=n,
+                model=model,
+                tie_method=tie_method,
+                center=center,
+            )
+        fitted.formula = formula
         fitted.feature_names = feature_names
         fitted._model_spec = model_spec
         return fitted
 
     @classmethod
-    @renamed_arguments(how="model")
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -555,6 +643,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         n: "npt.ArrayLike | None" = None,
         model: str = "Cox",
         tie_method: str = "efron",
+        center: bool = False,
     ) -> "CompetingRisksProportionalHazards":
         r"""
         Fit the competing-risks proportional-hazards model.
@@ -592,6 +681,14 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             Tie handling for the ``'Cox'`` path, passed to
             :meth:`CoxPH.fit`. Default ``'efron'``.
 
+        center : bool, optional
+            ``False`` (the default) reports each cause's baseline at
+            ``Z = 0``; ``True`` at the covariate means, stored as
+            ``model.center``, with ``phi_e`` then relative to them. Passed
+            to each cause's fit (:meth:`CoxPH.fit`, ``FineGray.fit``),
+            which centres either way; the default refuses covariates so far
+            from 0 that the baseline there over- or underflows.
+
         Returns
         -------
 
@@ -599,7 +696,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             A competing-risks proportional-hazards model. ``betas`` holds one
             row of coefficients per cause, in the order of ``event_idx_map``
             (causes sorted); ``phi_e(Z, i)`` is cause ``i``'s hazard
-            multiplier. ``beta`` and ``phi`` (the sum of the per-cause
+            multiplier, relative to a unit at ``center`` (where its
+            baseline is: ``Z = 0`` unless ``center=True``).
+            ``beta`` and ``phi`` (the sum of the per-cause
             coefficients and its multiplier) are kept for backward
             compatibility but are not a model quantity: every prediction
             uses the per-cause coefficients.
@@ -626,8 +725,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         array([[0.985],
                [0.005]])
         >>> model.cif([5, 10], [[1]], "a").round(4)
-        array([0.5922, 0.7401])
+        array([0.59  , 0.7369])
         """
+        check_option("model", model, ("Cox", "Fine-Gray"))
         x, Z, e, c, n = validate_fine_gray_inputs(x, Z, e, c, n)
 
         # A fixed order for the causes (a set's iteration order depends on
@@ -644,6 +744,9 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         unique_x = np.unique(x)
 
         baselines = np.zeros((n_event_types, len(unique_x)))
+        # The baselines are at the point the per-cause fits share (they
+        # fit the same rows): Z = 0, or the means with center=True.
+        at = np.zeros(Z.shape[1])
         # Best initial assumption is to assume there is no risk
         # beta_init = np.zeros(Z.shape[1])
 
@@ -652,16 +755,26 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
         out.event_idx_map = event_idx_map
         out.model = model
 
+        # One warning for the columns aliased in any cause's fit (#476).
+        found: list = []
         if model == "Cox":
             # Cause-specific proportional hazards: one Cox model per cause,
             # treating every other cause (and censoring) as right-censored.
             results = []
+            states = []
             for i, event in enumerate(causes):
                 c_e = np.where(label_mask(e, event), 0, 1)
-                cox_model = CoxPH.fit(x, Z, c_e, n, tie_method=tie_method)
+                with collect_aliased() as aliased:
+                    cox_model = CoxPH.fit(
+                        x, Z, c_e, n, tie_method=tie_method, center=center
+                    )
+                found += aliased
 
                 results.append(cox_model.res)
-                betas[i, :] = cox_model.res.x
+                states.append(cox_model.maximum)
+                # nan where aliased, as the Cox model reports it.
+                betas[i, :] = cox_model.beta
+                at = np.asarray(cox_model.center, dtype=float)
                 # Cause-specific baseline hazard: reuse the fitted Cox model's
                 # own baseline (Efron's after an Efron fit, else Breslow's),
                 # which is built from c_e (the cause-specific event
@@ -671,7 +784,7 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
                 H_grid = _step(cox_model.x, cox_model.H0, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
 
-        elif model == "Fine-Gray":
+        else:
             # Delegate to the IPCW Fine-Gray fitter, one subdistribution model
             # per cause. The authoritative predictions come from these models
             # (see ``_fg_models`` and the ``cif``/``sf`` branches below); the
@@ -679,20 +792,28 @@ class CompetingRisksProportionalHazards(SerialisableMixin):
             # subdistribution hazard for a coherent ``H0_e``.
             fg_models = {}
             results = []
+            fits = []
             for i, event in enumerate(causes):
-                fg = FineGray.fit(x, Z, e, c=c, n=n, event=event)
+                with collect_aliased() as aliased:
+                    fits.append(_fit_cause(x, Z, e, c, n, event, center))
+                found += aliased
+                fg = FineGrayModel(fits[-1])
                 fg_models[event] = fg
                 results.append(fg.res)
                 betas[i, :] = fg.beta
+                at = np.asarray(fg.center, dtype=float)
                 # Store increments so the shared ``H0_e = baselines.cumsum``
                 # equals this cause's cumulative subdistribution hazard.
                 H_grid = _step(fg._times, fg._cumhaz, unique_x, before=0.0)
                 baselines[i, :] = np.diff(H_grid, prepend=0.0)
             out._fg_models = fg_models
-        else:
-            raise ValueError("`model` must be either 'Cox' or 'Fine-Gray'")
+            # One warning for every cause whose partial likelihood has no
+            # finite maximum (#392).
+            states = [_warn_if_monotone(fits)]
+        warn_collected(found, "in the fit of each cause")
+        out.maximum = combined_maximum(states)
 
         out.results = results
-        out._finish(betas, baselines)
+        out._finish(betas, baselines, at)
         out.x = unique_x
         return out

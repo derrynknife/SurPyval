@@ -25,11 +25,9 @@ MISSING_DOCSTRING: frozenset[str] = frozenset()
 
 def _items():
     """Each public object once, under the first (shortest) name it is
-    exported as; ``surpyval.alpha`` is experimental and exempt."""
+    exported as."""
     seen = {}
     for namespace in NAMESPACES:
-        if namespace == "surpyval.alpha":
-            continue
         for name, obj in _public(namespace):
             seen.setdefault(id(obj), (name, obj))
     return sorted(seen.values(), key=lambda item: item[0])

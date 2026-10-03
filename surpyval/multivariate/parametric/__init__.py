@@ -1,4 +1,5 @@
 from .copula import (
+    AMH,
     Clayton,
     Copula,
     CopulaModel,
@@ -6,6 +7,8 @@ from .copula import (
     Gaussian,
     Gumbel,
     Independence,
+    Joe,
+    StudentT,
 )
 from .data import MultivariateSurpyvalData
 
@@ -18,4 +21,7 @@ __all__ = [
     "Gumbel",
     "Frank",
     "Gaussian",
+    "Joe",
+    "AMH",
+    "StudentT",
 ]

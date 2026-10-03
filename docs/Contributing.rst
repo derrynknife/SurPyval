@@ -19,17 +19,24 @@ the pre-commit hooks:
 Code style is enforced rather than requested. The pre-commit hooks
 (``.pre-commit-config.yaml``) run isort, pyupgrade (Python 3.11+ syntax),
 black (line length 79), flake8 and mypy on every commit, and the lint job in
-continuous integration runs ``flake8``, ``mypy`` and ``black --check`` on the
-``surpyval`` package. mypy is strict about annotations: every function in the
-package must be type annotated (``disallow_untyped_defs``); only the tests and
-the ``surpyval.alpha`` tree are exempt.
+continuous integration runs ``flake8``, ``isort --check-only`` and ``black
+--check`` on the ``surpyval`` package, ``conftest.py`` and ``scripts/``, and
+``mypy`` on the package. flake8 also caps each function's McCabe complexity
+at 25 (``max-complexity`` in ``pyproject.toml``): a function over it is split
+into named steps. mypy reports a ``type:
+ignore`` that silences nothing, a redundant cast and an ``==`` between types
+that cannot be equal; an ignore needed under one Python's numpy stubs but not
+another's carries the ``unused-ignore`` code as well. mypy is strict about
+annotations: every function in the package must be type annotated
+(``disallow_untyped_defs``); only the tests, ``conftest.py`` and ``scripts/``
+are exempt.
 
 To run the tests as continuous integration does:
 
 .. code-block:: bash
 
-    python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
-    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests --ignore=surpyval/alpha
+    python -m pytest -n auto --run-ml
+    python -m pytest --doctest-modules surpyval --ignore=surpyval/tests
 
 The first line is the test suite (``-n auto`` spreads it over your cores, and
 ``--run-ml`` includes the slow survival tree and forest tests, which are
@@ -54,6 +61,25 @@ run does. When one finds a failure, it prints a minimal example: pin it in
 Describe any change a user would notice in ``docs/changelog.rst``, under the
 unreleased version at the top.
 
+Where a test goes
+-----------------
+
+The tests are organised by feature. ``surpyval/tests`` follows the package
+(``univariate/parametric``, ``univariate/regression``, ``recurrent``,
+``degradation`` and so on), and each module in it covers one model,
+estimator or behaviour: ``test_turnbull.py``, ``test_mcf.py``,
+``test_information_criteria.py``. **A fix's regression test goes in the
+test module of the feature it fixes, with the issue number in the test's
+name** (``test_issue_310_lognormal_no_longer_runs_away``), so that the next
+person to change the feature finds it beside the others. Do not start a
+module for a round of fixes or a piece of work (``test_parametric_fixes3.py``,
+``test_serialisation_round4.py``, ``test_tvc_phase2.py``): record the round
+in the commit message and the changelog instead. Start a new module only for
+a feature that has none yet. A data maker or helper that more than one
+module needs goes in ``surpyval/tests/_helpers.py`` rather than being
+copied. ``surpyval/tests/review`` and ``surpyval/tests/mutation`` keep the
+per-module layout described below.
+
 The conformance suite
 ---------------------
 
@@ -71,27 +97,54 @@ through each property that applies to it:
   rows, and counts ``n`` against the same rows repeated;
 - valid values: probabilities in [0, 1] and monotone in time, no NaN at a
   valid time;
+- that the derivatives a fit or its inference takes -- the gradient and
+  Hessian of its likelihood in its search space, by autograd or the
+  model's own, and the delta-method gradients behind a parametric ``cb``
+  -- agree with finite differences at the fit (``test_derivatives.py``;
+  the model classes that differentiate are listed in ``DIFFERENTIATED``,
+  and the cases of those that do not in ``NOT_DIFFERENTIATED``);
 - the missing-value rule (see :doc:`Conventions`), seed reproducibility of
   the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
   that keeps every prediction;
 - that the alternate ways of fitting a model (``fit_from_df``, a formula,
-  ``from_params``, ``fit_tvc`` ...) agree with ``fit``;
+  ``from_params``, ``fit_tvc`` ...) agree with ``fit``, and, for a model
+  class that declares its attributes (``DECLARED_ATTRIBUTES``), that every
+  way of building it gives it the same attributes, each declared on the
+  class (``test_attributes.py``);
 - every option of every confidence bound, ``interp=`` value and estimation
   option (``test_options.py``), behaviour outside the data
-  (``test_outside_data.py``), and that a fit which cannot converge says
-  so (``test_convergence.py``);
+  (``test_outside_data.py``), that a fit which cannot converge says
+  so (``test_convergence.py``), and that a covariate column the data
+  cannot determine is aliased, not given an arbitrary coefficient
+  (``test_aliasing.py``; a model with covariates declares its
+  ``coefficients``);
+- that a fit which maximises a likelihood says what it reached
+  (``test_maximum.py``): its model's ``maximum`` is ``"verified"``,
+  ``"unverified"`` or ``"no finite maximum"``, it warns exactly when that
+  is not a verified maximum, and a verified maximum has a zero gradient and
+  a positive-definite Hessian of the likelihood at the reported
+  parameters. **A new likelihood fitter must set** ``maximum``
+  (``surpyval.utils.no_maximum.MAXIMUM_STATES``), from a check of its
+  answer -- ``is_local_minimum``, or ``verify_or_polish`` for a search
+  whose answer may need polishing -- with ``warn_unverified`` or
+  ``warn_no_maximum`` where it is not a verified maximum, and pass this
+  property (a family's likelihood goes in ``SEARCHES`` there; a fit that
+  is not a likelihood maximisation is excluded with the reason);
 - that no raw numpy, scipy or autograd warning escapes the package, and
   each deliberate warning appears once (``test_warnings.py``).
 
 ``test_completeness.py`` walks the public namespaces and fails for any public
 class or fitter that is neither registered nor listed in ``OUT_OF_SCOPE``
-with a reason. So **a new model is registered**: add a ``Case`` to
-``registry.py`` (the family helpers there -- ``continuous``, ``regression``
-and the rest -- do most of it), giving a small deterministic fixture, the fit,
-how its functions are called, and its alternate fit paths. If a property
-cannot hold for it, exclude it in ``exclude`` with the reason (a step
-function has no density, a point mass no quantile inverse). If it should hold
-and does not, that is a bug: list it in ``KNOWN_FAILURES`` with a one-line
+with a reason. So **a new model is registered**: add a ``Case`` in
+``registry_cases.py`` (the family helpers in ``registry_families.py`` --
+``continuous``, ``regression`` and the rest -- do most of it), giving a small
+deterministic fixture (``registry_fixtures.py``), the fit, how its functions
+are called, and its alternate fit paths. ``registry.py`` gathers them,
+applies the known failures and holds ``OUT_OF_SCOPE``; import from it. If a
+property cannot hold for it, exclude it in ``exclude`` with the reason (a
+step function has no density, a point mass no quantile inverse). If it should
+hold and does not, that is a bug: list it in ``KNOWN_FAILURES``
+(``registry_known_failures.py``) with a one-line
 description, which makes it a strict xfail -- the suite stays green, and
 turns red the day the bug is fixed, as the reminder to remove the entry.
 Only a failure whose outcome depends on the numpy / scipy build (an
@@ -116,6 +169,43 @@ The properties enforce the package's :doc:`Design Principles`: the rules every
 model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
+
+Proving a refactor changed nothing
+----------------------------------
+
+A refactor (moving, merging or splitting code) must not change what the
+package computes or says. ``scripts/refactor/snapshot.py`` records a
+snapshot of it before the change and another after, and compares them:
+
+.. code-block:: bash
+
+    python scripts/refactor/snapshot.py record /tmp/before.json
+    # ... make the change ...
+    python scripts/refactor/snapshot.py record /tmp/after.json
+    python scripts/refactor/snapshot.py compare /tmp/before.json /tmp/after.json
+
+A snapshot holds, for every case in the conformance registry: the fitted
+parameters, ``neg_ll``, ``aic`` and ``bic``, every function at the
+registry's query, every confidence bound the case declares (each side and
+``on=``), ``to_dict()``, ``repr`` and ``summary()``, the warnings each call
+raises, each alternate fit path, and the error each of a corpus of invalid
+inputs raises. It adds the fits the registry does not reach (time-varying
+covariates, seeded bootstraps, recurrent data mixing every kind of
+censoring), the public API (names, signatures and defaults), the modules
+``import surpyval`` loads, and the IDs of the collected tests and
+doctests. It takes two to three minutes on two cores (``-j`` sets the
+workers; ``--full`` adds the likelihood-ratio bounds the conformance suite
+runs only nightly, about two minutes more).
+
+Floats are stored exactly, so ``compare`` is bit-exact unless given
+``--rtol``. A pure move or merge must compare clean. Splitting a function
+into steps may change results by at most ``--rtol 1e-12``, with the reason
+for each difference given in the pull request. A change that is meant to
+alter the API (a removed name, a new method) shows only in the ``api``
+section; say so. The snapshot depends on the numpy and scipy build, so
+compare snapshots recorded in the same environment, and with the same
+version of the script (copy it aside if the change edits it). The snapshots
+themselves are not committed.
 
 Mutation testing
 ----------------
@@ -199,6 +289,12 @@ documentation build from running on every change:
   short-lived branch and opened as a pull request into ``develop``.
 * At release time ``develop`` is merged into ``master`` in a single pull
   request and the new version is tagged.
+
+Versions have two parts, ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``), since
+0.22; earlier releases had three. Every release, fixes only or not, takes the
+next minor number. A name deprecated in one release is removed in the next
+(``REMOVED_IN`` in ``surpyval/utils/deprecation.py``), and a test fails once
+the version reaches it while the old names are still accepted.
 
 Continuous integration (``.github/workflows/actions.yml``) therefore runs on
 **pull requests into develop or master** and on **pushes to master**, rather

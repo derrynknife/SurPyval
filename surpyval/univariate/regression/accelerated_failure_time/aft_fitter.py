@@ -1,6 +1,7 @@
+from __future__ import annotations
+
 from typing import Any
 
-import autograd.numpy as np
 import numpy.typing as npt
 
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -12,12 +13,12 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
-    assemble_regression_model,
-    make_objective,
+    fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
-    prepare_regression_fit,
+    split_log_linear,
 )
+from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
@@ -62,23 +63,16 @@ class AFTFitter(
         covariates ``Z``; ``params`` are the distribution parameters
         followed by the covariate coefficients.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        return self.Hf_dist(self._phi(Z, *phi_params) * x, *dist_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
+        return self.Hf_dist(phi * x, *dist_params)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
         Hazard rate :math:`e^{\\beta' Z} h_0(e^{\\beta' Z} x)` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`Hf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi_val = self._phi(Z, *phi_params)
-        return phi_val * self.hf_dist(phi_val * x, *dist_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
+        return phi * self.hf_dist(phi * x, *dist_params)
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
         return regression_neg_ll(self, data, *params)
@@ -92,6 +86,7 @@ class AFTFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the accelerated failure time model by maximum likelihood.
@@ -119,6 +114,14 @@ class AFTFitter(
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
             such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``.
+            ``True`` reports the baseline at the covariate means (stored as
+            ``model.center``) instead: the fit runs on ``Z - center``, and
+            ``init`` and ``fixed`` are read there too. Use it for
+            covariates far from 0 (a year, a date), where the baseline at
+            ``Z = 0`` cannot be represented or fitted, which the default
+            fit refuses with a ``ValueError`` saying so.
 
         Returns
         -------
@@ -138,7 +141,7 @@ class AFTFitter(
         >>> model.params.round(3)
         array([9.629, 1.751, 0.473])
         """
-        data, prep = prepare_regression_fit(
+        return fit_log_linear(
             self,
             x,
             Z,
@@ -147,30 +150,10 @@ class AFTFitter(
             t,
             init,
             fixed,
-            LogLinearPhi.phi_bounds,
-            LogLinearPhi.make_param_map,
-        )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
-
-        with np.errstate(all="ignore"):
-
-            fun = make_objective(self, data, inv_trans, const)
-
-            res = optimise_nm_tnc(fun, init_t)
-
-        params = inv_trans(const(res.x))
-        reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
-
-        return assemble_regression_model(
-            self,
-            "Accelerated Failure Time",
-            reg_model,
-            data,
-            res,
-            params,
-            bounds,
-            pmap,
-            fixed,
+            center,
+            kind=ACCELERATED_FAILURE_TIME,
+            optimiser=optimise_nm_tnc,
+            reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )
 
 

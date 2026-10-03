@@ -1,3 +1,4 @@
+import warnings
 from typing import Any
 
 import numpy as np
@@ -12,9 +13,55 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.univariate.regression._aliasing import (
+    aliased_columns,
+    constant_columns,
+    warn_aliased,
+)
+from surpyval.utils.deprecation import REMOVED_IN
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import option_error
+
+
+def alias_covariates(Z: ArrayLike, intercept: bool) -> np.ndarray:
+    """The columns of ``Z`` whose coefficients a proportional-intensity
+    fit cannot determine (#502), with one warning naming them.
+
+    The intensity is :math:`\\Lambda_0(t) e^{\\beta' Z}`, so a column that
+    is a linear combination of the others leaves the likelihood flat along
+    a combination of their coefficients, and a constant column one along
+    its coefficient and the baseline's scale, where the baseline has one
+    (``intercept``: the HPP's rate, or an NHPP baseline with
+    ``has_scale``); otherwise only a column of zeros is aliased. The check
+    is the regressions' (:mod:`surpyval.univariate.regression._aliasing`),
+    on the (centred) rows of ``Z``, the later of two collinear columns
+    aliased, as in R.
+    """
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim != 2 or Z.shape[0] == 0 or Z.shape[1] == 0:
+        return np.array([], dtype=int)
+    if intercept:
+        Zc = Z - Z.mean(axis=0)
+        constant = constant_columns(Z)
+    else:
+        Zc = Z
+        constant = np.all(Z == 0, axis=0)
+    aliased = aliased_columns(Zc.T @ Zc, Z.shape[0], constant)
+    if aliased.size:
+        warn_aliased(
+            aliased,
+            (
+                "they are constant (the baseline intensity's scale is the "
+                "model's intercept) or a linear combination of the other "
+                "columns"
+                if intercept
+                else "they are all zero or a linear combination of the "
+                "other columns"
+            ),
+        )
+    return aliased
 
 
 class ProportionalIntensityModel(
@@ -32,6 +79,12 @@ class ProportionalIntensityModel(
     behaviour (``log_likelihood``, ``aic``, ``bic``, ``standard_errors``) from
     :class:`LikelihoodInferenceMixin`.
 
+    ``params`` holds the base-rate parameters and ``coeffs`` the covariate
+    coefficients; ``parameter_names`` names both, base rate first, the order
+    of :meth:`covariance` and :meth:`standard_errors`, so
+    ``parameter_names[:len(params)]`` names ``params``. A coefficient the
+    data cannot determine is ``nan`` and listed in :attr:`aliased`.
+
     Examples
     --------
     >>> from surpyval.datasets import load_rossi_static
@@ -40,9 +93,9 @@ class ProportionalIntensityModel(
     >>> import numpy as np
     >>> data = load_rossi_static()
     >>> x = data['week'].values
-    >>> # in this copy of the data ``arrest`` is 1 for a subject still free
-    >>> # (censored) at week 52, so it is already a censoring flag
-    >>> c = data['arrest'].values
+    >>> # ``arrest`` is 1 for an arrest, so the censoring flag is its
+    >>> # complement (1 for a subject still free at week 52)
+    >>> c = 1 - data['arrest'].values
     >>> i = np.arange(len(x))  # one item per subject
     >>> Z = data[["fin", "age", "race", "wexp", "mar", "paro", "prio"]].values
     >>> model = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c, dist=CrowAMSAA)
@@ -60,12 +113,17 @@ class ProportionalIntensityModel(
     dist: Any
     params: "np.ndarray"
     coeffs: "np.ndarray"
-    param_names: list
+    _rate_names: list
     bounds: tuple
     name: str
     data: Any
     how: str
     res: Any
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
+    #: applicable"`` for a model built from its parameters, ``"unknown"``
+    #: for one restored from a dict saved without it.
+    maximum: str = "not applicable"
 
     def __repr__(self) -> str:
         out = (
@@ -79,7 +137,7 @@ class ProportionalIntensityModel(
         out += f"\nHazard Rate Model   : {self.dist.name}\n"
 
         out = out + "Base Rate Parameters:\n"
-        for i, p in zip(self.param_names, self.params):
+        for i, p in zip(self._rate_names, self.params):
             out += "    {i}  :  {p}\n".format(i=i, p=p)
 
         out = out + "\nCovariate Coefficients:\n"
@@ -110,9 +168,10 @@ class ProportionalIntensityModel(
                 "kind": self.kind,
                 "parameterization": self.parameterization,
                 "dist": self.dist.name,
-                "param_names": list(self.param_names),
+                "param_names": list(self._rate_names),
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "coeffs": np.asarray(self.coeffs, dtype=float).tolist(),
+                **maximum_entry(self.maximum),
             }
         )
 
@@ -143,10 +202,26 @@ class ProportionalIntensityModel(
             out.support = (-np.inf, np.inf)
         else:
             out.dist = intensity_dist_by_name(model_dict["dist"])
-        out.param_names = list(model_dict["param_names"])
+        out._rate_names = list(model_dict["param_names"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.coeffs = np.array(model_dict["coeffs"], dtype=float)
+        out.maximum = restored_maximum(model_dict)
         return out
+
+    @property
+    def aliased(self) -> np.ndarray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#502): a constant column (where the baseline has a
+        scale, which is the intercept) or a linear combination of the
+        others. Their coefficients are ``nan`` in ``coeffs`` (R's ``NA``),
+        as are their standard errors, and predictions take them as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.coeffs, dtype=float)))
+
+    def _coef(self) -> np.ndarray:
+        """``coeffs`` with an aliased coefficient as 0, as the model
+        predicts with it."""
+        coeffs = np.asarray(self.coeffs, dtype=float)
+        return np.where(np.isnan(coeffs), 0.0, coeffs)
 
     @keeps_query_shape
     def cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
@@ -164,7 +239,7 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
-        return self.dist.cif(x, *self.params) * np.exp(Z @ self.coeffs)
+        return self.dist.cif(x, *self.params) * np.exp(Z @ self._coef())
 
     @keeps_query_shape
     def iif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
@@ -182,11 +257,13 @@ class ProportionalIntensityModel(
         Z : array_like
             The covariates for the item.
         """
-        return self.dist.iif(x, *self.params) * np.exp(Z @ self.coeffs)
+        return self.dist.iif(x, *self.params) * np.exp(Z @ self._coef())
 
     def inv_cif(self, x: ArrayLike, Z: ArrayLike) -> np.ndarray:
         if hasattr(self.dist, "inv_cif"):
-            return self.dist.inv_cif(x / np.exp(self.coeffs @ Z), *self.params)
+            return self.dist.inv_cif(
+                x / np.exp(self._coef() @ Z), *self.params
+            )
         else:
             raise ValueError(
                 "Inverse cif undefined for {}".format(self.dist.name)
@@ -251,13 +328,16 @@ class ProportionalIntensityModel(
             return e
         elif kind == "martingale":
             return diagnostics.martingale_residuals(self.data, cif_map)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(
-        self, test: str = "laplace", alternative: str = "two-sided"
+        self,
+        test: str = "laplace",
+        alternative: str = "two-sided",
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Run a trend test on the data this model was fitted to. The null
@@ -272,20 +352,24 @@ class ProportionalIntensityModel(
             The trend test to run. Default is 'laplace'.
         alternative: {'two-sided', 'increasing', 'decreasing'}, optional
             The alternative hypothesis. Default is 'two-sided'.
+        alpha_ci: float, optional
+            The significance level at which the result's ``trend`` is
+            judged (default 0.05, keyword only): a trend is named only when
+            ``p_value < alpha_ci``.
 
         Returns
         -------
 
         TrendTestResult
-            The test result, carrying the statistic, p-value and suggested
-            trend direction.
+            The test result, carrying the statistic, p-value, the
+            direction of the statistic and the trend concluded at
+            ``alpha_ci``.
         """
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative
+            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
         )
 
-    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
         self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
@@ -369,11 +453,15 @@ class ProportionalIntensityModel(
                 Z @ theta[n_dist_params:]
             )
 
-        se = delta_method_se(cif_at, self._mle, self.covariance())
+        # An aliased coefficient is held at 0 and has no variance (#502).
+        held = ~self._estimated()
+        cov = self.covariance()
+        cov[held, :] = 0.0
+        cov[:, held] = 0.0
+        se = delta_method_se(cif_at, self._mle_values(), cov)
         return log_transformed_cb(self.cif(x, Z), se, alpha_ci, bound)
 
     # Extends the mixin plot with covariates -- same known divergence.
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,
@@ -438,9 +526,24 @@ class ProportionalIntensityModel(
         # The base-rate (intensity) parameters lead ``_mle``, followed by the
         # covariate coefficients.
         return [
-            *self.param_names,
+            *self._rate_names,
             *["beta_{}".format(i) for i in range(len(self.coeffs))],
         ]
+
+    @property
+    def param_names(self) -> list:
+        """The base-rate parameters' names: deprecated, and removed in
+        v0.23. Use ``parameter_names[:len(params)]`` (``parameter_names``
+        also names the coefficients)."""
+        warnings.warn(
+            "ProportionalIntensityModel.param_names is deprecated and will "
+            "be removed in v{}; use 'parameter_names', which names the "
+            "base-rate parameters and then the coefficients "
+            "(parameter_names[:len(params)] names params).".format(REMOVED_IN),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return list(self._rate_names)
 
     def _parameter_bounds(self) -> list:
         # The base-rate bounds come from the intensity model (PI-HPP stores
@@ -493,7 +596,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation(  # type: ignore[override]
         self,
         events: int,
@@ -531,7 +633,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation(  # type: ignore[override]
         self,
         T: float,
@@ -588,7 +689,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation_data(  # type: ignore[override]
         self,
         events: int,
@@ -608,7 +708,6 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation_data(  # type: ignore[override]
         self,
         T: float,
@@ -634,9 +733,8 @@ class ProportionalIntensityModel(
 
     # Extends the mixin signature with the covariate vector ``Z``
     # -- a known signature divergence in the simulation API.
-    @renamed_arguments(seed="random_state")
     @keeps_query_shape
-    def mcf(  # type: ignore[override]
+    def mcf(
         self,
         x: ArrayLike,
         Z: ArrayLike,

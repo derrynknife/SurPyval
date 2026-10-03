@@ -1,8 +1,10 @@
+import warnings
 from typing import Any, Callable, Sequence
-import numpy.typing as npt
-from scipy.optimize import minimize
 
-from surpyval import np
+import autograd.numpy as np
+import numpy.typing as npt
+from autograd import hessian, jacobian
+from scipy.optimize import minimize
 
 
 def fallback_minimize(
@@ -104,6 +106,273 @@ def fallback_minimize(
 def _usable(res: Any) -> bool:
     """A result with finite parameters and a finite objective."""
     return bool(np.all(np.isfinite(res.x)) and np.isfinite(res.fun))
+
+
+# The largest scaled gradient (see ``is_local_minimum``) a point may have
+# and still count as the optimum. BFGS stops at 1e-6 in the same units;
+# the other rungs' absolute tolerances, and BFGS's own "precision loss"
+# stops at the optimum, land within 1e-5. A point this far from
+# stationary is at most ``n * gtol**2`` from the optimum in
+# log-likelihood, far below what any prediction can show.
+OPTIMUM_GTOL = 1e-4
+
+
+def is_local_minimum(
+    fun: Callable[..., Any],
+    jac: Callable[..., Any] | None,
+    hess: Callable[..., Any] | None,
+    x: npt.ArrayLike,
+    args: tuple[Any, ...] = (),
+    floor: "float | npt.ArrayLike" = 1.0,
+    obj_scale: float = 1.0,
+    gtol: float = OPTIMUM_GTOL,
+) -> bool:
+    """Whether ``x`` is verifiably a local minimum of ``fun``: its
+    gradient is ~0 and its Hessian positive definite.
+
+    An optimiser's ``success`` does not say this. BFGS, TNC and Newton-CG
+    each stop on an absolute test, and from a start far from the optimum
+    they meet it where the objective first looks flat: a Weibull fitted
+    from ``alpha = 1e7`` "converged" at ``beta = 0.099`` with a
+    log-likelihood 40 below the maximum (#427). Nor does a failure say the
+    opposite: BFGS often reports a loss of precision *at* the optimum.
+
+    Both tests are made in the units ``preconditioned_bfgs`` searches in,
+    each component scaled by ``max(|x|, floor)`` and the objective by
+    ``obj_scale`` (the number of observations), so they mean the same
+    thing whatever units the data are in. The gradient must be below
+    ``gtol`` in every component; the Hessian must have a Cholesky
+    factor. A point where either cannot be evaluated finitely is not
+    verified.
+    """
+    if jac is None or hess is None:
+        return False
+    at: npt.NDArray = np.asarray(x, dtype=float)
+    if not np.all(np.isfinite(at)):
+        return False
+    scale = np.maximum(np.abs(at), np.asarray(floor, dtype=float))
+    with np.errstate(all="ignore"):
+        try:
+            g = scale * np.asarray(jac(at, *args), dtype=float) / obj_scale
+            if not (np.all(np.isfinite(g)) and np.max(np.abs(g)) < gtol):
+                return False
+            h = np.atleast_2d(np.asarray(hess(at, *args), dtype=float))
+            if not np.all(np.isfinite(h)):
+                # autograd's second derivative can be NaN where the
+                # first is finite (a Weibull CDF at an interval's lower
+                # end of 0): central differences of the gradient instead.
+                h = _hessian_from_gradient(jac, at, args, scale)
+        except (ValueError, ZeroDivisionError, FloatingPointError):
+            return False
+    h = np.outer(scale, scale) * h / obj_scale
+    if not np.all(np.isfinite(h)):
+        return False
+    try:
+        np.linalg.cholesky(0.5 * (h + h.T))
+    except np.linalg.LinAlgError:
+        return False
+    return True
+
+
+def verify_or_polish(
+    fun: Callable[[npt.NDArray], Any],
+    res: Any,
+    n_obs: float,
+    objective: "Callable[[npt.NDArray], Any] | None" = None,
+    numerical: bool = False,
+) -> tuple[Any, bool]:
+    """``res``, a minimum of ``fun`` found some other way, and whether it
+    is verifiably a minimum of ``objective`` (``fun`` by default; see
+    ``is_local_minimum``).
+
+    The regression fitters search with Nelder-Mead and then TNC, whose
+    absolute tolerances stop short of the optimum from a poor start while
+    reporting success (#428), or fail far from it without a word: an
+    additive hazards Gamma baseline stopped at alpha ~ 1e-282 on a "linear
+    search failed". An answer that is not verified is polished with BFGS
+    in the units maximum likelihood searches in (see
+    ``preconditioned_bfgs``), kept where that improves it, and checked
+    again; the caller warns if it still is not a minimum.
+
+    ``numerical=True`` is for an objective autograd cannot differentiate
+    (one written in plain numpy): its derivatives are then central
+    differences (:func:`numerical_derivatives`).
+    """
+    objective = fun if objective is None else objective
+    x0 = np.asarray(res.x, dtype=float)
+    if numerical:
+        jac, hess = numerical_derivatives(objective, x0)
+        polish_jac = numerical_derivatives(fun, x0)[0]
+    else:
+        jac, hess = jacobian(objective), hessian(objective)
+        polish_jac = jacobian(fun)
+    if is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs):
+        return res, True
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        # A penalised objective is constant where the model is invalid,
+        # and autograd says so for every gradient taken there
+        warnings.filterwarnings("ignore", "Output seems independent")
+        polish = preconditioned_bfgs(
+            fun, res.x, (), polish_jac, obj_scale=n_obs
+        )
+    if _usable(polish) and polish.fun <= res.fun:
+        res = polish
+    return res, is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs)
+
+
+def numerical_derivatives(
+    fun: Callable[[npt.NDArray], Any], x: npt.ArrayLike
+) -> tuple[Callable[..., Any], Callable[..., Any]]:
+    """``(jac, hess)`` of ``fun`` by central differences, for an objective
+    autograd cannot differentiate: steps of ``1e-5`` of each component of
+    ``x`` (at least ``1e-5``) for the Hessian, a hundredth of that for the
+    gradient, fixed from ``x`` so that both are the same function wherever
+    they are evaluated."""
+    from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+
+    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, dtype=float)), 1.0)
+
+    def jac(v: npt.NDArray, *args: Any) -> npt.NDArray:
+        return numerical_gradient(lambda u: float(fun(u)), v, 1e-2 * steps)
+
+    def hess(v: npt.NDArray, *args: Any) -> npt.NDArray:
+        return numerical_hessian(lambda u: float(fun(u)), v, steps)
+
+    return jac, hess
+
+
+def at_boundary_maximum(
+    fun: Callable[[npt.NDArray], Any],
+    x: npt.ArrayLike,
+    toward: npt.ArrayLike,
+    away: npt.ArrayLike,
+    step: float,
+    n_obs: float,
+) -> bool:
+    """Whether a parameter is on a boundary of its space at ``x`` and the
+    likelihood is at a maximum there in it -- the condition that replaces
+    a zero gradient for a parameter on a boundary.
+
+    A parameter searched in a transformed space whose boundary is at
+    infinity (a variance as its log, a probability as its logit) reaches
+    the boundary only in the limit: there the likelihood no longer depends
+    on it, its gradient and curvature are zero (or rounding), and the
+    Hessian is singular, so ``is_local_minimum`` cannot pass however well
+    the other parameters are fitted. It is on the boundary when ``fun``,
+    the negative log-likelihood, is the same to rounding at ``toward``
+    (``x`` with that parameter moved further towards the boundary); and it
+    is a maximum there when moving it off the boundary into the space, to
+    ``away``, ``step`` from the boundary in the parameter's natural units,
+    does not raise the likelihood: a slope per observation above
+    ``-OPTIMUM_GTOL``. The caller then checks the other parameters with
+    this one held out.
+    """
+    with np.errstate(all="ignore"):
+        f = float(fun(np.asarray(x, dtype=float)))
+        f_toward = float(fun(np.asarray(toward, dtype=float)))
+        f_away = float(fun(np.asarray(away, dtype=float)))
+    if not (np.isfinite(f) and np.isfinite(f_toward) and np.isfinite(f_away)):
+        return False
+    flat = abs(f_toward - f) <= 1e-12 * max(abs(f), 1.0)
+    return bool(flat and (f_away - f) / step / n_obs > -OPTIMUM_GTOL)
+
+
+def verified_maximum(
+    neg_ll: Callable[[npt.NDArray], Any],
+    mle: npt.ArrayLike,
+    bounds: Sequence[tuple[float | None, float | None]],
+    n_obs: float,
+) -> bool:
+    """Whether ``mle`` is a verified maximum of the likelihood whose
+    negative log is ``neg_ll``, a function of the natural parameters with
+    the given ``(lower, upper)`` ``bounds``, per observation (``n_obs``),
+    for a fit whose likelihood is not written for autograd.
+
+    A parameter on a bound of its space where the likelihood is highest
+    -- an ARA repair efficiency of 1, a Kijima ``q`` of 0, a copula at its
+    independence end -- is held out of the test (:func:`at_boundary_maximum`:
+    the likelihood the same a millionth of the way closer to the bound,
+    and not rising ``1e-6`` off it). The others must have a zero gradient
+    and a positive-definite Hessian (:func:`is_local_minimum`), by central
+    differences (:func:`numerical_derivatives`), with each searched as the
+    log of its distance from a one-sided bound, the logit between two, or
+    as it is.
+    """
+    x = np.asarray(mle, dtype=float)
+    if not np.all(np.isfinite(x)):
+        return False
+
+    def natural(v: Any) -> float:
+        return float(neg_ll(np.asarray(v, dtype=float)))
+
+    held = []
+    for j, (low, high) in enumerate(bounds):
+        for bound, inward in ((low, 1.0), (high, -1.0)):
+            if bound is None:
+                continue
+            toward, away = x.copy(), x.copy()
+            toward[j] = bound + (x[j] - bound) * 1e-6
+            away[j] = bound + inward * 1e-6
+            if at_boundary_maximum(natural, x, toward, away, 1e-6, n_obs):
+                held.append(j)
+                break
+    free = [j for j in range(x.size) if j not in held]
+    if not free:
+        return True
+    lows = [bounds[j][0] for j in free]
+    highs = [bounds[j][1] for j in free]
+
+    def to_natural(u: npt.NDArray) -> npt.NDArray:
+        out = np.array(u, dtype=float)
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                out[k] = low + (high - low) / (1.0 + np.exp(-u[k]))
+            elif low is not None:
+                out[k] = low + np.exp(u[k])
+            elif high is not None:
+                out[k] = high - np.exp(u[k])
+        return out
+
+    u0 = np.array(x[free], dtype=float)
+    with np.errstate(all="ignore"):
+        for k, (low, high) in enumerate(zip(lows, highs)):
+            if low is not None and high is not None:
+                f = (u0[k] - low) / (high - low)
+                u0[k] = np.log(f) - np.log1p(-f)
+            elif low is not None:
+                u0[k] = np.log(u0[k] - low)
+            elif high is not None:
+                u0[k] = np.log(high - u0[k])
+    if not np.all(np.isfinite(u0)):
+        return False
+
+    def search(u: npt.NDArray) -> float:
+        full = x.copy()
+        full[free] = to_natural(np.asarray(u, dtype=float))
+        return natural(full)
+
+    jac, hess = numerical_derivatives(search, u0)
+    with np.errstate(all="ignore"):
+        return is_local_minimum(search, jac, hess, u0, obj_scale=n_obs)
+
+
+def _hessian_from_gradient(
+    jac: Callable[..., Any],
+    x: npt.NDArray,
+    args: tuple[Any, ...],
+    scale: npt.NDArray,
+) -> npt.NDArray:
+    """The Hessian at ``x`` by central differences of ``jac``, each
+    component stepped by 1e-5 of its ``scale``."""
+    steps = 1e-5 * scale
+    columns = []
+    for j, step in enumerate(steps):
+        e = np.zeros_like(x)
+        e[j] = step
+        up = np.asarray(jac(x + e, *args), dtype=float)
+        down = np.asarray(jac(x - e, *args), dtype=float)
+        columns.append((up - down) / (2 * step))
+    return np.array(columns).T
 
 
 def search_floor(model: Any) -> npt.NDArray:
@@ -329,8 +598,8 @@ def add_to_funcs(
 
     A parameter with one bound is searched as the log of its distance
     from the bound where that distance is below ``unit``, and linearly
-    beyond it (``adj_relu``). ``unit`` is 1 except in an offset fit: see
-    ``bounds_convert``.
+    beyond it (``adj_relu``). ``unit`` is 1 unless the caller passes one:
+    see ``bounds_convert``.
     """
     if (low is None) and (upp is None):
         funcs.append(lambda x: x)
@@ -374,9 +643,9 @@ def bounds_convert(
     is at a fixed value, so a parameter measured in the data's units --
     an offset's distance below the first observation, a scale -- is
     searched as a log for data in thousandths and linearly for data in
-    thousands: a different search at every scale. An offset fit passes
-    each parameter's own starting distance from its bound instead (see
-    ``_offset_search_units`` in ``parametric_fitter``), which makes its
+    thousands: a different search at every scale. The parametric fits
+    pass each parameter's own starting distance from its bound instead
+    (see ``_search_units`` in ``optimised_fit``), which makes the
     search the same whatever units the data is in.
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []

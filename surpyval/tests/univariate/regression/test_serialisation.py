@@ -17,16 +17,11 @@ import json
 import numpy as np
 import pytest
 
-from surpyval import (
-    AFT,
-    AH,
-    PH,
-    PO,
-    AcceleratedLife,
-    Eyring,
-    Power,
-    Weibull,
-)
+import surpyval
+import surpyval as surv
+from surpyval import AFT, AH, PH, PO, AcceleratedLife, Weibull, WeibullPH
+from surpyval.life_models import Eyring, Power
+from surpyval.tests._helpers import weibull_ph_data
 from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
@@ -63,7 +58,7 @@ def test_predictions_round_trip(name):
         b = np.asarray(getattr(restored, fn)(xs, Zq), dtype=float)
         assert np.allclose(a, b, rtol=1e-10, atol=1e-12), fn
     assert np.allclose(model.params, restored.params)
-    assert model.parameter_names() == restored.parameter_names()
+    assert model.parameter_names == restored.parameter_names
     assert model.kind == restored.kind
     assert model.distribution.name == restored.distribution.name
 
@@ -85,8 +80,8 @@ def test_confidence_bounds_round_trip(name):
     se1 = model.standard_errors()
     se2 = restored.standard_errors()
     assert np.allclose(se1, se2, rtol=1e-6, atol=1e-8, equal_nan=True)
-    pc1 = model.param_cb(model.parameter_names()[-1])
-    pc2 = restored.param_cb(restored.parameter_names()[-1])
+    pc1 = model.param_cb(model.parameter_names[-1])
+    pc2 = restored.param_cb(restored.parameter_names[-1])
     assert np.allclose(pc1, pc2, rtol=1e-6, atol=1e-8)
 
 
@@ -246,3 +241,68 @@ def test_dataframe_fit_metadata_preserved():
         np.asarray(model.sf(xs, Zq), dtype=float),
         np.asarray(restored.sf(xs, Zq), dtype=float),
     )
+
+
+# ---------------------------------------------------------------------------
+# A second-generation round trip keeps the covariance, BIC and
+# AIC_c (#261).
+# ---------------------------------------------------------------------------
+
+
+def test_second_generation_serialisation_keeps_covariance():
+    np.random.seed(2)
+    x = Weibull.random(200, 10, 3)
+    Z = np.random.normal(size=(200, 1))
+    m = WeibullPH.fit(x, Z=Z)
+    gen1 = surv.from_dict(json.loads(json.dumps(m.to_dict())))
+    gen2 = surv.from_dict(json.loads(json.dumps(gen1.to_dict())))
+    cb = gen2.param_cb("beta_0")
+    assert np.all(np.isfinite(cb))
+
+
+def test_restored_parametric_model_bic_aicc_and_reserialisation():
+    np.random.seed(7)
+    x = Weibull.random(100, 10, 3)
+    m = Weibull.fit(x)
+    restored = surv.from_dict(
+        json.loads(json.dumps(m.to_dict(with_data=True)))
+    )
+    assert restored.bic() == pytest.approx(m.bic())
+    assert restored.aic_c() == pytest.approx(m.aic_c())
+    assert restored.support[0] == 0.0
+    # Re-serialising a restored model used to crash on list data.
+    again = restored.to_dict(with_data=True)
+    assert "data" in again
+
+
+# ---------------------------------------------------------------------------
+# A restored model says what it needs the data or the
+# covariance for.
+# ---------------------------------------------------------------------------
+
+
+def test_restored_parametric_model_explains_missing_data():
+    x, Z = weibull_ph_data()
+    fitted = WeibullPH.fit(x=x, Z=Z)
+    restored = surpyval.from_dict(fitted.to_dict())
+    assert np.isfinite(restored.aic())
+    # The dict stores the criteria's sample size, so bic and aic_c work.
+    assert restored.bic() == pytest.approx(fitted.bic())
+    assert restored.aic_c() == pytest.approx(fitted.aic_c())
+    with pytest.raises(ValueError, match="needs the data"):
+        restored.plot()
+    # A dict written before the sample size was stored needs the data.
+    old = fitted.to_dict()
+    del old["ic_n"]
+    for call in (surpyval.from_dict(old).bic, surpyval.from_dict(old).aic_c):
+        with pytest.raises(ValueError, match="needs the data"):
+            call()
+
+
+def test_restored_model_without_covariance_says_so():
+    x, Z = weibull_ph_data()
+    d = WeibullPH.fit(x=x, Z=Z).to_dict()
+    del d["covariance"]
+    restored = surpyval.from_dict(d)
+    with pytest.raises(ValueError, match="restored from a dict"):
+        restored.cb([3.0], [0.0])

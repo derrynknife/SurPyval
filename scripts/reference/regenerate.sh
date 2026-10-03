@@ -13,4 +13,5 @@ set -e
 cd "$(dirname "$0")/../.."
 python scripts/reference/make_fixtures.py
 Rscript scripts/reference/reference_r.R
+Rscript scripts/reference/reference_r_frailty.R
 "${1:-python}" scripts/reference/reference_python.py

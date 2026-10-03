@@ -9,23 +9,25 @@ group (a lot, a site, a repairable unit):
     h(t \\mid Z, u) = u \\, h_0(t) \\, e^{\\beta' Z},
 
 with the frailties drawn once per group from a Gamma distribution of mean 1 and
-variance :math:`\\theta` (``theta``). ``theta`` measures the unexplained
-between-group variability; ``theta = 0`` recovers an ordinary parametric PH
-model.
+variance :math:`\\theta` (``theta``), or, with ``family="lognormal"``, as
+``u = exp(w)`` with ``w`` normal of mean 0 and variance :math:`\\theta`.
+``theta`` measures the unexplained between-group variability; ``theta = 0``
+recovers an ordinary parametric PH model.
 
 Because the frailty enters multiplicatively on the *cumulative* hazard, a Gamma
 frailty integrates out of a group's likelihood in closed form, and the same
-conjugacy gives each group's posterior frailty in closed form -- so prediction
-comes in two flavours:
+conjugacy gives each group's posterior frailty in closed form (a log-normal
+frailty's are computed by quadrature) -- so prediction comes in two flavours:
 
 * **marginal** (population-averaged), integrating the frailty out --
-  ``S(t \\mid Z) = (1 + \\theta\\, e^{\\beta'Z} H_0(t))^{-1/\\theta}`` -- the
-  right curve for a new unit from an unknown group; and
+  ``S(t \\mid Z) = (1 + \\theta\\, e^{\\beta'Z} H_0(t))^{-1/\\theta}`` for the
+  gamma frailty -- the right curve for a new unit from an unknown group; and
 * **conditional**, on a supplied frailty value or on an *observed* group's
   posterior frailty ``S(t \\mid Z, u) = e^{-u e^{\\beta'Z} H_0(t)}``.
 """
 
-from typing import Any
+import warnings
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from scipy.special import ndtri as _z
@@ -40,12 +42,25 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.utils import is_missing_event
+from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    no_covariance_error,
+)
 
+from .._concordance import ConcordanceMixin
 from ..regression_data import (
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
 )
+from .families import frailty_cv2, kendall_tau, lognormal_log_integral
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def _standard_error(variance: Any) -> np.ndarray:
@@ -60,46 +75,12 @@ def _standard_error(variance: Any) -> np.ndarray:
     return np.sqrt(np.where(variance >= 0, variance, np.nan))
 
 
-class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
-    """A fitted shared-frailty proportional-hazards model.
-
-    See :class:`FrailtyFitter` for how one is produced. Prediction methods
-    (:meth:`sf`, :meth:`ff`, :meth:`hf`, :meth:`Hf`, :meth:`df`) return the
-    *marginal* (population) curve by default; pass ``group=`` to condition on
-    an observed group's posterior frailty, or ``frailty=`` to condition on a
-    supplied frailty value.
-
-    :meth:`neg_ll`, :meth:`aic`, :meth:`bic` and :meth:`aic_c` use the
-    marginal likelihood and count every estimated parameter (baseline,
-    coefficients and ``theta``), on the same data conventions as the
-    parametric regression models, so a frailty fit can be compared directly
-    with the proportional-hazards fit (``WeibullPH`` for ``WeibullFrailty``)
-    of the same data -- the model it reduces to at ``theta = 0``.
-
-    Examples
-    --------
-    Thirty groups of six units, each group sharing a gamma frailty:
-
-    >>> import numpy as np
-    >>> from surpyval import WeibullFrailty
-    >>> rng = np.random.default_rng(4)
-    >>> groups = np.repeat(np.arange(30), 6)
-    >>> u = rng.gamma(2.0, 0.5, 30)[groups]
-    >>> Z = rng.binomial(1, 0.5, (180, 1))
-    >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
-    >>> x = 10 * H**0.5  # Weibull baseline, alpha 10 and beta 2
-    >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
-    >>> round(model.theta, 3)
-    0.432
-
-    The population curve, and the curve for group 0 given its posterior
-    frailty:
-
-    >>> model.sf([5, 10], [1]).round(4)
-    array([0.721 , 0.3411])
-    >>> model.sf([5, 10], [1], group=0).round(4)
-    array([0.7226, 0.2821])
-    """
+class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
+    """What the fitted shared-frailty models have in common: the frailty
+    (its family, variance ``theta`` and each group's posterior), the
+    coefficients, the marginal and conditional predictions, and the
+    parameter table. A subclass gives the baseline (:meth:`_H0`,
+    :meth:`_h0`, :meth:`_baseline_names`)."""
 
     def __init__(self) -> None:
         self.kind = "Frailty"
@@ -115,7 +96,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         self.group_labels: list = []
         self.frailties: dict = {}
         self.covariance: "np.ndarray | None" = None
-        self.param_names: "list[str]" = []
+        self.parameter_names: "list[str]" = []
         self.n_obs: int = 0
         self.n_events: int = 0
         self.n_groups: int = 0
@@ -128,17 +109,20 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         # The number of estimated parameters -- the baseline, the
         # coefficients and theta -- the ``k`` of the information criteria.
         self.k: int = 0
-
-    # -- information criteria (InformationCriteriaMixin) -------------------
-
-    def _ic_sample_size_from_data(self) -> float:
-        # The shared rule (ic_sample_size) on the fitted data, which the
-        # stored weighted counts summarise: a frailty fit takes only
-        # events (c=0) and right-censored rows (c=1).
-        n_censored = self.n_obs_weighted - self.n_events_weighted
-        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
+        # for a model restored from a dict saved without it.
+        self.maximum: str = "unknown"
 
     # -- covariate / frailty resolution ------------------------------------
+
+    def _concordance_risk(self, x: np.ndarray, Z: Any) -> np.ndarray:
+        # The conditional log hazard ratio beta'Z (a unit of mean frailty).
+        if self.beta.size == 0:
+            return np.zeros(x.size)
+        Zp = prepare_Z(Z, self.feature_names, self._model_spec)
+        Zp = np.asarray(Zp, dtype=float).reshape(x.size, -1)
+        return Zp @ np.where(np.isnan(self.beta), 0.0, self.beta)
 
     def _eta(self, Z: Any) -> np.ndarray:
         """The hazard multiplier ``exp(beta'Z)`` for a covariate setting."""
@@ -150,7 +134,8 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             )
         Zp = prepare_Z(Z, self.feature_names, self._model_spec)
         Zp = np.atleast_2d(np.asarray(Zp, dtype=float))
-        eta = np.exp(Zp @ self.beta)
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        eta = np.exp(Zp @ np.where(np.isnan(self.beta), 0.0, self.beta))
         return eta[0] if eta.shape[0] == 1 else eta
 
     def _resolve_frailty(self, group: Any, frailty: Any) -> "float | None":
@@ -159,6 +144,10 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             raise ValueError("Pass at most one of 'group' or 'frailty'.")
         if frailty is not None:
             return float(frailty)
+        if group is not None and is_missing_event(group):
+            # A missing group label (NaN, pandas NA) predicts nan, as a
+            # missing stratum does in a stratified Cox model.
+            return float("nan")
         if group is not None:
             key = group
             if key not in self.frailties:
@@ -173,27 +162,29 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
 
     # -- prediction --------------------------------------------------------
 
+    def _cumulative(self, s: Any, u: "float | None") -> np.ndarray:
+        """The cumulative hazard of a unit whose ``eta H0`` is ``s``:
+        ``u s`` given its frailty ``u``, or, for ``u`` ``None``, the
+        marginal ``-log E[exp(-u s)]`` (the frailty's Laplace transform)."""
+        if u is not None:
+            return u * s
+        if self.family == "lognormal":
+            return -lognormal_log_integral(0.0, s, self.theta)
+        if self.theta < 1e-12:
+            # theta -> 0 is the no-frailty PH limit
+            # log(1 + theta s)/theta -> s; dividing by a zero theta
+            # (e.g. frailty-free data, or a restored model) gave NaN
+            # (#262).
+            return s
+        return np.log1p(self.theta * s) / self.theta
+
     def Hf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
     ) -> np.ndarray:
         """Cumulative hazard (marginal, or conditional on a frailty)."""
         x = np.asarray(x, dtype=float)
-        eta = self._eta(Z)
-        H0 = self.dist.Hf(x, *self.dist_params)
-        s = eta * H0
-        u = self._resolve_frailty(group, frailty)
-        if u is None:
-            if self.theta < 1e-12:
-                # theta -> 0 is the no-frailty PH limit
-                # log(1 + theta s)/theta -> s; dividing by a zero theta
-                # (e.g. frailty-free data, or a restored model) gave NaN
-                # (#262).
-                out = s
-            else:
-                out = np.log1p(self.theta * s) / self.theta
-        else:
-            out = u * s
-        return out
+        s = self._eta(Z) * self._H0(x)
+        return self._cumulative(s, self._resolve_frailty(group, frailty))
 
     def sf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
@@ -205,7 +196,8 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
     ) -> np.ndarray:
         """CDF / failure function."""
-        return 1.0 - self.sf(x, Z, group=group, frailty=frailty)
+        # 1 - exp(-H) without the cancellation of 1 - sf for a small H
+        return -np.expm1(-self.Hf(x, Z, group=group, frailty=frailty))
 
     def hf(
         self, x: Any, Z: Any = None, group: Any = None, frailty: Any = None
@@ -213,9 +205,17 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         """Hazard function (marginal by default)."""
         x = np.asarray(x, dtype=float)
         eta = self._eta(Z)
-        H0 = self.dist.Hf(x, *self.dist_params)
-        h0 = self.dist.hf(x, *self.dist_params)
+        H0 = self._H0(x)
+        h0 = self._h0(x)
         u = self._resolve_frailty(group, frailty)
+        if u is None and self.family == "lognormal":
+            # eta h0 times the mean frailty of the survivors to t
+            s = eta * H0
+            mean_u = np.exp(
+                lognormal_log_integral(1.0, s, self.theta)
+                - lognormal_log_integral(0.0, s, self.theta)
+            )
+            return eta * h0 * mean_u
         if u is None:
             return eta * h0 / (1.0 + self.theta * eta * H0)
         return u * eta * h0
@@ -232,15 +232,58 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
 
     @property
     def frailty_variance(self) -> float:
-        """The estimated frailty variance :math:`\\hat\\theta`."""
-        return float(self.theta)
+        """
+        The variance of the frailty scaled to mean 1, :math:`\\mathrm{Var}(u)
+        / E(u)^2`, which compares the families: :math:`\\hat\\theta` for the
+        gamma frailty (mean 1, variance ``theta``) and
+        :math:`e^{\\hat\\theta} - 1` for the log-normal (``theta`` the
+        variance of :math:`\\log u`). A baseline whose scale multiplies the
+        hazard (Weibull, Exponential) absorbs the frailty's mean, so this
+        is the spread the data identify.
+
+        Examples
+        --------
+        >>> from surpyval import FrailtyModel
+        >>> model = FrailtyModel()
+        >>> model.family, model.theta = "lognormal", 0.5
+        >>> round(model.frailty_variance, 4)
+        0.6487
+        """
+        return frailty_cv2(self.family, float(self.theta))
+
+    @property
+    def kendall_tau(self) -> float:
+        """
+        Kendall's tau between the event times of two units of one group
+        (no covariates, no censoring): the within-group dependence the
+        frailty induces, on the same scale for every family (Hougaard 2000,
+        section 4.2). ``theta / (theta + 2)`` for the gamma frailty; by
+        quadrature for the log-normal.
+
+        Examples
+        --------
+        >>> from surpyval import FrailtyModel
+        >>> model = FrailtyModel()
+        >>> model.theta = 0.5
+        >>> model.kendall_tau
+        0.2
+        """
+        return kendall_tau(self.family, float(self.theta))
+
+    @property
+    def aliased(self) -> np.ndarray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column where the baseline's scale is
+        the intercept, or a linear combination of the others. Their
+        ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
+        return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
 
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
         if self.covariance is None:
-            raise ValueError("No covariance was stored for this model.")
+            raise no_covariance_error()
         se = _standard_error(np.diag(self.covariance))
-        return {name: float(s) for name, s in zip(self.param_names, se)}
+        return {name: float(s) for name, s in zip(self.parameter_names, se)}
 
     def param_cb(
         self,
@@ -255,30 +298,29 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         unbounded coefficients) so the interval stays valid.
         """
         if self.covariance is None:
-            raise ValueError("No covariance was stored for this model.")
-        if name not in self.param_names:
+            raise no_covariance_error()
+        if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
-                    name, self.param_names
+                    name, self.parameter_names
                 )
             )
-        idx = self.param_names.index(name)
+        idx = self.parameter_names.index(name)
         est = self._param_vector()[idx]
         se = float(_standard_error(self.covariance[idx, idx]))
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
+        check_option("bound", bound, BOUNDS)
         if bound == "two-sided":
             q = _z(1 - alpha_ci / 2)
             signs = np.array([-1.0, 1.0])
         elif bound == "lower":
             q = _z(1 - alpha_ci)
             signs = np.array([-1.0])
-        elif bound == "upper":
+        else:
             q = _z(1 - alpha_ci)
             signs = np.array([1.0])
-        else:
-            raise ValueError("bound must be 'two-sided', 'lower' or 'upper'")
         if positive:
             if est <= 0:
                 # A boundary estimate (theta -> 0: no detectable frailty)
@@ -294,31 +336,265 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
                 return est * np.exp(signs * q * se / est)
         return est + signs * q * se
 
-    def _param_vector(self) -> np.ndarray:
-        return np.concatenate([self.dist_params, self.beta, [self.theta]])
+    @property
+    def params(self) -> np.ndarray:
+        """Every estimated parameter, in the order of ``parameter_names``: the
+        baseline's parameters, the coefficients, then ``theta``."""
+        return self._param_vector()
 
-    def summary(self) -> str:
-        """A short text summary of the fit."""
-        lines = [
-            "Shared-Frailty Regression SurPyval Model",
-            "========================================",
-            f"Distribution        : {self.dist.name}",
-            f"Frailty             : {self.family}",
-            f"Groups              : {self.n_groups}"
-            f"  (observations {self.n_obs}, events {self.n_events})",
-            "Baseline            :",
-        ]
-        for name, val in zip(self.dist.param_names, self.dist_params):
-            lines.append(f"    {name:>8} : {val:.6g}")
-        if self.beta.size:
-            lines.append("Coefficients        :")
-            for i, b in enumerate(self.beta):
-                lines.append(f"    beta_{i:<4}: {b:.6g}")
-        lines.append(f"Frailty variance    : theta = {self.theta:.6g}")
-        return "\n".join(lines)
+    def _param_vector(self) -> np.ndarray:
+        return np.concatenate(
+            [self.dist_params, self.beta, [self.theta]]
+        ).astype(float)
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The parameter table, in the layout of the parametric regression
+        models' :meth:`summary` (#484): the baseline distribution's
+        parameters, the regression coefficients and the frailty variance
+        ``theta``, each with its standard error and a two-sided
+        ``1 - alpha_ci`` Wald interval; for the coefficients also the
+        hazard ratio ``exp(coef)`` (conditional on the frailty), the Wald
+        statistic ``z`` and its two-sided p-value. The coefficients are
+        named by ``feature_names`` for a model fitted with ``fit_from_df``.
+
+        The baseline parameters' and ``theta``'s intervals are those of
+        :meth:`param_cb`, which stay in the parameter's support. Without a
+        stored covariance there are no standard errors or intervals
+        (``nan``), nor for an aliased coefficient (#476), whose value is
+        ``nan`` too.
+
+        .. versionchanged:: 0.22
+           Returns a ``DataFrame``; it returned the text ``repr`` prints.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Indexed by ``(part, name)``, ``part`` one of ``"baseline"``,
+            ``"coefficients"`` or ``"frailty"``, with the columns of
+            ``CoxPH``'s :meth:`summary`.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(0)
+        >>> g = np.repeat(np.arange(30), 5)
+        >>> z = rng.normal(size=g.size)
+        >>> u = rng.gamma(2.0, 0.5, 30)[g]
+        >>> x = 10 * rng.exponential(size=g.size) / (u * np.exp(0.5 * z))
+        >>> model = WeibullFrailty.fit(x=x, Z=z[:, None], groups=g)
+        >>> list(model.summary().index)  # doctest: +NORMALIZE_WHITESPACE
+        [('baseline', 'alpha'), ('baseline', 'beta'),
+         ('coefficients', 'beta_0'), ('frailty', 'theta')]
+        """
+        import pandas as pd
+
+        from .._summary import coefficient_names, coefficient_table
+
+        params = self._param_vector()
+        k = self.k_dist
+        n_beta = self.beta.size
+        se = np.full(params.shape, np.nan)
+        if self.covariance is not None:
+            with np.errstate(all="ignore"):
+                se = np.asarray(
+                    _standard_error(np.diag(self.covariance)), dtype=float
+                )
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        columns = list(coefficient_table([], [], [], alpha_ci).columns)
+
+        def others(indices: "list[int]") -> pd.DataFrame:
+            # A parameter with a support: its estimate, standard error and
+            # the support-respecting interval of ``param_cb``.
+            rows = []
+            for i in indices:
+                bounds = np.full(2, np.nan)
+                if np.isfinite(se[i]):
+                    try:
+                        with (
+                            warnings.catch_warnings(),
+                            np.errstate(all="ignore"),
+                        ):
+                            warnings.simplefilter("ignore")
+                            bounds = np.asarray(
+                                self.param_cb(
+                                    self.parameter_names[i], alpha_ci
+                                ),
+                                dtype=float,
+                            ).ravel()
+                    except (ValueError, ArithmeticError):
+                        pass
+                rows.append(
+                    {
+                        "coef": params[i],
+                        "se(coef)": se[i],
+                        "coef lower " + level: bounds[0],
+                        "coef upper " + level: bounds[-1],
+                    }
+                )
+            return pd.DataFrame(rows, columns=columns)
+
+        names = coefficient_names(self, n_beta)
+        coef = slice(k, k + n_beta)
+        coefs = coefficient_table(names, params[coef], se[coef], alpha_ci)
+        parts = [coefs.reset_index(drop=True), others([k + n_beta])]
+        if k:
+            parts.insert(0, others(list(range(k))))
+        table = pd.concat(parts)
+        index = (
+            [("baseline", name) for name in self._baseline_names()]
+            + [("coefficients", name) for name in names]
+            + [("frailty", "theta")]
+        )
+        table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
+        return table
+
+    def _family_line(self) -> str:
+        if self.family == "lognormal":
+            return (
+                "lognormal (log u ~ N(0, theta)); Var(u)/E(u)^2 = "
+                "{:.4g}, Kendall's tau = {:.4g}".format(
+                    self.frailty_variance, self.kendall_tau
+                )
+            )
+        return "gamma (mean 1, variance theta); Kendall's tau = {:.4g}".format(
+            self.kendall_tau
+        )
+
+    # -- the baseline, given by a subclass --------------------------------
+
+    def _H0(self, x: np.ndarray) -> np.ndarray:
+        """The baseline cumulative hazard at ``x``."""
+        raise NotImplementedError
+
+    def _h0(self, x: np.ndarray) -> np.ndarray:
+        """The baseline hazard at ``x``."""
+        raise NotImplementedError
+
+    def _baseline_names(self) -> "list[str]":
+        """The names of the baseline's parameters, in ``params``."""
+        raise NotImplementedError
+
+
+class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
+    """A fitted shared-frailty proportional-hazards model.
+
+    See :class:`FrailtyFitter` for how one is produced. Prediction methods
+    (:meth:`sf`, :meth:`ff`, :meth:`hf`, :meth:`Hf`, :meth:`df`) return the
+    *marginal* (population) curve by default; pass ``group=`` to condition on
+    an observed group's posterior frailty, or ``frailty=`` to condition on a
+    supplied frailty value.
+
+    :meth:`neg_ll`, :meth:`aic`, :meth:`bic` and :meth:`aic_c` use the
+    marginal likelihood and count every estimated parameter (baseline,
+    coefficients and ``theta``), on the same data conventions as the
+    parametric regression models, so a frailty fit can be compared directly
+    with the proportional-hazards fit (``WeibullPH`` for ``WeibullFrailty``)
+    of the same data -- the model it reduces to at ``theta = 0``.
+
+    ``params`` is every estimated parameter in one vector, in the order of
+    ``parameter_names``: the baseline distribution's parameters, then the
+    covariate coefficients ``beta_0``, ``beta_1``, ..., then the frailty
+    variance ``theta`` -- the order of :meth:`standard_errors` and of the
+    stored ``covariance``. ``dist_params``, ``beta`` and ``theta`` hold the
+    same values by part.
+
+    Examples
+    --------
+    Thirty groups of six units, each group sharing a gamma frailty:
+
+    >>> import numpy as np
+    >>> from surpyval import WeibullFrailty
+    >>> rng = np.random.default_rng(4)
+    >>> groups = np.repeat(np.arange(30), 6)
+    >>> u = rng.gamma(2.0, 0.5, 30)[groups]
+    >>> Z = rng.binomial(1, 0.5, (180, 1))
+    >>> H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+    >>> x = 10 * H**0.5  # Weibull baseline, alpha 10 and beta 2
+    >>> model = WeibullFrailty.fit(x, Z=Z, groups=groups)
+    >>> round(model.theta, 3)
+    0.432
+    >>> model.parameter_names
+    ['alpha', 'beta', 'beta_0', 'theta']
+    >>> model.params.round(3)
+    array([10.442,  1.962,  0.399,  0.432])
+
+    The population curve, and the curve for group 0 given its posterior
+    frailty:
+
+    >>> model.sf([5, 10], [1]).round(4)
+    array([0.721 , 0.3411])
+    >>> model.sf([5, 10], [1], group=0).round(4)
+    array([0.7226, 0.2821])
+    """
+
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
+    # sets) it for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
+
+    # -- information criteria (InformationCriteriaMixin) -------------------
+
+    def _ic_sample_size_from_data(self) -> float:
+        # The shared rule (ic_sample_size) on the fitted data, which the
+        # stored weighted counts summarise: a frailty fit takes only
+        # events (c=0) and right-censored rows (c=1).
+        n_censored = self.n_obs_weighted - self.n_events_weighted
+        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
+
+    # -- the parametric baseline -----------------------------------------
+
+    def _H0(self, x: np.ndarray) -> np.ndarray:
+        return self.dist.Hf(x, *self.dist_params)
+
+    def _h0(self, x: np.ndarray) -> np.ndarray:
+        return self.dist.hf(x, *self.dist_params)
+
+    def _baseline_names(self) -> "list[str]":
+        return list(self.dist.parameter_names)
 
     def __repr__(self) -> str:
-        return self.summary()
+        from .._summary import coefficient_repr, format_table
+
+        out = (
+            "Shared-Frailty Regression SurPyval Model"
+            "\n========================================"
+            f"\nDistribution        : {self.dist.name}"
+            f"\nFrailty             : {self._family_line()}"
+            f"\nGroups              : {self.n_groups}"
+            f"  (observations {self.n_obs}, events {self.n_events})"
+        )
+        if self.dist is None or not self.parameter_names:
+            return out
+        table = self.summary()
+        estimates = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
+
+        def block(part: str) -> str:
+            rows = table.loc[part].rename(columns=estimates)
+            rows.index.name = None
+            return format_table(rows, list(estimates.values()))
+
+        out += (
+            "\nBaseline            : {} parameters; Wald 95% "
+            "intervals\n".format(self.dist.name)
+        ) + block("baseline")
+        if self.beta.size:
+            out += (
+                "\nCoefficients        : exp(coef) is the hazard ratio "
+                "given the frailty; Wald 95% intervals\n"
+            ) + coefficient_repr(table.loc["coefficients"])
+        out += "\nFrailty variance    : Wald 95% interval\n" + block("frailty")
+        return out
 
     # -- serialisation -----------------------------------------------------
 
@@ -333,7 +609,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             "beta": np.asarray(self.beta, float).tolist(),
             "theta": float(self.theta),
             "k_dist": int(self.k_dist),
-            "param_names": list(self.param_names),
+            "param_names": list(self.parameter_names),
             "group_labels": [str(g) for g in self.group_labels],
             "frailties": {str(k): float(v) for k, v in self.frailties.items()},
             "n_obs": int(self.n_obs),
@@ -342,6 +618,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
             "n_events_weighted": float(self.n_events_weighted),
             "n_obs_weighted": float(self.n_obs_weighted),
             "_neg_ll": to_native(self._neg_ll),
+            **maximum_entry(self.maximum),
         }
         if self.covariance is not None:
             out["covariance"] = np.asarray(self.covariance, float).tolist()
@@ -371,8 +648,8 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         out.beta = np.array(model_dict["beta"], dtype=float)
         out.theta = float(model_dict["theta"])
         out.k_dist = int(model_dict["k_dist"])
-        out.param_names = list(model_dict["param_names"])
-        out.k = len(out.param_names)
+        out.parameter_names = list(model_dict["param_names"])
+        out.k = len(out.parameter_names)
         out.group_labels = list(model_dict.get("group_labels", []))
         out.frailties = {
             k: float(v) for k, v in model_dict.get("frailties", {}).items()
@@ -386,6 +663,7 @@ class FrailtyModel(InformationCriteriaMixin, SerialisableMixin):
         )
         out.n_obs_weighted = float(model_dict.get("n_obs_weighted", out.n_obs))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)

@@ -27,17 +27,48 @@ which must accumulate an "accelerated age" across intervals; that family has
 its own likelihood (``aft_tvc_fit``).
 """
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.deprecation import renamed_arguments
+from ._aliasing import covariate_columns
+from .regression_data import design_matrix_from_df
 
 if TYPE_CHECKING:
     import pandas as pd
 
     from .parametric_regression_model import ParametricRegressionModel
+
+
+def fit_tvc_df(
+    fit: Any,
+    df: "pd.DataFrame",
+    columns: dict[str, str],
+    Z_cols: "str | list[str] | None",
+    formula: "str | None",
+    n_col: "str | None",
+    **kwargs: Any,
+) -> Any:
+    """The body of every time-varying ``*_from_df`` fit (PH, AH, PO, AFT
+    and Cox): call the array fit ``fit`` with the columns of ``df`` that
+    ``columns`` names (``{argument: column}``), the covariates ``Z`` from
+    ``Z_cols`` or ``formula`` (:func:`design_matrix_from_df`, every row
+    kept: a TVC fit refuses a missing covariate rather than drop part of a
+    subject's path), the counts ``n`` from ``n_col``, and ``kwargs``; the
+    model records ``feature_names``, the ``formula`` (as given) and its
+    encoding, so it predicts from a DataFrame with the same design."""
+    Z, names, spec = design_matrix_from_df(df, Z_cols, formula)
+    arrays = {arg: df[col].to_numpy() for arg, col in columns.items()}
+    n = None if n_col is None else df[n_col].to_numpy()
+    with covariate_columns(names, Z, spec):
+        model = fit(**arrays, Z=Z, n=n, **kwargs)
+    model.feature_names = names
+    model.formula = formula
+    model._model_spec = spec
+    return model
 
 
 class TVCFitMixin:
@@ -69,8 +100,8 @@ class TVCFitMixin:
         not truncated), then fitted with the ordinary parametric MLE, so the
         fit is identical to the equivalent non-time-varying data and its
         log-likelihood is that of ``sf_tvc`` / ``hf`` along each subject's
-        covariate path. Extra keyword arguments (``init``, ``fixed``) are
-        passed through to ``fit``.
+        covariate path. Extra keyword arguments (``init``, ``fixed``,
+        ``center``) are passed through to ``fit``.
 
         A subject's rows must not overlap, it may have at most one event,
         and that event must be on its last interval; gaps between its
@@ -93,7 +124,7 @@ class TVCFitMixin:
         n : array_like, optional
             Count weight of each row. Defaults to 1.
         **kwargs
-            Passed to ``fit`` (``init``, ``fixed``).
+            Passed to ``fit`` (``init``, ``fixed``, ``center``).
 
         Returns
         -------
@@ -198,7 +229,7 @@ class TVCFitMixin:
         n : array_like, optional
             Count weight of each subject, read from its last row.
         **kwargs
-            Passed to ``fit`` (``init``, ``fixed``).
+            Passed to ``fit`` (``init``, ``fixed``, ``center``).
 
         Returns
         -------
@@ -210,7 +241,6 @@ class TVCFitMixin:
         i_ss, xl, xr, c_ss, Z_ss, n_ss = handle_tvc_timeline(i, x, Z, c, n)
         return self.fit_tvc(i_ss, xl, xr, c_ss, Z_ss, n_ss, **kwargs)
 
-    @renamed_arguments(id_col="i_col")
     def fit_tvc_from_df(
         self,
         df: "pd.DataFrame",
@@ -218,60 +248,80 @@ class TVCFitMixin:
         xl_col: str,
         xr_col: str,
         c_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None = None,
         n_col: str | None = None,
+        formula: str | None = None,
         **kwargs: Any,
     ) -> "ParametricRegressionModel":
         """Fit start-stop time-varying-covariate data from a DataFrame.
 
         ``i_col``, ``xl_col``, ``xr_col``, ``c_col`` and ``n_col`` name the
         columns passed to :meth:`fit_tvc` as ``i``, ``xl``, ``xr``, ``c`` and
-        ``n``; ``Z_cols`` is a column name or a list of them, recorded on the
-        model as ``feature_names`` so it predicts from a DataFrame. Other
-        keyword arguments go to ``fit`` (``init``, ``fixed``). Returns the
-        fitted ``ParametricRegressionModel``.
+        ``n``. The covariates are ``Z_cols``, a column name or a list of
+        them, or instead ``formula``, a ``formulaic`` formula as in
+        ``fit_from_df``, which codes categorical (e.g. ``"yes"`` / ``"no"``)
+        columns; give exactly one. The model records ``feature_names``
+        (and the ``formula`` and its encoding), so it predicts from a
+        DataFrame with the same design. Other keyword arguments go to
+        ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
+        ``ParametricRegressionModel``.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import WeibullPH
+        >>> df = pd.DataFrame({
+        ...     "id": [0, 0, 1, 2, 2, 3, 4, 4, 5, 6],
+        ...     "start": [0, 2, 0, 0, 1, 0, 0, 3, 0, 0],
+        ...     "stop": [2, 5, 3, 1, 4, 6, 3, 7, 2, 8],
+        ...     "c": [1, 0, 0, 1, 0, 1, 1, 0, 0, 1],
+        ...     "dose": ["low", "high", "low", "low", "high", "low", "low",
+        ...              "high", "high", "low"],
+        ... })
+        >>> model = WeibullPH.fit_tvc_from_df(
+        ...     df, "id", "start", "stop", "c", formula="dose"
+        ... )
+        >>> model.feature_names
+        ['dose[T.low]']
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc(
-            df[i_col].to_numpy(),
-            df[xl_col].to_numpy(),
-            df[xr_col].to_numpy(),
-            df[c_col].to_numpy(),
-            df[cols].to_numpy(),
-            None if n_col is None else df[n_col].to_numpy(),
+        return fit_tvc_df(
+            self.fit_tvc,
+            df,
+            {"i": i_col, "xl": xl_col, "xr": xr_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
             **kwargs,
         )
-        model.feature_names = cols
-        return model
 
-    @renamed_arguments(id_col="i_col", time_col="x_col")
     def fit_tvc_timeline_from_df(
         self,
         df: "pd.DataFrame",
         i_col: str,
         x_col: str,
-        Z_cols: str | list[str],
+        Z_cols: str | list[str] | None,
         c_col: str,
         n_col: str | None = None,
+        formula: str | None = None,
         **kwargs: Any,
     ) -> "ParametricRegressionModel":
         """Fit a covariate timeline from a DataFrame.
 
         ``i_col``, ``x_col``, ``c_col`` and ``n_col`` name the columns
-        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``;
-        ``Z_cols`` is a column name or a list of them, recorded on the model
-        as ``feature_names``. Other keyword arguments go to ``fit``
-        (``init``, ``fixed``). Returns the fitted
+        passed to :meth:`fit_tvc_timeline` as ``i``, ``x``, ``c`` and ``n``.
+        The covariates are ``Z_cols``, a column name or a list of them, or
+        instead (pass ``Z_cols=None``) ``formula``, as for
+        :meth:`fit_tvc_from_df`; the model records ``feature_names`` (and
+        the ``formula`` and its encoding). Other keyword arguments go to
+        ``fit`` (``init``, ``fixed``, ``center``). Returns the fitted
         ``ParametricRegressionModel``.
         """
-        cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
-        model = self.fit_tvc_timeline(
-            df[i_col].to_numpy(),
-            df[x_col].to_numpy(),
-            df[cols].to_numpy(),
-            df[c_col].to_numpy(),
-            None if n_col is None else df[n_col].to_numpy(),
+        return fit_tvc_df(
+            self.fit_tvc_timeline,
+            df,
+            {"i": i_col, "x": x_col, "c": c_col},
+            Z_cols,
+            formula,
+            n_col,
             **kwargs,
         )
-        model.feature_names = cols
-        return model

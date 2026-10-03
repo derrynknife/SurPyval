@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
 import surpyval
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -21,7 +23,7 @@ class ExactEventTime_(ParametricFitter):
             k=1,
             bounds=((None, None),),
             support=(-np.inf, np.inf),
-            param_names=["T"],
+            parameter_names=["T"],
             param_map={"T": 0},
             plot_x_scale="linear",
         )
@@ -243,6 +245,8 @@ class ExactEventTime_(ParametricFitter):
         T = (max_r + min_l) / 2.0
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The likelihood is at its maximum across the whole bracket
+        model.maximum = "verified"
         model.params = np.array([T])
         self._set_support(model, False)
         return model

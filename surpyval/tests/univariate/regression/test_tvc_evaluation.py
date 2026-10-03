@@ -12,13 +12,20 @@ The evaluation is exact for these families because the cumulative hazard is
 additive over disjoint segments, so along a step path it is the sum of the
 per-segment increments -- and therefore collapses to the ordinary ``sf`` when
 the covariate is constant. Proportional odds joined in #236; its dedicated
-checks are in ``test_po_tvc_fixes5.py``.
+checks are in ``test_tvc_proportional_odds.py``.
 """
 
 import numpy as np
 import pytest
 
-from surpyval import Weibull, WeibullAFT, WeibullAH, WeibullPH, WeibullPO
+from surpyval import (
+    Normal,
+    Weibull,
+    WeibullAFT,
+    WeibullAH,
+    WeibullPH,
+    WeibullPO,
+)
 from surpyval.univariate.regression import (
     CoxPH,
     StepSchedule,
@@ -26,6 +33,7 @@ from surpyval.univariate.regression import (
 )
 from surpyval.univariate.regression.accelerated_life import (
     AcceleratedLife,
+    Linear,
     Power,
 )
 
@@ -220,15 +228,19 @@ def test_sf_tvc_survival_decreasing_and_bounded():
     assert np.all(np.diff(s) <= 1e-12)  # monotone non-increasing
 
 
-def test_accelerated_life_rejects_tvc_evaluation():
-    # Proportional odds is evaluable along a step path (#236); accelerated
-    # life, whose covariate substitutes into a distribution parameter, is not.
+def test_accelerated_life_location_rejects_tvc_evaluation():
+    # Accelerated life is evaluated along a step path by cumulative
+    # exposure where its life parameter scales time (#172 phase 2, which
+    # lifted the refusal for Weibull here); a location life parameter
+    # (Normal's mu) has no accumulated age, and is refused by name.
     rng = np.random.default_rng(0)
-    Z = np.abs(rng.normal(0, 1, (200, 1))) + 1
-    x = rng.weibull(1.6, 200) * 10 / Z[:, 0] + 0.5
+    Z = np.repeat([1.0, 2.0, 3.0], 60).reshape(-1, 1)
+    x = rng.weibull(1.6, 180) * 10 / Z[:, 0] + 0.5
     m = AcceleratedLife(Weibull, Power).fit(x=x, Z=Z)
-    with pytest.raises(NotImplementedError, match="Accelerated Life"):
-        m.sf_tvc([2.0], StepSchedule.constant([0.5]))
+    assert np.isfinite(m.sf_tvc([2.0], StepSchedule.constant([1.5])))
+    m = AcceleratedLife(Normal, Linear).fit(x=x + 5.0, Z=Z)
+    with pytest.raises(NotImplementedError, match="location"):
+        m.sf_tvc([2.0], StepSchedule.constant([1.5]))
 
 
 def test_schedule_covariate_count_checked():

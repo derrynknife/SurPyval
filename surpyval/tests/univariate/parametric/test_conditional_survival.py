@@ -16,6 +16,7 @@ doctest run verified on every supported interpreter.
 import numpy as np
 import pytest
 
+import surpyval as surv
 from surpyval import (
     Beta,
     Exponential,
@@ -28,6 +29,7 @@ from surpyval import (
     Uniform,
     Weibull,
 )
+from surpyval.tests._helpers import no_warnings
 
 X = np.array([1, 2, 3, 4, 5])
 
@@ -186,3 +188,32 @@ def test_discrete_distributions_inherit_a_working_cs():
         assert got.shape == (3,)
         assert np.all(np.isfinite(got))
         assert np.all((got >= 0) & (got <= 1 + 1e-12))
+
+
+# ---------------------------------------------------------------------------
+# Conditional survival follows the model's own ``sf``.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_cs_counts_the_limited_failure_proportion():
+    model = W.from_params([10, 2], p=0.7)
+    assert model.cs(5, 10) == pytest.approx(model.sf(15) / model.sf(10))
+    assert model.cs(5, 10) == pytest.approx(0.670437654623545)
+
+
+def test_cs_counts_the_zero_inflation_fraction():
+    model = W.from_params([10, 2], p=0.8, f0=0.2)
+    assert model.cs(3, 1) == pytest.approx(model.sf(4) / model.sf(1))
+
+
+@pytest.mark.parametrize(
+    "dist, params", [(W, [10, 2]), (W, [10, 1.5]), (surv.Gamma, [2.0, 0.5])]
+)
+def test_cs_before_the_offset(dist, params):
+    model = dist.from_params(params, gamma=5)
+    value = no_warnings(model.cs, 5, 2)
+    assert value == pytest.approx(model.sf(7) / model.sf(2))
+    assert value < 1

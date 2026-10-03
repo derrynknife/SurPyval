@@ -7,8 +7,9 @@ code constitutes acceptance of these terms.
 Copyright 2022 Cartiga LLC
 """
 
+from __future__ import annotations
+
 import textwrap
-import warnings
 from typing import Any
 
 import numpy as np
@@ -28,21 +29,23 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     ordered_labels,
 )
+from surpyval.univariate.nonparametric._support import (
+    check_support,
+    on_support,
+    support_from_dict,
+)
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier as km
 from surpyval.univariate.nonparametric.nelson_aalen import nelson_aalen as na
-from surpyval.univariate.nonparametric.nonparametric import (
-    _check_support,
-    _on_support,
-    _support_from_dict,
+from surpyval.univariate.regression.regression_data import (
+    check_finite_event_times,
 )
 from surpyval.utils import (
-    _get_idx,
     validate_cif_event,
     validate_cr_df_inputs,
     validate_cr_inputs,
     validate_event,
 )
-from surpyval.utils.deprecation import REMOVED_IN, renamed_arguments
+from surpyval.utils.data_formats import _get_idx
 from surpyval.utils.shapes import keeps_query_shape
 
 
@@ -152,7 +155,7 @@ class CompetingRisks(SerialisableMixin):
         out.how = model_dict.get("method", "Nelson-Aalen")
         for name in cls._SERIALISED_ARRAYS:
             setattr(out, name, np.array(model_dict[name], dtype=float))
-        support = _support_from_dict(model_dict)
+        support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
         return out
@@ -212,7 +215,7 @@ class CompetingRisks(SerialisableMixin):
         >>> model.cif([-1, 0.5, 5, 15, 25], 'a').round(4)
         array([   nan, 0.    , 0.3167, 0.6083,    nan])
         """
-        self.support = _check_support(
+        self.support = check_support(
             lower,
             upper,
             float(self.x[0]),
@@ -228,7 +231,7 @@ class CompetingRisks(SerialisableMixin):
         :meth:`set_support`)."""
         if self.support is None:
             return f(x)
-        return _on_support(
+        return on_support(
             self.support, float(self.x[0]), float(self.x[-1]), x, f, start
         )
 
@@ -355,25 +358,70 @@ class CompetingRisks(SerialisableMixin):
         validate_cif_event(event)
         return self._within_support(x, lambda q: self._f("CIF", q, event), 0.0)
 
-    @property
-    def method(self) -> str:
-        """Deprecated: ``how``, the all-cause survival estimator, under its
-        old name."""
-        warnings.warn(
-            "CompetingRisks.method is deprecated and will be removed in "
-            "v{}; use .how.".format(REMOVED_IN),
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.how
+    def plot(self, stacked: bool = True, ax: Any = None) -> Any:
+        """
+        Plot the cumulative incidence of every cause (#485).
 
-    def __dir__(self) -> list[str]:
-        # The deprecated alias is left out of listings (tab completion,
-        # anything that walks ``dir``), which would otherwise warn.
-        return [name for name in super().__dir__() if name != "method"]
+        Parameters
+        ----------
+        stacked : bool, optional
+            Stack the causes' cumulative incidences (the default), so the
+            top of the stack is the all-cause failure probability
+            :math:`1 - S`; ``False`` draws each as its own step curve.
+        ax : matplotlib.axes.Axes, optional
+            The axes to draw on; the current axes by default.
+
+        Returns
+        -------
+        matplotlib.axes.Axes
+            The axes drawn on.
+
+        Examples
+        --------
+        >>> import matplotlib
+        >>> matplotlib.use("Agg")
+        >>> import matplotlib.pyplot as plt
+        >>> from surpyval.univariate.competing_risks import CompetingRisks
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
+        >>> e = ["a", "b", "a", "b", "a", None, "a", "b"]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0]
+        >>> model = CompetingRisks.fit(x, e, c=c)
+        >>> fig, ax = plt.subplots()
+        >>> model.plot(ax=ax).get_ylabel()
+        'Cumulative incidence'
+        >>> plt.close(fig)
+        """
+        if ax is None:
+            import matplotlib.pyplot as plt
+
+            ax = plt.gcf().gca()
+        causes = sorted(
+            self.event_idx_map, key=lambda e: self.event_idx_map[e]
+        )
+        # Each CIF is a right-continuous step function from 0 at time 0.
+        x = np.concatenate([[min(0.0, float(self.x[0]))], self.x])
+        cifs = [
+            np.concatenate([[0.0], self.CIF[self.event_idx_map[e]]])
+            for e in causes
+        ]
+        labels = [str(e) for e in causes]
+        if stacked:
+            ax.stackplot(x, *cifs, labels=labels, step="post", alpha=0.7)
+        else:
+            for cif, label in zip(cifs, labels):
+                ax.step(x, cif, where="post", label=label)
+        ax.set_ylim(0, 1)
+        if not ax.get_xlabel():
+            # "Time", as the other estimates' plots (#514)
+            ax.set_xlabel("Time")
+        ax.set_ylabel("Cumulative incidence")
+        ax.set_title(
+            "Cumulative incidence by cause" + (" (stacked)" if stacked else "")
+        )
+        ax.legend(title="Cause")
+        return ax
 
     @classmethod
-    @renamed_arguments(method="how")
     def fit_from_df(
         cls,
         df: Any,
@@ -415,7 +463,6 @@ class CompetingRisks(SerialisableMixin):
         return model
 
     @classmethod
-    @renamed_arguments(method="how")
     def fit(
         cls,
         x: npt.ArrayLike,
@@ -467,6 +514,7 @@ class CompetingRisks(SerialisableMixin):
         array([0.1   , 0.3917])
         """
         x, c, n, e = validate_cr_inputs(x, c, n, e, how)
+        check_finite_event_times(x, c)
 
         # The causes in a fixed order (censored rows have no cause), the
         # same for every competing-risks class; labels of different types
@@ -478,15 +526,20 @@ class CompetingRisks(SerialisableMixin):
         # Get the x, r, d format agnostic of event.
         unique_x, r, d = surv.xcnt_to_xrd(x, c, n)
 
-        # empty count array of occurrence (e) of amount (d) at time (x)
+        # The count of events (d) of each cause (e) at each time (x). Every
+        # x is one of unique_x, so its column is found with searchsorted;
+        # np.add.at sums the counts in row order, as the per-row loop with
+        # ``np.where(unique_x == x_i)`` did (O(n * m): 3.6 s at 1e5, #515).
         d_e = np.zeros((n_event_types, len(unique_x)))
-
-        # Counter for each occurrence
-        for i, x_i in enumerate(x):
-            if c[i] == 1:
-                continue
-            j = event_idx_map[e[i]]
-            d_e[j, np.where(unique_x == x_i)] += n[i]
+        events = c != 1
+        cause = np.fromiter(
+            (event_idx_map[label] for label in e[events]),
+            dtype=np.intp,
+            count=int(events.sum()),
+        )
+        np.add.at(
+            d_e, (cause, np.searchsorted(unique_x, x[events])), n[events]
+        )
 
         if how == "Nelson-Aalen":
             S = na(r, d)

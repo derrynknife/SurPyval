@@ -1,6 +1,1449 @@
 Changelog
 =========
 
+v0.22 (3 October 2026)
+----------------------
+
+**Upgrading from 0.21.** A breaking release. Most code needs no change; the
+items most likely to need one are listed here, and every entry below says
+what changed.
+
+- Arguments 0.21 deprecated now raise ``TypeError`` (see *Removed*). Run
+  your code on 0.21 with ``python -W error::DeprecationWarning`` first.
+- The life models moved to ``surpyval.life_models`` (``life_models.Power``,
+  ``life_models.Exponential``, ...); the old top-level names warn until
+  v0.23.
+- Error and warning messages have one wording per condition: code that
+  matches message text (an unknown option, ``alpha_ci``, a cause, a
+  covariance, column lengths, "Monotone partial likelihood", which is now
+  "No finite maximum: the partial likelihood keeps increasing ...") must
+  update its patterns.
+- ``model.formula`` is the ``str`` you gave, for every model (Cox,
+  Buckley-James and competing-risks PH kept a parsed ``Formula``).
+- Some results move, each towards a better answer: fits that stopped
+  short now reach a verified maximum or warn (every likelihood fit has
+  ``maximum``); accelerated-life and AFT time-varying standard errors use
+  the exact information (an example's ``se(a)`` was 317, correctly 574);
+  Gaussian and Student-t copulas no longer clip rho at 0.9999.
+- The bundled lung and Rossi data's event columns are 1 for an event, as
+  in R and lifelines.
+- Importing surpyval corrects autograd's derivative of ``np.where`` for the
+  whole process (#562).
+
+**Versioning.** From this release, versions have two parts,
+``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``); every release takes the
+next minor number. pip compares ``0.22`` and ``0.22.0`` as equal.
+
+**Removed.** The names 0.21 deprecated (#422) are gone. An old argument
+name (``seed``, ``confidence``, ``B``, ``t``, ``q``, ``u``, CoxPH's
+``method``, ``id_col``, ``time_col``, the competing-risks ``how`` and
+``cause``, ``CompetingRisks``' ``method``) is now an unknown argument and
+raises ``TypeError``. The degradation calls in the old positional order
+(``Z`` last) are no longer recognised and raise, except that a process
+model fitted with stress now reads ``random(size, a, b)`` as ``Z=a,
+random_state=b``. Also removed: the fitted ``CompetingRisks.method`` and
+``CompetingRisksProportionalHazards.how`` aliases (use ``.how`` and
+``.model``), the ``surpyval.experimental`` alias (use ``surpyval.beta.ml``)
+and ``band``'s unused ``n_sims`` and ``random_state``. Saved models still
+load. On 0.21, run your code or tests with ``python -W
+error::DeprecationWarning`` first to find the calls to update.
+
+**Behaviour changes.** Fits accept an optimiser's answer only when it is a
+verified maximum, and a fit given ``init`` is also started from the default
+start, so a few fits that stopped short silently now reach a better
+maximum or warn; data with no maximum raise ``ValueError``. A
+non-parametric ``df`` is the probability of each step. Kaplan-Meier and
+Nelson-Aalen keep the estimate over a step with no one at risk, as R's
+``survfit`` does. Gray's test and the competing-risks Cox incidences now
+match R. Unknown option values raise ``ValueError`` everywhere. The
+Uniform's MLE refuses censored data again. Bernoulli's ``sf`` is
+``P(X > x)``, as for every other discrete distribution. Fits whose data
+have no finite maximum warn "No finite maximum". A covariate column
+the others already account for gets a ``nan`` coefficient and a warning,
+as in R. ``FrailtyModel.summary()`` returns a ``DataFrame``. Covariate rows
+that cannot be paired with the times raise ``ValueError``. The bundled
+Rossi data's ``arrest`` is 1 for an arrest. Trend tests report a trend
+only when it is significant. ``qf`` outside [0, 1] is ``nan``.
+``param_names`` is deprecated in favour of ``parameter_names``. The
+bundled lung data's ``status`` is 1 for a death. ``CoxPH.check_ph()``
+returns a ``DataFrame``. Durations
+and dates are refused. Probability plots draw failures only. ``fit_best``
+no longer considers the Uniform and Beta4 by default. Small-sample Wald
+bands change (#477).
+
+- **Changed: load_lung()'s status means a death (#509).** It was stored as
+  SurPyval's censoring flag (0 = death), the opposite of lifelines, so
+  ``c = 1 - status`` fitted the complement (a Kaplan-Meier median of 588
+  days instead of 310). ``status`` is now 1 for a death, as in lifelines
+  and R; pass ``c = 1 - status``.
+- **A fitted model's printout shows its data (#508).** For example ``Data
+  : 60 units: 9 events at 9 unique times, 51 right censored``, with left,
+  interval and truncated counts when present, counted in units (weighted
+  by ``n``), and the number of distinct event times.
+  Parametric, mixture, non-parametric, parametric regression, Cox and
+  Buckley-James models print it, and keep it through ``to_dict``. A "1 =
+  failed" column passed as ``c`` is now visible at a glance.
+- **Changed: probability plots take label= and color= (#510).**
+  ``Parametric.plot`` and ``MixtureModel.plot`` draw the points, fitted
+  line and bounds in one colour (by default the axes' next colour), with
+  ``label=`` on the fitted line, so fits overlaid on one plot can be told
+  apart. The fitted line is solid and the bounds dashed; they were a black
+  dashed line and red bounds. Overlaid plots keep both ranges in view.
+- **Changed: CoxPH.check_ph() returns a table (#514).** A ``DataFrame`` as
+  R's ``cox.zph`` prints it: a row per covariate and a ``GLOBAL`` row, with
+  ``statistic``, ``df`` and ``p``. The old dictionary is
+  ``proportional_hazards.diagnostics.check_ph(model)``.
+- **Deprecated: cs(x, X) is cs(x, given) (#514).** The time already
+  survived is named ``given``, as in the regression models' ``sf_tvc(...,
+  given=)``; ``X=`` works until v0.23 with a ``DeprecationWarning``. Called
+  by position, nothing changes.
+- **Plots label their axes (#514).** The time axis is "Time" unless it is
+  already labelled; non-parametric plots say "Survival probability" and
+  "Kaplan-Meier estimate" (etc.), not "R" and "Model Survival Plot". A
+  failure at exactly 0 now points to ``zi=True``.
+- **Imperfect-repair fits are 10-270 times faster (#515).** The ARA,
+  Kijima-II and G1 renewal likelihoods took a Python step per item and
+  per event on every evaluation; they now step through event positions
+  across all items at once, with the same virtual ages bit for bit (G1's
+  likelihood to the last digit). ``ARA.fit`` on 100 items went from
+  10-16 s to 0.45-0.7 s and on 1000 items from 73 s to 2.4 s;
+  ``GeneralizedRenewal(kijima="ii")`` on 1000 items from 16.5 s to 1.8 s;
+  ``GeneralizedOneRenewal`` on 100 items from 44 s to 0.16 s.
+- **Faster saving and loading (#515).** ``to_dict`` and ``from_dict``
+  visited every number of a model's arrays one at a time; number arrays
+  now go through in one pass. The saved documents are byte-identical. A
+  Kaplan-Meier model with 100,000 rows of data loads in 0.82 s (was
+  1.22 s).
+- **Changed: renewal models test the repair against perfect and minimal
+  repair (#513).** ``repair_test(alpha_ci=0.05)`` gives two
+  likelihood-ratio tests: against perfect repair (Kijima q = 0, ARA rho =
+  1; ARI's rho = 1 is maximal repair) and against minimal repair (q = 1,
+  rho = 0; G1 has none). Each refits the model with the restoration
+  parameter fixed and reports the statistic and p-value, halved where the
+  tested value is on the edge of the parameter's range (Self and Liang
+  1987). The printed model shows the conclusion, for example "consistent
+  with minimal repair; perfect repair rejected" on the issue's eight haul
+  trucks (against q = 1: LR 0.40, p 0.53; against q = 0: LR 34.9, p
+  2e-9), rather than a fixed rule on the width of the interval. The
+  refits run the first time the model is printed or tested, and are
+  cached.
+- **REML warns when its between-unit covariance is on the boundary.**
+  ``DegradationAnalysis(population_method="reml")`` could return a
+  singular covariance (an intercept-slope correlation of 0.999998 on six
+  units) without comment, while the default method warned on the same
+  data. It now warns when the covariance with its smallest eigenvalue
+  removed fits the data as well (to ``sqrt(eps)``): the estimate is on the
+  boundary of the valid covariances, where standard errors and intervals
+  are unreliable. On 144 simulated datasets it flagged all 18 boundary
+  fits and none of the others. The default method's warning now says that
+  REML may land on the boundary too.
+- **Conditional sf_tvc is 1 at and before given (#523).** ``sf_tvc(x,
+  schedule, given=g)`` returned :math:`S(x)/S(g)` for x < g as well,
+  above 1 (1.75 for WeibullPO and 1.64 for CoxPH on the conformance
+  fixtures). It is now 1 for x <= g, for the parametric regressions and
+  Cox, along step schedules and covariate paths; a conformance property
+  checks it.
+- **Changed / deprecated: DataFrame columns are named with _col
+  (principle 21).** Every ``fit_from_df`` (and ``fit_tvc_from_df``,
+  ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
+  argument it fills, with ``_col`` (``_cols`` for a list).
+  ``Weibull.fit_from_df(df, x=, c=, n=, xl=, xr=, tl=, tr=)`` is now
+  ``x_col=, c_col=, n_col=, xl_col=, xr_col=, tl_col=, tr_col=``
+  (``tl_col`` and ``tr_col`` also take a number shared by every row), and
+  ``DegradationAnalysis``, ``WienerProcess`` and ``GammaProcess`` take
+  ``x_col=, y_col=, i_col=``, as the regression, recurrent and
+  competing-risks fitters already did. The 0.21 names work until v0.23
+  with a ``DeprecationWarning``. A conformance test checks the rule on
+  every DataFrame entry point.
+- **Changed: the concordance index leaves out tied event times by default.**
+  ``sp.metrics.concordance_index``, the regression models' ``concordance()``
+  and ``RandomSurvivalForest.score`` take ``ties="therneau"`` (the
+  default: two events at the same time are not a usable pair, as in R's
+  ``survival::concordance`` and lifelines) or ``ties="harrell"`` (Harrell's
+  original definition, which counted them). On the lung Cox model (age,
+  sex, ph.ecog), with 28 pairs of tied deaths, C is 0.637135, as R and
+  lifelines give, instead of 0.636942. The deprecated
+  ``surpyval.utils.score.score`` keeps Harrell's convention.
+- **fit_from_df on every fitter (#511).** Kaplan-Meier, Nelson-Aalen,
+  Fleming-Harrington, Turnbull, RoystonParmar, MixtureModel, the
+  closed-form distributions, the copulas, FineGray,
+  DestructiveDegradation, the survival trees and forest, and the recurrent
+  fitters had no ``fit_from_df``. They now take a ``DataFrame``, naming the
+  columns as their family already did (``x=``, ``c=``, ``xl=``, ``tl=``
+  for one lifetime per row; ``x_col=``, ``i_col=``, ``c_col=``,
+  ``Z_cols=`` for recurrent and regression data), and give the model
+  ``fit`` gives on the same arrays, which the conformance suite checks for
+  every registered model. ``Weibull.fit_from_df`` no longer casts ``c`` to
+  an integer, which turned a missing flag into -9.2e18.
+- **The concordance index is fast, and a metric (#512).** Harrell's C was
+  a pairwise Python loop: 2.9 s at 5,000 subjects and about 5 minutes at
+  50,000. A merge sort over the ranked scores gives the same value, with
+  the same tie rules, in 0.01 s and 0.15 s. It is
+  ``sp.metrics.concordance_index(x, c, risk)``, and every regression model
+  has ``concordance()``, scoring its training data by default.
+  ``surpyval.utils.score.score`` is deprecated until v0.23. With tied
+  event times the value differs slightly from R and lifelines (0.6369 vs
+  0.6371 on the lung Cox model), which do not count two events at the same
+  time as a usable pair.
+- **Changed: renewal models print the restoration factor's uncertainty
+  (#513).** A generalized renewal fit to minimal-repair data printed q =
+  2.63 with no sign that its 95% interval was [0.094, 73.4]. The printout
+  now gives each parameter's standard error and Wald interval (also
+  ``summary()``) and says when ``q`` or ``rho`` is not determined by the
+  data or sits at the edge of its range. The docstrings say what ``q`` and
+  ``rho`` mean. ``repair_test()`` tests the fit against minimal repair (on
+  that data LR = 0.40, p = 0.53).
+- **Bounds, mean life and accelerated life along a covariate path (#172,
+  phase 2).** ``cb_tvc(x, Z, xl=None, given=None, on="sf", ...)`` bounds
+  ``sf``, ``ff`` and ``Hf`` along a step schedule or a ``CovariatePath``,
+  by the delta method on the same scale as ``cb``, with the quadrature
+  mesh held at the fitted parameters; a constant path gives ``cb``, and
+  in 1,000 simulated fits the 95% bounds covered the truth 94.6-96.2% of
+  the time. ``mean_tvc(Z, xl=None, given=None)`` gives the mean (or with
+  ``given`` the mean residual life) in one cumulative pass, accurate to
+  about 1e-15, and ``inf`` with a warning where survival levels off.
+  ``AcceleratedLife`` models, which refused every path, now follow
+  Nelson's cumulative exposure along steps and paths for the Weibull,
+  Exponential, Gamma and LogNormal (location families still refuse,
+  saying why). AFT and accelerated life integrate one period of a
+  periodic path, so 10 million cycles take about 1 ms.
+- **Fixed: likelihood-ratio bounds widen with the confidence level
+  (#535).** An ExpoWeibull 99% likelihood-ratio interval did not contain
+  the 95% one, because the search stopped on a local extreme of the long,
+  curved likelihood region. The 99% ``hf(13)`` lower bound was 0.1046,
+  above the 95% one of 0.1017, and the ``qf(0.95)`` upper bound was 36.44,
+  below the 95% one of 40.37. The search now follows each bound outward
+  through the regions at 1/4, 1/2, 3/4 and all of the critical value, and
+  gives 0.0714 and 80.6; the region approaches 0.0708 and 87.0 as alpha
+  goes to 0. Every other registered model's likelihood-ratio bounds are
+  unchanged to the bit.
+- **Breaking: ARI takes its baseline intensity as baseline= (#507).** In
+  ``ARA``, ``GeneralizedRenewal`` and ``GeneralizedOneRenewal``, ``dist`` is
+  a lifetime distribution, but in ``ARI`` it was the baseline intensity
+  model (``CrowAMSAA``, ``Duane``, ``CoxLewis``), so ``dist=sp.Weibull`` was
+  an easy mistake. ``fit``, ``fit_from_recurrent_data``, ``fit_from_df``
+  and ``fit_from_parameters`` now take ``baseline=`` (and
+  ``fit_from_parameters``'s ``dist_params`` is ``baseline_params``); the
+  old names work until v0.23 with a ``DeprecationWarning``. Saved models
+  are unchanged, and old files load as before.
+- **New: every likelihood fit says whether it reached a verified
+  maximum.** The regression fits (PH, AFT, PO, AH, accelerated life and
+  their time-varying forms), Cox, parametric and Cox frailty, proportional
+  odds, Fine-Gray and competing-risks PH, mixture, Royston-Parmar, HPP,
+  NHPP, proportional-intensity, renewal and copula models have
+  ``maximum``, as ``Parametric`` does: ``"verified"``, ``"unverified"`` or
+  ``"no finite maximum"``, agreeing with the fit's warnings, and saved by
+  ``to_dict`` (an older dict reads ``"unknown"``). Lin-Ying and
+  Buckley-James, which solve estimating equations, are ``"not
+  applicable"``. A parameter on its bound where the likelihood is highest
+  (a frailty variance of 0, an AMH copula at ``theta = 1``) is a verified
+  boundary maximum. A new conformance property, ``maximum``, checks every
+  likelihood fit in the registry and verifies each answer independently;
+  the degradation process and destructive fits are its known gap (#564).
+- **Fixed: fits that kept an unverified answer now polish it or say so.**
+  The Nelder-Mead fits (NHPP, proportional intensity, renewal, copulas),
+  Fine-Gray's BFGS, Cox's fallback root-finder, the HPP and Royston-Parmar
+  took their optimiser's answer unchecked. Where results move, they move
+  towards the maximum: Cox-Lewis by 1.7e-5 relative (log-likelihood up
+  7e-9), a Gaussian copula's ``rho`` by 1.9e-6, a G1 renewal's ``q`` by
+  1e-4.
+- **Fixed: the truncated mixture fit kept L-BFGS-B's answer unverified
+  (#560).** It is now polished and verified, as the EM fit is; two
+  equivalent forms of the same data agree to 5e-7 (they differed by
+  1.8e-5).
+- **Changed: one wording for no finite maximum.** Cox's, Fine-Gray's,
+  competing-risks PH's and Cox frailty's "Monotone partial likelihood: ..."
+  now reads "No finite maximum: the partial likelihood keeps increasing
+  ..."; update code that matches the old text. Cox frailty's EM warning
+  says it "did not reach a verified maximum", and a mixture with a
+  point-mass component warns once, not twice.
+- **Fixed: rows censored with a finite truncation bound are read as the
+  intervals they are in the fit checks (#559).** Data whose every row is
+  right censored with a finite ``tr`` (or left censored with a finite
+  ``tl``) was refused as having no failure, from the raw censoring codes.
+  The checks and the start guess now read each row as the likelihood does.
+  Such data still bounds no failure from one side, so its likelihood has
+  no finite maximum unless a parameter is fixed: a free two-parameter fit
+  is refused, as the same rows written as intervals are; a fit with a
+  parameter fixed equals the interval fit; and the Exponential, Rayleigh,
+  Poisson, Geometric, NegativeBinomial and DiscreteWeibull fits, which
+  stopped at ``failure_rate = 3.6e-7`` or ``sigma = 313.5`` and reported
+  it verified, warn "No finite maximum". MPS still refuses data with no
+  exact value.
+- **Fixed: distribution functions are quiet in the far tail and right at
+  infinity (#561).** ``Weibull.sf`` far in the tail warned "overflow
+  encountered in power" though its 0 was right; an overflow or division by
+  zero inside a distribution function is no longer warned about (an
+  invalid operation still is). A sweep of every registered distribution at
+  extreme ``x`` and parameters also found 218 wrong ``nan`` values, each
+  now the right value: a Gamma's or Poisson's ``sf(inf)``, a Weibull's
+  ``df(1e300)``, Gumbel's ``df(inf)``, a NegativeBinomial past 1.3e154
+  trials, a discretised Weibull's hazard from k = 1e6, a zero-inflated
+  model's hazard at large ``x``. Hazards take their limits at infinity (a
+  Gamma's rate, a NegativeBinomial's p). Fitted results are bit-identical.
+- **Fixed: derivatives through ``np.where`` with a broadcast argument
+  (#562).** autograd's rule for ``np.where(c, x, y)`` did not reduce the
+  gradient to the shape of a broadcast ``x`` or ``y``: the gradient came
+  back the wrong shape or raised, and where a later step summed it away
+  the second derivative was silently wrong (7.52 instead of 4.46 in the old
+  accelerated-life substitution). SurPyval registers a broadcast-aware rule
+  when imported (``surpyval/utils/autograd_where_compat.py``), so every
+  model and every custom distribution written with ``surpyval.np`` gets
+  the right derivatives; no fitted value changes. **Behaviour change:**
+  importing surpyval changes ``autograd.numpy.where``'s derivative for the
+  whole process. A test notices when autograd fixes this itself, so the
+  patch can go.
+- **Fixed: ``Discretize`` has an exact Hessian at the first bin (#562).**
+  The probability of ``k = 1`` took ``R(0)`` through the continuous
+  formula, whose Hessian is not finite there (a Weibull's ``(0/α)^β``), so
+  the covariance silently fell back to a numerical Hessian. ``R`` is now
+  exactly 1 at the start of the support; values are unchanged.
+- **A ``derivatives`` conformance property (#562).** For every registered
+  model whose fit or inference differentiates its likelihood, the gradient
+  and Hessian it takes at the fit, in its search space, agree with
+  Richardson finite differences to 1e-6 of the standard-error scale (1e-5
+  through the numerical incomplete gamma and beta shape derivatives); so do
+  a parametric ``cb``'s delta-method gradients, the copulas' h-functions
+  and density, and the degradation paths' Jacobians.
+- **Fixed: accelerated life and AFT time-varying fits warn of no finite
+  maximum and use the exact information (#555).** Stress levels without
+  failures, or a covariate level with no events, let parameters run off
+  silently; these fits now warn "No finite maximum" once, as the other
+  regressions do. The covariance is the exact observed information
+  instead of a numerical Hessian, which was up to 1e-3 of the standard
+  errors off and much worse on ill-conditioned fits: the Arrhenius
+  example's ``se(a)`` was 317 where the correct value is 574, so AL
+  standard errors and bounds change. The AL likelihood's second
+  derivatives were also wrong (autograd's ``np.where`` with a broadcast
+  argument: a LogNormal ``Hf`` was 13% off; #562 audits the rest). AFT
+  time-varying fits now search with their exact gradient and reach a
+  slightly better maximum (parameters move by up to 6e-5 relative), in
+  half the time.
+- **Fixed: HPP proportional intensity restarts and warns (#554).** From a
+  poor ``init`` the single BFGS search returned a rate of 0 with ``nan``
+  coefficients, or its starting point, without a word. A user's ``init``
+  is now followed by the default start, the better answer kept, and an
+  answer that is not a verified maximum warns. Default fits are unchanged.
+- **AFT models fit a covariate timeline from a DataFrame (#553):**
+  ``WeibullAFT.fit_tvc_timeline_from_df`` (every AFT model), as PH, AH, PO
+  and Cox have.
+- **Fixed (breaking): the Gaussian and Student-t copulas no longer clip
+  rho to ±0.9999 (#541).** Every formula silently evaluated ``rho =
+  0.9999`` for any larger value: ``from_params([0.99995])`` gave a density
+  of 81.11 at (0.3, 0.3001) where the true value is 114.68. They are now
+  accurate for any ``|rho| < 1`` (within 1e-14 of a 40-digit integration);
+  ``rho = ±1`` is still refused. A fit whose rho runs to ±1, which stopped
+  silently near 0.99999, gives the standard no-finite-maximum warning
+  recommending the comonotone or countermonotone model. Ordinary fits
+  change only in the last digits.
+- **Changed: ``RandomSurvivalForest.fit`` is quiet and takes ``n_jobs``
+  (#546).** It printed joblib's progress on every fit. ``n_jobs`` (default
+  1, the old sequential behaviour; -1 for every core) grows the trees in
+  worker processes: 20 trees on 400 rows in 3.9 s with 2 jobs against 6.6
+  s with 1. A seeded forest is identical whatever ``n_jobs`` is.
+- **Fixed: a non-parametric survival tree or forest crashed on data mixing
+  exact, right- and interval-censored rows (#543).** A node holding only
+  exact and right-censored rows kept its parent's two-column times; it is
+  now split and leafed as its rows would be on their own.
+- **Fixed: mixture fits with a censored row and finite truncation (#544).**
+  A right-censored row with a finite ``tr`` (or left-censored with a
+  finite ``tl``) is the interval [x, tr] (or [tl, x]) since #310, but the
+  mixture likelihood grouped rows by censoring code and raised
+  ``IndexError``. It now uses the same observation masks as every other
+  fitter, and equals a fit to the rows written as intervals.
+- **Fixed: zero-inflated fits with a left truncation below 0 (#548).** A
+  ``tl`` below 0 counted the mass at 0 as already excluded, so a no-op
+  ``tl=-1`` sent ``f0`` to 1 with an unbounded likelihood. The mass now
+  enters a window only from 0 on, as in the model's ``ff``, so ``tl < 0``
+  gives exactly the untruncated fit (with ``lfp`` and ``offset`` too);
+  ``tl = 0`` still excludes it, as for the discrete distributions.
+- **Performance sweep.** Results are unchanged to the bit except where
+  noted, checked by the new equivalence harness:
+
+  - Cox residuals, ``check_ph`` and robust standard errors are linear time.
+    They looped over the event times with a mask of every row: dfbeta on
+    10,000 rows took 4.3 s and now takes 0.01 s; ``check_ph`` with four
+    residual kinds on 100,000 rows 6.5 s, now 0.3 s.
+  - A truncation time at or below the support's edge truncates nothing
+    and is no longer evaluated. A ``tl`` of 0 sent the covariance to the
+    numerical Hessian: a left-truncated Weibull at 100,000 rows fits in
+    0.37 s instead of 0.80 s, and the covariance is now the analytic one
+    (the registry's mixed-censoring Weibull covariance was 0.09% off; the
+    Gamma's 4e-6). With an offset, rows truncated below the threshold
+    gave a nan gradient, so the fit fell back to Nelder-Mead and stopped
+    1.23 log-likelihood units short of the maximum with a "not verified"
+    warning; it now converges, in 0.15 s instead of 4.6 s.
+  - Likelihood-ratio bounds keep each likelihood their searches evaluate
+    (18% were repeats): 10-60% faster.
+  - Censored Gamma, Beta and Negative Binomial fits compute each
+    incomplete function's complement only where it is used: a censored
+    Gamma at 100,000 rows takes 0.77 s instead of 1.25 s.
+  - Kaplan-Meier, Nelson-Aalen and Fleming-Harrington sort and validate
+    their data once: 1,000,000 rows in 0.49 s instead of 0.72 s.
+  - ``metrics.auc_td`` counts pairs by binary search: 100,000 rows and 20
+    horizons in 0.48 s instead of 15.5 s.
+  - Saving and reading models: the schema check walks the document once,
+    and Cox models are read into plain arrays. A Cox JSON round trip at
+    100,000 rows takes 0.41 s instead of 2.35 s.
+
+- **Removed: the empty surpyval.alpha package**, which has held no models
+  since v0.17.0, and the unused ``surpyval.utils.validate_tv_coxph_df_inputs``.
+- **Development: large modules split (maintainability sweep, phase 1).**
+  Code was moved only, checked bit-exact with the equivalence harness.
+  The likelihood-ratio bounds are in
+  ``univariate/parametric/_likelihood_ratio.py``, the optimised fits in
+  ``optimised_fit.py`` and their input checks and starts in
+  ``_fit_inputs.py``; the non-parametric support helpers in ``_support.py``
+  and its bands in ``_bands.py``; ``surpyval/utils/__init__.py`` is split
+  into ``data_formats``, ``validation``, ``covariates``, ``numeric`` and
+  ``warnings``; and the remaining-useful-life classes are in
+  ``degradation/rul.py``. Old import paths keep working.
+  ``surpyval.utils`` now has an ``__all__`` of its 18 documented handlers,
+  converters and helpers; everything else it exports is internal. A test
+  stops new imports of another package's private names. In the same way,
+  the parametric regression model's time-varying evaluation is in
+  ``univariate/regression/_tvc_evaluation.py`` and its covariance and Wald
+  bounds in ``_inference.py``; the Cox partial likelihood (tie terms,
+  likelihood generators and the Newton-Raphson solver) is in
+  ``proportional_hazards/cox_likelihood.py``; the fitted
+  ``DegradationModel`` is in ``degradation/degradation_model.py``; and
+  ``bootstrap_cb`` is in ``nonparametric/_bands.py`` beside ``band``.
+- **A model's formula is the str you gave.** Cox, Buckley-James and the
+  competing-risks PH model kept a parsed ``formulaic.Formula`` in
+  ``model.formula``, every other model the str; now all of them keep the
+  str, and a saved Cox model's formula no longer changes on a round trip
+  (a time-varying Cox model saved ``"1 + dose"`` for ``"dose"``). Code
+  that read ``.formula`` as a ``Formula`` should parse the str with
+  ``formulaic.Formula(model.formula)``.
+- **The semi-parametric fits share one input check.** Proportional odds,
+  Lin-Ying additive hazards, Buckley-James, Fine-Gray and the
+  competing-risks PH model now drop a row with a missing covariate (with
+  the usual warning) before checking that the observed times are finite,
+  as Cox did; they raised "must be finite" on such a row. The degradation
+  models' input errors share one wording and name the offending input
+  ("y must contain only finite values"; "x, y, and i must have the same
+  length; got 55, 54, and 55").
+- **Error and warning wording unified (messages only; no numbers change).**
+  Code that matches the old texts must update its patterns.
+
+  - An unknown option value (``bound``, ``on``, ``how``, ``method``,
+    ``tie_method``, ``kind`` and the other enumerated arguments) raises
+    ``'<name>' must be one of 'a', 'b' or 'c'; got <value>``.
+  - ``alpha_ci`` outside (0, 1): ``'alpha_ci' must be strictly between 0
+    and 1; got <value>``.
+  - An unknown cause: ``Unknown cause 'x'; the causes are [...]``
+    (``CauseSpecificMCF.mcf`` and ``mcf_cb`` raised ``KeyError``; they now
+    raise ``ValueError``). A missing cause: ``<what> is of one cause at a
+    time; pass `event`.``
+  - No covariance, a singular information matrix, unknown parameter names
+    in ``param_cb`` and ``fixed`` (the univariate fit now lists every
+    unknown name), and ``c``, ``n``, ``tl`` or ``tr`` of the wrong length
+    (``'c' must be the same length as 'x'``) each have one wording.
+  - ``fit_from_df`` given neither ``Z_cols`` nor ``formula``: ``One of
+    'Z_cols' or 'formula' must be provided``.
+  - Every fit that stops short of a verified maximum gives one warning,
+    "... did not reach a verified maximum of the likelihood (<reason>)",
+    at the caller's line. The univariate "Precision was lost" and the
+    regression and NHPP "did not converge" warnings are this warning now,
+    and ``quiet_maximum_warnings`` holds it back for every fit, not only
+    the univariate MLE.
+  - ``RandomSurvivalForest.sf`` refuses an unknown ``ensemble_method``; it
+    used ``'sf'`` for anything other than ``'Hf'``.
+- **Development: duplicated code merged (consolidation sweep, phases 1-3).**
+  Fitted numbers are bit-identical, checked with the equivalence harness.
+  The PH, AFT and PO fits share ``fit_log_linear`` and
+  ``split_log_linear``; the accelerated-life and AFT time-varying fits are
+  assembled by ``assemble_regression_model``; the time-varying DataFrame
+  fits share ``fit_tvc_df``; the Efron and Breslow Cox generators share
+  one risk-set setup; the semi-parametric models share one covariate
+  centring and one ``LinearPredictorMixin``; the plain and
+  proportional-intensity NHPP fitters, and HPP, share one log-likelihood
+  (#350); the bootstrap tails share ``percentile_bounds`` (#351); and the
+  degradation inputs are checked by one ``validate_xy`` (#352); option
+  checks go through ``utils.validation.check_option`` and unverified-maximum
+  warnings through ``utils.no_maximum.warn_unverified``; and the
+  ``fit_from_df`` design matrices are built by ``design_matrix_from_df``
+  alone (``wrangle_and_check_form_and_Z_cols`` is removed). The
+  accelerated-life fitter now has the deprecated ``param_names`` alias
+  the other fitters have.
+- **Development: fitted regression models declare their attributes
+  (maintainability sweep, phase 2).** ``ParametricRegressionModel`` and the
+  Cox, ProportionalOdds, Lin-Ying, Buckley-James and Fine-Gray model classes
+  declare every attribute their builders set, with its type and meaning.
+  The covariate links (``Phi``, the additive link and ``from_dict``'s
+  namespace) are one ``CovariateLink`` (``name``, ``phi_param_map``,
+  ``phi``; ``Phi`` remains as an alias so old pickles load). ``fit`` now
+  also sets ``dist``, and ``from_dict`` sets ``distribution_param_map`` and
+  ``phi_param_map``, which only the fits set before. A new conformance
+  property, ``attributes``, checks that ``fit``, ``fit_from_df``, a formula,
+  ``fit_tvc`` and ``from_dict`` give a model the same declared attributes
+  (``from_dict`` less the data and what was computed from it) and nothing
+  undeclared; before this change it failed 33 cases. The regression family
+  names are constants in ``regression/_kinds.py``, and the model branches on
+  ``_is_accelerated_life()`` and ``_is_additive()`` instead of comparing
+  ``kind`` with string literals; ``kind`` and its values are unchanged.
+- **Development: long functions split into named steps; flake8
+  ``max-complexity`` lowered from 70 to 25 (maintainability sweep, phase
+  2).** ``handle_xicn``, the tvc-schedule expression evaluator, the MLE
+  fitter, ``xcnt_handler``, ``turnbull``, ``DegradationAnalysis.fit``, the
+  fit-input validation and the harness's ``diff`` are split into named
+  steps, and the likelihood-ratio search behind ``cb(method="lr")`` is a
+  ``_PsiBoundSearch`` class rather than eleven closures. No result
+  changes: the equivalence harness is bit-identical, and old-against-new
+  runs over thousands of inputs per function give identical values,
+  warnings and error messages. Comments in these modules state current
+  behaviour rather than its history, and the copula and renewal
+  tolerances are named for what they are (``_U_CLIP``, ``_LOG_FLOOR``,
+  ``_MACHINE_EPS``).
+- **Development: tests organised by feature (maintainability sweep,
+  phase 3).** The 59 test modules named after fix rounds
+  (``*_fixesN.py``, ``*_roundN.py``, ``test_tvc_phase2.py``, ...) are
+  renamed as, or merged into, feature modules; the 17,023 collected tests
+  are unchanged apart from their paths. Helpers copied between modules
+  live once in ``surpyval/tests/_helpers.py``, the conformance registry is
+  split into fixtures, family helpers, cases and known failures (still
+  imported through ``registry.py``), and :doc:`Contributing` says where a
+  fix's regression test goes.
+- **Development: refactors are proven bit-identical.**
+  ``scripts/refactor/snapshot.py`` records what every registered model
+  computes and says (fits, predictions, every bound, ``to_dict``,
+  printouts, warnings, and errors on invalid input), plus time-varying,
+  bootstrap and recurrent fits, the public API, the import set and the
+  test IDs, so ``compare`` shows a change altered nothing (see
+  :doc:`Contributing`). CI lints with isort as well, and covers
+  ``conftest.py`` and ``scripts/``; flake8 caps function complexity (now at 25);
+  mypy reports unused ``type: ignore`` comments, redundant casts and
+  impossible comparisons; a test fails once the version reaches
+  ``REMOVED_IN`` (0.23) while deprecated names are still accepted; and
+  the nightly refit study covers the seven models added in 0.22 (#545).
+- **Added: Joe, Ali-Mikhail-Haq and Student-t copulas, and rotations
+  (#157).** ``surpyval.multivariate.Joe``, ``AMH`` and ``StudentT`` have
+  censoring- and truncation-aware likelihoods, Kendall's tau, Spearman's
+  rho and tail dependence, conditional-inversion sampling and
+  serialisation. The Student-t CDF is a deterministic integral within
+  1e-11 of Genz's exact algorithm (scipy's ``multivariate_t.cdf`` is
+  randomised and about 1e-4 off). A Student-t fit to data with no tail
+  dependence warns that ``nu`` has no finite maximum and recommends the
+  Gaussian copula. ``rotation=`` (90, 180, 270) for the Clayton, Gumbel
+  and Joe copulas gives dependence in the other tail; 180 is the survival
+  copula. Parameter recovery was checked over 200 replications with
+  censoring for every family.
+- **Fixed: copula accuracy (#291).** A numerical review of every copula
+  against reference values (pyvinecopulib, R's mvtnorm, 50-digit mpmath):
+
+  - Spearman's rho for Clayton and Gumbel was estimated from 50,000
+    simulated pairs, up to 5e-3 off (Clayton at theta 0.5: 0.2901 for
+    0.2949). The default Kendall's tau and Spearman's rho of any copula are
+    now integrals, accurate to about 1e-11.
+  - Gumbel's h-function and density underflowed near the upper corner:
+    the density was inf at (0.98, 0.98) for theta 100. They are now closed
+    forms in log space, within 1e-9 of 50-digit references.
+  - **Breaking:** with margins passed already fitted, the data were not
+    checked: a NaN returned the starting value with a NaN likelihood, and
+    negative counts, ``xl > xr`` and values outside the truncation window
+    were used. Each series is now checked like univariate data, and the
+    error names the series.
+
+- **Added: log-normal shared frailty (#343).** ``Frailty(dist,
+  family="lognormal")`` fits :math:`u = e^w`, :math:`w \sim N(0, \theta)`,
+  as frailtypack, coxme and ``survival::frailty(dist="gaussian")`` define
+  it, so ``theta`` is the variance of :math:`\log u` and the median
+  frailty is 1. Each group's likelihood is integrated by 30-node adaptive
+  Gauss-Hermite quadrature, centred on the group's mode: within 3e-10 of
+  scipy's adaptive quadrature for :math:`\theta \le 1`. On the kidney
+  data it matches R's lme4 (``nAGQ = 25``) to 6e-13 in the log-likelihood.
+  Gamma stays the default. ``frailty_variance`` (Var(u)/E(u)^2) and the new
+  ``kendall_tau`` compare the two families on one scale. **Breaking:** an
+  unknown ``family`` raises ``ValueError`` (it was ``NotImplementedError``).
+- **Added: shared frailty with a Cox baseline (#342).** ``CoxFrailty``
+  fits a gamma frailty with an unspecified baseline, by EM over the
+  frailties with ``CoxPH``'s partial likelihood as the M-step (accelerated
+  by SQUAREM), and ``theta`` maximising the profile likelihood. It
+  reproduces R's ``coxph(... + frailty(id, dist="gamma"))`` on the kidney
+  data: theta 0.40777, the ``female`` coefficient -1.5832 with standard
+  error 0.4484, and I-likelihood -181.6386, with Efron ties (Breslow too).
+  It predicts marginally or for an observed group, and saves and loads.
+  In 200 simulated fits its coefficient and theta intervals covered 94% and
+  97%. ``load_kidney()`` adds the kidney catheter data (McGilchrist and
+  Aisbett 1991; R's ``survival::kidney``).
+- **Added: a semi-parametric proportional odds model (#341).**
+  ``surpyval.ProportionalOdds`` is the proportional-odds counterpart of
+  ``CoxPH``: the covariates multiply the survival odds of a baseline left
+  to the data, :math:`S(x|Z)/F(x|Z) = e^{\beta'Z} S_0(x)/F_0(x)`. It is
+  fitted by nonparametric maximum likelihood (Murphy, Rossini and van der
+  Vaart 1997), with an exact solve for the baseline at each step, and its
+  standard errors come from the profile likelihood. A positive coefficient
+  means a longer life, as in ``LogisticPO``; R's ``timereg::prop.odds``
+  reports the negatives. It takes observed and right-censored data with
+  left truncation, and refuses other censoring with a ``ValueError``.
+  The coefficients agree with R's ``survival::coxph`` with a unit gamma
+  frailty per subject (the same model) to 1e-6 on the lung data and 1e-7
+  on the Rossi data, and the intervals covered 94-96% in 1,000-replication
+  studies.
+- **Changed: the life models are in surpyval.life_models.** ``Power``,
+  ``InversePower``, ``Eyring``, ``InverseEyring``, ``Linear``,
+  ``InverseExponential``, ``DualPower``, ``DualExponential``,
+  ``PowerExponential``, ``GeneralLogLinear`` and the ``LifeModel`` base
+  class are used as ``AcceleratedLife(Weibull, life_models.Power)``. The
+  exponential (Arrhenius) life model is ``life_models.Exponential``: at the
+  top level that name is the distribution, so it was
+  ``ExponentialLifeModel``. The old top-level names still work until
+  v0.23, with a ``DeprecationWarning`` naming the new one. Every life model's
+  docstring now gives its formula, what each parameter means (``a`` of
+  the Arrhenius model is :math:`E_a / k_B`, for example), its constraints
+  and an example.
+- **Breaking: GeneralLogLinear fixed, with a constant term, and exported
+  (#530, #345).** ``AcceleratedLife(dist, GeneralLogLinear).fit`` raised
+  an autograd broadcast ``ValueError`` on any data. The life model is now
+  L(Z) = c exp(sum of beta_j Z_j), with one coefficient per column of
+  ``Z``; with no constant, L(0) was 1 in whatever unit the times were in
+  (principle 6). With the Weibull it reaches the Weibull AFT maximum
+  (log-likelihood -422.414831 in both). It is importable as
+  ``sp.life_models.GeneralLogLinear``, round-trips through JSON (a model saved now
+  cannot be read by 0.21), and is in the conformance registry.
+  ``LifeModel.resolve(n_stresses)`` builds the model for a number of
+  columns, so its parameter map and bounds are the types ``LifeModel``
+  declares.
+- **Forest importance no longer silently NaN (#533).** When an out-of-bag
+  row had zero ensemble probability, ``feature_importances`` returned NaN
+  for every feature without a warning (3 trees, 1 row of 46). Each drop is
+  now over the rows that are finite before and after the shuffle, the same
+  as before when every row is, and one warning gives the counts and
+  recommends more trees or ``kind="exponential"``. ``oob_log_likelihood``
+  warns the same way when it returns -inf.
+- **Normal and LogNormal 2-4 times faster (#469).** ``sf``, ``ff``, ``df``,
+  ``qf`` and their logs use ``scipy.special`` directly instead of
+  ``scipy.stats.norm``, with bit-identical values: ``Normal.sf`` on 1,024
+  values takes 41 µs instead of 96 µs, ``qf`` 33 µs instead of 110 µs,
+  and a censored fit 30 ms instead of 42 ms. The density no longer emits
+  numpy's overflow warning at \|x\| near 1e300.
+- **import surpyval is 0.3 s faster (#470).** The regression,
+  competing-risks, recurrent and degradation models and the metrics load
+  on first use, and pandas and formulaic are imported only where used
+  (1.16 s to 0.86 s). Every name, ``dir(surpyval)`` and attribute access
+  such as ``surpyval.recurrent.laplace`` work as before.
+- **Faster no-maximum check (#501).** A coefficient at or near 0, which
+  Newton's step leaves unchecked, had its profile read with a third
+  derivative and two full Hessians: 65% of a 100,000-row LogNormal AFT
+  fit. It now uses Hessian-vector products. The criterion and its verdicts
+  are unchanged, and its curvature is exact where the old one lost
+  digits. The fit takes 2.7 s instead of 4.8 s.
+- **Faster likelihood-ratio bounds (#519).** The searches evaluate the
+  distribution's formulas without the guards the data cannot trip
+  (bit-identical values), and for two-parameter models the region's
+  boundary is traced once and each search starts from it. A Weibull
+  ``cb(method="lr")`` at 20 points on 1,000 units takes 2.4 s instead of
+  9.4 s, and at one point 0.56 s instead of 1.1 s. Bounds are unchanged
+  to 2.3e-7. A steep LogNormal hazard bound that ended 5e-8 outside the
+  region now sits on its boundary.
+- **Incomplete beta tails (#520).** Where a small tail's ``x`` rounds
+  towards 1, as with a NegativeBinomial ``r`` near 1e-172, the continued
+  fraction ran to 100,000 terms (4.6 s per call) and was 0.5 nats off.
+  That tail now comes from the other side's power series, to 1e-15 of
+  mpmath, in milliseconds, and an unconverged continued fraction gives
+  nan instead of a wrong value.
+- **Faster degradation bootstrap bounds (#522).** Each refit reuses the
+  units' path fits and warm-starts the life fit from the full-data
+  estimate, and every refit still reaches a verified maximum. 200 units
+  with 200 resamples take 5.4 s instead of 9.7 s, and the bounds change by
+  at most 4e-7.
+- **MCF variance in linear time (#521).** The Lawless-Nadeau variance and
+  each item's observation window took a pass over all times or rows per
+  item. At 5,000 items the fit takes 0.27 s instead of 1.8 s, with the
+  same variance to 2e-13.
+- **Design principle 24: simple by default, more as an option.** When a
+  method reaches its limit, the new approach is added as an option beside
+  it. The default stays the simple, standard method, and changes only
+  when it is wrong for the usual case.
+- **Fixed: survival along a continuous path at far-out times.**
+
+  - **Hazard shut off by the path.** ``sf_tvc`` along a ``CovariatePath``
+    started with one quadrature panel from the last earlier edge to the
+    query. When the path shuts the hazard off, all of the hazard sits near
+    the model's time scale, and that panel never sampled it. For example,
+    with a Weibull(10, 2) PH model and ``Z = -0.2t``, ``sf_tvc(1e21)``
+    gave 1.0, or sf(1) when queried with t = 1, against the exact
+    exp(-0.5) = 0.6065. The starting mesh now has edges a factor of 2
+    apart from below the model's time scale up to the query, about 110
+    panels for 1e21.
+  - **Hazard that overflows.** A hazard that grows without bound along
+    the path overflowed to inf - inf and gave NaN with a raw numpy
+    warning. It now gives survival 0.
+- **Fixed: an additive hazards model's cb below 0.** It gave a band where
+  ``sf`` is 1 (WeibullAH ``cb(-1, z)`` was [0.81, 0.97]); it is now [1, 1].
+- **Survival forests grow 8-90 times faster (#190, #518).** The Weibull
+  split ran a Nelder-Mead fit for every candidate child (2 trees at n = 300:
+  21 s). On observed and right-censored data each child's maximum is now
+  found directly, every candidate of a feature at once: the exponential
+  rate and Weibull scale in closed form, the Weibull shape from its
+  profile likelihood (0.23 s). The log-rank split sorts each feature once
+  and scores every threshold from cumulative counts (10 trees at n = 1000:
+  2.2 s, was 16.5 s). The chosen splits are unchanged, so seeded forests
+  predict exactly as before. Data with left or interval censoring or
+  truncation still runs an optimiser for each candidate.
+- **A forest's first prediction is about 20 times faster.** Each Weibull
+  or exponential leaf was fitted by a full ``Weibull.fit`` the first time a
+  prediction reached it: 93 s for a 20-tree forest on 1,000 rows, five
+  times as long as growing it. On observed and right-censored data a leaf
+  is now the maximum found as the split search finds a child's (the
+  exponential rate in closed form, the Weibull from its profile
+  likelihood, with the shape searched as widely as ``Weibull.fit`` does),
+  built from its parameters: 4.3 s. The parameters agree with
+  ``Weibull.fit`` to its tolerance (about 1e-5), so predictions move in
+  their last digits. Such a leaf has no ``cb()`` of its own.
+- **Changed: trees and forests know their covariate names (#192).**
+  ``fit_from_df`` takes a ``formula`` as well as ``Z_cols``, and ``fit``
+  takes a ``DataFrame`` ``Z``; the fitted model keeps ``feature_names`` and
+  serialises them, ``print(tree)`` shows the splits by name (``temp <=
+  42``) and each leaf's model, and predictions read a ``DataFrame`` by name.
+  ``RandomSurvivalForest.feature_importances`` is a ``pandas.Series`` keyed
+  by feature name (it was an array).
+- **min_split_gain for the likelihood trees (#189).** A ``"weibull"`` or
+  ``"exponential"`` node splits only if its best cut raises the maximised
+  log-likelihood by more than ``min_split_gain``: a number, ``"aic"`` (the
+  kind's parameters, 1 or 2) or ``"bic"``. The default, 0, keeps the old
+  behaviour, which suits a forest; ``"aic"`` is the setting for a single
+  tree (on no-effect data, 3.4 leaves on average instead of 32).
+- **Split housekeeping (#193).** ``log_rank_split`` called directly on left-
+  or interval-censored or right-truncated data raised ``IndexError`` or
+  returned a wrong split; it now raises ``ValueError``. ``min_leaf_failures``
+  counts failures weighted by ``n`` in every split, so a row with count n
+  and n identical rows give the same tree.
+- **Non-parametric trees on truncated data (#188).** ``SurvivalTree`` and
+  ``RandomSurvivalForest`` with ``kind="non-parametric"`` refused
+  right-truncated data, and truncated data with left or interval
+  censoring. They now take the Turnbull-score split with Turnbull leaves:
+  a truncated row's log-rank score is that of its likelihood given its
+  truncation window (the event's score less the window's, under the
+  pooled Turnbull estimate fitted with the truncation). On left-truncated
+  right-censored data these are the delayed-entry martingale residuals.
+  Without the window term, a covariate that changed only the truncation
+  was found significant in 39-49% of data sets at the 5% level; with it,
+  0.5-3%. Every tree kind now accepts the full data model.
+- **Breaking: Kaplan-Meier bands hold their level (#390).** The
+  equal-precision band covered 0.87-0.89 for a nominal 0.95 (0.83
+  untransformed), most misses at the first events, where its boundary is
+  unbounded and the estimate rests on a few failures. ``band()`` now forms
+  its bands on the arcsine-square-root scale by default
+  (``bound_type="arcsine"``; Borgan & Liestøl 1990), and the
+  equal-precision band covers 0.1 <= a <= 0.9 by default, NaN outside;
+  ``x_range=(t_L, t_U)`` sets any range. Coverage is now 0.94-0.96 at n =
+  40-400; Hall-Wellner covers about 0.95. Pass ``bound_type="exp"`` for
+  the old scale. ``cb()`` is unchanged.
+- **Breaking: parametric regression Wald bands on the baseline family's
+  scale (#504).** As for the univariate (#477) and degradation models, the
+  ``sf``/``ff``/``Hf`` band is now formed on ln H (Weibull, Exponential,
+  Rayleigh, Gumbel), the normal quantile of F (Normal, LogNormal) or the
+  logit (the rest), from the cumulative hazard, and ``cb_tvc`` follows. A
+  model with its coefficient fixed at 0 now gives the univariate band (it
+  was up to 120% away). On ten-point samples the Weibull PH and AFT bands
+  turned back in a tail in 200 of 200 fits and now never do. Small-sample
+  bands change; at n = 2000 they move by at most 1.4% of their width. The
+  three families of model share one helper in ``surpyval.utils.linalg``.
+- **Proportional-intensity regressions alias (#502).** A repeated column
+  was split (-0.231 as -0.116 / -0.116) and a constant column took part of
+  the baseline (rate 0.0807 became 0.0764), silently. Both now give a NaN
+  coefficient, ``model.aliased``, one warning, and the fit without the
+  column. A constant is aliased where the baseline has a scale
+  (``has_scale``: HPP, Duane, Crow-AMSAA, Cox-Lewis).
+- **Dual-stress life models alias an undetermined stress effect (#503).**
+  With equal (or collinear) stresses, DualPower and DualExponential split
+  one effect between two parameters (-1.174 as -0.568 / -0.605), silently.
+  The later stress's parameter is now NaN, with one warning naming the
+  column, and the fit is the single-stress one. PowerExponential is
+  unaffected.
+- **Renewal models: intervals at a boundary (#461).** A ``q`` driven to 0,
+  or a ``rho`` to 1 or 0, gave NaN ``param_cb`` for it and for ``alpha``
+  (whose variance was -10.6). The restoration parameter now gets its
+  one-sided profile-likelihood interval (e.g. q in [0, 0.069]); the others
+  get Wald intervals of the model held at the edge, and the printed table
+  says so.
+- **MixtureModel: no false "max iterations" warning, and faster (#506).**
+  EM on a censored mixture crawled for 1000 iterations and warned at the
+  maximum. After at most 20 EM iterations the fit is polished by direct
+  maximum likelihood with autograd gradients, and a verified maximum is
+  accepted. The issue's case takes about 1 s (7.4 s before on the same
+  machine), with no warning and a slightly better maximum (738.046941
+  against 738.047053).
+- **Proportional-odds cumulative hazard is accurate where it is small
+  (#528).** ``Hf``, ``log_sf`` and ``Hf_tvc`` of every PO model computed
+  H0 - ln(phi) + ln(F0 + phi S0), whose terms cancel to about 1e-16 in
+  absolute terms: 20% wrong at H = 4e-16, and ``log_sf`` was -inf where S0
+  underflows. They now use ln(1 + F0/(phi S0)). Checked against 50-digit
+  values for all seven baselines; fitted parameters are unchanged.
+- **ExpoWeibull likelihood is accurate at extreme shapes (#472).** The
+  log-density and hazard added terms of size beta ln(x/alpha) that cancel,
+  an error of about 1e4 per point at beta = 7e19, so the likelihood came
+  out up to 3.7e6 in deviance above the fitted maximum and a
+  likelihood-ratio search met -2e139. They are now computed without the
+  cancellation, and the likelihood-ratio band's walk starts from the
+  points its direct searches reached.
+- **Every parametric fit searches in the units of its start (#366).** Only
+  offset fits did; the others searched a scale as a log below 1 and
+  linearly above it, a different search in every set of units. Fits to
+  data in millionths and in millions now agree to rounding (1e-16 to
+  1e-11; up to 2e-6 before, and 3% for an ExpoWeibull MSE fit). Fits move
+  only in their last digits. A Beta4 fit on data where its likelihood is
+  unbounded can now warn "No finite maximum" instead of "did not reach a
+  verified maximum".
+- **Fine-Gray fits in linear time (#517).** ``FineGray.fit`` (and
+  ``CompetingRisksProportionalHazards(model="Fine-Gray")``) built a dense
+  events-by-rows matrix of censoring weights and used it in every
+  likelihood, gradient and Hessian evaluation: 1.3 s and 476 MiB at 10,000
+  rows, and impossible at 100,000 (22 GB for the matrix alone). The risk
+  sets are now cumulative sums over the rows in time order, and the
+  censoring Kaplan-Meier (which the prediction metrics use too) is a
+  suffix sum, bit-identical. A fit takes 0.036 s at 10,000 rows and
+  0.63 s at 100,000, with memory linear in the rows (34 MiB). Results
+  agree to about 1e-14, except in a few percent of large fits where the
+  optimiser stops one iteration apart (coefficients within its
+  tolerance, up to 3.4e-6 relative); it now stops on "precision loss"
+  less often.
+- **CoxPH fits are 4-10 times faster at 100,000 rows (#516).** The
+  information matrix was built as one p x p matrix per event time, with
+  truncation terms computed even with no truncation, and the solver built
+  it about 14 times per fit. It is now one product over the rows, the
+  truncation terms are skipped when nothing is truncated, and the
+  coefficients come from Newton-Raphson with step-halving (as in R's
+  ``coxph``), about 5 steps, falling back to the previous solver where it
+  fails, as where the likelihood has no finite maximum (that warning is
+  unchanged). At 100,000 rows and 5 covariates, Efron takes 0.28 s with
+  ties (was 1.6 s) and 0.66 s without (was 5.6 s); time-varying fits on
+  40,000 intervals take 0.24 s (was 0.85 s). The score is now solved to
+  rounding, so results change only in the last digits (at most 4e-13
+  relative). ``tol`` is the largest step, in standard errors, at which the
+  fit stops.
+- **Faster Efron Cox fits with tied times (#515).** The Efron score was
+  computed on a masked (times x largest tie x covariates) array: one
+  51-way tie among 30,000 rows took 10.3 s instead of 1.1 s. The sum over
+  tied deaths is now factored and stored per death: 1.4 s. Time-varying
+  Cox fits on 40,000 rows take 0.53 s (was 8.3 s). Untied and Breslow
+  fits are bit-identical; tied Efron fits agree to the last digits.
+- **Frailty and parametric additive hazards fits use the gradient
+  (#515).** They began with thousands of Nelder-Mead evaluations. They now
+  run a gradient search first and keep its answer when it is a verified
+  maximum, falling back to the old search otherwise (the #376 and #392
+  warnings are unchanged). At 10,000 rows: WeibullFrailty 2.2 s to 0.13 s,
+  GammaFrailty 23 s to 1.4 s, WeibullAH 1.0 s to 0.21 s. On some data the
+  old frailty search stopped with the variance at 0, up to 0.1
+  log-likelihood units short of an interior maximum the new one finds.
+- **Faster log-rank test, Turnbull, Fleming-Harrington and
+  competing-risks fits (#515).** Results are bit-identical. ``logrank``
+  built an at-risk array of rows by event times: 13 s and 2 GB for 30,000
+  rows in three groups, and out of memory at 100,000; with running totals
+  it takes 0.02 s and 0.06 s. The Fleming-Harrington estimator,
+  ``Turnbull``'s default, summed each step's tied events in a Python loop
+  on every EM iteration: a Turnbull fit to 1,000 random intervals takes
+  0.22 s (was 7.9 s) and ``FlemingHarrington.fit`` on 100,000 rows 0.05 s
+  (was 0.74 s). ``CompetingRisks.fit`` searched the distinct times for
+  every row: 0.07 s at 100,000 rows (was 1.65 s); the new
+  ``surpyval.utils.missing_events`` finds the censored rows in one pass.
+  Grouping tied rows sorts the data once instead of three times, halving
+  a tied 100,000-row Weibull fit.
+- **Faster Kaplan-Meier, Nelson-Aalen, AFT and proportional-odds fits
+  (#498, #499).** Greenwood's and the Nelson-Aalen variance snapped each
+  ``d / r`` to a whole number in a Python loop, most of a large fit;
+  vectorised, a 100,000-row Kaplan-Meier fit takes 50 ms instead of 207
+  ms (Nelson-Aalen 53 ms, was 228), with bit-identical variances and
+  bounds. AFT and PO fits started with Nelder-Mead, hundreds of
+  derivative-free evaluations; with a differentiable likelihood they now
+  take the gradient ladder the PH models use first, and fall back to the
+  old ladder only when that cannot verify its optimum. At 100,000 rows and
+  5 covariates a WeibullAFT fit takes 0.48 s (was 2.0 s) and WeibullPO
+  0.64 s (3.9 s); at 1,000 rows AFT and PO fits are 4-6 times faster. They
+  reach the same maximum to 1e-6 in the log-likelihood, or a slightly
+  higher one. The time-varying AFT likelihood is not differentiable and
+  keeps Nelder-Mead.
+- **Likelihood-ratio bounds at the edge, and along valleys (#421).**
+  Profiles are now searched on the log or logit scale of each parameter,
+  each point starting from the ones already solved. The old search on raw
+  parameters, restarted from the fit every time, overstated the profiles:
+  ExpoWeibull 42.4 for 0.29 at mu = 1e-4, NegativeBinomial 3.05 for 2.35
+  at p = 0.999999. Where a profile levels off below the critical value,
+  the bound is the edge of the parameter's space. A NegativeBinomial
+  ``r`` tends to a shifted Poisson with deviance 2.345, so its 95% upper
+  bound is ``inf``, not 1.7e16, and its 80% bound (36.2) is finite.
+  ExpoWeibull ``beta`` is now [0.053, inf] at 95% and [0.486, inf] at 80%;
+  the old [0.171, 367.5] and [0.486, 372.0] were not nested. A band is
+  where the function's own profile reaches the critical value, and
+  ``sf``, ``ff`` and ``Hf`` share one band. NegativeBinomial ``hf(2)`` at
+  95% is now 0.305 (was 0.207), and the ExpoWeibull bands that were
+  ``nan`` are found. The NegativeBinomial sweep no longer leaks over
+  14,000 raw numpy warnings. Likelihood-ratio bounds are slower for the
+  simple families (a Weibull ``cb`` went from about 0.06 to 0.2-0.5 s).
+- **Continuously varying covariates: CovariatePath (#172, phase 1).**
+  ``sf_tvc`` and ``Hf_tvc`` accepted only step schedules, so a ramp-stress
+  profile or a thermal cycle had to be cut into steps. That was slow (150
+  ms for 1000 steps), and only accurate to the square of the step width,
+  with no error reported. ``CovariatePath.from_points(times, values,
+  period=None)`` (straight lines; a repeated time is a jump) and
+  ``CovariatePath.from_callable(func, p=1, breakpoints=None, period=None)``
+  now describe the path. PH, AH, PO and AFT integrate the hazard (AFT the
+  accelerated age, Nelson's cumulative exposure) by adaptive Gauss-Kronrod
+  quadrature to 1e-10 relative error on H, with one ``RuntimeWarning`` if
+  that is missed. Cox sums its baseline jumps along the path exactly. The
+  error against closed forms is 5e-16 to 9e-14, in about 2 ms for 200
+  times. ``given=`` integrates from the conditioning age. A step schedule
+  is still summed exactly, and a flat path gives the same result to
+  rounding. A path evaluates a fitted model only: fitting still uses steps
+  (``fit_tvc``).
+- **Out-of-bag log-likelihood and permutation importance for the random
+  survival forest (#186).** The forest could only be scored by
+  concordance, which needs right-censored data.
+  ``RandomSurvivalForest.oob_log_likelihood()`` now scores every training
+  row by its full likelihood (density, S, F or interval probability, over
+  the truncation probability) under the trees that did not see it, for
+  every censoring type and truncation. ``feature_importances(n_repeats=5,
+  random_state=None)`` reports how much that score drops when a feature is
+  shuffled among each tree's out-of-bag rows. For this score a
+  non-parametric leaf is read as a continuous distribution (linear between
+  its drops, exponential after the last). On the docs example the score
+  rises from -2.644 without splits to -2.484 with them.
+- **Non-parametric survival trees on left- and interval-censored data
+  (#188, stage 1).** ``kind="non-parametric"`` raised on such data. It now
+  splits on the log-rank scores of the node's pooled Turnbull estimate
+  (the standardised left-child sum, with its permutation variance), with
+  Turnbull leaves. On right-censored data the scores are exactly the
+  classic log-rank scores, so the split chooses as the log-rank split does.
+  Truncation combined with left or interval censoring, and right
+  truncation, still raise (stage 2).
+- **Added: random_state for SurvivalTree and RandomSurvivalForest
+  (#471).** The bootstrap samples and each split's candidate features
+  were drawn from numpy's global stream, so a forest could only be
+  reproduced by seeding numpy globally, and fitting one disturbed the
+  global stream. ``random_state=None`` still draws from the global
+  stream exactly as before, so forests under ``np.random.seed`` are
+  identical. An int or ``Generator`` gives the forest its own stream,
+  with a child stream per tree, and leaves the global one alone.
+- **Added: conditional-inference trees, selection="ctree" (#188).**
+  Greedy search prefers covariates with many values and always splits:
+  in 60 simulated data sets it chose a noise covariate 47% of the time
+  over a two-valued covariate with a real effect. With
+  ``selection="ctree"`` each node chooses its covariate by the
+  Bonferroni-adjusted p-value of its maximally selected score statistic,
+  and splits only if that p is below ``alpha_split`` (0.05). The scores
+  are log-rank for ``"non-parametric"``, and the working model's score
+  contributions for ``"exponential"`` and ``"weibull"``. The p-value is
+  exact for the statistic's asymptotic chain. Noise is then chosen 10% of
+  the time, and on null data 96% of trees stay a single leaf, where
+  greedy search always splits. It works for every kind and every
+  censoring type; the default is unchanged.
+- **Beta4: a fit with no maximum says so, and MPS is recommended (#385).**
+  The four-parameter Beta's likelihood is unbounded: a shape below 1 makes
+  the density infinite at a support end. So a maximum-likelihood fit could
+  run an end onto the smallest or largest observation and stop wherever
+  its search gave up. The answer depended on the data's units: shapes
+  1.00, 1.19 on a fixture, and 0.18, 0.18 on the same data times 7.3.
+  Such a fit now warns "No finite maximum" and recommends
+  ``how="MPS"``. Maximum product of spacings scores an end gap of zero as
+  minus infinity, so its estimates are finite and the same in any units.
+  MLE stays the default; the class docstring explains when to prefer MPS.
+- **Changed: Bernoulli's survival function is P(X > x) (#344).** It was
+  ``P(X >= x)``, so ``sf`` was [1, p] at the outcomes 0 and 1 and ``ff``
+  was ``P(X < x)``, which never reaches 1, so ``qf`` could not invert it.
+  ``sf`` is now [p, 0] and ``ff`` [1 - p, 1], as for ``Binomial`` with
+  ``n = 1``, ``scipy.stats.bernoulli`` and every other discrete
+  distribution in the package. ``Hf`` is [-log p, inf]; ``df``, ``hf``,
+  ``qf``, ``mean``, ``random`` and the fitted ``p`` are unchanged. Code
+  that read the probability of the ``1`` outcome (a one-shot device
+  working on demand) as ``sf(1)`` wants ``sf(0)``, or ``p`` itself.
+- **The Uniform's MLE refuses censored data again (#460).** 0.21.0 fitted
+  right- and left-censored data by maximum likelihood. The estimates were
+  right, but they sit on a wall of the likelihood (the smallest or largest
+  observation), where its curvature says nothing about their uncertainty.
+  The covariance it reported was not positive definite, so Wald bounds
+  were NaN or silently several times too wide: an ``sf`` bound of [0.25,
+  0.98] where the likelihood-ratio bound is [0.72, 0.85]. ``Uniform.fit``
+  now raises ``ValueError`` on any censored value, as it always did for
+  interval-censored ones, and names the methods that take censored data
+  (``how="MPS"``, ``"MPP"``, ``"MSE"``). Exactly observed data, truncated
+  or not, fit as before, still with no covariance.
+- **Fits with no finite maximum warn instead of returning silently
+  (#392).** Some data leave the likelihood with no maximum: a covariate
+  level with no events, perfectly dependent pairs, a mixture component on
+  a point mass, noise-free degradation readings. These fits returned
+  wherever their optimiser stopped, silently:
+
+  - a WeibullPH coefficient of -14.7 (+32 to +36 for the PO models, about
+    -32 for most frailty models);
+  - Fine-Gray -12.9, with BFGS reporting success;
+  - copula dependence of Clayton theta 3.2e6, Frank 1.2e7, Gumbel 105.5
+    (log-likelihood inf) and Gaussian rho at its 0.9999 cap;
+  - a mixture component with beta 9100;
+  - GammaProcess alpha at the end of its search range (1e6), and
+    DestructiveDegradation sigma 9.9e-16;
+  - BetaGeometric in its Geometric limit (a, b about 1e5, 3.5e5).
+
+  Each now gives one ``UserWarning`` starting "No finite maximum" at the
+  caller's line. It names the parameter that runs away and what to do
+  instead (for example "use Geometric"), and the fit still returns the
+  model it reached. Fine-Gray and ``CompetingRisksProportionalHazards``
+  (Fine-Gray) use CoxPH's "Monotone partial likelihood" warning.
+
+  The regression test is Newton's. Along each coefficient's profile,
+  Kantorovich's ``h = |f'''| |f'| / f''^2`` is 1 on the way to a supremum,
+  however far the optimiser went. At the maximum of an ordinary fit it is
+  at most 2e-4, over the test registry and 1360 calibration refits. It
+  costs one Hessian at the fitted values, and a coefficient's profile is
+  read only when its Newton step there exceeds 1/709.8 of its value (the
+  log of the largest double): every coefficient running off to infinity
+  exceeds it and a converged one does not. That Hessian is kept:
+  ``covariance()``, ``standard_errors()``, ``cb()`` and ``param_cb()`` of
+  the PH, AFT, PO, AH, frailty and Fine-Gray fits invert it instead of
+  computing a numerical Hessian on every call, so a PH fit followed by
+  its standard errors and a band is 8-42% faster than before, and the
+  standard errors move by at most 5e-4 relative (rounding in the
+  numerical Hessian). The numerical Hessian is still used for reloaded
+  models, accelerated-life and AFT ``fit_tvc`` fits, fits with no finite
+  maximum, and Hessians that are not positive definite. The
+  additive-hazards models, whose likelihood rises without bound on such
+  data, now say so instead of reporting a positivity boundary (all except
+  GammaAH). The Gumbel copula no longer leaks about 230 raw numpy overflow
+  warnings. Univariate MLE now also refuses a point mass at the edge of a
+  truncation window (Weibull beta 455.6, Normal sigma 0.037, silently).
+- **Parametric additive hazards warn where their hazard is negative
+  (#376).** ``h_0(x) + beta'Z`` has nothing keeping it positive away from
+  the observed failures, so for a protective covariate row the cumulative
+  hazard falls: ``sf`` exceeded 1 (1.03 for a ``WeibullAH``) and ``ff``
+  and ``df`` went negative, silently. The values are still the model's,
+  but ``sf``, ``ff``, ``df``, ``hf``, ``Hf``, ``cb``, ``sf_tvc`` and
+  ``Hf_tvc`` now give one ``RuntimeWarning`` per call naming how many
+  queried points have a negative hazard and how far ``sf`` exceeds 1. (The
+  semi-parametric ``AdditiveHazards`` already predicts with the running
+  maximum of its cumulative hazard, since #462.)
+- **Additive hazards bounds no longer leak a numpy overflow warning
+  (#465).** Where the fitted cumulative hazard is negative, the
+  logit-scale ``sf`` bound computed ``1 / (1 + exp(-t))`` with ``t``
+  hugely negative, and numpy warned "overflow encountered in exp" on the
+  way to the right answer, 0. It now uses ``scipy.special.expit``; the
+  bounds are unchanged.
+- **Cox models no longer break on a covariate far from zero (#459).**
+  ``CoxPH`` fitted on the raw covariates, so a column such as a year or a
+  date overflowed ``exp(beta'Z)``: on 200 rows, adding 2000 to a N(0, 1)
+  covariate moved beta from 0.860 to 0.768, made the survival and
+  p-values NaN, gave a false "monotone partial likelihood" warning and
+  leaked numpy overflow warnings. The fit now always runs on the
+  covariates centred on their (n-weighted) means, as R's ``coxph``,
+  lifelines and scikit-survival do; beta and every prediction are
+  unchanged by any shift of a column, for plain, stratified and
+  time-varying fits, residuals, ``check_ph``, robust errors and the
+  cause-specific Cox model. The reported baseline (``h0``, ``H0``) stays
+  at ``Z = 0`` (R's ``basehaz(fit, centered = FALSE)``), as before, and
+  ``phi(Z)`` is ``exp(beta'Z)``; predictions combine the two on the log
+  scale, so a tiny baseline and a huge multiplier lose nothing. Where the
+  baseline at ``Z = 0`` cannot be represented (it over- or underflows),
+  the fit raises ``ValueError`` and says to pass the new ``center=True``
+  (on ``fit``, ``fit_from_df`` and the ``fit_tvc`` variants), which keeps
+  the baseline at the means, ``model.center`` (R's ``basehaz(fit)``), with
+  ``phi(Z) = exp(beta'(Z - center))``, and saves ``"center"`` (schema 2).
+  A default fit's file has the layout of before (schema 1), and files
+  saved by 0.21.0 and earlier load as fitted.
+- **Parametric regressions and Fine-Gray no longer break on a covariate
+  far from zero (#463).** ``exp(beta'Z)`` overflowed in these fits too:
+  adding 2000 to a N(0, 1) covariate turned a ``WeibullPH`` coefficient of
+  0.707 into 0.0247 with a scale of 2.4e18, silently, and ``FineGray.fit``
+  and ``CompetingRisksProportionalHazards(model="Fine-Gray")`` raised
+  ``LinAlgError: SVD did not converge``. ``FineGray`` and the competing-
+  risks model now centre as Cox does, and take ``center=`` with the same
+  meaning. The parametric families (``PH``, ``AFT``, ``PO``, ``AH`` and
+  their ``fit_from_df`` / ``fit_tvc`` variants) take ``center=False``: by
+  default the baseline is reported at ``Z = 0``, as before. Where the
+  family and link have an exact map between the covariate means and
+  ``Z = 0`` (a Weibull, Rayleigh, Exponential or Gumbel PH; every AFT
+  baseline SurPyval has; a LogLogistic or Logistic PO) the fit runs on
+  centred covariates and maps back, so beta, the predictions and the
+  bounds are the same whatever the covariates' origin, and it raises
+  ``ValueError``, pointing to ``center=True``, when the baseline at 0 over-
+  or underflows. For the other pairs the default fit is at ``Z = 0``,
+  unchanged and unchecked, so on covariates far from zero it can still
+  fail or stop at a poor answer (a LogNormal PH coefficient of 0.006
+  against 0.64 at a shift of 300). ``center=True`` fits
+  any family with its baseline at the means (``model.center``, shown in the
+  summary and saved, schema 2), where a shift of a column changes nothing.
+  For additive hazards, ``center=True`` is a different model,
+  ``h0 + beta'(Z - center)``.
+  On ordinary data the reported parameters are those of before to
+  optimiser tolerance (log-likelihoods within 2e-8 on 48 of 49 test fits;
+  one Logistic PO fit on 34 tires stops 1.3e-5 nats short of the old
+  point), and the fits are no slower.
+- **Fits no longer stop far from the maximum in silence (#427, #428,
+  #429).** The maximum-likelihood ladder took the first optimiser that
+  reported success, and from a poor start BFGS, TNC and Newton-CG report it
+  where the likelihood first looks flat: a Weibull started at alpha 1e7
+  returned beta 0.099 with a log-likelihood 40 below the maximum. A rung
+  now counts only when its answer has a zero gradient and a
+  positive-definite Hessian; a fit given ``init`` is also started from the
+  default start and keeps the best likelihood; an answer still not a
+  verified maximum warns. Accelerated-life fits (InversePower was 14.7
+  below the maximum), additive-hazards fits, and NHPP, proportional
+  intensity and renewal fits (ARI 227 below; Duane NaN) check their answer
+  and use the default start the same way. Fits the first rung solves cost
+  the same as before.
+- **Data with no maximum are refused (#392).** A parametric MLE whose data
+  one failure time explains completely returned a spike: an exact 0.5 with
+  a left-censored 1 gave a Weibull beta of 395.7 and a Normal sigma of
+  5e-324; the intervals (1, 3] and (2, 4] gave beta 57.9. These raise
+  ``ValueError`` now, as tied values already did.
+- **The truncated likelihood is exact in the upper tail (#412, #393).** A
+  truncation or interval window where F rounds to 1 gave +inf or NaN (a
+  LogNormal left-truncated at 1 with mu = -5 gave +inf, not -23.73), which
+  made truncated fits depend on the data's units (Normal 8.536, 2.461 on
+  the data but 48.87, 23.04 on the data x 7.3). Such windows are computed
+  from the log survival function now; truncated fits are unit-free, reach
+  the maximum (8.745, 2.459), and run about 40 times faster.
+- **Continuous distributions are accurate in their tails (#410, #442,
+  #443, #444, #447).** Functions no longer take the log or complement of a
+  probability already rounded to 1, 0 or inf. ``Logistic.sf`` was NaN
+  more than 709 scales below the location; ``Hf`` and ``log_sf`` were
+  -0.0 deep in the left tail (true 1e-300) and ``log_ff`` 0 deep in the
+  right (true -1e-30); log forms were +-inf where the probability
+  underflows (Weibull ``log_ff`` at 1e-400 is -921); hazards were NaN
+  where density and survival both underflow (``Normal.hf`` uses the
+  asymptotic series above z = 100); LogNormal, Weibull, LogLogistic and
+  Gamma were NaN at x = 0; Gamma ``df`` raised ``OverflowError`` at shape
+  1000; ``Rayleigh.qf(1e-30)`` was 0 and ``Hypoexponential.qf(1e-30, 1,
+  2)`` 4.3e-61 against 1.0e-15. Hypoexponential uses a power series near
+  the origin and gains ``log_sf``, ``log_ff`` and ``log_df``. Every
+  function is within 1e-8 of 50-digit mpmath values on the tail grid, and
+  fitted parameters are unchanged.
+- **Discrete and Beta-family distributions are accurate in their tails
+  (#442-#447, #449, #458).** Geometric used ``log(1 - p)`` (8 digits lost
+  at p = 1e-9); BetaGeometric took ``ln B(a, b + k)`` as a difference of
+  ``gammaln`` values of size 2.6e13, losing up to 22% of ``ff`` at
+  k = 1e12, and its ``qf(1)`` was finite; Beta4 raised ``OverflowError``
+  at extreme shapes. The references generated for Beta, Binomial,
+  DiscreteWeibull and NegativeBinomial (#448) exposed 102 more failing
+  groups -- a Beta ``sf`` of 0 against 1e-30, a NaN density at
+  alpha = beta = 1000, a Binomial hazard of 0 against 0.99999, a
+  NegativeBinomial ``qf`` 2.5% short at p = 1e-6 -- and Poisson and Beta4
+  lost their tails the same way. The incomplete beta gains log-scale tails
+  (``betaincln`` and the new ``betainccln``, a continued fraction where a
+  tail is below 1e-3), with accurate ``ln B`` and gamma ratios and exact
+  discrete quantiles. Every one of the 1,404 tail groups now agrees with
+  50-digit mpmath values; fitted parameters are unchanged.
+- **Discretize: ``qf(ff(k))`` is k (#383).** It returned k + 1 where
+  ``ceil`` rounded k + 1e-15 up.
+- **Distribution functions accept lists and tuples (#424).**
+  ``Gamma.sf([5, 10], 8, 3)`` returned six values (Python list repetition)
+  and ``Weibull.sf([5, 10], 8, 3)`` raised ``TypeError``; every
+  distribution's functions take a list or tuple as an array now.
+- **A missing query gives NaN everywhere (#382).** The constant-hazard
+  models (Exponential and its regressions, Geometric, the HPP ``iif``),
+  Uniform, Beta4, Binomial, Bernoulli, FixedEventProbability,
+  ExactEventTime, NeverOccurs, InstantlyOccurs, BetaGeometric and
+  RoystonParmar ``qf``, the Gaussian copula's ``cdf`` and the
+  non-parametric and renewal ``mcf`` returned a number, the last value or
+  raised at a NaN; they give NaN there now.
+- **Fixed: Turnbull keeps its last piece when every row is right
+  truncated (#391).** The ladder assumed the last bound was +inf and
+  dropped the piece ending at the largest ``tr``: one failure at 1
+  observable up to 1 gave sf(1) = 1 (0 with
+  ``turnbull_estimator='Kaplan-Meier'``), and a left-censored row at its
+  truncation time raised ``IndexError``.
+- **Changed: a non-parametric ``df`` is the step probability (#408).** It
+  is the drop in ``sf`` over the step ``hf`` differences, not
+  ``hf * exp(-Hf)``, which was inf x 0 = NaN (with a raw warning) where a
+  Kaplan-Meier reaches zero: ``KaplanMeier.fit([1, 2, 3]).df([2.5, 3.5,
+  4.5])`` was ``[inf, nan, nan]`` and is ``[1/3, 1/3, 1/3]``. Values move
+  slightly elsewhere (the Nelson-Aalen example: 0.2047 to 0.1811).
+- **Fixed: cubic confidence bounds close onto the estimate (#417).** A
+  non-linear ``interp``'s bounds are the interpolated estimate plus the
+  interpolated distance over the times with a variance, so they close onto
+  ``sf`` and always contain it (at ``alpha_ci`` -> 1, 0.1873 against sf
+  0.1948 before); linear bounds are unchanged.
+- **Fixed: ``band`` at a large ``alpha_ci`` (#420).** The critical-value
+  search climbed from far below the root: ``alpha_ci = 0.9`` took 13 s and
+  ``1 - 1e-6`` tried to allocate 158 TiB or hung. Now 0.1-6 s; critical
+  values at the usual levels are unchanged.
+- **Changed: a step with no one at risk keeps the estimate (#425).**
+  ``kaplan_meier`` and ``nelson_aalen`` took a step with no one at risk and
+  no events to zero while ``fleming_harrington`` kept its value. All three,
+  and the variances, now carry the estimate there, as R's ``survfit``
+  does; a step with events and no one at risk raises ``ValueError``.
+- **Semi-parametric fitters refuse an infinite event time (#394).**
+  ``CoxPH`` (stratified too), ``AdditiveHazards``, ``BuckleyJames``,
+  ``CompetingRisksProportionalHazards``, ``FineGray`` and ``CompetingRisks``
+  took an observed ``x = inf`` as an event: Cox returned beta 19.4 on two
+  rows and Lin-Ying died in a ``LinAlgError``. They now raise the
+  univariate fitters' ``ValueError``; an infinite censoring time is still
+  accepted.
+- **Buckley-James takes one covariate row per time (#426).** ``sf``,
+  ``ff`` and ``Hf`` took one vector only and raised numpy's bare matmul
+  error for paired rows; they now pair row i with ``x[i]`` like every other
+  regression model, and refuse a mismatched ``Z`` with a message.
+- **Frailty models drop a row with a missing group (#388).** A ``NaN``
+  label was a group of its own (9 groups instead of 8) and ``None`` raised
+  ``TypeError``; such rows are dropped with one "Dropped k of n rows"
+  warning, and ``group=nan`` predicts ``nan``.
+- **Coefficients the data cannot separate are NaN, as in R (#476, #409).**
+  A covariate column that adds nothing to the others -- a constant column
+  where the baseline already has a scale, a duplicated column, dummy
+  columns that add up to another column -- has no estimate of its own:
+  shifting weight between it and the columns it repeats fits the data
+  equally well. The fit used to return whichever split its search stopped
+  at. A constant column moved WeibullAFT's ``alpha`` from 54.06 to 51.02,
+  a repeated column split a Cox effect into 0.148 and -0.264, and
+  a constant column on separated data got 3.1e14 with an all-NaN baseline.
+  Now the fit leaves such columns out, as R's ``coxph`` and ``survreg``
+  do: their coefficients are ``nan``, with ``nan`` standard error and
+  p-value, ``model.aliased`` lists them, and one warning names them. The
+  other coefficients and the predictions are those of the fit without the
+  column. This covers ``CoxPH`` (with strata and time-varying
+  covariates), the parametric proportional hazards, AFT, proportional odds
+  and additive hazards models and their ``fit_tvc`` (the AFT one split a
+  repeated column's 0.338 into 1.685 and -1.346), Fine-Gray, the
+  competing-risks Cox model, the frailty models, and the Lin-Ying
+  ``AdditiveHazards`` and ``BuckleyJames`` models. **Changed:** those two
+  raised ``ValueError`` for a constant column, a single observation or
+  collinear columns; they now fit the other columns and warn. Fits without
+  such a column are unchanged. The proportional-intensity recurrent
+  regressions (#502) and the dual-stress life models (#503) do not alias
+  yet. ``conformance/test_aliasing.py`` checks every registered model
+  (principle 12).
+- **Regression models print a coefficient table: summary() (#484).** The
+  Cox and parametric regression models' ``summary()`` returns a
+  ``DataFrame`` in the layout of R's ``summary(coxph)`` and lifelines:
+  ``coef``, ``exp(coef)``, ``se(coef)``, Wald intervals for both, ``z``
+  and ``p``, one row per covariate, named from the ``DataFrame`` columns
+  for ``fit_from_df``. On the Rossi data it matches R (``fin``: coef
+  -0.37942, se 0.19138, p 0.04742). The parametric models add the
+  baseline's parameters, with the intervals of ``param_cb``, so the
+  Weibull shape ``beta`` is no longer printed among the coefficients
+  ``beta_0``, ``beta_1``, .... The models' ``repr`` prints the table.
+- **Changed: FrailtyModel.summary() returns the table (#484).** It
+  returned the text its ``repr`` prints; it now returns the same
+  ``DataFrame`` as the parametric models, with a ``frailty`` row for
+  ``theta``. ``print(model)`` gives the text.
+- **A cause label 0 with no censoring warns (#486).** lifelines,
+  scikit-survival and R's ``cmprsk`` code a censored row as cause 0;
+  SurPyval codes it as a missing cause (``None`` or ``NaN``), or with
+  ``c``. Data coded the other way fitted without complaint as a model with
+  an extra cause "0" and no censoring. Numeric cause labels that include
+  0, with none missing and no ``c``, now warn and give the one-line
+  conversion; passing ``c`` says 0 really is a cause and silences it.
+- **Covariate rows and times that cannot be paired raise (#488).** A
+  regression model pairs row ``i`` of ``Z`` with time ``x[i]`` (one row
+  for every time, or one time for every row). Any other count was a raw
+  numpy broadcast error; it is now a ``ValueError`` saying so. For a
+  survival curve per subject, the Cox and parametric regression
+  functions take ``grid=True``, which gives every row at every time,
+  shape ``(len(Z),) + x.shape``, as the survival tree and forest do.
+- **Changed: load_rossi_static()'s arrest means an arrest (#479).** It
+  stored the censoring flag (1 = not arrested) as a float under the name
+  ``arrest``, so ``c = 1 - df["arrest"]``, the natural call coming from R
+  or lifelines, fitted the complement without complaint (a Cox
+  coefficient of -0.001 for age instead of -0.057). ``arrest`` is now an
+  integer, 1 for an arrest, as in R's ``carData::Rossi`` and lifelines.
+  Code that passed ``c=df["arrest"]`` must pass ``c=1 - df["arrest"]``.
+  The bundled rossi, heart and lung data also lose their saved row-index
+  columns (``Unnamed: 0``).
+- **Changed: trend tests name a trend only when it is significant (#481).**
+  ``laplace`` and ``mil_hdbk_189c`` printed "Suggested trend: increasing"
+  at p = 0.25. ``trend`` is now the conclusion at a keyword-only
+  ``alpha_ci=0.05`` (``"none"`` unless p < ``alpha_ci``) and the new
+  ``direction`` is the sign of the statistic. The models' ``trend_test()``
+  take ``alpha_ci``, and the tests take ``c=`` by keyword only.
+- **MixtureModel.fit returns the model (#482).** It returned ``None``.
+  ``MixtureModel.fit(x, dist=Weibull, m=2)`` also builds and fits in one
+  call. An unfitted model's ``repr`` names it, and a truncated fit reports
+  "Fitted by: MLE", which it is, not "EM".
+- **params and param_names on FrailtyModel and RenewalModel (#483).**
+  Frailty: the baseline, the coefficients, then ``theta``. Renewal: ``q``
+  or ``rho``, then the distribution's parameters, the order of
+  ``standard_errors``.
+- **AcceleratedLife reports its life parameter as the life model's
+  (#489).** It printed "alpha: 1.0", a placeholder, as if fitted; it now
+  prints ``alpha: L(Z) of the Power life model``, ``param_cb`` refuses
+  that parameter, and the model has ``life_parameter``. Every parametric
+  regression model has ``param_names``. Data at one stress level raise
+  "needs at least two distinct stress levels", and too few levels with
+  ``init`` warn that the life-stress relationship cannot be identified.
+- **The repair models say which kind of dist they take (#495).** A
+  lifetime distribution passed to ``ARI`` (an ``AttributeError``) and an
+  intensity model passed to ``ARA``, ``GeneralizedRenewal`` or
+  ``GeneralizedOneRenewal`` ("more than one right censored time") raise a
+  ``ValueError`` naming the right fitter.
+- **API papercuts (#485).** ``to_json()`` without a path returns the
+  JSON text, and ``from_json`` reads it. A model with no data (from
+  ``from_params``, or loaded) plots its CDF. ``how`` is case-insensitive.
+  ``x``, ``c`` and ``n`` given as (n, 1) columns are read as one value per
+  row. **Changed:** ``qf`` outside [0, 1] is ``nan`` (it was ``inf`` or
+  0), a continuous distribution's ``qf(0)`` is the start of its support (a
+  Normal's ``-inf``, not 0), and a bounded one's ``qf(1)`` its end
+  (``Uniform(2, 5)``: 5, not ``inf``). Kaplan-Meier, Nelson-Aalen and
+  Fleming-Harrington given left- or interval-censored or right-truncated
+  data point to Turnbull. ``logrank`` warns when most groups have one
+  member. ``fit_best`` passes over candidates whose support excludes the
+  data quietly and reports other failures once. The MPP heuristic error
+  lists the valid names, and ``sp.CrowAMSAA`` and the like say which
+  subpackage to import from. ``CoxPH.fit_tvc_from_df`` and
+  ``fit_tvc_timeline_from_df`` take ``formula=``, and non-numeric
+  ``Z_cols`` suggest it. ``CompetingRisks.plot()`` is new. Signatures
+  print readably: ``Weibull.fit``'s is 593 characters, was 3,218.
+- **Changed / deprecated: one name for parameter names, parameter_names
+  (principle 21).** A model's parameter names were spelt three ways:
+  ``param_names``, the regression models' ``parameter_names()`` method
+  and the recurrent models' ``parameter_names`` property (which a model
+  built with ``from_params`` refused). Every distribution and every model
+  with ``params`` now has ``parameter_names``, a list naming ``params``
+  entry by entry (``Weibull.fit(x).parameter_names`` is ``['alpha',
+  'beta']``, ``WeibullPH``'s ``['alpha', 'beta', 'beta_0']``), including
+  models that had none (``CoxPH``, ``AdditiveHazards``, ``BuckleyJames``,
+  ``RoystonParmar``, ``MixtureModel``, ``CopulaModel``). A
+  ``ProportionalIntensityModel`` names ``params`` then ``coeffs``, the
+  order of its ``covariance``. Until v0.23 the old spellings work with a
+  ``DeprecationWarning``: the ``param_names`` attribute, calling
+  ``parameter_names()``, the ``param_names=`` keyword of
+  ``CustomDistribution``, and a ``param_names`` class attribute on your
+  own ``PathModel``, ``Copula`` or ``CountingProcess`` subclass. ``params``
+  is unchanged, and saved files keep the key ``"param_names"``, so they
+  move both ways between 0.21 and 0.22.
+- **Fits record whether they reached a maximum.** A parametric model has
+  ``maximum``: ``"verified"`` (zero gradient and a positive-definite
+  Hessian, or an exact estimator), ``"unverified"``, ``"no finite
+  maximum"``, ``"not applicable"`` (not a maximum-likelihood fit, or
+  ``from_params``) or ``"unknown"`` (loaded from an older save). It
+  matches the fit's warnings and is saved by ``to_dict``. ``fit_best``
+  sets candidates aside by it rather than by the text of their warnings
+  (#492).
+- **Changed: two-parameter fits no longer hide an unverified maximum.** A
+  maximum-likelihood fit that did not reach a verified maximum warned
+  only for families with more than two parameters: the exemption meant
+  for the Uniform, whose support ends are parameters, matched every
+  two-parameter family (Weibull, Gamma, LogNormal, ...). Such fits now
+  warn.
+- **formula= for the parametric time-varying fits.** ``fit_tvc_from_df``
+  (PH, AH, PO, AFT) and ``fit_tvc_timeline_from_df`` (PH, AH, PO) take a
+  formula instead of ``Z_cols``, as ``CoxPH``'s do (#485): categorical
+  columns are coded, the model predicts from a ``DataFrame`` with the
+  same coding, and an aliased column is named. ``Z_cols`` now defaults to
+  ``None``.
+- **The recurrent-event, competing-risks and degradation models are
+  importable from surpyval.** ``sp.CrowAMSAA``, ``sp.ARA``,
+  ``sp.FineGray``, ``sp.CompetingRisks``, ``sp.DegradationAnalysis`` and
+  the other model classes are now at the top level, as the regression
+  models already were, and stay in their packages too. Helper functions
+  and result types (``laplace``, ``mil_hdbk_189c``,
+  ``TrendTestResult``) and the generically named copulas (``Gaussian``,
+  ``Frank``, ...) stay in their packages; asking for one at the top level
+  says where it is.
+- **The bundled Claude Code skill matches 0.22, and its code is tested
+  (#491).** Every code block in it runs as a test.
+- **Offset fits with no maximum warn (#487).** With a shape below 1 the
+  density is infinite at the offset, so the likelihood grows without
+  bound as ``gamma`` runs onto the first failure. Such a fit returned a
+  degenerate model silently or behind "MLE Failed": the 3-parameter
+  Weibull on [55, ..., 140] reached a shape of 0.09. Every offset family
+  now warns "No finite maximum" and recommends ``how="MPS"``, and returns
+  the point its search reached. The Exponential's genuine maximum at the
+  first failure is unchanged.
+- **Changed: durations and dates are refused (#480).** ``timedelta64``
+  and ``datetime64`` input was fitted in its storage ticks (a scale of
+  5.0e5 for durations of days held in seconds, 6.9e14 in nanoseconds),
+  and predictions raised numpy's ``TypeError``. SurPyval has no time
+  unit, so such values now raise a ``ValueError`` wherever a time is
+  accepted, with the conversion to use (``x / pd.Timedelta(days=1)``).
+- **Changed: suspensions are not drawn as points (#478).** A probability
+  plot drew each suspension at the ``F`` of the failure before it, where
+  it looked like one more failure. ``plot()`` now draws the failures
+  only, as in Abernethy's *New Weibull Handbook* and Weibull++, and
+  ``plot(show_censored=True)`` (also on ``MixtureModel.plot``) marks the
+  suspension times with ticks on the time axis, which still spans every
+  time. ``get_plot_data()`` keeps its meaning: ``x_`` and ``F`` hold
+  every row as before, and a new boolean ``failed`` mask selects the
+  failures that are drawn; ``x_censored`` holds the suspension times. The
+  non-parametric ``get_plot_data`` returns ``failed`` too.
+- **weibayes (#493).** ``surpyval.weibayes(x, c, n, beta)`` gives the
+  Weibayes lower confidence bound on a Weibull's scale of known shape
+  from few or no failures (Nelson 1985; Abernethy), as a Weibull model:
+  ten units run 500 hours with no failure and a shape of 2 give a 95%
+  lower bound on the scale of 913.5 hours. ``fit`` still refuses data
+  with no failures, and now points to it.
+- **Changed: fit_best ranks regular maxima only (#492).** AIC and BIC
+  assume a regular maximum. The Uniform and Beta4, whose support ends are
+  parameters, are no longer default candidates (``include=`` still
+  tries them), and a fit with no finite maximum or an unverified one is
+  ranked only when no regular candidate fits, with one warning naming it.
+  The Beta4 no longer "wins" on [1, ..., 7], nor the Uniform on 50
+  Weibull draws.
+- **Changed: Wald bands are monotone (#477).** Wald bounds on ``sf``,
+  ``ff`` and ``Hf`` were formed on the logit of ``sf`` for every family,
+  and on small samples turned back: the issue's lower bound on ``F`` fell
+  from 0.39 to 0.00004 as time went on. They are now formed on each
+  family's probability-plot scale (``log(-log S)`` for the Weibull, the
+  normal quantile for the Normal and LogNormal), where they are monotone
+  whenever the shape's own interval excludes 0; that bound is now 0.83.
+  Large samples are unchanged to 2e-4. The degradation models' two-stage
+  band is formed on the same scale, so it still contains the life model's
+  own. ``plot`` and ``get_plot_data`` take ``method=`` to draw the
+  likelihood-ratio band.
+- **quantile_cb and mean_cb (#494).** Parametric models give confidence
+  bounds on a quantile (a B-life) and on the mean, by Wald (matching R's
+  ``survreg`` to 1e-7) or likelihood ratio (``method="lr"``, better on
+  small samples), with ``bound=`` and ``alpha_ci`` as on ``cb``.
+- **Competing-risks Cox incidences add up to 1 - sf (#384).** They were
+  built on the product-limit survival while ``sf`` is ``exp(-H)`` (summing
+  to 1.0 against ``ff`` = 0.975 at t = 30 on the conformance fixture). Each
+  step now uses the matrix-exponential transition probabilities of R's
+  multi-state ``coxph``, which it matches to 7 digits.
+- **Gray's test matches cmprsk (#380).** The variance was SurPyval's own
+  linearisation: 6.741 against ``cuminc``'s 7.015 on tied data. The score,
+  variance and rho-weight incidence now follow cmprsk's ``crst`` routine
+  and agree with ``cuminc`` to about 1e-14, with ties and any rho.
+- **Lin-Ying survival stays in [0, 1] (#376).** ``AdditiveHazards.sf``
+  rose above 1 (1.21 inside the data, 57.8 at a row with a negative
+  hazard) because the estimate falls between event times. It now predicts
+  with the running maximum of its cumulative-hazard estimate from time 0;
+  the fitted ``H0`` is unchanged. The parametric additive hazards models
+  are not yet changed.
+- **Wald bounds that do not exist say so (#411).** ``param_cb`` and ``cb``
+  were a silent ``[nan, nan]`` where a variance was negative
+  (GeneralizedRenewal's ``q`` = 2.7e-16 had variance -0.031), and ARI's
+  ``rho = 1.0`` raised ``ZeroDivisionError``. They give NaN with one
+  warning naming the parameter and the reason now.
+- **Rate bounds at zero, and discrete hazards (#413, #414).**
+  ``cb(on='hf'/'df')`` was ``[nan, nan]`` where the rate is 0; it is
+  ``[0, 0]``. The discrete hazard bound was centred on ``df(k)/sf(k)``
+  (Poisson ``hf(10)`` = 0.719 had bounds [1.73, 3.78]); it uses the
+  model's ``df(k)/sf(k-1)`` on the logit scale now ([0.634, 0.791]), and
+  ``hf`` of a discrete limited-failure or zero-inflated model is
+  ``df(k)/sf(k-1)`` too (it gave 0.271 for 0.213).
+- **Royston-Parmar one-sided bounds (#415).** ``bound='lower'`` on ``ff``
+  or ``Hf`` returned the upper end, and ``bound='both'`` was taken as
+  ``'upper'``; both are right now, and ``'both'`` raises.
+- **Regression cumulative-hazard bounds have no ceiling (#418).** ``sf``
+  was clipped at 1e-15, so ``Hf`` bounds stopped at 34.54 (GumbelPH
+  ``Hf`` = 110.6 had [34.54, 34.54]); they are formed from ``Hf`` now
+  ([4.4e-18, 261]).
+- **Likelihood-ratio bounds (#421, partly).** A search that stopped on
+  the wrong side of the estimate is retried (Rayleigh's ``df`` lower bound
+  was 0.0502 against an estimate of 0.0359), one-parameter bands are the
+  exact extreme over the profile interval, and the Uniform's search
+  respects the data's extremes (30 s to 1.3 s).
+- **Count-terminated simulation of a falling intensity is refused with the
+  reason (#386).** A CoxLewis with beta < 0 expects only ``cif(inf)``
+  events ever (6.04 on the conformance fixture), so a sequence can stop
+  short of the count: one seed failed with "Event times 'x' must be
+  finite" and others returned a sample silently.
+  ``count_terminated_simulation`` (and ``_data``) raise a ``ValueError``
+  for every seed now, giving ``cif(inf)``, the chance of falling short and
+  the time-terminated alternative.
+- **CoxLewis least-squares fit (#419).** The search started at
+  alpha = beta = 1, where ``cif(60)`` is about 1e26, and BFGS stopped far
+  off: on a sample of the fitted model ``cif(55)`` was 113.4 against 4.40
+  by MLE. It starts from the constant rate through the MCF now, and a BFGS
+  stop that did not converge is finished by Nelder-Mead: 4.32, matching a
+  direct minimisation. Fits in hours rather than days agree too (both gave
+  a ``cif`` of inf).
+- **One rule for unknown option values (#416).** ``mcf_cb(bound='both')``
+  raised ``UnboundLocalError`` and an unknown ``interp`` there returned the
+  event-time bounds; an unknown ``interp`` on the non-parametric estimators
+  raised scipy's ``NotImplementedError``; the cause-specific Cox model
+  accepted any ``interp`` and ignored it. All raise ``ValueError: '<arg>'
+  must be one of (...); got ...`` now; the cause-specific Cox model takes
+  ``interp="step"`` only, and ``DestructiveDegradation.cb`` accepts
+  ``on='R'`` / ``'F'`` like every other ``cb``.
+
 v0.21.0 (28 September 2026)
 ---------------------------
 

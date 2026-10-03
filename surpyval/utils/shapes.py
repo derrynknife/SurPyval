@@ -78,6 +78,10 @@ def flatten_query(
     >>> restore(np.array([[0.1, 0.9]]))  # a two-sided bound at one point
     array([0.1, 0.9])
     """
+    # A duration would be read in its storage ticks (#480)
+    from surpyval.utils import refuse_time_values
+
+    refuse_time_values(x, "x")
     arr = np.asarray(x, dtype=float)
     if point_ndim:
         shape = arr.shape[: arr.ndim - point_ndim]
@@ -149,8 +153,78 @@ def keeps_query_shape(
                 # A query left to its default (the fitted times, say).
                 return method(self, x, *args, **kwargs)
             flat, restore = flatten_query(x, point_ndim)
+            if kwargs.get("grid"):
+                # A row-by-time grid: the points are on the last axis.
+                return restore(method(self, flat, *args, **kwargs), axis=-1)
             return restore(method(self, flat, *args, **kwargs))
 
         return wrapper  # type: ignore[return-value]
 
     return decorate if method is None else decorate(method)
+
+
+def check_paired_rows(n_x: int, n_rows: int, grid: bool = True) -> None:
+    """Refuse covariate rows that cannot be paired with the times.
+
+    A regression model's ``sf(x, Z)`` pairs row ``i`` of ``Z`` with
+    ``x[i]``: one row is used at every time, and one time for every row.
+    Any other count was a raw numpy broadcast error (#488). ``grid`` says
+    whether the method has ``grid=True`` to point to.
+
+    Examples
+    --------
+    >>> from surpyval.utils.shapes import check_paired_rows
+    >>> check_paired_rows(3, 1)
+    >>> check_paired_rows(3, 4)  # doctest: +ELLIPSIS
+    Traceback (most recent call last):
+    ...
+    ValueError: Z has 4 covariate rows for 3 times: ...
+    """
+    if n_rows in (1, n_x) or n_x == 1:
+        return
+    hint = (
+        " For every time for every row -- a survival curve per subject, of "
+        "shape (len(Z),) + x.shape -- pass grid=True."
+        if grid
+        else " Evaluate one row at a time for every time for every row."
+    )
+    raise ValueError(
+        "Z has {} covariate rows for {} times: a regression model pairs "
+        "row i of Z with the time x[i], and uses a single row at every "
+        "time (or a single time for every row).{}".format(n_rows, n_x, hint)
+    )
+
+
+def on_grid(
+    paired: Callable[..., Any], x: npt.ArrayLike, rows: npt.ArrayLike
+) -> npt.NDArray:
+    """``paired(x, Z)``, a function of times paired with covariate rows,
+    at every time ``x`` (flat, ``n`` of them) for every row of ``rows``
+    (``m`` of them): an ``(m, n)`` array whose row ``i`` is the function
+    of row ``i`` at the times (#488).
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from surpyval.utils.shapes import on_grid
+    >>> on_grid(lambda x, Z: x * Z[:, 0], [1.0, 2.0, 3.0], [[1.0], [10.0]])
+    array([[ 1.,  2.,  3.],
+           [10., 20., 30.]])
+    """
+    x = np.asarray(x, dtype=float).reshape(-1)
+    rows = np.asarray(rows, dtype=float)
+    m, n = rows.shape[0], x.shape[0]
+    out = paired(np.tile(x, m), np.repeat(rows, n, axis=0))
+    return np.asarray(out, dtype=float).reshape(m, n)
+
+
+def covariate_rows(Z: npt.ArrayLike, n_covariates: int) -> npt.NDArray:
+    """Numeric covariates ``Z`` as an ``(m, p)`` array of rows: a scalar
+    or a 1-D array of ``p`` values is one row, and for a one-covariate
+    model a 1-D array is one value per row."""
+    Z = np.asarray(Z, dtype=float)
+    if Z.ndim == 0:
+        return Z.reshape(1, 1)
+    if Z.ndim == 1:
+        return Z.reshape(-1, 1) if n_covariates == 1 else Z.reshape(1, -1)
+    return Z

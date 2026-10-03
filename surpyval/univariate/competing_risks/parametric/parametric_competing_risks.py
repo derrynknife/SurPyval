@@ -24,6 +24,8 @@ H_j(u))`. The cause CIFs sum to the all-cause failure probability
 :math:`1 - S(t)`.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -48,7 +50,9 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import unknown_cause_error
 
 
 def _validate(
@@ -329,6 +333,28 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     # -- goodness of fit (the joint likelihood factorises over causes) ----
 
+    @property
+    def maximum(self) -> str:
+        """What the causes' fits reached, one of ``MAXIMUM_STATES``
+        (``surpyval.utils.no_maximum``): the worst of the causes' own
+        ``maximum``, since the joint likelihood is maximised a cause at a
+        time (principles 12 and 13).
+
+        Examples
+        --------
+        >>> from surpyval import Exponential
+        >>> from surpyval.univariate.competing_risks import (
+        ...     ParametricCompetingRisks,
+        ... )
+        >>> x = [1, 2, 3, 4, 5, 6, 7, 8]
+        >>> e = ["a", "b", "a", "b", "a", "b", "a", "b"]
+        >>> ParametricCompetingRisks.fit(x, e, dist=Exponential).maximum
+        'verified'
+        """
+        return combined_maximum(
+            getattr(self.models[k], "maximum", "unknown") for k in self.causes
+        )
+
     def neg_ll(self) -> float:
         """Total negative log-likelihood: the sum over the per-cause fits."""
         return float(sum(self.models[k].neg_ll() for k in self.causes))
@@ -383,11 +409,7 @@ class ParametricCompetingRisks(SerialisableMixin):
 
     def _check_event(self, event: Any) -> None:
         if event not in self.models:
-            raise ValueError(
-                "Unknown cause {!r}; fitted causes are {}.".format(
-                    event, list(self.causes)
-                )
-            )
+            raise unknown_cause_error(event, self.causes)
 
     # -- construction -----------------------------------------------------
 

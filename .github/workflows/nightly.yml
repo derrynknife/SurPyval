@@ -58,17 +58,17 @@ jobs:
 
       - name: pytest
         run:
-          python -m pytest -n auto --ignore=surpyval/tests/alpha --run-ml
+          python -m pytest -n auto --run-ml
 
       - name: doctests
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
 
       - name: doctests (numeric comparison forced)
         run:
           python -m pytest --doctest-modules surpyval
-          --ignore=surpyval/tests --ignore=surpyval/alpha
+          --ignore=surpyval/tests
           --doctest-force-numeric
 
   # The docs job of actions.yml: the hosted (Read the Docs) build, Python
@@ -127,6 +127,11 @@ jobs:
         run:
           python -m pytest -n auto -rP --durations=0 --run-calibration
           surpyval/tests/calibration
+
+      - name: slow likelihood-ratio sweeps (conformance, marked calibration)
+        run:
+          python -m pytest -n auto --durations=10 --run-calibration
+          -m calibration surpyval/tests/conformance/test_options.py
 
   # The property-based tests (surpyval/tests/properties) run a small,
   # derandomized search on every full test run -- about 40 seconds on one

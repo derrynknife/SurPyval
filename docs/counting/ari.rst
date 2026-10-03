@@ -12,4 +12,5 @@ times (with ``m = numpy.inf`` the infinite-memory limit). It differs from
 
    .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit
    .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit_from_df
    .. automethod:: surpyval.recurrent.renewal.ari.ARI.fit_from_parameters

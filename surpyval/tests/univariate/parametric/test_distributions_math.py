@@ -21,6 +21,7 @@ from scipy import integrate
 from scipy.special import gamma as gamma_func
 from scipy.special import xlogy
 
+import surpyval as surv
 from surpyval import (
     Beta,
     Beta4,
@@ -38,6 +39,7 @@ from surpyval import (
     Uniform,
     Weibull,
 )
+from surpyval.tests._helpers import no_warnings
 
 # (distribution, params)
 DIST_PARAMS: list[tuple[Any, tuple[float, ...]]] = [
@@ -438,3 +440,98 @@ def test_no_distribution_exposes_a_public_mgf():
     assert not with_mgf, f"public mgf on: {with_mgf}"
     # The private one is still there and still drives moment().
     assert hasattr(Logistic, "_mgf")
+
+
+# ---------------------------------------------------------------------------
+# The functions outside the support.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_log_density_is_minus_infinity_outside_the_support():
+    assert E.log_df(-1.0, 0.1) == -np.inf
+    assert W.log_df(-1.0, 10.0, 2.0) == -np.inf
+    assert surv.Beta.log_df(1.5, 2.0, 3.0) == -np.inf
+
+
+@pytest.mark.parametrize(
+    "dist, params, below, above",
+    [
+        (E, (0.1,), -1.0, None),
+        (W, (10.0, 2.5), -1.0, None),
+        (surv.Gamma, (2.0, 1.0), -1.0, None),
+        (surv.LogNormal, (0.0, 1.0), -1.0, None),
+        (surv.LogLogistic, (1.0, 2.0), -1.0, None),
+        (surv.Rayleigh, (1.0,), -1.0, None),
+        (surv.ExpoWeibull, (1.0, 2.0, 0.5), -1.0, None),
+        (surv.Beta, (2.0, 3.0), -0.5, 1.5),
+        (surv.Beta4, (2.0, 3.0, 0.0, 4.0), -1.0, 5.0),
+        (surv.Uniform, (0.0, 4.0), -1.0, 5.0),
+    ],
+)
+def test_raw_functions_outside_the_support(dist, params, below, above):
+    def at(x):
+        return [
+            float(np.real(getattr(dist, f)(x, *params)))
+            for f in ("sf", "ff", "df", "hf", "Hf")
+        ]
+
+    assert no_warnings(at, below) == [1.0, 0.0, 0.0, 0.0, 0.0]
+    if above is not None:
+        assert no_warnings(at, above) == [0.0, 1.0, 0.0, np.inf, np.inf]
+
+
+def test_discretized_mass_is_zero_below_the_support():
+    assert surv.Discretize(W).df(0.0, 10.0, 2.0) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# #280: distribution edge cases.
+# ---------------------------------------------------------------------------
+
+
+class TestDistributionEdges:
+    def test_loglogistic_at_zero(self):
+        assert LogLogistic.sf(0.0, 3, 4) == pytest.approx(1.0)
+        assert LogLogistic.ff(0.0, 3, 4) == pytest.approx(0.0)
+        vals = LogLogistic.sf(np.array([0.0, 1.0]), 3, 4)
+        assert np.all(np.isfinite(vals))
+
+    def test_loglogistic_log_sf_no_overflow(self):
+        from scipy.stats import fisk
+
+        got = float(
+            np.ravel(LogLogistic.log_sf(np.array([1e41]), 1e40, 10))[0]
+        )
+        want = float(fisk.logsf(1e41, 10, scale=1e40))
+        assert got == pytest.approx(want, rel=1e-6)
+
+    def test_beta4_density_zero_outside_support(self):
+        vals = Beta4.df(np.array([1.0, 2.5, 6.0]), 3, 4, 2, 5)
+        assert vals[0] == 0.0
+        assert vals[2] == 0.0
+        assert vals[1] > 0
+        assert Beta4.df(1.0, 2.5, 4, 2, 5) == 0.0  # fractional alpha
+
+    def test_rayleigh_mpp_uses_truncation(self):
+        np.random.seed(3)
+        x = 3 * np.sqrt(-2 * np.log(np.random.uniform(size=6000)))
+        tl = np.random.uniform(0, 2, 6000)
+        keep = x > tl
+        x_obs, tl_obs = x[keep][:3000], tl[keep][:3000]
+        with_tl = Rayleigh.fit(x_obs, tl=tl_obs, how="MPP").params
+        without = Rayleigh.fit(x_obs, how="MPP").params
+        assert not np.allclose(with_tl, without)
+        assert with_tl[0] == pytest.approx(3.0, rel=0.05)
+
+    def test_rayleigh_mpp_ecdf_finite(self):
+        np.random.seed(3)
+        x = 3 * np.sqrt(-2 * np.log(np.random.uniform(size=1000)))
+        params = Rayleigh.fit(x, how="MPP", heuristic="ECDF").params
+        assert np.all(np.isfinite(params))
+
+    def test_uniform_interval_clear_error(self):
+        with pytest.raises(ValueError, match="does not support censored"):
+            Uniform.fit(x=[1.0, 2.0, [2, 4], 3.5, [3, 5]], c=[0, 0, 2, 0, 2])

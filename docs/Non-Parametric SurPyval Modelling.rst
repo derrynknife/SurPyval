@@ -77,6 +77,28 @@ Note the use of ``n``: rather than typing 389 values, each distinct stress is gi
 
     assert n.sum() == 389
 
+Data held in a pandas ``DataFrame`` can be passed with ``fit_from_df``,
+naming the columns, exactly as for a parametric distribution
+(``x_col``, ``c_col``, ``n_col``, ``xl_col`` / ``xr_col`` and ``tl_col`` /
+``tr_col``); the estimate is
+the one ``fit`` gives on the same arrays:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    bofors = pd.DataFrame({'stress': x, 'broke': n})
+    bofors_df_na = surv.NelsonAalen.fit_from_df(
+        bofors, x_col='stress', n_col='broke'
+    )
+    print(bofors_df_na.sf([34, 36]).round(4))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(bofors_df_na.R, bofors_steel_na.R)
+
 So what purpose is this?
 
 With our non-parametric model of the Bofors steel. We can use this model to estimate the reliability in our application. Let's say that our application uses Bofors steel up to 34. What is our estimate of the number of failures?
@@ -272,7 +294,7 @@ on ``Hf`` are :math:`-\ln` of them. The ``'normal'`` interval at 6 runs below ze
     assert np.allclose(model.cb(8), [0, model.cb(5)[1]])
     assert np.all(np.isnan(model.cb([0.5, 9])))
 
-``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``:
+``plot()`` draws the survival curve with the two-sided bounds as a shaded band, and marks right censored values with ticks. It accepts ``plot_bounds``, ``show_censors``, ``interp``, ``alpha_ci``, ``bound_type`` and ``bound`` (a one-sided ``'lower'`` or ``'upper'`` bound is drawn as a dashed line), passes anything else (``color``, ``label``, ...) to matplotlib, and can draw on a given ``ax``. The axes are titled with the estimator ("Kaplan-Meier estimate"), the y axis is "Survival probability" and the x axis "Time" unless it already has a label:
 
 .. jupyter-execute::
 
@@ -502,9 +524,17 @@ to resampled data. Here is a simulated sample of 60 items with random right cens
 The band is wider than the pointwise bounds, as it must be, and the bootstrap interval is close
 to the pointwise one here, a sign that the asymptotic formula is adequate for this sample. ``band()`` takes
 ``method='hall-wellner'`` (default) or ``method='nair'`` (the equal-precision band), ``alpha_ci``,
-and ``bound_type`` (``'exp'`` by default, as for ``cb()``). Its critical value, that of the
-limiting Brownian bridge over the range the band covers, is computed numerically rather than
-simulated, so results are accurate and reproducible. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
+and ``bound_type``: the scale the band is applied on, ``'arcsine'`` (the arcsine-square-root of
+the survival function, the default), ``'exp'`` (its log(-log), as ``cb()``) or ``'normal'``. Its
+critical value, that of the limiting Brownian bridge over the range the band covers, is computed
+numerically rather than simulated, so results are accurate and reproducible. ``x_range=(t_L, t_U)``
+sets the times a band covers; it is ``nan`` outside them. The Hall-Wellner band covers the first to
+the last event by default. The Nair band's boundary grows without limit towards the ends of the
+data, where the estimate rests on a handful of failures or of items at risk, so by default it covers
+the times where :math:`a = N\hat{\sigma}^2/(1 + N\hat{\sigma}^2)` is between 0.1 and 0.9. In
+simulation it covers 94% to 96% for a nominal 95% so; over the first to the last event it covered
+93% on the arcsine scale, 87% to 89% on the log(-log) scale and 83% untransformed, most misses at
+the first events. ``bootstrap_cb()`` takes ``n_boot`` (200 resamples), ``random_state``, ``alpha_ci`` and a
 one-sided ``bound``; it always bounds the survival function and, like ``cb()``, is ``nan``
 outside the range of the data unless the model has a support (``set_support``).
 
@@ -537,7 +567,7 @@ The Nair band follows the shape of the pointwise interval (it is the same formul
 critical value), while the Hall-Wellner band's width follows :math:`1 + N\hat{\sigma}^2`, so the two
 distribute their width differently: here the Nair band is a little wider at 10 and narrower at 15.
 Neither is uniformly better. The ``'normal'`` band, like the ``'normal'`` pointwise interval, can
-spill below zero (it does at 15), which is why ``'exp'`` is the default. With the band we can check a
+spill below zero (it does at 15); the arcsine and log(-log) bands stay within [0, 1]. With the band we can check a
 parametric fit against the data:
 
 .. jupyter-execute::
@@ -593,8 +623,8 @@ from the same Weibull distribution, whose true hazard is :math:`0.15 (t/10)^{0.5
 The smoothed estimate follows the true rising hazard, drifting low at 12 where few items remain at
 risk, while ``hf()`` returns increments over 3-unit steps (roughly three times the rate). Note that
 the first two ``hf()`` values are equal: the first point has nothing before it to difference from, so
-it repeats the second. ``df()`` is ``hf()`` times the survival, so it is (roughly) a grid-dependent
-probability of failing in each step rather than a density. ``smoothed_hf()`` is ``nan`` outside the
+it repeats the second. ``df()`` is the drop in the survival over the same step, so it is a
+grid-dependent probability of failing in each step rather than a density. ``smoothed_hf()`` is ``nan`` outside the
 observed range and, if ``bandwidth`` is omitted, uses one eighth of that range.
 
 .. jupyter-execute::

@@ -65,6 +65,7 @@ This appears to be a much better fit, however, there is still quite a bit of dif
 A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval derives everything else from it. Our spline uses the Weibull cumulative hazard below a 'knot' and adds a LogLogistic cumulative hazard above it. The knot must stay within the range of the data, so rather than estimate the knot directly we estimate it as a fraction of the $50,000 cap, ``knot_frac``, bounded between 0 and 1.
 
 .. jupyter-execute::
+    :stderr:
 
     import surpyval as surv
     from surpyval.datasets import load_boston_housing
@@ -86,11 +87,11 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
                                 + dist2.Hf(x, *params[2::])), Hf)
         return Hf
     bounds = ((0, 1), (0, None), (0, None), (0, None), (0, None),)
-    param_names = ['knot_frac', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
+    parameter_names = ['knot_frac', 'alpha_w', 'beta_w', 'alpha_ll', 'beta_ll']
     name = 'WeibullLogLogisticSpline'
     support = (0, np.inf)
 
-    WeibullLogLogisticSpline = surv.CustomDistribution(name, Hf, param_names, bounds, support)
+    WeibullLogLogisticSpline = surv.CustomDistribution(name, Hf, parameter_names, bounds, support)
 
     model = WeibullLogLogisticSpline.fit(x=x, c=c, n=n, lfp=True)
 
@@ -98,6 +99,8 @@ A ``CustomDistribution`` only needs the cumulative hazard function; SurPyval der
     model.plot()
 
 Much better! The knot sits at about half the cap, near $25,000, which is where the 'disconnect' in the earlier plots was.
+
+The two warnings are worth reading. The knot makes the cumulative hazard bend sharply where one piece meets the other, so the log-likelihood has a kink rather than a smooth peak, and SurPyval cannot confirm that the answer is a maximum: at a kink the gradient need not be zero, and the parameter covariance (the inverse of the curvature) is not positive definite here. The fit is still the best point the search found, but the Wald confidence bounds, which rely on that covariance, do not exist where the delta-method variance is negative, so the plot's bounds are missing over part of the range. A bootstrap would give intervals for a model like this.
 
 It must be said that this is a bit 'hacky'. There is no theory that we are using to guide the choice of the spline model, we are simply finding the best fit to the data. For example, this model could not be used for extrapolation too far beyond $50,000, this is because the model is limited to 97.1% of houses (the fitted :math:`p`). A separate spline would be needed to model those data. The extra flexibility also has a cost: five parameters plus :math:`p` can fit almost any smooth curve, so a better fit on its own is weak evidence that the model is right. However, the example shows the importance of censoring and the power of the surpyval API!
 
@@ -183,12 +186,12 @@ This can be implemented in surpyval with relative ease: a ``CustomDistribution``
 
     bounds = ((0, None), (0, None), (0, None),)
     support = (0, np.inf)
-    param_names = ['lambda', 'alpha', 'beta']
+    parameter_names = ['lambda', 'alpha', 'beta']
     def Hf(x, *params):
         Hf = params[0] * x + (params[1]/params[2])*(np.exp(params[2]*x) - 1)
         return Hf
 
-    GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, param_names, bounds, support)
+    GompertzMakeham = surv.CustomDistribution('GompertzMakeham', Hf, parameter_names, bounds, support)
 
 We now have a GM distribution object that can be used to fit data. But we need some data:
 
@@ -251,7 +254,7 @@ which is one minus the conditional survival, ``cs(2, 60)``: the probability of s
     print(f"expected loss        : ${expected_loss:,.2f}")
     print(f"ignoring survival to 60 would give P = {model.ff(62) - model.ff(60):.4f}")
 
-From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.33. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
+From the results above, you can see that the probability of death over the two year interval is approximately 3.0%. Given the contract is to payout $100,000 in this event, the expected loss is therefore $3,019.39. Therefore, to make a profit, the policy will need to cost more than $3,019.39. So say the company has a strategy of making 10% from each policy, the policy cost to the individual would therefore be $3,321.32. If we divide this payment scheme into a per month basis over the two years we get a monthly payment of $138.39 for two years (in the case of death the amount owing can be subtracted from the payout). Using the unconditional probability instead would have underpriced the policy by about 15%, because it spreads part of the risk over the people who never reach 60.
 
 .. jupyter-execute::
     :hide-code:
@@ -259,7 +262,7 @@ From the results above, you can see that the probability of death over the two y
 
     assert round(p_death, 3) == 0.030, p_death
     assert f"{expected_loss:,.2f}" == "3,019.39", expected_loss
-    assert f"{1.1 * expected_loss:,.2f}" == "3,321.33"
+    assert f"{1.1 * expected_loss:,.2f}" == "3,321.32"
     assert f"{1.1 * expected_loss / 24:,.2f}" == "138.39"
     _under = 1 - (model.ff(62) - model.ff(60)) / p_death
     assert round(_under, 2) == 0.15, _under

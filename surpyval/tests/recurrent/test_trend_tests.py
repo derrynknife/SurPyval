@@ -141,7 +141,8 @@ def test_mil_increasing_intensity_lower_tail():
     # 2N / beta_hat, so a small value -> increasing intensity.
     x = np.array([10.0, 19.0, 27.0, 34.0, 40.0, 45.0, 49.0, 52.0, 54.0])
     res = mil_hdbk_189c(x, T=60.0, alternative="increasing")
-    assert res.trend == "increasing"
+    # p is about 0.1: the statistic points up but no trend is concluded
+    assert res.direction == "increasing" and res.trend == "none"
     assert res.statistic < res.dof
     assert res.p_value == pytest.approx(chi2.cdf(res.statistic, res.dof))
 
@@ -247,9 +248,83 @@ def test_result_repr_contains_fields():
     text = repr(res)
     assert "Laplace Trend Test" in text
     assert "p-value" in text
-    assert "Suggested trend" in text
+    assert "Direction" in text and "Trend" in text
     assert isinstance(res, TrendTestResult)
 
     res_mil = mil_hdbk_189c([10.0, 19.0, 27.0, 34.0], T=40.0)
     assert "MIL-HDBK-189C Trend Test" in repr(res_mil)
     assert "DoF" in repr(res_mil)
+
+
+# ----------------------------------------------------------------------------
+# #481: a trend is named only when the test is significant
+# ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_trend_is_none_when_not_significant(func):
+    # The statistic leans towards an increasing rate (p about 0.25 and 0.20),
+    # which the result used to report as "Suggested trend: increasing".
+    x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    res = func(x, T=60)
+    assert res.p_value > 0.05
+    assert res.direction == "increasing"
+    assert res.trend == "none"
+    assert "no trend detected (p >= 0.05)" in repr(res)
+    assert "Trend            : increasing" not in repr(res)
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_trend_is_named_when_significant(func):
+    x = [20, 32, 41, 48, 54, 59, 63, 67, 70, 73, 76, 78, 80, 82, 84]
+    res = func(x, T=85)
+    assert res.p_value < 0.01
+    assert res.direction == res.trend == "increasing"
+    assert "increasing (p < 0.05)" in repr(res)
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_alpha_ci_sets_the_level(func):
+    x = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    p = func(x, T=60).p_value
+    assert func(x, T=60, alpha_ci=p * 1.01).trend == "increasing"
+    assert func(x, T=60, alpha_ci=p * 0.99).trend == "none"
+    assert func(x, T=60, alpha_ci=0.3).alpha_ci == 0.3
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+@pytest.mark.parametrize("bad", [0, 1, -0.1, 1.5, [0.05], "0.05"])
+def test_alpha_ci_is_validated(func, bad):
+    with pytest.raises(ValueError, match="alpha_ci"):
+        func([10, 19, 27, 34], T=40, alpha_ci=bad)
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_one_sided_test_against_the_data_names_no_trend(func):
+    # Failures speeding up, tested against a decreasing alternative: the
+    # p-value is near 1 and no trend (least of all "increasing") is named.
+    x = [20, 32, 41, 48, 54, 59, 63, 67, 70, 73, 76, 78, 80, 82, 84]
+    res = func(x, T=85, alternative="decreasing")
+    assert res.p_value > 0.9
+    assert res.direction == "increasing" and res.trend == "none"
+
+
+def test_model_trend_test_passes_alpha_ci():
+    # The fitted models' ``trend_test`` takes the same level as the
+    # standalone tests (parametric, renewal and proportional intensity all
+    # delegate through ``diagnostics.trend_test``).
+    from surpyval import Weibull
+    from surpyval.recurrent import CrowAMSAA, GeneralizedRenewal
+
+    x = [10.0, 19.0, 27.0, 34.0, 40.0, 45.0, 49.0, 52.0, 54.0, 60.0]
+    c = [0] * 9 + [1]
+    direct = laplace(x[:-1], T=60.0)
+    for model in (
+        CrowAMSAA.fit(x, c=c),
+        GeneralizedRenewal.fit(x, c=c, dist=Weibull),
+    ):
+        res = model.trend_test()
+        assert res.p_value == pytest.approx(direct.p_value)
+        assert res.trend == "none" and res.direction == "increasing"
+        loose = model.trend_test(alpha_ci=0.3)
+        assert loose.alpha_ci == 0.3 and loose.trend == "increasing"

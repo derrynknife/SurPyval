@@ -68,19 +68,20 @@ def _truncated_sample():
 
 @pytest.mark.parametrize("name", ESTIMATORS)
 @pytest.mark.parametrize("interp", ["step", "linear"])
-def test_density_is_hazard_times_survival(name, interp):
-    # df = hf * sf holds exactly for the discrete hazard too, since both
-    # sides use the same query points. Conformance excludes "df_hf_sf"
-    # for the non-parametric cases ("a step function"); it could keep it.
-    # Kills nonparametric.py:554 '*' -> '/', '-Hf' -> '+Hf', and either
-    # 'interp=interp' dropped.
+def test_density_is_the_drop_over_the_hazard_step(name, interp):
+    # df is the drop in sf over the step whose increment hf gives (#408):
+    # where that is the step from the previous point, df = sf(q) (e^hf - 1)
+    # exactly, the discrete form of df = hf * sf. Kills a wrong sign or
+    # operator in either, and either 'interp=interp' dropped.
     model = _fit(name)
     q = np.array([1.5, 2.5, 3.5, 5, 6.2, 8, 9.5])
+    hf = model.hf(q, interp=interp)
+    own = np.append(False, np.diff(model.Hf(q, interp=interp)) > 0)
+    assert own[1:].sum() >= 4
     assert_allclose(
-        model.df(q, interp=interp),
-        model.hf(q, interp=interp) * model.sf(q, interp=interp),
+        model.df(q, interp=interp)[own],
+        (model.sf(q, interp=interp) * np.expm1(hf))[own],
         rtol=1e-12,
-        equal_nan=True,
     )
 
 
@@ -130,26 +131,30 @@ def test_fit_from_ecdf_accepts_its_documented_edges(x, R):
 # --- the estimators' low-level functions ------------------------------------
 
 
-def test_kaplan_meier_step_with_no_one_at_risk_is_zero():
-    # Documented: a step with r zero (0 / 0) takes the estimate to zero,
-    # without a raw numpy warning (principle 22; it leaked "invalid value"
-    # until #450). Kills kaplan_meier.py:95 (NaN set to 1).
+def test_kaplan_meier_step_with_no_one_at_risk_keeps_its_value():
+    # Documented: a step with no events and r zero (0 / 0) leaves the
+    # estimate unchanged (#425; it took it to zero), without a raw numpy
+    # warning (principle 22; it leaked "invalid value" until #450).
+    r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        R = nonp.kaplan_meier(np.array([2.0, 1, 0]), np.array([1.0, 0, 0]))
-    assert_allclose(R, [0.5, 0.5, 0.0])
+        R = nonp.kaplan_meier(r, d)
+        var = nonp.greenwood_variance(r, d)
+    assert_allclose(R, [0.5, 0.5, 0.5])
+    assert_allclose(var, [0.5, 0.5, 0.5])
 
 
-def test_nelson_aalen_step_with_no_one_at_risk_is_zero_quietly():
-    # Documented: no one at risk and no events (0 / 0) takes it to zero,
-    # without a raw numpy warning (principle 22). Kills nelson_aalen.py:96
-    # and :37 (the errstate relaxed).
+def test_nelson_aalen_step_with_no_one_at_risk_keeps_its_value_quietly():
+    # Documented: no one at risk and no events (0 / 0) leaves it unchanged
+    # (#425), without a raw numpy warning (principle 22). Kills the
+    # errstates relaxed.
     r, d = np.array([2.0, 1, 0]), np.array([1.0, 0, 0])
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         R = nonp.nelson_aalen(r, d)
-        nonp.nelson_aalen_variance(r, d)
-    assert_allclose(R, [np.exp(-0.5), np.exp(-0.5), 0.0])
+        var = nonp.nelson_aalen_variance(r, d)
+    assert_allclose(R, np.exp(-0.5) * np.ones(3))
+    assert_allclose(var, [0.25, 0.25, 0.25])
 
 
 def test_snap_is_relative_and_one_in_a_billion():
@@ -559,7 +564,10 @@ def test_band_round_trips_with_truncation(name):
     assert_allclose(restored.band(q), model.band(q), rtol=1e-12)
     if name == "KaplanMeier":
         assert_allclose(
-            restored.band(q)[0], [0.4900, 0.8917], atol=5e-5, rtol=0
+            restored.band(q, bound_type="exp")[0],
+            [0.4900, 0.8917],
+            atol=5e-5,
+            rtol=0,
         )
 
 
@@ -577,33 +585,26 @@ def test_band_n_is_stored_only_where_the_risk_set_differs():
     del old["band_n"]
     q = np.quantile(x, [0.2])
     assert_allclose(
-        sp.from_dict(old).band(q), [[0.4535, 0.9018]], atol=5e-5, rtol=0
+        sp.from_dict(old).band(q, bound_type="exp"),
+        [[0.4535, 0.9018]],
+        atol=5e-5,
+        rtol=0,
     )
     old["band_n"] = "60"
     with pytest.raises(ValueError, match="'band_n' must be a number"):
         sp.from_dict(old)
 
 
-def test_band_warns_only_for_its_retired_arguments():
-    # No warning by default; a DeprecationWarning for n_sims or
-    # random_state, attributed outside the module. Kills band's
-    # 'random_state is not None' -> 'is None' and its stacklevel dropped.
+def test_band_does_not_warn_and_its_retired_arguments_are_gone():
+    # No warning by default; n_sims and random_state, unused since the
+    # critical value stopped being simulated, were removed in v0.22.
     model = _fit()
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         model.band([3, 6])
     for kw in ({"n_sims": 100}, {"random_state": 1}):
-        with pytest.warns(DeprecationWarning) as record:
+        with pytest.raises(TypeError, match="unexpected keyword"):
             model.band([3, 6], **kw)
-        assert not record[0].filename.endswith("nonparametric.py")
-
-
-def test_band_deprecation_points_at_the_caller():
-    # band is wrapped by the query-shape helper, one frame more between
-    # the warning and the caller than before 9e7d0fb.
-    with pytest.warns(DeprecationWarning) as record:
-        _fit().band([3, 6], n_sims=100)
-    assert record[0].filename == __file__
 
 
 # --- smoothed_hf -------------------------------------------------------------
@@ -751,10 +752,15 @@ def test_cb_aliases_agree_with_a_support_set():
 def test_repr_names_the_estimator():
     # Kills nonparametric.py:198-208 (28 mutants of __repr__).
     head = "Non-Parametric SurPyval Model\n" + "=" * 29 + "\n"
-    assert repr(_fit()) == head + "Model            : Kaplan-Meier"
+    # and the data it was fitted to (#508)
+    data = (
+        "\nData             : 10 units: 7 events at 7 unique times, "
+        "3 right censored"
+    )
+    assert repr(_fit()) == head + "Model            : Kaplan-Meier" + data
     assert repr(sp.Turnbull.fit(X, c=C)) == (
         head + "Model            : Turnbull\n"
-        "Estimator        : Fleming-Harrington"
+        "Estimator        : Fleming-Harrington" + data
     )
 
 

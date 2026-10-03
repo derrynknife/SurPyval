@@ -37,9 +37,15 @@ SurPyval also offers many different distributions for users, and because of the 
 | **Uniform**   | No |
 | **Exponential** | Yes |
 | **Exponentiated Weibull** | Yes |
-| **Gumbel**    | No |
+| **Rayleigh**  | Yes |
+| **Gumbel** (and **GumbelLEV**) | No |
 | **Logistic**  | No |
 | **LogLogistic** | Yes |
+
+Discrete distributions: **Poisson**, **Geometric**, **NegativeBinomial**,
+**DiscreteWeibull**, **BetaGeometric**, **Bernoulli** and **Binomial**; any
+continuous distribution can be discretised with `Discretize`. Any of them can
+be combined in a `MixtureModel`, and custom distributions are supported.
 
 This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
 
@@ -59,15 +65,21 @@ not yet built.
 | Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` |
-| Continuous time | Single event | Competing | Without | &mdash; | `CompetingRisks` (CIF) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CRPH` |
-| Continuous time | Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | `NonParametricCounting` (MCF) |
+| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.beta.ml`) |
+| Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF) |
+| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` |
+| Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA`, `Duane`, `CoxLewis`; renewal: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
 | Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
 | Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials) | &mdash; |
 | Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
+
+Beyond these axes: the dependence between two lifetimes with copulas
+(`surpyval.multivariate`: Gaussian, Student-t, Clayton, Frank, Gumbel, Joe
+and AMH, with rotations), and degradation and remaining useful life
+(`DegradationAnalysis`, `WienerProcess`, `GammaProcess`,
+`DestructiveDegradation`).
 
 # Install and Quick Intro
 
@@ -107,11 +119,14 @@ Every model in SurPyval keeps the same rules, so what you learn about one holds 
 - **Outputs.** Results keep the shape of the query. The functions of a model agree with each other (`sf + ff = 1`, `Hf = -log(sf)`, ...). Probabilities stay in [0, 1] and are monotone in time. Behaviour outside the data is defined and documented.
 - **Estimation.** A fit returns the optimum it claims, or says it could not. Every way of fitting a model (`fit`, `fit_from_df`, formulas) gives the same answer. Defaults are the statistically best standard choice and the same everywhere. Conventions follow R's `survival` and the other established references.
 - **Uncertainty.** Intervals achieve their stated coverage and behave consistently across confidence levels and one- or two-sided bounds.
-- **Behaviour.** One seed rule. Every model round-trips through JSON. Names and defaults are consistent across families. Warnings are useful and never raw numpy noise. Every public item has a runnable example.
+- **Behaviour.** One seed rule. Every model round-trips through JSON. Names and defaults are consistent across families. Defaults stay simple; a method for harder cases is added as an option, not a replacement. Warnings are useful and never raw numpy noise. Every public item has a runnable example.
 
 Each principle is enforced by tests, most as properties checked against every registered model. The [Design Principles](https://surpyval.readthedocs.io/en/latest/Design%20Principles.html) page lists them in full, with the tests that check each one and the open issues where a model does not yet comply.
 
 # Development
+## Roadmap
+The bigger ideas (distributional regression, multi-state models, multivariate copulas, ...) are in [ROADMAP.md](ROADMAP.md); the issues are for work that can start now.
+
 ## Dependencies
 ```pip install -r requirements_dev.txt```
 

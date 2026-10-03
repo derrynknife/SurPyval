@@ -31,13 +31,15 @@ refused with a clear error rather than returning a survival function
 poisoned by cancellation; equal rates are the Erlang / Gamma case.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy import integrate
-from scipy.special import factorial, xlogy
+from scipy.special import factorial, gammaln, xlogy
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -52,6 +54,9 @@ from ..parametric import Parametric
 #: ``rate / gap`` with alternating signs, so at this separation the
 #: survival function has lost about six of its sixteen digits.
 DISTINCT_RATES_TOL = 1e-6
+
+# the smallest positive double, the floor of the quantile's bracket
+_SMALLEST = float(np.nextafter(0.0, 1.0))
 
 
 def _validate_rates(rates: Any) -> npt.NDArray:
@@ -96,6 +101,47 @@ def _coefficients(rates: npt.NDArray) -> npt.NDArray:
     )
 
 
+#: Where ``lambda_max * x`` is at most this, the CDF and density are
+#: summed as their power series (``_series``) rather than from the partial
+#: fractions, which cancel there: two stages at ``x = 1e-15`` have
+#: ``F = 1e-30`` as a difference of numbers of size ``1e-15``.
+_SERIES_MAX = 1.0
+#: Terms of that series; the n-th is below ``1 / n!`` of the first.
+_SERIES_TERMS = 40
+
+
+def _series(x: npt.NDArray, rates: npt.NDArray) -> tuple:
+    r"""
+    :math:`\ln F(x)` and :math:`\ln f(x)` from the power series
+
+    .. math::
+        F(x) = \prod_j (\lambda_j x) \sum_{n \ge 0}
+               \frac{(-1)^n h_n(\lambda x)}{(n + m)!}, \qquad
+        f(x) = \frac{\prod_j (\lambda_j x)}{x} \sum_{n \ge 0}
+               \frac{(-1)^n h_n(\lambda x)}{(n + m - 1)!},
+
+    with :math:`h_n` the complete homogeneous symmetric polynomial of
+    degree :math:`n` (the Taylor series of the divided difference of
+    :math:`e^{-\lambda x}` over the rates). For :math:`\lambda_j x \le
+    1` the terms fall in size and alternate in sign, so neither sum
+    cancels, and the logs stay finite where :math:`F` and :math:`f`
+    underflow (#442, #443). ``x`` must be positive.
+    """
+    m = len(rates)
+    mu = x[..., None] * rates
+    h = np.zeros(x.shape + (_SERIES_TERMS,))
+    h[..., 0] = 1.0
+    for j in range(m):
+        for n in range(1, _SERIES_TERMS):
+            h[..., n] += mu[..., j] * h[..., n - 1]
+    n = np.arange(_SERIES_TERMS)
+    signed = np.where(n % 2 == 0, 1.0, -1.0) * h
+    sum_ff = np.sum(signed * np.exp(-gammaln(n + m + 1.0)), axis=-1)
+    sum_df = np.sum(signed * np.exp(-gammaln(n + m)), axis=-1)
+    log_prod = np.sum(np.log(rates)) + m * np.log(x)
+    return log_prod + np.log(sum_ff), log_prod - np.log(x) + np.log(sum_df)
+
+
 class Hypoexponential_(ParametricFitter):
     r"""
 
@@ -131,7 +177,7 @@ class Hypoexponential_(ParametricFitter):
             k=m,
             bounds=((0, None),) * m,
             support=(0, np.inf),
-            param_names=["lambda_{}".format(j + 1) for j in range(m)],
+            parameter_names=["lambda_{}".format(j + 1) for j in range(m)],
             param_map={"lambda_{}".format(j + 1): j for j in range(m)},
             plot_x_scale="linear",
         )
@@ -221,11 +267,107 @@ class Hypoexponential_(ParametricFitter):
         )
 
     @staticmethod
-    def _terms(x: Numeric, rates: tuple) -> tuple[npt.NDArray, npt.NDArray]:
-        """``(C_j, exp(-lambda_j x))`` broadcast to shape ``(..., m)``."""
+    def _pieces(x: Numeric, rates: tuple) -> dict[str, npt.NDArray]:
+        """
+        Every function at ``x``, each from the form that is exact where
+        it is used:
+
+        - near the origin (``lambda_max x <= 1``) the power series of
+          ``_series`` for ``F`` and ``f``;
+        - elsewhere ``F`` from the partial fractions in ``expm1`` form,
+          and, with the slowest rate factored out,
+          ``R = e^(-lambda_min x) sum_j C_j e^(-(lambda_j - lambda_min) x)``
+          and ``f`` likewise, whose logs stay finite after ``R`` and
+          ``f`` underflow (#443);
+        - the survival function as ``1 - F`` (and its log as
+          ``log1p(-F)``) while ``F < 1/2``, and the hazard as ``f / R``
+          from the scaled sums beyond, which is not 0 / 0 where both
+          underflow (#444).
+        """
         r = _validate_rates(rates)
         x_arr = np.asarray(x, dtype=float)
-        return _coefficients(r), np.exp(-x_arr[..., None] * r)
+        x_flat = x_arr.ravel()
+        m, r_min, r_max = len(r), float(np.min(r)), float(np.max(r))
+        # the support edges; a NaN stays NaN
+        at_zero_df = float(r[0]) if m == 1 else 0.0
+        edges = {
+            "ff": (0.0, 1.0),
+            "sf": (1.0, 0.0),
+            "log_ff": (-np.inf, 0.0),
+            "log_sf": (0.0, -np.inf),
+            "log_df": (np.log(at_zero_df) if m == 1 else -np.inf, -np.inf),
+            "df": (at_zero_df, 0.0),
+            "hf": (at_zero_df, r_min),
+        }
+        out = {}
+        for name, (at_zero, at_inf) in edges.items():
+            value = np.full(x_flat.shape, np.nan)
+            value[x_flat == 0] = at_zero
+            value[x_flat == np.inf] = at_inf
+            out[name] = value
+        finite = (x_flat > 0) & (x_flat < np.inf)
+        series = finite & (x_flat * r_max <= _SERIES_MAX)
+        direct = finite & ~series
+        if np.any(series):
+            log_ff, log_df = _series(x_flat[series], r)
+            ff = np.exp(log_ff)
+            # F is at most 1 - 1/e here (one stage), so 1 - F does not
+            # cancel
+            log_sf = np.log1p(-ff)
+            parts = {
+                "ff": ff,
+                "sf": 1.0 - ff,
+                "log_ff": log_ff,
+                "log_sf": log_sf,
+                "log_df": log_df,
+                "df": np.exp(log_df),
+                "hf": np.exp(log_df - log_sf),
+            }
+            for name, value in parts.items():
+                out[name][series] = value
+        if np.any(direct):
+            x_d = x_flat[direct]
+            coef = _coefficients(r)
+            e = np.exp(-x_d[:, None] * (r - r_min))
+            scaled_sf = np.sum(coef * e, axis=-1)
+            scaled_df = np.sum(coef * r * e, axis=-1)
+            ff = np.clip(
+                -np.sum(coef * np.expm1(-x_d[:, None] * r), axis=-1), 0.0, 1.0
+            )
+            low = ff < 0.5
+            with np.errstate(divide="ignore", invalid="ignore"):
+                # the sums are clipped at 0 against the cancellation of
+                # their terms (near-equal rates), and their logs are
+                # then -inf
+                log_sf_d = -r_min * x_d + np.log(np.maximum(scaled_sf, 0.0))
+                log_df = -r_min * x_d + np.log(np.maximum(scaled_df, 0.0))
+                log_sf = np.where(
+                    low, np.log1p(-np.minimum(ff, 0.5)), log_sf_d
+                )
+                log_ff = np.where(
+                    low,
+                    np.log(ff),
+                    np.log1p(-np.exp(np.minimum(log_sf_d, np.log(0.5)))),
+                )
+                hf = np.where(
+                    low, np.exp(log_df - log_sf), scaled_df / scaled_sf
+                )
+            parts = {
+                "ff": ff,
+                "sf": np.where(
+                    low, 1.0 - ff, np.minimum(np.exp(log_sf_d), 1.0)
+                ),
+                "log_ff": log_ff,
+                "log_sf": log_sf,
+                "log_df": log_df,
+                "df": np.exp(log_df),
+                "hf": hf,
+            }
+            for name, value in parts.items():
+                out[name][direct] = value
+        return {
+            name: value.reshape(x_arr.shape)[()] for name, value in out.items()
+        }
 
     def sf(self, x: Numeric, *rates: Boxable) -> Boxable:
         r"""
@@ -238,10 +380,11 @@ class Hypoexponential_(ParametricFitter):
             C_j = \prod_{l \neq j} \frac{\lambda_l}{\lambda_l - \lambda_j}
 
         Evaluated as ``1 - F(x)`` while ``F(x) < 1/2`` -- ``F`` is exact
-        at the origin, so ``R(0) = 1`` exactly -- and as the signed sum
-        above beyond that, where it keeps its relative precision in
-        the tail; the sum is clipped to ``[0, 1]`` against the
-        floating-point cancellation of its terms.
+        at the origin, so ``R(0) = 1`` exactly -- and beyond that as the
+        signed sum above with the slowest stage's exponential factored
+        out, which keeps its relative precision in the tail; the sum is
+        clipped at 0 against the floating-point cancellation of its terms
+        (see ``_pieces``).
 
         Parameters
         ----------
@@ -265,10 +408,7 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.sf(x, 0.5, 1.5, 3.0)
         array([0.87858244, 0.61289168, 0.39054997, 0.24112599, 0.14719997])
         """
-        coef, e = self._terms(x, rates)
-        direct = np.clip(np.sum(coef * e, axis=-1), 0.0, 1.0)
-        ff = self.ff(x, *rates)
-        return np.where(ff < 0.5, 1.0 - ff, direct)
+        return self._pieces(x, rates)["sf"]
 
     def ff(self, x: Numeric, *rates: Boxable) -> Boxable:
         r"""
@@ -280,8 +420,10 @@ class Hypoexponential_(ParametricFitter):
             F(x) = 1 - \sum_{j=1}^{m} C_j e^{-\lambda_j x}
                  = -\sum_{j=1}^{m} C_j \left(e^{-\lambda_j x} - 1\right)
 
-        Evaluated in the second form (``expm1``) so it keeps its
-        precision for small ``x``, where ``1 - R(x)`` would cancel.
+        Near the origin (``lambda_max x <= 1``), where the partial
+        fractions cancel, it is summed as its power series, which keeps
+        its relative precision down to underflow; beyond that it is
+        evaluated in the second form (``expm1``).
 
         Parameters
         ----------
@@ -305,11 +447,7 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.ff(x, 0.5, 1.5, 3.0)
         array([0.12141756, 0.38710832, 0.60945003, 0.75887401, 0.85280003])
         """
-        r = _validate_rates(rates)
-        x_arr = np.asarray(x, dtype=float)
-        coef = _coefficients(r)
-        terms = coef * np.expm1(-x_arr[..., None] * r)
-        return np.clip(-np.sum(terms, axis=-1), 0.0, 1.0)
+        return self._pieces(x, rates)["ff"]
 
     def df(self, x: Numeric, *rates: Boxable) -> Boxable:
         r"""
@@ -341,9 +479,7 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.df(x, 0.5, 1.5, 3.0)
         array([0.24105459, 0.25789815, 0.1842277 , 0.11808731, 0.07304706])
         """
-        coef, e = self._terms(x, rates)
-        r = _validate_rates(rates)
-        return np.maximum(np.sum(coef * r * e, axis=-1), 0.0)
+        return self._pieces(x, rates)["df"]
 
     def hf(self, x: Numeric, *rates: Boxable) -> Boxable:
         r"""
@@ -379,7 +515,7 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.hf(x, 0.5, 1.5, 3.0)
         array([0.27436764, 0.42078911, 0.4717135 , 0.48973284, 0.49624367])
         """
-        return self.df(x, *rates) / self.sf(x, *rates)
+        return self._pieces(x, rates)["hf"]
 
     def Hf(self, x: Numeric, *rates: Boxable) -> Boxable:
         r"""
@@ -411,14 +547,28 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.Hf(x, 0.5, 1.5, 3.0)
         array([0.12944553, 0.48956707, 0.94019934, 1.42243572, 1.91596325])
         """
-        return -np.log(self.sf(x, *rates))
+        return 0.0 - self._pieces(x, rates)["log_sf"]
+
+    def log_sf(self, x: Numeric, *rates: Boxable) -> Boxable:
+        """Log of the survival function (see ``_pieces``)."""
+        return self._pieces(x, rates)["log_sf"]
+
+    def log_ff(self, x: Numeric, *rates: Boxable) -> Boxable:
+        """Log of the CDF (see ``_pieces``)."""
+        return self._pieces(x, rates)["log_ff"]
+
+    def log_df(self, x: Numeric, *rates: Boxable) -> Boxable:
+        """Log of the density (see ``_pieces``)."""
+        return self._pieces(x, rates)["log_df"]
 
     def qf(self, u: Numeric, *rates: Boxable) -> Boxable:
         r"""
 
         Quantile function for the Hypoexponential distribution, the
         inverse of ``ff``. There is no closed form; the failure function
-        is inverted by bisection between the bounds
+        is inverted by bisection -- on ``log F`` against ``log u`` below
+        ``u = 1/2`` and on ``log R`` against ``log(1 - u)`` above it, so a
+        tiny probability keeps its digits -- between the bounds
 
         .. math::
             \frac{-\ln(1 - u)}{\lambda_{\min}} \le q(u) \le
@@ -461,18 +611,35 @@ class Hypoexponential_(ParametricFitter):
         inside = (u_flat > 0.0) & (u_flat < 1.0)
         if inside.any():
             u_in = u_flat[inside]
-            survival = 1.0 - u_in
+            # u enters as log u below 1/2 and as log(1 - u) above it, and
+            # is compared with log F or log R, so a small u keeps its
+            # digits: 1 - u rounds to 1 below 1e-16, and the quantile
+            # came out at the bisection's floor of about 1e-60 (#447).
+            low = u_in <= 0.5
+            log_u = np.log(u_in)
+            log_1mu = np.log1p(-u_in)
             m, r_min = len(r), float(np.min(r))
-            lo = -np.log(survival) / r_min
-            hi = (m / r_min) * np.log(m / survival)
-            for _ in range(200):
-                mid = 0.5 * (lo + hi)
-                too_small = self.sf(mid, *r) > survival
+            lo = np.maximum(-log_1mu / r_min, _SMALLEST)
+            hi = (m / r_min) * (np.log(m) - log_1mu)
+            for _ in range(400):
+                # a geometric mid-point until the bracket is within a
+                # factor of 2, so a quantile of 1e-150 takes a few dozen
+                # steps, not a few hundred
+                wide = hi > 2.0 * lo
+                mid = np.where(
+                    wide,
+                    np.exp(0.5 * (np.log(lo) + np.log(hi))),
+                    lo + 0.5 * (hi - lo),
+                )
+                p = self._pieces(mid, tuple(r))
+                too_small = np.where(
+                    low, p["log_ff"] < log_u, p["log_sf"] > log_1mu
+                )
                 lo = np.where(too_small, mid, lo)
                 hi = np.where(too_small, hi, mid)
                 if np.all(hi - lo <= 4.0 * np.finfo(float).eps * hi):
                     break
-            out[inside] = 0.5 * (lo + hi)
+            out[inside] = lo + 0.5 * (hi - lo)
         return out[0] if scalar else out
 
     def mean(self, *rates: Boxable) -> Boxable:

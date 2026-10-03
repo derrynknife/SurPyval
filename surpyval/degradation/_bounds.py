@@ -35,37 +35,12 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import norm
 
-from surpyval.utils.linalg import bound_signs as _bound_signs
+from surpyval.utils.linalg import cb_link
 from surpyval.utils.linalg import delta_method_se as _delta_se
 from surpyval.utils.linalg import numerical_hessian as _num_hessian
-from surpyval.utils.linalg import safe_inv
+from surpyval.utils.linalg import percentile_bounds, safe_inv, sf_link_bound
 from surpyval.utils.rng import as_generator
-
-# -- delta-method helpers shared with the recurrent package (the two
-# packages used to carry verbatim copies of these, the drift-prone
-# pattern that produced #288) ---------------------------------------------
-
-
-def _logit_bound(
-    p_hat: npt.ArrayLike,
-    se: npt.ArrayLike,
-    alpha_ci: float,
-    bound: str,
-) -> npt.NDArray:
-    """Confidence bounds for a probability, taken on the logit scale so they
-    stay in ``(0, 1)``. Two-sided puts ``[lower, upper]`` on the last axis."""
-    p_arr = np.clip(np.asarray(p_hat, dtype=float), 1e-15, 1.0 - 1e-15)
-    alpha, signs = _bound_signs(alpha_ci, bound)
-    z = norm.ppf(1.0 - alpha)
-    logit = np.log(p_arr / (1.0 - p_arr))
-    with np.errstate(divide="ignore", invalid="ignore"):
-        se_logit = np.asarray(se, dtype=float) / (p_arr * (1.0 - p_arr))
-    lb = logit[..., None] + signs * z * se_logit[..., None]
-    cb = 1.0 / (1.0 + np.exp(-lb))
-    return cb if bound == "two-sided" else cb[..., 0]
-
 
 # -- first stage: per-unit pseudo-failure-time variances ------------------
 
@@ -219,6 +194,7 @@ def analytic_cb(
 ) -> npt.NDArray:
     cov = life_parameter_covariance(model, method="analytic")
     phi = np.asarray(model.life_model.params, dtype=float)
+    link = cb_link(model.life_model.dist)
     x, sf_of = _target(model, x, on)
     sf_hat = np.asarray(sf_of(phi), dtype=float)
     se = _delta_se(sf_of, phi, cov)
@@ -227,8 +203,8 @@ def analytic_cb(
         # Each side is a one-sided bound, so it takes half the total tail
         # probability: with the full ``alpha_ci`` per side the "95%" band
         # was really a 90% one.
-        sf_lo = _logit_bound(sf_hat, se, alpha_ci / 2.0, "lower")
-        sf_hi = _logit_bound(sf_hat, se, alpha_ci / 2.0, "upper")
+        sf_lo = sf_link_bound(sf_hat, se, alpha_ci / 2.0, "lower", link)
+        sf_hi = sf_link_bound(sf_hat, se, alpha_ci / 2.0, "upper", link)
         if on in ("sf", "R"):
             return np.stack([sf_lo, sf_hi], axis=-1)
         elif on in ("ff", "F"):
@@ -238,9 +214,9 @@ def analytic_cb(
 
     # one-sided: ff and Hf decrease in sf, so flip the tail
     if on in ("sf", "R"):
-        return _logit_bound(sf_hat, se, alpha_ci, bound)
+        return sf_link_bound(sf_hat, se, alpha_ci, bound, link)
     flip = "upper" if bound == "lower" else "lower"
-    sf_b = _logit_bound(sf_hat, se, alpha_ci, flip)
+    sf_b = sf_link_bound(sf_hat, se, alpha_ci, flip, link)
     return (1.0 - sf_b) if on in ("ff", "F") else -np.log(sf_b)
 
 
@@ -271,9 +247,8 @@ def bootstrap_cb(
     variability, not path re-selection. Refits whose curve is not
     finite everywhere are dropped rather than poisoning the quantiles.
     """
-    import warnings
-
-    from .degradation_analysis import DegradationAnalysis
+    from surpyval.univariate.parametric.parametric import Parametric
+    from surpyval.utils.refits import DEGRADATION_REFIT
 
     x = np.atleast_1d(np.asarray(x, dtype=float))
     rng = as_generator(random_state)
@@ -287,8 +262,6 @@ def bootstrap_cb(
     if missing.all():
         shape = missing.shape + ((2,) if bound == "two-sided" else ())
         return np.full(shape, np.nan)
-    n_units = len(model.units)
-    curves = []
     # A step-stress (clock) model refits its clock on every resample: each
     # unit carries its own stress rows, the reference stress is held so the
     # refits describe the same reference-stress life, and gamma is
@@ -301,6 +274,66 @@ def bootstrap_cb(
             "stress_ref": model.stress_ref,
             "population_method": model.population_method,
         }
+    # A resample's units are the model's own: their path fits are reused,
+    # and its life fit starts from the model's (see ``utils.refits``),
+    # which made the 200 refits of a 200-unit analysis take 5.4 s, from
+    # 9.7 s (#522).
+    life = model.life_model
+    refit: dict = {
+        "units": {},
+        "life_init": (
+            np.asarray(life.params, dtype=float)
+            if isinstance(life, Parametric)
+            and not (life.offset or life.lfp or life.zi)
+            else None
+        ),
+    }
+    token = DEGRADATION_REFIT.set(refit)
+    try:
+        curves = _bootstrap_curves(
+            model, x, Z, method_name, missing, n_boot, rng, clock_kwargs
+        )
+    finally:
+        DEGRADATION_REFIT.reset(token)
+    if len(curves) < 2:
+        detail = (
+            " (a resample may not span enough stress levels to identify "
+            "the covariate fit)"
+            if Z is not None
+            else ""
+        )
+        if model._distribution is None:
+            detail = (
+                " (the model does not know the lifetime-distribution "
+                "fitter the refits need)"
+            )
+        raise RuntimeError(
+            "The degradation bootstrap produced too few successful refits "
+            "to form a confidence bound" + detail + "."
+        )
+    return percentile_bounds(curves, alpha_ci, bound)
+
+
+def _bootstrap_curves(
+    model: Any,
+    x: npt.NDArray,
+    Z: "npt.ArrayLike | None",
+    method_name: str,
+    missing: npt.NDArray,
+    n_boot: int,
+    rng: Any,
+    clock_kwargs: dict,
+) -> list:
+    """The curves of ``bootstrap_cb``'s refits: ``n_boot`` resamples of
+    ``model``'s units, each refitted and its ``method_name`` curve taken at
+    ``x`` (and ``Z``), those not finite where the model's own is dropped."""
+    import warnings
+
+    from .degradation_analysis import DegradationAnalysis
+
+    n_units = len(model.units)
+    clock = bool(clock_kwargs)
+    curves = []
     # Each resampled fit may emit the usual small-sample path-covariance
     # warnings; silence them here so a single bootstrap call does not surface
     # hundreds of duplicates.
@@ -339,29 +372,7 @@ def bootstrap_cb(
                     curves.append(np.where(missing, np.nan, curve))
             except Exception:
                 continue
-    if len(curves) < 2:
-        detail = (
-            " (a resample may not span enough stress levels to identify "
-            "the covariate fit)"
-            if Z is not None
-            else ""
-        )
-        if model._distribution is None:
-            detail = (
-                " (the model does not know the lifetime-distribution "
-                "fitter the refits need)"
-            )
-        raise RuntimeError(
-            "The degradation bootstrap produced too few successful refits "
-            "to form a confidence bound" + detail + "."
-        )
-    curves_arr = np.asarray(curves)
-    if bound == "two-sided":
-        lo = np.quantile(curves_arr, alpha_ci / 2.0, axis=0)
-        hi = np.quantile(curves_arr, 1.0 - alpha_ci / 2.0, axis=0)
-        return np.stack([lo, hi], axis=-1)
-    q = alpha_ci if bound == "lower" else 1.0 - alpha_ci
-    return np.quantile(curves_arr, q, axis=0)
+    return curves
 
 
 def _on_method(on: str) -> str:

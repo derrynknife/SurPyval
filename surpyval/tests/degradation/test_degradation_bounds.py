@@ -19,9 +19,10 @@ from surpyval.degradation import DegradationAnalysis
 from surpyval.degradation._bounds import (
     _delta_se,
     _life_loglik,
-    _logit_bound,
     _num_hessian,
 )
+from surpyval.tests._helpers import linear_degradation_units
+from surpyval.utils.linalg import sf_link_bound
 
 
 def _linear_degradation(seed, n_units=20, noise=2.0, n_points=5, t_max=8.0):
@@ -191,8 +192,8 @@ def test_coverage_improves_over_mle_only():
         an = m.cb([t0], on="sf", method="analytic")[0]
         se = _mle_only_se(m, [t0])
         sf_hat = m.sf([t0])
-        mlo = _logit_bound(sf_hat, se, 0.05, "lower")[0]
-        mhi = _logit_bound(sf_hat, se, 0.05, "upper")[0]
+        mlo = sf_link_bound(sf_hat, se, 0.05, "lower", "logit")[0]
+        mhi = sf_link_bound(sf_hat, se, 0.05, "upper", "logit")[0]
         an_hits += an[0] <= true_sf <= an[1]
         mle_hits += mlo <= true_sf <= mhi
     an_cov = an_hits / reps
@@ -208,11 +209,11 @@ def test_coverage_improves_over_mle_only():
 
 def test_cb_rejects_bad_arguments():
     m, _ = _fit(6)
-    with pytest.raises(ValueError, match="`on` must be one of"):
+    with pytest.raises(ValueError, match="'on' must be one of"):
         m.cb([10.0], on="nonsense")
-    with pytest.raises(ValueError, match="`bound` must be"):
+    with pytest.raises(ValueError, match="'bound' must be one of"):
         m.cb([10.0], bound="sideways")
-    with pytest.raises(ValueError, match="`method` must be"):
+    with pytest.raises(ValueError, match="'method' must be one of"):
         m.cb([10.0], method="magic")
 
 
@@ -223,3 +224,25 @@ def test_analytic_rejects_lfp_life_model():
     m.life_model.p = 0.8  # pretend an LFP was fitted
     with pytest.raises(ValueError, match="limited-failure-population"):
         m.cb([10.0], on="sf", method="analytic")
+
+
+# ---------------------------------------------------------------------------
+# The analytic two-sided ``cb`` puts ``alpha_ci / 2`` in each
+# tail (it was a 90% band labelled 95%).
+# ---------------------------------------------------------------------------
+
+
+def test_analytic_two_sided_cb_puts_half_alpha_in_each_tail() -> None:
+    x, y, i = linear_degradation_units(12)
+    model = DegradationAnalysis.fit(x, y, i, threshold=15.0)
+    t = np.array([10.0, 14.0, 18.0])
+    for on in ("sf", "ff", "Hf"):
+        two = model.cb(t, on=on)
+        lower = model.cb(t, on=on, bound="lower", alpha_ci=0.025)
+        upper = model.cb(t, on=on, bound="upper", alpha_ci=0.025)
+        assert np.allclose(two[:, 0], lower)
+        assert np.allclose(two[:, 1], upper)
+    # the old band equalled the 5% one-sided bound (z = 1.645)
+    assert not np.allclose(
+        model.cb(t)[:, 0], model.cb(t, bound="lower", alpha_ci=0.05)
+    )

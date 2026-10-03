@@ -166,7 +166,7 @@ extrapolated well beyond the data.
 
 **A custom path.** When the physics suggests a shape that is not in the list,
 subclass :class:`~surpyval.degradation.path_models.PathModel`: give it a ``name``, its
-``param_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
+``parameter_names``, the ``path`` itself and its inverse ``inv_path`` (the time the
 path reaches a level, ``nan`` or non-positive if it never does). ``fit``
 defaults to nonlinear least squares from an ``_initial_guess`` you supply; a
 path that is linear in its parameters can instead set
@@ -189,7 +189,7 @@ message. The built-in shapes are importable objects too (``LinearPath``,
         """y = a + b * sqrt(x): diffusion-limited growth."""
 
         name = "Square-root"
-        param_names = ["a", "b"]
+        parameter_names = ["a", "b"]
         linear_in_parameters = True
 
         def path(self, x, a, b):
@@ -358,8 +358,10 @@ default, passed on to the distribution's ``fit``):
     from surpyval import LogNormal
 
     df = pd.DataFrame({"hours": x, "resistance": y, "unit": i})
-    DegradationAnalysis.fit_from_df(df, x="hours", y="resistance", i="unit",
-                                    threshold=450.0, distribution=LogNormal)
+    DegradationAnalysis.fit_from_df(
+        df, x_col="hours", y_col="resistance", i_col="unit",
+        threshold=450.0, distribution=LogNormal,
+    )
 
 Predicting a new unit's failure time
 ------------------------------------
@@ -498,8 +500,11 @@ Jacobian, and the average is subtracted from the sample covariance.
 
 The result is projected onto the positive semi-definite cone. If material
 clipping was needed — the estimation noise is comparable to the between-unit
-scatter, typically with few units or few measurements per unit — a warning is
-raised and the corrected covariance should be treated as unreliable. When every
+scatter, typically with few units or few measurements per unit — the estimate
+is on the boundary of the cone (a direction of between-unit variation
+estimated as zero: a variance of zero, or a correlation of ±1), a warning is
+raised, and the corrected covariance and the intervals drawn from it should be
+treated as unreliable. When every
 unit has only as many measurements as path parameters, the measurement variance
 cannot be estimated and no correction is applied.
 
@@ -507,7 +512,7 @@ REML estimation of the population
 ---------------------------------
 
 The moments correction can go rank-deficient when the estimation noise
-rivals the between-unit scatter. The robust alternative is to fit the
+rivals the between-unit scatter. The alternative is to fit the
 random-effects (Lu-Meeker) formulation directly as a linear mixed
 model — each unit's parameters are draws
 :math:`\theta_i \sim MVN(\mu, \Sigma)`, so with the random effects
@@ -560,7 +565,7 @@ sensible answer (the truth is 3):
 The estimates land in the same attributes (``path_param_mean``,
 ``path_param_cov``, ``measurement_var``), so ``predict_rul`` and everything else
 work unchanged. :math:`\Sigma` is parameterised by its Cholesky factor, so it is
-positive definite by construction — no clipping. On a balanced design (every
+positive definite at every step of the search — no clipping. On a balanced design (every
 unit measured at the same times, with a path linear in its parameters) REML
 coincides with the corrected moments estimate whenever that needed no clipping.
 The twelve units at the top of the page are such a design, and the two methods
@@ -578,6 +583,39 @@ agree to every printed digit:
 They differ on unbalanced data and when the unit count is small, where REML is
 preferable. The method used is recorded as ``population_method`` on the fitted
 model. REML requires a positive measurement variance.
+
+REML does not always rescue the estimate: where the data hold no evidence of
+some direction of between-unit variation, its maximum is on the boundary of
+the cone too, and it warns. A maximum there is only approached by the search
+(the Cholesky factor's diagonal heads for zero), so the test is whether the
+covariance with its smallest eigenvalue removed fits at least as well — to
+within ``sqrt(eps)`` relative. Six units whose slopes hardly vary (a spread of
+0.002 against a measurement noise of 1) give an intercept-slope correlation of
+1 by both methods:
+
+.. jupyter-execute::
+
+    rng1 = np.random.default_rng(1)
+    t13 = np.arange(0.0, 650.0, 50.0)
+    a6, b6 = rng1.normal(10.0, 1.5, 6), rng1.normal(0.1, 0.002, 6)
+    x6, i6 = np.tile(t13, 6), np.repeat(np.arange(6), t13.size)
+    y6 = np.repeat(a6, t13.size) + np.repeat(b6, t13.size) * x6
+    y6 = y6 + rng1.normal(0, 1, x6.size)
+
+    with warnings.catch_warnings(record=True) as caught6:
+        warnings.simplefilter("always")
+        reml6 = DegradationAnalysis.fit(x6, y6, i6, threshold=100.0,
+                                        population_method="reml")
+    print(str(caught6[0].message)[:118], "...")
+    cov6 = reml6.path_param_cov
+    print("correlation:", round(cov6[0, 1] / np.sqrt(cov6[0, 0] * cov6[1, 1]), 5))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert len(caught6) == 1 and "on the boundary" in str(caught6[0].message)
+    assert round(cov6[0, 1] / np.sqrt(cov6[0, 0] * cov6[1, 1]), 5) == 1.0
 
 .. jupyter-execute::
     :hide-code:
@@ -872,7 +910,7 @@ and leaves the others alone; the methods that describe a single unit
 
     adt = DegradationAnalysis.fit_from_df(
         pd.DataFrame({"t": xd, "y": yd, "unit": idd, "stress": Zd}),
-        x="t", y="y", i="unit", Z_cols="stress", threshold=100.0)
+        x_col="t", y_col="y", i_col="unit", Z_cols="stress", threshold=100.0)
     use = pd.DataFrame({"stress": [0.0, 0.5, np.nan]})
     adt.qf(0.5, use)             # median life per row; nan where it is missing
 

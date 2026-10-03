@@ -37,11 +37,16 @@ proportional-odds families (``WeibullPH`` / ``PH(dist)``, ``WeibullAH`` /
 ``AH(dist)`` and ``WeibullPO`` / ``PO(dist)``) also *fit* start-stop
 time-varying-covariate data with ``fit_tvc`` / ``fit_tvc_timeline``,
 reusing the ordinary maximum-likelihood fit; the AFT family fits it with
-its own accumulated-age likelihood. A fitted PH, AH, AFT or PO model can
-then be *evaluated* along a piecewise-constant covariate path with
-``sf_tvc`` / ``Hf_tvc``, describing the path as a
-:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`. See
-:ref:`tvc-parametric` in the how-to guide.
+its own accumulated-age likelihood. A fitted PH, AH, AFT or PO model, and
+an accelerated life model whose life parameter scales time (by cumulative
+exposure), can then be *evaluated* along a covariate path with ``sf_tvc`` /
+``Hf_tvc``, bounded with ``cb_tvc`` and integrated to a mean (residual)
+life with ``mean_tvc``: a piecewise-constant path described as a
+:class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` is summed
+exactly, and a continuously varying one described as a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` (a ramp, a
+cycle) is integrated by quadrature. See :ref:`tvc-parametric`,
+:ref:`tvc-continuous` and :ref:`tvc-bounds-mean` in the how-to guide.
 
 
 Proportional Hazards (PH)
@@ -73,7 +78,7 @@ Pre-built instances: ``ExponentialAFT``, ``NormalAFT``, ``WeibullAFT``,
 .. autofunction:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFT
 
 .. autoclass:: surpyval.univariate.regression.accelerated_failure_time.aft_fitter.AFTFitter
-    :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, Hf, hf, sf, ff, df
+    :members: fit, fit_from_df, fit_tvc, fit_tvc_from_df, fit_tvc_timeline, fit_tvc_timeline_from_df, Hf, hf, sf, ff, df
 
 
 Proportional Odds (PO)
@@ -128,13 +133,14 @@ and ``Gamma`` (the rate is :math:`1/L`).
 
 Factory::
 
-    from surpyval import Weibull
-    from surpyval import AcceleratedLife, Power, Eyring
-    model = AcceleratedLife(Weibull, Power).fit(x, Z=stress, c=c)
+    from surpyval import AcceleratedLife, Weibull, life_models
+    model = AcceleratedLife(Weibull, life_models.Power).fit(x, Z=stress, c=c)
 
 .. autofunction:: surpyval.univariate.regression.accelerated_life.accelerated_life.AcceleratedLife
 
-The available life models, importable from ``surpyval``, with :math:`Z`
+The available life models, in ``surpyval.life_models`` (until v0.22
+importable from ``surpyval``, the exponential one as
+``ExponentialLifeModel``), with :math:`Z`
 the stress (:math:`Z_1, Z_2` for the two-stress models) and the
 parameter names as the fitted model reports them:
 
@@ -151,7 +157,7 @@ parameter names as the fitted model reports them:
    * - ``InversePower``
      - :math:`1 / (a Z^{n})`
      - ``a`` (> 0), ``n``
-   * - ``ExponentialLifeModel``
+   * - ``Exponential``
      - :math:`b\, e^{a / Z}`
      - ``a``, ``b`` (> 0)
    * - ``InverseExponential``
@@ -175,10 +181,15 @@ parameter names as the fitted model reports them:
    * - ``PowerExponential``
      - :math:`c\, e^{a / Z_1} Z_2^{n}`
      - ``c`` (> 0), ``a``, ``n``
+   * - ``GeneralLogLinear``
+     - :math:`c\, e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, any number of
+       columns
+     - ``c`` (> 0), ``beta_0``, ``beta_1``, ...
 
 Custom life models can be created by subclassing ``LifeModel``::
 
-    from surpyval import LifeModel, AcceleratedLife
+    from surpyval import AcceleratedLife
+    from surpyval.life_models import LifeModel
     import autograd.numpy as anp
 
     class MyStressModel(LifeModel):
@@ -221,6 +232,19 @@ when an expression is not provably step-valued.
 
 .. autoclass:: surpyval.univariate.regression.tvc_schedule.StepValuedError
     :exclude-members: add_note, with_traceback
+
+A ``CovariatePath`` describes a continuously varying covariate path: straight
+lines between points (``from_points``, a repeated time being a jump) or a
+vectorised function of time (``from_callable``), either optionally periodic.
+``sf_tvc`` / ``Hf_tvc`` integrate the model's hazard along it to a relative
+error of about ``1e-10`` (``cb_tvc`` and ``mean_tvc`` build on them), and Cox
+sums its baseline jumps along it exactly.
+It evaluates a fitted model along a known, external path; fitting still
+uses steps. See :ref:`tvc-continuous`.
+
+.. autoclass:: surpyval.univariate.regression.tvc_path.CovariatePath
+    :members: from_points, from_callable, breakpoints, p
+    :special-members: __call__
 
 
 The fitted model

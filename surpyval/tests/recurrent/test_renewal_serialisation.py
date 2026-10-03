@@ -9,8 +9,6 @@ and the family's fitter rebuilds the sampler on load. The reloaded model
 reproduces the (seeded) simulated MCF exactly.
 """
 
-import json
-
 import numpy as np
 import pytest
 
@@ -23,10 +21,7 @@ from surpyval.recurrent import (
     GeneralizedRenewal,
 )
 from surpyval.recurrent.renewal.renewal_model import RenewalModel
-
-
-def _rt(d):
-    return json.loads(json.dumps(d))
+from surpyval.tests._helpers import json_round_trip
 
 
 def _make(name):
@@ -45,14 +40,16 @@ def _make(name):
     if name == "ARA":
         return ARA.fit_from_parameters([50.0, 2.0], 0.4, m=2, dist=Weibull)
     if name == "ARI":
-        return ARI.fit_from_parameters([60.0, 2.0], 0.3, m=1, dist=CrowAMSAA)
+        return ARI.fit_from_parameters(
+            [60.0, 2.0], 0.3, m=1, baseline=CrowAMSAA
+        )
     raise ValueError(name)
 
 
 @pytest.mark.parametrize("name", ["GR-i", "GR-ii", "G1R", "ARA", "ARI"])
 def test_renewal_round_trip(name):
     model = _make(name)
-    restored = RenewalModel.from_dict(_rt(model.to_dict()))
+    restored = RenewalModel.from_dict(json_round_trip(model.to_dict()))
     # the restoration parameter and family option survive
     assert np.isclose(model.restoration, restored.restoration)
     assert np.allclose(model.model.params, restored.model.params)

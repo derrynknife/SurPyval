@@ -1,20 +1,24 @@
+from __future__ import annotations
+
+import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
 from autograd.scipy.special import gammaln as agammaln
 from scipy.special import digamma, gammaincinv
 
-from surpyval import np
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
 from surpyval.utils.autograd_gamma_compat import gammainc as agammainc
 from surpyval.utils.autograd_gamma_compat import gammainccln as agammainccln
 from surpyval.utils.autograd_gamma_compat import gammaincln as agammaincln
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import on_support, positive_or_one, power_at_zero
 
 
 class Gamma_(OptimisedFitMixin, ParametricFitter):
@@ -34,7 +38,7 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             k=2,
             bounds=((0, None), (0, None)),
             support=(0, np.inf),
-            param_names=["alpha", "beta"],
+            parameter_names=["alpha", "beta"],
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="linear",
         )
@@ -218,12 +222,10 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         >>> Gamma.df(x, 3, 2)
         array([0.54134113, 0.29305022, 0.08923508, 0.02146961, 0.00453999])
         """
-        return (
-            (beta**alpha)
-            * x ** (alpha - 1)
-            * np.exp(-(x * beta))
-            / (agamma(alpha))
-        )
+        # exp(log_df): beta^alpha and x^(alpha - 1) overflow separately
+        # at a large shape, to inf * 0 = NaN or an OverflowError (#444,
+        # #445)
+        return np.exp(self.log_df(x, alpha, beta))
 
     def hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -261,9 +263,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         array([0.8       , 1.23076923, 1.44      , 1.56097561, 1.63934426])
         """
         # in logs, so the ratio stays finite deep in the tail
-        return np.exp(
-            self.log_df(x, alpha, beta) - self.log_sf(x, alpha, beta)
-        )
+        log_sf = self.log_sf(x, alpha, beta)
+        gone = log_sf == -np.inf
+        if not np.any(gone):
+            return np.exp(self.log_df(x, alpha, beta) - log_sf)
+        # where both logs are -inf (at x = inf, or where beta x
+        # overflows), the hazard's limit, the rate beta (#561)
+        with np.errstate(invalid="ignore"):
+            out = np.exp(self.log_df(x, alpha, beta) - log_sf)
+        return np.where(gone, beta + np.zeros_like(out), out)
 
     def Hf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
@@ -468,11 +476,18 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
             The log of the density function of the Gamma distribution at x
 
         """
-        return (
-            alpha * np.log(beta)
-            + (alpha - 1) * np.log(x)
-            - beta * x
-            - agammaln(alpha)
+        # x = 0 is the limit of beta^alpha x^(alpha - 1) / Gamma(alpha):
+        # the formula is 0 * log 0 = NaN there at alpha = 1 (#444).
+        x_pos = positive_or_one(x)
+        at_inf = x_pos == np.inf
+        if np.any(at_inf):
+            x_pos = np.where(at_inf, 1.0, x_pos)
+        log_scale = alpha * np.log(beta) - agammaln(alpha)
+        inside = log_scale + (alpha - 1) * np.log(x_pos) - beta * x_pos
+        if np.any(at_inf):
+            inside = np.where(at_inf, -np.inf, inside)
+        return on_support(
+            x, inside, lambda: power_at_zero(alpha - 1, log_scale)[1]
         )
 
     def log_ff(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:

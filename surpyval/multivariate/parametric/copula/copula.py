@@ -18,21 +18,46 @@ each right/left/interval-censored dimension contributes a difference of
 bookkeeping uniform across all 16 bivariate censoring combinations.
 """
 
+from __future__ import annotations
+
+import functools
 from typing import Any
 
+import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
 from scipy.optimize import minimize
 
-from surpyval import np
+from surpyval.univariate.parametric.fitters import (
+    verified_maximum,
+    verify_or_polish,
+)
+from surpyval.utils.dataframe import (
+    call_fit,
+    frame_column,
+    frame_columns,
+    require_frame,
+)
+from surpyval.utils.deprecation import (
+    RenamedAttribute,
+    renamed_class_attribute,
+)
+from surpyval.utils.no_maximum import (
+    combined_maximum,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
+from surpyval.utils.validation import check_option
 
 # Margin probabilities are kept strictly inside (0, 1): the Archimedean
 # generators blow up at the boundary and the optimiser only ever needs
 # interior values.
-_EPS = 1e-10
-_TINY = 1e-300
+_U_CLIP = 1e-10
+# Likelihoods, masses and densities are floored here before their log, so a
+# zero gives a large finite negative log rather than -inf.
+_LOG_FLOOR = 1e-300
 
 
 class Copula:
@@ -47,7 +72,25 @@ class Copula:
     # Parameter bounds in the same ``(low, high)`` form the univariate
     # fitters use, so ``bounds_convert`` can map them to unbounded space.
     bounds: tuple = ((0, None),)
-    param_names: tuple = ("theta",)
+    parameter_names: list[str] = ["theta"]
+    # ``param_names``, the pre-0.22 name of ``parameter_names``, reads it
+    # for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
+    #: The Frechet bounds the family reaches only as its parameter runs to
+    #: a limit: ``+1`` the comonotone copula (perfect positive dependence),
+    #: ``-1`` the countermonotone one, each mapped to that limit as the
+    #: fit's warning names it (see :meth:`_warn_if_perfectly_dependent`).
+    #: Empty for a family that is not known to reach either.
+    dependence_limits: dict = {}
+
+    def __repr__(self) -> str:
+        return f"{self.name} copula"
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # A family written against the pre-0.22 name, ``param_names``,
+        # still works until v0.23, with a DeprecationWarning.
+        super().__init_subclass__(**kwargs)
+        renamed_class_attribute(cls, "param_names", "parameter_names")
 
     # -- the four copula primitives ---------------------------------------
     def cdf(self, u: Any, v: Any, *params: Any) -> Any:
@@ -89,18 +132,34 @@ class Copula:
 
     # -- dependence measures (closed-form overrides preferred) ------------
     def kendall_tau(self, *params: float) -> float:
-        """Kendall's tau. Default: empirical estimate from a large sample."""
-        from scipy.stats import kendalltau
+        """Kendall's tau.
 
-        u, v = self.sample_uv(50_000, params, random_state=0)
-        return float(kendalltau(u, v).statistic)
+        The default integrates :math:`\\tau = 1 - 4 \\int_0^1 \\int_0^1
+        \\frac{\\partial C}{\\partial u} \\frac{\\partial C}{\\partial v}
+        \\, du \\, dv` by Gauss-Legendre quadrature (400 nodes per margin:
+        accurate to about 1e-10 at a tau of 0.5 and 1e-8 at 0.8, the
+        integrand sharpening along the diagonal as the dependence grows);
+        families with a closed form override it. It used to estimate tau
+        from 50 000 simulated pairs, with an error near 1e-3.
+        """
+        u, v, w = _quadrature_grid()
+        du = onp.asarray(self.du(u, v, *params), dtype=float)
+        dv = onp.asarray(self.dv(u, v, *params), dtype=float)
+        return float(1.0 - 4.0 * onp.sum(w * du * dv))
 
     def spearman_rho(self, *params: float) -> float:
-        """Spearman's rho. Default: empirical estimate from a large sample."""
-        from scipy.stats import spearmanr
+        """Spearman's rho.
 
-        u, v = self.sample_uv(50_000, params, random_state=0)
-        return float(spearmanr(u, v).statistic)
+        The default integrates :math:`\\rho_S = 12 \\int_0^1 \\int_0^1
+        C(u, v) \\, du \\, dv - 3` by Gauss-Legendre quadrature (400 nodes
+        per margin, accurate to about 1e-11 for the built-in families);
+        families with a closed form override it. It used to estimate rho
+        from 50 000 simulated pairs, which was up to 5e-3 off (Clayton,
+        Gumbel).
+        """
+        u, v, w = _quadrature_grid()
+        C = onp.asarray(self.cdf(u, v, *params), dtype=float)
+        return float(12.0 * onp.sum(w * C) - 3.0)
 
     def tail_dependence(self, *params: float) -> tuple:
         """Lower/upper tail-dependence coefficients ``(lambda_L, lambda_U)``.
@@ -123,8 +182,8 @@ class Copula:
         Override for families with a direct sampler (e.g. Gaussian).
         """
         rng = as_generator(random_state)
-        u = rng.uniform(_EPS, 1 - _EPS, size=size)
-        w = rng.uniform(_EPS, 1 - _EPS, size=size)
+        u = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
+        w = rng.uniform(_U_CLIP, 1 - _U_CLIP, size=size)
         v = self._invert_du(u, w, params)
         return u, v
 
@@ -135,8 +194,8 @@ class Copula:
         params: Any,
         iters: int = 60,
     ) -> npt.NDArray:
-        lo = onp.full_like(onp.asarray(u, dtype=float), _EPS)
-        hi = onp.full_like(lo, 1 - _EPS)
+        lo = onp.full_like(onp.asarray(u, dtype=float), _U_CLIP)
+        hi = onp.full_like(lo, 1 - _U_CLIP)
         for _ in range(iters):
             mid = 0.5 * (lo + hi)
             over = onp.asarray(self.du(u, mid, *params)) > w
@@ -153,8 +212,22 @@ class Copula:
         diff_v: bool,
         params: Any,
     ) -> Any:
-        u = np.clip(u, _EPS, 1 - _EPS)
-        v = np.clip(v, _EPS, 1 - _EPS)
+        # The upper end of a right-censored slot is exactly 1, where every
+        # copula has C(1, v) = v and dC/dv(1, v) = 1 (and symmetrically):
+        # those are used as they are, rather than the family's formula at
+        # 1 - 1e-10, which was off by up to 1e-10 and for a family whose
+        # CDF is an integral (the Student-t) cost three quarters of a
+        # doubly right-censored row.
+        u_one = not diff_u and bool(onp.all(onp.asarray(u) == 1.0))
+        v_one = not diff_v and bool(onp.all(onp.asarray(v) == 1.0))
+        if u_one or v_one:
+            shape = onp.broadcast_shapes(onp.shape(u), onp.shape(v))
+            if diff_u or diff_v:
+                return onp.ones(shape)
+            other = onp.ones(shape) if u_one and v_one else (v if u_one else u)
+            return onp.broadcast_to(onp.asarray(other, dtype=float), shape)
+        u = np.clip(u, _U_CLIP, 1 - _U_CLIP)
+        v = np.clip(v, _U_CLIP, 1 - _U_CLIP)
         if diff_u and diff_v:
             return self.pdf(u, v, *params)
         if diff_u:
@@ -203,7 +276,7 @@ class Copula:
                         L = L + coef0 * coef1 * onp.asarray(
                             self._eval(u0, u1, du0, du1, params)
                         )
-                logL = onp.log(onp.clip(L, _TINY, None))
+                logL = onp.log(onp.clip(L, _LOG_FLOOR, None))
                 if a == 0:
                     logL = logL + d0["logf"][mask]
                 if b == 0:
@@ -248,7 +321,7 @@ class Copula:
             - self._boundary_cdf(ur0, ul1, params)
             + self._boundary_cdf(ul0, ul1, params)
         )
-        return onp.log(onp.clip(mass, _TINY, None))
+        return onp.log(onp.clip(mass, _LOG_FLOOR, None))
 
     # -- fitting ----------------------------------------------------------
     def _prepare_dim(
@@ -276,7 +349,9 @@ class Copula:
             n_units = float(onp.max(getattr(margin, "r", [len(x)])))
             scale = n_units / (n_units + 1.0)
         u = onp.clip(
-            scale * onp.asarray(margin.ff(x), dtype=float), _EPS, 1 - _EPS
+            scale * onp.asarray(margin.ff(x), dtype=float),
+            _U_CLIP,
+            1 - _U_CLIP,
         )
         # An interval may start at the edge of a margin's support (0 for a
         # LogNormal, whose ff takes log(0) = -inf on the way to the correct
@@ -284,14 +359,14 @@ class Copula:
         with onp.errstate(divide="ignore"):
             ulo = scale * onp.asarray(margin.ff(xl), dtype=float)
             uhi = scale * onp.asarray(margin.ff(xr), dtype=float)
-        ulo = onp.clip(ulo, _EPS, 1 - _EPS)
-        uhi = onp.clip(uhi, _EPS, 1 - _EPS)
+        ulo = onp.clip(ulo, _U_CLIP, 1 - _U_CLIP)
+        uhi = onp.clip(uhi, _U_CLIP, 1 - _U_CLIP)
         if semiparametric:
             logf = onp.zeros(onp.shape(u))
         else:
             with onp.errstate(divide="ignore"):
                 logf = onp.log(
-                    onp.clip(onp.asarray(margin.df(x)), _TINY, None)
+                    onp.clip(onp.asarray(margin.df(x)), _LOG_FLOOR, None)
                 )
         has_trunc = bool(onp.isfinite(tl).any() or onp.isfinite(tr).any())
         ul = scale * _ff_where_finite(margin, tl, 0.0)
@@ -316,6 +391,103 @@ class Copula:
         ll = self._pair_loglik(params, dims[0], dims[1])
         return -float(onp.sum(weights * ll))
 
+    def fit_from_df(
+        self,
+        df: Any,
+        x_cols: "list[str]",
+        c_cols: "list[str] | None" = None,
+        n_col: "str | None" = None,
+        xl_cols: "list[str] | None" = None,
+        xr_cols: "list[str] | None" = None,
+        tl_cols: "list[str] | None" = None,
+        tr_cols: "list[str] | None" = None,
+        **fit_options: Any,
+    ) -> Any:
+        """Fit the copula and its margins to the columns of a
+        :class:`pandas.DataFrame`.
+
+        Each argument names, per dimension, the columns :meth:`fit` takes
+        as arrays: ``x_cols=["a", "b"]`` reads the two series from columns
+        ``a`` and ``b``. The names are those of the univariate
+        ``fit_from_df`` (``Weibull.fit_from_df(df, x_col=..., c_col=...)``)
+        with ``_cols`` for a list of columns, one per dimension
+        (principle 21); every other :meth:`fit` option (``margins``,
+        ``how``, ``init``) is passed to it unchanged.
+
+        Parameters
+        ----------
+        df : pandas.DataFrame
+            The data, one row per unit.
+        x_cols : list of str
+            The column of each dimension's values.
+        c_cols : list of str, optional
+            The column of each dimension's censoring flags. Defaults to
+            every value observed.
+        n_col : str, optional
+            The column of row counts.
+        xl_cols, xr_cols : list of str, optional
+            The columns of each dimension's interval ends, where the
+            censoring flag is 2.
+        tl_cols, tr_cols : list of str, optional
+            The columns of each dimension's left / right truncation.
+        **fit_options
+            Every other option of :meth:`fit`.
+
+        Returns
+        -------
+        CopulaModel
+            The model :meth:`fit` returns for the same arrays.
+
+        Examples
+        --------
+        >>> import pandas as pd
+        >>> from surpyval import Weibull
+        >>> from surpyval.multivariate import Clayton
+        >>> margins = [
+        ...     Weibull.from_params([10, 2]),
+        ...     Weibull.from_params([20, 3]),
+        ... ]
+        >>> X = Clayton.from_params([2.0], margins).random(300, random_state=0)
+        >>> df = pd.DataFrame(X, columns=["pump", "motor"])
+        >>> model = Clayton.fit_from_df(
+        ...     df, x_cols=["pump", "motor"], margins=[Weibull, Weibull]
+        ... )
+        >>> model.params.round(3)
+        array([2.293])
+        """
+        df = require_frame(df)
+        arrays: dict[str, Any] = {
+            "x": frame_columns(df, x_cols, "x_cols", time=True).astype(float)
+        }
+        for key, cols in (("c", c_cols), ("xl", xl_cols), ("xr", xr_cols)):
+            if cols is not None:
+                arrays[key] = frame_columns(
+                    df, cols, f"{key}_cols", time=key != "c"
+                )
+        if n_col is not None:
+            arrays["n"] = frame_column(df, n_col, "n_col")
+        if tl_cols is not None or tr_cols is not None:
+            shape = arrays["x"].shape
+            lower = (
+                onp.full(shape, -onp.inf)
+                if tl_cols is None
+                else frame_columns(df, tl_cols, "tl_cols", time=True).astype(
+                    float
+                )
+            )
+            upper = (
+                onp.full(shape, onp.inf)
+                if tr_cols is None
+                else frame_columns(df, tr_cols, "tr_cols", time=True).astype(
+                    float
+                )
+            )
+            arrays["t"] = onp.stack([lower, upper], axis=-1)
+        names = {k: f"{k}_cols" for k in ("x", "c", "xl", "xr")}
+        names["n"] = "n_col"
+        names["t"] = "tl_cols` / `tr_cols"
+        return call_fit(self, arrays, names, fit_options)
+
     def fit(
         self,
         x: npt.ArrayLike,
@@ -327,6 +499,7 @@ class Copula:
         xl: "npt.ArrayLike | None" = None,
         xr: "npt.ArrayLike | None" = None,
         init: "npt.ArrayLike | None" = None,
+        rotation: int = 0,
     ) -> Any:
         """Fit the copula and its margins to multivariate survival data.
 
@@ -354,9 +527,24 @@ class Copula:
             ``"MLE"`` jointly optimises copula parameter + margin parameters.
         init : array like, optional
             Starting value of the copula parameter(s) for the search, one per
-            entry of ``param_names``, each strictly inside the family's
+            entry of ``parameter_names``, each strictly inside the family's
             ``bounds``. By default each family starts from its own guess
             (the built-in families match the empirical Kendall's tau).
+        rotation : {0, 90, 180, 270}, optional
+            Rotate the copula by this many degrees, in the convention of R's
+            ``VineCopula`` (families 13, 23, 33 for the Clayton, ...):
+            ``180`` is the survival copula, ``C(u, v) = u + v - 1 + C_0(1 -
+            u, 1 - v)``, with the tail dependence moved to the other tail
+            (a Clayton's to the upper tail, a Gumbel's or Joe's to the
+            lower); ``90``, ``C(u, v) = v - C_0(1 - u, v)``, and ``270``,
+            ``C(u, v) = u - C_0(u, 1 - v)``, give negative dependence with
+            the family's shape, its tail in a corner where one series is
+            short and the other long. The parameter keeps its own range
+            (pyvinecopulib's convention; ``VineCopula`` writes it negated
+            for 90 and 270). Only the Clayton, Gumbel and Joe copulas are
+            rotated; for a radially symmetric family (Frank, Gaussian,
+            Student-t) ``180`` is the family itself and ``90`` its negative
+            parameter. Default 0, the family as it is.
 
         Returns
         -------
@@ -365,6 +553,14 @@ class Copula:
             fitted ``margins``, with the joint ``sf``/``cdf``/``pdf``,
             sampling, dependence measures and the likelihood-based
             ``log_likelihood``/``neg_ll``/``aic``/``bic``.
+
+        Warns
+        -----
+        UserWarning
+            "No finite maximum" when the rows observed in both dimensions
+            are perfectly dependent (Kendall's tau of +-1) and the family
+            reaches that dependence only as its parameter runs to a limit:
+            the returned parameter is then meaningless.
 
         Examples
         --------
@@ -384,6 +580,18 @@ class Copula:
         >>> round(float(model.kendall_tau()), 3)
         0.534
         """
+        if rotation:
+            return self.rotated(rotation).fit(
+                x,
+                c=c,
+                n=n,
+                t=t,
+                margins=margins,
+                how=how,
+                xl=xl,
+                xr=xr,
+                init=init,
+            )
         from surpyval.multivariate.parametric.copula.copula_model import (
             CopulaModel,
         )
@@ -399,38 +607,125 @@ class Copula:
         if len(margins) != data.D:
             raise ValueError("need one margin per dimension")
 
-        if how not in ("IFM", "MLE"):
-            raise ValueError("how must be 'IFM' or 'MLE'")
+        check_option("how", how, ("IFM", "MLE"))
         if init is not None:
             init = self._check_init(init)
 
         margin_models = self._fit_margins(margins, data)
         if how == "IFM":
-            theta = self._fit_theta(margin_models, data, init)
+            theta, verified = self._search_theta(margin_models, data, init)
             # A margin passed already fitted is used as it is, so only the
             # margins fitted here count as estimated parameters.
             # A non-parametric margin has no parameter vector: the
             # criteria then count the copula's parameters only (and are a
             # pseudo-likelihood's, for comparing copula families with the
             # same margins).
-            k = len(self.param_names) + sum(
+            k = len(self.parameter_names) + sum(
                 len(getattr(m, "params", ()))
                 for m, given in zip(margin_models, margins)
                 if hasattr(given, "fit") and not _is_nonparametric(m)
             )
         else:
-            theta, margin_models = self._fit_joint(
+            theta, margin_models, verified = self._fit_joint(
                 margins, margin_models, data, init
             )
             # The joint search re-estimates every free margin parameter,
             # including an offset, cure or zero-inflation proportion.
-            k = len(self.param_names) + sum(
+            k = len(self.parameter_names) + sum(
                 _JointMargin.n_free_of(m) for m in margin_models
             )
 
-        return CopulaModel(self, theta, margin_models, data=data, how=how, k=k)
+        # One warning per fit: perfect dependence explains any runaway,
+        # and a likelihood with no maximum why the search was not
+        # verified.
+        if self._warn_if_perfectly_dependent(
+            data, theta
+        ) or self._warn_if_no_maximum(margin_models, data, theta):
+            maximum = "no finite maximum"
+        elif verified:
+            maximum = "verified"
+        else:
+            maximum = "unverified"
+            warn_unverified("The {} copula fit".format(self.name))
+        if how == "IFM":
+            # The two-stage estimate is a maximum where each stage is: the
+            # margins fitted here say what theirs reached (and warned).
+            maximum = combined_maximum(
+                [maximum]
+                + [
+                    getattr(m, "maximum", "not applicable")
+                    for m, given in zip(margin_models, margins)
+                    if hasattr(given, "fit")
+                ]
+            )
+        model = CopulaModel(
+            self, theta, margin_models, data=data, how=how, k=k
+        )
+        model.maximum = maximum
+        return model
 
-    def from_params(self, params: Any, margins: Any) -> Any:
+    def _warn_if_no_maximum(
+        self, margin_models: list, data: Any, theta: npt.NDArray
+    ) -> bool:
+        """A family whose likelihood can lack a finite maximum on data
+        that are not perfectly dependent checks for it here (the Student-t
+        copula's degrees of freedom), and says whether it warned; by
+        default there is nothing to check."""
+        return False
+
+    def _warn_if_perfectly_dependent(
+        self, data: Any, theta: npt.NDArray
+    ) -> bool:
+        """Warn when the data sit at a Frechet bound the family reaches
+        only in the limit of its parameter (#392).
+
+        The criterion is on the data, not on the estimate: the rows
+        observed in both dimensions are perfectly concordant (Kendall's
+        tau of 1: one coordinate is an increasing function of the other,
+        the comonotone copula) or perfectly discordant (-1). No member of
+        a family such as the Clayton, with a finite parameter, has that
+        dependence. With margins that map one coordinate exactly onto the
+        other (the non-parametric margins, or parametric ones on data
+        such as ``x2 = x1 / 2``) the likelihood keeps increasing towards
+        the limit and the search stops wherever it gives up: Clayton
+        theta 3.2e6, Frank 1.2e7, Gumbel 105.5 with a log-likelihood of
+        inf, Gaussian rho at its cap of 0.9999. Otherwise the peak is set
+        only by how far the fitted margins are from that map (Clayton 60
+        on ``x2 = log(x1)``). Either way the estimate says nothing about
+        the dependence. Data with even one discordant pair (or a tie in
+        one coordinate only) are never flagged, so a fit to data drawn
+        from any member of the family is silent unless the sample itself
+        is perfectly dependent. Returns whether it warned.
+        """
+        sign, rows = _perfect_dependence(data)
+        limit = self.dependence_limits.get(sign)
+        if limit is None:
+            return False
+        bound, kind, relation = (
+            ("1", "comonotone", "increasing")
+            if sign > 0
+            else ("-1", "countermonotone", "decreasing")
+        )
+        params = ", ".join(
+            f"{name} = {value:.4g}"
+            for name, value in zip(self.parameter_names, theta)
+        )
+        warn_no_maximum(
+            f"the {rows} rows observed in both dimensions are perfectly "
+            f"{'concordant' if sign > 0 else 'discordant'} (Kendall's tau "
+            f"= {bound}), the {kind} copula (a Frechet bound), which the "
+            f"{self.name} family reaches only as {limit}; the likelihood "
+            "keeps increasing towards it, or peaks only where the fitted "
+            "margins stop mapping one coordinate exactly onto the other",
+            f"The reported {params} and the dependence measures derived "
+            "from it are meaningless",
+            f"the data are perfectly dependent (one variable is an "
+            f"{relation} function of the other): model that relationship "
+            "directly rather than with a copula",
+        )
+        return True
+
+    def from_params(self, params: Any, margins: Any, rotation: int = 0) -> Any:
         """
         Build a
         :class:`~surpyval.multivariate.parametric.copula.copula_model.CopulaModel`
@@ -440,13 +735,15 @@ class Copula:
         ----------
         params : array like
             The copula parameter(s), e.g. ``[theta]`` (empty for the
-            independence copula): one per entry of ``param_names``, each
+            independence copula): one per entry of ``parameter_names``, each
             strictly inside the family's ``bounds`` (Gumbel's ``theta = 1``,
             the independence copula, is allowed too). Anything else raises
             ``ValueError``.
         margins : sequence of length 2
             Fitted (or ``from_params``) univariate models, one per
             dimension, each exposing ``ff`` and ``df``.
+        rotation : {0, 90, 180, 270}, optional
+            The rotation of the copula, as for :meth:`fit`.
 
         Returns
         -------
@@ -469,6 +766,8 @@ class Copula:
             CopulaModel,
         )
 
+        if rotation:
+            return self.rotated(rotation).from_params(params, margins)
         params = self._check_params(params)
         margins = list(margins)
         if len(margins) != 2:
@@ -490,19 +789,62 @@ class Copula:
     #: never reaches a bound, but ``from_params`` may be given one.
     closed_bounds: tuple = ()
 
+    #: The rotation of the copula in degrees (see :meth:`rotated`): 0 for
+    #: the family as it is.
+    rotation: int = 0
+    #: Whether :meth:`rotated` applies: the families whose rotations are
+    #: new copulas (the asymmetric Archimedean ones).
+    rotatable: bool = False
+
+    def rotated(self, rotation: int) -> "Copula":
+        """The family rotated by ``rotation`` degrees (0, 90, 180 or 270),
+        in R's ``VineCopula`` convention; see the ``rotation`` option of
+        :meth:`fit`, which uses it. ``rotated(0)`` is the family itself.
+
+        Examples
+        --------
+        >>> from surpyval.multivariate import Clayton
+        >>> survival = Clayton.rotated(180)
+        >>> survival.tail_dependence(2.0)
+        (0.0, 0.7071067811865476)
+        >>> Clayton.rotated(90).kendall_tau(2.0)
+        -0.5
+        """
+        if rotation not in (0, 90, 180, 270):
+            raise ValueError(
+                f"rotation must be 0, 90, 180 or 270 degrees, got "
+                f"{rotation!r}."
+            )
+        base = getattr(self, "base", self)
+        if self.rotation:
+            rotation = (self.rotation + rotation) % 360
+        if rotation == 0:
+            return base
+        if not base.rotatable:
+            raise ValueError(
+                f"The {base.name} copula is not rotated: only the Clayton, "
+                "Gumbel and Joe copulas are (a radially symmetric family is "
+                "its own 180-degree rotation, and its 90-degree one is the "
+                "family with the opposite dependence)."
+            )
+        cache = base.__dict__.setdefault("_rotations", {})
+        if rotation not in cache:
+            cache[rotation] = RotatedCopula(base, rotation)
+        return cache[rotation]
+
     def _check_params(self, params: npt.ArrayLike) -> npt.NDArray:
         """Validate copula parameters given directly: one finite value per
-        entry of ``param_names``, inside ``bounds``. An unchecked value
+        entry of ``parameter_names``, inside ``bounds``. An unchecked value
         silently gave a non-copula (a Clayton ``theta = -2`` has a negative
         density) or was clipped (a Gaussian ``rho = 1.5``)."""
         params = onp.atleast_1d(onp.asarray(params, dtype=float))
-        if params.shape != (len(self.param_names),):
+        if params.shape != (len(self.parameter_names),):
             raise ValueError(
-                f"The {self.name} copula takes {len(self.param_names)} "
-                f"parameter(s) {self.param_names}, got {params.tolist()}."
+                f"The {self.name} copula takes {len(self.parameter_names)} "
+                f"parameter(s) {self.parameter_names}, got {params.tolist()}."
             )
         for name, value, (low, high) in zip(
-            self.param_names, params, self.bounds
+            self.parameter_names, params, self.bounds
         ):
             closed = name in self.closed_bounds
             above = low is None or value > low or (closed and value == low)
@@ -546,7 +888,7 @@ class Copula:
     def _bounds_transforms(self) -> tuple:
         from surpyval.univariate.parametric.fitters import bounds_convert
 
-        param_map = {n: i for i, n in enumerate(self.param_names)}
+        param_map = {n: i for i, n in enumerate(self.parameter_names)}
         to_unbounded, to_bounded, const, _, _ = bounds_convert(
             None, self.bounds, None, param_map
         )
@@ -558,6 +900,28 @@ class Copula:
         data: Any,
         init: "npt.NDArray | None" = None,
     ) -> npt.NDArray:
+        """The copula's parameters for the fitted margins (the second
+        stage of IFM); see :meth:`_search_theta`."""
+        return self._search_theta(margin_models, data, init)[0]
+
+    def _search_theta(
+        self,
+        margin_models: list,
+        data: Any,
+        init: "npt.NDArray | None" = None,
+    ) -> tuple[npt.NDArray, bool]:
+        """``(theta, verified)``: the copula's parameters for the fitted
+        margins, by Nelder-Mead in the unbounded space, and whether they
+        are a verified maximum (principle 13; ``verified_maximum``, by
+        central differences: the likelihood is not written for autograd).
+        Nelder-Mead's tolerances are absolute, so an answer that is not
+        verified is polished (``verify_or_polish``). A parameter on a bound
+        of its family (the AMH's ``theta = 1``, a Clayton at its
+        independence end) is a maximum there when the likelihood does not
+        rise off it."""
+        if not self.parameter_names:
+            # (the independence copula: nothing to estimate)
+            return onp.zeros(0), True
         dims = [
             self._prepare_dim(margin_models[d], *data.dimension(d))
             for d in range(data.D)
@@ -582,8 +946,29 @@ class Copula:
                 f"{self.name} copula is not strictly inside its bounds "
                 f"{self.bounds}; pass `init` to fit."
             )
-        res = minimize(obj, start, method="Nelder-Mead")
-        return onp.asarray(to_bounded(res.x), dtype=float)
+        # Towards a limit of the family (see
+        # ``_warn_if_perfectly_dependent``) the likelihood overflows; the
+        # search reads inf and nan correctly, so numpy's warnings about
+        # them are noise (they were 230 raw warnings from a Gumbel fit).
+        with onp.errstate(all="ignore"):
+            res = minimize(obj, start, method="Nelder-Mead")
+        theta = onp.asarray(to_bounded(res.x), dtype=float)
+        n_obs = float(onp.sum(data.n))
+        if not onp.isfinite(res.fun):
+            return theta, False
+
+        def natural(params: npt.NDArray) -> float:
+            return float(self.neg_ll(params, dims, data.n))
+
+        # A parameter on a bound of the family where the likelihood is
+        # highest (the AMH's theta = 1, a Clayton at its independence end)
+        # is checked there (``verified_maximum``).
+        if verified_maximum(natural, theta, self.bounds, n_obs):
+            return theta, True
+        with onp.errstate(all="ignore"):
+            res, _ = verify_or_polish(obj, res, n_obs, numerical=True)
+        theta = onp.asarray(to_bounded(res.x), dtype=float)
+        return theta, verified_maximum(natural, theta, self.bounds, n_obs)
 
     def _fit_joint(
         self,
@@ -602,7 +987,7 @@ class Copula:
             _JointMargin(margin_models[d], data, d) for d in range(data.D)
         ]
         theta0 = self._fit_theta(margin_models, data, init)
-        n_cop = len(self.param_names)
+        n_cop = len(self.parameter_names)
         splits = onp.cumsum([j.n_free for j in joint])[:-1]
         to_unbounded, to_bounded = self._bounds_transforms()
 
@@ -621,17 +1006,43 @@ class Copula:
             ]
             return self.neg_ll(theta, dims, data.n)
 
-        start = onp.concatenate(
-            [to_unbounded(theta0)] + [j.start for j in joint]
-        )
-        res = minimize(
-            obj,
-            start,
-            method="Nelder-Mead",
-            options={"xatol": 1e-6, "fatol": 1e-6},
-        )
+        # The two-stage estimate may sit on a closed bound (the AMH's
+        # theta = 1, where the search's transform saturated), which the
+        # unbounded space cannot hold: the joint search starts just inside.
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            theta_start = onp.asarray(to_unbounded(theta0), dtype=float)
+        if not onp.all(onp.isfinite(theta_start)):
+            theta_start = onp.asarray(
+                to_unbounded(self._just_inside(theta0)), dtype=float
+            )
+        start = onp.concatenate([theta_start] + [j.start for j in joint])
+        with onp.errstate(all="ignore"):  # as in ``_fit_theta``
+            res = minimize(
+                obj,
+                start,
+                method="Nelder-Mead",
+                options={"xatol": 1e-6, "fatol": 1e-6},
+            )
+            # Accepted as a maximum only where it is one (principle 13),
+            # polished where it is not, as in ``_search_theta``.
+            verified = False
+            if onp.isfinite(res.fun):
+                res, verified = verify_or_polish(
+                    obj, res, float(onp.sum(data.n)), numerical=True
+                )
         theta, models = unpack(res.x)
-        return onp.asarray(theta, dtype=float), models
+        return onp.asarray(theta, dtype=float), models, verified
+
+    def _just_inside(self, theta: npt.NDArray) -> npt.NDArray:
+        """``theta`` with any value on (or beyond) a finite bound moved
+        1e-9 of the way (relative to the bound) inside it."""
+        out = onp.array(theta, dtype=float)
+        for i, (low, high) in enumerate(self.bounds):
+            if low is not None and out[i] <= low:
+                out[i] = low + 1e-9 * max(1.0, abs(low))
+            if high is not None and out[i] >= high:
+                out[i] = high - 1e-9 * max(1.0, abs(high))
+        return out
 
     def _init_theta(self, dims: list) -> npt.NDArray:
         """Initial parameter guess, strictly inside ``bounds``.
@@ -660,13 +1071,13 @@ class Copula:
         """Validate a user's ``init``: one value per parameter, each
         strictly inside its bounds (a start on a bound cannot move)."""
         init = onp.atleast_1d(onp.asarray(init, dtype=float))
-        if init.shape != (len(self.param_names),):
+        if init.shape != (len(self.parameter_names),):
             raise ValueError(
                 f"init must have one value per copula parameter "
-                f"{self.param_names}, got {init.tolist()}"
+                f"{self.parameter_names}, got {init.tolist()}"
             )
         for name, value, (low, high) in zip(
-            self.param_names, init, self.bounds
+            self.parameter_names, init, self.bounds
         ):
             inside = (
                 bool(onp.isfinite(value))
@@ -797,6 +1208,117 @@ class _JointMargin:
         return model
 
 
+@functools.lru_cache(maxsize=1)
+def _quadrature_grid(nodes: int = 400) -> tuple:
+    """Tensor Gauss-Legendre rule on the unit square: flat ``u``, ``v`` and
+    weights ``w`` (summing to 1), for the dependence-measure integrals."""
+    x, w = onp.polynomial.legendre.leggauss(nodes)
+    x, w = 0.5 * (x + 1.0), 0.5 * w
+    u, v = onp.meshgrid(x, x, indexing="ij")
+    return u.ravel(), v.ravel(), onp.outer(w, w).ravel()
+
+
+class RotatedCopula(Copula):
+    """A copula family rotated by 90, 180 or 270 degrees (R's
+    ``VineCopula`` convention); made by :meth:`Copula.rotated` and the
+    ``rotation`` option of ``fit`` and ``from_params``.
+
+    With ``C_0`` the family, the rotations are
+
+    * 90: ``C(u, v) = v - C_0(1 - u, v)``,
+    * 180: ``C(u, v) = u + v - 1 + C_0(1 - u, 1 - v)`` (the survival
+      copula),
+    * 270: ``C(u, v) = u - C_0(u, 1 - v)``,
+
+    and every primitive, measure and draw follows from the family's. The
+    parameters, their names and bounds are the family's.
+    """
+
+    def __init__(self, base: Copula, rotation: int) -> None:
+        self.base = base
+        self.rotation = rotation
+        self.name = base.name
+        self.bounds = base.bounds
+        self.parameter_names = list(base.parameter_names)
+        self.closed_bounds = base.closed_bounds
+        # A quarter turn swaps the comonotone and countermonotone limits
+        flip = -1 if rotation in (90, 270) else 1
+        self.dependence_limits = {
+            flip * sign: limit
+            for sign, limit in base.dependence_limits.items()
+        }
+
+    def __repr__(self) -> str:
+        return f"{self.name} copula rotated {self.rotation} degrees"
+
+    def _flips(self) -> tuple[bool, bool]:
+        """Whether the first and the second coordinate are reflected."""
+        return self.rotation in (90, 180), self.rotation in (180, 270)
+
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        c = self.base.cdf(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        if f0 and f1:
+            return u + v - 1.0 + c
+        return (v if f0 else u) - c
+
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.du(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f1 else h
+
+    def dv(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        h = self.base.dv(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
+        return 1.0 - h if f0 else h
+
+    def pdf(self, u: Any, v: Any, *params: Any) -> Any:
+        f0, f1 = self._flips()
+        return self.base.pdf(
+            1.0 - u if f0 else u, 1.0 - v if f1 else v, *params
+        )
+
+    def kendall_tau(self, *params: float) -> float:
+        tau = self.base.kendall_tau(*params)
+        return -tau if self.rotation in (90, 270) else tau
+
+    def spearman_rho(self, *params: float) -> float:
+        rho = self.base.spearman_rho(*params)
+        return -rho if self.rotation in (90, 270) else rho
+
+    def tail_dependence(self, *params: float) -> tuple:
+        """``(lambda_L, lambda_U)``: the family's, swapped by a half turn.
+        A quarter turn moves the family's tail dependence to a corner where
+        one series is short and the other long, which neither coefficient
+        measures, so both are 0."""
+        lower, upper = self.base.tail_dependence(*params)
+        if self.rotation == 180:
+            return (upper, lower)
+        return (0.0, 0.0)
+
+    def sample_uv(
+        self,
+        size: int,
+        params: Any,
+        random_state: "int | None" = None,
+    ) -> tuple[npt.NDArray, npt.NDArray]:
+        u, v = self.base.sample_uv(size, params, random_state)
+        f0, f1 = self._flips()
+        return (1.0 - u if f0 else u), (1.0 - v if f1 else v)
+
+    def _bounds_transforms(self) -> tuple:
+        return self.base._bounds_transforms()
+
+    def _init_theta(self, dims: list) -> npt.NDArray:
+        # The family's guess from the data reflected back to its own
+        # orientation.
+        reflected = [
+            {**dim, "u": 1.0 - dim["u"]} if flip else dim
+            for dim, flip in zip(dims, self._flips())
+        ]
+        return self.base._init_theta(reflected)
+
+
 def _broadcast_pair(u: Any, v: Any) -> tuple:
     """``u`` and ``v`` broadcast to their common shape.
 
@@ -806,6 +1328,33 @@ def _broadcast_pair(u: Any, v: Any) -> tuple:
     """
     zeros = onp.zeros(onp.broadcast_shapes(onp.shape(u), onp.shape(v)))
     return u + zeros, v + zeros
+
+
+def _perfect_dependence(data: Any) -> tuple[int, int]:
+    """Whether the rows observed in every dimension are perfectly
+    dependent: ``(1, rows)`` if perfectly concordant, ``(-1, rows)`` if
+    perfectly discordant, else ``(0, rows)``, with ``rows`` their count.
+
+    This is Kendall's tau-b of those rows at +-1, decided exactly rather
+    than in floating point: among the distinct pairs, no value of either
+    coordinate repeats (a tie in one coordinate only lowers tau-b; a
+    repeated row is tied in both and does not count) and the second
+    coordinate, in the order of the first, only rises (or only falls).
+    It takes two distinct pairs.
+    """
+    both = onp.all(data.c == 0, axis=1) & (data.n > 0)
+    rows = int(onp.sum(data.n[both]))
+    # Sorted by the first coordinate (then the second)
+    pairs = onp.unique(data.x[both], axis=0)
+    m = pairs.shape[0]
+    if m < 2 or any(onp.unique(pairs[:, d]).size < m for d in (0, 1)):
+        return 0, rows
+    step = onp.diff(pairs[:, 1])
+    if onp.all(step > 0):
+        return 1, rows
+    if onp.all(step < 0):
+        return -1, rows
+    return 0, rows
 
 
 def _is_nonparametric(margin: Any) -> bool:

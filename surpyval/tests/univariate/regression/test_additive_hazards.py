@@ -6,11 +6,18 @@ point estimates against simulation from a known additive model, and its
 sandwich standard errors against the empirical spread of repeated fits.
 """
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 
-from surpyval import AdditiveHazards
+import surpyval as sp
+from surpyval import AdditiveHazards, ExponentialAH
+from surpyval.datasets import load_rossi_static
+from surpyval.univariate.regression.additive_hazards.additive_hazards import (
+    AdditiveHazardsModel,
+)
 
 
 def _simulate(N, seed, lambda0=0.5, beta=(0.30, -0.15), tau=6.0):
@@ -174,3 +181,129 @@ def test_hf_is_nan_at_a_nan_time():
     model = AdditiveHazards.fit(x, Z, c=c)
     out = model.hf(np.array([1.0, np.nan]), np.array([0.2, -0.1]))
     assert np.isfinite(out[0]) and np.isnan(out[1]), out
+
+
+# ---------------------------------------------------------------------------
+# The bandwidth on coincident event times (#289).
+# ---------------------------------------------------------------------------
+
+
+class TestRound2FollowUps:
+    def test_ah_bandwidth_coincident_events(self):
+        # 289: nearly-tied event times used to collapse the bandwidth to
+        # the floor and return Dirac spikes (~1.6e9).
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            m = AdditiveHazards.fit(x=[5.0, 5.0 + 1e-9], Z=[[0.0], [0.1]])
+        hf = float(np.ravel(m.hf([5.0], np.array([0.05])))[0])
+        assert np.isfinite(hf)
+        assert hf < 100.0
+
+
+# ---------------------------------------------------------------------------
+# #277: Lin-Ying ``hf``/``df`` on the hazard scale; ``phi()`` on
+# additive models.
+# ---------------------------------------------------------------------------
+
+
+class TestLinYingHazardRate:
+    def test_hf_df_on_hazard_scale(self):
+        # 277: hf used to return ~beta'Z (the baseline jump vanishes as
+        # n grows); it must estimate h0(t) + beta'Z.
+        np.random.seed(2)
+        n = 20000
+        Z = np.random.uniform(size=(n, 1))
+        t = np.random.exponential(1 / (0.5 + 0.7 * Z[:, 0]))
+        m = AdditiveHazards.fit(x=t, Z=Z)
+        z = np.array([0.5])
+        hf = np.ravel(m.hf([0.5, 1.0, 1.5], z))
+        assert np.all(np.abs(hf - 0.85) < 0.12)
+        df = float(np.ravel(m.df([1.0], z))[0])
+        assert df == pytest.approx(0.85 * np.exp(-0.85), rel=0.15)
+
+    def test_parametric_ah_phi_raises_not_implemented(self):
+        np.random.seed(4)
+        Z = np.random.uniform(size=(300, 1))
+        t = np.random.exponential(1 / (0.5 + 0.7 * Z[:, 0]))
+        m = ExponentialAH.fit(x=t, Z=Z)
+        with pytest.raises(NotImplementedError, match="additive"):
+            m.phi(np.array([0.5]))
+
+
+# ---------------------------------------------------------------------------
+# Predictions do not depend on covariate centring.
+# ---------------------------------------------------------------------------
+
+
+def test_lin_ying_hf_is_invariant_to_covariate_centring():
+    rng = np.random.default_rng(21)
+    Z = rng.uniform(0, 2, size=(200, 1))
+    T = rng.exponential(1 / (0.1 + 0.05 * Z[:, 0]))
+    C = rng.uniform(2, 20, 200)
+    x, c = np.minimum(T, C), (T > C).astype(int)
+    m1 = AdditiveHazards.fit(x=x, Z=Z, c=c)
+    m2 = AdditiveHazards.fit(x=x, Z=Z + 3, c=c)
+    t = np.array([0.01, 1.0, 3.0, 5.5, 40.0])
+    np.testing.assert_allclose(m1.Hf(t, [0.5]), m2.Hf(t, [3.5]), rtol=1e-10)
+    # The drift is stored, so a restored model predicts the same.
+    restored = AdditiveHazardsModel.from_dict(
+        json.loads(json.dumps(m1.to_dict()))
+    )
+    np.testing.assert_allclose(restored.Hf(t, [0.5]), m1.Hf(t, [0.5]))
+
+
+# ---------------------------------------------------------------------------
+# #376: the Lin-Ying survival stays a survival.
+# ---------------------------------------------------------------------------
+
+
+def _lin_ying():
+    rng = np.random.default_rng(11)
+    Z = rng.normal(size=(120, 2))
+    x = rng.exponential(1 / (0.2 + 0.05 * Z[:, 0] - 0.04 * Z[:, 1]).clip(0.01))
+    c = (x > 8).astype(int)
+    return sp.AdditiveHazards.fit(np.minimum(x, 8), Z, c=c)
+
+
+@pytest.mark.parametrize("z", [[0.0, 0.0], [-3.0, 3.0], [2.0, -2.0]])
+def test_lin_ying_survival_is_in_bounds_and_non_increasing(z):
+    # Row (-3, 3) has a negative hazard; the survival used to climb above
+    # 1 (the conformance fixture reached 57.8 at Z = (-2, 2) and 1.21 at
+    # Z = 0, inside the data) and could be inf.
+    model = _lin_ying()
+    t = np.linspace(-1.0, 12.0, 2001)
+    sf = model.sf(t, np.array(z))
+    assert np.all((sf >= 0) & (sf <= 1))
+    assert np.all(np.diff(sf) <= 0)
+    assert np.all(sf[t <= 0] == 1.0)
+    hf = model.hf(t, np.array(z))
+    assert np.all(hf >= 0)
+
+
+def test_lin_ying_hf_is_the_running_maximum_of_the_estimate():
+    model = _lin_ying()
+    t = np.sort(np.concatenate([np.linspace(0, 10, 4001), model.x]))
+    for z in ([0.0, 0.0], [-3.0, 3.0], [1.0, -1.0]):
+        bz = np.asarray(z) @ model.beta
+        held = np.minimum(t, model.x[-1])
+        H = model._baseline_H(held) + held * bz
+        envelope = np.maximum(np.maximum.accumulate(H), 0.0)
+        np.testing.assert_allclose(
+            model.Hf(t, np.array(z)), envelope, rtol=1e-12, atol=1e-15
+        )
+
+
+def test_lin_ying_predictions_inside_the_data_are_the_estimate():
+    # The docstring's Rossi prediction is where the estimate is at its
+    # running maximum: unchanged.
+    df = load_rossi_static()
+    model = sp.AdditiveHazards.fit(
+        df["week"].values,
+        df[["fin", "age", "prio"]].values,
+        c=1 - df["arrest"].values,
+    )
+    np.testing.assert_allclose(
+        model.sf([20, 52], [1, 25, 3]), [0.9269, 0.7725], atol=5e-5
+    )

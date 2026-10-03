@@ -22,7 +22,10 @@ none guards a regression that the default run would miss quickly:
     of confidence intervals, test size and power, estimator bias. They
     check that the answers are statistically right rather than that the
     code runs, take ten to twenty minutes on four cores, and run nightly
-    (.github/workflows/nightly.yml), not on pull requests.
+    (.github/workflows/nightly.yml), not on pull requests. A test
+    elsewhere joins them by carrying the ``calibration`` mark: the
+    likelihood-ratio option sweeps of the slow families
+    (conformance/registry.py, ``Bound.nightly``).
 
 Continuous integration passes ``--run-ml`` only, so its coverage is
 unchanged. The invariant sweep is deliberately *not* run there: it is a
@@ -139,7 +142,7 @@ def _check_output(self, want, got, optionflags):
 # builds its own ``LiteralsOutputChecker`` subclass and calls up to this
 # method, so overriding here survives both plain ``doctest`` and pytest,
 # and does not depend on pytest's internals.
-_patched = _check_output  # type: ignore[assignment]
+_patched = _check_output
 doctest.OutputChecker.check_output = _patched  # type: ignore[method-assign]
 
 
@@ -156,9 +159,13 @@ def _forced_check_output(self, want, got, optionflags):
     contains a number is compared numerically instead, so the fallback
     is exercised against all 229 of them rather than against today's
     accidental few. Outputs with no numbers keep the text comparison;
-    there is nothing in them for this to compare.
+    there is nothing in them for this to compare. Nor does an output
+    that elides part of itself with ``...`` under ``ELLIPSIS`` (an
+    error's message cut short): the numbers in the elided part cannot be
+    paired with the ones expected.
     """
-    if not _NUMBER.search(want):
+    elided = optionflags & doctest.ELLIPSIS and "..." in want
+    if not _NUMBER.search(want) or elided:
         return _text_check_output(self, want, got, optionflags)
     return _numerically_equal(want, got)
 
@@ -208,9 +215,7 @@ def pytest_configure(config):
             "markers", f"{mark}: {description}; opt in with {flag}"
         )
     if config.getoption("--doctest-force-numeric"):
-        doctest.OutputChecker.check_output = (  # type: ignore[method-assign]
-            _forced_check_output  # type: ignore[assignment]
-        )
+        doctest.OutputChecker.check_output = _forced_check_output
 
 
 def pytest_collection_modifyitems(config, items):
@@ -218,7 +223,9 @@ def pytest_collection_modifyitems(config, items):
         wanted = config.getoption(flag)
         for item in items:
             location = str(item.fspath).replace("\\", "/")
-            if path not in location:
+            # A test outside the path opts in by carrying the mark (the
+            # conformance sweeps that run nightly).
+            if path not in location and item.get_closest_marker(mark) is None:
                 continue
             item.add_marker(getattr(pytest.mark, mark))
             if not wanted:

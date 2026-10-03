@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.stats import binom
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
@@ -13,8 +15,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     reject_structural_params,
 )
+from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
 
 from ..parametric import Parametric
+from ._discrete_tails import refine_quantile
 
 
 class Binomial_(DiscreteParametricFitter):
@@ -61,7 +65,7 @@ class Binomial_(DiscreteParametricFitter):
             # until the model is built; ``fit`` and ``from_params`` set it
             # to n + 1 for the same reason.
             support=(-1, np.inf),
-            param_names=["n", "p"],
+            parameter_names=["n", "p"],
             param_map={"n": 0, "p": 1},
             plot_x_scale="linear",
         )
@@ -188,14 +192,17 @@ class Binomial_(DiscreteParametricFitter):
         hf : scalar or numpy array
             The value(s) of the discrete hazard rate at x
         """
-        d = self.df(x, n, p)
-        # P(X >= x) = P(X > x) + P(X = x)
-        denom = self.sf(x, n, p) + d
-        # Beyond n nothing is left at risk and the hazard is 0; the
-        # division is only taken where the risk set is not empty (it used
-        # to be taken everywhere, warning 0/0 for every x > n).
-        safe = np.where(denom > 0, denom, 1.0)
-        return np.where(denom > 0, d / safe, 0.0)
+        # P(X = x) / P(X >= x), on the log scale: P(X >= x) = R(x - 1).
+        # The sum sf + df underflowed to 0 in the far right tail, where
+        # the hazard is near 1, and it read 0 there (#458). Beyond n
+        # nothing is left at risk and the hazard is 0.
+        x = np.asarray(x, dtype=float)
+        k = np.floor(x)
+        inside = (k >= 0) & (k <= n)
+        safe_k = np.where(inside, k, 0.0)
+        log_hf = self.log_df(safe_k, n, p) - self.log_sf(safe_k - 1.0, n, p)
+        hf = np.exp(np.where(inside, log_hf, -np.inf))
+        return hf[()] if hf.ndim == 0 else hf
 
     def Hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -221,10 +228,8 @@ class Binomial_(DiscreteParametricFitter):
         Hf : scalar or numpy array
             The value(s) of the cumulative hazard function at x
         """
-        sf = self.sf(x, n, p)
-        # From x = n on nothing survives: H = -log(0) = inf is right.
-        with np.errstate(divide="ignore"):
-            return -np.log(sf)
+        # From x = n on nothing survives: H = inf.
+        return -self.log_sf(x, n, p)
 
     def qf(self, u: Numeric, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -254,7 +259,48 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.qf(0.5, 5, 0.3)
         np.float64(1.0)
         """
-        return binom.ppf(u, n, p)
+        u_arr = np.asarray(u, dtype=float)
+        k = refine_quantile(
+            binom.ppf(u_arr, n, p),
+            u_arr,
+            lambda k: self.log_sf(k, n, p),
+            lambda k: self.log_ff(k, n, p),
+            first=0.0,
+        )
+        return (
+            k.reshape(u_arr.shape)[()]
+            if u_arr.ndim == 0
+            else k.reshape(u_arr.shape)
+        )
+
+    def _log_tail(
+        self, x: Numeric, n: Boxable, p: Boxable, upper: bool
+    ) -> npt.NDArray:
+        """log R(x) (``upper``) or log F(x), from the incomplete beta
+        R(k) = I_p(k + 1, n - k) and its complement on their own log scale:
+        -log(sf) lost F where it is near 0 (H of 1e-34 read 0) and was
+        -inf where sf underflowed (#458)."""
+        k = np.floor(np.asarray(x, dtype=float))
+        inside = (k >= 0) & (k < n)
+        ks = np.where(inside, k, 0.0)
+        fn = betaincln if upper else betainccln
+        with np.errstate(invalid="ignore"):
+            out = fn(ks + 1.0, n - ks, p)
+        below, above = (0.0, -np.inf) if upper else (-np.inf, 0.0)
+        out = np.where(k < 0, below, np.where(k >= n, above, out))
+        return out[()] if out.ndim == 0 else out
+
+    def log_sf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
+        return self._log_tail(x, n, p, upper=True)
+
+    def log_ff(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
+        return self._log_tail(x, n, p, upper=False)
+
+    def log_df(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
+        # scipy's log mass is formed on the log scale, so it stays finite
+        # where the mass underflows (it read -inf from 1e-400 on, #458);
+        # the fallback from hf and sf here lost it the same way.
+        return binom.logpmf(x, n, p)
 
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
         r"""
@@ -422,6 +468,8 @@ class Binomial_(DiscreteParametricFitter):
         n = np.atleast_1d(np.asarray(n))
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The proportion is the exact maximum
+        model.maximum = "verified"
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
         self._set_support(model, False)

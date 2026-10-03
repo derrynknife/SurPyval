@@ -27,11 +27,7 @@ from surpyval.serialisation import (
     _TAGGED_MODELS,
     _resolve,
 )
-
-
-def _rt(d):
-    """JSON round-trip a dict (proves it is JSON-serialisable)."""
-    return json.loads(json.dumps(d))
+from surpyval.tests._helpers import json_round_trip
 
 
 def _regression_data(seed=0, n=60):
@@ -70,7 +66,7 @@ def test_every_parameterization_resolves():
 
 def test_parametric_dispatch():
     model = Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0, 8.0])
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "Parametric"
     assert restored.dist.name == "Weibull"
     t = np.array([2.0, 5.0, 9.0])
@@ -79,7 +75,7 @@ def test_parametric_dispatch():
 
 def test_non_parametric_dispatch():
     model = KaplanMeier.fit([3.0, 4.0, 5.0, 6.0, 7.0], [0, 1, 0, 0, 1])
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "NonParametric"
     assert restored.model == "Kaplan-Meier"
     assert np.allclose(model.R, restored.R)
@@ -88,7 +84,7 @@ def test_non_parametric_dispatch():
 def test_parametric_regression_dispatch():
     x, Z, c = _regression_data()
     model = WeibullPH.fit(x=x, Z=Z, c=c)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "ParametricRegressionModel"
     t = np.array([2.0, 6.0])
     z = np.array([1.0, 0.5])
@@ -122,7 +118,7 @@ def test_formula_regression_round_trips_with_raw_covariates(formula):
 
     df = _formula_df()
     model = WeibullPH.fit_from_df(df, x_col="time", c_col="c", formula=formula)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
 
     raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
     t = np.array([5.0, 12.0])
@@ -134,7 +130,7 @@ def test_formula_cox_round_trips_with_raw_covariates():
 
     df = _formula_df(seed=2)
     model = CoxPH.fit_from_df(df, x_col="time", c_col="c", formula="age + sex")
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
 
     raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
     t = np.array([5.0, 12.0])
@@ -151,7 +147,7 @@ def test_stateful_transform_formula_round_trips():
     # scale() keeps fitted statistics (the training mean and sd); they are
     # stored with the formula, so the restored model scales new data by
     # the *training* statistics, as the original does.
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     raw_Z = pd.DataFrame({"age": [40.0, 55.0], "sex": ["M", "F"]})
     t = np.array([5.0, 12.0])
     assert np.allclose(model.sf(t, raw_Z), restored.sf(t, raw_Z))
@@ -163,7 +159,7 @@ def test_stateful_transform_formula_round_trips():
 def test_semi_parametric_dispatch():
     x, Z, c = _regression_data(seed=1)
     model = CoxPH.fit(x=x, Z=Z, c=c)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "SemiParametricRegressionModel"
     t = np.array([2.0, 6.0])
     z = np.array([1.0, 0.5])
@@ -174,7 +170,7 @@ def test_mixture_model_dispatch():
     x = np.concatenate([Weibull.random(50, 8, 3), Weibull.random(50, 40, 4)])
     model = MixtureModel(dist=Weibull, m=2)
     model.fit(x=x)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "MixtureModel"
     t = np.array([5.0, 20.0])
     assert np.allclose(model.sf(t), restored.sf(t))
@@ -185,7 +181,7 @@ def test_parametric_recurrence_dispatch():
 
     x = np.array([10.0, 25.0, 45.0, 70.0, 100.0, 135.0, 175.0])
     model = CrowAMSAA.fit(x)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "ParametricRecurrenceModel"
     t = np.array([50.0, 150.0])
     assert np.allclose(model.cif(t), restored.cif(t))
@@ -198,7 +194,7 @@ def test_mcf_dispatch():
     i = np.array([1, 1, 1, 2, 2, 2])
     c = np.array([0, 0, 1, 0, 0, 1])
     model = NonParametricCounting.fit(x, i, c)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "NonParametricCounting"
     assert np.allclose(model.mcf_hat, restored.mcf_hat)
 
@@ -209,7 +205,7 @@ def test_renewal_dispatch():
     model = GeneralizedRenewal.fit_from_parameters(
         [50.0, 2.0], 0.3, kijima="i", dist=Weibull
     )
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "RenewalModel"
     assert np.isclose(model.restoration, restored.restoration)
     assert np.allclose(model.model.params, restored.model.params)
@@ -223,7 +219,7 @@ def test_competing_risks_dispatch():
     x = np.abs(rng.weibull(1.3, n) * 15) + 0.2
     e = rng.choice([1, 2], n)
     model = CompetingRisks.fit(x, e)
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "CompetingRisks"
 
 
@@ -243,7 +239,7 @@ def test_process_model_dispatch():
         np.concatenate(ii),
         threshold=20.0,
     )
-    restored = surpyval.from_dict(_rt(model.to_dict()))
+    restored = surpyval.from_dict(json_round_trip(model.to_dict()))
     assert type(restored).__name__ == "WienerProcessModel"
     t = np.array([5.0, 15.0])
     assert np.allclose(model.sf(t), restored.sf(t))
@@ -400,3 +396,85 @@ def test_schema_1_documents_read_identically_in_a_schema_1_release(
         else:
             now = m.sf(q)
         np.testing.assert_allclose(old[k], np.ravel(now), rtol=1e-9)
+
+
+# ---------------------------------------------------------------------------
+# Missing keys are named, the schema is checked, and invalid
+# parameters are refused, by the package readers and by the
+# class readers alike.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def weibull_dict():
+    return Weibull.fit([3.0, 4.0, 5.0, 6.0, 7.0]).to_dict()
+
+
+@pytest.mark.parametrize("key", ["distribution", "params", "how"])
+def test_missing_key_names_the_key(weibull_dict, key):
+    # Used to be a bare KeyError from inside Parametric.from_dict.
+    del weibull_dict[key]
+    with pytest.raises(ValueError, match=f"no '{key}' entry"):
+        surpyval.from_dict(weibull_dict)
+
+
+def test_missing_key_in_a_tagged_model():
+    Z = np.array([[0.0], [1.0], [0.0], [1.0], [1.0]])
+    d = surpyval.CoxPH.fit([1, 2, 3, 4, 5.0], Z).to_dict()
+    del d["beta"]
+    with pytest.raises(ValueError, match="no 'beta' entry"):
+        surpyval.from_dict(d)
+    d = KaplanMeier.fit([1, 2, 3, 4]).to_dict()
+    del d["model"]
+    with pytest.raises(ValueError, match="no 'model' entry"):
+        surpyval.from_dict(d)
+
+
+@pytest.mark.parametrize("schema", ["2", 2.0, 1.0, "1", True, None, -1])
+def test_schema_must_be_a_non_negative_integer(weibull_dict, schema):
+    # "2" and 2.0 used to slip past the version check.
+    weibull_dict["schema"] = schema
+    with pytest.raises(ValueError, match="schema"):
+        surpyval.from_dict(weibull_dict)
+
+
+def test_integer_schemas_still_read(weibull_dict):
+    for schema in (0, 1, np.int64(1)):
+        weibull_dict["schema"] = schema
+        surpyval.from_dict(weibull_dict)
+    del weibull_dict["schema"]
+    surpyval.from_dict(weibull_dict)
+
+
+def test_newer_schema_with_unknown_model_asks_for_upgrade():
+    with pytest.raises(ValueError, match="Upgrade surpyval"):
+        surpyval.from_dict({"model": "FromTheFuture", "schema": 99})
+
+
+@pytest.mark.parametrize(
+    "change, match",
+    [
+        (dict(params=[-5.0, 2.0]), "alpha=-5.0 .* outside its bounds"),
+        (dict(params=[5.0, -2.0]), "beta=-2.0 .* outside its bounds"),
+        (dict(params=[np.nan, 2.0]), "NaN"),
+        (dict(lfp=True, p=1.5), "'p'=1.5 is a proportion"),
+        (dict(zi=True, f0=-0.1), "'f0'=-0.1 is a proportion"),
+    ],
+)
+def test_invalid_parameters_are_refused(weibull_dict, change, match):
+    weibull_dict.update(change)
+    with pytest.raises(ValueError, match=match):
+        surpyval.from_dict(weibull_dict)
+
+
+def test_class_from_json_gets_the_same_checks(tmp_path, weibull_dict):
+    path = tmp_path / "w.json"
+    weibull_dict["params"] = [-5.0, 2.0]
+    path.write_text(json.dumps(weibull_dict))
+    with pytest.raises(ValueError, match="outside its bounds"):
+        Weibull.fit([1, 2, 3.0]).from_json(path)
+    weibull_dict["params"] = [5.0, 2.0]
+    weibull_dict["schema"] = "1"
+    path.write_text(json.dumps(weibull_dict))
+    with pytest.raises(ValueError, match="schema"):
+        Weibull.fit([1, 2, 3.0]).from_json(path)

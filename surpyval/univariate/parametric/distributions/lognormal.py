@@ -1,10 +1,11 @@
-import numpy.typing as npt
-from autograd.scipy.stats import norm
-from scipy.optimize import brentq
-from scipy.stats import norm as scipy_norm
+from __future__ import annotations
 
-from surpyval import np
+import autograd.numpy as np
+import numpy.typing as npt
+from scipy.optimize import brentq
+
 from surpyval.univariate import parametric as para
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
     weighted_mean_and_std,
@@ -14,12 +15,25 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
+from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import normal_hazard, on_support, positive_or_one
+
+
+def _log_pos(x: Numeric) -> Boxable:
+    """``log(x)`` for x > 0, and 0 (a stand-in the caller replaces) at and
+    below 0."""
+    return np.log(positive_or_one(x))
 
 
 class LogNormal_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # the normal quantile of ff, on which this family is a straight line in
+    # log time (#477).
+    _cb_link = "probit"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
@@ -28,7 +42,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
             # bound made every fit with geometric mean < 1 fail (#257).
             bounds=((None, None), (0, None)),
             support=(0, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="log",
             y_ticks=[
@@ -152,7 +166,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.ff(x, 3, 4)
         array([0.22662735, 0.28206661, 0.31726986, 0.34331728, 0.36405509])
         """
-        return norm.cdf(np.log(x), mu, sigma)
+        return on_support(x, norm.cdf(_log_pos(x), mu, sigma), 0.0)
 
     def df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -187,7 +201,8 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.df(x, 3, 4)
         array([0.07528436, 0.04222769, 0.02969364, 0.02298522, 0.01877747])
         """
-        return 1.0 / x * norm.pdf(np.log(x), mu, sigma)
+        # 0 at x = 0, where the formula is inf * 0 = NaN (#444)
+        return np.exp(self.log_df(x, mu, sigma))
 
     def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -221,8 +236,23 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.hf(x, 3, 4)
         array([0.09734551, 0.05881839, 0.04349249, 0.03500202, 0.02952687])
         """
-        # in logs, so the ratio stays finite deep in the tail
-        return np.exp(self.log_df(x, mu, sigma) - self.log_sf(x, mu, sigma))
+        # the normal hazard of log x, which stays finite where the
+        # density and survival function underflow; 0 at x = 0 and inf
+        finite = (x > 0) & (x < np.inf)
+        x_pos = np.where(finite, x, 1.0)
+        z = (np.log(x_pos) - mu) / sigma
+        scale = sigma * x_pos
+        if np.any(scale == 0):
+            # sigma x underflows at a subnormal x with a small sigma: 0 / 0
+            # where the hazard is 0, divided out one factor at a time (#561)
+            scale = np.where(scale == 0, 1.0, scale)
+            hz = normal_hazard(z)
+            ratio = np.where(
+                sigma * x_pos == 0, hz / sigma / x_pos, hz / scale
+            )
+            return on_support(x, np.where(finite, ratio, 0.0), 0.0)
+        inside = np.where(finite, normal_hazard(z) / scale, 0.0)
+        return on_support(x, inside, 0.0)
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -290,7 +320,7 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         >>> LogNormal.qf(u, 3, 4)
         array([0.11928899, 0.69316658, 2.46550819, 7.29078766])
         """
-        return np.exp(scipy_norm.ppf(u, mu, sigma))
+        return np.exp(norm.ppf(u, mu, sigma))
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -385,13 +415,16 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
         return mu + 0.5 * np.log(2 * np.pi * np.e * sigma**2)
 
     def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return -np.log(x) + norm.logpdf(np.log(x), mu, sigma)
+        # -inf at x = 0, where the formula is inf - inf = NaN (#444)
+        log_x = _log_pos(x)
+        inside = -log_x + norm.logpdf(log_x, mu, sigma)
+        return on_support(x, inside, -np.inf)
 
     def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return norm.logcdf(np.log(x), mu, sigma)
+        return on_support(x, norm.logcdf(_log_pos(x), mu, sigma), -np.inf)
 
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return norm.logsf(np.log(x), mu, sigma)
+        return on_support(x, norm.logsf(_log_pos(x), mu, sigma), 0.0)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return np.log(x)

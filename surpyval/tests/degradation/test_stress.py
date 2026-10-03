@@ -20,6 +20,7 @@ from surpyval.degradation.stress import (
     stress_design,
     validate_links,
 )
+from surpyval.tests._helpers import linear_degradation_units
 
 
 def _rt(d):
@@ -55,7 +56,7 @@ def test_linked_model_matches_base(base, links, theta):
     # chain-rule Jacobian against the base class' finite differences
     analytic = linked.jacobian(x, *eta)
     numeric = PathModel.jacobian(linked, x, *eta)
-    assert analytic.shape == (len(x), len(base.param_names))
+    assert analytic.shape == (len(x), len(base.parameter_names))
     assert np.allclose(analytic, numeric, rtol=1e-4, atol=1e-6)
     # a fit on the link scale is the base fit mapped there
     y = base.path(x, *theta)
@@ -64,7 +65,7 @@ def test_linked_model_matches_base(base, links, theta):
 
 def test_linked_model_names_and_linearity():
     linked = LinkedPathModel(LinearPath, {"b": "log"})
-    assert linked.param_names == ["a", "log(b)"]
+    assert linked.parameter_names == ["a", "log(b)"]
     assert linked.links == {"a": "identity", "b": "log"}
     assert not linked.linear_in_parameters
     assert LinkedPathModel(LinearPath, {"b": "identity"}).linear_in_parameters
@@ -398,9 +399,9 @@ def test_fit_from_df_passes_links():
     df = pd.DataFrame({"t": x, "deg": y, "unit": i, "stress": Z})
     model = DegradationAnalysis.fit_from_df(
         df,
-        x="t",
-        y="deg",
-        i="unit",
+        x_col="t",
+        y_col="deg",
+        i_col="unit",
         Z_cols="stress",
         threshold=100.0,
         links={"b": "log"},
@@ -595,3 +596,18 @@ def test_stress_prediction_errors(linked_model, stage1_model):
     assert np.isfinite(
         stage1_model.predict_rul([5.0], [12.5], random_state=1).failure_time
     )
+
+
+# ---------------------------------------------------------------------------
+# A single stress level cannot estimate a stress effect.
+# ---------------------------------------------------------------------------
+
+
+def test_single_stress_level_refused() -> None:
+    x, y, i = linear_degradation_units()
+    with pytest.raises(ValueError, match="two\\s+distinct stress levels"):
+        DegradationAnalysis.fit(x, y, i, threshold=15.0, Z=np.ones(x.size))
+    with pytest.raises(ValueError, match="stress effect cannot be estimated"):
+        DegradationAnalysis.fit(
+            x, y, i, threshold=15.0, Z=np.ones(x.size), links={"b": "log"}
+        )

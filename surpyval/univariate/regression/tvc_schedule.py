@@ -28,11 +28,19 @@ owns the step-valued guarantee two ways:
 Whatever the construction, the one thing the family math consumes is
 :meth:`~StepSchedule.segments`, which materialises the schedule up to a horizon
 into concrete ``(start, end, Z)`` triples.
+
+A covariate that does vary continuously is described by a
+:class:`~surpyval.univariate.regression.tvc_path.CovariatePath` instead, along
+which ``sf_tvc`` integrates the hazard (#172); the type of the path chooses the
+method.
 """
+
+from __future__ import annotations
 
 import ast
 import math
-from typing import Callable
+import operator
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -156,6 +164,152 @@ def _whole(value: "float | bool") -> "float | int":
     return value
 
 
+_UNARY_OPS: "dict[type, Callable[[Any], Any]]" = {
+    ast.UAdd: operator.pos,
+    ast.USub: operator.neg,
+    ast.Not: operator.not_,
+}
+
+_BINARY_OPS: "dict[type, Callable[[Any, Any], Any]]" = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod,
+    ast.Pow: operator.pow,
+}
+
+_COMPARISONS: "dict[type, Callable[[Any, Any], Any]]" = {
+    ast.Lt: operator.lt,
+    ast.LtE: operator.le,
+    ast.Gt: operator.gt,
+    ast.GtE: operator.ge,
+    ast.Eq: operator.eq,
+    ast.NotEq: operator.ne,
+}
+
+
+def _eval_constant(node: ast.Constant) -> float:
+    """A numeric literal, as a float (booleans and strings are refused)."""
+    if isinstance(node.value, bool) or not isinstance(
+        node.value, (int, float)
+    ):
+        raise StepValuedError(
+            "only numeric constants are allowed in a schedule expression"
+        )
+    return float(node.value)
+
+
+def _eval_name(node: ast.Name, t: float) -> float:
+    """The free variable ``t`` or one of the named constants."""
+    if node.id == "t":
+        return t
+    if node.id in _CONSTANTS:
+        return _CONSTANTS[node.id]
+    raise StepValuedError(
+        "unknown name {!r} in schedule expression (allowed: t, "
+        "{})".format(node.id, ", ".join(sorted(_CONSTANTS)))
+    )
+
+
+def _eval_unary(node: ast.UnaryOp, t: float) -> "float | bool":
+    val = _safe_eval(node.operand, t)
+    op = _UNARY_OPS.get(type(node.op))
+    if op is None:
+        raise StepValuedError("unsupported unary operator in expression")
+    return op(val)
+
+
+def _eval_binary(node: ast.BinOp, t: float) -> "float | bool":
+    left = _safe_eval(node.left, t)
+    right = _safe_eval(node.right, t)
+    op = _BINARY_OPS.get(type(node.op))
+    if op is None:
+        raise StepValuedError("unsupported binary operator in expression")
+    return op(left, right)
+
+
+def _eval_bool_op(node: ast.BoolOp, t: float) -> "float | bool":
+    """``and`` / ``or``, short-circuiting as Python does.
+
+    ``and`` returns the first falsy operand, ``or`` the first truthy one,
+    else either returns the last; the operands after the one returned are
+    not evaluated.
+    """
+    stop_on = isinstance(node.op, ast.Or)
+    for operand in node.values[:-1]:
+        val = _safe_eval(operand, t)
+        if bool(val) == stop_on:
+            return val
+    return _safe_eval(node.values[-1], t)
+
+
+def _eval_compare(node: ast.Compare, t: float) -> "float | bool":
+    """A (possibly chained) comparison; every comparator is evaluated."""
+    left = _safe_eval(node.left, t)
+    result = True
+    for cmp_op, comparator in zip(node.ops, node.comparators):
+        right = _safe_eval(comparator, t)
+        compare = _COMPARISONS.get(type(cmp_op))
+        if compare is None:
+            raise StepValuedError("unsupported comparison in expression")
+        ok = compare(left, right)
+        result = result and ok
+        left = right
+    return result
+
+
+def _call_arguments(
+    node: ast.Call, fname: str, t: float
+) -> "tuple[list, dict]":
+    """The evaluated positional and keyword arguments of a call."""
+    args = [_safe_eval(a, t) for a in node.args]
+    kwargs = {}
+    for keyword in node.keywords:
+        if keyword.arg is None:
+            raise ValueError(
+                "'**' arguments are not supported in a schedule "
+                "expression (in the call to {})".format(fname)
+            )
+        kwargs[keyword.arg] = _safe_eval(keyword.value, t)
+    if fname == "round":
+        # Every constant is read as a float, but round's ndigits must
+        # be an int: pass a whole number as one.
+        if len(args) > 1:
+            args[1] = _whole(args[1])
+        if "ndigits" in kwargs:
+            kwargs["ndigits"] = _whole(kwargs["ndigits"])
+    return args, kwargs
+
+
+def _eval_call(node: ast.Call, t: float) -> float:
+    """A call to one of the allowed functions."""
+    fname = getattr(node.func, "id", None)
+    if fname not in _FUNCTIONS:
+        raise StepValuedError(
+            "unknown function {!r} in schedule expression (allowed: "
+            "{})".format(fname, ", ".join(sorted(_FUNCTIONS)))
+        )
+    args, kwargs = _call_arguments(node, fname, t)
+    try:
+        return float(_FUNCTIONS[fname](*args, **kwargs))
+    except TypeError as exc:
+        raise ValueError(
+            "cannot evaluate {}() in the schedule expression with "
+            "{} positional argument(s){}: {}".format(
+                fname,
+                len(args),
+                (
+                    " and keyword(s) " + ", ".join(sorted(kwargs))
+                    if kwargs
+                    else ""
+                ),
+                exc,
+            )
+        ) from exc
+
+
 def _safe_eval(node: ast.AST, t: float) -> "float | bool":
     """
     Evaluate a validated expression AST at a single time ``t``.
@@ -167,82 +321,17 @@ def _safe_eval(node: ast.AST, t: float) -> "float | bool":
     if isinstance(node, ast.Expression):
         return _safe_eval(node.body, t)
     if isinstance(node, ast.Constant):
-        if isinstance(node.value, bool) or not isinstance(
-            node.value, (int, float)
-        ):
-            raise StepValuedError(
-                "only numeric constants are allowed in a schedule expression"
-            )
-        return float(node.value)
+        return _eval_constant(node)
     if isinstance(node, ast.Name):
-        if node.id == "t":
-            return t
-        if node.id in _CONSTANTS:
-            return _CONSTANTS[node.id]
-        raise StepValuedError(
-            "unknown name {!r} in schedule expression (allowed: t, "
-            "{})".format(node.id, ", ".join(sorted(_CONSTANTS)))
-        )
+        return _eval_name(node, t)
     if isinstance(node, ast.UnaryOp):
-        val = _safe_eval(node.operand, t)
-        if isinstance(node.op, ast.UAdd):
-            return +val
-        if isinstance(node.op, ast.USub):
-            return -val
-        if isinstance(node.op, ast.Not):
-            return not val
-        raise StepValuedError("unsupported unary operator in expression")
+        return _eval_unary(node, t)
     if isinstance(node, ast.BinOp):
-        left = _safe_eval(node.left, t)
-        right = _safe_eval(node.right, t)
-        op = node.op
-        if isinstance(op, ast.Add):
-            return left + right
-        if isinstance(op, ast.Sub):
-            return left - right
-        if isinstance(op, ast.Mult):
-            return left * right
-        if isinstance(op, ast.Div):
-            return left / right
-        if isinstance(op, ast.FloorDiv):
-            return left // right
-        if isinstance(op, ast.Mod):
-            return left % right
-        if isinstance(op, ast.Pow):
-            return left**right
-        raise StepValuedError("unsupported binary operator in expression")
+        return _eval_binary(node, t)
     if isinstance(node, ast.BoolOp):
-        # As Python: ``and`` returns the first falsy operand, ``or`` the
-        # first truthy one, else either returns the last; the operands
-        # after the one returned are not evaluated.
-        stop_on = isinstance(node.op, ast.Or)
-        for operand in node.values[:-1]:
-            val = _safe_eval(operand, t)
-            if bool(val) == stop_on:
-                return val
-        return _safe_eval(node.values[-1], t)
+        return _eval_bool_op(node, t)
     if isinstance(node, ast.Compare):
-        left = _safe_eval(node.left, t)
-        result = True
-        for cmp_op, comparator in zip(node.ops, node.comparators):
-            right = _safe_eval(comparator, t)
-            if isinstance(cmp_op, ast.Lt):
-                ok = left < right
-            elif isinstance(cmp_op, ast.LtE):
-                ok = left <= right
-            elif isinstance(cmp_op, ast.Gt):
-                ok = left > right
-            elif isinstance(cmp_op, ast.GtE):
-                ok = left >= right
-            elif isinstance(cmp_op, ast.Eq):
-                ok = left == right
-            elif isinstance(cmp_op, ast.NotEq):
-                ok = left != right
-            else:
-                raise StepValuedError("unsupported comparison in expression")
-            result = result and ok
-            left = right
-        return result
+        return _eval_compare(node, t)
     if isinstance(node, ast.IfExp):
         return (
             _safe_eval(node.body, t)
@@ -250,44 +339,7 @@ def _safe_eval(node: ast.AST, t: float) -> "float | bool":
             else _safe_eval(node.orelse, t)
         )
     if isinstance(node, ast.Call):
-        fname = getattr(node.func, "id", None)
-        if fname not in _FUNCTIONS:
-            raise StepValuedError(
-                "unknown function {!r} in schedule expression (allowed: "
-                "{})".format(fname, ", ".join(sorted(_FUNCTIONS)))
-            )
-        args = [_safe_eval(a, t) for a in node.args]
-        kwargs = {}
-        for keyword in node.keywords:
-            if keyword.arg is None:
-                raise ValueError(
-                    "'**' arguments are not supported in a schedule "
-                    "expression (in the call to {})".format(fname)
-                )
-            kwargs[keyword.arg] = _safe_eval(keyword.value, t)
-        if fname == "round":
-            # Every constant is read as a float, but round's ndigits must
-            # be an int: pass a whole number as one.
-            if len(args) > 1:
-                args[1] = _whole(args[1])
-            if "ndigits" in kwargs:
-                kwargs["ndigits"] = _whole(kwargs["ndigits"])
-        try:
-            return float(_FUNCTIONS[fname](*args, **kwargs))
-        except TypeError as exc:
-            raise ValueError(
-                "cannot evaluate {}() in the schedule expression with "
-                "{} positional argument(s){}: {}".format(
-                    fname,
-                    len(args),
-                    (
-                        " and keyword(s) " + ", ".join(sorted(kwargs))
-                        if kwargs
-                        else ""
-                    ),
-                    exc,
-                )
-            ) from exc
+        return _eval_call(node, t)
     raise StepValuedError(
         "unsupported syntax in schedule expression: {}".format(
             type(node).__name__
@@ -716,6 +768,27 @@ def as_step_schedule(
             "Z (one covariate row per segment); or pass a StepSchedule"
         )
     return StepSchedule.from_changepoints(xl, Z)
+
+
+def as_covariate_path(Z: Any, xl: "npt.ArrayLike | None" = None) -> Any:
+    """
+    Coerce a model ``sf_tvc`` covariate argument into a :class:`StepSchedule`
+    or a :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`.
+
+    A ``CovariatePath`` is passed through (then ``xl`` must be ``None``);
+    anything else is as for :func:`as_step_schedule`. The type decides the
+    method: a schedule is summed exactly, a path is integrated.
+    """
+    from .tvc_path import CovariatePath
+
+    if isinstance(Z, CovariatePath):
+        if xl is not None:
+            raise ValueError(
+                "xl must not be given when Z is a CovariatePath (it gives "
+                "the segment start times of the array form only)"
+            )
+        return Z
+    return as_step_schedule(Z, xl)
 
 
 def segments_from_origin(

@@ -51,10 +51,22 @@ from surpyval.serialisation import (
     to_native,
 )
 from surpyval.univariate.information_criteria import ic_sample_size
-from surpyval.utils.deprecation import renamed_arguments
-from surpyval.utils.linalg import numerical_hessian
+from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.linalg import numerical_gradient, numerical_hessian
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_unverified,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    no_covariance_error,
+    option_error,
+)
 
 _SCALES = ("hazard", "odds", "normal")
 
@@ -112,7 +124,7 @@ def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
         return log_S, log_S + log_1mS
     if scale == "normal":
         return norm.logsf(eta), norm.logpdf(eta)
-    raise ValueError(f"scale must be one of {_SCALES}; got {scale!r}")
+    raise option_error("scale", scale, _SCALES)
 
 
 def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
@@ -153,13 +165,13 @@ class RoystonParmarModel(SerialisableMixin):
     Examples
     --------
     ``RoystonParmar.fit`` returns one. Here with one internal knot
-    (``df=2``) on the Rossi recidivism data, where ``arrest`` is already
-    the censoring flag:
+    (``df=2``) on the Rossi recidivism data, where ``arrest`` is 1 for an
+    arrest (so the censoring flag is ``1 - arrest``):
 
     >>> from surpyval import RoystonParmar
     >>> from surpyval.datasets import load_rossi_static
     >>> df = load_rossi_static()
-    >>> x, c = df["week"].values, df["arrest"].values
+    >>> x, c = df["week"].values, 1 - df["arrest"].values
     >>> model = RoystonParmar.fit(x, c=c, df=2)
     >>> model.params.round(4)
     array([-6.9934,  1.5755,  0.0377])
@@ -182,6 +194,20 @@ class RoystonParmarModel(SerialisableMixin):
         # The sample size of bic() (see ic_sample_size), from the data at
         # fit time.
         self._ic_n = 0.0
+        # What the fit reached, one of ``MAXIMUM_STATES``
+        # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
+        # for a model restored from a dict saved without it.
+        self.maximum = "unknown"
+        # The negative log-likelihood of the spline coefficients the fit
+        # minimised; not saved.
+        self._objective: Any = None
+
+    @property
+    def parameter_names(self) -> list[str]:
+        """The names of ``params``, entry by entry: the spline
+        coefficients ``gamma_0``, ``gamma_1``, ..., as the summary prints
+        them."""
+        return ["gamma_{}".format(i) for i in range(len(self.params))]
 
     # -- linear predictor --------------------------------------------------
 
@@ -197,7 +223,6 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- distribution functions -------------------------------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def sf(self, x: Any) -> np.ndarray:
         """Survival function at ``x``: 1 at and before time 0 (the spline
@@ -209,26 +234,22 @@ class RoystonParmarModel(SerialisableMixin):
         out = np.where(x <= 0.0, 1.0, out)
         return np.where(np.isposinf(x), 0.0, out)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def ff(self, x: Any) -> np.ndarray:
         """Failure (CDF) function ``1 - sf(x)``."""
         return 1.0 - self.sf(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def Hf(self, x: Any) -> np.ndarray:
         """Cumulative hazard ``-log sf(x)``."""
         # + 0.0 turns the -0.0 of -log(1) at x <= 0 into 0.0
         return -np.log(self.sf(x)) + 0.0
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def hf(self, x: Any) -> np.ndarray:
         """Hazard rate ``df(x) / sf(x)``."""
         return self.df(x) / self.sf(x)
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def df(self, x: Any) -> np.ndarray:
         """Density at ``x``, from the derivative of the spline."""
@@ -242,12 +263,16 @@ class RoystonParmarModel(SerialisableMixin):
         # infinity; with sf = 1 there, hf and Hf are 0 too.
         return np.where((x <= 0.0) | np.isposinf(x), 0.0, out)
 
-    @renamed_arguments(q="p")
     @keeps_query_shape
     def qf(self, p: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(x) = p``."""
         out = np.empty_like(p)
         for i, pi in enumerate(p):
+            if np.isnan(pi):
+                # A missing probability has a missing quantile; the root
+                # finder raised on it (#382).
+                out[i] = np.nan
+                continue
             target = 1.0 - pi  # sf(x) = 1 - p
             lo = self.knots[0] - 20.0
             hi = self.knots[-1] + 20.0
@@ -285,7 +310,6 @@ class RoystonParmarModel(SerialisableMixin):
 
     # -- confidence bounds -------------------------------------------------
 
-    @renamed_arguments(t="x")
     @keeps_query_shape
     def cb(
         self,
@@ -300,9 +324,31 @@ class RoystonParmarModel(SerialisableMixin):
         whose variance is ``B Sigma B'`` from the covariance -- and then
         pushed through the link, so ``sf`` / ``ff`` bounds stay in ``(0, 1)``.
         ``S`` is monotone decreasing in ``eta`` on every scale.
+
+        Parameters
+        ----------
+        x : array like or scalar
+            The times at which to bound the function.
+        on : {'sf', 'ff', 'Hf'}, optional
+            The function to bound (``'R'`` and ``'F'`` are aliases of
+            ``'sf'`` and ``'ff'``). Default ``'sf'``.
+        alpha_ci : float, optional
+            The total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are ``[lower, upper]`` on the last axis; a
+            one-sided bound at ``alpha_ci`` is the matching end of the
+            two-sided bound at ``2 * alpha_ci``.
         """
         if self.covariance is None:
-            raise ValueError("Confidence bounds need a covariance (MLE fit).")
+            raise no_covariance_error()
+        check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
+        # An unknown bound (say 'both') used to be taken as 'upper' (#415).
+        check_option("bound", bound, BOUNDS)
+        # ff = 1 - sf and Hf = -log(sf) decrease in sf, so their lower
+        # bound is the transformed upper bound on sf, and vice versa. The
+        # one-sided bounds used to return the other side (#415).
+        if on in ("ff", "F", "Hf") and bound != "two-sided":
+            bound = "upper" if bound == "lower" else "lower"
         x = np.atleast_1d(np.asarray(x, dtype=float))
         B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
@@ -325,9 +371,7 @@ class RoystonParmarModel(SerialisableMixin):
             return band
         if on in ("ff", "F"):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
-        if on == "Hf":
-            return -np.log(band[:, ::-1] if band.ndim == 2 else band)
-        raise ValueError("cb 'on' supports 'sf', 'ff' and 'Hf'.")
+        return -np.log(band[:, ::-1] if band.ndim == 2 else band)
 
     # -- information criteria ---------------------------------------------
 
@@ -388,6 +432,7 @@ class RoystonParmarModel(SerialisableMixin):
             "n": int(self.n),
             "n_events": int(self.n_events),
             "_neg_ll": to_native(self._neg_ll),
+            **maximum_entry(self.maximum),
             "ic_n": float(self._ic_n),
         }
         if self.covariance is not None:
@@ -407,6 +452,7 @@ class RoystonParmarModel(SerialisableMixin):
         out.n = int(model_dict.get("n", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
+        out.maximum = restored_maximum(model_dict)
         if "ic_n" in model_dict:
             out._ic_n = float(model_dict["ic_n"])
         else:
@@ -418,7 +464,7 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
-class RoystonParmar_:
+class RoystonParmar_(UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
 
@@ -487,8 +533,7 @@ class RoystonParmar_:
             Explicit knot locations *on the log-time scale* (including the two
             boundary knots), overriding the quantile-based default.
         """
-        if scale not in _SCALES:
-            raise ValueError(f"scale must be one of {_SCALES}; got {scale!r}")
+        check_option("scale", scale, _SCALES)
 
         from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -612,16 +657,28 @@ class RoystonParmar_:
         gamma = res.x
 
         covariance = None
+        n_obs = float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum())
         with np.errstate(all="ignore"):
+            steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
+            information = numerical_hessian(neg_ll, gamma, step=steps)
             try:
-                steps = 1e-05 * np.maximum(np.abs(gamma), 1.0)
-                cov = np.linalg.inv(
-                    numerical_hessian(neg_ll, gamma, step=steps)
-                )
+                cov = np.linalg.inv(information)
                 if np.all(np.isfinite(cov)):
                     covariance = cov
             except np.linalg.LinAlgError:
                 covariance = None
+            # Accepted as a maximum only where it is one: the gradient ~0
+            # and the information (the Hessian the covariance inverts)
+            # positive definite, per observation (principle 13).
+            verified = is_local_minimum(
+                neg_ll,
+                lambda g: numerical_gradient(neg_ll, g, 1e-2 * steps),
+                lambda g: information,
+                gamma,
+                obj_scale=max(n_obs, 1.0),
+            )
+        if not verified:
+            warn_unverified("The Royston-Parmar fit")
 
         model = RoystonParmarModel()
         model.scale = scale
@@ -634,6 +691,8 @@ class RoystonParmar_:
         model.n_events = int(round(float(n_o.sum())))
         model._neg_ll = float(res.fun)
         model._ic_n = ic_sample_size(data.c, data.n)
+        model.maximum = "verified" if verified else "unverified"
+        model._objective = neg_ll
         return model
 
 

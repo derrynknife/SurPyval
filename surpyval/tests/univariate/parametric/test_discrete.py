@@ -9,8 +9,10 @@ and zero-inflation.
 
 import numpy as np
 import pytest
+import scipy.stats as st
 from scipy.stats import geom, nbinom, poisson
 
+import surpyval as surv
 from surpyval import (
     Bernoulli,
     BetaGeometric,
@@ -331,6 +333,38 @@ def test_discretize_mle_recovers_parameters(dist, params):
     assert np.allclose(model.params, params, rtol=0.1)
 
 
+@pytest.mark.parametrize("dist", [Weibull, Gamma, LogNormal])
+def test_562_discretize_hessian_is_finite_at_the_first_bin(dist):
+    # P(K = 1) = R(0) - R(1): R(0) through the continuous formula has a
+    # non-finite Hessian in the parameters (a Weibull's (0 / alpha)**beta
+    # gives 0 * inf), so the fit's Hessian was NaN wherever k = 1 was
+    # observed (and its covariance fell back to a numerical one).
+    from autograd import hessian
+
+    from surpyval.tests._helpers import richardson_hessian
+
+    discrete = Discretize(dist)
+    k = np.array([1.0, 1.0, 2.0, 3.0, 5.0])
+    params = np.array([2.0, 1.5] if dist is not LogNormal else [1.0, 0.6])
+
+    def neg_ll(p):
+        return -np.sum(np.log(discrete.df(k, *p)))
+
+    H = hessian(neg_ll)(params)
+    assert np.all(np.isfinite(H))
+    # (to 5e-5: the Gamma's shape derivatives are central differences,
+    # utils/autograd_gamma_compat.py, good to 7e-6 here)
+    np.testing.assert_allclose(
+        H, richardson_hessian(neg_ll, params, 1e-3), rtol=5e-5
+    )
+    # and the values are as before: R(0) = 1
+    np.testing.assert_allclose(
+        discrete.df(k, *params),
+        1 - dist.sf(k, *params) - (k > 1) * (1 - dist.sf(k - 1, *params)),
+        rtol=1e-12,
+    )
+
+
 def test_discretize_rejects_negative_support():
     # Discretize is for non-negative lifetimes; the Normal spans the reals.
     with pytest.raises(ValueError, match="non-negative"):
@@ -429,11 +463,21 @@ P_BERN = 0.3
 
 def test_bernoulli_functions_at_the_two_outcomes():
     x = np.array([0, 1])
-    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [1.0, P_BERN])
-    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [0.0, 1 - P_BERN])
+    # R(x) = P(X > x), the package's discrete convention (#344).
+    np.testing.assert_allclose(Bernoulli.sf(x, P_BERN), [P_BERN, 0.0])
+    np.testing.assert_allclose(Bernoulli.ff(x, P_BERN), [1 - P_BERN, 1.0])
     np.testing.assert_allclose(Bernoulli.df(x, P_BERN), [1 - P_BERN, P_BERN])
     np.testing.assert_allclose(Bernoulli.hf(x, P_BERN), [1 - P_BERN, 1.0])
-    np.testing.assert_allclose(Bernoulli.Hf(x, P_BERN), [0.0, -np.log(P_BERN)])
+    np.testing.assert_allclose(
+        Bernoulli.Hf(x, P_BERN), [-np.log(P_BERN), np.inf]
+    )
+    # scipy agrees.
+    np.testing.assert_allclose(
+        Bernoulli.sf(x, P_BERN), st.bernoulli.sf(x, P_BERN)
+    )
+    np.testing.assert_allclose(
+        Bernoulli.ff(x, P_BERN), st.bernoulli.cdf(x, P_BERN)
+    )
 
 
 def test_bernoulli_rejects_anything_but_zero_and_one():
@@ -462,8 +506,11 @@ def test_bernoulli_internal_identities():
 
     np.testing.assert_allclose(sf + ff, 1.0)
     np.testing.assert_allclose(df.sum(), 1.0)
-    np.testing.assert_allclose(hf, df / sf)
-    np.testing.assert_allclose(Hf, -np.log(sf))
+    # The discrete hazard: the mass over those still at risk, R(x - 1),
+    # with R(-1) = 1.
+    np.testing.assert_allclose(hf, df / np.r_[1.0, sf[:-1]])
+    with np.errstate(divide="ignore"):
+        np.testing.assert_allclose(Hf, -np.log(sf))
     np.testing.assert_allclose(np.exp(log_df), df)
     # E[X] from the mass equals the parameter, and equals mean/moment.
     np.testing.assert_allclose((x * df).sum(), P_BERN)
@@ -474,23 +521,16 @@ def test_bernoulli_internal_identities():
         np.testing.assert_allclose(Bernoulli.moment(m, P_BERN), P_BERN)
 
 
-def test_bernoulli_log_df_needs_its_own_relation():
-    # DiscreteParametricFitter.log_df is f(k) = h(k) R(k - 1), which
-    # assumes R(k) = P(X > k). Bernoulli's R is P(X >= x), so the
-    # at-risk set at x is R(x) itself. Inheriting the discrete relation
-    # would give df(1) = 1 instead of p.
+def test_bernoulli_log_df_is_the_log_of_its_mass():
     x = np.array([0, 1])
     np.testing.assert_allclose(
         np.exp(np.asarray(Bernoulli.log_df(x, P_BERN), dtype=float)),
         np.asarray(Bernoulli.df(x, P_BERN), dtype=float),
     )
-    # At x = 1 the discrete relation would read h(1) * R(0) = 1 * 1 = 1,
-    # where the mass is p. (R(-1) is not even askable here, which is the
-    # other half of why that relation does not transfer.)
-    h1 = float(np.ravel(Bernoulli.hf(1, P_BERN))[0])
+    # and the discrete relation f(k) = h(k) R(k - 1) holds (R(-1) = 1).
+    h = np.asarray(Bernoulli.hf(x, P_BERN), dtype=float)
     R0 = float(np.ravel(Bernoulli.sf(0, P_BERN))[0])
-    assert np.isclose(h1 * R0, 1.0)
-    assert not np.isclose(h1 * R0, P_BERN)
+    np.testing.assert_allclose(h * [1.0, R0], [1 - P_BERN, P_BERN])
     with pytest.raises(ValueError):
         Bernoulli.sf(-1, P_BERN)
 
@@ -585,18 +625,17 @@ def test_bernoulli_qf_drives_inverse_transform_sampling():
     assert np.isclose(draws.mean(), P_BERN, atol=0.005)
 
 
-def test_bernoulli_qf_does_not_invert_this_ff_and_says_so():
-    # Documented consequence of R(x) = P(X >= x): the failure function is
-    # P(X < x), which never exceeds 1 - p on {0, 1}, so the usual
-    # discrete check ff(qf(u)) >= u cannot hold once u passes 1 - p. The
-    # other discrete distributions, whose R(k) is P(X > k), are fine.
-    u = 0.9  # above 1 - p = 0.7
-    k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
-    assert k == 1.0
-    assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) < u
-    # Whereas for a distribution using the package's R(k) = P(X > k):
-    k_pois = float(np.ravel(Poisson.qf(u, 3.0))[0])
-    assert float(np.ravel(Poisson.ff(k_pois, 3.0))[0]) >= u - 1e-9
+def test_bernoulli_qf_inverts_its_ff():
+    # (#344) With R(x) = P(X >= x), ff was P(X < x), which never exceeds
+    # 1 - p on {0, 1}, so ff(qf(u)) >= u failed once u passed 1 - p. Now
+    # ff is P(X <= x) and qf is its inverse, as for every other discrete
+    # distribution.
+    for u in (0.1, 0.5, 0.7, 0.75, 0.9, 0.999):
+        k = float(np.ravel(Bernoulli.qf(u, P_BERN))[0])
+        assert float(np.ravel(Bernoulli.ff(k, P_BERN))[0]) >= u - 1e-12
+        if k > 0:
+            below = float(np.ravel(Bernoulli.ff(k - 1, P_BERN))[0])
+            assert below < u
 
 
 @pytest.mark.parametrize("p", [0.0, 1.0])
@@ -687,3 +726,103 @@ def test_beta_geometric_mean_agrees_with_its_first_moment():
         assert BetaGeometric.moment(1, a, b) == pytest.approx(
             BetaGeometric.mean(a, b)
         )
+
+
+# ---------------------------------------------------------------------------
+# Offsets are refused for discrete distributions; the
+# Beta-Geometric method of moments.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "dist, x",
+    [
+        (surv.DiscreteWeibull, [6, 7, 7, 8, 9, 11]),
+        (surv.Geometric, [6, 7, 7, 8, 9, 11]),
+        (surv.Discretize(surv.Weibull), [6, 7, 7, 8, 9, 11]),
+    ],
+)
+def test_discrete_distributions_cannot_be_offset(dist, x):
+    with pytest.raises(ValueError, match="discrete distribution"):
+        dist.fit(x, offset=True)
+
+
+def test_beta_geometric_mom_matches_the_moments():
+    np.random.seed(0)
+    x = surv.BetaGeometric.random(2000, 5.0, 3.0)
+    model = surv.BetaGeometric.fit(x, how="MOM")
+    assert not np.allclose(model.params, [1.0, 1.0])
+    assert model.params[0] > 2
+    np.testing.assert_allclose(model.moment(1), x.mean(), rtol=1e-10)
+    np.testing.assert_allclose(model.moment(2), (x**2).mean(), rtol=1e-10)
+
+
+def test_beta_geometric_second_moment_is_exact():
+    a, b = 5.0, 3.0
+    c = a + b - 1
+    exact = 2 * c * (c - 1) / ((a - 1) * (a - 2)) - c / (a - 1)
+    assert surv.BetaGeometric.moment(2, a, b) == pytest.approx(exact)
+    assert exact == pytest.approx(5.25)
+
+
+def test_beta_geometric_mom_refuses_underdispersed_data():
+    with pytest.raises(ValueError, match="no Beta-Geometric solution"):
+        surv.BetaGeometric.fit([1, 2] * 50, how="MOM")
+
+
+# ---------------------------------------------------------------------------
+# Exact moments; non-integer data are refused; ``discretize``
+# round-trips.
+# ---------------------------------------------------------------------------
+
+
+W, E, G = surv.Weibull, surv.Exponential, surv.Geometric
+
+
+def test_beta_geometric_higher_moments_are_exact():
+    BG = surv.BetaGeometric
+    assert BG.moment(3, 5, 3) == pytest.approx(33.25, rel=1e-12)
+    assert BG.moment(3, 4, 3) == pytest.approx(92.0, rel=1e-12)
+    assert BG.moment(4, 3.5, 2) == np.inf
+
+
+@pytest.mark.parametrize(
+    "dist, params",
+    [
+        (G, (0.3,)),
+        (surv.Poisson, (2.5,)),
+        (surv.NegativeBinomial, (3.0, 0.4)),
+        (surv.BetaGeometric, (5.0, 3.0)),
+    ],
+)
+def test_discrete_first_moment_is_the_mean(dist, params):
+    assert dist.moment(1, *params) == dist.mean(*params)
+
+
+def test_discrete_moments_are_exact():
+    assert G.moment(2, 0.2) == pytest.approx(45.0, rel=1e-14)
+    assert G.moment(3, 0.3) == pytest.approx(158.88888888888889, rel=1e-14)
+    assert surv.Poisson.moment(3, 2.5) == pytest.approx(36.875, rel=1e-14)
+    assert surv.NegativeBinomial.moment(2, 3.0, 0.4) == pytest.approx(
+        41.5, rel=1e-14
+    )
+
+
+@pytest.mark.parametrize(
+    "dist, x",
+    [
+        (G, [1.5, 2.2, 3.7, 1.1]),
+        (surv.Poisson, [-0.5, 1, 2, 3]),
+        (surv.Discretize(W), [1, 2, 2.5, 3]),
+    ],
+)
+def test_discrete_fits_refuse_non_integer_data(dist, x):
+    with pytest.raises(ValueError, match="whole numbers"):
+        dist.fit(x)
+
+
+def test_discretize_round_trips():
+    model = surv.Discretize(W).fit([1, 2, 2, 3, 4, 5, 3, 2])
+    restored = surv.from_dict(model.to_dict())
+    assert restored.dist.name == "Discretize(Weibull)"
+    assert np.allclose(restored.sf([1, 3, 5]), model.sf([1, 3, 5]))

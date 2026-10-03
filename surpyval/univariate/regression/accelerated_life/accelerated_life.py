@@ -4,6 +4,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 
+from .._kinds import ACCELERATED_LIFE
 from .lifemodel import LifeModel
 from .parameter_substitution import ParameterSubstitutionFitter
 
@@ -23,6 +24,14 @@ _LIFE_PARAM_MAP = {
     # The Gamma's ``beta`` is also a rate (the survival is a function of
     # ``beta * x``), so it too is the reciprocal of the modelled life.
     "Gamma": ("beta", lambda x: 1.0 / x, lambda x: 1.0 / x),
+}
+
+# How the life parameter follows from the life model's life L(Z), as the
+# fitted model prints it in place of a value (#489).
+_LIFE_RELATION = {
+    "Exponential": "1 / L(Z)",
+    "LogNormal": "ln L(Z)",
+    "Gamma": "1 / L(Z)",
 }
 
 
@@ -49,7 +58,8 @@ def AcceleratedLife(
     --------
     >>> import numpy as np
     >>> from surpyval import Weibull
-    >>> from surpyval import AcceleratedLife, Power
+    >>> from surpyval import AcceleratedLife
+    >>> from surpyval.life_models import Power
     >>> np.random.seed(1)
     >>> stress = np.repeat([20.0, 30.0, 40.0], 40).reshape(-1, 1)
     >>> x = Weibull.random(120, 10, 3) * (100.0 / stress[:, 0])
@@ -68,11 +78,12 @@ def AcceleratedLife(
     name = f"{distribution.name}{life_model.name}AL"
 
     return ParameterSubstitutionFitter(
-        kind="Accelerated Life",
+        kind=ACCELERATED_LIFE,
         name=name,
         distribution=distribution,
         life_model=life_model,
         life_parameter=life_param,
         param_transform=transform,
         inverse_param_transform=inv_transform,
+        life_relation=_LIFE_RELATION.get(distribution.name, "L(Z)"),
     )

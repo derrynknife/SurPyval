@@ -5,29 +5,36 @@ from surpyval.univariate.regression.accelerated_life.lifemodel import LifeModel
 
 
 class DualExponential_(LifeModel):
-    """
-    Dual Exponential Life Model
+    r"""
+    The dual exponential life model, for two thermal-like stresses (for
+    example temperature and humidity, the temperature-humidity model),
+    each entering as Arrhenius does:
 
-    This class represents a dual exponential life model, which is used for
-    survival analysis.
+    .. math::
+        L(U, V) = c\, e^{a / U + b / V},
 
-    Attributes
-    ----------
-        name (str): The name of the life model.
-        param_names (dict): A dictionary specifying the parameter names and
-        their indices in the parameter vector.
-        param_bounds (tuple): A tuple specifying the parameter bounds.
+    with ``U`` and ``V`` the two columns of ``Z`` (temperature in kelvin).
 
-    Methods:
+    Parameters (as the fitted model reports them):
+
+    - ``a``: the sensitivity to ``U``: for a temperature, the activation
+      energy over Boltzmann's constant, in kelvin, as for
+      :class:`Exponential`.
+    - ``b``: the sensitivity to ``V``, likewise.
+    - ``c`` (> 0): a scale constant, the life as both stresses grow
+      without bound.
+
+    With equal (or proportional) stress columns ``a`` and ``b`` cannot be
+    told apart: ``b`` is reported as aliased (NaN), and the fit is the
+    :class:`Exponential` fit.
+
+    Examples
     --------
-        phi(Z: ndarray, *params: float) -> ndarray:
-            Calculate the life parameter for a distribution using the
-            covariates / stresses, Z, and the parameters of the dual
-            exponential model.
-
-        phi_init(life: float, Z: ndarray) -> list[float]:
-            Initialize the parameters of the dual exponential model based
-            on observed data.
+    >>> import numpy as np
+    >>> from surpyval import life_models
+    >>> Z = np.array([[358.0, 0.85]])
+    >>> life_models.DualExponential.phi(Z, 8000.0, 0.5, 1e-5).round(1)
+    array([91279.2])
     """
 
     n_stresses = 2
@@ -93,6 +100,12 @@ class DualExponential_(LifeModel):
         y = np.log(life)
         c, a, b = np.linalg.lstsq(A, y, rcond=None)[0]
         return [a, b, np.exp(c)]
+
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        # log L = log c + a / s1 + b / s2
+        return 1.0 / np.atleast_2d(Z), ("a", "b"), True
 
 
 DualExponential = DualExponential_()

@@ -1,8 +1,8 @@
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
@@ -59,7 +59,7 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
             # Mass is grouped onto {1, 2, ...}; support lower bound declared
             # as 0 (below the first mass at k = 1) for the interior check.
             support=(0.0, np.inf),
-            param_names=list(distribution.param_names),
+            parameter_names=list(distribution.parameter_names),
             param_map=dict(distribution.param_map),
             plot_x_scale=distribution.plot_x_scale,
         )
@@ -80,13 +80,45 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
         r"""CDF :math:`F_K(k) = F(k)`."""
         return self.dist.ff(x, *params)
 
+    def _sf_before(self, x: Numeric, *params: Boxable) -> Boxable:
+        r""":math:`R(k - 1)`: exactly 1 at and below the start of the
+        continuous support (``k = 1``), where the continuous survival is
+        1 but its derivatives in the parameters through its formula are
+        not finite (a Weibull's ``(0 / alpha)**beta`` has a Hessian of
+        ``0 * inf``), and the fit's Hessian came out NaN (#562)."""
+        before = x - 1.0
+        start = self.dist.support[0]
+        at_start = before <= start
+        if not np.any(at_start):
+            return self.dist.sf(before, *params)
+        inside = np.where(at_start, start + 1.0, before)
+        return np.where(at_start, 1.0, self.dist.sf(inside, *params))
+
     def df(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""PMF :math:`P(K = k) = R(k - 1) - R(k)`."""
-        return self.dist.sf(x - 1.0, *params) - self.dist.sf(x, *params)
+        return self._sf_before(x, *params) - self.dist.sf(x, *params)
 
     def hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = P(K = k)/R(k - 1)`."""
-        return self.df(x, *params) / self.dist.sf(x - 1.0, *params)
+        before = self._sf_before(x, *params)
+        gone = before == 0
+        if not np.any(gone):
+            return self.df(x, *params) / before
+        # Once R(k - 1) underflows the ratio is 0 / 0 (NaN from k = 1e6
+        # for a Weibull(4.4, 1.6), #561). The hazard is then 1 - R(k) /
+        # R(k - 1) from the log survival while k - 1 and k are told apart
+        # in it, and past that (and at k = inf) the limit 1 - exp(-h) of
+        # the continuous hazard h, which varies slowly there.
+        k = np.asarray(x, dtype=float)
+        with np.errstate(invalid="ignore"):
+            ratio = self.df(x, *params) / before
+            log_before = self.dist.log_sf(k - 1.0, *params)
+            from_logs = -np.expm1(self.dist.log_sf(k, *params) - log_before)
+            limit = -np.expm1(-self.dist.hf(k, *params))
+        resolved = np.isfinite(log_before) & (k < 1e15)
+        tail = np.where(resolved, from_logs, limit)
+        out = np.where(gone, tail, ratio)
+        return out[()] if out.ndim == 0 else out
 
     def Hf(self, x: Numeric, *params: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k)`."""
@@ -94,7 +126,25 @@ class DiscretizedFitter(OptimisedFitMixin, DiscreteParametricFitter):
 
     def qf(self, u: Numeric, *params: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
-        return np.maximum(np.ceil(self.dist.qf(u, *params)), 1.0)
+        u = np.asarray(u, dtype=float)
+        k = np.maximum(np.ceil(self.dist.qf(u, *params)), 1.0)
+        # The continuous quantile of u = F(k) lands on k only up to
+        # round-off, and ceil() of k + 1e-15 is k + 1: qf(ff(6)) was 7
+        # (#383). Step back to k - 1 where F(k - 1) already reaches u, up
+        # to a relative 1e-12 of the smaller of u and 1 - u (compared on
+        # that side, so a tail probability keeps its digits), and above
+        # 1/2 also up to u's own rounding (half an ulp below 1).
+        before = k - 1.0
+        lower = u <= 0.5
+        half_ulp = np.finfo(float).eps / 4.0
+        reached = np.where(
+            lower,
+            self.dist.ff(before, *params) >= u * (1.0 - 1e-12),
+            self.dist.sf(before, *params)
+            <= (1.0 - u) * (1.0 + 1e-12) + half_ulp,
+        )
+        k = np.where((before >= 1.0) & reached, before, k)
+        return k[()] if k.ndim == 0 else k
 
     def mean(self, *params: Boxable) -> Boxable:
         upper = int(np.ceil(self.dist.qf(1.0 - 1e-9, *params)))

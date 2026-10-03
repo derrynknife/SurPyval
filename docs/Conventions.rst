@@ -108,6 +108,20 @@ The same variable names are used everywhere in SurPyval, in code and in these pa
 - tr = one dimensional array or scalar value. If an array it is the value at which each value of x is right truncated. If a scalar all values of x are right truncated at the same value.
 - Z = the multi-dimensional array of covariates for each x, one row per observation, used by the regression models.
 
+Times are plain numbers, in whatever unit you choose: SurPyval has no unit of time, and every model answers in the units it was given. Durations (``numpy.timedelta64``, pandas ``Timedelta``) and dates (``datetime64``, ``Timestamp``) are refused with a ``ValueError`` wherever a time is accepted (``x``, ``xl``, ``xr``, ``t``, ``tl``, ``tr``, and a model function's query), because numpy converts a duration to its storage ticks -- seconds or nanoseconds, depending on the dtype pandas picked -- without a word. Convert them first, in the unit you want:
+
+.. jupyter-execute::
+
+    import numpy as np
+    import pandas as pd
+    import surpyval as surv
+
+    installed = pd.to_datetime(["2023-01-01", "2023-01-05", "2023-02-01"])
+    failed = pd.to_datetime(["2023-03-01", "2023-06-17", "2023-04-11"])
+    days = (failed - installed) / pd.Timedelta(days=1)
+    print(days.to_numpy())
+    print(surv.Weibull.fit(days).params)
+
 ``x`` cannot be combined with ``xl``/``xr``, and ``t`` cannot be combined with ``tl``/``tr``. ``tl`` and ``tr`` can each be used alone.
 
 Non-parametric models are better defined in the "xrd" format. These are taken to mean:
@@ -125,6 +139,35 @@ Other areas of the package add a few more names, always with the same meaning:
 
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
+
+Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
+``DataFrame`` and the names of its columns in place of these arrays, passes
+every other option to ``fit``, and gives the model ``fit`` gives on the same
+arrays (the conformance suite checks this for every model). Every
+DataFrame entry point names a column argument after the array it fills,
+with a ``_col`` suffix, and ``_cols`` for a list of columns:
+``x_col='hours'``, ``c_col=``, ``n_col=``, ``xl_col=`` / ``xr_col=``,
+``tl_col=`` / ``tr_col=``, ``e_col=``, ``i_col=``, ``y_col=``, and
+``Z_cols=`` for the covariates (or a ``formula``, where the model supports
+one). The univariate ``tl_col`` / ``tr_col`` also take one number, a
+truncation shared by every row; a copula takes a column per dimension
+(``x_cols=['pump', 'motor']``). The names of v0.21 without the suffix
+(``Weibull.fit_from_df(df, x='hours', c=...)``, and ``x=``, ``y=``,
+``i=`` of the degradation fitters) still work, with a
+``DeprecationWarning``, until v0.23.
+
+.. jupyter-execute::
+
+    from surpyval.recurrent import NonParametricCounting
+
+    table = pd.DataFrame({'hours': [5.0, 8, 12, 20, 25, 30],
+                          'failed': [0, 0, 0, 1, 0, 1]})
+    km = surv.KaplanMeier.fit_from_df(table, x_col='hours', c_col='failed')
+    log = pd.DataFrame({'hours': [3.0, 9, 20, 5, 12],
+                        'unit': [1, 1, 1, 2, 2], 'end': [0, 0, 1, 0, 1]})
+    mcf = NonParametricCounting.fit_from_df(log, x_col='hours', i_col='unit',
+                                            c_col='end')
+    print(km.sf(10), mcf.mcf(10))
 
 
 Censoring Flag Conventions
@@ -161,6 +204,8 @@ This convention gives an intuitive feel for the placement of the data on a timel
 
 The same flags are used throughout the package: by the regression models, the recurrent event models (where ``c = 1`` marks the end of an item's observation), the copulas (one censoring array per dimension), and the start-stop (time-varying covariate) form of the Cox model, where ``c = 0`` is an event at the end of the interval and ``c = 1`` is right censored. The one variation is in competing risks, where ``c`` may be omitted because a missing cause (``e`` of ``None``) already says that a row is censored.
 
+``c`` is a *censoring* flag, the opposite of the event flag (1 = failed) of most spreadsheets, of R's ``Surv(time, event)`` and of lifelines' ``event_col``: pass ``c = 1 - event``. A flag passed the wrong way round fits without complaint, so a fitted model's printout shows the data it was fitted to, counted in units (weighted by ``n``), for example ``Data : 60 units: 9 events at 9 unique times, 51 right censored``: if you had 51 failures, the flag was read backwards. The counts are weighted by ``n``, and the number of distinct event times shows how far they are aggregated.
+
 Truncation conventions
 ~~~~~~~~~~~~~~~~~~~~~~
 
@@ -189,7 +234,7 @@ A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are t
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.dist.param_names`` (each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, X)`` for the conditional survival :math:`R(x + X)/R(X)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -206,7 +251,7 @@ The cumulative intensity is the expected number of events by time :math:`x`. It 
 .. jupyter-execute::
 
     model = surv.Weibull.fit([3, 4, 5, 6, 7, 8, 9, 10])
-    print("parameter names :", model.dist.param_names)
+    print("parameter names :", model.parameter_names)
     print("params          :", model.params)
     print("R(5), F(5)      :", model.sf(5), model.ff(5))
     print("h(5), H(5)      :", model.hf(5), model.Hf(5))
@@ -223,9 +268,9 @@ Shape in, shape out. Every function evaluated at query points -- times ``x``, or
 - a 1-D query (a list, tuple or array) gives a 1-D array of its length, and a 2-D query an array of its 2-D shape, with the values the flattened query would give;
 - an empty query gives an empty array of its shape.
 
-This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions. A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
+This holds for ``sf``, ``ff``, ``Hf``, ``hf``, ``df`` and ``qf``, the per-cause ``cif``, the recurrent ``cif``, ``iif`` and ``mcf``, ``sf_tvc`` and ``Hf_tvc``, ``smoothed_hf``, and the degradation and process models' life functions, and for a distribution's own functions called with explicit parameters (``surv.Gamma.sf([5, 10], 8, 3)`` is ``surv.Gamma.sf(np.array([5, 10]), 8, 3)``; a list or tuple, of times or of parameters, is taken as an array). A confidence bound (``cb``, ``R_cb``, ``cif_cb``, ``mcf_cb``, ``bootstrap_cb``, ``band``, ``quantile_cb``) adds its own last axis when it is two-sided: shape ``query_shape + (2,)``, ``[lower, upper]`` on the last axis; a one-sided bound has the query's shape.
 
-With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row. The survival tree and forest are the one documented exception: with a matrix of covariates they evaluate every row at every time, a grid of shape ``(n_rows,) + x.shape`` (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
+With covariates the query's shape is that of ``x``: ``Z`` is one row, used at every time, or one row per time of a 1-D ``x``. A single time with several rows of ``Z`` gives one value per row, and any other number of rows is refused with a ``ValueError``. The grid of every row at every time has shape ``(n_rows,) + x.shape``: the Cox and parametric regression models give it with ``grid=True``, and the survival tree and forest, the one documented exception to the rule, give it whenever they have a matrix of covariates (with one covariate vector they follow the rule). A copula's points are ``(x1, x2)`` pairs, so its query has a trailing axis of 2: an ``(m, 2)`` query gives ``(m,)`` and a single pair a scalar.
 
 A step estimate's ``hf`` and ``df`` are the jumps between the points asked for (see above), so a point asked for alone can differ from the same point inside an array; the shapes follow the rule all the same.
 
@@ -246,6 +291,9 @@ A step estimate's ``hf`` and ``df`` are the jumps between the points asked for (
     assert km.sf([[2, 4], [6, 7]]).shape == (2, 2)
     np.testing.assert_array_equal(
         km.cb([[2, 4], [6, 7]]).reshape(-1, 2), km.cb([2, 4, 6, 7])
+    )
+    np.testing.assert_array_equal(
+        surv.Gamma.sf([5, 10], 8, 3), surv.Gamma.sf(np.array([5, 10]), 8, 3)
     )
 
 .. _missing-values:
@@ -282,7 +330,7 @@ An infinite covariate is not missing: it is dropped at fit time along with the m
 Random draws and seeds
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, and the bootstraps behind confidence bounds such as ``bootstrap_cb()`` -- takes its seed as ``random_state`` and follows one rule for it:
+Every method that draws random numbers -- ``random()``, a copula's ``sample_uv()``, the recurrent-event simulations, the bootstraps behind confidence bounds such as ``bootstrap_cb()``, and the fit of a survival tree or random survival forest (its bootstrap samples and the features drawn for each split) -- takes its seed as ``random_state`` and follows one rule for it:
 
 - ``None``, the default, draws from numpy's global random number generator, so ``np.random.seed(...)`` makes every draw reproducible, parametric or not.
 - An int, or a ``numpy.random.Generator``, gives a stream of its own (``numpy.random.default_rng(seed)``) that neither depends on nor advances the global one.
@@ -324,6 +372,7 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
 - :math:`p` is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
 - The zero-inflation mass sits at :math:`x = 0`, even when there is an offset. Before 0 nothing has failed: :math:`F(x) = 0` and :math:`R(x) = 1` for :math:`x < 0`.
 - Between 0 and the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
+- Truncation follows from that, with the window :math:`(t_l, t_r]` open on the left as everywhere: a left truncation below 0 truncates nothing (the mass at 0 is inside the window), and one at 0 excludes the mass: the window's probability is :math:`1 - f_0`, so where every row is truncated at 0, :math:`f_0` cancels from the likelihood and cannot be estimated (an exact 0 at ``tl = 0`` is refused, as any observation at its own truncation time is). This is the convention of the discrete distributions, whose mass at :math:`t_l` is outside the window too.
 - ``df(0)`` of a zero-inflated model is the point mass :math:`f_0` itself (a probability, as the likelihood uses it), not a density. ``df(x, continuous=True)`` is the continuous part alone, :math:`p - f_0` times the base density at :math:`x - \gamma`, which integrates to :math:`p - f_0`: use it to integrate the density numerically.
 - ``qf(q)`` is infinite for :math:`q \ge p` (that fraction of the population never fails), and 0 for :math:`q \le f_0`.
 - ``mean()`` is the mean lifetime :math:`E[T]`, which is infinite for an LFP model (:math:`p < 1`), since some units never fail; ``moment(n)`` (:math:`n \ge 1`) and ``var()`` are infinite too. ``mean(defective=True)`` is the *defective* mean :math:`(p - f_0)\,E[\gamma + X_0]`, the integral of :math:`t\,dF(t)` over the units that fail (and ``moment`` and ``var`` take the same keyword). For a zero-inflated model without LFP the two agree: the zeros contribute nothing. Neither is the mean life of the units that fail, :math:`\gamma + E[X_0]`.
@@ -386,8 +435,8 @@ Saving and Loading Models
 Almost every fitted SurPyval model can be saved and restored (the exceptions are listed at the end of this section):
 
 - ``model.to_dict()`` returns a dictionary of plain Python types (strings, numbers, lists), so it can be written as JSON or stored directly in a document database such as MongoDB.
-- ``model.to_json(path)`` writes that dictionary to a JSON file. The dictionaries and files are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
-- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it**. You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
+- ``model.to_json(path)`` writes that dictionary to a JSON file; ``model.to_json()``, with no path, returns the JSON text instead. The dictionaries, files and text are strict JSON, readable by any JSON parser (see below for how infinite and NaN values are stored).
+- ``surpyval.from_dict(d)`` and ``surpyval.from_json(path)`` restore a model **of whichever class wrote it** (``from_json`` also takes the JSON text itself). You do not need to know whether the file holds a Weibull, a Kaplan-Meier estimate, a Cox model or a recurrence model; the readers work it out from the dictionary.
 - Each model class also has its own ``from_dict`` / ``from_json`` for when the class is known in advance (for example ``surv.Parametric.from_dict`` or ``surv.NonParametric.from_dict``; note these are the *model* classes, not fitters such as ``surv.Weibull`` or ``surv.KaplanMeier``). They raise a ``ValueError`` if handed a dictionary written by a different class, and otherwise check a dictionary exactly as ``surpyval.from_dict`` does.
 
 .. jupyter-execute::
@@ -407,7 +456,7 @@ Almost every fitted SurPyval model can be saved and restored (the exceptions are
     print(type(restored_weibull).__name__, restored_weibull.params)
     print(type(restored_km).__name__, restored_km.sf(6), km.sf(6))
 
-Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``) is stamped 1 and still loads in older releases. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
+Every dictionary carries a ``"schema"`` version number, an integer: the oldest version that reads the file correctly, so a model with no infinite or NaN value (and, for a regression model, no formula feature that older releases cannot rebuild, such as ``C(g)`` or ``scale(z)``, and, for a non-parametric estimate, no bounds from ``set_support`` and, if its data were left truncated, no stored sample size for ``band``, and, for a regression model, a baseline at ``Z = 0``: not one kept at the covariate means with ``center=True``) is stamped 1 and still loads in older releases. A file written by a newer version of SurPyval than the one installed is refused with an error asking you to upgrade, rather than being misread. The readers also refuse, with a ``ValueError`` that says what is wrong, a dictionary that has lost an entry (it names the missing key), a ``"schema"`` that is not an integer, and a univariate parametric model whose parameters are outside the distribution's bounds (a negative Weibull scale, say). The class-level readers (``surv.Parametric.from_dict`` and the rest) make the same checks.
 
 A fitted model can hold values that are not finite numbers: an untruncated bound is ``-inf`` or ``inf``, a Kaplan-Meier cumulative hazard is ``inf`` after the last death, and a variance can be undefined (``nan``). JSON has no way to write these (Python's ``json`` writes ``Infinity`` and ``NaN``, which JavaScript and many databases refuse), so ``to_dict`` writes each one as ``null`` and records what it stood for under ``"non_finite"``: for each kind (``"inf"``, ``"-inf"``, ``"nan"``) a list of `JSON Pointers <https://www.rfc-editor.org/rfc/rfc6901>`_ to its values, relative to the dictionary holding the record. Every SurPyval reader puts the original values back; another program sees ``null`` where no number applies, and can read the record to recover them. Files written by earlier versions of SurPyval, which contain ``Infinity`` and ``NaN``, still load.
 

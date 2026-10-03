@@ -28,6 +28,7 @@ import pytest
 
 import surpyval as sp
 from surpyval.recurrent import ARA, GeneralizedOneRenewal
+from surpyval.tests._helpers import random_right_censoring
 from surpyval.tests.calibration._montecarlo import check_bias
 
 # --- univariate MLE with truncation and interval censoring ---------------
@@ -148,15 +149,10 @@ def _design(rng, n):
     return np.column_stack([rng.binomial(1, 0.5, n), rng.normal(0, 1, n)])
 
 
-def _censored(t, rng, c_max):
-    cens = rng.uniform(0, c_max, t.size)
-    return np.minimum(t, cens), (cens < t).astype(int)
-
-
 def _cox_data(rng, n, beta):
     Z = _design(rng, n)
     t = 10.0 * (rng.exponential(size=n) / np.exp(Z @ beta)) ** (1 / 1.5)
-    x, c = _censored(t, rng, 25.0)
+    x, c = random_right_censoring(t, rng, 25.0)
     return x, Z, c
 
 
@@ -195,7 +191,7 @@ def test_buckley_james_recovery():
     for r in range(reps):
         Z = _design(rng, n)
         t = np.exp(2.0 - Z @ beta + rng.normal(0, 0.5, n))
-        x, c = _censored(t, rng, 25.0)
+        x, c = random_right_censoring(t, rng, 25.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             est[r] = sp.BuckleyJames.fit(x=x, Z=Z, c=c).params
@@ -212,7 +208,7 @@ def test_lin_ying_recovery():
         Z = _design(rng, n)
         Z[:, 1] = np.abs(Z[:, 1])
         t = rng.exponential(1 / (0.1 + Z @ beta))
-        x, c = _censored(t, rng, 25.0)
+        x, c = random_right_censoring(t, rng, 25.0)
         model = sp.AdditiveHazards.fit(x=x, Z=Z, c=c)
         est[r] = model.params
         se[r] = model.standard_errors()
@@ -232,14 +228,62 @@ def test_frailty_recovery():
         Z = rng.binomial(1, 0.5, (groups.size, 1))
         H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
         t = 10.0 * H ** (1 / 1.5)
-        x, c = _censored(t, rng, 30.0)
+        x, c = random_right_censoring(t, rng, 30.0)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = sp.WeibullFrailty.fit(x, Z=Z, c=c, groups=groups)
         est[r] = model._param_vector()
         errors = model.standard_errors()
-        se[r] = [errors[p] for p in model.param_names]
+        se[r] = [errors[p] for p in model.parameter_names]
     check_bias(est, truth, "WeibullFrailty", standard_errors=se)
+
+
+def test_lognormal_frailty_recovery():
+    # As above with a log-normal frailty (#343): u = exp(w), w ~ N(0, 0.5),
+    # so the baseline is that of a group of median frailty.
+    rng = np.random.default_rng(343)
+    groups = np.repeat(np.arange(60), 5)
+    truth = np.array([10.0, 1.5, 0.6, 0.5])
+    fitter = sp.Frailty(sp.Weibull, family="lognormal")
+    reps = 300
+    est, se = np.empty((reps, 4)), np.empty((reps, 4))
+    for r in range(reps):
+        u = np.exp(rng.normal(0.0, np.sqrt(0.5), 60))[groups]
+        Z = rng.binomial(1, 0.5, (groups.size, 1))
+        H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
+        t = 10.0 * H ** (1 / 1.5)
+        x, c = random_right_censoring(t, rng, 30.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = fitter.fit(x, Z=Z, c=c, groups=groups)
+        est[r] = model.params
+        errors = model.standard_errors()
+        se[r] = [errors[p] for p in model.parameter_names]
+    check_bias(est, truth, "WeibullFrailty[lognormal]", standard_errors=se)
+
+
+def test_cox_frailty_recovery():
+    # The gamma frailty of test_frailty_recovery with the baseline left to
+    # the data (#342): the coefficient and theta, whose standard error is
+    # the profile likelihood's curvature.
+    rng = np.random.default_rng(342)
+    groups = np.repeat(np.arange(60), 5)
+    truth = np.array([0.6, 0.5])
+    reps = 200
+    est, se = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        u = rng.gamma(2.0, 0.5, 60)[groups]
+        Z = rng.binomial(1, 0.5, (groups.size, 1))
+        H = rng.exponential(size=groups.size) / (u * np.exp(0.6 * Z[:, 0]))
+        t = 10.0 * H ** (1 / 1.5)
+        x, c = random_right_censoring(t, rng, 30.0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = sp.CoxFrailty.fit(x, Z=Z, c=c, groups=groups)
+        est[r] = model.params
+        errors = model.standard_errors()
+        se[r] = [errors[p] for p in model.parameter_names]
+    check_bias(est, truth, "CoxFrailty", standard_errors=se)
 
 
 # --- renewal models ---------------------------------------------------------

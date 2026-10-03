@@ -11,4 +11,5 @@ improving one. The fit returns a :doc:`Renewal Model <renewal_model>`.
 
    .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit
    .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit_from_df
    .. automethod:: surpyval.recurrent.renewal.generalized_one_renewal.GeneralizedOneRenewal.fit_from_parameters

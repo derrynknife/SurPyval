@@ -19,6 +19,8 @@ reuses the whole intensity-fitting, inference and diagnostic machinery
 unchanged.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -41,8 +43,9 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.recurrent_utils import handle_xicn
+from surpyval.utils.validation import unknown_cause_error
 
 
 class CauseSpecificNHPP(SerialisableMixin):
@@ -87,6 +90,27 @@ class CauseSpecificNHPP(SerialisableMixin):
     models: dict
     dist: Any
     how: str
+
+    @property
+    def maximum(self) -> str:
+        """What the causes' fits reached, one of ``MAXIMUM_STATES``
+        (``surpyval.utils.no_maximum``): the worst of the per-cause
+        models' ``maximum`` (principles 12 and 13).
+
+        Examples
+        --------
+        >>> from surpyval.recurrent import CauseSpecificNHPP
+        >>> x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 60]
+        >>> i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+        >>> c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+        >>> e = ["a", "b", "a", "b", "a", None, "b", "a", "b", "a", None]
+        >>> CauseSpecificNHPP.fit(x, i=i, c=c, e=e).maximum
+        'verified'
+        """
+        return combined_maximum(
+            getattr(self.models[k], "maximum", "unknown")
+            for k in self.event_types
+        )
 
     def __repr__(self) -> str:
         return "Cause-specific {} with causes: {}".format(
@@ -343,27 +367,20 @@ class CauseSpecificNHPP(SerialisableMixin):
 
     def _check_cause(self, cause: Any) -> None:
         if cause not in self.models:
-            raise ValueError(
-                "Unrecognised cause {!r}; known causes are {}".format(
-                    cause, self.event_types
-                )
-            )
+            raise unknown_cause_error(cause, self.event_types)
 
-    @renamed_arguments(cause="event")
     def cif(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific cumulative intensity: the expected count of
         events of type ``event``."""
         self._check_cause(event)
         return self.models[event].cif(x)
 
-    @renamed_arguments(cause="event")
     def iif(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific instantaneous intensity of events of type
         ``event``."""
         self._check_cause(event)
         return self.models[event].iif(x)
 
-    @renamed_arguments(cause="event")
     def mcf(self, x: ArrayLike, event: Any) -> np.ndarray:
         """Cause-specific mean cumulative function (alias of :meth:`cif`)."""
         return self.cif(x, event)

@@ -3,6 +3,7 @@ from .dual_exponential import DualExponential
 from .dual_power import DualPower
 from .exponential import ExponentialLifeModel, InverseExponential
 from .eyring import Eyring, InverseEyring
+from .general_log_linear import GeneralLogLinear
 from .lifemodel import LifeModel
 from .linear import Linear
 from .parameter_substitution import ParameterSubstitutionFitter
@@ -16,9 +17,9 @@ from .power_exponential import PowerExponential
 # ``ExponentialLifeModel`` has ``name == "Exponential"``, which also collides
 # with the ``Exponential`` distribution in the top-level namespace, so an
 # explicit map is required.
-# ``GeneralLogLinear`` is intentionally excluded: its parameterisation depends
-# on the covariate dimension (its ``phi_param_map``/``phi_bounds`` are
-# callables), so it cannot be rebuilt from a name alone.
+# ``GeneralLogLinear``'s parameters depend on the number of stress columns:
+# it is stored unresolved, and a dict rebuilds the model for its columns
+# with ``resolve`` (its ``"n_stresses"``).
 LIFE_MODELS = {
     model.name: model
     for model in (
@@ -32,6 +33,7 @@ LIFE_MODELS = {
         DualExponential,
         DualPower,
         PowerExponential,
+        GeneralLogLinear,
     )
 }
 
@@ -41,6 +43,7 @@ __all__ = [
     "DualPower",
     "ExponentialLifeModel",
     "Eyring",
+    "GeneralLogLinear",
     "InverseExponential",
     "InverseEyring",
     "InversePower",

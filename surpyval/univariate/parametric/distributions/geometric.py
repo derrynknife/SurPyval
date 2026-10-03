@@ -1,8 +1,8 @@
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval import np
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
     eulerian_numbers,
@@ -44,7 +44,7 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
             # -- whose structural zeros sit at x = 0 -- is permitted (the
             # fitter only allows ``zi`` when ``support[0] == 0``).
             support=(0.0, np.inf),
-            param_names=["p"],
+            parameter_names=["p"],
             param_map={"p": 0},
             plot_x_scale="linear",
         )
@@ -65,11 +65,13 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # Nothing can fail before the first trial, so R = 1 below zero.
         # The algebraic form returns 1/(1 - p) there -- a survival above
         # one, which ``hf`` used to divide by.
-        return np.where(x < 0.0, 1.0, (1.0 - p) ** x)
+        return np.exp(self.log_sf(x, p))
 
     def ff(self, x: Numeric, p: Boxable) -> Boxable:
         r"""CDF :math:`F(k) = 1 - (1 - p)^{k}`."""
-        return 1.0 - self.sf(x, p)
+        # -expm1 keeps a small F exact: 1 - R lost the digits of F below
+        # about 1e-8 (ff(1, 1e-9) was 9.9999997e-10, #446).
+        return -np.expm1(self.log_sf(x, p))
 
     def df(self, x: Numeric, p: Boxable) -> Boxable:
         r"""PMF :math:`P(T = k) = (1 - p)^{k - 1}\,p`, zero below ``k = 1``."""
@@ -79,7 +81,7 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # bound as k decreases. The fitter's interior check keeps such a
         # value out of a likelihood, but df is public and a caller
         # plotting a pmf from zero would get it.
-        return np.where(x < 1.0, 0.0, (1.0 - p) ** (x - 1.0) * p)
+        return np.exp(self.log_df(x, p))
 
     def hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""Discrete hazard :math:`h(k) = p` (constant, memoryless)."""
@@ -89,17 +91,19 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
 
     def Hf(self, x: Numeric, p: Boxable) -> Boxable:
         r"""Cumulative hazard :math:`H(k) = -\ln R(k) = -k\ln(1 - p)`."""
-        return np.where(x < 0.0, 0.0, -x * np.log(1.0 - p))
+        return -self.log_sf(x, p)
 
     def qf(self, u: Numeric, p: Boxable) -> Boxable:
         r"""Quantile: the smallest integer ``k`` with :math:`F(k) \geq u`."""
         u = np.asarray(u, dtype=float)
-        k = np.log1p(-u) / np.log(1.0 - p)
+        k = np.log1p(-u) / np.log1p(-p)
         # A caller inverting the CDF passes u = F(k), which was formed as
         # 1 - (1 - p)^k. Recovering k from it lands a few ulp above the
         # integer, and a bare ceil() then answers k + 1 -- so F and its
         # quantile did not invert each other. Snap first.
-        k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
+        # (u = 1 is k = inf, where inf - inf is NaN and k stands)
+        with np.errstate(invalid="ignore"):
+            k = np.where(np.abs(k - np.round(k)) < 1e-9, np.round(k), k)
         return np.maximum(np.ceil(k), 1.0)
 
     def mean(self, p: Boxable) -> Boxable:
@@ -160,14 +164,35 @@ class Geometric_(OptimisedFitMixin, DiscreteParametricFitter):
         # sampling never does, so this is always a real array.
         return np.asarray(self.qf(U, p))
 
+    # log1p(-p), not log(1 - p): 1 - p rounds away the digits of a small
+    # p (8 of them at p = 1e-9), and every function here is built on it
+    # (#446).
+
     def log_df(self, x: Numeric, p: Boxable) -> Boxable:
         # -inf below the support, matching ``df``'s zero.
-        return np.where(
-            x < 1.0, -np.inf, (x - 1.0) * np.log(1.0 - p) + np.log(p)
-        )
+        return np.where(x < 1.0, -np.inf, (x - 1.0) * np.log1p(-p) + np.log(p))
 
     def log_sf(self, x: Numeric, p: Boxable) -> Boxable:
-        return np.where(x < 0.0, 0.0, x * np.log(1.0 - p))
+        return np.where(x <= 0.0, 0.0, x * np.log1p(-p))
+
+    def log_ff(self, x: Numeric, p: Boxable) -> Boxable:
+        # log F from F where F is small, and log1p(-R) where R is: the
+        # base's log(-expm1(-H)) is log(1 - R), which rounds to 0 once R
+        # is below 1e-16 (log_ff was 0.0 where it is -1e-30).
+        # The unused branch of each ``where`` gets a harmless 1 or 0, so
+        # log(0) warns nowhere; F = 0 (below k = 1) is -inf.
+        log_sf = self.log_sf(x, p)
+        F = -np.expm1(log_sf)
+        small = F < 0.5
+        return np.where(
+            F <= 0.0,
+            -np.inf,
+            np.where(
+                small,
+                np.log(np.where(small & (F > 0.0), F, 1.0)),
+                np.log1p(-np.where(small, 0.0, np.exp(log_sf))),
+            ),
+        )
 
 
 Geometric = Geometric_("Geometric")

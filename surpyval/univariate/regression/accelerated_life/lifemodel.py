@@ -15,15 +15,21 @@ class LifeModel(ABC):
     :meth:`phi` and :meth:`phi_init`. The built-in life models are
     instances of subclasses: ``Power``, ``InversePower``, ``Eyring``,
     ``InverseEyring``, ``ExponentialLifeModel``, ``InverseExponential``,
-    ``Linear``, ``DualExponential``, ``DualPower`` and
-    ``PowerExponential``.
+    ``Linear``, ``DualExponential``, ``DualPower``, ``PowerExponential``
+    and ``GeneralLogLinear``.
+
+    A life model whose parameters depend on the number of stress columns
+    (``GeneralLogLinear``, one coefficient per column) sets
+    ``n_stresses = None`` and overrides :meth:`resolve`, which the fit
+    calls with the number of columns of ``Z`` to get the model with a
+    fixed ``phi_param_map`` and ``phi_bounds``.
 
     Examples
     --------
     ``Power`` is one, with :math:`L(Z) = a Z^n`:
 
     >>> import numpy as np
-    >>> from surpyval import LifeModel, Power
+    >>> from surpyval.life_models import LifeModel, Power
     >>> isinstance(Power, LifeModel)
     True
     >>> Power.phi_param_map
@@ -51,6 +57,24 @@ class LifeModel(ABC):
         self.phi_param_map = phi_param_map
         self.phi_bounds = phi_bounds
 
+    def resolve(self, n_stresses: int) -> "LifeModel":
+        """
+        The life model for ``n_stresses`` stress columns. A model with a
+        fixed number of parameters is the same for any number, and
+        returns itself (a wrong number of columns is refused by the fit);
+        ``GeneralLogLinear`` returns the model with one coefficient per
+        column.
+
+        Examples
+        --------
+        >>> from surpyval.life_models import GeneralLogLinear, Power
+        >>> Power.resolve(1) is Power
+        True
+        >>> GeneralLogLinear.resolve(2).phi_param_map
+        {'c': 0, 'beta_0': 1, 'beta_1': 2}
+        """
+        return self
+
     @abstractmethod
     def phi(self, Z: ndarray, *params: float) -> ndarray:
         """
@@ -67,3 +91,18 @@ class LifeModel(ABC):
         value per row of ``Z``). Typically a least-squares fit of the
         linearised relationship.
         """
+
+    def _stress_terms(
+        self, Z: ndarray
+    ) -> "tuple[ndarray, tuple[str, ...], bool] | None":
+        """
+        The terms of the stresses the log-life is linear in, for the
+        check of which stress effects the data determine (#503): one
+        column per stress column of ``Z`` (``log s`` for a power term,
+        ``1 / s`` for an exponential one), the life-model parameter each
+        multiplies, and whether the model has a free constant factor
+        (an intercept on the log scale, which absorbs a constant
+        stress). ``None`` for a life model with no such form, or with one
+        stress, where one stress level is refused already.
+        """
+        return None

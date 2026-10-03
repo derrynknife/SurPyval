@@ -37,7 +37,7 @@ def _fit_each():
         "GR-ii": GeneralizedRenewal.fit(x, i, dist=Weibull, kijima="ii"),
         "G1R": GeneralizedOneRenewal.fit(x, i, dist=Weibull),
         "ARA-m2": ARA.fit(x, i, dist=Weibull, m=2),
-        "ARI": ARI.fit(x, i, dist=CrowAMSAA, m=1),
+        "ARI": ARI.fit(x, i, baseline=CrowAMSAA, m=1),
         "_x": x,
         "_i": i,
     }
@@ -131,9 +131,9 @@ def test_age_reduction_residuals_are_exp1():
 def test_intensity_reduction_residuals_are_exp1():
     # ARI (intensity reduction): the reduced-intensity integral per interval
     # is Exp(1) under the fitted model -- a different construction entirely.
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
     e, model = _simulate_refit_residuals(
-        truth, ARI, dict(dist=CrowAMSAA, m=1), seed=5
+        truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=5
     )
     assert e.size > 1500
     assert abs(e.mean() - 1.0) < 0.06
@@ -176,8 +176,8 @@ def test_cvm_age_reduction_runs_and_matches_statistic():
 
 
 def test_cvm_intensity_reduction_runs():
-    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, dist=CrowAMSAA)
-    model = _small_fit(truth, ARI, dict(dist=CrowAMSAA, m=1), seed=4)
+    truth = ARI.fit_from_parameters([20.0, 1.5], 0.5, m=1, baseline=CrowAMSAA)
+    model = _small_fit(truth, ARI, dict(baseline=CrowAMSAA, m=1), seed=4)
     result = model.cramer_von_mises(n_boot=10, random_state=2)
     assert isinstance(result, GoodnessOfFitResult)
     assert 0.0 < result.p_value <= 1.0
@@ -202,3 +202,40 @@ def test_cvm_no_data_guard():
     )
     with pytest.raises(ValueError, match="fitted from data"):
         model.cramer_von_mises()
+
+
+# ---------------------------------------------------------------------------
+# The goodness-of-fit bootstrap keeps each item's observation
+# scheme.
+# ---------------------------------------------------------------------------
+
+
+def test_renewal_cvm_resimulates_time_truncated_items_to_their_window(
+    monkeypatch,
+):
+    # Item 1 is time truncated at 60, item 2 failure truncated at 44.
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44]
+    i = [1] * 6 + [2] * 4
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+    model = GeneralizedOneRenewal.fit(x, i, c)
+
+    simulated = []
+    fitter = model._fitter
+    original_refit = fitter._refit
+
+    def spy(fitted, data):
+        simulated.append(data)
+        return original_refit(fitted, data)
+
+    monkeypatch.setattr(fitter, "_refit", spy)
+    model.cramer_von_mises(n_boot=5, random_state=3)
+
+    assert simulated
+    for data in simulated:
+        x1, c1, _ = data.get_events_for_item(1)
+        x2, c2, _ = data.get_events_for_item(2)
+        # time truncated: ends in a c=1 row at 60, random event count
+        assert c1[-1] == 1 and x1[-1] == 60
+        assert np.all(x1[:-1] < 60)
+        # failure truncated: the observed four events, all exact
+        assert len(x2) == 4 and np.all(c2 == 0)

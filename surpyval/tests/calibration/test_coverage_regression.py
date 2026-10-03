@@ -21,7 +21,8 @@ import pytest
 from scipy.stats import norm
 
 import surpyval as sp
-from surpyval.tests.calibration._montecarlo import check_coverage
+from surpyval.tests._helpers import random_right_censoring
+from surpyval.tests.calibration._montecarlo import check_bias, check_coverage
 
 N = 200
 Z_CRIT = norm.ppf(0.975)
@@ -29,11 +30,6 @@ Z_CRIT = norm.ppf(0.975)
 
 def _covariates(rng, n=N):
     return np.column_stack([rng.binomial(1, 0.5, n), rng.normal(0, 1, n)])
-
-
-def _censor(t, rng, c_max):
-    cens = rng.uniform(0, c_max, t.size)
-    return np.minimum(t, cens), (cens < t).astype(int)
 
 
 @pytest.mark.parametrize("tied", [False, True], ids=["continuous", "ties"])
@@ -48,7 +44,7 @@ def test_cox_coefficient_coverage(tied):
         Z = _covariates(rng)
         # Weibull(10, 1.5) baseline, proportional hazards exp(beta'Z).
         t = 10.0 * (rng.exponential(size=N) / np.exp(Z @ beta)) ** (1 / 1.5)
-        x, c = _censor(t, rng, 25.0)
+        x, c = random_right_censoring(t, rng, 25.0)
         if tied:
             x = np.ceil(x)  # unit grid: about 20 distinct times
         ties += (1 - np.unique(x).size / N) / reps
@@ -64,6 +60,29 @@ def test_cox_coefficient_coverage(tied):
     label = "CoxPH ({})".format("efron, ties" if tied else "breslow")
     check_coverage(lo, hi, beta, 0.95, label + " model-based", slack=slack)
     check_coverage(rlo, rhi, beta, 0.95, label + " robust", slack=slack)
+
+
+def test_proportional_odds_coefficient_coverage():
+    # The semi-parametric proportional odds NPMLE (#341): log-logistic
+    # baseline odds (t / 10)^2, survival odds multiplied by exp(beta'Z),
+    # about 50% censored. The intervals are param_cb's, from the profile
+    # likelihood's information; the standard errors must match the spread.
+    rng = np.random.default_rng(341)
+    beta = np.array([1.0, -0.5])
+    reps = 1000
+    lo, hi = np.empty((reps, 2)), np.empty((reps, 2))
+    est, se = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        Z = _covariates(rng)
+        u = rng.uniform(size=N)
+        t = 10.0 * (u / (1 - u) * np.exp(Z @ beta)) ** 0.5
+        x, c = random_right_censoring(t, rng, 30.0)
+        model = sp.ProportionalOdds.fit(x, Z, c=c)
+        est[r], se[r] = model.beta, model.se
+        bounds = [model.param_cb(name) for name in model.parameter_names]
+        lo[r], hi[r] = np.array(bounds).T
+    check_coverage(lo, hi, beta, 0.95, "ProportionalOdds param_cb")
+    check_bias(est, beta, "ProportionalOdds", standard_errors=se)
 
 
 def _ph(rng, Z, phi):
@@ -141,11 +160,11 @@ def test_parametric_regression_param_cb(name):
         if not uses_phi:
             Z = np.column_stack([Z[:, 0], np.abs(Z[:, 1])])
         t = simulate(rng, Z, np.exp(Z @ coef) if uses_phi else coef)
-        x, c = _censor(t, rng, c_max)
+        x, c = random_right_censoring(t, rng, c_max)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model = fitter.fit(x=x, Z=Z, c=c)
-            names = model.parameter_names()
+            names = model.parameter_names
             for j, p in enumerate(names):
                 lo[r, j], hi[r, j] = model.param_cb(p)
     check_coverage(lo, hi, truth, 0.95, name + " param_cb")

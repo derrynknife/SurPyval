@@ -6,7 +6,6 @@ from numpy.typing import ArrayLike
 
 from surpyval.recurrent.inference import require_data
 from surpyval.recurrent.nonparametric import NonParametricCounting
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -243,6 +242,38 @@ class RecurrenceSimulationMixin:
         # exact, so the simulated MCF needs no baseline offset (#288).
         return model
 
+    def _check_count_reachable(self, events: int) -> None:
+        """
+        Refuse count termination for an intensity whose expected number
+        of events over all time, ``cif(inf)``, is finite (a Cox-Lewis with
+        ``beta < 0``): a sequence then has fewer than ``events + 1``
+        events with positive probability, and is observed forever. The
+        renewal models (no ``cif``) always reach the count.
+        """
+        if not hasattr(self, "cif"):
+            return
+        with np.errstate(all="ignore"):
+            total = float(
+                np.asarray(self.cif(np.inf, *self._cif_args()), dtype=float)
+            )
+        if not np.isfinite(total):
+            return
+        from scipy.stats import poisson
+
+        short = float(poisson.cdf(events, total))
+        raise ValueError(
+            "count-terminated simulation needs the expected number of "
+            "events to grow without bound, but this model's cumulative "
+            "intensity levels off at cif(inf) = {:.4g} (a falling "
+            "intensity). The number of events over all time is Poisson "
+            "with that mean, so a sequence never reaches the {} events "
+            "it is simulated to with probability {:.3g}. Use "
+            "time_terminated_simulation (or _data) to observe the "
+            "sequences to a fixed time instead.".format(
+                total, events + 1, short
+            )
+        )
+
     def _simulate_count_xicn(
         self, events: int, items: int, random_state: "int | None"
     ) -> dict:
@@ -250,6 +281,7 @@ class RecurrenceSimulationMixin:
         Simulate ``items`` count-terminated sequences and return the raw event
         data as an ``xicn`` dict (``events + 1`` exact events per sequence).
         """
+        self._check_count_reachable(events)
         run = simulate_sequences(
             self._new_batch_sampler(items),
             items,
@@ -286,7 +318,6 @@ class RecurrenceSimulationMixin:
             warnings.warn(MAX_EVENTS_WARNING.format(max_events))
         return run.xicn()
 
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation_data(
         self, events: int, items: int = 1, random_state: "int | None" = None
     ) -> Any:
@@ -315,6 +346,14 @@ class RecurrenceSimulationMixin:
         RecurrentEventData
             The simulated recurrence data in xicn format.
 
+        Raises
+        ------
+
+        ValueError
+            If the model's expected number of events over all time,
+            ``cif(inf)``, is finite (a Cox-Lewis with ``beta < 0``): a
+            sequence may then never reach its ``events + 1``-th event.
+
         Notes
         -----
 
@@ -336,7 +375,6 @@ class RecurrenceSimulationMixin:
         xicn = self._simulate_count_xicn(events, items, random_state)
         return handle_xicn(**xicn)
 
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation_data(
         self,
         T: float,
@@ -382,7 +420,6 @@ class RecurrenceSimulationMixin:
         )
         return handle_xicn(**xicn)
 
-    @renamed_arguments(seed="random_state")
     def count_terminated_simulation(
         self, events: int, items: int = 1, random_state: "int | None" = None
     ) -> Any:
@@ -407,6 +444,15 @@ class RecurrenceSimulationMixin:
 
         NonParametricCounting
             An NonParametricCounting model built from the simulated data.
+
+        Raises
+        ------
+
+        ValueError
+            If the model's expected number of events over all time,
+            ``cif(inf)``, is finite (a Cox-Lewis with ``beta < 0``): a
+            sequence may then never reach its ``events + 1``-th event. Use
+            :meth:`time_terminated_simulation` for such a model.
         """
         xicn = self._simulate_count_xicn(events, items, random_state)
 
@@ -418,7 +464,6 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
-    @renamed_arguments(seed="random_state")
     def time_terminated_simulation(
         self,
         T: float,
@@ -472,7 +517,6 @@ class RecurrenceSimulationMixin:
         model.var = None
         return model
 
-    @renamed_arguments(seed="random_state")
     @keeps_query_shape
     def mcf(
         self,
@@ -508,12 +552,17 @@ class RecurrenceSimulationMixin:
         if x.size == 0:
             # Nothing to simulate to (the horizon is the largest time).
             return np.empty(0)
+        # A missing time is NaN in the answer and plays no part in the
+        # horizon: it made the horizon NaN, and the simulation empty
+        # ("'x' cannot be empty", #382).
+        known = x[~np.isnan(x)]
+        if known.size == 0:
+            return np.full(x.shape, np.nan)
         np_model = self.time_terminated_simulation(
-            float(x.max()), items=items, random_state=random_state
+            float(known.max()), items=items, random_state=random_state
         )
         return np_model.mcf(x)
 
-    @renamed_arguments(seed="random_state")
     def plot(
         self,
         ax: Any = None,

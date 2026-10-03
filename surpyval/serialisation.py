@@ -30,6 +30,7 @@ puts the original values back; see :func:`encode_non_finite`.
 
 import functools
 import inspect
+import itertools
 import json
 import math
 import numbers
@@ -50,11 +51,15 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.univariate.regression.semi_parametric_regression_model"
     ),
     "FrailtyModel": ("surpyval.univariate.regression.frailty.frailty_model"),
+    "CoxFrailtyModel": ("surpyval.univariate.regression.frailty.cox_frailty"),
     "AdditiveHazardsModel": (
         "surpyval.univariate.regression.additive_hazards.additive_hazards"
     ),
     "BuckleyJamesModel": (
         "surpyval.univariate.regression.buckley_james.buckley_james"
+    ),
+    "ProportionalOddsModel": (
+        "surpyval.univariate.regression.proportional_odds.proportional_odds"
     ),
     "MixtureModel": "surpyval.univariate.parametric.mixture_model",
     "RoystonParmarModel": ("surpyval.univariate.parametric.royston_parmar"),
@@ -86,10 +91,8 @@ _TAGGED_MODELS: dict[str, str] = {
         "surpyval.recurrent.regression.proportional_intensity"
     ),
     "RenewalModel": "surpyval.recurrent.renewal.renewal_model",
-    "DegradationModel": "surpyval.degradation.degradation_analysis",
-    "InducedFailureDistribution": (
-        "surpyval.degradation.degradation_analysis"
-    ),
+    "DegradationModel": "surpyval.degradation.degradation_model",
+    "InducedFailureDistribution": "surpyval.degradation.rul",
     "WienerProcessModel": "surpyval.degradation.process_models",
     "GammaProcessModel": "surpyval.degradation.process_models",
     "DestructiveDegradationModel": "surpyval.degradation.destructive",
@@ -149,10 +152,13 @@ _PARAMETERIZATIONS: dict[str, tuple[str, str]] = {
 # which such a reader refuses with a request to upgrade: one carrying a
 # ``"non_finite"`` record (whose ``null`` values it would take for
 # missing entries), a formula model whose design-matrix state is
-# stored only in the schema-2 form (see ``_needs_formula_reader``), or a
+# stored only in the schema-2 form (see ``_formula_without_levels``), or a
 # non-parametric estimate with the ``"support"`` its ``set_support`` gave
 # it (new in schema 2; a schema-1 reader would silently drop it, and
-# with it the estimate's values outside the data).
+# with it the estimate's values outside the data), or a regression model
+# fitted with ``center=True``, with a nonzero covariate ``"center"`` (new
+# in schema 2, #459, #463; a schema-1 reader would ignore it and take the
+# baseline, which is that of a unit at the centre, for the baseline at 0).
 SCHEMA_VERSION = 2
 
 # The oldest version whose readers restore a document with neither of
@@ -200,13 +206,95 @@ def _non_finite_kind(value: float) -> str:
     return "inf" if value > 0 else "-inf"
 
 
+#: Below this length a list is walked item by item: the one-pass paths
+#: have the fixed cost of an array round trip.
+_FAST_LIST_MIN = 8
+
+#: Scalar types ``_encode`` returns as they are.
+_PLAIN_SCALARS = frozenset((int, bool, str, type(None)))
+_FLOAT = frozenset((float,))
+_LIST = frozenset((list,))
+
+
+def _all_of_types(values: Any, types: frozenset) -> bool:
+    """Whether every item's type is exactly one of ``types`` (a subclass,
+    such as ``bool`` for ``int``, does not count unless listed)."""
+    return types.issuperset(map(type, values))
+
+
+def _float_rows(value: list) -> bool:
+    """Whether ``value`` is a list of float lists of one common length,
+    as ``tolist`` gives for a two-column float array (a model's interval
+    or truncation data)."""
+    return (
+        _all_of_types(value, _LIST)
+        and len(set(map(len, value))) == 1
+        and len(value[0]) > 0
+        and _all_of_types(itertools.chain.from_iterable(value), _FLOAT)
+    )
+
+
+def _encode_floats(
+    array: np.ndarray,
+    pointer: str,
+    found: dict[str, list[str]],
+    out: "list | None" = None,
+) -> list:
+    """``_encode`` of a float array of one or more dimensions in one pass:
+    ``tolist`` (or ``out``, a fresh list already holding it) with the
+    non-finite entries set to ``None``, and pointers built for those
+    entries only, in the order the item-by-item walk visits them
+    (row-major, as ``argwhere`` lists them)."""
+    if out is None:
+        out = array.tolist()
+    bad = ~np.isfinite(array)
+    if not bad.any():
+        return out
+    values = array[bad]
+    kinds = np.where(
+        np.isnan(values), "nan", np.where(values > 0, "inf", "-inf")
+    )
+    kinds = kinds.tolist()
+    if array.ndim == 1:
+        for j, kind in zip(np.flatnonzero(bad).tolist(), kinds):
+            found[kind].append(f"{pointer}/{j}")
+            out[j] = None
+        return out
+    if array.ndim == 2:
+        for (i, j), kind in zip(np.argwhere(bad).tolist(), kinds):
+            found[kind].append(f"{pointer}/{i}/{j}")
+            out[i][j] = None
+        return out
+    for index, kind in zip(np.argwhere(bad).tolist(), kinds):
+        found[kind].append(pointer + "".join(f"/{j}" for j in index))
+        row = out
+        for j in index[:-1]:
+            row = row[j]
+        row[index[-1]] = None
+    return out
+
+
 def _encode(value: Any, pointer: str, found: dict[str, list[str]]) -> Any:
     """``value`` with native types and its non-finite floats as ``None``,
     recording each replaced float's pointer in ``found``."""
     if isinstance(value, np.ndarray):
+        # Numeric arrays -- a fitted model's curves and data -- in one
+        # pass, not one recursive call per item (#515).
+        if value.ndim and value.dtype.kind == "f":
+            return _encode_floats(value, pointer, found)
         value = value.tolist()
     elif isinstance(value, np.generic):
         value = value.item()
+    if type(value) is list and len(value) >= _FAST_LIST_MIN:
+        # Likewise the lists ``tolist`` gives.
+        if _all_of_types(value, _FLOAT):
+            array = np.array(value, dtype=float)
+            return _encode_floats(array, pointer, found, list(value))
+        if _float_rows(value):
+            array = np.array(value, dtype=float)
+            return _encode_floats(array, pointer, found)
+        if _all_of_types(value, _PLAIN_SCALARS):
+            return list(value)
     if isinstance(value, dict):
         return {
             k: _encode(v, f"{pointer}/{_pointer_token(k)}", found)
@@ -299,10 +387,11 @@ def _parse_record(record: Any) -> dict[str, Any]:
         for pointer in pointers:
             if not isinstance(pointer, str) or not pointer.startswith("/"):
                 raise _corrupt_record(f"{pointer!r} is not a JSON Pointer")
-            tokens = [
-                t.replace("~1", "/").replace("~0", "~")
-                for t in pointer[1:].split("/")
-            ]
+            tokens = pointer[1:].split("/")
+            if "~" in pointer:
+                tokens = [
+                    t.replace("~1", "/").replace("~0", "~") for t in tokens
+                ]
             node = trie
             for token in tokens[:-1]:
                 node = node.setdefault(token, {})
@@ -326,6 +415,54 @@ def _merge_tries(a: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+_CONTAINERS = (dict, list, tuple)
+
+# The types ``json.loads`` gives a scalar, for a quick check that a list
+# holds nothing to recurse into.
+_JSON_SCALARS = frozenset((int, float, str, bool, type(None)))
+
+
+def _is_flat(value: Any) -> bool:
+    """Whether the list or tuple ``value`` holds no dict, list or tuple."""
+    return _JSON_SCALARS.issuperset(map(type, value)) or not any(
+        isinstance(v, _CONTAINERS) for v in value
+    )
+
+
+def _path(where: str, key: Any) -> str:
+    return where if key is None else f"{where}/{key}"
+
+
+def _decode_leaf(value: Any, trie: Any, where: str, key: Any) -> Any:
+    """``_decode`` of the entry ``key`` of the container at ``where``. A
+    scalar entry, or a list of them, is settled here without building its
+    path, which is only needed for an error message."""
+    if isinstance(value, _CONTAINERS):
+        if isinstance(value, dict) or isinstance(trie, float):
+            return _decode(value, trie, f"{where}/{key}")
+        if not _is_flat(value):
+            return _decode(value, trie, f"{where}/{key}")
+        if trie is None:
+            return value
+        return _decode_flat(value, trie, where, key)
+    if trie is None:
+        return value
+    if isinstance(trie, float):
+        if value is not None:
+            raise _corrupt_record(
+                f"it names {where}/{key}, which holds {value!r}, not null"
+            )
+        return trie
+    # A record naming values inside a null is let through: the whole
+    # array was nulled (a hand edit, or a legacy layout rebuilt from a
+    # newer dict), so there is nothing left to restore.
+    if value is not None:
+        raise _corrupt_record(
+            f"it names a path inside the value at {where}/{key}"
+        )
+    return value
+
+
 def _decode(value: Any, trie: Any, where: str) -> Any:
     """``value`` with the ``null`` values ``trie`` names restored; the
     same object when nothing inside it changes."""
@@ -341,13 +478,13 @@ def _decode(value: Any, trie: Any, where: str) -> Any:
             trie = own if trie is None else _merge_tries(trie, own)
         if trie is None:
             children = {
-                k: _decode(v, None, f"{where}/{k}") for k, v in value.items()
+                k: _decode_leaf(v, None, where, k) for k, v in value.items()
             }
         else:
             children = {}
             for k, v in value.items():
                 if k != NON_FINITE_KEY:
-                    children[k] = _decode(v, trie.get(str(k)), f"{where}/{k}")
+                    children[k] = _decode_leaf(v, trie.get(str(k)), where, k)
             missing = set(trie) - {str(k) for k in value}
             if missing:
                 raise _corrupt_record(
@@ -360,19 +497,20 @@ def _decode(value: Any, trie: Any, where: str) -> Any:
             return value
         return children
     if isinstance(value, (list, tuple)):
+        if _is_flat(value):
+            # A list of numbers -- a model's data or curves -- is only
+            # visited where the record names an item (#515).
+            if trie is None:
+                return value
+            return _decode_flat(value, trie, where, None)
         if trie is None:
             items = [_decode(v, None, where) for v in value]
         else:
             items = [
-                _decode(v, trie.get(str(j)), f"{where}/{j}")
+                _decode_leaf(v, trie.get(str(j)), where, j)
                 for j, v in enumerate(value)
             ]
-            missing = set(trie) - {str(j) for j in range(len(value))}
-            if missing:
-                raise _corrupt_record(
-                    f"it names {where}/{sorted(missing)[0]}, which does"
-                    " not exist"
-                )
+            _check_indices(trie, len(value), where)
         if all(a is b for a, b in zip(items, value)):
             return value
         return tuple(items) if isinstance(value, tuple) else items
@@ -382,6 +520,62 @@ def _decode(value: Any, trie: Any, where: str) -> Any:
     if trie is not None and value is not None:
         raise _corrupt_record(f"it names a path inside the value at {where}")
     return value
+
+
+def _decode_flat(value: Any, trie: dict, where: str, key: Any) -> Any:
+    """``_decode`` of the list or tuple of scalars at ``where``/``key``
+    with a record naming some of its items. Only the named items are
+    visited, in index order, so the first error is the one the item by
+    item walk raises."""
+    named = [(int(t), t) for t in trie if _is_index(t, len(value))]
+    if len(named) > 1:
+        named.sort()
+    items = None
+    for j, token in named:
+        sub = trie[token]
+        item = value[j]
+        if isinstance(sub, float):
+            if item is not None:
+                raise _corrupt_record(
+                    f"it names {_path(where, key)}/{j}, which holds"
+                    f" {item!r}, not null"
+                )
+            if items is None:
+                items = list(value)
+            items[j] = sub
+        elif item is not None:
+            # See ``_decode_leaf``: a path inside a null is let through.
+            raise _corrupt_record(
+                "it names a path inside the value at"
+                f" {_path(where, key)}/{j}"
+            )
+    if len(named) != len(trie):
+        _check_indices(trie, len(value), _path(where, key))
+    if items is None:
+        return value
+    return tuple(items) if isinstance(value, tuple) else items
+
+
+def _check_indices(trie: dict, length: int, where: str) -> None:
+    """Refuse a record naming an item past the end of a list (or not an
+    index at all)."""
+    if len(trie) > length or not all(
+        _is_index(token, length) for token in trie
+    ):
+        missing = set(trie) - {str(j) for j in range(length)}
+        raise _corrupt_record(
+            f"it names {where}/{sorted(missing)[0]}, which does not exist"
+        )
+
+
+def _is_index(token: str, length: int) -> bool:
+    """Whether ``token`` is ``str(j)`` for an index ``j`` below
+    ``length``."""
+    return (
+        token.isdecimal()
+        and str(int(token)) == token
+        and (int(token) < length)
+    )
 
 
 def decode_non_finite(model_dict: dict) -> dict:
@@ -416,9 +610,11 @@ def required_schema(model_dict: dict) -> int:
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
     ``"support"`` of a non-parametric estimate's ``set_support`` or the
-    ``"band_n"`` of its ``band``, which a schema-1 reader would silently
-    ignore; 1 otherwise, the layout SurPyval v0.20 reads. This is the
-    version :func:`stamp_schema` writes.
+    ``"band_n"`` of its ``band``, or the nonzero covariate ``"center"`` of
+    a regression model fitted with ``center=True``, which a schema-1
+    reader would silently ignore; 1
+    otherwise, the layout SurPyval v0.20 reads. This is the version
+    :func:`stamp_schema` writes.
 
     Examples
     --------
@@ -429,56 +625,73 @@ def required_schema(model_dict: dict) -> int:
     2
     >>> required_schema({"x": [1.0, 2.0], "support": [0.0, 5.0]})
     2
+    >>> required_schema({"beta": [0.5], "center": [0.0]})
+    1
+    >>> required_schema({"beta": [0.5], "center": [2000.0]})
+    2
     """
+    dicts = _nested_dicts(model_dict)
     return (
         SCHEMA_VERSION
-        if _carries_non_finite(model_dict)
-        or _needs_formula_reader(model_dict)
-        or _carries_support(model_dict)
+        if any(
+            _has_non_finite(d)
+            or _formula_without_levels(d)
+            or _has_support(d)
+            or _center_nonzero(d)
+            for d in dicts
+        )
         else _SCHEMA_WITHOUT_NON_FINITE
     )
 
 
-def _carries_support(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it (a cause-specific
-    MCF's per-cause estimates) has a ``"support"`` or a ``"band_n"``,
-    which only the non-parametric estimates' ``to_dict`` writes (from
-    ``set_support``, and for ``band`` on left truncated data)."""
-    if isinstance(value, dict):
-        return any(
-            value.get(key) is not None for key in ("support", "band_n")
-        ) or any(_carries_support(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_carries_support(v) for v in value)
-    return False
+def _nested_dicts(value: Any) -> list:
+    """Every dictionary in ``value``, itself included. A list of scalars
+    (a model's data) is not walked item by item: walking each of a
+    Kaplan-Meier model's 700,000 values, once for each of the four
+    checks of ``required_schema``, was 80% of saving it."""
+    found = []
+    stack = [value]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            found.append(item)
+            stack.extend(item.values())
+        elif isinstance(item, (list, tuple)) and not _is_flat(item):
+            stack.extend(item)
+    return found
 
 
-def _needs_formula_reader(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it has a
-    ``"formula_meta"`` without the ``"factor_levels"`` pair that the
-    v0.17 - v0.20 readers rebuild a formula from. That pair is written
-    only when those readers rebuild the same design matrix; without it
-    v0.20 fails with a formula error rather than a request to upgrade."""
-    if isinstance(value, dict):
-        meta = value.get("formula_meta")
-        if isinstance(meta, dict) and "factor_levels" not in meta:
-            return True
-        return any(_needs_formula_reader(v) for v in value.values())
-    if isinstance(value, (list, tuple)):
-        return any(_needs_formula_reader(v) for v in value)
-    return False
+def _center_nonzero(d: dict) -> bool:
+    """Whether ``d`` has a ``"center"`` with a nonzero entry: the
+    covariate means where a model fitted with ``center=True`` has its
+    baseline (#459, #463). A schema-1 reader would drop it and read the
+    baseline as at 0; a zero centre reads the same either way."""
+    center = d.get("center")
+    return isinstance(center, (list, tuple)) and any(v != 0 for v in center)
 
 
-def _carries_non_finite(value: Any) -> bool:
-    """Whether ``value`` or any dictionary nested in it (a copula's
-    margins, a forest's trees) has a ``"non_finite"`` record."""
-    if isinstance(value, dict):
-        return NON_FINITE_KEY in value or any(
-            _carries_non_finite(v) for v in value.values()
-        )
-    if isinstance(value, (list, tuple)):
-        return any(_carries_non_finite(v) for v in value)
-    return False
+def _has_support(d: dict) -> bool:
+    """Whether ``d`` (a cause-specific MCF's per-cause estimates are
+    nested) has a ``"support"`` or a ``"band_n"``, which only the
+    non-parametric estimates' ``to_dict`` writes (from ``set_support``,
+    and for ``band`` on left truncated data)."""
+    return any(d.get(key) is not None for key in ("support", "band_n"))
+
+
+def _formula_without_levels(d: dict) -> bool:
+    """Whether ``d`` has a ``"formula_meta"`` without the
+    ``"factor_levels"`` pair that the v0.17 - v0.20 readers rebuild a
+    formula from. That pair is written only when those readers rebuild
+    the same design matrix; without it v0.20 fails with a formula error
+    rather than a request to upgrade."""
+    meta = d.get("formula_meta")
+    return isinstance(meta, dict) and "factor_levels" not in meta
+
+
+def _has_non_finite(d: dict) -> bool:
+    """Whether ``d`` (a copula's margins and a forest's trees are
+    nested) has a ``"non_finite"`` record."""
+    return NON_FINITE_KEY in d
 
 
 def stamp_schema(model_dict: dict) -> dict:
@@ -543,7 +756,7 @@ def check_parameters(dist: Any, params: Any) -> None:
     ``bounds`` are not checked.
     """
     values = np.atleast_1d(np.asarray(params, dtype=float))
-    names = list(getattr(dist, "param_names", []) or [])
+    names = list(getattr(dist, "parameter_names", []) or [])
     if np.isnan(values).any():
         raise ValueError(
             f"The serialised parameters of '{getattr(dist, 'name', dist)}'"
@@ -716,13 +929,17 @@ class SerialisableMixin:
         @classmethod
         def from_dict(cls, model_dict: dict) -> Any: ...
 
-    def to_json(self, fp: str | os.PathLike, with_data: bool = False) -> None:
-        """Write :meth:`to_dict` to ``fp`` as strict JSON.
+    def to_json(
+        self, fp: str | os.PathLike | None = None, with_data: bool = False
+    ) -> str | None:
+        """Write :meth:`to_dict` to ``fp`` as strict JSON, or return it.
 
         Parameters
         ----------
-        fp : str or os.PathLike
-            The file to write.
+        fp : str or os.PathLike, optional
+            The file to write. Without it the JSON is returned as a
+            string (as ``pandas.DataFrame.to_json`` does), which
+            ``from_json`` also reads.
         with_data : bool, optional
             Write ``to_dict(with_data=True)``, which also stores the fitted
             data, for the models whose ``to_dict`` takes ``with_data``
@@ -741,22 +958,41 @@ class SerialisableMixin:
             model_dict = to_dict(with_data=True)
         else:
             model_dict = to_dict()
-        # ``to_dict`` already wrote non-finite floats as null;
-        # ``allow_nan=False`` guarantees the file is strict JSON.
-        with open(fp, "w+") as f:
-            json.dump(model_dict, f, allow_nan=False)
+        return write_json(model_dict, fp)
 
     @classmethod
     def from_json(cls, fp: str | os.PathLike) -> Any:
-        """Load a model from a JSON file written by :meth:`to_json`."""
-        with open(fp, "r") as f:
-            model_dict = json.load(f)
+        """Load a model from a JSON file written by :meth:`to_json`, or
+        from the JSON text it returned (a string starting with ``{``)."""
+        model_dict = read_json(fp)
         if not isinstance(model_dict, dict):
             raise ValueError(
                 "Expected a serialised model dict, got "
                 f"{type(model_dict).__name__}"
             )
         return read_model_dict(cls, model_dict)
+
+
+def write_json(model_dict: dict, fp: str | os.PathLike | None) -> str | None:
+    """Write a model dict to the file ``fp`` as strict JSON, or return the
+    JSON text when ``fp`` is ``None`` (#485)."""
+    # ``to_dict`` already wrote non-finite floats as null;
+    # ``allow_nan=False`` guarantees the output is strict JSON.
+    if fp is None:
+        return json.dumps(model_dict, allow_nan=False)
+    with open(fp, "w+") as f:
+        json.dump(model_dict, f, allow_nan=False)
+    return None
+
+
+def read_json(fp: str | os.PathLike) -> Any:
+    """Read JSON from the file ``fp``, or parse ``fp`` itself when it is
+    JSON text: a string starting with ``{``, which no model file path does
+    (#485)."""
+    if isinstance(fp, str) and fp.lstrip().startswith("{"):
+        return json.loads(fp)
+    with open(fp, "r") as f:
+        return json.load(f)
 
 
 def from_dict(model_dict: dict) -> Any:
@@ -796,7 +1032,9 @@ def from_dict(model_dict: dict) -> Any:
     What a restored model keeps differs by family: in general the
     parameters and whatever predictions need, but not the fitted data,
     so methods that need the data (``plot``, bootstrap and
-    likelihood-ratio bounds, residuals) raise on the restored model.
+    likelihood-ratio bounds, residuals) raise on the restored model --
+    except a univariate parametric model's ``plot``, which draws the
+    model's CDF without data points.
     A fitted univariate parametric, regression or copula model keeps
     the likelihood and sample size of its information criteria, so
     ``aic`` and ``bic`` (and ``aic_c``, where the model has one) work on
@@ -848,15 +1086,17 @@ def from_dict(model_dict: dict) -> Any:
 
 def from_json(fp: str | Path) -> Any:
     """
-    Restore any serialised SurPyval model from a JSON file.
+    Restore any serialised SurPyval model from a JSON file or string.
 
-    Reads a file written by any fitted model's ``to_json`` and
-    dispatches to the right class's reader; see :func:`from_dict`.
+    Reads a file written by any fitted model's ``to_json`` (or the JSON
+    text ``to_json()`` returns without a path) and dispatches to the
+    right class's reader; see :func:`from_dict`.
 
     Parameters
     ----------
     fp : str | Path
-        Path to a JSON file written by a SurPyval model's ``to_json``.
+        Path to a JSON file written by a SurPyval model's ``to_json``, or
+        the JSON text itself (a string starting with ``{``).
 
     Returns
     -------
@@ -873,6 +1113,7 @@ def from_json(fp: str | Path) -> Any:
     >>> restored = surpyval.from_json(path)
     >>> restored.params
     array([5.53092634, 4.04187535])
+    >>> surpyval.from_json(model.to_json()).params
+    array([5.53092634, 4.04187535])
     """
-    with open(fp, "r") as f:
-        return from_dict(json.load(f))
+    return from_dict(read_json(fp))

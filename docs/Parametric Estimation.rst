@@ -657,6 +657,15 @@ no left bound, :math:`F(t_{l}) = 0`. Because each observation carries its own
 window, a late entry into a study (a different :math:`t_{l}` per unit) is
 handled exactly.
 
+A window in the upper tail (:math:`F(t_{l}) > 1/2`) is computed from the
+survival function in log space, :math:`\ln R(t_{l}) + \ln(1 - R(t_{r}) / R(t_{l}))`,
+rather than as a difference of two numbers near 1. Once :math:`F(t_{l})`
+rounds to 1 that difference is 0: a LogNormal left-truncated at 1 with
+:math:`\mu = -5, \sigma = 0.6` had a log-likelihood of :math:`+\infty` instead of
+:math:`-23.73`, which could win a search, and truncated fits depended on the
+units the data were recorded in. The same applies to an interval-censored
+observation's window.
+
 Censored and truncated data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -788,9 +797,13 @@ worth knowing what they are, because they explain the warnings you may see.
    as a complete sample, with :math:`p` at the observed failure fraction; for a
    ``CustomDistribution`` it also tries the plain default of each parameter (1
    above a lower bound, the middle of a finite interval, 0 if unbounded). Each
-   start is optimised and the fit with the best likelihood is kept. This
-   happens only for an MLE fit with neither ``init`` nor ``fixed``: an
-   explicit starting point is taken at its word.
+   start is optimised and the fit with the best likelihood is kept. These
+   alternatives are tried for an MLE fit without ``fixed``. An ``init`` you
+   give is tried first and then the default start (and, where the answer is
+   not verifiably a maximum, its alternatives), keeping the best likelihood:
+   from a start far from the maximum the search can stall where the
+   likelihood only looks level, so a poor ``init`` cannot return a worse
+   model than no ``init`` would have.
 3. **Removing the bounds.** Most parameters are constrained: a Weibull
    :math:`\alpha` must be positive, a probability must lie in :math:`(0, 1)`,
    an offset must sit below the smallest observation. Rather than use a
@@ -809,21 +822,35 @@ worth knowing what they are, because they explain the warnings you may see.
      bounds a custom distribution declares);
    - unbounded: :math:`u = \theta`.
 
-   In an offset fit the one-sided map is taken in units of each parameter's
-   own starting distance from its bound -- :math:`u = \ln((\theta - L) / d_{0})`
-   below :math:`d_{0} = \theta_{0} - L` and linear above it -- rather than in
-   units of 1. With a unit of 1 the switch sits at a fixed value, so the
-   offset's distance below the smallest observation, or a scale, was searched
-   as a log for data in thousandths and linearly for data in thousands: a
-   different search at every scale, and along the ridge an offset fit has
-   (below) not always one that found the same optimum.
+   The one-sided map is taken in units of each parameter's own starting
+   distance from its bound -- :math:`u = \ln((\theta - L) / d_{0})` below
+   :math:`d_{0} = \theta_{0} - L` and linear above it -- rather than in units
+   of 1, so every such parameter starts at :math:`u = 0`. With a unit of 1 the
+   switch sits at a fixed value, so the offset's distance below the smallest
+   observation, or a scale, was searched as a log for data in thousandths and
+   linearly for data in thousands: a different search at every scale, and
+   along the ridge an offset fit has (below) not always one that found the
+   same optimum. Offset fits made the change first; since v0.22 every fit
+   does, and a fit to data in millionths and one to the same data in
+   millions now take the same steps (the fitted quantiles agree to about
+   1e-15, where they differed by up to 2e-6).
 
    The likelihood's gradient and Hessian come from automatic differentiation
    (``autograd``), which is why custom distributions must use
    ``autograd.numpy``.
-4. **An optimiser ladder.** BFGS runs first; if it does not converge SurPyval
-   tries TNC, then Newton-CG, then the derivative-free Nelder-Mead and Powell,
-   and stops at the first that succeeds. Before BFGS runs, the search is
+4. **An optimiser ladder.** BFGS runs first; if its answer is not verifiably
+   a maximum SurPyval tries TNC, then Newton-CG, then the derivative-free
+   Nelder-Mead and Powell, each starting from the best point so far
+   (Nelder-Mead also from the initial guess). It stops at the first rung
+   after which the best point is a maximum: the gradient is zero (every
+   component below :math:`10^{-4}` in the rescaled units described next) and
+   the Hessian is positive definite. An optimiser's own "success" is not
+   enough: from a start far from the maximum a gradient method reports it
+   where the likelihood first looks flat -- a Weibull started at
+   :math:`\alpha = 10^{7}` stopped at :math:`\beta = 0.099`, 40 below the
+   maximum log-likelihood -- and BFGS often reports a loss of precision *at*
+   the maximum. If no rung is verified the first rung that reported success
+   is kept, as before. Before BFGS runs, the search is
    rescaled coordinate by coordinate, each :math:`u` divided by the magnitude
    of its starting value, and the objective is divided by the number of
    observations. That does not move the optimum, but it makes the convergence
@@ -848,15 +875,30 @@ worth knowing what they are, because they explain the warnings you may see.
 5. **Checks.** Before fitting, SurPyval refuses data that cannot pin the
    parameters down: if there are fewer distinct non-right-censored values than
    free parameters the likelihood has a flat (or unbounded) direction and no
-   unique answer exists. Fixing a parameter buys back a degree of freedom. After
-   fitting, a non-finite parameter is never returned (SurPyval raises a
-   ``ValueError`` instead). If every optimiser fails SurPyval warns ("MLE
-   Failed; returning the optimiser's starting point ...") and returns the
-   starting point, which for many distributions is the probability-plot fit;
-   if the winning optimiser reports a loss of precision it warns "Precision
-   was lost" and suggests checking the fit. The optimiser that succeeded is
-   recorded in ``model.optimizer`` (``'closed-form'`` for the exact solutions
-   above).
+   unique answer exists. Fixing a parameter buys back a degree of freedom.
+   An MLE fit also refuses data that a single failure time explains
+   completely -- an exact value at 0.5 and a value known only to be below 1,
+   or the intervals :math:`(1, 3]` and :math:`(2, 4]` -- for the families
+   that can concentrate on one point (a location or scale with a free
+   shape, or any of them with an offset): a distribution ever more
+   concentrated there explains the data ever better, so the likelihood has
+   no maximum, and the fit used to return wherever the search stopped (a
+   Weibull :math:`\beta` of 396, a Normal :math:`\sigma` of
+   :math:`5 \times 10^{-324}`). After fitting, a non-finite parameter is never
+   returned (SurPyval raises a ``ValueError`` instead). If every optimiser
+   fails SurPyval warns ("MLE Failed; returning the optimiser's starting point
+   ...") and returns the starting point, which for many distributions is the
+   probability-plot fit; if the answer kept is not verifiably a maximum it
+   warns ("did not reach a verified maximum", with the optimiser's loss of
+   precision as the reason where it reported one), as it can for the
+   four-parameter Beta, whose likelihood is unbounded as a shape below 1
+   meets an end point at the data's extreme. The optimiser that found the answer is recorded in
+   ``model.optimizer`` (``'closed-form'`` for the exact solutions above),
+   and what it reached in ``model.maximum``: ``'verified'`` (or exact),
+   ``'unverified'`` (the fit warned that it is not verifiably a maximum)
+   or ``'no finite maximum'`` (the fit warned "No finite maximum"); a fit
+   by another method, or a model built with ``from_params``, has
+   ``'not applicable'``. ``fit_best`` reads it to set such fits aside.
 
 Offsets (threshold parameters)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -973,7 +1015,8 @@ the likelihood's terms, ``df(0)`` of a zero-inflated model is the mass
 :math:`f_{0}` itself, a probability rather than a density;
 ``df(x, continuous=True)`` is the continuous part alone, which integrates to
 :math:`p - f_{0}`. The zero mass sits at zero even for an offset model, and
-nothing fails before zero. ``zi=True`` requires a distribution whose support starts at
+nothing fails before zero, so a left truncation below zero truncates nothing
+and one at zero excludes the mass (see :doc:`Conventions`). ``zi=True`` requires a distribution whose support starts at
 zero, and like LFP it can only be fitted by MLE.
 
 Discrete distributions
@@ -1111,16 +1154,41 @@ has no ``param_cb``.
 **Wald bounds on a function** (``cb``) apply the delta method once more, to a
 function of the parameters: the variance of :math:`\hat{R}(x)` is
 :math:`\nabla R\,\mathrm{Cov}(\hat{\theta})\,\nabla R^{T}`. The interval is
-formed on the logit of :math:`R`, which keeps it inside :math:`(0, 1)`:
+formed on the scale on which the distribution is a straight line in (log)
+time -- its probability-plot scale -- which also keeps it inside
+:math:`(0, 1)`: :math:`\ln H = \ln(-\ln R)` for the Weibull, Exponential,
+Rayleigh and Gumbel, the normal quantile :math:`\Phi^{-1}(F)` for the Normal
+and LogNormal, and the logit :math:`\ln(F/R)` for the Logistic, the
+LogLogistic and every distribution with no such scale. For the Weibull,
 
 .. math::
 
-    R_{\text{bound}} = \frac{\hat{R}}{\hat{R} + (1 - \hat{R})
-    \exp\left(\pm z\,se(\hat{R}) / [\hat{R}(1 - \hat{R})]\right)}.
+    R_{\text{bound}} = \exp\left(-\hat{H}
+    \exp\left(\pm z\,se(\hat{R}) / [\hat{R}\hat{H}]\right)\right).
+
+On the straight-line scale :math:`a\,s - b` (with :math:`s` the (log)
+time) the band is the envelope of the lines of the parameters' Wald
+ellipsoid, so it rises with time whenever the slope's -- the shape's -- own
+Wald interval excludes 0. The logit scale used for every distribution
+before v0.22 had no such property: on small samples its bound on
+:math:`F` could fall in a tail, 0.39 at :math:`t = 5` and 0.00004 at
+:math:`t = 10` on one six-point Weibull fit. With fewer failures than it
+takes for the shape's interval to exclude 0, only the likelihood-ratio band
+below is sure to be monotone.
 
 Bounds on :math:`F` and :math:`H` follow from those on :math:`R`
 (:math:`F = 1 - R`, :math:`H = -\ln R`), and bounds on the hazard and density
-are formed on the log scale so they stay positive.
+are formed on the log scale so they stay positive -- on the logit scale for a
+discrete distribution, whose hazard :math:`h(k) = f(k)/R(k - 1)` and mass are
+probabilities. Where the hazard or density is 0 (below an offset, say) both
+bounds are 0.
+
+A Wald bound needs a positive variance. Where the inverse of the observed
+information has a negative variance -- it is not positive definite, typically
+because an estimate is on or near a boundary of the parameter space -- or
+where an estimate sits on the edge of its support, no Wald bound exists:
+``param_cb`` and ``cb`` return ``nan`` there, with a warning saying why. A
+likelihood-ratio bound (below) does not need the variance.
 
 **Likelihood-ratio (profile) bounds** (``method='lr'``) avoid the bowl
 approximation altogether and read the interval straight off the likelihood.
@@ -1143,6 +1211,16 @@ samples, which is why they are the reliability-engineering convention. They
 cost more (every bound is an optimisation), they need the original data, and
 they are not yet available for offset, limited-failure-population or
 zero-inflated models.
+
+The interval is the stretch of values around the estimate whose deviance
+stays below the critical value. Where the profile levels off below it on
+the way to the edge of the parameter's space, no value out to the edge is
+excluded, and the bound is the edge itself: 0, 1 or ``inf``. This happens
+when the model tends to a simpler one at that edge. A NegativeBinomial
+tends to a (shifted) Poisson as :math:`r \to \infty`; if the Poisson's
+deviance from the fit is below the critical value, the upper bound on
+:math:`r` is ``inf``. A band likewise reaches the edge of the function's
+range (0 or 1 for :math:`R`) when the region reaches that far.
 
 .. _information-criteria:
 

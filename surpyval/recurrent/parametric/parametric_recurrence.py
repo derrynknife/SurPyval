@@ -12,9 +12,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import option_error
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -52,7 +53,6 @@ class ParametricRecurrenceModel(
     # Populated by the fitters; declared for the type checker.
     dist: Any
     params: "np.ndarray"
-    param_names: list
     bounds: tuple
     support: tuple
     name: str
@@ -60,6 +60,12 @@ class ParametricRecurrenceModel(
     mcf_hat: "np.ndarray"
     how: str
     res: Any
+    #: What a maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say; ``"not
+    #: applicable"`` for a least-squares fit or a model built from its
+    #: parameters, ``"unknown"`` for one restored from a dict saved
+    #: without it.
+    maximum: str = "not applicable"
 
     # -- serialisation -----------------------------------------------------
 
@@ -84,6 +90,7 @@ class ParametricRecurrenceModel(
                 "dist": self.dist.name,
                 "params": np.asarray(self.params, dtype=float).tolist(),
                 "how": getattr(self, "how", "from_params"),
+                **maximum_entry(self.maximum),
             }
         )
 
@@ -103,10 +110,11 @@ class ParametricRecurrenceModel(
         out.dist = intensity_dist_by_name(model_dict["dist"])
         out.params = np.array(model_dict["params"], dtype=float)
         out.how = model_dict.get("how", "from_params")
+        out.maximum = restored_maximum(model_dict)
         return out
 
     def _parameter_names(self) -> list:
-        return list(self.dist.param_names)
+        return list(self.dist.parameter_names)
 
     def _parameter_bounds(self) -> list:
         return list(self.dist.bounds)
@@ -115,7 +123,7 @@ class ParametricRecurrenceModel(
         param_string = "\n".join(
             [
                 "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(self.params, self.dist.param_names)
+                for p, name in zip(self.params, self.dist.parameter_names)
             ]
         )
         return (
@@ -156,7 +164,7 @@ class ParametricRecurrenceModel(
 
     # Narrows the mixin mcf (no simulation arguments): the fitted
     # model evaluates its own CIF directly.
-    def mcf(self, x: ArrayLike) -> np.ndarray:  # type: ignore[override]
+    def mcf(self, x: ArrayLike) -> np.ndarray:
         """
         The mean cumulative function (MCF). For these counting processes the
         MCF equals the cumulative intensity, so this is a closed-form alias for
@@ -267,13 +275,16 @@ class ParametricRecurrenceModel(
             return e
         elif kind == "martingale":
             return diagnostics.martingale_residuals(self.data, self.cif)
-        raise ValueError(
-            "`kind` must be 'cumulative_hazard', 'pit' or 'martingale'; "
-            "got {!r}".format(kind)
+        raise option_error(
+            "kind", kind, ("cumulative_hazard", "pit", "martingale")
         )
 
     def trend_test(
-        self, test: str = "laplace", alternative: str = "two-sided"
+        self,
+        test: str = "laplace",
+        alternative: str = "two-sided",
+        *,
+        alpha_ci: float = 0.05,
     ) -> Any:
         """
         Run a trend test on the data this model was fitted to.
@@ -291,20 +302,24 @@ class ParametricRecurrenceModel(
             The trend test to run. Default is 'laplace'.
         alternative: {'two-sided', 'increasing', 'decreasing'}, optional
             The alternative hypothesis. Default is 'two-sided'.
+        alpha_ci: float, optional
+            The significance level at which the result's ``trend`` is
+            judged (default 0.05, keyword only): a trend is named only when
+            ``p_value < alpha_ci``.
 
         Returns
         -------
 
         TrendTestResult
-            The test result, carrying the statistic, p-value and suggested
-            trend direction.
+            The test result, carrying the statistic, p-value, the
+            direction of the statistic and the trend concluded at
+            ``alpha_ci``.
         """
         self._check_has_data("trend_test")
         return diagnostics.trend_test(
-            self.data, test=test, alternative=alternative
+            self.data, test=test, alternative=alternative, alpha_ci=alpha_ci
         )
 
-    @renamed_arguments(seed="random_state")
     def cramer_von_mises(
         self, n_boot: int = 200, random_state: "int | None" = None
     ) -> Any:
@@ -391,7 +406,6 @@ class ParametricRecurrenceModel(
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
 
     # Narrows the mixin plot (bounds options) -- same known divergence.
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
     def plot(  # type: ignore[override]
         self,
         ax: Any = None,

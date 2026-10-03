@@ -15,6 +15,7 @@ from surpyval.degradation import (
     QuadraticPath,
     get_path_model,
 )
+from surpyval.degradation.path_models import path_model_key
 
 MODELS_AND_PARAMS = [
     (LinearPath, (2.0, 0.5)),
@@ -58,7 +59,7 @@ def test_analytic_jacobian_matches_finite_differences(model, params):
     analytic = model.jacobian(x, *params)
     # invoke the base class' finite-difference implementation directly
     numeric = PathModel.jacobian(model, x, *params)
-    assert analytic.shape == (len(x), len(model.param_names))
+    assert analytic.shape == (len(x), len(model.parameter_names))
     assert np.allclose(analytic, numeric, rtol=1e-4, atol=1e-6)
 
 
@@ -127,3 +128,36 @@ def test_registry_is_complete():
     for name, model in PATH_MODELS.items():
         assert isinstance(model, PathModel)
         assert get_path_model(name) is model
+
+
+# ---------------------------------------------------------------------------
+# Path-model lookup by display name.
+# ---------------------------------------------------------------------------
+
+
+def test_get_path_model_accepts_display_names():
+    for key, model in PATH_MODELS.items():
+        assert get_path_model(model.name) is model
+        assert get_path_model(model.name.upper()) is model
+        assert path_model_key(model) == key
+    with pytest.raises(ValueError):
+        get_path_model("Offset  Exponential")
+
+
+# ---------------------------------------------------------------------------
+# Quadratic ``inv_path`` is stable for near-zero curvature.
+# ---------------------------------------------------------------------------
+
+
+def test_quadratic_inv_path_near_zero_curvature() -> None:
+    x = np.arange(1.0, 11.0)
+    params = QuadraticPath.fit(x, 2 + 3 * x)
+    assert QuadraticPath.inv_path(50.0, *params) == pytest.approx(16.0)
+    for c in (1e-17, -1e-17, 1e-10):
+        assert QuadraticPath.inv_path(100.0, 0.0, 1.0, c) == pytest.approx(
+            100.0, rel=1e-6
+        )
+    # genuine roots are unchanged
+    assert QuadraticPath.inv_path(100.0, 0.0, -1.0, 1.0) == pytest.approx(
+        (1 + np.sqrt(401)) / 2
+    )

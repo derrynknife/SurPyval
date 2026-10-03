@@ -66,22 +66,10 @@ def test_pooled_cumulative_incidence_matches_cuminc():
         assert_allclose(model.cif(ref["times"], cause), ref["est"][row])
 
 
-# Gray's test: with rho = 0 the score (observed minus expected) is
-# cmprsk's to rounding, but the variance is not, even without ties (on the
-# tied fixture, cause 2: variance 6.162 against cmprsk's 5.065; on 200
-# untied rows, 24.012 against 23.736). With rho = 1 the score differs too
-# (-6.31913 against -6.31918): the pooled F^0 in the weight. The docs say
-# both "may differ from cmprsk's in detail". Recorded here until that is
-# resolved.
-GRAY_XFAIL = pytest.mark.xfail(
-    strict=True,
-    reason="#380: gray_test's variance differs from cmprsk::cuminc's (the "
-    "rho=0 score agrees): statistic 6.741 vs 7.015 (cause 1) and 3.981 vs "
-    "4.843 (cause 2) on the tied fixture, 0.9452 vs 0.9433 on PBC",
-)
-
-
-@GRAY_XFAIL
+# Gray's test: the score and variance are cmprsk's crst routine (#380: the
+# variance used to be SurPyval's own linearisation, 6.162 against cmprsk's
+# 5.065 on the tied fixture, cause 2, and the rho = 1 score differed in the
+# pooled F^0 of the weight).
 @pytest.mark.parametrize(
     "ref_id, rho",
     [
@@ -98,19 +86,7 @@ def test_gray_test_matches_cuminc(ref_id, rho):
     for k, cause in enumerate(ref["gray_cause"]):
         res = sp.gray_test(d[time], e, d[group], event=int(cause), rho=rho)
         assert res.df == ref["gray_df"][k]
-        assert_allclose(res.statistic, ref["gray_stat"][k], rtol=1e-6)
-
-
-def test_gray_test_is_close_to_cuminc_on_pbc():
-    # What does hold today on the (almost untied) PBC data: within 0.5% of
-    # cmprsk. A guard against a larger regression while the exact
-    # comparison above is expected to fail.
-    d = fixture("pbc")
-    e = _causes(d["cause"])
-    ref = values("r_cmprsk", "cuminc_pbc")
-    for k, cause in enumerate(ref["gray_cause"]):
-        res = sp.gray_test(d["years"], e, d["drug"], event=int(cause))
-        assert_allclose(res.statistic, ref["gray_stat"][k], rtol=5e-3)
+        assert_allclose(res.statistic, ref["gray_stat"][k], rtol=1e-9)
 
 
 CRR = {

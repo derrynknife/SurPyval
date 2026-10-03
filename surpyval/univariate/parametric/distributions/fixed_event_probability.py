@@ -17,7 +17,8 @@ so there is no density and no invertible quantile. There is no failure
 0/1 event indicator: ``p`` for every order.
 """
 
-from surpyval import np
+import autograd.numpy as np
+
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
 )
@@ -55,7 +56,7 @@ class FixedEventProbability_(  # type: ignore[misc]
             k=1,
             bounds=((0, 1),),
             support=(0, 1),
-            param_names=["p"],
+            parameter_names=["p"],
             param_map={"p": 0},
             plot_x_scale="linear",
         )

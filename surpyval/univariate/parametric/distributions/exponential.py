@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import warnings
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 from scipy.special import factorial
 
-from surpyval import np
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters.closed_form import (
     entry_times,
@@ -15,7 +17,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import log1mexp, on_support, positive_or_one
 
 
 class Exponential_(OptimisedFitMixin, ParametricFitter):
@@ -29,13 +34,18 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
     """
 
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # log(-log sf), on which this family is a straight line in
+    # log time (#477).
+    _cb_link = "loglog"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=1,
             bounds=((0, None),),
             support=(0, np.inf),
-            param_names=["failure_rate"],
+            parameter_names=["failure_rate"],
             param_map={"failure_rate": 0},
             plot_x_scale="linear",
             y_ticks=[
@@ -140,7 +150,8 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         """
         return np.exp(-failure_rate * x)
 
-    def cs(self, x: Numeric, X: Numeric, failure_rate: Boxable) -> Boxable:
+    @renamed_arguments(X="given")
+    def cs(self, x: Numeric, given: Numeric, failure_rate: Boxable) -> Boxable:
         r"""
 
         Conditional survival function for the Exponential Distribution:
@@ -151,12 +162,17 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
         The Exponential distribution is memoryless, and hence is the same as
         the regular survival distribution.
 
+        .. versionchanged:: 0.22
+           The time already survived is ``given`` (it was ``X``, which
+           still works until v0.23 with a ``DeprecationWarning``), the
+           name the regression models' ``sf_tvc(..., given=)`` uses.
+
         Parameters
         ----------
 
         x : numpy array or scalar
             The value(s) at which the function will be calculated
-        X : numpy array or scalar
+        given : numpy array or scalar
             The value(s) at which each value(s) in x was known to have survived
         failure_rate : numpy array or scalar
             The scale parameter for the Exponential distribution
@@ -438,6 +454,16 @@ class Exponential_(OptimisedFitMixin, ParametricFitter):
 
     def log_sf(self, x: Numeric, failure_rate: Boxable) -> Boxable:
         return -failure_rate * x
+
+    def log_ff(self, x: Numeric, failure_rate: Boxable) -> Boxable:
+        # log(1 - e^-r) with r = failure_rate * x: exact where F rounds to
+        # 1 (the generic log(-expm1(-r)) is 0 there, #442) and finite
+        # where r underflows.
+        x_pos = positive_or_one(x)
+        log_ff, _ = log1mexp(
+            failure_rate * x_pos, np.log(failure_rate) + np.log(x_pos)
+        )
+        return on_support(x, log_ff, -np.inf)
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

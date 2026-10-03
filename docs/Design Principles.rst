@@ -46,8 +46,7 @@ Inputs
    independent, and refused where a row is part of one unit (a recurrent
    item, a degradation path).
 
-   *Checked* by ``conformance/test_missing.py``; known gaps #382 (a
-   missing query time) and #388 (a missing frailty group).
+   *Checked* by ``conformance/test_missing.py``.
 
 4. **Order doesn't matter.** The order of the data rows never changes a fit,
    and permuting a query permutes the result.
@@ -62,10 +61,16 @@ Inputs
    *Checked* by ``conformance/test_metamorphic.py``.
 
 6. **Units don't matter.** Rescaling time rescales the answer and nothing
-   else.
+   else. Nor does a covariate's origin: with ``center=True`` every
+   regression gives the same model when a constant is added to a
+   covariate, and so do the defaults of Cox, Fine-Gray and the families
+   whose baseline maps exactly between origins.
 
-   *Checked* by ``conformance/test_metamorphic.py``; known gaps #385 and
-   #393.
+   *Checked* by ``conformance/test_metamorphic.py``
+   (``test_covariate_origin*`` for covariates). One family is excepted:
+   the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
+   depend on the units, and warns when it does; its MPS fit does not
+   (#385).
 
 Outputs
 -------
@@ -73,10 +78,13 @@ Outputs
 7. **Shape in, shape out.** A scalar query gives a numpy scalar, a 1-D or
    2-D query a result of its shape, and an empty query an empty result of
    its shape; a two-sided confidence bound adds a last ``[lower, upper]``
-   axis. With covariates the shape is that of the times. The documented
-   exception is the survival tree and forest's row-by-time grid,
-   ``(n_rows,) + x.shape``. ``surpyval.utils.shapes`` applies the rule at
-   every model's public methods.
+   axis. With covariates the shape is that of the times, rows and times
+   paired: one row for every time, or one time for every row; other
+   counts raise. ``grid=True`` on the Cox and parametric regression
+   functions gives the row-by-time grid, ``(n_rows,) + x.shape``, which
+   the survival tree and forest return by default.
+   ``surpyval.utils.shapes`` applies the rule at every model's public
+   methods.
 
    *Checked* by ``conformance/test_vectorisation.py`` and ``cb_shape`` in
    ``conformance/test_options.py``, for every registered model, and for
@@ -86,20 +94,20 @@ Outputs
    :math:`S + F = 1`, :math:`H = -\log S`, :math:`f = h S`, ``qf`` inverts
    ``ff``, and the causes' cumulative incidences sum to :math:`1 - S`.
 
-   *Checked* by ``conformance/test_identities.py``; known gaps #383 and
-   #384.
+   *Checked* by ``conformance/test_identities.py``.
 
 9. **Valid and accurate values.** Survival stays in :math:`[0, 1]` and
    never increases; cumulative quantities never decrease. The documented
-   exception is the additive hazards model, whose estimate need not be
-   monotone (#376). A distribution's functions are accurate to double
+   exception is the parametric additive hazards models, whose survival can
+   exceed 1 where :math:`h_0 + \beta'Z < 0` (#376); the Lin-Ying model
+   predicts with the running maximum of its estimate. A distribution's
+   functions are accurate to double
    precision wherever the value is representable, in the tails and at
    extreme parameters too.
 
    *Checked* by ``conformance/test_bounds.py``, and for accuracy by
-   ``reference/test_tails.py`` against 50-digit mpmath values; known gaps
-   #410, #442-#447 and #449, and four distributions not generated yet
-   (#448).
+   ``reference/test_tails.py`` against 50-digit mpmath values, for every
+   distribution with a closed form.
 
 10. **Covariate rows are independent.** Evaluating rows together gives the
     same as evaluating them one at a time.
@@ -132,7 +140,11 @@ Estimation
 
 12. **A fit returns what it claims:** the optimum of its stated estimator.
     If the estimator has no optimum on the data, the fit refuses or warns;
-    it never returns a silent degenerate answer.
+    it never returns a silent degenerate answer. Where the data do not
+    determine a coefficient -- a covariate column that is constant where
+    the model has an intercept, or a combination of the others -- the fit
+    says so: the coefficient is ``nan`` and listed in ``aliased``, with
+    one warning naming the column, rather than an arbitrary value.
 
     *Partly checked.* The property tests check that parametric fits, on
     generated data with every kind of censoring and truncation, are local
@@ -140,7 +152,19 @@ Estimation
     model's functions (``properties/test_parametric.py``), and the
     reference tests compare fits with R, lifelines and scikit-survival;
     ``calibration/test_refit_registry.py`` refits every registered model
-    to data drawn from itself (nightly); known gap #392.
+    to data drawn from itself (nightly). Where the likelihood has no
+    finite maximum, univariate MLE refuses and the regression, frailty,
+    Fine-Gray, copula, mixture and degradation fits warn "No finite
+    maximum" (#392); known gap: abutting intervals such as (1, 3] and (3, 5], whose likelihood has a flat
+    ridge. ``conformance/test_aliasing.py`` refits every registered model
+    that has coefficients with a repeated covariate column, and with a
+    constant one where it has an intercept, and requires the aliasing and
+    otherwise the fit without the column; the time-varying fits are
+    checked in ``univariate/regression/test_aliasing.py``. The
+    derivatives a fit takes -- the gradient and Hessian with which it
+    searches, verifies its maximum and computes its covariance -- agree
+    with finite differences at the fit, for every registered model that
+    takes them (``conformance/test_derivatives.py``, #562).
 
 13. **Failure is never silent.** An optimiser that does not converge warns,
     and a fit never quietly returns its starting values.
@@ -149,16 +173,29 @@ Estimation
     is starved (an iteration limit of 1, a start a million times the
     answer, or data with no maximum) and must warn, raise, or still reach
     the maximum; a closed-form or exact estimator is excluded, with the
-    reason. Known gaps: the univariate (#427), accelerated-life (#428)
-    and recurrent (#429) fits stop far from a distant start silently, and
-    the regression, Fine-Gray, copula, mixture and degradation fits
-    return a finite answer silently where the likelihood has no maximum
-    (#392).
+    reason. A fit accepts an optimiser's answer only when it is a
+    verified maximum (zero gradient, positive-definite Hessian), and a fit
+    given ``init`` is also started from the default start. A likelihood
+    with no finite maximum warns so (#392), whatever the model. And by
+    ``conformance/test_maximum.py``: every maximum-likelihood fit in the
+    registry -- the univariate distributions, mixtures, the parametric and
+    semi-parametric regressions, frailty, competing-risks, recurrence and
+    copula models -- records what it reached as its model's ``maximum``
+    (``"verified"``, ``"unverified"`` or ``"no finite maximum"``), warns
+    exactly when that is not a verified maximum, its fixture's fit, its
+    starved fit and its time-varying-covariate fit alike; and a verified
+    maximum passes an independent check at the reported parameters (the
+    gradient of the model's own likelihood ~0 and its Hessian positive
+    definite, a parameter on a boundary of its space held out where the
+    likelihood does not rise off it). Known gap: the degradation process
+    and destructive fits (#564).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.
 
-    *Checked* by ``conformance/test_fit_paths.py``.
+    *Checked* by ``conformance/test_fit_paths.py``, and for a regression
+    model's attributes (every builder, ``from_dict`` included, gives the
+    same declared attributes) by ``conformance/test_attributes.py``.
 
 15. **Defaults are the statistically best standard choice, and the same
     everywhere.** For example, every Cox fit defaults to Efron's tie
@@ -176,7 +213,7 @@ Estimation
 
     *Checked* by ``surpyval/tests/reference``, which compares results with
     values those packages computed (regenerated by
-    ``scripts/reference/regenerate.sh``); known gap #380.
+    ``scripts/reference/regenerate.sh``).
 
 Uncertainty
 -----------
@@ -187,7 +224,7 @@ Uncertainty
     *Partly checked* by the calibration studies
     (``surpyval/tests/calibration``, run nightly), which cover the main
     parametric, non-parametric, Cox, regression, degradation and recurrent
-    bounds and the hypothesis tests, not every model; known gap #390.
+    bounds and the hypothesis tests, not every model.
 
 18. **Intervals behave consistently.** Bounds contain the estimate and stay
     in the valid range; a one-sided bound is the matching end of the
@@ -218,11 +255,20 @@ Behaviour and API
 21. **Consistent names.** The same option has the same name, meaning and
     default everywhere (``alpha_ci``, ``bound``, ``on``, ``interp``,
     ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
-    ``x`` for the times and ``p`` for a quantile's probability). When a name
-    changes, the old one keeps working for one release with a
+    ``x`` for the times and ``p`` for a quantile's probability), and so
+    does the same attribute: every model's fitted values are ``params``,
+    named entry by entry by the attribute ``parameter_names``. Every
+    DataFrame entry point (``fit_from_df``, ``fit_tvc_from_df``,
+    ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
+    argument it fills with a ``_col`` suffix, ``_cols`` for a list of
+    columns: ``x_col``, ``c_col``, ``n_col``, ``xl_col``, ``xr_col``,
+    ``tl_col``, ``tr_col``, ``i_col``, ``e_col``, ``y_col``, ``Z_cols``.
+    When a name changes, the old one keeps working for one release with a
     ``DeprecationWarning`` naming the new one.
 
-    *Checked* by ``conformance/test_options.py``.
+    *Checked* by ``conformance/test_options.py``,
+    ``conformance/test_params.py`` and, for the column names,
+    ``conformance/test_fit_paths.py``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
     what happened and what to do about it. No raw numpy warning escapes
@@ -240,6 +286,22 @@ Behaviour and API
     and the docstring examples run as tests. *Checked* for completeness
     by ``conformance/test_documentation.py``: every public item has a
     docstring with an example, and a new one without fails.
+
+24. **Simple by default; more as an option.** When a method reaches its
+    limit -- data it cannot handle, an approximation that breaks down, a
+    question that needs a heavier computation -- the new approach is added
+    as an option beside it, not put in its place. The default stays the
+    simple, standard method that serves the usual case, so a plain call
+    stays fast and easy to explain, and its results do not move. A
+    default changes only when it is wrong for the usual case (principle
+    15; for example a band that did not hold its level, #390), not because
+    a better method exists for a harder one. For example, trees split
+    greedily by default and take conditional inference with
+    ``selection="ctree"``; ``cb`` gives Wald bounds and ``bootstrap_cb``
+    resamples.
+
+    *Judgement*, applied in review: a change to a default says which
+    principle the old default broke.
 
 Adding to the list
 ------------------

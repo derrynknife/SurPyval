@@ -71,9 +71,12 @@ Lower-level helpers in ``surpyval.utils``, used by the handlers above:
 
 .. autofunction:: surpyval.utils.is_missing_event
 
+.. autofunction:: surpyval.utils.missing_events
+
 .. autofunction:: surpyval.utils.resolve_cr_censoring
 
-``surpyval.utils`` also holds the input validators the fitters call
+The functions above documented as ``surpyval.utils.<name>`` are what that
+namespace promises (its ``__all__``). It also holds the input validators the fitters call
 (``check_*`` and ``validate_*`` functions such as ``validate_coxph`` and
 ``validate_cr_inputs``, and ``optional_column``, ``validate_1d`` and
 ``validate_float_array``). They are internal: their

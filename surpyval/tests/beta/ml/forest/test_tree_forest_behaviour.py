@@ -24,6 +24,7 @@ import pytest
 from surpyval import Weibull
 from surpyval.beta.ml.forest import RandomSurvivalForest, SurvivalTree
 from surpyval.beta.ml.forest.node import IntermediateNode, TerminalNode
+from surpyval.tests._helpers import tree_leaves
 from surpyval.univariate.parametric import NeverOccurs
 
 X_GRID = np.linspace(0.25, 25.0, 12)
@@ -42,12 +43,6 @@ def _signal_data(n=100, seed=5, censoring=0.2):
     x = scale * rng.weibull(1.5, n)
     c = (rng.random(n) < censoring).astype(int)
     return x, Z, c
-
-
-def _leaves(node):
-    if isinstance(node, TerminalNode):
-        return [node]
-    return _leaves(node.left_child) + _leaves(node.right_child)
 
 
 def _tree_depth(node):
@@ -133,12 +128,12 @@ def test_max_depth_is_honoured(signal_tree):
 
 
 def test_min_leaf_samples_is_honoured(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         assert len(leaf.data.x) >= 15
 
 
 def test_min_leaf_failures_is_honoured(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         event_weight = leaf.data.n[leaf.data.c != 1].sum()
         assert event_weight >= 8
 
@@ -235,7 +230,7 @@ def test_count_weights_match_expanded_data():
 
 
 def test_weibull_kind_leaves_are_weibull(signal_tree):
-    for leaf in _leaves(signal_tree._root):
+    for leaf in tree_leaves(signal_tree._root):
         assert leaf.model.dist.name == "Weibull"
 
 
@@ -251,7 +246,7 @@ def test_exponential_kind_leaves_are_exponential():
         max_depth=2,
         kind="exponential",
     )
-    for leaf in _leaves(tree._root):
+    for leaf in tree_leaves(tree._root):
         assert leaf.model.dist.name == "Exponential"
 
 
@@ -277,6 +272,15 @@ def test_forest_Hf_ensemble_method_averages_hazard(signal_forest):
     np.testing.assert_allclose(forest.Hf(X_GRID, Z_FAST), mean_Hf)
 
 
+def test_forest_refuses_an_unknown_ensemble_method(signal_forest):
+    # Anything but 'Hf' (say 'hf', or 'mean') was taken as 'sf' in silence.
+    forest, *_ = signal_forest
+    with pytest.raises(
+        ValueError, match="'ensemble_method' must be one of 'sf' or 'Hf'"
+    ):
+        forest.sf(X_GRID, Z_FAST, ensemble_method="hf")
+
+
 def test_forest_prediction_shapes(signal_forest):
     forest, *_ = signal_forest
     single = forest.sf(X_GRID, Z_FAST)
@@ -298,6 +302,21 @@ def test_forest_mortality_orders_the_groups(signal_forest):
 def test_forest_concordance_beats_chance(signal_forest):
     forest, x, Z, c = signal_forest
     assert forest.score(x, Z, c) > 0.7
+
+
+def test_forest_score_uses_the_concordance_tie_conventions(signal_forest):
+    # The forest's score is concordance_index of its mortality, with the
+    # same default (Therneau: tied deaths are not a pair) and option.
+    from surpyval.metrics import concordance_index
+
+    forest, x, Z, c = signal_forest
+    x = np.ceil(np.asarray(x, dtype=float))  # tied death times
+    mortality = forest.mortality(x, Z)
+    therneau = concordance_index(x, c, mortality)
+    harrell = concordance_index(x, c, mortality, ties="harrell")
+    assert therneau != harrell
+    assert forest.score(x, Z, c) == therneau
+    assert forest.score(x, Z, c, ties="harrell") == harrell
 
 
 def test_forest_accepts_1d_covariates():

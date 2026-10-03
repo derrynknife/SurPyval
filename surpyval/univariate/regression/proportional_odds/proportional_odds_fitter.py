@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any
 
 import autograd.numpy as np
@@ -12,16 +14,18 @@ from surpyval.utils.surpyval_data import SurpyvalData
 from .._fit_skeleton import (
     LogLinearPhi,
     MirroredDistributionAttrs,
-    assemble_regression_model,
-    make_objective,
+    fit_log_linear,
     mirror_distribution,
     optimise_nm_tnc,
-    prepare_regression_fit,
+    split_log_linear,
 )
+from .._kinds import PROPORTIONAL_ODDS
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
+
+_TINY = float(np.finfo(float).tiny)
 
 
 class ProportionalOddsFitter(
@@ -60,6 +64,7 @@ class ProportionalOddsFitter(
         self.sf_dist = distribution.sf
         self.ff_dist = distribution.ff
         self.df_dist = distribution.df
+        self.log_sf_dist = distribution.log_sf
 
     def _phi(self, Z: Numeric, *phi_params: Boxable) -> Boxable:
         return LogLinearPhi.phi(Z, *phi_params)
@@ -70,11 +75,7 @@ class ProportionalOddsFitter(
         covariates ``Z``; ``params`` are the distribution parameters
         followed by the covariate coefficients.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return phi * S0 / (F0 + phi * S0)
@@ -84,11 +85,7 @@ class ProportionalOddsFitter(
         Failure (CDF) function :math:`F_0 / (F_0 + \\phi S_0)` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return F0 / (F0 + phi * S0)
@@ -98,11 +95,7 @@ class ProportionalOddsFitter(
         Hazard rate :math:`h_0 / (F_0 + \\phi S_0)` at ``x`` for covariates
         ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         h0 = self.hf_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
@@ -113,31 +106,21 @@ class ProportionalOddsFitter(
         Cumulative hazard :math:`-\\ln S(x \\mid Z)` at ``x`` for covariates
         ``Z``; ``params`` as for :meth:`sf`.
 
-        Evaluated as :math:`H_0(x) - \\ln\\phi + \\ln(F_0 + \\phi S_0)`,
-        which stays finite where :math:`S_0` underflows to zero (there
-        ``-log(sf)`` is ``inf``, and a difference of two such values along
-        a time-varying path would be ``nan``).
+        Evaluated as :math:`\\ln(1 + F_0 / (\\phi S_0))`, which keeps full
+        relative precision where the cumulative hazard is small (#528), and
+        where :math:`\\phi S_0` is below the normal range as
+        :math:`H_0(x) - \\ln\\phi + \\ln(1 + (\\phi - 1) S_0)`, which stays
+        finite there (``-log(sf)`` is ``inf``, and a difference of two such
+        values along a time-varying path would be ``nan``).
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
-        H0 = self.Hf_dist(x, *dist_params)
-        S0 = self.sf_dist(x, *dist_params)
-        F0 = self.ff_dist(x, *dist_params)
-        return H0 - np.log(phi) + np.log(F0 + phi * S0)
+        return -self.log_sf(x, Z, *params)
 
     def df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
         """
         Density :math:`\\phi f_0 / (F_0 + \\phi S_0)^2` at ``x`` for
         covariates ``Z``; ``params`` as for :meth:`sf`.
         """
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         f0 = self.df_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
@@ -145,31 +128,40 @@ class ProportionalOddsFitter(
         return phi * f0 / (denom * denom)
 
     def log_sf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        """
+        Log of the survival function, :math:`-H(x \\mid Z)`; see :meth:`Hf`.
+        """
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
-        return np.log(phi) + np.log(S0) - np.log(F0 + phi * S0)
+        # S = phi S0 / (F0 + phi S0) = 1 / (1 + F0 / (phi S0)). The old
+        # log(phi) + log(S0) - log(F0 + phi S0) cancelled to about 1e-16
+        # absolute where H is small: 20 % wrong at H = 4e-16 (#528).
+        scaled = phi * S0
+        # Where phi S0 is below the normal range (or 0), F0 / (phi S0) can
+        # overflow; there H is large and nothing cancels: log S0 from the
+        # baseline's log_sf, which stays finite where S0 is 0, and
+        # log(F0 + phi S0) = log1p((phi - 1) S0).
+        normal = scaled >= _TINY
+        # A denominator of 1 in the branch not taken keeps the value (and
+        # autograd's derivative) free of inf.
+        safe = np.where(normal, scaled, 1.0)
+        return np.where(
+            normal,
+            -np.log1p(F0 / safe),
+            np.log(phi)
+            + self.log_sf_dist(x, *dist_params)
+            - np.log1p((phi - 1.0) * S0),
+        )
 
     def log_ff(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
         return np.log(F0) - np.log(F0 + phi * S0)
 
     def log_df(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Z = np.atleast_2d(np.asarray(Z, dtype=float))
-        dist_params = params[: self.k_dist]
-        phi_params = params[self.k_dist :]
-        phi = self._phi(Z, *phi_params)
+        x, dist_params, phi = split_log_linear(self, x, Z, params)
         f0 = self.df_dist(x, *dist_params)
         S0 = self.sf_dist(x, *dist_params)
         F0 = self.ff_dist(x, *dist_params)
@@ -188,6 +180,7 @@ class ProportionalOddsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional odds model by maximum likelihood.
@@ -215,6 +208,14 @@ class ProportionalOddsFitter(
         fixed : dict, optional
             Parameters to hold fixed, by name (a distribution parameter
             such as ``"beta"``, or a coefficient ``"beta_0"``, ...).
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``.
+            ``True`` reports the baseline at the covariate means (stored as
+            ``model.center``) instead: the fit runs on ``Z - center``, and
+            ``init`` and ``fixed`` are read there too. Use it for
+            covariates far from 0 (a year, a date), where the baseline at
+            ``Z = 0`` cannot be represented or fitted, which the default
+            fit refuses with a ``ValueError`` saying so.
 
         Returns
         -------
@@ -234,7 +235,7 @@ class ProportionalOddsFitter(
         >>> model.params.round(3)
         array([9.708, 2.337, 0.918])
         """
-        data, prep = prepare_regression_fit(
+        return fit_log_linear(
             self,
             x,
             Z,
@@ -243,30 +244,10 @@ class ProportionalOddsFitter(
             t,
             init,
             fixed,
-            LogLinearPhi.phi_bounds,
-            LogLinearPhi.make_param_map,
-        )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
-
-        with np.errstate(all="ignore"):
-
-            fun = make_objective(self, data, inv_trans, const)
-
-            res = optimise_nm_tnc(fun, init_t)
-
-        params = inv_trans(const(res.x))
-        reg_model = LogLinearPhi(LogLinearPhi.NAME_EXP, pmap)
-
-        return assemble_regression_model(
-            self,
-            "Proportional Odds",
-            reg_model,
-            data,
-            res,
-            params,
-            bounds,
-            pmap,
-            fixed,
+            center,
+            kind=PROPORTIONAL_ODDS,
+            optimiser=optimise_nm_tnc,
+            reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )
 
 

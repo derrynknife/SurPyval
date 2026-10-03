@@ -11,21 +11,24 @@ matplotlib.use("Agg")
 
 from matplotlib import pyplot as plt  # noqa: E402
 
-from surpyval import Exponential, Weibull  # noqa: E402
+from surpyval import Weibull  # noqa: E402
 from surpyval.recurrent import (  # noqa: E402
+    ARI,
     HPP,
     CoxLewis,
     CrowAMSAA,
     Duane,
+    GeneralizedOneRenewal,
     GeneralizedRenewal,
     ProportionalIntensityHPP,
     ProportionalIntensityNHPP,
 )
-
-
-def _intensity_events():
-    np.random.seed(1)
-    return Exponential.random(40, 1e-2).cumsum()
+from surpyval.tests._helpers import (  # noqa: E402
+    REPAIR_FLEET_C,
+    REPAIR_FLEET_I,
+    REPAIR_FLEET_X,
+    exponential_event_times,
+)
 
 
 def _assert_information_criteria(model, dist):
@@ -35,14 +38,14 @@ def _assert_information_criteria(model, dist):
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
     assert np.isclose(model.aic, 2 * k - 2 * ll)
     assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
-    assert model.parameter_names == list(dist.param_names)
+    assert model.parameter_names == list(dist.parameter_names)
 
 
 @pytest.mark.parametrize("dist", [HPP, CrowAMSAA, Duane])
 def test_parametric_intensity_information_criteria(dist):
     # Every MLE-fitted intensity model now exposes a likelihood and the
     # standard information criteria derived from it.
-    model = dist.fit(_intensity_events())
+    model = dist.fit(exponential_event_times())
     _assert_information_criteria(model, dist)
 
 
@@ -63,7 +66,7 @@ def test_cox_lewis_information_criteria():
 def test_parametric_intensity_standard_errors(dist):
     # Standard errors come from the observed information and are finite and
     # positive for these well-identified fits.
-    x = _intensity_events()
+    x = exponential_event_times()
     model = dist.fit(x)
     se = model.standard_errors()
     assert se.shape == (model._mle.size,)
@@ -73,7 +76,7 @@ def test_parametric_intensity_standard_errors(dist):
 def test_mse_fit_has_no_likelihood():
     # The MSE fit minimises a sum of squares, not a likelihood, so inference
     # must raise rather than report a meaningless AIC.
-    x = _intensity_events()
+    x = exponential_event_times()
     model = CrowAMSAA.fit(x, how="MSE")
     for attr in ("log_likelihood", "aic", "bic"):
         with pytest.raises(ValueError, match="fitted from data"):
@@ -124,7 +127,7 @@ def test_hpp_param_cb_matches_analytic():
     # For an HPP with n events observed to the last event, the observed
     # information gives se = lambda / sqrt(n), so the log-Wald bounds are
     # exactly lambda * exp(+/- z / sqrt(n)).
-    x = _intensity_events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     lam, n = model.params[0], len(x)
     z = norm.ppf(0.975)
@@ -134,7 +137,7 @@ def test_hpp_param_cb_matches_analytic():
 
 @pytest.mark.parametrize("dist", [HPP, CrowAMSAA, Duane])
 def test_param_cb_brackets_mle_and_respects_support(dist):
-    x = _intensity_events()
+    x = exponential_event_times()
     model = dist.fit(x)
     for name, (lo, hi), p_hat in zip(
         model.parameter_names, model._parameter_bounds(), model._mle
@@ -153,7 +156,7 @@ def test_param_cb_brackets_mle_and_respects_support(dist):
 
 
 def test_param_cb_unknown_name_raises():
-    model = CrowAMSAA.fit(_intensity_events())
+    model = CrowAMSAA.fit(exponential_event_times())
     with pytest.raises(ValueError, match="Unknown parameter"):
         model.param_cb("nope")
 
@@ -168,7 +171,7 @@ def test_hpp_cif_cb_matches_analytic():
     # cif = lambda * x, so the delta-method se is x * se(lambda) and the
     # log-transformed band is cif * exp(+/- z * se(lambda) / lambda) -- the
     # relative width is constant in x.
-    x = _intensity_events()
+    x = exponential_event_times()
     model = HPP.fit(x)
     lam, n = model.params[0], len(x)
     z = norm.ppf(0.975)
@@ -181,7 +184,7 @@ def test_hpp_cif_cb_matches_analytic():
 
 @pytest.mark.parametrize("dist", [HPP, CrowAMSAA, Duane])
 def test_cif_cb_brackets_cif(dist):
-    x = _intensity_events()
+    x = exponential_event_times()
     model = dist.fit(x)
     t = np.linspace(0.0, x.max(), 25)
     cb = model.cif_cb(t)
@@ -199,13 +202,13 @@ def test_cif_cb_brackets_cif(dist):
 
 
 def test_cif_cb_requires_likelihood():
-    model = CrowAMSAA.fit(_intensity_events(), how="MSE")
+    model = CrowAMSAA.fit(exponential_event_times(), how="MSE")
     with pytest.raises(ValueError, match="fitted from data"):
         model.cif_cb([1.0, 2.0])
 
 
 def test_plot_confidence_band():
-    model = CrowAMSAA.fit(_intensity_events())
+    model = CrowAMSAA.fit(exponential_event_times())
     # The band is drawn as a fill_between collection for MLE fits...
     ax = model.plot()
     assert len(ax.collections) == 1
@@ -215,7 +218,7 @@ def test_plot_confidence_band():
     assert len(ax.collections) == 0
     plt.close("all")
     # ...and is skipped (not an error) for MSE fits with no likelihood.
-    mse_model = CrowAMSAA.fit(_intensity_events(), how="MSE")
+    mse_model = CrowAMSAA.fit(exponential_event_times(), how="MSE")
     ax = mse_model.plot()
     assert len(ax.collections) == 0
     plt.close("all")
@@ -279,3 +282,34 @@ def test_renewal_param_cb():
     assert 0 < lower < model.q < upper
     lower, upper = model.param_cb("alpha")
     assert 0 < lower < model.model.params[0] < upper
+
+
+# ---------------------------------------------------------------------------
+# One BIC sample size, the observed events, for every recurrent
+# model.
+# ---------------------------------------------------------------------------
+
+
+def test_bic_counts_observed_events_only():
+    n_events = sum(ci == 0 for ci in REPAIR_FLEET_C)
+    models = [
+        HPP.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C),
+        CrowAMSAA.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C),
+        GeneralizedOneRenewal.fit(
+            REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C
+        ),
+        ARI.fit(REPAIR_FLEET_X, REPAIR_FLEET_I, REPAIR_FLEET_C, m=1),
+    ]
+    for model in models:
+        k = model._mle.size
+        expected = k * np.log(n_events) - 2 * model.log_likelihood
+        assert model.bic == pytest.approx(expected)
+
+
+def test_bic_counts_interval_events():
+    # Only interval counts: the five events they hold are observed events,
+    # so BIC's sample size is 5 (it used to count exact events only, and
+    # was NaN here rather than log(0) = -inf).
+    model = HPP.fit([[0, 10], [10, 20]], c=[2, 2], n=[2, 3])
+    assert model.bic == pytest.approx(np.log(5) - 2 * model.log_likelihood)
+    assert np.isfinite(model.aic)

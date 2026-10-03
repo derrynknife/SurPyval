@@ -1,6 +1,8 @@
 """Tests for the shared-frailty proportional-hazards model."""
 
 import json
+import warnings
+from unittest import mock
 
 import numpy as np
 import pytest
@@ -8,7 +10,16 @@ from scipy.integrate import quad
 from scipy.special import gammaln
 
 import surpyval as surv
-from surpyval import ExponentialFrailty, Frailty, Weibull, WeibullFrailty
+import surpyval as sp
+from surpyval import (
+    ExponentialFrailty,
+    Frailty,
+    Weibull,
+    WeibullFrailty,
+    WeibullPH,
+)
+from surpyval.tests._helpers import weibull_ph_data
+from surpyval.univariate.regression.frailty import frailty_fitter
 from surpyval.univariate.regression.frailty.frailty_model import (
     FrailtyModel,
 )
@@ -193,8 +204,10 @@ def test_guard_unsupported_censoring():
 
 
 def test_guard_unknown_family():
-    with pytest.raises(NotImplementedError):
-        Frailty(Weibull, family="lognormal")
+    # A ValueError naming the choices (principle 2); "lognormal" is a
+    # family since #343 (it raised NotImplementedError before).
+    with pytest.raises(ValueError, match="'gamma' or 'lognormal'"):
+        Frailty(Weibull, family="weibull")
 
 
 def test_exponential_frailty_available():
@@ -270,3 +283,195 @@ def test_stable_group_likelihood_matches_the_direct_formula():
     # and the no-frailty limit is -H
     assert np.allclose(_group_frailty_ll(D, H, 1e-14), -H, atol=1e-10)
     assert np.allclose(_group_frailty_ll(D, H, 0.0), -H)
+
+
+# ---------------------------------------------------------------------------
+# Frailty fits take the gradient ladder first (#515):
+# ``optimise_ph`` on the likelihood's autograd gradient, kept
+# when it is a verified optimum.
+# ---------------------------------------------------------------------------
+
+
+def _survey_data(seed):
+    rng = np.random.default_rng(seed)
+    n = 400
+    Z = rng.normal(size=(n, 3))
+    Z[:, 0] = rng.integers(0, 2, n)
+    t = 10 * rng.weibull(1.5, n) * np.exp(-(Z @ [0.5, 0.1, -0.3]) / 1.5)
+    ct = rng.uniform(0, 1.2 * np.quantile(t, 0.8), n)
+    c = (ct < t).astype(int)
+    x = np.maximum(np.ceil(np.minimum(t, ct) * 10) / 10, 0.1)
+    groups = np.random.default_rng(seed).integers(0, 40, n)
+    return dict(x=x, Z=Z, c=c, groups=groups)
+
+
+def _shared_frailty_data():
+    # The docstring example: thirty groups of six, gamma frailty of
+    # variance 0.5.
+    rng = np.random.default_rng(4)
+    groups = np.repeat(np.arange(30), 6)
+    u = rng.gamma(2.0, 0.5, 30)[groups]
+    Z = rng.binomial(1, 0.5, (180, 1))
+    H = rng.exponential(1, 180) / (u * np.exp(0.5 * Z[:, 0]))
+    return dict(x=10 * H**0.5, Z=Z, groups=groups)
+
+
+# The negative log-likelihood the Nelder-Mead-then-BFGS ladder reached
+# (before #515). On the survey data it stopped with theta at 1e-10 and
+# 1e-21 for the Weibull baseline, 0.10 nats short of the maximum at theta
+# 0.02; on the others it found the maximum.
+_OLD_NEG_LL = {
+    ("shared", "WeibullFrailty"): 553.2587426928156,
+    ("shared", "GammaFrailty"): 555.6163844533303,
+    ("shared", "LogNormalFrailty"): 567.7838014631002,
+    ("survey0", "WeibullFrailty"): 607.937511288359,
+    ("survey0", "GammaFrailty"): 608.6993140296784,
+    ("survey1", "WeibullFrailty"): 570.8795379993384,
+    ("survey1", "LogNormalFrailty"): 585.9436498029434,
+    ("survey2", "ExponentialFrailty"): 643.5745250742405,
+}
+
+
+def _data(case):
+    if case == "shared":
+        return _shared_frailty_data()
+    return _survey_data(int(case[-1]))
+
+
+@pytest.mark.parametrize("case,name", sorted(_OLD_NEG_LL))
+def test_reaches_at_least_the_old_ladders_optimum(case, name):
+    model = getattr(sp, name).fit(**_data(case))
+    old = _OLD_NEG_LL[(case, name)]
+    assert model._neg_ll <= old + 1e-6
+
+
+@pytest.mark.parametrize("name", ["WeibullFrailty", "GammaFrailty"])
+def test_no_nelder_mead_when_the_gradient_ladder_converges(name):
+    methods = []
+    real = frailty_fitter.minimize
+
+    def recording(*args, **kwargs):
+        methods.append(kwargs.get("method"))
+        return real(*args, **kwargs)
+
+    with mock.patch.object(frailty_fitter, "minimize", recording):
+        model = getattr(sp, name).fit(**_shared_frailty_data())
+    assert np.isfinite(model._neg_ll)
+    assert "Nelder-Mead" not in methods, methods
+
+
+def test_a_variance_heading_for_zero_is_carried_to_its_limit():
+    # BFGS in log(theta) stops at theta ~ 1e-7 on data with no frailty,
+    # with the likelihood still rising towards theta = 0; the fit carries
+    # it on to where the likelihood no longer changes.
+    rng = np.random.default_rng(4)
+    x = rng.weibull(1.5, 300) * 10
+    Z = rng.normal(size=(300, 2))
+    groups = rng.integers(0, 30, 300)
+    model = sp.GammaFrailty.fit(x, Z=Z, groups=groups)
+    ph = sp.GammaPH.fit(x, Z)
+    assert model.theta < 1e-12
+    assert model._neg_ll == pytest.approx(ph._neg_ll, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# ``param_cb`` with theta at its boundary; information criteria
+# comparable with PH.
+# ---------------------------------------------------------------------------
+
+
+def _frailty_free():
+    rng = np.random.default_rng(2)
+    z = rng.normal(size=300)
+    x = 20 * (-np.log(rng.uniform(size=300)) / np.exp(0.8 * z)) ** (1 / 1.8)
+    g = np.repeat(np.arange(30), 10)
+    return x, z.reshape(-1, 1), g
+
+
+def test_frailty_param_cb_theta_at_boundary_is_warning_free():
+    x, Z, g = _frailty_free()
+    model = WeibullFrailty.fit(x=x, Z=Z, groups=g)
+    assert model.theta < 1e-8
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        lower, upper = model.param_cb("theta")
+        model.standard_errors()
+    assert lower == 0.0
+    assert upper == np.inf
+
+
+def test_frailty_information_criteria_compare_with_ph():
+    x, Z, g = _frailty_free()
+    frailty = WeibullFrailty.fit(x=x, Z=Z, groups=g)
+    ph = WeibullPH.fit(x=x, Z=Z)
+    # theta -> 0 is the PH model, so the likelihoods agree and the frailty
+    # model pays for one more parameter.
+    assert frailty.neg_ll() == pytest.approx(ph.neg_ll(), abs=1e-6)
+    assert frailty.aic() == pytest.approx(ph.aic() + 2, abs=1e-5)
+    assert frailty.bic() == pytest.approx(ph.bic() + np.log(300), abs=1e-5)
+    restored = type(frailty).from_dict(frailty.to_dict())
+    assert restored.aic() == pytest.approx(frailty.aic())
+    assert restored.bic() == pytest.approx(frailty.bic())
+
+
+# ---------------------------------------------------------------------------
+# The length of ``groups`` and the ``param_cb`` name are checked.
+# ---------------------------------------------------------------------------
+
+
+def test_frailty_groups_length_and_param_cb_name():
+    x, Z = weibull_ph_data()
+    groups = np.repeat(np.arange(40), 5)
+    with pytest.raises(ValueError, match="'groups' has 199"):
+        WeibullFrailty.fit(x, Z=Z, groups=groups[:-1])
+    model = WeibullFrailty.fit(x, Z=Z, groups=groups)
+    with pytest.raises(ValueError, match="Unknown parameter 'gamma'"):
+        model.param_cb("gamma")
+
+
+# ---------------------------------------------------------------------------
+# #388: a missing frailty group.
+# ---------------------------------------------------------------------------
+
+
+def _frailty_data():
+    rng = np.random.default_rng(4)
+    groups = np.repeat(np.arange(8), 6).astype(float)
+    u = rng.gamma(2.0, 0.5, 8)[groups.astype(int)]
+    Z = rng.binomial(1, 0.5, (48, 1)).astype(float)
+    x = 10 * (rng.exponential(1, 48) / (u * np.exp(0.5 * Z[:, 0]))) ** 0.5
+    return x, Z, groups
+
+
+@pytest.mark.parametrize("missing", [np.nan, None])
+def test_frailty_drops_a_row_with_a_missing_group(missing):
+    # A NaN label used to be a group of its own (n_groups 9, not 8), and a
+    # None label raised TypeError.
+    x, Z, groups = _frailty_data()
+    labels = list(groups)
+    labels[3] = missing
+    init = [8.0, 2.0, 0.0, 0.5]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        model = sp.WeibullFrailty.fit(x, Z=Z, groups=labels, init=init)
+    dropped = [str(w.message) for w in caught if "Dropped" in str(w.message)]
+    assert dropped == ["Dropped 1 of 48 rows with a missing group label."]
+    assert model.n_groups == 8
+    keep = np.arange(48) != 3
+    ref = sp.WeibullFrailty.fit(
+        x[keep], Z=Z[keep], groups=groups[keep], init=init
+    )
+    np.testing.assert_allclose(model.sf(5.0, [1.0]), ref.sf(5.0, [1.0]))
+
+
+def test_frailty_refuses_every_group_missing():
+    x, Z, _ = _frailty_data()
+    with pytest.raises(ValueError, match="Every group label is missing"):
+        sp.WeibullFrailty.fit(x, Z=Z, groups=[None] * 48)
+
+
+def test_frailty_predicts_nan_for_a_missing_group():
+    x, Z, groups = _frailty_data()
+    model = sp.WeibullFrailty.fit(x, Z=Z, groups=groups, init=[8, 2, 0, 0.5])
+    assert np.isnan(model.sf([5.0, 6.0], [1.0], group=np.nan)).all()
+    assert np.isfinite(model.sf(5.0, [1.0], group=groups[0]))

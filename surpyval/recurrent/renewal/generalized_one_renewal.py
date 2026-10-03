@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Any, Callable
 
 import numpy as np
@@ -5,13 +7,18 @@ from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 
 from surpyval import Weibull
+from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
-from surpyval.recurrent.renewal.renewal_model import RenewalModel
+from surpyval.recurrent.renewal.renewal_model import (
+    RenewalModel,
+    event_positions,
+)
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
     reject_left_truncation,
+    validate_lifetime_dist,
     validate_renewal_censoring,
     validate_renewal_times,
     validate_restoration,
@@ -65,10 +72,15 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     =========================
     Distribution        : Weibull
     Fitted by           : MLE
-    Restoration Factor  : -0.1730184624683848
-    Parameters          :
-         alpha: 1.3919045968817332
-          beta: 5.008861189641614
+    Restoration Factor  : -0.17301847850518184
+    Parameters          : Wald 95% intervals
+               estimate      se  lower 95%  upper 95%
+        q        -0.173 0.02645    -0.2233    -0.1195
+        alpha     1.392  0.2045      1.044      1.856
+        beta      5.009   1.314      2.996      8.375
+    Repair test: perfect repair (a renewal process) rejected: each time
+          between failures is 0.827 times the one before (deterioration)
+          (LR tests, q = 0: p = 0.000141)
     >>>
     >>> np.random.seed(0)
     >>> np_model = model.count_terminated_simulation(len(x), 5000)
@@ -114,14 +126,8 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Exp(1) over the observed intervals under the fitted model.
         """
         q = model.q
-        _, idx = np.unique(data.i, return_index=True)
-        interarrival_by_item = np.split(data.get_interarrival_times(), idx)[1:]
-        scaled = np.concatenate(
-            [
-                np.asarray(arr, dtype=float) / (1.0 + q) ** np.arange(len(arr))
-                for arr in interarrival_by_item
-            ]
-        )
+        interarrival = np.asarray(data.get_interarrival_times(), dtype=float)
+        scaled = interarrival / (1.0 + q) ** event_positions(data.i)
         return np.asarray(model.model.Hf(scaled), dtype=float)
 
     def _refit(self, model: Any, data: Any) -> Any:
@@ -137,6 +143,16 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         n: np.ndarray,
         dist: Any,
     ) -> Callable:
+        # The jth interarrival of an item (j = 0, 1, ...) is its row's
+        # position within the item.
+        x = np.asarray(x, dtype=float)
+        n = np.asarray(n)
+        j = event_positions(i)
+        observed = np.asarray(c) == 0
+        censored = np.asarray(c) == 1
+        x_o, j_o, n_o = x[observed], j[observed], n[observed]
+        x_r, j_r, n_r = x[censored], j[censored], n[censored]
+
         def negll_func(params: np.ndarray) -> float:
             q = params[0]
             dist_params = params[1:]
@@ -151,32 +167,27 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             # underflow the scale to zero.
             log1p_q = np.log1p(q)
 
-            ll = 0.0
             # Far from the optimum the rescaled times can still overflow
             # (x / c_j -> inf) and the densities underflow to zero. That
             # only happens where the likelihood is negligible, and a
             # non-finite total is returned as inf below, so the arithmetic
             # warnings on the way there carry no information.
             with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
-                for item in set(i):
-                    mask_item = i == item
-                    x_item = np.atleast_1d(x[mask_item])
-                    c_item = np.atleast_1d(c[mask_item])
-                    n_item = np.atleast_1d(n[mask_item])
-                    for j in range(0, len(x_item)):
-                        # The jth interarrival is the base lifetime scaled
-                        # by cj = (1 + q) ** j. Scaling the random variable
-                        # by cj is equivalent to evaluating the base
-                        # distribution on a rescaled time axis:
-                        # f_j(x) = f0(x / cj) / cj and S_j(x) = S0(x / cj).
-                        log_cj = j * log1p_q
-                        xj = x_item[j] * np.exp(-log_cj)
-                        if c_item[j] == 0:
-                            ll += n_item[j] * (
-                                dist.log_df(xj, *dist_params) - log_cj
-                            )
-                        elif c_item[j] == 1:
-                            ll += n_item[j] * dist.log_sf(xj, *dist_params)
+                # The jth interarrival is the base lifetime scaled by
+                # cj = (1 + q) ** j. Scaling the random variable by cj is
+                # equivalent to evaluating the base distribution on a
+                # rescaled time axis: f_j(x) = f0(x / cj) / cj and
+                # S_j(x) = S0(x / cj). Every event at once (#515).
+                ll = 0.0
+                if x_o.size:
+                    log_cj = j_o * log1p_q
+                    xj = x_o * np.exp(-log_cj)
+                    ll += np.sum(
+                        n_o * (dist.log_df(xj, *dist_params) - log_cj)
+                    )
+                if x_r.size:
+                    xj = x_r * np.exp(-(j_r * log1p_q))
+                    ll += np.sum(n_r * dist.log_sf(xj, *dist_params))
             if not np.isfinite(ll):
                 return np.inf
             return -ll
@@ -191,6 +202,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         non-negative lifetime distribution; distributions with support over
         negative values (e.g. Normal, Gumbel) are not eligible.
         """
+        validate_lifetime_dist(dist, "GeneralizedOneRenewal")
         if dist.support[0] < 0:
             raise ValueError(
                 "{} has support {} which includes negative values; the G1 "
@@ -244,9 +256,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Restoration Factor  : 0.3402789091696592
-        Parameters          :
-             alpha: 1.4115217370254167
-              beta: 3.5499343659245564
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q        0.3403 0.1398    0.09251     0.6442
+            alpha     1.412 0.2624     0.9805      2.032
+            beta      3.55 0.8432      2.229      5.655
+        Repair test: perfect repair (a renewal process) rejected: each time
+              between failures is 1.34 times the one before (improvement) (LR
+              tests, q = 0: p = 0.0148)
         """
         self._check_dist_eligible(dist)
         validate_renewal_censoring(data.c, type(self).__name__)
@@ -274,28 +291,35 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         def polish(res: Any) -> Any:
             return fit_once(res.x)
 
-        if init is None:
-            dist_params = dist.fit(
-                data.interarrival_times, data.c, data.n
-            ).params
+        dist_params = self._default_start(
+            lambda: dist.fit(data.interarrival_times, data.c, data.n).params,
+            init,
+        )
+        inits = None
+        if dist_params is not None:
             inits = [[q_init, *dist_params] for q_init in (0.0001, 1.0, 2.0)]
-        else:
+        if init is not None:
             init = np.atleast_1d(np.asarray(init, dtype=float))
-            if init.shape != (1 + len(dist.param_names),):
+            if init.shape != (1 + len(dist.parameter_names),):
                 raise ValueError(
                     "init must have {} values ([q, {}]); got {}.".format(
-                        1 + len(dist.param_names),
-                        ", ".join(dist.param_names),
+                        1 + len(dist.parameter_names),
+                        ", ".join(dist.parameter_names),
                         init.size,
                     )
                 )
-            inits = None
         res = self._multistart(fit_once, inits, init, neg_ll, polish)
+        params = self._polish_unverified(
+            neg_ll,
+            res.x,
+            [(-1, None), *dist.bounds],
+            max(float(bic_sample_size(data)), 1.0),
+        )
 
-        underlying_model = dist.from_params(list(res.x[1:]))
-        q = res.x[0]
+        underlying_model = dist.from_params(list(params[1:]))
+        q = params[0]
         out = self._make_model(underlying_model, q)
-        self._attach_inference(out, neg_ll, res.x, res, data)
+        self._attach_inference(out, neg_ll, params, res, data)
         return out
 
     def fit(
@@ -353,9 +377,14 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Distribution        : Weibull
         Fitted by           : MLE
         Restoration Factor  : 0.3402789091696592
-        Parameters          :
-             alpha: 1.4115217370254167
-              beta: 3.5499343659245564
+        Parameters          : Wald 95% intervals
+                   estimate     se  lower 95%  upper 95%
+            q        0.3403 0.1398    0.09251     0.6442
+            alpha     1.412 0.2624     0.9805      2.032
+            beta      3.55 0.8432      2.229      5.655
+        Repair test: perfect repair (a renewal process) rejected: each time
+              between failures is 1.34 times the one before (improvement) (LR
+              tests, q = 0: p = 0.0148)
         """
         data = handle_xicn(x, i, c, n)
         return self.fit_from_recurrent_data(data, dist=dist, init=init)
@@ -402,6 +431,7 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         Parameters          :
              alpha: 10
               beta: 2
+        Repair test         : not available (no data)
         """
         self._check_dist_eligible(dist)
         validate_restoration(q, "q", (-1, None), open_lower=True)

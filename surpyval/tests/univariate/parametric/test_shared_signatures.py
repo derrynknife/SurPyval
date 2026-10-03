@@ -26,6 +26,7 @@ import numpy as np
 import pytest
 
 import surpyval
+from surpyval import Bernoulli, Binomial, ExactEventTime
 from surpyval.univariate.parametric.parametric_fitter import ParametricFitter
 
 DIST_DIR = pathlib.Path(surpyval.__file__).parent / (
@@ -163,14 +164,14 @@ def test_every_distribution_refusing_mpp_raises_the_same_way():
             dist.fit(np.array([1.0, 2.0, 3.0, 4.0]), how="MPP")
 
 
-def _param_names_by_module():
+def _parameter_names_by_module():
     """{module stem: set of that distribution's parameter names}."""
     out = defaultdict(set)
     for name in dir(surpyval):
         dist = getattr(surpyval, name)
         if isinstance(dist, ParametricFitter):
             stem = type(dist).__module__.rsplit(".", 1)[-1]
-            out[stem].update(getattr(dist, "param_names", []) or [])
+            out[stem].update(getattr(dist, "parameter_names", []) or [])
     return out
 
 
@@ -186,7 +187,7 @@ def test_no_shared_method_diverges_in_its_data_argument():
     # distributions are. What must agree is everything else -- the x a
     # function is evaluated at, the u a quantile is taken at, the m of a
     # moment.
-    params_by_mod = _param_names_by_module()
+    params_by_mod = _parameter_names_by_module()
     leading = defaultdict(dict)
     for path in sorted(DIST_DIR.glob("*.py")):
         if path.stem in _NOT_PARAMETRIC_FITTERS or path.stem == "__init__":
@@ -278,7 +279,7 @@ def test_distribution_parameters_are_boxable():
     # make the position uncheckable, which is the whole point of naming
     # the box in the first place (see the Numeric/Boxable comment in
     # parametric_fitter).
-    params_by_mod = _param_names_by_module()
+    params_by_mod = _parameter_names_by_module()
     wrong = {}
     for method in ("sf", "ff", "df", "hf", "Hf", "qf"):
         for mod, (args, _) in _annotations(method).items():
@@ -327,3 +328,60 @@ def test_user_entry_points_accept_array_likes():
         if args and args[0][0] == "params" and args[0][1] != "npt.ArrayLike":
             wrong[f"{mod}.from_params(params)"] = args[0][1]
     assert not wrong, f"must accept an array-like: {wrong}"
+
+
+# ---------------------------------------------------------------------------
+# ``from_params`` argument names and structural rejection
+# (#257).
+# ---------------------------------------------------------------------------
+
+
+# --- from_params argument names and structural rejection -----------------
+#
+# Bernoulli and ExactEventTime used to name the base's ``params`` argument
+# ``p`` and ``T``, so positional calls worked and keyword calls raised.
+# Bernoulli's was worse than a rename: the base's ``p`` is the proportion
+# that never fails, so the same keyword meant two unrelated things on
+# sibling classes. All three now match ParametricFitter.from_params, and
+# reject the structural arguments they cannot honour.
+
+
+@pytest.mark.parametrize(
+    "dist, params, expected",
+    [
+        (Bernoulli, 0.3, [0.3]),
+        (ExactEventTime, 10, [10]),
+        (Binomial, [5, 0.3], [5.0, 0.3]),
+    ],
+)
+def test_from_params_accepts_the_params_keyword(dist, params, expected):
+    by_keyword = dist.from_params(params=params)
+    by_position = dist.from_params(params)
+    assert by_keyword.params == pytest.approx(expected)
+    assert by_position.params == pytest.approx(expected)
+
+
+@pytest.mark.parametrize(
+    "dist, params",
+    [
+        (Bernoulli, 0.3),
+        (ExactEventTime, 10),
+        (Binomial, [5, 0.3]),
+    ],
+)
+@pytest.mark.parametrize("structural", ["gamma", "p", "f0"])
+def test_from_params_rejects_unsupported_structural_args(
+    dist, params, structural
+):
+    with pytest.raises(ValueError, match="does not support"):
+        dist.from_params(params, **{structural: 0.5})
+
+
+def test_from_params_signature_matches_the_base():
+    # The narrower signatures could not be called through a
+    # ParametricFitter reference, which is what made this a real bug and
+    # not a naming preference.
+    base = set(inspect.signature(ParametricFitter.from_params).parameters)
+    for dist in (Bernoulli, Binomial, ExactEventTime):
+        own = set(inspect.signature(type(dist).from_params).parameters)
+        assert base <= own, dist.name

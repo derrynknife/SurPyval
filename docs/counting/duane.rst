@@ -13,6 +13,7 @@ Crow-AMSAA in a different parameterisation
 
    .. automethod:: surpyval.recurrent.parametric.duane.Duane.fit
    .. automethod:: surpyval.recurrent.parametric.duane.Duane.fit_from_recurrent_data
+   .. automethod:: surpyval.recurrent.parametric.duane.Duane.fit_from_df
    .. automethod:: surpyval.recurrent.parametric.duane.Duane.from_params
    .. automethod:: surpyval.recurrent.parametric.duane.Duane.cif
    .. automethod:: surpyval.recurrent.parametric.duane.Duane.iif

@@ -34,7 +34,6 @@ from surpyval import (
     CoxPH,
     KaplanMeier,
     MixtureModel,
-    Power,
     Turnbull,
     Weibull,
     WeibullPH,
@@ -44,6 +43,7 @@ from surpyval.degradation import (
     GammaProcess,
     WienerProcess,
 )
+from surpyval.life_models import Power
 from surpyval.recurrent import (
     CrowAMSAA,
     GeneralizedRenewal,
@@ -55,6 +55,7 @@ from surpyval.recurrent.competing_risks import (
     CauseSpecificNHPP,
 )
 from surpyval.serialisation import required_schema
+from surpyval.tests._helpers import linear_degradation_paths
 from surpyval.univariate.competing_risks import (
     CompetingRisks,
     FineGray,
@@ -123,15 +124,6 @@ def _pi_data(seed=0, n_items=15):
     return np.array(xs), np.array(ii), np.array(cc), np.array(ZZ)
 
 
-def _deg_data(seed=0):
-    rng = np.random.default_rng(seed)
-    x = np.tile(np.arange(100, 1100, 100), 4).astype(float)
-    slopes = np.repeat([0.31, 0.28, 0.44, 0.37], 10)
-    i = np.repeat([1, 2, 3, 4], 10)
-    y = 10 + slopes * x + rng.normal(0, 1, x.size)
-    return x, y, i
-
-
 def _process_data(seed=2, monotone=False):
     rng = np.random.default_rng(seed)
     xs, ys, ii = [], [], []
@@ -149,7 +141,9 @@ def _process_data(seed=2, monotone=False):
 def _fit_degradation():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return DegradationAnalysis.fit(*_deg_data(), threshold=150)
+        return DegradationAnalysis.fit(
+            *linear_degradation_paths(), threshold=150
+        )
 
 
 # -- one builder + prediction check per serialisable model --------------------

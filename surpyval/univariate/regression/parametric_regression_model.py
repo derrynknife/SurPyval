@@ -1,5 +1,7 @@
-import types
-from typing import TYPE_CHECKING, Any
+from __future__ import annotations
+
+import warnings
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -9,15 +11,26 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
-from surpyval.utils.linalg import (
-    delta_method_se,
-    log_transformed_cb,
-    numerical_hessian,
-    wald_bound_on_support,
+from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import CallableList, RenamedAttribute
+from surpyval.utils.no_maximum import maximum_entry, restored_maximum
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
 )
-from surpyval.utils.shapes import keeps_query_shape
 
-from ._bounds import logit_sf_bound
+from ._concordance import ConcordanceMixin
+from ._covariate_link import CovariateLink
+from ._inference import InferenceMixin
+from ._kinds import (
+    ACCELERATED_FAILURE_TIME,
+    ACCELERATED_LIFE,
+    ADDITIVE_HAZARD,
+    PROPORTIONAL_HAZARD,
+    PROPORTIONAL_ODDS,
+)
+from ._tvc_evaluation import TVCEvaluationMixin
 from .regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -28,6 +41,13 @@ if TYPE_CHECKING:
     import pandas as pd
     from matplotlib.axes import Axes
 
+    from surpyval.univariate.parametric.parametric_fitter import (
+        ParametricFitter,
+    )
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    from .accelerated_life.lifemodel import LifeModel
+
 
 # Regression families whose fitted model round-trips through ``to_dict`` /
 # ``from_dict``: each has a fixed-form covariate link (a log-linear multiplier
@@ -36,10 +56,10 @@ if TYPE_CHECKING:
 # therefore every prediction -- can be rebuilt from the distribution's name.
 # Maps kind -> (public fitter factory name, covariate-link form).
 _SERIALISABLE_KINDS: "dict[str, tuple[str, str]]" = {
-    "Accelerated Failure Time": ("AFT", "exp"),
-    "Proportional Hazard": ("PH", "exp"),
-    "Proportional Odds": ("PO", "exp"),
-    "Additive Hazard": ("AH", "additive"),
+    ACCELERATED_FAILURE_TIME: ("AFT", "exp"),
+    PROPORTIONAL_HAZARD: ("PH", "exp"),
+    PROPORTIONAL_ODDS: ("PO", "exp"),
+    ADDITIVE_HAZARD: ("AH", "additive"),
 }
 
 # The covariate-link (``reg_model``) names those families produce. A model
@@ -52,7 +72,13 @@ _SERIALISABLE_REG_NAMES = {
 }
 
 
-class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
+class ParametricRegressionModel(
+    TVCEvaluationMixin,
+    InferenceMixin,
+    ConcordanceMixin,
+    InformationCriteriaMixin,
+    SerialisableMixin,
+):
     """
     The fitted model returned by every parametric regression fitter: the
     proportional hazards (``WeibullPH``, ``PH(dist)``), accelerated failure
@@ -60,7 +86,12 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     (``AH``) and accelerated life (``AcceleratedLife``) families.
 
     ``params`` holds the distribution parameters followed by the covariate
-    coefficients (``dist_params`` and ``phi_params`` split them). The
+    coefficients (``dist_params`` and ``phi_params`` split them), named in
+    order by ``parameter_names``. In an accelerated life model the life
+    parameter (``life_parameter``, e.g. the Weibull's ``alpha``) is not
+    estimated: the life model gives it at each stress, and its slot in
+    ``params`` holds a placeholder 1, which the printed model does not show
+    as a value. The
     survival functions take the covariates as a second argument,
     ``sf(x, Z)``; ``sf_tvc`` / ``Hf_tvc`` evaluate them along a
     time-varying covariate path. The model also provides parameter
@@ -81,47 +112,124 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     array([0.728 , 0.4833])
     """
 
-    # Covariate metadata populated when the model is fit from a pandas
-    # DataFrame (see ``DataFrameRegressionMixin.fit_from_df``). These defaults
-    # keep the array based interface working unchanged.
+    # Every attribute a fitted model carries. The model is created empty
+    # and filled in by its builder: ``assemble_regression_model`` (every
+    # ``fit``, the time-varying-covariate fits and ``AcceleratedLife``),
+    # then ``fit_from_df`` / ``fit_tvc`` add theirs, and ``from_dict``
+    # (for a model restored without its data). An attribute with a value
+    # here is optional: the builders that have nothing to say leave the
+    # default. ``conformance/test_attributes.py`` checks that every
+    # builder gives the same set, and nothing undeclared.
+
+    # -- set by every builder ---------------------------------------------
+    #: The fitted parameters: the distribution's, then the covariate
+    #: coefficients (or life-model parameters); an aliased one is nan.
+    params: npt.NDArray
+    #: ``params[:k_dist]``, the baseline distribution's parameters.
+    dist_params: npt.NDArray
+    #: ``params[k_dist:]``, the covariate coefficients (or life-model
+    #: parameters).
+    phi_params: npt.NDArray
+    #: The number of estimated parameters (fixed and aliased ones are not
+    #: counted), the ``k`` of the information criteria.
+    k: int
+    #: The number of baseline distribution parameters.
+    k_dist: int
+    #: The family, one of the names in ``_kinds``: ``"Proportional
+    #: Hazard"``, ``"Accelerated Failure Time"``, ``"Proportional Odds"``,
+    #: ``"Additive Hazard"`` or ``"Accelerated Life"``.
+    kind: str
+    #: ``{name: value}`` of the parameters held fixed in the fit (an
+    #: accelerated life model's placeholder for its life parameter
+    #: included; the aliased coefficients are not).
+    fixed: dict[str, float]
+    #: The baseline distribution (``Weibull``, ...).
+    distribution: ParametricFitter
+    #: The same distribution, under the name the fitters use.
+    dist: ParametricFitter
+    #: ``{name: position}`` of the baseline distribution's parameters.
+    distribution_param_map: dict[str, int]
+    #: ``{name: position}`` of the covariate coefficients (life-model
+    #: parameters), counted from the first of them.
+    phi_param_map: dict[str, int]
+    #: How the covariates act: a :class:`CovariateLink` (its ``name``,
+    #: ``phi_param_map`` and ``phi``), or the life model of an
+    #: accelerated life model.
+    reg_model: "CovariateLink | LifeModel"
+    #: The regression fitter that built the model; its ``sf(x, Z,
+    #: *params)`` and the others (and ``neg_ll``) are the model's.
+    model: Any
+    #: The fitted negative log-likelihood.
+    _neg_ll: float
+
+    # -- set by the fits from data (absent on a model from ``from_dict``) --
+    #: The data fitted to, with its covariates ``Z``.
+    data: SurpyvalData
+    #: The optimiser's result (``scipy.optimize.OptimizeResult``).
+    res: Any
+    #: The objective the search minimised, in the transformed search
+    #: space; set by the accelerated life fit only.
+    fun: Callable[[npt.NDArray], Any]
+
+    # -- optional ----------------------------------------------------------
+    #: Not parameters of a regression model; kept at the univariate
+    #: models' neutral values (no offset, no defective fraction, no zero
+    #: inflation), which ``to_dict`` stores.
+    gamma: float = 0.0
+    p: float = 1.0
+    f0: float = 0.0
+    #: The covariate point the baseline parameters are at: zeros (or
+    #: ``None``, for an accelerated life model) when they are those of a
+    #: unit with ``Z = 0``, the default. A fit with ``center=True`` keeps
+    #: its baseline at the ``n``-weighted covariate means (#463), stored
+    #: here, and every prediction uses ``Z - center``.
+    center: "npt.NDArray | None" = None
+    #: Covariate metadata of a model fitted from a pandas DataFrame (see
+    #: ``DataFrameRegressionMixin.fit_from_df``): the coefficients'
+    #: column names, the formula, and the formulaic model spec that
+    #: encodes a DataFrame's columns. ``None`` for a fit from arrays.
     feature_names: list[str] | None = None
     formula: str | None = None
     _model_spec: Any = None
+    #: What the fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``): ``"verified"`` (a zero gradient and
+    #: a positive-definite Hessian), ``"unverified"`` or ``"no finite
+    #: maximum"``, each as the fit's warnings say (principles 12 and 13);
+    #: ``"unknown"`` for a model restored from a dict saved without it.
+    maximum: str = "unknown"
+    #: Whether the model was fitted to time-varying covariates
+    #: (``fit_tvc``, ``fit_tvc_timeline``), one data row per interval.
+    is_tvc: bool = False
+    #: The number of subjects of a time-varying-covariate fit.
+    n_subjects: "int | None" = None
+    #: The weighted number of subjects of a time-varying-covariate fit,
+    #: the sample size of ``bic`` / ``aic_c`` when none failed.
+    _ic_n_total: "float | None" = None
     #: Set only on models rebuilt by :meth:`from_dict` that carried a stored
     #: parameter covariance; lets them produce confidence bounds without the
     #: original data. ``None`` on freshly fitted models.
     _restored_covariance: "npt.NDArray | None" = None
     #: True on models rebuilt by :meth:`from_dict`, which carry no data.
     _restored: bool = False
-
-    # Attributes populated after construction (by ``fit`` / ``from_params``).
-    # Declared here so static type checkers know their types.
-    params: npt.NDArray
-    dist_params: npt.NDArray
-    phi_params: npt.NDArray
-    k: int
-    k_dist: int
-    gamma: float
-    p: float
-    f0: float
-    kind: str
-    fixed: dict[str, float]
-    dist: Any
-    distribution: Any
-    distribution_param_map: Any
-    phi_param_map: Any
-    reg_model: Any
-    model: Any
-    data: Any
-    res: Any
-    fun: Any
-    _neg_ll: float
-    _bic: float
-    #: Set by the AFT time-varying-covariate fit; absent otherwise.
-    is_tvc: bool
-    n_subjects: int
-    _aic: float
-    _aic_c: float
+    #: The printout's "Data" line of a model rebuilt by :meth:`from_dict`
+    #: (#508).
+    _data_summary: "str | None" = None
+    #: ``(params, center, jacobian)`` of the centred fit behind a model
+    #: that reports its baseline at 0 (the log-linear families whose
+    #: baseline maps exactly between the two, #463): the covariance and
+    #: the confidence bounds are computed there, where the parameters are
+    #: well conditioned, and carried to ``params`` by the jacobian of the
+    #: map.
+    _fit_centring: "tuple | None" = None
+    #: ``(point, H)``: the exact (autograd) Hessian of the negative
+    #: log-likelihood in the free natural parameters at ``point`` (see
+    #: ``_covariance_point``), kept by the fit
+    #: (``_fit_skeleton.keep_information``) for ``_observed_covariance``.
+    _information: "tuple | None" = None
+    #: ``(point, covariance)`` of the last covariance computed.
+    _covariance_cache: "tuple | None" = None
+    # The information criteria's sample size ``_ic_n`` and their caches
+    # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
     # -- serialisation -----------------------------------------------------
 
@@ -133,13 +241,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         name. Raises ``NotImplementedError`` for any link that cannot be
         reconstructed from a name.
         """
-        phi_param_map = getattr(self.reg_model, "phi_param_map", None)
+        phi_param_map = self.reg_model.phi_param_map
         if not isinstance(phi_param_map, dict):
             raise NotImplementedError(
                 "This model's covariate coefficients are not a fixed name map "
                 "and cannot be serialised."
             )
-        reg_name = getattr(self.reg_model, "name", None)
+        reg_name = self.reg_model.name
         base: dict[str, Any] = {
             "parameterization": "parametric-regression",
             "kind": self.kind,
@@ -149,7 +257,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             },
         }
 
-        if self.kind == "Accelerated Life":
+        if self._is_accelerated_life():
             from surpyval.univariate.regression.accelerated_life import (
                 LIFE_MODELS,
             )
@@ -163,6 +271,11 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     )
                 )
             base["life_model_name"] = reg_name
+            if LIFE_MODELS[reg_name].n_stresses is None:
+                # A parameter per stress column (GeneralLogLinear): the
+                # reader resolves the model for this many columns.
+                life_model = cast("LifeModel", self.reg_model)
+                base["n_stresses"] = int(cast(int, life_model.n_stresses))
             return base
 
         if self.kind not in _SERIALISABLE_KINDS:
@@ -215,9 +328,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out["k"] = int(self.k)
         out["k_dist"] = int(self.k_dist)
         out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
-        out["gamma"] = float(getattr(self, "gamma", 0.0))
-        out["p"] = float(getattr(self, "p", 1.0))
-        out["f0"] = float(getattr(self, "f0", 0.0))
+        out["gamma"] = float(self.gamma)
+        out["p"] = float(self.p)
+        out["f0"] = float(self.f0)
+        if self._has_center():
+            # Only a baseline at the covariate means (center=True, #463) is
+            # stored, which makes the dict schema 2: a schema-1 reader
+            # would take it for the baseline at Z = 0.
+            out["center"] = np.asarray(self.center, dtype=float).tolist()
         serialise_covariate_meta(self, out)
 
         # Store the parameter covariance so the restored model can produce
@@ -230,16 +348,21 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             except Exception:
                 cov = None
         else:
-            cov = getattr(self, "_restored_covariance", None)
+            cov = self._restored_covariance
         if cov is not None and np.all(np.isfinite(cov)):
             out["covariance"] = np.asarray(cov, dtype=float).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = float(self._neg_ll)
+        out.update(maximum_entry(self.maximum))
         # The sample size of bic() and aic_c(), which the restored model,
         # having no data, could not otherwise compute.
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # The printout's "Data" line (#508), so the restored model prints
+        # the same; the data themselves are not stored.
+        if self._data_repr():
+            out["data_summary"] = self._data_repr()
         return stamp_schema(out)
 
     @classmethod
@@ -279,8 +402,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         params = np.array(model_dict["params"], dtype=float)
         k_dist = int(model_dict["k_dist"])
 
-        reg_model: Any
-        if kind == "Accelerated Life":
+        reg_model: "CovariateLink | LifeModel"
+        if kind == ACCELERATED_LIFE:
             # Rebuild the parameter-substitution fitter from the distribution
             # and the built-in life model; the fitter carries the life-model's
             # phi and the distribution's life-parameter transforms, so it
@@ -311,7 +434,17 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                     )
                 )
             reg_model = LIFE_MODELS[life_name]
+            if reg_model.n_stresses is None:
+                n_stresses = model_dict.get("n_stresses")
+                if not isinstance(n_stresses, int) or n_stresses < 1:
+                    raise ValueError(
+                        "Cannot deserialise the {} life model without its "
+                        "number of stress columns ('n_stresses', a positive "
+                        "integer).".format(life_name)
+                    )
+                reg_model = reg_model.resolve(n_stresses)
             fitter = AcceleratedLife(dist, reg_model)
+            phi_param_map = dict(reg_model.phi_param_map)
         elif kind in _SERIALISABLE_KINDS:
             factory_name, phi_kind = _SERIALISABLE_KINDS[kind]
             factory = getattr(surpyval, factory_name)
@@ -319,17 +452,20 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             phi_param_map = {
                 k: int(v) for k, v in model_dict["phi_param_map"].items()
             }
-            reg_model = types.SimpleNamespace(
-                name=model_dict["reg_model_name"],
-                phi_param_map=phi_param_map,
-            )
             if phi_kind == "exp":
                 # The log-linear multiplier exp(beta'Z), matching the
                 # fitters. Imported here because _fit_skeleton imports
                 # this module at load time.
                 from ._fit_skeleton import LogLinearPhi
 
-                reg_model.phi = LogLinearPhi.phi
+                reg_model = LogLinearPhi(
+                    model_dict["reg_model_name"], phi_param_map
+                )
+            else:
+                # Additive: beta'Z is added to the hazard, no multiplier.
+                reg_model = CovariateLink(
+                    model_dict["reg_model_name"], phi_param_map
+                )
         else:
             raise ValueError(
                 "Cannot deserialise regression kind {!r}".format(kind)
@@ -339,6 +475,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         out.model = fitter
         out.distribution = dist
         out.dist = dist
+        out.distribution_param_map = fitter.param_map
+        out.phi_param_map = phi_param_map
         out.reg_model = reg_model
         out.kind = kind
         out.params = params
@@ -354,9 +492,23 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # full parameter-vector length.
         out.k = len(params) - len(out.fixed)
         out._restored = True
+        out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
         out.p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
+        if kind != ACCELERATED_LIFE:
+            # A dict without one has its baseline at Z = 0 (#463).
+            out.center = np.array(
+                model_dict.get("center", np.zeros(len(params) - k_dist)),
+                dtype=float,
+            )
+            if out.center.shape != (len(params) - k_dist,):
+                raise ValueError(
+                    "The model dict's 'center' has {} value(s) for {} "
+                    "covariate coefficient(s).".format(
+                        out.center.size, len(params) - k_dist
+                    )
+                )
         restore_covariate_meta(out, model_dict)
 
         if "covariance" in model_dict:
@@ -365,6 +517,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             )
         if "_neg_ll" in model_dict:
             out._neg_ll = float(model_dict["_neg_ll"])
+        out.maximum = restored_maximum(model_dict)
         # Dicts written before "ic_n" existed carry no sample size, and
         # bic() / aic_c() then say they need the data.
         out._ic_n = cls._restored_ic_n(model_dict)
@@ -381,59 +534,364 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         """
         return prepare_Z(Z, self.feature_names, self._model_spec)
 
-    def __repr__(self) -> str:
-        dist_params = self.params[0 : self.k_dist]
-        reg_model_params = self.params[self.k_dist :]
-        dist_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(dist_params, self.distribution.param_names)
-            ]
-        )
+    @property
+    def aliased(self) -> npt.NDArray:
+        """The columns of ``Z`` whose coefficients the data cannot
+        determine (#476): a constant column where the family has an
+        intercept, or a linear combination of the others. Their
+        coefficients are ``nan`` in ``params`` (R's ``NA``), as are their
+        standard errors, and predictions take them as 0. For an
+        accelerated-life model, whose parameters are not one per column,
+        they are positions in ``phi_params``: a stress effect the data
+        cannot determine (#503), such as the second of two equal stress
+        columns of ``DualPower``."""
+        phi = np.asarray(self.params, dtype=float)[self.k_dist :]
+        return np.flatnonzero(np.isnan(phi))
 
-        reg_model_param_string = "\n".join(
-            [
-                "{:>10}".format(name) + ": " + str(p)
-                for p, name in zip(
-                    reg_model_params, self.reg_model.phi_param_map
-                )
-                if name not in self.fixed
-            ]
-        )
+    def _eval_params(self) -> npt.NDArray:
+        """``params`` with an aliased coefficient as 0, as the model
+        predicts with it."""
+        if not self.aliased.size:
+            return self.params
+        params = np.array(self.params, dtype=float)
+        params[self.k_dist + self.aliased] = 0.0
+        return params
 
-        if hasattr(self, "params"):
-            out = (
-                "Parametric Regression SurPyval Model"
-                + "\n===================================="
-                + "\nKind                : {kind}"
-                + "\nDistribution        : {dist}"
-                + "\nRegression Model    : {reg_model}"
-                + "\nFitted by           : MLE"
-            ).format(
-                kind=self.kind,
-                dist=self.distribution.name,
-                reg_model=self.reg_model.name,
+    def _held(self) -> set:
+        """The names of the parameters that were not estimated: the
+        ``fixed`` ones and the aliased coefficients."""
+        names = self.parameter_names
+        return set(self.fixed) | {
+            names[self.k_dist + j] for j in self.aliased.tolist()
+        }
+
+    def _n_covariates(self) -> int:
+        """The number of columns of ``Z``: that of the fitted data where
+        the model has it, else one per coefficient (an accelerated-life
+        model's life-model parameters are not one per column)."""
+        data = getattr(self, "data", None)
+        Z = getattr(data, "Z", None)
+        if Z is not None and np.ndim(Z) == 2:
+            return int(np.shape(Z)[1])
+        return len(self.params) - self.k_dist
+
+    def _is_accelerated_life(self) -> bool:
+        """Whether this is an accelerated life model: a life model gives
+        the distribution's life parameter, and the covariate parameters
+        are the life model's, not one coefficient per column."""
+        return self.kind == ACCELERATED_LIFE
+
+    def _is_additive(self) -> bool:
+        """Whether the covariates add ``beta'Z`` to the hazard (additive
+        hazards), which nothing keeps positive, rather than act through
+        a multiplier."""
+        return self.kind == ADDITIVE_HAZARD
+
+    def _has_center(self) -> bool:
+        """Whether the baseline is at a nonzero covariate ``center``."""
+        return self.center is not None and bool(np.any(self.center))
+
+    def _centred(
+        self, Z: npt.ArrayLike, center: "npt.NDArray | None" = None
+    ) -> Any:
+        """The covariate rows ``Z`` (already prepared) relative to
+        ``center`` (default: the model's), where the baseline is."""
+        center = self.center if center is None else center
+        if center is None or not np.any(center):
+            return Z
+        return np.asarray(Z, dtype=float) - center
+
+    #: What ``exp(coef)`` is, for a log-linear link, by kind.
+    _EXP_MEANING = {
+        PROPORTIONAL_HAZARD: "the hazard ratio",
+        ACCELERATED_FAILURE_TIME: "the acceleration factor",
+        PROPORTIONAL_ODDS: "the survival odds ratio",
+    }
+
+    @property
+    def life_parameter(self) -> "str | None":
+        """The distribution parameter an accelerated life model replaces by
+        its life model (``None`` for the other families)."""
+        if not self._is_accelerated_life():
+            return None
+        return getattr(self.model, "life_parameter", None)
+
+    def _life_relation(self) -> str:
+        # How the life parameter follows from the life model, e.g.
+        # "L(Z) of the Power life model", for the printed model.
+        relation = getattr(self.model, "life_relation", "L(Z)")
+        return "{} of the {} life model".format(relation, self.reg_model.name)
+
+    def _is_linear_predictor(self) -> bool:
+        """Whether the covariate parameters are coefficients of a linear
+        predictor ``beta'Z`` (one per column of ``Z``), which the
+        coefficient table is for; an accelerated-life model's are the
+        parameters of its life model."""
+        n_phi = len(self.params) - self.k_dist
+        pmap = dict(self.reg_model.phi_param_map or {})
+        return not self._is_accelerated_life() and pmap == {
+            "beta_{}".format(i): i for i in range(n_phi)
+        }
+
+    def _exp_meaning(self) -> "str | None":
+        """What ``exp(coef)`` means, or ``None`` where the link is not
+        log-linear (``exp(coef)`` is then not a ratio)."""
+        from ._fit_skeleton import LogLinearPhi
+
+        name = self.reg_model.name
+        if name not in (LogLinearPhi.NAME_E, LogLinearPhi.NAME_EXP):
+            return None
+        return self._EXP_MEANING.get(self.kind)
+
+    def _summary_se(self) -> npt.NDArray:
+        """The standard errors for the summary: ``nan`` where there are
+        none (a model built from parameters, or one whose information
+        cannot be inverted), and for a parameter held fixed."""
+        n = len(self.params)
+        try:
+            with warnings.catch_warnings(), np.errstate(all="ignore"):
+                warnings.simplefilter("ignore")
+                se = np.array(self.standard_errors(), dtype=float)
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            se = np.full(n, np.nan)
+        if se.shape != (n,):
+            se = np.full(n, np.nan)
+        names = self.parameter_names
+        se[[i for i, name in enumerate(names) if name in self.fixed]] = np.nan
+        return se
+
+    def summary(self, alpha_ci: float = 0.05) -> "pd.DataFrame":
+        """
+        The parameter table (#484), in lifelines' layout: the baseline
+        distribution's parameters, then the regression coefficients (or,
+        for an accelerated-life model, the life model's parameters), each
+        with its standard error and a two-sided ``1 - alpha_ci`` Wald
+        interval; for the coefficients also ``exp(coef)`` (where the link
+        is log-linear: the hazard ratio for proportional hazards, the
+        acceleration factor for AFT, the survival odds ratio for
+        proportional odds), the Wald statistic ``z`` and its two-sided
+        p-value. The coefficients are named by ``feature_names`` for a
+        model fitted with ``fit_from_df``.
+
+        The baseline parameters' intervals are those of :meth:`param_cb`,
+        which stay in the parameter's support (a positive scale's is
+        computed on the log scale). A fixed parameter has no standard
+        error or interval (``nan``), nor does an aliased coefficient
+        (#476), whose value is ``nan`` too.
+
+        Parameters
+        ----------
+        alpha_ci : float, optional
+            The intervals' total tail probability. Default 0.05.
+
+        Returns
+        -------
+        pandas.DataFrame
+            Indexed by ``(part, name)``, ``part`` one of ``"baseline"``,
+            ``"coefficients"`` or ``"life model"``, with the columns of
+            ``CoxPH``'s :meth:`summary`: ``coef`` (the estimate),
+            ``exp(coef)``, ``se(coef)``, ``coef lower 95%``, ``coef upper
+            95%``, ``exp(coef) lower 95%``, ``exp(coef) upper 95%``, ``z``
+            and ``p``.
+
+        Examples
+        --------
+        >>> from surpyval import WeibullPH
+        >>> from surpyval.datasets import load_rossi_static
+        >>> df = load_rossi_static()
+        >>> df["censored"] = 1 - df["arrest"]  # arrest is 1 for an arrest
+        >>> model = WeibullPH.fit_from_df(
+        ...     df, x_col="week", c_col="censored", Z_cols=["fin", "age"]
+        ... )
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                               coef  se(coef)       p
+        part         name
+        baseline     alpha  32.2365   11.4172     NaN
+                     beta    1.3801    0.1241     NaN
+        coefficients fin    -0.3296    0.1898  0.0826
+                     age    -0.0713    0.0209  0.0006
+        """
+        import pandas as pd
+
+        from ._summary import coefficient_names, coefficient_table
+
+        params = np.asarray(self.params, dtype=float)
+        se = self._summary_se()
+        names = self.parameter_names
+        k = self.k_dist
+        level = "{:g}%".format(100 * (1 - alpha_ci))
+        if self._is_linear_predictor():
+            part = "coefficients"
+            rows = coefficient_table(
+                coefficient_names(self, len(params) - k),
+                params[k:],
+                se[k:],
+                alpha_ci,
+                exp=self._exp_meaning() is not None,
             )
-
-            out = (
-                out
-                + "\nDistribution        :\n"
-                + "{params}".format(params=dist_param_string)
-            )
-
-            out = (
-                out
-                + "\nRegression Model    :\n"
-                + "{params}".format(params=reg_model_param_string)
-            )
-
-            return out
+            first = k
         else:
+            part, rows, first = "life model", None, len(params)
+        # The other parameters: their estimate, standard error and the
+        # support-respecting interval of ``param_cb``.
+        # The life parameter an accelerated-life model replaces by its life
+        # model is a placeholder, not a parameter (#489): no row.
+        kept = [i for i in range(first) if names[i] != self.life_parameter]
+        others = []
+        for i in kept:
+            bounds = np.full(2, np.nan)
+            if np.isfinite(se[i]):
+                try:
+                    with warnings.catch_warnings(), np.errstate(all="ignore"):
+                        warnings.simplefilter("ignore")
+                        bounds = np.asarray(
+                            self.param_cb(names[i], alpha_ci), dtype=float
+                        ).ravel()
+                except (ValueError, ArithmeticError):
+                    pass
+            others.append(
+                {
+                    "coef": params[i],
+                    "se(coef)": se[i],
+                    "coef lower " + level: bounds[0],
+                    "coef upper " + level: bounds[-1],
+                }
+            )
+        table = pd.DataFrame(
+            others,
+            columns=list(coefficient_table([], [], [], alpha_ci).columns),
+        )
+        parts = ["baseline"] * min(k, first) + [part] * (first - k)
+        index = [(parts[i], names[i]) for i in kept]
+        if rows is not None:
+            table = pd.concat([table, rows.reset_index(drop=True)])
+            index += [(part, name) for name in rows.index]
+        table.index = pd.MultiIndex.from_tuples(index, names=["part", "name"])
+        return table
+
+    def _data_repr(self) -> str:
+        """The data the model was fitted to, in one line, for the printout
+        (#508): units weighted by ``n``, by kind of censoring and
+        truncation. Empty for a model built from parameters; a restored
+        model gives the line it was saved with."""
+        data = getattr(self, "data", None)
+        if data is None:
+            return self._data_summary or ""
+        if isinstance(data, dict):
+            c, n, t = data.get("c"), data.get("n"), data.get("t")
+            x = data.get("x")
+        else:
+            c = getattr(data, "c", None)
+            n = getattr(data, "n", None)
+            t = getattr(data, "t", None)
+            x = getattr(data, "x", None)
+        if c is None:
+            return ""
+        lower, upper = getattr(self.distribution, "support", (-np.inf, np.inf))
+        t = None if t is None else np.asarray(t, dtype=float)
+        if t is None or t.ndim != 2 or len(t) != len(np.asarray(c)):
+            return data_summary(c, n, x=x)
+        return data_summary(c, n, t[:, 0], t[:, 1], lower, upper, x=x)
+
+    def __repr__(self) -> str:
+        if not hasattr(self, "params"):
             return "Unable to fit values"
+        from ._summary import coefficient_repr, format_table
+
+        out = (
+            "Parametric Regression SurPyval Model"
+            + "\n===================================="
+            + "\nKind                : {kind}"
+            + "\nDistribution        : {dist}"
+            + "\nRegression Model    : {reg_model}"
+            + "\nFitted by           : MLE"
+        ).format(
+            kind=self.kind,
+            dist=self.distribution.name,
+            reg_model=self.reg_model.name,
+        )
+        data_line = self._data_repr()
+        if data_line:
+            out += "\nData                : " + data_line
+        if self._has_center():
+            # A fit with center=True (#463): say where the baseline
+            # parameters are.
+            out += (
+                "\nBaseline at         : the covariate means, "
+                "Z = center = {}".format(
+                    np.array2string(
+                        np.asarray(self.center, dtype=float),
+                        separator=", ",
+                    )
+                )
+            )
+        # The life parameter an accelerated-life model substitutes is held
+        # at a placeholder value, not a parameter of the model.
+        placeholder = set()
+        if self._is_accelerated_life():
+            placeholder = set(getattr(self.model, "fixed", None) or {})
+        fixed = {k: v for k, v in self.fixed.items() if k not in placeholder}
+        if fixed:
+            out += "\nFixed               : {}".format(
+                ", ".join("{} = {:.6g}".format(k, v) for k, v in fixed.items())
+            )
+        table = self.summary()
+        estimates = {
+            "coef": "estimate",
+            "se(coef)": "se",
+            "coef lower 95%": "lower 95%",
+            "coef upper 95%": "upper 95%",
+        }
+
+        def block(part: str) -> str:
+            rows = table.loc[part].rename(columns=estimates)
+            rows = rows.loc[[n for n in rows.index if n not in placeholder]]
+            rows.index.name = None
+            return format_table(rows, list(estimates.values()))
+
+        parts = table.index.get_level_values(0)
+        out += "\nBaseline            : {} parameters".format(
+            self.distribution.name
+        )
+        if "baseline" in parts:
+            out += "; Wald 95% intervals\n" + block("baseline")
+        if self.life_parameter is not None:
+            # Replaced by the life model, not fitted (#489).
+            out += "\n    {}: {}".format(
+                self.life_parameter, self._life_relation()
+            )
+        if "life model" in parts:
+            out += "\nLife model          : Wald 95% intervals\n" + block(
+                "life model"
+            )
+        if "coefficients" in parts:
+            meaning = self._exp_meaning()
+            out += "\nCoefficients        : {}Wald 95% intervals\n".format(
+                "exp(coef) is {}; ".format(meaning) if meaning else ""
+            ) + coefficient_repr(table.loc["coefficients"])
+        return out
+
+    def _concordance_risk(self, x: npt.NDArray, Z: Any) -> npt.NDArray:
+        # H(t* | Z) at the median time scored: for a family acting through
+        # a linear predictor it ranks the rows as that predictor does, with
+        # the sign of a higher risk, at every t* (see ``concordance``).
+        t = np.full(x.size, np.nanmedian(x))
+        with warnings.catch_warnings():
+            # An additive model's negative hazard at t* does not change
+            # the ranking.
+            warnings.filterwarnings("ignore", message="The additive hazard")
+            return np.asarray(self.Hf(t, Z), dtype=float)
+
+    def _concordance_data(self) -> "tuple | None":
+        data = getattr(self, "data", None)
+        if data is None or self.is_tvc:
+            return None
+        return data.x, data.c, data.n, data.Z
 
     def phi(self, Z: "npt.ArrayLike | pd.DataFrame") -> npt.NDArray:
         Z = self._prepare_Z(Z)
-        if not hasattr(self.reg_model, "phi"):
+        phi = self.reg_model.phi
+        if phi is None:
             # Additive-hazards reg models have no multiplier: the
             # covariate effect enters as beta'Z added to the hazard, so
             # phi() is undefined rather than an AttributeError (#277).
@@ -442,7 +900,8 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
                 "covariate effect is additive (beta'Z on the hazard), "
                 "not a multiplier."
             )
-        return self.reg_model.phi(Z, *self.phi_params)
+        # Relative to the centre for a baseline kept there (#463).
+        return phi(self._centred(Z), *self._eval_params()[self.k_dist :])
 
     def _eval(
         self,
@@ -450,6 +909,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x: npt.ArrayLike,
         Z: "npt.ArrayLike | pd.DataFrame",
         below_support: float,
+        grid: bool = False,
     ) -> npt.NDArray:
         # The shared body of the five distribution functions below: coerce
         # ``x``, resolve DataFrame covariates against the fit-time design,
@@ -458,6 +918,16 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         if isinstance(x, list):
             x = np.array(x)
         Z = self._prepare_Z(Z)
+        shape = None
+        if grid:
+            # Every time for every row (#488): the pairs, then reshaped.
+            rows = covariate_rows(Z, self._n_covariates())
+            shape = (rows.shape[0], np.size(x))
+            x = np.tile(np.asarray(x, dtype=float).reshape(-1), shape[0])
+            Z = np.repeat(rows, shape[1], axis=0)
+        elif np.ndim(Z) == 2:
+            check_paired_rows(np.size(x), np.shape(Z)[0])
+        Z = self._centred(Z)
         # Below the support (a negative time for a positive distribution)
         # nothing has happened yet: survival 1, and 0 for the others. The
         # distribution functions gave nan there, with a RuntimeWarning, and
@@ -469,14 +939,78 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             inside = lower + 1.0 if np.isfinite(lower) else 0.0
             x = np.where(below, inside, x)
         with np.errstate(divide="ignore"):
-            out = fn(x, Z, *self.params)
+            out = fn(x, Z, *self._eval_params())
+        if self._is_additive():
+            self._warn_if_hazard_negative(x, Z, ~below, stacklevel=5)
         if np.any(below):
             out = np.where(below, below_support, out)
+        if shape is not None:
+            out = np.asarray(out, dtype=float).reshape(shape)
         return out
+
+    def _warn_if_hazard_negative(
+        self,
+        x: npt.ArrayLike,
+        Z: npt.NDArray,
+        valid: Any = True,
+        stacklevel: int = 4,
+    ) -> None:
+        """Warn (once) when the additive hazard ``h_0(x) + beta'Z`` or its
+        integral is negative at a queried point (#376).
+
+        Nothing in the additive model keeps the hazard positive: the fit
+        keeps it positive at the observed failures only, so for a
+        protective covariate row, or far from the data, ``h`` can be
+        negative. The cumulative hazard then falls, and the predictions
+        stop being those of a distribution -- ``sf`` above 1, ``ff`` and
+        ``df`` negative. They are returned as the model defines them, with
+        this warning.
+        """
+        with np.errstate(all="ignore"):
+            params = self._eval_params()
+            h = np.asarray(self.model.hf(x, Z, *params), dtype=float)
+            H = np.asarray(self.model.Hf(x, Z, *params), dtype=float)
+        valid = np.broadcast_to(valid, h.shape)
+        neg_h = valid & (h < 0)
+        neg_H = valid & (H < 0)
+        if not (neg_h.any() or neg_H.any()):
+            return
+        self._warn_negative_hazard(
+            int((neg_h | neg_H).sum()),
+            h.size,
+            float(np.exp(-np.min(H[valid]))) if neg_H.any() else None,
+            stacklevel + 1,
+        )
+
+    def _warn_negative_hazard(
+        self, count: int, size: int, max_sf: "float | None", stacklevel: int
+    ) -> None:
+        above = (
+            ", so sf exceeds 1 (up to {:.4g}) and ff is negative".format(
+                max_sf
+            )
+            if max_sf is not None
+            else ""
+        )
+        warnings.warn(
+            "The additive hazard h_0(x) + beta'Z is negative at {} of the "
+            "{} queried points: the model's cumulative hazard falls there"
+            "{}. The additive model does not keep the hazard positive "
+            "(the fit does so only at the observed failures); these "
+            "values are the model's, not a distribution's. A proportional "
+            "hazards model (e.g. {}PH) keeps the hazard positive by "
+            "construction.".format(count, size, above, self.distribution.name),
+            RuntimeWarning,
+            stacklevel=stacklevel,
+        )
 
     @keeps_query_shape
     def sf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         Survival (or Reliability) function for a distribution using the
@@ -493,7 +1027,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -516,301 +1056,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.sf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.9812, 0.9382, 0.7429])
         """
-        return self._eval(self.model.sf, x, Z, 1.0)
-
-    # Families whose survival along a step-valued covariate path has an exact
-    # closed form. Proportional hazards, additive hazards and proportional
-    # odds have a hazard that depends only on the time and the *current*
-    # covariate, so the cumulative hazard is a sum of per-segment increments
-    # of the constant-covariate ``Hf``; accelerated failure time instead
-    # accumulates an *accelerated age* over the segments and then evaluates the
-    # baseline once. Accelerated life is refused below.
-    _TVC_ADDITIVE_KINDS = (
-        "Proportional Hazard",
-        "Additive Hazard",
-        "Proportional Odds",
-    )
-    _TVC_EVALUABLE_KINDS = (
-        "Proportional Hazard",
-        "Additive Hazard",
-        "Proportional Odds",
-        "Accelerated Failure Time",
-    )
-
-    def _tvc_segments(
-        self, schedule: Any, t_max: float
-    ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
-        """
-        Materialise ``schedule`` to ``t_max`` with the first segment held back
-        to the time origin (survival measured from ``0``).
-        """
-        from .tvc_schedule import segments_from_origin
-
-        return segments_from_origin(schedule, t_max)
-
-    def _to_schedule(self, Z: Any, xl: "npt.ArrayLike | None") -> Any:
-        """
-        Coerce the ``sf_tvc`` covariate argument into a
-        :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule` and
-        check its covariate count against the fitted model.
-        """
-        from .tvc_schedule import as_step_schedule
-
-        schedule = as_step_schedule(Z, xl)
-        n_cov = self.params.shape[0] - self.k_dist
-        if schedule.p != n_cov:
-            raise ValueError(
-                "the schedule has {} covariate(s) but the model was fit with "
-                "{}".format(schedule.p, n_cov)
-            )
-        return schedule
-
-    @keeps_query_shape
-    def Hf_tvc(
-        self,
-        x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-    ) -> npt.NDArray:
-        r"""
-        Cumulative hazard for a covariate following a step schedule ``Z(t)``.
-
-        For the proportional-hazards, additive-hazards and proportional-odds
-        families the hazard at time :math:`t` depends only on :math:`t` and
-        the covariate value *at* :math:`t`, so along a piecewise constant path
-        the cumulative hazard is exactly the sum of the per-segment increments
-        of the constant-covariate cumulative hazard
-
-        .. math::
-            H\bigl(x \mid Z(\cdot)\bigr)
-            = \sum_{\text{seg } (a, b]} \bigl[\,H(b, z) - H(a, z)\,\bigr] .
-
-        For proportional odds, with :math:`\phi = e^{\beta' z}` multiplying the
-        survival odds, the hazard is
-        :math:`h(t \mid z) = h_0(t) / (F_0(t) + \phi S_0(t))` and its integral
-        at constant :math:`z` is
-        :math:`H(t, z) = H_0(t) - \ln\phi + \ln(F_0(t) + \phi S_0(t))
-        = -\ln S(t \mid z)`, so each segment contributes
-        :math:`\ln[S(a \mid z) / S(b \mid z)]`. On entering a segment the
-        hazard switches to the new covariate's PO hazard; the survival does
-        not jump to the new covariate's PO curve. The first segment is held
-        back to the bottom of the baseline's support (for a baseline defined
-        below zero, such as ``Logistic``, the value in force at time zero is
-        taken to apply before it too), so the result is the unconditional
-        survival.
-
-        For accelerated failure time the covariate rescales time, so the path
-        accumulates an *accelerated age*
-        :math:`\psi(x) = \sum_{\text{seg}} e^{\beta' z}\,(b - a)` and the
-        cumulative hazard is the baseline evaluated there,
-        :math:`H(x \mid Z(\cdot)) = H_0(\psi(x))`. Either way a single constant
-        segment reduces exactly to ``Hf(x, Z)``.
-
-        The path is measured from time zero: a schedule starting after zero
-        has its first value held back to zero, and the part of a schedule
-        before zero is ignored (the value in force at zero applies from
-        there). Any time is a valid query, zero and below included: a
-        constant path gives ``Hf(x, Z)`` there too.
-
-        Parameters
-        ----------
-        x : array_like
-            Times at which to evaluate the cumulative hazard.
-        Z : StepSchedule or array_like
-            The covariate path -- either a
-            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`,
-            or an array of per-segment covariate rows (with ``xl`` giving the
-            segment start times).
-        xl : array_like, optional
-            Segment start times, required only when ``Z`` is an array.
-
-        Returns
-        -------
-        ndarray
-            The cumulative hazard at each ``x``.
-        """
-        if self.kind not in self._TVC_EVALUABLE_KINDS:
-            raise NotImplementedError(
-                "time-varying-covariate evaluation is defined for the "
-                "proportional-hazards, additive-hazards, proportional-odds "
-                "and accelerated-failure-time families (this model is "
-                "'{}').".format(self.kind)
-            )
-        xq = np.atleast_1d(np.asarray(x, dtype=float))
-        schedule = self._to_schedule(Z, xl)
-        # A missing query time has no value (NaN); the others are
-        # evaluated as usual.
-        missing = np.isnan(xq)
-        if missing.all():
-            return np.full(xq.shape, np.nan)
-        # A horizon at or below 0 materialises the one segment in force at
-        # 0: H is then 0, or the baseline's value for a time below 0.
-        t_max = float(np.max(xq[~missing]))
-        starts, ends, Zseg = self._tvc_segments(schedule, t_max)
-        xq_eval = np.where(missing, t_max, xq)
-
-        if self.kind in self._TVC_ADDITIVE_KINDS:
-            H = self._tvc_hf_additive(xq_eval, starts, ends, Zseg)
-        else:
-            H = self._tvc_hf_aft(xq_eval, starts, ends, Zseg)
-        return np.where(missing, np.nan, H)
-
-    def _tvc_hf_additive(
-        self,
-        xq: npt.NDArray,
-        starts: npt.NDArray,
-        ends: npt.NDArray,
-        Zseg: npt.NDArray,
-    ) -> npt.NDArray:
-        """
-        Cumulative hazard along a step path for the families whose hazard
-        depends only on the time and the current covariate (PH, AH, PO):
-        telescoping sum of the model's ``Hf`` increment on each segment, the
-        last clipped at the query time.
-        """
-        H = np.zeros(xq.shape[0], dtype=float)
-        support_lo = float(self.distribution.support[0])
-        for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = np.asarray(z, dtype=float).reshape(1, -1)
-            # Query times before 0 fall in the first segment when the
-            # baseline is defined there.
-            upper = np.clip(xq, min(a, support_lo) if i == 0 else a, b)
-            # A query time of 0 makes a log-time baseline (LogNormal,
-            # LogLogistic) evaluate log(0) = -inf on its way to the correct
-            # H = 0; that is not worth a warning.
-            with np.errstate(divide="ignore"):
-                hi = np.asarray(
-                    self.model.Hf(upper, zrow, *self.params), dtype=float
-                ).ravel()
-                # The first segment runs from the bottom of the support,
-                # where H = 0. Subtracting H(0, z) instead would, for a
-                # baseline defined below zero (Normal, Gumbel, Logistic),
-                # give the survival conditional on reaching 0, not sf(x, Z).
-                if i == 0:
-                    lo = np.zeros(1)
-                else:
-                    lo = np.asarray(
-                        self.model.Hf(np.array([a]), zrow, *self.params),
-                        dtype=float,
-                    ).ravel()
-            H = H + (hi - lo)
-        return H
-
-    def _tvc_hf_aft(
-        self,
-        xq: npt.NDArray,
-        starts: npt.NDArray,
-        ends: npt.NDArray,
-        Zseg: npt.NDArray,
-    ) -> npt.NDArray:
-        r"""
-        Cumulative hazard along a step path for accelerated failure time.
-
-        The covariate rescales time by ``phi(z) = exp(beta'z)``, so each
-        segment contributes ``phi(z) * (width)`` of *accelerated age*. The
-        accumulated age ``psi(x)`` is then fed once through the baseline
-        cumulative hazard ``H0``. This is exact for a step covariate and
-        reduces to ``Hf(x, Z)`` for a single constant segment.
-        """
-        dist_params = self.params[: self.k_dist]
-        phi_params = self.params[self.k_dist :]
-        psi = np.zeros(xq.shape[0], dtype=float)
-        support_lo = float(self.distribution.support[0])
-        for i, (a, b, z) in enumerate(zip(starts, ends, Zseg)):
-            zrow = np.asarray(z, dtype=float).reshape(1, -1)
-            phi_seg = float(
-                np.asarray(
-                    self.model._phi(zrow, *phi_params), dtype=float
-                ).ravel()[0]
-            )
-            # Query times before 0 fall in the first segment when the
-            # baseline is defined there (a negative age, as sf(x, Z)).
-            width = np.clip(xq, min(a, support_lo) if i == 0 else a, b) - a
-            psi = psi + phi_seg * width
-        # An age of 0 makes a log-time baseline (LogNormal) evaluate
-        # log(0) = -inf on its way to the correct H = 0.
-        with np.errstate(divide="ignore"):
-            return np.asarray(
-                self.model.Hf_dist(psi, *dist_params), dtype=float
-            ).ravel()
-
-    @keeps_query_shape
-    def sf_tvc(
-        self,
-        x: npt.ArrayLike,
-        Z: "npt.ArrayLike | Any",
-        xl: "npt.ArrayLike | None" = None,
-        given: "float | None" = None,
-    ) -> npt.NDArray:
-        r"""
-        Survival for a covariate that follows a step (piecewise-constant)
-        schedule ``Z(t)``.
-
-        With a time-varying covariate the survival depends on the whole
-        covariate path, not one fixed vector. This is exact along a step path
-        for the proportional-hazards, additive-hazards, proportional-odds and
-        accelerated-failure-time families: ``S(x) = exp(-H(x))`` with ``H`` the
-        per-segment accumulation in :meth:`Hf_tvc` (a cumulative-hazard sum for
-        PH/AH/PO, an accelerated-age sum fed through the baseline for AFT).
-        A constant path gives ``sf(x, Z)``. Accelerated life models raise
-        ``NotImplementedError``.
-
-        Parameters
-        ----------
-        x : array_like
-            Times at which to evaluate survival.
-        Z : StepSchedule or array_like
-            The covariate path. Either a
-            :class:`~surpyval.univariate.regression.tvc_schedule.StepSchedule`
-            (built from change-points, intervals, a cyclic pattern, or a
-            step-valued expression) or an array of per-segment covariate rows
-            with ``xl`` giving the segment start times.
-        xl : array_like, optional
-            Segment start times, required only when ``Z`` is an array.
-        given : float, optional
-            If supplied, return the *conditional* survival given the item has
-            survived to age ``given``:
-            ``S(x | given) = exp(-(H(x) - H(given)))``.
-
-        Returns
-        -------
-        ndarray
-            Survival at each ``x`` (conditional on ``given`` when supplied).
-
-        Examples
-        --------
-        A proportional-odds model whose covariate switches from 0 to 1 at
-        ``t = 6``: before the switch the survival is that of ``Z = 0``, after
-        it the hazard is that of ``Z = 1``.
-
-        >>> import numpy as np
-        >>> from surpyval import Weibull, WeibullPO
-        >>> from surpyval.univariate.regression import StepSchedule
-        >>> np.random.seed(1)
-        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
-        >>> x = Weibull.random(100, 10, 2) * np.exp(0.5 * Z[:, 0])
-        >>> model = WeibullPO.fit(x, Z)
-        >>> sched = StepSchedule.from_changepoints([0, 6], [[0.0], [1.0]])
-        >>> model.sf_tvc([4, 8, 12], sched).round(4)
-        array([0.7721, 0.5698, 0.4292])
-        >>> model.sf([4, 8, 12], [[0]]).round(4)
-        array([0.7721, 0.4937, 0.2809])
-        """
-        H = self.Hf_tvc(x, Z, xl)
-        if given is not None:
-            given = float(given)
-            if np.isnan(given):
-                # A missing conditioning age: nothing is known (as Cox).
-                H = np.full(np.shape(H), np.nan)
-            else:
-                # H(given) is 0 at or below 0, unless the baseline has
-                # mass below 0 (then it is -log of the survival to given).
-                H = H - self.Hf_tvc(given, Z, xl)
-        return np.exp(-H)
+        return self._eval(self.model.sf, x, Z, 1.0, grid)
 
     @keeps_query_shape
     def ff(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The cumulative distribution function, or failure function, for a
@@ -827,7 +1081,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -851,11 +1111,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.ff([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0188, 0.0618, 0.2571])
         """
-        return self._eval(self.model.ff, x, Z, 0.0)
+        return self._eval(self.model.ff, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def df(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The density function for a distribution using the parameters found in
@@ -872,7 +1136,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -896,11 +1166,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.df([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0326, 0.0524, 0.1289])
         """
-        return self._eval(self.model.df, x, Z, 0.0)
+        return self._eval(self.model.df, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
         The instantaneous hazard function for a distribution using the
@@ -917,7 +1191,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -942,11 +1222,15 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0332, 0.0559, 0.1735])
         """
-        return self._eval(self.model.hf, x, Z, 0.0)
+        return self._eval(self.model.hf, x, Z, 0.0, grid)
 
     @keeps_query_shape
     def Hf(
-        self, x: npt.ArrayLike, Z: "npt.ArrayLike | pd.DataFrame"
+        self,
+        x: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        *,
+        grid: bool = False,
     ) -> npt.NDArray:
         r"""
 
@@ -964,7 +1248,13 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
             The covariates: one row per value of ``x`` (or a single row,
             broadcast to every ``x``), in the column order used in the fit. A
             model fitted with ``fit_from_df`` also accepts a DataFrame with
-            the named (or formula) columns.
+            the named (or formula) columns. Other row counts are refused.
+
+        grid : bool, optional
+            ``True`` evaluates every ``x`` for every row of ``Z`` (a curve
+            per subject, lifelines' ``predict_survival_function``), with
+            shape ``(len(Z),) + x.shape``, row ``i`` for row ``i`` of ``Z``
+            (#488). Default ``False``: rows and times paired.
 
         Returns
         -------
@@ -989,14 +1279,14 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         >>> model.Hf([1, 2, 3], [[0], [0], [1]]).round(4)
         array([0.0189, 0.0638, 0.2972])
         """
-        return self._eval(self.model.Hf, x, Z, 0.0)
+        return self._eval(self.model.Hf, x, Z, 0.0, grid)
 
     def random(
         self,
         size: int,
         Z: "npt.ArrayLike | pd.DataFrame",
         random_state: Any = None,
-    ) -> npt.NDArray:
+    ) -> tuple[npt.NDArray, npt.NDArray]:
         r"""
 
         A method to draw random samples from the distributions using the
@@ -1054,9 +1344,19 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         # on every path.
         Z = self._prepare_Z(Z)
         if hasattr(self.model, "random"):
-            return self.model.random(
-                size, Z, *self.params, random_state=random_state
+            if not self._has_center():
+                return self.model.random(
+                    size, Z, *self._eval_params(), random_state=random_state
+                )
+            # A baseline at the covariate means (#463): draw at Z - center
+            # and report the rows as given.
+            x, Z_out = self.model.random(
+                size,
+                self._centred(Z),
+                *self._eval_params(),
+                random_state=random_state,
             )
+            return x, Z_out + self.center
         raise NotImplementedError(
             f"random() is not implemented for {self.kind} models."
         )
@@ -1088,7 +1388,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         return ic_sample_size(
             self.data.c,
             self.data.n,
-            n_rows=getattr(self, "_ic_n_total", None),
+            n_rows=self._ic_n_total,
         )
 
     # ``self.k`` is the number of estimated parameters, so the AIC/BIC
@@ -1096,256 +1396,43 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
     # Fixed parameters -- and the accelerated-life placeholder for the life
     # parameter -- used to be counted as well.
 
-    # -- confidence bounds -------------------------------------------------
-
-    def _check_inference(self) -> None:
-        # A model deserialised with a stored covariance can produce bounds
-        # without the original data.
-        if getattr(self, "_restored_covariance", None) is not None:
-            return
-        if getattr(self, "_restored", False):
-            # Restored without a covariance: to_dict stores one only when
-            # it was finite at fit time, and the data are not stored.
-            raise ValueError(
-                "Confidence bounds are unavailable: this model was restored "
-                "from a dict that carries no parameter covariance (it could "
-                "not be computed when the model was saved), and a restored "
-                "model does not keep the data to recompute it."
-            )
-        if not hasattr(self, "data") or getattr(self, "res", None) is None:
-            raise ValueError(
-                "Confidence bounds are only available for models fit from "
-                "data; from_params models carry no likelihood."
-            )
-
-    def parameter_names(self) -> list[str]:
+    @property
+    def parameter_names(self) -> CallableList:
         """
-        Names of the fitted parameters in ``.params`` order: the distribution's
-        parameters followed by the covariate coefficients.
+        Names of ``params``, in order: the distribution's parameters, then
+        the covariate coefficients (or life-model parameters). The list
+        lines up with ``params``, :meth:`covariance` and
+        :meth:`standard_errors` entry by entry, fixed parameters included.
+        In an accelerated life model the slot named by ``life_parameter``
+        is a placeholder, not a fitted value, and is named too.
+
+        Until v0.22 this was a method; calling it,
+        ``model.parameter_names()``, still returns the list, with a
+        ``DeprecationWarning``, until v0.23.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullPH
+        >>> x = np.array([1.0, 2, 3, 4, 5, 6, 7, 8])
+        >>> Z = np.array([0.0, 1, 0, 1, 0, 1, 1, 0])
+        >>> model = WeibullPH.fit(x=x, Z=Z)
+        >>> model.parameter_names
+        ['alpha', 'beta', 'beta_0']
         """
-        dist_names = list(self.distribution.param_names)
+        dist_names = list(self.distribution.parameter_names)
         phi_map = self.reg_model.phi_param_map
         phi_names = [
             k for k, _ in sorted(phi_map.items(), key=lambda kv: kv[1])
         ]
-        return dist_names + phi_names
+        return CallableList(
+            dist_names + phi_names,
+            "ParametricRegressionModel.parameter_names",
+        )
 
-    def covariance(self) -> npt.NDArray:
-        """
-        Approximate covariance matrix of the fitted parameters, ordered to
-        match :meth:`parameter_names`. Computed as the inverse of the numerical
-        Hessian of the negative log-likelihood at the MLE (the observed
-        information). Fixed parameters get a zero row/column.
-
-        A parameter driven to a boundary breaks the Wald approximation; the
-        covariance is then returned filled with ``nan`` (with a warning).
-        """
-        restored = getattr(self, "_restored_covariance", None)
-        if restored is not None:
-            return restored
-        self._check_inference()
-        names = self.parameter_names()
-        p_hat = np.asarray(self.params, dtype=float)
-        free = [i for i, nm in enumerate(names) if nm not in self.fixed]
-        n = len(names)
-        cov = np.zeros((n, n))
-        if not free:
-            return cov
-
-        def neg_ll_free(free_vals: npt.NDArray) -> float:
-            full = p_hat.copy()
-            full[free] = free_vals
-            return self.model.neg_ll(self.data, *full)
-
-        step = self._hessian_step(p_hat)[free]
-        H = numerical_hessian(neg_ll_free, p_hat[free], step)
-        bad = not np.all(np.isfinite(H))
-        if not bad:
-            # Invert in step-scaled coordinates: with a parameter many
-            # orders of magnitude from the others the raw information
-            # matrix is too ill-conditioned to invert directly.
-            try:
-                cov_free = np.linalg.inv(H * np.outer(step, step)) * np.outer(
-                    step, step
-                )
-            except np.linalg.LinAlgError:
-                bad = True
-        if bad:
-            import warnings
-
-            warnings.warn(
-                "The information matrix could not be inverted (the optimum "
-                "may be at a parameter boundary); covariance is unavailable."
-            )
-            return np.full((n, n), np.nan)
-        cov[np.ix_(free, free)] = cov_free
-        return cov
-
-    def _parameter_bounds(self) -> list:
-        """``(lower, upper)`` for every entry of ``params``: the
-        distribution's support bounds, then the life model's parameter
-        bounds for an accelerated-life model (the other families'
-        coefficients are unbounded)."""
-        n_phi = len(self.params) - self.k_dist
-        phi_bounds: Any = ((None, None),) * n_phi
-        if self.kind == "Accelerated Life":
-            declared = getattr(self.reg_model, "phi_bounds", phi_bounds)
-            if callable(declared):
-                declared = declared(np.asarray(self.data.Z))
-            phi_bounds = declared
-        return [*self.distribution.bounds, *phi_bounds]
-
-    def _hessian_step(self, p_hat: npt.NDArray) -> npt.NDArray:
-        """Finite-difference step for the covariance Hessian.
-
-        The usual ``eps**(1/3) * max(|p|, 1e-2)``, except that a parameter
-        closer to one of its bounds than a few steps gets a step relative
-        to that distance. The absolute floor is far larger than, say, an
-        accelerated-life coefficient of 5.6e-22 (``InversePower``'s ``a``
-        for lives in the thousands), so the difference stepped outside the
-        support and the covariance came back nan.
-        """
-        h = np.finfo(float).eps ** (1.0 / 3.0)
-        step = h * np.maximum(np.abs(p_hat), 1e-2)
-        for i, (lower, upper) in enumerate(self._parameter_bounds()):
-            gaps = [
-                p_hat[i] - lower if lower is not None else np.inf,
-                upper - p_hat[i] if upper is not None else np.inf,
-            ]
-            gap = min(gaps)
-            if 0 < gap < 10 * step[i]:
-                step[i] = h * gap
-        return step
-
-    def standard_errors(self) -> npt.NDArray:
-        """
-        Standard errors of the fitted parameters (square roots of the diagonal
-        of :meth:`covariance`), ordered to match :meth:`parameter_names`.
-        """
-        with np.errstate(invalid="ignore"):
-            return np.sqrt(np.diag(self.covariance()))
-
-    def param_cb(
-        self,
-        name: str,
-        alpha_ci: float = 0.05,
-        bound: str = "two-sided",
-    ) -> npt.NDArray:
-        """
-        Confidence bound(s) on a single fitted parameter.
-
-        Wald bounds from the observed information, computed on a scale chosen
-        from the parameter's support so the result stays inside it: log for a
-        one-sided-bounded distribution parameter (e.g. a positive scale), the
-        natural scale for the unbounded covariate coefficients.
-
-        Parameters
-        ----------
-        name : str
-            The parameter to bound; one of :meth:`parameter_names`.
-        alpha_ci : float, optional
-            Total tail probability of the bound(s). Default 0.05.
-        bound : {'two-sided', 'lower', 'upper'}, optional
-            Two-sided bounds are returned as ``[lower, upper]``.
-        """
-        self._check_inference()
-        names = self.parameter_names()
-        if name not in names:
-            raise ValueError(
-                "Unknown parameter {!r}; expected one of {}".format(
-                    name, names
-                )
-            )
-        idx = names.index(name)
-        p_hat = float(self.params[idx])
-        var = float(self.covariance()[idx, idx])
-
-        # Distribution parameters carry the distribution's support bounds; the
-        # covariate coefficients are unbounded.
-        dist_bounds = list(self.distribution.bounds)
-        n_phi = len(names) - self.k_dist
-        all_bounds = dist_bounds + [(None, None)] * n_phi
-        lower, upper = all_bounds[idx]
-        return wald_bound_on_support(p_hat, var, lower, upper, alpha_ci, bound)
-
-    @keeps_query_shape
-    def cb(
-        self,
-        x: npt.ArrayLike,
-        Z: "npt.ArrayLike | pd.DataFrame",
-        on: str = "sf",
-        alpha_ci: float = 0.05,
-        bound: str = "two-sided",
-    ) -> npt.NDArray:
-        r"""
-        Confidence bounds on a predicted function at covariate vector ``Z``.
-
-        The bounds propagate the fitted parameter covariance through the
-        requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from a survival-function bound taken on the logit scale (so it
-        stays in ``(0, 1)``); ``hf``/``df`` use a log-scale bound (so they stay
-        positive).
-
-        Parameters
-        ----------
-        x : array like or scalar
-            Times at which to evaluate the bound(s).
-        Z : array like
-            A single covariate vector, used at every ``x`` (one row per
-            ``x`` is paired element-wise, as for :meth:`sf`).
-        on : {'sf', 'ff', 'Hf', 'hf', 'df'}, optional
-            The function to bound. Default ``'sf'``.
-        alpha_ci : float, optional
-            Total tail probability of the bound(s). Default 0.05.
-        bound : {'two-sided', 'lower', 'upper'}, optional
-            Two-sided bounds put ``[lower, upper]`` on the last axis.
-
-        Returns
-        -------
-        numpy array
-            The confidence bound(s) on ``on`` at each ``x``.
-        """
-        self._check_inference()
-        valid = ("sf", "R", "ff", "F", "Hf", "hf", "df")
-        if on not in valid:
-            raise ValueError("`on` must be one of {}".format(valid))
-        if bound not in ("two-sided", "lower", "upper"):
-            raise ValueError("`bound` must be 'two-sided', 'lower' or 'upper'")
-        x = np.atleast_1d(np.asarray(x, dtype=float))
-        Zp = self._prepare_Z(Z)
-        params = np.asarray(self.params, dtype=float)
-        cov = self.covariance()
-
-        if on in ("hf", "df"):
-            fn = self.model.hf if on == "hf" else self.model.df
-            est = np.asarray(fn(x, Zp, *params), dtype=float)
-            se = delta_method_se(lambda p: fn(x, Zp, *p), params, cov)
-            return log_transformed_cb(est, se, alpha_ci, bound)
-
-        # sf, ff and Hf all derive from a survival-function bound.
-        sf_hat = np.asarray(self.model.sf(x, Zp, *params), dtype=float)
-        se = delta_method_se(lambda p: self.model.sf(x, Zp, *p), params, cov)
-
-        if bound == "two-sided":
-            sf_lo = logit_sf_bound(sf_hat, se, -1.0, alpha_ci / 2.0)
-            sf_hi = logit_sf_bound(sf_hat, se, +1.0, alpha_ci / 2.0)
-            if on in ("sf", "R"):
-                return np.stack([sf_lo, sf_hi], axis=-1)
-            elif on in ("ff", "F"):
-                return np.stack([1.0 - sf_hi, 1.0 - sf_lo], axis=-1)
-            else:  # Hf: -log(sf) is decreasing in sf
-                return np.stack([-np.log(sf_hi), -np.log(sf_lo)], axis=-1)
-
-        # One-sided. ff and Hf decrease in sf, so their bound uses the
-        # opposite survival-function tail.
-        if on in ("sf", "R"):
-            sign = -1.0 if bound == "lower" else 1.0
-            return logit_sf_bound(sf_hat, se, sign, alpha_ci)
-        sign = 1.0 if bound == "lower" else -1.0
-        sf_b = logit_sf_bound(sf_hat, se, sign, alpha_ci)
-        if on in ("ff", "F"):
-            return 1.0 - sf_b
-        return -np.log(sf_b)
+    # ``param_names``, the name the model had before v0.22, reads
+    # ``parameter_names`` for one release, with a DeprecationWarning.
+    param_names = RenamedAttribute("parameter_names")
 
     def plot(
         self,
@@ -1381,7 +1468,7 @@ class ParametricRegressionModel(InformationCriteriaMixin, SerialisableMixin):
         x, r, d = self.data.to_xrd()
         x_plot = np.linspace(self.data.x.min(), self.data.x.max(), 1000)
 
-        Z_mean = self.data.Z.mean(axis=0)
+        Z_mean = np.asarray(self.data.Z).mean(axis=0)
         ax.step(x, np.exp(-(d / r).cumsum()), color="r", where="post")
         sf = self.sf(x_plot, Z_mean)
         ax.plot(x_plot, sf, color="b")

@@ -1,34 +1,53 @@
 """
-Renamed arguments: accept the old name for one release, with a warning.
+Renamed names: accept the old name for one release, with a warning.
 
-When an argument is renamed so that the same option has the same name
-everywhere (Design Principles, principle 21), the old name keeps working
-until :data:`REMOVED_IN`, with a ``DeprecationWarning`` naming the new
-one. :func:`renamed_arguments` does this for a function or method.
+When a public name changes so that the same thing has the same name
+everywhere (Design Principles, principle 21), the old one keeps working
+until :data:`REMOVED_IN`, with a ``DeprecationWarning`` that names the new
+one and points at the caller's line. This module holds the three shapes
+such a rename takes:
+
+- :func:`renamed_arguments`, an argument of a function or method;
+- :class:`RenamedAttribute`, an attribute or property of a class;
+- :class:`CallableList`, a method that became a property returning a list
+  (``model.parameter_names()`` -> ``model.parameter_names``).
 """
 
 import functools
+import sys
 import warnings
+from types import FrameType
 from typing import Any, Callable, TypeVar
 
-__all__ = ["REMOVED_IN", "renamed_arguments"]
+__all__ = [
+    "REMOVED_IN",
+    "CallableList",
+    "RenamedAttribute",
+    "renamed_arguments",
+    "renamed_class_attribute",
+]
 
 #: The release in which the old names stop being accepted.
-REMOVED_IN = "0.22.0"
+REMOVED_IN = "0.23"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def renamed_arguments(**renames: Any) -> Callable[[F], F]:
+def _message(where: str, old: str, new: str) -> str:
+    return (
+        f"{where}: '{old}' is deprecated and will be removed in "
+        f"v{REMOVED_IN}; use '{new}'."
+    )
+
+
+def renamed_arguments(**renames: str) -> Callable[[F], F]:
     """
     Decorate a function so that it accepts its arguments' old names.
 
     Parameters
     ----------
-    **renames : str or (str, callable)
-        ``old="new"`` for a plain rename, or ``old=("new", convert)`` when
-        the value changes meaning too: ``convert(old_value)`` gives the new
-        argument's value (``confidence=("alpha_ci", lambda c: 1 - c)``).
+    **renames : str
+        ``old="new"``, one per renamed argument.
 
     Returns
     -------
@@ -40,60 +59,173 @@ def renamed_arguments(**renames: Any) -> Callable[[F], F]:
 
     Notes
     -----
-    Put it outermost (above any other decorator that adds a frame, such as
-    :func:`surpyval.utils.shapes.keeps_query_shape`) so the warning points
-    at the caller; under ``@classmethod`` or ``@staticmethod`` is fine, as
-    they add no frame.
+    Put it outermost (above any other decorator that adds a frame) so the
+    warning points at the caller.
 
     Examples
     --------
     >>> import warnings
     >>> from surpyval.utils.deprecation import renamed_arguments
-    >>> @renamed_arguments(
-    ...     B="n_boot", confidence=("alpha_ci", lambda c: round(1 - c, 12))
-    ... )
-    ... def bootstrap(n_boot=1000, alpha_ci=0.05):
-    ...     return n_boot, alpha_ci
+    >>> @renamed_arguments(names="labels")
+    ... def describe(labels=()):
+    ...     return list(labels)
     >>> with warnings.catch_warnings(record=True) as caught:
     ...     warnings.simplefilter("always")
-    ...     bootstrap(B=10, confidence=0.9)
-    (10, 0.1)
-    >>> print(caught[0].message)
-    bootstrap: 'B' is deprecated and will be removed in v0.22.0; use 'n_boot'.
-    >>> print(caught[1].message)  # doctest: +NORMALIZE_WHITESPACE
-    bootstrap: 'confidence' is deprecated and will be removed in v0.22.0;
-    use 'alpha_ci' (alpha_ci=0.1).
+    ...     describe(names=["a"])
+    ['a']
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    describe: 'names' is deprecated and will be removed in v0.23;
+    use 'labels'.
     """
-    specs = {
-        old: spec if isinstance(spec, tuple) else (spec, None)
-        for old, spec in renames.items()
-    }
 
     def decorate(func: F) -> F:
-        name = func.__qualname__
+        where = func.__qualname__
 
         @functools.wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            for old, (new, convert) in specs.items():
+            for old, new in renames.items():
                 if old not in kwargs:
                     continue
                 if new in kwargs:
                     raise ValueError(
                         "{}: pass '{}' only; '{}' is its deprecated "
-                        "old name.".format(name, new, old)
+                        "old name.".format(where, new, old)
                     )
-                value = kwargs.pop(old)
-                message = (
-                    "{}: '{}' is deprecated and will be removed in v{}; "
-                    "use '{}'.".format(name, old, REMOVED_IN, new)
+                warnings.warn(
+                    _message(where, old, new), DeprecationWarning, stacklevel=2
                 )
-                if convert is not None:
-                    value = convert(value)
-                    message = message[:-1] + " ({}={!r}).".format(new, value)
-                warnings.warn(message, DeprecationWarning, stacklevel=2)
-                kwargs[new] = value
+                kwargs[new] = kwargs.pop(old)
             return func(*args, **kwargs)
 
         return wrapper  # type: ignore[return-value]
 
     return decorate
+
+
+class RenamedAttribute:
+    """
+    A class attribute's old name: reading or setting it warns and uses the
+    new one.
+
+    Declare it on the class under the old name,
+    ``param_names = RenamedAttribute("parameter_names")``. It works on
+    instances and on the class itself (``Weibull.param_names`` for a
+    singleton, ``PowerPath.param_names`` for a class attribute).
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import RenamedAttribute
+    >>> class Model:
+    ...     parameter_names = ["a", "b"]
+    ...     param_names = RenamedAttribute("parameter_names")
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().param_names
+    ['a', 'b']
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.param_names is deprecated and will be removed in v0.23;
+    use 'parameter_names'.
+    """
+
+    def __init__(self, new: str) -> None:
+        self.new = new
+        self.old = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.old = name
+
+    def _warn(self, owner: type) -> None:
+        warnings.warn(
+            "{}.{} is deprecated and will be removed in v{}; use "
+            "'{}'.".format(owner.__name__, self.old, REMOVED_IN, self.new),
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def __get__(self, obj: Any, owner: type | None = None) -> Any:
+        owner = type(obj) if owner is None else owner
+        if obj is None and self.new not in dir(owner):
+            # The class of an instance attribute (``ParametricFitter``
+            # itself): nothing to read, and introspection (``help``,
+            # Sphinx) should not warn.
+            return self
+        self._warn(owner)
+        return getattr(owner if obj is None else obj, self.new)
+
+    def __set__(self, obj: Any, value: Any) -> None:
+        self._warn(type(obj))
+        setattr(obj, self.new, value)
+
+
+def renamed_class_attribute(cls: type, old: str, new: str) -> None:
+    """
+    Accept a subclass that still defines a class attribute by its old name.
+
+    Call it from the base class's ``__init_subclass__``: a subclass body
+    that sets ``old`` (a user's own path model or copula written against the
+    old name) warns once, at class creation, and the value is moved to
+    ``new``, so the package, which reads only ``new``, sees it.
+    """
+    value = cls.__dict__.get(old)
+    if value is None or isinstance(value, RenamedAttribute):
+        return
+    # Point at the class statement: past this function, the caller's
+    # ``__init_subclass__`` and, for an ABC, ``ABCMeta.__new__``.
+    level = 3
+    frame: FrameType | None = sys._getframe(2)
+    while frame is not None and frame.f_globals.get("__name__") == "abc":
+        level, frame = level + 1, frame.f_back
+    warnings.warn(
+        "{}: the class attribute '{}' is deprecated and will be removed in "
+        "v{}; define '{}'.".format(cls.__qualname__, old, REMOVED_IN, new),
+        DeprecationWarning,
+        stacklevel=level,
+    )
+    if new not in cls.__dict__:
+        setattr(cls, new, value)
+    delattr(cls, old)
+
+
+class CallableList(list):
+    """
+    A list that can still be called, for a method that became a property.
+
+    ``model.parameter_names`` was a method, and is now a property; it
+    returns one of these, which is a plain ``list`` in every other respect
+    (equality, ``len``, iteration, indexing, ``json.dumps``, pandas and
+    numpy), and whose call, the old spelling, warns and returns itself.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import CallableList
+    >>> names = CallableList(["alpha", "beta"], "WeibullPH.parameter_names")
+    >>> names == ["alpha", "beta"]
+    True
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     names()
+    ['alpha', 'beta']
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    WeibullPH.parameter_names is now a property: 'parameter_names()' is
+    deprecated and will be removed in v0.23; use 'parameter_names'.
+    """
+
+    def __init__(self, items: Any = (), where: str = "") -> None:
+        super().__init__(items)
+        self._where = where
+
+    def __call__(self, *args: Any, **kwargs: Any) -> "CallableList":
+        # pandas calls a callable key with the frame (``df.loc[names]``,
+        # ``df[names]``): that is not the old spelling, so no warning.
+        if args or kwargs:
+            return self
+        attr = self._where.rpartition(".")[2]
+        warnings.warn(
+            "{} is now a property: '{}()' is deprecated and will be removed "
+            "in v{}; use '{}'.".format(self._where, attr, REMOVED_IN, attr),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self

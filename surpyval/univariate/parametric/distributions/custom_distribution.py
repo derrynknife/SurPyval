@@ -4,20 +4,21 @@ import types
 import warnings
 from typing import Callable
 
+import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
 from scipy.integrate import quad
 from scipy.optimize import brentq
 
-from surpyval import np
+from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
     OptimisedFitMixin,
     ParametricFitter,
-    _offset_start,
 )
+from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
 
 # The quantiles at which CustomDistribution.moment splits its integrals,
@@ -117,7 +118,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     """
     Used to create a custom distribution using only the cumulative hazard
     function. The cumulative hazard function must be a function of x and
-    the parameters. The parameters must be named in the param_names and
+    the parameters. The parameters must be named in the parameter_names and
     the bounds must be specified in the bounds argument. The support
     argument is used to specify the support of the distribution.
 
@@ -136,11 +137,13 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         name, ``fun(x, *params)``, or as one named argument per parameter,
         ``fun(x, nu, b)``; anything else raises a ``ValueError``.
 
-    param_names: list
-        List of parameter names. A fitted model exposes each parameter as
-        an attribute, so ``gamma``, ``f0`` and the names of the model's
-        own attributes (``k``, ``dist``, ``data``, ``method``, ``sf``, ...)
-        are refused with a ``ValueError`` that lists them.
+    parameter_names: list
+        List of parameter names (``param_names``, its name before v0.22,
+        is accepted with a ``DeprecationWarning`` until v0.23). A fitted
+        model exposes each parameter as an attribute, so ``gamma``,
+        ``f0`` and the names of the model's own attributes (``k``,
+        ``dist``, ``data``, ``method``, ``sf``, ...) are refused with a
+        ``ValueError`` that lists them.
 
     bounds: list
         List of tuples containing the lower and upper bounds of the
@@ -162,11 +165,11 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     ...     # the Gompertz cumulative hazard nu (e^{b x} - 1), zero at x = 0
     ...     return params[0] * (np.exp(params[1] * x) - 1)
     ...
-    >>> param_names = ['nu', 'b']
+    >>> parameter_names = ['nu', 'b']
     >>> bounds = ((0, None), (0, None))
     >>> support = (0, np.inf)
     >>> Gompertz = surv.CustomDistribution(
-    ...     name, Hf, param_names, bounds, support
+    ...     name, Hf, parameter_names, bounds, support
     ... )
     >>> x = np.array([1, 2, 3, 4, 5])
     >>> model = Gompertz.fit(x)
@@ -185,42 +188,45 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     True
     """
 
+    @renamed_arguments(param_names="parameter_names")
     def __init__(
         self,
         name: str,
         # Validated at runtime to have the signature (x, *params);
         # Callable[..., Boxable] is as close as the type system gets.
         fun: Callable[..., Boxable],
-        param_names: list[str],
+        parameter_names: list[str],
         bounds: tuple[tuple[int | float | None, int | float | None], ...],
         support: tuple[int | float, int | float],
     ) -> None:
-        _check_signature(fun, len(param_names))
+        _check_signature(fun, len(parameter_names))
 
-        if len(param_names) != len(bounds):
-            raise ValueError("param_names and bounds must have same length")
+        if len(parameter_names) != len(bounds):
+            raise ValueError(
+                "parameter_names and bounds must have same length"
+            )
 
         # 'p' is allowed: a limited-failure model of a distribution with
         # its own 'p' names the proportion 'lfp_p' instead (see
         # ``Parametric.__init__``), as for the Geometric.
-        if "gamma" in param_names:
+        if "gamma" in parameter_names:
             detail = "'gamma' reserved parameter name for offset distributions"
             raise ValueError(detail)
 
-        if "f0" in param_names:
+        if "f0" in parameter_names:
             detail = (
                 "'f0' reserved parameter name for zero"
                 "inflated or hurdle models"
             )
             raise ValueError(detail)
 
-        for p_name in param_names:
+        for p_name in parameter_names:
             if hasattr(self, p_name):
                 detail = "Can't name a parameter after a function"
                 raise ValueError(detail)
 
         reserved = _model_attribute_names()
-        clashes = [p_name for p_name in param_names if p_name in reserved]
+        clashes = [p_name for p_name in parameter_names if p_name in reserved]
         if clashes:
             public = sorted(r for r in reserved if not r.startswith("_"))
             raise ValueError(
@@ -233,11 +239,11 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
 
         super().__init__(
             name=name,
-            k=len(param_names),
+            k=len(parameter_names),
             bounds=bounds,
             support=support,
-            param_names=param_names,
-            param_map={v: i for i, v in enumerate(param_names)},
+            parameter_names=parameter_names,
+            param_map={v: i for i, v in enumerate(parameter_names)},
             plot_x_scale="linear",
             y_ticks=np.linspace(0, 1, 11),
         )
@@ -259,7 +265,7 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         previous = _REGISTRY.get(name)
         if previous is not None and not (
             previous._fun is fun
-            and list(previous.param_names) == list(param_names)
+            and list(previous.parameter_names) == list(parameter_names)
             and tuple(previous.bounds) == tuple(bounds)
             and tuple(previous.support) == tuple(support)
         ):
@@ -302,9 +308,16 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
     def df(self, x: Numeric, *params: Boxable) -> Boxable:
         """
         Density, :math:`f(x) = dF(x)/dx`, differentiated from ``ff`` with
-        autograd.
+        autograd. Where the survival function is 0 it is 0: the chain
+        rule's :math:`e^{-H} dH/dx` is ``0 * inf`` there once ``H`` is
+        infinite (#561).
         """
-        return elementwise_grad(self.ff)(x, *params)
+        density = elementwise_grad(self.ff)
+        gone = self.sf(x, *params) == 0
+        if not np.any(gone):
+            return density(x, *params)
+        with np.errstate(invalid="ignore"):
+            return np.where(gone, 0.0, density(x, *params))
 
     def _scalar_fn(
         self, fn: Callable[..., Boxable], params: "list[float]"

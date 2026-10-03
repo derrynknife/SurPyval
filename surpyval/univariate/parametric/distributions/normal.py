@@ -1,8 +1,8 @@
-import numpy.typing as npt
-from autograd.scipy.stats import norm
-from scipy.stats import norm as scipy_norm
+from __future__ import annotations
 
-from surpyval import np
+import autograd.numpy as np
+import numpy.typing as npt
+
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
@@ -14,7 +14,10 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
     ParametricFitter,
 )
+from surpyval.utils import normal as norm
 from surpyval.utils.surpyval_data import SurpyvalData
+
+from ._stable import normal_hazard
 
 
 class Normal_(OptimisedFitMixin, ParametricFitter):
@@ -28,13 +31,18 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
 
     """
 
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # the normal quantile of ff, on which this family is a straight line in
+    # time (#477).
+    _cb_link = "probit"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
             bounds=((None, None), (0, None)),
             support=(-np.inf, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
             y_ticks=[
@@ -221,7 +229,9 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.hf(x, 3, 4)
         array([0.12729011, 0.16145984, 0.19947114, 0.24088849, 0.28526944])
         """
-        return norm.pdf(x, mu, sigma) / self.sf(x, mu, sigma)
+        # not pdf / sf, which is 0 / 0 once both underflow (#444)
+        with np.errstate(over="ignore"):
+            return normal_hazard((x - mu) / sigma) / sigma
 
     def Hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -256,7 +266,10 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.Hf(x, 3, 4)
         array([0.36894642, 0.51298408, 0.69314718, 0.91306176, 1.17591176])
         """
-        return -np.log(norm.sf(x, mu, sigma))
+        # -logsf, not -log(sf): sf rounds to 1 in the left tail, where
+        # this was -0.0 (#442), and underflows in the right, where it was
+        # inf (#443)
+        return 0.0 - norm.logsf(x, mu, sigma)
 
     def qf(self, u: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -290,7 +303,7 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.qf(u, 3, 4)
         array([-2.12620626, -0.36648493,  0.90239795,  1.98661159])
         """
-        return scipy_norm.ppf(u, mu, sigma)
+        return norm.ppf(u, mu, sigma)
 
     def mean(self, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -350,6 +363,8 @@ class Normal_(OptimisedFitMixin, ParametricFitter):
         >>> Normal.moment(2, 3, 4)
         np.float64(25.0)
         """
+        from scipy.stats import norm as scipy_norm
+
         return scipy_norm.moment(m, mu, sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:

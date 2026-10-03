@@ -33,6 +33,7 @@ import numpy as np
 
 from surpyval.datasets import (
     load_heart_transplants,
+    load_kidney,
     load_lung,
     load_mettas_and_zhao,
     load_pbc2,
@@ -95,11 +96,27 @@ def lung():
         "status recoded to SurPyval's flag (c = 2 - status)",
         "columns": {
             "time": _native(df["time"]),
-            "c": _native(df["status"].astype(int)),
+            # load_lung's status is 1 = death (#509)
+            "c": _native(1 - df["status"].astype(int)),
             "age": _native(df["age"]),
             "sex": _native(df["sex"]),
             "ph_ecog": _native(df["ph.ecog"]),
             "inst": _native(df["inst"]),
+        },
+    }
+
+
+def kidney():
+    df = load_kidney()
+    return {
+        "source": "surpyval.datasets.load_kidney; R survival::kidney "
+        "(female = sex == 2, c = 1 - status)",
+        "columns": {
+            "time": _native(df["time"]),
+            "c": _native(1 - df["status"]),
+            "id": _native(df["id"]),
+            "age": _native(df["age"]),
+            "female": _native((df["sex"] == 2).astype(int)),
         },
     }
 
@@ -336,6 +353,7 @@ def build():
         },
         "lung": lung(),
         "heart": heart(),
+        "kidney": kidney(),
         "pbc": pbc(),
         "mettas_zhao": mettas_zhao(),
         "ties": ties(),

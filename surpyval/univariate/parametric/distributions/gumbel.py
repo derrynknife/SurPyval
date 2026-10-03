@@ -1,8 +1,10 @@
+from __future__ import annotations
+
+import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
 from scipy.stats import gumbel_l
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -11,15 +13,22 @@ from surpyval.univariate.parametric.parametric_fitter import (
 )
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from ._stable import log1mexp
+
 
 class Gumbel_(OptimisedFitMixin, ParametricFitter):
+    # The scale of the Wald band on sf and ff (Parametric._cb_sf_bound):
+    # log(-log sf), on which this family is a straight line in
+    # time (#477).
+    _cb_link = "loglog"
+
     def __init__(self, name: str) -> None:
         super().__init__(
             name=name,
             k=2,
             bounds=((None, None), (0, None)),
             support=(-np.inf, np.inf),
-            param_names=["mu", "sigma"],
+            parameter_names=["mu", "sigma"],
             param_map={"mu": 0, "sigma": 1},
             plot_x_scale="linear",
         )
@@ -153,8 +162,17 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         >>> Gumbel.df(x, 3, 2)
         array([0.12732319, 0.16535215, 0.18393972, 0.15852096, 0.08968704])
         """
-        z = (x - mu) / sigma
-        return (1 / sigma) * np.exp(z - np.exp(z))
+        return (1 / sigma) * np.exp(self._log_kernel((x - mu) / sigma))
+
+    @staticmethod
+    def _log_kernel(z: Boxable) -> Boxable:
+        """``z - exp(z)``, the log density without its ``-log(sigma)``:
+        -inf at ``z = inf``, not ``inf - inf`` (#561)."""
+        top = z == np.inf
+        if not np.any(top):
+            return z - np.exp(z)
+        z = np.where(top, 0.0, z)
+        return np.where(top, -np.inf, z - np.exp(z))
 
     def hf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""
@@ -298,14 +316,19 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         return mu - sigma * euler_gamma
 
     def log_df(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        z = (x - mu) / sigma
-        return z - np.exp(z) - np.log(sigma)
+        return self._log_kernel((x - mu) / sigma) - np.log(sigma)
 
     def log_sf(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
         return -self.Hf(x, mu, sigma)
 
     def log_ff(self, x: Numeric, mu: Boxable, sigma: Boxable) -> Boxable:
-        return np.log(-np.expm1(-self.Hf(x, mu, sigma)))
+        # log(1 - e^-H) from H = e^z and log H = z: exact where F rounds
+        # to 1 (log(-expm1(-H)) is 0 there, #442) and finite where H
+        # underflows (#443).
+        z = (x - mu) / sigma
+        with np.errstate(over="ignore"):
+            H = np.exp(z)
+        return log1mexp(H, z)[0]
 
     def moment(self, m: int, mu: Boxable, sigma: Boxable) -> Boxable:
         r"""

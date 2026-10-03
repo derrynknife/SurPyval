@@ -1,9 +1,19 @@
-from itertools import combinations
-from math import isclose
-from typing import Any
+"""Harrell's concordance index, under its pre-0.22 name.
 
-import numpy as np
+The index is :func:`surpyval.metrics.concordance_index` (#512), which
+counts the pairs in O(n log n); ``score`` keeps working until v0.23, with a
+``DeprecationWarning``, and keeps its old tie convention, Harrell's
+(``ties="harrell"``: two events at the same time are a usable pair), where
+``concordance_index`` defaults to Therneau's (R's
+``survival::concordance``, lifelines: they are not).
+"""
+
+import warnings
+
 from numpy.typing import ArrayLike
+
+from surpyval.metrics.concordance import concordance_index
+from surpyval.utils.deprecation import REMOVED_IN
 
 
 def score(
@@ -12,88 +22,27 @@ def score(
     scores: ArrayLike,
     tie_tol: float = 1e-8,
 ) -> float:
-    # Harrell's concordance index for risk scores: ``scores`` are
-    # mortality-like (a higher score predicts an earlier event).
-    #
-    # Steps:
-    # 1. Form all pairs of samples; order each pair by time (earliest
-    #    first), breaking exact time ties so the observed event comes
-    #    before the censored observation
-    # 2. Omit pairs where the earlier time sample is censored
-    # 3. Omit pairs whose times are both equal and censored
-    #    (the number of permissible pairs, n_permissible_pairs, is the
-    #    number of pairs after the above omissions)
-    # 4. If x_1 < x_2 and x_hat_1 > x_hat_2 => concordance += 1
-    # 5. If x_1 < x_2 and x_hat_1 == x_hat_2 => concordance += 0.5
-    # 6. If x_1 == x_2 and both are deaths,
-    #    if x_hat_1 == x_hat_2 => concordance += 1
-    #    else concordance += 0.5
-    # 7. If x_1 == x_2 and only one of them is a death (say x_1), the
-    #    censored observation demonstrably outlived the death, so the
-    #    pair is fully comparable (Harrell):
-    #    if x_hat_1 > x_hat_2 => concordance += 1
-    #    if x_hat_1 == x_hat_2 => concordance += 0.5
-    #    if x_hat_1 < x_hat_2 => concordance += 0 (discordant, #276)
-    # c-index = concordance / n_permissible_pairs
+    """Harrell's concordance index of risk ``scores`` (deprecated).
 
-    # Correct input
-    x = np.array(x, ndmin=1)
-    c = np.array(c, ndmin=1)
-    scores = np.array(scores, ndmin=1)
+    Use :func:`surpyval.metrics.concordance_index`, which this calls with
+    ``ties="harrell"``, the convention ``score`` always had: two events at
+    the same time are a usable pair. ``concordance_index`` leaves them out
+    by default (``ties="therneau"``, as R and lifelines), so the two differ
+    on data with tied event times.
 
-    # Package i, c, x, and score together
-    ixc: list[tuple[Any, Any, Any]] = []
-    for i in range(len(x)):
-        ixc.append((x[i], c[i], scores[i]))
-
-    pairs = combinations(ixc, 2)
-
-    concordance = 0.0
-    n_permissible_pairs = 0
-
-    for tup_1, tup_2 in pairs:
-        # Order the pair by time, earliest first; on an exact time tie
-        # the observed event (c == 0) comes first
-        if (tup_1[0], tup_1[1]) > (tup_2[0], tup_2[1]):
-            tup_1, tup_2 = tup_2, tup_1
-
-        # Unpack tuple
-        x_1, c_1, x_hat_1 = tup_1
-        x_2, c_2, x_hat_2 = tup_2
-
-        # Omit pair if x_1 is censored and x_1 != x_2
-        if c_1 == 1 and x_1 != x_2:
-            continue
-
-        # Omit pair if x_1 == x_2 and are censored
-        if x_1 == x_2 and c_1 == c_2 == 1:
-            continue
-
-        n_permissible_pairs += 1
-
-        if x_1 != x_2:
-            if x_hat_1 > x_hat_2:
-                concordance += 1
-            elif isclose(x_hat_1, x_hat_2, abs_tol=tie_tol):
-                concordance += 0.5
-        elif x_1 == x_2:
-            if c_1 == 0 and c_2 == 0:
-                if isclose(x_hat_1, x_hat_2, abs_tol=tie_tol):
-                    concordance += 1
-                else:
-                    concordance += 0.5
-            else:
-                # Exactly one of the tied pair is a death; the censored
-                # subject outlived it, so the pair is fully comparable:
-                # 0.5 only on a genuine score tie, 0 when the death has
-                # the lower risk score (previously credited 0.5, #276).
-                if c_1 == 0:
-                    death_score, other_score = x_hat_1, x_hat_2
-                else:
-                    death_score, other_score = x_hat_2, x_hat_1
-                if isclose(death_score, other_score, abs_tol=tie_tol):
-                    concordance += 0.5
-                elif death_score > other_score:
-                    concordance += 1
-
-    return concordance / n_permissible_pairs
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.score import score
+    >>> with warnings.catch_warnings():
+    ...     warnings.simplefilter("ignore", DeprecationWarning)
+    ...     round(score([1.0, 2.0, 3.0], [0, 0, 1], [3.0, 1.0, 2.0]), 4)
+    0.6667
+    """
+    warnings.warn(
+        "surpyval.utils.score.score is deprecated and will be removed in "
+        f"v{REMOVED_IN}; use surpyval.metrics.concordance_index.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return concordance_index(x, c, scores, tie_tol, ties="harrell")

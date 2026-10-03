@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import inspect
 from typing import Any, Callable
 
@@ -13,28 +15,25 @@ from surpyval.univariate.parametric.parametric_fitter import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
+from .._covariate_link import CovariateLink
 from .._fit_skeleton import (
     HazardIdentitiesMixin,
     LogLinearPhi,
     MirroredDistributionAttrs,
-    assemble_regression_model,
-    make_objective,
+    fit_log_linear,
     mirror_distribution,
     optimise_ph,
-    prepare_regression_fit,
     uniform_draws,
 )
+from .._kinds import PROPORTIONAL_HAZARD
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
 from ..tvc_fit import TVCFitMixin
 
-
-class Phi:
-    # Lightweight namespace whose attributes are populated by the fitter.
-    phi: Any
-    phi_param_map: Any
-    name: str
+# The name the PH covariate link had before it became the shared
+# ``CovariateLink``, kept so a model pickled then still loads.
+Phi = CovariateLink
 
 
 class ProportionalHazardsFitter(
@@ -296,6 +295,7 @@ class ProportionalHazardsFitter(
         t: npt.ArrayLike | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
+        center: bool = False,
     ) -> ParametricRegressionModel:
         """
         Fit the proportional hazards model to the data.
@@ -323,6 +323,14 @@ class ProportionalHazardsFitter(
             A dictionary of parameters to fix to a specific value, by name
             (a distribution parameter such as ``"beta"``, or a coefficient
             ``"beta_0"``, ``"beta_1"``, ...).
+        center : bool, optional
+            ``False`` (the default) reports the baseline at ``Z = 0``.
+            ``True`` reports the baseline at the covariate means (stored as
+            ``model.center``) instead: the fit runs on ``Z - center``, and
+            ``init`` and ``fixed`` are read there too. Use it for
+            covariates far from 0 (a year, a date), where the baseline at
+            ``Z = 0`` cannot be represented or fitted, which the default
+            fit refuses with a ``ValueError`` saying so.
 
         Returns
         -------
@@ -343,39 +351,20 @@ class ProportionalHazardsFitter(
         ...     'Wedge gauge×peel force'
         ... ]].values
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c)
-        >>> model
-        Parametric Regression SurPyval Model
-        ====================================
-        Kind                : Proportional Hazard
-        Distribution        : Weibull
-        Regression Model    : Log Linear [e^(beta'Z)]
-        Fitted by           : MLE
-        Distribution        :
-             alpha: 0.2425513627560218
-              beta: 16.057785182711932
-        Regression Model    :
-            beta_0: -9.165062726518311
-            beta_1: -7.998573055929788
-            beta_2: -27.50318580568538
-            beta_3: 18.385445332039488
+        >>> model.summary()[["coef", "se(coef)", "p"]].round(4)
+                                coef  se(coef)       p
+        part         name
+        baseline     alpha    0.2426    0.0814     NaN
+                     beta    16.0578    3.9506     NaN
+        coefficients beta_0  -9.1651    3.7237  0.0138
+                     beta_1  -7.9986    2.8119  0.0044
+                     beta_2 -27.5032    9.5366  0.0039
+                     beta_3  18.3854    6.4222  0.0042
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
-        >>> model
-        Parametric Regression SurPyval Model
-        ====================================
-        Kind                : Proportional Hazard
-        Distribution        : Weibull
-        Regression Model    : Log Linear [e^(beta'Z)]
-        Fitted by           : MLE
-        Distribution        :
-             alpha: 0.237729668424067
-              beta: 15.0
-        Regression Model    :
-            beta_0: -8.62832691738283
-            beta_1: -7.617529362323243
-            beta_2: -25.952367249502934
-            beta_3: 17.270148387391387
+        >>> model.params.round(4)
+        array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])
         """
-        data, prep = prepare_regression_fit(
+        return fit_log_linear(
             self,
             x,
             Z,
@@ -384,35 +373,19 @@ class ProportionalHazardsFitter(
             t,
             init,
             fixed,
-            self.phi_bounds,
-            self.phi_param_map,
-            self.phi_init,
+            center,
+            kind=PROPORTIONAL_HAZARD,
+            optimiser=optimise_ph,
+            reg_model=self._reg_model,
+            phi_bounds=self.phi_bounds,
+            phi_param_map=self.phi_param_map,
+            phi_init=self.phi_init,
+            # Only the log-linear multiplier can be centred and reported at
+            # Z = 0 (#463); a custom phi is centred only with center=True.
+            log_linear=self.phi is LogLinearPhi.phi,
         )
-        init_t, bounds, pmap, transform, inv_trans, const, fixed = prep
 
-        with np.errstate(all="ignore"):
-
-            fun = make_objective(self, data, inv_trans, const)
-
-            res = optimise_ph(fun, init_t)
-
-        params = inv_trans(const(res.x))
-
+    def _reg_model(self, pmap: dict[str, int]) -> CovariateLink:
         # Keep this fitter's possibly-custom phi (and its historical
         # serialisation name) rather than assuming log-linear.
-        reg_model = Phi()
-        reg_model.phi = self.phi
-        reg_model.phi_param_map = pmap
-        reg_model.name = self.phi_name
-
-        return assemble_regression_model(
-            self,
-            "Proportional Hazard",
-            reg_model,
-            data,
-            res,
-            params,
-            bounds,
-            pmap,
-            fixed,
-        )
+        return CovariateLink(self.phi_name, pmap, self.phi)

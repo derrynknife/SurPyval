@@ -12,6 +12,8 @@ See ``surpyval.univariate.competing_risks`` for the univariate
 (time-to-first-event) competing-risks models.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
 import numpy as np
@@ -33,16 +35,16 @@ from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
 )
-from surpyval.univariate.nonparametric.nonparametric import (
-    _check_support,
-    _support_from_dict,
+from surpyval.univariate.nonparametric._support import (
+    check_support,
+    support_from_dict,
 )
 from surpyval.utils import optional_column
-from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_unsupported_nonparametric,
 )
+from surpyval.utils.validation import unknown_cause_error
 
 
 def _cause_model(data: Any, cause: Any) -> Any:
@@ -155,7 +157,7 @@ class CauseSpecificMCF(SerialisableMixin):
             cause: NonParametricCounting.from_dict(sub)
             for cause, sub in zip(out.event_types, model_dict["models"])
         }
-        support = _support_from_dict(model_dict)
+        support = support_from_dict(model_dict)
         if support is not None:
             out.set_support(*support)
         return out
@@ -206,7 +208,7 @@ class CauseSpecificMCF(SerialisableMixin):
         # The causes share the risk set, so their grids and origins agree;
         # checked against their union all the same.
         models = [self.models[cause] for cause in self.event_types]
-        support = _check_support(
+        support = check_support(
             lower,
             upper,
             min(m._origin() for m in models),
@@ -218,23 +220,26 @@ class CauseSpecificMCF(SerialisableMixin):
         self.support = support
         return self
 
-    @renamed_arguments(cause="event")
     def mcf(
         self, x: ArrayLike, event: Any, interp: str = "step"
     ) -> np.ndarray:
         """Cause-specific MCF evaluated at ``x`` for the event type
         ``event`` (see ``NonParametricCounting.mcf``, and
         :meth:`set_support` for its values outside the data)."""
-        return self.models[event].mcf(x, interp=interp)
+        return self._model(event).mcf(x, interp=interp)
 
-    @renamed_arguments(cause="event", confidence=("alpha_ci", lambda c: 1 - c))
     def mcf_cb(self, x: ArrayLike, event: Any, **kwargs: Any) -> Any:
         """Confidence bounds on the cause-specific MCF for the event type
         ``event``; ``kwargs`` are those of
         ``NonParametricCounting.mcf_cb``."""
-        return self.models[event].mcf_cb(x, **kwargs)
+        return self._model(event).mcf_cb(x, **kwargs)
 
-    @renamed_arguments(confidence=("alpha_ci", lambda c: 1 - c))
+    def _model(self, event: Any) -> Any:
+        # An unknown cause used to escape as a bare KeyError.
+        if event not in self.models:
+            raise unknown_cause_error(event, self.event_types)
+        return self.models[event]
+
     def plot(
         self,
         *,

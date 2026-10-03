@@ -12,11 +12,13 @@ supports, the docstrings that state each model's own convention -- stays
 on the classes themselves.
 """
 
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -100,6 +102,8 @@ class SingleProbabilityMixin:
             raise ValueError("'n' must be the same length as 'x'")
 
         model = Parametric(self, "MLE", None, False, False, False)
+        # The proportion is the exact maximum
+        model.maximum = "verified"
         p = (x_arr * n_arr).sum() / n_arr.sum()
         model.params = np.array([p])
         # As from_dict sets it, so a fitted and a restored model agree.

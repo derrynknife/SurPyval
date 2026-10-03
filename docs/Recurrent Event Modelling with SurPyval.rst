@@ -97,6 +97,33 @@ The intensity models accept all of these (see `Delayed entry and right
 truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
 ``tr`` and ``windows``; the renewal models need each item watched from new.
 
+Event logs usually arrive as a table, one row per event with a column naming
+the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
+of its columns: ``x_col`` and, as needed, ``i_col``, ``c_col``, ``n_col``,
+``tl_col`` and ``tr_col`` (the names the regression and competing-risks
+``fit_from_df`` use). Every other ``fit`` option (``how``, ``dist``,
+``init``, ...) is passed straight through, and the model is the one ``fit``
+gives on the same columns:
+
+.. jupyter-execute::
+
+    import pandas as pd
+
+    log = pd.DataFrame({
+        "hours": [120, 380, 610, 700, 90, 400, 520, 650],
+        "truck": [1, 1, 1, 1, 2, 2, 2, 2],
+        "c":     [0, 0, 0, 1, 0, 0, 0, 1],
+    })
+    from_log = CrowAMSAA.fit_from_df(log, x_col="hours", i_col="truck", c_col="c")
+    print(from_log.params.round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    same = CrowAMSAA.fit(log["hours"], log["truck"], log["c"])
+    assert np.allclose(from_log.params, same.params)
+
 Non-Parametric Counting Model with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -337,7 +364,10 @@ hypothesis of a homogeneous Poisson process (no trend) directly on the event
 times; no model is fitted. They take the event times ``x``, the item ids
 ``i`` and the observation end ``T`` — a scalar, one value per item, or a
 dict keyed by item. Leave ``T`` out for failure-truncated data, and the last
-event of each item is treated as the end of its window.
+event of each item is treated as the end of its window. Data in the fitters'
+form, ``x``, ``i`` and ``c``, can be passed as they are with ``c=`` by
+keyword: an item's ``c = 1`` row ends its window (the third positional
+argument is ``T``, so ``laplace(x, i, c)`` raises an error saying so).
 
 .. jupyter-execute::
 
@@ -354,9 +384,11 @@ Both tests find strong evidence of an increasing intensity, so an HPP would be
 a poor model. The ``alternative`` argument chooses a two-sided test (the
 default) or a one-sided test for ``"increasing"`` (deterioration) or
 ``"decreasing"`` (reliability growth). The result carries ``statistic``,
-``p_value``, ``trend``, ``n_events`` and ``n_systems`` (and ``dof`` for the
-MIL-HDBK-189C test). Its ``trend`` attribute is only the *direction* of the
-statistic; look at ``p_value`` to judge whether the trend is real:
+``p_value``, ``direction``, ``trend``, ``n_events`` and ``n_systems`` (and
+``dof`` for the MIL-HDBK-189C test). ``direction`` is only the way the
+statistic points; ``trend`` is the test's conclusion, ``"increasing"`` or
+``"decreasing"`` only when ``p_value`` is below the significance level
+``alpha_ci`` (default 0.05, set by keyword) and ``"none"`` otherwise:
 
 .. jupyter-execute::
     :hide-code:
@@ -368,17 +400,18 @@ statistic; look at ``p_value`` to judge whether the trend is real:
 .. jupyter-execute::
 
     result = laplace([3, 11, 14, 22, 30, 35], T=40)
-    print(result.trend, "- p-value", round(result.p_value, 3))
+    print(result.direction, "/", result.trend, "- p-value", round(result.p_value, 3))
 
 Here the statistic leans (slightly) towards a decreasing rate, but the
 p-value is far from small: with six events there is no evidence of any
-trend.
+trend, and ``trend`` is ``"none"``.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert result.trend == "decreasing" and result.p_value > 0.5
+    assert result.direction == "decreasing" and result.trend == "none"
+    assert result.p_value > 0.5
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -708,7 +741,11 @@ refitted; the others return the non-parametric MCF of the simulated items:
   ``count_terminated_simulation_data(events, items)`` watch each item until
   it has had ``events + 1`` events (the extra event closes the window). The
   MCF version keeps only the part of the curve below ``events``, where it is
-  not yet distorted by the items dropping out.
+  not yet distorted by the items dropping out. A model whose intensity
+  falls away fast enough that its expected number of events over all time,
+  ``cif(inf)``, is finite (a ``CoxLewis`` with ``beta < 0``) raises a
+  ``ValueError``: an item may never have that many events, so use the
+  time-terminated versions for it.
 
 Pass ``random_state`` for a reproducible result. The time-terminated versions also
 take ``tol`` and ``max_events``: a sequence whose gaps shrink below ``tol``
@@ -833,16 +870,18 @@ the second, and ``alternative`` works as for the standalone functions):
 .. jupyter-execute::
 
     result = model.trend_test()
-    print(result.trend, "trend, p-value", round(result.p_value, 3))
+    print(result.direction, "/", result.trend, "- p-value", round(result.p_value, 3))
 
-The direction is increasing, but with a p-value of about 0.2 the evidence is
-weak — consistent with the wide interval on ``alpha`` above.
+The statistic points to an increasing rate, but with a p-value of about 0.2
+the evidence is weak and no trend is concluded at the 5% level — consistent
+with the wide interval on ``alpha`` above.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert result.trend == "increasing" and round(result.p_value, 1) == 0.2
+    assert result.direction == "increasing" and result.trend == "none"
+    assert round(result.p_value, 1) == 0.2
 
 Second, **residuals**. Via the time-rescaling theorem, the fitted model turns
 the event times into what should be a unit-rate Poisson process, so the
@@ -929,8 +968,8 @@ inter-arrival time is affected by some restoration factor.
 All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
 intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
-default, or for ``ARI`` the baseline intensity model) and the model's own
-options. Each item must be observed from new, with exact event times and at
+default) and the model's own options; ``ARI`` takes a ``baseline`` intensity
+model in place of the ``dist``. Each item must be observed from new, with exact event times and at
 most a final right-censored row. They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
@@ -962,7 +1001,7 @@ available as ``model.model`` (an ordinary SurPyval distribution, with ``sf``,
 search from your own values instead of the built-in starts, and
 ``GeneralizedRenewal.fit_from_parameters(params, q, kijima=..., dist=...)``
 builds a model from known values for simulation; ``GeneralizedOneRenewal``,
-``ARA`` and ``ARI`` have the same method.
+``ARA`` and ``ARI`` have the same method (``ARI``'s takes ``baseline=``).
 
 .. jupyter-execute::
     :hide-code:
@@ -1040,6 +1079,97 @@ given time.
     :hide-output:
 
     assert model_ii.aic > model.aic and model_ii.q < 1e-3
+
+How well do the data determine q?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The restoration factor reads on one scale: ``q = 0`` is a repair as good as
+new, ``q = 1`` one as bad as old (minimal repair: the process is then the
+non-homogeneous Poisson process of the distribution's cumulative hazard, the
+Crow-AMSAA power law for a Weibull), and ``q > 1`` a repair that leaves the
+system worse than just before it failed. Only the order and spacing of each
+system's failures tell the model about ``q``, so it is often poorly
+determined, and the printed model gives every parameter's standard error and
+Wald 95% interval (``model.summary()`` returns the table). Here eight haul
+trucks are simulated under minimal repair, so the true ``q`` is 1:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(8)
+    rows = []
+    for k in range(8):
+        T = rng.uniform(6000, 12000)
+        N = rng.poisson(2e-4 * T**1.35)
+        ts = np.sort(T * rng.random(N) ** (1 / 1.35))
+        rows += [(h, k, 0) for h in ts] + [(T, k, 1)]
+    hours, truck, c_trucks = map(np.array, zip(*rows))
+
+    trucks = GeneralizedRenewal.fit(hours, truck, c_trucks)
+    trucks
+
+The estimate, 2.63, would say every repair makes the truck worse, but its
+interval runs from 0.09 (almost as good as new) to 74. The question the data
+can answer is which kinds of repair they rule out, and the last line of the
+printout answers it: ``repair_test()`` refits the model with ``q`` held at
+perfect repair (``q = 0``, an ordinary Weibull renewal process) and at
+minimal repair (``q = 1``, the Crow-AMSAA power law), and tests the fit
+against each by likelihood ratio:
+
+.. jupyter-execute::
+
+    test = trucks.repair_test()
+    test
+
+.. jupyter-execute::
+
+    print(f"vs perfect: LR = {test.perfect.statistic:.1f}, p = {test.perfect.p_value:.1g}")
+    print(f"vs minimal: LR = {test.minimal.statistic:.2f}, p = {test.minimal.p_value:.2f}")
+
+Perfect repair is rejected (p = 2e-9) and minimal repair is not (p = 0.53):
+the trucks are consistent with minimal repair, and the Crow-AMSAA model, one
+parameter simpler, describes them as well as the fitted ``q`` does. At the
+level ``alpha_ci`` (default 0.05) the conclusion is one of:
+
+- "not determined: the data are consistent with both perfect and minimal
+  repair" -- neither is rejected, and the data cannot say what repairs do;
+- "consistent with minimal repair; perfect repair rejected", or the other
+  way round;
+- both rejected, and where the estimate lies: "between perfect and minimal
+  repair" (``0 < q < 1``) or "worse than minimal repair" (``q > 1``).
+
+Each test has one degree of freedom. Where the value tested is on the edge
+of the parameter's range -- ``q = 0`` (``q`` cannot be negative), and both
+``rho = 0`` and ``rho = 1`` for ``ARA`` and ``ARI`` -- the statistic is a
+50:50 mixture of chi-squared(0) and chi-squared(1) when the hypothesis
+holds, so the p-value is half the chi-squared(1) tail (Self and Liang,
+1987). ``ARA``'s ``rho = 1`` is perfect repair; ``ARI`` has no repair as
+good as new, and its ``rho = 1`` (each repair removes all the intensity, the
+most an ARI repair can) is tested in its place as "maximal repair". The G1
+process has no minimal repair, so it is tested against perfect repair (its
+``q = 0``, inside the range) only. The refits are made the first time the
+model is printed or ``repair_test()`` is called, and kept on the model.
+
+A fit can also put the restoration parameter on the edge of its range: a
+``q`` driven to 0, an ARA or ARI ``rho`` to 1 or 0. It then has no standard
+error, since the likelihood is not regular there, and its interval
+(``param_cb``, and the printed table) is the profile-likelihood one: the
+values the same likelihood-ratio test does not reject, the model refitted at
+each. It runs from the edge to where twice the drop in the log-likelihood
+reaches the chi-squared(1) quantile, and a one-sided bound towards the edge
+is the edge itself. The other parameters' intervals are then the Wald
+intervals of the model held on the edge, as the printout notes.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(trucks.q, 2) == 2.63
+    lo_q, hi_q = trucks.summary().loc["q", ["lower 95%", "upper 95%"]]
+    assert round(lo_q, 2) == 0.09 and round(hi_q) == 74
+    assert round(test.minimal.p_value, 2) == 0.53
+    assert f"{test.perfect.p_value:.1g}" == "2e-09"
+    assert test.conclusion == "consistent with minimal repair; perfect repair rejected"
+    assert "consistent with minimal repair; perfect repair rejected" in " ".join(repr(trucks).split())
 
 G1 Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1193,17 +1323,22 @@ The true memory, ``m=2``, has the lowest AIC.
 
 ``ARI`` fits the same way but with an intensity (counting process) baseline —
 ``CrowAMSAA`` (the default), ``Duane`` or ``CoxLewis`` — in place of a lifetime
-distribution. Here we simulate from an ARI model with a deteriorating
+distribution. It is passed as ``baseline=`` (``dist=``, its name before v0.22,
+still works with a ``DeprecationWarning`` until v0.23), and a lifetime
+distribution there, ``ARI.fit(x, i, baseline=Weibull)``, raises an error
+saying so and naming ``ARA`` and ``GeneralizedRenewal`` (a Weibull hazard as
+the baseline intensity is the power law, ``baseline=CrowAMSAA``); the other
+fitters likewise refuse an intensity model as their lifetime distribution. Here we simulate from an ARI model with a deteriorating
 power-law baseline (:math:`\beta = 2.5`) and fit it back:
 
 .. jupyter-execute::
 
     from surpyval.recurrent import ARI, CrowAMSAA
 
-    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, dist=CrowAMSAA)
+    ari_true = ARI.fit_from_parameters([10.0, 2.5], 0.6, m=1, baseline=CrowAMSAA)
     sim_ari = ari_true.time_terminated_simulation_data(40, items=10, random_state=7)
 
-    ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, dist=CrowAMSAA, m=1)
+    ari = ARI.fit(sim_ari.x, sim_ari.i, sim_ari.c, baseline=CrowAMSAA, m=1)
     ari
 
 The baseline parameters are recovered well (we simulated from
@@ -1223,12 +1358,13 @@ Checking a renewal model
 
 The renewal models carry the same likelihood inference as the intensity
 models. The parameter list starts with the repair parameter (``q`` or
-``rho``) followed by the lifetime (or baseline) parameters, and the interval
-on ``rho`` is computed on the logit scale so it stays inside (0, 1):
+``rho``) followed by the lifetime (or baseline) parameters -- the order of
+``params`` and ``parameter_names`` too -- and the interval on ``rho`` is
+computed on the logit scale so it stays inside (0, 1):
 
 .. jupyter-execute::
 
-    print("parameters :", ari.parameter_names)
+    print("parameters :", ari.parameter_names, ari.params.round(3))
     print("std errors :", ari.standard_errors().round(3))
     print("rho 95% CI :", ari.param_cb("rho").round(3))
 
@@ -1275,8 +1411,8 @@ rows), and for complete data the Weibull maximum-likelihood equations force
 the cumulative hazards of the gaps to sum to their number. Their *pattern*
 (a Q-Q plot against Exp(1), a drift with time) is what carries information.
 With a p-value of about 0.1 the goodness-of-fit test gives no strong evidence
-against the model (the trend test's "decreasing" is only the sign of an
-unconvincing statistic).
+against the model, and the trend test finds no trend (its statistic leans,
+unconvincingly, towards a decreasing rate).
 
 .. jupyter-execute::
     :hide-code:
@@ -1285,7 +1421,8 @@ unconvincing statistic).
     assert model.q < 1e-9 and np.isclose(model.residuals().mean(), 1)
     assert np.isclose(gof.p_value * 21, round(gof.p_value * 21))
     assert round(gof.p_value, 1) == 0.1, gof.p_value
-    assert model.trend_test().trend == "decreasing"
+    assert model.trend_test().trend == "none"
+    assert model.trend_test().direction == "decreasing"
 
 Predicting with a renewal model
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1520,7 +1657,8 @@ fluke of this sample.
 
 Both classes also have a ``fit_from_df`` method that reads the columns of a
 ``pandas`` DataFrame (``x_col``, ``e_col`` and optionally ``i_col``,
-``c_col``, ``n_col``, ``tl_col``, ``tr_col``).
+``c_col``, ``n_col``, ``tl_col``, ``tr_col``), as every recurrent fitter
+does (with ``e_col`` for the causes).
 
 Saving and loading a fitted model
 ---------------------------------

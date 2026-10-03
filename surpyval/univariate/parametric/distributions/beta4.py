@@ -1,11 +1,12 @@
+from __future__ import annotations
+
 from typing import Any
 
+import autograd.numpy as np
 import numpy.typing as npt
-from autograd.scipy.special import beta as abeta
 from autograd.scipy.special import betaln as abetaln
 from scipy.special import betaincinv, comb, digamma
 
-from surpyval import np
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -13,8 +14,20 @@ from surpyval.univariate.parametric.parametric_fitter import (
     ParametricFitter,
 )
 from surpyval.utils.autograd_gamma_compat import betainc as abetainc
+from surpyval.utils.autograd_gamma_compat import betainccln as abetainccln
 from surpyval.utils.autograd_gamma_compat import betaincln as abetaincln
+from surpyval.utils.no_maximum import warn_no_maximum
 from surpyval.utils.surpyval_data import SurpyvalData
+
+
+def _power_log(k: Boxable, z: Boxable) -> Boxable:
+    r""":math:`k \ln z` for :math:`z \geq 0`, with its limit at
+    :math:`z = 0`: :math:`-\infty`, 0 or :math:`\infty` as ``k`` is
+    positive, 0 or negative. The log sees a positive argument only, so
+    nothing warns and no nan enters a gradient."""
+    positive = z > 0.0
+    at_zero = np.where(k > 0.0, -np.inf, np.where(k < 0.0, np.inf, 0.0))
+    return np.where(positive, k * np.log(np.where(positive, z, 1.0)), at_zero)
 
 
 class Beta4_(OptimisedFitMixin, ParametricFitter):
@@ -33,6 +46,18 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     neither bound is zero — the case where ``Beta(..., offset=True)``
     would (deliberately) refuse, since a one-sided offset cannot move the
     lower bound while keeping the upper bound pinned at 1.
+
+    .. note::
+       Fit it with ``how="MPS"`` (maximum product of spacings). Its
+       likelihood is unbounded: with a shape below 1 the density is
+       infinite at a support end, so a maximum-likelihood fit can run
+       an end onto the smallest or largest observation, where there is no
+       maximum, and its answer then depends on the data's units. Such a fit
+       warns "No finite maximum". MPS scores an end gap of zero as minus
+       infinity, so its estimates are finite, consistent (Cheng & Amin,
+       1983) and the same in any units. MLE stays the default, as for
+       every distribution, and is fine when the data put both shapes above
+       1.
     """
 
     def __init__(self, name: str) -> None:
@@ -43,7 +68,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
             # The support [a, b] is data-dependent and resolved from the
             # fitted ``a`` (param 2) and ``b`` (param 3) parameters.
             support=(np.nan, np.nan),
-            param_names=["alpha", "beta", "a", "b"],
+            parameter_names=["alpha", "beta", "a", "b"],
             param_map={"alpha": 0, "beta": 1, "a": 2, "b": 3},
             plot_x_scale="linear",
         )
@@ -60,6 +85,66 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
                 f"{self.name} needs a < b; got a = {params[2]}, "
                 f"b = {params[3]}"
             )
+
+    def _warn_if_at_limit(
+        self,
+        surv_data: SurpyvalData,
+        results: dict,
+        zi: bool,
+        lfp: bool,
+    ) -> bool:
+        """Warn when the fit ran a support end onto an observation with its
+        shape below 1, where the likelihood is unbounded (#385, #392).
+
+        With ``alpha < 1`` the density grows without bound at ``a``, so
+        moving ``a`` onto the smallest exactly observed value makes the
+        likelihood infinite: the four-parameter Beta has no maximum
+        likelihood estimate there (Smith, 1985; ``beta < 1`` at ``b``
+        likewise). The fit then stops wherever its search gave up, and the
+        answer depends on the data's units: shapes of 1.00 and 1.19 on
+        the registry's fixture, 0.18 and 0.18 on the same data times 7.3.
+        The criterion is that end resting on the extreme observation to
+        half the digits of the support's width (``sqrt(eps)``), which a
+        fit with an interior maximum -- the end strictly outside the data,
+        where the density at the extreme is finite -- does not reach.
+        Maximum product of spacings has no such limit: an end gap of zero
+        scores minus infinity, and its fit is the same in any units.
+        """
+        params = np.asarray(results.get("params", []), dtype=float)
+        if params.size != 4 or not np.all(np.isfinite(params)):
+            return False
+        alpha, beta, a, b = params
+        x = np.asarray(surv_data.x, dtype=float)
+        if x.ndim != 1:
+            return False
+        exact = x[np.asarray(surv_data.c) == 0]
+        if exact.size == 0 or not b > a:
+            return False
+        close = np.sqrt(np.finfo(float).eps) * (b - a)
+        ends = []
+        if alpha < 1 and exact.min() - a <= close:
+            ends.append(
+                f"a = {a:.6g} on the smallest observation "
+                f"{exact.min():.6g} with alpha = {alpha:.4g}"
+            )
+        if beta < 1 and b - exact.max() <= close:
+            ends.append(
+                f"b = {b:.6g} on the largest observation "
+                f"{exact.max():.6g} with beta = {beta:.4g}"
+            )
+        if not ends:
+            return False
+        warn_no_maximum(
+            "the Beta4 likelihood is unbounded: a shape below 1 makes the "
+            "density infinite at a support end, and the fit ran "
+            + " and ".join(ends),
+            "The reported parameters are where the search stopped (they "
+            "change with the data's units), and their standard errors and "
+            "bounds are meaningless",
+            "fit with how='MPS' (maximum product of spacings), which is "
+            "finite here and the same in any units",
+        )
+        return True
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
@@ -132,7 +217,12 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         >>> Beta4.sf(x, 3, 4, 2, 3)
         array([0.98415, 0.90112, 0.74431, 0.54432, 0.34375])
         """
-        return 1 - self.ff(x, alpha, beta, a, b)
+        # 1 - F where F is below 1/2, and the upper tail itself (from its
+        # log) where it is small: 1 - F was 0 where R is 1e-30 (#442).
+        ff = self.ff(x, alpha, beta, a, b)
+        return np.where(
+            ff < 0.5, 1.0 - ff, np.exp(self.log_sf(x, alpha, beta, a, b))
+        )
 
     def ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -217,16 +307,11 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         >>> Beta4.df(x, 3, 4, 2, 3)
         array([0.4374, 1.2288, 1.8522, 2.0736, 1.875 ])
         """
-        # The density is zero outside [a, b]; evaluating the power terms
-        # there returned arbitrary nonzero, negative, or NaN values
-        # (fractional powers of negative bases), so hf inherited garbage
-        # on any grid extending past the fitted support (#280).
-        x = np.asarray(x, dtype=float)
-        inside = (x >= a) & (x <= b)
-        xc = np.where(inside, x, 0.5 * (a + b))
-        num = (xc - a) ** (alpha - 1) * (b - xc) ** (beta - 1)
-        den = abeta(alpha, beta) * (b - a) ** (alpha + beta - 1)
-        return np.where(inside, num / den, 0.0)
+        # From the log density: the powers and B(alpha, beta) of the
+        # algebraic form overflow separately at extreme shapes (at alpha =
+        # 1000 on [-1e6, 1e6], (b - a)^999 raised OverflowError) although
+        # the density is an ordinary number (#445).
+        return np.exp(self.log_df(x, alpha, beta, a, b))
 
     def hf(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -262,12 +347,13 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         # df = 0 and sf = 0 above the support made hf return NaN (0/0)
         # for x > b; the hazard is 0 below the support (no mass yet) and
         # infinite at/above the upper bound (no survivors) (#289).
+        # On the log scale: df/sf was inf (or 0/0) once sf underflowed
+        # (#443).
         x_arr = np.asarray(x, dtype=float)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            out = self.df(x_arr, alpha, beta, a, b) / self.sf(
-                x_arr, alpha, beta, a, b
-            )
-        out = np.where(x_arr < a, 0.0, out)
+        log_hf = self.log_df(x_arr, alpha, beta, a, b) - self.log_sf(
+            x_arr, alpha, beta, a, b
+        )
+        out = np.where(x_arr < a, 0.0, np.exp(log_hf))
         return np.where(x_arr >= b, np.inf, out)
 
     def Hf(
@@ -300,7 +386,7 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
         Hf : scalar or numpy array
             The value(s) of the cumulative hazard rate at x.
         """
-        return -np.log(self.sf(x, alpha, beta, a, b))
+        return -self.log_sf(x, alpha, beta, a, b)
 
     def qf(
         self, u: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
@@ -461,18 +547,43 @@ class Beta4_(OptimisedFitMixin, ParametricFitter):
     def log_df(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
     ) -> Boxable:
-        return (
-            (alpha - 1) * np.log(x - a)
-            + (beta - 1) * np.log(b - x)
+        # The density is zero outside [a, b]; evaluating the power terms
+        # there returned arbitrary nonzero, negative, or NaN values
+        # (fractional powers of negative bases), so hf inherited garbage
+        # on any grid extending past the fitted support (#280). At an edge
+        # the limit is taken: 0, the constant, or inf as the shape there
+        # is above, at or below 1.
+        x = np.asarray(x, dtype=float)
+        inside = (x >= a) & (x <= b)
+        xc = np.where(inside, x, 0.5 * (a + b))
+        log_df = (
+            _power_log(alpha - 1.0, (xc - a) / (b - a))
+            + _power_log(beta - 1.0, (b - xc) / (b - a))
             - abetaln(alpha, beta)
-            - (alpha + beta - 1) * np.log(b - a)
+            - np.log(b - a)
         )
+        return np.where(inside, log_df, -np.inf)
 
     def log_ff(
         self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
     ) -> Boxable:
         z = np.clip(self._z(x, a, b), 0.0, 1.0)
         return abetaincln(alpha, beta, z)
+
+    def log_sf(
+        self, x: Numeric, alpha: Boxable, beta: Boxable, a: Boxable, b: Boxable
+    ) -> Boxable:
+        # The upper tail's own log (log(1 - F) lost R below 1e-16, #442,
+        # and was -inf where R underflowed, #443), as the lower tail of the
+        # mirrored Beta at (b - x) / (b - a) where that is small: taken from
+        # x, not as 1 - z, it keeps its digits near b.
+        z = np.clip(self._z(x, a, b), 0.0, 1.0)
+        zc = np.clip((b - x) / (b - a), 0.0, 1.0)
+        return np.where(
+            zc < 0.5,
+            abetaincln(beta, alpha, zc),
+            abetainccln(alpha, beta, z),
+        )
 
     def mpp_x_transform(self, x: npt.NDArray) -> Boxable:
         return x

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from numbers import Number
 from typing import Any, Callable
 
@@ -6,10 +8,12 @@ import numpy.typing as npt
 
 from surpyval.univariate import nonparametric as nonp
 from surpyval.univariate.nonparametric.nonparametric import NonParametric
-from surpyval.utils import xcnt_handler, xcnt_to_xrd, xrd_handler
+from surpyval.utils import xcnt_handler, xrd_handler
+from surpyval.utils.data_formats import _handled_xcnt_to_xrd
+from surpyval.utils.dataframe import UnivariateDataFrameMixin
 
 
-class NonParametricFitter:
+class NonParametricFitter(UnivariateDataFrameMixin):
     how: str
     # Provided by the Turnbull estimator subclass; only called on the
     # ``how == "Turnbull"`` path.
@@ -217,11 +221,13 @@ class NonParametricFitter:
         Non-Parametric SurPyval Model
         =============================
         Model            : Nelson-Aalen
+        Data             : 6 units: 6 events at 5 unique times
         >>> Turnbull.fit([2, 3, 3, 4, 5, 6], turnbull_estimator='Kaplan-Meier')
         Non-Parametric SurPyval Model
         =============================
         Model            : Turnbull
         Estimator        : Kaplan-Meier
+        Data             : 6 units: 6 events at 5 unique times
         """
         if self.how == "Turnbull":
             # Imported here as this module is imported by the package
@@ -282,7 +288,27 @@ class NonParametricFitter:
             return out
 
         else:
-            x, r, d = xcnt_to_xrd(x, c, n, t)
+            # Name the estimator and the one that handles the data: the
+            # conversion below said only "xrd format can't be used with
+            # left (c=-1) or interval (c=2) censoring" (#485).
+            c_arr = np.asarray(c)
+            unsupported = []
+            if (c_arr == -1).any():
+                unsupported.append("left (c=-1)")
+            if (c_arr == 2).any():
+                unsupported.append("interval (c=2)")
+            if np.isfinite(np.asarray(t, dtype=float)[:, 1]).any():
+                unsupported.append("right-truncated (tr)")
+            if unsupported:
+                raise ValueError(
+                    "{} can't handle {} data; use Turnbull, which can "
+                    "(surpyval.Turnbull.fit takes the same arguments).".format(
+                        self.how, " or ".join(unsupported)
+                    )
+                )
+            # The data are handled (above): converted without handling
+            # them again
+            x, r, d = _handled_xcnt_to_xrd(x, c, n, t)
             estimator = self.how
 
         if set_lower_limit is not None:

@@ -70,6 +70,14 @@ Every competing-risks fit takes the same core arrays:
 
 Left- and interval-censored rows (``c`` of ``-1`` or ``2``) are rejected.
 
+lifelines, scikit-survival and R's ``cmprsk`` code the causes as one
+integer column with ``0`` for a censored row. Here ``0`` is a cause like any
+other (you may number causes from 0), so convert such data with
+``e = np.where(np.asarray(e) == 0, None, e)``. Because the two codings
+cannot be told apart, a fit whose labels are numbers including 0, with none
+missing and no ``c``, warns and says so; passing ``c`` (``np.zeros(len(e))``
+when nothing is censored) silences it.
+
 The smallest possible example is the six-unit data set worked by hand on the
 :doc:`Competing Risks Analysis` page. The fourth unit is censored:
 
@@ -802,7 +810,12 @@ A positive :math:`\beta_0` raises the cause-1 incidence, so the ``Z1 = +1``
 curve sits above ``Z1 = -1``. The fitted CIF is a step function built on the
 observed cause-1 event times, so it is flat after the last of them (about
 :math:`t = 5.6` in this sample) rather than extrapolating. ``sf(x, Z)`` returns
-``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`.
+``1 - cif(x, Z)`` and ``phi(Z)`` the multiplier :math:`e^{Z\beta}`. As the
+Cox fit does, the Fine-Gray fit centres the covariates on their means, which
+leaves the coefficients and every prediction unchanged but keeps
+:math:`e^{Z\beta}` from overflowing on a covariate far from zero; the
+baseline is then reported at :math:`Z = 0`, or, with ``center=True``, at the
+means (``model.center``, and ``phi`` is relative to them).
 
 .. jupyter-execute::
     :hide-code:
@@ -889,7 +902,9 @@ together produce the incidence effect.
     assert _b[1][0] > 0 and _b[2][0] < 0, _b
 
 The causes are sorted, so the row order of ``betas`` is reproducible.
-``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`, and
+``phi_e(Z, row)`` is a cause's hazard multiplier :math:`e^{Z\hat\beta_k}`
+(relative to a unit at the covariate means, ``center``, for a fit with
+``center=True``, which keeps the baselines there), and
 ``results`` holds each cause's optimiser result. The model also has ``beta``
 and ``phi``. These are kept for backward compatibility: ``beta`` is the *sum*
 of the rows of ``betas``, which is not a quantity of the model, and no
@@ -940,10 +955,12 @@ method is fast, even with ties this heavy.
 With ``model="Cox"`` the model has the usual functions, each taking the times,
 one covariate vector ``Z`` and an optional ``event``:
 
-- ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``,
-  :math:`\sum_{x_j \le x} \Delta\hat{\Lambda}_{k,0}(x_j) e^{Z\hat\beta_k}
-  \hat{S}(x_{j-1} \mid Z)` with :math:`\hat{S}` the product-limit all-cause
-  survival at ``Z``;
+- ``cif(x, Z, event)`` -- the cumulative incidence of ``event`` at ``Z``:
+  over each step :math:`x_j` the unit, event-free with probability
+  :math:`\hat{S}(x_{j-1} \mid Z) = e^{-H}`, fails with probability
+  :math:`1 - e^{-\Delta H}`, and cause :math:`k` takes the share
+  :math:`\Delta H_k / \Delta H` of it (the matrix-exponential form R's
+  ``survival`` uses for a multi-state ``coxph``);
 - ``Hf``/``hf`` -- the cause-specific cumulative hazard and its increment at
   the most recent event time; with ``event=None`` they are summed over causes,
   each cause with its own coefficients;
@@ -963,17 +980,15 @@ one covariate vector ``Z`` and an optional ``event``:
     print("sum of CIFs          :", np.round(cif1 + cif2, 4))
     print("1 - all-cause sf     :", np.round(1 - csph.sf(times, Z=z), 4))
 
-The CIFs add up to the all-cause failure probability. Exactly, in fact, for
-the product-limit survival the CIFs are built on (so their total never exceeds
-one); ``sf`` reports the Cox survival :math:`e^{-H}`, which is very slightly
-higher, so ``1 - sf`` sits just below the sum.
+The CIFs add up to the all-cause failure probability ``1 - sf``, exactly, so
+their total never exceeds one.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     _gap = (cif1 + cif2) - (1 - csph.sf(times, Z=z))
-    assert np.all((_gap > 0) & (_gap < 0.002)), _gap
+    assert np.all(np.abs(_gap) < 1e-12), _gap
 
 With ``model="Fine-Gray"``, ``cif``, ``sf`` (``1 - cif``), ``ff`` and ``Hf`` need
 an ``event`` and come from each cause's Fine-Gray model; ``hf`` and ``df``
