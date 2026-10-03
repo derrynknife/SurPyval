@@ -398,3 +398,65 @@ def test_smoothed_hf_default_bandwidth_on_one_value():
     model = sp.KaplanMeier.fit([2, 2, 2])
     with pytest.raises(ValueError, match="single distinct value"):
         model.smoothed_hf([2])
+
+
+# ---------------------------------------------------------------------------
+# #590: the band's critical value is found once per range and level, and its
+# search evaluates the non-crossing probability once per candidate value.
+# ---------------------------------------------------------------------------
+
+
+def test_590_band_critical_value_is_found_once_per_model(monkeypatch):
+    from surpyval.univariate.nonparametric import _bands
+
+    searches = []
+    real_brentq = _bands.brentq
+
+    def counted(*args, **kwargs):
+        searches.append(args[1:3])
+        return real_brentq(*args, **kwargs)
+
+    monkeypatch.setattr(_bands, "brentq", counted)
+    model = surpyval.KaplanMeier.fit(
+        [1.3, 2.2, 2.9, 3.4, 4.1, 5.0, 5.8, 6.6, 7.7, 8.1, 9.9],
+        c=[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+    )
+    first = model.band()
+    assert len(searches) == 1
+    # Other scales and times share the critical value: no new search
+    again = model.band()
+    model.band(bound_type="exp")
+    model.band([2.0, 6.0], bound_type="normal")
+    assert len(searches) == 1
+    np.testing.assert_array_equal(first, again)
+    # The equal precision band's own value is one more search
+    model.band(method="nair", x_range=(2.0, 8.0))
+    model.band(method="nair", x_range=(2.0, 8.0), bound_type="exp")
+    assert len(searches) == 2
+
+
+@pytest.mark.parametrize("standardized", [False, True])
+def test_590_band_search_evaluates_each_value_once(monkeypatch, standardized):
+    # The root search started from the two ends of the bracket, both
+    # already evaluated by the climb to it: each cost a full pass over the
+    # time grid again.
+    from surpyval.univariate.nonparametric import _bands
+
+    calls = []
+
+    class CountedNorm:
+        def __getattr__(self, name):
+            return getattr(norm, name)
+
+        def pdf(self, x, scale):
+            calls.append((float(np.ravel(x)[-1]), float(scale)))
+            return norm.pdf(x, scale=scale)
+
+    monkeypatch.setattr(_bands, "norm", CountedNorm())
+    # A range no other test asks for, so nothing is cached yet
+    crit = NonParametric._band_critical_value(
+        0.1234, 0.8765, 0.05, standardized
+    )
+    assert np.isfinite(crit)
+    assert len(calls) > 3
+    assert len(set(calls)) == len(calls)

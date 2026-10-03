@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import surpyval as sp
 from surpyval.beta import ml
@@ -551,6 +552,20 @@ def fitted(case):
     The same object is shared by every test, so tests must not change it.
     """
     return _fitted(case.name)
+
+
+def skip_without_finite_maximum(case):
+    """Skip a check of a fit's inference where the fit has no finite
+    maximum (its ``maximum`` says so, and it has warned that its standard
+    errors and bounds are meaningless): a Beta4 whose end has reached its
+    extreme observation, where the likelihood is unbounded. Its derivatives
+    and Wald bounds there describe a point that is not an estimate."""
+    model = fitted(case)
+    if getattr(model, "maximum", None) == "no finite maximum":
+        pytest.skip(
+            f"{case.name}: the fit has no finite maximum, so its "
+            "derivatives and bounds are not those of an estimate"
+        )
 
 
 def refit(case, data):

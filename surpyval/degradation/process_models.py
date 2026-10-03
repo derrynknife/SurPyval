@@ -45,7 +45,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from scipy.integrate import quad
-from scipy.optimize import brentq, minimize, minimize_scalar
+from scipy.optimize import minimize, minimize_scalar
 from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
 from scipy.stats import norm
 
@@ -56,6 +56,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import alpha_ci_error, check_option
@@ -431,7 +432,7 @@ class FirstPassageProcessModel(SerialisableMixin):
     ``_ff_distance(t, distance)`` -- the probability the process has
     crossed ``distance`` by time ``t``. Everything expressible in terms
     of that CDF lives here once: ``ff``/``sf``, the hazard identities,
-    the bracket-and-``brentq`` quantile (each subclass supplies only its
+    the bracket-and-solve quantile (each subclass supplies only its
     starting bracket via ``_quantile_hi0``), ``predict_rul`` (independent
     increments make the remaining passage over the residual distance a
     fresh copy of the same law), and the ``to_dict``/``from_dict`` pair,
@@ -726,7 +727,7 @@ class FirstPassageProcessModel(SerialisableMixin):
         missing probability or stress)."""
         clock = self._clock(Z)
         p = np.asarray(p, dtype=float)
-        out = np.array([self._quantile(pi, self.threshold) for pi in p])
+        out = self._quantiles(p, self.threshold)
         if clock is not None:
             out = clock.inverse(out)
         return out
@@ -797,31 +798,69 @@ class FirstPassageProcessModel(SerialisableMixin):
         return draws if clock is None else clock.inverse(draws)
 
     def _quantile(self, p: float, distance: float) -> float:
-        if np.isnan(p):
-            # a missing probability used to fall through to ``inf``
-            return np.nan
-        if not (0.0 < p < 1.0):
-            return 0.0 if p <= 0.0 else np.inf
+        """The quantile ``p`` of the first passage over ``distance``."""
+        return float(self._quantiles(np.array([p]), distance)[0])
+
+    def _quantiles(self, p: npt.ArrayLike, distance: float) -> npt.NDArray:
+        """
+        The quantiles ``p`` of the first passage over ``distance``, all
+        searched at once (``nan`` for a missing probability, ``0`` at or
+        below 0, ``inf`` at or above 1 and past a time of ``1e12``).
+
+        Each bracket ``[1e-12, hi]`` starts at the subclass's scale and
+        doubles until it contains the quantile, then is solved to
+        ``brentq``'s default tolerance (``2e-12`` plus ``4 eps`` relative)
+        by ``solve_bracketed``. A quantile below ``1e-12`` is bracketed
+        from 0. One ``brentq`` per probability cost about a dozen scalar
+        evaluations each (#585).
+        """
+        p = np.asarray(p, dtype=float)
+        # a missing probability used to fall through to ``inf``
+        out = np.where(p <= 0.0, 0.0, np.inf)
+        out[np.isnan(p)] = np.nan
+        inner = np.flatnonzero((p > 0.0) & (p < 1.0))
+        if not inner.size:
+            return out
+        target = p.ravel()[inner]
         # Bracket from the subclass's starting scale and expand until it
         # contains the quantile. The expansion is bounded whatever the
         # start: a nan start (from a nan distance) doubled forever, as
         # ``nan > 1e12`` is never true, and hung predict_rul.
-        hi = self._quantile_hi0(distance)
-        if not hi > 0:
-            hi = 1.0
+        hi0 = self._quantile_hi0(distance)
+        hi = np.full(target.shape, hi0 if hi0 > 0 else 1.0)
+        found = np.zeros(target.shape, dtype=bool)
+        active = np.arange(target.size)
         for _ in range(2000):
-            if self._ff_distance(np.array([hi]), distance)[0] >= p:
+            if not active.size:
                 break
-            hi *= 2.0
-            if not hi <= 1e12:
-                return np.inf
-        else:
-            return np.inf
-        return brentq(
-            lambda t: self._ff_distance(np.array([t]), distance)[0] - p,
-            1e-12,
-            hi,
-        )
+            reached = self._ff_distance(hi[active], distance) >= target[active]
+            found[active[reached]] = True
+            active = active[~reached]
+            hi[active] *= 2.0
+            active = active[hi[active] <= 1e12]
+        roots = np.full(target.shape, np.inf)
+        k = np.flatnonzero(found)
+        lo = np.full(k.shape, 1e-12)
+        g_lo = self._ff_distance(lo, distance) - target[k]
+        g_hi = self._ff_distance(hi[k], distance) - target[k]
+        # below 1e-12 already (``brentq`` refused the bracket): from 0,
+        # where nothing has failed
+        lo = np.where(g_lo > 0, 0.0, lo)
+        g_lo = np.where(g_lo > 0, -target[k], g_lo)
+        roots[k] = np.where(g_lo == 0, lo, hi[k])
+        open_ = (g_lo < 0) & (g_hi > 0)
+        if open_.any():
+            sel = k[open_]
+            roots[sel] = solve_bracketed(
+                lambda t, s: self._ff_distance(t, distance) - target[sel[s]],
+                lo[open_],
+                hi[sel],
+                g_lo[open_],
+                g_hi[open_],
+                xtol=2e-12,
+            )
+        out.reshape(-1)[inner] = roots
+        return out
 
     def predict_rul(
         self,
@@ -879,9 +918,12 @@ class FirstPassageProcessModel(SerialisableMixin):
         distance = self.threshold - current
         if distance <= 0:
             return ProcessRUL(0.0, (0.0, 0.0), 1.0, alpha_ci)
-        med = self._quantile(0.5, distance)
-        lo = self._quantile(alpha_ci / 2.0, distance)
-        hi = self._quantile(1.0 - alpha_ci / 2.0, distance)
+        med, lo, hi = (
+            float(v)
+            for v in self._quantiles(
+                [0.5, alpha_ci / 2.0, 1.0 - alpha_ci / 2.0], distance
+            )
+        )
         if clock is not None:
             med, lo, hi = (
                 float(v) for v in clock.inverse(np.array([med, lo, hi]))
@@ -1339,15 +1381,14 @@ class GammaProcessModel(FirstPassageProcessModel):
         # actually falls -- between its extreme quantiles, split at the
         # interior ones -- and add the stretch before it, where ``sf`` is 1
         # to within the tail probability.
-        lo = self._quantile(1e-12, self.threshold)
-        hi = self._quantile(1.0 - 1e-10, self.threshold)
+        qs = self._quantiles(
+            [1e-12, 0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99, 1.0 - 1e-10],
+            self.threshold,
+        )
+        lo, hi = float(qs[0]), float(qs[-1])
         if not np.isfinite(hi):
             return np.inf
-        points = [
-            self._quantile(p, self.threshold)
-            for p in (0.01, 0.1, 0.25, 0.5, 0.75, 0.9, 0.99)
-        ]
-        edges = np.unique(np.concatenate([[lo], points, [hi]]))
+        edges = np.unique(qs)
         total = float(lo)
         for a, b in zip(edges[:-1], edges[1:]):
             val, _ = quad(
@@ -1367,7 +1408,7 @@ class GammaProcessModel(FirstPassageProcessModel):
     def _random0(self, size: int, rng: np.random.Generator) -> npt.NDArray:
         # Inverse-CDF sampling.
         u = rng.uniform(size=size)
-        return np.array([self._quantile(ui, self.threshold) for ui in u])
+        return self._quantiles(u, self.threshold)
 
     def __repr__(self) -> str:
         return (

@@ -108,8 +108,18 @@ def _degenerate(model, data):
     """Whether the fit sits at the edge of the parameter space: a spike
     (the central 98% of the distribution narrower than a thousandth of
     the data's grid) or a spread (a 1% or 99% quantile a thousand times
-    beyond the data). The likelihood's supremum is then a limit, not a
-    point, and a local-optimum or invariance property does not apply."""
+    beyond the data), or a fit that found its likelihood has no finite
+    maximum. The likelihood's supremum is then a limit, not a point, and
+    a local-optimum or invariance property does not apply.
+
+    The last are data, not a fault of the fit: on a truncated sample whose
+    every window is bounded above (an exact 8 seen in (5, 9.5], two right
+    censored at 15 in (14, 19]) the Normal tends, as mu grows, to an
+    exponential tilt inside each window, and its likelihood to a supremum
+    no Normal reaches. Their fits ran the whole optimiser ladder, 11 to
+    25 s each, until the search learnt to see the runaway (#584, #594)."""
+    if getattr(model, "maximum", None) == "no finite maximum":
+        return True
     times = np.concatenate(
         [np.ravel(data[k]) for k in ("x", "tl", "tr") if k in data]
     )

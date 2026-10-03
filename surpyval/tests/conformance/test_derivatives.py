@@ -68,6 +68,7 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
     refit,
+    skip_without_finite_maximum,
 )
 
 # The finite-difference step, in standard errors of each parameter.
@@ -320,6 +321,7 @@ OBJECTIVES = {
     cases_for("derivatives", where=lambda c: c.model_class in OBJECTIVES),
 )
 def test_likelihood_derivatives_agree_with_finite_differences(case):
+    skip_without_finite_maximum(case)
     tol = _tolerance(case)
     failures = []
     for label, f, at, derivatives, reported in OBJECTIVES[case.model_class](
@@ -354,6 +356,7 @@ def _has_covariance(case):
     "case", cases_for("derivatives", needs=("sf",), where=_has_covariance)
 )
 def test_delta_method_gradients_agree_with_finite_differences(case):
+    skip_without_finite_maximum(case)
     model = fitted(case)
     ctx = model._cb_context()
     se = np.sqrt(np.clip(np.diag(ctx.cov), 0, None))

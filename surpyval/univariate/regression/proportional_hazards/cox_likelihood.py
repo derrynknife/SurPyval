@@ -27,10 +27,11 @@ import numpy.typing as npt
 from pandas import isna
 from scipy.optimize import OptimizeResult
 
+from surpyval.univariate.parametric.fitters.runaway import LOG_MAX
 from surpyval.utils import is_missing_event
 from surpyval.utils.validation import check_option
 
-from .._fit_skeleton import LOG_MAX, baseline_at_origin_error
+from .._fit_skeleton import baseline_at_origin_error
 
 
 class _GroupBy:

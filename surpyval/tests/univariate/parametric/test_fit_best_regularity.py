@@ -55,14 +55,16 @@ def test_a_fit_with_no_maximum_is_set_aside_and_its_warning_replaced():
     assert [m for m in messages if "Beta4 (its likelihood has no" in m]
 
 
-def test_an_unverified_fit_is_set_aside():
+def test_a_runaway_fit_is_set_aside():
     # The ExpoWeibull runs towards a limit of its shapes on this sample
-    # (beta = 468, mu = 0.0027) and warned that its search did not reach
-    # a verified maximum; its AIC (503.5) used to beat every regular fit.
+    # (beta to infinity, mu to 0; the profile log-likelihood rises from
+    # -253.47 at beta = 3 to -248.64 at beta = 1000) and its AIC (503.5)
+    # used to beat every regular fit. Its search used to end "unverified"
+    # after the whole ladder; it now finds the runaway (#584).
     model, messages = _fit_best(WEIBULL_50, include=["ExpoWeibull", "Weibull"])
     assert model.dist.name == "Weibull"
-    assert [m for m in messages if "ExpoWeibull (its fit is not a verif" in m]
-    assert not [m for m in messages if "did not reach a verified" in m]
+    assert [m for m in messages if "ExpoWeibull (its likelihood has no" in m]
+    assert not [m for m in messages if m.startswith("No finite maximum")]
 
 
 def test_set_aside_candidates_are_ranked_when_nothing_else_fits():

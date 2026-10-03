@@ -15,7 +15,7 @@ import warnings
 import numpy as np
 import pytest
 from scipy import stats
-from scipy.optimize import minimize
+from scipy.optimize import brentq, minimize
 from scipy.special import gammainc
 
 from surpyval.degradation import (
@@ -165,6 +165,44 @@ def test_gamma_predict_rul():
     assert isinstance(rul, ProcessRUL)
     lo, hi = rul.rul_interval
     assert lo < rul.rul < hi
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        WienerProcessModel(mu=0.5, sigma=0.8, threshold=100),
+        GammaProcessModel(alpha=2.0, beta=4.0, threshold=100),
+    ],
+    ids=["wiener", "gamma"],
+)
+def test_585_process_quantiles_are_found_all_at_once(model, monkeypatch):
+    # qf (and the gamma process's random) ran one brentq per probability,
+    # a dozen scalar CDF evaluations each: qf of 5000 probabilities took
+    # 3 s on the Wiener process. They are now solved together.
+    p = np.linspace(0.001, 0.999, 2000)
+    ff = model._ff_distance
+    calls = []
+
+    def counted(t, distance):
+        calls.append(1)
+        return ff(t, distance)
+
+    monkeypatch.setattr(model, "_ff_distance", counted)
+    q = model.qf(p)
+    assert len(calls) < 200
+    monkeypatch.undo()
+    # the roots brentq finds, to its tolerance
+    expected = [
+        brentq(lambda t: ff(np.array([t]), 100.0)[0] - pk, 1e-12, 1e4)
+        for pk in p[::50]
+    ]
+    np.testing.assert_allclose(q[::50], expected, rtol=0, atol=1e-11)
+    np.testing.assert_allclose(model.ff(q), p, rtol=1e-12)
+    # missing, the ends, and a quantile below the bracket's 1e-12 start
+    # (brentq refused that bracket: qf(1e-300) raised on the gamma process)
+    edge = model.qf([np.nan, 0.0, 1e-300, 1.0])
+    assert np.isnan(edge[0]) and edge[1] == 0.0 and edge[3] == np.inf
+    assert 0.0 <= edge[2] < q[0]
 
 
 # --- shared input validation ------------------------------------------------

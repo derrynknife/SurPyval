@@ -123,6 +123,126 @@ def test_a_discrete_quantile_inverts_the_band_on_ff():
     assert lo <= model.qf(0.5) <= hi
 
 
+# #591: the discrete bound's search asks for the band at blocks of counts,
+# in one vectorised call each, rather than once per count.
+
+
+def _bisection_as_before(values, start, level):
+    # The search ``_quantile_cb_discrete`` had, one count at a time
+    asked = []
+
+    def at(k):
+        asked.append(k)
+        return values(np.array([k]))[0] >= level
+
+    if at(start):
+        return start, asked
+    lo, step = start, 1.0
+    while not at(start + step):
+        lo = start + step
+        step *= 2
+        if step > 2.0**40:
+            return np.inf, asked
+    hi = start + step
+    while hi - lo > 1:
+        mid = np.floor((lo + hi) / 2)
+        if at(mid):
+            hi = mid
+        else:
+            lo = mid
+    return hi, asked
+
+
+def test_591_the_block_search_is_the_bisection():
+    from surpyval.univariate.parametric.parametric import _first_reaching
+
+    rng = np.random.default_rng(591)
+    for _ in range(300):
+        start = float(rng.integers(0, 2))
+        # A rising step, sometimes with a dip (a Wald band can turn back
+        # in a tail), sometimes never reaching the level
+        edge = 10.0 ** rng.uniform(0, 13)
+        dip = rng.uniform(0, edge) if rng.random() < 0.3 else -1.0
+
+        def values(ks, edge=edge, dip=dip):
+            ks = np.asarray(ks, dtype=float)
+            out = np.where(ks >= edge, 0.9, 0.1)
+            return np.where(np.abs(ks - dip) < 0.25 * edge, 0.1, out)
+
+        want, asked_before = _bisection_as_before(values, start, 0.5)
+        for block in (1, 3, 7, 1023):
+            asked = []
+
+            def recorded(ks, values=values):
+                asked.extend(np.asarray(ks).tolist())
+                assert len(ks) <= block
+                return values(ks)
+
+            got = _first_reaching(recorded, start, 0.5, block)
+            assert got == want
+            if block == 1:
+                assert asked == asked_before
+
+
+def test_591_discrete_quantile_cb_evaluates_the_band_in_blocks(monkeypatch):
+    from surpyval.tests.conformance.registry import CASE_BY_NAME
+    from surpyval.univariate.parametric.parametric import Parametric
+
+    case = CASE_BY_NAME["BetaGeometric"]
+    model = case.fit(case.data())
+    calls = []
+    real = Parametric._cb_sf_bound
+
+    def counted(self, x, *args, **kwargs):
+        calls.append(np.size(x))
+        return real(self, x, *args, **kwargs)
+
+    monkeypatch.setattr(Parametric, "_cb_sf_bound", counted)
+    got = model.quantile_cb([0.1, 0.5, 0.9])
+    # The bounds of the search one count at a time (v0.22)
+    np.testing.assert_array_equal(got, [[1, 1], [1, 3], [6, np.inf]])
+    # Six searches (two ends of three bounds), each the doubling's 42
+    # counts in one call and the bisection's next ten levels in another:
+    # 8 calls. One count at a time it was 60, 42 of them for the upper
+    # bound at 0.9, whose band never reaches it.
+    assert len(calls) <= 12
+    assert max(calls) == 42
+
+
+def test_591_a_custom_distribution_is_differentiated_a_point_at_a_time(
+    monkeypatch,
+):
+    # The one-pass gradient assumes functions that take the parameters
+    # point by point; a user's CustomDistribution may not, so a Discretize
+    # of one keeps the gradient a point at a time.
+    from surpyval.univariate.parametric.parametric import Parametric
+
+    def weibull_hf(x, lam, beta):
+        return (beta / lam) * (x / lam) ** (beta - 1)
+
+    custom = sp.CustomDistribution(
+        "q591_weibull",
+        weibull_hf,
+        ["lam", "beta"],
+        ((0, None), (0, None)),
+        (0, np.inf),
+    )
+    rng = np.random.default_rng(3)
+    k = np.ceil(rng.weibull(1.5, 80) * 6.0)
+    model = sp.Discretize(custom).fit(k)
+    seen = []
+    real = Parametric._cb_delta_var
+
+    def spy(self, func, ctx, n_points=None):
+        seen.append(n_points)
+        return real(self, func, ctx, n_points)
+
+    monkeypatch.setattr(Parametric, "_cb_delta_var", spy)
+    got = model.quantile_cb([0.2, 0.8])
+    assert seen and all(n is None for n in seen)
+    assert np.all(got[:, 0] <= got[:, 1])
+
+
 @pytest.mark.parametrize(
     "kwargs, match",
     [

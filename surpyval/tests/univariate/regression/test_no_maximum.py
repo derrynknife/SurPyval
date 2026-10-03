@@ -8,7 +8,7 @@ WeibullPH coefficient of -14.7, a PO one of +33) and the fit returned
 silently. It now warns, once, pointing at the caller, and still
 returns what it reached; an ordinary fit does not warn.
 
-The check is Newton's (``_fit_skeleton.runaway_coefficients``): along the
+The check is Newton's (``fitters.runaway.runaway_coefficients``): along the
 coefficient's profile the Kantorovich quantity ``h = |f'''| |f'| / f''^2``
 is at the level of the optimiser's tolerance at a maximum and about 1 on
 the way to a supremum.
@@ -29,11 +29,12 @@ from surpyval.univariate.competing_risks import FineGray
 from surpyval.univariate.competing_risks.regression import (
     CompetingRisksProportionalHazards,
 )
-from surpyval.univariate.regression import _fit_skeleton as skeleton
-from surpyval.univariate.regression._fit_skeleton import (
+from surpyval.univariate.parametric.fitters import runaway
+from surpyval.univariate.parametric.fitters.runaway import (
     _flat_at_start,
     runaway_coefficients,
 )
+from surpyval.univariate.regression import _fit_skeleton as skeleton
 
 NO_MAXIMUM = "No finite maximum: the likelihood keeps increasing"
 MONOTONE = "No finite maximum: the partial likelihood"
@@ -299,13 +300,13 @@ def test_collinear_fine_gray_formula_does_not_warn():
 
 def _count_profiles(monkeypatch):
     calls = []
-    profile = skeleton._profile
+    profile = runaway._profile
 
     def counted(neg_ll, x, H, j):
         calls.append(j)
         return profile(neg_ll, x, H, j)
 
-    monkeypatch.setattr(skeleton, "_profile", counted)
+    monkeypatch.setattr(runaway, "_profile", counted)
     return calls
 
 
@@ -360,24 +361,24 @@ def test_the_gate_clears_a_maximum_and_nothing_else():
     quadratic = lambda p: (p[0] - 2.0) ** 2 + (p[1] + 3.0) ** 2  # noqa: E731
     x = np.array([2.0, -3.0])
     H, g = hessian(quadratic)(x), grad(quadratic)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [True, True]
+    assert runaway._cleared(x, H, g).tolist() == [True, True]
     # A runaway along t = u (exp(t) + 50 (u - t)^2 at t = u = -15): the
     # step is (1, 1), 1/15 of the value, so neither is cleared.
-    runaway = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
+    running = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
     x = np.array([-15.0, -15.0])
-    H, g = hessian(runaway)(x), grad(runaway)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    H, g = hessian(running)(x), grad(running)(x)
+    assert runaway._cleared(x, H, g).tolist() == [False, False]
     # A linear rise has no curvature: no Hessian to trust, nothing cleared.
     linear = lambda p: -3.0 * p[0] + p[1] ** 2  # noqa: E731
     x = np.array([-50.0, 0.0])
     H, g = hessian(linear)(x), grad(linear)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [False, False]
+    assert runaway._cleared(x, H, g).tolist() == [False, False]
     # A parameter the likelihood does not depend on is left out of the
     # step, and the others are still cleared.
     ignores = lambda p: (p[0] - 1.0) ** 2 + 0.0 * p[1]  # noqa: E731
     x = np.array([1.0, 7.0])
     H, g = hessian(ignores)(x), grad(ignores)(x)
-    assert skeleton._cleared(x, H, g).tolist() == [True, False]
+    assert runaway._cleared(x, H, g).tolist() == [True, False]
 
 
 # -- the cost of reading a profile (#501) -------------------------------------
@@ -405,6 +406,7 @@ def test_a_profile_is_read_without_more_hessians(monkeypatch, name):
         return full(*args)
 
     monkeypatch.setattr(skeleton, "search_derivatives", counted)
+    monkeypatch.setattr(runaway, "search_derivatives", counted)
     fitter = getattr(sp, name)
     model, w = _fit(lambda: fitter.fit(x=np.tile(x, 2), c=np.tile(c, 2), Z=Z))
     assert not w, [str(x.message) for x in w]
@@ -422,11 +424,11 @@ def test_the_profile_curvature_from_products_is_exact():
         return anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2
 
     at = np.array([-15.0, -15.0])
-    H, _ = skeleton.search_derivatives(f, at)
+    H, _ = runaway.search_derivatives(f, at)
     v = np.array([1.0, 1.0])
     for t in (-14.9, -15.0, -15.2):
         point = np.array([t, -15.0])
-        S = skeleton._profile_curvature(f, point, 0, H, v)
+        S = runaway._profile_curvature(f, point, 0, H, v)
         assert S == pytest.approx(np.exp(t), rel=1e-14, abs=0)
 
 
