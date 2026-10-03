@@ -4,6 +4,64 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Fits evaluate the likelihood once per optimiser step (#593).** The
+  univariate MLE ladder, MPS, the verification polish and the parametric
+  regression searches gave scipy the likelihood and its gradient
+  separately, so each step evaluated the likelihood twice; they take both
+  from one autograd pass. Results are identical to the bit; a Weibull fit
+  makes 1 plain likelihood evaluation rather than 10, a WeibullPH fit 3
+  rather than 17.
+- **Accelerated-life fits are fast on continuous stresses (#592).** The
+  distribution was evaluated over every row once per distinct stress, so
+  the cost grew with rows x stress levels: a GeneralLogLinear fit to 120
+  distinct stresses took 8.8 s and a Gamma-Eyring fit 16 s; both take
+  0.2 s. Likelihoods are unchanged; covariances and bounds agree to 1e-12.
+  New ``LifeModel.phi_takes_rows`` (True for the built-in models): set it
+  on a custom life model whose ``phi`` takes a matrix of stress rows.
+- **Large fits spend less time checking their data (#552).** Count arrays
+  were checked for missing values one Python object at a time: a Weibull
+  fit to a million rows takes 1.9 s rather than 2.9 s.
+- **``import surpyval`` no longer loads scipy.stats or scipy.integrate
+  (#470).** They came in through ``autograd.scipy``'s package import and
+  module-level imports in the core; the core imports scipy.stats,
+  scipy.integrate, scipy.interpolate and numdifftools where it uses them.
+  Import takes 0.57 s rather than 0.79 s.
+- **Faster random survival forests (#549).** A non-parametric split
+  scanned a rows x event-times matrix per feature; large nodes are scored
+  by sorted cumulative sums in O(N log N) (2 trees at n = 10^4: 43 s to
+  2.6 s). The Weibull split sums each candidate child over its own rows and
+  finds the node and every feature's children in one pass (1.5x); leaves
+  are fitted together when the tree is grown (first prediction 5.6x
+  faster); ``to_dict`` does not re-walk finished leaves (the same bytes,
+  1.6x faster). Splits are the same; leaf parameters move in the last
+  digits.
+- **StudentT copula CDF without a t quantile per node (#550).** The
+  bivariate t CDF integrates over the closed-form CDF of the t with 2
+  degrees of freedom (the Cauchy below nu = 2), so a censored fit no longer
+  evaluates a t quantile at each of 210 nodes: at n = 10^4 IFM takes 2.9 s
+  rather than 4.7 s and MLE 17 s rather than 31 s, with the same estimates.
+  Values agree to 1e-16 at the Genz and mpmath references and are closer
+  to a converged integral at strong dependence; a split point rounding to
+  1 no longer makes the CDF, and the likelihood, NaN.
+- **CoxFrailty standard errors in linear time (#551).** The covariance
+  formed the full information with one column per group and inverted it
+  (5.3 s at 2,000 groups, 55 s at 10,000, n = 10^4); it is the inverse of
+  the Schur complement, from an operator form of the Cox information (the
+  new ``CoxInformation``) solved by conjugate gradients: 0.06-0.09 s, the
+  same values to 1e-14.
+- **Faster likelihood-ratio bounds on interval-censored and truncated data
+  (#602).** The searches' lean likelihood evaluates interval and truncated
+  windows without the distribution functions' input guards, which those
+  data cannot trip: one evaluation on six interval-censored units takes
+  123 us rather than 243 us, a Weibull probability plot's band 4.7 s rather
+  than 8.2 s, identical to the bit.
+- **Fewer repeated checks in likelihood-ratio searches (#609, #519).** An
+  answer found again within the extremality check's tolerance of one
+  already checked is not checked again, and per-point overhead is plain
+  numpy: all registry likelihood-ratio bounds take 92 s rather than 121 s
+  for ExpoWeibull and 79 s rather than 102 s for NegativeBinomial, and a
+  Weibull band at 20 times on 1,000 units 0.70 s rather than 0.93 s, with
+  identical results.
 - **Likelihood-ratio bounds for the parametric regression models (#583).**
   ``cb``, ``param_cb`` and the new ``quantile_cb`` of every parametric
   regression model take ``method="lr"``: the extreme of the function or
