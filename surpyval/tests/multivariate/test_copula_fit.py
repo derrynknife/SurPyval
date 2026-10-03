@@ -267,7 +267,7 @@ def test_mle_keeps_limited_failure_zero_inflation_and_fixed():
     Xc[over, 0] = 12
     lfp = [surv.Weibull.fit(Xc[:, 0], c=c[:, 0], lfp=True), surv.LogNormal]
     mle = Clayton.fit(Xc, c=c, margins=lfp, how="MLE")
-    assert mle.margins[0].lfp and 0 < mle.margins[0].p < 1
+    assert mle.margins[0].lfp and 0 < mle.margins[0].lfp_p < 1
 
     Xz = X.copy()
     Xz[:20, 0] = 0

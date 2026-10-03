@@ -179,7 +179,7 @@ def _parametric(model, label=""):
 
     def f_natural(phi):
         # (*params, p?, f0?) with the offset held, as the covariance is
-        p = phi[k] if model.lfp else model.p
+        p = phi[k] if model.lfp else model.lfp_p
         f0 = phi[-1] if model.zi else model.f0
         return model.dist._neg_ll_func(
             model.surv_data, *phi[:k], model.gamma, f0, p

@@ -444,7 +444,7 @@ def _search_parametric(model, data, name=""):
         x = np.asarray(model.res.x, dtype=float)
         reported = [model.gamma] if offset else []
         reported += list(model.params)
-        reported += [model.p] if lfp else []
+        reported += [model.lfp_p] if lfp else []
         reported += [model.f0] if zi else []
         np.testing.assert_allclose(
             np.asarray(inv(const(x)), float),

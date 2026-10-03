@@ -18,8 +18,8 @@ how to estimate it. Each is demonstrated below:
 - ``how``: the estimation method, one of ``'MLE'`` (the default), ``'MPS'``,
   ``'MSE'``, ``'MPP'`` or ``'MOM'``;
 - ``offset=True``: add a threshold (shift) parameter ``gamma``;
-- ``lfp=True``: a limited failure population, where only a proportion ``p``
-  can ever fail;
+- ``lfp=True``: a limited failure population, where only a proportion
+  ``lfp_p`` can ever fail;
 - ``zi=True``: zero inflation, where a proportion ``f0`` fails at time zero;
 - ``fixed``: a dictionary of parameters to hold at known values;
 - ``init``: a starting point for the optimiser;
@@ -271,8 +271,9 @@ Models from known parameters
 Not every model comes from data. A supplier's datasheet, a handbook value or
 an earlier analysis may give you the parameters, and ``from_params`` builds a
 full model from them, with all of the methods above. It also takes the
-structural options as values: ``gamma`` for an offset, ``p`` for a limited
-failure population and ``f0`` for zero inflation (each explained below).
+structural options as values: ``gamma`` for an offset, ``lfp_p`` for a
+limited failure population and ``f0`` for zero inflation (each explained
+below).
 
 .. jupyter-execute::
 
@@ -1012,7 +1013,7 @@ exponential zero-failure bound on the mean life.
 
 Finally, the optimiser can be given a starting point with ``init``: the
 values in the order of ``parameter_names``, with ``gamma`` first if there is an
-offset and ``p`` then ``f0`` last for a limited failure population or zero
+offset and ``lfp_p`` then ``f0`` last for a limited failure population or zero
 inflation. With ``fixed``, ``init`` may list just the free parameters. You
 rarely need it, but if a fit fails, a starting point near the answer -- a
 shape of 1 and a scale near the mean of the data, say -- is the first thing
@@ -1524,7 +1525,7 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
     import numpy as np
     from matplotlib import pyplot as plt
 
-    lfp_weibull = surv.Weibull.from_params([10, 2], p=0.6)
+    lfp_weibull = surv.Weibull.from_params([10, 2], lfp_p=0.6)
     np.random.seed(10)
     # random_data() gives survival data to fit, x, c, n and t, with the
     # units that never fail right-censored
@@ -1545,15 +1546,15 @@ As an example, we can created a Defective Subpopulation Weibull, also known as a
 
 This API works with any distribution so simply changing ``Weibull`` to ``Exponential`` would create a Defective Subpopulation Exponential / Limited Failure Population Exponential model. Further, if it was changed to ``Gamma`` it would create a Defective Subpopulation Gamma model / Limited Failure Population Gamma.
 
-The estimated proportion ``p`` is a parameter like any other, so it has a
-confidence interval, and it changes what the model predicts far into the
-future. The survival function levels off at ``1 - p`` instead of falling to
-zero, and a quantile beyond ``p`` is infinite, because that proportion of the
-population never fails:
+The estimated proportion ``lfp_p`` (``p`` before v0.23) is a parameter like
+any other, so it has a confidence interval, and it changes what the model
+predicts far into the future. The survival function levels off at
+``1 - lfp_p`` instead of falling to zero, and a quantile beyond ``lfp_p`` is
+infinite, because that proportion of the population never fails:
 
 .. jupyter-execute::
 
-    print("p =", lfp_model.p, " 95% CI:", lfp_model.param_cb('p'))
+    print("p =", lfp_model.lfp_p, " 95% CI:", lfp_model.param_cb("lfp_p"))
     print("R(1000) =", lfp_model.sf(1000.))
     print("time by which 70% have failed:", lfp_model.qf(0.7))
 
@@ -1561,13 +1562,13 @@ population never fails:
     :hide-code:
     :hide-output:
 
-    assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.p)
-    assert lfp_model.p < 0.7 and np.isinf(lfp_model.qf(0.7))
+    assert np.isclose(lfp_model.sf(1000.), 1 - lfp_model.lfp_p)
+    assert lfp_model.lfp_p < 0.7 and np.isinf(lfp_model.qf(0.7))
 
 For the same reason the mean lifetime of an LFP model, ``mean()``, is
 infinite, and so are ``var()`` and ``moment(n)``. The mean life of the units
 that do fail is the base mean, ``surv.Weibull.mean(*lfp_model.params)``.
-``mean(defective=True)`` is the *defective* mean, ``p`` times the base mean,
+``mean(defective=True)`` is the *defective* mean, ``lfp_p`` times the base mean,
 in which a unit that never fails contributes nothing; ``var()`` and
 ``moment()`` take the same keyword, scoring the units that never fail as 0,
 so ``var(defective=True)`` is ``moment(2, defective=True) -
@@ -1585,7 +1586,7 @@ mean(defective=True)**2``.
 
     _base = surv.Weibull.mean(*lfp_model.params)
     assert np.isinf(lfp_model.mean()) and np.isinf(lfp_model.var())
-    assert np.isclose(lfp_model.mean(defective=True), lfp_model.p * _base)
+    assert np.isclose(lfp_model.mean(defective=True), lfp_model.lfp_p * _base)
     assert np.isclose(lfp_model.var(defective=True),
                       lfp_model.moment(2, defective=True)
                       - lfp_model.mean(defective=True) ** 2)
@@ -1614,8 +1615,8 @@ same seed its failures are the finite lifetimes:
     assert np.allclose(np.sort(_life[np.isfinite(_life)]), _x[_c == 0])
     assert _n[_c == 1].sum() == np.isinf(_life).sum() > 0
 
-LFP models can only be fitted with ``MLE``; the other methods raise. And ``p``
-is only well determined when the data follow the units long enough to see the
+LFP models can only be fitted with ``MLE``; the other methods raise. And
+``lfp_p`` is only well determined when the data follow the units long enough to see the
 failure curve level off (see :doc:`Parametric Estimation`). Real data are
 rarely that kind. Meeker's integrated-circuit test put 4156 units on test for
 1370 hours and saw 28 failures, most of them early:
@@ -1630,7 +1631,7 @@ rarely that kind. Meeker's integrated-circuit test put 4156 units on test for
     ic_lfp = surv.Weibull.fit(df['x'], df['c'], df['n'], lfp=True)
     ic_plain = surv.Weibull.fit(df['x'], df['c'], df['n'])
     print(ic_lfp)
-    print("p 95% CI :", ic_lfp.param_cb('p'))
+    print("p 95% CI :", ic_lfp.param_cb("lfp_p"))
     print("AIC LFP  :", ic_lfp.aic(), "  plain Weibull:", ic_plain.aic())
 
 About 0.7% of the population is susceptible to this failure mode, and the
@@ -1649,7 +1650,7 @@ barely moves off it, which is why an explicit ``init`` is not trusted alone:
 
     assert df['n'].sum() == 4156 and df['n'][df['c'] == 0].sum() == 28
     assert df['x'].max() == 1370
-    assert round(100 * ic_lfp.p, 1) == 0.7 and ic_lfp.beta < 1
+    assert round(100 * ic_lfp.lfp_p, 1) == 0.7 and ic_lfp.beta < 1
     assert round(ic_lfp.alpha) == 28, ic_lfp.alpha
     assert round(ic_plain.beta, 1) == 0.2, ic_plain.params
     assert round(np.log10(ic_plain.alpha)) == 14, ic_plain.params
@@ -1659,17 +1660,17 @@ barely moves off it, which is why an explicit ``init`` is not trusted alone:
 
     stuck = surv.Weibull.fit(df['x'], df['c'], df['n'], lfp=True,
                              init=[1e6, 0.3, 0.1])
-    print("from init  : p =", stuck.p, " alpha =", stuck.alpha,
+    print("from init  : p =", stuck.lfp_p, " alpha =", stuck.alpha,
           " neg_ll =", stuck.neg_ll())
-    print("by default : p =", ic_lfp.p, " alpha =", ic_lfp.alpha,
+    print("by default : p =", ic_lfp.lfp_p, " alpha =", ic_lfp.alpha,
           " neg_ll =", ic_lfp.neg_ll())
 
 From ``alpha = 1e6`` the search stops on the ridge, almost ten
 log-likelihood units below the maximum, and that used to be the model
 returned. Now a fit given ``init`` is also started from the default start
 (and, where that is not verifiably a maximum, from its alternatives -- for an
-LFP fit, the failures alone: a Weibull fitted to the 28 failures, with ``p``
-at 28/4156), and the start with the best likelihood wins, so the two fits
+LFP fit, the failures alone: a Weibull fitted to the 28 failures, with
+``lfp_p`` at 28/4156), and the start with the best likelihood wins, so the two fits
 above are the same model.
 
 .. jupyter-execute::
@@ -1679,11 +1680,15 @@ above are the same model.
     assert abs(stuck.neg_ll() - ic_lfp.neg_ll()) < 1e-6  # the same model
     assert abs(stuck.alpha / ic_lfp.alpha - 1) < 1e-4
 
-Distributions that call one of their own parameters ``p`` -- the
-``Geometric`` and the ``NegativeBinomial`` -- keep that name, and their
-limited-failure proportion is called ``lfp_p`` instead (in ``fixed``,
-``param_cb`` and the printed model); see the section on discrete distributions
-below.
+The proportion is ``lfp_p`` everywhere: the attribute, ``fixed``,
+``param_cb``, ``from_params``, ``extras`` and the printed model. It was ``p``
+before v0.23 (#608), which still works until v0.24 with a
+``DeprecationWarning`` -- except on the distributions that call one of their
+own parameters ``p`` (``Bernoulli``, ``Binomial``, ``FixedEventProbability``,
+``Geometric``, ``NegativeBinomial``), where ``model.p`` is that parameter, as
+``model.alpha`` is a Weibull's scale; see the section on discrete
+distributions below. (A saved model's dictionary keeps the key ``"p"``, so
+that every version reads it.)
 
 Zero-Inflated Modelling
 -----------------------
@@ -1743,7 +1748,7 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
     import numpy as np
 
     dist = surv.LogNormal
-    model = dist.from_params([2.2, .2], f0=0.05, p=0.6)
+    model = dist.from_params([2.2, .2], f0=0.05, lfp_p=0.6)
     np.random.seed(10)
     # Survival data to fit, with the units that never fail censored
     x, c, n, _ = model.random_data(100)
@@ -1755,14 +1760,14 @@ To showcase the SurPyval API again, and to demonstrate the flexibility, it is tr
 
     fitted_model.plot(plot_bounds=False)
 
-Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 7% fail at once and about 57% more fail over time (against 5% and 55% in the model the data were drawn from). Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
+Using a ``LogNormal`` distribution we were able to easily capture the DS/LFP and ZI behaviour of the data. With both options, ``lfp_p`` is the total proportion that ever fails, *including* the ``f0`` that fail at time zero, so here about 7% fail at once and about 57% more fail over time (against 5% and 55% in the model the data were drawn from). Zero inflation needs a distribution whose support starts at zero (it is not available for the Normal, say), and like LFP it can only be fitted by ``MLE``.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert round(fitted_model.f0, 2) == 0.07, fitted_model.f0
-    assert round(fitted_model.p - fitted_model.f0, 2) == 0.57
+    assert round(fitted_model.lfp_p - fitted_model.f0, 2) == 0.57
 
 Flexible parametric (Royston-Parmar)
 ------------------------------------
@@ -1901,28 +1906,27 @@ The ``Geometric`` distribution is the discrete analogue of the ``Exponential``: 
     x = surv.Geometric.random(200, 0.15)
     surv.Geometric.fit(x)
 
-A pitfall hides in that parameter's name. ``p`` is also the name SurPyval
-reserves for the proportion of a limited failure population, and the model's
-``p`` attribute means that proportion (1 for an ordinary model). The fitted
-per-cycle probability of a ``Geometric``, and the ``p`` of a
-``NegativeBinomial``, are read from ``params`` instead:
+As for every distribution, the fitted parameter is also an attribute of the
+model: ``geom.p`` is the per-cycle probability, as ``params[0]`` is. The
+proportion of a limited failure population is ``lfp_p`` on every model (it
+was ``p`` before v0.23, which made ``geom.p`` read 1, the proportion, rather
+than the fitted probability):
 
 .. jupyter-execute::
 
     geom = surv.Geometric.fit(x)
-    print("per-cycle probability:", geom.params[0])
-    print("geom.p               :", geom.p, "(the limited-failure proportion)")
+    print("per-cycle probability:", geom.params[0], geom.p)
+    print("geom.lfp_p           :", geom.lfp_p, "(the limited-failure proportion)")
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert geom.p == 1
+    assert geom.p == geom.params[0] and geom.lfp_p == 1
 
-Parameter *names*, though, always mean the distribution's own parameter
-first: ``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
-fixes it, and a limited failure population fitted to these two distributions
-calls its proportion ``lfp_p``:
+Parameter *names* mean the distribution's own parameter too:
+``param_cb('p')`` bounds the per-cycle probability, ``fixed={'p': ...}``
+fixes it, and a limited failure population calls its proportion ``lfp_p``:
 
 .. jupyter-execute::
 
@@ -2438,9 +2442,9 @@ parameter, ``(x, nu, b)``. The names ``gamma`` and ``f0`` are reserved for the
 offset and zero-inflation parameters, and a fitted model exposes each parameter
 as an attribute (``model.nu``), so a name that is already an attribute of a
 model -- ``k``, ``dist``, ``data``, ``method``, ``sf`` and so on -- is refused
-with a ``ValueError`` that lists them all (a parameter may be called ``p``: the
-limited-failure proportion of such a model is then ``lfp_p``, as for the
-Geometric). The name of the distribution is how a saved model finds it again
+with a ``ValueError`` that lists them all (a parameter may be called ``p``,
+which ``model.p`` then gives, as for the Geometric; ``lfp_p``, the
+limited-failure proportion, is reserved). The name of the distribution is how a saved model finds it again
 (see below), so constructing a second one under a name already used in the
 session warns that it replaces the first. Everything else is derived:
 the hazard and the density are obtained by automatically differentiating the

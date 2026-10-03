@@ -140,7 +140,7 @@ def test_qf_keeps_zero_inflation_and_cure_fraction():
     lfp = sp.Weibull.fit(
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [0] * 5 + [1] * 5, lfp=True
     )
-    assert lfp.qf((1 + lfp.p) / 2) == np.inf
+    assert lfp.qf((1 + lfp.lfp_p) / 2) == np.inf
 
 
 # -- logrank with a continuous "group" ---------------------------------------

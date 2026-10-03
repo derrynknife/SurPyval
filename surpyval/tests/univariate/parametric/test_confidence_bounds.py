@@ -120,7 +120,7 @@ def test_lfp_cb_centred_on_full_sf(lfp_model):
     # For an LFP model the bounds must be centred on the full survival
     # function, 1 - p + p * R(t).
     model = lfp_model
-    assert model.p < 1
+    assert model.lfp_p < 1
 
     t = np.linspace(5, 50, 20)
     cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
@@ -131,7 +131,7 @@ def test_lfp_cb_centred_on_full_sf(lfp_model):
     assert np.all(cb < 1)
     # p is estimated, not known, so at large t the lower bound falls
     # below the fitted 1 - p asymptote
-    assert cb[-1, 0] < 1 - model.p
+    assert cb[-1, 0] < 1 - model.lfp_p
 
 
 def test_covariance_extends_hess_inv(lfp_model):
@@ -153,7 +153,7 @@ def test_lfp_sf_cb_includes_p_variance(lfp_model):
         *params, p = phi
         return 1 - p + p * model.dist.sf(t - model.gamma, *params)
 
-    phi_hat = np.array([*model.params, model.p])
+    phi_hat = np.array([*model.params, model.lfp_p])
     jac = np.atleast_2d(jacobian(sf_func)(phi_hat))
     var_R = np.einsum("ij,jk,ik->i", jac, model.covariance(), jac)
     R_hat = model.sf(t)
@@ -176,13 +176,13 @@ def test_lfp_sf_cb_includes_p_variance(lfp_model):
 
 def test_param_cb_p(lfp_model):
     model = lfp_model
-    lower, upper = model.param_cb("p", alpha_ci=0.05)
-    assert 0 < lower < model.p < upper < 1
+    lower, upper = model.param_cb("lfp_p", alpha_ci=0.05)
+    assert 0 < lower < model.lfp_p < upper < 1
     assert np.allclose(
-        model.param_cb("p", alpha_ci=0.025, bound="lower"), lower
+        model.param_cb("lfp_p", alpha_ci=0.025, bound="lower"), lower
     )
     assert np.allclose(
-        model.param_cb("p", alpha_ci=0.025, bound="upper"), upper
+        model.param_cb("lfp_p", alpha_ci=0.025, bound="upper"), upper
     )
 
 
@@ -251,11 +251,11 @@ def test_fixed_p_lfp():
     x[never] = x.max() + 1
     c[never] = 1
 
-    model = surv.Weibull.fit(x, c=c, lfp=True, fixed={"p": 0.5})
-    assert np.isclose(model.p, 0.5)
+    model = surv.Weibull.fit(x, c=c, lfp=True, fixed={"lfp_p": 0.5})
+    assert np.isclose(model.lfp_p, 0.5)
     assert np.all(model.covariance()[2, :] == 0)
     assert np.all(model.covariance()[:, 2] == 0)
-    assert np.allclose(model.param_cb("p"), [model.p, model.p])
+    assert np.allclose(model.param_cb("lfp_p"), [model.lfp_p, model.lfp_p])
 
     t = np.linspace(5, 50, 10)
     cb = model.cb(t, on="sf", bound="two-sided", alpha_ci=0.05)
@@ -314,7 +314,7 @@ def _deviance_at(model, name, value):
     idx = model.dist.param_map[name]
     nll_hat = float(
         model.dist._neg_ll_func(
-            model.surv_data, *model.params, model.gamma, model.f0, model.p
+            model.surv_data, *model.params, model.gamma, model.f0, model.lfp_p
         )
     )
     return 2.0 * (model._profile_neg_ll(idx, value) - nll_hat)
@@ -430,7 +430,7 @@ def test_lr_cb_matches_reparametrisation_for_weibull_sf():
     x = surv.Weibull.random(25, 10.0, 2.0)
     m = surv.Weibull.fit(x)
     nll_hat = float(
-        m.dist._neg_ll_func(m.surv_data, *m.params, m.gamma, m.f0, m.p)
+        m.dist._neg_ll_func(m.surv_data, *m.params, m.gamma, m.f0, m.lfp_p)
     )
     crit = z(0.975) ** 2
 
@@ -683,7 +683,7 @@ def test_discrete_lfp_hazard_is_conditioned_on_the_step_before():
     # Parametric.hf of a limited-failure (or zero-inflated) discrete model
     # was df(k) / sf(k), not the discrete hazard df(k) / sf(k - 1) that
     # the distributions and the other models use.
-    model = surv.Poisson.from_params([3.0], p=0.8)
+    model = surv.Poisson.from_params([3.0], lfp_p=0.8)
     k = np.array([0.0, 2.0, 5.0])
     np.testing.assert_allclose(
         model.hf(k), model.df(k) / model.sf(k - 1), rtol=1e-12

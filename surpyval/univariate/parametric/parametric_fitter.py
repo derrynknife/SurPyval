@@ -9,7 +9,11 @@ import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    RenamedAttribute,
+    renamed_arguments,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import (
     _check_x_not_empty,
@@ -70,24 +74,30 @@ Numeric = npt.NDArray | float
 Boxable = npt.NDArray | float | ArrayBox
 
 
+#: ``from_params``'s ``p``, the limited-failure proportion, is
+#: ``lfp_p`` since v0.23 (#608); ``p`` still works, with a
+#: ``DeprecationWarning``, until v0.24.
+lfp_p_renamed = renamed_arguments(removed_in=REMOVED_IN_NEXT, p="lfp_p")
+
+
 def reject_structural_params(
     dist_name: str,
     gamma: Any = None,
-    p: Any = None,
+    lfp_p: Any = None,
     f0: Any = None,
 ) -> None:
     """Raise for structural arguments a closed-form distribution has no
     meaning for.
 
-    ``ParametricFitter.from_params`` takes ``gamma`` (an offset), ``p``
-    (the proportion that never fails) and ``f0`` (the proportion failing
-    at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
+    ``ParametricFitter.from_params`` takes ``gamma`` (an offset),
+    ``lfp_p`` (the proportion that ever fails) and ``f0`` (the proportion
+    failing at time zero). ``Bernoulli``, ``Binomial`` and ``ExactEventTime``
     support none of them, but they accept the arguments anyway so their
     signatures match the base -- a subclass that silently dropped them
     could not be called through a ``ParametricFitter`` reference, which
     is what the earlier narrower signatures got wrong.
     """
-    for name, value in (("gamma", gamma), ("p", p), ("f0", f0)):
+    for name, value in (("gamma", gamma), ("lfp_p", lfp_p), ("f0", f0)):
         if value is not None:
             raise ValueError(
                 f"{dist_name} does not support '{name}'; it has a "
@@ -968,8 +978,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
         """
         return self
 
+    @lfp_p_renamed
     def from_params(
-        self, params: Any, gamma: Any = None, p: Any = None, f0: Any = None
+        self,
+        params: Any,
+        gamma: Any = None,
+        lfp_p: Any = None,
+        f0: Any = None,
     ) -> Any:
         r"""
 
@@ -985,12 +1000,13 @@ class ParametricFitter(UnivariateDataFrameMixin):
             offset value for the distribution. If not provided will fit a
             regular, unshifted/not offset, distribution.
 
-        p : scalar, optional
+        lfp_p : scalar, optional
             The proportion of the population that is susceptible -- the
             proportion that will *ever* die or fail (a limited failure
-            population); ``1 - p`` never fails. If used it must be a value
-            between 0 and 1. If None will assume 1, i.e. every unit
-            eventually fails.
+            population); ``1 - lfp_p`` never fails. If used it must be a
+            value between 0 and 1. If None will assume 1, i.e. every unit
+            eventually fails. It was ``p`` before v0.23 (#608), which
+            still works until v0.24 with a ``DeprecationWarning``.
 
         f0 : scalar, optional
             The proportion of the population that will die or fail at time 0.
@@ -1034,9 +1050,10 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # A proportion outside [0, 1], or a zero-inflation fraction at or
         # above the proportion that ever fails, is not a distribution:
         # p = 1.5 gave sf(100) = -0.5 and f0 = -0.1 gave ff(0) = -0.1.
+        p = lfp_p
         if p is not None and not (0 < p <= 1):
             raise ValueError(
-                f"p, the proportion that ever fails, must be in (0, 1]; "
+                f"lfp_p, the proportion that ever fails, must be in (0, 1]; "
                 f"got {p}"
             )
         if f0 is not None:
@@ -1047,9 +1064,9 @@ class ParametricFitter(UnivariateDataFrameMixin):
                 )
             if f0 >= (1 if p is None else p):
                 raise ValueError(
-                    f"f0 ({f0}) must be less than p ({p}): the proportion "
-                    "failing at time 0 is part of the proportion that ever "
-                    "fails"
+                    f"f0 ({f0}) must be less than lfp_p ({p}): the "
+                    "proportion failing at time 0 is part of the proportion "
+                    "that ever fails"
                 )
             # The same condition fit(zi=True) applies: the mass f0 sits at
             # 0, which must be where the support starts.
@@ -1089,7 +1106,7 @@ class ParametricFitter(UnivariateDataFrameMixin):
 
         model = Parametric(self, "given parameters", None, offset, lfp, zi)
         model.gamma = gamma
-        model.p = p
+        model.lfp_p = p
         model.f0 = f0
         model.params = np.array(params)
         self._set_support(model, offset)

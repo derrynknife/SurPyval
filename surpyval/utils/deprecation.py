@@ -57,19 +57,27 @@ REMOVED_IN_NEXT = "0.24"
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _message(where: str, old: str, new: str) -> str:
+def _message(
+    where: str, old: str, new: str, removed_in: str = REMOVED_IN
+) -> str:
     return (
         f"{where}: '{old}' is deprecated and will be removed in "
-        f"v{REMOVED_IN}; use '{new}'."
+        f"v{removed_in}; use '{new}'."
     )
 
 
-def renamed_arguments(**renames: str) -> Callable[[F], F]:
+def renamed_arguments(
+    removed_in: str = REMOVED_IN, **renames: str
+) -> Callable[[F], F]:
     """
     Decorate a function so that it accepts its arguments' old names.
 
     Parameters
     ----------
+    removed_in : str, optional
+        The release in which the old names stop being accepted:
+        :data:`REMOVED_IN` (the default) for the names renamed in v0.22,
+        :data:`REMOVED_IN_NEXT` for those renamed in v0.23.
     **renames : str
         ``old="new"``, one per renamed argument.
 
@@ -116,7 +124,9 @@ def renamed_arguments(**renames: str) -> Callable[[F], F]:
                         "old name.".format(where, new, old)
                     )
                 warnings.warn(
-                    _message(where, old, new), DeprecationWarning, stacklevel=2
+                    _message(where, old, new, removed_in),
+                    DeprecationWarning,
+                    stacklevel=2,
                 )
                 kwargs[new] = kwargs.pop(old)
             return func(*args, **kwargs)

@@ -13,6 +13,7 @@ from surpyval.univariate.parametric.parametric import draw_state
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
+    lfp_p_renamed,
     reject_structural_params,
 )
 from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
@@ -615,11 +616,12 @@ class Binomial_(DiscreteParametricFitter):
     # became `params` -- so positional calls work and keyword calls
     # raise. Fixing it means renaming
     # back, with a deprecation alias, and is tracked separately.
+    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,
         gamma: Boxable | None = None,
-        p: Boxable | None = None,
+        lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
     ) -> Parametric:
         r"""
@@ -632,12 +634,11 @@ class Binomial_(DiscreteParametricFitter):
         params : array like
             The two parameters ``[n, p]``; ``n`` the (integer) number of
             trials and ``p`` the per-trial event probability.
-        gamma, p, f0 : None
+        gamma, lfp_p, f0 : None
             Accepted so the signature matches
             :meth:`ParametricFitter.from_params`, and rejected: a
             Binomial has no offset, limited failure population or zero
-            inflation. The base's ``p`` is the *never-fails* proportion,
-            not the per-trial probability, which lives in ``params``.
+            inflation. The per-trial probability lives in ``params``.
 
         Returns
         -------
@@ -652,7 +653,7 @@ class Binomial_(DiscreteParametricFitter):
         >>> model.mean()
         np.float64(1.5)
         """
-        reject_structural_params(self.name, gamma, p, f0)
+        reject_structural_params(self.name, gamma, lfp_p, f0)
         params_arr = np.atleast_1d(np.asarray(params, dtype=float))
 
         if params_arr.shape[0] != 2:

@@ -1710,7 +1710,7 @@ def _parametric_start(model):
     params = np.array(model.params, dtype=float)
     params[k] = _far(params[k], bounds[k])
     start = ([model.gamma] if model.offset else []) + list(params)
-    start += [model.p] if model.lfp else []
+    start += [model.lfp_p] if model.lfp else []
     return start + ([model.f0] if model.zi else [])
 
 

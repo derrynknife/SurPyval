@@ -654,7 +654,7 @@ def _parametric_paths(fitter, **fixed):
         # a distribution that does not start at 0, and gamma=0 for one on
         # the whole real line).
         m = fitter.fit(**d, **fixed)
-        structure = {"gamma": m.offset, "p": m.lfp, "f0": m.zi}
+        structure = {"gamma": m.offset, "lfp_p": m.lfp, "f0": m.zi}
         kw = {k: getattr(m, k) for k, on in structure.items() if on}
         return fitter.from_params(m.params, **kw)
 

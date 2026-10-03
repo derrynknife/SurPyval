@@ -90,7 +90,7 @@ def test_lfp_default_start_reaches_the_better_optimum():
     f += [74.0, 84.0, 94.0, 168.0, 263.0, 593.0]
     x, c, n, _ = surv.fs_to_xcnt(f, [1370.0] * 4128)
     model = surv.Weibull.fit(x, c, n, lfp=True)
-    assert model.p == pytest.approx(0.0067, abs=0.0005)
+    assert model.lfp_p == pytest.approx(0.0067, abs=0.0005)
     assert model.neg_ll() == pytest.approx(293.03, abs=0.01)
 
 
@@ -197,9 +197,9 @@ def test_611_mixture_and_dataframe_fits_refuse_it_too():
 @pytest.mark.parametrize(
     "call, match",
     [
-        (lambda: W.from_params([10, 2], p=1.5), "must be in"),
+        (lambda: W.from_params([10, 2], lfp_p=1.5), "must be in"),
         (lambda: W.from_params([10, 2], f0=-0.1), "must be in"),
-        (lambda: W.from_params([10, 2], p=0.3, f0=0.4), "less than p"),
+        (lambda: W.from_params([10, 2], lfp_p=0.3, f0=0.4), "less than p"),
         (lambda: surv.Normal.from_params([1, 2], f0=0.1), "starting at 0"),
         (lambda: surv.Beta4.from_params([2, 3, 5, 1]), "a < b"),
         (lambda: surv.Uniform.from_params([4, 1]), "a < b"),

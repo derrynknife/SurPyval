@@ -299,8 +299,8 @@ def test_from_fitted_all_causes_cured_gives_never_fail_units():
     # Every cause carries a cure fraction, so all-cause survival stays
     # positive: some units never fail, and the cause probabilities sum to
     # 1 - S(inf) < 1 rather than to one.
-    a = Weibull.from_params([15.0, 2.5], p=0.6)  # 60% ever fail from a
-    b = Weibull.from_params([25.0, 1.5], p=0.5)  # 50% ever fail from b
+    a = Weibull.from_params([15.0, 2.5], lfp_p=0.6)  # 60% ever fail from a
+    b = Weibull.from_params([25.0, 1.5], lfp_p=0.5)  # 50% ever fail from b
     model = ParametricCompetingRisks.from_fitted([a, b])
     probs = [model.probability_of_cause(k) for k in model.causes]
     # S(inf) = 0.4 * 0.5 = 0.2, so incidence sums to ~0.8
@@ -475,9 +475,9 @@ def test_parametric_cif_shapes_and_edges():
 
 
 def test_parametric_cure_fraction_probabilities():
-    cured = Weibull.from_params([5, 2], p=0.4)
+    cured = Weibull.from_params([5, 2], lfp_p=0.4)
     model = ParametricCompetingRisks.from_fitted(
-        {"a": cured, "b": Weibull.from_params([8, 3], p=0.5)}
+        {"a": cured, "b": Weibull.from_params([8, 3], lfp_p=0.5)}
     )
     total = model.probability_of_cause("a") + model.probability_of_cause("b")
     # 1 - P(never fails) = 1 - 0.6 * 0.5

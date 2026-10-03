@@ -319,7 +319,7 @@ def _lifetime_functions(lifetime: Any) -> "tuple[Callable, Callable]":
     renewal fitters build) the distribution's own functions are called
     directly, skipping the model methods' argument handling."""
     if (
-        getattr(lifetime, "p", None) == 1
+        getattr(lifetime, "lfp_p", None) == 1
         and getattr(lifetime, "f0", None) == 0
         and not getattr(lifetime, "gamma", 0)
     ):

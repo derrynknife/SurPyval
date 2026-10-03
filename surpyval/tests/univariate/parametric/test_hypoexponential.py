@@ -156,7 +156,7 @@ def test_from_params_supports_offset_lfp_and_zi():
     assert shifted.sf(1.0) == 1.0
     assert shifted.sf(3.0) == pytest.approx(Hypoexponential.sf(1.0, *RATES))
     assert shifted.mean() == pytest.approx(Hypoexponential.mean(*RATES) + 2.0)
-    cured = Hypoexponential.from_params(RATES, p=0.8)
+    cured = Hypoexponential.from_params(RATES, lfp_p=0.8)
     assert cured.sf(1e6) == pytest.approx(0.2)
 
 

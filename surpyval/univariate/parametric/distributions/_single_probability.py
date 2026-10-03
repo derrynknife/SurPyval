@@ -22,6 +22,7 @@ import numpy.typing as npt
 from surpyval.univariate.parametric.parametric import uniform_draws
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
+    lfp_p_renamed,
     reject_structural_params,
 )
 
@@ -148,11 +149,12 @@ class SingleProbabilityMixin:
     # limited-failure proportion, so the same keyword means two
     # unrelated things across sibling classes. Fixing it means renaming
     # back, with a deprecation alias, and is tracked separately.
+    @lfp_p_renamed
     def from_params(
         self,
         params: npt.ArrayLike,
         gamma: Boxable | None = None,
-        p: Boxable | None = None,
+        lfp_p: Boxable | None = None,
         f0: Boxable | None = None,
     ) -> Parametric:
         """Create a model from its event probability.
@@ -161,15 +163,13 @@ class SingleProbabilityMixin:
         ----------
         params : scalar
             The event probability, between 0 and 1.
-        gamma, p, f0 : None
+        gamma, lfp_p, f0 : None
             Accepted so the signature matches
             :meth:`ParametricFitter.from_params`, and rejected: neither
             model has an offset, limited failure population or zero
-            inflation. Note that the base's ``p`` is the *never-fails*
-            proportion, not this distribution's parameter -- which is why
-            the parameter is ``params`` and not ``p``.
+            inflation. The probability is ``params``.
         """
-        reject_structural_params(self.name, gamma, p, f0)
+        reject_structural_params(self.name, gamma, lfp_p, f0)
         prob = float(np.squeeze(np.asarray(params)))
 
         if prob > 1:

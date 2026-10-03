@@ -171,8 +171,8 @@ def _parameters(model):
     values = list(model.params)
     supports = list(model.dist.bounds)
     if model.lfp:
-        names.append("lfp_p" if "p" in names else "p")
-        values.append(model.p)
+        names.append("lfp_p")
+        values.append(model.lfp_p)
         supports.append((0, 1))
     if model.zi:
         names.append("f0")

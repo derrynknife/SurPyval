@@ -1259,7 +1259,7 @@ class _JointMargin:
         full.extend(onp.asarray(model.params, dtype=float).tolist())
         bounds.extend([(None, None)] * self.k)
         if self.lfp:
-            full.append(float(model.p))
+            full.append(float(model.lfp_p))
             bounds.append((0, 1))
         if self.zi:
             full.append(float(model.f0))
@@ -1311,7 +1311,7 @@ class _JointMargin:
         if self.zi:
             f0 = full[i]
         try:
-            model = self.dist.from_params(params, gamma=gamma, p=p, f0=f0)
+            model = self.dist.from_params(params, gamma=gamma, lfp_p=p, f0=f0)
         except ValueError:
             return None
         if self.fixed:

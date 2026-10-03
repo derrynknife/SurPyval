@@ -107,7 +107,7 @@ def test_an_lfp_quantile_past_p_and_mean_are_infinite():
     x = np.r_[sp.Weibull.random(20, 10, 2, random_state=rng), [30] * 30]
     c = np.r_[np.zeros(20), np.ones(30)]
     model = sp.Weibull.fit(x, c, lfp=True)
-    assert model.p < 0.6
+    assert model.lfp_p < 0.6
     assert np.all(np.isinf(model.quantile_cb(0.9)))
     assert np.all(np.isinf(model.mean_cb()))
     lo, hi = model.quantile_cb(0.1)

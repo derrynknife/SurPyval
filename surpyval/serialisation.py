@@ -838,12 +838,13 @@ def _check_restored_parametric(model: Any) -> None:
             )
         params = np.r_[trials.max(), params[1:]]
     check_parameters(model.dist, params)
-    for flag, attr in (("lfp", "p"), ("zi", "f0")):
+    # The dict's "p" is the limited-failure proportion, ``lfp_p`` (#608).
+    for flag, attr, key in (("lfp", "lfp_p", "p"), ("zi", "f0", "f0")):
         if getattr(model, flag, False):
             value = float(getattr(model, attr))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(
-                    f"The serialised '{attr}'={value!r} is a proportion and"
+                    f"The serialised '{key}'={value!r} is a proportion and"
                     " must be in [0, 1]."
                 )
     if getattr(model, "offset", False) and not np.isfinite(

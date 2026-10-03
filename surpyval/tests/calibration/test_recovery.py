@@ -129,7 +129,7 @@ def test_univariate_mle_recovery(name):
         params = list(model.params)
         cov = np.diag(model.hess_inv)
         if options.get("lfp"):
-            params.append(model.p)
+            params.append(model.lfp_p)
             cov = np.diag(model.covariance())
         est[r] = params
         se[r] = np.sqrt(cov)

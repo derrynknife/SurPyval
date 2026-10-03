@@ -371,7 +371,7 @@ With :math:`F_0` and :math:`R_0` the base distribution, the full model is
 
 and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back the base distribution. The conventions to remember are:
 
-- :math:`p` is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
+- :math:`p` (the model's ``lfp_p``; ``p`` before v0.23) is the proportion that **ever fails**, including the dead-on-arrival fraction, so :math:`F(\infty) = p` and :math:`f_0 \le p`. Writing it this way means every function (``ff``, ``sf``, ``df``, the likelihood, ``mean``, ``qf``) uses the same constant :math:`p - f_0` for the continuous part, and they are mutually consistent.
 - The zero-inflation mass sits at :math:`x = 0`, even when there is an offset. Before 0 nothing has failed: :math:`F(x) = 0` and :math:`R(x) = 1` for :math:`x < 0`.
 - Between 0 and the offset, :math:`F(x) = f_0` and :math:`R(x) = 1 - f_0`: the base distribution has not started.
 - Truncation follows from that, with the window :math:`(t_l, t_r]` open on the left as everywhere: a left truncation below 0 truncates nothing (the mass at 0 is inside the window), and one at 0 excludes the mass: the window's probability is :math:`1 - f_0`, so where every row is truncated at 0, :math:`f_0` cancels from the likelihood and cannot be estimated (an exact 0 at ``tl = 0`` is refused, as any observation at its own truncation time is). This is the convention of the discrete distributions, whose mass at :math:`t_l` is outside the window too.
@@ -379,7 +379,7 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
 - ``qf(q)`` is infinite for :math:`q \ge p` (that fraction of the population never fails), and 0 for :math:`q \le f_0`.
 - ``mean()`` is the mean lifetime :math:`E[T]`, which is infinite for an LFP model (:math:`p < 1`), since some units never fail; ``moment(n)`` (:math:`n \ge 1`) and ``var()`` are infinite too. ``mean(defective=True)`` is the *defective* mean :math:`(p - f_0)\,E[\gamma + X_0]`, the integral of :math:`t\,dF(t)` over the units that fail (and ``moment`` and ``var`` take the same keyword). For a zero-inflated model without LFP the two agree: the zeros contribute nothing. Neither is the mean life of the units that fail, :math:`\gamma + E[X_0]`.
 - ``random()`` draws lifetimes, ``qf(u)`` for one uniform ``u`` per draw, for every model: ``inf`` for a unit that never fails and 0 for one dead on arrival. ``random_data()`` draws the same units as xcnt survival data, ``(x, c, n, t)``, with the units that never fail right-censored after the last failure, ready to refit.
-- ``model.extras`` holds the ``gamma``, ``p`` and ``f0`` the model has, as keywords of ``from_params()``, and ``model.with_params(params)`` is the same model with other distribution parameters (``from_params(model.params)`` alone drops them).
+- ``model.extras`` holds the ``gamma``, ``lfp_p`` and ``f0`` the model has, as keywords of ``from_params()``, and ``model.with_params(params)`` is the same model with other distribution parameters (``from_params(model.params)`` alone drops them).
 - LFP and zero-inflated models can only be fitted by maximum likelihood (``how="MLE"``).
 
 .. jupyter-execute::
@@ -387,9 +387,9 @@ and the defaults :math:`\gamma = 0`, :math:`p = 1` and :math:`f_0 = 0` give back
     variants = {
         "base":            surv.Weibull.from_params([10, 2]),
         "offset gamma=5":  surv.Weibull.from_params([10, 2], gamma=5),
-        "lfp p=0.3":       surv.Weibull.from_params([10, 2], p=0.3),
+        "lfp_p=0.3":       surv.Weibull.from_params([10, 2], lfp_p=0.3),
         "zi f0=0.1":       surv.Weibull.from_params([10, 2], f0=0.1),
-        "lfp + zi":        surv.Weibull.from_params([10, 2], p=0.3, f0=0.1),
+        "lfp + zi":        surv.Weibull.from_params([10, 2], lfp_p=0.3, f0=0.1),
     }
     print("                  F(0)    F(5)    F(15)   F(1e6)")
     for name, m in variants.items():
@@ -403,11 +403,11 @@ Reading across the rows: the offset model has not started by 5; the LFP model le
 
     _F = {k: m.ff([0, 5, 15, 1e6]) for k, m in variants.items()}
     assert _F["offset gamma=5"][1] == 0
-    assert np.isclose(_F["lfp p=0.3"][-1], 0.3)
+    assert np.isclose(_F["lfp_p=0.3"][-1], 0.3)
     assert np.isclose(_F["zi f0=0.1"][0], 0.1)
     assert np.allclose(_F["lfp + zi"][[0, -1]], [0.1, 0.3])
 
-The combined model shows the other conventions. Its mean lifetime is infinite, since 70% of the units never fail; its lifetimes come out as ``inf`` for those units and 0 for the ones dead on arrival; and ``with_params`` keeps its ``p`` and ``f0``:
+The combined model shows the other conventions. Its mean lifetime is infinite, since 70% of the units never fail; its lifetimes come out as ``inf`` for those units and 0 for the ones dead on arrival; and ``with_params`` keeps its ``lfp_p`` and ``f0``:
 
 .. jupyter-execute::
 
@@ -427,8 +427,8 @@ The combined model shows the other conventions. Its mean lifetime is infinite, s
     np.random.seed(1)
     _draws = m.random(6)
     assert np.isinf(_draws).any() and (_draws == 0).any()
-    assert m.extras == {"p": 0.3, "f0": 0.1}
-    _expected = surv.Weibull.from_params([20, 2], p=0.3, f0=0.1).ff(15)
+    assert m.extras == {"lfp_p": 0.3, "f0": 0.1}
+    _expected = surv.Weibull.from_params([20, 2], lfp_p=0.3, f0=0.1).ff(15)
     assert m.with_params([20, 2]).ff(15) == _expected
 
 Saving and Loading Models
