@@ -170,10 +170,8 @@ class ARI(RenewalFitMixin):
 
     @staticmethod
     def _build_sampler(model: Any, n: int) -> Callable:
-        from surpyval.recurrent.renewal.renewal_model import (
-            DiscountedMemory,
-            solve_bracketed,
-        )
+        from surpyval.recurrent.renewal.renewal_model import DiscountedMemory
+        from surpyval.utils.numeric import solve_bracketed
 
         dist = model.model.dist
         dp = model.model.params
