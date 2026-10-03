@@ -4,6 +4,37 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Royston-Parmar ``qf`` and ``random`` are vectorised (#595).** ``qf``
+  ran one root search per probability (``random(2000)`` took 0.8-3 s on a
+  200-row fit); it solves every probability at once on the link scale,
+  exactly beyond the boundary knots, in 1-5 ms. ``qf(0)`` is 0 and
+  ``qf(1)`` inf (they were 1.1e-9 and 1.7e10, the search bracket's ends),
+  and small probabilities keep their precision (3e-5 relative at
+  p = 1e-12, now 2e-15); other quantiles agree with the old ones to about
+  1e-12.
+- **``CustomDistribution.qf`` inverts every probability at once (#596)**
+  when the cumulative hazard broadcasts (gives each point's own value on an
+  array, checked before and after the solve): 2000 quantiles take 5-10 ms
+  rather than 0.5-1.2 s, agreeing to 1e-14. A hazard that indexes or
+  reduces its argument is still inverted one probability at a time. A tiny
+  probability on a hazard that rounds to 0 there no longer raises scipy's
+  ``RuntimeError``.
+- **The ExpoWeibull likelihood is about 3x faster with its gradient
+  (#598).** Its density, CDF and survival logs have derivatives written out
+  rather than traced by autograd (about 1,300 operations per evaluation).
+  Values are unchanged to the bit and gradients and Hessians agree to
+  1e-13: on 60 interval-censored rows value and gradient take 2.2-2.6 ms
+  rather than 5-9 ms, the #584 fit 3.7 s rather than 7.2 s, and
+  likelihood-ratio bounds about 20% less.
+- **An offset fit running to its family's limit warns "No finite maximum"
+  (#599).** On data skewed further left than any member of the family the
+  offset runs to -inf while the shape compensates, approaching the limit
+  (Normal for LogNormal and Gamma, Gumbel for Weibull, Logistic for
+  LogLogistic) only as 1/|gamma|, so it never looked flat: such fits ran
+  the whole optimiser ladder and ended "unverified" (6 s for LogNormal,
+  17 s for Gamma, with one failure at -1 below the rest). They stop after
+  the first rung in 0.3 s with one warning recommending the limit
+  distribution, and ``maximum = "no finite maximum"``.
 - **Regression ``fit_from_df`` reads interval columns (#571).** The
   parametric regression families' ``fit_from_df`` takes ``xl_col`` /
   ``xr_col`` in place of ``x_col`` (``fit`` already took interval data as
