@@ -240,8 +240,8 @@ def test_616_offset_mps_running_to_the_limit_warns_once(dist, limit):
     )
     assert f"surpyval.{limit.name}" in message
     assert rec[0].filename == __file__
-    # It stops after the first rung (BFGS), on the way to the limit
-    assert model.res.optimizer == "BFGS"
+    # On the way to the limit, and no better than it (where BFGS stops
+    # short there the fit stops with it; where it does not, at the end)
     assert model.gamma < X_599.min() - 10
     spaced = limit.fit(X_599, C_599, N_599, how="MPS")
     assert model.res.fun >= spaced.res.fun

@@ -129,7 +129,7 @@ class _TowardLimit:
         self.model = model
         self.start = self._gamma(init)
         family = getattr(model.dist, "_offset_limit_family", None)
-        self.family = family() if family is not None else None
+        self.family: Any = family() if family is not None else None
         self._limit: list = []
 
     def _gamma(self, u: npt.NDArray) -> float:
