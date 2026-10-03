@@ -75,30 +75,6 @@ for _name, (_group, _reason) in _CONVERGENCE_FAILURES.items():
     }
 
 
-# -- maximum (test_maximum.py) --------------------------------------------
-# Likelihood fits that do not say what they reached: no ``maximum``, and no
-# check that the answer is a verified maximum. Keyed "maximum" (the
-# fixture's fit) and "maximum[starved]" (the convergence property's starved
-# fit); the reason leads with the issue.
-_MAXIMUM_FAILURES: dict[str, str] = {
-    name: (
-        "#564: the {} fit sets no ``maximum`` and does "
-        "not check that its answer is a verified maximum".format(name)
-    )
-    for name in ("WienerProcess", "GammaProcess", "DestructiveDegradation")
-}
-# (The WienerProcess's starved fit, of noise-free data, is refused.)
-for _name, _reason in _MAXIMUM_FAILURES.items():
-    _starved = (
-        {} if _name == "WienerProcess" else {"maximum[starved]": _reason}
-    )
-    KNOWN_FAILURES[_name] = {
-        **KNOWN_FAILURES.get(_name, {}),
-        "maximum": _reason,
-        **_starved,
-    }
-
-
 # -- comparison (test_comparison.py) ----------------------------------------
 # Models whose model-comparison values are not spelt as everywhere else.
 _COMPARISON_FAILURES: dict[str, str] = {

@@ -950,12 +950,27 @@ pseudo failure times. And a unit's **remaining life** from its current level
 :math:`D - y`. Two processes cover the common cases, and the choice between them
 is dictated by whether the degradation can *decrease*.
 
-One convention matters in practice. The process starts at :math:`W(0) = 0`,
-so the threshold :math:`D` is the *distance* a new unit must travel. Fitting
-uses only increments and never sees the starting level, but the life
-distribution does: if your units start at a non-zero baseline (an initial
-resistance of 100 Ω, failure at 110 Ω), subtract the baseline — the threshold
-is 10, not 110. The process models are also *homogeneous*: every unit has the
+One convention matters in practice. A unit starts at a level :math:`y_0` at
+time zero, :math:`W(0) = y_0`, and fails on reaching the threshold, so its life
+is the first passage over the *distance* :math:`D = \text{threshold} - y_0`.
+Fitting uses only increments and never sees the starting level, but the life
+distribution does: an initial resistance of 100 Ω that fails at 110 Ω has 10 to
+go, not 110. The fit therefore estimates :math:`y_0` from the readings — each
+unit's first reading :math:`y_{i1}` at time :math:`t_{i1}`, less the
+degradation the process accrues on average before it,
+
+.. math::
+
+    \hat y_0 = \frac{1}{k}\sum_{i=1}^{k}\bigl(y_{i1} - m\,\tau(t_{i1})\bigr),
+
+over the :math:`k` units, with :math:`m` the fitted mean rate (:math:`\mu`, or
+:math:`\alpha/\beta`) and :math:`\tau(t_{i1})` the time to the first reading
+(on the stress clock, at its stress) — simply the mean of the readings at time
+zero when every unit is read then. A known starting level is given as ``y0``,
+to the fit, or to the life functions for a unit that starts elsewhere. Before
+v0.23 the life was measured from :math:`W(0) = 0`, which overstated it by
+:math:`y_0` over the rate when the readings started higher. The process models
+are also *homogeneous*: every unit has the
 same drift, so the spread of lifetimes comes entirely from the randomness along
 the path, not from differences between units (random-effect extensions, which
 add unit-to-unit variation in the drift, are surveyed in [Wang2010]_ but are
