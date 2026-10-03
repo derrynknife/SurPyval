@@ -20,6 +20,7 @@ from surpyval.beta.ml.forest.tree import (
     covariate_matrix,
     drop_missing_covariate_rows,
     feature_labels,
+    parse_kind,
     resolve_random_state,
 )
 from surpyval.metrics.concordance import concordance_index
@@ -147,6 +148,9 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         self.data, self.Z = drop_missing_covariate_rows(data, Z)
         self.n_trees = n_trees
         self.bootstrap = bootstrap
+        # The kind and the times are checked once, on every row, before
+        # any tree is grown (#618): a bootstrap sample may miss a bad row
+        parse_kind(kind, self.data)
         self.kind = kind
         # Validated against the kind once, before any tree is grown
         self.min_split_gain = parse_min_split_gain(
@@ -240,7 +244,8 @@ class RandomSurvivalForest(RegressionDataFrameMixin, SerialisableMixin):
         ----------
         x : array_like, optional
             Event times (``[left, right]`` rows for interval-censored
-            observations).
+            observations), checked as ``SurvivalTree.fit`` checks
+            them for the ``kind``.
         Z : array_like
             Covariate (feature) matrix, one row per observation. Required.
             Rows with a missing (NaN) or infinite covariate are dropped,

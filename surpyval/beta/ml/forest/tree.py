@@ -21,7 +21,9 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.parametric import Exponential, Weibull
 from surpyval.univariate.regression.regression_data import (
+    check_finite_event_times,
     prepare_Z,
     restore_covariate_meta,
     serialise_covariate_meta,
@@ -250,7 +252,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         ----------
         x : array_like, optional
             Event times (``[left, right]`` rows for interval-censored
-            observations).
+            observations). A ``"weibull"`` or ``"exponential"`` tree
+            refuses a time outside its leaves' support ``(0, inf)``, as
+            the parametric regression fits do; a ``"non-parametric"`` one
+            refuses a failure (``c=0``) at infinity.
         Z : array_like
             Covariate (feature) matrix, one row per observation. Required.
             Rows with a missing (NaN) or infinite covariate are dropped,
@@ -628,13 +633,27 @@ def parse_kind(kind: str, data: SurpyvalData) -> str:
     by the risk-set log-rank, and data with left or interval censoring or
     right truncation by the Turnbull scores, which allow for truncation
     through the truncation-conditioned likelihood (issue #188).
+
+    The times are checked as the fits the kind's leaves are (#618): a
+    ``"weibull"`` or ``"exponential"`` tree refuses a time outside its
+    distribution's support, with the parametric regression fits' check
+    and wording (``OutsideSupportError``: a failure at 0 or at infinity,
+    a time below 0 whatever its censoring); a ``"non-parametric"`` tree
+    refuses a failure at infinity, as the non-parametric and Cox fits do.
+    An infinite time used to reach the leaf fits: a Weibull tree gave
+    hundreds of numpy warnings, an Exponential one a scipy error.
     """
     resolved = kind.lower().replace("_", "-")
-    if resolved in ("weibull", "exponential", "non-parametric"):
-        return resolved
-    raise option_error(
-        "kind",
-        kind,
-        ("weibull", "exponential", "non-parametric"),
-        "Case does not matter, and '_' may stand for '-'.",
-    )
+    if resolved not in ("weibull", "exponential", "non-parametric"):
+        raise option_error(
+            "kind",
+            kind,
+            ("weibull", "exponential", "non-parametric"),
+            "Case does not matter, and '_' may stand for '-'.",
+        )
+    if resolved == "non-parametric":
+        check_finite_event_times(data.x, data.c)
+    else:
+        leaf = Weibull if resolved == "weibull" else Exponential
+        leaf._check_inside_support(data, every_row=True)
+    return resolved

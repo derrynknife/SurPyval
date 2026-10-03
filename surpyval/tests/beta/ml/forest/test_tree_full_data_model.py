@@ -22,6 +22,8 @@ on left/interval-censored or right-truncated data). These tests pin:
 - the forest passthrough.
 """
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -360,6 +362,53 @@ def test_invalid_kind_raises():
     Z, x, c = _signal_data()
     with pytest.raises(ValueError, match="kind"):
         SurvivalTree.fit(x=x, Z=Z, c=c, kind="bogus")
+
+
+_OUTSIDE = "outside the support of the {} distribution"
+_INFINITE = r"Exactly observed values \(c=0\) must be finite"
+
+
+@pytest.mark.parametrize("bad", [np.inf, -np.inf])
+@pytest.mark.parametrize(
+    "kind, match",
+    [
+        ("weibull", _OUTSIDE.format("Weibull")),
+        ("exponential", _OUTSIDE.format("Exponential")),
+        ("non-parametric", _INFINITE),
+    ],
+)
+@pytest.mark.parametrize("model", [SurvivalTree, RandomSurvivalForest])
+def test_618_an_infinite_failure_time_is_refused(model, kind, match, bad):
+    # An infinite time reached the leaf fits: a Weibull tree gave 217 numpy
+    # warnings (a forest hundreds more), an Exponential one scipy's
+    # "Optimization bounds must be finite scalars"
+    Z, x, c = _signal_data()
+    x[0], c[0] = bad, 0
+    options = {"n_trees": 3} if model is RandomSurvivalForest else {}
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        with pytest.raises(ValueError, match=match):
+            model.fit(x=x, Z=Z, c=c, kind=kind, random_state=0, **options)
+
+
+@pytest.mark.parametrize("kind", ["weibull", "exponential"])
+@pytest.mark.parametrize("model", [SurvivalTree, RandomSurvivalForest])
+def test_618_a_parametric_kind_refuses_a_time_below_zero(model, kind):
+    # As the parametric regression fits do (#565): whatever its censoring
+    Z, x, c = _signal_data()
+    x[0], c[0] = -1.0, 1
+    options = {"n_trees": 3} if model is RandomSurvivalForest else {}
+    with pytest.raises(ValueError, match="whatever its censoring"):
+        model.fit(x=x, Z=Z, c=c, kind=kind, random_state=0, **options)
+
+
+def test_618_a_non_parametric_tree_takes_a_unit_that_never_failed():
+    # Right censored at infinity, as Kaplan-Meier and Cox take it
+    Z, x, c = _signal_data()
+    x[0], c[0] = np.inf, 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        SurvivalTree.fit(x=x, Z=Z, c=c, kind="non-parametric")
 
 
 def test_needs_full_likelihood_split_detection():
