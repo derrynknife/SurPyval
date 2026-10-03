@@ -1062,6 +1062,59 @@ approximate. The MTBF is that of one prototype.
     _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
     assert round(float(_crow)) == 257 and round(float(_wald)) == 260
 
+Reliability growth: projecting delayed fixes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The other half of a growth programme is the *projection*: the MTBF expected
+once the fixes delayed to the end of the test are in. It needs each failure's
+**failure mode** and a classification of the modes (MIL-HDBK-189C, section
+6):
+
+- **A modes** will not be fixed;
+- **BC modes** were fixed during the test;
+- **BD modes** will be fixed after it, each fix removing a fraction ``d`` of
+  its mode's intensity, its *fix-effectiveness factor* (FEF).
+
+``CrowAMSAA.projection`` takes the data as ``fit`` does, plus a ``modes``
+array (one label per row; the ``c=1`` rows' labels are ignored), a ``fef``
+dict of the BD modes and their factors, and optionally ``bc``, the BD modes
+fixed during the test; every other mode is an A mode. Here a prototype is
+tested to 400 hours:
+
+.. jupyter-execute::
+
+    x = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
+    modes = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1", "a1",
+             "b3", None]
+    c = [0] * 11 + [1]
+    fef = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6}
+
+    projection = CrowAMSAA.projection(x, modes, fef, c=c)
+    print(projection)
+    print(projection.modes)
+
+The test demonstrates 36.4 hours; the delayed fixes take each BD mode's
+intensity (``N_i / T``) down to ``(1 - d_i) N_i / T``, and the projection
+adds back :math:`\bar d\, h(T)`: the fixes are judged on the modes seen, but
+new BD modes were still turning up at the end of the test (:math:`h(T)`, the
+rate of the power law fitted to the modes' first occurrences), and those
+are not fixed yet. The projected MTBF, 62.8 hours, is the AMSAA-Crow
+projection; the growth potential, 78.4 hours, is what the same factors
+would reach if every BD mode were found and fixed. With modes fixed during
+the test (``bc=``) the system grew while it was tested, and the
+demonstrated intensity is the Crow-AMSAA one at the end of the test (Crow's
+extended model). The test must be time-terminated (every system run to the
+same ``T``, given as its ``c=1`` row); several systems are taken to have run
+side by side, and the intensities and MTBFs are those of one system.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert round(projection.demonstrated_mtbf, 1) == 36.4
+    assert round(projection.projected_mtbf, 1) == 62.8
+    assert round(projection.growth_potential_mtbf, 1) == 78.4
+
 Generalised Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
