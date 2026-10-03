@@ -1492,6 +1492,18 @@ def _bounds(case):
                 rtol=1e-6,
             ),
         )
+    if cls == "CopulaModel":
+        # The joint sf and the joint CDF are not complements: one sweep
+        # each, so that cb_transform does not read one as 1 - the other
+        # (#540). The fixture's AMH estimate is on its bound, theta = 1
+        # (the data's Kendall's tau is past the family's 1/3), where no
+        # Wald bound exists: NaN, with a warning, as documented.
+        nan_ok = case.name == "AMHCopula"
+        return (
+            Bound("cb", on=("sf",), nan_ok=nan_ok),
+            Bound("cb", on=("ff",), nan_ok=nan_ok, label="cb[ff]"),
+            replace(_PARAM_CB, nan_ok=nan_ok),
+        )
     return ()
 
 
@@ -1647,7 +1659,7 @@ _FAST_BOUNDS += ("Turnbull", "RoystonParmar", "WeibullPH", "WeibullFrailty")
 _FAST_BOUNDS += ("HPP", "CrowAMSAA", "ProportionalIntensityHPP")
 _FAST_BOUNDS += ("GeneralizedRenewal", "NonParametricCounting")
 _FAST_BOUNDS += ("CauseSpecificMCF", "DegradationAnalysis[linear]")
-_FAST_BOUNDS += ("WienerProcess",)
+_FAST_BOUNDS += ("WienerProcess", "ClaytonCopula")
 
 
 def _with_options(case):
