@@ -390,7 +390,7 @@ def param_cb_bootstrap(
 
 def cb_bootstrap(
     model: Any,
-    x: npt.NDArray,
+    x: npt.ArrayLike,
     Z: Any,
     on: str,
     alpha_ci: float,
@@ -406,10 +406,11 @@ def cb_bootstrap(
     on = {"R": "sf", "F": "ff"}.get(on, on)
     fits = refits(model, n_boot, random_state)
     fits.warn()
+    t = np.asarray(x, dtype=float)
     rows = model._prepare_Z(Z)
     lower = float(model.distribution.support[0])
-    below = x < lower
-    x_in = np.where(below, lower + 1.0 if np.isfinite(lower) else 0.0, x)
+    below = t < lower
+    x_in = np.where(below, lower + 1.0 if np.isfinite(lower) else 0.0, t)
     if on in ("hf", "df"):
         fn = model.model.hf if on == "hf" else model.model.df
 
@@ -418,7 +419,7 @@ def cb_bootstrap(
                 v = fn(x_in, model._centred(rows, center), *p)
             return np.where(below, 0.0, np.asarray(v, dtype=float))
 
-        draws = _draws(fits, value, np.shape(x))
+        draws = _draws(fits, value, t.shape)
         return _percentiles(draws, alpha_ci, bound)
 
     def H_of(p: npt.NDArray, center: Any) -> npt.NDArray:
@@ -426,7 +427,7 @@ def cb_bootstrap(
             H = model.model.Hf(x_in, model._centred(rows, center), *p)
         return np.where(below, 0.0, np.asarray(H, dtype=float))
 
-    return hazard_bounds(_draws(fits, H_of, np.shape(x)), on, alpha_ci, bound)
+    return hazard_bounds(_draws(fits, H_of, t.shape), on, alpha_ci, bound)
 
 
 def quantile_cb_bootstrap(
