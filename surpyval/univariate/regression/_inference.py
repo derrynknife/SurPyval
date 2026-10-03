@@ -426,27 +426,25 @@ class InferenceMixin:
         no ceiling where ``sf`` underflows. ``hf``/``df`` use a log-scale
         bound (so they stay positive).
 
-        A Wald bound rests on the function being near linear in the
-        parameters over their uncertainty. Far outside the covariates of
-        the data -- an accelerated life test's use condition, well below
-        its lowest stress -- it is not, and the Wald bound is too narrow:
-        a 90% bound on the five-year reliability of an
-        ``AcceleratedLife(Weibull, PowerExponential)`` test, 40 °C below
-        its coolest cell, covered 0.86 to 0.88 (#583). The
-        likelihood-ratio bound, ``method="lr"``, is the one for such
-        extrapolation (Meeker and Escobar's, for accelerated tests): at
-        each ``x`` and row of ``Z`` the bound is the extreme of the
-        function over the likelihood region of all the parameters,
-        ``{theta : 2[nll(theta) - nll_hat] <= chi2_1}``, as for the
-        univariate models' ``cb(method="lr")``; the ``sf``, ``ff`` and
+        ``method="lr"`` gives the likelihood-ratio bound instead, as for
+        the univariate models' ``cb(method="lr")``: at each ``x`` and row
+        of ``Z`` the bound is the extreme of the function over the
+        likelihood region of all the parameters, ``{theta : 2[nll(theta)
+        - nll_hat] <= chi2_1}``, which is where the function's profile
+        deviance reaches the critical value; the ``sf``, ``ff`` and
         ``Hf`` bounds are one bound, so they agree exactly. It does not
-        rest on a quadratic approximation, and is transformation
-        invariant, but takes searches of the likelihood: seconds a bound
-        where the Wald bound takes milliseconds. The searches' first
-        steps (the parameters' own intervals) are kept, so later bounds
-        on the same model at the same level are faster. It needs the
-        data the model was fitted to; where a bound cannot be found it
-        is ``nan``, with a warning.
+        rest on the function being near linear in the parameters, and is
+        invariant to their parameterisation, but takes a search of the
+        likelihood: about a second a bound, where the Wald bound takes
+        milliseconds (the region's boundary is traced once per model and
+        level, and kept). It needs the data the model was fitted to;
+        where a bound cannot be found it is ``nan``, with a warning. Both
+        are large-sample bounds, and neither is exact with few failures:
+        on an accelerated life test of 72 units extrapolated 40 °C below
+        its coolest cell (#583), the 90% bounds on the five-year
+        reliability at the use condition covered 0.897 (Wald) and 0.893
+        (likelihood ratio) with 46 failures on average (1000
+        repetitions), and 0.877 and 0.866 with 11 (900).
 
         Parameters
         ----------

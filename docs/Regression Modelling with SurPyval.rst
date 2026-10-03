@@ -362,6 +362,25 @@ equivalence for the Weibull (see `Accelerated Failure Time (AFT)`_) predicts.
     assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-9)
     assert abs(_med[0] / _med[1] - 2 ** 0.5) < 0.05, _med
 
+``quantile_cb(p, Z)`` bounds them, as the univariate models' does: by
+default the delta method on :math:`\log t_p`, and the likelihood-ratio bound
+with ``method='lr'`` (see `Confidence Bounds`_ below):
+
+.. jupyter-execute::
+
+    print('B10 at Z = 1, 95% Wald :', demo.quantile_cb(0.1, Z=[1.0]).round(2))
+    print('B10 at Z = 1, 95% LR   :',
+          demo.quantile_cb(0.1, Z=[1.0], method='lr').round(2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _b10 = demo.qf(0.1, Z=[1.0])
+    for _m in ('wald', 'lr'):
+        _lo, _hi = demo.quantile_cb(0.1, Z=[1.0], method=_m)
+        assert _lo < _b10 < _hi
+
 A unit already in service has survived to its age. Every regression model
 (the parametric families, Cox, the proportional odds, additive hazards,
 Buckley-James and frailty models) has the univariate models' conditional
@@ -2218,16 +2237,12 @@ decision.
                   & (_true_sf <= band[:, 1] + 1e-9))
 
 The band is the Wald (delta-method) band, which assumes the reliability is
-near linear in the parameters over their uncertainty. At a use condition far
-below the test stresses it is not, and the Wald band is too narrow: in a
-simulation of a two-stress test (#583; ``AcceleratedLife(Weibull,
-life_models.PowerExponential)``, three temperatures by two voltages, twelve
-units a cell, the use condition 40 °C below the coolest cell) the 90% Wald
-bound on the five-year reliability covered COVERAGE_WALD of a thousand
-repetitions, and the likelihood-ratio bound COVERAGE_LR. Meeker and Escobar
-recommend the likelihood-ratio bounds for accelerated tests; ``cb`` gives
-them with ``method="lr"``, a search of the likelihood for each time, so ask
-for the few times you need:
+near linear in the parameters over their uncertainty, an assumption that
+weakens as the use condition moves away from the test stresses. ``cb`` also
+gives the likelihood-ratio bounds, which Meeker and Escobar use for
+accelerated tests, with ``method="lr"``: the extreme of the reliability over
+the parameters' likelihood region. Each is a search of the likelihood, about
+a second a bound, so ask for the times you need:
 
 .. jupyter-execute::
 
@@ -2248,7 +2263,15 @@ for the few times you need:
 
 Here the two differ by a few hundredths, the likelihood-ratio band reaching
 higher; ``param_cb(..., method='lr')`` gives the profile-likelihood
-intervals on the life model's parameters in the same way.
+intervals on the life model's parameters in the same way. Both are
+large-sample bounds, and the likelihood-ratio one is not more exact with few
+failures. In a simulation of a two-stress test (#583:
+``AcceleratedLife(Weibull, life_models.PowerExponential)``, three
+temperatures by two voltages, twelve units a cell, the use condition 40 °C
+below the coolest cell) the 90% bounds on the five-year reliability at use
+covered 0.897 (Wald) and 0.893 (likelihood ratio) of 1,000 repetitions with
+46 failures on average, and 0.877 and 0.866 of 900 with 11; Wald stays the
+default.
 
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~

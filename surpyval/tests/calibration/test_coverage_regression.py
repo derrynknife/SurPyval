@@ -199,8 +199,11 @@ def _alt_terms(Z):
 def test_583_cb_coverage_at_an_extrapolated_use_condition():
     # The 90% bounds on the five-year reliability at the use condition,
     # 45 C / 400 V, 40 C below the coolest cell: the Wald bound (the
-    # default) and the likelihood-ratio bound (method="lr"). About 60% of
-    # the units fail; the reliability at use is 0.973.
+    # default) and the likelihood-ratio bound (method="lr"). 46 of the 72
+    # units fail on average; the reliability at use is 0.973. Both are
+    # near nominal here (0.897 and 0.893 when this was written): #583's
+    # 0.86 was 300 repetitions of a design with fewer failures, where
+    # both fall short (0.877 and 0.866 with 11 failures, 900 repetitions).
     rng = np.random.default_rng(583)
     x_use, z_use = 5 * 8760.0, np.array([[318.15, 400.0]])
     life = _ALT_C * np.exp(_ALT_A / z_use[0, 0]) * z_use[0, 1] ** -3.0
