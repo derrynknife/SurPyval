@@ -31,9 +31,7 @@ from surpyval.tests.conformance.registry import (
 # estimating-equation terms -- none of which a dict stores.
 RESTORED_WITHOUT = {
     "ParametricRegressionModel": frozenset({"data", "res", "fun"}),
-    "SemiParametricRegressionModel": frozenset(
-        {"_fit_data", "jac", "res"}
-    ),
+    "SemiParametricRegressionModel": frozenset({"_fit_data", "jac", "res"}),
     "AdditiveHazardsModel": frozenset({"_A", "_b"}),
 }
 

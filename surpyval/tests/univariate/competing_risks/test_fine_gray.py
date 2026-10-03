@@ -264,3 +264,21 @@ def test_606_large_scale_covariates_reach_the_same_maximum(scale):
         x, Z * scale, e, model="Fine-Gray"
     )
     np.testing.assert_allclose(both.betas[0] * scale, model.beta, rtol=1e-8)
+
+
+def test_605_fine_gray_covariance_is_a_method_and_cov_deprecated():
+    import surpyval as sp
+
+    x, Z, e = competing_risks_regression_data()
+    model = FineGray.fit(x, Z, e, event=1)
+    cov = model.covariance()
+    np.testing.assert_allclose(np.sqrt(np.diag(cov)), model.standard_errors())
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        np.testing.assert_array_equal(model.cov, cov)
+    d = model.to_dict()
+    assert "covariance" in d and "cov" not in d and "_neg_ll" in d
+    # A dict written before v0.23
+    d["cov"], d["neg_ll"] = d.pop("covariance"), d.pop("_neg_ll")
+    restored = sp.from_dict(d)
+    np.testing.assert_array_equal(restored.covariance(), cov)
+    assert restored.neg_ll() == model.neg_ll()

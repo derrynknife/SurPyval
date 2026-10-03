@@ -764,3 +764,23 @@ def test_cb_rejects_an_unknown_bound():
     model = W.fit([1.0, 2, 3, 4, 5])
     with pytest.raises(ValueError, match="'bound' must be one of"):
         model.cb([2.0], bound="both")
+
+
+def test_605_covariance_is_a_method_and_cov_matrix_deprecated():
+    np.random.seed(1)
+    model = surv.Weibull.fit(surv.Weibull.random(50, 10, 3))
+    cov = model.covariance()
+    assert cov.shape == (2, 2) and np.allclose(cov, model.hess_inv)
+    with pytest.warns(DeprecationWarning, match="covariance()") as caught:
+        old = model.cov_matrix
+    assert caught[0].filename == __file__
+    np.testing.assert_array_equal(old, cov)
+    # Saved under one key, and a dict written before v0.23 still loads
+    d = model.to_dict()
+    assert "covariance" in d and "cov_matrix" not in d
+    d["cov_matrix"] = d.pop("covariance")
+    np.testing.assert_array_equal(surv.from_dict(d).covariance(), cov)
+    # A model without one says why
+    built = surv.Weibull.from_params([10, 3])
+    with pytest.raises(ValueError, match="no parameter covariance"):
+        built.covariance()
