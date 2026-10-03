@@ -179,6 +179,7 @@ from surpyval.tests.conformance.registry_families import (  # noqa: F401
     query,
     refit,
     regression,
+    skip_without_finite_maximum,
     tvc_path,
 )
 from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401

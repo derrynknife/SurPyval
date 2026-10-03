@@ -51,6 +51,7 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
     refit,
+    skip_without_finite_maximum,
 )
 
 SIDES = ("two-sided", "lower", "upper")
@@ -337,6 +338,7 @@ def _percentile(spec):
     _bound_params("cb_contains", where=lambda c, s: not _percentile(s)),
 )
 def test_bounds_contain_the_estimate(case, spec):
+    skip_without_finite_maximum(case)
     for label, fname, event in _sweep(case, spec):
         p = estimate(case, spec, fname, event)
         lo_ok, hi_ok = value_range(case, spec, fname)

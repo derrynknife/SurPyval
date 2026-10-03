@@ -20,6 +20,15 @@ v0.23 (unreleased)
   that ended "unverified" on such data now report "no finite maximum", and
   ``fit_best`` sets them aside with that reason. Ordinary fits are
   unchanged.
+- **A Beta4 whose end reaches the data stops there (#584).** Its likelihood
+  is unbounded where an end meets the extreme observation with a shape
+  below 1, and the search used to grind against that wall through every
+  rung: about 4 s for the conformance fixture. It now stops when an end
+  reaches its extreme observation, warns "No finite maximum" once and sets
+  ``maximum = "no finite maximum"``: 0.11 s. The conformance checks of a
+  fit's derivatives and of its Wald bounds containing the estimate skip a
+  fit that reports no finite maximum, whose inference it has already
+  called meaningless.
 - **Truncated and interval windows in the far lower tail keep their digits
   (#594).** A window probability below the smallest normal float (about
   2e-308) is taken in log space, as #412 did for the upper tail: a Normal
