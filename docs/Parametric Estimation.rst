@@ -666,6 +666,15 @@ rounds to 1 that difference is 0: a LogNormal left-truncated at 1 with
 units the data were recorded in. The same applies to an interval-censored
 observation's window.
 
+In the lower tail the difference :math:`F(t_{r}) - F(t_{l})` keeps its
+digits, but the CDFs themselves underflow: a window whose probability is
+below the smallest normal float (about :math:`2 \times 10^{-308}`) is
+computed from the CDF in log space instead,
+:math:`\ln F(t_{r}) + \ln(1 - F(t_{l}) / F(t_{r}))`. A Normal far above
+truncated windows had log-likelihoods that were rounding (-9.67 where the
+supremum is -10.03) or :math:`-\infty`, and windows of exactly 0 made the
+truncation term NaN, which ended its searches.
+
 Censored and truncated data
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -850,7 +859,31 @@ worth knowing what they are, because they explain the warnings you may see.
    :math:`\alpha = 10^{7}` stopped at :math:`\beta = 0.099`, 40 below the
    maximum log-likelihood -- and BFGS often reports a loss of precision *at*
    the maximum. If no rung is verified the first rung that reported success
-   is kept, as before. Before BFGS runs, the search is
+   is kept, as before.
+
+   A likelihood with no finite maximum leaves the ladder nothing to verify:
+   it keeps rising as a parameter runs off towards a limit no member of the
+   family reaches (an ExpoWeibull whose :math:`\mu` grows without end
+   approaches a Fréchet distribution; a Normal fitted to rows whose windows
+   are all bounded above has a mean that grows without end). Each rung then
+   ran until its own limit, and the fit ended "unverified" after all five:
+   23 s for an ExpoWeibull on 60 interval censored rows. So, as the
+   regression fits do, SurPyval checks the point a search reached -- after
+   the first rung that stops short of a verified maximum, and in BFGS after
+   100, 200, 400, ... iterations -- for a parameter along whose profile (the
+   likelihood maximised over the others) Newton's method cannot converge,
+   where that profile is flat to the verification's tolerance and the
+   parameter is heading for an infinite end of its range. If one is
+   running off, the search stops there, the fit warns "No finite maximum",
+   naming it (and the limit, where the family knows it), and ``maximum`` is
+   ``'no finite maximum'``; that ExpoWeibull now takes 6 s. A verified
+   answer is checked the same way, since a likelihood that flattens towards
+   its supremum can pass the verification far out on the way to it. A
+   parameter running onto a finite bound of its range (an Exponential's
+   offset onto the first failure) is a maximum on the edge of the space,
+   not a runaway.
+
+   Before BFGS runs, the search is
    rescaled coordinate by coordinate, each :math:`u` divided by the magnitude
    of its starting value, and the objective is divided by the number of
    observations. That does not move the optimum, but it makes the convergence
