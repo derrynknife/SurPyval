@@ -1,8 +1,34 @@
 Changelog
 =========
 
-v0.22 (unreleased)
-------------------
+v0.22 (3 October 2026)
+----------------------
+
+**Upgrading from 0.21.** A breaking release. Most code needs no change; the
+items most likely to need one are listed here, and every entry below says
+what changed.
+
+- Arguments 0.21 deprecated now raise ``TypeError`` (see *Removed*). Run
+  your code on 0.21 with ``python -W error::DeprecationWarning`` first.
+- The life models moved to ``surpyval.life_models`` (``life_models.Power``,
+  ``life_models.Exponential``, ...); the old top-level names warn until
+  v0.23.
+- Error and warning messages have one wording per condition: code that
+  matches message text (an unknown option, ``alpha_ci``, a cause, a
+  covariance, column lengths, "Monotone partial likelihood", which is now
+  "No finite maximum: the partial likelihood keeps increasing ...") must
+  update its patterns.
+- ``model.formula`` is the ``str`` you gave, for every model (Cox,
+  Buckley-James and competing-risks PH kept a parsed ``Formula``).
+- Some results move, each towards a better answer: fits that stopped
+  short now reach a verified maximum or warn (every likelihood fit has
+  ``maximum``); accelerated-life and AFT time-varying standard errors use
+  the exact information (an example's ``se(a)`` was 317, correctly 574);
+  Gaussian and Student-t copulas no longer clip rho at 0.9999.
+- The bundled lung and Rossi data's event columns are 1 for an event, as
+  in R and lifelines.
+- Importing surpyval corrects autograd's derivative of ``np.where`` for the
+  whole process (#562).
 
 **Versioning.** From this release, versions have two parts,
 ``MAJOR.MINOR`` (``0.22``, tagged ``v0.22``); every release takes the
