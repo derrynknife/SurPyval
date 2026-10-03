@@ -3,9 +3,10 @@
 ``cb``, ``param_cb``, ``quantile_cb`` and ``cb_tvc`` take
 ``method="bootstrap"``: each resample simulates every unit from the
 fitted model at its own covariates (and within its truncation window),
-censors it as the unit was censored, and refits; the bounds are the
-percentile intervals of the refits. The tests check what is resampled
-(the design kept, the censoring), the percentile, the refits shared
+censors it as the unit was censored, and refits; the bounds are the BCa
+intervals of the refits. The tests check what is resampled (the design
+kept, the censoring), the BCa interval and its acceleration, the refits
+shared
 between calls and dropped on pickling, and how failed refits are counted.
 The coverage on #583's accelerated life test is in
 ``calibration/test_coverage_regression.py``.
@@ -17,12 +18,13 @@ import warnings
 
 import numpy as np
 import pytest
+from scipy.stats import norm, skew
 
 import surpyval as sp
 from surpyval import CovariatePath, WeibullAFT, WeibullPH
 from surpyval.tests._helpers import quietly
 from surpyval.univariate.regression import _bootstrap
-from surpyval.utils.linalg import percentile_bounds
+from surpyval.utils.linalg import numerical_gradient, percentile_bounds
 
 BOOT = {"method": "bootstrap", "n_boot": 40, "random_state": 3}
 
@@ -67,15 +69,40 @@ def test_617_bootstrap_is_an_option_and_wald_stays_the_default(ph):
         ph.cb(5.0, [1, 0.0], method="bootstrap", n_boot=0)
 
 
-def test_617_cb_is_the_percentile_of_the_refits(ph):
+def _bca(draws, est, a, alpha_ci=0.05):
+    """Efron's BCa interval, written out: the quantiles of the draws at
+    Phi(z0 + (z0 + z) / (1 - a (z0 + z)))."""
+    draws = np.asarray(draws, dtype=float)
+    share = (np.sum(draws < est) + 0.5 * np.sum(draws == est)) / len(draws)
+    z0 = norm.ppf(share)
+    levels = [
+        norm.cdf(z0 + (z0 + z) / (1 - a * (z0 + z)))
+        for z in norm.ppf([alpha_ci / 2, 1 - alpha_ci / 2])
+    ]
+    return np.quantile(draws, levels)
+
+
+def _least_favourable_skewness(model, fits, grad):
+    """A sixth of the skewness of grad' cov S over the resamples' scores."""
+    L = fits.scores @ (model.covariance() @ grad)
+    return skew(L) / 6
+
+
+def test_617_cb_is_the_bca_interval_of_the_refits(ph):
     x = np.array([2.0, 5.0, 10.0, 20.0])
     z = np.array([1, 0.3])
     sf = ph.cb(x, z, **BOOT)
     fits = ph._bootstrap_refits[(40, 3)]
-    assert fits.params.shape == (40, len(ph.params))
+    assert fits.params.shape == fits.scores.shape == (40, len(ph.params))
     H = np.array([ph.model.Hf(x, z, *p) for p in fits.params])
-    expected = np.exp(-percentile_bounds(H, 0.05)[:, ::-1])
-    np.testing.assert_allclose(sf, expected, rtol=1e-12)
+    H_hat = ph.Hf(x, z)
+    for j in range(x.size):
+        grad = numerical_gradient(
+            lambda p: ph.model.Hf(x[j], z, *p), np.asarray(ph.params)
+        )
+        a = _least_favourable_skewness(ph, fits, grad)
+        lo, hi = _bca(H[:, j], H_hat[j], a)
+        np.testing.assert_allclose(sf[j], np.exp([-hi, -lo]), rtol=1e-6)
     # sf, ff and Hf are one interval
     ff = ph.cb(x, z, on="ff", **BOOT)
     Hf = ph.cb(x, z, on="Hf", **BOOT)
@@ -88,27 +115,58 @@ def test_617_cb_is_the_percentile_of_the_refits(ph):
     )
     hf = ph.cb(x, z, on="hf", **BOOT)
     h = np.array([ph.model.hf(x, z, *p) for p in fits.params])
-    np.testing.assert_allclose(hf, percentile_bounds(h, 0.05), rtol=1e-12)
+    assert np.all((hf[:, 0] >= h.min(0)) & (hf[:, 1] <= h.max(0)))
 
 
 def test_617_param_cb_and_quantile_cb_bootstrap(ph):
     fits = _bootstrap.refits(ph, 40, 3)
     for i, name in enumerate(ph.parameter_names):
+        a = _least_favourable_skewness(ph, fits, np.eye(len(ph.params))[i])
         np.testing.assert_allclose(
             ph.param_cb(name, **BOOT),
-            percentile_bounds(fits.params[:, i], 0.05),
-            rtol=1e-12,
+            _bca(fits.params[:, i], ph.params[i], a),
+            rtol=1e-9,
         )
     upper = ph.param_cb("beta_0", bound="upper", **BOOT)
     assert upper.shape == (1,)
     q = ph.quantile_cb([0.1, 0.5], [1, 0.0], **BOOT)
-    # the percentiles of the refits' own quantiles
+    # about the refits' own quantiles
     refit = copy.copy(ph)
     t = []
     for p in fits.params:
         refit.params = p
         t.append(refit.qf([0.1, 0.5], [1, 0.0]))
-    np.testing.assert_allclose(q, percentile_bounds(t, 0.05), rtol=1e-9)
+    t = np.array(t)
+    t_hat = ph.qf([0.1, 0.5], [1, 0.0])
+    assert np.all((q[:, 0] >= t.min(0)) & (q[:, 1] <= t.max(0)))
+    assert np.all((q[:, 0] < t_hat) & (t_hat < q[:, 1]))
+
+
+def test_617_with_no_skew_or_bias_bca_is_the_percentile_interval():
+    draws = np.concatenate([np.arange(1.0, 51.0), -np.arange(1.0, 51.0)])
+    np.testing.assert_allclose(
+        _bootstrap.bca_bounds(
+            draws[:, None], np.array([0.0]), 0.0, 0.1, "two-sided"
+        )[0],
+        percentile_bounds(draws, 0.1),
+        rtol=1e-12,
+    )
+
+
+def test_617_the_acceleration_is_efrons_for_an_exponential_scale():
+    # With the shape held at 1 and a group indicator, alpha is the scale
+    # of an exponential estimated from the n0 units of group 0 alone; the
+    # skewness of its score is 2 / sqrt(n0), so a = 1 / (3 sqrt(n0)) (Efron
+    # 1987, the exponential/gamma example).
+    rng = np.random.default_rng(5)
+    Z = np.repeat([0.0, 1.0], 20)
+    x = 10 * rng.exponential(size=40) * np.exp(-0.5 * Z)
+    model = quietly(WeibullPH.fit, x, Z, fixed={"beta": 1.0})
+    fits = _bootstrap.refits(model, 800, 0)
+    grad = np.zeros((1, 3))
+    grad[0, 0] = 1.0
+    a = _bootstrap.acceleration(model, fits, grad)[0]
+    assert abs(a - 1 / (3 * np.sqrt(20))) < 0.05, a
 
 
 def test_617_the_calls_share_the_refits_per_seed(ph, monkeypatch):

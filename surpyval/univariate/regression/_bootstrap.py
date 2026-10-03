@@ -6,8 +6,14 @@ The model is resampled, not the data: each resample simulates a failure
 time for every unit from the fitted model at the unit's own covariates
 (and within its own truncation window), censors it as the unit was
 censored, and refits the same model to the result. The bounds are the
-percentile intervals of the refits' functions or parameters
-(:func:`~surpyval.utils.linalg.percentile_bounds`).
+BCa intervals (Efron 1987, "Better bootstrap confidence intervals",
+JASA 82) of the refits' functions or parameters: the percentiles of the
+refits, moved by a bias correction (from the share of refits below the
+estimate) and an acceleration (the skewness of the score of the least
+favourable family, from each resample's score at the estimate, so no
+refits beyond the ``n_boot``). On #583's accelerated life test they
+covered 0.90 where the percentile interval, the Wald and the
+likelihood-ratio bounds all covered 0.86 to 0.87 (#617).
 
 The censoring is that of the data, by Davison & Hinkley's conditional
 bootstrap (*Bootstrap Methods and their Application*, 1997, Algorithm
@@ -27,8 +33,8 @@ from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import ndtr, ndtri
 
-from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import quiet_maximum_warnings
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import check_option
@@ -97,6 +103,10 @@ class Refits:
     params: npt.NDArray
     #: The baseline point of each kept refit (the model's ``center``).
     centers: list
+    #: ``(n_kept, len(params))``: the score (gradient of the
+    #: log-likelihood) of each kept resample at the model's parameters,
+    #: from which the BCa interval's acceleration is found.
+    scores: npt.NDArray
     #: Kept refits whose likelihood had no finite maximum, or whose
     #: maximum was not verified (the values they reached are kept).
     no_maximum: int
@@ -264,7 +274,8 @@ def _draw(
     }
     if not model._is_accelerated_life():
         kwargs["center"] = model._has_center()
-    params, centers = [], []
+    score = _score(model, p_hat)
+    params, centers, scores = [], [], []
     counts = {"no finite maximum": 0, "unverified": 0, "failed": 0}
     for _ in range(n_boot):
         x, c, t = _simulate(model, design, p_hat, H_lo, H_hi, rng)
@@ -285,11 +296,13 @@ def _draw(
             counts[refit.maximum] += 1
         params.append(np.asarray(refit._eval_params(), dtype=float))
         centers.append(refit.center)
+        scores.append(score(refit.data))
     return Refits(
         point=point,
         n_boot=n_boot,
         params=np.array(params).reshape(len(params), p_hat.size),
         centers=centers,
+        scores=np.array(scores).reshape(len(scores), p_hat.size),
         no_maximum=counts["no finite maximum"],
         unverified=counts["unverified"],
         failed=counts["failed"],
@@ -364,7 +377,40 @@ def _times_at(
     )
 
 
-# -- the bounds ------------------------------------------------------------
+# -- the scores of the resamples ---------------------------------------------
+
+
+def _score(model: Any, p_hat: npt.NDArray) -> Callable[[Any], npt.NDArray]:
+    """``score(data)``: the gradient of the log-likelihood of ``data`` at
+    the model's own parameters ``p_hat`` (its baseline at its
+    ``center``), by central differences in the steps of its covariance
+    (``_hessian_step``); zero for a held parameter."""
+    from ._fit_skeleton import centred_copy
+
+    names = model.parameter_names
+    held = model._held()
+    free = [i for i, nm in enumerate(names) if nm not in held]
+    step = model._hessian_step(p_hat)
+    center = model.center
+    shift = center is not None and bool(np.any(center))
+
+    def score(data: Any) -> npt.NDArray:
+        if shift:
+            data = centred_copy(data, center)
+        out = np.zeros(p_hat.size)
+        with np.errstate(all="ignore"):
+            for i in free:
+                e = np.zeros(p_hat.size)
+                e[i] = step[i]
+                up = model.model.neg_ll(data, *(p_hat + e))
+                down = model.model.neg_ll(data, *(p_hat - e))
+                out[i] = -(float(up) - float(down)) / (2.0 * step[i])
+        return out
+
+    return score
+
+
+# -- the bounds --------------------------------------------------------------
 
 
 def param_cb_bootstrap(
@@ -375,16 +421,25 @@ def param_cb_bootstrap(
     n_boot: Any,
     random_state: Any,
 ) -> npt.NDArray:
-    """``param_cb(method="bootstrap")``: the percentile interval of the
-    refits' parameter ``idx``. A held parameter's interval is its value,
-    and an aliased one's ``nan``, as for the Wald bound."""
+    """``param_cb(method="bootstrap")``: the BCa interval of the refits'
+    parameter ``idx``. A held parameter's interval is its value, as for
+    the Wald bound."""
     fits = refits(model, n_boot, random_state)
     fits.warn()
     names = model.parameter_names
     if names[idx] in model._held():
         value = float(model.params[idx])
         return np.array([value, value] if bound == "two-sided" else [value])
-    cb = _percentiles(fits.params[:, idx][:, None], alpha_ci, bound)[0]
+    p_hat = np.asarray(model._eval_params(), dtype=float)
+    grad = np.zeros((1, p_hat.size))
+    grad[0, idx] = 1.0
+    cb = bca_bounds(
+        fits.params[:, idx][:, None],
+        p_hat[idx : idx + 1],
+        acceleration(model, fits, grad),
+        alpha_ci,
+        bound,
+    )[0]
     return np.atleast_1d(cb)
 
 
@@ -398,11 +453,10 @@ def cb_bootstrap(
     n_boot: Any,
     random_state: Any,
 ) -> npt.NDArray:
-    """``cb(method="bootstrap")``: the percentile interval of ``on`` over
-    the refits at each ``x`` and row of ``Z`` (paired as for ``sf``).
-    ``sf``, ``ff`` and ``Hf`` are one interval, on the cumulative hazard,
-    so they agree exactly; below the support the bound is the
-    estimate."""
+    """``cb(method="bootstrap")``: the BCa interval of ``on`` over the
+    refits at each ``x`` and row of ``Z`` (paired as for ``sf``). ``sf``,
+    ``ff`` and ``Hf`` are one interval, on the cumulative hazard, so they
+    agree exactly; below the support the bound is the estimate."""
     on = {"R": "sf", "F": "ff"}.get(on, on)
     fits = refits(model, n_boot, random_state)
     fits.warn()
@@ -414,20 +468,21 @@ def cb_bootstrap(
     if on in ("hf", "df"):
         fn = model.model.hf if on == "hf" else model.model.df
 
-        def value(p: npt.NDArray, center: Any) -> npt.NDArray:
+        def value(p: npt.NDArray, center: Any = None) -> npt.NDArray:
             with np.errstate(all="ignore"):
                 v = fn(x_in, model._centred(rows, center), *p)
-            return np.where(below, 0.0, np.asarray(v, dtype=float))
+            v = np.broadcast_to(np.asarray(v, dtype=float), t.shape)
+            return np.where(below, 0.0, v)
 
-        draws = _draws(fits, value, t.shape)
-        return _percentiles(draws, alpha_ci, bound)
+        return function_bounds(model, fits, value, None, alpha_ci, bound)
 
-    def H_of(p: npt.NDArray, center: Any) -> npt.NDArray:
+    def H_of(p: npt.NDArray, center: Any = None) -> npt.NDArray:
         with np.errstate(all="ignore"):
             H = model.model.Hf(x_in, model._centred(rows, center), *p)
-        return np.where(below, 0.0, np.asarray(H, dtype=float))
+        H = np.broadcast_to(np.asarray(H, dtype=float), t.shape)
+        return np.where(below, 0.0, H)
 
-    return hazard_bounds(_draws(fits, H_of, t.shape), on, alpha_ci, bound)
+    return function_bounds(model, fits, H_of, on, alpha_ci, bound)
 
 
 def quantile_cb_bootstrap(
@@ -439,16 +494,17 @@ def quantile_cb_bootstrap(
     n_boot: Any,
     random_state: Any,
 ) -> npt.NDArray:
-    """``quantile_cb(method="bootstrap")``: the percentile interval of
-    the refits' quantiles ``qf(p[i], rows[i])``."""
+    """``quantile_cb(method="bootstrap")``: the BCa interval of the
+    refits' quantiles ``qf(p[i], rows[i])``."""
     fits = refits(model, n_boot, random_state)
     fits.warn()
     H_target = -np.log1p(-p)
 
-    def value(params: npt.NDArray, center: Any) -> npt.NDArray:
+    def value(params: npt.NDArray, center: Any = None) -> npt.NDArray:
+        center = model.center if center is None else center
         return _times_at(model, params, center, H_target, rows)
 
-    return _percentiles(_draws(fits, value, p.shape), alpha_ci, bound)
+    return function_bounds(model, fits, value, None, alpha_ci, bound)
 
 
 def tvc_refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
@@ -458,16 +514,38 @@ def tvc_refits(model: Any, n_boot: Any, random_state: Any) -> Refits:
     return fits
 
 
-def hazard_bounds(
-    H: npt.NDArray, on: str, alpha_ci: float, bound: str
+def function_bounds(
+    model: Any,
+    fits: Refits,
+    value: Callable[..., npt.NDArray],
+    on: "str | None",
+    alpha_ci: float,
+    bound: str,
 ) -> npt.NDArray:
-    """The percentile bounds on ``on`` (``sf``, ``ff`` or ``Hf``) from
-    the refits' cumulative hazards ``H`` (one refit per row): one
-    interval on ``H``, carried to ``on`` (``sf`` decreases in ``H``, so
-    its lower end is ``H``'s upper)."""
+    """The BCa bounds on ``value(params, center)``, a function of the
+    parameters (and of the covariate point the baseline is at, the
+    model's by default) with one value per query point: over the refits,
+    each at its own baseline point, about its value at the model's
+    parameters. With ``on`` (``sf``, ``ff`` or ``Hf``), ``value`` is the
+    cumulative hazard, and the one interval on it is carried to ``on``
+    (``sf`` decreases in it, so its lower end is the hazard's upper)."""
+    p_hat = np.asarray(model._eval_params(), dtype=float)
+    est = np.asarray(value(p_hat), dtype=float)
+    shape = est.shape
+    draws = np.empty((len(fits.centers),) + shape)
+    for i, (p, center) in enumerate(zip(fits.params, fits.centers)):
+        draws[i] = np.reshape(value(p, center), shape)
+    a = acceleration(model, fits, _jacobian(model, value, p_hat))
     flip = on == "sf" and bound != "two-sided"
     side = {"lower": "upper", "upper": "lower"}.get(bound, bound)
-    cb = _percentiles(H, alpha_ci, side if flip else bound)
+    cb = bca_bounds(
+        draws.reshape(len(draws), -1),
+        est.reshape(-1),
+        a,
+        alpha_ci,
+        side if flip else bound,
+    )
+    cb = cb.reshape(shape + cb.shape[1:])
     if on == "sf":
         if bound == "two-sided":
             cb = cb[..., ::-1]
@@ -479,28 +557,104 @@ def hazard_bounds(
     return cb
 
 
-def _draws(
-    fits: Refits,
-    value: Callable[[npt.NDArray, Any], npt.NDArray],
-    shape: tuple,
+def _jacobian(
+    model: Any, value: Callable[..., npt.NDArray], p_hat: npt.NDArray
 ) -> npt.NDArray:
-    """``value(params, center)`` of every refit, stacked on a first
-    axis."""
-    out = np.empty((len(fits.centers),) + tuple(shape))
-    for i, (p, center) in enumerate(zip(fits.params, fits.centers)):
-        out[i] = np.reshape(value(p, center), shape)
-    return out
+    """``(n_points, len(p_hat))``: the central-difference gradient of
+    ``value`` at ``p_hat`` at each query point, in the steps of the
+    covariance; zero in a held parameter."""
+    names = model.parameter_names
+    held = model._held()
+    step = model._hessian_step(p_hat)
+    size = np.size(value(p_hat))
+    cols = []
+    with np.errstate(all="ignore"):
+        for i, name in enumerate(names):
+            if name in held:
+                cols.append(np.zeros(size))
+                continue
+            e = np.zeros(p_hat.size)
+            e[i] = step[i]
+            up = np.asarray(value(p_hat + e), dtype=float).reshape(-1)
+            down = np.asarray(value(p_hat - e), dtype=float).reshape(-1)
+            cols.append((up - down) / (2.0 * step[i]))
+    return np.stack(cols, axis=-1)
 
 
-def _percentiles(
-    draws: npt.NDArray, alpha_ci: float, bound: str
+def acceleration(model: Any, fits: Refits, grad: npt.NDArray) -> npt.NDArray:
+    """The BCa acceleration of each function whose gradient at the
+    estimate is a row of ``grad``: Efron's (1987) parametric
+    acceleration, a sixth of the skewness of the score of the least
+    favourable family, ``L = grad' I^-1 S``, over the resamples' scores
+    ``S`` at the estimate (``I^-1`` the model's covariance). Taken as 0
+    (the bias-corrected percentile interval) where the covariance or the
+    skewness is not finite."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cov = np.array(model.covariance(), dtype=float)
+    held = model._held()
+    out = [i for i, nm in enumerate(model.parameter_names) if nm in held]
+    cov[out, :] = 0.0
+    cov[:, out] = 0.0
+    n_points = grad.shape[0]
+    if fits.scores.shape[0] < 3 or not np.all(np.isfinite(cov)):
+        return np.zeros(n_points)
+    with np.errstate(all="ignore"):
+        L = fits.scores @ (np.nan_to_num(grad) @ cov).T
+        L = L - L.mean(axis=0)
+        m2 = np.mean(L**2, axis=0)
+        a = np.mean(L**3, axis=0) / (6.0 * m2**1.5)
+    return np.where(np.isfinite(a), a, 0.0)
+
+
+def bca_bounds(
+    draws: npt.NDArray,
+    est: npt.NDArray,
+    a: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
 ) -> npt.NDArray:
-    """:func:`percentile_bounds` of ``draws``, with infinite draws (a
-    refit whose function runs off to a limit) counted at their end, and
-    ``nan`` where fewer than two refits were kept."""
-    shape = draws.shape[1:] + ((2,) if bound == "two-sided" else ())
-    if draws.shape[0] < 2:
-        return np.full(shape, np.nan)
+    """The BCa bounds (Efron 1987) of each column of ``draws`` (one
+    refit per row) about the estimate ``est`` of that column, with
+    acceleration ``a``: the quantiles of the draws at ``Phi(z0 + w / (1 -
+    a w))``, ``w = z0 + z_alpha``, the bias correction ``z0`` the normal
+    quantile of the share of draws below the estimate (ties counted
+    half, and the share kept within half a draw of 0 and 1). Where ``1 -
+    a w`` is not positive the level is the end of the draws on that
+    side. The quantiles interpolate linearly, as ``np.quantile``'s.
+    Infinite draws (a function that runs off to a limit) count at their
+    end; fewer than two draws give ``nan``."""
+    n, m = draws.shape
+    sides = (2,) if bound == "two-sided" else ()
+    if n < 2:
+        return np.full((m,) + sides, np.nan)
+    tails = {
+        "two-sided": [alpha_ci / 2.0, 1.0 - alpha_ci / 2.0],
+        "lower": [alpha_ci],
+        "upper": [1.0 - alpha_ci],
+    }[bound]
     big = np.finfo(float).max
-    out = percentile_bounds(np.clip(draws, -big, big), alpha_ci, bound)
-    return np.where(np.abs(out) >= big, np.sign(out) * np.inf, out)
+    ordered = np.sort(np.clip(draws, -big, big), axis=0)
+    with np.errstate(invalid="ignore"):
+        below = np.sum(draws < est, axis=0)
+        tied = np.sum(draws == est, axis=0)
+    share = np.clip((below + 0.5 * tied) / n, 0.5 / n, 1.0 - 0.5 / n)
+    z0 = ndtri(share)
+    out = []
+    cols = np.arange(m)
+    for tail in tails:
+        w = z0 + ndtri(tail)
+        denom = 1.0 - a * w
+        with np.errstate(divide="ignore", invalid="ignore"):
+            adjusted = np.where(denom > 0, z0 + w / denom, np.sign(w) * np.inf)
+        pos = ndtr(adjusted) * (n - 1)
+        lo = np.clip(np.floor(pos).astype(int), 0, n - 1)
+        hi = np.minimum(lo + 1, n - 1)
+        frac = pos - lo
+        v_lo, v_hi = ordered[lo, cols], ordered[hi, cols]
+        with np.errstate(invalid="ignore", over="ignore"):
+            v = np.where(frac > 0, v_lo + frac * (v_hi - v_lo), v_lo)
+        v = np.where(np.abs(v) >= big, np.sign(v) * np.inf, v)
+        # A missing estimate (a nan time) gives nan.
+        out.append(np.where(np.isnan(est), np.nan, v))
+    return np.stack(out, axis=-1) if bound == "two-sided" else out[0]

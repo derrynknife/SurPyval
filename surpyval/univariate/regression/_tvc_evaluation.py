@@ -1165,7 +1165,7 @@ class TVCEvaluationMixin:
         ...                  model.cb(np.array([40, 80]), [0.5])))
         True
         """
-        from ._bootstrap import bound_method, hazard_bounds, tvc_refits
+        from ._bootstrap import bound_method, function_bounds, tvc_refits
         from ._likelihood_ratio import cb_tvc_lr, lr_search
         from .tvc_path import CovariatePath
 
@@ -1229,14 +1229,8 @@ class TVCEvaluationMixin:
                 search, xq, H_of, H_of(params), on, alpha_ci, bound
             )
         if method == "bootstrap":
-            draws = np.array(
-                [
-                    np.reshape(H_of(p, at), xq.shape)
-                    for p, at in zip(fits.params, fits.centers)
-                ]
-            ).reshape((len(fits.centers),) + xq.shape)
             on = {"R": "sf", "F": "ff"}.get(on, on)
-            return hazard_bounds(draws, on, alpha_ci, bound)
+            return function_bounds(self, fits, H_of, on, alpha_ci, bound)
         return self._sf_bounds(
             H_of,
             lambda p: np.exp(-H_of(p)),
