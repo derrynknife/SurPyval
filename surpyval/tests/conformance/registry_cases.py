@@ -1391,7 +1391,21 @@ def _bounds(case):
             Bound("param_cb", kind="param", label="param_cb[lr]", **lr),
             Bound("quantile_cb", point="qf", label="quantile_cb[lr]", **lr),
         )
-    if cls in ("FrailtyModel", "ProportionalOddsModel", "CoxFrailtyModel"):
+    if cls in ("FrailtyModel", "ProportionalOddsModel"):
+        # The profile-likelihood interval (#617), slow as the regression
+        # models' likelihood-ratio bounds are.
+        lr = Bound(
+            "param_cb",
+            kind="param",
+            kwargs={"method": "lr"},
+            label="param_cb[lr]",
+            wald=False,
+            nan_ok=True,
+            rtol=1e-3,
+            slow=True,
+        )
+        return (_PARAM_CB, lr)
+    if cls == "CoxFrailtyModel":
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":
         return (

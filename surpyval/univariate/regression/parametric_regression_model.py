@@ -233,10 +233,18 @@ class ParametricRegressionModel(
     _covariance_cache: "tuple | None" = None
     #: The likelihood-ratio searches of ``cb`` / ``param_cb`` with
     #: ``method="lr"`` (``_likelihood_ratio.lr_search``), with what they
-    #: have found, kept while the parameters and data stay as they are.
+    #: have found, kept while the parameters and data stay as they are;
+    #: not pickled (``__getstate__``).
     _lr_searches: "list | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
+
+    def __getstate__(self) -> dict:
+        # The likelihood-ratio searches, with the regions and bounds they
+        # have found, are rebuilt where a bound is asked for again (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_searches", None)
+        return state
 
     # -- serialisation -----------------------------------------------------
 

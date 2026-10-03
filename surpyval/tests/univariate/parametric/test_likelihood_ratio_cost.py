@@ -377,3 +377,34 @@ def test_609_an_answer_found_again_is_not_checked_again(monkeypatch):
     # One further from it than the hair (the estimate) is checked
     assert search.checks_out(-1.0, search.u_hat) is None
     assert solves == [1]
+
+
+def test_609_a_valley_at_its_limit_is_probed_once(monkeypatch):
+    # A NegativeBinomial's r runs to infinity along a valley whose profile
+    # deviance has reached its limit (the Poisson's) by the deepest point
+    # of the walk: the slice through the point before it was searched as
+    # well, a fifth of the registry's bounds' time (98 s, now 80 s), for
+    # answers equal to 1e-14. An ExpoWeibull's valleys, still changing
+    # there, are probed as before.
+    model = _fitted("NegativeBinomial")
+    faces = []
+    extreme_far = likelihood_ratio._PsiBoundSearch.extreme_far
+
+    def counted(self, direction, start, level, *args, face=None, **kw):
+        if face is not None:
+            # (the side of the bound, and the parameter held)
+            faces.append((direction, face[0]))
+        return extreme_far(
+            self, direction, start, level, *args, face=face, **kw
+        )
+
+    monkeypatch.setattr(
+        likelihood_ratio._PsiBoundSearch, "extreme_far", counted
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        lo, hi = model.cb(5.0, method="lr")
+    assert lo < model.sf(5.0) < hi
+    assert faces
+    # One slice a face and side of the bound, not two
+    assert len(faces) == len(set(faces))

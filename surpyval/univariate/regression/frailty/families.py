@@ -136,7 +136,9 @@ def lognormal_log_integral(
     tv = float(getval(theta))
     D, Hv = np.broadcast_arrays(D, Hv)
     big = max(float(np.max(Hv, initial=0.0)), float(np.max(D, initial=0.0)))
-    if tv * max(big, 1.0) ** 2 < _EPS:
+    # theta big^2 < eps, without squaring a big above 1e154, which
+    # overflows (an OverflowError, not inf, for a Python float; #617)
+    if tv <= 0 or max(big, 1.0) < np.sqrt(_EPS / tv):
         # The corrections to -H are of order theta (D - H)^2 and theta H.
         return -1.0 * H + 0.0 * D
     r, omega = lognormal_mode(D, Hv, tv)

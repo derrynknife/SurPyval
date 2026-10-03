@@ -1900,8 +1900,9 @@ use when the shape of the baseline is what you cannot commit to.
 
 The fitted model has the Cox model's interface: ``sf``, ``ff`` and ``Hf`` at
 covariate rows (``grid=True`` for a curve per row), ``hf`` and ``df`` as the
-jumps at the event times, ``summary()``, ``param_cb``, ``concordance`` and
-``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
+jumps at the event times, ``summary()``, ``param_cb`` (Wald, or with
+``method='lr'`` the profile-likelihood interval of the coefficient, the
+baseline profiled out), ``concordance`` and ``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
 ``formula``. Before the first event time the survival is 1, and after the
 last observed time it holds its last value. A covariate that separates the
 events from the survivors (a level with no events) leaves the likelihood
@@ -1999,7 +2000,8 @@ The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
 sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
 ``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
-and ``param_cb``.
+and ``param_cb`` (Wald, or the profile-likelihood interval with
+``method='lr'``).
 
 
 .. _accelerated-life:
@@ -2788,17 +2790,19 @@ Bounds, mean life and accelerated life along a path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
-bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
-along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
-carried along the path: a Wald bound on the baseline family's
-probability-plot scale (as for ``cb``), with its standard error propagated
-from the fitted covariance by the delta method, so a constant path gives
-``cb``. Along a
+bound='two-sided', method='wald')`` puts confidence bounds on ``sf``,
+``ff`` or ``Hf`` along a step schedule or a ``CovariatePath``. They are the
+bounds of ``cb`` carried along the path: by default a Wald bound on the
+baseline family's probability-plot scale (as for ``cb``), with its standard
+error propagated from the fitted covariance by the delta method, so a
+constant path gives ``cb``. Along a
 ``CovariatePath`` the quadrature mesh is adapted once, at the fitted
 parameters, and then held fixed while the parameters are perturbed. The
 function the delta method differentiates is then smooth in the parameters,
 and the cost is :math:`2k + 1` passes along the path for :math:`k`
-parameters.
+parameters. ``method='lr'`` gives the likelihood-ratio bound of ``cb``
+instead (see `Confidence Bounds`_): the extreme of the function along the
+path over the likelihood region of the parameters, about a second a time.
 
 .. jupyter-execute::
 
@@ -2806,6 +2810,8 @@ parameters.
     print('S(t) along the ramp:', ph.sf_tvc(t2, ramp).round(4))
     print('95% bounds:')
     print(ph.cb_tvc(t2, ramp).round(4))
+    print('likelihood ratio:')
+    print(ph.cb_tvc(t2, ramp, method='lr').round(4))
     print('given the ramp survived:', ph.cb_tvc([2.0], ramp, given=1.0).round(4))
 
 .. jupyter-execute::
@@ -2816,6 +2822,8 @@ parameters.
     assert np.all((_b[:, 0] < _s) & (_s < _b[:, 1]))
     assert np.allclose(ph.cb_tvc(t2, CovariatePath.from_points([0], [0.5])),
                        ph.cb(t2, [0.5]), rtol=1e-8)
+    _lr = ph.cb_tvc(t2, ramp, method='lr')
+    assert np.all((_lr[:, 0] < _s) & (_s < _lr[:, 1]))
 
 In a simulation of 1,000 fits each of a ``WeibullPH`` and a ``WeibullAFT``
 model (100 units, censored at a fixed time), the 95% bounds covered the true
@@ -3298,7 +3306,14 @@ here on grouped data with no frailty at all:
 The likelihoods agree and the frailty model pays 2 AIC units for its unused
 ``theta``: report the proportional-hazards model, since a variance on its
 boundary has no meaningful Wald interval (``param_cb('theta')`` is then
-``[0, inf]``).
+``[0, inf]``). The profile-likelihood interval, ``param_cb('theta',
+method='lr')``, does have a finite upper end: the largest frailty variance
+the data do not rule out.
+
+.. jupyter-execute::
+
+    print('theta, profile-likelihood 95% interval:',
+          no_frailty.param_cb('theta', method='lr').round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -3308,6 +3323,8 @@ boundary has no meaningful Wald interval (``param_cb('theta')`` is then
     assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
     assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
     assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+    _lo, _hi = no_frailty.param_cb('theta', method='lr')
+    assert _lo == 0 and 0 < _hi < np.inf
 
 **A Cox baseline.** ``CoxFrailty`` is the same shared gamma frailty with the
 baseline hazard left unspecified, as in ``CoxPH`` -- the semi-parametric
