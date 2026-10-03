@@ -110,7 +110,7 @@ and step 2 builds on them.
 
 ## Continuous time-varying covariates: fitting (phase 3)
 
-*Status: designed. Size: medium to large. From #172.*
+*Status: designed. Size: medium to large. Was #172.*
 
 Phases 1 and 2 (both in 0.22) evaluate a fitted model along a known,
 external covariate path, with bounds (`cb_tvc`), the mean (`mean_tvc`) and
@@ -128,6 +128,26 @@ ramp.
    transformation computed by the path engine.
 
 The design is in the #172 proposal.
+
+## Analytic two-stage bounds for accelerated degradation
+
+*Status: idea (research). Size: medium. Was #239.*
+
+For a plain degradation model, two-stage confidence bounds have an analytic
+generated-regressor correction (`cb(method="analytic")`,
+`life_parameter_covariance("analytic")`): it widens the life model's
+covariance by each unit's pseudo-failure-time variance. For an accelerated
+(covariate) degradation model the correction is not derived, and both
+raise `NotImplementedError` pointing to `method="bootstrap"`.
+
+The derivation has to carry each unit's pseudo-failure-time variance
+through the regression life fit: the Jacobian of the fitted coefficients
+with respect to the generated pseudo-failure times. The bootstrap already
+gives valid bounds (it resamples units and reruns the whole pipeline,
+`path="best"` reselection included), so this would add speed and a closed
+form only, not coverage. Done would mean the two `NotImplementedError`
+branches removed, with a test that the analytic bounds agree with the
+bootstrap on a fixed seed.
 
 ## Competing-risks survival trees and forests
 
@@ -192,5 +212,7 @@ favour of this). It is how every change is made:
 
 Ideas from this file that have shipped, newest first.
 
-- *None yet.* (Before this file existed, large items were tracked in the
-  issues; see the changelog.)
+- **Continuous time-varying covariates: evaluation** (phases 1 and 2 of
+  #172), 0.22: `CovariatePath`, `sf_tvc` / `Hf_tvc` along a path,
+  `cb_tvc`, `mean_tvc` and cumulative exposure for accelerated life
+  models; likelihood-ratio `cb_tvc` in 0.23. Fitting is phase 3, above.
