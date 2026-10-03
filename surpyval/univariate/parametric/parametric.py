@@ -2235,18 +2235,34 @@ class Parametric(
         """``_ff_band_end`` of the Wald band at all the counts ``ks`` in
         one call: ``cb(ks, on="ff")``, step for step, with the delta
         method's gradients in one reverse pass."""
+        # One reverse pass for every count needs functions that take the
+        # parameters point by point: true of every built-in distribution,
+        # but a user's CustomDistribution (or Discretize of one) may mix
+        # points, and its gradients would then be silently wrong, so it is
+        # differentiated a point at a time.
+        elementwise = not self._has_custom_distribution()
         with np.errstate(all="ignore"):
             if bound == "two-sided":
                 # 1 - [upper, lower] on R is [lower, upper] on F
                 band = 1.0 - self._cb_sf_bound(
-                    ks, ctx, alpha_ci, bound, elementwise=True
+                    ks, ctx, alpha_ci, bound, elementwise=elementwise
                 )
                 return band[:, 1] if end == "upper" else band[:, 0]
             # The upper end of F is the lower end of R, and vice versa
             side = "lower" if end == "upper" else "upper"
             return 1.0 - self._cb_sf_bound(
-                ks, ctx, alpha_ci, side, elementwise=True
+                ks, ctx, alpha_ci, side, elementwise=elementwise
             )
+
+    def _has_custom_distribution(self) -> bool:
+        """Whether the model's distribution, or the one it discretizes, is
+        a user's ``CustomDistribution``."""
+        from .distributions.custom_distribution import CustomDistribution
+
+        dist = self.dist
+        return isinstance(dist, CustomDistribution) or isinstance(
+            getattr(dist, "dist", None), CustomDistribution
+        )
 
     def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.

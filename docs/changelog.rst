@@ -26,6 +26,23 @@ v0.23 (unreleased)
   far above its truncation windows had a log-likelihood of -9.67 that was
   rounding (the supremum is -10.03), or a ``nan`` truncation term. With
   #584, Normal fits on such data take 0.4 s instead of 11-12 s.
+- **ExpoWeibull moments without quad (#586).** ``moment`` and ``mean``
+  integrated each moment with scipy ``quad`` over a Python integrand: 96% of
+  an offset method-of-moments fit, off by up to 1.4e-9 at ``mu = 0.01``,
+  and an ``OverflowError`` near ``m / beta = 80``. They now use a fixed
+  tanh-sinh rule over the probability, vectorised over parameters, within
+  2.2e-14 of 25-digit references: an offset MOM fit 6.7 s → 1.2 s, ``mean``
+  about 10x faster.
+- **The simultaneous band's critical value is cached (#590).** ``band()``
+  recomputed it on every call; it is cached on what it depends on, and its
+  root search no longer re-evaluates its bracket's ends. Values are
+  unchanged to the bit: a fresh band 150 → 68 ms, a repeated one 0.07 ms.
+- **Discrete quantile_cb evaluates the band in blocks (#591).** The Wald
+  bound on a discrete quantile called ``cb`` once per candidate count, each
+  with its own autograd gradient; the same search now evaluates blocks of
+  counts with one gradient pass per block (a custom distribution keeps the
+  gradient a point at a time). Bounds are unchanged: BetaGeometric
+  ``quantile_cb`` about 6x faster.
 - **Faster accelerated-degradation sampling (#585).**
   ``DegradationModel.qf`` and ``random`` on an accelerated model searched
   for each probability on its own, calling the regression model's ``sf``

@@ -209,6 +209,40 @@ def test_591_discrete_quantile_cb_evaluates_the_band_in_blocks(monkeypatch):
     assert max(calls) == 42
 
 
+def test_591_a_custom_distribution_is_differentiated_a_point_at_a_time(
+    monkeypatch,
+):
+    # The one-pass gradient assumes functions that take the parameters
+    # point by point; a user's CustomDistribution may not, so a Discretize
+    # of one keeps the gradient a point at a time.
+    from surpyval.univariate.parametric.parametric import Parametric
+
+    def weibull_hf(x, lam, beta):
+        return (beta / lam) * (x / lam) ** (beta - 1)
+
+    custom = sp.CustomDistribution(
+        "q591_weibull",
+        weibull_hf,
+        ["lam", "beta"],
+        ((0, None), (0, None)),
+        (0, np.inf),
+    )
+    rng = np.random.default_rng(3)
+    k = np.ceil(rng.weibull(1.5, 80) * 6.0)
+    model = sp.Discretize(custom).fit(k)
+    seen = []
+    real = Parametric._cb_delta_var
+
+    def spy(self, func, ctx, n_points=None):
+        seen.append(n_points)
+        return real(self, func, ctx, n_points)
+
+    monkeypatch.setattr(Parametric, "_cb_delta_var", spy)
+    got = model.quantile_cb([0.2, 0.8])
+    assert seen and all(n is None for n in seen)
+    assert np.all(got[:, 0] <= got[:, 1])
+
+
 @pytest.mark.parametrize(
     "kwargs, match",
     [
