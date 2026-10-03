@@ -41,6 +41,11 @@ from surpyval.utils.deprecation import (
 from surpyval.utils.validation import option_error
 
 
+class _StopSearch(Exception):
+    """Raised by a path a least-squares search evaluates, to end that
+    search (see ``OffsetExponentialPath_.fit``)."""
+
+
 def _ols(z: npt.NDArray, y: npt.NDArray) -> tuple[float, float]:
     """Closed-form least squares fit of ``y = intercept + slope * z``."""
     A = np.column_stack([np.ones_like(z), z])
@@ -154,21 +159,41 @@ class PathModel(ABC):
         guesses = np.atleast_2d(
             np.asarray(self._initial_guess(x, y), dtype=float)
         )
-        best_params, best_rss = None, np.inf
-        for p0 in guesses:
-            try:
-                params, _ = curve_fit(self.path, x, y, p0=p0, maxfev=10_000)
-            except RuntimeError:
-                continue
-            residuals = y - self.path(x, *params)
-            rss = float(residuals @ residuals)
-            if np.isfinite(rss) and rss < best_rss:
-                best_params, best_rss = params, rss
+        best_params, best_rss = self._least_squares(x, y, guesses)
         if best_params is None:
             raise ValueError(
                 "Could not fit the {} path model to the data".format(self.name)
             )
         return best_params
+
+    def _least_squares(
+        self,
+        x: npt.NDArray,
+        y: npt.NDArray,
+        guesses: npt.NDArray,
+        path: Any = None,
+        stopped: "list | None" = None,
+    ) -> "tuple[npt.NDArray | None, float]":
+        """``(params, rss)``: the best least-squares fit of ``path`` (the
+        model's own by default) from each of ``guesses``, ``(None, inf)``
+        where none converges. A search ``path`` stops (by raising
+        :class:`_StopSearch`) has its guess appended to ``stopped``."""
+        path = self.path if path is None else path
+        best_params, best_rss = None, np.inf
+        for p0 in guesses:
+            try:
+                params, _ = curve_fit(path, x, y, p0=p0, maxfev=10_000)
+            except RuntimeError:
+                continue
+            except _StopSearch:
+                if stopped is not None:
+                    stopped.append(p0)
+                continue
+            residuals = y - self.path(x, *params)
+            rss = float(residuals @ residuals)
+            if np.isfinite(rss) and rss < best_rss:
+                best_params, best_rss = params, rss
+        return best_params, best_rss
 
     def __repr__(self) -> str:
         return "{} Degradation Path Model".format(self.name)
@@ -497,6 +522,99 @@ class OffsetExponentialPath_(PathModel):
             intercept, slope = _ols(x, np.log(np.abs(shifted)))
             guesses.append([a0, sign * np.exp(intercept), slope])
         return guesses
+
+    def fit(self, x: npt.ArrayLike, y: npt.ArrayLike) -> npt.NDArray:
+        """
+        Fit the path parameters to one unit's measurements by nonlinear
+        least squares, from an offset below the data and one above.
+
+        The two starts bend the path opposite ways (``b > 0`` convex,
+        ``b < 0`` concave), and on nearly straight measurements the one
+        bending against the data has no least-squares minimum: it runs to
+        the straight line the family approaches as ``c -> 0`` with ``b c``
+        fixed, ``b`` growing without end, and spent 2,500 evaluations
+        getting there against the other's 200 to 700 (95% of a 6.4 s
+        ``path="best"`` fit of 200 straight units, #621). Near that limit,
+        ``|c|`` times the span of the times below ``_LINE_LIMIT``, the
+        path is a line plus ``b c^2 x^2 / 2`` to within a third of a
+        percent, and its best fit is the line wherever ``b`` bends
+        against the curvature of the measurements' least-squares
+        quadratic; a search there whose residual sum of squares is no
+        less than the line's is stopped. It cannot have won: the other
+        start's answer is kept only where its sum of squares is no more
+        than the line's, and the stopped searches are run in full where
+        it is not, so the answer is the one the full searches give.
+
+        Parameters
+        ----------
+        x : array_like
+            The unit's measurement times.
+        y : array_like
+            Its degradation measurements.
+
+        Returns
+        -------
+        numpy array
+            The fitted ``a``, ``b`` and ``c``.
+        """
+        x = np.asarray(x, dtype=float)
+        y = np.asarray(y, dtype=float)
+        self.check_data(x, y)
+        guesses = np.atleast_2d(
+            np.asarray(self._initial_guess(x, y), dtype=float)
+        )
+        toward_line = _TowardLine(self, x, y)
+        stopped: list = []
+        params, rss = self._least_squares(x, y, guesses, toward_line, stopped)
+        if stopped and not rss <= toward_line.rss:
+            more, more_rss = self._least_squares(x, y, np.array(stopped))
+            if more is not None and more_rss < rss:
+                params, rss = more, more_rss
+        if params is None:
+            raise ValueError(
+                "Could not fit the {} path model to the data".format(self.name)
+            )
+        return params
+
+
+#: How close to its straight-line limit (``|c|`` times the span of the
+#: times) an offset exponential search must be to be judged against the
+#: line (see ``OffsetExponentialPath_.fit``).
+_LINE_LIMIT = 0.01
+
+
+class _TowardLine:
+    """The offset exponential path, for a least-squares search of one
+    unit's measurements ``(x, y)``, that ends the search (raises
+    :class:`_StopSearch`) at a point heading for the straight line the
+    family approaches as ``c -> 0`` (see ``OffsetExponentialPath_.fit``).
+    ``rss`` is the line's residual sum of squares."""
+
+    def __init__(
+        self, model: PathModel, x: npt.NDArray, y: npt.NDArray
+    ) -> None:
+        self.model = model
+        self.y = y
+        self.span = float(x.max() - x.min())
+        intercept, slope = _ols(x, y)
+        line = y - intercept - slope * x
+        self.rss = float(line @ line)
+        # The measurements' curvature: the leading coefficient of their
+        # least-squares quadratic (none with fewer than three times)
+        self.curvature = 0.0
+        if np.unique(x).size >= 3:
+            z = x - x.mean()
+            A = np.column_stack([np.ones_like(z), z, z**2])
+            self.curvature = float(np.linalg.lstsq(A, y, rcond=None)[0][2])
+
+    def __call__(self, x: npt.NDArray, *params: float) -> npt.NDArray:
+        level = self.model.path(x, *params)
+        _, b, c = params
+        if abs(c) * self.span < _LINE_LIMIT and b * self.curvature < 0:
+            residuals = self.y - level
+            if float(residuals @ residuals) >= self.rss:
+                raise _StopSearch
+        return level
 
 
 class MichaelisMentenPath_(PathModel):

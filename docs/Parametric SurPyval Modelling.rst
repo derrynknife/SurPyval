@@ -886,7 +886,7 @@ The underlying caution still stands, though, and it is worth keeping in mind for
     _m = surv.Weibull.fit(_x, offset=True, how="MPS")
     assert round(_m.gamma, 1) == 49.8 and round(_m.params[1], 2) == 0.95
 
-- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached.
+- **An offset can also run the other way**, down towards :math:`-\infty`, when the data are skewed more to the left than any member of the family can be: the shifted family then approaches its limit -- the Normal for the LogNormal and the Gamma, the smallest extreme value distribution (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic -- and the likelihood rises towards the limit's without reaching it. Such a fit warns "No finite maximum" and recommends the limit itself. With one failure at -1 well below the rest (9 to 22), the offset LogNormal's ``gamma`` runs down past -100 before the search stops, and the Normal (log-likelihood -42.27) fits better than any LogNormal it reached. Maximum product of spacings is no way out here: its product of spacings rises towards the Normal's in the same way, and an ``how="MPS"`` fit warns "No finite maximum" too.
 
 .. jupyter-execute::
     :hide-code:
@@ -904,6 +904,11 @@ The underlying caution still stands, though, and it is worth keeping in mind for
     assert _m.gamma < -100
     _normal = surv.Normal.fit(_x, _c, _n).neg_ll()
     assert round(-_normal, 2) == -42.27 and _m.neg_ll() > _normal
+    with warnings.catch_warnings(record=True) as _caught:
+        warnings.simplefilter("always")
+        _m = surv.LogNormal.fit(_x, _c, _n, offset=True, how="MPS")
+    assert [str(w.message)[:18] for w in _caught] == ["No finite maximum:"]
+    assert "surpyval.Normal" in str(_caught[0].message)
 
 ``test_offset_divergence.py`` in the test suite pins this down for offset Gamma and Rayleigh fits with measured KL and Wasserstein distances alongside parameter tolerances: ``MLE`` is held to 5% on every parameter, and ``MOM`` (on the Rayleigh) to 10%, with the implied distributions essentially identical either way.
 

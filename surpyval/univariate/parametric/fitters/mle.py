@@ -63,6 +63,10 @@ class _Search(NamedTuple):
     #: A start off the bound of a parameter whose likelihood rises off it
     #: (``_OnBounds.off``), for the caller to search from (#579).
     off_bound: "npt.NDArray | None" = None
+    #: Whether the runaway is the offset's, found at the end of the ladder
+    #: by the family's limit fitting the data at least as well as the
+    #: answer, rather than by Newton's test (see ``_search``, #616).
+    by_limit: bool = False
 
 
 def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
@@ -242,7 +246,11 @@ class _Judge(NamedTuple):
     whose ``mu`` ran off took 23 s, every rung; #584). So after the first
     rung that stops short of a verified maximum, the point it reached is
     checked as the regression fits check theirs (``_runaway``), and a
-    runaway ends the search. Otherwise the ladder goes on as before.
+    runaway ends the search. Otherwise the ladder goes on as before, and
+    a later rung's point is checked too where it is on the way to the
+    family's limit as the offset runs to -inf (``toward_limit``): the
+    first rung can stop somewhere unrelated to the runaway a later one
+    finds (#616).
     """
 
     fun: Callable[..., Any]
@@ -301,7 +309,7 @@ class _Judge(NamedTuple):
           likelihood is not defined, its iterations ran out on a slope)
           says nothing about where the likelihood goes. Or, for an
           offset running to -inf, the family's limit there fits the data
-          at least as well as the point reached (``_toward_limit``): the
+          at least as well as the point reached (``toward_limit``): the
           rise then goes on to that limit, though it may never look flat
           on the way (#599).
         - The likelihood rises towards an infinite end of the parameter's
@@ -316,7 +324,7 @@ class _Judge(NamedTuple):
 
         def keep(j: int, slope: float) -> bool:
             flat = abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL
-            if not flat and not self._toward_limit(x):
+            if not flat and not self.toward_limit(x):
                 return False
             ahead = np.array(x, dtype=float)
             # (each parameter's map is monotone and its own)
@@ -333,7 +341,7 @@ class _Judge(NamedTuple):
 
         return keep
 
-    def _toward_limit(self, x: npt.NDArray) -> bool:
+    def toward_limit(self, x: npt.NDArray) -> bool:
         """Whether ``x`` is on the way to the family's limit as its offset
         runs to -inf (``_offset_limit``): the search has moved the offset
         down from where it started, and the limit fits the data at least
@@ -592,9 +600,13 @@ def _search(
 
     A likelihood with no finite maximum ends the search where it is found
     (see ``_Judge``): at the first rung that stops short of a verified
-    maximum, inside BFGS (``_Judge.watch``), or at a verified answer that
-    is really on the way to a supremum. The answer is then the point
-    checked, and ``runaway`` names the parameters running off.
+    maximum, inside BFGS (``_Judge.watch``), at a later rung's point on
+    the way to an offset family's limit, or at a verified answer that is
+    really on the way to a supremum. The answer is then the point
+    checked, and ``runaway`` names the parameters running off. An offset
+    fit whose ladder ends unverified at a best point no better than the
+    family's limit (``_Judge.toward_limit``) has its offset running off
+    too (``by_limit``, #616).
     """
     if len(init) == 0:
         # Every parameter is fixed; there is nothing to optimise, and
@@ -653,12 +665,29 @@ def _search(
         if best_result is None:
             continue
         # After the first rung that stops short of a verified maximum: is
-        # the likelihood running off? Then no rung can verify it.
-        verified, runaway = judge.verdict(best_result.x, not checked)
+        # the likelihood running off? Then no rung can verify it. A later
+        # rung's point is checked where it is on the way to the family's
+        # limit (#616).
+        verified, runaway = judge.verdict(
+            best_result.x, not checked or judge.toward_limit(best_result.x)
+        )
         checked = True
         if verified or runaway:
             break
 
+    # The ladder ran out with the best point reached no better than the
+    # family's limit as the offset runs to -inf: no member the search
+    # found fits the data better than the limit, which the family only
+    # approaches, though Newton's test could not show the rise there (its
+    # derivatives are rounding far out, #616). The offset is the parameter
+    # that runs off.
+    by_limit = bool(
+        not (verified or runaway)
+        and best_result is not None
+        and judge.toward_limit(best_result.x)
+    )
+    if by_limit:
+        runaway = (0,)
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
     off_bound = None
@@ -675,6 +704,7 @@ def _search(
         verified,
         runaway,
         off_bound,
+        by_limit,
     )
 
 
@@ -890,6 +920,7 @@ def mle(model: "Parametric") -> Any:
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
         results["_runaway"] = _runaway_names(model, search.runaway)
+        results["_runaway_by_limit"] = search.by_limit
         results["_off_bound"] = search.off_bound
         results["optimizer"] = search.optimizer
 

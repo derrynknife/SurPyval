@@ -170,3 +170,92 @@ def test_599_the_profile_likelihood_falls_to_the_normal_limit():
     normal = sp.Normal.fit(X_599, C_599, N_599).neg_ll()
     assert profile[-1] - normal == pytest.approx(0, abs=1e-2)
     assert np.all(np.asarray(profile) > normal)
+
+
+# #616: a smallest extreme value sample, on which the offset Weibull and
+# LogLogistic run towards their limits (the Gumbel, the Logistic).
+X_SEV = sp.Gumbel.random(30, 50.0, 5.0, random_state=np.random.default_rng(0))
+
+
+@pytest.mark.parametrize(
+    "dist, limit", [(sp.Weibull, sp.Gumbel), (sp.LogLogistic, sp.Logistic)]
+)
+def test_616_a_runaway_a_later_rung_reaches_is_found(dist, limit):
+    # The first rung stopped somewhere unrelated (the Weibull's BFGS on a
+    # loss of precision 1e7 below the answer), the only point the runaway
+    # check looked at, and both fits ended "unverified" after the whole
+    # ladder (gamma = -177 and -6.9e4). A later rung's point on the way to
+    # the limit is checked now, and failing that the answer at the end:
+    # nothing the search reached fits better than the limit.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        model, rec = _fit(dist, x=X_SEV)
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith("No finite maximum: the " + dist.name)
+    assert f"approaches a {limit.name} distribution" in message
+    assert rec[0].filename == __file__
+    assert model.maximum == "no finite maximum"
+    # on the way to the limit, and no better than it
+    assert model.gamma < X_SEV.min() - 50
+    assert model.neg_ll() >= limit.fit(X_SEV).neg_ll() - 1e-9
+
+
+def test_616_an_interior_offset_fit_does_not_warn_after_the_first_rung():
+    # The checks after the first rung only look at a point moving towards
+    # the limit and no better than it: a Weibull sample with an interior
+    # offset ends verified as before.
+    rng = np.random.default_rng(3)
+    x = 40.0 + sp.Weibull.random(30, 60.0, 4.0, random_state=rng)
+    model, rec = _fit(sp.Weibull, x=x)
+    assert not rec
+    assert model.maximum == "verified"
+
+
+@pytest.mark.parametrize(
+    "dist, limit",
+    [
+        (sp.LogNormal, sp.Normal),
+        (sp.Gamma, sp.Normal),
+        (sp.LogLogistic, sp.Logistic),
+    ],
+)
+def test_616_offset_mps_running_to_the_limit_warns_once(dist, limit):
+    # Maximum product of spacings on the #599 data: the LogNormal took
+    # 32 s and warned "MPS FAILED", the Gamma leaked seven autograd
+    # "Output seems independent of input" warnings, and the LogLogistic
+    # raised TypeError('first operand must be array'). The objective was
+    # NaN at every point (a truncation at 0 that the -1 lies below); with
+    # that gone, the spacings have no finite maximum either: the profile
+    # over gamma falls towards the limit's.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        with warnings.catch_warnings(record=True) as rec:
+            warnings.simplefilter("always", UserWarning)
+            model = dist.fit(X_599, C_599, N_599, offset=True, how="MPS")
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith(
+        f"No finite maximum: the {dist.name}'s product of spacings"
+    )
+    assert f"surpyval.{limit.name}" in message
+    assert rec[0].filename == __file__
+    # On the way to the limit, and no better than it (where BFGS stops
+    # short there the fit stops with it; where it does not, at the end)
+    assert model.gamma < X_599.min() - 10
+    spaced = limit.fit(X_599, C_599, N_599, how="MPS")
+    assert model.res.fun >= spaced.res.fun
+
+
+def test_616_offset_mps_weibull_finds_its_optimum():
+    # The Weibull's start was its probability-plot shape and scale (1.5e4,
+    # 8.5e4) under a replaced offset, where every spacing is 0: the
+    # objective was infinite at the start and the fit returned it with
+    # "MPS FAILED". From a start on the data shifted by that offset, it
+    # finds the optimum below the Gumbel limit's objective.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        model = sp.Weibull.fit(X_599, C_599, N_599, offset=True, how="MPS")
+    gumbel = sp.Gumbel.fit(X_599, C_599, N_599, how="MPS")
+    assert model.res.success
+    assert model.res.fun < gumbel.res.fun
