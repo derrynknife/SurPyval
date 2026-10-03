@@ -26,6 +26,7 @@ from scipy.special import expit
 from scipy.special import ndtri as z
 
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
+from surpyval.utils.warnings import caller_stacklevel
 
 if TYPE_CHECKING:
     from surpyval.utils.surpyval_data import SurpyvalData
@@ -52,6 +53,20 @@ _LR_UNREACHABLE = 1e6
 # (``_lr_raw_neg_ll``; a 50-point Weibull band asks for 16,000).
 _LR_MEMO_SIZE = 100_000
 _LR_CONTINUE = 10
+
+
+def _warn_unsettled(where: str) -> None:
+    """Warn, once at the caller, that a likelihood-ratio bound is the
+    most extreme point of the likelihood region its search found, but
+    the search did not converge there (#601)."""
+    warnings.warn(
+        f"The likelihood-ratio bound {where} is the most extreme point of "
+        "the likelihood region its search found, but the search did not "
+        "converge there (the region runs out along a long, flat valley), "
+        "so it may fall a little short of the region's extreme.",
+        RuntimeWarning,
+        stacklevel=caller_stacklevel(),
+    )
 
 
 class _LRCoord:
@@ -448,6 +463,11 @@ class _PsiBoundSearch:
         self.last_status = 0
         # A point of the region beyond the answer ``checks_out`` found.
         self.beyond: npt.NDArray | None = None
+        # Whether the last ``extreme_far`` converged; the answers whose
+        # search did not; and the sides whose bound is such an answer.
+        self.converged = True
+        self.unsettled: set[float] = set()
+        self.unsettled_sides: set[float] = set()
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -747,6 +767,7 @@ class _PsiBoundSearch:
         stopped there, outside the region by 7e-5 of deviance, its point
         was dropped, and a bound 2.7% short of the extreme taken.
         """
+        self.converged = True
         x = self.extreme(direction, start, level, whiten, scaled, face)
         u_from = np.asarray(start, dtype=float)
         for _ in range(_LR_CONTINUE):
@@ -757,11 +778,16 @@ class _PsiBoundSearch:
                 if x is None:
                     return None
             if not direction * (self.psi_u(x) - self.psi_u(u_from)) > 0:
+                # Stalled: SLSQP stops at a vertex of the box (a Uniform's
+                # support edge), or where its differences no longer
+                # resolve the valley.
                 return x
             u_from = x
             x = self.extreme(direction, x, level, whiten, scaled, face)
             if x is None:
                 return u_from
+        # Still moving out after every continuation: not settled.
+        self.converged = x is not None and self.last_status == 0
         if x is not None and not self.dev_u(x) <= level + _LR_NOISE:
             return self.onto_boundary(u_from, x, level)
         return x
@@ -822,6 +848,8 @@ class _PsiBoundSearch:
             self.beyond = u
             self.known.append((self.psi_u(u), u))
             return None
+        if not self.converged:
+            self.unsettled.add(psi_star)
         return psi_star
 
     def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
@@ -1042,7 +1070,15 @@ class _PsiBoundSearch:
 
     # -- one side -----------------------------------------------------------
     def solve_side(self, direction: float) -> float:
-        """The bound on one side: ``direction`` -1 lower, 1 upper."""
+        """The bound on one side: ``direction`` -1 lower, 1 upper. A side
+        whose answer's search did not converge is kept in
+        ``unsettled_sides``."""
+        answer = self._solve_side(direction)
+        if answer in self.unsettled:
+            self.unsettled_sides.add(direction)
+        return answer
+
+    def _solve_side(self, direction: float) -> float:
         quick = self.from_trace(direction)
         if quick is not None:
             return quick
@@ -1158,6 +1194,11 @@ class _PsiBoundSearch:
             return w
         if status == "edge":
             return np.inf if direction > 0 else -np.inf
+        if direction * (far_psi - self.psi_hat) > 0:
+            # The walk failed: the most extreme point of the region found,
+            # flagged (principle: warn, don't refuse).
+            self.unsettled.add(far_psi)
+            return far_psi
         return np.nan
 
 
@@ -1724,6 +1765,7 @@ class LikelihoodRatioMixin:
         lower = np.full(n, np.nan)
         upper = np.full(n, np.nan)
         failed = []
+        unsettled = 0
         with np.errstate(all="ignore"):
             region = self._lr_region(free, crit)
             for i, f in enumerate(fns):
@@ -1731,6 +1773,7 @@ class LikelihoodRatioMixin:
                 def psi(theta: npt.NDArray, f: Callable = f) -> float:
                     return to_psi(f(theta))
 
+                sides: set[float] = set()
                 lo, hi = self._cb_lr_psi_bounds(
                     psi,
                     free,
@@ -1739,12 +1782,16 @@ class LikelihoodRatioMixin:
                     want_upper,
                     ends,
                     *region,
+                    unsettled=sides,
                 )
                 if (want_lower and np.isnan(lo)) or (
                     want_upper and np.isnan(hi)
                 ):
                     failed.append(i)
+                unsettled += bool(sides)
                 lower[i], upper[i] = to_value(lo), to_value(hi)
+        if unsettled:
+            _warn_unsettled(f"on {what} for {unsettled} of {n} value(s)")
         if failed:
             warnings.warn(
                 f"The likelihood-ratio bound on {what} could not be found "
@@ -1917,9 +1964,12 @@ class LikelihoodRatioMixin:
         # bound at alpha is an end of the two-sided one at 2 alpha.
         kind = "survival" if survival else on
         cache = self.__dict__.setdefault("_lr_bands", {})
+        # The keys of the bounds whose search did not converge
+        unsure = self.__dict__.setdefault("_lr_unsettled", set())
         lower = np.full(t.shape, np.nan)
         upper = np.full(t.shape, np.nan)
         failed: list[float] = []
+        unsettled_at: list[float] = []
         hints: dict[float, npt.NDArray] = {}
         with np.errstate(all="ignore"):
             for i in np.argsort(t, kind="stable"):
@@ -1930,6 +1980,7 @@ class LikelihoodRatioMixin:
                 need_hi = want_upper and key_hi not in cache
                 if need_lo or need_hi:
                     box, seeds, trace = self._lr_region(free, crit)
+                    sides: set[float] = set()
                     lo, hi = self._cb_lr_psi_bounds(
                         lambda theta: psi_of(time, theta),
                         free,
@@ -1941,19 +1992,30 @@ class LikelihoodRatioMixin:
                         seeds,
                         trace,
                         hints=hints,
+                        unsettled=sides,
                     )
                     if need_lo:
                         cache[key_lo] = lo
+                        if -1.0 in sides:
+                            unsure.add(key_lo)
                     if need_hi:
                         cache[key_hi] = hi
+                        if 1.0 in sides:
+                            unsure.add(key_hi)
                 lo = cache[key_lo] if want_lower else np.nan
                 hi = cache[key_hi] if want_upper else np.nan
                 if (want_lower and np.isnan(lo)) or (
                     want_upper and np.isnan(hi)
                 ):
                     failed.append(float(time))
+                if (want_lower and key_lo in unsure) or (
+                    want_upper and key_hi in unsure
+                ):
+                    unsettled_at.append(float(time))
                 lower[i], upper[i] = value(lo), value(hi)
 
+        if unsettled_at:
+            _warn_unsettled(f"at t = {sorted(set(unsettled_at))}")
         if failed:
             warnings.warn(
                 "The likelihood-ratio bound could not be found at "
@@ -2164,18 +2226,23 @@ class LikelihoodRatioMixin:
         seeds: list[list[npt.NDArray]],
         trace: list[npt.NDArray] | None = None,
         hints: dict[float, npt.NDArray] | None = None,
+        unsettled: set[float] | None = None,
     ) -> tuple[float, float]:
         """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
         the free core parameters, searched in ``box``: ``(lower,
         upper)``, ``nan`` for a side not asked for or not found, ``-inf``
         / ``inf`` for one at the edge of the scale. See ``_cb_lr``, and
-        ``_PsiBoundSearch`` for the search."""
+        ``_PsiBoundSearch`` for the search. The sides (-1 lower, 1
+        upper) whose search did not converge are added to
+        ``unsettled``."""
         search = _PsiBoundSearch(self, psi_of, free, crit, ends, box)
         if hints is not None:
             search.hints = dict(hints)
         out = search.run(want_lower, want_upper, seeds, trace)
         if hints is not None:
             hints.update(search.answers)
+        if unsettled is not None:
+            unsettled.update(search.unsettled_sides)
         return out
 
     def _cb_lr_one_param(
