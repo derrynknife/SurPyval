@@ -4,6 +4,86 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Zero-inflated fits check the support (#610).** A ``zi=True`` fit
+  skipped the support check, so a negative (or infinite) time returned the
+  optimiser's start with "MLE Failed"; it raises ``OutsideSupportError``. A
+  failure or left-censored time at 0 is the point mass and passes.
+- **Survival trees and forests check their times (#618).** An infinite
+  time reached the leaf fits (a Weibull tree gave 216 numpy warnings, an
+  Exponential tree a scipy error). Breaking: the parametric kinds refuse a
+  time outside (0, inf) whatever its censoring, as the parametric
+  regressions do; the non-parametric kind refuses an infinite failure, as
+  Kaplan-Meier and Cox do.
+- **Offset fits that run to their family's limit (#616).** A runaway found
+  only by a later optimiser rung, or seen only at the end of the ladder,
+  ends "No finite maximum" rather than "unverified" (an offset Weibull at
+  gamma = -177 and LogLogistic at -6.9e4 on a smallest-extreme-value
+  sample).
+- **Offset maximum product of spacings (#616).** An untruncated offset MPS
+  fit was truncated at time 0 in the data's units once gamma went below 0,
+  so on data containing -1 the objective was NaN everywhere (the LogNormal
+  took 32 s to warn "MPS FAILED", the Gamma leaked autograd warnings, the
+  LogLogistic raised ``TypeError``). That is fixed, a degenerate start is
+  re-seeded, and an MPS fit running to the family's limit stops with one
+  "No finite maximum" warning naming the limit. Changes results of offset
+  MPS fits whose gamma went below 0: they are now unchanged by a shift of
+  the data.
+- **Degradation offset-exponential path (#621).** The start bending
+  against nearly straight measurements is stopped at the straight-line
+  limit, with identical results: ``path="best"`` on 200 straight units
+  takes 2.8 s rather than 5.1 s.
+- **AcceleratedLife start on a continuous stress (#621).** A stress level
+  that could not be fitted alone took the mean time as its life parameter
+  rather than through the parameter's transform:
+  ``AcceleratedLife(LogNormal, GeneralLogLinear)`` with a continuous column
+  raised "The log-likelihood is not finite at the initial parameter
+  values"; it fits, and matches ``LogNormalAFT``.
+- **Copula censored rows keep their digits (#619).** The likelihood of a
+  row censored in both series was ``1 - u - v + C(u, v)``, and of an
+  observed/right-censored pair ``1 - dC/du``; under strong negative
+  dependence these were noise or the 1e-300 floor (one ulp in C moved a
+  10,000-row log-likelihood by 654). Each family evaluates its quadrants
+  and h-function complements directly (``C(1-u, 1-v)`` for the radially
+  symmetric families, closed forms for the others, rotations by
+  reflection) in the likelihood, left-truncation windows and
+  ``CopulaModel.sf``, matching mpmath to about 1e-13; the Gaussian
+  copula's small CDF values are integrated rather than 0. Fits on ordinary
+  data are unchanged.
+- **Turnbull ``turnbull_algorithm="EMICM"`` (#620).** Wellner and Zhan's
+  EM-ICM (as R's Icens and icenReg) for untruncated data, stopping on the
+  KKT conditions: on 1,000 random intervals it takes 45 iterations (9 ms)
+  where the EM stops at ``max_iter`` 7.5e-3 from the maximum with a warning
+  (it needs 54,000), and ``bootstrap_cb(n_boot=50)`` 0.5 s rather than
+  13.4 s. The default is unchanged; the EM's non-convergence warning
+  suggests the option.
+- **Analytic shape derivatives of the incomplete beta (#621).** The
+  censored Beta fit at 3,000 rows takes 1.2 s rather than 2.5 s; the
+  derivatives are accurate to about 1e-15 against mpmath, where the finite
+  differences were up to 2e-4 off. NegativeBinomial and Binomial
+  covariances move by up to 3e-6 relative, towards the exact Hessian.
+- **Likelihood-ratio bounds along a covariate path and for the frailty
+  and proportional-odds models (#617).** ``cb_tvc`` takes
+  ``method="lr"``, and ``FrailtyModel.param_cb`` and
+  ``ProportionalOddsModel.param_cb`` take ``method="lr"`` (the
+  profile-likelihood interval; the proportional-odds model profiles out
+  its baseline, Murphy and van der Vaart 2000). With no frailty in the
+  data the Wald interval on ``theta`` is [0, inf] and the profile one
+  finite. Wald stays the default. A regression likelihood-ratio interval
+  reaching the edge of its space returns the edge itself.
+- **Likelihood-ratio caches are not pickled (#617).** A model drops its
+  searches' caches when pickled and rebuilds them on demand: a Weibull
+  model after a 50-time band pickled at 302 kB, now 7 kB.
+- **Wald bounds of a tiny life-model constant (#617).** ``cb`` and
+  ``quantile_cb`` returned [nan, nan] without a warning where an
+  accelerated-life constant (6e-9) was smaller than the delta method's
+  difference step; the difference is retaken with a relative step where
+  the first is not finite. No other result changes.
+- **Log-normal frailty likelihood at an extreme cumulative hazard** raised
+  ``OverflowError`` past 1e154; it is finite.
+- **Cheaper likelihood-ratio bounds on a levelled-off edge valley (#609).**
+  Where a parameter's profile has reached its limit, only the deepest slice
+  is searched: NegativeBinomial's registry bounds take 80 s rather than
+  98 s, equal to 1e-14.
 - **Fits evaluate the likelihood once per optimiser step (#593).** The
   univariate MLE ladder, MPS, the verification polish and the parametric
   regression searches gave scipy the likelihood and its gradient
