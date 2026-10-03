@@ -456,28 +456,33 @@ def _weibull_profile(
         s2 = _segment_sums(wc * c, sizes)
         return beta, s0, s1, s2
 
-    def slope(b: NDArray, idx: NDArray) -> tuple[NDArray, NDArray]:
-        # g(b) and its derivative, for the groups idx
+    def slope(b: NDArray, idx: NDArray) -> tuple[NDArray, ...]:
+        # g(b) and its derivative for the groups idx, and the sum s0
         beta, s0, s1, s2 = moments(b, idx)
         with np.errstate(divide="ignore", invalid="ignore"):
             mean = s1 / s0 + shift[idx]
             var = s2 / s0 - (s1 / s0) ** 2
             g = beta * (r[idx] / beta - r[idx] * mean + L[idx])
             dg = g - r[idx] - r[idx] * beta**2 * var
-        return g, dg
+        return g, dg, s0
 
     lo = np.full(size, log_beta_bounds[0])
     hi = np.full(size, log_beta_bounds[1])
     b = np.clip(start, lo, hi) + np.zeros(size)
-    g, dg = slope(b, everyone)
+    g, dg, s0 = slope(b, everyone)
     # The window's edge on the side the slope points to: a root beyond it
     # puts the optimum there. (g decreases, so the slope at the start
     # settles the other edge.)
     rising = g > 0
     edge = np.where(rising, hi, lo)
-    at_edge = slope(edge, everyone)[0]
-    at_edge = np.where(rising, at_edge >= 0, ~(at_edge > 0))
+    g_edge, _, s0_edge = slope(edge, everyone)
+    at_edge = np.where(rising, g_edge >= 0, ~(g_edge > 0))
     b = np.where(at_edge, edge, b)
+    s0 = np.where(at_edge, s0_edge, s0)
+    # Where each group was last evaluated (b_eval, with its sum s0): its
+    # optimum is taken there, a final step below 1e-14 of it left untaken,
+    # which spares an evaluation of every group.
+    b_eval = b.copy()
     active = np.flatnonzero(~at_edge)
     g, dg = g[active], dg[active]
     for _ in range(200):
@@ -498,8 +503,10 @@ def _weibull_profile(
         b[active] = step
         active = active[~done]
         if active.size:
-            g, dg = slope(b[active], active)
-    beta, s0, _, _ = moments(b, everyone)
+            g, dg, s0[active] = slope(b[active], active)
+            b_eval[active] = b[active]
+    b = b_eval
+    beta = np.exp(b)
     with np.errstate(divide="ignore", invalid="ignore"):
         log_S = beta * shift + np.log(s0)
         log_r = np.log(r)
@@ -511,6 +518,10 @@ def _weibull_profile(
 # Scored at once: candidates x rows of the node, at most this many (the
 # rows of both children of each candidate).
 _BLOCK = 1 << 20
+
+# Above this many (candidates x node rows), a node's own maximum is found
+# before its children's (see _ChildLikelihoods.split_scores).
+_OWN_PASS = 1 << 15
 
 
 class _ChildLikelihoods:
@@ -599,9 +610,17 @@ class _ChildLikelihoods:
         """``ll(left child) + ll(right child)`` for each row of the
         boolean matrix ``left`` (candidates x node rows).
 
-        Without the node's own maximum yet, it is found with the first
-        block of children, in the same pass (#549)."""
+        Without the node's own maximum yet, it is found first for a large
+        node, and with the first block of children, in the same pass, for
+        a small one (#549)."""
         out = np.empty(left.shape[0])
+        if not self.has_parent and left.size > _OWN_PASS:
+            # A large node's own maximum first: its children's searches
+            # start from its shape and take a quarter fewer of the costly
+            # passes over their rows. A small node's is found with them, in
+            # one call.
+            everyone = np.ones((1, left.shape[1]), bool)
+            self._fit_parent(self._closed_lls(everyone))
         step = max(1, _BLOCK // left.shape[1])
         for i in range(0, left.shape[0], step):
             block = left[i : i + step]
@@ -643,9 +662,12 @@ class _ChildLikelihoods:
         # its (log alpha, log beta); None off the closed forms.
         if not self.closed:
             return None
-        if self.model == "weibull":
-            return self._weibull(rows)
-        ll = self._exponential(rows)
+        # Quiet (principle 22): a value the closed forms cannot give is
+        # NaN, and the optimiser takes that child.
+        with np.errstate(all="ignore"):
+            if self.model == "weibull":
+                return self._weibull(rows)
+            ll = self._exponential(rows)
         return ll, ll[:, None]
 
     def _child_parts(self, rows: NDArray) -> tuple:

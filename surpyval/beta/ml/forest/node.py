@@ -389,7 +389,10 @@ def fit_leaves(root: Node) -> None:
             batches["exponential"].append(leaf)
     for model, dist in (("weibull", Weibull), ("exponential", Exponential)):
         batch = batches[model]
-        fitted = leaf_mles([leaf.data for leaf in batch], model)
+        # Quiet: a leaf the closed forms cannot fit is left to be fitted
+        # on first use, as before, with whatever that says.
+        with np.errstate(all="ignore"):
+            fitted = leaf_mles([leaf.data for leaf in batch], model)
         for leaf, params in zip(batch, fitted):
             if params is not None:
                 leaf.__dict__["model"] = dist.from_params(params)
