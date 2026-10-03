@@ -344,6 +344,9 @@ class ProportionalIntensityModel(
         hypothesis is a *homogeneous* Poisson process (no trend); the
         statistic uses only the event times and windows, not the covariates,
         so it checks whether a time-varying intensity was warranted at all.
+        Each item is tested on its own observation window, from its entry
+        (``tl``; 0 without one) to its close, so data with delayed entry is
+        tested as it was fitted.
 
         Parameters
         ----------

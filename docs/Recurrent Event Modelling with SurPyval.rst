@@ -368,6 +368,10 @@ event of each item is treated as the end of its window. Data in the fitters'
 form, ``x``, ``i`` and ``c``, can be passed as they are with ``c=`` by
 keyword: an item's ``c = 1`` row ends its window (the third positional
 argument is ``T``, so ``laplace(x, i, c)`` raises an error saying so).
+Items observed from a later start (delayed entry: records that begin when
+monitoring starts, or a unit commissioned during the study) take it as
+``tl``, in the same forms as ``T``; each item is then tested on its own
+window ``(tl, T]``.
 
 .. jupyter-execute::
 
@@ -412,6 +416,32 @@ trend, and ``trend`` is ``"none"``.
 
     assert result.direction == "decreasing" and result.trend == "none"
     assert result.p_value > 0.5
+
+With delayed entry each item's events are compared with the centre of its
+own window. Here the second item entered the study at 30 and was watched to
+80:
+
+.. jupyter-execute::
+
+    x1 = [10, 19, 27, 34, 40, 45, 49, 52, 54]
+    x2 = [35, 48, 60, 66, 71, 75, 78]
+    result = laplace(x1 + x2, i=[1] * 9 + [2] * 7,
+                     T={1: 60, 2: 80}, tl={1: 0, 2: 30})
+    print(round(result.statistic, 3), round(result.p_value, 3))
+
+The statistic is the sum of the event times less their null means, 9 x 30
+and 7 x 55, over the square root of the summed variances, 9 x 60² / 12 and
+7 x 50² / 12. A fitted model's ``trend_test()`` reads each item's entry from
+the ``tl`` it was fitted with.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    hand = (sum(x1) + sum(x2) - 9 * 30 - 7 * 55) / np.sqrt(
+        9 * 60**2 / 12 + 7 * 50**2 / 12
+    )
+    assert abs(result.statistic - hand) < 1e-12
 
 Parametric Recurrent Event Models with Surpyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1499,8 +1529,8 @@ touch), and every event must fall inside one of its item's windows;
 ``windows`` cannot be combined with ``tl``/``tr`` (or ``t``), covariates or
 event marks. Because each window is handled as its own observation period,
 the diagnostics see windows rather than items: ``residuals(kind="martingale")``
-returns one value per window, and ``trend_test`` refuses gapped data, since
-the trend tests need every system watched from time zero:
+returns one value per window, and ``trend_test`` tests each window as its
+own observation period (each counts as a system in ``n_systems``):
 
 .. jupyter-execute::
     :hide-code:

@@ -256,6 +256,8 @@ def trend_test(
     whether the data warranted a time-varying intensity at all. The
     statistic uses only the event times and windows, not the fitted model,
     so it is shared by the parametric and proportional-intensity models.
+    Each item is tested on its own window ``(entry, close]``, so delayed
+    entry (left truncation) is allowed (#575).
     """
     from surpyval.recurrent.tests import laplace, mil_hdbk_189c
 
@@ -263,16 +265,10 @@ def trend_test(
     tests = {"laplace": laplace, "mil_hdbk_189c": mil_hdbk_189c}
     check_option("test", test, tests)
 
-    # The trend tests assume every system is observed from time 0.
-    x, i, T = [], [], {}
+    x, i, T, tl = [], [], {}, {}
     for item_id, (_, events, entry, close, explicit_close) in enumerate(
         _per_item_windows(data)
     ):
-        if entry != 0.0:
-            raise ValueError(
-                "trend tests assume observation from time 0; this data "
-                "has delayed entry (left truncation)."
-            )
         if not explicit_close:
             # Failure-truncated: the last event is the truncation point,
             # exactly as the standalone tests treat T=None data.
@@ -280,7 +276,10 @@ def trend_test(
         x.extend(events)
         i.extend([item_id] * events.size)
         T[item_id] = close
-    return tests[test](x, i=i, T=T, alternative=alternative, alpha_ci=alpha_ci)
+        tl[item_id] = entry
+    return tests[test](
+        x, i=i, T=T, tl=tl, alternative=alternative, alpha_ci=alpha_ci
+    )
 
 
 def cvm_statistic(u: ArrayLike) -> float:

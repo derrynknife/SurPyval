@@ -294,6 +294,9 @@ class ParametricRecurrenceModel(
         events follow a *homogeneous* Poisson process (no trend), so it
         checks whether the data warranted a time-varying intensity at all.
         The model's parameters play no part in the statistic.
+        Each item is tested on its own observation window, from its entry
+        (``tl``; 0 without one) to its close, so data with delayed entry is
+        tested as it was fitted.
 
         Parameters
         ----------

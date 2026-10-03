@@ -870,7 +870,8 @@ The non-parametric MCF handles both through the risk set — an item is only
 counted at risk from its entry time, so early event times are averaged over
 the items actually being watched, and it stays at risk up to its
 right-truncation time, just as it would up to a right-censored row there.
-The trend tests (below) assume every item is observed from time zero.
+The trend tests (below) test each item on its own window, from its entry
+time to the end of its observation.
 
 Model Checking: Residuals, Trend Tests, and Goodness of Fit
 -----------------------------------------------------------
@@ -922,15 +923,18 @@ particular parametric form.
 The intuition behind the **Laplace test** is that, under an HPP and given the
 number of events, the event times are scattered uniformly over the observation
 window, so their average should sit near the middle of the window. For systems
-:math:`q` observed on :math:`(0, T_q]` with :math:`n_q` events at
+:math:`q` observed on :math:`(s_q, T_q]` with :math:`n_q` events at
 :math:`t_{qj}`,
 
 .. math::
 
-    U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q T_q / 2}
-             {\sqrt{\sum_q n_q T_q^2 / 12}}
+    U = \frac{\sum_q \sum_j t_{qj} - \sum_q n_q (s_q + T_q) / 2}
+             {\sqrt{\sum_q n_q (T_q - s_q)^2 / 12}}
 
-is approximately standard normal under the null. Events bunched late
+is approximately standard normal under the null [AscherFeingold1984]_. The
+start :math:`s_q` is 0 for an item observed from new and its entry time
+:math:`t_L` for one with delayed entry: each window is judged on its own
+scale. Events bunched late
 (:math:`U > 0`) point to an increasing intensity, events bunched early
 (:math:`U < 0`) to a decreasing one.
 
@@ -945,14 +949,21 @@ events in total). It equals :math:`2N/\hat{\beta}` for the Crow-AMSAA shape
 estimate, so a *small* statistic (:math:`\hat{\beta} > 1`) indicates an
 increasing intensity and a large one a decreasing intensity. It is the more
 powerful test when the true trend is a power law; the Laplace test is the more
-powerful when it is log-linear (Cox-Lewis-like).
+powerful when it is log-linear (Cox-Lewis-like). With delayed entry, time is
+measured from each item's entry: the statistic is
+:math:`2 \sum_q \sum_j \ln\{(T_q - s_q)/(t_{qj} - s_q)\}`, still exactly
+chi-squared on :math:`2N` degrees of freedom under the HPP, because the
+:math:`(t_{qj} - s_q)/(T_q - s_q)` are then independent uniforms. It no longer
+equals :math:`2N/\hat{\beta}` of a power law fitted in age, so for such data
+the Laplace test, which needs no time origin, is the natural first check.
 
 For failure-truncated data the last event of each system *is* the end of its
 window rather than a random event, so it is dropped from both statistics. Both
 tests can be run one-sided (``"increasing"`` or ``"decreasing"``) when you
-only care about one direction. Two cautions: the tests assume all systems are
-observed from time zero (SurPyval refuses delayed-entry and gapped data), and
-the direction a test reports is simply which side of its null value the
+only care about one direction. Each item is tested on its own window, so
+delayed entry is allowed, and gapped data is tested window by window (each
+window counts as a system in ``n_systems``). One caution: the direction a test
+reports is simply which side of its null value the
 statistic fell (the sign of :math:`U`; :math:`\chi^2` below or above its
 :math:`2N` degrees of freedom) — only the p-value tells you whether that
 direction is distinguishable from noise. Both are available as standalone
@@ -1107,8 +1118,7 @@ the gap.
 Because SurPyval implements the gaps by treating each window as its own
 observation period, anything computed per item is computed per *window* for
 gapped data: the martingale residuals come one per window, and the trend
-tests, which need every item watched from time zero, refuse gapped data. The
-covariate (regression) and cause-specific models do not accept windows.
+tests test each window as its own observation period. The covariate (regression) and cause-specific models do not accept windows.
 
 For worked examples — fitting the NHPP, HPP and renewal models, estimating and
 plotting the mean cumulative function, and handling gapped observation — see the
@@ -1136,6 +1146,10 @@ References
 
 .. [Rigdon2000] Rigdon, S.E. and Basu, A.P., 2000. *Statistical Methods for the
    Reliability of Repairable Systems*. John Wiley & Sons.
+
+.. [AscherFeingold1984] Ascher, H. and Feingold, H., 1984. *Repairable
+   Systems Reliability: Modeling, Inference, Misconceptions and Their
+   Causes*. Marcel Dekker.
 
 .. [Cook2007] Cook, R.J. and Lawless, J.F., 2007. *The Statistical Analysis of
    Recurrent Events*. Springer.
