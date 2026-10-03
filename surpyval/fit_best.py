@@ -27,6 +27,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OutsideSupportError,
 )
 from surpyval.utils.no_maximum import quiet_maximum_warnings
+from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import check_option
 
 # Typed as OptimisedFitMixin, not ParametricFitter: every entry has
@@ -94,14 +95,31 @@ def _candidate_names(names: Iterable[str] | None, argument: str) -> set[str]:
     return wanted
 
 
+def _reason(error: Exception) -> str:
+    """A failed candidate's reason, short: the exception's type and the
+    first line of its message, cut at 100 characters (a message can quote
+    the offending data, #570)."""
+    text = str(error).strip().splitlines()
+    first = text[0] if text else ""
+    if len(first) > 100:
+        first = first[:97] + "..."
+    return (
+        f"{type(error).__name__}: {first}" if first else type(error).__name__
+    )
+
+
 def fit_best(
-    x: npt.ArrayLike,
+    x: npt.ArrayLike | None = None,
     c: npt.ArrayLike | None = None,
     n: npt.ArrayLike | None = None,
     t: npt.ArrayLike | None = None,
     metric: str = "aic",
     include: Iterable[str] | None = None,
     exclude: Iterable[str] | None = None,
+    tl: npt.ArrayLike | float | None = None,
+    tr: npt.ArrayLike | float | None = None,
+    xl: npt.ArrayLike | None = None,
+    xr: npt.ArrayLike | None = None,
 ) -> Parametric | None:
     """
     Fit every candidate continuous distribution to the data and return
@@ -110,10 +128,18 @@ def fit_best(
     The candidates are the fittable continuous univariate distributions
     with a regular likelihood (Beta, Exponential, ExpoWeibull, Gamma,
     Gumbel, Logistic, LogLogistic, LogNormal, Normal, Rayleigh and
-    Weibull). A candidate the data lie outside the support of (a Beta
-    for data outside (0, 1)) is passed over quietly; candidates whose fit
-    fails are skipped and named in one warning. If every candidate fails,
-    ``None`` is returned.
+    Weibull). The data are given as to ``fit`` (``x``, ``c``, ``n``,
+    ``t``, ``tl``, ``tr``, ``xl``, ``xr``) and are checked once, as
+    ``fit`` checks them: an input error -- a malformed censoring flag,
+    say -- raises the ``ValueError`` that ``Weibull.fit`` would, rather
+    than failing every candidate. A candidate the data lie outside the
+    support of (a Beta for data outside (0, 1)) is passed over quietly; a
+    candidate that cannot be fitted to the (valid) data is skipped, and
+    the skipped candidates are named, each with its reason, in one
+    warning. If no candidate fitted, ``None`` is returned -- unless every
+    candidate failed for the same reason, which is then about the data
+    and is raised, or the data lie outside the support of every
+    candidate tried, which raises a ``ValueError`` saying so.
 
     AIC, AIC_c and BIC compare maximised log-likelihoods, and their
     penalties assume a *regular* maximum: an interior point of the
@@ -143,15 +169,15 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
 
     Parameters
     ----------
-    x : array_like
+    x : array_like, optional
         The observed event times (or intervals), in any of the formats
-        ``fit`` accepts.
+        ``fit`` accepts. If not given, ``xl`` and ``xr`` must be.
     c : array_like, optional
         The censoring indicators.
     n : array_like, optional
         The counts for each observation.
     t : array_like, optional
-        The truncation intervals.
+        The truncation intervals, ``[tl, tr]`` per row.
     metric : str, optional
         The model-selection criterion to minimise: ``"aic"`` (default),
         ``"aic_c"``, ``"bic"`` or ``"neg_ll"``.
@@ -163,6 +189,12 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     exclude : iterable of str, optional
         Try every candidate except distributions with these names, checked
         in the same way. Mutually exclusive with ``include``.
+    tl, tr : array_like or scalar, optional
+        The left and right truncation of each row (or of every row), as
+        for ``fit``.
+    xl, xr : array_like, optional
+        The left and right ends of each observation, in place of ``x``,
+        as for ``fit``.
 
     Returns
     -------
@@ -173,9 +205,12 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     Raises
     ------
     ValueError
-        If candidates fitted but none has a finite ``metric`` -- for
-        ``"aic_c"``, when every candidate has at least as many parameters
-        as observed failures minus one.
+        If the data or an argument is invalid (as ``fit`` would say),
+        every candidate failed for the same reason, the data lie outside
+        the support of every candidate tried, or candidates fitted but
+        none has a finite ``metric`` -- for ``"aic_c"``, when every
+        candidate has at least as many parameters as observed failures
+        minus one.
 
     Examples
     --------
@@ -185,6 +220,12 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     >>> from surpyval import Weibull
     >>> x = Weibull.random(50, 10, 2)
     >>> model = fit_best(x, metric="bic")
+
+    Left truncated data, as ``fit`` takes it:
+
+    >>> model = fit_best(x[x > 5], tl=5, include=["Weibull", "Gamma"])
+    >>> model.dist.name
+    'Weibull'
     """
     include_set = _candidate_names(include, "include")
     exclude_set = _candidate_names(exclude, "exclude")
@@ -210,6 +251,12 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             dist for dist in distributions if dist.name not in NON_REGULAR
         ]
 
+    # The data are checked once, as ``fit`` checks them, so an input error
+    # raises as it would there. It used to fail every candidate the same
+    # way, and come back as None with a warning quoting the data once per
+    # candidate (#570).
+    SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
+
     # The best (measure, model) among the regular fits (True) and among
     # those set aside (False), which are ranked only when no regular
     # candidate fitted.
@@ -220,8 +267,10 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     set_aside: list[str] = []
     n_fitted = 0
     failed: list[str] = []
+    errors: list[Exception] = []
+    outside: list[str] = []
     for dist in candidates:
-        failure = None
+        failure: Exception | None = None
         # A candidate's own warning that its fit is not a verified maximum
         # is held back: the fitted model records it (``maximum``), and the
         # one warning below says it for every candidate set aside.
@@ -231,17 +280,19 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         ):
             warnings.simplefilter("always")
             try:
-                temp_model = dist.fit(x, c, n, t)
+                temp_model = dist.fit(x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr)
                 tmp_measure = getattr(temp_model, metric)()
             except OutsideSupportError:
                 # A candidate that cannot describe the data (a Beta for
                 # data outside (0, 1)) is not a failure to report (#485).
+                outside.append(dist.name)
                 continue
             except Exception as e:
-                failure = str(e)
+                failure = e
         if failure is not None:
             # A failed candidate's other warnings go with it
-            failed.append(f"{dist.name} ({failure})")
+            failed.append(f"{dist.name} ({_reason(failure)})")
+            errors.append(failure)
             continue
         for w in caught:
             warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
@@ -266,12 +317,14 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     model = best[True][1]
     if model is None:
         model = best[False][1]
+    if n_fitted == 0:
+        _raise_if_about_the_data(errors, outside)
     if failed:
         # One warning for all of them, with the count (principle 22); it
         # was two warnings per candidate.
         warnings.warn(
-            f"fit_best skipped {len(failed)} candidate(s) that failed to "
-            "fit: " + "; ".join(failed),
+            f"fit_best skipped {len(failed)} candidate(s) that could not "
+            "be fitted to these data: " + "; ".join(failed),
             stacklevel=2,
         )
     if set_aside:
@@ -297,3 +350,20 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             f"{metric!r}."
         )
     return model
+
+
+def _raise_if_about_the_data(
+    errors: list[Exception], outside: list[str]
+) -> None:
+    """With no candidate fitted: raise what is about the data rather than
+    about a family. Every candidate failing with the same error is the
+    data's error (raised as it is); no candidate whose support holds the
+    data is the data's too."""
+    if errors and len({(type(e), str(e)) for e in errors}) == 1:
+        raise errors[0]
+    if outside and not errors:
+        raise OutsideSupportError(
+            "The data lie outside the support of every candidate tried "
+            f"({', '.join(outside)}); fit a distribution whose support "
+            "holds them (Normal, Gumbel or Logistic for negative values)."
+        )

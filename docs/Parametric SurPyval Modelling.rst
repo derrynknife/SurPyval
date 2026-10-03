@@ -1241,16 +1241,21 @@ Comparing distributions
 ^^^^^^^^^^^^^^^^^^^^^^^
 
 To choose a distribution, fit the candidates to the same data and compare an
-information criterion; lower is better. ``fit_best(x, c, n, t)`` does this by
+information criterion; lower is better. ``fit_best(x, c, n, t)`` (which also
+takes ``tl``, ``tr``, ``xl`` and ``xr``, as ``fit`` does) does this by
 maximum likelihood for eleven continuous distributions -- ``Beta``,
 ``Exponential``, ``ExpoWeibull``, ``Gamma``, ``Gumbel``, ``Logistic``,
 ``LogLogistic``, ``LogNormal``, ``Normal``, ``Rayleigh`` and ``Weibull`` (not
 ``GumbelLEV``, the discrete distributions or offset models) -- and returns the
 winner (see :doc:`comparison_and_validation`). ``metric`` may be ``'aic'``
 (the default), ``'aic_c'``, ``'bic'`` or ``'neg_ll'``, and ``include`` or
-``exclude`` (lists of names, not both) narrow the candidates. A candidate that
-cannot be fitted -- the Beta when the data leave :math:`[0, 1]`, say -- is
-skipped with a warning, and ``None`` is returned if none can.
+``exclude`` (lists of names, not both) narrow the candidates. The data are
+checked once, as ``fit`` checks them, so a mistake in them raises the error
+``fit`` would give. A candidate whose support does not hold the data -- the
+Beta when the data leave :math:`(0, 1)` -- is passed over quietly; one that
+cannot be fitted to them is skipped, named with its reason in one warning,
+and ``None`` is returned if none can (an error every candidate gives alike
+is about the data, and is raised).
 
 The information criteria assume a *regular* maximum of the likelihood, so two
 kinds of candidate are set aside, and ranked only when no regular candidate
