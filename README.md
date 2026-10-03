@@ -37,9 +37,15 @@ SurPyval also offers many different distributions for users, and because of the 
 | **Uniform**   | No |
 | **Exponential** | Yes |
 | **Exponentiated Weibull** | Yes |
-| **Gumbel**    | No |
+| **Rayleigh**  | Yes |
+| **Gumbel** (and **GumbelLEV**) | No |
 | **Logistic**  | No |
 | **LogLogistic** | Yes |
+
+Discrete distributions: **Poisson**, **Geometric**, **NegativeBinomial**,
+**DiscreteWeibull**, **BetaGeometric**, **Bernoulli** and **Binomial**; any
+continuous distribution can be discretised with `Discretize`. Any of them can
+be combined in a `MixtureModel`, and custom distributions are supported.
 
 This project spawned from a Reliaility Engineering project; due to the history of reliability engineers estimating parameters from a probability plot. SurPyval has continued this tradition to ensure that any parametric distribution can have the estimate plotted on a probability plot. These visualisations enable an analyst to get a sense of the goodness of fit of the parametric distribution with the non-parametric distribution.
 
@@ -59,15 +65,21 @@ not yet built.
 | Time | Recurrence | Events | Covariates | Parametric | Semi-/Nonparametric |
 | --- | --- | --- | --- | --- | --- |
 | Continuous time | Single event | Single | Without | `Weibull`, `Exponential`, `LogNormal`, `Gamma`, &hellip; | `KaplanMeier`, `NelsonAalen`, `FlemingHarrington`, `Turnbull` |
-| Continuous time | Single event | Single | With | `WeibullPH`/`WeibullAFT` (PH/AFT/PO families) | `CoxPH` |
-| Continuous time | Single event | Competing | Without | &mdash; | `CompetingRisks` (CIF) |
-| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CRPH` |
-| Continuous time | Recurrent | Single | Without | `HPP`, `NHPP`, `CrowAMSAA`, `Duane`, `CoxLewis` | `NonParametricCounting` (MCF) |
+| Continuous time | Single event | Single | With | `WeibullPH`, `WeibullAFT`, `WeibullPO`, `WeibullAH` (every distribution), `AcceleratedLife` with `surpyval.life_models`, `RoystonParmar`, `WeibullFrailty` | `CoxPH`, `ProportionalOdds`, `AdditiveHazards`, `BuckleyJames`, `CoxFrailty`; survival trees and forests (`surpyval.beta.ml`) |
+| Continuous time | Single event | Competing | Without | `ParametricCompetingRisks` | `CompetingRisks` (CIF) |
+| Continuous time | Single event | Competing | With | &mdash; | `FineGray`, `CompetingRisksProportionalHazards` |
+| Continuous time | Recurrent | Single | Without | `HPP`; NHPP: `CrowAMSAA`, `Duane`, `CoxLewis`; renewal: `GeneralizedRenewal`, `GeneralizedOneRenewal`, `ARA`, `ARI` | `NonParametricCounting` (MCF) |
 | Continuous time | Recurrent | Single | With | `ProportionalIntensityHPP`, `ProportionalIntensityNHPP` | &mdash; |
 | Continuous time | Recurrent | Competing | Without | &mdash; | `CauseSpecificMCF` |
 | Continuous time | Recurrent | Competing | With | &mdash; | &mdash; |
 | Discrete time | Single event | Single | Without | `Bernoulli` (single trial), `Binomial` (`n` trials) | &mdash; |
 | Discrete time | Single event | Single | With | use logistic / binomial regression (out of scope for this package) | &mdash; |
+
+Beyond these axes: the dependence between two lifetimes with copulas
+(`surpyval.multivariate`: Gaussian, Student-t, Clayton, Frank, Gumbel, Joe
+and AMH, with rotations), and degradation and remaining useful life
+(`DegradationAnalysis`, `WienerProcess`, `GammaProcess`,
+`DestructiveDegradation`).
 
 # Install and Quick Intro
 
