@@ -395,6 +395,12 @@ def _search(
     verified, the answer is the first rung that reported success, or
     failing that the best point found; ``verified`` is then False and the
     caller tries other starts and, failing those, warns.
+
+    A likelihood with no finite maximum ends the search where it is found
+    (see ``_Judge``): at the first rung that stops short of a verified
+    maximum, inside BFGS (``_Judge.watch``), or at a verified answer that
+    is really on the way to a supremum. The answer is then the point
+    checked, and ``runaway`` names the parameters running off.
     """
     if len(init) == 0:
         # Every parameter is fixed; there is nothing to optimise, and
