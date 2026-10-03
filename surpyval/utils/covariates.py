@@ -156,7 +156,9 @@ def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
 
 
 def coefficient_floor(
-    n_search: int, coefs: "list[tuple[int, int]]", Z: npt.ArrayLike
+    n_search: int,
+    coefs: "list[tuple[int, int]]",
+    Z: "npt.ArrayLike | None",
 ) -> npt.NDArray:
     """Per-component ``floor`` of a regression search vector of
     ``n_search`` components, for ``preconditioned_bfgs`` and
@@ -181,8 +183,22 @@ def coefficient_floor(
     covariate's units. The floor stays 1 for a covariate whose range is 1
     or more, so that nothing changes for a binary covariate or one of
     order 1 and up, as ``search_floor`` keeps the univariate fits' floor
-    of 1 for data of order 1 and up."""
+    of 1 for data of order 1 and up.
+
+    Examples
+    --------
+    Two distribution parameters, then the coefficients of a binary
+    covariate and of a temperature's reciprocal in kelvin:
+
+    >>> import numpy as np
+    >>> from surpyval.utils.covariates import coefficient_floor
+    >>> Z = np.column_stack([[0, 1, 1], 1 / np.array([358.15, 378.15, 398.15])])
+    >>> coefficient_floor(4, [(2, 0), (3, 1)], Z).round(1).tolist()
+    [1.0, 1.0, 1.0, 3564.9]
+    """
     floor = np.ones(n_search)
+    if Z is None:
+        return floor
     Z_arr = np.asarray(Z, dtype=float)
     if Z_arr.size == 0:
         return floor

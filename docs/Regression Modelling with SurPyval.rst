@@ -266,6 +266,20 @@ maximum") and returns the model where the search stopped, whose value for that
 coefficient, its standard error and its bounds mean nothing. Remove or coarsen
 the covariate (merge the level with another), or fit a penalised model.
 
+A covariate's units do not change the fit: multiplying a column by a
+constant divides its coefficient by it and leaves the maximised likelihood
+where it was. The search, and the check that it reached a maximum, measure
+each coefficient in its covariate's units -- the change of
+:math:`1/\mathrm{range}(Z_j)` that moves the linear predictor by 1 across
+the data (at least 1, so nothing changes for a covariate whose range is 1 or
+more) -- so a covariate recorded in small units, such as the Arrhenius
+:math:`1/T` in kelvin (a range of about :math:`3 \times 10^{-4}` over a test's
+temperatures), is fitted as well as one in large units. Measured in units of
+1, a coefficient's gradient at its start of 0 is proportional to its
+covariate's spread: a ``WeibullPH`` time-varying fit to :math:`1/T` stopped
+there, after no iterations, and reported a verified maximum 0.41 below the
+one it reached with :math:`1000/T` (#577).
+
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).
 
@@ -302,6 +316,24 @@ A small simulated data set shows the three forms:
     _g = demo.sf([5.0, 10.0, 15.0], Z=[[0.0], [1.0]], grid=True)
     assert _g.shape == (2, 3)
     assert np.allclose(_g[1], demo.sf([5.0, 10.0, 15.0], Z=[1.0]))
+
+The same covariate recorded in ten-thousandths gives the same model, its
+coefficient multiplied by :math:`10^{4}` (see the units of a covariate,
+above):
+
+.. jupyter-execute::
+
+    small = WeibullPH.fit(x=x_demo, Z=Z_demo * 1e-4)
+    print('alpha, beta, beta_0 :', small.params.round(3), small.maximum)
+    print('neg_ll              :', round(small.neg_ll(), 6), round(demo.neg_ll(), 6))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert small.maximum == "verified"
+    assert abs(small.neg_ll() - demo.neg_ll()) < 1e-6
+    assert np.allclose(small.params * [1, 1, 1e-4], demo.params, rtol=1e-4)
 
 The regression models do not have a quantile function (``qf``). A quantile at a
 given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a

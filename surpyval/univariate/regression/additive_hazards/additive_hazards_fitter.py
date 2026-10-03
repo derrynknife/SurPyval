@@ -544,7 +544,7 @@ class AdditiveHazardsFitter(
             coefs = free_coefficients(self, fixed, pmap)
             # Each coefficient searched and judged in its own covariate's
             # units (#577)
-            floor = coefficient_floor(len(init), coefs, data.Z)
+            floor = coefficient_floor(np.size(init), coefs, data.Z)
             res, converged = self._gradient_first(
                 fun, true_neg_ll, init, n_obs, floor=floor
             )
