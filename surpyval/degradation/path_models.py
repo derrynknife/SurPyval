@@ -556,6 +556,15 @@ class OffsetExponentialPath_(PathModel):
         -------
         numpy array
             The fitted ``a``, ``b`` and ``c``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval.degradation import OffsetExponentialPath
+        >>> x = np.array([0.0, 1.0, 2.0, 3.0, 4.0, 5.0])
+        >>> y = 2.0 + 0.5 * np.exp(0.4 * x)
+        >>> OffsetExponentialPath.fit(x, y).round(3)
+        array([2. , 0.5, 0.4])
         """
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
