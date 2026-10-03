@@ -408,9 +408,7 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         return lower, upper, failed, unsettled
 
 
-def lr_search(
-    model: "ParametricRegressionModel", reported: bool
-) -> RegressionLikelihoodRatio:
+def lr_search(model: Any, reported: bool) -> RegressionLikelihoodRatio:
     """The likelihood-ratio searches of ``model``: in the
     parameterisation its bounds on the functions are computed in
     (``_inference_state``), or, with ``reported``, in that of the
@@ -450,7 +448,7 @@ def lr_search(
 
 
 def param_cb_lr(
-    model: "ParametricRegressionModel",
+    model: Any,
     name: str,
     alpha_ci: float,
     bound: str,
@@ -489,8 +487,8 @@ def param_cb_lr(
 
 
 def cb_lr(
-    model: "ParametricRegressionModel",
-    x: npt.NDArray,
+    model: Any,
+    x: npt.ArrayLike,
     Z: Any,
     on: str,
     alpha_ci: float,
@@ -508,27 +506,27 @@ def cb_lr(
     search = lr_search(model, reported=False)
     Zp = model._centred(model._prepare_Z(Z), search.center)
     rows = covariate_rows(Zp, model._n_covariates())
-    x = np.atleast_1d(np.asarray(x, dtype=float)).reshape(-1)
-    check_paired_rows(x.size, rows.shape[0], grid=False)
-    n = max(x.size, rows.shape[0])
-    x = np.broadcast_to(x, (n,)).copy()
+    t = np.atleast_1d(np.asarray(x, dtype=float)).reshape(-1)
+    check_paired_rows(t.size, rows.shape[0], grid=False)
+    n = max(t.size, rows.shape[0])
+    t = np.broadcast_to(t, (n,)).copy()
     rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
     want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
     crit = critical_value(alpha_ci, bound)
 
     lower = np.full(n, np.nan)
     upper = np.full(n, np.nan)
-    below = x < model.distribution.support[0]
+    below = t < model.distribution.support[0]
     inside = np.flatnonzero(~below)
     failed: list[float] = []
     unsettled: list[float] = []
     if inside.size:
         lo, hi, bad, unsure = search.band(
-            x[inside], rows[inside], on, crit, want
+            t[inside], rows[inside], on, crit, want
         )
         lower[inside], upper[inside] = lo, hi
-        failed = [float(x[inside][i]) for i in bad]
-        unsettled = [float(x[inside][i]) for i in unsure]
+        failed = [float(t[inside][i]) for i in bad]
+        unsettled = [float(t[inside][i]) for i in unsure]
     if below.any():
         # Nothing has happened yet: the bound is the estimate.
         at = 1.0 if on == "sf" else 0.0

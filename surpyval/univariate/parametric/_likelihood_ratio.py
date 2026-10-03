@@ -2506,7 +2506,10 @@ class LikelihoodRatioMixin:
         slopes = np.array(
             [coords[j].slope(theta_hat[j]) for j in free], dtype=float
         )
-        cov_u = np.asarray(self.hess_inv, dtype=float)[np.ix_(free, free)]
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None:
+            return None
+        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
         cov_u = cov_u / np.outer(slopes, slopes)
         try:
             L = np.linalg.cholesky(cov_u)
