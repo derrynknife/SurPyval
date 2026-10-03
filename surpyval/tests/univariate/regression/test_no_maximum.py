@@ -342,14 +342,17 @@ def test_an_ordinary_frailty_fit_is_quiet():
     "name", ["WeibullPH", "LogNormalAFT", "LogisticPO", "LogNormalPO"]
 )
 def test_a_runaway_has_its_profile_read(monkeypatch, name):
-    # Only the runaway coefficient's (0): the other's step is at tolerance.
-    # LogNormalAFT and the PO fits run furthest onto the plateau (profile
-    # information 1e-13 to 1e-15 of the start's).
+    # The runaway coefficient's (0) profile is read. The other's step is at
+    # the gate's tolerance, so whether it is cleared without a profile
+    # depends on the last bits of the search (it is not on some CPUs);
+    # either way only coefficient 0 runs away. LogNormalAFT and the PO fits
+    # run furthest onto the plateau (profile information 1e-13 to 1e-15 of
+    # the start's).
     calls = _count_profiles(monkeypatch)
     _, w = _fit(lambda: getattr(sp, name).fit(**_no_events(reg_data())))
     assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
     k_dist = len(getattr(sp, name).parameter_names)
-    assert calls == [k_dist]
+    assert calls[0] == k_dist and set(calls) <= {k_dist, k_dist + 1}
 
 
 def test_the_gate_clears_a_maximum_and_nothing_else():

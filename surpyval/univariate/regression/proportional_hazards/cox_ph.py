@@ -236,8 +236,11 @@ def _solve_beta_and_p_values(
     # design with duplicated rows) can still leave a non-positive
     # variance; the resulting standard error is simply unavailable (nan),
     # which is the correct signal, so suppress the sqrt-of-negative
-    # warning rather than emit it.
-    with np.errstate(invalid="ignore"):
+    # warning rather than emit it. On a monotone likelihood the variance can
+    # also round to exactly 0 (it does on some CPUs), so the z-score is
+    # infinite: suppress that division warning too, as the fit has already
+    # warned of the monotone likelihood.
+    with np.errstate(invalid="ignore", divide="ignore"):
         se = np.sqrt(var)
         z_score = res.x / se
     p_values = 2 * (1 - norm.cdf(np.abs(z_score)))
