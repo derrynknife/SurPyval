@@ -234,9 +234,11 @@ class _Judge(NamedTuple):
     init: npt.NDArray
     floor: Any
     obj_scale: float
-    #: ``(natural, bounds, free)``: the map from the search vector to
-    #: the full vector of natural parameters, their bounds, and the
-    #: position in it of each searched (free) parameter.
+    #: ``(natural, bounds, free, edge)``: the map from the search vector
+    #: to the full vector of natural parameters, their bounds, the
+    #: position in it of each searched (free) parameter, and the positions
+    #: of those at an edge where the likelihood is unbounded at a point of
+    #: the search (see ``_space``).
     space: tuple
     #: The runaways found while watching a search, by the point's bytes.
     found: dict
@@ -284,7 +286,7 @@ class _Judge(NamedTuple):
           no maximum there check it themselves (``_warn_if_at_limit``,
           ``_warn_if_offset_at_limit``).
         """
-        natural, bounds, free = self.space
+        natural, bounds, free, _ = self.space
         size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
 
         def keep(j: int, slope: float) -> bool:
@@ -339,6 +341,11 @@ class _Judge(NamedTuple):
         seen = self.found.get(np.asarray(x, dtype=float).tobytes())
         if seen:
             return False, seen
+        # A search that ran onto an edge where the family's likelihood is
+        # unbounded (``_at_unbounded_edge``) cannot be verified either.
+        at_edge = self.space[3](x)
+        if at_edge:
+            return False, at_edge
         return False, _runaway(fun, args, x, self.init, keep=keep)
 
 
@@ -352,7 +359,15 @@ def _space(model: "Parametric") -> tuple:
         return np.asarray(inv_trans(const(u)), dtype=float)
 
     free = [i for i in range(len(model.bounds)) if i not in fixed_idx]
-    return natural, model.bounds, free
+    names = sorted(model.param_map, key=model.param_map.__getitem__)
+
+    def edge(u: npt.NDArray) -> tuple[int, ...]:
+        with np.errstate(all="ignore"):
+            values = dict(zip(names, natural(u)))
+        at = model.dist._at_unbounded_edge(model.surv_data, values)
+        return tuple(k for k, i in enumerate(free) if names[i] in at)
+
+    return natural, model.bounds, free, edge
 
 
 def _search(
