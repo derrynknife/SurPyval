@@ -27,9 +27,10 @@ method that takes data in the xcnt format described in :doc:`Types of Data`:
 - ``n``: the number of items with each value (defaults to 1 each);
 - ``t``: a 2-D array of ``[left, right]`` truncation limits, or equivalently ``tl`` and ``tr`` (scalars apply to every value).
 
-There are four more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
-and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol`` and ``max_iter`` (see
-`Arbitrarily Truncated and Censored Data`_). The other estimators ignore those three.
+There are five more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
+and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol``, ``max_iter`` and
+``turnbull_algorithm`` (see `Arbitrarily Truncated and Censored Data`_). The other estimators
+ignore those four.
 
 ``fit()`` returns a :class:`~surpyval.univariate.nonparametric.nonparametric.NonParametric` model (see its API page for every method), and every model has the same
 methods (``sf``, ``ff``, ``Hf``, ``cb``, ``plot`` and so on) whichever estimator made it.
@@ -413,7 +414,7 @@ A fitted model can be written to a plain dictionary (or a JSON file) and read ba
     assert np.allclose(with_data.bootstrap_cb([3], n_boot=50, random_state=0),
                        model.bootstrap_cb([3], n_boot=50, random_state=0))
 
-``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol`` and ``max_iter`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
+``model.to_json(path)`` and ``surv.from_json(path)`` do the same through a file. By default the raw data are not stored; pass ``with_data=True`` to ``to_dict`` if the restored model needs to call ``bootstrap_cb`` (which refits the data). Without the data a restored model's ``plot()`` draws the curve and bounds but not the censoring ticks. ``model.to_json(path, with_data=True)`` keeps the data in a file, to be read back with ``surv.from_json``. The sample size of ``band()`` (the number of items fitted) is stored where it differs from the largest risk set, as it does for left truncated data, so the band of a restored model is the original's (such a dictionary, like one with a support, is schema 2). For Turnbull models the estimator name, ``tol``, ``max_iter`` and (when it is not the EM) the ``turnbull_algorithm`` are stored (so a restored model's ``bootstrap_cb`` refits as the original did), but the fitting diagnostics (``converged``, ``degenerate`` and so on) and the ``bounds``, ``R_upper`` and ``R_lower`` arrays are not.
 
 
 Right Censored Data
@@ -800,7 +801,11 @@ right censored to infinity, as more than half of these are, and it warns
 rather than failing silently if it runs out of iterations before
 reaching ``tol``. If you see that warning, raising ``max_iter`` is
 usually the answer; if it persists, the data may not identify a unique
-estimate at all. The fitted model records what happened:
+estimate at all. For data without truncation, ``turnbull_algorithm='EMICM'``
+computes the same maximum (the non-parametric MLE) by the EM-ICM of R's
+``Icens`` and ``icenReg`` packages, which reaches it in tens of iterations
+where the EM can need tens of thousands, and stops when it is there (see
+:doc:`Non-Parametric Estimation`). The fitted model records what happened:
 
 .. jupyter-execute::
 

@@ -15,7 +15,12 @@ four primitives::
 Each observed dimension contributes ``d/du`` (and its margin density);
 each right/left/interval-censored dimension contributes a difference of
 ``C`` evaluated at its bounds. The per-dimension operators below make that
-bookkeeping uniform across all 16 bivariate censoring combinations.
+bookkeeping uniform across all 16 bivariate censoring combinations. A row
+right- or left-censored in both dimensions is the copula's mass in a
+quadrant, and one observed and one right-censored an h-function's
+complement; those are evaluated directly by the family (``_quadrant``,
+``_du_upper``, ``_dv_upper``), since as differences of ``C`` they lose
+every digit where they are small (#619).
 """
 
 from __future__ import annotations
@@ -129,6 +134,58 @@ class Copula:
         return elementwise_grad(lambda b: self.du(u_b, b, *params))(
             onp.asarray(v_b, dtype=float)
         )
+
+    # -- the other quadrants (#619) ----------------------------------------
+    # A censored row's likelihood is the copula's mass in a quadrant at
+    # ``(u, v)``, or an h-function's complement. Formed from ``C`` (as
+    # ``1 - u - v + C`` for the upper quadrant) they are differences of
+    # numbers near 1 where they are small -- under strong negative
+    # dependence, below rounding -- so each family evaluates them directly
+    # where it can; these defaults are the differences.
+
+    #: Whether ``C(u, v) = C(v, u)``: then each quadrant's mirror image is
+    #: the quadrant with its arguments swapped. True for every built-in
+    #: family (a rotation by 90 or 270 degrees is not).
+    exchangeable: bool = False
+
+    def _survival(self, u: Any, v: Any, *params: Any) -> Any:
+        """:math:`P(U > u, V > v) = 1 - u - v + C(u, v)`, the joint
+        survival function of the copula (Nelsen 2006, section 2.6)."""
+        return ((1.0 - v) - u) + self.cdf(u, v, *params)
+
+    def _below_above(self, u: Any, v: Any, *params: Any) -> Any:
+        """:math:`P(U \\le u, V > v) = u - C(u, v)`."""
+        return u - self.cdf(u, v, *params)
+
+    def _above_below(self, u: Any, v: Any, *params: Any) -> Any:
+        """:math:`P(U > u, V \\le v) = v - C(u, v)`."""
+        if self.exchangeable:
+            return self._below_above(v, u, *params)
+        return v - self.cdf(u, v, *params)
+
+    def _du_upper(self, u: Any, v: Any, *params: Any) -> Any:
+        """:math:`P(V > v \\mid U = u) = 1 - \\partial C / \\partial u`."""
+        return 1.0 - self.du(u, v, *params)
+
+    def _dv_upper(self, u: Any, v: Any, *params: Any) -> Any:
+        """:math:`P(U > u \\mid V = v) = 1 - \\partial C / \\partial v`."""
+        if self.exchangeable:
+            return self._du_upper(v, u, *params)
+        return 1.0 - self.dv(u, v, *params)
+
+    def _quadrant(
+        self, u: Any, v: Any, upper_u: bool, upper_v: bool, params: Any
+    ) -> Any:
+        """The copula's mass in a quadrant at ``(u, v)``: :math:`P(U
+        \\lessgtr u, V \\lessgtr v)`, above ``u`` where ``upper_u`` (and
+        likewise ``v``)."""
+        if upper_u and upper_v:
+            return self._survival(u, v, *params)
+        if upper_u:
+            return self._above_below(u, v, *params)
+        if upper_v:
+            return self._below_above(u, v, *params)
+        return self.cdf(u, v, *params)
 
     # -- dependence measures (closed-form overrides preferred) ------------
     def kendall_tau(self, *params: float) -> float:
@@ -253,6 +310,43 @@ class Copula:
         # interval censored -> C(.,uhi) - C(.,ulo)
         return [(1.0, uhi, False), (-1.0, ulo, False)]
 
+    def _direct_likelihood(
+        self, a: int, b: int, u0: Any, u1: Any, params: Any
+    ) -> Any:
+        """The copula factor of rows with censoring codes ``a``, ``b``
+        evaluated directly, or ``None`` where it is a difference of the
+        operators' terms (an interval, or an observed slot with a
+        left-censored one).
+
+        A right- or left-censored pair is a quadrant's mass (the upper
+        quadrant for a doubly right-censored row, which was ``1 - u - v +
+        C(u, v)``: noise, or the log floor, under strong negative
+        dependence, #619), and an observed slot with a right-censored one
+        an h-function's complement (which was ``1 - dC/du``).
+        """
+        if a in (-1, 1) and b in (-1, 1):
+            return self._quadrant(u0, u1, a == 1, b == 1, params)
+        if a == 0 and b == 1:
+            return self._du_upper(u0, u1, *params)
+        if a == 1 and b == 0:
+            return self._dv_upper(u0, u1, *params)
+        return None
+
+    def _operator_likelihood(
+        self, a: int, b: int, d0: Any, d1: Any, mask: Any, params: Any
+    ) -> Any:
+        """The copula factor of the rows ``mask`` (codes ``a``, ``b``) as
+        the tensor product of the two slots' operators applied to ``C``."""
+        t0 = self._op_terms(a, d0["u"][mask], d0["ulo"][mask], d0["uhi"][mask])
+        t1 = self._op_terms(b, d1["u"][mask], d1["ulo"][mask], d1["uhi"][mask])
+        L = onp.zeros(int(mask.sum()))
+        for coef0, u0, du0 in t0:
+            for coef1, u1, du1 in t1:
+                L = L + coef0 * coef1 * onp.asarray(
+                    self._eval(u0, u1, du0, du1, params)
+                )
+        return L
+
     def _pair_loglik(self, params: Any, d0: Any, d1: Any) -> Any:
         """Per-row log-likelihood for two prepared dimensions ``d0, d1``."""
         c0, c1 = d0["c"], d1["c"]
@@ -264,18 +358,11 @@ class Copula:
                 mask = (c0 == a) & (c1 == b)
                 if not mask.any():
                     continue
-                t0 = self._op_terms(
-                    a, d0["u"][mask], d0["ulo"][mask], d0["uhi"][mask]
+                L = self._direct_likelihood(
+                    a, b, d0["u"][mask], d1["u"][mask], params
                 )
-                t1 = self._op_terms(
-                    b, d1["u"][mask], d1["ulo"][mask], d1["uhi"][mask]
-                )
-                L = onp.zeros(int(mask.sum()))
-                for coef0, u0, du0 in t0:
-                    for coef1, u1, du1 in t1:
-                        L = L + coef0 * coef1 * onp.asarray(
-                            self._eval(u0, u1, du0, du1, params)
-                        )
+                if L is None:
+                    L = self._operator_likelihood(a, b, d0, d1, mask, params)
                 logL = onp.log(onp.clip(L, _LOG_FLOOR, None))
                 if a == 0:
                     logL = logL + d0["logf"][mask]
@@ -312,16 +399,42 @@ class Copula:
         return out
 
     def _trunc_logmass(self, params: Any, d0: Any, d1: Any) -> Any:
-        """Log copula mass over the per-row truncation rectangle."""
+        """Log copula mass over the per-row truncation rectangle.
+
+        A row truncated on the left only, in both series, has the upper
+        quadrant at its truncation points as its rectangle, which is
+        evaluated directly (:meth:`_survival`, #619)."""
         ul0, ur0 = d0["ul"], d0["ur"]
         ul1, ur1 = d1["ul"], d1["ur"]
-        mass = (
+        upper = (ur0 >= 1.0) & (ur1 >= 1.0)
+        mass = onp.empty(onp.shape(ul0))
+        mass[upper] = self._boundary_survival(ul0[upper], ul1[upper], params)
+        rest = ~upper
+        ul0, ur0, ul1, ur1 = ul0[rest], ur0[rest], ul1[rest], ur1[rest]
+        mass[rest] = (
             self._boundary_cdf(ur0, ur1, params)
             - self._boundary_cdf(ul0, ur1, params)
             - self._boundary_cdf(ur0, ul1, params)
             + self._boundary_cdf(ul0, ul1, params)
         )
         return onp.log(onp.clip(mass, _LOG_FLOOR, None))
+
+    def _boundary_survival(self, u: Any, v: Any, params: Any) -> Any:
+        """:math:`P(U > u, V > v)` with the boundary values every copula
+        shares, as :meth:`_boundary_cdf`: ``1 - v`` at ``u = 0``, ``1 -
+        u`` at ``v = 0`` and 0 at ``u = 1`` or ``v = 1``."""
+        u = onp.asarray(u, dtype=float)
+        v = onp.asarray(v, dtype=float)
+        u_zero, v_zero = u <= 0, v <= 0
+        one = (u >= 1) | (v >= 1)
+        interior = ~(u_zero | v_zero | one)
+        out = onp.where(u_zero, 1.0 - v, onp.where(v_zero, 1.0 - u, 0.0))
+        out = onp.where(one, 0.0, out)
+        if interior.any():
+            out[interior] = onp.asarray(
+                self._survival(u[interior], v[interior], *params)
+            )
+        return out
 
     # -- fitting ----------------------------------------------------------
     def _prepare_dim(
@@ -1230,7 +1343,10 @@ class RotatedCopula(Copula):
       copula),
     * 270: ``C(u, v) = u - C_0(u, 1 - v)``,
 
-    and every primitive, measure and draw follows from the family's. The
+    and every primitive, measure and draw follows from the family's: each
+    quadrant's mass (the CDF among them) and each h-function is the
+    family's at the reflected point, evaluated directly rather than as the
+    differences above (#619). The
     parameters, their names and bounds are the family's.
     """
 
@@ -1255,28 +1371,63 @@ class RotatedCopula(Copula):
         """Whether the first and the second coordinate are reflected."""
         return self.rotation in (90, 180), self.rotation in (180, 270)
 
-    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+    def _reflect(self, u: Any, v: Any) -> tuple:
+        """``(u, v)`` in the family's own orientation."""
         f0, f1 = self._flips()
-        c = self.base.cdf(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
-        if f0 and f1:
-            return u + v - 1.0 + c
-        return (v if f0 else u) - c
+        return (1.0 - u if f0 else u), (1.0 - v if f1 else v)
 
-    def du(self, u: Any, v: Any, *params: Any) -> Any:
+    # Each quadrant of the rotated copula is a quadrant of the family at
+    # the reflected point (the one with each reflected side turned over),
+    # which the family evaluates directly (#619): the 90-degree rotation's
+    # upper quadrant is the family's ``P(U <= 1 - u, V > v)``, where the
+    # formula ``1 - u - v + C(u, v)`` cancelled to nothing.
+    def _quadrant(
+        self, u: Any, v: Any, upper_u: bool, upper_v: bool, params: Any
+    ) -> Any:
         f0, f1 = self._flips()
-        h = self.base.du(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
-        return 1.0 - h if f1 else h
+        a, b = self._reflect(u, v)
+        return self.base._quadrant(a, b, upper_u != f0, upper_v != f1, params)
+
+    def cdf(self, u: Any, v: Any, *params: Any) -> Any:
+        return self._quadrant(u, v, False, False, params)
+
+    def _survival(self, u: Any, v: Any, *params: Any) -> Any:
+        return self._quadrant(u, v, True, True, params)
+
+    def _below_above(self, u: Any, v: Any, *params: Any) -> Any:
+        return self._quadrant(u, v, False, True, params)
+
+    def _above_below(self, u: Any, v: Any, *params: Any) -> Any:
+        return self._quadrant(u, v, True, False, params)
+
+    # The h-functions likewise: P(V <= v | U = u) is the family's
+    # P(V > 1 - v | U = .) when the second side is reflected.
+    def du(self, u: Any, v: Any, *params: Any) -> Any:
+        a, b = self._reflect(u, v)
+        if self._flips()[1]:
+            return self.base._du_upper(a, b, *params)
+        return self.base.du(a, b, *params)
+
+    def _du_upper(self, u: Any, v: Any, *params: Any) -> Any:
+        a, b = self._reflect(u, v)
+        if self._flips()[1]:
+            return self.base.du(a, b, *params)
+        return self.base._du_upper(a, b, *params)
 
     def dv(self, u: Any, v: Any, *params: Any) -> Any:
-        f0, f1 = self._flips()
-        h = self.base.dv(1.0 - u if f0 else u, 1.0 - v if f1 else v, *params)
-        return 1.0 - h if f0 else h
+        a, b = self._reflect(u, v)
+        if self._flips()[0]:
+            return self.base._dv_upper(a, b, *params)
+        return self.base.dv(a, b, *params)
+
+    def _dv_upper(self, u: Any, v: Any, *params: Any) -> Any:
+        a, b = self._reflect(u, v)
+        if self._flips()[0]:
+            return self.base.dv(a, b, *params)
+        return self.base._dv_upper(a, b, *params)
 
     def pdf(self, u: Any, v: Any, *params: Any) -> Any:
-        f0, f1 = self._flips()
-        return self.base.pdf(
-            1.0 - u if f0 else u, 1.0 - v if f1 else v, *params
-        )
+        return self.base.pdf(*self._reflect(u, v), *params)
 
     def kendall_tau(self, *params: float) -> float:
         tau = self.base.kendall_tau(*params)

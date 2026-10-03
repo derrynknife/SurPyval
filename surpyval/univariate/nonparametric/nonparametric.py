@@ -1725,7 +1725,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         mirroring the parametric ``to_dict``. The estimator ladder
         (``x``, ``r``, ``d``), the derived curves (``R``, ``F``, ``H``),
         the variance estimate (``greenwood``) and, for Turnbull models, the
-        estimator name and the EM's ``tol`` and ``max_iter`` are stored,
+        estimator name, the EM's ``tol`` and ``max_iter`` and, when it is
+        not the EM, the ``turnbull_algorithm`` (as ``"algorithm"``, which
+        makes the dictionary schema 2) are stored,
         which is everything the model's methods need to be reconstructed
         with :meth:`from_dict`.
 
@@ -1775,6 +1777,10 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         for key in ("estimator", "tol", "max_iter"):
             if key in getattr(self, "data", {}):
                 out[key] = self.data[key]
+        # The EM-ICM only where it was used: a reader without it refits
+        # with the EM (the dictionary is then schema 2, #620).
+        if getattr(self, "data", {}).get("algorithm", "EM") != "EM":
+            out["algorithm"] = self.data["algorithm"]
 
         # Only when set: without it the dictionary is readable by v0.20.
         if self.support is not None:
@@ -1857,7 +1863,7 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
                 value = raw.get(ch, None)
                 if value is not None:
                     data[ch] = np.asarray(value)
-            for key in ("estimator", "tol", "max_iter"):
+            for key in ("estimator", "tol", "max_iter", "algorithm"):
                 if key in model_dict:
                     data[key] = model_dict[key]
             out.data = data

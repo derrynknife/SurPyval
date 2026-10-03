@@ -38,6 +38,17 @@ def check_turnbull_estimator(estimator: str) -> None:
     check_option("turnbull_estimator", estimator, TURNBULL_ESTIMATORS)
 
 
+# The algorithms that compute the estimate (#620): the self-consistency EM
+# (the default), and Wellner and Zhan's (1997) hybrid of it with the
+# iterative convex minorant, as R's ``Icens::EMICM`` and ``icenReg::ic_np``.
+TURNBULL_ALGORITHMS = ("EM", "EMICM")
+
+
+def check_turnbull_algorithm(algorithm: str) -> None:
+    """Raise a ``ValueError`` if ``algorithm`` is not a Turnbull option."""
+    check_option("turnbull_algorithm", algorithm, TURNBULL_ALGORITHMS)
+
+
 def _innermost(
     lo: npt.NDArray, hi: npt.NDArray, M: int
 ) -> npt.NDArray[np.bool_]:
@@ -440,6 +451,140 @@ def _em(
     return _EMResult(p, r, d, iters, converged, degenerate)
 
 
+class _Cliques:
+    """The untruncated likelihood on the innermost intervals ("cliques"),
+    in the cumulative masses ``F`` the ICM step works with.
+
+    Without truncation the NPMLE puts its mass on the innermost intervals
+    only (Turnbull 1976), and every row's support holds each of them
+    whole or not at all, so row ``i``'s probability is ``F[hi_i] -
+    F[lo_i - 1]`` in clique indices. The mass inside a clique spanning
+    several pieces is not identified; it is split over them evenly, as
+    the EM's start splits it and every EM step keeps it.
+    """
+
+    def __init__(
+        self, lo: npt.NDArray, hi: npt.NDArray, n: npt.NDArray, M: int
+    ) -> None:
+        pieces = np.flatnonzero(_innermost(lo, hi, M))
+        # A clique starts at a piece where some support starts
+        starts = np.zeros(M, dtype=bool)
+        starts[lo] = True
+        clique = np.cumsum(starts[pieces]) - 1
+        self.pieces, self.clique, self.M = pieces, clique, M
+        self.K = int(clique[-1]) + 1
+        self.lo = clique[np.searchsorted(pieces, lo, side="left")]
+        self.hi = clique[np.searchsorted(pieces, hi, side="right") - 1]
+        self.n = np.asarray(n, dtype=float)
+        self.N = float(self.n.sum())
+
+    def masses(self, F: npt.NDArray) -> npt.NDArray:
+        """Each row's probability."""
+        F0 = np.concatenate([[0.0], F])
+        return F0[self.hi + 1] - F0[self.lo]
+
+    def loglik(self, S: npt.NDArray) -> float:
+        return float(np.sum(self.n * np.log(S))) if np.all(S > 0) else -np.inf
+
+    def gradient(self, S: npt.NDArray) -> npt.NDArray:
+        """``D_k``, the log-likelihood's derivative in clique ``k``'s mass:
+        the sum of ``n_i / S_i`` over the rows whose support holds it."""
+        w = self.n / S
+        delta = np.zeros(self.K + 1)
+        np.add.at(delta, self.lo, w)
+        np.add.at(delta, self.hi + 1, -w)
+        return np.cumsum(delta[: self.K])
+
+    def icm_step(
+        self, F: npt.NDArray, S: npt.NDArray, ll: float
+    ) -> tuple[npt.NDArray, npt.NDArray, float]:
+        """One iterative convex minorant step (Groeneboom and Wellner
+        1992; Jongbloed 1998): the Newton step of each ``F_k`` alone,
+        made monotone by weighted isotonic regression (weights the
+        log-likelihood's curvature in each ``F_k``) and kept in [0, 1],
+        then halved until the likelihood does not fall."""
+        from scipy.optimize import isotonic_regression
+
+        w1 = self.n / S
+        w2 = w1 / S
+        g = np.zeros(self.K)
+        h = np.zeros(self.K)
+        before = self.lo - 1
+        has = before >= 0
+        np.add.at(g, self.hi, w1)
+        np.add.at(h, self.hi, w2)
+        np.add.at(g, before[has], -w1[has])
+        np.add.at(h, before[has], w2[has])
+        # F of the last clique is 1; every other ends where a support
+        # does, so its curvature is positive
+        free = F[:-1]
+        target = isotonic_regression(free + g[:-1] / h[:-1], weights=h[:-1]).x
+        step = np.clip(target, 0.0, 1.0) - free
+        alpha = 1.0
+        for _ in range(40):
+            F_new = np.append(free + alpha * step, 1.0)
+            S_new = self.masses(F_new)
+            ll_new = self.loglik(S_new)
+            if ll_new >= ll:
+                return F_new, S_new, ll_new
+            alpha /= 2.0
+        return F, S, ll
+
+    def on_pieces(self, F: npt.NDArray) -> npt.NDArray:
+        """The mass on the ``M`` pieces, each clique's split evenly."""
+        mass = np.diff(np.concatenate([[0.0], F]))
+        size = np.bincount(self.clique, minlength=self.K)
+        p = np.zeros(self.M)
+        p[self.pieces] = (mass / size)[self.clique]
+        return p
+
+
+def _emicm(
+    ranges: _Ranges,
+    M: int,
+    identifiable: npt.NDArray[np.bool_],
+    tol: float,
+    max_iter: int,
+) -> _EMResult:
+    """The NPMLE of untruncated data by Wellner and Zhan's (1997) EM-ICM,
+    as R's ``Icens::EMICM`` and ``icenReg::ic_np``: each iteration is an
+    EM (self-consistency) step followed by an ICM step (``_Cliques``).
+
+    It stops when the Karush-Kuhn-Tucker conditions of the maximum hold
+    to ``tol`` (Gentleman and Geyer 1994): with ``D_k`` the derivative of
+    the log-likelihood in the mass of innermost interval ``k`` and ``N``
+    the number of units, ``D_k <= N`` everywhere (with equality where
+    there is mass), so ``kkt = max_k D_k / N - 1`` is 0 at the NPMLE and
+    positive elsewhere; and since the log-likelihood is concave, it is at
+    most ``N kkt`` below its maximum. The EM's own stop -- the largest
+    change of a mass in one step below ``tol`` -- says how slowly it
+    moves, not how far it is from the maximum (#620).
+    """
+    cl = _Cliques(ranges.lo, ranges.hi, ranges.n, M)
+    F = np.arange(1, cl.K + 1) / cl.K
+    S = cl.masses(F)
+    ll = cl.loglik(S)
+    converged = False
+    iters = 0
+    for iters in range(1, max_iter + 1):
+        # EM step: each clique's mass times D_k / N (the masses still sum
+        # to 1, up to round-off, which the last F absorbs)
+        p = np.diff(np.concatenate([[0.0], F])) * cl.gradient(S) / cl.N
+        F = np.minimum(np.cumsum(p), 1.0)
+        F[-1] = 1.0
+        S = cl.masses(F)
+        ll = cl.loglik(S)
+        if cl.K > 1:
+            F, S, ll = cl.icm_step(F, S, ll)
+        if cl.gradient(S).max() / cl.N - 1.0 < tol:
+            converged = True
+            break
+    p = cl.on_pieces(F)
+    d = _expected_events(p, ranges, identifiable, False)
+    r = d.sum() - d.cumsum() + d
+    return _EMResult(p, r, d, iters, converged, False)
+
+
 def _collapsed(
     R: npt.NDArray,
     k: int,
@@ -543,6 +688,8 @@ def _warn_fit(
     npmle_reason: str,
     tol: float,
     max_iter: int,
+    algorithm: str = "EM",
+    truncated: bool = True,
 ) -> None:
     """At most one warning about the fit.
 
@@ -592,10 +739,18 @@ def _warn_fit(
                 "exists (`npmle` is {!r}): if a larger `max_iter` does not "
                 "help, the maximum may be on the boundary.".format(npmle)
             )
+        name = "EM-ICM" if algorithm == "EMICM" else "EM"
+        if algorithm == "EM" and not truncated:
+            # (the EM-ICM reaches this tolerance in tens of steps where
+            # the EM needs tens of thousands, #620)
+            hint = (
+                " For untruncated data turnbull_algorithm='EMICM' "
+                "converges far faster."
+            )
         warnings.warn(
-            "The Turnbull EM did not converge to within `tol` ({}) in "
+            "The Turnbull {} did not converge to within `tol` ({}) in "
             "`max_iter` ({}) iterations; the estimate may be "
-            "inaccurate.{}".format(tol, max_iter, hint)
+            "inaccurate.{}".format(name, tol, max_iter, hint)
         )
 
 
@@ -726,9 +881,13 @@ def turnbull(
     estimator: str = "Fleming-Harrington",
     tol: float = 1e-10,
     max_iter: int = 1000,
+    algorithm: str = "EM",
 ) -> dict:
     """
-    Turnbull NPMLE via the EM (self-consistency) algorithm.
+    Turnbull NPMLE via the EM (self-consistency) algorithm, or for
+    untruncated data optionally the EM-ICM (``algorithm="EMICM"``, #620;
+    see ``turnbull_algorithm`` in :meth:`Turnbull.fit
+    <surpyval.univariate.nonparametric.nonparametric_fitter.NonParametricFitter.fit>`).
 
     Every observation's support -- the set of Turnbull interval endpoints
     its event could have occurred at -- is a *contiguous* run of indices
@@ -762,6 +921,7 @@ def turnbull(
     if max_iter < 1:
         raise ValueError(f"max_iter must be at least 1; got {max_iter}")
     check_turnbull_estimator(estimator)
+    check_turnbull_algorithm(algorithm)
     # Taken as arrays before anything indexes or slices them. The
     # signature accepts array-like because callers pass lists, but the
     # body below is written against arrays throughout.
@@ -770,6 +930,13 @@ def turnbull(
     n = np.asarray(n)
     t = np.asarray(t)
     any_truncated = np.isfinite(t).any()
+    if algorithm == "EMICM" and any_truncated:
+        # The ICM step needs a concave likelihood, which truncation's
+        # denominators break.
+        raise ValueError(
+            "turnbull_algorithm='EMICM' fits untruncated data only; with "
+            "truncation (tl or tr) use the default, 'EM'."
+        )
     bounds = _bounds(x, c, t)
     exact_times = np.unique(x[c == 0])
 
@@ -857,7 +1024,12 @@ def turnbull(
     p = _initial_mass(
         lo, hi, M, identifiable, any_truncated, interval, tr, estimator
     )
-    em = _em(p, ranges, identifiable, any_truncated, estimator, tol, max_iter)
+    if algorithm == "EMICM":
+        em = _emicm(ranges, M, identifiable, tol, max_iter)
+    else:
+        em = _em(
+            p, ranges, identifiable, any_truncated, estimator, tol, max_iter
+        )
     p, r, d = em.p, em.r, em.d
 
     # Report the requested hazard-form estimator on the converged ladder.
@@ -887,6 +1059,8 @@ def turnbull(
         npmle_reason,
         tol,
         max_iter,
+        algorithm,
+        bool(any_truncated),
     )
 
     # Heterogeneous by design: arrays, the estimator name, and the
@@ -921,6 +1095,7 @@ def turnbull(
     out["bounds"] = bounds
     out["model"] = "Turnbull"
     out["turnbull_estimator"] = estimator
+    out["turnbull_algorithm"] = algorithm
     out["iters"] = em.iters
     out["converged"] = em.converged
     out["degenerate"] = degenerate
@@ -1002,9 +1177,17 @@ class Turnbull_(NonParametricFitter):
         turnbull_estimator: str,
         tol: float,
         max_iter: int,
+        turnbull_algorithm: str = "EM",
     ) -> dict:
         return turnbull(
-            x, c, n, t, turnbull_estimator, tol=tol, max_iter=max_iter
+            x,
+            c,
+            n,
+            t,
+            turnbull_estimator,
+            tol=tol,
+            max_iter=max_iter,
+            algorithm=turnbull_algorithm,
         )
 
 
