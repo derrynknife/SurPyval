@@ -11,7 +11,6 @@ import numpy.typing as npt
 from autograd import grad, jacobian
 from scipy.special import expit
 from scipy.special import ndtri as z
-from scipy.stats import uniform
 
 import surpyval as surv
 from surpyval import ParametricDistribution
@@ -93,6 +92,8 @@ def uniform_draws(
     size: int | tuple[int, ...], random_state: Any = None
 ) -> npt.NDArray:
     """Uniform draws on (0, 1) of shape ``size``: see :func:`draw_state`."""
+    from scipy.stats import uniform
+
     return uniform.rvs(size=size, random_state=draw_state(random_state))
 
 

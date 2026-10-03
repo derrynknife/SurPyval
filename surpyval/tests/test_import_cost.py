@@ -1,10 +1,15 @@
-"""``import surpyval`` must not import matplotlib (#363), pandas or
-formulaic (#470).
+"""``import surpyval`` must not import matplotlib (#363), pandas,
+formulaic, scipy.stats or scipy.integrate (#470).
 
 A server that never plots paid for pyplot, and its backend probing, on
 every cold start. matplotlib is now imported inside the plotting methods.
 pandas and formulaic took half of ``import surpyval``; the models that
-need them are imported on first use.
+need them are imported on first use. scipy.stats and scipy.integrate
+came in through ``autograd.scipy`` (whose package imports its ``stats``)
+and module-level imports in the core: ``autograd.scipy.special`` is
+loaded on its own (``surpyval/_autograd_special.py``), and the core
+imports scipy.stats, scipy.integrate, scipy.interpolate and numdifftools
+where it uses them.
 """
 
 import subprocess
@@ -106,3 +111,45 @@ def test_lazy_subpackages_in_a_fresh_interpreter() -> None:
         check=True,
     )
     assert out.stdout.split() == ["laplace", "True", "True"]
+
+
+def test_470_import_surpyval_does_not_load_scipy_stats_or_integrate():
+    # About 0.45 s of every ``import surpyval``. A distribution's functions
+    # need only numpy and scipy.special.
+    code = (
+        "import sys, surpyval; "
+        "surpyval.Weibull.from_params([10.0, 2.0]).sf([1.0, 5.0]); "
+        "print(sorted(m for m in ('scipy.stats', 'scipy.integrate', "
+        "'scipy.interpolate', 'numdifftools', 'autograd.scipy', "
+        "'pandas', 'formulaic') if m in sys.modules))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip() == "[]"
+
+
+def test_470_autograd_scipy_imported_later_shares_the_special_functions():
+    # A later ``import autograd.scipy`` (by the user, or by SurPyval where
+    # it needs autograd's stats) runs the package as usual and takes the
+    # module SurPyval loaded as its ``special``: one set of primitives,
+    # whose derivatives work through either name.
+    code = (
+        "import surpyval, autograd.scipy, autograd.scipy.special as s; "
+        "import autograd.scipy.stats.norm as n; "
+        "from autograd import grad; "
+        "import surpyval.univariate.parametric.distributions.gamma as g; "
+        "print(autograd.scipy.special is s, g.agammaln is s.gammaln, "
+        "round(float(grad(s.gammaln)(3.0)), 6), "
+        "round(float(grad(n.logpdf)(0.5)), 6))"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.split() == ["True", "True", "0.922784", "-0.5"]

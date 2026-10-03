@@ -24,7 +24,6 @@ from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
 from scipy.special import expit, log_ndtr, ndtr, ndtri, ndtri_exp
-from scipy.stats import norm
 
 from surpyval.utils.validation import BOUNDS, option_error
 
@@ -190,6 +189,8 @@ def log_transformed_cb(
     Greenwood bounds on the nonparametric MCF). Where the estimate is zero
     (e.g. a CIF at ``x = 0``) both bounds are zero.
     """
+    from scipy.stats import norm
+
     estimate = np.asarray(estimate, dtype=float)
     se = np.asarray(se, dtype=float)
     alpha, signs = bound_signs(alpha_ci, bound)
@@ -313,6 +314,8 @@ def link_band(
     0, where a band on the logit of ``sf`` could turn back on small
     samples (#477).
     """
+    from scipy.stats import norm
+
     u_hat = np.asarray(u_hat, dtype=float)
     se_u = np.asarray(se_u, dtype=float)
     alpha, signs = bound_signs(alpha_ci, bound)
@@ -344,6 +347,8 @@ def sf_link_bound(
     range the bounds are the edge they are at: the transform degenerates
     to 0/0 there, and the variance is noise (#256).
     """
+    from scipy.stats import norm
+
     sf_hat = np.asarray(sf_hat, dtype=float)
     ff_hat = 1.0 - sf_hat if ff_hat is None else np.asarray(ff_hat, float)
     u_hat = sf_link_from_sf(sf_hat, ff_hat, link)
@@ -440,6 +445,8 @@ def wald_bound_on_support(
     in sqrt", or a ``ZeroDivisionError`` for an estimate on the edge of
     an interval support (#411).
     """
+    from scipy.stats import norm
+
     alpha, signs = bound_signs(alpha_ci, bound)
     reason = wald_undefined(p_hat, var, lower, upper)
     if reason is not None:

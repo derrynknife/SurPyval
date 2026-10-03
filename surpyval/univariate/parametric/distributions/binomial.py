@@ -4,7 +4,6 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy.stats import binom
 
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
@@ -101,6 +100,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.df(2, 5, 0.3)
         np.float64(0.3086999999999998)
         """
+        from scipy.stats import binom
+
         return binom.pmf(x, n, p)
 
     def ff(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -134,6 +135,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.ff(2, 5, 0.3)
         np.float64(0.83692)
         """
+        from scipy.stats import binom
+
         return binom.cdf(x, n, p)
 
     def sf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -166,6 +169,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.sf(2, 5, 0.3)
         np.float64(0.16308)
         """
+        from scipy.stats import binom
+
         return binom.sf(x, n, p)
 
     def hf(self, x: Numeric, n: Boxable, p: Boxable) -> Boxable:
@@ -260,6 +265,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.qf(0.5, 5, 0.3)
         np.float64(1.0)
         """
+        from scipy.stats import binom
+
         u_arr = np.asarray(u, dtype=float)
         k = refine_quantile(
             binom.ppf(u_arr, n, p),
@@ -301,6 +308,8 @@ class Binomial_(DiscreteParametricFitter):
         # scipy's log mass is formed on the log scale, so it stays finite
         # where the mass underflows (it read -inf from 1e-400 on, #458);
         # the fallback from hf and sf here lost it the same way.
+        from scipy.stats import binom
+
         return binom.logpmf(x, n, p)
 
     def mean(self, n: Boxable, p: Boxable) -> Boxable:
@@ -346,6 +355,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.moment(1, 5, 0.3)
         np.float64(1.5)
         """
+        from scipy.stats import binom
+
         return binom.moment(m, n, p)
 
     def entropy(self, n: Boxable, p: Boxable) -> Boxable:
@@ -359,6 +370,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> Binomial.entropy(5, 0.3)
         np.float64(1.413614855283445)
         """
+        from scipy.stats import binom
+
         return binom.entropy(n, p)
 
     def random(  # type: ignore[override]
@@ -393,6 +406,8 @@ class Binomial_(DiscreteParametricFitter):
         random : scalar or numpy array
             Random values drawn from the distribution in shape `size`
         """
+        from scipy.stats import binom
+
         # A fitted model holds n as a float (5.0), which numpy's binomial
         # draw refused: "Cannot cast scalar from dtype('float64') to
         # dtype('int64')".

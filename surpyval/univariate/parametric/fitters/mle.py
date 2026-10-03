@@ -8,7 +8,6 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
-from numdifftools import Hessian  # type: ignore
 from scipy.optimize import OptimizeResult
 
 from surpyval.univariate.parametric.fitters import (
@@ -749,6 +748,8 @@ def _covariance(
     misleading. ``extras`` is ``(gamma, f0, p)`` and ``flags`` is
     ``(offset, zi, lfp)``.
     """
+    from numdifftools import Hessian  # type: ignore
+
     gamma, f0, p = extras
     offset, zi, lfp = flags
     inv_trans = model.fitting_info["inv_trans"]

@@ -128,16 +128,17 @@ class TestTruncationAtTheSupportEdge:
         )
 
     def test_the_hessian_is_analytic(self, monkeypatch):
-        import surpyval.univariate.parametric.fitters.mle as mle
+        # (The fit imports numdifftools' Hessian where it uses it, #470)
+        import numdifftools
 
         calls = []
-        numerical = mle.Hessian
+        numerical = numdifftools.Hessian
 
         def counting(f):
             calls.append(f)
             return numerical(f)
 
-        monkeypatch.setattr(mle, "Hessian", counting)
+        monkeypatch.setattr(numdifftools, "Hessian", counting)
         x, c, tl = self._data()
         Weibull.fit(x=x, c=c, tl=tl)
         Weibull.fit(x=x, c=c, tl=np.zeros_like(x))

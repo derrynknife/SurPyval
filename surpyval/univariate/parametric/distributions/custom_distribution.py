@@ -8,7 +8,6 @@ import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
 from autograd import elementwise_grad
-from scipy.integrate import quad
 from scipy.optimize import brentq
 
 from surpyval.univariate.parametric._fit_inputs import _offset_start
@@ -550,6 +549,8 @@ class CustomDistribution(OptimisedFitMixin, ParametricFitter):
         of a distribution far from unit scale: a Weibull-like cumulative
         hazard with a scale of 1e5 gave a negative mean.
         """
+        from scipy.integrate import quad
+
         if m == 0:
             return 1.0
         theta = [float(p) for p in params]

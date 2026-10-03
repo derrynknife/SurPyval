@@ -1,5 +1,7 @@
 __version__ = "0.22"
 
+# First: autograd's special functions without scipy.stats (#470)
+from surpyval import _autograd_special  # noqa: F401  # isort: skip
 from autograd import numpy as np
 
 from surpyval.distribution import (

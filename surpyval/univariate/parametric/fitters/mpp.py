@@ -7,7 +7,6 @@ if TYPE_CHECKING:
 import autograd.numpy as np
 import numpy.typing as npt
 from scipy.optimize import minimize, minimize_scalar
-from scipy.stats import pearsonr
 
 from surpyval.univariate.nonparametric import plotting_positions
 from surpyval.univariate.parametric.fitters import offset_step
@@ -196,6 +195,8 @@ def mpp(model: "Parametric") -> dict[str, Any]:
         step = offset_step(x)
 
         def fun(u: npt.NDArray) -> Any:
+            from scipy.stats import pearsonr
+
             g = x_min - step * np.exp(-u[0])
             out = -pearsonr(dist.mpp_x_transform(x_pp - g), y_pp)[0]
             return out

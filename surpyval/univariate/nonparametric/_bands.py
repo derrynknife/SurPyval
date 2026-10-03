@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any, Callable
 import numpy as np
 import numpy.typing as npt
 from scipy.optimize import brentq
-from scipy.stats import norm
 
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.rng import as_generator
@@ -41,6 +40,8 @@ def _critical_value(
 ) -> float:
     """``BandsMixin._band_critical_value``, for an ``alpha_ci`` it has
     checked."""
+    from scipy.stats import norm
+
     # t = a / (1 - a); a_u = 1 would put the end at infinity, which
     # the grid below cannot reach in finitely many steps.
     a_u = min(float(a_u), 1.0 - 1e-12)
@@ -96,6 +97,8 @@ def _critical_value(
         return found[c]
 
     def _inside(c: float) -> float:
+        from scipy.stats import norm
+
         if standardized:
             # u = W(t) / (c sqrt(t)) starts as N(0, 1 / c^2). On a
             # geometric grid t_{k+1} = q t_k the step in these

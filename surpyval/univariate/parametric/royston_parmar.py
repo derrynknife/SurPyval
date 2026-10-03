@@ -42,7 +42,6 @@ from typing import Any
 import numpy as np
 from scipy.optimize import minimize
 from scipy.special import ndtri as _ndtri
-from scipy.stats import norm
 
 from surpyval.serialisation import (
     SerialisableMixin,
@@ -121,6 +120,8 @@ def _place_knots(x_events: np.ndarray, n_internal: int) -> np.ndarray:
 
 def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
     """``(log S, log(-dS/deta))`` at linear predictor ``eta`` for a scale."""
+    from scipy.stats import norm
+
     if scale == "hazard":
         log_S = -np.exp(eta)
         return log_S, eta + log_S
@@ -134,6 +135,8 @@ def _scale_terms(eta: np.ndarray, scale: str) -> tuple[Any, ...]:
 
 
 def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
+    from scipy.stats import norm
+
     if scale == "hazard":
         return np.exp(-np.exp(eta))
     if scale == "odds":

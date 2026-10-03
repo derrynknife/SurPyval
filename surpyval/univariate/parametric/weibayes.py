@@ -4,7 +4,6 @@ from typing import Any
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import chi2
 
 from surpyval.utils import xcnt_handler
 from surpyval.utils.validation import alpha_ci_error
@@ -116,6 +115,8 @@ def weibayes(
     Abernethy, R. B. (2006). *The New Weibull Handbook*, 5th ed.,
     chapter 6 (Weibayes and Weibest).
     """
+    from scipy.stats import chi2
+
     x_arr, c_arr, n_arr, t_arr = xcnt_handler(x, c, n)
     if x_arr.ndim != 1 or not np.isin(c_arr, (0, 1)).all():
         raise ValueError(
