@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
+from typing import Any, Callable
 
 import numpy as np
 import numpy.typing as npt
@@ -16,6 +17,7 @@ from surpyval.univariate.parametric import (
     Logistic,
     LogLogistic,
     LogNormal,
+    MixtureModel,
     Normal,
     OptimisedFitMixin,
     Parametric,
@@ -70,7 +72,42 @@ def _non_regular(dist: OptimisedFitMixin) -> bool:
 NON_REGULAR = [dist.name for dist in distributions if _non_regular(dist)]
 
 
-def _candidate_names(names: Iterable[str] | None, argument: str) -> set[str]:
+def _split_include(
+    include: Iterable[Any] | None,
+) -> tuple[list[Any] | None, list[MixtureModel]]:
+    """``include`` as its distribution names and its mixtures.
+
+    A mixture is named by a model of its components,
+    ``MixtureModel(Weibull, 2)`` (#613): it is a candidate only when named
+    so, and is fitted afresh, leaving the model given as it was. A bare
+    name or model is taken as a list of one.
+    """
+    if include is None:
+        return None, []
+    if isinstance(include, (str, MixtureModel)):
+        include = [include]
+    names: list[Any] = []
+    mixtures: list[MixtureModel] = []
+    for item in include:
+        if isinstance(item, MixtureModel):
+            mixtures.append(item)
+        elif isinstance(item, type) and issubclass(item, MixtureModel):
+            raise ValueError(
+                "`include` takes a mixture as a model of its components, "
+                "e.g. MixtureModel(surpyval.Weibull, 2), not the "
+                "MixtureModel class."
+            )
+        else:
+            names.append(item)
+    return names, mixtures
+
+
+def _mixture_label(model: MixtureModel) -> str:
+    """How a mixture candidate is named in ``fit_best``'s warnings."""
+    return f"MixtureModel({model.dist.name}, {model.m})"
+
+
+def _candidate_names(names: Iterable[Any] | None, argument: str) -> set[str]:
     """The lower-cased distribution names in ``include`` / ``exclude``.
 
     Matched without regard to case, and checked: a name that is not a
@@ -80,9 +117,15 @@ def _candidate_names(names: Iterable[str] | None, argument: str) -> set[str]:
     """
     if names is None:
         return set()
-    if isinstance(names, str):
+    if isinstance(names, (str, MixtureModel)):
         # A bare name, not an iterable of its characters
         names = [names]
+    names = list(names)
+    if any(isinstance(name, MixtureModel) for name in names):
+        raise ValueError(
+            f"`{argument}` takes distribution names only; a mixture is a "
+            "candidate only when named in `include`."
+        )
     wanted = {str(name).lower() for name in names}
     known = {dist.name.lower() for dist in distributions}
     unknown = sorted(wanted - known)
@@ -114,13 +157,13 @@ def fit_best(
     n: npt.ArrayLike | None = None,
     t: npt.ArrayLike | None = None,
     metric: str = "aic",
-    include: Iterable[str] | None = None,
+    include: Iterable[str | MixtureModel] | None = None,
     exclude: Iterable[str] | None = None,
     tl: npt.ArrayLike | float | None = None,
     tr: npt.ArrayLike | float | None = None,
     xl: npt.ArrayLike | None = None,
     xr: npt.ArrayLike | None = None,
-) -> Parametric | None:
+) -> Parametric | MixtureModel | None:
     """
     Fit every candidate continuous distribution to the data and return
     the fitted model with the best value of ``metric``.
@@ -167,10 +210,13 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     warning its own fit would give that it is not a verified maximum is
     held back, replaced by that one.
 
-    ``fit_best`` compares single families. Whether the data are one
-    population or two is a separate question: fit a ``MixtureModel`` and
-    compare its ``aic()`` with the chosen model's, as the criteria are
-    spelt alike on every model (#572).
+    By default ``fit_best`` compares single families. A mixture is a
+    candidate only when named in ``include`` as a model of its
+    components, ``MixtureModel(Weibull, 2)`` (#613): it is fitted to the
+    same data and ranked on the same criterion, which a mixture has as
+    every model does (#572), its parameters counting each component's
+    and the free weights. Whether the data are one population or two is
+    then decided on that criterion, as between any two candidates.
 
     Parameters
     ----------
@@ -186,11 +232,14 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     metric : str, optional
         The model-selection criterion to minimise: ``"aic"`` (default),
         ``"aic_c"``, ``"bic"`` or ``"neg_ll"``.
-    include : iterable of str, optional
+    include : iterable of str or MixtureModel, optional
         Only try distributions with these names (matched without regard
-        to case; a name that is not a candidate raises a ``ValueError``).
-        The only way to try the Uniform or the Beta4, which are then set
-        aside (see above). Mutually exclusive with ``exclude``.
+        to case; a name that is not a candidate raises a ``ValueError``),
+        and the mixtures given as models of their components,
+        ``MixtureModel(Weibull, 2)``, each fitted afresh (the model given
+        is left as it was). The only way to try the Uniform or the Beta4
+        (which are then set aside, see above) or a mixture. Mutually
+        exclusive with ``exclude``.
     exclude : iterable of str, optional
         Try every candidate except distributions with these names, checked
         in the same way. Mutually exclusive with ``include``.
@@ -203,8 +252,9 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
 
     Returns
     -------
-    Parametric or None
-        The fitted model that minimises ``metric``, or ``None`` when no
+    Parametric, MixtureModel or None
+        The fitted model that minimises ``metric`` (a ``MixtureModel``
+        only when one was named in ``include``), or ``None`` when no
         candidate converged.
 
     Raises
@@ -231,13 +281,25 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     >>> model = fit_best(x[x > 5], tl=5, include=["Weibull", "Gamma"])
     >>> model.dist.name
     'Weibull'
+
+    A two-component Weibull mixture as a candidate beside the Weibull, on
+    data from two populations:
+
+    >>> from surpyval import MixtureModel
+    >>> x = np.concatenate(
+    ...     [Weibull.random(60, 5, 6), Weibull.random(60, 30, 6)]
+    ... )
+    >>> best = fit_best(x, include=["Weibull", MixtureModel(Weibull, 2)])
+    >>> type(best).__name__, best.m
+    ('MixtureModel', 2)
     """
-    include_set = _candidate_names(include, "include")
+    names, mixtures = _split_include(include)
+    include_set = _candidate_names(names, "include")
     exclude_set = _candidate_names(exclude, "exclude")
 
     check_option("metric", metric, METRICS)
 
-    if (len(include_set) > 0) and (len(exclude_set) > 0):
+    if (include_set or mixtures) and exclude_set:
         raise ValueError("Provide either an include or an exclude, not both.")
 
     if len(exclude_set) > 0:
@@ -247,7 +309,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             if dist.name.lower() not in exclude_set
             and dist.name not in NON_REGULAR
         ]
-    elif len(include_set) > 0:
+    elif include_set or mixtures:
         candidates = [
             dist for dist in distributions if dist.name.lower() in include_set
         ]
@@ -274,7 +336,27 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     failed: list[str] = []
     errors: list[Exception] = []
     outside: list[str] = []
-    for dist in candidates:
+    # Each candidate as (name, fit, whether its likelihood is regular).
+    fits: list[tuple[str, Callable[[], Any], bool]] = [
+        (
+            dist.name,
+            lambda d=dist: d.fit(x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr),
+            not _non_regular(dist),
+        )
+        for dist in candidates
+    ]
+    fits += [
+        (
+            _mixture_label(mix),
+            lambda mix=mix: MixtureModel(dist=mix.dist, m=mix.m).fit(
+                x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr
+            ),
+            True,
+        )
+        for mix in mixtures
+    ]
+    labels: dict[int, str] = {}
+    for name, fit, regular_family in fits:
         failure: Exception | None = None
         # A candidate's own warning that its fit is not a verified maximum
         # is held back: the fitted model records it (``maximum``), and the
@@ -285,38 +367,35 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
         ):
             warnings.simplefilter("always")
             try:
-                temp_model = dist.fit(x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr)
+                temp_model = fit()
                 tmp_measure = getattr(temp_model, metric)()
             except OutsideSupportError:
                 # A candidate that cannot describe the data (a Beta for
                 # data outside (0, 1)) is not a failure to report (#485).
-                outside.append(dist.name)
+                outside.append(name)
                 continue
             except Exception as e:
                 failure = e
         if failure is not None:
             # A failed candidate's other warnings go with it
-            failed.append(f"{dist.name} ({_reason(failure)})")
+            failed.append(f"{name} ({_reason(failure)})")
             errors.append(failure)
             continue
         for w in caught:
             warnings.warn_explicit(w.message, w.category, w.filename, w.lineno)
         n_fitted += 1
+        labels[id(temp_model)] = name
         maximum = temp_model.maximum
         if maximum == "no finite maximum":
-            set_aside.append(
-                f"{dist.name} (its likelihood has no finite maximum)"
-            )
+            set_aside.append(f"{name} (its likelihood has no finite maximum)")
         elif maximum != "verified":
+            set_aside.append(f"{name} (its fit is not a verified maximum)")
+        elif not regular_family:
             set_aside.append(
-                f"{dist.name} (its fit is not a verified maximum)"
-            )
-        elif _non_regular(dist):
-            set_aside.append(
-                f"{dist.name} (its support ends are parameters, fitted "
+                f"{name} (its support ends are parameters, fitted "
                 "on the extreme observations)"
             )
-        regular = maximum == "verified" and not _non_regular(dist)
+        regular = maximum == "verified" and regular_family
         if tmp_measure < best[regular][0]:
             best[regular] = (tmp_measure, temp_model)
     model = best[True][1]
@@ -333,7 +412,7 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
             stacklevel=2,
         )
     if set_aside:
-        chosen = "none" if model is None else model.dist.name
+        chosen = "none" if model is None else labels[id(model)]
         warnings.warn(
             f"fit_best set aside {', '.join(set_aside)}: {metric} assumes "
             "a regular maximum of the likelihood, which these fits do not "

@@ -197,6 +197,25 @@ def test_top_level_names_a_helper_s_subpackage(name, where):
 
 
 @pytest.mark.parametrize(
+    "name, value, instead",
+    [
+        ("NUM", np.float64, "numpy.float64"),
+        ("TINIEST", np.finfo(float).tiny, "numpy.finfo(float).tiny"),
+        ("EPS", np.sqrt(np.finfo(float).eps), "numpy.sqrt("),
+    ],
+)
+def test_613_top_level_constants_are_deprecated(name, value, instead):
+    # They still work until v0.24, with a warning naming what to use, and
+    # are no longer listed; ``surpyval.np`` stays (custom distributions).
+    with pytest.warns(DeprecationWarning, match="v0.24") as caught:
+        assert getattr(sp, name) == value
+    assert instead in str(caught[0].message)
+    assert caught[0].filename == __file__
+    assert name not in dir(sp)
+    assert "np" in dir(sp)
+
+
+@pytest.mark.parametrize(
     "name, where",
     [
         (name, "surpyval.recurrent")

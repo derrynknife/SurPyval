@@ -167,3 +167,82 @@ def test_570_a_skipped_candidate_is_named_with_a_short_reason(monkeypatch):
     (skipped,) = [m for m in messages if m.startswith("fit_best skipped")]
     assert "Gamma (ValueError: Gamma cannot be fitted here.)" in skipped
     assert "\n" not in skipped and len(skipped) < 200
+
+
+# ---------------------------------------------------------------------------
+# #613: a mixture is an opt-in candidate, named in ``include`` as a model of
+# its components, and ranked on the same criterion.
+# ---------------------------------------------------------------------------
+TWO_POPULATIONS = np.concatenate(
+    [
+        sp.Weibull.random(60, 5, 6, random_state=1),
+        sp.Weibull.random(60, 30, 6, random_state=2),
+    ]
+)
+
+
+@pytest.mark.parametrize("metric", ["aic", "bic"])
+def test_613_a_mixture_in_include_is_ranked_on_the_metric(metric):
+    candidate = sp.MixtureModel(sp.Weibull, 2)
+    model, messages = _fit_best(
+        TWO_POPULATIONS, metric=metric, include=["Weibull", candidate]
+    )
+    assert isinstance(model, sp.MixtureModel) and model.m == 2
+    single = sp.Weibull.fit(TWO_POPULATIONS)
+    mixture = sp.MixtureModel.fit(TWO_POPULATIONS, dist=sp.Weibull, m=2)
+    assert getattr(model, metric)() == pytest.approx(
+        getattr(mixture, metric)(), rel=1e-12
+    )
+    assert getattr(model, metric)() < getattr(single, metric)()
+    assert messages == []
+    # The model given describes the candidate, and is left unfitted.
+    assert candidate.params is None
+
+
+def test_613_one_population_keeps_the_single_family():
+    # BIC 2092.7 for the Weibull, 2105.8 for the mixture.
+    x = sp.Weibull.random(200, 100, 2, random_state=5)
+    model, _ = _fit_best(
+        x, metric="bic", include=["Weibull", sp.MixtureModel(sp.Weibull, 2)]
+    )
+    assert isinstance(model, sp.Parametric)
+    assert model.dist.name == "Weibull"
+
+
+def test_613_mixtures_only_when_named():
+    # The default candidates are unchanged: single families only.
+    model = sp.fit_best(TWO_POPULATIONS)
+    assert isinstance(model, sp.Parametric)
+    # A bare mixture is a list of one.
+    alone = sp.fit_best(TWO_POPULATIONS, include=sp.MixtureModel(sp.Weibull))
+    assert isinstance(alone, sp.MixtureModel)
+
+
+@pytest.mark.parametrize(
+    "kwargs, match",
+    [
+        ({"include": [sp.MixtureModel]}, "not the MixtureModel class"),
+        (
+            {"exclude": [sp.MixtureModel(sp.Weibull, 2)]},
+            "distribution names only",
+        ),
+        (
+            {
+                "include": [sp.MixtureModel(sp.Weibull, 2)],
+                "exclude": ["Gamma"],
+            },
+            "either an include or an exclude",
+        ),
+    ],
+)
+def test_613_a_mixture_is_named_only_in_include(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        sp.fit_best(TWO_POPULATIONS, **kwargs)
+
+
+def test_613_a_mixture_outside_its_support_is_passed_over():
+    # As a single family is (#485): a Weibull mixture cannot hold a
+    # negative value, the Normal can.
+    x = np.append(TWO_POPULATIONS, -1.0)
+    model = sp.fit_best(x, include=["Normal", sp.MixtureModel(sp.Weibull)])
+    assert model.dist.name == "Normal"
