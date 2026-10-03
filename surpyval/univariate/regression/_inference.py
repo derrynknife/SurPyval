@@ -78,6 +78,8 @@ class InferenceMixin:
         _restored_covariance: "npt.NDArray | None"
         _restored: bool
         _lr_searches: "list | None"
+        _bootstrap_refits: "dict | None"
+        is_tvc: bool
 
         @property
         def parameter_names(self) -> CallableList: ...
@@ -330,12 +332,13 @@ class InferenceMixin:
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a single fitted parameter.
 
-        Two methods, as for the univariate models; ``"wald"`` is the
-        default:
+        Three methods; ``"wald"`` is the default:
 
         - ``"wald"`` -- bounds from the observed information, computed on
           a scale chosen from the parameter's support so the result stays
@@ -352,6 +355,10 @@ class InferenceMixin:
           the critical value to the edge of the space, the bound is that
           edge, and a side that cannot be found is ``nan``, with a
           warning. It needs the data the model was fitted to.
+        - ``"bootstrap"`` -- the parametric bootstrap percentile interval:
+          the parameter's ``alpha_ci / 2`` and ``1 - alpha_ci / 2``
+          quantiles over ``n_boot`` refits of the model to data simulated
+          from it, as :meth:`cb` describes. It needs the data.
 
         Parameters
         ----------
@@ -361,12 +368,20 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
-        method : {'wald', 'lr'}, optional
+        method : {'wald', 'lr', 'bootstrap'}, optional
             As above. Default ``'wald'``.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
         """
-        from ._likelihood_ratio import is_lr, param_cb_lr
+        from ._bootstrap import bound_method, param_cb_bootstrap
+        from ._likelihood_ratio import param_cb_lr
 
-        lr = is_lr(method)
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         names = self.parameter_names
         if name not in names:
@@ -388,6 +403,11 @@ class InferenceMixin:
         if lr:
             return param_cb_lr(self, name, alpha_ci, bound)
         idx = names.index(name)
+        if method == "bootstrap":
+            check_option("bound", bound, BOUNDS)
+            return param_cb_bootstrap(
+                self, idx, alpha_ci, bound, n_boot, random_state
+            )
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
 
@@ -410,6 +430,8 @@ class InferenceMixin:
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on a predicted function at covariate vector ``Z``.
@@ -459,18 +481,32 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
-        method : {'wald', 'lr'}, optional
-            ``'wald'`` (the default) or ``'lr'``, as above (``'lr'`` also
-            as ``'likelihood'``, ``'likelihood-ratio'`` or ``'profile'``).
+        method : {'wald', 'lr', 'bootstrap'}, optional
+            ``'wald'`` (the default), ``'lr'`` or ``'bootstrap'``, as
+            above (``'lr'`` also as ``'likelihood'``,
+            ``'likelihood-ratio'`` or ``'profile'``).
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200; a bound at a 5% tail is steadier with 1000 or
+            more.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only).
+            ``None`` (the default) draws from numpy's global generator,
+            so ``np.random.seed`` reproduces it; an int or a ``Generator``
+            gives a stream of its own. With an int the refits are kept on
+            the model, and every ``cb``, ``param_cb``, ``quantile_cb``
+            and ``cb_tvc`` with the same ``n_boot`` and seed reuses them.
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
-        from ._likelihood_ratio import cb_lr, is_lr
+        from ._bootstrap import bound_method, cb_bootstrap
+        from ._likelihood_ratio import cb_lr
 
-        lr = is_lr(method)
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         check_option("on", on, CB_ON)
         check_option("bound", bound, BOUNDS)
@@ -483,7 +519,7 @@ class InferenceMixin:
             check_paired_rows(
                 np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
             )
-        if lr:
+        if method != "wald":
             if self._is_additive():
                 self._warn_if_hazard_negative(
                     x,
@@ -491,7 +527,11 @@ class InferenceMixin:
                     np.asarray(x) >= self.distribution.support[0],
                     stacklevel=4,
                 )
-            return cb_lr(self, x, Z, on, alpha_ci, bound)
+            if lr:
+                return cb_lr(self, x, Z, on, alpha_ci, bound)
+            return cb_bootstrap(
+                self, x, Z, on, alpha_ci, bound, n_boot, random_state
+            )
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self._is_additive():
@@ -544,6 +584,8 @@ class InferenceMixin:
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
         method: str = "wald",
+        n_boot: int = 200,
+        random_state: Any = None,
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the quantile ``qf(p, Z)``: the B-life at
@@ -564,7 +606,7 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
-        method : {'wald', 'lr'}, optional
+        method : {'wald', 'lr', 'bootstrap'}, optional
             ``'wald'`` (the default) is the delta method on the log of the
             quantile above the support's start (the quantile itself for a
             baseline on the whole line), from its gradient in the
@@ -574,6 +616,15 @@ class InferenceMixin:
             extreme of ``qf(p, Z)`` over the parameters' likelihood region,
             as :meth:`cb` with ``method='lr'`` is for a function of time
             (aliases as there); it is slower, and needs the data.
+            ``'bootstrap'`` is the percentile interval of the quantile over
+            the parametric bootstrap refits of :meth:`cb`; it needs the
+            data.
+        n_boot : int, optional
+            The number of bootstrap refits (``method='bootstrap'`` only).
+            Default 200.
+        random_state : None, int or numpy.random.Generator, optional
+            The seed of the bootstrap (``method='bootstrap'`` only), as for
+            :meth:`cb`.
 
         Returns
         -------
@@ -593,9 +644,11 @@ class InferenceMixin:
         >>> model.quantile_cb(0.1, [1]).round(3)
         array([1.245, 2.212])
         """
-        from ._likelihood_ratio import is_lr, quantile_cb_lr
+        from ._bootstrap import bound_method, quantile_cb_bootstrap
+        from ._likelihood_ratio import quantile_cb_lr
 
-        lr = is_lr(method)
+        method = bound_method(method)
+        lr = method == "lr"
         self._check_inference()
         check_option("bound", bound, BOUNDS)
         probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
@@ -609,6 +662,10 @@ class InferenceMixin:
         t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
         if lr:
             return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
+        if method == "bootstrap":
+            return quantile_cb_bootstrap(
+                self, probs, rows, alpha_ci, bound, n_boot, random_state
+            )
 
         params, center, cov = self._inference_state()
         Zc = self._centred(rows, center)
