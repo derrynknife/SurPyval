@@ -743,18 +743,17 @@ class _PsiBoundSearch:
         # Where a continued search has stalled (``extreme_far``), the
         # deviance's gradient is autograd's, where it can be had: the
         # region narrows down its valleys faster than differences resolve
-        J = None
-        if h == _LR_FD_FINE and not whiten:
-            # (to_u is linear here: u = to_u(0) + J z)
-            n_z = len(z0)
-            zero = to_u(np.zeros(n_z))
-            J = np.column_stack([to_u(e) - zero for e in np.eye(n_z)])
+        # (to_u is linear here: u = to_u(0) + J z)
+        exact = h == _LR_FD_FINE and not whiten
+        n_z = len(z0)
+        zero = to_u(np.zeros(n_z))
+        J = np.column_stack([to_u(e) - zero for e in np.eye(n_z)])
 
         def g_jac(z: npt.NDArray) -> npt.NDArray:
-            exact = None if J is None else self.dev_grad_u(to_u(z))
-            if exact is None:
+            grad_u = self.dev_grad_u(to_u(z)) if exact else None
+            if grad_u is None:
                 return _central_gradient(g, z, h)
-            return J.T @ exact
+            return J.T @ grad_u
 
         try:
             res = minimize(
@@ -853,9 +852,10 @@ class _PsiBoundSearch:
                 if back is None:
                     back = self.onto_boundary(u_from, x, level)
                 x = back
-            if x is None or direction * (
-                self.psi_u(x) - self.psi_u(u_from)
-            ) < 0:
+            if (
+                x is None
+                or direction * (self.psi_u(x) - self.psi_u(u_from)) < 0
+            ):
                 return u_from
             return x
 
@@ -918,9 +918,10 @@ class _PsiBoundSearch:
             # search stopped short of the extreme, and goes on from there.
             u_from = self.beyond
             x = self.extreme_far(direction, u_from, self.crit, scaled=scaled)
-            if x is None or not direction * (
-                self.psi_u(x) - self.psi_u(u_from)
-            ) >= 0:
+            if (
+                x is None
+                or not direction * (self.psi_u(x) - self.psi_u(u_from)) >= 0
+            ):
                 x = u_from
         return None
 
@@ -1097,20 +1098,12 @@ class _PsiBoundSearch:
             r *= 1.0 - 1e-12
         return None
 
-    def reach(self, direction: float, start: npt.NDArray) -> None:
-        """One search for the extreme from ``start``, a point of the
-        region, its end (taken onto the boundary if outside) added to
-        the points known: the bound must reach at least as far, and
-        where it is further out than the answer the other searches
-        give, the search goes on from it (``_retry_beyond``)."""
-        x = self.extreme_far(direction, start, self.crit)
-        if x is not None:
-            self.keep(start, x)
-
     def keep(self, start: npt.NDArray, x: npt.NDArray) -> None:
         """``x``, where a search from ``start`` (a point of the region)
-        ended, added to the points known; taken onto the boundary if it
-        is outside the region."""
+        ended, added to the points known, taken onto the boundary if it
+        is outside the region: the bound must reach at least as far,
+        and where that is further out than the answer the other
+        searches give, the search goes on from it (``_retry_beyond``)."""
         if not self.dev_u(x) <= self.crit:
             back = self.back_onto_boundary(x, self.crit)
             if back is None:
@@ -1145,13 +1138,15 @@ class _PsiBoundSearch:
         # Newton's step to the boundary on the deviance's tangent, doubled
         # until it is outside
         t = (level - self.dev_u(x)) / rise
-        y = x
+        y: npt.NDArray | None = x
         for _ in range(40):
             y = self.model._lr_start(x + t * d, self.box)
             if not self.dev_u(y) <= level:
                 y = self.onto_boundary(x, y, level)
                 break
-            if np.array_equal(y, self.model._lr_start(x + 2 * t * d, self.box)):
+            if np.array_equal(
+                y, self.model._lr_start(x + 2 * t * d, self.box)
+            ):
                 break  # held at the box
             t *= 2.0
         if y is None or not direction * (self.psi_u(y) - self.psi_u(x)) > 0:
@@ -2157,29 +2152,15 @@ class LikelihoodRatioMixin:
                 need_lo = want_lower and key_lo not in cache
                 need_hi = want_upper and key_hi not in cache
                 if need_lo or need_hi:
-                    box, seeds, trace = self._lr_region(free, crit)
-                    sides: set[float] = set()
-                    lo, hi = self._cb_lr_psi_bounds(
+                    self._cb_lr_time(
                         lambda theta: psi_of(time, theta),
                         free,
                         crit,
-                        need_lo,
-                        need_hi,
                         ends,
-                        box,
-                        seeds,
-                        trace,
-                        hints=hints,
-                        unsettled=sides,
+                        (key_lo, key_hi),
+                        (need_lo, need_hi),
+                        hints,
                     )
-                    if need_lo:
-                        cache[key_lo] = lo
-                        if -1.0 in sides:
-                            unsure.add(key_lo)
-                    if need_hi:
-                        cache[key_hi] = hi
-                        if 1.0 in sides:
-                            unsure.add(key_hi)
                 lo = cache[key_lo] if want_lower else np.nan
                 hi = cache[key_hi] if want_upper else np.nan
                 if (want_lower and np.isnan(lo)) or (
@@ -2213,6 +2194,42 @@ class LikelihoodRatioMixin:
             return lower
         else:
             return upper
+
+    def _cb_lr_time(
+        self,
+        psi: Callable[[npt.NDArray], float],
+        free: list[int],
+        crit: float,
+        ends: tuple[float, float],
+        keys: tuple[tuple, tuple],
+        needs: tuple[bool, bool],
+        hints: dict[float, npt.NDArray],
+    ) -> None:
+        """The sides ``needs`` (lower, upper) of one time of ``_cb_lr``'s
+        band, kept under ``keys`` in the model's band cache, and in
+        ``_lr_unsettled`` where the search did not converge."""
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        unsure = self.__dict__.setdefault("_lr_unsettled", set())
+        box, seeds, trace = self._lr_region(free, crit)
+        sides: set[float] = set()
+        found = self._cb_lr_psi_bounds(
+            psi,
+            free,
+            crit,
+            needs[0],
+            needs[1],
+            ends,
+            box,
+            seeds,
+            trace,
+            hints=hints,
+            unsettled=sides,
+        )
+        for key, need, value, side in zip(keys, needs, found, (-1.0, 1.0)):
+            if need:
+                cache[key] = value
+                if side in sides:
+                    unsure.add(key)
 
     def _lr_region(self, free: list[int], crit: float) -> tuple[
         list[tuple[Any, Any]],
