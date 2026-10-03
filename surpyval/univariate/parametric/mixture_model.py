@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import grad, hessian
+from autograd import grad, hessian, value_and_grad
 from autograd.scipy.special import logsumexp as ag_logsumexp
 from scipy.optimize import minimize
 from scipy.special import logsumexp
@@ -29,6 +29,7 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.surpyval_data import SurpyvalData
+from surpyval.utils.validation import check_option
 
 from .probability_plotting import (
     adjust_heuristic,
@@ -44,6 +45,13 @@ if TYPE_CHECKING:
 # and finite, so the EM objective stays finite (see
 # ``MixtureModel.log_likelihood``).
 LOG_FLOOR = -1e4
+
+
+#: The values of ``MixtureModel.fit``'s ``em`` option.
+EM_METHODS = ("plain", "squarem")
+
+# What a fit keeps while it runs, and drops when it ends.
+_FIT_CACHES = ("_Q_jac_cache", "_Q_value_and_grad_cache", "_log_resp_cache")
 
 
 class _NonFiniteGradient(ArithmeticError):
@@ -95,18 +103,21 @@ class _FitMethod:
             *,
             dist: Any = None,
             m: int = 2,
+            em: str = "plain",
         ) -> Any:
             if isinstance(x, objtype):
                 # ``MixtureModel.fit(model, x, ...)``: the unbound call of
                 # the instance method, which worked before #482.
-                return func(x, c, n, t, tl, tr, xl, xr)
+                return func(x, c, n, t, tl, tr, xl, xr, em=em)
             if dist is None:
                 raise ValueError(
                     "MixtureModel.fit needs `dist`, the distribution of "
                     "every component, e.g. "
                     "MixtureModel.fit(x, dist=surpyval.Weibull, m=2)"
                 )
-            return func(objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr)
+            return func(
+                objtype(dist=dist, m=m), x, c, n, t, tl, tr, xl, xr, em=em
+            )
 
         # Keep the docstring but show this signature (with ``dist`` and
         # ``m``), not the instance method's.
@@ -152,6 +163,11 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
     >>> surv.MixtureModel(dist=surv.Weibull, m=2)
     Unfitted Parametric Mixture SurPyval Model (Weibull, m = 2)
     """
+
+    # How ``fit`` runs the EM iterations (its ``em`` option), and
+    # whether the M-step is solved to full precision (SQUAREM's).
+    _em_method = "plain"
+    _exact_m_step = False
 
     @property
     def parameter_names(self) -> list[str]:
@@ -414,11 +430,14 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         in the log domain, and truncated observations are conditioned on
         their window through the mixture probability of the window."""
         self._require_fit_data("neg_ll_of()")
+        return self._neg_ll_from(self._log_resp(w, params), w, params)
+
+    def _neg_ll_from(self, log_r: Any, w: Any, params: Any) -> Any:
+        """:meth:`neg_ll_of` from ``log_r = _log_resp(w, params)``."""
         # log-sum-exp over the components, so the mixture density of an
         # observation is not lost to underflow in any one of them. In
         # autograd's functions, so the polish can differentiate it (#506).
         with np.errstate(all="ignore"):
-            log_r = self._log_resp(w, params)
             ll = np.sum(self.data.n * ag_logsumexp(log_r, axis=0))
             if self._truncated:
                 win = 0.0
@@ -448,7 +467,17 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         # Normalised in the log domain: dividing likelihoods that had all
         # underflowed to 0 gave 0/0 responsibilities (and the overflow
         # and invalid-value warnings of a discrete mixture).
-        log_r = self._log_resp(self.w, self.params)
+        cached = self.__dict__.pop("_log_resp_cache", None)
+        if (
+            cached is not None
+            and cached[0] is self.w
+            and cached[1] is self.params
+        ):
+            # What the last EM iteration computed for its likelihood, at
+            # these same weights and parameters (#589).
+            log_r = cached[2]
+        else:
+            log_r = self._log_resp(self.w, self.params)
         with np.errstate(all="ignore"):
             self.p = np.exp(log_r - logsumexp(log_r, axis=0))
         # Mixing weights are count-weighted responsibility totals.
@@ -458,7 +487,14 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         """EM M-step: refit every component's parameters by minimising
         :meth:`Q` with the current responsibilities held fixed, on its
         exact (autograd) gradient (#506); finite differences of it were
-        60% of a fit's time."""
+        60% of a fit's time.
+
+        ``Q`` and its gradient come from one autograd pass
+        (``value_and_grad``), which computes the value anyway; scipy
+        asking for them separately evaluated ``Q`` twice at every point,
+        and ``Q`` at the start is the search's first evaluation (#589).
+        Both are the same numbers as before, so the step is too.
+        """
         bounds = self.dist.bounds * self.m
         x0 = self.params.ravel()
         jac = self._Q_jac()
@@ -468,9 +504,25 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 # A bound of 0 (a scale or shape) held just inside: the
                 # gradient there is 0 / 0.
                 inner = [(1e-10 if lo == 0 else lo, hi) for lo, hi in bounds]
+                value_and_jac = self._Q_value_and_grad()
+                at_x0: list = []
+
+                def fun(p: npt.NDArray) -> Any:
+                    q, g = value_and_jac(p)
+                    g = np.asarray(g, dtype=float)
+                    if not np.all(np.isfinite(g)):
+                        raise _NonFiniteGradient
+                    if not at_x0 and np.array_equal(p, x0):
+                        at_x0.append(q)
+                    return q, g
+
                 try:
                     res = minimize(
-                        self.Q, x0, jac=_finite_gradient(jac), bounds=inner
+                        fun,
+                        x0,
+                        jac=True,
+                        bounds=inner,
+                        options=self._m_step_options(),
                     )
                 except _NonFiniteGradient:
                     res = None
@@ -478,7 +530,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 # a point mass, whose shape runs off to 1e4 and beyond) or
                 # the step makes Q worse, finite differences as before.
                 if res is not None:
-                    q0 = self.Q(x0)
+                    q0 = at_x0[0] if at_x0 else self.Q(x0)
                     slack = 1e-8 * max(1.0, abs(q0))
                     if not (
                         np.all(np.isfinite(res.x)) and res.fun <= q0 + slack
@@ -507,6 +559,22 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         self._Q_jac_cache = jac if usable else False
         return jac if usable else None
 
+    def _m_step_options(self) -> dict:
+        """L-BFGS-B's options in the M-step: scipy's defaults for plain
+        EM, tight ones for SQUAREM (see :meth:`_squarem_steps`)."""
+        if self._exact_m_step:
+            return {"ftol": 1e-15, "gtol": 1e-10}
+        return {}
+
+    def _Q_value_and_grad(self) -> Callable[..., Any]:
+        """:meth:`Q` and its autograd gradient in one pass, kept for the
+        fit in progress like :meth:`_Q_jac`."""
+        cached = self.__dict__.get("_Q_value_and_grad_cache")
+        if cached is None:
+            cached = value_and_grad(self.Q)
+            self._Q_value_and_grad_cache = cached
+        return cached
+
     def EM(self) -> Any:
         """One EM iteration (:meth:`expectation` then
         :meth:`maximisation`), after which ``loglike`` holds the observed
@@ -514,8 +582,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         self.expectation()
         self.maximisation()
         # Convergence is tracked on the observed likelihood, not the
-        # M-step objective.
-        self.loglike = self.neg_ll_of(self.w, self.params)
+        # M-step objective. Its log-responsibilities are the next E-step's.
+        log_r = self._log_resp(self.w, self.params)
+        self._log_resp_cache = (self.w, self.params, log_r)
+        self.loglike = self._neg_ll_from(log_r, self.w, self.params)
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
@@ -539,13 +609,18 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         run is made from two starts where they differ (#582): the current
         weights and parameters (:meth:`initialise_params`), and the split
         of :meth:`_failure_split_start`. The better is kept
-        (:meth:`_better_start`) and, only if it is not verified, run on.
+        (:meth:`_better_start`) and, only if it is not verified, run on:
+        by SQUAREM where ``fit`` was given ``em="squarem"``
+        (:meth:`_squarem_steps`; #589). The short run is plain EM either
+        way, so a fit verified after it is the same with either option.
         """
         verified, converged = self._em_from_starts(tol, budget)
         if verified:
             return None
         if not converged:
-            converged = self._em_steps(tol, max_iter - budget)
+            converged = self._em_steps(
+                tol, max_iter - budget, self._em_method == "squarem"
+            )
             if self._polish():
                 return None
         if not converged:
@@ -638,11 +713,20 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             return None
         return w / w.sum(), params
 
-    def _em_steps(self, tol: float, max_iter: int) -> bool:
+    def _em_steps(
+        self, tol: float, max_iter: int, accelerate: bool = False
+    ) -> bool:
         """Up to ``max_iter`` EM iterations; whether two in a row came
-        within ``tol`` of each other in the negative log-likelihood."""
+        within ``tol`` of each other in the negative log-likelihood.
+        ``accelerate`` runs them by :meth:`_squarem_steps`."""
         if max_iter < 1:
             return False
+        if accelerate:
+            self._exact_m_step = True
+            try:
+                return self._squarem_steps(tol, max_iter)
+            finally:
+                self._exact_m_step = False
         self.EM()
         f0 = self.loglike
         for _ in range(max_iter - 1):
@@ -651,6 +735,70 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             if np.abs(f0 - f1) <= tol:
                 return True
             f0 = f1
+        return False
+
+    def _squarem_steps(self, tol: float, max_iter: int) -> bool:
+        """Up to ``max_iter`` EM iterations accelerated by SQUAREM (#589;
+        Varadhan and Roland, 2008, scheme S3); whether two EM iterations
+        in a row came within ``tol`` of each other, as for plain EM.
+
+        Each cycle takes two EM steps from ``theta0`` (in the coordinates
+        of :meth:`_pack`), ``theta1`` and ``theta2``, and from
+        ``r = theta1 - theta0`` and ``v = theta2 - theta1 - r``
+        extrapolates to ``theta0 - 2 a r + a**2 v`` with
+        ``a = -|r| / |v|`` (at most -1; ``a = -1`` is ``theta2``), then
+        takes one EM step from there. Where that ends below ``theta2`` in
+        likelihood (or cannot be evaluated), the cycle ends at ``theta2``
+        instead, so no cycle does worse than two plain EM steps. Where EM
+        crawls along a flat direction, the extrapolation takes the many
+        small steps at once.
+
+        The M-steps are solved to full precision here (``ftol`` 1e-15,
+        ``gtol`` 1e-10, against scipy's 2.2e-9 and 1e-5): the
+        extrapolation assumes the steps are those of one smooth map, and
+        steps that stop at scipy's tolerances wander by more than EM's
+        own progress near the maximum. With them, plain EM on a censored
+        two-Weibull mixture also stalled 1.3e-4 below the maximum after
+        1000 iterations; this reaches it in about 40.
+        """
+        used = 0
+        while used < max_iter:
+            theta0 = self._pack(self.w, self.params)
+            self.EM()
+            f1, used = self.loglike, used + 1
+            if used >= max_iter:
+                return False
+            theta1 = self._pack(self.w, self.params)
+            self.EM()
+            f2, used = self.loglike, used + 1
+            if np.abs(f1 - f2) <= tol:
+                return True
+            if used >= max_iter:
+                return False
+            state2 = (self.w, self.params, f2)
+            theta2 = self._pack(self.w, self.params)
+            r = theta1 - theta0
+            v = theta2 - theta1 - r
+            norm_v = float(np.sqrt(np.sum(v**2)))
+            if not (np.all(np.isfinite(v)) and norm_v > 0):
+                continue
+            a = min(-float(np.sqrt(np.sum(r**2))) / norm_v, -1.0)
+            if a == -1.0:
+                continue
+            try:
+                with np.errstate(all="ignore"):
+                    self.w, self.params = (
+                        np.asarray(z, dtype=float)
+                        for z in self._unpack(theta0 - 2 * a * r + a**2 * v)
+                    )
+                    self.EM()
+                ok = bool(np.isfinite(self.loglike) and self.loglike <= f2)
+            except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+                ok = False
+            used += 1
+            if not ok:
+                self.w, self.params, self.loglike = state2
+                self.__dict__.pop("_log_resp_cache", None)
         return False
 
     def _pack(self, w: npt.NDArray, params: npt.NDArray) -> npt.NDArray:
@@ -765,6 +913,8 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         tr: npt.ArrayLike | None = None,
         xl: npt.ArrayLike | None = None,
         xr: npt.ArrayLike | None = None,
+        *,
+        em: str = "plain",
     ) -> Any:
         """
         Fit the mixture to data.
@@ -822,6 +972,18 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         m : int, optional
             The number of components (default 2). Keyword only, and only
             on the class call.
+        em : {'plain', 'squarem'}, optional
+            How the EM iterations run (keyword only). ``'plain'`` (the
+            default) is the EM algorithm itself; ``'squarem'`` accelerates
+            it with SQUAREM (Varadhan and Roland, 2008), which extrapolates
+            along the path two EM steps take and keeps the result only
+            where the likelihood is no lower than after those two steps.
+            It needs far fewer iterations where EM crawls (a fit that
+            cannot verify its maximum after the first 20, and runs on
+            towards 1000), and ends at the same verified maximum where
+            both reach one, to the precision of its verification; it may,
+            like any change of path, reach a different local maximum.
+            Truncated data is fitted directly, not by EM, and ignores it.
 
         Returns
         -------
@@ -858,6 +1020,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
               beta: [ 1.83105154 12.01392721]
         """
 
+        check_option("em", em, EM_METHODS)
         data = SurpyvalData(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
 
         # Count observations from the validated data so ``xl``/``xr``-only
@@ -866,6 +1029,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             raise ValueError("More parameters than data points")
 
         self.data = data
+        self._em_method = em
         self._truncated = bool(np.isfinite(data.t).any())
         self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
@@ -887,7 +1051,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             try:
                 unverified = self._em()
             finally:
-                self.__dict__.pop("_Q_jac_cache", None)
+                # Closures and arrays of the fit in progress (a closure
+                # would stop the model being pickled)
+                for name in _FIT_CACHES:
+                    self.__dict__.pop(name, None)
         # One warning: a component collapsed onto a point mass has no
         # finite maximum, which is also why its search was not verified.
         if self._warn_if_point_mass():

@@ -128,9 +128,14 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
     # likelihood has no finite maximum, which says so instead)
     assert caught == []
     assert reason == "EM reached its iteration limit"
+    # The same through ``fit``. SQUAREM runs EM on (#589): plain EM's run
+    # to 1000 iterations was this test's 21 s, and the run-on is the
+    # same code either way (the plain one is ``_em`` above).
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        fitted = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
+        fitted = sp.MixtureModel.fit(
+            x, c=c, dist=sp.Weibull, m=2, em="squarem"
+        )
     assert len(caught) == 1
     assert "did not reach a verified maximum" in str(caught[0].message)
     assert fitted.maximum == "unverified"
@@ -221,3 +226,74 @@ def test_582_gradient_is_finite_on_an_interval_from_zero():
     assert fun(theta) == pytest.approx(
         _direct_neg_ll(x, c, n, w, params), rel=1e-12
     )
+
+
+def _count_em(monkeypatch):
+    steps = []
+    em = sp.MixtureModel.EM
+
+    def counted(self):
+        steps.append(1)
+        return em(self)
+
+    monkeypatch.setattr(sp.MixtureModel, "EM", counted)
+    return steps
+
+
+def test_589_squarem_runs_on_to_the_maximum_in_few_iterations(monkeypatch):
+    # With the polish failing, plain EM ran all 1000 iterations and
+    # stalled at 738.047067, 1.3e-4 below the maximum (738.046941); its
+    # M-steps stop at scipy's tolerances, which near the maximum wander by
+    # more than EM's own progress. SQUAREM, on full-precision M-steps,
+    # reaches the maximum and stops.
+    x, c = _censored_mixture()
+    monkeypatch.setattr(sp.MixtureModel, "_polish", lambda self: False)
+    steps = _count_em(monkeypatch)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.MixtureModel.fit(
+            x, c=c, dist=sp.Weibull, m=2, em="squarem"
+        )
+    assert len(steps) < 200
+    assert model.loglike == pytest.approx(738.046941, abs=2e-6)
+
+
+def test_589_squarem_changes_nothing_where_the_short_run_verifies():
+    # The first 20 iterations are plain EM either way, so a fit whose
+    # polish verifies there is the same fit, to the bit.
+    x, c = _censored_mixture()
+    plain = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
+    fast = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2, em="squarem")
+    assert plain.maximum == fast.maximum == "verified"
+    np.testing.assert_array_equal(fast.params, plain.params)
+    np.testing.assert_array_equal(fast.w, plain.w)
+
+
+def test_589_m_step_evaluates_q_only_with_its_gradient(monkeypatch):
+    # scipy asked for Q and its gradient separately, so Q ran twice at
+    # every point of the M-step's search (once plain, once traced by
+    # autograd), and once more at the start; it now runs once, traced.
+    from autograd.tracer import Box
+
+    x, c = _censored_mixture()
+    model = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
+    plain_calls = []
+    q = sp.MixtureModel.Q
+
+    def recorded(self, params):
+        if not isinstance(params, Box):
+            plain_calls.append(1)
+        return q(self, params)
+
+    monkeypatch.setattr(sp.MixtureModel, "Q", recorded)
+    model.expectation()
+    model._Q_jac()  # the one-off check that autograd can differentiate it
+    plain_calls.clear()
+    model.maximisation()
+    assert plain_calls == []
+
+
+def test_589_em_option_is_checked():
+    x, c = _censored_mixture()
+    with pytest.raises(ValueError, match="'em' must be one of"):
+        sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2, em="fast")
