@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import expit
@@ -39,6 +41,14 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="log",
         )
+
+    def _offset_limit_family(self) -> Any:
+        """The ``Logistic``: as the offset runs to -inf with beta -> inf,
+        ``gamma + alpha e^(L / beta)`` tends to a Logistic distribution
+        (#599; see ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Logistic
+
+        return Logistic
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

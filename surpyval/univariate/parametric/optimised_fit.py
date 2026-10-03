@@ -793,7 +793,7 @@ turnbull_estimator
         # #584), where the family has not said so in its own words above.
         runaway = results.pop("_runaway", [])
         if runaway and maximum != "no finite maximum":
-            self._warn_runaway(surv_data, runaway, results)
+            self._warn_runaway(surv_data, runaway, results, offset)
             warning = None
             unverified = False
             maximum = "no finite maximum"
@@ -913,12 +913,17 @@ turnbull_estimator
         return []
 
     def _warn_runaway(
-        self, surv_data: SurpyvalData, runaway: "list[str]", results: dict
+        self,
+        surv_data: SurpyvalData,
+        runaway: "list[str]",
+        results: dict,
+        offset: bool = False,
     ) -> None:
         """Warn that the maximum-likelihood search found the parameters
         ``runaway`` running off (``fitters.mle._runaway``, #584): the
         likelihood keeps increasing towards a limit of the family that
-        none of its members reaches, so it has no finite maximum."""
+        none of its members reaches, so it has no finite maximum.
+        ``offset`` says whether the fit has one."""
         values = dict(
             zip(self.parameter_names, np.atleast_1d(results["params"]))
         )
@@ -933,17 +938,42 @@ turnbull_estimator
             f"profile{'' if one else 's'} where the search stopped",
             "The reported parameters are where the search stopped, and "
             "their standard errors and bounds are meaningless",
-            self._runaway_advice(runaway, values),
+            self._runaway_advice(runaway, values, offset),
         )
 
-    def _runaway_advice(self, runaway: "list[str]", values: dict) -> str:
+    def _runaway_advice(
+        self, runaway: "list[str]", values: dict, offset: bool = False
+    ) -> str:
         """What to do instead of a fit whose parameters ``runaway`` run
-        off (their ``values`` where the search stopped), for
-        :meth:`_warn_runaway`; a family that knows its limit says so."""
+        off (their ``values`` where the search stopped; ``offset`` whether
+        the fit has one), for :meth:`_warn_runaway`; a family that knows
+        its limit says so."""
+        limit = self._offset_limit_family()
+        if offset and limit is not None:
+            # An offset fit runs off only towards the family's limit: the
+            # offset towards -inf (towards the first failure its range
+            # ends; see ``fitters.mle._Judge.keep``) or the shape that
+            # makes up for it
+            return (
+                f"as gamma runs to -inf the {self.name} approaches a "
+                f"{limit.name} distribution, which fits these data at least "
+                f"as well as any {self.name} the search reached: fit "
+                f"surpyval.{limit.name} instead"
+            )
         return (
             "a simpler family, or one that contains the limit, may describe "
             "the data: compare their fits (surpyval.fit_best)"
         )
+
+    def _offset_limit_family(self) -> "Any":
+        """The family this distribution tends to as its offset runs to
+        -inf, with its shape making up for it (``None`` by default): a
+        fit whose offset runs that way is running off towards it where
+        the limit fits the data at least as well (``fitters.mle``,
+        #599). The LogNormal and the Gamma tend to the Normal, the
+        Weibull to the smallest extreme value distribution (``Gumbel``)
+        and the LogLogistic to the ``Logistic``."""
+        return None
 
     def _warn_if_offset_at_limit(
         self,
