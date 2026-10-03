@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
+from autograd import grad
 from scipy.optimize import (
     brentq,
     minimize,
@@ -380,6 +381,12 @@ def _lean_neg_ll(dist: Any, lean: tuple, theta: npt.NDArray) -> float:
     offset, zero inflation or a limited failure population, as they
     compute them (a term with no data is exactly 0 there and is left
     out), but without the guards, which these data pass."""
+    return float(-_lean_log_likelihood(dist, lean, theta))
+
+
+def _lean_log_likelihood(dist: Any, lean: tuple, theta: Any) -> Any:
+    """The log-likelihood of ``_lean_neg_ll``, in a form autograd can
+    follow (``_lean_ll_gradient``)."""
     observed, right, left, interval, truncated, extra = lean
     params = tuple(theta)
     ll: Any = 0
@@ -396,7 +403,11 @@ def _lean_neg_ll(dist: Any, lean: tuple, theta: npt.NDArray) -> float:
         ll = ll + dist.ll_interval_or_truncated(*interval, *params, *extra)
     if truncated is not None:
         ll = ll - dist.ll_interval_or_truncated(*truncated, *params, *extra)
-    return float(-ll)
+    return ll
+
+
+#: The gradient of ``_lean_log_likelihood`` in ``theta`` (autograd's).
+_lean_ll_gradient = grad(_lean_log_likelihood, 2)
 
 
 class _PsiBoundSearch:
@@ -508,6 +519,28 @@ class _PsiBoundSearch:
 
     def dev_u(self, u: npt.NDArray) -> float:
         return 2.0 * (self.nll_of(u) - self.nll_hat)
+
+    def dev_grad_u(self, u: npt.NDArray) -> npt.NDArray | None:
+        """The gradient of ``dev_u`` at ``u``, autograd's through the
+        lean likelihood (``_lean_ll_gradient``); ``None`` without one, or
+        where it is not finite."""
+        lean = self.model._lr_lean_data()
+        if lean is None:
+            return None
+        theta = self.theta_of(u)
+        try:
+            with np.errstate(all="ignore"):
+                g = np.asarray(
+                    _lean_ll_gradient(self.model.dist, lean, theta),
+                    dtype=float,
+                )
+        except (ValueError, TypeError, ArithmeticError):
+            return None
+        slopes = np.array(
+            [c.slope(theta[j]) for c, j in zip(self.free_coords, self.free)]
+        )
+        out = -2.0 * g[self.free] * slopes
+        return out if np.all(np.isfinite(out)) else None
 
     # -- the whole search ---------------------------------------------------
     def run(
@@ -707,6 +740,21 @@ class _PsiBoundSearch:
         # outside back onto the boundary.
         c = _LR_DEV_SCALE if scaled or face is not None else 1.0
         h = self.fd_step
+        # Where a continued search has stalled (``extreme_far``), the
+        # deviance's gradient is autograd's, where it can be had: the
+        # region narrows down its valleys faster than differences resolve
+        J = None
+        if h == _LR_FD_FINE and not whiten:
+            # (to_u is linear here: u = to_u(0) + J z)
+            n_z = len(z0)
+            zero = to_u(np.zeros(n_z))
+            J = np.column_stack([to_u(e) - zero for e in np.eye(n_z)])
+
+        def g_jac(z: npt.NDArray) -> npt.NDArray:
+            exact = None if J is None else self.dev_grad_u(to_u(z))
+            if exact is None:
+                return _central_gradient(g, z, h)
+            return J.T @ exact
 
         try:
             res = minimize(
@@ -719,7 +767,7 @@ class _PsiBoundSearch:
                     {
                         "type": "ineq",
                         "fun": lambda z: c * (level - g(z)),
-                        "jac": lambda z: -c * _central_gradient(g, z, h),
+                        "jac": lambda z: -c * g_jac(z),
                     }
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
@@ -813,31 +861,52 @@ class _PsiBoundSearch:
 
         try:
             for _ in range(_LR_CONTINUE):
+                # (SLSQP failed, rather than ran out of iterations)
+                failed = self.last_status != 9
                 x = inside(x)
                 gain = direction * (self.psi_u(x) - self.psi_u(u_from))
-                if not gain > _LR_GAIN * max(1.0, abs(self.psi_u(x))):
-                    # Stalled: at a vertex of the box (a Uniform's support
-                    # edge), or where the differences no longer resolve
-                    # the valley.
-                    if self.fd_step == _LR_FD_FINE:
-                        return x
+                stalled = not gain > _LR_GAIN * max(1.0, abs(self.psi_u(x)))
+                if (failed or stalled) and self.fd_step != _LR_FD_FINE:
+                    # At a vertex of the box (a Uniform's support edge),
+                    # or where the differences no longer resolve the
+                    # valley: on in the finer gradients.
                     self.fd_step = _LR_FD_FINE
+                elif stalled:
+                    return self.out_to_boundary(direction, x, level)
                 u_from = x
                 x = self.extreme(direction, x, level, whiten, scaled, face)
                 if x is None or self.last_status == 0:
-                    return inside(x)
+                    return self.out_to_boundary(direction, inside(x), level)
             # Still moving out after every continuation: not settled.
             self.converged = False
-            return inside(x)
+            return self.out_to_boundary(direction, inside(x), level)
         finally:
             self.fd_step = _LR_FD_STEP
 
     def direct(
-        self, direction: float, start: npt.NDArray, scaled: bool = False
+        self,
+        direction: float,
+        start: npt.NDArray,
+        scaled: bool = False,
+        persist: bool = True,
     ) -> float | None:
         """The extreme of psi over the region, sought directly (SLSQP;
         ``scaled`` as ``extreme``), when it checks out (``checks_out``);
-        otherwise ``None``."""
+        otherwise ``None``.
+
+        ``persist``: continued where it stops short (``extreme_far``),
+        and from a point further out that the check finds. Otherwise one
+        search, whose end, if it stops outside the region, is kept
+        (taken onto the boundary) as a point the bound must reach
+        (``keep``)."""
+        if not persist:
+            x = self.extreme(direction, start, self.crit, scaled=scaled)
+            if x is None:
+                return None
+            if not self.dev_u(x) <= self.crit + _LR_NOISE:
+                self.keep(start, x)
+                return None
+            return self.checks_out(direction, x)
         x = self.extreme_far(direction, start, self.crit, scaled=scaled)
         for _ in range(3):
             if x is None:
@@ -1035,16 +1104,59 @@ class _PsiBoundSearch:
         where it is further out than the answer the other searches
         give, the search goes on from it (``_retry_beyond``)."""
         x = self.extreme(direction, start, self.crit)
-        if x is None:
-            return
+        if x is not None:
+            self.keep(start, x)
+
+    def keep(self, start: npt.NDArray, x: npt.NDArray) -> None:
+        """``x``, where a search from ``start`` (a point of the region)
+        ended, added to the points known; taken onto the boundary if it
+        is outside the region."""
         if not self.dev_u(x) <= self.crit:
             back = self.back_onto_boundary(x, self.crit)
-            x = self.onto_boundary(start, x, self.crit) if back is None else back
-            if x is None:
+            if back is None:
+                back = self.onto_boundary(start, x, self.crit)
+            if back is None:
                 return
+            x = back
         psi_x = self.psi_u(x)
         if np.isfinite(psi_x):
             self.known.append((psi_x, x))
+
+    def out_to_boundary(
+        self, direction: float, x: npt.NDArray, level: float
+    ) -> npt.NDArray:
+        """``x``, a point inside {deviance <= level}, moved along the
+        gradient of psi out to the boundary (or to the box): a ray
+        search, for a search that stopped short of the boundary (SLSQP
+        stops once psi changes by less than its tolerance, which far
+        down a flat valley it can do inside the region: an ExpoWeibull
+        sf(8) upper bound 1.5e-5 of deviance inside, #601). ``x`` where
+        that is no further out."""
+        if not self.dev_u(x) < level - _LR_NOISE:
+            return x
+        grad_psi = _central_gradient(self.psi_u, x, _LR_FD_FINE)
+        grad_dev = self.dev_grad_u(x)
+        if grad_dev is None:
+            grad_dev = _central_gradient(self.dev_u, x, _LR_FD_FINE)
+        d = direction * grad_psi
+        rise = float(grad_dev @ d)
+        if not (np.all(np.isfinite(d)) and np.isfinite(rise) and rise > 0):
+            return x
+        # Newton's step to the boundary on the deviance's tangent, doubled
+        # until it is outside
+        t = (level - self.dev_u(x)) / rise
+        y = x
+        for _ in range(40):
+            y = self.model._lr_start(x + t * d, self.box)
+            if not self.dev_u(y) <= level:
+                y = self.onto_boundary(x, y, level)
+                break
+            if np.array_equal(y, self.model._lr_start(x + 2 * t * d, self.box)):
+                break  # held at the box
+            t *= 2.0
+        if y is None or not direction * (self.psi_u(y) - self.psi_u(x)) > 0:
+            return x
+        return y
 
     def back_onto_boundary(
         self, outside: npt.NDArray, level: float
@@ -1173,11 +1285,13 @@ class _PsiBoundSearch:
 
     def _best_direct(self, direction: float, tips: list) -> float | None:
         """The most extreme direct search from the estimate and the two
-        farthest walks' tips that checks out, or ``None``."""
+        farthest walks' tips that checks out, or ``None``. (Each is one
+        search: one that stops short leaves its end among the points
+        known, and ``_retry_beyond`` goes on from there.)"""
         assert self.u_start is not None
         best = None
         for start in [self.u_start] + [k[1] for k in tips[:2]]:
-            quick = self.direct(direction, start)
+            quick = self.direct(direction, start, persist=False)
             if quick is not None and (
                 best is None or direction * quick > direction * best
             ):
