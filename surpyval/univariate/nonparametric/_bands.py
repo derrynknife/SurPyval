@@ -10,6 +10,7 @@ refitted resamples).
 
 from __future__ import annotations
 
+import functools
 from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
@@ -29,6 +30,163 @@ from surpyval.utils.validation import alpha_ci_error, check_option
 # range 0.94-0.96 (n = 40 to 400). Klein and Moeschberger tabulate it for
 # a_L from 0.02 and a_U to 0.98.
 _EP_RANGE = (0.1, 0.9)
+
+
+# Keyed on exactly what the value depends on, so a model's repeated
+# ``band()`` calls (other bound types, other times, the plots) find it
+# once (#590).
+@functools.lru_cache(maxsize=256)
+def _critical_value(
+    a_l: float, a_u: float, alpha_ci: float, standardized: bool
+) -> float:
+    """``BandsMixin._band_critical_value``, for an ``alpha_ci`` it has
+    checked."""
+    # t = a / (1 - a); a_u = 1 would put the end at infinity, which
+    # the grid below cannot reach in finitely many steps.
+    a_u = min(float(a_u), 1.0 - 1e-12)
+    a_l = min(max(float(a_l), 0.0), a_u)
+    t_l, t_u = a_l / (1 - a_l), a_u / (1 - a_u)
+    if standardized and t_l <= 0:
+        # The standardized bridge is unbounded near a = 0 (the law of
+        # the iterated logarithm), so there is no finite value.
+        raise ValueError(
+            "The equal precision band needs a range [a_l, a_u] with " "a_l > 0"
+        )
+
+    u = np.linspace(-1.0, 1.0, 401)
+    w = np.full(u.size, u[1] - u[0])
+    w[[0, -1]] *= 0.5
+    # The distances to the two boundaries, the same for every kernel
+    to_upper = np.outer(1 - u, 1 - u)
+    to_lower = np.outer(1 + u, 1 + u)
+
+    def kernel(m: float, s: float, A: float) -> npt.NDArray:
+        # Row i: the (quadrature-weighted) density of reaching u[j]
+        # from u[i] without touching either boundary. The two one-sided
+        # survival factors multiply, which neglects touching both in
+        # one step: with a step variance of at most a tenth of b^2
+        # that is below e^-80.
+        # In place, operation for operation as
+        # w_i exp(-((u_j - m u_i) / s)^2 / 2) / (s sqrt(2 pi))
+        # (1 - e^(-A to_upper)) (1 - e^(-A to_lower)), so the values are
+        # the same to the last bit; the two survival factors are
+        # multiplied in as e^(-A d) - 1, whose signs cancel exactly.
+        K = np.subtract(u[None, :], m * u[:, None])
+        K /= s
+        np.square(K, out=K)
+        K *= -0.5
+        np.exp(K, out=K)
+        K /= s * np.sqrt(2 * np.pi)
+        for d in (to_upper, to_lower):
+            survive = np.multiply(-A, d)
+            np.expm1(survive, out=survive)
+            K *= survive
+        K *= w[:, None]
+        return K
+
+    # Each value of ``inside`` found, by c: the root search below
+    # starts from the two ends of the bracket the climb has already
+    # evaluated.
+    found: dict[float, float] = {}
+
+    def inside(c: float) -> float:
+        c = float(c)
+        if c not in found:
+            found[c] = _inside(c)
+        return found[c]
+
+    def _inside(c: float) -> float:
+        if standardized:
+            # u = W(t) / (c sqrt(t)) starts as N(0, 1 / c^2). On a
+            # geometric grid t_{k+1} = q t_k the step in these
+            # coordinates is the same at every k, so one kernel serves
+            # them all; with q <= 1.02 the chord replacing sqrt(t)
+            # within a step is within 2e-5 of it, and q - 1 <= c^2 / 10
+            # keeps the step variance, (q - 1) t, below b^2 / 10.
+            g = norm.pdf(u, scale=1.0 / c)
+            if t_u > t_l:
+                q_max = 1.0 + min(0.02, 0.1 * c**2)
+                n = int(np.ceil(np.log(t_u / t_l) / np.log(q_max)))
+                q = (t_u / t_l) ** (1.0 / n)
+                K = kernel(
+                    1.0 / np.sqrt(q),
+                    np.sqrt((q - 1.0) / q) / c,
+                    2.0 * c**2 * np.sqrt(q) / (q - 1.0),
+                )
+                for _ in range(n):
+                    g = g @ K
+            return float(g @ w)
+        # Hall-Wellner, u = W(t) / (c (1 + t)) = B(a) / c. Within
+        # c^2 / 64 of either end of [0, 1] the bridge's standard
+        # deviation is below c / 8, so the chance of it reaching c
+        # there is below 4 * Phi(-8) ~ 3e-15. A range reaching into
+        # those ends is cut back to them, where the density of u is
+        # still wide enough for the grid (the bridge is pinned to 0 at
+        # both ends, which no grid resolves); a start moved up to t_s
+        # takes W(t_s) ~ N(0, t_s).
+        edge = c**2 / 64.0
+        t_s = max(t_l, min(edge, t_u))
+        t_e = max(t_s, min(t_u, (1.0 - edge) / edge))
+        b = c * (1.0 + t_s)
+        g = norm.pdf(u * b, scale=np.sqrt(t_s)) * b
+        # Steps of equal size in v = 1 / (1 + t) = 1 - a keep each
+        # step's variance at about a tenth of b^2.
+        v_s, v_u = 1.0 / (1.0 + t_s), 1.0 / (1.0 + t_e)
+        n = int(np.ceil((v_s - v_u) / (0.1 * c**2)))
+        ts = 1.0 / np.linspace(v_s, v_u, n + 1) - 1.0
+        for t0, t1 in zip(ts[:-1], ts[1:]):
+            b0, b1 = c * (1.0 + t0), c * (1.0 + t1)
+            dt = t1 - t0
+            g = g @ kernel(b0 / b1, np.sqrt(dt) / b1, 2 * b0 * b1 / dt)
+        return float(g @ w)
+
+    target = 1.0 - alpha_ci
+    # The supremum is at least |B(a)| at any single a, so the two-sided
+    # normal quantile there bounds c from below.
+    z = norm.ppf(1.0 - alpha_ci / 2.0)
+    if standardized:
+        lo = z
+    else:
+        a_mid = min(max(0.5, a_l), a_u)
+        lo = z * np.sqrt(a_mid * (1.0 - a_mid))
+    if not t_u > t_l:
+        # A single point (a_l == a_u): the bound is attained.
+        return float(lo)
+    # The number of grid steps grows as 1 / c^2, so ``inside`` is only
+    # evaluated down to about the root. The search used to climb from
+    # ``lo``, which is far below the root when alpha_ci is large (z is
+    # 1.25e-6 at alpha_ci = 1 - 1e-6): alpha_ci = 0.9 took 13 s, and
+    # 1 - 1e-6 asked for a 158 TiB grid (#420). At the root itself the
+    # steps are bounded (about 8 log(1 / (1 - alpha_ci)), however narrow
+    # the range: a path staying within +-c over a stretch of n steps has
+    # a probability of about e^(-n / 8)). So start from an upper value
+    # and come down: for Hall-Wellner the Kolmogorov tail bound,
+    # P(sup |B| > c) <= 2 exp(-2 c^2) over the whole of [0, 1], and for
+    # the equal precision band 1 (or ``lo``), climbing if it is short.
+    if standardized:
+        c = max(lo, 1.0)
+    else:
+        c = max(lo, np.sqrt(np.log(2.0 / alpha_ci) / 2.0))
+    if inside(c) >= target:
+        hi = c
+        while True:
+            c = max(hi / 1.5, lo)
+            if c == lo:
+                # Within a factor 1.5 of the root, so the grid is too.
+                if inside(lo) >= target:
+                    # A range too short for the grid to tell apart from
+                    # a single point.
+                    return float(lo)
+                break
+            if inside(c) < target:
+                break
+            hi = c
+        lo = c
+    else:
+        lo, hi = c, 1.5 * c
+        while inside(hi) < target:
+            lo, hi = hi, 1.5 * hi
+    return float(brentq(lambda c: inside(c) - target, lo, hi, xtol=1e-8))
 
 
 class BandsMixin:
@@ -99,130 +257,16 @@ class BandsMixin:
         The non-crossing probability is increasing in ``c``, which is found
         by root finding. It reproduces the Kolmogorov quantiles over the
         whole range to about 1e-8.
+
+        The value depends on nothing else, and is kept for the last 256
+        ``(a_l, a_u, alpha_ci, standardized)`` asked for: a model's
+        further bands at the same level reuse it (#590).
         """
         if not 0 < 1 - alpha_ci < 1:
             raise alpha_ci_error(alpha_ci)
-        # t = a / (1 - a); a_u = 1 would put the end at infinity, which
-        # the grid below cannot reach in finitely many steps.
-        a_u = min(float(a_u), 1.0 - 1e-12)
-        a_l = min(max(float(a_l), 0.0), a_u)
-        t_l, t_u = a_l / (1 - a_l), a_u / (1 - a_u)
-        if standardized and t_l <= 0:
-            # The standardized bridge is unbounded near a = 0 (the law of
-            # the iterated logarithm), so there is no finite value.
-            raise ValueError(
-                "The equal precision band needs a range [a_l, a_u] with "
-                "a_l > 0"
-            )
-
-        u = np.linspace(-1.0, 1.0, 401)
-        w = np.full(u.size, u[1] - u[0])
-        w[[0, -1]] *= 0.5
-
-        def kernel(m: float, s: float, A: float) -> npt.NDArray:
-            # Row i: the (quadrature-weighted) density of reaching u[j]
-            # from u[i] without touching either boundary. The two one-sided
-            # survival factors multiply, which neglects touching both in
-            # one step: with a step variance of at most a tenth of b^2
-            # that is below e^-80.
-            K = np.exp(-0.5 * ((u[None, :] - m * u[:, None]) / s) ** 2)
-            K /= s * np.sqrt(2 * np.pi)
-            K *= -np.expm1(-A * np.outer(1 - u, 1 - u))
-            K *= -np.expm1(-A * np.outer(1 + u, 1 + u))
-            return w[:, None] * K
-
-        def inside(c: float) -> float:
-            if standardized:
-                # u = W(t) / (c sqrt(t)) starts as N(0, 1 / c^2). On a
-                # geometric grid t_{k+1} = q t_k the step in these
-                # coordinates is the same at every k, so one kernel serves
-                # them all; with q <= 1.02 the chord replacing sqrt(t)
-                # within a step is within 2e-5 of it, and q - 1 <= c^2 / 10
-                # keeps the step variance, (q - 1) t, below b^2 / 10.
-                g = norm.pdf(u, scale=1.0 / c)
-                if t_u > t_l:
-                    q_max = 1.0 + min(0.02, 0.1 * c**2)
-                    n = int(np.ceil(np.log(t_u / t_l) / np.log(q_max)))
-                    q = (t_u / t_l) ** (1.0 / n)
-                    K = kernel(
-                        1.0 / np.sqrt(q),
-                        np.sqrt((q - 1.0) / q) / c,
-                        2.0 * c**2 * np.sqrt(q) / (q - 1.0),
-                    )
-                    for _ in range(n):
-                        g = g @ K
-                return float(g @ w)
-            # Hall-Wellner, u = W(t) / (c (1 + t)) = B(a) / c. Within
-            # c^2 / 64 of either end of [0, 1] the bridge's standard
-            # deviation is below c / 8, so the chance of it reaching c
-            # there is below 4 * Phi(-8) ~ 3e-15. A range reaching into
-            # those ends is cut back to them, where the density of u is
-            # still wide enough for the grid (the bridge is pinned to 0 at
-            # both ends, which no grid resolves); a start moved up to t_s
-            # takes W(t_s) ~ N(0, t_s).
-            edge = c**2 / 64.0
-            t_s = max(t_l, min(edge, t_u))
-            t_e = max(t_s, min(t_u, (1.0 - edge) / edge))
-            b = c * (1.0 + t_s)
-            g = norm.pdf(u * b, scale=np.sqrt(t_s)) * b
-            # Steps of equal size in v = 1 / (1 + t) = 1 - a keep each
-            # step's variance at about a tenth of b^2.
-            v_s, v_u = 1.0 / (1.0 + t_s), 1.0 / (1.0 + t_e)
-            n = int(np.ceil((v_s - v_u) / (0.1 * c**2)))
-            ts = 1.0 / np.linspace(v_s, v_u, n + 1) - 1.0
-            for t0, t1 in zip(ts[:-1], ts[1:]):
-                b0, b1 = c * (1.0 + t0), c * (1.0 + t1)
-                dt = t1 - t0
-                g = g @ kernel(b0 / b1, np.sqrt(dt) / b1, 2 * b0 * b1 / dt)
-            return float(g @ w)
-
-        target = 1.0 - alpha_ci
-        # The supremum is at least |B(a)| at any single a, so the two-sided
-        # normal quantile there bounds c from below.
-        z = norm.ppf(1.0 - alpha_ci / 2.0)
-        if standardized:
-            lo = z
-        else:
-            a_mid = min(max(0.5, a_l), a_u)
-            lo = z * np.sqrt(a_mid * (1.0 - a_mid))
-        if not t_u > t_l:
-            # A single point (a_l == a_u): the bound is attained.
-            return float(lo)
-        # The number of grid steps grows as 1 / c^2, so ``inside`` is only
-        # evaluated down to about the root. The search used to climb from
-        # ``lo``, which is far below the root when alpha_ci is large (z is
-        # 1.25e-6 at alpha_ci = 1 - 1e-6): alpha_ci = 0.9 took 13 s, and
-        # 1 - 1e-6 asked for a 158 TiB grid (#420). At the root itself the
-        # steps are bounded (about 8 log(1 / (1 - alpha_ci)), however narrow
-        # the range: a path staying within +-c over a stretch of n steps has
-        # a probability of about e^(-n / 8)). So start from an upper value
-        # and come down: for Hall-Wellner the Kolmogorov tail bound,
-        # P(sup |B| > c) <= 2 exp(-2 c^2) over the whole of [0, 1], and for
-        # the equal precision band 1 (or ``lo``), climbing if it is short.
-        if standardized:
-            c = max(lo, 1.0)
-        else:
-            c = max(lo, np.sqrt(np.log(2.0 / alpha_ci) / 2.0))
-        if inside(c) >= target:
-            hi = c
-            while True:
-                c = max(hi / 1.5, lo)
-                if c == lo:
-                    # Within a factor 1.5 of the root, so the grid is too.
-                    if inside(lo) >= target:
-                        # A range too short for the grid to tell apart from
-                        # a single point.
-                        return float(lo)
-                    break
-                if inside(c) < target:
-                    break
-                hi = c
-            lo = c
-        else:
-            lo, hi = c, 1.5 * c
-            while inside(hi) < target:
-                lo, hi = hi, 1.5 * hi
-        return float(brentq(lambda c: inside(c) - target, lo, hi, xtol=1e-8))
+        return _critical_value(
+            float(a_l), float(a_u), float(alpha_ci), bool(standardized)
+        )
 
     @keeps_query_shape
     def band(
