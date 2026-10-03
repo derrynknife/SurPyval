@@ -393,9 +393,9 @@ class _Judge(NamedTuple):
         however the other parameters are set (each density, survival and
         interval term rises as its point moves towards the origin), so
         the corner is where the search goes and the rest of the ladder
-        took it there in 5,000 to 15,000 evaluations. An interior maximum
-        has a shape above 1, where the first rung's search does not stop
-        on its way into the corner."""
+        took it there in 5,000 to 15,000 evaluations. (An interior maximum,
+        where there is one, has a shape above 1, since below 1 the
+        likelihood rises with the offset everywhere.)"""
         natural, _, free = self.space[:3]
         if not self.args[0] or 0 not in free:
             return None
