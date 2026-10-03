@@ -11,6 +11,7 @@ separate: its life-model parameter juggling does not fit this shape.
 """
 
 import copy
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
@@ -108,12 +109,23 @@ def make_objective(
     """The optimiser objective every regression fitter used to build
     inline: the fitter's negative log-likelihood evaluated in the
     transformed (unconstrained, fixed-parameters-removed) search space.
+
+    A ``functools.partial`` of a module-level function rather than a
+    closure, so the accelerated life model, which keeps it as ``fun``,
+    pickles (#573).
     """
+    return functools.partial(_objective, fitter, data, inv_trans, const)
 
-    def fun(params: npt.NDArray) -> Boxable:
-        return fitter.neg_ll(data, *inv_trans(const(params)))
 
-    return fun
+def _objective(
+    fitter: Any,
+    data: SurpyvalData,
+    inv_trans: Callable,
+    const: Callable,
+    params: npt.NDArray,
+) -> Boxable:
+    """``make_objective``'s objective at ``params``."""
+    return fitter.neg_ll(data, *inv_trans(const(params)))
 
 
 class MirroredDistributionAttrs:
@@ -597,6 +609,19 @@ def alias_coefficients(
     return out
 
 
+def check_baseline_support(fitter: Any, data: SurpyvalData) -> None:
+    """Refuse times outside the support of the fitter's baseline
+    distribution (#565), with the univariate fits' check and wording
+    (``OutsideSupportError``, a ``ValueError``), and also a censored time
+    below the support's lower end: a Weibull, Gamma or Exponential AFT
+    took a negative censored time, and its likelihood's derivatives were
+    nan there. A baseline on the whole line (Normal, Gumbel, Logistic)
+    refuses nothing."""
+    check = getattr(fitter.dist, "_check_inside_support", None)
+    if check is not None:
+        check(data, every_row=True)
+
+
 def prepare_regression_fit(
     fitter: Any,
     x: npt.ArrayLike,
@@ -636,6 +661,8 @@ def prepare_regression_fit(
         Z = np.asarray(Z_in).reshape(-1, 1)
     data, Z = drop_nonfinite_covariates(data, Z)
     data.add_covariates(Z)
+    # After the rows with a missing covariate are dropped (principle 3)
+    check_baseline_support(fitter, data)
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)

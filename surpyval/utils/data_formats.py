@@ -696,10 +696,18 @@ def _check_truncation_bounds(
             + " truncation time has a zero-length observation window."
         )
     if (has_tl & ~point & (t[:, 0] > lo)).any():
+        # Inspection data meets this often, and the tempting repair --
+        # moving xl up to tl -- biases the fit, so the message says what
+        # tl is for such a row (#576).
         raise ValueError(
             "All left truncated values must be less than the respective"
             + " observed values: an interval cannot start below its own"
-            + " left truncation time"
+            + " left truncation time. In inspection data a failure found"
+            + " at the first inspection after the records begin starts at"
+            + " its last good inspection, before the records do: its left"
+            + " truncation time is that inspection (so tl <= xl), not the"
+            + " date the records begin. Do not move xl up to tl, which"
+            + " biases the fit."
         )
     if (has_tr & (hi > t[:, 1])).any():
         raise ValueError(
@@ -963,6 +971,23 @@ def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
         raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
 
 
+def _has_missing(values: Any) -> bool:
+    """Whether ``values`` holds a missing value: NaN, ``None``, or
+    pandas' ``NA`` / ``NaT`` (a nullable ``Int64`` column gives ``NA``),
+    told apart without importing pandas."""
+    arr = np.asarray(values)
+    if arr.dtype.kind == "f":
+        return bool(np.isnan(arr).any())
+    if arr.dtype.kind != "O":
+        return False
+    return any(
+        v is None
+        or (isinstance(v, float) and v != v)
+        or type(v).__name__ in ("NAType", "NaTType")
+        for v in arr.ravel()
+    )
+
+
 def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     """The censoring flags, checked against ``x``, or the default.
 
@@ -976,6 +1001,10 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
         return default
 
     c_arr = np.atleast_1d(np.array(c))
+    # Said as it is said of ``x``: a missing flag used to be reported as
+    # an invalid censoring value (#576).
+    if _has_missing(c_arr):
+        raise ValueError("Variable 'c' cannot contain NaN values")
     if c_arr.ndim == 2 and c_arr.shape[1] == 1:
         # A single column, as for ``x`` (#485)
         c_arr = c_arr[:, 0]
@@ -1000,6 +1029,9 @@ def _xcnt_counts(n: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     if n is None:
         # Do check here for groupby and binning
         return np.ones(x.shape[0])
+    if _has_missing(np.array(n, dtype=object)):
+        # As for ``x`` and ``c``; it read "must contain integer values"
+        raise ValueError("Variable 'n' cannot contain NaN values")
     try:
         n_arr = np.atleast_1d(np.array(n, dtype=float))
     except (ValueError, TypeError):

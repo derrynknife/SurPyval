@@ -44,6 +44,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
     option_error,
+    warn_outside_unit_interval,
 )
 
 from ._likelihood_ratio import (
@@ -1270,7 +1271,9 @@ class Parametric(
         ``p`` is infinite (that proportion of the population never fails). For
         a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
         so quantiles at or below ``f0`` return 0. A probability outside
-        [0, 1] gives NaN, as scipy's ``ppf`` does.
+        [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
+        most often a percentage given for a probability: ``qf(10)`` for
+        the B10 life, which is ``qf(0.1)``); NaN gives NaN.
         """
         if isinstance(p, list):
             p = np.array(p)
@@ -1302,8 +1305,9 @@ class Parametric(
         q = np.where((self.p < 1) & (u >= self.p), np.inf, q)
         # A probability outside [0, 1] has no quantile: NaN, as scipy's
         # ``ppf`` and ``CustomDistribution.qf`` (#437) give. It was inf
-        # above 1 and 0 below 0, even for a Normal (#485).
-        q = np.where((u < 0) | (u > 1), np.nan, q)
+        # above 1 and 0 below 0, even for a Normal (#485). It is a
+        # mistake, not a missing value, so it is warned of (#576).
+        q = np.where(warn_outside_unit_interval(u), np.nan, q)
         q = np.asarray(q, dtype=float)
         return q[0] if scalar else q
 

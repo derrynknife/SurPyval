@@ -40,6 +40,7 @@ the left limits equal :math:`G(t)` and :math:`G(x_i)`.
 
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable, NamedTuple
 
 import numpy as np
@@ -99,6 +100,22 @@ from surpyval.utils.validation import (
     missing_cause_error,
     unknown_cause_error,
 )
+
+
+def _weighted_neg_ll(
+    n_sorted: npt.NDArray,
+    sets: Any,
+    denom0: npt.NDArray,
+    Zk: npt.NDArray,
+    nZk_event: npt.NDArray,
+    beta: Any,
+) -> Any:
+    """The weighted negative partial log-likelihood at ``beta``, less its
+    value at 0 (see ``_fit_cause``), differentiable by autograd."""
+    weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
+    denom = _risk_set_sums(weighted_exp, sets)
+    ll = anp.dot(nZk_event, beta) - anp.sum(sets.d * anp.log(denom / denom0))
+    return -ll
 
 
 def _fit_cause(
@@ -168,15 +185,12 @@ def _fit_cause(
         and the information take its derivatives), and the objective with
         its gradient for BFGS, ``-(nZ_event - sum_j d_j S1_j / S0_j)``
         (``S1`` the risk-set sums of ``w Z``), by hand: a fit of 1e5 rows
-        took 1.2 s with autograd's gradient, 0.7 s with this."""
-
-        def neg_ll(beta: Any) -> Any:
-            weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
-            denom = _risk_set_sums(weighted_exp, sets)
-            ll = anp.dot(nZk_event, beta) - anp.sum(
-                sets.d * anp.log(denom / denom0)
-            )
-            return -ll
+        took 1.2 s with autograd's gradient, 0.7 s with this. The
+        objective is a ``functools.partial`` of a module-level function,
+        not a closure, so the model, which keeps it, pickles (#573)."""
+        neg_ll = functools.partial(
+            _weighted_neg_ll, n_sorted, sets, denom0, Zk, nZk_event
+        )
 
         def value_and_gradient(beta: npt.NDArray) -> tuple:
             weighted_exp = n_sorted * np.exp(Zk @ beta)

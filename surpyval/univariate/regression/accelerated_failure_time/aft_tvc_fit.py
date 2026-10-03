@@ -22,11 +22,12 @@ accelerated age before evaluating the baseline.
 
 To keep the shared, well-tested machinery untouched this module does **not**
 modify ``AFTFitter.fit`` or the shared ``regression_neg_ll``. It builds a fresh
-``AFTFitter`` for the result (so every ordinary prediction function -- ``sf``,
-``Hf``, ``sf_tvc`` -- is inherited unchanged) and overrides only its ``neg_ll``
-with the accumulated-age likelihood on that single instance. The fitted
-``ParametricRegressionModel`` therefore carries the *correct* likelihood, so
-the generic confidence-bound path is right without any change to that code.
+``AFTTVCFitter``, a subclass of ``AFTFitter``, for the result (so every
+ordinary prediction function -- ``sf``, ``Hf``, ``sf_tvc`` -- is inherited
+unchanged) whose only override is ``neg_ll``, the accumulated-age
+likelihood. The fitted ``ParametricRegressionModel`` therefore carries the
+*correct* likelihood, so the generic confidence-bound path is right without
+any change to that code.
 The likelihood is differentiable by autograd, so the fit ends as the ordinary
 one does (``finish_search`` and ``keep_information``): a coefficient with no
 finite maximum is warned of, and the covariance is the exact observed
@@ -37,7 +38,6 @@ information (#555), not a finite-difference Hessian of
 from __future__ import annotations
 
 import functools
-import types
 from typing import Any, Callable
 
 import autograd.numpy as np
@@ -158,7 +158,7 @@ def _aft_tvc_neg_ll(self: Any, data: Any, *params: float) -> float:
     Negative log-likelihood of the accelerated-failure-time model along each
     subject's time-varying covariate path.
 
-    Bound (per instance) onto the result's ``AFTFitter`` so it replaces the
+    The ``neg_ll`` of the result's ``AFTTVCFitter``, in place of the
     ordinary independent-rows ``neg_ll`` for this fit only. ``data`` is ignored
     -- the grouped episode arrays captured at fit time live on ``self._tvc`` --
     so the generic confidence-bound path, which re-calls this with the model's
@@ -200,6 +200,7 @@ from .._fit_skeleton import (  # noqa: E402
     MirroredDistributionAttrs,
     alias_coefficients,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     free_coefficients,
     judge_search,
@@ -259,11 +260,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             confidence bounds are correct.
         """
         from ..proportional_hazards.tvc import handle_tvc
-        from .aft_fitter import AFTFitter
+        from .aft_fitter import AFTTVCFitter
 
         x, c_a, n_a, tl, Z_a, ident = handle_tvc(i, xl, xr, c, Z, n)
         return self._fit_tvc_arrays(
-            x, c_a, n_a, tl, Z_a, ident, AFTFitter, fixed, center
+            x, c_a, n_a, tl, Z_a, ident, AFTTVCFitter, fixed, center
         )
 
     def fit_tvc_timeline(
@@ -390,7 +391,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         tl: npt.NDArray,
         Z: npt.NDArray,
         ident: npt.NDArray,
-        AFTFitter: Any,
+        AFTTVCFitter: Any,
         fixed: "dict[str, float] | None",
         center: bool = False,
     ) -> ParametricRegressionModel:
@@ -401,6 +402,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             Z = Z.reshape(-1, 1)
         p = Z.shape[1]
         _validate_full_coverage(x, tl, ident)
+        # The exit times inside the baseline's support, as for fit (#565)
+        check_baseline_support(
+            self, SurpyvalData(x, c, n, None, group_and_sort=False)
+        )
         grp = _grouped_episodes(x, c, n, tl, ident)
         phi_param_map = {"beta_" + str(j): j for j in range(p)}
         # A column the data cannot determine is held at 0 and reported as
@@ -416,12 +421,11 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
         )
         mean = np.zeros(p) if centring is None else centring.center
 
-        # Result fitter: a fresh AFTFitter (so all ordinary prediction
-        # functions are inherited unchanged) with the accumulated-age
-        # likelihood bound onto this one instance only.
-        like = AFTFitter(self.dist)
+        # Result fitter: a fresh AFTTVCFitter, an AFTFitter (so all
+        # ordinary prediction functions are inherited unchanged) whose
+        # likelihood is the accumulated-age one of these episodes.
+        like = AFTTVCFitter(self.dist)
         like._tvc = {**grp, "Zep": Z - mean}
-        like.neg_ll = types.MethodType(_aft_tvc_neg_ll, like)
 
         # Initial values: a plain distribution fit to the subject exit times,
         # regression coefficients at zero.
@@ -483,7 +487,7 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             # for the ordinary fit; the likelihood of the data as given is
             # the check.
             centring.raw = edata
-            raw = AFTFitter(self.dist)
+            raw = AFTTVCFitter(self.dist)
             raw._tvc = {**grp, "Zep": Z}
             raw_neg_ll = functools.partial(_aft_tvc_neg_ll, raw, None)
 
