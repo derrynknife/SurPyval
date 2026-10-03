@@ -3,8 +3,65 @@ from typing import Any, Callable, Sequence
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import hessian, jacobian
+from autograd import hessian, value_and_grad
 from scipy.optimize import OptimizeResult, minimize
+
+
+class Gradient:
+    """The gradient of a scalar ``fun`` by autograd, taken with its value.
+
+    A drop-in for ``autograd.jacobian(fun)``: ``Gradient(fun)(x, *args)``
+    is the same gradient, to the bit. It also gives ``value_and_grad(x,
+    *args)``, both from one autograd pass, and keeps the last point's
+    pair, so asking again at the same point costs nothing.
+
+    The optimisers used to be given ``fun`` and its gradient separately,
+    and at each point evaluated the likelihood once for its value and
+    again inside the gradient's pass, which computes the value anyway: a
+    sixth of each step on a Weibull of 1,000 rows, a fifth at 100,000
+    (#593). :func:`minimize_with_gradient` passes them as one callable
+    (scipy's ``jac=True``). The value of the pass is the plain function's
+    value, so an optimiser takes the same path to the same point.
+    """
+
+    def __init__(self, fun: Callable[..., Any]) -> None:
+        self.fun = fun
+        self._value_and_grad = value_and_grad(fun)
+        self._kept: "tuple[bytes, tuple, Any, npt.NDArray] | None" = None
+
+    def value_and_grad(self, x: npt.ArrayLike, *args: Any) -> tuple:
+        """``(fun(x, *args), gradient)``, from one pass."""
+        key = np.asarray(x, dtype=float).tobytes()
+        kept = self._kept
+        if (
+            kept is None
+            or kept[0] != key
+            or len(kept[1]) != len(args)
+            or any(a is not b for a, b in zip(kept[1], args))
+        ):
+            value, grad = self._value_and_grad(x, *args)
+            kept = self._kept = (key, args, value, grad)
+        # A copy, so a caller that changes it in place cannot change it
+        # for the next one
+        return kept[2], np.array(kept[3])
+
+    def __call__(self, x: npt.ArrayLike, *args: Any) -> npt.NDArray:
+        return self.value_and_grad(x, *args)[1]
+
+
+def minimize_with_gradient(
+    fun: Callable[..., Any],
+    x0: npt.ArrayLike,
+    args: tuple[Any, ...] = (),
+    jac: Any = None,
+    **kwargs: Any,
+) -> Any:
+    """``scipy.optimize.minimize(fun, x0, args, jac=jac, **kwargs)``, with
+    the value and the gradient from one pass where ``jac`` is the
+    :class:`Gradient` of ``fun`` (scipy's ``jac=True``, #593)."""
+    if isinstance(jac, Gradient) and jac.fun is fun:
+        return minimize(jac.value_and_grad, x0, args=args, jac=True, **kwargs)
+    return minimize(fun, x0, args=args, jac=jac, **kwargs)
 
 
 def fallback_minimize(
@@ -60,14 +117,14 @@ def fallback_minimize(
             or (not np.isfinite(res.fun))
         )
         if failed and np.any(hess(np.array(init, dtype=float), *args)):
-            newton = minimize(
+            newton = minimize_with_gradient(
                 fun,
                 init,
+                args,
+                jac,
                 method="Newton-CG",
-                jac=jac,
                 hess=hess,
                 tol=newton_tol,
-                args=args,
             )
             # Only an improvement replaces what BFGS found. BFGS often
             # reports "precision loss" *at* the optimum, and a Newton-CG
@@ -208,8 +265,8 @@ def verify_or_polish(
         jac, hess = numerical_derivatives(objective, x0, floor)
         polish_jac = numerical_derivatives(fun, x0, floor)[0]
     else:
-        jac, hess = jacobian(objective), hessian(objective)
-        polish_jac = jacobian(fun)
+        jac, hess = Gradient(objective), hessian(objective)
+        polish_jac = jac if objective is fun else Gradient(fun)
     if is_local_minimum(
         objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
     ):
@@ -535,6 +592,8 @@ def preconditioned_bfgs(
 
     With ``jac=None`` scipy differences the scaled objective, so the
     finite-difference step is relative to each component's scale too.
+    With ``jac=Gradient(fun)`` each point's value and gradient come from
+    one pass (:class:`Gradient`, #593).
 
     ``callback``, where given, is called with each iterate (unscaled),
     and may end the search by raising ``StopIteration``.
@@ -567,15 +626,34 @@ def preconditioned_bfgs(
 
         extra["callback"] = unscaled
 
-    res = minimize(
-        scaled_fun,
-        x0 / scale,
-        args=args,
-        method="BFGS",
-        jac=None if jac is None else scaled_jac,
-        options=opts,
-        **extra,
-    )
+    if isinstance(jac, Gradient) and jac.fun is fun:
+        # The value and the gradient from one pass (#593)
+        gradient = jac
+
+        def scaled_value_and_grad(v: npt.NDArray, *inner: Any) -> tuple:
+            value, grad = gradient.value_and_grad(scale * v, *inner)
+            scaled = (scale * np.asarray(grad, dtype=float)) / divisor
+            return value / divisor, scaled
+
+        res = minimize(
+            scaled_value_and_grad,
+            x0 / scale,
+            args=args,
+            method="BFGS",
+            jac=True,
+            options=opts,
+            **extra,
+        )
+    else:
+        res = minimize(
+            scaled_fun,
+            x0 / scale,
+            args=args,
+            method="BFGS",
+            jac=None if jac is None else scaled_jac,
+            options=opts,
+            **extra,
+        )
     res.x = res.x * scale
     res.fun = res.fun * divisor
     return res

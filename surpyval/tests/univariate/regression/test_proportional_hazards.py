@@ -1277,3 +1277,39 @@ def test_604_cox_aliased_coefficient_is_not_counted():
         doubled = CoxPH.fit(x, np.column_stack([Z, Z[:, 0]]), c=c)
     # R's logLik.coxph counts sum(!is.na(coef))
     assert doubled.aic() == pytest.approx(model.aic(), rel=1e-10)
+
+
+def test_593_parametric_ph_fit_evaluates_each_point_once(monkeypatch):
+    # The search used to evaluate the likelihood plainly at each point
+    # and again in the gradient's autograd pass (13 such points here);
+    # it now takes the value and the gradient from one pass.
+    from autograd.tracer import Box
+
+    from surpyval.univariate.regression.proportional_hazards import (
+        proportional_hazards_fitter as ph_module,
+    )
+
+    def unboxed(value):
+        while isinstance(value, Box):
+            value = value._value
+        return float(value)
+
+    calls = []
+    original = ph_module.regression_neg_ll
+
+    def counted(model, data, *params):
+        boxed = any(isinstance(p, Box) for p in params)
+        calls.append((boxed, tuple(unboxed(p) for p in params)))
+        return original(model, data, *params)
+
+    monkeypatch.setattr(ph_module, "regression_neg_ll", counted)
+    rng = np.random.default_rng(7)
+    Z = rng.normal(size=(300, 2))
+    x = Weibull.random(300, 10, 1.5, random_state=3) * np.exp(
+        Z @ np.array([0.3, -0.2])
+    )
+    model = WeibullPH.fit(x, Z)
+    plain = {point for boxed, point in calls if not boxed}
+    in_pass = {point for boxed, point in calls if boxed}
+    assert len(plain & in_pass) <= 1
+    assert model.maximum == "verified"

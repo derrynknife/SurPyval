@@ -48,6 +48,7 @@ from autograd import hessian, jacobian
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
+    Gradient,
     is_local_minimum,
     preconditioned_bfgs,
     verify_or_polish,
@@ -86,6 +87,22 @@ from ..tvc_fit import TVCFitMixin
 
 class _OverBudget(Exception):
     """The search on the exact gradient ran out of its budget."""
+
+
+class _BudgetedGradient(Gradient):
+    """The :class:`Gradient` of ``fun``, raising ``_OverBudget`` when
+    asked at more than ``budget`` points."""
+
+    def __init__(self, fun: Any, budget: int) -> None:
+        super().__init__(fun)
+        self.budget = budget
+        self.spent = 0
+
+    def value_and_grad(self, x: npt.ArrayLike, *args: Any) -> tuple:
+        self.spent += 1
+        if self.spent > self.budget:
+            raise _OverBudget
+        return super().value_and_grad(x, *args)
 
 
 class AdditiveHazardsFitter(
@@ -382,14 +399,10 @@ class AdditiveHazardsFitter(
             or _gradient(fun, start) is None
         ):
             return None, False
-        grad = jacobian(fun)
-        spent = [0]
-
-        def budgeted(u: npt.NDArray) -> Any:
-            spent[0] += 1
-            if spent[0] > AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET:
-                raise _OverBudget
-            return grad(u)
+        # The value and the gradient from one pass (#593)
+        budgeted = _BudgetedGradient(
+            fun, AdditiveHazardsFitter.GRADIENT_FIRST_BUDGET
+        )
 
         with warnings.catch_warnings():
             # The penalty is constant outside the valid region, and
