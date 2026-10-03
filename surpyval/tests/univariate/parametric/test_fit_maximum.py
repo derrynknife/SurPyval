@@ -175,7 +175,10 @@ def test_584_a_rung_that_failed_on_a_slope_is_not_a_runaway():
     # An offset Weibull with an observation at -1: BFGS stopped against
     # the wall where the likelihood is not defined, at a point with a
     # negative curvature along beta's profile and a slope far from flat
-    # (log-likelihood -618930). The later rungs reach the maximum.
+    # (log-likelihood -618930), and the later rungs reached the maximum
+    # or not, depending on the CPU's arithmetic: with AVX-512 disabled the
+    # fit ended "no finite maximum". From a start fitted to the data at its
+    # own offset (#622) BFGS reaches the maximum on both paths.
     case = CASE_BY_NAME["Weibull[offset]"]
     d = case.data()
     x = np.array(d["x"], dtype=float)
