@@ -619,8 +619,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         ):
             q = alpha * np.exp(log_t / beta)
             # exp(log t / beta) overflows (or underflows) where the
-            # quantile does not: at alpha = 1e-308, beta = 0.0076 and mu =
-            # 3e95, qf(0.95) is 45 (#601). There it is taken in logs.
+            # quantile does not: at alpha = 2.2e-308, beta = 0.0076 and
+            # mu = 3e95, qf(0.95) is 19.4 (#601). There it is taken in logs.
             far = ~np.isfinite(q) | (q == 0)
             return np.where(far, np.exp(np.log(alpha) + log_t / beta), q)
 

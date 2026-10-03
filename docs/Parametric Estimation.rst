@@ -1255,6 +1255,17 @@ deviance from the fit is below the critical value, the upper bound on
 :math:`r` is ``inf``. A band likewise reaches the edge of the function's
 range (0 or 1 for :math:`R`) when the region reaches that far.
 
+The region can also run out along a long, flat valley towards such an
+edge (an ExpoWeibull's as :math:`\beta \to \infty` with :math:`\alpha` at
+the largest observation, or as :math:`\alpha \to 0`), and a band's or a
+quantile's extreme can lie far down it, or be approached only at the end
+of the search's range for the parameter (where it is no longer a double
+distinct from the edge). The search follows each parameter's profile down
+such valleys before seeking the extreme there, so the bound is that
+extreme to about one part in a million. Where a search is still moving
+out when it stops, the bound returned is the most extreme point of the
+region it found, with a warning saying so.
+
 .. _information-criteria:
 
 Comparing models: information criteria
