@@ -271,14 +271,17 @@ constant divides its coefficient by it and leaves the maximised likelihood
 where it was. The search, and the check that it reached a maximum, measure
 each coefficient in its covariate's units -- the change of
 :math:`1/\mathrm{range}(Z_j)` that moves the linear predictor by 1 across
-the data (at least 1, so nothing changes for a covariate whose range is 1 or
-more) -- so a covariate recorded in small units, such as the Arrhenius
-:math:`1/T` in kelvin (a range of about :math:`3 \times 10^{-4}` over a test's
-temperatures), is fitted as well as one in large units. Measured in units of
-1, a coefficient's gradient at its start of 0 is proportional to its
-covariate's spread: a ``WeibullPH`` time-varying fit to :math:`1/T` stopped
-there, after no iterations, and reported a verified maximum 0.41 below the
-one it reached with :math:`1000/T` (#577).
+the data where that range is below 1 or above 100 (and 1 in between, so
+nothing changes for a binary covariate or ordinary data) -- so a covariate
+recorded in small units, such as the Arrhenius :math:`1/T` in kelvin (a
+range of about :math:`3 \times 10^{-4}` over a test's temperatures), or in
+large ones, such as a date in days, is fitted as well as one of order 1.
+Measured in units of 1, a coefficient's gradient at its start of 0 is
+proportional to its covariate's spread: a ``WeibullPH`` time-varying fit to
+:math:`1/T` stopped there, after no iterations, and reported a verified
+maximum 0.41 below the one it reached with :math:`1000/T` (#577); and with
+every covariate in units of :math:`10^4`, 14 of the package's regression
+fits stopped up to 0.023 short of their maximum, saying so (#612).
 
 Each family also has a ``fit_from_df`` that names DataFrame columns instead
 (see `Fitting from a DataFrame: formulas and categorical covariates`_).

@@ -155,6 +155,12 @@ def numeric_columns(df: Any, cols: "list[str]") -> npt.NDArray:
         ) from None
 
 
+#: The covariate range above which a coefficient is searched and judged in
+#: units of ``1 / range`` (:func:`coefficient_floor`, #612). Below it (and
+#: from 1 up) the unit is 1, as it was, so ordinary data fits as before.
+LARGE_RANGE = 100.0
+
+
 def coefficient_floor(
     n_search: int,
     coefs: "list[tuple[int, int]]",
@@ -164,11 +170,12 @@ def coefficient_floor(
     ``n_search`` components, for ``preconditioned_bfgs`` and
     ``is_local_minimum``: each covariate coefficient's natural unit, the
     change that moves the linear predictor by 1 across its covariate's
-    observed range, ``1 / range(Z_j)``, and at least 1; 1 for every other
-    component. ``coefs`` are ``(position, column)`` pairs: a coefficient's
-    position in the search vector and its covariate's column of ``Z`` (as
-    ``free_coefficients`` in ``univariate/regression/_fit_skeleton.py``
-    gives them).
+    observed range, ``1 / range(Z_j)``, where that range is below 1 or
+    above :data:`LARGE_RANGE` (100); 1 for a covariate whose range is in
+    between, and for every other component. ``coefs`` are
+    ``(position, column)`` pairs: a coefficient's position in the search
+    vector and its covariate's column of ``Z`` (as ``free_coefficients``
+    in ``univariate/regression/_fit_skeleton.py`` gives them).
 
     Both the search and the verification measure a component in units of
     ``max(|x|, floor)``. A coefficient starts at 0, where the floor alone
@@ -180,22 +187,31 @@ def coefficient_floor(
     iterations, its coefficient exactly 0, and reported a verified
     maximum 0.41 below the maximum it reached with ``1000/T`` (#577). In
     the coefficient's natural unit the gradient is the same whatever the
-    covariate's units. The floor stays 1 for a covariate whose range is 1
-    or more, so that nothing changes for a binary covariate or one of
-    order 1 and up, as ``search_floor`` keeps the univariate fits' floor
-    of 1 for data of order 1 and up.
+    covariate's units.
+
+    The same holds from above: a covariate in units of 1e4 (a date in
+    days, an income) has a coefficient of order 1e-4, which a search in
+    units of 1 takes in steps ten thousand times its size, and 14 of the
+    conformance fits stopped up to 0.023 short of their maximum, saying
+    so (#612). Its floor is ``1 / range`` too. The floor stays 1 for a
+    covariate whose range is from 1 to 100, so that nothing changes for
+    a binary covariate or ordinary data, as ``search_floor`` keeps the
+    univariate fits' floor of 1 for data of order 1 and up.
 
     Examples
     --------
     Two distribution parameters, then the coefficients of a binary
-    covariate and of a temperature's reciprocal in kelvin:
+    covariate, of a temperature's reciprocal in kelvin and of a date in
+    days:
 
     >>> import numpy as np
     >>> from surpyval.utils.covariates import coefficient_floor
     >>> kelvin = np.array([358.15, 378.15, 398.15])
-    >>> Z = np.column_stack([[0, 1, 1], 1 / kelvin])
-    >>> coefficient_floor(4, [(2, 0), (3, 1)], Z).round(1).tolist()
-    [1.0, 1.0, 1.0, 3564.9]
+    >>> days = np.array([18000.0, 19500.0, 21000.0])
+    >>> Z = np.column_stack([[0, 1, 1], 1 / kelvin, days])
+    >>> floor = coefficient_floor(5, [(2, 0), (3, 1), (4, 2)], Z)
+    >>> [float(f"{v:.4g}") for v in floor]
+    [1.0, 1.0, 1.0, 3565.0, 0.0003333]
     """
     floor = np.ones(n_search)
     if Z is None:
@@ -206,6 +222,8 @@ def coefficient_floor(
     Z_arr = Z_arr.reshape(Z_arr.shape[0], -1)
     spread = np.max(Z_arr, axis=0) - np.min(Z_arr, axis=0)
     for pos, j in coefs:
-        if j < spread.size and 0.0 < spread[j] < 1.0:
+        if j < spread.size and (
+            0.0 < spread[j] < 1.0 or spread[j] > LARGE_RANGE
+        ):
             floor[pos] = 1.0 / spread[j]
     return floor

@@ -97,6 +97,25 @@ class LifeModel(ABC):
         linearised relationship.
         """
 
+    def coefficient_columns(self) -> "dict[str, int]":
+        """
+        The life-model parameters that are each the coefficient of one
+        column of ``Z`` as it is (the log-life linear in that column), by
+        name, with the column's number: the fit searches and judges each
+        in its covariate's units (``coefficient_floor``, #612). None for a
+        life model of a transformed stress (``log s``, ``1 / s``); one per
+        column for ``GeneralLogLinear``.
+
+        Examples
+        --------
+        >>> from surpyval.life_models import GeneralLogLinear, Power
+        >>> Power.coefficient_columns()
+        {}
+        >>> GeneralLogLinear.resolve(2).coefficient_columns()
+        {'beta_0': 0, 'beta_1': 1}
+        """
+        return {}
+
     def _stress_terms(
         self, Z: ndarray
     ) -> "tuple[ndarray, tuple[str, ...], bool] | None":

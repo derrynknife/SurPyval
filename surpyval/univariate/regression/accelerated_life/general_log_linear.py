@@ -62,6 +62,11 @@ class GeneralLogLinear_(LifeModel):
             return self
         return GeneralLogLinear_(n_stresses)
 
+    def coefficient_columns(self) -> "dict[str, int]":
+        # Every parameter but ``c`` is a column's coefficient
+        names = sorted(self.phi_param_map, key=self.phi_param_map.__getitem__)
+        return {name: j for j, name in enumerate(names[1:])}
+
     def phi(self, Z: ndarray, *params: float) -> ndarray:
         # One row per stress vector, so a single row ``[Z_0, Z_1]`` gives
         # one life of shape (1,), as the other multi-stress models do. (A

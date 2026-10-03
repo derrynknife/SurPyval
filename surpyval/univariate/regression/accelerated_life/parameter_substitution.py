@@ -19,6 +19,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     OptimisedFitMixin,
 )
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -48,14 +49,37 @@ from .lifemodel import LifeModel
 
 
 def _search(
-    fun: Callable[[npt.NDArray], Any], x0: npt.NDArray, n_obs: float
+    fun: Callable[[npt.NDArray], Any],
+    x0: npt.NDArray,
+    n_obs: float,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
-    ``verify_or_polish``, which polishes one that is not)."""
+    ``verify_or_polish``, which polishes one that is not, each component
+    in units of at least ``floor``)."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
-    return verify_or_polish(fun, res2 if res2.success else res1, n_obs)
+    return verify_or_polish(
+        fun, res2 if res2.success else res1, n_obs, floor=floor
+    )
+
+
+def _coefficient_units(
+    fitter: Any, fixed: dict, phi_param_map: dict, Z: npt.ArrayLike
+) -> npt.NDArray:
+    """The search's ``floor``: each free life-model parameter that is a
+    column's coefficient (``LifeModel.coefficient_columns``) in its
+    covariate's units, as the other regressions search theirs (#577,
+    #612); 1 for every other component."""
+    columns = fitter.life_model.coefficient_columns()
+    names = [
+        *fitter.param_map,
+        *sorted(phi_param_map, key=phi_param_map.__getitem__),
+    ]
+    free = [name for name in names if name not in fixed]
+    coefs = [(k, columns[nm]) for k, nm in enumerate(free) if nm in columns]
+    return coefficient_floor(len(free), coefs, Z)
 
 
 class ParameterSubstitutionFitter(
@@ -632,7 +656,8 @@ class ParameterSubstitutionFitter(
             )
 
             n_obs = float(np.sum(data.n))
-            res, verified = _search(fun, init, n_obs)
+            floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
+            res, verified = _search(fun, init, n_obs, floor)
             start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
@@ -647,7 +672,7 @@ class ParameterSubstitutionFitter(
                     # No default start (a single stress level, say)
                     default = None
                 if default is not None:
-                    alt, alt_verified = _search(fun, default, n_obs)
+                    alt, alt_verified = _search(fun, default, n_obs, floor)
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
                         start = default
@@ -707,6 +732,7 @@ class ParameterSubstitutionFitter(
                 n_obs,
                 verified=verified,
                 what="The accelerated life fit",
+                floor=floor,
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which

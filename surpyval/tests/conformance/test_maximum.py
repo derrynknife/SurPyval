@@ -31,8 +31,9 @@ covariate fit where its fitter has one, the property checks that
   one without frailty -- is held out of the check, and the likelihood
   must not rise as it moves off the boundary instead. A covariate
   coefficient is measured in its own covariate's units
-  (``coefficient_floor``): its least unit is ``1 / range(Z_j)``, so that
-  the check means the same whatever units a covariate is recorded in.
+  (``coefficient_floor``): its least unit is ``1 / range(Z_j)`` where
+  that range is below 1 or above 100, so that the check means the same
+  whatever units a covariate is recorded in.
 
 The fixture's fit is checked, and so is the starved fit of the
 convergence property (``Case.starve``), which reaches the other states:
@@ -40,7 +41,9 @@ it must say what it reached in the same way. So is the fit with every
 covariate in millionths of its units (#577), where a coefficient's
 gradient is a millionth of what it was at its start of 0: below an
 absolute tolerance, which a search and a check in fixed units met at
-once. Cases whose estimate is
+once. So is the fit with every covariate in units of 1e4 (#606, #612):
+it reaches the maximum the fit in the covariates' own units does.
+Cases whose estimate is
 not a likelihood maximisation are excluded with the reason
 (``registry_families.NOT_A_LIKELIHOOD_FIT`` and the case's
 ``exclude``).
@@ -256,22 +259,24 @@ def _neg_ll(model):
 # overflowed at the first step of the Fine-Gray search, and the fit failed
 # with "SVD did not converge" (#606). A covariate's units must not change
 # the maximised likelihood (principle 6): a fit that reaches a verified
-# maximum reaches the fit's in the covariates' own units; one that does
-# not says so.
+# maximum in the covariates' own units reaches it, verified, in units of
+# 1e4 too. Searched in units of 1, 14 of these fits stopped up to 0.023
+# short of it and said so (#612).
 @pytest.mark.parametrize(
     "case",
     _params("maximum[large-scale]", lambda c: c.covariates is not None),
 )
-def test_606_a_large_scale_covariate_fit_says_what_it_reached(case):
+def test_612_a_large_scale_covariate_fit_reaches_the_maximum(case):
     data = case.data()
     Z = np.asarray(data[case.covariates], dtype=float)
     scaled = {**data, case.covariates: Z * LARGE_SCALE}
     model, said = _said(lambda: case.fit(scaled))
     _check(case, model, said, scaled)
-    if model.maximum != "verified":
-        return
     reference, _ = _said(lambda: case.fit(data))
-    if reference.maximum == "verified" and _neg_ll(model) is not None:
+    if reference.maximum != "verified":
+        return
+    assert model.maximum == "verified", said
+    if _neg_ll(model) is not None:
         assert _neg_ll(model) == pytest.approx(_neg_ll(reference), rel=1e-8)
 
 
@@ -299,12 +304,16 @@ class Search(NamedTuple):
     def in_covariate_units(self, coefs, Z):
         """This search with each coefficient's least unit its covariate's
         (``coefficient_floor``; ``coefs`` its ``(position, column)``
-        pairs), as the fits search and judge it (#577)."""
-        floor = np.broadcast_to(
-            np.asarray(self.floor, dtype=float), np.shape(self.x)
+        pairs), as the fits search and judge it (#577, #612)."""
+        floor = np.array(
+            np.broadcast_to(
+                np.asarray(self.floor, dtype=float), np.shape(self.x)
+            )
         )
         units = coefficient_floor(np.size(self.x), coefs, Z)
-        return self._replace(floor=np.maximum(floor, units))
+        at = [pos for pos, _ in coefs]
+        floor[at] = units[at]
+        return self._replace(floor=floor)
 
     def _parts(self):
         x = np.asarray(self.x, dtype=float)
@@ -907,7 +916,10 @@ def _search_recurrence(model, data, name=""):
         float(model._n_obs),
         name=name,
     )
-    n_base = len(model._parameter_bounds())
+    # The covariates' coefficients follow the process's own parameters
+    n_base = len(model._parameter_bounds()) - np.size(
+        getattr(model, "coeffs", ())
+    )
     Z = getattr(getattr(model, "data", None), "Z", None)
     if Z is None or not np.size(Z):
         return [search]

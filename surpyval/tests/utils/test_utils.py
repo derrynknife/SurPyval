@@ -349,3 +349,22 @@ def test_right_censored_with_finite_tr_is_accepted_without_warning():
         xcnt_handler(x=x, c=c, tr=[10.0, 10.0, 10.0])
         xcnt_handler(x=x, c=c, tr=[10.0, np.inf, 10.0])
         xcnt_handler(x=x, c=[0, 0, 0], tr=[10.0, 10.0, 10.0])
+
+
+@pytest.mark.parametrize(
+    "spread, unit",
+    [
+        (3e-4, 1 / 3e-4),  # below 1: 1 / range, as #577 made it
+        (1.0, 1.0),
+        (40.0, 1.0),  # ordinary data: 1, as it was
+        (100.0, 1.0),
+        (2e4, 1 / 2e4),  # above 100: 1 / range (#612)
+    ],
+)
+def test_612_coefficient_floor_scales_below_1_and_above_100(spread, unit):
+    from surpyval.utils.covariates import coefficient_floor
+
+    Z = np.column_stack([[0.0, 1.0, 0.5], [0.0, spread, spread / 3]])
+    floor = coefficient_floor(4, [(2, 0), (3, 1)], Z)
+    assert floor.tolist()[:3] == [1.0, 1.0, 1.0]
+    assert floor[3] == pytest.approx(unit, rel=1e-12)
