@@ -312,3 +312,52 @@ def test_604_cox_frailty_old_likelihood_names_are_deprecated(kidney_fits):
     assert legacy.log_likelihood == m.log_likelihood
     assert legacy.log_likelihood_no_frailty == m.log_likelihood_no_frailty
     assert legacy.aic() == m.aic()
+
+
+def _em_state(ties, theta, seed=3, G=80, per=6, tied=False):
+    from surpyval.univariate.regression.frailty import cox_frailty as cf
+    from surpyval.univariate.regression.frailty.frailty_fitter import (
+        grouped_data,
+    )
+
+    x, c, Z, g = _simulate(seed, G=G, per=per)
+    Z = np.column_stack([Z, np.random.default_rng(seed).normal(size=len(x))])
+    if tied:
+        x = np.ceil(x)
+    x, Zm, c, w, labels, inv = grouped_data(x, Z, c, None, g)
+    em = cf._CoxFrailtyEM(
+        x, Zm - Zm.mean(axis=0), c, w, inv, labels.shape[0], ties
+    )
+    beta, log_u, _ = em.em(theta, tol=1e-10)
+    return em, beta, log_u
+
+
+@pytest.mark.parametrize("ties", ["efron", "breslow"])
+@pytest.mark.parametrize("tied", [False, True])
+@pytest.mark.parametrize("theta", [1e-12, 0.05, 0.5, 20.0])
+def test_551_covariance_from_the_blocks_is_the_full_inverse(ties, tied, theta):
+    # The Schur complement of the frailty block, solved by conjugate
+    # gradients, is the coefficients' block of the inverse of the full
+    # penalised information, to the last digits.
+    em, beta, log_u = _em_state(ties, max(theta, 1e-6), tied=tied)
+    got = em._schur_covariance(theta, beta, log_u)
+    full = em._dense_beta_covariance(theta, beta, log_u)
+    np.testing.assert_allclose(got, full, rtol=1e-11)
+
+
+def test_551_covariance_does_not_form_the_group_indicators(monkeypatch):
+    # The full information has a column per group: O(n G^2) to form and
+    # O(G^3) to invert, 22 s at G = 4000 (n = 1e4). The covariance takes
+    # the partial likelihood's information in the coefficients alone.
+    em, beta, log_u = _em_state("efron", 0.5)
+    widths = []
+    generator = em.generator
+
+    def spy(x, Z, *args):
+        widths.append(Z.shape[1])
+        return generator(x, Z, *args)
+
+    monkeypatch.setattr(em, "generator", spy)
+    cov = em.beta_covariance(0.5, beta, log_u)
+    assert max(widths) <= em.p + 1 < em.G
+    assert np.all(np.linalg.eigvalsh(cov) > 0)

@@ -64,6 +64,7 @@ from surpyval.utils.validation import check_option
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import covariate_center
 from ..proportional_hazards.cox_likelihood import (
+    CoxInformation,
     baseline_at_origin,
     newton_raphson,
 )
@@ -86,6 +87,45 @@ _EM_MAX_ITER = 10000
 # The step, in log theta, of the profile's second difference that gives
 # theta's standard error.
 _CURVATURE_STEP = 0.02
+
+
+def _conjugate_gradients(
+    apply: Callable,
+    b: npt.NDArray,
+    diag: npt.NDArray,
+    rtol: float = 1e-13,
+    max_iter: int = 5000,
+) -> "npt.NDArray | None":
+    """The solution ``x`` of ``A x = b`` for a symmetric positive definite
+    ``A`` given by its product ``apply(y)`` with a matrix of columns
+    ``y``, one column of ``b`` at a time (all together), by conjugate
+    gradients preconditioned by ``diag``. ``None`` unless every column's
+    residual (recomputed from ``x`` at the end) is within ``100 rtol`` of
+    its ``b``."""
+    x = b / diag[:, None]
+    r = b - apply(x)
+    z = r / diag[:, None]
+    p = z.copy()
+    rz = np.sum(r * z, axis=0)
+    size = np.linalg.norm(b, axis=0)
+    for _ in range(max_iter):
+        active = np.linalg.norm(r, axis=0) > rtol * size
+        if not active.any():
+            break
+        Ap = apply(p)
+        pAp = np.sum(p * Ap, axis=0)
+        alpha = np.where(active, rz / np.where(active, pAp, 1.0), 0.0)
+        x = x + alpha * p
+        r = r - alpha * Ap
+        z = r / diag[:, None]
+        rz_new = np.sum(r * z, axis=0)
+        step = np.where(active, rz_new / np.where(active, rz, 1.0), 0.0)
+        p = z + step * p
+        rz = rz_new
+    residual = np.linalg.norm(b - apply(x), axis=0)
+    if not np.all(residual <= 100 * rtol * size):
+        return None
+    return x
 
 
 class _CoxFrailtyEM:
@@ -312,6 +352,74 @@ class _CoxFrailtyEM:
         adds ``exp(omega_g) / theta`` to the frailties' diagonal."""
         if self.p == 0:
             return np.zeros((0, 0))
+        with np.errstate(all="ignore"):
+            cov = self._schur_covariance(theta, beta, log_u)
+        if cov is None:
+            return self._dense_beta_covariance(theta, beta, log_u)
+        return cov if np.all(np.isfinite(cov)) else None
+
+    def _schur_covariance(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> "npt.NDArray | None":
+        """:meth:`beta_covariance` from the blocks of the information
+        (#551). With ``A``, ``B`` and ``C`` its coefficient, cross and
+        (penalised) frailty blocks, the coefficients' block of the inverse
+        is the inverse of the Schur complement ``A - B C^{-1} B'``. ``A``
+        is the partial likelihood's information in ``beta`` with the
+        log-frailties as offsets; ``B`` and products with ``C`` come from
+        :class:`CoxInformation`, whose operator gives the information of
+        the group indicators without forming them; and ``C^{-1} B'`` is
+        solved by conjugate gradients (``C`` is positive definite), with
+        the diagonal of ``C``'s first term as preconditioner. That is
+        ``O(n p)`` work per iteration where forming and inverting the full
+        information was ``O(n G^2 + G^3)``. ``None`` if the iteration does
+        not reach a residual of ``1e-13`` of ``B'`` (the caller then forms
+        the full information)."""
+        offset = log_u[self.inv]
+        info = CoxInformation(
+            self.x, self.c, self.w, self.Z @ beta + offset, self.tie_method
+        )
+        _, jac = self.partial_likelihood(offset)
+        A = np.atleast_2d(jac(beta)[1])
+        MZ = info.apply(self.Z)
+        # B' = E' M Z, with E the group indicators: a sum by group
+        Bt = np.column_stack(
+            [
+                np.bincount(self.inv, weights=MZ[:, j], minlength=self.G)
+                for j in range(self.p)
+            ]
+        )
+        penalty = np.exp(log_u) / theta
+        diag = np.bincount(self.inv, weights=info.q, minlength=self.G)
+        diag = diag + penalty
+
+        def C(y: npt.NDArray) -> npt.NDArray:
+            # (E' M E + diag(penalty)) y, column by column
+            My = info.apply(y[self.inv])
+            out = np.column_stack(
+                [
+                    np.bincount(self.inv, weights=My[:, j], minlength=self.G)
+                    for j in range(y.shape[1])
+                ]
+            )
+            return out + penalty[:, None] * y
+
+        X = _conjugate_gradients(C, Bt, diag)
+        if X is None:
+            return None
+        schur = A - Bt.T @ X
+        schur = (schur + schur.T) / 2
+        try:
+            return np.linalg.inv(schur)
+        except np.linalg.LinAlgError:
+            return None
+
+    def _dense_beta_covariance(
+        self, theta: float, beta: npt.NDArray, log_u: npt.NDArray
+    ) -> "npt.NDArray | None":
+        # The full information, with one indicator column per group, and
+        # its inverse: O(n G^2 + G^3), kept for where conjugate gradients
+        # do not converge.
         indicators = np.zeros((self.x.shape[0], self.G))
         indicators[np.arange(self.x.shape[0]), self.inv] = 1.0
         _, jac_hess = self.generator(

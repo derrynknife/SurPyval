@@ -3156,7 +3156,10 @@ profile of the integrated likelihood. This is the fit of R's
 ``coxph(Surv(time, status) ~ ... + frailty(id, dist = "gamma"))``, with
 Efron's ties by default (``tie_method="breslow"`` for Breslow's); on the
 kidney data it gives R's coefficients, standard errors, frailties and
-I-likelihood:
+I-likelihood. The standard errors are R's ``sparse = FALSE`` ones, from the
+full information in the coefficients and every group's frailty, found
+without forming it (a Schur complement, solved by conjugate gradients), so
+they cost little more than the fit even with many thousands of groups:
 
 .. jupyter-execute::
 
