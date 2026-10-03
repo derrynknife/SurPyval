@@ -14,7 +14,11 @@ from typing import TYPE_CHECKING, Any
 import autograd.numpy as np
 import numpy.typing as npt
 
-from surpyval.utils.no_maximum import maximum_warnings_quiet, warn_unverified
+from surpyval.utils.no_maximum import (
+    maximum_warnings_quiet,
+    warn_no_maximum,
+    warn_unverified,
+)
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from ._fit_inputs import FitInputsMixin, normalise_how
@@ -777,6 +781,14 @@ turnbull_estimator
             warning = None
             unverified = False
             maximum = "no finite maximum"
+        # And any search that found a parameter running off (``mle``,
+        # #584), where the family has not said so in its own words above.
+        runaway = results.pop("_runaway", [])
+        if runaway and maximum != "no finite maximum":
+            self._warn_runaway(runaway, results)
+            warning = None
+            unverified = False
+            maximum = "no finite maximum"
         if warning is not None and not maximum_warnings_quiet():
             warnings.warn(warning, stacklevel=3)
         if unverified:
@@ -866,6 +878,37 @@ turnbull_estimator
         one side (``_warn_if_one_sided``, #559). A family that contains
         another as a limit overrides this (see ``BetaGeometric``)."""
         return self._warn_if_one_sided(surv_data, results, zi, lfp)
+
+    def _warn_runaway(self, runaway: "list[str]", results: dict) -> None:
+        """Warn that the maximum-likelihood search found the parameters
+        ``runaway`` running off (``fitters.mle._runaway``, #584): the
+        likelihood keeps increasing towards a limit of the family that
+        none of its members reaches, so it has no finite maximum."""
+        values = dict(
+            zip(self.parameter_names, np.atleast_1d(results["params"]))
+        )
+        values.update(gamma=results["gamma"], p=results["p"], f0=results["f0"])
+        named = ", ".join(f"{name} ({values[name]:.4g})" for name in runaway)
+        one = len(runaway) == 1
+        warn_no_maximum(
+            f"the {self.name} likelihood keeps increasing as {named} "
+            f"run{'s' if one else ''} on, towards a limit of the family "
+            "that none of its members reaches: Newton's method cannot "
+            f"converge along {'its' if one else 'their'} "
+            f"profile{'' if one else 's'} where the search stopped",
+            "The reported parameters are where the search stopped, and "
+            "their standard errors and bounds are meaningless",
+            self._runaway_advice(runaway, values),
+        )
+
+    def _runaway_advice(self, runaway: "list[str]", values: dict) -> str:
+        """What to do instead of a fit whose parameters ``runaway`` run
+        off (their ``values`` where the search stopped), for
+        :meth:`_warn_runaway`; a family that knows its limit says so."""
+        return (
+            "a simpler family, or one that contains the limit, may describe "
+            "the data: compare their fits (surpyval.fit_best)"
+        )
 
     def _warn_if_offset_at_limit(
         self,

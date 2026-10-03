@@ -1,3 +1,4 @@
+import warnings
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 if TYPE_CHECKING:
@@ -15,6 +16,9 @@ from surpyval.univariate.parametric.fitters import (
     is_local_minimum,
     preconditioned_bfgs,
     search_floor,
+)
+from surpyval.univariate.parametric.fitters.runaway import (
+    runaway_coefficients,
 )
 
 # The optimiser ladder: gradient methods first, then the derivative-free
@@ -50,6 +54,10 @@ class _Search(NamedTuple):
     res: Any
     optimizer: str
     verified: bool
+    #: The positions in the search vector of the parameters along which
+    #: the likelihood has no finite maximum (see ``_runaway``); empty
+    #: where none was found.
+    runaway: tuple[int, ...] = ()
 
 
 def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
@@ -168,6 +176,31 @@ def _run_rung(
     )
 
 
+def _runaway(
+    fun: Callable[..., Any], args: tuple, x: npt.NDArray, init: npt.NDArray
+) -> tuple[int, ...]:
+    """The positions of the parameters along which the likelihood has no
+    finite maximum near ``x``, a point a rung stopped at without verifying
+    it, searched from ``init``: Newton's method cannot converge along their
+    profiles (``runaway_coefficients``, the regression fits' check, #392).
+
+    A likelihood with no finite maximum keeps rising towards a supremum
+    as a parameter runs off to infinity, or to an edge where the
+    likelihood is infinite, and no rung can verify a point on the way:
+    each runs until its own limit, and the ladder ran them all (an
+    ExpoWeibull whose ``mu`` ran off took 23 s, every rung; #584). At a
+    point short of a finite maximum Newton's method converges, and the
+    ladder goes on as before.
+    """
+    with np.errstate(all="ignore"), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "Output seems independent")
+        return tuple(
+            runaway_coefficients(
+                lambda u: fun(u, *args), x, list(range(len(x))), init
+            )
+        )
+
+
 def _search(
     model: "Parametric",
     fun: Callable[..., Any],
@@ -226,6 +259,8 @@ def _search(
     best_method = None
     verified = False
     first_success = None
+    runaway: tuple[int, ...] = ()
+    checked = False
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]
         for x0 in _rung_starts(method, init, first_success):
@@ -249,8 +284,15 @@ def _search(
         ):
             verified = True
             break
+        if best_result is not None and not checked:
+            # The first rung that stops short of a verified maximum: is
+            # the likelihood running off? Then no rung can verify it.
+            checked = True
+            runaway = _runaway(fun, args, best_result.x, init)
+            if runaway:
+                break
 
-    if not verified and first_success is not None:
+    if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
     if best_result is not None:
         res = best_result
@@ -258,7 +300,10 @@ def _search(
         # often stops with "precision loss" at the maximum.
         res.success = res.success or verified
     return _Search(
-        res, best_method if best_method is not None else method, verified
+        res,
+        best_method if best_method is not None else method,
+        verified,
+        runaway,
     )
 
 
@@ -270,7 +315,8 @@ def _unverified_outcome(search: _Search) -> tuple[Any, Any, bool]:
     try other starts, and only the answer it keeps speaks.
     """
     res = search.res
-    if search.verified:
+    if search.verified or search.runaway:
+        # (A runaway is said by the caller: "No finite maximum")
         return None, None, False
     if "Desired error not necessarily" in res.get("message", ""):
         return (
@@ -399,6 +445,18 @@ def _covariance(
     return cov_matrix, hess_inv
 
 
+def _runaway_names(model: "Parametric", runaway: tuple[int, ...]) -> list:
+    """The names of the parameters at ``runaway``, positions in the search
+    vector (the free parameters: ``gamma``, the distribution's, ``p``,
+    ``f0``)."""
+    if not runaway:
+        return []
+    names = sorted(model.param_map, key=model.param_map.__getitem__)
+    fixed_idx = model.fitting_info["fixed_idx"]
+    free = [name for i, name in enumerate(names) if i not in fixed_idx]
+    return [free[k] for k in runaway]
+
+
 def mle(model: "Parametric") -> Any:
     """
     Maximum Likelihood Estimation (MLE)
@@ -457,6 +515,7 @@ def mle(model: "Parametric") -> Any:
         results["_verified"] = bool(search.verified) and not use_initial
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
+        results["_runaway"] = _runaway_names(model, search.runaway)
         results["optimizer"] = search.optimizer
 
     return results
