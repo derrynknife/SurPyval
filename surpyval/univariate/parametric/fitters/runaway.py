@@ -264,7 +264,12 @@ def _no_convergence(
         if line is None:
             return None
         d3 = line[2]
-    return d1 * d3 > 0.5 * d2**2
+    try:
+        return d1 * d3 > 0.5 * d2**2
+    except OverflowError:
+        # A curvature past 1e154 (an ExpoWeibull's shape at 1e3) is no
+        # flat profile: Newton's method converges there.
+        return False
 
 
 def _profile_curvature(

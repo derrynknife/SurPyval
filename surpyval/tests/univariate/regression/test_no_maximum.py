@@ -364,9 +364,9 @@ def test_the_gate_clears_a_maximum_and_nothing_else():
     assert runaway._cleared(x, H, g).tolist() == [True, True]
     # A runaway along t = u (exp(t) + 50 (u - t)^2 at t = u = -15): the
     # step is (1, 1), 1/15 of the value, so neither is cleared.
-    runaway = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
+    running = lambda p: anp.exp(p[0]) + 50.0 * (p[1] - p[0]) ** 2  # noqa
     x = np.array([-15.0, -15.0])
-    H, g = hessian(runaway)(x), grad(runaway)(x)
+    H, g = hessian(running)(x), grad(running)(x)
     assert runaway._cleared(x, H, g).tolist() == [False, False]
     # A linear rise has no curvature: no Hessian to trust, nothing cleared.
     linear = lambda p: -3.0 * p[0] + p[1] ** 2  # noqa: E731

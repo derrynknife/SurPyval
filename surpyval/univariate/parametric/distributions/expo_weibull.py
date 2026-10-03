@@ -119,6 +119,34 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             beta = 1.0
         return alpha, beta
 
+    def _runaway_advice(self, runaway: list[str], values: dict) -> str:
+        """The ExpoWeibull's two limits (#584). As ``mu`` grows, ``F =
+        g**mu`` is the largest of ``mu`` Weibull lifetimes, which tends to
+        a largest-extreme-value law of ``x**beta``, and with ``beta``
+        falling too, of ``log(x)``: a Frechet distribution (60 interval
+        censored, truncated rows reached log-likelihood -73.45 at mu =
+        8e19 against the Frechet's -73.38). As ``beta`` grows with ``mu``
+        falling, ``F`` tends to the power law ``(x/alpha)**(beta mu)`` up
+        to ``alpha``, which ends at the largest observation (50 Weibull
+        draws: -248.4447 at beta = 4e5 against the power law's
+        -248.4433)."""
+        if "mu" in runaway and values["mu"] > 1:
+            return (
+                "as mu grows the ExpoWeibull approaches a largest extreme "
+                "value law of x**beta, and as beta falls too, of log(x) (a "
+                "Frechet distribution): compare surpyval.GumbelLEV fitted "
+                "to the logs of the times"
+            )
+        if "beta" in runaway and values["beta"] > 1 and values["mu"] < 1:
+            return (
+                "as beta grows and mu falls the ExpoWeibull approaches the "
+                "power law F(x) = (x/alpha)**(beta*mu) up to x = alpha, "
+                "which ends at the largest observation: the data look "
+                "bounded above, which no ExpoWeibull is; compare a family "
+                "with an upper limit"
+            )
+        return super()._runaway_advice(runaway, values)
+
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
