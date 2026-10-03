@@ -4,7 +4,7 @@ from typing import Any, Callable, Sequence
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
-from scipy.optimize import minimize
+from scipy.optimize import OptimizeResult, minimize
 
 
 def fallback_minimize(
@@ -448,6 +448,7 @@ def preconditioned_bfgs(
     options: dict[str, Any] | None = None,
     floor: "float | npt.ArrayLike" = 1.0,
     obj_scale: float | None = None,
+    callback: "Callable[[npt.NDArray], None] | None" = None,
 ) -> Any:
     """BFGS on a diagonally rescaled copy of the search vector.
 
@@ -516,6 +517,9 @@ def preconditioned_bfgs(
 
     With ``jac=None`` scipy differences the scaled objective, so the
     finite-difference step is relative to each component's scale too.
+
+    ``callback``, where given, is called with each iterate (unscaled),
+    and may end the search by raising ``StopIteration``.
     """
     x0 = np.asarray(x0, dtype=float)
     scale = np.maximum(np.abs(x0), np.asarray(floor, dtype=float))
@@ -537,6 +541,13 @@ def preconditioned_bfgs(
 
     opts = dict(options or {})
     opts["gtol"] = 1e-6
+    extra: dict = {}
+    if callback is not None:
+
+        def unscaled(intermediate_result: OptimizeResult) -> None:
+            callback(intermediate_result.x * scale)
+
+        extra["callback"] = unscaled
 
     res = minimize(
         scaled_fun,
@@ -545,6 +556,7 @@ def preconditioned_bfgs(
         method="BFGS",
         jac=None if jac is None else scaled_jac,
         options=opts,
+        **extra,
     )
     res.x = res.x * scale
     res.fun = res.fun * divisor

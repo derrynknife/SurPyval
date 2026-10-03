@@ -148,8 +148,10 @@ def _run_rung(
     hess_i: Any,
     floor: Any,
     obj_scale: float,
+    callback: "Callable[[npt.NDArray], None] | None" = None,
 ) -> Any:
-    """One search of one rung of the ladder from ``x0``."""
+    """One search of one rung of the ladder from ``x0``; ``callback``, for
+    BFGS, watches its iterates (``_Judge.watch``)."""
     opts = {"maxfun": 1000} if method == "TNC" else {"maxiter": 1000}
     if method == "BFGS":
         # Scaled per parameter (see ``search_floor``) and per
@@ -165,6 +167,7 @@ def _run_rung(
             opts,
             floor=floor,
             obj_scale=obj_scale,
+            callback=callback,
         )
     return minimize(
         fun,
@@ -175,6 +178,10 @@ def _run_rung(
         hess=hess_i,
         options=opts,
     )
+
+
+#: How many BFGS iterations pass before ``_Judge.watch`` first checks one.
+_WATCH_EVERY = 100
 
 
 def _runaway(
@@ -231,6 +238,32 @@ class _Judge(NamedTuple):
     #: the full vector of natural parameters, their bounds, and the
     #: position in it of each searched (free) parameter.
     space: tuple
+    #: The runaways found while watching a search, by the point's bytes.
+    found: dict
+
+    def watch(self) -> Callable[[npt.NDArray], None]:
+        """A BFGS callback that checks its iterates for a runaway
+        (``_runaway``) at iterations 100, 200, 400, ..., and ends the
+        search on one. A search running off spends its iterations on the
+        way out (1000 of them on the ExpoWeibull of #584, 98% of its fit)
+        and an ordinary one converges in tens, before the first check;
+        doubling the interval keeps the checks' cost below a fixed share
+        of the iterations between them."""
+        count = [0]
+
+        def callback(x: npt.NDArray) -> None:
+            count[0] += 1
+            k, rest = divmod(count[0], _WATCH_EVERY)
+            if rest or k & (k - 1):
+                return
+            runaway = _runaway(
+                self.fun, self.args, x, self.init, keep=self.keep(x)
+            )
+            if runaway:
+                self.found[np.asarray(x, dtype=float).tobytes()] = runaway
+                raise StopIteration
+
+        return callback
 
     def keep(self, x: npt.NDArray) -> Callable[[int, float], bool]:
         """What else a parameter ``j`` that Newton's method cannot
@@ -303,6 +336,9 @@ class _Judge(NamedTuple):
             return not runaway, runaway
         if not check:
             return False, ()
+        seen = self.found.get(np.asarray(x, dtype=float).tobytes())
+        if seen:
+            return False, seen
         return False, _runaway(fun, args, x, self.init, keep=keep)
 
 
@@ -380,13 +416,21 @@ def _search(
     runaway: tuple[int, ...] = ()
     checked = False
     judge = _Judge(
-        fun, jac, hess_kept, args, init, floor, obj_scale, _space(model)
+        fun, jac, hess_kept, args, init, floor, obj_scale, _space(model), {}
     )
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]
         for x0 in _rung_starts(method, init, first_success):
             res = _run_rung(
-                fun, method, x0, args, jac_i, hess_i, floor, obj_scale
+                fun,
+                method,
+                x0,
+                args,
+                jac_i,
+                hess_i,
+                floor,
+                obj_scale,
+                judge.watch() if not checked else None,
             )
             if not _usable(res):
                 continue
