@@ -4,6 +4,20 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Likelihood-ratio bounds for the parametric regression models (#583).**
+  ``cb``, ``param_cb`` and the new ``quantile_cb`` of every parametric
+  regression model take ``method="lr"``: the extreme of the function or
+  parameter over the likelihood region of all the parameters, by the
+  univariate models' search (the region's boundary is traced once per
+  model and level; a bound takes about a second, 0.7 s on the issue's
+  72-unit accelerated life test). Wald stays the default: in 1000
+  repetitions of the issue's test, extrapolated 40 degrees C below the
+  coolest cell, the 90% bounds on the five-year reliability covered 0.897
+  (Wald) and 0.893 (likelihood ratio), and with 11 failures on average
+  0.877 and 0.866 (the issue's 0.86 was 300 repetitions).
+- **``quantile_cb(p, Z)`` for the parametric regression models (#583),**
+  bounds on the B-life ``qf(p, Z)``: Wald by the delta method on log t_p,
+  ``method="lr"`` the extreme of t_p over the likelihood region.
 - **Royston-Parmar ``qf`` and ``random`` are vectorised (#595).** ``qf``
   ran one root search per probability (``random(2000)`` took 0.8-3 s on a
   200-row fit); it solves every probability at once on the link scale,
