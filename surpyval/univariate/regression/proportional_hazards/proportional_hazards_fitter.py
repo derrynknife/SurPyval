@@ -6,12 +6,12 @@ from typing import Any, Callable
 import autograd.numpy as np
 import numpy as onp
 import numpy.typing as npt
-from scipy.optimize import brentq
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
@@ -219,33 +219,67 @@ class ProportionalHazardsFitter(
         is ``qf(1 - exp(-h))``; for a very small hazard multiplier ``h`` is
         so large that ``1 - exp(-h)`` rounds to 1 and ``qf`` returns
         ``inf``, although the time is finite. Those draws are solved on
-        ``log H0(x) = log h`` directly.
+        ``log H0(x) = log h`` directly, all at once (#585: a ``brentq``
+        per draw took 2.4 s for 2000 draws), to ``rtol=1e-12``. A draw
+        whose time is beyond the largest float (the bracket doubles to
+        ``inf``) is ``inf``, as ``qf`` gives; the search raised there.
         """
         h = np.asarray(h, dtype=float)
         with onp.errstate(divide="ignore", over="ignore", invalid="ignore"):
             out = np.asarray(
                 self.dist.qf(-np.expm1(-h), *dist_params), dtype=float
             )
-        lost = ~np.isfinite(out) & np.isfinite(h)
-        if lost.any():
+        lost = np.flatnonzero(~np.isfinite(out) & np.isfinite(h))
+        if lost.size:
             out = out.copy()
-            start = float(self.dist.qf(0.5, *dist_params))
-            for k in np.flatnonzero(lost):
-                target = np.log(h[k])
+            out[lost] = self._solve_log_cumulative_hazard(
+                onp.log(h[lost]), dist_params
+            )
+        return out
 
-                def gap(t: float) -> float:
-                    with onp.errstate(all="ignore"):
-                        return float(
-                            np.log(self.dist.Hf(t, *dist_params)) - target
-                        )
+    def _solve_log_cumulative_hazard(
+        self, target: npt.NDArray, dist_params: npt.NDArray
+    ) -> npt.NDArray:
+        """The times at which ``log H0(x)`` reaches each ``target``: each
+        upper bracket doubles from the baseline median (or 1) until it is
+        reached, the lower end half of it; then all are solved together."""
 
-                upper = max(start, 1.0)
-                for _ in range(2000):
-                    if gap(upper) >= 0:
-                        break
-                    upper *= 2.0
-                lower = upper / 2.0 if upper > start else 0.0
-                out[k] = brentq(gap, lower, upper, xtol=1e-300, rtol=1e-12)
+        def gap(t: npt.NDArray, sel: Any) -> npt.NDArray:
+            with onp.errstate(all="ignore"):
+                H = onp.asarray(self.dist.Hf(t, *dist_params), dtype=float)
+                return onp.log(H) - target[sel]
+
+        start = float(self.dist.qf(0.5, *dist_params))
+        upper = onp.full(target.shape, max(start, 1.0))
+        reached = onp.zeros(target.shape, dtype=bool)
+        active = onp.arange(target.size)
+        for _ in range(2000):
+            if not active.size:
+                break
+            hit = gap(upper[active], active) >= 0
+            reached[active[hit]] = True
+            active = active[~hit]
+            with onp.errstate(over="ignore"):
+                upper[active] *= 2.0
+            active = active[onp.isfinite(upper[active])]
+        out = onp.full(target.shape, onp.inf)
+        k = onp.flatnonzero(reached)
+        hi = upper[k]
+        lo = onp.where(hi > start, hi / 2.0, 0.0)
+        g_lo, g_hi = gap(lo, k), gap(hi, k)
+        out[k] = onp.where(g_lo == 0, lo, hi)
+        open_ = (g_lo < 0) & (g_hi > 0)
+        if open_.any():
+            sel = k[open_]
+            out[sel] = solve_bracketed(
+                lambda t, s: gap(t, sel[s]),
+                lo[open_],
+                hi[open_],
+                g_lo[open_],
+                g_hi[open_],
+                xtol=1e-300,
+                rtol=1e-12,
+            )
         return out
 
     def neg_ll(self, data: SurpyvalData, *params: Boxable) -> Boxable:
