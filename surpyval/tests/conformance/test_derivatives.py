@@ -268,7 +268,7 @@ def _cox(model, label=""):
         return np.atleast_1d(score), np.atleast_2d(H)
 
     at = np.asarray(model.params, dtype=float)
-    return [(label + " (analytic)", model.neg_ll, at, derivatives, None)]
+    return [(label + " (analytic)", model.neg_ll_of, at, derivatives, None)]
 
 
 def _competing_parametric(model, label=""):

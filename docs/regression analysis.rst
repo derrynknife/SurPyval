@@ -177,7 +177,7 @@ with counts :math:`n_j` as weights. Only the *order* of the failure times matter
 
 **Risk sets, censoring and delayed entry.** Censored units never appear in the numerator, but they do sit in the risk sets of every failure time up to their censoring time — that is how they contribute information. A unit that entered observation late (left truncation, ``tl`` in surpyval) is at risk only after it entered. surpyval uses the standard ``(entry, exit]`` convention: unit :math:`j` is in :math:`R_k` when :math:`t_{l,j} < t_k \le x_j`, so a unit entering exactly at a failure time is not at risk for it, and a unit is at risk at its own failure or censoring time. Right and interval truncation cannot be expressed in this forward-in-time comparison, so the Cox fitter accepts left truncation only. For the same reason it needs to know, for every unit, whether it was still at risk at each failure time, which a left- or interval-censored observation does not say: the Cox fitter is for observed (``c = 0``) and right-censored (``c = 1``) data, and refuses left- (``c = -1``) and interval-censored (``c = 2``) rows; use a parametric family for those.
 
-A tiny example makes the formula concrete. Four units fail in turn at times 1, 2, 3 and 4; the first and third are "exposed" (:math:`z = 1`). The partial log-likelihood at :math:`\beta = 0.3`, computed by hand, matches the value surpyval optimises:
+A tiny example makes the formula concrete. Four units fail in turn at times 1, 2, 3 and 4; the first and third are "exposed" (:math:`z = 1`). The partial log-likelihood at :math:`\beta = 0.3`, computed by hand, matches the value surpyval optimises, ``neg_ll_of(beta)``, the negative partial log-likelihood as a function of the coefficients (``neg_ll()`` is its value at the fit):
 
 .. jupyter-execute::
 
@@ -194,13 +194,13 @@ A tiny example makes the formula concrete. Four units fail in turn at times 1, 2
 
     cox_toy = CoxPH.fit(x=x_toy, Z=z_toy.reshape(-1, 1))
     print('by hand          :', round(by_hand, 6))
-    print('surpyval (-neg_ll):', round(-cox_toy.neg_ll(np.array([b])), 6))
+    print('surpyval (-neg_ll_of):', round(-cox_toy.neg_ll_of(np.array([b])), 6))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.isclose(by_hand, -cox_toy.neg_ll(np.array([b])))
+    assert np.isclose(by_hand, -cox_toy.neg_ll_of(np.array([b])))
 
 **Tied failure times.** The argument above assumes one failure at each time. With ties (times rounded to days, inspections, genuinely discrete time) there are several conventions, chosen with ``method=``:
 

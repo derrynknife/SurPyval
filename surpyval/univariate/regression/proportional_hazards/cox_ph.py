@@ -20,6 +20,7 @@ from scipy.stats import norm
 if TYPE_CHECKING:
     import pandas as pd
 
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -567,10 +568,12 @@ class CoxPH_(CoxLikelihoodMixin):
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
-        model._neg_log_like = neg_ll(res.x)
+        model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
         model.se = se
-        model.neg_ll = neg_ll
+        model.neg_ll_of = neg_ll
+        # BIC's sample size, the events (R's ``nobs.coxph``, ``nevent``).
+        model._ic_n = ic_sample_size(c, n)
         model.jac = jac
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)
@@ -721,10 +724,14 @@ class CoxPH_(CoxLikelihoodMixin):
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
-        model._neg_log_like = neg_ll(res.x)
+        model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
         model.se = se
-        model.neg_ll = neg_ll
+        model.neg_ll_of = neg_ll
+        model._ic_n = ic_sample_size(
+            np.concatenate([v[2] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
+        )
         model.jac = jac
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)

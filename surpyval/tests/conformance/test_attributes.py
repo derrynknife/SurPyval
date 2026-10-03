@@ -32,7 +32,7 @@ from surpyval.tests.conformance.registry import (
 RESTORED_WITHOUT = {
     "ParametricRegressionModel": frozenset({"data", "res", "fun"}),
     "SemiParametricRegressionModel": frozenset(
-        {"_fit_data", "jac", "neg_ll", "res"}
+        {"_fit_data", "jac", "res"}
     ),
     "AdditiveHazardsModel": frozenset({"_A", "_b"}),
 }
