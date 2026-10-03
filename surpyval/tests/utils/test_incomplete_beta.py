@@ -56,8 +56,10 @@ def test_the_logs_where_the_fraction_does_not_converge(a, b, x, lower, upper):
 
 
 def test_the_gradient_there_matches_mpmath():
-    # d/da and d/db are central differences of the value (``_make_dab_
-    # primitives``), d/dx analytical; mpmath's derivatives at 60 digits.
+    # d/da and d/db are analytic (``_beta_log_shape_grad``, #621) where
+    # the continued fraction converges, and here, where it does not, the
+    # central differences of the value; d/dx analytical; mpmath's
+    # derivatives at 60 digits.
     a, b, x = 1e-5, 3.0, 1e-6
     assert grad(ag.betainccln, 0)(a, b, x) == pytest.approx(
         99993.893112071685214, rel=1e-7, abs=0
@@ -94,3 +96,53 @@ def test_the_front_factor_series_meets_the_gammas():
         1e-300 * (ag._sc_digamma(b) + ag._EULER),
         rtol=1e-15,
     )
+
+
+# #621: d/da and d/db of log I_x(a, b) and log(1 - I_x(a, b)), against
+# mpmath (60 digits: central differences of the tails' quadrature, after
+# t = w^(1/a), in steps of 1e-15). The five-point differences of the value
+# they replace were 1e-12 to 2e-4 off.
+SHAPE_DERIVATIVES = [
+    (2.0, 5.0, 0.3, False, -0.43533097273881922, 0.17150846301807766),
+    (2.0, 5.0, 0.3, True, 0.60073964721434123, -0.23667494393873236),
+    (0.3, 0.7, 1e-06, True, 0.19617473297022222, -0.0088657720656168828),
+    (40.0, 60.0, 0.95, True, 0.87343217543626623, -2.4987940165753201),
+    (7.5, 0.4, 1 - 1e-6, False, -0.00055392755277876375, 0.1173325871737577),
+    (
+        667370.7909956266,
+        0.010331615383403254,
+        1.8780123823566156e-14,
+        False,
+        -31.605978810714483,
+        110.76173355730035,
+    ),
+    (
+        0.05317286695406665,
+        731067.9885594342,
+        0.9999999999889172,
+        True,
+        32.801838947925024,
+        -25.225627932874331,
+    ),
+]
+
+
+@pytest.mark.parametrize("a, b, x, upper, d_a, d_b", SHAPE_DERIVATIVES)
+def test_621_shape_derivatives_against_mpmath(a, b, x, upper, d_a, d_b):
+    f = ag.betainccln if upper else ag.betaincln
+    assert grad(f, 0)(a, b, x) == pytest.approx(d_a, rel=1e-13, abs=0)
+    assert grad(f, 1)(a, b, x) == pytest.approx(d_b, rel=1e-13, abs=0)
+
+
+def test_621_shape_derivatives_of_arrays_and_edges():
+    # Elementwise over an array, 0 at the edges (where the log is 0 or
+    # -inf whatever the shapes), and the same at a repeated call (the
+    # derivatives in a and b come from one pass)
+    x = np.array([0.0, 0.3, 0.95, 1.0])
+    g_a, g_b = ag._beta_log_shape_grad(40.0, 60.0, x, True)
+    assert g_a[0] == g_b[0] == g_a[-1] == g_b[-1] == 0.0
+    assert g_a[2] == pytest.approx(0.87343217543626623, rel=1e-13)
+    again = ag._beta_log_shape_grad(40.0, 60.0, x, True)
+    np.testing.assert_array_equal(again[0], g_a)
+    single = ag._beta_log_shape_grad(40.0, 60.0, 0.3, True)
+    assert single[1] == g_b[1]

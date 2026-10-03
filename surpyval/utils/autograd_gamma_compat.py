@@ -20,9 +20,17 @@ Replaces the abandoned autograd-gamma package. VJP approach:
     corrupted (even asymmetric) covariance while their point estimates
     were fine (#270). Third- and higher-order derivatives are cut (the
     inner VJPs are plain numpy), which nothing in surpyval needs.
+
+  The logs of the incomplete beta's tails (``betaincln``, ``betainccln``)
+  take their shape derivatives analytically instead, from the continued
+  fraction differentiated term by term (``_beta_log_shape_grad``, #621):
+  to about 1e-15 against mpmath, where the five-point differences were
+  1e-12 to 2e-4 off, in one pass for both shapes where the differences
+  took eight evaluations. Their second derivatives are differences of
+  those analytic first ones.
 """
 
-from typing import Callable
+from typing import Any, Callable
 
 import autograd.numpy as anp
 import numpy as np
@@ -691,6 +699,204 @@ def _beta_logs(a: Boxable, b: Boxable, x: Boxable, upper: bool) -> Boxable:
     return out.reshape(shape) if shape else float(out[0])
 
 
+#: The most terms of ``_beta_cf_shape_grad``: on its side of the
+#: incomplete beta it converges in tens of terms for moderate shapes, and
+#: in about sqrt(max(a, b)) for large ones.
+_CF_GRAD_TERMS = 3000
+
+
+def _beta_cf_shape_grad(
+    a: npt.NDArray, b: npt.NDArray, x: npt.NDArray
+) -> tuple[npt.NDArray, npt.NDArray]:
+    """The derivatives in ``a`` and ``b`` of ``log beta_cf(a, b, x)``, by
+    forward differentiation of its Lentz recursion (Boik and
+    Robison-Cox 1998): each convergent's factors carry their derivatives
+    with them. For ``x`` below (a + 1) / (a + b + 2), where the fraction
+    converges; ``nan`` where it has not, value and derivatives, in
+    ``_CF_GRAD_TERMS`` terms."""
+    tiny = 1e-300
+    one = np.ones_like(x)
+    zero = np.zeros_like(x)
+    # c and d with their derivatives in a and b
+    c, c_a, c_b = one, zero, zero
+    D = 1.0 - (a + b) * x / (a + 1.0)
+    D_a = -x * (1.0 - b) / (a + 1.0) ** 2
+    D_b = -x / (a + 1.0)
+    D = np.where(np.abs(D) < tiny, tiny, D)
+    d = 1.0 / D
+    d_a, d_b = -D_a * d * d, -D_b * d * d
+    g_a, g_b = D_a * -d, D_b * -d  # of log h
+    done = np.zeros(x.shape, dtype=bool)
+    for m in range(1, _CF_GRAD_TERMS):
+        k1 = (a + 2 * m - 1) * (a + 2 * m)
+        aa1 = m * (b - m) * x / k1
+        aa1_a = -aa1 * (1.0 / (a + 2 * m - 1) + 1.0 / (a + 2 * m))
+        aa1_b = m * x / k1
+        k2 = (a + 2 * m) * (a + 2 * m + 1)
+        aa2 = -(a + m) * (a + b + m) * x / k2
+        aa2_a = aa2 * (
+            1.0 / (a + m)
+            + 1.0 / (a + b + m)
+            - 1.0 / (a + 2 * m)
+            - 1.0 / (a + 2 * m + 1)
+        )
+        aa2_b = aa2 / (a + b + m)
+        step = one
+        step_a, step_b = zero, zero
+        for aa, aa_a, aa_b in ((aa1, aa1_a, aa1_b), (aa2, aa2_a, aa2_b)):
+            D = 1.0 + aa * d
+            D_a = aa_a * d + aa * d_a
+            D_b = aa_b * d + aa * d_b
+            D = np.where(np.abs(D) < tiny, tiny, D)
+            d = 1.0 / D
+            d_a, d_b = -D_a * d * d, -D_b * d * d
+            C = 1.0 + aa / c
+            C_a = aa_a / c - aa * c_a / (c * c)
+            C_b = aa_b / c - aa * c_b / (c * c)
+            C = np.where(np.abs(C) < tiny, tiny, C)
+            c, c_a, c_b = C, C_a, C_b
+            # log h gains log d + log c
+            inc_a = -D_a / D + C_a / C
+            inc_b = -D_b / D + C_b / C
+            g_a = np.where(done, g_a, g_a + inc_a)
+            g_b = np.where(done, g_b, g_b + inc_b)
+            step = step * d * c
+            step_a, step_b = step_a + inc_a, step_b + inc_b
+        done = done | (
+            (np.abs(step - 1.0) < 1e-16)
+            & (np.abs(step_a) <= 1e-16 * (1.0 + np.abs(g_a)))
+            & (np.abs(step_b) <= 1e-16 * (1.0 + np.abs(g_b)))
+        )
+        if np.all(done):
+            break
+    return np.where(done, g_a, np.nan), np.where(done, g_b, np.nan)
+
+
+#: The last ``_beta_log_shape_grad`` computed, as ``(key, value)``: a
+#: gradient asks for the derivative in ``a`` and then in ``b`` at the same
+#: point, and both come from one pass.
+_LAST_SHAPE_GRAD: list = [None, None]
+
+
+def _beta_log_shape_grad(
+    a: Boxable, b: Boxable, x: Boxable, upper: bool
+) -> tuple[Any, Any]:
+    """:func:`_beta_log_shape_grad_uncached`, remembering the last
+    point."""
+    arrays = [np.asarray(v, dtype=float) for v in (a, b, x)]
+    key = (upper,) + tuple((v.shape, v.tobytes()) for v in arrays)
+    if _LAST_SHAPE_GRAD[0] != key:
+        _LAST_SHAPE_GRAD[1] = _beta_log_shape_grad_uncached(
+            arrays[0], arrays[1], arrays[2], upper
+        )
+        _LAST_SHAPE_GRAD[0] = key
+    g_a, g_b = _LAST_SHAPE_GRAD[1]
+    return np.copy(g_a), np.copy(g_b)
+
+
+def _beta_log_shape_grad_uncached(
+    a: Boxable, b: Boxable, x: Boxable, upper: bool
+) -> tuple[Any, Any]:
+    """The derivatives in ``a`` and ``b`` of :func:`_beta_logs` (``log
+    I_x(a, b)``, or ``log(1 - I_x(a, b))`` where ``upper``), analytic
+    (#621): the side of the incomplete beta whose continued fraction
+    converges, ``I_x(a, b)`` for x below (a + 1) / (a + b + 2) and ``1 -
+    I_{1-x}(b, a)`` above, is differentiated through its front factor
+    (digamma functions) and its fraction (``_beta_cf_shape_grad``); the
+    other side's log follows from it by ``d log(1 - s) = -s / (1 - s) d
+    log s``. Where that fraction does not converge (a shape below about
+    1e-150, where the values come from ``_beta_series_log``), the
+    derivatives are the five-point differences of the values they
+    replace."""
+    a_arr, b_arr, x_arr = np.broadcast_arrays(
+        np.asarray(a, dtype=float),
+        np.asarray(b, dtype=float),
+        np.asarray(x, dtype=float),
+    )
+    shape = x_arr.shape
+    a_arr, b_arr, x_arr = (np.atleast_1d(v) for v in (a_arr, b_arr, x_arr))
+    inside = (x_arr > 0.0) & (x_arr < 1.0)
+    xs = np.where(inside, x_arr, 0.5)
+    # the converging side: its shapes and x (and 1 - x, exact)
+    low = xs < (a_arr + 1.0) / (a_arr + b_arr + 2.0)
+    a_s = np.where(low, a_arr, b_arr)
+    b_s = np.where(low, b_arr, a_arr)
+    x_s = np.where(low, xs, 1.0 - xs)
+    xc_s = np.where(low, 1.0 - xs, xs)
+    with np.errstate(all="ignore"):
+        cf_a, cf_b = _beta_cf_shape_grad(a_s, b_s, x_s)
+        log_x = np.where(x_s < 0.5, np.log(x_s), np.log1p(-xc_s))
+        log_xc = np.where(xc_s < 0.5, np.log(xc_s), np.log1p(-x_s))
+        psi_ab = _sc_digamma(a_s + b_s)
+        # d/da_s and d/db_s of log I on the converging side
+        s_a = log_x - _sc_digamma(a_s) + psi_ab - 1.0 / a_s + cf_a
+        s_b = log_xc - _sc_digamma(b_s) + psi_ab + cf_b
+        # in the caller's shapes
+        g_a = np.where(low, s_a, s_b)
+        g_b = np.where(low, s_b, s_a)
+        # the converging side's log value; the asked-for side's from it
+        log_s = np.asarray(_beta_logs(a_s, b_s, x_s, upper=False))
+        log_other = _log1mexp_neg(log_s)
+        factor = -np.exp(log_s - log_other)
+    # asked for the converging side: its derivative; else the other's
+    same = low != upper
+    g_a = np.where(same, g_a, factor * g_a)
+    g_b = np.where(same, g_b, factor * g_b)
+    bad = inside & ~(np.isfinite(g_a) & np.isfinite(g_b))
+    if np.any(bad):
+        raw = _betainccln_raw if upper else _betaincln_raw
+        ab, bb, xb = a_arr[bad], b_arr[bad], x_arr[bad]
+        g_a[bad] = _cdiff2_a(raw, ab, bb, xb)
+        g_b[bad] = _cdiff2_b(raw, ab, bb, xb)
+    # at the edges the log is constant (0 or -inf) in the shapes
+    g_a = np.where(inside, g_a, 0.0)
+    g_b = np.where(inside, g_b, 0.0)
+    if not shape:
+        return float(g_a[0]), float(g_b[0])
+    return g_a.reshape(shape), g_b.reshape(shape)
+
+
+def _make_analytic_dab_primitives(
+    f: Callable, grad: Callable
+) -> tuple[Callable, Callable]:
+    """As :func:`_make_dab_primitives`, with the first derivatives from
+    ``grad(a, b, x) -> (df/da, df/db)`` rather than differences of ``f``;
+    their own VJPs (the Hessian's second derivatives) are the five-point
+    differences of ``grad``."""
+
+    @primitive
+    def f_da(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
+        return grad(a, b, x)[0]
+
+    @primitive
+    def f_db(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
+        return grad(a, b, x)[1]
+
+    def _vals(
+        a: Boxable, b: Boxable, x: Boxable
+    ) -> tuple[Boxable, Boxable, Boxable]:
+        return getval(a), getval(b), getval(x)
+
+    def vjp(which: int, arg: int) -> Callable:
+        def make(ans: Boxable, a: Boxable, b: Boxable, x: Boxable) -> Callable:
+            av, bv, xv = _vals(a, b, x)
+            vals = [av, bv, xv]
+
+            def moved(v: Boxable) -> Boxable:
+                args = list(vals)
+                args[arg] = v
+                return grad(*args)[which]
+
+            second = _cdiff(moved, vals[arg])
+            return unbroadcast_f((a, b, x)[arg], lambda g: getval(g) * second)
+
+        return make
+
+    defvjp(f_da, vjp(0, 0), vjp(0, 1), vjp(0, 2))
+    defvjp(f_db, vjp(1, 0), vjp(1, 1), vjp(1, 2))
+    return f_da, f_db
+
+
 def _betaincln_raw(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _beta_logs(a, b, x, upper=False)
 
@@ -700,7 +906,10 @@ def betaincln(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _betaincln_raw(a, b, x)
 
 
-_betaincln_da, _betaincln_db = _make_dab_primitives(_betaincln_raw)
+_betaincln_da, _betaincln_db = _make_analytic_dab_primitives(
+    _betaincln_raw,
+    lambda a, b, x: _beta_log_shape_grad(a, b, x, upper=False),
+)
 
 defvjp(
     betaincln,
@@ -737,7 +946,10 @@ def betainccln(a: Boxable, b: Boxable, x: Boxable) -> Boxable:
     return _betainccln_raw(a, b, x)
 
 
-_betainccln_da, _betainccln_db = _make_dab_primitives(_betainccln_raw)
+_betainccln_da, _betainccln_db = _make_analytic_dab_primitives(
+    _betainccln_raw,
+    lambda a, b, x: _beta_log_shape_grad(a, b, x, upper=True),
+)
 
 defvjp(
     betainccln,
