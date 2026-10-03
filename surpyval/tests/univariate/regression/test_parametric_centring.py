@@ -160,7 +160,7 @@ def test_by_default_a_mapped_family_is_the_same_model(
     )
     np.testing.assert_allclose(-model.neg_ll(), -ref.neg_ll(), rtol=1e-7)
     _same_predictions(model, ref, s)
-    for coef in ("beta_0", "beta_1"):
+    for coef in ("coef_0", "coef_1"):
         np.testing.assert_allclose(
             model.param_cb(coef), ref.param_cb(coef), rtol=1e-3, atol=1e-5
         )

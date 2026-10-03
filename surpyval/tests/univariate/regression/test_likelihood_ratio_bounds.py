@@ -125,9 +125,9 @@ def test_583_the_aft_form_of_the_model_gives_the_same_lr_bounds(alt):
         alt.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr"),
         rtol=1e-6,
     )
-    # n = -beta_1
+    # n = -coef_1
     np.testing.assert_allclose(
-        -aft.param_cb("beta_1", alpha_ci=0.1, method="lr")[::-1],
+        -aft.param_cb("coef_1", alpha_ci=0.1, method="lr")[::-1],
         alt.param_cb("n", alpha_ci=0.1, method="lr"),
         rtol=1e-5,
     )
@@ -203,11 +203,11 @@ def test_583_lr_bounds_of_the_log_linear_families(fitter):
     model = fitter.fit(x, Z=Z)
     assert model._fit_centring is not None
     crit = chi2.ppf(0.95, 1)
-    lo, hi = model.param_cb("beta_0", method="lr")
+    lo, hi = model.param_cb("coef_0", method="lr")
     for bound in (lo, hi):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            profile = fitter.fit(x, Z=Z, fixed={"beta_0": bound})
+            profile = fitter.fit(x, Z=Z, fixed={"coef_0": bound})
         dev = 2.0 * (profile._neg_ll - model._neg_ll)
         assert dev == pytest.approx(crit, abs=1e-4)
     band = model.cb([5.0, 10.0], [[6.0], [9.0]], method="lr")
@@ -225,13 +225,13 @@ def test_583_lr_bounds_of_a_fixed_parameter_and_a_restored_model(alt):
     assert np.array_equal(
         model.param_cb("beta", method="lr"), np.array([2.0, 2.0])
     )
-    lo, hi = model.param_cb("beta_0", method="lr")
+    lo, hi = model.param_cb("coef_0", method="lr")
     assert lo < model.params[2] < hi
     restored = type(model).from_dict(model.to_dict())
     with pytest.raises(ValueError, match="data"):
         restored.cb(100.0, Z[0] / 100.0, method="lr")
     with pytest.raises(ValueError, match="data"):
-        restored.param_cb("beta_0", method="lr")
+        restored.param_cb("coef_0", method="lr")
     # The Wald bounds still come from the stored covariance.
     assert np.all(np.isfinite(restored.cb(100.0, Z[0] / 100.0)))
 

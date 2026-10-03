@@ -396,7 +396,7 @@ def test_bad_fixed_and_init_are_named():
         WeibullPH.fit(x=x, Z=Z, fixed={"gamma": 1.0})
     with pytest.raises(ValueError, match="Every parameter is fixed"):
         WeibullPH.fit(
-            x=x, Z=Z, fixed={"alpha": 10, "beta": 1.5, "beta_0": 0.5}
+            x=x, Z=Z, fixed={"alpha": 10, "beta": 1.5, "coef_0": 0.5}
         )
     with pytest.raises(ValueError, match="`init` has 2 value"):
         WeibullPH.fit(x=x, Z=Z, init=[10, 1.5])

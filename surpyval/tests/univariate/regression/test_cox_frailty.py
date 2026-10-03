@@ -63,7 +63,7 @@ def test_kidney_matches_r_coxph(kidney_fits, ties):
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
     se = m.standard_errors()
     np.testing.assert_allclose(
-        [se["beta_0"], se["beta_1"]], ref["se"], rtol=1e-4
+        [se["coef_0"], se["coef_1"]], ref["se"], rtol=1e-4
     )
     np.testing.assert_allclose(
         np.log(list(m.frailties.values())),
@@ -175,7 +175,7 @@ def test_theta_zero_is_the_cox_model():
     cox = CoxPH.fit(x, Z, c=c)
     np.testing.assert_allclose(m.beta, cox.beta, rtol=1e-10)
     np.testing.assert_allclose(m.H0, cox.H0, rtol=1e-8)
-    np.testing.assert_allclose(m.standard_errors()["beta_0"], cox.se[0], 1e-6)
+    np.testing.assert_allclose(m.standard_errors()["coef_0"], cox.se[0], 1e-6)
 
 
 def test_predictions():
@@ -207,7 +207,7 @@ def test_recovers_parameters_on_simulated_data():
     x, c, Z, g = _simulate(3, G=200)
     m = CoxFrailty.fit(x, Z=Z, c=c, groups=g)
     se = m.standard_errors()
-    assert abs(m.beta[0] - 0.7) < 2.5 * se["beta_0"]
+    assert abs(m.beta[0] - 0.7) < 2.5 * se["coef_0"]
     assert abs(m.theta - 0.5) < 2.5 * se["theta"]
     lo, hi = m.param_cb("theta")
     assert 0 < lo < m.theta < hi
@@ -218,10 +218,10 @@ def test_summary_repr_serialisation_and_data_frame():
     x, c, Z, g = _simulate(4)
     m = CoxFrailty.fit(x, Z=Z, c=c, groups=g)
     assert list(m.summary().index) == [
-        ("coefficients", "beta_0"),
+        ("coefficients", "coef_0"),
         ("frailty", "theta"),
     ]
-    assert m.parameter_names == ["beta_0", "theta"]
+    assert m.parameter_names == ["coef_0", "theta"]
     np.testing.assert_array_equal(m.params, [m.beta[0], m.theta])
     text = repr(m)
     assert "unspecified (Cox); efron ties" in text

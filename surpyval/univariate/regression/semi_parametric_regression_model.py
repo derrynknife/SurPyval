@@ -124,10 +124,11 @@ class SemiParametricRegressionModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients, as in the
-        parametric regression models."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     # Attributes populated by the fitter (``CoxPH.fit`` / ``fit_from_df``).
     params: npt.NDArray

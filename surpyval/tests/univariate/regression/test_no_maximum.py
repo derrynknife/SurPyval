@@ -119,10 +119,10 @@ def test_fit_from_df_points_at_the_caller():
 def test_a_fixed_coefficient_keeps_the_numbering():
     d = _no_events(reg_data())
     # The runaway coefficient is still called 0 with the other fixed ...
-    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"beta_1": -0.3}))
+    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"coef_1": -0.3}))
     assert len(w) == 1 and "coefficient(s) [0]" in str(w[0].message)
     # ... and with it fixed there is nothing to run away.
-    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"beta_0": -1.0}))
+    _, w = _fit(lambda: sp.WeibullAFT.fit(**d, fixed={"coef_0": -1.0}))
     assert not w, [str(x.message) for x in w]
 
 

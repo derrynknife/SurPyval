@@ -305,7 +305,7 @@ A small simulated data set shows the three forms:
     # Weibull(10, 2) baseline; exposure multiplies the hazard by e^0.7 ~ 2
     x_demo = 10 * rng.weibull(2.0, 300) * np.exp(-0.7 * Z_demo[:, 0] / 2.0)
     demo = WeibullPH.fit(x=x_demo, Z=Z_demo)
-    print('alpha, beta, beta_0 :', demo.params.round(3))
+    print('alpha, beta, coef_0 :', demo.params.round(3))
 
     print('one row, three times :', demo.sf([5.0, 10.0, 15.0], Z=[1.0]).round(3))
     print('two rows, paired     :', demo.sf([5.0, 5.0], Z=[[0.0], [1.0]]).round(3))
@@ -327,7 +327,7 @@ above):
 .. jupyter-execute::
 
     small = WeibullPH.fit(x=x_demo, Z=Z_demo * 1e-4)
-    print('alpha, beta, beta_0 :', small.params.round(3), small.maximum)
+    print('alpha, beta, coef_0 :', small.params.round(3), small.maximum)
     print('neg_ll              :', round(small.neg_ll(), 6), round(demo.neg_ll(), 6))
 
 .. jupyter-execute::
@@ -647,7 +647,7 @@ came before their entry age were never seen at all, as happens in practice:
 
     naive = WeibullPH.fit(x=x_le, Z=z_le)
     trunc = WeibullPH.fit(x=x_le, Z=z_le, t=t_le)
-    print('truth (alpha, beta, beta_0) : [10.    1.5   0.8]')
+    print('truth (alpha, beta, coef_0) : [10.    1.5   0.8]')
     print('WeibullPH ignoring entry    :', naive.params.round(3))
     print('WeibullPH with truncation   :', trunc.params.round(3))
     print('Cox ignoring / with tl      : %.3f / %.3f' % (
@@ -1392,10 +1392,10 @@ non-parametrically. Below, a Weibull wear-out hazard has an exposure that adds
     x_ah = np.minimum(x_ah, 25)
 
     wah = WeibullAH.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('WeibullAH (alpha, beta, beta_0):', wah.params.round(3))
+    print('WeibullAH (alpha, beta, coef_0):', wah.params.round(3))
     print('standard errors                :', wah.standard_errors().round(3))
     ly = AdditiveHazards.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('Lin-Ying beta_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
+    print('Lin-Ying coef_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
 
 Both estimators recover the risk difference to within about two standard
 errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
@@ -1449,7 +1449,13 @@ increasing, constant, or decreasing hazard rates.
 Notice the coefficients are close to the Cox model's, each within 10% of it —
 this is expected when the Weibull is a reasonable fit to the baseline. The parameters are listed in
 the order ``model.parameter_names`` gives: the distribution's own parameters
-first, then one ``beta_j`` per covariate column.
+first, then one coefficient per covariate column, named by the column where
+the fit has its name (a formula, ``fit_from_df`` or a DataFrame ``Z``) and
+``coef_0``, ``coef_1``, ... otherwise. (A name that is already a
+parameter's, such as a column called ``alpha``, gets a suffix: ``alpha.1``.
+Before v0.23 the coefficients were ``beta_0``, ``beta_1``, ..., beside the
+Weibull's shape ``beta``; ``fixed=`` and ``param_cb`` take those names, with
+a ``DeprecationWarning``, until v0.24.)
 
 .. jupyter-execute::
     :hide-code:
@@ -1786,7 +1792,7 @@ exposed units. The hazard ratio of exposed to unexposed units starts near
     # invert F(x|z) = U for survival odds (x/10)^-3 * e^z
     x_po = 10 * (np.exp(z_po) * U / (1 - U)) ** (1 / 3)
     po = PO(LogLogistic).fit(x=x_po, Z=z_po.reshape(-1, 1))
-    print('alpha, beta, beta_0:', po.params.round(3))
+    print('alpha, beta, coef_0:', po.params.round(3))
 
     times = np.array([1.0, 5.0, 10.0, 20.0, 40.0])
     print('hazard ratio at', times, ':',
@@ -1875,8 +1881,8 @@ error, and a baseline that tracks the log-logistic one without assuming it:
 
 .. jupyter-execute::
 
-    print('semi-parametric beta_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
-    print('PO(LogLogistic) beta_0: %.3f (se %.3f)'
+    print('semi-parametric coef_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
+    print('PO(LogLogistic) coef_0: %.3f (se %.3f)'
           % (po.params[2], po.standard_errors()[2]))
     t = np.array([5.0, 10.0, 20.0])
     print('baseline survival, semi-parametric:', spo.sf(t, [0.0]).round(3))
@@ -1945,7 +1951,7 @@ an unbounded coefficient) so the interval always stays valid:
 
 .. jupyter-execute::
 
-    m_cb.param_cb('beta_0')      # 95% CI for the covariate coefficient
+    m_cb.param_cb('coef_0')      # 95% CI for the covariate coefficient
 
 ``cb`` propagates the parameter covariance through a predicted function by the
 delta method, returning a confidence *band*. The band on ``sf``, ``ff`` and
@@ -1997,7 +2003,7 @@ data, as at an accelerated life test's use condition (`Accelerated Life
 
 .. jupyter-execute::
 
-    m_cb.param_cb('beta_0', method='lr')   # the profile-likelihood interval
+    m_cb.param_cb('coef_0', method='lr')   # the profile-likelihood interval
 
 The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
@@ -2095,7 +2101,8 @@ letters in each formula are the parameter names the fitted model reports, and
      - Inverse Arrhenius relationship
    * - ``GeneralLogLinear``
      - :math:`c \cdot e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, one
-       ``beta_j`` per column of ``Z``
+       coefficient per column of ``Z`` (named by the column, or
+       ``coef_j``)
      - Any number of stresses, each entering as given (pass ``1 / T`` or
        ``log V`` as the column for an Arrhenius or power term); with a
        Weibull or LogNormal it is that distribution's AFT model

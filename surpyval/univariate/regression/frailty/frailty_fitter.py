@@ -42,18 +42,19 @@ from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.univariate.parametric.fitters import at_boundary_maximum
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
     finite_covariate_mask,
     xcnt_handler,
 )
-from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.covariates import coefficient_floor, coefficient_names
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.linalg import numerical_hessian
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._aliasing import covariate_columns, expand
+from .._aliasing import covariate_columns, expand, fit_columns
 from .._fit_skeleton import (
     _gradient,
     alias_coefficients,
@@ -444,6 +445,7 @@ class FrailtyFitter(FitterRepr):
 
     # -- fit ---------------------------------------------------------------
 
+    @dataframe_covariates
     def fit(
         self,
         x: Any,
@@ -516,6 +518,10 @@ class FrailtyFitter(FitterRepr):
         # a linear combination of the others. The fit runs on the other
         # columns, and the model reports them as nan.
         p_all = n_beta
+        # Each coefficient named by its column, or coef_j (#614)
+        coefs = coefficient_names(
+            n_beta, fit_columns(), [*self.dist.parameter_names, "theta"]
+        )
         aliased = getattr(
             alias_coefficients(
                 self,
@@ -523,13 +529,13 @@ class FrailtyFitter(FitterRepr):
                 Zc,
                 w,
                 {},
-                {"beta_{}".format(j): j for j in range(n_beta)},
+                {name: j for j, name in enumerate(coefs)},
             ),
             "aliased",
             (),
         )
         kept = np.array(
-            [j for j in range(n_beta) if "beta_{}".format(j) not in aliased],
+            [j for j in range(n_beta) if coefs[j] not in aliased],
             dtype=int,
         )
         if len(aliased):
@@ -660,7 +666,7 @@ class FrailtyFitter(FitterRepr):
         # Hessian that is not positive definite, as with the variance at
         # its limit of 0).
         parameter_names = list(self.dist.parameter_names)
-        parameter_names += [f"beta_{i}" for i in range(n_beta)]
+        parameter_names += [coefs[j] for j in kept] if len(aliased) else coefs
         parameter_names += ["theta"]
 
         def nll_nat(v: npt.NDArray) -> float:
@@ -689,7 +695,7 @@ class FrailtyFitter(FitterRepr):
             # Back to one entry per column of Z, nan where aliased.
             beta = expand(beta, kept, p_all)
             parameter_names = list(self.dist.parameter_names)
-            parameter_names += [f"beta_{i}" for i in range(p_all)]
+            parameter_names += coefs
             parameter_names += ["theta"]
             if covariance is not None:
                 where = np.r_[

@@ -611,19 +611,18 @@ def _search_regression(model, data):
     else:
         n_obs = float(np.sum(fitted.n))
     search = Search(fun, to_search(p_hat[free]), n_obs)
-    coefs = _coefficients(names, free)
+    coefs = _coefficients(model, names, free)
     return [search.in_covariate_units(coefs, model.data.Z)]
 
 
-def _coefficients(names, free):
-    """``(position, column)`` of each coefficient ``beta_<column>`` among
-    the parameters ``names`` at the positions ``free``."""
-    out = []
-    for k, i in enumerate(free):
-        head, _, column = names[i].rpartition("_")
-        if head == "beta" and column.isdigit():
-            out.append((k, int(column)))
-    return out
+def _coefficients(model, names, free):
+    """``(position, column)`` of each coefficient of a column of ``Z``
+    (the model's ``_coefficient_names``, in column order) among the
+    parameters ``names`` at the positions ``free``."""
+    column = {name: j for j, name in enumerate(model._coefficient_names())}
+    return [
+        (k, column[names[i]]) for k, i in enumerate(free) if names[i] in column
+    ]
 
 
 def _search_frailty(model, data):

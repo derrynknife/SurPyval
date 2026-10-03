@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from autograd import numpy as np
 from numpy import ndarray
 
@@ -37,18 +39,26 @@ class GeneralLogLinear_(LifeModel):
     >>> x = life * rng.weibull(2.0, 120)
     >>> model = AcceleratedLife(Weibull, GeneralLogLinear).fit(x, Z)
     >>> model.reg_model.phi_param_map
-    {'c': 0, 'beta_0': 1, 'beta_1': 2}
+    {'c': 0, 'coef_0': 1, 'coef_1': 2}
     >>> model.phi_params.round(3)
     array([58.897, -0.589,  0.357])
     """
 
     phi_takes_rows = True
 
-    def __init__(self, n_stresses: "int | None" = None) -> None:
+    def __init__(
+        self,
+        n_stresses: "int | None" = None,
+        names: "Sequence[str] | None" = None,
+    ) -> None:
         # ``None``: not yet resolved to a number of columns, so the
         # parameters are only the constant factor until the fit sees Z.
+        # The coefficients are ``coef_j``, or ``names`` (a fit's columns,
+        # :meth:`named`; #614).
         k = 0 if n_stresses is None else int(n_stresses)
-        names = ["c"] + ["beta_" + str(j) for j in range(k)]
+        if names is None or len(names) != k:
+            names = ["coef_" + str(j) for j in range(k)]
+        names = ["c", *names]
         bounds: tuple[tuple[int | None, int | None], ...] = ((0, None),) + (
             (None, None),
         ) * k
@@ -61,6 +71,13 @@ class GeneralLogLinear_(LifeModel):
         if self.n_stresses is not None:
             return self
         return GeneralLogLinear_(n_stresses)
+
+    def named(self, names: "Sequence[str]") -> "GeneralLogLinear_":
+        if self.n_stresses is None or list(names) == list(
+            self.coefficient_columns()
+        ):
+            return self
+        return GeneralLogLinear_(self.n_stresses, names)
 
     def coefficient_columns(self) -> "dict[str, int]":
         # Every parameter but ``c`` is a column's coefficient
@@ -94,7 +111,7 @@ class GeneralLogLinear_(LifeModel):
         Z = np.atleast_2d(Z)
         if Z.shape[1] == 1:
             return None
-        names = tuple("beta_" + str(j) for j in range(Z.shape[1]))
+        names = tuple(self.coefficient_columns())
         return Z, names, True
 
 

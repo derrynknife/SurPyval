@@ -32,6 +32,7 @@ import pandas as pd
 
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.regression import AFT
+from surpyval.univariate.regression._aliasing import covariate_columns
 from surpyval.univariate.regression.parametric_regression_model import (
     ParametricRegressionModel,
 )
@@ -1203,12 +1204,14 @@ class DegradationAnalysis_(FitterRepr):
         if Z_cols is not None:
             cols = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
             fit_kwargs["Z"] = df[cols].to_numpy()
-        model = self.fit(
-            df[x_col].to_numpy(),
-            df[y_col].to_numpy(),
-            df[i_col].to_numpy(),
-            **fit_kwargs,
-        )
+        # The columns name the life model's coefficients (#614)
+        with covariate_columns(cols):
+            model = self.fit(
+                df[x_col].to_numpy(),
+                df[y_col].to_numpy(),
+                df[i_col].to_numpy(),
+                **fit_kwargs,
+            )
         # The names are kept so the model reads a DataFrame Z by them;
         # without them it would refuse one and tell the user to fit with
         # fit_from_df -- which they had done.

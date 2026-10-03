@@ -11,6 +11,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -330,6 +331,7 @@ class ProportionalHazardsFitter(
             phi_init=_zero_init,
         )
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -365,8 +367,10 @@ class ProportionalHazardsFitter(
             parameters followed by the covariate coefficients.
         fixed : dict, optional
             A dictionary of parameters to fix to a specific value, by name
-            (a distribution parameter such as ``"beta"``, or a coefficient
-            ``"beta_0"``, ``"beta_1"``, ...).
+            (a distribution parameter such as ``"beta"``, or a coefficient:
+            its covariate's column name, else ``"coef_0"``, ``"coef_1"``,
+            ...; the names before v0.23, ``"beta_0"``, ..., are taken
+            until v0.24, with a ``DeprecationWarning``).
         center : bool, optional
             ``False`` (the default) reports the baseline at ``Z = 0``.
             ``True`` reports the baseline at the covariate means (stored as
@@ -400,10 +404,10 @@ class ProportionalHazardsFitter(
         part         name
         baseline     alpha    0.2426    0.0814     NaN
                      beta    16.0578    3.9506     NaN
-        coefficients beta_0  -9.1651    3.7237  0.0138
-                     beta_1  -7.9986    2.8119  0.0044
-                     beta_2 -27.5032    9.5366  0.0039
-                     beta_3  18.3854    6.4222  0.0042
+        coefficients coef_0  -9.1651    3.7237  0.0138
+                     coef_1  -7.9986    2.8119  0.0044
+                     coef_2 -27.5032    9.5366  0.0039
+                     coef_3  18.3854    6.4222  0.0042
         >>> model = WeibullPH.fit(x=x, Z=Z, c=c, fixed={"beta": 15})
         >>> model.params.round(4)
         array([  0.2377,  15.    ,  -8.6283,  -7.6175, -25.9524,  17.2701])

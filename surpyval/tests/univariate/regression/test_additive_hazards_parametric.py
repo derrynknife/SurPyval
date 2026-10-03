@@ -53,7 +53,7 @@ def test_factory_and_prebuilt_names():
 def test_exponential_ah_recovers_parameters():
     x, c, Z = _exp_ah_data(20000, 0)
     model = ExponentialAH.fit(x=x, Z=Z, c=c)
-    # params are [baseline rate, beta_0, beta_1].
+    # params are [baseline rate, coef_0, coef_1].
     assert np.isclose(model.params[0], 0.5, atol=0.03)
     assert np.allclose(model.params[1:], [0.30, -0.15], atol=0.03)
 
@@ -139,7 +139,7 @@ def test_fit_fails_when_hazard_forced_negative():
     Z = rng.uniform(0, 1, size=(500, 1))
     x = rng.exponential(2.0, size=500)
     with pytest.raises(ValueError, match="positive"):
-        ExponentialAH.fit(x=x, Z=Z, fixed={"beta_0": -5.0})
+        ExponentialAH.fit(x=x, Z=Z, fixed={"coef_0": -5.0})
     # The same data fits fine without the pathological constraint.
     model = ExponentialAH.fit(x=x, Z=Z)
     assert np.all(model.hf(x, Z) > 0)

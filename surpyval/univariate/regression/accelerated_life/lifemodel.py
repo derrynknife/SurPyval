@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 
 from numpy import ndarray
 
@@ -81,7 +82,7 @@ class LifeModel(FitterRepr, ABC):
         >>> Power.resolve(1) is Power
         True
         >>> GeneralLogLinear.resolve(2).phi_param_map
-        {'c': 0, 'beta_0': 1, 'beta_1': 2}
+        {'c': 0, 'coef_0': 1, 'coef_1': 2}
         """
         return self
 
@@ -102,6 +103,23 @@ class LifeModel(FitterRepr, ABC):
         linearised relationship.
         """
 
+    def named(self, names: "Sequence[str]") -> "LifeModel":
+        """
+        This life model with the coefficients of :meth:`coefficient_columns`
+        named ``names``, in column order (a fit's covariate columns,
+        #614): ``GeneralLogLinear``'s are ``coef_0``, ``coef_1``, ...
+        unless named. A model without such coefficients returns itself.
+
+        Examples
+        --------
+        >>> from surpyval.life_models import GeneralLogLinear, Power
+        >>> Power.named(["temp"]) is Power
+        True
+        >>> GeneralLogLinear.resolve(2).named(["temp", "volt"]).phi_param_map
+        {'c': 0, 'temp': 1, 'volt': 2}
+        """
+        return self
+
     def coefficient_columns(self) -> "dict[str, int]":
         """
         The life-model parameters that are each the coefficient of one
@@ -117,7 +135,7 @@ class LifeModel(FitterRepr, ABC):
         >>> Power.coefficient_columns()
         {}
         >>> GeneralLogLinear.resolve(2).coefficient_columns()
-        {'beta_0': 0, 'beta_1': 1}
+        {'coef_0': 0, 'coef_1': 1}
         """
         return {}
 

@@ -54,6 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import safe_inv
@@ -68,6 +69,7 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from .._prediction import ConditionalSurvivalMixin
+from .._summary import coefficient_names
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -177,10 +179,11 @@ class AdditiveHazardsModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients, as in the
-        parametric regression models."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     # Fitted quantities set by ``AdditiveHazards.fit``.
     beta: npt.NDArray
@@ -241,8 +244,8 @@ class AdditiveHazardsModel(
             + "\nParameterization    : Semi-Parametric"
             + "\nParameters          :\n"
         )
-        for i, p in enumerate(self.beta):
-            out += "   beta_{i}  :  {p}\n".format(i=i, p=p)
+        for name, p in zip(self.parameter_names, self.beta):
+            out += "   {}  :  {}\n".format(name, p)
         return out
 
     # -- serialisation -----------------------------------------------------
@@ -513,6 +516,7 @@ class AdditiveHazards_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric additive hazards fitter"
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

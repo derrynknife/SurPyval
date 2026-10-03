@@ -46,6 +46,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import finite_covariate_mask
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.fitter_repr import FitterRepr
@@ -62,6 +63,7 @@ from .._aliasing import (
 )
 from .._concordance import ConcordanceMixin
 from .._prediction import ConditionalSurvivalMixin
+from .._summary import coefficient_names
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -260,10 +262,11 @@ class BuckleyJamesModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients, as in the
-        parametric regression models."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     def __init__(
         self,
@@ -526,10 +529,7 @@ class BuckleyJamesModel(
         lines += [
             "Coefficients (positive => accelerates failure):",
         ]
-        names = self.feature_names or [
-            f"beta_{i}" for i in range(self.beta.size)
-        ]
-        for nm, b in zip(names, self.beta):
+        for nm, b in zip(self.parameter_names, self.beta):
             lines.append(f"   {nm:>10}  :  {b: .6f}")
         return "\n".join(lines)
 
@@ -553,6 +553,7 @@ class BuckleyJames_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric accelerated failure time fitter"
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

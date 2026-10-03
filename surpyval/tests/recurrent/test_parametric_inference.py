@@ -108,7 +108,7 @@ def test_nhpp_regression_information_criteria():
     assert np.isclose(model.aic(), 2 * k - 2 * ll)
     assert np.isclose(model.bic(), k * np.log(n) - 2 * ll)
     # Base-rate parameters first, then one coefficient per covariate column.
-    assert model.parameter_names == ["alpha", "beta", "beta_0"]
+    assert model.parameter_names == ["alpha", "beta", "coef_0"]
     assert np.all(np.isfinite(model.standard_errors()))
 
 
@@ -118,7 +118,7 @@ def test_hpp_regression_information_criteria():
     ll = model.log_likelihood
     # ``_mle`` is in natural (rate) space; ``_neg_ll`` must agree there.
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
-    assert model.parameter_names == ["lambda", "beta_0"]
+    assert model.parameter_names == ["lambda", "coef_0"]
     assert np.isfinite(model.aic()) and np.isfinite(model.bic())
     assert np.all(np.isfinite(model.standard_errors()))
 
@@ -231,7 +231,7 @@ def test_regression_param_cb():
     lower, upper = model.param_cb("alpha")
     assert 0 < lower < model.params[0] < upper
     # Unbounded coefficient: plain Wald bounds are symmetric about the MLE.
-    cb = model.param_cb("beta_0")
+    cb = model.param_cb("coef_0")
     assert np.isclose(cb.mean(), model.coeffs[0])
     assert cb[0] < model.coeffs[0] < cb[1]
 

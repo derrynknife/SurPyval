@@ -99,7 +99,7 @@ def test_positive_coefficient_is_significant():
     m = FineGray.fit(x, Z, e, c=c, event=1)
     assert np.all(np.isfinite(m.p_values))
     assert np.all((m.p_values >= 0) & (m.p_values <= 1))
-    assert m.p_values[0] < 0.01  # beta_0 = 0.7
+    assert m.p_values[0] < 0.01  # coef_0 = 0.7
 
 
 def test_counts_equivalent_to_repeated_rows():

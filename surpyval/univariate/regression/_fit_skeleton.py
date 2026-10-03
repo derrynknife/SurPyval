@@ -13,6 +13,7 @@ separate: its life-model parameter juggling does not fit this shape.
 import copy
 import functools
 import warnings
+from collections.abc import Iterable
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 import autograd.numpy as np
@@ -39,14 +40,23 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
-from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    coefficient_names,
+    renamed_coefficient_keys,
+)
 from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.fitter_repr import FitterRepr, baseline_name
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from ._aliasing import aliased_columns, constant_columns, warn_aliased
+from ._aliasing import (
+    aliased_columns,
+    constant_columns,
+    fit_columns,
+    warn_aliased,
+)
 from ._covariate_link import CovariateLink
 from ._kinds import (
     ACCELERATED_FAILURE_TIME,
@@ -87,8 +97,32 @@ class LogLinearPhi(CovariateLink):
         return ((None, None),) * Z.shape[1]
 
     @staticmethod
-    def make_param_map(Z: npt.NDArray) -> dict[str, int]:
-        return {"beta_" + str(i): i for i in range(Z.shape[1])}
+    def make_param_map(
+        Z: npt.NDArray, taken: "Iterable[str]" = ()
+    ) -> dict[str, int]:
+        """One coefficient per column of ``Z``, named by its column where
+        the fit has the names (:func:`._aliasing.fit_columns`), else
+        ``coef_j``, unique among themselves and ``taken`` (the baseline's
+        parameters; :func:`~surpyval.utils.covariates.coefficient_names`,
+        #614)."""
+        return coefficient_map(Z, taken)
+
+
+def coefficient_map(
+    Z: npt.NDArray, taken: "Iterable[str]" = ()
+) -> dict[str, int]:
+    """:meth:`LogLinearPhi.make_param_map`: one coefficient per column of
+    ``Z``, by name, with its column's number (#614)."""
+    names = coefficient_names(Z.shape[1], fit_columns(), taken)
+    return {name: j for j, name in enumerate(names)}
+
+
+def per_column_map(pmap: dict, p: int) -> bool:
+    """Whether the covariate parameters ``pmap`` were named by a custom
+    ``phi_param_map`` the way coefficients were named before v0.23,
+    ``beta_j`` for column ``j`` of ``p``: a custom link that names them so
+    is treated, as it was, as one coefficient per column."""
+    return pmap == {"beta_{}".format(j): j for j in range(p)}
 
 
 def split_log_linear(
@@ -576,25 +610,28 @@ def alias_coefficients(
     n: npt.NDArray,
     fixed: dict,
     pmap: dict,
+    per_column: bool = True,
 ) -> dict:
     """``fixed`` with the coefficients the data cannot determine held at
     0 and named, with one warning (#476; see :mod:`._aliasing`).
 
     Only where each coefficient multiplies one column of ``Z``
-    (``beta_j`` for column ``j``). A constant column is aliased where the
-    family has an intercept -- where adding a constant to the linear
-    predictor moves the baseline parameters and nothing else
-    (:data:`ORIGIN_MAPS`, a scale family, as R's ``survreg`` and ``lm``
-    treat an intercept) -- and otherwise only a column of zeros is.
-    Columns whose coefficient the caller fixed are offsets, left out.
+    (``per_column``: the ``j``-th of ``pmap`` for column ``j``). A
+    constant column is aliased where the family has an intercept -- where
+    adding a constant to the linear predictor moves the baseline
+    parameters and nothing else (:data:`ORIGIN_MAPS`, a scale family, as
+    R's ``survreg`` and ``lm`` treat an intercept) -- and otherwise only a
+    column of zeros is. Columns whose coefficient the caller fixed are
+    offsets, left out.
     """
     Z = np.asarray(Z, dtype=float)
     if Z.ndim != 2 or Z.shape[1] == 0 or Z.shape[0] == 0:
         return fixed
     p = Z.shape[1]
-    if pmap != {"beta_{}".format(j): j for j in range(p)}:
+    names = sorted(pmap, key=pmap.__getitem__)
+    if not per_column or sorted(pmap.values()) != list(range(p)):
         return fixed
-    free = np.array([j for j in range(p) if "beta_{}".format(j) not in fixed])
+    free = np.array([j for j in range(p) if names[j] not in fixed])
     if free.size == 0:
         return fixed
     n = np.asarray(n, dtype=float).reshape(-1)
@@ -620,9 +657,9 @@ def alias_coefficients(
             "columns"
         ),
     )
-    names = tuple("beta_{}".format(j) for j in aliased.tolist())
-    out = FixedWithAliased({**fixed, **{name: 0.0 for name in names}})
-    out.aliased = names
+    held = tuple(names[j] for j in aliased.tolist())
+    out = FixedWithAliased({**fixed, **{name: 0.0 for name in held}})
+    out.aliased = held
     return out
 
 
@@ -683,13 +720,26 @@ def prepare_regression_fit(
 
     fixed = {} if fixed is None else fixed
     Z_data = np.asarray(data.Z)
+    # One coefficient per column, each named by its column or ``coef_j``
+    # (#614), or a custom link's own parameters.
+    if phi_param_map is LogLinearPhi.make_param_map:
+        pmap = coefficient_map(Z_data, fitter.param_map)
+        per_column = True
+    else:
+        pmap = (
+            phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map
+        )
+        per_column = per_column_map(pmap, Z_data.shape[1])
+    if per_column:
+        # The names before v0.23, ``beta_j``, until v0.24
+        fixed = renamed_coefficient_keys(
+            fixed,
+            sorted(pmap, key=pmap.__getitem__),
+            "{}.fit(fixed=...)".format(fitter._repr_name()),
+            fitter.param_map,
+        )
     fixed = alias_coefficients(
-        fitter,
-        kind,
-        Z_data,
-        data.n,
-        fixed,
-        phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map,
+        fitter, kind, Z_data, data.n, fixed, pmap, per_column
     )
     centring = Centring.plan(fitter, kind, Z_data, data.n, fixed, center)
     if centring is not None:
@@ -708,11 +758,10 @@ def prepare_regression_fit(
         *fitter.bounds,
         *(phi_bounds(Z_data) if callable(phi_bounds) else phi_bounds),
     )
-    pmap = phi_param_map(Z_data) if callable(phi_param_map) else phi_param_map
     # The covariate coefficients sit after the distribution parameters in
     # the packed parameter vector, so their map indices must be offset by
     # the number of distribution parameters — otherwise
-    # ``fixed={"beta_0": v}`` silently pins the first *distribution*
+    # ``fixed={"coef_0": v}`` silently pins the first *distribution*
     # parameter instead (#251).
     param_map = {
         **fitter.param_map,

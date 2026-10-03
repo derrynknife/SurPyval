@@ -28,6 +28,7 @@ from surpyval.univariate.nonparametric import (
     Turnbull,
 )
 from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import (
     _caller_stacklevel,
     check_covariate_rows,
@@ -435,6 +436,7 @@ class CoxPH_(FitterRepr, CoxLikelihoodMixin):
                 h0[t] = np.sum(1.0 / steps)
         return unique_x, r, d, h0
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

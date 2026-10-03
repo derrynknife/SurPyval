@@ -239,7 +239,7 @@ def test_check_ph_is_a_table_like_summary():
     table = model.check_ph()
     assert isinstance(table, pd.DataFrame)
     assert list(table.columns) == ["statistic", "df", "p"]
-    assert list(table.index) == ["beta_0", "beta_1", "GLOBAL"]
+    assert list(table.index) == ["coef_0", "coef_1", "GLOBAL"]
     assert table.index.name == "covariate"
     assert table["df"].tolist() == [1, 1, 2]
     assert table.attrs["transform"] == "km"

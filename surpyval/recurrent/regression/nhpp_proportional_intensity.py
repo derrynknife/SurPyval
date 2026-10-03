@@ -13,6 +13,10 @@ from surpyval.recurrent.parametric import Duane
 from surpyval.recurrent.parametric.counting_process import CountingProcess
 from surpyval.recurrent.parametric.nhpp_fitter import nhpp_log_likelihood
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.regression._aliasing import (
+    dataframe_covariates,
+    fit_columns,
+)
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
@@ -84,7 +88,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         b  :  0.008010947012813689
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  0.45194475814452534
+       coef_0  :  0.45194475814452534
     <BLANKLINE>
     """
 
@@ -196,6 +200,8 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
         out = ProportionalIntensityModel()
         out.dist = dist
         out.data = data
+        # The covariates' columns name the coefficients (#614)
+        out.feature_names = fit_columns()
 
         num_covariates = data.Z.shape[1]
         expected = len(dist.parameter_names) + num_covariates
@@ -321,6 +327,7 @@ class ProportionalIntensityNHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
 
         return out
 
+    @dataframe_covariates
     def fit(
         self,
         x: ArrayLike,

@@ -18,12 +18,22 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import _caller_stacklevel
-from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    coefficient_names,
+    renamed_coefficient_keys,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._aliasing import aliased_columns, constant_columns, warn_aliased
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    fit_columns,
+    warn_aliased,
+)
 from .._fit_skeleton import (
     FixedWithAliased,
     HazardIdentitiesMixin,
@@ -443,6 +453,7 @@ class ParameterSubstitutionFitter(
             "`init` (the distribution's parameters, then the life model's)."
         )
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -528,6 +539,17 @@ class ParameterSubstitutionFitter(
             # (GeneralLogLinear) is fitted, and carried by the model, in
             # its form for Z's columns.
             life_model = self.life_model.resolve(Z_arr.shape[1])
+            # Its column coefficients named by the columns, or coef_j
+            # (#614), unique among the other parameters' names
+            columns = life_model.coefficient_columns()
+            if columns:
+                others = [
+                    *self.param_map,
+                    *(k for k in life_model.phi_param_map if k not in columns),
+                ]
+                life_model = life_model.named(
+                    coefficient_names(len(columns), fit_columns(), others)
+                )
             if life_model is not self.life_model:
                 return self._with_life_model(life_model).fit(
                     x, Z_arr, c=c, n=n, t=t, init=init, fixed=fixed
@@ -544,6 +566,13 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
+        # A column coefficient's name before v0.23, ``beta_j``, until v0.24
+        fixed = renamed_coefficient_keys(
+            fixed,
+            list(self.life_model.coefficient_columns()),
+            "{}.fit(fixed=...)".format(self._repr_name()),
+            [*self.param_map, *self.life_model.phi_param_map],
+        )
 
         def default_init() -> npt.NDArray:
             # The distribution fitted at each distinct stress, with the life

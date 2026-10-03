@@ -168,7 +168,7 @@ def test_parameter_names_and_life_parameter():
     assert "alpha: L(Z)" in repr(restored)
     # the other regression families have parameter_names and no life parameter
     ph = surpyval.WeibullPH.fit(x, stress.reshape(-1, 1))
-    assert ph.parameter_names == ["alpha", "beta", "beta_0"]
+    assert ph.parameter_names == ["alpha", "beta", "coef_0"]
     assert ph.life_parameter is None
 
 

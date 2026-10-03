@@ -87,6 +87,8 @@ from surpyval.univariate.information_criteria import (
     InformationCriteriaMixin,
     ic_sample_size,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
+from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.fitter_repr import FitterRepr
@@ -580,9 +582,11 @@ class ProportionalOddsModel(
 
     @property
     def parameter_names(self) -> list[str]:
-        """The names of ``params``, entry by entry: ``beta_0``,
-        ``beta_1``, ... for the covariate coefficients."""
-        return ["beta_{}".format(i) for i in range(len(self.params))]
+        """The names of ``params``, entry by entry: each covariate's
+        column (a formula, ``fit_from_df`` or a DataFrame ``Z``), else
+        ``coef_0``, ``coef_1``, ... (#614), as in the parametric
+        regression models."""
+        return coefficient_names(self, len(self.params))
 
     _ALIASED_WHY = (
         "a constant column, which the baseline odds absorb, or a linear "
@@ -831,17 +835,19 @@ class ProportionalOddsModel(
         >>> df = load_rossi_static()
         >>> x, c = df["week"].values, 1 - df["arrest"].values
         >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
-        >>> model.param_cb("beta_0").round(4)
+        >>> model.param_cb("coef_0").round(4)
         array([-0.0017,  0.8567])
-        >>> model.param_cb("beta_1").round(4)
+        >>> model.param_cb("coef_1").round(4)
         array([-0.1853, -0.0559])
-        >>> model.param_cb("beta_1", method="lr").round(4)
+        >>> model.param_cb("coef_1", method="lr").round(4)
         array([-0.1849, -0.0548])
         """
         from .._likelihood_ratio import is_lr, profile_interval
 
         lr = is_lr(method)
         names = self.parameter_names
+        # A coefficient's name before v0.23, ``beta_j``, until v0.24 (#614)
+        name = renamed_coefficient(name, names, "param_cb")
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -1097,6 +1103,7 @@ class ProportionalOdds_(FitterRepr):
     #: The ``repr`` (#614)
     fitter_kind = "semi-parametric proportional odds fitter"
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
