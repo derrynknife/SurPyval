@@ -785,7 +785,7 @@ turnbull_estimator
         # #584), where the family has not said so in its own words above.
         runaway = results.pop("_runaway", [])
         if runaway and maximum != "no finite maximum":
-            self._warn_runaway(surv_data, runaway, results)
+            self._warn_runaway(runaway, results)
             warning = None
             unverified = False
             maximum = "no finite maximum"
@@ -879,19 +879,7 @@ turnbull_estimator
         another as a limit overrides this (see ``BetaGeometric``)."""
         return self._warn_if_one_sided(surv_data, results, zi, lfp)
 
-    def _at_unbounded_edge(
-        self, surv_data: SurpyvalData, values: dict
-    ) -> "list[str]":
-        """The names of the parameters that, at ``values`` (each
-        parameter's value, by name), sit on an edge where the likelihood
-        is unbounded nearby, for a maximum-likelihood search to stop at
-        (``fitters.mle``, #584); none by default. A family that has such
-        edges (``Beta4``) says where."""
-        return []
-
-    def _warn_runaway(
-        self, surv_data: SurpyvalData, runaway: "list[str]", results: dict
-    ) -> None:
+    def _warn_runaway(self, runaway: "list[str]", results: dict) -> None:
         """Warn that the maximum-likelihood search found the parameters
         ``runaway`` running off (``fitters.mle._runaway``, #584): the
         likelihood keeps increasing towards a limit of the family that

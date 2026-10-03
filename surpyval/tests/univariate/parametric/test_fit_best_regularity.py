@@ -15,6 +15,7 @@ import pytest
 
 import surpyval as sp
 import surpyval as surv
+from surpyval.tests.conformance.registry import CASE_BY_NAME
 
 SEVEN = np.arange(1, 8.0)
 WEIBULL_50 = np.random.default_rng(5).weibull(2, 50) * 100
@@ -65,6 +66,16 @@ def test_a_runaway_fit_is_set_aside():
     assert model.dist.name == "Weibull"
     assert [m for m in messages if "ExpoWeibull (its likelihood has no" in m]
     assert not [m for m in messages if m.startswith("No finite maximum")]
+
+
+def test_an_unverified_fit_is_set_aside():
+    # The Beta4 on its conformance fixture stops short of a verified
+    # maximum (its likelihood is unbounded at a support end, #385).
+    d = CASE_BY_NAME["Beta4"].data()
+    model, messages = _fit_best(d["x"], n=d["n"], include=["Beta4", "Weibull"])
+    assert model.dist.name == "Weibull"
+    assert [m for m in messages if "Beta4 (its fit is not a verif" in m]
+    assert not [m for m in messages if "did not reach a verified" in m]
 
 
 def test_set_aside_candidates_are_ranked_when_nothing_else_fits():

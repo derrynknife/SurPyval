@@ -87,6 +87,16 @@ def test_an_offset_exponential_has_a_genuine_maximum():
     assert not [m for m in messages if m.startswith("No finite maximum")]
 
 
+def test_a_search_that_stops_short_is_unverified():
+    # The Beta4 on its conformance fixture: no rung reaches a verified
+    # maximum (its likelihood is unbounded at a support end, #385), and
+    # its search is not a flat runaway either: it stops against the edge.
+    d = CASE_BY_NAME["Beta4"].data()
+    model, messages = _fit(sp.Beta4.fit, **d)
+    assert model.maximum == "unverified"
+    assert [m for m in messages if "did not reach a verified" in m]
+
+
 # ---------------------------------------------------------------------------
 # A search running off ends there, and says so (#584).
 # ---------------------------------------------------------------------------
@@ -97,24 +107,6 @@ def _caught(fit, *args, **kwargs):
         warnings.simplefilter("always")
         model = fit(*args, **kwargs)
     return model, rec
-
-
-def test_584_a_search_onto_an_unbounded_edge_stops_there():
-    # The Beta4 on its conformance fixture: BFGS ran a onto the smallest
-    # observation (alpha = 1.0014), where a shape below 1 makes the
-    # likelihood infinite. The other four rungs then took 4 s to end
-    # "unverified" at a worse point (log-likelihood 4.00 against 4.18).
-    d = CASE_BY_NAME["Beta4"].data()
-    model, rec = _caught(sp.Beta4.fit, **d)
-    assert model.maximum == "no finite maximum"
-    assert model.optimizer == "BFGS"
-    assert len(rec) == 1 and rec[0].filename == __file__
-    message = str(rec[0].message)
-    assert message.startswith(
-        "No finite maximum: the Beta4 likelihood is unbounded"
-    )
-    assert "a = 0.1 on the smallest observation 0.1" in message
-    assert "how='MPS'" in message
 
 
 def test_584_a_runaway_ends_the_search_with_one_warning():
