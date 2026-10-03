@@ -4,6 +4,28 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Process-model lives start where the units start (#574).** Breaking:
+  ``GammaProcess`` and ``WienerProcess`` fitted the increments only but
+  measured the life from degradation 0, so readings that start at a
+  baseline gave an optimistic life (16-17% too long for a vibration signal
+  starting at 1.0 mm/s with an alarm at 7). The fitted model now has
+  ``y0``, the level at time zero, estimated from the readings or passed to
+  ``fit``; the life is the first passage over ``threshold - y0``, and every
+  life function takes ``y0=`` for a unit that starts elsewhere
+  (``predict_rul`` was already right). Fits whose readings start at 0 are
+  unchanged; ``y0=0.0`` gives the old result. ``y0`` is saved; older
+  dictionaries load with 0.
+- **Degradation fits say what they reached (#564).** ``WienerProcess``,
+  ``GammaProcess`` and ``DestructiveDegradation`` record and save
+  ``maximum`` as every other maximum-likelihood fit does: each searched fit
+  is checked for a zero gradient and a positive-definite Hessian and warns
+  when it is not a verified maximum; the noise-free fits that already
+  warned record "no finite maximum".
+- **Faster step-stress REML (#588).** The FOCE iteration finds every
+  unit's conditional mode at once rather than one at a time in Python: a
+  bootstrap ``cb`` of a step-stress REML model takes 6.3 s rather than
+  11.2 s. Results agree to 5e-12 on the issue's case, and nonlinear REML
+  fits within their solver's tolerance.
 - **Mixture EM reaches the maximum on staggered interval counts (#582).**
   On Nevada-chart warranty counts the fit ended 101 log-likelihood units
   short (26% defectives instead of 3%): a ``nan`` gradient at interval
