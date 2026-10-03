@@ -721,17 +721,27 @@ class FitInputsMixin:
                 )
             raise OutsideSupportError(detail)
 
-    def _clamp_truncation_to_support(self, t: Any) -> Any:
+    def _clamp_truncation_to_support(
+        self, t: Any, offset: bool = False
+    ) -> Any:
         """Clamp the truncation bounds to the distribution's support.
 
         Returns the left and right truncation arrays with any value that
         falls outside a *finite* support edge moved onto that edge. An
         infinite support edge leaves the corresponding bound untouched.
+
+        With ``offset`` the support is that of ``x - gamma``, not of the
+        data, so the left bound is left as it is: an untruncated offset
+        fit's ``-inf`` was clamped to 0, a left truncation at time 0 that
+        the maximum product of spacings applied as soon as ``gamma`` went
+        below 0, and a fit to data with a value below 0 had a NaN
+        objective at every point (#616). The objective moves a bound with
+        the offset and drops it below the support itself.
         """
         tl = t[:, 0]
         tr = t[:, 1]
 
-        if np.isfinite(self.support[0]):
+        if np.isfinite(self.support[0]) and not offset:
             tl = np.where(tl < self.support[0], self.support[0], tl)
 
         if np.isfinite(self.support[1]):

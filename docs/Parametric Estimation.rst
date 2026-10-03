@@ -883,8 +883,15 @@ worth knowing what they are, because they explain the warnings you may see.
    :math:`1 / |\gamma|`, never flat on the way; there the limit fitting the
    data at least as well as the point reached takes the place of
    flatness (an offset LogNormal and Gamma on data with a long left tail
-   ran every rung for 4-17 s, and now stop after the first in 0.3 s). If
-   one is
+   ran every rung for 4-17 s, and now stop after the first in 0.3 s). A
+   later rung's point heading that way is checked too: the first rung can
+   stop somewhere unrelated, and a later one run off. And where the whole
+   ladder ends unverified with the offset moved down and no point it
+   reached fitting the data better than the limit, the offset is taken to
+   be running off: far out, Newton's test reads derivatives that are
+   rounding, and it missed an offset LogLogistic at
+   :math:`\gamma = -6.9 \times 10^{4}` on a smallest extreme value sample.
+   If one is
    running off, the search stops there, the fit warns "No finite maximum",
    naming it (and the limit, where the family knows it), and ``maximum`` is
    ``'no finite maximum'``; that ExpoWeibull now takes 6 s. A verified
@@ -1464,7 +1471,15 @@ information criteria are still available). The objective is minimised with
 BFGS with the automatic gradient, on the rescaled search described in
 :ref:`numerical-mle`, escalating to Newton-CG and then to the
 derivative-free Nelder-Mead if needed; if that too fails,
-SurPyval warns ("MPS FAILED: Try alternate estimation method").
+SurPyval warns ("MPS FAILED: Try alternate estimation method"). The product
+of spacings of an offset fit can have no finite maximum as the likelihood can:
+on data skewed more to the left than any member of the family, the offset
+runs down towards :math:`-\infty` and the family approaches its limit (the
+Normal for the LogNormal and the Gamma, the ``Logistic`` for the
+LogLogistic, the ``Gumbel`` for the Weibull). Where BFGS stops short with
+the offset moved down and the limit's own MPS fit spacing the data at least
+as well, the fit stops there and warns "No finite maximum", recommending the
+limit.
 
 Trading the density for spacings costs nothing asymptotically: under the usual regularity conditions MPS is consistent and asymptotically as efficient as MLE, attaining the same asymptotic variance. Its advantage is that it *stays* consistent in the awkward cases — J- or U-shaped densities, and distributions with unknown support — where the maximum likelihood estimate is inconsistent or fails to exist at all. In surpyval it is requested with ``how='MPS'`` and, like every other estimator, returns a fully-featured model (see the :doc:`Parametric SurPyval Modelling` notes for the code). This makes it a robust fall-back whenever an MLE fit struggles with an offset or a bounded support.
 

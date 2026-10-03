@@ -72,6 +72,7 @@ def fallback_minimize(
     hess: Callable[..., Any] | None,
     newton_tol: float | None = None,
     floor: "float | npt.ArrayLike" = 1.0,
+    give_up: "Callable[[Any], bool] | None" = None,
 ) -> Any:
     """
     Minimise ``fun`` with BFGS and the supplied jacobian, escalating to
@@ -98,7 +99,10 @@ def fallback_minimize(
     while reporting success, so there is nothing to escalate to and
     Nelder-Mead should take over instead.
 
-    ``floor`` is passed through to ``preconditioned_bfgs``.
+    ``floor`` is passed through to ``preconditioned_bfgs``. ``give_up``,
+    where given, is asked of a BFGS result that failed whether the
+    objective has no finite optimum to escalate for; it is returned at
+    once if so (an offset MPS fit running to its family's limit, #616).
     """
     assert jac is not None and hess is not None
     with np.errstate(all="ignore"):
@@ -116,6 +120,8 @@ def fallback_minimize(
             or np.isnan(res.x).any()
             or (not np.isfinite(res.fun))
         )
+        if failed and give_up is not None and give_up(res):
+            return res
         if failed and np.any(hess(np.array(init, dtype=float), *args)):
             newton = minimize_with_gradient(
                 fun,

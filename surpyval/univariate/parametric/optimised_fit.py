@@ -28,6 +28,7 @@ from .fitters.mle import mle
 from .fitters.mom import mom
 from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
+from .fitters.mps import offset_start as mps_offset_start
 from .fitters.mse import mse
 from .parametric import Parametric
 
@@ -618,7 +619,7 @@ turnbull_estimator
         how = normalise_how(how)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
-        tl, tr = self._clamp_truncation_to_support(t)
+        tl, tr = self._clamp_truncation_to_support(t, offset)
 
         # Validate inputs
         heuristic = self._validate_fit_inputs(
@@ -792,8 +793,9 @@ turnbull_estimator
         # And any search that found a parameter running off (``mle``,
         # #584), where the family has not said so in its own words above.
         runaway = results.pop("_runaway", [])
+        by_limit = results.pop("_runaway_by_limit", False)
         if runaway and maximum != "no finite maximum":
-            self._warn_runaway(surv_data, runaway, results, offset)
+            self._warn_runaway(surv_data, runaway, results, offset, by_limit)
             warning = None
             unverified = False
             maximum = "no finite maximum"
@@ -918,24 +920,34 @@ turnbull_estimator
         runaway: "list[str]",
         results: dict,
         offset: bool = False,
+        by_limit: bool = False,
     ) -> None:
         """Warn that the maximum-likelihood search found the parameters
         ``runaway`` running off (``fitters.mle._runaway``, #584): the
         likelihood keeps increasing towards a limit of the family that
         none of its members reaches, so it has no finite maximum.
-        ``offset`` says whether the fit has one."""
+        ``offset`` says whether the fit has one, and ``by_limit`` whether
+        the runaway was found by the family's limit fitting the data at
+        least as well as anything the search reached, rather than by
+        Newton's test (#616)."""
         values = dict(
             zip(self.parameter_names, np.atleast_1d(results["params"]))
         )
         values.update(gamma=results["gamma"], p=results["p"], f0=results["f0"])
         named = ", ".join(f"{name} ({values[name]:.4g})" for name in runaway)
         one = len(runaway) == 1
+        how_found = (
+            f"no {self.name} the search reached fits the data better than "
+            "that limit"
+            if by_limit
+            else "Newton's method cannot "
+            f"converge along {'its' if one else 'their'} "
+            f"profile{'' if one else 's'} where the search stopped"
+        )
         warn_no_maximum(
             f"the {self.name} likelihood keeps increasing as {named} "
             f"run{'s' if one else ''} on, towards a limit of the family "
-            "that none of its members reaches: Newton's method cannot "
-            f"converge along {'its' if one else 'their'} "
-            f"profile{'' if one else 's'} where the search stopped",
+            f"that none of its members reaches: {how_found}",
             "The reported parameters are where the search stopped, and "
             "their standard errors and bounds are meaningless",
             self._runaway_advice(runaway, values, offset),
@@ -1170,6 +1182,11 @@ turnbull_estimator
                 init = self._initial_guess(
                     surv_data, offset, zi, lfp, heuristic
                 )
+                if how == "MPS" and offset and not fixed:
+                    # One at which the spacings are not all 0 (#616)
+                    init = mps_offset_start(
+                        self, surv_data, tl[0], tr[0], init
+                    )
 
             init = np.atleast_1d(init)
             if fixed and len(init) == len(not_fixed):
