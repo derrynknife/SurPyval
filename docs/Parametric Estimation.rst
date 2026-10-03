@@ -1320,6 +1320,17 @@ every model in SurPyval that reports a BIC or an :math:`\mathrm{AIC_{c}}`:
       end-of-observation rows are not events.
     - *Copula models* count joint rows in which at least one series failed; a
       row right-censored in every series adds nothing.
+    - *Semi-parametric models* -- Cox (including its stratified and
+      time-varying fits and the cause-specific competing-risks model), Cox
+      frailty and proportional odds -- count the events, as R's
+      ``logLik.coxph`` does (its ``nobs`` is ``nevent``); a Fine-Gray model
+      counts the events of its cause of interest, the terms of its
+      weighted partial likelihood. Their criteria are on the partial (Cox),
+      integrated (Cox frailty), profile (proportional odds) or weighted
+      partial (Fine-Gray) likelihood, with :math:`k` the estimated
+      coefficients (and a Cox frailty's ``theta``), so they compare models
+      of the same kind fitted to the same data -- two sets of covariates,
+      say -- not a semi-parametric model with a parametric one.
 
 Using the failures rather than all units follows [Volinsky2000bic]_: a
 censored unit carries less information than a failure. For exact and

@@ -790,7 +790,14 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
 
 The standard errors come from the inverse Hessian of the weighted partial
 likelihood (the robust variance of Fine and Gray is not implemented), so treat
-them as approximate. Because the model targets the incidence directly, ``cif``
+them as approximate. ``covariance()`` is that inverse, and ``log_likelihood``
+the maximised weighted partial log-likelihood (``cmprsk::crr``'s ``loglik``),
+whose ``aic()`` and ``bic()`` (with the events of the cause as BIC's sample
+size) compare Fine-Gray models of the same cause on the same data; a
+``CompetingRisksProportionalHazards`` fitted with ``model="Fine-Gray"`` has
+none, as its causes' partial likelihoods are not parts of one likelihood,
+while one fitted with ``model="Cox"`` has the sum of its cause-specific
+partial likelihoods, R's multi-state ``coxph``'s. Because the model targets the incidence directly, ``cif``
 reads off the cumulative incidence of the cause at any covariate value (one
 covariate vector per call). The dashed lines are the true CIFs:
 

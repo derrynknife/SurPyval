@@ -3255,9 +3255,38 @@ assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
 still give misleading predictions. Goodness-of-fit diagnostics like
 Schoenfeld residuals (for PH) or log-log survival plots should accompany any
 model comparison. Information criteria are also only comparable between models
-fitted to the same data by full likelihood: a Cox model's partial likelihood,
-the Lin-Ying estimator and Buckley-James have no comparable likelihood, so
-compare those on held-out predictions instead (next section).
+fitted to the same data by full likelihood. The semi-parametric models report
+theirs on the likelihood they maximise -- ``CoxPH`` (as R's ``AIC(coxph)``),
+``CoxFrailty``, ``ProportionalOdds`` and ``FineGray`` on their partial,
+integrated, profile and weighted partial likelihoods, with :math:`k` their
+coefficients and the BIC's sample size their events -- which compares models
+of the same kind on the same data, such as two sets of covariates in a Cox
+model, but not a Cox model with a parametric one. The Lin-Ying estimator and
+Buckley-James have no likelihood at all. Compare across kinds on held-out
+predictions instead (next section).
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']  # arrest is 1 for an arrest
+    cox_three = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                  Z_cols=['fin', 'age', 'prio'])
+    cox_two = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                Z_cols=['age', 'prio'])
+    for name, m in [('fin + age + prio', cox_three), ('age + prio', cox_two)]:
+        print(f'{name:17s} log-lik={m.log_likelihood:8.3f}  '
+              f'AIC={m.aic():8.3f}  BIC={m.bic():8.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # R: AIC(coxph(Surv(week, arrest) ~ fin + age + prio, rossi))
+    assert abs(cox_three.aic() - 1327.714050768831) < 1e-6
+    assert cox_three.aic() < cox_two.aic()
 
 Validating a survival predictor
 -------------------------------
