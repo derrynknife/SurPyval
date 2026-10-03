@@ -449,8 +449,10 @@ class FitInputsMixin:
             # then this is equivalent.
             heuristic = turnbull_estimator
 
-        if (not offset) and (not zi):
-            self._check_inside_support(surv_data)
+        if not offset:
+            # A zero-inflated fit is checked too (#610): its point mass
+            # makes 0 a possible failure time, but nothing lies below 0.
+            self._check_inside_support(surv_data, zero_inflated=zi)
 
         if how == "MPS":
             _check_mps_data(surv_data)
@@ -625,7 +627,10 @@ class FitInputsMixin:
             raise ValueError(detail)
 
     def _check_inside_support(
-        self, surv_data: SurpyvalData, every_row: bool = False
+        self,
+        surv_data: SurpyvalData,
+        every_row: bool = False,
+        zero_inflated: bool = False,
     ) -> None:
         """Every observation leaves the event some probability.
 
@@ -635,24 +640,43 @@ class FitInputsMixin:
         begins (a negative time for a positive distribution is a mistake
         in the data, which R's ``survreg`` and lifelines refuse too), and
         the regression likelihoods are not defined there.
+
+        With ``zero_inflated`` (a ``zi=True`` fit, #610) the point mass at
+        the support's lower end, 0, makes a failure at 0 (or before a left
+        censoring time of 0) possible, so those rows pass; a value below
+        0 is refused as in the plain fit.
         """
         lower, upper = self.support
-        # One line that names the bounds as the check applies them: an
-        # observation must lie strictly inside, so the bounds are written
-        # open ("[0, inf]" would read as though 0 were allowed while 0 is
-        # what it rejects).
-        detail = (
-            f"Some of your data is outside the support of the "
-            f"{self.name} distribution: observed values must lie "
-            f"strictly between {lower} and {upper}, i.e. in "
-            f"({lower}, {upper}), and a censored value must leave the "
-            f"event some probability. Are some of your observed values "
-            f"{lower}, -inf or inf?"
-        )
+        if zero_inflated:
+            detail = (
+                f"Some of your data is outside the support of the "
+                f"zero-inflated {self.name} distribution: observed values "
+                f"must lie in [{lower}, {upper}) (the point mass makes "
+                f"{lower} a possible failure time, but nothing lies below "
+                f"it), and a censored value must leave the event some "
+                f"probability. Are some of your values negative, -inf or "
+                f"inf?"
+            )
+        else:
+            # One line that names the bounds as the check applies them:
+            # an observation must lie strictly inside, so the bounds are
+            # written open ("[0, inf]" would read as though 0 were
+            # allowed while 0 is what it rejects).
+            detail = (
+                f"Some of your data is outside the support of the "
+                f"{self.name} distribution: observed values must lie "
+                f"strictly between {lower} and {upper}, i.e. in "
+                f"({lower}, {upper}), and a censored value must leave the "
+                f"event some probability. Are some of your observed values "
+                f"{lower}, -inf or inf?"
+            )
+        # The zero-inflated model's mass sits at ``lower``: a failure
+        # there, or a left censoring time there, has probability f0.
+        below = np.less if zero_inflated else np.less_equal
         x_sd, c_sd = surv_data.x, surv_data.c
         if x_sd.ndim == 2:
             bad = (
-                ((x_sd[:, 0] <= lower) & (c_sd == 0))
+                (below(x_sd[:, 0], lower) & (c_sd == 0))
                 | ((x_sd[:, 1] >= upper) & (c_sd == 0))
                 # An interval endpoint strictly below the support makes
                 # the CDF evaluate outside its domain: NaN likelihood
@@ -664,13 +688,13 @@ class FitInputsMixin:
             )
         else:
             bad = (
-                ((x_sd <= lower) & (c_sd == 0))
+                (below(x_sd, lower) & (c_sd == 0))
                 | ((x_sd >= upper) & (c_sd == 0))
                 # A left-censored point at or below the support start
                 # is a zero-probability observation: the likelihood is
                 # -inf/NaN everywhere and the optimiser silently
                 # returns the initial guess (#261).
-                | ((x_sd <= lower) & (c_sd == -1))
+                | (below(x_sd, lower) & (c_sd == -1))
                 # Likewise a right-censored point at or beyond the
                 # support's end (a Beta censored at 1.5 would return its
                 # start with an infinite likelihood).

@@ -15,6 +15,9 @@ from surpyval import (
     Weibull,
 )
 from surpyval.tests._helpers import no_warnings
+from surpyval.univariate.parametric.parametric_fitter import (
+    OutsideSupportError,
+)
 
 
 def test_zi():
@@ -481,3 +484,46 @@ def test_579_p_on_its_bound_is_a_maximum_there():
     for p in (0.999, 0.9, 0.5):
         profile = Weibull.fit(**data, lfp=True, fixed={"p": p})
         assert profile.neg_ll() > model.neg_ll()
+
+
+# ---------------------------------------------------------------------------
+# #610: a zero-inflated fit checks the support as the plain fit does; the
+# point mass makes 0 a possible failure time, but nothing lies below 0.
+# ---------------------------------------------------------------------------
+
+_ZERO_INFLATABLE = [Weibull, surv.Exponential, Gamma, LogNormal, LogLogistic]
+
+
+@pytest.mark.parametrize("dist", _ZERO_INFLATABLE)
+@pytest.mark.parametrize("lfp", [False, True])
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"x": [-1.0, 0, 0, 1, 2, 3, 4, 5]},
+        # left censored below 0
+        {"x": [-1.0, 0, 0, 1, 2, 3, 4, 5], "c": [-1, 0, 0, 0, 0, 0, 1, 0]},
+        # an interval reaching below 0
+        {
+            "xl": [-1.0, 0, 1, 2, 3],
+            "xr": [1.0, 0, 1, 2, 3],
+            "c": [2, 0, 0, 0, 0],
+        },
+    ],
+)
+def test_610_zero_inflated_fit_refuses_a_negative_time(dist, lfp, data):
+    # The fit used to start the optimiser on a NaN likelihood and return
+    # its start with "MLE Failed; returning the optimiser's start".
+    with pytest.raises(OutsideSupportError, match="zero-inflated"):
+        dist.fit(**data, zi=True, lfp=lfp)
+
+
+@pytest.mark.parametrize("dist", _ZERO_INFLATABLE)
+def test_610_zero_inflated_fit_takes_a_zero(dist):
+    # A failure at 0, and a left censoring time of 0, are the point mass
+    model = no_warnings(
+        dist.fit,
+        [0.0, 0, 1, 2, 3, 4, 5, 7],
+        c=[0, -1, 0, 0, 1, 0, 0, 1],
+        zi=True,
+    )
+    assert model.f0 == pytest.approx(0.25, rel=1e-4)
