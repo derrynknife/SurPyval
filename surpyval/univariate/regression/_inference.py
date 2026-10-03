@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import ndtri
 
 from surpyval.utils.linalg import (
+    bound_signs,
     cb_link,
     delta_method_se,
     link_band,
@@ -24,7 +26,11 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
-from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -71,6 +77,7 @@ class InferenceMixin:
         _covariance_cache: "tuple | None"
         _restored_covariance: "npt.NDArray | None"
         _restored: bool
+        _lr_searches: "list | None"
 
         @property
         def parameter_names(self) -> CallableList: ...
@@ -80,6 +87,15 @@ class InferenceMixin:
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
+        def _n_covariates(self) -> int: ...
+
+        def qf(
+            self,
+            p: npt.ArrayLike,
+            Z: "npt.ArrayLike | pd.DataFrame",
+            *,
+            grid: bool = False,
+        ) -> npt.NDArray: ...
         def _is_accelerated_life(self) -> bool: ...
         def _is_additive(self) -> bool: ...
         def _life_relation(self) -> str: ...
@@ -313,14 +329,29 @@ class InferenceMixin:
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a single fitted parameter.
 
-        Wald bounds from the observed information, computed on a scale chosen
-        from the parameter's support so the result stays inside it: log for a
-        one-sided-bounded distribution parameter (e.g. a positive scale), the
-        natural scale for the unbounded covariate coefficients.
+        Two methods, as for the univariate models; ``"wald"`` is the
+        default:
+
+        - ``"wald"`` -- bounds from the observed information, computed on
+          a scale chosen from the parameter's support so the result stays
+          inside it: log for a one-sided-bounded distribution parameter
+          (e.g. a positive scale), the natural scale for the unbounded
+          covariate coefficients.
+        - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval:
+          the values whose profile deviance, every other parameter
+          re-fitted, stays below the :math:`\\chi^2_1` critical value
+          (aliases ``"likelihood"``, ``"likelihood-ratio"``,
+          ``"profile"``). It respects the parameter's space (a life
+          model's positive constant stays positive) and need not be
+          symmetric about the estimate; where the deviance stays below
+          the critical value to the edge of the space, the bound is that
+          edge, and a side that cannot be found is ``nan``, with a
+          warning. It needs the data the model was fitted to.
 
         Parameters
         ----------
@@ -330,7 +361,12 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            As above. Default ``'wald'``.
         """
+        from ._likelihood_ratio import is_lr, param_cb_lr
+
+        lr = is_lr(method)
         self._check_inference()
         names = self.parameter_names
         if name not in names:
@@ -349,6 +385,8 @@ class InferenceMixin:
                     ", ".join(names[self.k_dist :]),
                 )
             )
+        if lr:
+            return param_cb_lr(self, name, alpha_ci, bound)
         idx = names.index(name)
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
@@ -371,20 +409,42 @@ class InferenceMixin:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         r"""
         Confidence bounds on a predicted function at covariate vector ``Z``.
 
-        The bounds propagate the fitted parameter covariance through the
-        requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from one bound on the baseline family's probability-plot
-        scale, as for the univariate models: ``log H`` for a Weibull,
-        Exponential, Rayleigh or Gumbel baseline, the normal quantile of
-        ``F`` for a Normal or LogNormal one, the logit of ``F`` for the rest
-        (#504; every band was on the logit before v0.22). Each keeps ``sf``
-        in ``(0, 1)``, and is formed from the cumulative hazard so the ``Hf``
-        bound has no ceiling where ``sf`` underflows. ``hf``/``df`` use a
-        log-scale bound (so they stay positive).
+        With ``method="wald"`` (the default) the bounds propagate the
+        fitted parameter covariance through the requested function by the
+        delta method. ``sf``/``ff``/``Hf`` are derived from one bound on
+        the baseline family's probability-plot scale, as for the
+        univariate models: ``log H`` for a Weibull, Exponential, Rayleigh
+        or Gumbel baseline, the normal quantile of ``F`` for a Normal or
+        LogNormal one, the logit of ``F`` for the rest (#504; every band
+        was on the logit before v0.22). Each keeps ``sf`` in ``(0, 1)``,
+        and is formed from the cumulative hazard so the ``Hf`` bound has
+        no ceiling where ``sf`` underflows. ``hf``/``df`` use a log-scale
+        bound (so they stay positive).
+
+        ``method="lr"`` gives the likelihood-ratio bound instead, as for
+        the univariate models' ``cb(method="lr")``: at each ``x`` and row
+        of ``Z`` the bound is the extreme of the function over the
+        likelihood region of all the parameters, ``{theta : 2[nll(theta)
+        - nll_hat] <= chi2_1}``, which is where the function's profile
+        deviance reaches the critical value; the ``sf``, ``ff`` and
+        ``Hf`` bounds are one bound, so they agree exactly. It does not
+        rest on the function being near linear in the parameters, and is
+        invariant to their parameterisation, but takes a search of the
+        likelihood: about a second a bound, where the Wald bound takes
+        milliseconds (the region's boundary is traced once per model and
+        level, and kept). It needs the data the model was fitted to;
+        where a bound cannot be found it is ``nan``, with a warning. Both
+        are large-sample bounds, and neither is exact with few failures:
+        on an accelerated life test of 72 units extrapolated 40 °C below
+        its coolest cell (#583), the 90% bounds on the five-year
+        reliability at the use condition covered 0.897 (Wald) and 0.893
+        (likelihood ratio) with 46 failures on average (1000
+        repetitions), and 0.877 and 0.866 with 11 (900).
 
         Parameters
         ----------
@@ -399,12 +459,18 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr'}, optional
+            ``'wald'`` (the default) or ``'lr'``, as above (``'lr'`` also
+            as ``'likelihood'``, ``'likelihood-ratio'`` or ``'profile'``).
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        from ._likelihood_ratio import cb_lr, is_lr
+
+        lr = is_lr(method)
         self._check_inference()
         check_option("on", on, CB_ON)
         check_option("bound", bound, BOUNDS)
@@ -417,6 +483,15 @@ class InferenceMixin:
             check_paired_rows(
                 np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
             )
+        if lr:
+            if self._is_additive():
+                self._warn_if_hazard_negative(
+                    x,
+                    self._centred(self._prepare_Z(Z)),
+                    np.asarray(x) >= self.distribution.support[0],
+                    stacklevel=4,
+                )
+            return cb_lr(self, x, Z, on, alpha_ci, bound)
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self._is_additive():
@@ -460,6 +535,97 @@ class InferenceMixin:
             alpha_ci,
             bound,
         )
+
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the quantile ``qf(p, Z)``: the B-life at
+        ``p`` of a unit with covariates ``Z`` (the B10 life is ``p =
+        0.1``), the time by which a fraction ``p`` of such units have
+        failed; the univariate models' ``quantile_cb`` with the
+        covariates of :meth:`qf`.
+
+        Parameters
+        ----------
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded.
+        Z : array like or DataFrame
+            The covariates, paired with ``p`` as :meth:`qf` pairs them: one
+            row per probability, a single row for every probability, or a
+            single probability for every row.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr'}, optional
+            ``'wald'`` (the default) is the delta method on the log of the
+            quantile above the support's start (the quantile itself for a
+            baseline on the whole line), from its gradient in the
+            parameters, :math:`\partial t_p / \partial\theta =
+            -(\partial H / \partial\theta) / h` at :math:`t_p`, as for the
+            univariate models. ``'lr'`` is the likelihood-ratio bound: the
+            extreme of ``qf(p, Z)`` over the parameters' likelihood region,
+            as :meth:`cb` with ``method='lr'`` is for a function of time
+            (aliases as there); it is slower, and needs the data.
+
+        Returns
+        -------
+        numpy array
+            The bound(s) on the quantile at each ``p``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.qf(0.1, [1]).round(3)
+        np.float64(1.659)
+        >>> model.quantile_cb(0.1, [1]).round(3)
+        array([1.245, 2.212])
+        """
+        from ._likelihood_ratio import is_lr, quantile_cb_lr
+
+        lr = is_lr(method)
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
+        if not np.all((probs > 0) & (probs < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(probs.size, rows.shape[0], grid=False)
+        n = max(probs.size, rows.shape[0])
+        probs = np.broadcast_to(probs, (n,)).copy()
+        rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
+        t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
+        if lr:
+            return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
+
+        params, center, cov = self._inference_state()
+        Zc = self._centred(rows, center)
+        with np.errstate(all="ignore"):
+            se_H = delta_method_se(
+                lambda q: self.model.Hf(t_hat, Zc, *q), params, cov
+            )
+            h = np.asarray(self.model.hf(t_hat, Zc, *params), dtype=float)
+            se_t = se_H / h
+        lower = float(self.distribution.support[0])
+        if np.isfinite(lower):
+            return lower + log_transformed_cb(
+                t_hat - lower, se_t, alpha_ci, bound
+            )
+        alpha, signs = bound_signs(alpha_ci, bound)
+        out = t_hat[..., None] + signs * ndtri(1.0 - alpha) * se_t[..., None]
+        return out if bound == "two-sided" else out[..., 0]
 
     @property
     def _cb_link(self) -> str:

@@ -51,7 +51,7 @@ from ._likelihood_ratio import (
     _LN_MAX,
     _LN_TINY,
     LikelihoodRatioMixin,
-    _central_gradient,
+    central_gradient,
 )
 from .probability_plotting import (
     adjust_heuristic,
@@ -2084,7 +2084,7 @@ class Parametric(
             return (p - f0) * (self.dist.mean(*core) + self.gamma)
 
         with np.errstate(all="ignore"):
-            grad = _central_gradient(mean_of, ctx.phi_hat)
+            grad = central_gradient(mean_of, ctx.phi_hat)
             var = np.atleast_1d(grad @ ctx.cov @ grad)
             value = np.atleast_1d(mean_of(ctx.phi_hat))
         # The mass f0 at 0 of a zero-inflated model is below any offset

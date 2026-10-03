@@ -168,3 +168,55 @@ def test_parametric_regression_param_cb(name):
             for j, p in enumerate(names):
                 lo[r, j], hi[r, j] = model.param_cb(p)
     check_coverage(lo, hi, truth, 0.95, name + " param_cb")
+
+
+def _alt_sample(rng):
+    # #583's accelerated life test: Arrhenius in temperature (0.7 eV), a
+    # power law in voltage (n = -3), a Weibull shape of 2.2; 85/105/125 C
+    # by 450/500 V, twelve units a cell, stopped at 3000 h.
+    T, V = np.meshgrid(
+        np.array([85.0, 105.0, 125.0]) + 273.15, [450.0, 500.0], indexing="ij"
+    )
+    Z = np.repeat(np.column_stack([T.ravel(), V.ravel()]), 12, axis=0)
+    life = _ALT_C * np.exp(_ALT_A / Z[:, 0]) * Z[:, 1] ** -3.0
+    t = life * rng.weibull(2.2, len(Z))
+    return np.minimum(t, 3000.0), (t > 3000.0).astype(int), Z
+
+
+_ALT_A = 0.7 / 8.617e-5
+_ALT_C = 118.0
+
+
+def _alt_terms(Z):
+    # AcceleratedLife(Weibull, PowerExponential) is WeibullAFT on these:
+    # the same model (#583 found the same estimate and Wald bounds, and
+    # the likelihood-ratio bounds agree, test_likelihood_ratio_bounds.py),
+    # twenty times as fast to fit.
+    Z = np.atleast_2d(Z)
+    return np.column_stack([1.0 / Z[:, 0], np.log(Z[:, 1])])
+
+
+def test_583_cb_coverage_at_an_extrapolated_use_condition():
+    # The 90% bounds on the five-year reliability at the use condition,
+    # 45 C / 400 V, 40 C below the coolest cell: the Wald bound (the
+    # default) and the likelihood-ratio bound (method="lr"). 46 of the 72
+    # units fail on average; the reliability at use is 0.973. Both are
+    # near nominal here (0.897 and 0.893 when this was written): #583's
+    # 0.86 was 300 repetitions of a design with fewer failures, where
+    # both fall short (0.877 and 0.866 with 11 failures, 900 repetitions).
+    rng = np.random.default_rng(583)
+    x_use, z_use = 5 * 8760.0, np.array([[318.15, 400.0]])
+    life = _ALT_C * np.exp(_ALT_A / z_use[0, 0]) * z_use[0, 1] ** -3.0
+    truth = np.exp(-((x_use / life) ** 2.2))
+    reps = 1000
+    wald, lr = np.empty((reps, 2)), np.empty((reps, 2))
+    for r in range(reps):
+        x, c, Z = _alt_sample(rng)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = sp.WeibullAFT.fit(x, Z=_alt_terms(Z), c=c)
+            zq = _alt_terms(z_use)
+            wald[r] = model.cb(x_use, zq, alpha_ci=0.1)
+            lr[r] = model.cb(x_use, zq, alpha_ci=0.1, method="lr")
+    check_coverage(wald[:, 0], wald[:, 1], truth, 0.90, "#583 use, Wald")
+    check_coverage(lr[:, 0], lr[:, 1], truth, 0.90, "#583 use, LR")

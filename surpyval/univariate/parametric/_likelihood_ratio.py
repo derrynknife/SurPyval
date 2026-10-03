@@ -64,7 +64,7 @@ _LR_FD_FINE = 1e-8
 _LR_GAIN = 1e-7
 
 
-def _warn_unsettled(where: str) -> None:
+def warn_unsettled(where: str) -> None:
     """Warn, once at the caller, that a likelihood-ratio bound is the
     most extreme point of the likelihood region its search found, but
     the search did not converge there (#601)."""
@@ -308,7 +308,7 @@ def _lr_walk(
     return "fail", np.nan
 
 
-def _central_gradient(
+def central_gradient(
     f: Callable[..., Any], u: npt.NDArray, rel_step: float = 1e-6
 ) -> npt.NDArray:
     """Central-difference gradient of ``f`` at ``u``, in steps of
@@ -592,7 +592,7 @@ class _PsiBoundSearch:
                 np.ix_(self.free, self.free)
             ]
             cov_u = cov_u / np.outer(slopes, slopes)
-            grad = _central_gradient(self.psi_u, self.u_hat)
+            grad = central_gradient(self.psi_u, self.u_hat)
             step = float(np.sqrt(grad @ cov_u @ grad))
             try:
                 chol = np.linalg.cholesky(cov_u)
@@ -643,7 +643,7 @@ class _PsiBoundSearch:
         constraint = {
             "type": "eq",
             "fun": lambda z: psi_z(z) - target,
-            "jac": lambda z: _central_gradient(psi_z, z),
+            "jac": lambda z: central_gradient(psi_z, z),
         }
         tol = 1e-7 * max(1.0, abs(target))
         for x0 in starts:
@@ -658,7 +658,7 @@ class _PsiBoundSearch:
                         nll_z,
                         z0,
                         method="SLSQP",
-                        jac=lambda z: _central_gradient(nll_z, z),
+                        jac=lambda z: central_gradient(nll_z, z),
                         bounds=_scaled_bounds(self.bounds, origin, scale),
                         constraints=[constraint],
                         options={"ftol": 1e-10, "maxiter": 60},
@@ -752,7 +752,7 @@ class _PsiBoundSearch:
         def g_jac(z: npt.NDArray) -> npt.NDArray:
             grad_u = self.dev_grad_u(to_u(z)) if exact else None
             if grad_u is None:
-                return _central_gradient(g, z, h)
+                return central_gradient(g, z, h)
             return J.T @ grad_u
 
         try:
@@ -760,7 +760,7 @@ class _PsiBoundSearch:
                 lambda z: -direction * f(z),
                 z0,
                 method="SLSQP",
-                jac=lambda z: -direction * _central_gradient(f, z, h),
+                jac=lambda z: -direction * central_gradient(f, z, h),
                 bounds=z_bounds,
                 constraints=[
                     {
@@ -965,7 +965,7 @@ class _PsiBoundSearch:
     def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
         """``x`` moved along the gradient of psi to where its linear
         approximation is ``target``; ``x`` where that cannot be found."""
-        grad = _central_gradient(self.psi_u, x)
+        grad = central_gradient(self.psi_u, x)
         size = float(grad @ grad)
         if not (np.isfinite(size) and size > 0):
             return x
@@ -1127,10 +1127,10 @@ class _PsiBoundSearch:
         that is no further out."""
         if not self.dev_u(x) < level - _LR_NOISE:
             return x
-        grad_psi = _central_gradient(self.psi_u, x, _LR_FD_FINE)
+        grad_psi = central_gradient(self.psi_u, x, _LR_FD_FINE)
         grad_dev = self.dev_grad_u(x)
         if grad_dev is None:
-            grad_dev = _central_gradient(self.dev_u, x, _LR_FD_FINE)
+            grad_dev = central_gradient(self.dev_u, x, _LR_FD_FINE)
         d = direction * grad_psi
         rise = float(grad_dev @ d)
         if not (np.all(np.isfinite(d)) and np.isfinite(rise) and rise > 0):
@@ -1170,7 +1170,7 @@ class _PsiBoundSearch:
             excess = self.dev_u(x) - level
             if excess <= 0.0:
                 return x
-            grad = _central_gradient(self.dev_u, x, _LR_FD_FINE)
+            grad = central_gradient(self.dev_u, x, _LR_FD_FINE)
             size = float(grad @ grad)
             if not (np.isfinite(size) and size > 0):
                 return None
@@ -1453,15 +1453,26 @@ class LikelihoodRatioMixin:
             if lean is not None:
                 nll = _lean_neg_ll(self.dist, lean, theta)
             else:
-                nll = float(
-                    self.dist._neg_ll_func(
-                        self.surv_data, *theta, self.gamma, self.f0, self.p
-                    )
-                )
+                nll = self._lr_full_neg_ll(theta)
         if len(kept) >= _LR_MEMO_SIZE:
             kept.clear()
         kept[key] = nll
         return nll
+
+    def _lr_full_neg_ll(self, theta: npt.NDArray) -> float:
+        """The negative log-likelihood at ``theta`` where there is no lean
+        one (``_lr_lean_data``): the distribution's own. (A regression
+        model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
+        return float(
+            self.dist._neg_ll_func(
+                self.surv_data, *theta, self.gamma, self.f0, self.p
+            )
+        )
+
+    def _lr_declared_bounds(self) -> list[tuple[Any, Any]]:
+        """The declared ``(lower, upper)`` of each parameter the searches
+        move (``None`` for no bound): the distribution's."""
+        return list(self.dist.bounds)
 
     def _lr_plain(self) -> bool:
         """Whether the likelihood-ratio searches may evaluate the
@@ -1564,7 +1575,7 @@ class LikelihoodRatioMixin:
         bound (which the coordinate maps to infinity)."""
         coords, boxes = [], []
         for (lo, hi), (l_lo, l_hi) in zip(
-            self.dist.bounds, self._lr_limits(), strict=True
+            self._lr_declared_bounds(), self._lr_limits(), strict=True
         ):
             coord = _LRCoord(lo, hi)
             coords.append(coord)
@@ -1704,7 +1715,7 @@ class LikelihoodRatioMixin:
         cliff: a Uniform band stalled at the estimate (#421)."""
         limits = [
             (-np.inf if lo is None else lo, np.inf if hi is None else hi)
-            for lo, hi in self.dist.bounds
+            for lo, hi in self._lr_declared_bounds()
         ]
         support = np.asarray(
             getattr(self.dist, "support", (0.0, 0.0)), dtype=float
@@ -1964,7 +1975,7 @@ class LikelihoodRatioMixin:
                 unsettled += bool(sides)
                 lower[i], upper[i] = to_value(lo), to_value(hi)
         if unsettled:
-            _warn_unsettled(f"on {what} for {unsettled} of {n} value(s)")
+            warn_unsettled(f"on {what} for {unsettled} of {n} value(s)")
         if failed:
             warnings.warn(
                 f"The likelihood-ratio bound on {what} could not be found "
@@ -2132,53 +2143,26 @@ class LikelihoodRatioMixin:
                 ends = (_LN_TINY, _LN_MAX)
                 value = np.exp
 
-        # A bound is solved once per function, time, level and side, and
-        # kept: the sf, ff and Hf bands are one band, and a one-sided
-        # bound at alpha is an end of the two-sided one at 2 alpha.
-        kind = "survival" if survival else on
-        cache = self.__dict__.setdefault("_lr_bands", {})
-        # The keys of the bounds whose search did not converge
-        unsure = self.__dict__.setdefault("_lr_unsettled", set())
-        lower = np.full(t.shape, np.nan)
-        upper = np.full(t.shape, np.nan)
-        failed: list[float] = []
-        unsettled_at: list[float] = []
-        hints: dict[float, npt.NDArray] = {}
-        with np.errstate(all="ignore"):
-            for i in np.argsort(t, kind="stable"):
-                time = t[i]
-                key_lo = (kind, float(time), *self._lr_key(-1, crit, -1))
-                key_hi = (kind, float(time), *self._lr_key(-1, crit, 1))
-                need_lo = want_lower and key_lo not in cache
-                need_hi = want_upper and key_hi not in cache
-                if need_lo or need_hi:
-                    self._cb_lr_time(
-                        lambda theta: psi_of(time, theta),
-                        free,
-                        crit,
-                        ends,
-                        (key_lo, key_hi),
-                        (need_lo, need_hi),
-                        hints,
-                    )
-                lo = cache[key_lo] if want_lower else np.nan
-                hi = cache[key_hi] if want_upper else np.nan
-                if (want_lower and np.isnan(lo)) or (
-                    want_upper and np.isnan(hi)
-                ):
-                    failed.append(float(time))
-                if (want_lower and key_lo in unsure) or (
-                    want_upper and key_hi in unsure
-                ):
-                    unsettled_at.append(float(time))
-                lower[i], upper[i] = value(lo), value(hi)
-
+        lower, upper, failed, unsettled_at = self._lr_band(
+            t,
+            np.argsort(t, kind="stable"),
+            psi_of,
+            lambda time: (float(time),),
+            "survival" if survival else on,
+            free,
+            crit,
+            ends,
+            value,
+            (want_lower, want_upper),
+        )
         if unsettled_at:
-            _warn_unsettled(f"at t = {sorted(set(unsettled_at))}")
+            at = sorted({float(t[i]) for i in unsettled_at})
+            warn_unsettled(f"at t = {at}")
         if failed:
+            at = sorted({float(t[i]) for i in failed})
             warnings.warn(
                 "The likelihood-ratio bound could not be found at "
-                f"t = {sorted(set(failed))} (the constrained optimiser "
+                f"t = {at} (the constrained optimiser "
                 "failed from every start); nan is returned there. "
                 "method='wald' gives a bound in its place.",
                 RuntimeWarning,
@@ -2194,6 +2178,73 @@ class LikelihoodRatioMixin:
             return lower
         else:
             return upper
+
+    def _lr_band(
+        self,
+        queries: Any,
+        order: Any,
+        psi_of: Callable[[Any, npt.NDArray], float],
+        key_of: Callable[[Any], tuple],
+        kind: str,
+        free: list[int],
+        crit: float,
+        ends: tuple[float, float],
+        value: Callable[[Any], Any],
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on ``psi_of(query, theta)`` at
+        each of ``queries`` (a band's times; a regression model's pairs of
+        time and covariates), searched in ``order``: ``(lower, upper)``,
+        each carried from the psi scale by ``value``, and the positions
+        of the queries where a side asked for (``want``) was not found,
+        and where a side's search did not converge (for the caller's
+        warnings).
+
+        A bound is solved once per function (``kind``), query (by
+        ``key_of``), level and side, and kept: the sf, ff and Hf bands
+        are one band, and a one-sided bound at alpha is an end of the
+        two-sided one at 2 alpha. Each side's search starts from where
+        the query before it found its bound (``hints``; see
+        ``_cb_lr``)."""
+        want_lower, want_upper = want
+        cache = self.__dict__.setdefault("_lr_bands", {})
+        # The keys of the bounds whose search did not converge
+        unsure = self.__dict__.setdefault("_lr_unsettled", set())
+        n = len(queries)
+        lower = np.full(n, np.nan)
+        upper = np.full(n, np.nan)
+        failed: list[int] = []
+        unsettled_at: list[int] = []
+        hints: dict[float, npt.NDArray] = {}
+        with np.errstate(all="ignore"):
+            for i in order:
+                q = queries[i]
+                key_lo = (kind, *key_of(q), *self._lr_key(-1, crit, -1))
+                key_hi = (kind, *key_of(q), *self._lr_key(-1, crit, 1))
+                need_lo = want_lower and key_lo not in cache
+                need_hi = want_upper and key_hi not in cache
+                if need_lo or need_hi:
+                    self._cb_lr_time(
+                        lambda theta: psi_of(q, theta),
+                        free,
+                        crit,
+                        ends,
+                        (key_lo, key_hi),
+                        (need_lo, need_hi),
+                        hints,
+                    )
+                lo = cache[key_lo] if want_lower else np.nan
+                hi = cache[key_hi] if want_upper else np.nan
+                if (want_lower and np.isnan(lo)) or (
+                    want_upper and np.isnan(hi)
+                ):
+                    failed.append(int(i))
+                if (want_lower and key_lo in unsure) or (
+                    want_upper and key_hi in unsure
+                ):
+                    unsettled_at.append(int(i))
+                lower[i], upper[i] = value(lo), value(hi)
+        return lower, upper, failed, unsettled_at
 
     def _cb_lr_time(
         self,
@@ -2388,74 +2439,29 @@ class LikelihoodRatioMixin:
         *Statistical Methods for Reliability Data*, trace the region so to
         draw it).
 
-        ``None`` with more or fewer than two free parameters, without a
-        positive definite covariance, where a ray does not meet the
-        boundary or the deviance cannot be computed on it, or where a
-        walk's point lies beyond the boundary on its ray: the region is
-        not star-shaped about the estimate, and the rays can miss part of
-        it.
+        ``None`` with more or fewer than two free parameters (see
+        ``_lr_traces``), without a positive definite covariance, where a
+        ray does not meet the boundary or the deviance cannot be computed
+        on it, or where a walk's point lies beyond the boundary on its
+        ray: the region is not star-shaped about the estimate, and the
+        rays can miss part of it.
         """
-        if len(free) != 2:
+        if not self._lr_traces(free):
             return None
         hess_inv = getattr(self, "hess_inv", None)
         if hess_inv is None or np.ndim(hess_inv) != 2:
             return None
-        theta_hat = np.array(self.params, dtype=float)
-        nll_hat = self._lr_neg_ll(theta_hat)
-        coords, _ = self._lr_coords()
-        free_coords = [coords[j] for j in free]
-        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
-        slopes = np.array(
-            [coords[j].slope(theta_hat[j]) for j in free], dtype=float
-        )
-        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
-        cov_u = cov_u / np.outer(slopes, slopes)
-        try:
-            L = np.linalg.cholesky(cov_u)
-        except np.linalg.LinAlgError:
+        L = self._lr_wald_factor(free)
+        excess, u_hat, nll_hat = self._lr_ray_excess(free, crit)
+        if L is None or not np.isfinite(nll_hat):
             return None
-        if not (np.all(np.isfinite(L)) and np.isfinite(nll_hat)):
-            return None
-
-        def excess(u: npt.NDArray) -> float:
-            # The deviance less crit: inf where the likelihood is 0, nan
-            # where it cannot be right (see ``_lr_neg_ll``).
-            theta = theta_hat.copy()
-            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
-            nll = self._lr_neg_ll(theta)
-            if nll == np.inf:
-                return np.inf
-            return 2.0 * (nll - nll_hat) - crit
 
         def crossing(d: npt.NDArray) -> float | None:
-            # The radius along u_hat + r d at which the deviance is crit.
-            r_lo, r_hi = 0.0, float(np.sqrt(crit))
-            f_hi = excess(u_hat + r_hi * d)
-            for _ in range(60):
-                if not np.isfinite(f_hi):
-                    return None
-                if f_hi > 0.0:
-                    break
-                r_lo, r_hi = r_hi, 2.0 * r_hi
-                f_hi = excess(u_hat + r_hi * d)
-            else:
-                return None
-            r = brentq(
-                lambda r: excess(u_hat + r * d),
-                r_lo,
-                r_hi,
-                xtol=1e-12 * r_hi,
-                rtol=1e-12,
-            )
-            # Just inside: a point of the region.
-            return float(r) * (1.0 - 1e-10)
+            return self._lr_crossing(excess, u_hat, d, crit)
 
         trace = []
         with np.errstate(all="ignore"):
-            rays = self._LR_TRACE_RAYS
-            for k in range(rays):
-                angle = 2.0 * np.pi * k / rays
-                d = L @ np.array([np.cos(angle), np.sin(angle)])
+            for d in self._lr_trace_rays(L):
                 r = crossing(d)
                 if r is None:
                     return None
@@ -2473,6 +2479,99 @@ class LikelihoodRatioMixin:
                         return None
                     trace.append(u_hat + r * offset / size)
         return trace
+
+    def _lr_traces(self, free: list[int]) -> bool:
+        """Whether ``_lr_trace`` traces the region of the parameters
+        ``free``: with two of them, where 64 rays cover its boundary. (A
+        regression model's searches trace more, ``_lr_trace_rays``.)"""
+        return len(free) == 2
+
+    def _lr_trace_rays(self, L: npt.NDArray) -> list[npt.NDArray]:
+        """The directions of ``_lr_trace``'s rays, in the search
+        coordinates: ``_LR_TRACE_RAYS`` angles evenly spaced in the Wald
+        metric, whose Cholesky factor is ``L``."""
+        rays = self._LR_TRACE_RAYS
+        out = []
+        for k in range(rays):
+            angle = 2.0 * np.pi * k / rays
+            out.append(L @ np.array([np.cos(angle), np.sin(angle)]))
+        return out
+
+    def _lr_wald_factor(self, free: list[int]) -> npt.NDArray | None:
+        """The Cholesky factor of the Wald covariance of the parameters
+        ``free`` in their search coordinates, or ``None`` where it is not
+        positive definite."""
+        theta_hat = np.array(self.params, dtype=float)
+        coords, _ = self._lr_coords()
+        slopes = np.array(
+            [coords[j].slope(theta_hat[j]) for j in free], dtype=float
+        )
+        hess_inv = getattr(self, "hess_inv", None)
+        if hess_inv is None:
+            return None
+        cov_u = np.asarray(hess_inv, dtype=float)[np.ix_(free, free)]
+        cov_u = cov_u / np.outer(slopes, slopes)
+        try:
+            L = np.linalg.cholesky(cov_u)
+        except np.linalg.LinAlgError:
+            return None
+        return L if np.all(np.isfinite(L)) else None
+
+    def _lr_ray_excess(
+        self, free: list[int], crit: float
+    ) -> tuple[Callable[[npt.NDArray], float], npt.NDArray, float]:
+        """``(excess, u_hat, nll_hat)``: the deviance less ``crit`` at a
+        point ``u`` of the search coordinates of the parameters ``free``
+        (``inf`` where the likelihood is 0, ``nan`` where it cannot be
+        right, see ``_lr_neg_ll``), the estimate in those coordinates and
+        the negative log-likelihood there."""
+        theta_hat = np.array(self.params, dtype=float)
+        nll_hat = self._lr_neg_ll(theta_hat)
+        coords, _ = self._lr_coords()
+        free_coords = [coords[j] for j in free]
+        u_hat = np.array([coords[j].to_u(theta_hat[j]) for j in free])
+
+        def excess(u: npt.NDArray) -> float:
+            theta = theta_hat.copy()
+            theta[free] = [c.from_u(v) for c, v in zip(free_coords, u)]
+            nll = self._lr_neg_ll(theta)
+            if nll == np.inf:
+                return np.inf
+            return 2.0 * (nll - nll_hat) - crit
+
+        return excess, u_hat, nll_hat
+
+    @staticmethod
+    def _lr_crossing(
+        excess: Callable[[npt.NDArray], float],
+        u_hat: npt.NDArray,
+        d: npt.NDArray,
+        crit: float,
+    ) -> float | None:
+        """The radius along ``u_hat + r d`` at which ``excess`` (see
+        ``_lr_ray_excess``) is 0, a hair inside; ``None`` where the ray
+        does not meet the boundary, or the deviance is not finite on
+        the way."""
+        r_lo, r_hi = 0.0, float(np.sqrt(crit))
+        f_hi = excess(u_hat + r_hi * d)
+        for _ in range(60):
+            if not np.isfinite(f_hi):
+                return None
+            if f_hi > 0.0:
+                break
+            r_lo, r_hi = r_hi, 2.0 * r_hi
+            f_hi = excess(u_hat + r_hi * d)
+        else:
+            return None
+        r = brentq(
+            lambda r: excess(u_hat + r * d),
+            r_lo,
+            r_hi,
+            xtol=1e-12 * r_hi,
+            rtol=1e-12,
+        )
+        # Just inside: a point of the region.
+        return float(r) * (1.0 - 1e-10)
 
     def _cb_lr_psi_bounds(
         self,

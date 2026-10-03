@@ -231,6 +231,10 @@ class ParametricRegressionModel(
     _information: "tuple | None" = None
     #: ``(point, covariance)`` of the last covariance computed.
     _covariance_cache: "tuple | None" = None
+    #: The likelihood-ratio searches of ``cb`` / ``param_cb`` with
+    #: ``method="lr"`` (``_likelihood_ratio.lr_search``), with what they
+    #: have found, kept while the parameters and data stay as they are.
+    _lr_searches: "list | None" = None
     # The information criteria's sample size ``_ic_n`` and their caches
     # ``_aic``, ``_bic``, ``_aic_c`` are InformationCriteriaMixin's.
 
