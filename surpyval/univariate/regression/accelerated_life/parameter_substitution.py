@@ -28,6 +28,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
@@ -458,6 +459,7 @@ class ParameterSubstitutionFitter(
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
         data.add_covariates(Z_arr)
+        check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
         # of an interval row).
         x_arr: npt.NDArray = (

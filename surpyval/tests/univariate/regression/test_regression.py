@@ -428,3 +428,85 @@ def test_quiet_functions_outside_the_support():
             np.testing.assert_allclose(m.Hf([-1.0], [0.0]), [0.0])
             np.testing.assert_allclose(m.df([-1.0], [0.0]), [0.0])
         assert np.isfinite(cox.check_ph("rank").loc["GLOBAL", "statistic"])
+
+
+# -- times outside the baseline's support (#565) ----------------------------
+def _support_data():
+    rng = np.random.default_rng(0)
+    x = np.round(rng.weibull(2, 30) * 10, 3)
+    Z = np.round(rng.normal(size=30), 3)
+    c = np.zeros(30)
+    c[::5] = 1
+    return x, Z, c
+
+
+_POSITIVE = [
+    f"{dist}{family}"
+    for family in ("AFT", "PH", "PO", "AH")
+    for dist in ("Weibull", "Gamma", "Exponential", "LogNormal")
+]
+
+
+@pytest.mark.parametrize("name", _POSITIVE)
+@pytest.mark.parametrize("c0", [0, 1], ids=["observed", "censored"])
+def test_565_a_negative_time_is_refused(name, c0):
+    # A censored -1 used to be fitted (an AFT warning only that it did
+    # not reach a verified maximum: its derivatives were nan there)
+    x, Z, c = _support_data()
+    x[0], c[0] = -1.0, c0
+    with pytest.raises(ValueError, match="outside the support of the"):
+        getattr(sp, name).fit(x, Z, c=c)
+
+
+@pytest.mark.parametrize("name", ["WeibullAFT", "GammaPH", "ExponentialAH"])
+def test_565_zero_is_refused_only_where_the_family_needs_it(name):
+    x, Z, c = _support_data()
+    x[0], c[0] = 0.0, 0
+    # An event at 0: outside a Weibull's (0, inf), as for Weibull.fit
+    with pytest.raises(ValueError, match="outside the support"):
+        getattr(sp, name).fit(x, Z, c=c)
+    # A unit censored at 0 tells nothing, but is not outside it
+    c[0] = 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        getattr(sp, name).fit(x, Z, c=c)
+
+
+@pytest.mark.parametrize("name", ["NormalAFT", "GumbelPH", "LogisticPO"])
+def test_565_a_baseline_on_the_whole_line_takes_negative_times(name):
+    x, Z, c = _support_data()
+    x[0] = -1.0
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        getattr(sp, name).fit(x, Z, c=c)
+
+
+def test_565_every_entry_point_refuses_a_negative_time():
+    import pandas as pd
+
+    from surpyval import AcceleratedLife
+    from surpyval.life_models import Power
+
+    x, Z, c = _support_data()
+    x[0], c[0] = -1.0, 1
+    df = pd.DataFrame({"x": x, "c": c, "z": Z})
+    ids = np.arange(30)
+    calls = {
+        "fit": lambda f: f.fit(x, Z, c=c),
+        "init": lambda f: f.fit(x, Z, c=c, init=[10.0, 2.0, 0.0]),
+        "fit_from_df": lambda f: f.fit_from_df(
+            df, x_col="x", c_col="c", Z_cols="z"
+        ),
+        "formula": lambda f: f.fit_from_df(
+            df, x_col="x", c_col="c", formula="z"
+        ),
+        "fit_tvc": lambda f: f.fit_tvc(ids, np.full(30, -2.0), x, c, Z),
+    }
+    for fitter in (sp.WeibullAFT, sp.WeibullPH, sp.WeibullPO, sp.WeibullAH):
+        for name, call in calls.items():
+            with pytest.raises(ValueError, match="outside the support"):
+                call(fitter)
+    with pytest.raises(ValueError, match="outside the support"):
+        AcceleratedLife(Weibull, Power).fit(x, Z=np.abs(Z) + 1, c=c)
+    with pytest.raises(ValueError, match="outside the support"):
+        WeibullFrailty.fit(x, Z, c=c, groups=ids % 5)

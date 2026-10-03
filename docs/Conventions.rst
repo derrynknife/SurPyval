@@ -140,6 +140,8 @@ Other areas of the package add a few more names, always with the same meaning:
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
 
+A parametric fit refuses times its distribution cannot describe, with a ``ValueError`` that says so: for a distribution on :math:`(0, \infty)` (Weibull, Gamma, Exponential, LogNormal, ...) an observed time at or below 0, or a time left censored at or below 0. A unit right censored at 0 is accepted (it carries no information). A parametric regression on such a baseline (the AFT, PH, PO and AH families, accelerated life and frailty models, by ``fit``, ``fit_from_df``, a formula or ``fit_tvc``) also refuses a negative time that is censored, as R's ``survreg`` and lifelines do: no unit can be censored before time 0, and the regression likelihoods are not defined there. A baseline on the whole line (Normal, Gumbel, Logistic) takes negative times.
+
 Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
 ``DataFrame`` and the names of its columns in place of these arrays, passes
 every other option to ``fit``, and gives the model ``fit`` gives on the same

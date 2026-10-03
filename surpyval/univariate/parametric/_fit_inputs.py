@@ -624,8 +624,18 @@ class FitInputsMixin:
             )
             raise ValueError(detail)
 
-    def _check_inside_support(self, surv_data: SurpyvalData) -> None:
-        """Every observation leaves the event some probability."""
+    def _check_inside_support(
+        self, surv_data: SurpyvalData, every_row: bool = False
+    ) -> None:
+        """Every observation leaves the event some probability.
+
+        With ``every_row`` -- the regression fits on this distribution
+        (#565) -- a time below the support's lower end is refused whatever
+        its censoring: a unit cannot be censored before the support
+        begins (a negative time for a positive distribution is a mistake
+        in the data, which R's ``survreg`` and lifelines refuse too), and
+        the regression likelihoods are not defined there.
+        """
         lower, upper = self.support
         # One line that names the bounds as the check applies them: an
         # observation must lie strictly inside, so the bounds are written
@@ -666,6 +676,15 @@ class FitInputsMixin:
                 # start with an infinite likelihood).
                 | ((x_sd >= upper) & (c_sd == 1))
             )
+        if every_row and np.isfinite(lower):
+            below = (x_sd if x_sd.ndim == 1 else x_sd[:, 0]) < lower
+            if (below & ~bad).any():
+                detail += (
+                    f" A time below {lower} is outside the support "
+                    "whatever its censoring: a unit cannot be censored "
+                    f"before {lower}."
+                )
+            bad = bad | below
         if bad.any():
             # A failure at exactly 0 is a unit dead on arrival, which
             # the zero-inflated model is for; a new user will not know

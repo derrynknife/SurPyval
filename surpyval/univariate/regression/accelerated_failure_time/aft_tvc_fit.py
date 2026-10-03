@@ -200,6 +200,7 @@ from .._fit_skeleton import (  # noqa: E402
     MirroredDistributionAttrs,
     alias_coefficients,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     free_coefficients,
     judge_search,
@@ -401,6 +402,10 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             Z = Z.reshape(-1, 1)
         p = Z.shape[1]
         _validate_full_coverage(x, tl, ident)
+        # The exit times inside the baseline's support, as for fit (#565)
+        check_baseline_support(
+            self, SurpyvalData(x, c, n, None, group_and_sort=False)
+        )
         grp = _grouped_episodes(x, c, n, tl, ident)
         phi_param_map = {"beta_" + str(j): j for j in range(p)}
         # A column the data cannot determine is held at 0 and reported as
