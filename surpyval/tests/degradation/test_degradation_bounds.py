@@ -221,7 +221,7 @@ def test_analytic_rejects_lfp_life_model():
     # The analytic correction is only implemented for a plain life model; a
     # limited-failure-population component must route to the bootstrap.
     m, _ = _fit(7)
-    m.life_model.p = 0.8  # pretend an LFP was fitted
+    m.life_model.lfp_p = 0.8  # pretend an LFP was fitted
     with pytest.raises(ValueError, match="limited-failure-population"):
         m.cb([10.0], on="sf", method="analytic")
 

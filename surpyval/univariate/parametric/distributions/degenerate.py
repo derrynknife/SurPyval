@@ -30,6 +30,7 @@ from surpyval.serialisation import (
     write_json,
 )
 from surpyval.utils.shapes import keeps_query_shape
+from surpyval.utils.validation import warn_outside_unit_interval
 
 # The serialisation of the two classes. They are the model themselves
 # (every method is a classmethod), so the instance-method ``to_json`` of
@@ -79,6 +80,13 @@ def _constant(x: npt.ArrayLike, value: float) -> npt.NDArray:
     return np.where(np.isnan(x), np.nan, np.full_like(x, value))
 
 
+def _quantile(p: npt.ArrayLike, value: float) -> npt.NDArray:
+    """A point mass's quantile, ``value`` at every probability in [0, 1];
+    NaN, with one warning, outside it (#611), as every model's ``qf``."""
+    q = _constant(p, value)
+    return np.where(warn_outside_unit_interval(p), np.nan, q)
+
+
 class NeverOccurs(Distribution):
     """The event never occurs: ``R(x) = 1`` everywhere (mass at +inf).
 
@@ -125,7 +133,7 @@ class NeverOccurs(Distribution):
     @classmethod
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return _constant(p, np.inf)
+        return _quantile(p, np.inf)
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:
@@ -212,7 +220,7 @@ class InstantlyOccurs(Distribution):
     @classmethod
     @keeps_query_shape
     def qf(cls, p: npt.ArrayLike, *args: Any, **kwargs: Any) -> npt.NDArray:
-        return _constant(p, 0.0)
+        return _quantile(p, 0.0)
 
     @classmethod
     def mean(cls, *args: Any, **kwargs: Any) -> float:

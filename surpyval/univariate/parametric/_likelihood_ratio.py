@@ -1446,7 +1446,7 @@ class LikelihoodRatioMixin:
         method: str
         params: npt.NDArray
         gamma: float
-        p: float
+        lfp_p: float
         f0: float
         offset: bool
         lfp: bool
@@ -1530,7 +1530,7 @@ class LikelihoodRatioMixin:
         model's searches supply theirs, ``RegressionLikelihoodRatio``.)"""
         return float(
             self.dist._neg_ll_func(
-                self.surv_data, *theta, self.gamma, self.f0, self.p
+                self.surv_data, *theta, self.gamma, self.f0, self.lfp_p
             )
         )
 
@@ -1557,7 +1557,7 @@ class LikelihoodRatioMixin:
             not (np.isnan(lo) or np.isnan(hi))
             and self.gamma == 0
             and self.f0 == 0
-            and self.p == 1
+            and self.lfp_p == 1
         )
 
     def _lr_function(self, name: str) -> Callable[..., Any]:
@@ -1646,7 +1646,7 @@ class LikelihoodRatioMixin:
                 )
                 windows.append((inputs, n))
             if plain:
-                lean = (*terms, *windows, (self.gamma, self.f0, self.p))
+                lean = (*terms, *windows, (self.gamma, self.f0, self.lfp_p))
         self.__dict__["_lr_lean"] = (data, lean)
         return lean
 

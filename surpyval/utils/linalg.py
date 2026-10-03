@@ -46,6 +46,25 @@ def safe_inv(m: npt.NDArray) -> npt.NDArray:
         return np.linalg.pinv(m)
 
 
+def standard_errors_of(covariance: npt.ArrayLike) -> npt.NDArray:
+    """
+    The standard errors of a covariance matrix, the square roots of its
+    diagonal in its order, and ``nan`` where a variance is negative or
+    ``nan`` (a parameter on a boundary, or not estimated), without the
+    invalid-value warning a bare ``sqrt`` gives. What every model's
+    ``standard_errors()`` returns (#613).
+
+    Examples
+    --------
+    >>> from surpyval.utils.linalg import standard_errors_of
+    >>> standard_errors_of([[4.0, 1.0], [1.0, -1e-9]])
+    array([ 2., nan])
+    """
+    var = np.diag(np.atleast_2d(np.asarray(covariance, dtype=float)))
+    with np.errstate(invalid="ignore"):
+        return np.sqrt(np.where(var >= 0, var, np.nan))
+
+
 def safe_quadform(V: npt.NDArray, u: npt.NDArray) -> float:
     """
     The quadratic form ``u' V^{-1} u`` via ``solve``, falling back to the

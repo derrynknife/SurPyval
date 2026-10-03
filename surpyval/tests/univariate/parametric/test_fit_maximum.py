@@ -296,7 +296,9 @@ def test_other_estimators_do_not_maximise_the_likelihood(how):
 
 def test_models_not_fitted_by_maximum_likelihood():
     assert sp.Weibull.from_params([10, 2]).maximum == "not applicable"
-    assert sp.Weibull.from_params([10, 2], p=0.9).maximum == "not applicable"
+    assert (
+        sp.Weibull.from_params([10, 2], lfp_p=0.9).maximum == "not applicable"
+    )
     fitted = sp.Weibull.fit(WEIBULL_50)
     assert fitted.with_params([90, 2]).maximum == "not applicable"
     x = np.array([1.0, 2.0, 3.0, 4.0])

@@ -170,7 +170,7 @@ def test_sign_and_baseline_match_the_parametric_po():
     semi = sp.ProportionalOdds.fit(x, Z, c=c)
     par = sp.PO(sp.LogLogistic).fit(x, Z, c=c)
     np.testing.assert_allclose(semi.beta, par.params[2:], atol=0.05)
-    assert np.all(np.abs(semi.beta - [1.0, -0.5]) < 3 * semi.se)
+    assert np.all(np.abs(semi.beta - [1.0, -0.5]) < 3 * semi.standard_errors())
     t = np.array([5.0, 10.0, 20.0])
     np.testing.assert_allclose(
         semi.sf(t, [0.0, 0.0]), par.sf(t, [0.0, 0.0]), atol=0.02
@@ -195,7 +195,9 @@ def test_delayed_entry_splits_exactly():
     ]
     split = sp.ProportionalOdds.fit(xs, np.r_[Z, Z[:20]], c=cs, tl=tl)
     np.testing.assert_allclose(split.beta, whole.beta, rtol=1e-8)
-    np.testing.assert_allclose(split.se, whole.se, rtol=1e-6)
+    np.testing.assert_allclose(
+        split.standard_errors(), whole.standard_errors(), rtol=1e-6
+    )
     np.testing.assert_allclose(
         split.sf(x, Z), whole.sf(x, Z), rtol=1e-8, atol=1e-12
     )

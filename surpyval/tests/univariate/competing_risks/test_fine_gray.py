@@ -255,7 +255,9 @@ def test_606_large_scale_covariates_reach_the_same_maximum(scale):
     big = FineGray.fit(x, Z * scale, e, event=1)
     assert big.maximum == "verified"
     np.testing.assert_allclose(big.beta * scale, model.beta, rtol=1e-8)
-    np.testing.assert_allclose(big.se * scale, model.se, rtol=1e-6)
+    np.testing.assert_allclose(
+        big.standard_errors() * scale, model.standard_errors(), rtol=1e-6
+    )
     assert big.neg_ll() == pytest.approx(model.neg_ll(), rel=1e-12)
     np.testing.assert_allclose(
         big.cif([1.0, 5.0], Z[0] * scale), model.cif([1.0, 5.0], Z[0])

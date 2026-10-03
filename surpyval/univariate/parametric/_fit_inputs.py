@@ -452,7 +452,13 @@ class FitInputsMixin:
         if not offset:
             # A zero-inflated fit is checked too (#610): its point mass
             # makes 0 a possible failure time, but nothing lies below 0.
-            self._check_inside_support(surv_data, zero_inflated=zi)
+            # Every row, as the regressions on the distribution check it
+            # (#565): a censored time below the support was accepted
+            # (#611). An offset fit's support starts at ``gamma``, which
+            # is bounded by the smallest value, so nothing lies below it.
+            self._check_inside_support(
+                surv_data, every_row=True, zero_inflated=zi
+            )
 
         if how == "MPS":
             _check_mps_data(surv_data)
@@ -634,12 +640,14 @@ class FitInputsMixin:
     ) -> None:
         """Every observation leaves the event some probability.
 
-        With ``every_row`` -- the regression fits on this distribution
-        (#565) -- a time below the support's lower end is refused whatever
-        its censoring: a unit cannot be censored before the support
-        begins (a negative time for a positive distribution is a mistake
-        in the data, which R's ``survreg`` and lifelines refuse too), and
-        the regression likelihoods are not defined there.
+        With ``every_row`` -- the univariate fits (#611) and the
+        regression fits on this distribution (#565) -- a time below the
+        support's lower end is refused whatever its censoring: a unit
+        cannot be censored before the support begins (a negative time for
+        a positive distribution is a mistake in the data, which R's
+        ``survreg`` and lifelines refuse too), and the regression
+        likelihoods are not defined there. A censored time at the lower
+        end itself (a suspension at 0) is accepted.
 
         With ``zero_inflated`` (a ``zi=True`` fit, #610) the point mass at
         the support's lower end, 0, makes a failure at 0 (or before a left

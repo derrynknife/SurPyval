@@ -827,7 +827,7 @@ def test_efron_fit_unchanged_by_the_ragged_score(case):
     H = model.Hf([0.5, 1.0, 3.0], np.zeros((3, 2)), **stratum)
     beta, se, H0 = _EFRON_BEFORE_515[case]
     np.testing.assert_allclose(model.beta, beta, rtol=1e-12)
-    np.testing.assert_allclose(model.se, se, rtol=1e-12)
+    np.testing.assert_allclose(model.standard_errors(), se, rtol=1e-12)
     np.testing.assert_allclose(H, H0, rtol=1e-12)
 
 

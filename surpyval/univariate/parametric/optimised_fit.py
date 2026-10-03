@@ -30,7 +30,7 @@ from .fitters.mpp import mpp, mpp_from_ecfd
 from .fitters.mps import mps
 from .fitters.mps import offset_start as mps_offset_start
 from .fitters.mse import mse
-from .parametric import Parametric
+from .parametric import Parametric, renamed_lfp_fixed
 
 
 def _search_units(
@@ -317,8 +317,8 @@ class OptimisedFitMixin(FitInputsMixin):
 
         lfp : boolean, optional
             If :code:`True` fits a limited-failure-population model: an
-            extra parameter ``p``, the proportion of the population that
-            will ever fail (``1 - p`` never fails). MLE only. Defaults to
+            extra parameter ``lfp_p``, the proportion of the population that
+            will ever fail (``1 - lfp_p`` never fails). MLE only. Defaults to
             :code:`False`.
 
         tl : array like or scalar, optional
@@ -617,6 +617,7 @@ turnbull_estimator
         array([6.022, 1.351])
         """
         how = normalise_how(how)
+        fixed = renamed_lfp_fixed(self, fixed)
         x, c, n, t = surv_data.x, surv_data.c, surv_data.n, surv_data.t
         # Clamp the truncation values to the (possibly finite) support edges
         tl, tr = self._clamp_truncation_to_support(t, offset)
@@ -824,7 +825,9 @@ turnbull_estimator
         # backstop, since a non-finite parameter is never a valid answer
         # whatever produced it.
         _params = np.atleast_1d(np.asarray(model.params, dtype=float))
-        _extra = [getattr(model, name, None) for name in ("gamma", "p", "f0")]
+        _extra = [
+            getattr(model, name, None) for name in ("gamma", "lfp_p", "f0")
+        ]
         _extra = [float(v) for v in _extra if v is not None]
         if not (np.isfinite(_params).all() and np.isfinite(_extra).all()):
             raise ValueError(
@@ -856,7 +859,7 @@ turnbull_estimator
                         *model.params,
                         model.gamma,
                         model.f0,
-                        model.p,
+                        model.lfp_p,
                     )
                 )
 
@@ -864,9 +867,9 @@ turnbull_estimator
         # never overwrite the reserved offset / limited-failure /
         # zero-inflation attributes, which the survival functions rely on.
         # A distribution may legitimately name a parameter ``p`` (e.g.
-        # ``Geometric``, ``NegativeBinomial``); those remain available via
-        # ``model.params``.
-        reserved = {"gamma", "p", "f0"}
+        # ``Geometric``, ``NegativeBinomial``), which the model's ``p``
+        # property gives (#608).
+        reserved = {"gamma", "p", "lfp_p", "f0"}
         for k, v in zip(self.parameter_names, model.params):
             if k not in reserved:
                 setattr(model, k, v)
@@ -933,7 +936,9 @@ turnbull_estimator
         values = dict(
             zip(self.parameter_names, np.atleast_1d(results["params"]))
         )
-        values.update(gamma=results["gamma"], p=results["p"], f0=results["f0"])
+        values.update(
+            gamma=results["gamma"], lfp_p=results["lfp_p"], f0=results["f0"]
+        )
         named = ", ".join(f"{name} ({values[name]:.4g})" for name in runaway)
         one = len(runaway) == 1
         how_found = (
@@ -1076,7 +1081,7 @@ turnbull_estimator
             if zi:
                 results["f0"] = rest.pop()
             if lfp:
-                results["p"] = rest.pop()
+                results["lfp_p"] = rest.pop()
             results["_neg_ll"] = neg_ll
             results["log_likelihood"] = -neg_ll
             results["_covariance"] = None

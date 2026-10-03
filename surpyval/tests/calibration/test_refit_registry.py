@@ -329,7 +329,7 @@ def _parametric_params(model):
     if model.offset:
         out = [model.gamma] + out
     if model.lfp:
-        out.append(model.p)
+        out.append(model.lfp_p)
     if model.zi:
         out.append(model.f0)
     return np.array(out, dtype=float)

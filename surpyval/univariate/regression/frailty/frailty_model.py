@@ -48,6 +48,7 @@ from surpyval.utils.covariates import (
     renamed_coefficient,
 )
 from surpyval.utils.deprecation import ArrayMethod, RenamedAttribute
+from surpyval.utils.linalg import standard_errors_of
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
     BOUNDS,
@@ -313,10 +314,31 @@ class _SharedFrailty(
             self.parameter_names,
         )
 
-    def standard_errors(self) -> "dict[str, float]":
-        """Wald standard errors for each parameter, keyed by name."""
-        se = _standard_error(np.diag(self.covariance()))
-        return {name: float(s) for name, s in zip(self.parameter_names, se)}
+    def standard_errors(self) -> np.ndarray:
+        """Wald standard errors of the parameters, an array in the order of
+        ``parameter_names`` and of ``covariance()`` (``nan`` where a
+        variance is not positive), as on every model.
+
+        .. versionchanged:: 0.23
+           An array (#613); it was a dict keyed by parameter name. The
+           standard error of ``theta``, the last parameter, is
+           ``standard_errors()[-1]``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import WeibullFrailty
+        >>> rng = np.random.default_rng(0)
+        >>> group = np.repeat(np.arange(30), 4)
+        >>> Z = rng.normal(size=(120, 1))
+        >>> u = rng.gamma(2.0, 0.5, 30)[group]
+        >>> x = 10 * (rng.exponential(size=120) / (u * np.exp(0.5 * Z[:, 0])))
+        >>> model = WeibullFrailty.fit(x, Z, groups=group)
+        >>> se = model.standard_errors()
+        >>> se.shape == (len(model.parameter_names),)
+        True
+        """
+        return standard_errors_of(self.covariance())
 
     def param_cb(
         self,

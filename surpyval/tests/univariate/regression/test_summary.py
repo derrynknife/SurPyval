@@ -218,10 +218,7 @@ def test_frailty_summary_is_a_table():
         ("coefficients", "age"),
         ("frailty", "theta"),
     ]
-    se = model.standard_errors()
-    np.testing.assert_allclose(
-        table["se(coef)"], [se[n] for n in model.parameter_names]
-    )
+    np.testing.assert_allclose(table["se(coef)"], model.standard_errors())
     np.testing.assert_allclose(
         table["coef"],
         np.concatenate([model.dist_params, model.beta, [model.theta]]),

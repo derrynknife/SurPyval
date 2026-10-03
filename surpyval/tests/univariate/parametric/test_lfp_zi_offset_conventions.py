@@ -14,7 +14,7 @@ from surpyval import Weibull
 
 
 def test_df_matches_numeric_ff_derivative_for_lfp_zi():
-    m = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+    m = Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1)
     h = 1e-5
     for x in (2.0, 5.0, 9.0):
         num = (m.ff(x + h) - m.ff(x - h)) / (2 * h)
@@ -22,7 +22,7 @@ def test_df_matches_numeric_ff_derivative_for_lfp_zi():
 
 
 def test_hf_is_df_over_sf_for_lfp_zi():
-    m = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+    m = Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1)
     x = np.array([2.0, 5.0, 9.0])
     assert np.allclose(m.hf(x), m.df(x) / m.sf(x))
 
@@ -68,7 +68,7 @@ def test_cb_finite_at_boundary():
 
 def test_lfp_random_with_no_failures_drawn():
     np.random.seed(3)
-    m = Weibull.from_params([10, 3], p=0.05)
+    m = Weibull.from_params([10, 3], lfp_p=0.05)
     # With p = 0.05 and size 3 the draw usually has no failures; the
     # survival-data draw crashed on np.max of an empty array (#256). It is
     # random_data since #403 (random draws the lifetimes, here all inf).

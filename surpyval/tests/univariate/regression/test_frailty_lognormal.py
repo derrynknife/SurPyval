@@ -242,7 +242,7 @@ def test_recovers_frailty_variance_for_each_family():
     for family in ("lognormal", "gamma"):
         x, c, Z, g = _simulate(11, family=family, G=150, per=5)
         m = Frailty(Weibull, family=family).fit(x, Z=Z, c=c, groups=g)
-        se = m.standard_errors()
+        se = dict(zip(m.parameter_names, m.standard_errors()))
         assert abs(m.theta - 0.5) < 2.5 * se["theta"], (family, m.theta)
         assert abs(m.beta[0] - 0.7) < 2.5 * se["coef_0"], (family, m.beta)
 

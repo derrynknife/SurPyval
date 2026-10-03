@@ -348,3 +348,103 @@ def test_580_bounds_survive_a_round_trip_and_need_counts():
     del old["event_counts"]
     with pytest.raises(ValueError, match="counts of events and trials"):
         surv.from_dict(old).param_cb("p")
+
+
+# -- #608: a number of trials per row ---------------------------------------
+LOTS_X, LOTS_TRIALS, LOTS_N = [1, 0, 3, 2], [20, 50, 80, 50], [1, 2, 1, 1]
+
+
+def test_608_per_row_trials_estimate_p_from_all_the_trials():
+    model = Binomial.fit(LOTS_X, n_trials=LOTS_TRIALS, n=LOTS_N)
+    events = np.dot(LOTS_X, LOTS_N)
+    trials = np.dot(LOTS_TRIALS, LOTS_N)
+    assert model.params[1] == pytest.approx(events / trials, rel=1e-15)
+    # The maximum of the per-row likelihood
+    from scipy.optimize import minimize_scalar
+
+    def nll(p):
+        return -np.sum(
+            np.asarray(LOTS_N) * binom.logpmf(LOTS_X, LOTS_TRIALS, p)
+        )
+
+    best = minimize_scalar(nll, bounds=(1e-6, 0.5), method="bounded")
+    assert model.params[1] == pytest.approx(best.x, rel=1e-4)
+    # No single number of trials
+    assert np.isnan(model.params[0])
+
+
+def test_608_exact_bounds_hold_for_unequal_trials():
+    # The events in all the trials are Binomial(sum of trials, p) whatever
+    # the rows' sizes, so Clopper-Pearson on the totals is exact: scipy's
+    # binomtest on the same totals.
+    from scipy.stats import binomtest
+
+    model = Binomial.fit(LOTS_X, n_trials=LOTS_TRIALS, n=LOTS_N)
+    events = int(np.dot(LOTS_X, LOTS_N))
+    trials = int(np.dot(LOTS_TRIALS, LOTS_N))
+    ci = binomtest(events, trials).proportion_ci(confidence_level=0.95)
+    np.testing.assert_allclose(
+        model.param_cb("p"), [ci.low, ci.high], rtol=1e-10
+    )
+
+
+def test_608_equal_trials_per_row_are_the_scalar_fit():
+    a = Binomial.fit([2, 3, 1], n_trials=[5, 5, 5])
+    b = Binomial.fit([2, 3, 1], n_trials=5)
+    np.testing.assert_array_equal(a.params, b.params)
+    assert a.to_dict() == b.to_dict()
+
+
+def test_608_per_row_trials_round_trip_and_pickle():
+    import json
+    import pickle
+
+    model = Binomial.fit(LOTS_X, n_trials=LOTS_TRIALS)
+    text = json.dumps(model.to_dict(), allow_nan=False)
+    for restored in (
+        surv.from_dict(json.loads(text)),
+        pickle.loads(pickle.dumps(model)),
+    ):
+        np.testing.assert_array_equal(restored.params, model.params)
+        np.testing.assert_array_equal(
+            restored.param_cb("p"), model.param_cb("p")
+        )
+        np.testing.assert_array_equal(restored.support, [-1, 81])
+
+
+def test_608_functions_of_the_count_need_one_number_of_trials():
+    model = Binomial.fit(LOTS_X, n_trials=LOTS_TRIALS)
+    for call in (
+        lambda: model.sf(1),
+        lambda: model.df(1),
+        lambda: model.hf(1),
+        lambda: model.qf(0.5),
+        lambda: model.mean(),
+        lambda: model.random(3),
+    ):
+        with pytest.raises(ValueError, match="no single n"):
+            call()
+    ten = model.with_params([10, model.params[1]])
+    np.testing.assert_allclose(
+        ten.sf([0, 1]), binom.sf([0, 1], 10, model.params[1])
+    )
+
+
+@pytest.mark.parametrize(
+    "n_trials", [[20, 50], [0, 50, 80, 50], [1.5, 50, 80, 50], [[20] * 4]]
+)
+def test_608_per_row_trials_are_checked(n_trials):
+    with pytest.raises(ValueError, match="n_trials"):
+        Binomial.fit(LOTS_X, n_trials=n_trials)
+
+
+def test_608_empty_data_is_refused_as_every_fit_refuses_it():
+    # It gave p = nan with numpy's warning; with a trial count per row it
+    # would have failed inside a reduction.
+    with pytest.raises(ValueError, match="'x' is empty"):
+        Binomial.fit([], n_trials=5)
+
+
+def test_608_a_row_with_more_events_than_trials_is_refused():
+    with pytest.raises(ValueError, match="between 0 and 'n_trials'"):
+        Binomial.fit([1, 0, 30], n_trials=[20, 50, 20])

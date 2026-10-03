@@ -46,12 +46,16 @@ def test_qf_not_reached_is_nan():
     assert np.isnan(model.median)
 
 
-def test_qf_invalid_p_raises():
+def test_611_qf_outside_unit_interval_warns_nan():
+    # As every model's qf (#576): a probability outside [0, 1] is NaN
+    # with one warning, not a ValueError; 0 is the first step.
     model = surpyval.KaplanMeier.fit(np.array([1.0, 2.0, 3.0]))
-    with pytest.raises(ValueError):
-        model.qf(0.0)
-    with pytest.raises(ValueError):
-        model.qf(1.5)
+    assert model.qf(0.0) == 1.0
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]") as caught:
+        q = model.qf([-0.5, 0.5, 1.5])
+    assert len(caught) == 1
+    assert caught[0].filename == __file__
+    np.testing.assert_array_equal(q, [np.nan, 2.0, np.nan])
 
 
 def test_quantile_cb_brookmeyer_crowley_inversion():

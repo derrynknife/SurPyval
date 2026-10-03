@@ -114,9 +114,13 @@ def test_fine_gray_matches_crr(ref_id):
     # SurPyval's standard errors are the model-based ones (crr's invinf),
     # documented as such: Fine and Gray's sandwich (crr's var) is not
     # implemented.
-    assert_allclose(model.se, np.sqrt(np.diag(ref["var_naive"])), **FIT)
+    assert_allclose(
+        model.standard_errors(), np.sqrt(np.diag(ref["var_naive"])), **FIT
+    )
     assert not np.allclose(
-        model.se, np.sqrt(np.diag(ref["var_sandwich"])), rtol=1e-3
+        model.standard_errors(),
+        np.sqrt(np.diag(ref["var_sandwich"])),
+        rtol=1e-3,
     )
     for j, z in enumerate(ref["z_new"]):
         assert_allclose(model.cif(ref["times"], z), ref["cif"][:, j], **FIT)

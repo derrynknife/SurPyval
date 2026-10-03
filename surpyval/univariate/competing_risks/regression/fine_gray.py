@@ -624,7 +624,10 @@ class FineGrayModel(
     #: The coefficients (``beta``, the log subdistribution hazard
     #: ratios), their standard errors, Wald p-values and covariance.
     coefficients: npt.NDArray
-    se: npt.NDArray
+    #: The coefficients' standard errors, ``standard_errors()``.
+    _se: npt.NDArray
+    #: ``standard_errors()``'s name before v0.23, for one release (#613).
+    se = RenamedToMethod("standard_errors", "_se")
     p_values: npt.NDArray
     #: The coefficients' covariance, ``covariance()`` (#605).
     _covariance: npt.NDArray
@@ -661,7 +664,7 @@ class FineGrayModel(
         self.center = np.asarray(
             fit.get("center", np.zeros(np.size(fit["beta"]))), dtype=float
         )
-        self.se = fit["se"]
+        self._se = fit["se"]
         self.p_values = fit["p_values"]
         self._covariance = fit["cov"]
         self._times = fit["baseline_times"]
@@ -686,8 +689,10 @@ class FineGrayModel(
         return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
-        """The coefficients' standard errors, from :meth:`covariance`."""
-        return self.se
+        """The coefficients' standard errors, from :meth:`covariance`.
+        ``se``, the attribute before v0.23, still gives them, with a
+        ``DeprecationWarning``, until v0.24."""
+        return self._se
 
     def _ic_k(self) -> int:
         # The estimated coefficients (an aliased one, nan, is not).
@@ -719,7 +724,7 @@ class FineGrayModel(
             # native type: a numpy scalar label breaks JSON/BSON
             "cause": to_native(self.cause),
             "beta": np.asarray(self.beta, dtype=float).tolist(),
-            "se": np.asarray(self.se, dtype=float).tolist(),
+            "se": np.asarray(self._se, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
             "covariance": np.asarray(self._covariance, dtype=float).tolist(),
@@ -833,7 +838,7 @@ class FineGrayModel(
             "Coefficients (beta'Z acts on the subdistribution hazard):",
         ]
         names = coefficient_names(self, np.size(self.beta))
-        for nm, b, s, p in zip(names, self.beta, self.se, self.p_values):
+        for nm, b, s, p in zip(names, self.beta, self._se, self.p_values):
             lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
         return "\n".join(lines)
 

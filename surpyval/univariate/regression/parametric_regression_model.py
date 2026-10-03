@@ -13,7 +13,11 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils.covariates import loaded_coefficient_names
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import CallableList, RenamedAttribute
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    CallableList,
+    RenamedAttribute,
+)
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import (
     check_paired_rows,
@@ -180,7 +184,9 @@ class ParametricRegressionModel(
     #: models' neutral values (no offset, no defective fraction, no zero
     #: inflation), which ``to_dict`` stores.
     gamma: float = 0.0
-    p: float = 1.0
+    lfp_p: float = 1.0
+    #: ``lfp_p``'s name before v0.23, as on the univariate models (#608).
+    p = RenamedAttribute("lfp_p", REMOVED_IN_NEXT)
     f0: float = 0.0
     #: The covariate point the baseline parameters are at: zeros (or
     #: ``None``, for an accelerated life model) when they are those of a
@@ -345,7 +351,8 @@ class ParametricRegressionModel(
         out["k_dist"] = int(self.k_dist)
         out["fixed"] = {str(k): float(v) for k, v in self.fixed.items()}
         out["gamma"] = float(self.gamma)
-        out["p"] = float(self.p)
+        # The proportion's key before v0.23, kept for every reader (#608).
+        out["p"] = float(self.lfp_p)
         out["f0"] = float(self.f0)
         if self._has_center():
             # Only a baseline at the covariate means (center=True, #463) is
@@ -545,7 +552,7 @@ class ParametricRegressionModel(
         out._restored = True
         out._data_summary = model_dict.get("data_summary")
         out.gamma = float(model_dict.get("gamma", 0.0))
-        out.p = float(model_dict.get("p", 1.0))
+        out.lfp_p = float(model_dict.get("p", 1.0))
         out.f0 = float(model_dict.get("f0", 0.0))
         if kind != ACCELERATED_LIFE:
             # A dict without one has its baseline at Z = 0 (#463).

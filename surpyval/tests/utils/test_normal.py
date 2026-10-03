@@ -129,7 +129,11 @@ def test_distributions_unchanged(dist):
             want_sf = scipy_norm.sf(np.log(x), 3.0, 4.0)
             want_qf = np.exp(scipy_norm.ppf(Q, 3.0, 4.0))
         np.testing.assert_array_equal(D.sf(x, 3.0, 4.0), want_sf)
-        np.testing.assert_array_equal(D.qf(Q, 3.0, 4.0), want_qf)
+        # Q holds -0.1 and 1.1, whose quantiles are NaN, as scipy's, now
+        # with the one warning every qf gives there (#611).
+        with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+            got_qf = D.qf(Q, 3.0, 4.0)
+        np.testing.assert_array_equal(got_qf, want_qf)
 
 
 def test_no_overflow_warning_far_out():

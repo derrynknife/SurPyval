@@ -1375,7 +1375,7 @@ Lower is better. Because the likelihood is a property of the parameters and the
 data, not of how they were found, these criteria are available after a fit by
 *any* method (but not for a model built with ``from_params``, which has no
 data). :math:`k` is the number of *estimated* parameters -- the
-distribution's, plus ``gamma``, ``p`` and ``f0`` when they are fitted -- so a
+distribution's, plus ``gamma``, ``lfp_p`` and ``f0`` when they are fitted -- so a
 parameter held with ``fixed`` is not counted: a Weibull with its shape fixed is
 penalised as the one-parameter model it is, and scores exactly as the
 equivalent Rayleigh does.

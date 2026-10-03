@@ -78,7 +78,7 @@ def test_proportional_odds_coefficient_coverage():
         t = 10.0 * (u / (1 - u) * np.exp(Z @ beta)) ** 0.5
         x, c = random_right_censoring(t, rng, 30.0)
         model = sp.ProportionalOdds.fit(x, Z, c=c)
-        est[r], se[r] = model.beta, model.se
+        est[r], se[r] = model.beta, model.standard_errors()
         bounds = [model.param_cb(name) for name in model.parameter_names]
         lo[r], hi[r] = np.array(bounds).T
     check_coverage(lo, hi, beta, 0.95, "ProportionalOdds param_cb")

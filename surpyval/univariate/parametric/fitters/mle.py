@@ -892,7 +892,7 @@ def mle(model: "Parametric") -> Any:
         )
         results["gamma"] = gamma
         results["f0"] = f0
-        results["p"] = p
+        results["lfp_p"] = p
         results["params"] = params
 
         cov_matrix, hess_inv = _covariance(

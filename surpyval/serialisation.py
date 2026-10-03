@@ -819,13 +819,32 @@ def _check_restored_parametric(model: Any) -> None:
     """Bounds-check a restored univariate parametric model, including the
     limited-failure-population ``p`` and zero-inflation ``f0`` fractions,
     which are probabilities."""
-    check_parameters(model.dist, model.params)
-    for flag, attr in (("lfp", "p"), ("zi", "f0")):
+    params = np.atleast_1d(np.asarray(model.params, dtype=float))
+    trials = getattr(model, "_n_trials", None)
+    if trials is not None:
+        # A Binomial fitted to rows of different numbers of trials has no
+        # single n (#608): its n is NaN, and the trials of each row are
+        # checked instead, the largest standing in for n.
+        trials = np.asarray(trials, dtype=float)
+        whole = np.isfinite(trials) & (trials == np.round(trials))
+        if (
+            trials.ndim != 1
+            or trials.size == 0
+            or not (whole.all() and (trials >= 1).all())
+        ):
+            raise ValueError(
+                "The serialised 'n_trials' must be whole numbers of "
+                "trials, each at least 1."
+            )
+        params = np.r_[trials.max(), params[1:]]
+    check_parameters(model.dist, params)
+    # The dict's "p" is the limited-failure proportion, ``lfp_p`` (#608).
+    for flag, attr, key in (("lfp", "lfp_p", "p"), ("zi", "f0", "f0")):
         if getattr(model, flag, False):
             value = float(getattr(model, attr))
             if not 0.0 <= value <= 1.0:
                 raise ValueError(
-                    f"The serialised '{attr}'={value!r} is a proportion and"
+                    f"The serialised '{key}'={value!r} is a proportion and"
                     " must be in [0, 1]."
                 )
     if getattr(model, "offset", False) and not np.isfinite(

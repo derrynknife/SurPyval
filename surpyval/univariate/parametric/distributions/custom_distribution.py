@@ -56,9 +56,9 @@ def _model_attribute_names() -> frozenset[str]:
     without a list to keep in step. ``res`` and ``log_likelihood`` are the
     two a fitter sets that the class does not declare.
 
-    ``p`` is not among them: a distribution may have its own ``p`` (the
-    limited-failure proportion is then named ``lfp_p``, see
-    ``Parametric.__init__``), and the fit leaves the attribute alone.
+    ``p`` is not among them: a distribution may have its own ``p``, which
+    the model's ``p`` then gives (the limited-failure proportion is
+    ``lfp_p``, #608).
     """
     from surpyval.univariate.parametric.parametric import Parametric
 

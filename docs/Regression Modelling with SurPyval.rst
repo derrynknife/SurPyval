@@ -1112,7 +1112,9 @@ the partial likelihood — a useful sanity check that the fit has converged.
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The model-based standard errors assume every observation is independent. When
+The model-based standard errors -- ``standard_errors()``, the square roots of
+the diagonal of ``covariance()``, the inverse of the observed information, as
+on every model -- assume every observation is independent. When
 the data are *clustered* — several failures from the same machine, repeated
 events on the same subject, items drawn in grouped batches — that assumption is
 wrong and the naive errors are too small. The **Lin-Wei sandwich** (or
@@ -1395,7 +1397,7 @@ non-parametrically. Below, a Weibull wear-out hazard has an exposure that adds
     print('WeibullAH (alpha, beta, coef_0):', wah.params.round(3))
     print('standard errors                :', wah.standard_errors().round(3))
     ly = AdditiveHazards.fit(x=x_ah, Z=z_ah.reshape(-1, 1), c=c_ah)
-    print('Lin-Ying coef_0 = %.3f (se %.3f)' % (ly.beta[0], ly.se[0]))
+    print('Lin-Ying coef_0 = %.3f (se %.3f)' % (ly.beta[0], ly.standard_errors()[0]))
 
 Both estimators recover the risk difference to within about two standard
 errors (0.035 and 0.046 against a true 0.05), and the Weibull baseline
@@ -1408,7 +1410,7 @@ when its baseline is right; Lin-Ying makes no assumption about the baseline.
 
     _b, _se = wah.params[2], wah.standard_errors()[2]
     assert round(_b, 3) == 0.035 and round(ly.beta[0], 3) == 0.046
-    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.se[0]
+    assert abs(_b - 0.05) < 2 * _se and abs(ly.beta[0] - 0.05) < 2 * ly.standard_errors()[0]
     assert np.all(np.abs(wah.params[:2] / [10, 2] - 1) < 0.05)
 
 The positivity caveat above bites differently here. The likelihood needs
@@ -1881,7 +1883,7 @@ error, and a baseline that tracks the log-logistic one without assuming it:
 
 .. jupyter-execute::
 
-    print('semi-parametric coef_0: %.3f (se %.3f)' % (spo.beta[0], spo.se[0]))
+    print('semi-parametric coef_0: %.3f (se %.3f)' % (spo.beta[0], spo.standard_errors()[0]))
     print('PO(LogLogistic) coef_0: %.3f (se %.3f)'
           % (po.params[2], po.standard_errors()[2]))
     t = np.array([5.0, 10.0, 20.0])
@@ -1899,7 +1901,7 @@ use when the shape of the baseline is what you cannot commit to.
     :hide-code:
     :hide-output:
 
-    assert round(spo.beta[0], 3) == 1.007 and round(spo.se[0], 3) == 0.179
+    assert round(spo.beta[0], 3) == 1.007 and round(spo.standard_errors()[0], 3) == 0.179
     assert round(po.params[2], 3) == 1.035
     assert round(po.standard_errors()[2], 3) == 0.180
     _truth = 1 / (1 + (t / 10) ** 3)
@@ -3160,7 +3162,7 @@ label per observation (see :doc:`regression/frailty`):
     )
     print(model)
     print("theta 95% CI:", np.round(model.param_cb("theta"), 3))
-    print("theta standard error: %.3f" % model.standard_errors()["theta"])
+    print("theta standard error: %.3f" % model.standard_errors()[-1])
 
 The frailty variance ``theta`` (also ``model.frailty_variance``) quantifies
 the between-group spread. Its interval is built on the log scale, so it can
@@ -3174,15 +3176,17 @@ misses the truth — while the coefficient, true value 0.8, is recovered well.)
 The per-group posterior frailties — an empirical-Bayes estimate for each
 observed group, shrunk toward 1 — are on ``model.frailties``, keyed by group
 label (as a string), and ``model.standard_errors()`` gives the Wald standard
-errors of every parameter as a dictionary keyed by name. Every estimate is
+errors of every parameter, an array as on every model. Every estimate is
 also in one vector, ``model.params``, in the order of ``model.parameter_names``:
-the baseline's parameters, the coefficients, then ``theta``.
+the baseline's parameters, the coefficients, then ``theta`` -- the order of
+``standard_errors()`` and ``covariance()`` too, so ``theta``'s standard error
+is the last.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _theta, _se = model.theta, model.standard_errors()["theta"]
+    _theta, _se = model.theta, model.standard_errors()[-1]
     assert round(_theta / _se) == 3, (_theta, _se)        # "about three"
     _lo, _hi = model.param_cb("theta")
     assert 0.55 < _hi < 0.6                     # only just misses 0.6

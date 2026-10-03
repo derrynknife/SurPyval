@@ -11,7 +11,11 @@ from surpyval.serialisation import SerialisableMixin, stamp_schema
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import BOUNDS, check_option
+from surpyval.utils.validation import (
+    BOUNDS,
+    check_option,
+    warn_outside_unit_interval,
+)
 
 from ._bands import BandsMixin
 from ._support import (
@@ -1019,8 +1023,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         ----------
 
         p : array like or scalar
-            The probabilities at which the quantile will be computed.
-            Values must be in (0, 1].
+            The probabilities at which the quantile will be computed, in
+            [0, 1].
 
         Returns
         -------
@@ -1028,6 +1032,17 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         q : numpy array
             The value(s) of the quantile at each p. NaN where the
             estimated CDF never reaches p (e.g. due to right censoring).
+
+        Notes
+        -----
+        ``qf(0)`` is the first time at which the estimate steps, the
+        start of its support as for a parametric model. A probability
+        outside [0, 1] gives NaN with a warning, as every model's ``qf``
+        does (#611; it raised a ``ValueError`` here); NaN gives NaN.
+
+        .. versionchanged:: 0.23
+           A probability outside [0, 1] gives NaN with a warning (it
+           raised), and ``qf(0)`` is accepted.
 
         Examples
         --------
@@ -1040,8 +1055,9 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         array([1., 3., 5.])
         """
         p = np.atleast_1d(p).astype(float)
-        if ((p <= 0) | (p > 1)).any():
-            raise ValueError("'p' must be in the range (0, 1]")
+        # NaN where p is outside [0, 1], with one warning, as for the
+        # parametric models (#576, #611); it raised.
+        p = np.where(warn_outside_unit_interval(p), np.nan, p)
         # F is a product (or exponentiated sum) of ratios, so where it
         # should equal p exactly it carries round-off: the Kaplan-Meier F
         # of 1..30 at 15 is 0.4999999999999999, and a Turnbull ladder is

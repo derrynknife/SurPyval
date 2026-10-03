@@ -180,7 +180,7 @@ def test_limited_failure_population_is_actually_estimated():
     c = (cured | (fails > 12.0)).astype(int)
     model = Exponential.fit(x, c=c, lfp=True)
     assert not _is_closed_form(model)
-    assert 0.5 < model.p < 0.8
+    assert 0.5 < model.lfp_p < 0.8
 
 
 def test_fixed_parameter_is_honoured():

@@ -140,7 +140,7 @@ def test_qf_keeps_zero_inflation_and_cure_fraction():
     lfp = sp.Weibull.fit(
         [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], [0] * 5 + [1] * 5, lfp=True
     )
-    assert lfp.qf((1 + lfp.p) / 2) == np.inf
+    assert lfp.qf((1 + lfp.lfp_p) / 2) == np.inf
 
 
 # -- logrank with a continuous "group" ---------------------------------------
@@ -194,6 +194,25 @@ def test_top_level_names_a_helper_s_subpackage(name, where):
     with pytest.raises(AttributeError, match=f"it is in {where}"):
         getattr(sp, name)
     assert not hasattr(sp, name)
+
+
+@pytest.mark.parametrize(
+    "name, value, instead",
+    [
+        ("NUM", np.float64, "numpy.float64"),
+        ("TINIEST", np.finfo(float).tiny, "numpy.finfo(float).tiny"),
+        ("EPS", np.sqrt(np.finfo(float).eps), "numpy.sqrt("),
+    ],
+)
+def test_613_top_level_constants_are_deprecated(name, value, instead):
+    # They still work until v0.24, with a warning naming what to use, and
+    # are no longer listed; ``surpyval.np`` stays (custom distributions).
+    with pytest.warns(DeprecationWarning, match="v0.24") as caught:
+        assert getattr(sp, name) == value
+    assert instead in str(caught[0].message)
+    assert caught[0].filename == __file__
+    assert name not in dir(sp)
+    assert "np" in dir(sp)
 
 
 @pytest.mark.parametrize(
