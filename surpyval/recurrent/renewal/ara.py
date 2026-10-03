@@ -150,7 +150,9 @@ class ARA(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
+        if state is not None:
+            return ARA._state_sampler(model, state)
         rho = model.rho
         # The arrival times so far, discounted over the last m of them.
         memory = DiscountedMemory(n, rho, model.m)
@@ -162,6 +164,29 @@ class ARA(RenewalFitMixin):
             gap = conditional_gaps(model.model, age, u)
             arrival = latest + gap
             last_arrival[idx] = arrival
+            memory.record(idx, arrival)
+            return gap
+
+        return step
+
+    @staticmethod
+    def _state_sampler(model: Any, state: Any) -> Callable:
+        """The sampler of sequences that start from units' current states
+        (``UnitStates``): the memory holds each unit's own failure times,
+        and its first gap is its residual life from its virtual age
+        now."""
+        rho = model.rho
+        memory = DiscountedMemory.from_history(state.failures, rho, model.m)
+        last_arrival = np.array(state.now - state.since_failure, dtype=float)
+        since = np.array(state.since_failure, dtype=float)
+
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            latest = last_arrival[idx] + since[idx]
+            age = latest - rho * memory.value(idx)
+            gap = conditional_gaps(model.model, age, u)
+            arrival = latest + gap
+            last_arrival[idx] = arrival
+            since[idx] = 0.0
             memory.record(idx, arrival)
             return gap
 

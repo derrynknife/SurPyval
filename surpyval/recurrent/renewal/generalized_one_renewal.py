@@ -11,6 +11,7 @@ from surpyval.recurrent.inference import bic_sample_size
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.recurrent.renewal.renewal_model import (
     RenewalModel,
+    conditional_gaps,
     event_positions,
 )
 from surpyval.utils.fitter import singleton_fitter
@@ -91,7 +92,9 @@ class GeneralizedOneRenewal(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
+        if state is not None:
+            return GeneralizedOneRenewal._state_sampler(model, state)
         base_params = model.model.params
         q = model.q
         j = np.zeros(n)
@@ -104,6 +107,26 @@ class GeneralizedOneRenewal(RenewalFitMixin):
             j[idx] += 1
             base = model.model.dist.qf(u, *base_params)
             return scale * np.asarray(base, dtype=float)
+
+        return step
+
+    @staticmethod
+    def _state_sampler(model: Any, state: Any) -> Callable:
+        """The sampler of sequences that start from units' current states
+        (``UnitStates``): a unit with ``j`` failures that has run ``s``
+        since the last has a next gap of ``(1 + q) ** j`` times the base
+        lifetime's residual life from ``s / (1 + q) ** j``."""
+        q = model.q
+        j = np.array(state.failure_count, dtype=float)
+        since = np.array(state.since_failure, dtype=float)
+
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            scale = (1.0 + q) ** j[idx]
+            base_age = since[idx] / scale
+            gap = scale * conditional_gaps(model.model, base_age, u)
+            j[idx] += 1
+            since[idx] = 0.0
+            return gap
 
         return step
 

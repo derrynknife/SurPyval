@@ -165,3 +165,80 @@ def test_581_forecast_pickles_and_prints():
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         sp.forecast(model, [3.0], horizon=1.0)
+
+
+# -- recurrent-event models: every failure counted (#615) -----------------
+
+
+def test_615_nhpp_forecast_is_poisson_from_each_age():
+    from scipy.stats import poisson
+
+    from surpyval.recurrent import CrowAMSAA
+
+    model = CrowAMSAA.from_params([50.0, 1.3])
+    age = np.array([200.0, 500.0, 900.0, 40.0])
+    n = np.array([2, 1, 3, 5])
+    h = np.array([50.0, 100.0])
+    result = sp.forecast(
+        model, age, horizon=h, n=n, limit=[1e9, 1e9, 1e9, 90.0]
+    )
+    end = np.minimum(age[:, None] + h, [[1e9], [1e9], [1e9], [90.0]])
+    mu = model.cif(end) - model.cif(age)[:, None]
+    np.testing.assert_allclose(result.per_unit, mu, rtol=1e-12)
+    np.testing.assert_allclose(result.unit_expected, n[:, None] * mu)
+    np.testing.assert_allclose(result.probability, 1 - np.exp(-mu))
+    total = n @ mu
+    np.testing.assert_allclose(result.expected, total, rtol=1e-12)
+    np.testing.assert_allclose(result.variance, total, rtol=1e-12)
+    np.testing.assert_array_equal(result.lower, poisson.ppf(0.025, total))
+    np.testing.assert_array_equal(result.upper, poisson.ppf(0.975, total))
+    period = n @ np.diff(np.column_stack([np.zeros(4), mu]), axis=1)
+    np.testing.assert_allclose(result.period_expected, period, rtol=1e-12)
+    np.testing.assert_array_equal(
+        result.period_upper, poisson.ppf(0.975, period)
+    )
+    assert "every failure counted" in repr(result)
+
+
+def test_615_nhpp_forecast_of_the_fitted_units():
+    from surpyval.recurrent import HPP, ProportionalIntensityHPP
+
+    # age left out: each item from the end of its observation.
+    x = [3, 9, 20, 35, 56, 60, 4, 11, 25, 44, 70]
+    i = [1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
+    c = [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    hpp = HPP.fit(x, i, c)
+    result = sp.forecast(hpp, horizon=10.0)
+    assert list(result.units) == [1, 2]
+    rate = float(hpp.params[0])
+    np.testing.assert_allclose(result.per_unit[:, 0], [10 * rate] * 2)
+    # A proportional-intensity model takes each item's own covariates.
+    Z = np.array([0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1]).reshape(-1, 1)
+    pi = ProportionalIntensityHPP.fit(x, Z, i=i, c=c)
+    fleet = sp.forecast(pi, horizon=10.0)
+    by_hand = [
+        float(pi.cif(close + 10.0, [z]) - pi.cif(close, [z]))
+        for close, z in ((60.0, 0), (70.0, 1))
+    ]
+    np.testing.assert_allclose(fleet.per_unit[:, 0], by_hand, rtol=1e-12)
+    given = sp.forecast(pi, age=[60.0, 70.0], Z=[[0], [1]], horizon=10.0)
+    np.testing.assert_allclose(given.per_unit, fleet.per_unit, rtol=1e-12)
+    with pytest.raises(ValueError, match="give the covariates"):
+        sp.forecast(pi, age=[60.0], horizon=10.0)
+    with pytest.raises(ValueError, match="give Z only with age"):
+        sp.forecast(pi, Z=[[0]], horizon=10.0)
+
+
+def test_615_forecast_option_errors():
+    from surpyval.recurrent import CrowAMSAA
+
+    nhpp = CrowAMSAA.from_params([50.0, 1.3])
+    with pytest.raises(ValueError, match="carries no data"):
+        sp.forecast(nhpp, horizon=1.0)
+    with pytest.raises(ValueError, match="forecast is exact"):
+        sp.forecast(nhpp, [1.0], horizon=1.0, items=10)
+    weibull = sp.Weibull.from_params([10.0, 2.0])
+    with pytest.raises(ValueError, match="age is required"):
+        sp.forecast(weibull, horizon=1.0)
+    with pytest.raises(ValueError, match="horizon is required"):
+        sp.forecast(weibull, [1.0])

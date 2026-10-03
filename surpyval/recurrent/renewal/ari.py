@@ -170,7 +170,7 @@ class ARI(RenewalFitMixin):
     """
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
         from surpyval.recurrent.renewal.renewal_model import DiscountedMemory
         from surpyval.utils.numeric import solve_bracketed
 
@@ -179,8 +179,21 @@ class ARI(RenewalFitMixin):
         rho = model.rho
         # The baseline intensities at the failures so far, discounted over
         # the last m of them: the intensity reduction is rho times this.
-        memory = DiscountedMemory(n, rho, model.m)
-        running = np.zeros(n)
+        if state is None:
+            memory = DiscountedMemory(n, rho, model.m)
+            running = np.zeros(n)
+        else:
+            # Sequences from units' current states (``UnitStates``): each
+            # from its time now, with its own failures' intensities.
+            memory = DiscountedMemory.from_history(
+                [
+                    np.asarray(dist.iif(f, *dp), dtype=float)
+                    for f in state.failures
+                ],
+                rho,
+                model.m,
+            )
+            running = np.array(state.now, dtype=float)
 
         def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
             t0 = running[idx]

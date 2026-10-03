@@ -811,30 +811,41 @@ from the uncertainty in the parameters, is given by ``cif_cb`` (see the next
 section). But the *actual* number of events in a future period is random even
 if the model is exactly right: for a Poisson process the count in
 :math:`(t_1, t_2]` is Poisson distributed with mean
-:math:`\Lambda(t_2) - \Lambda(t_1)`. SurPyval has no prediction-interval
-method, but a plug-in interval takes two lines with ``scipy``. How many
-failures should one system in our fleet expect in its next 10 hours, from 50 to
-60?
+:math:`\Lambda(t_2) - \Lambda(t_1)`. :func:`surpyval.forecast` gives the
+expected count from each unit's current age and the prediction interval of the
+fleet's count, for one horizon or the end of each period. How many failures
+should the systems in our fleet expect in their next 10 hours, each from 50 to
+60, and in each 5-hour half?
 
 .. jupyter-execute::
 
-    from scipy.stats import poisson
+    import surpyval as surv
 
-    expected = float(ca.cif(60) - ca.cif(50))
-    lower, upper = poisson.ppf([0.05, 0.95], expected)
-    print(f"expected events in (50, 60]  : {expected:.2f}")
-    print(f"90% prediction interval      : {lower:.0f} to {upper:.0f}")
-    print(f"for the fleet of four systems: {poisson.ppf([0.05, 0.95], 4 * expected)}")
+    fleet = surv.forecast(ca, age=[50, 50, 50, 50], horizon=[5, 10],
+                          alpha_ci=0.1)
+    print(fleet)
+    print("each system, by 60 hours:", fleet.per_unit[:, -1].round(2))
 
-Because counts are whole numbers the interval covers *at least* 90%. This
-plug-in interval treats the fitted parameters as exact, so with little data
-it is somewhat too narrow.
+For a fitted model ``age`` can be left out: the units are then the fitted
+items, each from the end of its own observation (and, for a
+proportional-intensity model, with its own covariates). ``per_unit`` holds
+each unit's expected count (``unit_expected`` times ``n``, the units at each
+age), and ``probability`` its chance of at least one failure. Because counts
+are whole numbers the interval covers *at least* 90%. It treats the fitted
+parameters as exact, so with little data it is somewhat too narrow.
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _cover = poisson.cdf(upper, expected) - poisson.cdf(lower - 1, expected)
+    from scipy.stats import poisson
+
+    expected = float(ca.cif(60) - ca.cif(50))
+    assert np.isclose(fleet.per_unit[0, -1], expected)
+    assert fleet.upper[-1] == poisson.ppf(0.95, 4 * expected)
+    _cover = poisson.cdf(fleet.upper[-1], 4 * expected) - poisson.cdf(
+        fleet.lower[-1] - 1, 4 * expected
+    )
     assert _cover >= 0.9, _cover
 
 Inference and model checking
@@ -1590,9 +1601,50 @@ Using the ARA model fitted above:
     print("90% of new systems have between", np.percentile(counts, 5),
           "and", np.percentile(counts, 95), "failures by t=40")
 
-The simulations always start from a new item (virtual age zero), so they
-answer questions about new units rather than forecasting a specific item's
-next failures from its current state.
+The maintenance questions are about the items in service, though, each with
+its own history. ``unit_states`` gives each fitted item's state at the end of
+its history: the time now, its failures so far, the time since the last, and
+what its repairs have left it with -- its virtual age now (for ``ARI``, the
+intensity reduction in force; for the G1 process, the time since the last
+failure on the lifetime's axis and the factor its next gap is scaled by):
+
+.. jupyter-execute::
+
+    print(ara.unit_states().round(2))
+
+From there, ``next_failure_sf(x)`` is each item's chance of running a further
+``x`` without a failure (for the virtual-age models, the lifetime's
+conditional survival from its virtual age) and ``next_failure_hf(x)`` its
+intensity then. :func:`surpyval.forecast` simulates each item's future from
+its own state, so ``per_unit`` is each item's expected number of failures and
+the interval is that of the fleet's count:
+
+.. jupyter-execute::
+
+    print("P(no failure in the next 5):", ara.next_failure_sf(5.0).round(3))
+
+    ahead = surv.forecast(ara, horizon=[5, 10], random_state=3)
+    print(ahead)
+    print("expected failures in the next 10, each item:",
+          ahead.per_unit[:, -1].round(2))
+
+Give ``age`` instead for units that have run that long with no failure yet
+(new units, or units overhauled to as good as new), and ``limit`` for a time
+past which failures are not counted. ``items`` sets the number of simulated
+futures per unit (1000 by default). An item that entered observation late
+(``tl``) is as new at its entry (see above), and its times, and so its state,
+count from there.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _states = ara.unit_states()
+    assert list(_states.index) == list(ara.data.items)
+    assert np.allclose(ahead.probability[:, 0], 1 - ara.next_failure_sf(5.0))
+    assert np.allclose(ahead.expected, ahead.per_unit.sum(axis=0))
+    assert np.all(ahead.lower <= ahead.expected)
+    assert np.all(ahead.expected <= ahead.upper)
 
 Gapped (multi-window) observation
 ---------------------------------

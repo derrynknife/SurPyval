@@ -9,8 +9,8 @@ from surpyval.recurrent import CrowAMSAA
 
 # One prototype tested to 400 hours: A modes a1, a2; BD modes b1..b4.
 X = [15, 42, 60, 98, 130, 171, 205, 260, 310, 345, 390, 400]
-MODES = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1", "a1", "b3"]
-MODES = MODES + [None]
+MODES: list = ["b1", "a1", "b2", "b1", "b3", "a2", "b2", "b4", "b1", "a1"]
+MODES += ["b3", None]
 C = [0] * 11 + [1]
 FEF = {"b1": 0.8, "b2": 0.7, "b3": 0.75, "b4": 0.6}
 

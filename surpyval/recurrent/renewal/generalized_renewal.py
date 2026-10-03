@@ -209,15 +209,38 @@ class GeneralizedRenewal(RenewalFitMixin):
         raise option_error("kijima_type", kijima_type, ("i", "ii"))
 
     @staticmethod
-    def _build_sampler(model: Any, n: int) -> Callable:
+    def _build_sampler(model: Any, n: int, state: Any = None) -> Callable:
         q = model.q
         virtual_age_function = model._virtual_age_function
+        if state is not None:
+            return GeneralizedRenewal._state_sampler(model, state)
         virtual_age = np.zeros(n)
 
         def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
             age = virtual_age[idx]
             gap = conditional_gaps(model.model, age, u)
             virtual_age[idx] = virtual_age_function(age, gap, q)
+            return gap
+
+        return step
+
+    @staticmethod
+    def _state_sampler(model: Any, state: Any) -> Callable:
+        """The sampler of sequences that start from units' current states
+        (``UnitStates``): each unit's first gap is its residual life from
+        its virtual age now, and the repair after it acts on the whole
+        time since the unit's last repair."""
+        q = model.q
+        virtual_age_function = model._virtual_age_function
+        after = np.array(state.after_repair, dtype=float)
+        since = np.array(state.since_failure, dtype=float)
+
+        def step(idx: np.ndarray, u: np.ndarray) -> np.ndarray:
+            age = after[idx]
+            elapsed = since[idx]
+            gap = conditional_gaps(model.model, age + elapsed, u)
+            after[idx] = virtual_age_function(age, elapsed + gap, q)
+            since[idx] = 0.0
             return gap
 
         return step
