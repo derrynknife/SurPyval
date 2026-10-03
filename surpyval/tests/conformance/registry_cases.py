@@ -1077,12 +1077,13 @@ _ON_SURVIVAL = ("sf", "ff", "Hf")
 # raise ValueError, as documented ("Only MLE has confidence bounds"; a
 # closed-form estimate or a model built from its parameters carries none).
 _NO_COVARIANCE = (
-    "Binomial",
-    "Bernoulli",
-    "FixedEventProbability",
     "ExactEventTime",
     "Hypoexponential",
 )
+# The probability models: param_cb bounds p from the counts of events and
+# trials (exact Clopper-Pearson by default, Wald and likelihood ratio as
+# options); cb, quantile_cb and mean_cb raise, pointing to it (#580).
+_PROBABILITY_MODELS = ("Binomial", "Bernoulli", "FixedEventProbability")
 # The likelihood-ratio search runs pointwise, so it is swept at three
 # times, and only in the full suite. Rayleigh, Geometric and Uniform
 # joined in #421 (a df bound stalled on the far side of the estimate;
@@ -1304,6 +1305,19 @@ def _bounds(case):
     if cls == "Parametric":
         if case.name in _NO_COVARIANCE:
             return ()
+        if case.name in _PROBABILITY_MODELS:
+            return tuple(
+                Bound(
+                    "param_cb",
+                    kind="param",
+                    kwargs={"method": method},
+                    label=f"param_cb[{method}]",
+                    # Clopper-Pearson's and the likelihood-ratio interval
+                    # do not close onto the estimate as alpha_ci -> 1.
+                    wald=method == "wald",
+                )
+                for method in ("exact", "wald", "lr")
+            )
         return _parametric_bounds(case)
     if cls == "NonParametric":
         return _nonparametric_bounds(case)
@@ -1570,6 +1584,13 @@ def _with_options(case):
             **exclude,
             "cb_declared": "no covariance: cb and param_cb raise "
             "ValueError, as documented",
+        }
+    if case.name in _PROBABILITY_MODELS:
+        exclude = {
+            **exclude,
+            "cb_declared": "#580: cb, quantile_cb and mean_cb raise "
+            "ValueError, as documented: the bounds are on p (param_cb, "
+            "swept)",
         }
     return replace(
         case,

@@ -2064,6 +2064,39 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
         surv.FixedEventProbability.fit([0, 1, 1, 0, 1]).params[0], 0.6)
     assert np.isclose(event.params[0], (3 + 4) / 2)
 
+The probability ``p`` of a ``Bernoulli``, ``FixedEventProbability`` or
+``Binomial`` fit has confidence bounds from its counts of events and trials,
+``param_cb("p")``. The default is the exact (Clopper-Pearson) interval, the
+usual one for demand-failure probabilities and reliability demonstration (as
+R's ``binom.test`` and scipy's ``binomtest``): it holds its level at any
+sample size, and with no failures it still gives the upper bound, which is
+then the whole answer. ``method="wald"`` (on the logit scale; undefined at
+:math:`\hat p = 0` or 1) and ``method="lr"`` (likelihood ratio) are options.
+These models have no other bounds: ``cb``, ``quantile_cb`` and ``mean_cb``
+raise, pointing to ``param_cb``.
+
+.. jupyter-execute::
+
+    # inverter start-ups: 3 failures (coded 1) in 1200 demands
+    starts = surv.Bernoulli.fit([1, 0], n=[3, 1197])
+    print("p, 90% exact :", starts.param_cb("p", alpha_ci=0.1).round(5))
+    print("p, 90% Wald  :", starts.param_cb("p", alpha_ci=0.1,
+                                            method="wald").round(5))
+
+    # no failures in 1200: the 90% upper bound is 1 - 0.1 ** (1 / 1200)
+    clean = surv.Bernoulli.fit([0], n=[1200])
+    print("upper, none  :", clean.param_cb("p", alpha_ci=0.1,
+                                           bound="upper").round(6))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.allclose(starts.param_cb("p", alpha_ci=0.1), [0.00068, 0.00645],
+                       atol=5e-6)
+    assert np.isclose(clean.param_cb("p", alpha_ci=0.1, bound="upper")[0],
+                      1 - 0.1 ** (1 / 1200))
+
 See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
 :doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
 :doc:`univariate/degenerate` for their full APIs.

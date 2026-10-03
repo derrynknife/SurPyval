@@ -110,7 +110,7 @@ A common reliability test is to run :math:`n` items for a fixed duration (or dem
 
    R_L = \alpha^{1/n}.
 
-For example, 59 successes demonstrate :math:`R \geq 0.95` at 95% confidence (:math:`0.05^{1/59} \approx 0.9505`), and 22 successes demonstrate :math:`R \geq 0.90` at 90% confidence. This is ``surpyval.success_run(n, confidence=...)`` (or ``alpha=...``).
+For example, 59 successes demonstrate :math:`R \geq 0.95` at 95% confidence (:math:`0.05^{1/59} \approx 0.9505`), and 22 successes demonstrate :math:`R \geq 0.90` at 90% confidence. This is ``surpyval.success_run(n, alpha_ci=...)``; the exact (Clopper-Pearson) bounds of a ``Bernoulli`` fit, ``param_cb("p")``, give the same bound and extend it to tests with failures.
 
 Nelson-Aalen Estimation
 -----------------------

@@ -651,17 +651,31 @@ reliability can we claim with a given confidence?
     from surpyval import success_run
 
     print('10 successes, 95% confidence:', round(success_run(10), 4))
-    print('59 successes, 95% confidence:', round(success_run(59, confidence=0.95), 4))
-    print('22 successes, alpha of 0.1:  ', round(success_run(22, alpha=0.1), 4))
+    print('59 successes, 95% confidence:', round(success_run(59, alpha_ci=0.05), 4))
+    print('22 successes, 90% confidence:', round(success_run(22, alpha_ci=0.1), 4))
 
-So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. Pass either
-``confidence`` or ``alpha``, not both; the default is 95% confidence.
+So 59 consecutive successes demonstrate at least 95% reliability with 95% confidence. The level
+is ``alpha_ci``, the total tail probability, as for every bound in SurPyval (default 0.05, 95%
+confidence; the older ``confidence`` and ``alpha`` arguments still work in v0.23, with a
+deprecation warning). The same bound, as an upper bound on the failure probability, is the
+exact (Clopper-Pearson) bound of a ``Bernoulli`` fit with no failures, which also covers the
+case of a few failures:
+
+.. jupyter-execute::
+
+    from surpyval import Bernoulli
+
+    # failures coded 1: none in 59 demands, then 2 in 120
+    print(1 - Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper"))
+    print(Bernoulli.fit([1, 0], n=[2, 118]).param_cb("p", alpha_ci=0.1))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
     assert success_run(59) >= 0.95 > success_run(58)
+    _clean = Bernoulli.fit([0], n=[59]).param_cb("p", bound="upper")
+    assert abs(1 - _clean[0] - success_run(59)) < 1e-12
 
 Left Truncated Data
 -------------------

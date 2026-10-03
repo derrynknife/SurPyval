@@ -291,6 +291,9 @@ class Parametric(
     # The printout's "Data" line of a model restored without its
     # data (#508)
     _data_summary: "str | None" = None
+    # ``(events, trials)`` of a Bernoulli, FixedEventProbability or
+    # Binomial fit: what its bounds on ``p`` are computed from (#580).
+    _event_counts: "tuple[float, float] | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -465,6 +468,9 @@ class Parametric(
         # for any other.
         out.maximum = restored_maximum(model_dict, out.maximum)
         out._data_summary = model_dict.get("data_summary")
+        if model_dict.get("event_counts") is not None:
+            events, trials = model_dict["event_counts"]
+            out._event_counts = (float(events), float(trials))
 
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
@@ -566,6 +572,10 @@ class Parametric(
         ic_n = self._ic_sample_size_or_none()
         if ic_n is not None:
             out["ic_n"] = ic_n
+        # Informational too: the counts the bounds on a Bernoulli,
+        # FixedEventProbability or Binomial p come from (#580).
+        if self._event_counts is not None:
+            out["event_counts"] = [float(v) for v in self._event_counts]
 
         fixed_idx = sorted(self._user_fixed_idx())
         if fixed_idx:
@@ -725,12 +735,13 @@ class Parametric(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
-        method: str = "wald",
+        method: str | None = None,
     ) -> npt.NDArray:
         """
         Method to calculate the confidence bound on a parameter.
 
-        Two interval methods are available via ``method``:
+        Two interval methods are available via ``method``, and ``"wald"``
+        is the default (``method=None``):
 
         - ``"wald"`` (default) -- a symmetric bound from the parameter's
           standard error, computed on a scale chosen from the parameter's
@@ -751,6 +762,15 @@ class Parametric(
           ``r`` does as the model tends to a Poisson), the bound is that
           edge: 0, 1 or ``inf``. A side whose bound cannot be found is
           ``nan``, with a warning.
+
+        The probability ``p`` of a ``Bernoulli``,
+        ``FixedEventProbability`` or ``Binomial`` fit is bounded from its
+        event and trial counts instead, and there the default is
+        ``"exact"``, the Clopper-Pearson interval (as R's ``binom.test``
+        and scipy's ``binomtest``), which holds its level at any sample
+        size and gives the zero-failure (success-run) bound; ``"wald"``
+        (on the logit scale) and ``"lr"`` are the options (see
+        ``Bernoulli.fit``).
 
         A parameter fixed at fit time is known, so both methods give the
         degenerate interval at its value. A Wald bound does not exist
@@ -776,7 +796,9 @@ class Parametric(
         bound : str, optional
             ``"two-sided"`` (the default), ``"upper"`` or ``"lower"``.
         method : str, optional
-            ``"wald"`` (the default) or ``"lr"``, as above.
+            ``"wald"`` (the default) or ``"lr"``, as above; ``"exact"``
+            (the default), ``"wald"`` or ``"lr"`` for the probability
+            models.
 
         Returns
         -------
@@ -794,6 +816,11 @@ class Parametric(
         >>> model.param_cb("beta", method="lr")
         array([1.82826755, 3.27740643])
         """
+        probability_cb = getattr(self.dist, "_probability_cb", None)
+        if probability_cb is not None:
+            return probability_cb(self, name, alpha_ci, bound, method)
+        if method is None:
+            method = "wald"
         if self._is_lr(method):
             return self._param_cb_lr(name, alpha_ci, bound)
 
@@ -1830,6 +1857,7 @@ class Parametric(
         t = np.atleast_1d(x)
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+        self._refuse_probability_model("cb")
         # Checked up front, as param_cb does: an unrecognised value (say
         # 'both') used to fall through to the lower-bound branch and
         # return one bound as if it were what was asked for.
@@ -1935,7 +1963,7 @@ class Parametric(
         mean.
         """
         probs = np.asarray(p, dtype=float)
-        self._check_summary_cb(alpha_ci, bound)
+        self._check_summary_cb(alpha_ci, bound, "quantile_cb")
         if probs.size == 0:
             return np.empty((0, 2) if bound == "two-sided" else (0,))
         if not np.all((probs > 0) & (probs < 1)):
@@ -2002,7 +2030,7 @@ class Parametric(
         The nonparametric models' ``mean_cb`` bounds their (restricted)
         mean; :meth:`quantile_cb` bounds a quantile.
         """
-        self._check_summary_cb(alpha_ci, bound)
+        self._check_summary_cb(alpha_ci, bound, "mean_cb")
         if self.p < 1:
             # A fraction 1 - p never fails: E[T] is infinite (#404).
             inf = np.inf
@@ -2041,12 +2069,29 @@ class Parametric(
             )
         return False
 
-    def _check_summary_cb(self, alpha_ci: float, bound: str) -> None:
+    def _check_summary_cb(
+        self, alpha_ci: float, bound: str, what: str = "this bound"
+    ) -> None:
         if self.method != "MLE":
             raise ValueError("Only MLE has confidence bounds")
+        self._refuse_probability_model(what)
         check_option("bound", bound, BOUNDS)
         if not 0 < alpha_ci < 1:
             raise alpha_ci_error(alpha_ci)
+
+    def _refuse_probability_model(self, what: str) -> None:
+        """The one message for the bounds a Bernoulli,
+        FixedEventProbability or Binomial fit does not have (#580): its
+        uncertainty is that of ``p``, which ``param_cb`` bounds."""
+        if getattr(self.dist, "_probability_cb", None) is None:
+            return
+        raise ValueError(
+            "{} is not available for a {} model, whose one estimated "
+            "parameter is the event probability p: bound it with "
+            "param_cb('p') (exact Clopper-Pearson bounds by default). The "
+            "probability of no event, 1 - p, has the bounds 1 - upper and "
+            "1 - lower.".format(what, self.dist.name)
+        )
 
     def _summary_scale(self, zero_floor: bool = False) -> tuple:
         """The scale a quantile or the mean is bounded on, from the
