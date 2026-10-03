@@ -107,3 +107,18 @@ def test_622_a_left_skewed_weibull_offset_fit_is_not_a_garbage_point():
     # on the way to the limit: below the data, and within a hair of it
     assert model.gamma < x.min() - 100
     assert model.neg_ll() == pytest.approx(gumbel.neg_ll(), abs=0.01)
+
+
+@pytest.mark.parametrize("dist", OFFSET_FAMILIES, ids=lambda d: d.name)
+def test_622_an_offset_fit_refuses_a_failure_at_infinity(dist):
+    # As the fit without an offset does. The offset fits took it in: the
+    # Exponential returned a rate, the Weibull warned "MLE Failed" with an
+    # infinite likelihood, the Gamma leaked RuntimeWarnings, and the
+    # LogNormal raised with the Normal's message (from its start).
+    from surpyval.univariate.parametric._fit_inputs import (
+        OutsideSupportError,
+    )
+
+    x = [1.0, 2.0, 3.0, np.inf, 5.0]
+    with pytest.raises(OutsideSupportError, match=f"offset {dist.name} "):
+        dist.fit(x, offset=True)

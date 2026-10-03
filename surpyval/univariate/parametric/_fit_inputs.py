@@ -457,6 +457,12 @@ class FitInputsMixin:
             # A zero-inflated fit is checked too (#610): its point mass
             # makes 0 a possible failure time, but nothing lies below 0.
             self._check_inside_support(surv_data, zero_inflated=zi)
+        else:
+            # With an offset only an infinite value is outside the support
+            # (#622): a failure at inf was fitted (an Exponential) or ended
+            # "MLE Failed" with an infinite likelihood (a Weibull), as the
+            # fit without an offset refuses it
+            self._check_inside_support(surv_data, offset=True)
 
         if how == "MPS":
             _check_mps_data(surv_data)
@@ -635,6 +641,7 @@ class FitInputsMixin:
         surv_data: SurpyvalData,
         every_row: bool = False,
         zero_inflated: bool = False,
+        offset: bool = False,
     ) -> None:
         """Every observation leaves the event some probability.
 
@@ -649,8 +656,13 @@ class FitInputsMixin:
         the support's lower end, 0, makes a failure at 0 (or before a left
         censoring time of 0) possible, so those rows pass; a value below
         0 is refused as in the plain fit.
+
+        With ``offset`` the support starts at the fitted offset, which can
+        lie below any finite value: only an infinite value is outside it.
         """
         lower, upper = self.support
+        if offset:
+            lower = -np.inf
         if zero_inflated:
             detail = (
                 f"Some of your data is outside the support of the "
@@ -668,11 +680,12 @@ class FitInputsMixin:
             # allowed while 0 is what it rejects).
             detail = (
                 f"Some of your data is outside the support of the "
-                f"{self.name} distribution: observed values must lie "
+                f"{'offset ' if offset else ''}{self.name} distribution: "
+                f"observed values must lie "
                 f"strictly between {lower} and {upper}, i.e. in "
                 f"({lower}, {upper}), and a censored value must leave the "
                 f"event some probability. Are some of your observed values "
-                f"{lower}, -inf or inf?"
+                f"{'' if offset else f'{lower}, '}-inf or inf?"
             )
         # The zero-inflated model's mass sits at ``lower``: a failure
         # there, or a left censoring time there, has probability f0.
