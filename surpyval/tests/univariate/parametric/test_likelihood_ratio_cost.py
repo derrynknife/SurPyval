@@ -10,6 +10,7 @@ traced point; the answer is taken when it is at least as far out as
 every traced point, and otherwise the searches run as before.
 """
 
+import functools
 import warnings
 
 import numpy as np
@@ -61,6 +62,61 @@ def test_the_lean_likelihood_is_the_full_one_to_the_bit(fitter):
             0.2 * rng.normal(size=len(model.params))
         )
         assert model._lr_raw_neg_ll(theta) == neg_ll_at(model, theta)
+
+
+def _windows_weibull():
+    # Interval-censored, left-truncated and right-truncated rows
+    x = np.array([1.5, 2.0, 3.0, 4.0, 5.0, 6.5, 8.0, 9.5])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = sp.Weibull.fit(
+            xl=x, xr=x + 1.0, c=np.full(8, 2), tl=0.5, tr=np.full(8, 15.0)
+        )
+    model._ensure_surv_data()
+    return model
+
+
+def test_602_windows_skip_the_guarded_functions(monkeypatch):
+    # Interval and truncated windows went through the distribution's
+    # wrapped ff and log_sf (``_array_inputs``, ``_support_guarded``):
+    # a Weibull on six interval-censored units took 243 us an
+    # evaluation, against 43 us on 1000 exact ones. The windows' data
+    # part is kept and the functions are called unwrapped, as the
+    # exact and censored terms are.
+    model = _windows_weibull()
+    lean = model._lr_lean_data()
+    assert lean is not None and lean[3] is not None and lean[4] is not None
+    calls = []
+    dist_type = type(model.dist)
+    for name in ("ff", "log_sf", "log_ff"):
+        wrapped = getattr(dist_type, name)
+
+        @functools.wraps(wrapped)
+        def counted(self, x, *params, wrapped=wrapped):
+            calls.append(1)
+            return wrapped(self, x, *params)
+
+        monkeypatch.setattr(dist_type, name, counted)
+    theta = np.asarray(model.params) * 1.01
+    model._lr_raw_neg_ll(theta)
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "scale",
+    # Near the estimate; windows in the upper tail (F(l) > 1/2, from
+    # log_sf); in the lower tail (F(r) below the smallest normal float,
+    # from log_ff); and windows of no probability at all
+    [1.0, 0.05, 1e3, 1e40],
+)
+def test_602_the_lean_windows_are_the_full_ones_to_the_bit(scale):
+    model = _windows_weibull()
+    alpha, beta = model.params
+    for theta in ([alpha * scale, beta], [alpha * scale, 4.0 * beta]):
+        theta = np.asarray(theta, dtype=float)
+        lean = model._lr_raw_neg_ll(theta)
+        full = neg_ll_at(model, theta)
+        assert lean == full or (np.isnan(lean) and np.isnan(full))
 
 
 def test_a_support_set_by_the_parameters_takes_the_full_path():

@@ -673,11 +673,34 @@ class ParametricFitter(UnivariateDataFrameMixin):
         ``(p - f0) * (1 - F0(tl))`` form made the LFP plus
         left-truncation likelihood unbounded (#269). For finite-bound
         intervals the ``f0`` terms cancel, so plain fits are unchanged.
+
+        The work is split in two: ``_window_inputs``, which depends on
+        the data alone (and on the support), and
+        ``_window_log_likelihood``, which evaluates the functions. The
+        likelihood-ratio searches keep the first and call the second with
+        the functions unwrapped (#602).
         """
         *dist_params, gamma, f0, p = params
         if len(n) == 0:
             return 0.0
+        windows = self._window_inputs(xl, xr, gamma, dist_params)
+        return self._window_log_likelihood(
+            windows,
+            n,
+            dist_params,
+            (gamma, f0, p),
+            (self.ff, self.log_sf, self.log_ff),
+        )
 
+    def _window_inputs(
+        self, xl: npt.NDArray, xr: npt.NDArray, gamma: Any, dist_params: Any
+    ) -> tuple:
+        """The data's part of :meth:`ll_interval_or_truncated` for the
+        windows ``(xl, xr]``: ``(xl, xr, lo_finite, hi_finite,
+        lo_evaluated, xl_safe, xr_safe)``, which bounds are finite, which
+        lower bounds are evaluated (above the support's lower edge), and
+        the bounds with a stand-in where they are not. They depend on the
+        parameters only through the support's edges (the Uniform's)."""
         lo_finite = np.isfinite(xl)
         hi_finite = np.isfinite(xr)
         # A lower bound at or below the support's lower edge (a ``tl`` of
@@ -705,7 +728,24 @@ class ParametricFitter(UnivariateDataFrameMixin):
             stand_in = float(present[0])
         xl_safe = np.where(lo_evaluated, xl, stand_in)
         xr_safe = np.where(hi_finite, xr, stand_in)
+        return xl, xr, lo_finite, hi_finite, lo_evaluated, xl_safe, xr_safe
 
+    def _window_log_likelihood(
+        self,
+        windows: tuple,
+        n: npt.NDArray,
+        dist_params: Any,
+        extra: tuple,
+        fns: tuple[Callable[..., Any], ...],
+    ) -> Any:
+        """The log-likelihood of :meth:`ll_interval_or_truncated`, from
+        its windows' inputs (``_window_inputs``), the counts ``n``, the
+        distribution's parameters, its ``(gamma, f0, p)`` and the
+        functions ``(ff, log_sf, log_ff)`` it evaluates, each called as
+        ``f(x, *dist_params)``."""
+        xl, xr, lo_finite, hi_finite, lo_evaluated, xl_safe, xr_safe = windows
+        gamma, f0, p = extra
+        ff, log_sf, log_ff = fns
         # The zero-inflation mass ``f0`` sits at 0 in observed time (see
         # ``ll_observed``), so ``F_mix`` includes it only from 0 on: below
         # 0 nothing has failed, and a window opening below 0 contains the
@@ -714,16 +754,14 @@ class ParametricFitter(UnivariateDataFrameMixin):
         # this is the same arithmetic as before.)
         upper = np.where(
             hi_finite,
-            f0 * (xr >= 0) + (p - f0) * self.ff(xr_safe - gamma, *dist_params),
+            f0 * (xr >= 0) + (p - f0) * ff(xr_safe - gamma, *dist_params),
             1.0,
         )
         lower = np.where(
             lo_finite,
             f0 * (xl >= 0)
             + (p - f0)
-            * np.where(
-                lo_evaluated, self.ff(xl_safe - gamma, *dist_params), 0.0
-            ),
+            * np.where(lo_evaluated, ff(xl_safe - gamma, *dist_params), 0.0),
             0.0,
         )
         window = np.maximum(upper - lower, 0.0)
@@ -762,17 +800,18 @@ class ParametricFitter(UnivariateDataFrameMixin):
                     (lo_evaluated, hi_finite, upper_tail, lower_tail),
                     window,
                     dist_params,
+                    (log_sf, log_ff),
                 )
             )
         if not np.any(upper_tail):
             return np.sum(n * np.log(window))
         in_tail = float(xl[upper_tail][0])
-        log_sl = self.log_sf(
+        log_sl = log_sf(
             np.where(upper_tail, xl_safe, in_tail) - gamma, *dist_params
         )
         log_sr = np.where(
             upper_tail & hi_finite,
-            self.log_sf(
+            log_sf(
                 np.where(upper_tail & hi_finite, xr_safe, in_tail) - gamma,
                 *dist_params,
             ),
@@ -789,22 +828,24 @@ class ParametricFitter(UnivariateDataFrameMixin):
         masks: tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray],
         window: Any,
         dist_params: Any,
+        fns: tuple[Callable[..., Any], Callable[..., Any]],
     ) -> Any:
         """The log of each window's probability for
         :meth:`ll_interval_or_truncated` where some are in the lower tail:
         ``xl`` and ``xr`` its bounds (stand-ins where absent, the offset
         taken off), ``masks`` its ``(lo_evaluated, hi_finite, upper_tail,
-        lower_tail)`` and ``window`` the plain differences. The upper tail
-        is taken from ``log_sf`` as there, the lower from ``log_ff``, and
-        a lower-tail window with no mass at all (``F(r) = 0``) stays
-        ``log 0``."""
+        lower_tail)``, ``window`` the plain differences and ``fns`` the
+        ``(log_sf, log_ff)`` to evaluate. The upper tail is taken from
+        ``log_sf`` as there, the lower from ``log_ff``, and a lower-tail
+        window with no mass at all (``F(r) = 0``) stays ``log 0``."""
         lo_evaluated, hi_finite, upper_tail, lower_tail = masks
+        log_sf, log_ff = fns
         in_low = float(xr[lower_tail][0])
-        log_fr = self.log_ff(np.where(lower_tail, xr, in_low), *dist_params)
+        log_fr = log_ff(np.where(lower_tail, xr, in_low), *dist_params)
         with_l = lower_tail & lo_evaluated
         log_fl = np.where(
             with_l,
-            self.log_ff(np.where(with_l, xl, in_low), *dist_params),
+            log_ff(np.where(with_l, xl, in_low), *dist_params),
             -np.inf,
         )
         low = lower_tail & np.isfinite(_raw(log_fr))
@@ -817,10 +858,10 @@ class ParametricFitter(UnivariateDataFrameMixin):
         if not np.any(upper_tail):
             return out
         in_tail = float(xl[upper_tail][0])
-        log_sl = self.log_sf(np.where(upper_tail, xl, in_tail), *dist_params)
+        log_sl = log_sf(np.where(upper_tail, xl, in_tail), *dist_params)
         log_sr = np.where(
             upper_tail & hi_finite,
-            self.log_sf(
+            log_sf(
                 np.where(upper_tail & hi_finite, xr, in_tail), *dist_params
             ),
             -np.inf,

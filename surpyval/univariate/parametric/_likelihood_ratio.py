@@ -12,6 +12,7 @@ out to the critical value (``_lr_walk``); see #421, #519, #535 and #587.
 
 from __future__ import annotations
 
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -399,10 +400,17 @@ def _lean_log_likelihood(dist: Any, lean: tuple, theta: Any) -> Any:
     if left is not None:
         x, n = left
         ll = ll + np.sum(n * _unguarded(dist, "log_ff")(dist, x, *params))
+    if interval is not None or truncated is not None:
+        fns = tuple(
+            functools.partial(_unguarded(dist, name), dist)
+            for name in ("ff", "log_sf", "log_ff")
+        )
     if interval is not None:
-        ll = ll + dist.ll_interval_or_truncated(*interval, *params, *extra)
+        windows, n = interval
+        ll = ll + dist._window_log_likelihood(windows, n, params, extra, fns)
     if truncated is not None:
-        ll = ll - dist.ll_interval_or_truncated(*truncated, *params, *extra)
+        windows, n = truncated
+        ll = ll - dist._window_log_likelihood(windows, n, params, extra, fns)
     return ll
 
 
@@ -1528,10 +1536,14 @@ class LikelihoodRatioMixin:
         exactly 0). The lean likelihood calls the distribution's own
         formulas without them, on the same arrays, in the same order, so
         its value is the same to the last bit, about 2.5 times as fast
-        (#519). Interval-censored and truncated terms are the
-        distribution's own. A discrete distribution, a support that
-        depends on the parameters (the Uniform's), or data outside the
-        support or missing take the full path.
+        (#519). Interval-censored and truncated windows are evaluated as
+        ``ll_interval_or_truncated`` evaluates them, with its tail forms
+        (``_window_log_likelihood``), from the data's part of it kept once
+        (``_window_inputs``) and with the functions unwrapped: a Weibull's
+        likelihood on six interval-censored units took 243 us, against 43
+        us on 1000 exact ones (#602). A discrete distribution, a support
+        that depends on the parameters (the Uniform's), or data outside
+        the support or missing take the full path.
         """
         data = self.surv_data
         kept = self.__dict__.get("_lr_lean")
@@ -1555,16 +1567,29 @@ class LikelihoodRatioMixin:
                 terms.append(
                     None if x.size == 0 else (x - self.gamma, np.asarray(n))
                 )
-            others = [
+            windows = []
+            for xl, xr, n in (
                 (data.x_il, data.x_ir, data.n_i),
                 (data.tl_unique, data.tr_unique, data.n_t_unique),
-            ]
-            if plain:
-                lean = (
-                    *terms,
-                    *(None if np.size(t[0]) == 0 else t for t in others),
-                    (self.gamma, self.f0, self.p),
+            ):
+                if np.size(xl) == 0:
+                    windows.append(None)
+                    continue
+                # As ``ll_interval_or_truncated`` takes them (its
+                # ``_check_x_not_empty``), and its data part kept
+                xl = np.atleast_1d(np.array(xl))
+                inputs = self.dist._window_inputs(
+                    xl, xr, self.gamma, self.params
                 )
+                safe = np.concatenate(inputs[-2:])
+                plain = plain and not (
+                    np.any(np.isnan(safe))
+                    or np.any(safe < lo)
+                    or np.any(safe > hi)
+                )
+                windows.append((inputs, n))
+            if plain:
+                lean = (*terms, *windows, (self.gamma, self.f0, self.p))
         self.__dict__["_lr_lean"] = (data, lean)
         return lean
 
