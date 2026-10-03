@@ -95,7 +95,8 @@ them together as an ``(N, 2)`` array ``t``). Items observed over several
 disjoint periods use ``windows`` (see `Gapped (multi-window) observation`_).
 The intensity models accept all of these (see `Delayed entry and right
 truncation`_ for a worked example); the non-parametric MCF accepts ``tl``,
-``tr`` and ``windows``; the renewal models need each item watched from new.
+``tr`` and ``windows``; the renewal models accept ``tl``, taking each item
+to be as new at its entry (see `Renewal Modelling in SurPyval`_).
 
 Event logs usually arrive as a table, one row per event with a column naming
 the unit. Every recurrent fitter's ``fit_from_df`` reads one, given the names
@@ -1006,8 +1007,12 @@ All four renewal models — ``GeneralizedRenewal``, ``GeneralizedOneRenewal``,
 ``ARA`` and ``ARI`` — take the same ``x``, ``i``, ``c`` and ``n`` arrays as the
 intensity models, plus a ``dist`` (the lifetime distribution, Weibull by
 default) and the model's own options; ``ARI`` takes a ``baseline`` intensity
-model in place of the ``dist``. Each item must be observed from new, with exact event times and at
-most a final right-censored row. They all return a
+model in place of the ``dist``. Each item has exact event times and at
+most a final right-censored row. An item is observed from new, or from an
+entry time given in ``tl`` (delayed entry), where it is taken to be **as new**
+-- virtual age 0, as after an overhaul -- since its state then is unknown:
+its times count from its entry, and the fitted model's ``data`` hold them so.
+They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
 from the fitted model.

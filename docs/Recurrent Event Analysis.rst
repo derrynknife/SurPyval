@@ -404,9 +404,12 @@ us?". Two ideas are used to formalise "partly restored":
 All of these models share some practical requirements, because the state after
 each repair depends on the full history of the item:
 
-- each item must be observed **from new** (time zero), so that its virtual age
-  or intensity reduction can be tracked from the start. Left truncation and
-  gapped observation windows are rejected;
+- each item's state must be known where its observation starts. An item is
+  observed **from new** (time zero), or, with delayed entry (``tl``), it is
+  taken to be **as new at entry**: virtual age 0 (for ARI, no intensity
+  reduction, and the baseline's clock restarting) at its entry time, as after
+  an overhaul, so its times count from there (see `Truncation and Delayed
+  Entry`_). Gapped observation windows are rejected;
 - the event times must be **exact**, with an optional right-censored row at the
   end of observation (``c=1``); interval and left censoring are not supported;
 - the models have no closed-form mean cumulative function, so SurPyval computes
@@ -863,8 +866,15 @@ it with a right-censored row at the same time give the same likelihood.)
 The intensity (Poisson) models handle delayed entry directly, because the
 likelihood over any interval depends only on the intensity over that interval.
 The virtual-age and history-dependent models (Kijima, G1, ARA, ARI) cannot:
-the virtual age at entry depends on the unobserved failures before entry, so
-those models require the process to be observed from the start.
+the virtual age at entry depends on the unobserved failures before entry.
+They take each item with delayed entry to be **as new at entry** instead:
+virtual age 0 at :math:`t_L` (for ARI, no reduction in force and the
+baseline intensity's clock restarting there), as it would be after an
+overhaul, so the item's times are counted from :math:`t_L` and its history
+before entry plays no part. That is exact for an item renewed when its
+records start and an assumption otherwise: for an item that entered at an
+advanced virtual age it understates the age, and the fitted lifetime looks
+better than it is. The fitted model's ``data`` hold the times since entry.
 
 The non-parametric MCF handles both through the risk set — an item is only
 counted at risk from its entry time, so early event times are averaged over
@@ -1033,7 +1043,8 @@ There is no single right model, but a sensible order of work is:
    MCF looks exponential rather than power-like. Compare the fits with AIC/BIC
    and, above all, by plotting them over the MCF.
 4. **If the repair process itself is the question** — does a repair restore
-   the unit, and by how much? — and each item's history is known from new, fit
+   the unit, and by how much? — and each item's history is known from new (or
+   from an overhaul at entry), fit
    the imperfect-repair models. Compare the Kijima types, the G1 process and
    several ARA/ARI memories by their information criteria; all are fitted to
    the same event times by maximum likelihood, so their AIC values are on a

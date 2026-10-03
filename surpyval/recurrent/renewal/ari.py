@@ -15,8 +15,8 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    measure_from_entry,
     reject_gapped_observation,
-    reject_left_truncation,
     validate_intensity_model,
     validate_memory,
     validate_nhpp_data,
@@ -328,6 +328,9 @@ class ARI(RenewalFitMixin):
 
         data : RecurrentEventData
             Data containing the recurrence details.
+            An item with delayed entry (a ``tl``) is taken to be as
+            new at entry, with its times counted from there (see
+            :meth:`fit`).
         baseline : object, optional
             A recurrent baseline intensity model (``CrowAMSAA``, ``Duane``,
             ``CoxLewis``). Default is ``CrowAMSAA``. Its old name,
@@ -348,8 +351,9 @@ class ARI(RenewalFitMixin):
         validate_intensity_model(baseline, type(self).__name__)
         validate_memory(m)
         validate_renewal_censoring(data.c, type(self).__name__)
-        reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # Delayed entry: as new at entry (#615).
+        data = measure_from_entry(data, type(self).__name__)
         # The baseline is an NHPP intensity, with the same needs: some
         # events, times inside its support (no event at t = 0 for a power
         # law) and more than one failure-truncated event.
@@ -407,6 +411,7 @@ class ARI(RenewalFitMixin):
         baseline: Any = CrowAMSAA,
         m: "int | float" = 1,
         init: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
     ) -> "RenewalModel":
         """
         Fit the ARI model.
@@ -440,6 +445,17 @@ class ARI(RenewalFitMixin):
         init : list, optional
             Initial parameters ``[rho, *baseline_params]`` for the
             optimizer.
+        tl : array_like or scalar, optional
+            Delayed entry: the time each item's observation began, when
+            its failures before then were not recorded (a scalar for every
+            item, or one value per row, the same on every row of an item).
+            The item is taken to be **as new at entry**, as after an
+            overhaul: the baseline intensity's clock restarts at ``tl``,
+            with no reduction from earlier repairs, so its times count
+            from there and its history before entry plays no part. That
+            is exact for an item renewed at entry and an assumption
+            otherwise; the fitted model's ``data`` hold the times from
+            entry.
 
         Returns
         -------
@@ -463,7 +479,7 @@ class ARI(RenewalFitMixin):
         # Before the data: a lifetime distribution here (as ARA takes)
         # failed deep inside the fit (#495).
         validate_intensity_model(baseline, type(self).__name__)
-        data = handle_xicn(x, i, c, n)
+        data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, baseline, m, init=init)
 
     @renamed_arguments(dist="baseline")

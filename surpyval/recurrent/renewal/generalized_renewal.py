@@ -17,8 +17,8 @@ from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
+    measure_from_entry,
     reject_gapped_observation,
-    reject_left_truncation,
     validate_lifetime_dist,
     validate_renewal_censoring,
     validate_renewal_times,
@@ -330,6 +330,9 @@ class GeneralizedRenewal(RenewalFitMixin):
 
         data : RecurrentEventData
             Data containing the recurrence details.
+            An item with delayed entry (a ``tl``) is taken to be as
+            new at entry, with its times counted from there (see
+            :meth:`fit`).
         dist : Distribution, optional
             A surpyval distribution object. Default is Weibull.
         kijima : str, optional
@@ -389,8 +392,9 @@ class GeneralizedRenewal(RenewalFitMixin):
         self._resolve_virtual_age_function(kijima)
         validate_lifetime_dist(dist, type(self).__name__)
         validate_renewal_censoring(data.c, type(self).__name__)
-        reject_left_truncation(data, type(self).__name__)
         reject_gapped_observation(data, type(self).__name__)
+        # Delayed entry: as new at entry (#615).
+        data = measure_from_entry(data, type(self).__name__)
         validate_renewal_times(data, dist, type(self).__name__)
 
         neg_ll = self.create_negll_func(data, dist, kijima=kijima)
@@ -429,6 +433,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         dist: Any = Weibull,
         kijima: str = "i",
         init: "ArrayLike | None" = None,
+        tl: "ArrayLike | None" = None,
     ) -> "RenewalModel":
         """
         Fit the generalized renewal model.
@@ -456,6 +461,15 @@ class GeneralizedRenewal(RenewalFitMixin):
             accumulated age). Default is "i".
         init : list, optional
             Initial parameters for the optimization algorithm.
+        tl : array_like or scalar, optional
+            Delayed entry: the time each item's observation began, when
+            its failures before then were not recorded (a scalar for every
+            item, or one value per row, the same on every row of an item).
+            The item is taken to be **as new at entry** -- virtual age 0 at
+            ``tl``, as after an overhaul -- so its times count from there
+            and its history before entry plays no part. That is exact for
+            an item renewed at entry and an assumption otherwise; the
+            fitted model's ``data`` hold the times from entry.
 
         Returns
         -------
@@ -499,7 +513,7 @@ class GeneralizedRenewal(RenewalFitMixin):
         Repair test: consistent with perfect repair; minimal repair rejected
               (LR tests, q = 0: p = 1; q = 1: p = 0.000669)
         """
-        data = handle_xicn(x, i, c, n)
+        data = handle_xicn(x, i, c, n, tl=tl)
         return self.fit_from_recurrent_data(data, dist, kijima, init=init)
 
     def fit_from_parameters(
