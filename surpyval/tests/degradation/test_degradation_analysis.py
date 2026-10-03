@@ -162,7 +162,9 @@ def test_plot():
         model = DegradationAnalysis.fit(x, y, i, threshold=150)
     # plot() draws on the current axes: start from none, as an earlier
     # test in the same worker may leave a figure open
-    matplotlib.pyplot.close("all")
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
     ax = model.plot()
     # one path line per unit plus the threshold line
     assert len(ax.get_lines()) == len(slopes) + 1
