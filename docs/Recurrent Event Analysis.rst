@@ -844,11 +844,14 @@ Two different questions are easily confused when forecasting:
    much data you have. Plugging in the fitted :math:`\hat{\Lambda}` ignores
    the parameter uncertainty, so with little data it is somewhat too narrow.
 
-SurPyval does not have a dedicated prediction-interval method; the how-to page
-shows how to compute the Poisson interval from a fitted model's ``cif`` in a
-couple of lines. For the renewal models the future count depends on the
-item's history, so there is no simple formula; simulate from the fitted model
-instead.
+:func:`surpyval.forecast` gives both for a fleet: each unit's expected count
+from its current age, :math:`\Lambda(a + h) - \Lambda(a)`, and the Poisson
+prediction interval of the fleet's count. For the renewal models the future
+count depends on the item's history, so there is no simple formula: each
+unit's state at the end of its history -- its virtual age now, or for ARI the
+intensity reduction in force -- gives the distribution of its next failure in
+closed form (``next_failure_sf``), and ``forecast`` simulates each unit's
+future from that state for the expected counts and their interval.
 
 Truncation and Delayed Entry
 ----------------------------
