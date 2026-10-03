@@ -901,6 +901,24 @@ worth knowing what they are, because they explain the warnings you may see.
    offset onto the first failure) is a maximum on the edge of the space,
    not a runaway.
 
+   An offset running onto the first failure where the density at its
+   origin is infinite (a Weibull, Gamma or LogLogistic shape below 1) is
+   no maximum either: the likelihood is unbounded there. Data without
+   truncation give it no way back, since with such a density every term
+   of the likelihood rises as the offset moves up. A rung that gets there
+   ends the ladder, and so does the first rung stopping on its way there
+   (its line search failing on the steepening rise) with the offset moved
+   up from its start: the ladder ends with the offset on the first
+   failure, and the fit warns "No finite maximum" and recommends
+   ``how='MPS'``. The remaining rungs used to follow it into the corner,
+   in 5,000 to 15,000 likelihood evaluations (2-8 s), and ended
+   "unverified", "MLE Failed" or "No finite maximum" as the last of them
+   happened to stop. (An interior maximum, where there is one, has a shape
+   above 1, since below 1 the likelihood rises with the offset
+   everywhere. Where one start of a fit, the default or one given with
+   ``init``, finds a verified maximum and another runs into the corner,
+   the maximum is kept.)
+
    A parameter bounded at both ends -- a limited-failure :math:`p`, a
    zero-inflation :math:`f_{0}` -- reaches its bound in floating point long
    before its :math:`u` reaches infinity: :math:`p` is exactly 1 once

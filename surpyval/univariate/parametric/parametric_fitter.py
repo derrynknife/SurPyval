@@ -865,7 +865,10 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         window with no mass at all (``F(r) = 0``) stays ``log 0``."""
         lo_evaluated, hi_finite, upper_tail, lower_tail = masks
         log_sf, log_ff = fns
-        in_low = float(xr[lower_tail][0])
+        # A stand-in for the rows outside the tail, taken off the traced
+        # bounds: with an offset they carry ``gamma``, and ``float`` of
+        # a traced value raised a TypeError mid-search (#622)
+        in_low = float(_raw(xr)[lower_tail][0])
         log_fr = log_ff(np.where(lower_tail, xr, in_low), *dist_params)
         with_l = lower_tail & lo_evaluated
         log_fl = np.where(
@@ -882,7 +885,7 @@ class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
         )
         if not np.any(upper_tail):
             return out
-        in_tail = float(xl[upper_tail][0])
+        in_tail = float(_raw(xl)[upper_tail][0])
         log_sl = log_sf(np.where(upper_tail, xl, in_tail), *dist_params)
         log_sr = np.where(
             upper_tail & hi_finite,

@@ -8,7 +8,6 @@ from numpy import euler_gamma
 from scipy.special import gamma as gamma_func
 
 from surpyval.univariate.nonparametric import plotting_positions
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -65,15 +64,12 @@ class Rayleigh_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
+        if offset:
+            # sigma from the data shifted by the starting offset
+            # (``_offset_seed``)
+            return self._offset_seed(data)
         x = data.x
         # sqrt(E[x^2] / 2) is the closed-form uncensored MLE for sigma
-        if offset:
-            # The fitter's starting offset (see ``_offset_start``), not
-            # ``min(x) - 1``: a step of one unit is a thousand spreads
-            # for data in thousandths, and sigma seeded that far out.
-            gamma_init = _offset_start(x)
-            sigma_init = np.sqrt(np.mean((x - gamma_init) ** 2) / 2)
-            return np.array([gamma_init, sigma_init], dtype=float)
         # A one-tuple, not the bare scalar this used to return. Rayleigh
         # is the only single-parameter distribution here, and the scalar
         # made `np.array(init)` in _initial_guess 0-dimensional rather

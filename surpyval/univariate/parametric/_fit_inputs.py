@@ -77,11 +77,15 @@ def _offset_start(x: npt.ArrayLike) -> float:
     the data, where the likelihood is flat in the offset and the search
     never moves it, and at 1e5 a hair below the smallest value.
 
-    Every offset initialiser seeds its other parameters from the data
-    shifted by this same value, since the fitter installs it as the
-    starting offset: shape and scale seeds taken against a different
-    shift describe a different distribution from the one the search
-    starts at.
+    The other parameters are seeded from the data shifted by this same
+    value (``FitInputsMixin._offset_seed``): shape and scale seeds taken
+    against a different shift describe a different distribution from the
+    one the search starts at. The Weibull's were its probability plot's,
+    fitted with the plot's own offset, and kept when the offset was
+    replaced by this one: a start with a scale of 1.7e5 and a shape of
+    8.5e4 for data between 22 and 31, a negative log-likelihood of 1.3e7,
+    from which the search stopped at once on a point it then reported as
+    "no finite maximum" (4.8e6, #622).
     """
     finite = np.asarray(x, dtype=float).ravel()
     return float(np.min(finite[np.isfinite(finite)])) - offset_step(x)
@@ -459,6 +463,12 @@ class FitInputsMixin:
             self._check_inside_support(
                 surv_data, every_row=True, zero_inflated=zi
             )
+        else:
+            # With an offset only an infinite value is outside the support
+            # (#622): a failure at inf was fitted (an Exponential) or ended
+            # "MLE Failed" with an infinite likelihood (a Weibull), as the
+            # fit without an offset refuses it
+            self._check_inside_support(surv_data, offset=True)
 
         if how == "MPS":
             _check_mps_data(surv_data)
@@ -637,6 +647,7 @@ class FitInputsMixin:
         surv_data: SurpyvalData,
         every_row: bool = False,
         zero_inflated: bool = False,
+        offset: bool = False,
     ) -> None:
         """Every observation leaves the event some probability.
 
@@ -653,8 +664,13 @@ class FitInputsMixin:
         the support's lower end, 0, makes a failure at 0 (or before a left
         censoring time of 0) possible, so those rows pass; a value below
         0 is refused as in the plain fit.
+
+        With ``offset`` the support starts at the fitted offset, which can
+        lie below any finite value: only an infinite value is outside it.
         """
         lower, upper = self.support
+        if offset:
+            lower = -np.inf
         if zero_inflated:
             detail = (
                 f"Some of your data is outside the support of the "
@@ -672,11 +688,12 @@ class FitInputsMixin:
             # allowed while 0 is what it rejects).
             detail = (
                 f"Some of your data is outside the support of the "
-                f"{self.name} distribution: observed values must lie "
+                f"{'offset ' if offset else ''}{self.name} distribution: "
+                f"observed values must lie "
                 f"strictly between {lower} and {upper}, i.e. in "
                 f"({lower}, {upper}), and a censored value must leave the "
                 f"event some probability. Are some of your observed values "
-                f"{lower}, -inf or inf?"
+                f"{'' if offset else f'{lower}, '}-inf or inf?"
             )
         # The zero-inflated model's mass sits at ``lower``: a failure
         # there, or a left censoring time there, has probability f0.
@@ -845,15 +862,16 @@ class FitInputsMixin:
                     c_init = c_init[nonzero_mask]
                     n_init = n_init[nonzero_mask]
 
-                # Create an initial estimate with the new points
-                init = self._parameter_initialiser(
-                    _imputed_data(x_init, c_init, n_init), offset=offset
-                )
-                init = np.array(init)
-
+                # Create an initial estimate with the new points: with an
+                # offset, at the starting offset (below every value of the
+                # data, the imputed ones' own bounds included) and from the
+                # points shifted by it
+                imputed = _imputed_data(x_init, c_init, n_init)
                 if offset:
                     x_nonzero = x[x != 0] if zi else x
-                    init[0] = _offset_start(x_nonzero)
+                    init = self._offset_seed(imputed, _offset_start(x_nonzero))
+                else:
+                    init = np.array(self._parameter_initialiser(imputed))
 
         if lfp:
             _, _, _, F = pp(x_init, c_init, n_init, heuristic="Nelson-Aalen")
@@ -882,6 +900,38 @@ class FitInputsMixin:
             init = np.concatenate([init, [np.clip(f_0_init, 1e-3, 0.999)]])
 
         return init
+
+    def _offset_seed(
+        self, data: SurpyvalData, gamma: "float | None" = None
+    ) -> npt.NDArray:
+        """A start for an offset fit: the offset ``gamma`` (by default the
+        fitter's starting offset, ``_offset_start``), then the
+        distribution's own initial values for the data shifted by it
+        (``_shifted_initialiser``).
+
+        Every offset start is built this way, so that it is one member of
+        the family, fitted to the data at its own offset: the search then
+        starts from a distribution that describes the data. Where the
+        other parameters were seeded against another shift (the Weibull
+        from its probability plot's own offset, the Exponential from the
+        unshifted data) the start could be far from anything useful
+        (#622; see ``_offset_start``).
+        """
+        x = np.asarray(data.x, dtype=float)
+        if gamma is None:
+            gamma = _offset_start(x)
+        shifted = _imputed_data(x - gamma, data.c, data.n)
+        with np.errstate(all="ignore"):
+            base = np.atleast_1d(
+                np.asarray(self._shifted_initialiser(shifted), dtype=float)
+            )
+        return np.concatenate([[float(gamma)], base])
+
+    def _shifted_initialiser(self, data: SurpyvalData) -> npt.NDArray:
+        """The initial values of the distribution's own parameters for
+        ``data`` already shifted by an offset (``_offset_seed``): its
+        ``_parameter_initialiser`` by default."""
+        return self._parameter_initialiser(data)
 
     def _alternative_base_starts(
         self, data: SurpyvalData, offset: bool
@@ -947,23 +997,21 @@ class FitInputsMixin:
         observed = c == 0
         if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
             return None
+        failures = _imputed_data(
+            x[observed],
+            np.zeros(int(observed.sum()), dtype=int),
+            n[observed],
+        )
         with np.errstate(all="ignore"):
             try:
-                base = np.array(
-                    self._parameter_initialiser(
-                        _imputed_data(
-                            x[observed],
-                            np.zeros(int(observed.sum()), dtype=int),
-                            n[observed],
-                        ),
-                        offset=offset,
-                    ),
-                    dtype=float,
-                )
+                if offset:
+                    base = self._offset_seed(failures, _offset_start(x))
+                else:
+                    base = np.array(
+                        self._parameter_initialiser(failures), dtype=float
+                    )
             except Exception:
                 return None
-        if offset:
-            base[0] = _offset_start(x)
         if not np.all(np.isfinite(base)):
             return None
         p0 = float(np.clip(n[observed].sum() / n.sum(), 1e-3, 0.999))
