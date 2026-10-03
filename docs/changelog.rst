@@ -4,6 +4,110 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Regression ``fit_from_df`` reads interval columns (#571).** The
+  parametric regression families' ``fit_from_df`` takes ``xl_col`` /
+  ``xr_col`` in place of ``x_col`` (``fit`` already took interval data as
+  a two-column ``x``) and gives the same model as ``fit`` (to 1e-10). Its
+  columns are read as every other ``fit_from_df`` reads them: a missing
+  column is a ``ValueError`` naming the columns there are (it was a
+  ``KeyError``), and a duration or date column is refused. A new
+  conformance check makes every DataFrame entry point fill each data
+  argument of its ``fit``; 28 fitters failed it.
+- **``ParametricCompetingRisks`` takes left truncation (#571).**
+  ``fit(..., tl=)`` and ``fit_from_df(..., tl_col=)`` fit delayed-entry
+  data exactly (the truncated likelihood factorises by cause). On data seen
+  only from a records start date, ignoring entry gave shapes 2.59 and 1.56
+  against true 2.5 and 1.3; with ``tl``, 2.45 and 1.32. Right truncation
+  and interval censoring do not factorise and are still not taken.
+- **Regression models have ``qf`` (#571).** ``model.qf(p, Z, grid=False)``
+  is the time by which a proportion ``p`` of units with covariates ``Z``
+  have failed (the B10 life is ``qf(0.1, Z)``), inverted from each family's
+  own cumulative hazard to a relative 1e-12, with NaN and a warning outside
+  [0, 1].
+- **Regression models have ``cs`` (#581).** ``cs(x, given, Z)``, the
+  conditional survival of a unit with covariates ``Z`` that has survived
+  to ``given``, on the parametric, Cox, proportional-odds, additive-hazards,
+  Buckley-James and frailty models (with each one's ``grid``, ``stratum``
+  or ``group``), computed from the cumulative hazard, so it stays exact
+  where ``sf(given)`` underflows.
+- **New: ``surpyval.forecast`` (#581).** The expected failures of units in
+  service at their current ages over one or more horizons, from any
+  univariate or regression model (``Z`` per unit), with cohort counts
+  ``n`` and a warranty ``limit``: expected counts and variance, exact
+  Poisson-binomial prediction intervals (a refined normal approximation
+  for very large fleets), per-period counts, and each unit's probability
+  of failing (``Forecast.probability``, ``unit_expected``). The intervals
+  treat the model as known.
+- **Cox models report their maximised partial likelihood (#604).** A Cox
+  model's ``neg_ll`` was the fit's function of the coefficients, and it had
+  no AIC or BIC. ``neg_ll()`` is now the fitted value and
+  ``log_likelihood`` its negative; ``aic()``, ``aic_c()`` and ``bic()``
+  follow R's ``logLik.coxph`` (k the non-aliased coefficients, BIC's n the
+  events): on Rossi, AIC 1327.714 and BIC 1335.923, as R. The function is
+  ``neg_ll_of(beta)``; ``neg_ll(beta)`` is deprecated until v0.24. The same
+  values are on FineGray (the weighted partial likelihood, ``crr``'s
+  ``loglik``, n the events of the cause), CompetingRisksProportionalHazards
+  with ``model="Cox"`` (summed over causes, as R's multi-state ``coxph``),
+  ProportionalOdds (the profile likelihood) and CoxFrailty (the integrated
+  likelihood, k including theta); a Fine-Gray
+  CompetingRisksProportionalHazards raises for them. CoxFrailty's
+  ``loglik`` and ``loglik_no_frailty`` are ``log_likelihood`` and
+  ``log_likelihood_no_frailty`` (the old names deprecated until v0.24).
+  These criteria compare models of one kind on the same data, not a Cox
+  model with a parametric one.
+- **Fine-Gray with large-scale covariates (#606).** Covariates of order 1e4
+  raised "SVD did not converge": ``exp(beta'Z)`` overflowed at BFGS's
+  first step. The fit is Newton-Raphson with step-halving, as
+  ``cmprsk::crr`` and CoxPH (BFGS where Newton gives up), with the linear
+  predictor shifted inside the risk-set sums. Ordinary fits move by up to
+  1e-6 standard errors, the distance BFGS stopped short of the maximum, and
+  now match ``crr``'s coefficients to 1e-8 rather than 2.5e-7.
+- **One spelling for model comparison (#605).** Every model's covariance
+  is ``covariance()``: ``Parametric.cov_matrix``, the ``covariance``
+  attribute of Royston-Parmar and the frailty models, and ``cov`` on
+  Fine-Gray, proportional odds and additive hazards work with a
+  DeprecationWarning until v0.24. ``aic_c()`` is added on the recurrent,
+  copula, competing-risks and Royston-Parmar models, and
+  ``log_likelihood`` wherever there is an AIC. The mixture's EM steps
+  (``EM``, ``Q``, ``expectation``, ``maximisation``, ``likelihood``,
+  ``initialise_params``) are internal; their public names warn until
+  v0.24. Breaking: model dicts store ``"_neg_ll"`` and ``"covariance"``;
+  old keys still load, but a 0.23 dict loses its likelihood or covariance
+  in an older SurPyval, which cannot read a 0.23 FineGray dict.
+- **Fitted models pickle (#573).** Every fitted model -- univariate,
+  PH, Cox (stratified too), competing-risks and every recurrence model --
+  pickles, so models can go to ``multiprocessing``, ``joblib``,
+  ``concurrent.futures``, Dask or Ray, or be cached with ``pickle`` /
+  ``joblib.dump``; 92 of the 137 registry models failed with "Can't pickle
+  local object". The recurrence fitters unpickle as themselves. New
+  conformance properties ``pickle`` and ``pickle_paths``. A model built on
+  a user's own lambda (a ``phi``, life model or ``CustomDistribution``)
+  pickles only if that function does.
+- **``CompetingRisksProportionalHazards.phi`` and ``phi_e`` are methods
+  (#573);** they were lambda attributes, and calls are unchanged.
+- **``fit_best`` raises input errors and takes ``tl``, ``tr``, ``xl``,
+  ``xr`` (#570).** Malformed data raise ``fit``'s ``ValueError`` (it
+  returned ``None`` with a warning quoting the data once per candidate); a
+  skipped candidate is named with a one-line reason. Breaking: an error
+  every candidate gives alike, or data outside every candidate's support,
+  raises rather than returning ``None``.
+- **Parametric regressions refuse a censored time outside the baseline's
+  support (#565).** Breaking: a Weibull, Gamma, Exponential or LogNormal
+  AFT/PH/PO/AH, accelerated-life or frailty fit given a time censored at
+  -1 was fitted, with nan derivatives; it now raises the univariate fit's
+  support error, from every entry point. A unit censored at 0 is still
+  accepted, as in R ``survreg`` and lifelines.
+- **``logrank(..., tl=)`` (#576):** delayed entry, each unit at risk from
+  its entry; it matches R's Cox score test (3.365711 on AML with entries).
+- **``qf`` warns of a probability outside [0, 1] (#576),** such as
+  ``qf(10)`` meant as the B10 life, and still returns ``NaN``;
+  Royston-Parmar's ``qf`` returns ``NaN`` with the warning rather than a
+  scipy error.
+- **Missing censoring flags and counts are named (#576):** ``NaN``,
+  ``None`` or pandas ``NA`` in ``c`` or ``n`` give "Variable 'c' cannot
+  contain NaN values", not "Censoring value must only be one of ...".
+- **The straddling-interval truncation error explains inspection data
+  (#576):** ``tl`` is the last good inspection, so ``tl <= xl``.
 - **ExpoWeibull likelihood-ratio bounds reach the region's extreme,
   whatever the CPU (#601).** On long, flat valleys of the likelihood region
   (beta -> inf with alpha at the largest observation; alpha -> 0) the

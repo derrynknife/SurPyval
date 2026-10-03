@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from typing import Any, Callable
 
 import autograd.numpy as np
@@ -15,12 +16,19 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
     ProportionalIntensityModel,
     alias_covariates,
 )
+
+
+def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
+    """``neg_ll``, which takes ``[log(rate), *coefficients]``, at
+    ``p = [rate, *coefficients]``."""
+    return neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
 
 
 @singleton_fitter
@@ -404,7 +412,11 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         # ``neg_ll`` is parameterised by ``log_rate``; expose it in natural
         # (rate) space so ``_neg_ll(_mle)`` works with ``_mle`` the fitted rate
         # and covariate coefficients.
-        out._neg_ll = lambda p: neg_ll(np.concatenate([[np.log(p[0])], p[1:]]))
+        # (Kept as what it is built from, so the model pickles, #573.)
+        out._neg_ll = functools.partial(
+            _in_rate_space,
+            Rebuilt(self.create_negll_func, (data,), built=neg_ll),
+        )
         out._mle = np.concatenate([out.params, out.coeffs])
         out._n_obs = n_obs
         # The baseline hazard is this fitter's own constant-rate model, so the

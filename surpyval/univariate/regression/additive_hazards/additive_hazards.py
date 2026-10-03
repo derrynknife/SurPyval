@@ -54,6 +54,7 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -65,6 +66,7 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -135,7 +137,10 @@ def _aliased(
 
 
 class AdditiveHazardsModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Lin & Ying additive hazards model, returned by
@@ -179,7 +184,10 @@ class AdditiveHazardsModel(
     # Fitted quantities set by ``AdditiveHazards.fit``.
     beta: npt.NDArray
     params: npt.NDArray
-    cov: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
     se: npt.NDArray
     p_values: npt.NDArray
     x: npt.NDArray
@@ -262,7 +270,8 @@ class AdditiveHazardsModel(
             "x": np.asarray(self.x, dtype=float).tolist(),
             "h0": np.asarray(self.h0, dtype=float).tolist(),
             "H0": np.asarray(self.H0, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "se": np.asarray(self.se, dtype=float).tolist(),
         }
         if getattr(self, "p_values", None) is not None:
@@ -291,7 +300,10 @@ class AdditiveHazardsModel(
         out.x = np.array(model_dict["x"], dtype=float)
         out.h0 = np.array(model_dict["h0"], dtype=float)
         out.H0 = np.array(model_dict["H0"], dtype=float)
-        out.cov = np.array(model_dict["cov"], dtype=float)
+        # "cov" is the key of a dict written before v0.23.
+        out._covariance = np.array(
+            model_dict.get("covariance", model_dict.get("cov")), dtype=float
+        )
         out.se = np.array(model_dict["se"], dtype=float)
         if "p_values" in model_dict:
             out.p_values = np.array(model_dict["p_values"], dtype=float)
@@ -478,7 +490,7 @@ class AdditiveHazardsModel(
 
     def covariance(self) -> npt.NDArray:
         """Covariance matrix of the coefficients (Lin-Ying sandwich)."""
-        return self.cov
+        return self._covariance
 
 
 class AdditiveHazards_:
@@ -640,7 +652,7 @@ class AdditiveHazards_:
         model = AdditiveHazardsModel()
         model.beta = copy(beta)
         model.params = copy(beta)
-        model.cov = cov
+        model._covariance = cov
         model.se = se
         model.p_values = p_values
         model.x = unique_x

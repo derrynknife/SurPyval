@@ -191,3 +191,35 @@ def test_formula_is_the_str_given_for_every_fitter():
         assert model.formula == "age + sex"
         restored = surpyval.from_dict(model.to_dict())
         assert restored.formula == model.formula
+
+
+@pytest.mark.parametrize("fitter", PARAMETRIC_FITTERS)
+def test_571_fit_from_df_reads_interval_columns(fitter):
+    # Interval-censored rows (a failure found at an inspection) were
+    # expressible in fit, as a two-column x, but not in fit_from_df, which
+    # had no xl_col / xr_col (#571). Both now give the same model.
+    df = _make_df()
+    df["lo"] = np.floor(df["time"])
+    df["hi"] = df["lo"] + 1.0
+    df["c"] = 2
+    # Still running at the last inspection: (lo, inf), right censored.
+    df.loc[:19, "hi"] = np.inf
+    from_df = fitter.fit_from_df(
+        df, xl_col="lo", xr_col="hi", c_col="c", Z_cols=["age"]
+    )
+    x = df[["lo", "hi"]].to_numpy()
+    direct = fitter.fit(x, df[["age"]].to_numpy(), c=df["c"].to_numpy())
+    np.testing.assert_allclose(from_df.params, direct.params, rtol=1e-10)
+    assert from_df.feature_names == ["age"]
+
+
+def test_571_fit_from_df_takes_the_times_once():
+    df = _make_df()
+    df["lo"] = np.floor(df["time"])
+    for kwargs in (
+        {"x_col": "time", "xl_col": "lo", "xr_col": "time"},
+        {"xl_col": "lo"},
+        {},
+    ):
+        with pytest.raises(ValueError, match="Give the times exactly once"):
+            WeibullPH.fit_from_df(df, Z_cols=["age"], **kwargs)

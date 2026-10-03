@@ -1194,3 +1194,86 @@ def test_cox_accepts_an_infinite_censoring_time():
         [np.inf, 0.5, 1.0, 2.0], [[-1.0], [1.0], [0.0], [1.0]], c=[1, 0, 0, 0]
     )
     assert np.isfinite(model.beta).all()
+
+
+# R survival 3.x, on the Rossi data (``Surv(week, arrest) ~ fin + age +
+# prio``): logLik(fit), AIC(fit) and BIC(fit), which are on the partial
+# likelihood with k the coefficients and BIC's n the events, nevent = 114
+# (logLik.coxph, nobs.coxph); and the same with ``+ strata(wexp)``.
+R_COX_ROSSI = {
+    "efron": (-660.857025384416, 1327.714050768831, 1335.922646114015),
+    "breslow": (-661.2326104166907, 1328.4652208333814, 1336.673816178565),
+    "strata": (-582.473259917228, 1170.946519834455, 1179.155115179639),
+}
+
+
+def _rossi():
+    from surpyval.datasets import load_rossi_static
+
+    df = load_rossi_static()
+    return (
+        df["week"].values,
+        df[["fin", "age", "prio"]].values,
+        1 - df["arrest"].values,
+        df["wexp"].values,
+    )
+
+
+@pytest.mark.parametrize("fit", sorted(R_COX_ROSSI))
+def test_604_cox_model_comparison_values_are_r_survivals(fit):
+    x, Z, c, wexp = _rossi()
+    if fit == "strata":
+        model = CoxPH.fit(x, Z, c=c, strata=wexp)
+    else:
+        model = CoxPH.fit(x, Z, c=c, tie_method=fit)
+    ll, aic, bic = R_COX_ROSSI[fit]
+    # A number, and methods, as on every other model (#604)
+    assert isinstance(model.log_likelihood, float)
+    assert model.log_likelihood == pytest.approx(ll, rel=1e-10)
+    assert model.neg_ll() == pytest.approx(-ll, rel=1e-10)
+    assert model.aic() == pytest.approx(aic, rel=1e-10)
+    assert model.bic() == pytest.approx(bic, rel=1e-10)
+    # The small-sample correction with the same k = 3 and n = 114
+    assert model.aic_c() == pytest.approx(aic + 24 / 110, rel=1e-10)
+
+
+def test_604_cox_neg_ll_of_beta_is_the_partial_likelihood_function():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    assert model.neg_ll_of(model.params) == pytest.approx(model.neg_ll())
+    # The old spelling still gives the function, deprecated, at the caller
+    with pytest.warns(DeprecationWarning, match="neg_ll_of") as caught:
+        value = model.neg_ll(np.zeros(3))
+    assert caught[0].filename == __file__
+    assert value == pytest.approx(model.neg_ll_of(np.zeros(3)))
+    assert value > model.neg_ll()
+
+
+def test_604_cox_restored_model_keeps_its_comparison_values():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    restored = sp.from_dict(model.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(model, name)()
+    assert restored.log_likelihood == model.log_likelihood
+    # The function is not saved, and the old spelling says so
+    assert restored.neg_ll_of is None
+    with pytest.warns(DeprecationWarning), pytest.raises(ValueError):
+        restored.neg_ll(np.zeros(3))
+    # A dict written before v0.23 stored the value under another key and
+    # no sample size: the events, which the baseline counts, stand in.
+    old = model.to_dict()
+    old["_neg_log_like"] = old.pop("_neg_ll")
+    del old["ic_n"]
+    legacy = sp.from_dict(old)
+    assert legacy.neg_ll() == model.neg_ll()
+    assert legacy.bic() == pytest.approx(model.bic(), rel=1e-15)
+
+
+def test_604_cox_aliased_coefficient_is_not_counted():
+    x, Z, c, _ = _rossi()
+    model = CoxPH.fit(x, Z, c=c)
+    with pytest.warns(UserWarning, match="alias"):
+        doubled = CoxPH.fit(x, np.column_stack([Z, Z[:, 0]]), c=c)
+    # R's logLik.coxph counts sum(!is.na(coef))
+    assert doubled.aic() == pytest.approx(model.aic(), rel=1e-10)

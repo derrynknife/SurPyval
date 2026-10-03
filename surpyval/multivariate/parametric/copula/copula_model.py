@@ -9,7 +9,10 @@ import numpy.typing as npt
 
 from surpyval.distribution import MultivariateDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
-from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.univariate.information_criteria import (
+    corrected_aic,
+    ic_sample_size,
+)
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
 
@@ -280,6 +283,16 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         neg_ll, n_obs = self._fit_stats()
         return float(self._fitted_k() * onp.log(n_obs) + 2.0 * neg_ll)
 
+    def aic_c(self) -> float:
+        """
+        The small-sample corrected AIC, ``aic() + (2k^2 + 2k) / (N - k -
+        1)``, with the ``k`` of :meth:`aic` and the ``N`` of :meth:`bic`;
+        ``nan`` where ``N <= k + 1`` (``corrected_aic``), as on every
+        other model (#605).
+        """
+        _, n_obs = self._fit_stats()
+        return corrected_aic(self.aic(), self._fitted_k(), n_obs)
+
     # -- serialisation ----------------------------------------------------
     def to_dict(self) -> dict:
         """
@@ -304,7 +317,8 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         if self.copula.rotation:
             out["rotation"] = int(self.copula.rotation)
         if self._has_likelihood():
-            out["neg_ll"], out["ic_n"] = self._fit_stats()
+            # "_neg_ll", the key every model's dict stores it under (#605)
+            out["_neg_ll"], out["ic_n"] = self._fit_stats()
             out["k"] = self._fitted_k()
         return stamp_schema(out)
 
@@ -356,8 +370,10 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         model.maximum = restored_maximum(model_dict)
         # Dicts written before the likelihood was stored have none; such a
         # model (like a ``from_params`` one) has no likelihood to report.
-        if "neg_ll" in model_dict:
-            model._neg_ll = float(model_dict["neg_ll"])
+        # "neg_ll" is the key of a dict written before v0.23.
+        key = "_neg_ll" if "_neg_ll" in model_dict else "neg_ll"
+        if key in model_dict:
+            model._neg_ll = float(model_dict[key])
             # Dicts written before "ic_n" stored the weighted row count,
             # the sample size BIC then used.
             model._n_obs = float(

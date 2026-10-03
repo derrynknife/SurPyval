@@ -615,6 +615,55 @@ def inv_rev_adj_relu(x: npt.NDArray) -> Any:
     return np.where(x < -1, -x - 1, np.log(-x))
 
 
+class ParameterMap:
+    """One parameter's map to the unbounded search space and back.
+
+    ``forward`` maps a parameter to the search space and ``inverse``
+    back (see ``add_to_funcs`` for the maps). An object rather than a
+    pair of closures so a fitted model, whose ``fitting_info`` keeps the
+    maps, can be pickled (#573).
+    """
+
+    def __init__(
+        self, low: float | None, upp: float | None, unit: float = 1.0
+    ) -> None:
+        self.low = low
+        self.upp = upp
+        self.unit = unit
+
+    def forward(self, x: Any) -> Any:
+        low, upp, unit = self.low, self.upp, self.unit
+        if (low is None) and (upp is None):
+            return x
+        elif (low == 0) and (upp == 1):
+            D = 10
+            return D * np.arctanh((2 * x) - 1)
+        elif (low is not None) and (upp is not None):
+            D = 10
+            lo, width = float(low), float(upp) - float(low)
+            return D * np.arctanh((2 * (x - lo) / width) - 1)
+        elif upp is None:
+            return inv_adj_relu((x - np.copy(low)) / unit)
+        else:
+            return inv_rev_adj_relu((x - np.copy(upp)) / unit)
+
+    def inverse(self, x: Any) -> Any:
+        low, upp, unit = self.low, self.upp, self.unit
+        if (low is None) and (upp is None):
+            return x
+        elif (low == 0) and (upp == 1):
+            D = 10
+            return (np.tanh(x / D) + 1) / 2
+        elif (low is not None) and (upp is not None):
+            D = 10
+            lo, width = float(low), float(upp) - float(low)
+            return lo + width * (np.tanh(x / D) + 1) / 2
+        elif upp is None:
+            return unit * adj_relu(x) + np.copy(low)
+        else:
+            return np.copy(upp) + unit * rev_adj_relu(x)
+
+
 def add_to_funcs(
     low: float | None,
     upp: float | None,
@@ -626,32 +675,65 @@ def add_to_funcs(
     """Append the map of one parameter to the unbounded search space, and
     its inverse.
 
-    A parameter with one bound is searched as the log of its distance
-    from the bound where that distance is below ``unit``, and linearly
-    beyond it (``adj_relu``). ``unit`` is 1 unless the caller passes one:
-    see ``bounds_convert``.
+    An unbounded parameter is searched as itself. One between 0 and 1 is
+    searched as ``10 * arctanh(2x - 1)``, and one in any other finite
+    interval by the same map on ``(x - low) / (upp - low)``. A parameter
+    with one bound is searched as the log of its distance from the bound
+    where that distance is below ``unit``, and linearly beyond it
+    (``adj_relu``). ``unit`` is 1 unless the caller passes one: see
+    ``bounds_convert``.
     """
-    if (low is None) and (upp is None):
-        funcs.append(lambda x: x)
-        inv_f.append(lambda x: x)
-    elif (low == 0) and (upp == 1):
-        D = 10
-        funcs.append(lambda x: D * np.arctanh((2 * x) - 1))
-        inv_f.append(lambda x: (np.tanh(x / D) + 1) / 2)
-    elif (low is not None) and (upp is not None):
-        # Any other finite interval: the same scaled arctanh map on
-        # (x - low) / (upp - low). Previously this fell through to the
-        # identity, so the bound was silently not enforced.
-        D = 10
-        lo, width = float(low), float(upp) - float(low)
-        funcs.append(lambda x: D * np.arctanh((2 * (x - lo) / width) - 1))
-        inv_f.append(lambda x: lo + width * (np.tanh(x / D) + 1) / 2)
-    elif upp is None:
-        funcs.append(lambda x: (inv_adj_relu((x - np.copy(low)) / unit)))
-        inv_f.append(lambda x: (unit * adj_relu(x) + np.copy(low)))
-    elif low is None:
-        funcs.append(lambda x: inv_rev_adj_relu((x - np.copy(upp)) / unit))
-        inv_f.append(lambda x: np.copy(upp) + unit * rev_adj_relu(x))
+    mapping = ParameterMap(low, upp, unit)
+    funcs.append(mapping.forward)
+    inv_f.append(mapping.inverse)
+
+
+class EachParameter:
+    """Apply one map per parameter: ``bounds_convert``'s transforms.
+
+    A module-level callable rather than a closure, so it pickles
+    (#573)."""
+
+    def __init__(self, funcs: list[Callable[..., Any]]) -> None:
+        self.funcs = funcs
+
+    def __call__(self, params: npt.NDArray) -> Any:
+        return np.array(
+            [f(p) for p, f in zip(params, self.funcs, strict=True)]
+        )
+
+
+class HoldFixed:
+    """Insert the fixed parameters, mapped to the search space, among the
+    free ones: ``bounds_convert``'s ``const`` when some are fixed."""
+
+    def __init__(
+        self,
+        n_params: int,
+        fixed: dict[str, float],
+        param_map: dict[str, int],
+        forward: list[Callable[..., Any]],
+        not_fixed: npt.NDArray,
+    ) -> None:
+        self.n_params = n_params
+        self.fixed = fixed
+        self.param_map = param_map
+        self.forward = forward
+        self.not_fixed = not_fixed
+
+    def __call__(self, p: npt.NDArray) -> Any:
+        params: list[Any] = [0] * (self.n_params)
+        for k, v in self.fixed.items():
+            params[self.param_map[k]] = self.forward[self.param_map[k]](v)
+        for i, v in zip(self.not_fixed, p):
+            params[i] = v
+        return np.array(params)
+
+
+def identity(x: Any) -> Any:
+    """``x`` itself: the map of a parameter searched as it is, and
+    ``bounds_convert``'s ``const`` when nothing is fixed."""
+    return x
 
 
 def bounds_convert(
@@ -677,6 +759,9 @@ def bounds_convert(
     pass each parameter's own starting distance from its bound instead
     (see ``_search_units`` in ``optimised_fit``), which makes the
     search the same whatever units the data is in.
+
+    The maps returned are module-level objects, not closures, so a model
+    that keeps them pickles (#573).
     """
     bounded_to_unbounded_transforms: list[Callable[..., Any]] = []
     unbounded_to_bounded_transforms: list[Callable[..., Any]] = []
@@ -691,49 +776,29 @@ def bounds_convert(
             1.0 if units is None else float(units[i]),
         )
 
-    def transform_params_to_unbounded(params: npt.NDArray) -> Any:
-        return np.array(
-            [
-                f(p)
-                for p, f in zip(
-                    params, bounded_to_unbounded_transforms, strict=True
-                )
-            ]
-        )
-
-    def transform_unbounded_value_to_params(params: npt.NDArray) -> Any:
-        return np.array(
-            [
-                f(p)
-                for p, f in zip(
-                    params, unbounded_to_bounded_transforms, strict=True
-                )
-            ]
-        )
+    transform_params_to_unbounded = EachParameter(
+        bounded_to_unbounded_transforms
+    )
+    transform_unbounded_value_to_params = EachParameter(
+        unbounded_to_bounded_transforms
+    )
 
     n_params = len(param_map)
 
+    const: Callable[..., Any]
     if fixed is not None:
         fixed_idx = [param_map[x] for x in fixed.keys()]
         not_fixed = [x for x in range(n_params) if x not in fixed_idx]
         not_fixed = np.array(not_fixed, dtype=int)
-
-        def constraints(p: npt.NDArray) -> Any:
-            params = [0] * (n_params)
-            for k, v in fixed.items():
-                params[param_map[k]] = bounded_to_unbounded_transforms[
-                    param_map[k]
-                ](v)
-            for i, v in zip(not_fixed, p):
-                params[i] = v
-            return np.array(params)
-
-        const: Callable[..., Any] = constraints
+        const = HoldFixed(
+            n_params,
+            fixed,
+            param_map,
+            bounded_to_unbounded_transforms,
+            not_fixed,
+        )
     else:
-
-        def const(x: npt.NDArray) -> Any:
-            return x
-
+        const = identity
         fixed_idx = []
         not_fixed = np.array([x for x in range(n_params)])
 

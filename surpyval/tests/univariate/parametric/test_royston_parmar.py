@@ -304,3 +304,18 @@ class TestRoystonParmarGuards:
     def test_tied_events_raise_instead_of_nan(self):
         with pytest.raises(ValueError, match="distinct event times|distinct"):
             RoystonParmar.fit(x=[1.0] * 10 + [2.0] * 10, df=3)
+
+
+def test_605_covariance_is_a_method_and_the_attribute_deprecated():
+    x = Weibull.random(80, 10, 2, random_state=0)
+    model = RoystonParmar.fit(x, df=2)
+    cov = model.covariance()
+    assert type(cov) is np.ndarray and cov.shape == (3, 3)
+    # The attribute's spelling still works as the array, with a warning
+    with pytest.warns(DeprecationWarning, match=r"use 'covariance\(\)'"):
+        se = np.sqrt(np.diag(model.covariance))
+    np.testing.assert_array_equal(se, np.sqrt(np.diag(cov)))
+    with pytest.warns(DeprecationWarning):
+        assert model.covariance[0, 0] == cov[0, 0]
+    restored = surv.from_dict(json.loads(json.dumps(model.to_dict())))
+    np.testing.assert_array_equal(restored.covariance(), cov)

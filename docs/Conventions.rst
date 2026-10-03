@@ -140,6 +140,8 @@ Other areas of the package add a few more names, always with the same meaning:
 - e = the event type, or cause, of each row, for competing risks (``None`` for a censored row with no attributed cause).
 - y = the measured degradation value at each ``x``, for degradation models (with ``i`` identifying the unit).
 
+A parametric fit refuses times its distribution cannot describe, with a ``ValueError`` that says so: for a distribution on :math:`(0, \infty)` (Weibull, Gamma, Exponential, LogNormal, ...) an observed time at or below 0, or a time left censored at or below 0. A unit right censored at 0 is accepted (it carries no information). A parametric regression on such a baseline (the AFT, PH, PO and AH families, accelerated life and frailty models, by ``fit``, ``fit_from_df``, a formula or ``fit_tvc``) also refuses a negative time that is censored, as R's ``survreg`` and lifelines do: no unit can be censored before time 0, and the regression likelihoods are not defined there. A baseline on the whole line (Normal, Gumbel, Logistic) takes negative times.
+
 Every fitter with a ``fit`` also has a ``fit_from_df``, which takes a pandas
 ``DataFrame`` and the names of its columns in place of these arrays, passes
 every other option to ``fit``, and gives the model ``fit`` gives on the same
@@ -234,7 +236,7 @@ A ``MixtureModel`` is the exception: it has no ``hf()`` or ``qf()``. These are t
 - :code:`random()` - Random samples from the model.
 - :code:`plot()` - A plot of the model against the data it was fitted to.
 
-For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` for comparing fits, ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
+For a parametric model, ``params`` holds the fitted parameters in the order given by ``model.parameter_names`` (the distribution's ``parameter_names``; each is also an attribute, e.g. ``model.alpha``), and those names are what ``fixed={...}`` refers to. Fitted parametric models also have ``log_likelihood`` (a number) and ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` (methods) for comparing fits, spelt so on every model that has them, ``covariance()`` for the parameters' covariance, ``cs(x, given)`` for the conditional survival :math:`R(given + x)/R(given)`, ``var()``, ``moment()`` and ``entropy()``, and ``param_cb()`` for confidence bounds on the parameters themselves. Non-parametric models add, among others, ``rmst()`` (restricted mean survival time) and simultaneous confidence bands with ``band()``; see :doc:`Parametric SurPyval Modelling` and :doc:`Non-Parametric SurPyval Modelling`.
 
 Models from other areas follow the same pattern with one extra argument:
 
@@ -483,3 +485,12 @@ The univariate parametric and non-parametric models can carry their data with th
     print("with the data    :", with_data.data["x"])
 
 A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, and a copula of a custom family. A regression fitted with a formula keeps its categorical levels and fitted transform statistics (``scale()``, ``poly()``, splines), so it is read back predicting exactly as before. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.
+
+Every fitted model also pickles, the stratified Cox model included, so it can be sent to worker processes (``multiprocessing``, ``concurrent.futures``, ``joblib``, Dask, Ray) or cached with ``pickle`` or ``joblib.dump``. (A model built on a function of your own -- a custom ``phi``, life model or ``CustomDistribution`` -- pickles where pickle can save that function: one defined at the top level of a module, not a ``lambda``.) Unlike ``to_dict``, a pickle keeps everything, the data and the likelihood too, so the unpickled model predicts and gives bounds exactly as the original; but it is for passing a model between processes or caching it on one machine, not for keeping it: a pickle may not load in another version of SurPyval (or of Python, numpy or autograd), and unpickling runs code, so load only pickles you made. Use ``to_json`` to store a model. The recurrence fitters (``CrowAMSAA``, ``HPP`` and the others) unpickle as themselves, so ``model.dist is surv.CrowAMSAA`` still holds.
+
+.. jupyter-execute::
+
+    import pickle
+
+    copy = pickle.loads(pickle.dumps(weibull))
+    print(copy.params, copy.sf(6) == weibull.sf(6))

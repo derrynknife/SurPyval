@@ -6,6 +6,7 @@ and they may change without notice.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any, Callable
 
 import numpy as np
@@ -155,6 +156,51 @@ def missing_cause_error(what: str) -> ValueError:
     return ValueError(
         "{} is of one cause at a time; pass `event`.".format(what)
     )
+
+
+def warn_outside_unit_interval(p: npt.ArrayLike) -> npt.NDArray:
+    """Where the probabilities ``p`` given to a quantile function are
+    outside [0, 1], with one warning saying so if any are (#576).
+
+    Their quantile is NaN, as scipy's ``ppf`` gives (#485); but a value
+    such as 1.5 is not missing, it is a mistake -- most often a
+    percentage given for a probability, ``qf(10)`` for the B10 life --
+    and it used to give NaN in silence. NaN itself is a missing value
+    (principle 3), and is not warned of.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.validation import warn_outside_unit_interval
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     outside = warn_outside_unit_interval([0.1, 10.0, float("nan")])
+    >>> outside
+    array([False,  True, False])
+    >>> print(caught[0].message)  # doctest: +ELLIPSIS
+    qf: 1 of the 3 probabilities given is outside [0, 1] (10.0), ...
+    """
+    u = np.asarray(p, dtype=float)
+    outside = (u < 0) | (u > 1)
+    if outside.any():
+        from surpyval.utils.warnings import caller_stacklevel
+
+        k = int(outside.sum())
+        warnings.warn(
+            "qf: {} of the {} probabilities given {} outside [0, 1] ({}), "
+            "so {} quantile{} NaN. `p` is a probability: for the B10 life "
+            "pass 0.1, not 10.".format(
+                k,
+                u.size,
+                "is" if k == 1 else "are",
+                ", ".join(str(float(v)) for v in u[outside][:3])
+                + (", ..." if k > 3 else ""),
+                "its" if k == 1 else "their",
+                " is" if k == 1 else "s are",
+            ),
+            stacklevel=caller_stacklevel(),
+        )
+    return outside
 
 
 def _check_x_not_empty(func: Callable) -> Callable:

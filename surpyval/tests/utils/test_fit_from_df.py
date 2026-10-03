@@ -112,12 +112,13 @@ def test_durations_are_refused():
 def test_missing_censoring_flag_is_fits_error_without_a_raw_warning():
     # Weibull.fit_from_df cast the flags to int, so a missing flag became
     # -9223372036854775808 with a raw numpy RuntimeWarning (principle 22)
-    # before fit refused it; now it reaches fit as it is.
+    # before fit refused it; now it reaches fit as it is, which names it
+    # as missing (#576).
     df = pd.DataFrame({"x": np.arange(1.0, 11.0), "c": 0.0})
     df.loc[3, "c"] = np.nan
     with warnings.catch_warnings():
         warnings.simplefilter("error", RuntimeWarning)
-        with pytest.raises(ValueError, match="Censoring value"):
+        with pytest.raises(ValueError, match="'c' cannot contain NaN"):
             sp.Weibull.fit_from_df(df, x_col="x", c_col="c")
 
 

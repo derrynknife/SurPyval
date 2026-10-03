@@ -22,7 +22,7 @@ from .._kinds import ACCELERATED_FAILURE_TIME
 from .._likelihood import regression_neg_ll
 from ..parametric_regression_model import ParametricRegressionModel
 from ..regression_data import DataFrameRegressionMixin
-from .aft_tvc_fit import AFTTVCFitMixin
+from .aft_tvc_fit import AFTTVCFitMixin, _aft_tvc_neg_ll
 
 
 class AFTFitter(
@@ -155,6 +155,17 @@ class AFTFitter(
             optimiser=optimise_nm_tnc,
             reg_model=lambda pmap: LogLinearPhi(LogLinearPhi.NAME_EXP, pmap),
         )
+
+
+class AFTTVCFitter(AFTFitter):
+    """The fitter a ``fit_tvc`` model carries: an :class:`AFTFitter` whose
+    ``neg_ll`` is the accumulated-age likelihood of the episodes it holds
+    (``_tvc``), so the model's bounds use that likelihood. A class rather
+    than a method bound onto one instance, so the model pickles
+    (#573)."""
+
+    _tvc: dict
+    neg_ll = _aft_tvc_neg_ll  # type: ignore[assignment]
 
 
 def AFT(distribution: Any) -> "AFTFitter":

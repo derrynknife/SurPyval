@@ -82,6 +82,30 @@ def ic_sample_size(
     return float(weights.sum()) if n_rows is None else float(n_rows)
 
 
+def corrected_aic(aic: float, k: float, n: float) -> float:
+    r"""The small-sample corrected AIC, ``aic + (2 k^2 + 2 k) / (n - k - 1)``.
+
+    The one definition of AIC_c that every model reporting it uses (#605),
+    with ``k`` the parameters penalised and ``n`` the sample size of
+    :func:`ic_sample_size`. The correction only exists for
+    :math:`n > k + 1`; otherwise the criterion is undefined and ``nan``
+    is returned (the formula gives ``inf`` at :math:`n = k + 1`, and a
+    value *below* ``aic`` for smaller :math:`n`, which would win a
+    comparison).
+
+    Examples
+    --------
+    >>> from surpyval.univariate.information_criteria import corrected_aic
+    >>> corrected_aic(100.0, 2, 20)
+    100.70588235294117
+    >>> corrected_aic(100.0, 2, 3)
+    nan
+    """
+    if n - k - 1 <= 0:
+        return float("nan")
+    return float(aic + (2 * k**2 + 2 * k) / (n - k - 1))
+
+
 class InformationCriteriaMixin:
     """Log-likelihood based model-selection criteria.
 
@@ -170,6 +194,22 @@ class InformationCriteriaMixin:
             raise ValueError("Must have been fit with data")
 
         return self._neg_ll
+
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised log-likelihood, ``-neg_ll()``: a number, not a
+        method, on every model that has one (#572, #605). Raises a
+        ``ValueError`` where :meth:`neg_ll` does (a model not fitted to
+        data)."""
+        return -float(self.neg_ll())
+
+    @log_likelihood.setter
+    def log_likelihood(self, value: float) -> None:
+        # A fitter that records the log-likelihood records the negative
+        # log-likelihood, which the criteria read; their caches go.
+        self._neg_ll = -float(value)
+        for name in ("_aic", "_aic_c", "_bic"):
+            self.__dict__.pop(name, None)
 
     def bic(self) -> float:
         r"""
@@ -283,10 +323,7 @@ class InformationCriteriaMixin:
         """
         if hasattr(self, "_aic_c"):
             return self._aic_c
-        k = self._ic_k_aic_c()
-        n = self._ic_sample_size()
-        if n - k - 1 <= 0:
-            self._aic_c = float("nan")
-        else:
-            self._aic_c = self.aic() + (2 * k**2 + 2 * k) / (n - k - 1)
+        self._aic_c = corrected_aic(
+            self.aic(), self._ic_k_aic_c(), self._ic_sample_size()
+        )
         return self._aic_c

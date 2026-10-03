@@ -14,6 +14,7 @@ from surpyval.recurrent.renewal.renewal_model import (
     event_positions,
 )
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
@@ -319,6 +320,13 @@ class GeneralizedOneRenewal(RenewalFitMixin):
         underlying_model = dist.from_params(list(params[1:]))
         q = params[0]
         out = self._make_model(underlying_model, q)
+        # The likelihood kept as what it is built from, so the model
+        # pickles (#573).
+        neg_ll = Rebuilt(
+            self.create_negll_func,
+            (data.interarrival_times, data.i, data.c, data.n, dist),
+            built=neg_ll,
+        )
         self._attach_inference(out, neg_ll, params, res, data)
         return out
 

@@ -793,7 +793,7 @@ def mle(model: "Parametric") -> Any:
             (offset, zi, lfp),
             hess_at,
         )
-        results["cov_matrix"] = cov_matrix
+        results["_covariance"] = cov_matrix
         results["hess_inv"] = hess_inv
         # On the fallback path the returned parameters are the initial
         # guess, so the reported likelihood must be evaluated there — not

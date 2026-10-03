@@ -20,6 +20,7 @@ from scipy.stats import norm
 if TYPE_CHECKING:
     import pandas as pd
 
+from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.nonparametric import (
     FlemingHarrington,
     KaplanMeier,
@@ -35,6 +36,7 @@ from surpyval.utils import (
     validate_coxph_df_inputs,
 )
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
+from surpyval.utils.pickling import Rebuilt
 
 from .._aliasing import (
     aliased_columns,
@@ -54,6 +56,7 @@ from .cox_likelihood import (  # noqa: F401
     _combine_generators,
     at_risk_beta_Z,
     baseline_at_origin,
+    combined_generators,
     cox_at_risk_mask,
     efron_jac,
     efron_log_denominator,
@@ -560,18 +563,24 @@ class CoxPH_(CoxLikelihoodMixin):
         # column far from 0 (#459); see ``covariate_center``.
         mean = covariate_center(Z, n)
         Zc = Z - mean
-        neg_ll, jac = func_generator(x, Zc, c, n, tl)
+        likelihood_args = (x, Zc, c, n, tl)
+        neg_ll, jac = func_generator(*likelihood_args)
 
         res, p_values, se, aliased = _solve_beta_and_p_values(
             neg_ll, jac, beta_init, tol, Z, n, float(n[c == 0].sum())
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
-        model._neg_log_like = neg_ll(res.x)
+        model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
         model.se = se
-        model.neg_ll = neg_ll
-        model.jac = jac
+        # Kept as what they are built from, so the model pickles (#573)
+        model.neg_ll_of = Rebuilt(
+            func_generator, likelihood_args, item=0, built=neg_ll
+        )
+        # BIC's sample size, the events (R's ``nobs.coxph``, ``nevent``).
+        model._ic_n = ic_sample_size(c, n)
+        model.jac = Rebuilt(func_generator, likelihood_args, item=1, built=jac)
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)
         model.res = res
@@ -701,6 +710,13 @@ class CoxPH_(CoxLikelihoodMixin):
 
         gens = [g for _, g, _ in per_stratum]
         neg_ll, jac = _combine_generators(gens)
+        strata_args = (
+            func_generator,
+            [
+                (xs, Zcs, cs, ns_, tls)
+                for _, _, (xs, cs, ns_, Zcs, tls) in per_stratum
+            ],
+        )
 
         beta_init = np.zeros(n_params)
         res, p_values, se, aliased = _solve_beta_and_p_values(
@@ -721,11 +737,20 @@ class CoxPH_(CoxLikelihoodMixin):
         )
 
         model = SemiParametricRegressionModel("Cox", "Semi-Parametric")
-        model._neg_log_like = neg_ll(res.x)
+        model._neg_ll = float(neg_ll(res.x))
         model.p_values = p_values
         model.se = se
-        model.neg_ll = neg_ll
-        model.jac = jac
+        # Kept as what they are built from, so the model pickles (#573)
+        model.neg_ll_of = Rebuilt(
+            combined_generators, strata_args, item=0, built=neg_ll
+        )
+        model._ic_n = ic_sample_size(
+            np.concatenate([v[2] for v in validated]),
+            np.concatenate([v[3] for v in validated]),
+        )
+        model.jac = Rebuilt(
+            combined_generators, strata_args, item=1, built=jac
+        )
         model.tie_method = tie_method
         model.baseline_method = _baseline_method(tie_method)
         model.res = res

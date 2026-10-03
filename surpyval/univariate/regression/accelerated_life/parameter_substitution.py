@@ -10,6 +10,7 @@ from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
     bounds_convert,
+    identity,
     verify_or_polish,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -27,6 +28,7 @@ from .._fit_skeleton import (
     HazardIdentitiesMixin,
     MirroredDistributionAttrs,
     assemble_regression_model,
+    check_baseline_support,
     check_fixed_and_init,
     covariate_center,
     drop_nonfinite_covariates,
@@ -107,9 +109,12 @@ class ParameterSubstitutionFitter(
         self.life_relation = life_relation
         self.fixed = {life_parameter: 1.0}
 
+        self.param_transform: Callable[..., Any]
+        self.inverse_param_transform: Callable[..., Any]
         if param_transform is None:
-            self.param_transform = lambda x: x
-            self.inverse_param_transform = lambda x: x
+            # (Module-level, not lambdas, so a fitted model pickles, #573)
+            self.param_transform = identity
+            self.inverse_param_transform = identity
         else:
             # Supplied as a pair -- accelerated_life.py passes both or
             # neither -- so the inverse is not None here.
@@ -454,6 +459,7 @@ class ParameterSubstitutionFitter(
         data, Z_arr = drop_nonfinite_covariates(data, Z_arr)
         self._check_stresses(Z_arr)
         data.add_covariates(Z_arr)
+        check_baseline_support(self, data)
         # The per-stress fallback start uses each row's time (the midpoint
         # of an interval row).
         x_arr: npt.NDArray = (

@@ -60,10 +60,41 @@ def test_nan_truncation_bound_is_refused(kwargs):
 
 
 def test_nan_and_inf_counts_are_refused():
-    with pytest.raises(ValueError, match="integer values"):
+    # A missing count is named as such, as a missing x is (#576)
+    with pytest.raises(ValueError, match="'n' cannot contain NaN"):
         xcnt_handler([1, 2], n=[1, nan])
     with pytest.raises(ValueError, match="integer values"):
         xcnt_handler([1, 2], n=[1, inf])
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [nan, None, pd.NA],
+    ids=["nan", "None", "pd.NA"],
+)
+@pytest.mark.parametrize("arg", ["c", "n"])
+def test_576_a_missing_flag_or_count_is_named(arg, missing):
+    # A nullable Int64 column with pd.NA (or a NaN) in c was refused as
+    # "Censoring value must only be one of -1, 0, 1 ..."
+    values = [1, 1, missing]
+    if missing is pd.NA:
+        values = pd.Series(pd.array(values, dtype="Int64"))
+    with pytest.raises(ValueError, match=f"Variable '{arg}' cannot contain"):
+        xcnt_handler([1.0, 2.0, 3.0], **{arg: values})
+    df = pd.DataFrame({"x": [1.0, 2.0, 3.0], arg: values})
+    with pytest.raises(ValueError, match=f"Variable '{arg}' cannot contain"):
+        Weibull.fit_from_df(df, x_col="x", **{f"{arg}_col": arg})
+
+
+def test_576_an_interval_below_its_truncation_says_why():
+    # Inspection data: found failed at the first inspection after the
+    # records begin (at age 100), last seen working at 80.
+    with pytest.raises(ValueError) as error:
+        Weibull.fit(xl=[80.0, 150, 210], xr=[120.0, 190, 250], tl=100.0)
+    message = str(error.value)
+    assert "cannot start below its own left truncation time" in message
+    assert "last good inspection" in message and "tl <= xl" in message
+    assert "Do not move xl up to tl" in message
 
 
 def test_nan_in_fsli_and_fsl_is_refused():

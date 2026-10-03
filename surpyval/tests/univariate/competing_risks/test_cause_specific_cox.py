@@ -344,3 +344,20 @@ def test_cause_specific_incidences_match_r_survival():
         np.testing.assert_allclose(model.sf(t, [z]), sf, rtol=1e-6)
         np.testing.assert_allclose(model.cif(t, [z], 1), cif1, rtol=1e-6)
         np.testing.assert_allclose(model.cif(t, [z], 2), cif2, rtol=1e-6)
+
+
+def test_604_cause_specific_cox_comparison_values_are_r_survivals():
+    # R survival 3.x, the multi-state coxph(Surv(x, factor(code)) ~ z1 +
+    # z2) on competing_risks_regression_data(): its partial loglik, AIC and
+    # BIC (k = 4 coefficients, BIC's n the 91 events of both causes).
+    import surpyval as sp
+
+    x, Z, e = competing_risks_regression_data()
+    model = CompetingRisksProportionalHazards.fit(x, Z, e)
+    assert isinstance(model.log_likelihood, float)
+    assert model.log_likelihood == pytest.approx(-332.711461573959, rel=1e-9)
+    assert model.aic() == pytest.approx(673.422923147917, rel=1e-9)
+    assert model.bic() == pytest.approx(683.466361173984, rel=1e-9)
+    restored = sp.from_dict(model.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(model, name)()

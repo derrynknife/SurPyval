@@ -335,17 +335,17 @@ above):
     assert abs(small.neg_ll() - demo.neg_ll()) < 1e-6
     assert np.allclose(small.params * [1, 1, 1e-4], demo.params, rtol=1e-4)
 
-The regression models do not have a quantile function (``qf``). A quantile at a
-given covariate value is the root of :math:`S(x \mid Z) = 1 - p`, which a
-bracketing root-finder finds reliably because ``sf`` is monotone:
+The parametric regression models have a quantile function, ``qf(p, Z)``,
+with the same pairing of probabilities and rows (and ``grid=True``): the time
+by which a proportion ``p`` of the units with covariates ``Z`` have failed,
+inverted from the model's own cumulative hazard for every family. The B10 life
+of a unit is ``qf(0.1, Z)``:
 
 .. jupyter-execute::
 
-    from scipy.optimize import brentq
-
     for z in [0.0, 1.0]:
-        median = brentq(lambda t: demo.sf([t], Z=[z])[0] - 0.5, 1e-6, 100.0)
-        print(f'median life at Z = {z:g}: {median:.2f}')
+        b10, median = demo.qf([0.1, 0.5], Z=[z])
+        print(f'Z = {z:g}: B10 {b10:.2f}, median life {median:.2f}')
 
 With a hazard ratio of about 2 and a Weibull shape of 2, the exposed median is
 shorter by a factor of about :math:`2^{1/2}` — exactly what the PH/AFT
@@ -355,12 +355,42 @@ equivalence for the Weibull (see `Accelerated Failure Time (AFT)`_) predicts.
     :hide-code:
     :hide-output:
 
-    _med = [brentq(lambda t, z=z: demo.sf([t], Z=[z])[0] - 0.5, 1e-6, 100.0)
-            for z in (0.0, 1.0)]
+    _med = demo.qf(0.5, Z=[[0.0], [1.0]])
+    assert np.allclose(demo.sf(_med, Z=[[0.0], [1.0]]), 0.5, rtol=1e-10)
     _shape, _b0 = demo.params[1], demo.params[2]
     assert round(np.exp(_b0)) == 2 and round(_shape) == 2, demo.params
-    assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-4)
+    assert np.isclose(_med[0] / _med[1], np.exp(_b0 / _shape), rtol=1e-9)
     assert abs(_med[0] / _med[1] - 2 ** 0.5) < 0.05, _med
+
+A unit already in service has survived to its age. Every regression model
+(the parametric families, Cox, the proportional odds, additive hazards,
+Buckley-James and frailty models) has the univariate models' conditional
+survival with covariates, ``cs(x, given, Z)``: the chance that a unit with
+covariates ``Z`` that has survived to ``given`` survives a further ``x``,
+:math:`S(given + x \mid Z) / S(given \mid Z)`. It is computed from the
+cumulative hazard, so it stays exact far in the tail, where the ratio of
+``sf`` values underflows to ``0 / 0``:
+
+.. jupyter-execute::
+
+    ages = np.array([2.0, 8.0, 250.0])
+    print('cs(1 | age, Z=1) :', demo.cs(1.0, ages, Z=[1.0]))
+    with np.errstate(invalid='ignore'):
+        print('sf ratio         :',
+              demo.sf(ages + 1, Z=[1.0]) / demo.sf(ages, Z=[1.0]))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    with np.errstate(invalid='ignore'):
+        _ratio = demo.sf(ages + 1, Z=[1.0]) / demo.sf(ages, Z=[1.0])
+    assert np.allclose(demo.cs(1.0, ages[:2], Z=[1.0]), _ratio[:2])
+    assert np.isnan(_ratio[2]) and 0 < demo.cs(1.0, 250.0, Z=[1.0]) < 1
+
+Summed over a fleet, this is the forecast of how many units will fail over the
+next period, which :func:`surpyval.forecast` gives with a prediction interval
+(see `Forecasting a fleet from its current ages`_).
 
 
 Semi-Parametric — Cox Proportional Hazards
@@ -645,11 +675,13 @@ covariates either as ``Z_cols`` (a list of numeric columns) or as a
 formula such as ``"age + site"`` or ``"age * site"``). The fitted model
 remembers its ``feature_names`` — and the formula's encoding — so it can
 predict directly from a DataFrame of raw covariates. Beyond those, the
-parametric families take ``tl_col`` / ``tr_col`` (truncation) and ``init`` /
-``fixed``; ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry), ``tie_method``
-and ``strata_col``; and the
-frailty fitter requires a ``group_col``. There is a single time column, so
-interval-censored data (two time columns) go through ``fit``.
+parametric families take ``tl_col`` / ``tr_col`` (truncation), ``init`` /
+``fixed``, and interval-censored times as two columns, ``xl_col`` and
+``xr_col`` in place of ``x_col`` (the two columns of the ``x`` that ``fit``
+takes for them); ``CoxPH.fit_from_df`` takes ``tl_col`` (delayed entry),
+``tie_method`` and ``strata_col``; and the frailty fitter requires a
+``group_col``. A DataFrame entry point takes every kind of data its ``fit``
+does (the conformance suite checks it).
 
 A **categorical** covariate (a string or categorical column) is expanded with
 reference-level (treatment) coding: its first level is the baseline and each
@@ -2989,6 +3021,70 @@ needs the parametric ``fit_tvc`` / ``sf_tvc`` pair.
     assert 2 <= _gain <= 5 and 2 <= _loss <= 6, _median
 
 
+Forecasting a fleet from its current ages
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The question after a fit is usually about the units still in service: how many
+will fail over the next year, and which? Each unit has survived to its current
+age :math:`a_i`, so it fails within the next :math:`h` with probability
+:math:`1 - S(a_i + h \mid Z_i) / S(a_i \mid Z_i)`, its ``1 - cs(h, a_i, Z_i)``.
+:func:`surpyval.forecast` sums these over the fleet and gives the prediction
+interval of the count, from the exact distribution of a sum of independent
+Bernoulli variables (the Poisson-binomial). The same function forecasts from a
+univariate model, without ``Z`` (see :doc:`Parametric SurPyval Modelling`).
+
+Here gearboxes at two sites and different loads have been fitted with a
+Weibull AFT model; 80 are in service, with ages up to four years:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+    from surpyval import WeibullAFT
+
+    rng = np.random.default_rng(7)
+    n_fit = 300
+    Z_fit = np.column_stack([rng.binomial(1, 0.5, n_fit),
+                             rng.normal(0.0, 0.3, n_fit)])
+    life = 8 * rng.weibull(2.5, n_fit) * np.exp(-Z_fit @ [0.3, 1.5])
+    gearbox = WeibullAFT.fit(np.minimum(life, 10.0), Z_fit,
+                             c=(life > 10.0).astype(int))
+
+    ages = rng.uniform(0.0, 4.0, 80)
+    Z_now = np.column_stack([rng.binomial(1, 0.5, 80),
+                             rng.normal(0.0, 0.3, 80)])
+    removals = surv.forecast(gearbox, ages, horizon=[0.25, 0.5, 0.75, 1.0],
+                             Z=Z_now)
+    print(removals)
+
+Each row is a horizon (in years from now): the expected removals by then, a
+95% prediction interval, and the same for that quarter alone. The units most at
+risk are the rows of ``unit_expected`` (a unit's probability for a single
+unit, or ``n`` times it for a cohort) with the largest last column:
+
+.. jupyter-execute::
+
+    risk = removals.unit_expected[:, -1]
+    for i in np.argsort(risk)[::-1][:3]:
+        print(f'age {ages[i]:.1f} y, site {Z_now[i, 0]:.0f}, '
+              f'log-load {Z_now[i, 1]:+.2f}: P(removal within a year) '
+              f'{risk[i]:.2f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _p = 1 - gearbox.sf(ages + 1.0, Z_now) / gearbox.sf(ages, Z_now)
+    assert np.isclose(removals.expected[-1], _p.sum(), rtol=1e-9)
+    assert removals.lower[-1] < removals.expected[-1] < removals.upper[-1]
+    assert np.all(np.diff(removals.expected) > 0)
+
+The interval is that of the count with the model taken as known: it does not
+carry the uncertainty of the fitted parameters. Forecasts from several
+plausible models (another distribution, a model without the covariates) show
+how much the answer depends on that choice, which in-service failure counts
+alone rarely settle.
+
+
 Shared-frailty models
 ---------------------
 
@@ -3215,7 +3311,7 @@ The model predicts as the parametric one does: the marginal curve by
 default, a patient's own with ``group=``. The baseline (``x``, ``h0``,
 ``H0``) is a step function, of a unit at ``Z = 0`` with frailty 1. Twice the
 gain of the I-likelihood over the Cox partial likelihood
-(``loglik_no_frailty``, its value at ``theta = 0``) tests for a frailty;
+(``log_likelihood_no_frailty``, its value at ``theta = 0``) tests for a frailty;
 ``theta`` is on its boundary under the null, so the p-value is half the
 chi-square one:
 
@@ -3223,7 +3319,7 @@ chi-square one:
 
     from scipy.stats import chi2
 
-    lr = 2 * (cox_frailty.loglik - cox_frailty.loglik_no_frailty)
+    lr = 2 * (cox_frailty.log_likelihood - cox_frailty.log_likelihood_no_frailty)
     print('LR statistic %.2f, p = %.3f' % (lr, chi2.sf(lr, 1) / 2))
     woman = pd.DataFrame({'age': [45.0], 'female': [1.0]})
     print(cox_frailty.sf([30, 100], woman).round(3),
@@ -3299,9 +3395,38 @@ assumption is violated (e.g. survival curves cross), a lower-AIC PH model can
 still give misleading predictions. Goodness-of-fit diagnostics like
 Schoenfeld residuals (for PH) or log-log survival plots should accompany any
 model comparison. Information criteria are also only comparable between models
-fitted to the same data by full likelihood: a Cox model's partial likelihood,
-the Lin-Ying estimator and Buckley-James have no comparable likelihood, so
-compare those on held-out predictions instead (next section).
+fitted to the same data by full likelihood. The semi-parametric models report
+theirs on the likelihood they maximise -- ``CoxPH`` (as R's ``AIC(coxph)``),
+``CoxFrailty``, ``ProportionalOdds`` and ``FineGray`` on their partial,
+integrated, profile and weighted partial likelihoods, with :math:`k` their
+coefficients and the BIC's sample size their events -- which compares models
+of the same kind on the same data, such as two sets of covariates in a Cox
+model, but not a Cox model with a parametric one. The Lin-Ying estimator and
+Buckley-James have no likelihood at all. Compare across kinds on held-out
+predictions instead (next section).
+
+.. jupyter-execute::
+
+    from surpyval import CoxPH
+    from surpyval.datasets import load_rossi_static
+
+    rossi = load_rossi_static()
+    rossi['censored'] = 1 - rossi['arrest']  # arrest is 1 for an arrest
+    cox_three = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                  Z_cols=['fin', 'age', 'prio'])
+    cox_two = CoxPH.fit_from_df(rossi, x_col='week', c_col='censored',
+                                Z_cols=['age', 'prio'])
+    for name, m in [('fin + age + prio', cox_three), ('age + prio', cox_two)]:
+        print(f'{name:17s} log-lik={m.log_likelihood:8.3f}  '
+              f'AIC={m.aic():8.3f}  BIC={m.bic():8.3f}')
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    # R: AIC(coxph(Surv(week, arrest) ~ fin + age + prio, rossi))
+    assert abs(cox_three.aic() - 1327.714050768831) < 1e-6
+    assert cox_three.aic() < cox_two.aic()
 
 Validating a survival predictor
 -------------------------------

@@ -111,7 +111,7 @@ def test_from_params_model_has_no_likelihood():
         with pytest.raises(ValueError, match="from_params"):
             call()
     # and it serialises without likelihood fields
-    assert "neg_ll" not in m.to_dict()
+    assert "_neg_ll" not in m.to_dict()
 
 
 def test_likelihood_survives_serialisation(clayton_data):
@@ -123,7 +123,7 @@ def test_likelihood_survives_serialisation(clayton_data):
     assert restored.bic() == m.bic()
     # a dict written before the likelihood was stored has none
     old = m.to_dict()
-    for key in ["neg_ll", "k", "ic_n"]:
+    for key in ["_neg_ll", "k", "ic_n"]:
         del old[key]
     with pytest.raises(ValueError):
         surv.from_dict(old).neg_ll()

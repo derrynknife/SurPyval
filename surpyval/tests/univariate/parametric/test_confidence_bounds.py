@@ -134,13 +134,13 @@ def test_lfp_cb_centred_on_full_sf(lfp_model):
     assert cb[-1, 0] < 1 - model.p
 
 
-def test_cov_matrix_extends_hess_inv(lfp_model):
+def test_covariance_extends_hess_inv(lfp_model):
     # The full covariance covers (alpha, beta, p); its parameter block
     # is exactly hess_inv, and the estimated p has variance.
     model = lfp_model
-    assert model.cov_matrix.shape == (3, 3)
-    assert np.allclose(model.cov_matrix[:2, :2], model.hess_inv)
-    assert model.cov_matrix[2, 2] > 0
+    assert model.covariance().shape == (3, 3)
+    assert np.allclose(model.covariance()[:2, :2], model.hess_inv)
+    assert model.covariance()[2, 2] > 0
 
 
 def test_lfp_sf_cb_includes_p_variance(lfp_model):
@@ -155,7 +155,7 @@ def test_lfp_sf_cb_includes_p_variance(lfp_model):
 
     phi_hat = np.array([*model.params, model.p])
     jac = np.atleast_2d(jacobian(sf_func)(phi_hat))
-    var_R = np.einsum("ij,jk,ik->i", jac, model.cov_matrix, jac)
+    var_R = np.einsum("ij,jk,ik->i", jac, model.covariance(), jac)
     R_hat = model.sf(t)
     # on log H, the Weibull's straight-line scale (#477)
     H_hat = -np.log(R_hat)
@@ -196,9 +196,9 @@ def test_zi_lfp_cb():
     x = np.concatenate((x, np.zeros(100), x.max() * np.ones(100) + 1))
 
     model = surv.Weibull.fit(x, c=c, zi=True, lfp=True)
-    assert model.cov_matrix.shape == (4, 4)
-    assert model.cov_matrix[2, 2] > 0
-    assert model.cov_matrix[3, 3] > 0
+    assert model.covariance().shape == (4, 4)
+    assert model.covariance()[2, 2] > 0
+    assert model.covariance()[3, 3] > 0
 
     t = np.linspace(1, 40, 10)
     sf = model.sf(t)
@@ -253,8 +253,8 @@ def test_fixed_p_lfp():
 
     model = surv.Weibull.fit(x, c=c, lfp=True, fixed={"p": 0.5})
     assert np.isclose(model.p, 0.5)
-    assert np.all(model.cov_matrix[2, :] == 0)
-    assert np.all(model.cov_matrix[:, 2] == 0)
+    assert np.all(model.covariance()[2, :] == 0)
+    assert np.all(model.covariance()[:, 2] == 0)
     assert np.allclose(model.param_cb("p"), [model.p, model.p])
 
     t = np.linspace(5, 50, 10)
@@ -270,8 +270,8 @@ def test_fixed_f0_zi():
 
     model = surv.Weibull.fit(x, zi=True, fixed={"f0": 0.1})
     assert np.isclose(model.f0, 0.1)
-    assert np.all(model.cov_matrix[2, :] == 0)
-    assert np.all(model.cov_matrix[:, 2] == 0)
+    assert np.all(model.covariance()[2, :] == 0)
+    assert np.all(model.covariance()[:, 2] == 0)
     assert np.allclose(model.param_cb("f0"), [model.f0, model.f0])
 
 
@@ -542,7 +542,7 @@ def test_lr_bounds_respect_user_fixed_parameters():
 # ``exp(x)`` was taped even where ``x + 1`` was selected, and above
 # x = 709.78 it overflowed to inf -- poisoning the derivative of the
 # branch that *was* chosen. The transform's jacobian came back nan, and
-# ``cov_matrix`` is that jacobian either side of the inverse hessian.
+# ``covariance()`` is that jacobian either side of the inverse hessian.
 #
 # The threshold is a property of the fitted parameter, not the sample
 # size, so a Weibull with alpha = 10 lost its bounds once the data was
@@ -568,7 +568,7 @@ def test_standard_errors_survive_the_units_of_the_data(name, params, scale):
     x = np.asarray(dist.random(200, *params), dtype=float) * scale
 
     model = dist.fit(x)
-    cov = model.cov_matrix
+    cov = model.covariance()
 
     assert cov is not None, f"{name} at scale {scale:g} reported no covariance"
     se = np.sqrt(np.diag(np.atleast_2d(np.asarray(cov, dtype=float))))
@@ -593,7 +593,7 @@ def test_standard_errors_are_scale_equivariant(name, params):
     scaled = dist.fit(sample * scale)
 
     def se_of(model):
-        cov = np.atleast_2d(np.asarray(model.cov_matrix, dtype=float))
+        cov = np.atleast_2d(np.asarray(model.covariance(), dtype=float))
         return np.sqrt(np.diag(cov))
 
     se_base, se_scaled = se_of(base), se_of(scaled)
@@ -720,7 +720,7 @@ def test_function_cb_with_a_negative_variance_warns():
     # Uniform fit that showed it is refused since #460, so the covariance
     # is broken by hand here.)
     model = fresh_conformance_fit("Weibull")
-    model.cov_matrix = -np.abs(np.asarray(model.hess_inv))
+    model._covariance = -np.abs(np.asarray(model.hess_inv))
     with pytest.warns(RuntimeWarning, match=r"df at x = \[1.0, 5.0\]") as rec:
         cb = model.cb([1.0, 5.0], on="df")
     assert len(rec) == 1 and rec[0].filename == __file__
@@ -764,3 +764,23 @@ def test_cb_rejects_an_unknown_bound():
     model = W.fit([1.0, 2, 3, 4, 5])
     with pytest.raises(ValueError, match="'bound' must be one of"):
         model.cb([2.0], bound="both")
+
+
+def test_605_covariance_is_a_method_and_cov_matrix_deprecated():
+    np.random.seed(1)
+    model = surv.Weibull.fit(surv.Weibull.random(50, 10, 3))
+    cov = model.covariance()
+    assert cov.shape == (2, 2) and np.allclose(cov, model.hess_inv)
+    with pytest.warns(DeprecationWarning, match="covariance()") as caught:
+        old = model.cov_matrix
+    assert caught[0].filename == __file__
+    np.testing.assert_array_equal(old, cov)
+    # Saved under one key, and a dict written before v0.23 still loads
+    d = model.to_dict()
+    assert "covariance" in d and "cov_matrix" not in d
+    d["cov_matrix"] = d.pop("covariance")
+    np.testing.assert_array_equal(surv.from_dict(d).covariance(), cov)
+    # A model without one says why
+    built = surv.Weibull.from_params([10, 3])
+    with pytest.raises(ValueError, match="no parameter covariance"):
+        built.covariance()

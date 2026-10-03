@@ -50,11 +50,13 @@ from surpyval.utils import (
 )
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import numerical_hessian
+from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._aliasing import covariate_columns, expand
 from .._fit_skeleton import (
     _gradient,
     alias_coefficients,
+    check_baseline_support,
     finish_search,
     natural_information,
     optimise_ph,
@@ -492,6 +494,11 @@ class FrailtyFitter:
         (array([0.399]), 0.432)
         """
         x, Zm, c, w, labels, inv = grouped_data(x, Z, c, n, groups)
+        # The times inside the baseline's support, as for the other
+        # parametric regressions (#565)
+        check_baseline_support(
+            self, SurpyvalData(x, c, w, None, group_and_sort=False)
+        )
         n_obs = x.shape[0]
         n_groups = labels.shape[0]
         Zc = np.zeros((n_obs, 0)) if Zm is None else Zm
@@ -697,7 +704,7 @@ class FrailtyFitter:
         model.feature_names = feature_names
         model.group_labels = list(labels)
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
-        model.covariance = covariance
+        model._covariance = covariance
         model.parameter_names = parameter_names
         model.k = len(parameter_names) - len(aliased)
         model.n_obs = n_obs

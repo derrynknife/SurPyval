@@ -70,14 +70,33 @@ from surpyval.utils.validation import BOUNDS, check_option
 from ._maximum import verified_search
 from ._measurements import validate_xy
 
+
+# Time-transform bases phi(t). Named functions, not lambdas, so a fitted
+# model, which keeps its basis, pickles (#573).
+def _phi_linear(t: Any) -> Any:
+    return t
+
+
+def _phi_log(t: Any) -> Any:
+    return np.log(t)
+
+
+def _phi_sqrt(t: Any) -> Any:
+    return np.sqrt(t)
+
+
+def _phi_reciprocal(t: Any) -> Any:
+    return 1.0 / t
+
+
 # Time-transform bases phi(t): (callable, display name). The linear predictor
 # is loc(t) = beta0 + beta1 * phi(t); the free parameters are the regression
 # coefficients, so phi carries no parameters of its own.
 _TRANSFORMS = {
-    "linear": (lambda t: t, "t"),
-    "log": (lambda t: np.log(t), "log(t)"),
-    "sqrt": (lambda t: np.sqrt(t), "sqrt(t)"),
-    "reciprocal": (lambda t: 1.0 / t, "1/t"),
+    "linear": (_phi_linear, "t"),
+    "log": (_phi_log, "log(t)"),
+    "sqrt": (_phi_sqrt, "sqrt(t)"),
+    "reciprocal": (_phi_reciprocal, "1/t"),
 }
 
 # Distributions whose response is positive; their location parameter acts on
@@ -375,7 +394,8 @@ class DestructiveDegradationModel(SerialisableMixin):
             "beta": self.beta.tolist(),
             "sigma": float(self.sigma),
             "threshold": float(self.threshold),
-            "neg_ll": float(self._neg_ll),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
             "transform_scores": (
                 None
                 if self.transform_scores is None
@@ -430,7 +450,8 @@ class DestructiveDegradationModel(SerialisableMixin):
                     "c": np.asarray(data["c"], dtype=int),
                 }
             ),
-            neg_ll=float(d.get("neg_ll", np.nan)),
+            # "neg_ll" is the key of a dict written before v0.23.
+            neg_ll=float(d.get("_neg_ll", d.get("neg_ll", np.nan))),
             transform_scores=d.get("transform_scores"),
         )
         model.maximum = restored_maximum(d)
