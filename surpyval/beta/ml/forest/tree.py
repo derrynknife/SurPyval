@@ -12,6 +12,7 @@ from surpyval.beta.ml.forest.node import (
     IntermediateNode,
     Node,
     build_tree,
+    fit_leaves,
     node_from_dict,
     tree_lines,
 )
@@ -208,6 +209,9 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             alpha_split=self.alpha_split,
             min_split_gain=self.min_split_gain,
         )
+        # The parametric leaves all at once, rather than one by one on
+        # first use (#549)
+        fit_leaves(self._root)
 
     @classmethod
     def fit(
@@ -527,7 +531,8 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
             "root": self._root.to_dict(),
         }
         serialise_covariate_meta(self, out)
-        return stamp_schema(out)
+        # The leaves are finished model dictionaries already (#549)
+        return stamp_schema(out, stamped=True)
 
     @classmethod
     def from_dict(cls, model_dict: dict) -> "SurvivalTree":

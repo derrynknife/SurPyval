@@ -302,3 +302,41 @@ def test_other_data_slices_the_node_terms_bit_for_bit(model, kind):
     assert dev.deviance_split(
         data, Z, 5, 2, [0, 1], model=model
     ) == reference_deviance_split(data, Z, 5, 2, [0, 1], model)
+
+
+@pytest.mark.parametrize("model", ["exponential", "weibull"])
+def test_549_one_pass_per_node(model, monkeypatch):
+    # The node's own maximum and every feature's children are found in
+    # one pass, where the node and each feature took one of their own.
+    data, Z = _deviance_case(3)
+    Z = np.column_stack([Z, Z[:, ::-1]])
+    calls = []
+    closed = dev._ChildLikelihoods._closed_lls
+
+    def spy(self, rows):
+        calls.append(rows.shape[0])
+        return closed(self, rows)
+
+    monkeypatch.setattr(dev._ChildLikelihoods, "_closed_lls", spy)
+    got = dev.deviance_split(data, Z, 5, 2, [0, 1, 2, 3], model=model)
+    assert len(calls) == 1
+    monkeypatch.undo()
+    assert got == reference_deviance_split(data, Z, 5, 2, [0, 1, 2, 3], model)
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_549_weibull_children_from_their_own_rows(seed):
+    # Each child's profile likelihood sums over its own rows only: the
+    # same maximum as the bounded optimiser on that child, and as the
+    # profile on a (children x rows) matrix gave, to the last digits.
+    data, Z = _deviance_case(seed)
+    theta0 = dev._exp_theta0(data)
+    search = dev._ChildLikelihoods(data, "weibull", theta0)
+    masks = np.array([Z[:, 0] <= v for v in np.quantile(Z[:, 0], [0.3, 0.6])])
+    rows = np.concatenate([masks, ~masks])
+    got, theta = search._weibull(rows)
+    for j, mask in enumerate(rows):
+        child = data[mask]
+        mle = sp.Weibull.fit(child.x, child.c, child.n)
+        np.testing.assert_allclose(np.exp(theta[j]), mle.params, rtol=1e-5)
+        assert got[j] >= -mle.neg_ll() - 1e-9 * abs(mle.neg_ll())

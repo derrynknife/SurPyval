@@ -12,6 +12,7 @@ from surpyval.beta.ml.forest.deviance_split import (
     _exp_theta0,
     deviance_split,
     leaf_mle,
+    leaf_mles,
     needs_full_likelihood_split,
 )
 from surpyval.beta.ml.forest.log_rank_split import log_rank_split
@@ -200,7 +201,9 @@ class TerminalNode(Node):
     for a parametric
     leaf with no failures. On observed and right-censored data a
     parametric leaf is the maximum found as the split search finds a
-    child's, built from its parameters (so it has no ``cb()`` of its own).
+    child's, built from its parameters (so it has no ``cb()`` of its own);
+    a tree finds those for all its leaves together as it is grown
+    (:func:`fit_leaves`).
     """
 
     def __init__(
@@ -351,6 +354,45 @@ class TerminalNode(Node):
         node.__dict__["model"] = model
         node.__dict__["_units"] = node_dict.get("units")
         return node
+
+
+def fit_leaves(root: Node) -> None:
+    """Fit the parametric leaves of the tree under ``root`` together.
+
+    Each leaf's model is what :attr:`TerminalNode.model` would fit on
+    first use; the leaves whose maximum :func:`leaf_mle` finds (observed
+    and right-censored rows) are found in one pass for the whole tree,
+    rather than one leaf at a time (#549). Any other leaf stays to be
+    fitted on first use, as before.
+    """
+    leaves = []
+    stack = [root]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, IntermediateNode):
+            stack += [node.right_child, node.left_child]
+        elif (
+            isinstance(node, TerminalNode)
+            and node.kind != "non-parametric"
+            and node.data is not None
+            and "model" not in node.__dict__
+        ):
+            leaves.append(node)
+    batches: dict = {"weibull": [], "exponential": []}
+    for leaf in leaves:
+        n_failures = leaf.data.n[leaf.data.c != 1].sum()
+        if n_failures == 0:
+            leaf.__dict__["model"] = NeverOccurs
+        elif leaf.kind == "weibull" and n_failures > 1:
+            batches["weibull"].append(leaf)
+        else:
+            batches["exponential"].append(leaf)
+    for model, dist in (("weibull", Weibull), ("exponential", Exponential)):
+        batch = batches[model]
+        fitted = leaf_mles([leaf.data for leaf in batch], model)
+        for leaf, params in zip(batch, fitted):
+            if params is not None:
+                leaf.__dict__["model"] = dist.from_params(params)
 
 
 def route_to_leaves(
