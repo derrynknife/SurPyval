@@ -623,8 +623,9 @@ def required_schema(model_dict: dict, stamped: bool = False) -> int:
     missing entries, holds a regression formula that only a schema-2
     reader can rebuild (wrapped categoricals such as ``C(g)``, integer
     levels, or fitted transforms such as ``scale(z)``), or holds the
-    ``"support"`` of a non-parametric estimate's ``set_support`` or the
-    ``"band_n"`` of its ``band``, or the nonzero covariate ``"center"`` of
+    ``"support"`` of a non-parametric estimate's ``set_support``, the
+    ``"band_n"`` of its ``band`` or the ``"algorithm"`` of a Turnbull fit
+    by the EM-ICM, or the nonzero covariate ``"center"`` of
     a regression model fitted with ``center=True``, which a schema-1
     reader would silently ignore; 1
     otherwise, the layout SurPyval v0.20 reads. This is the version
@@ -696,10 +697,13 @@ def _center_nonzero(d: dict) -> bool:
 
 def _has_support(d: dict) -> bool:
     """Whether ``d`` (a cause-specific MCF's per-cause estimates are
-    nested) has a ``"support"`` or a ``"band_n"``, which only the
-    non-parametric estimates' ``to_dict`` writes (from ``set_support``,
-    and for ``band`` on left truncated data)."""
-    return any(d.get(key) is not None for key in ("support", "band_n"))
+    nested) has a ``"support"``, a ``"band_n"`` or an ``"algorithm"``,
+    which only the non-parametric estimates' ``to_dict`` writes (from
+    ``set_support``, for ``band`` on left truncated data, and for a
+    Turnbull fit by the EM-ICM, #620)."""
+    return any(
+        d.get(key) is not None for key in ("support", "band_n", "algorithm")
+    )
 
 
 def _formula_without_levels(d: dict) -> bool:
