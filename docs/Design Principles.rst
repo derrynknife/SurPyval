@@ -64,10 +64,13 @@ Inputs
    else. Nor does a covariate's origin: with ``center=True`` every
    regression gives the same model when a constant is added to a
    covariate, and so do the defaults of Cox, Fine-Gray and the families
-   whose baseline maps exactly between origins.
+   whose baseline maps exactly between origins. Nor does a covariate's
+   scale: multiplying a column by a constant divides its coefficient by it
+   and leaves the maximised likelihood unchanged.
 
    *Checked* by ``conformance/test_metamorphic.py``
-   (``test_covariate_origin*`` for covariates). One family is excepted:
+   (``test_covariate_origin*`` for covariates) and ``test_maximum.py``'s
+   small-scale fits (#577). One family is excepted:
    the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
    depend on the units, and warns when it does; its MPS fit does not
    (#385).
@@ -188,7 +191,8 @@ Estimation
     maximum passes an independent check at the reported parameters (the
     gradient of the model's own likelihood ~0 and its Hessian positive
     definite, a parameter on a boundary of its space held out where the
-    likelihood does not rise off it).
+    likelihood does not rise off it, and a refit from off it finding
+    nothing higher, #579).
 
 14. **Entry points agree.** ``fit``, ``fit_from_df``, a formula,
     ``from_params`` and ``fit_tvc`` give the same model for the same data.

@@ -4,6 +4,31 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **A covariate's units no longer change a regression fit (#577).** Each
+  coefficient is searched and verified in its covariate's units
+  (``1/range(Z_j)``, at least 1). Before, a coefficient's gradient at its
+  start of 0 was proportional to the covariate's spread, so a small-scale
+  covariate met both tolerances at once: ``WeibullPH.fit_tvc`` with an
+  Arrhenius ``1/T`` stopped after no iterations at coefficient 0 and
+  reported a verified maximum 0.41 below the one reached with ``1000/T``.
+  With covariates scaled by 1e-6, 50 fits stopped 0.06-10 short while
+  reporting "verified": every PH, AFT and PO family (``fit`` and
+  ``fit_tvc``), frailty, Fine-Gray and ``ProportionalIntensityHPP``
+  (additive hazards at 1e-9). All now match the fit in the original units.
+  ``ProportionalIntensityHPP`` polishes an unverified answer, as the NHPP
+  fit did, and numerical derivatives step in each component's unit. Fits
+  whose covariates have a range of 1 or more are unchanged to the bit.
+- **A limited-failure ``p`` (or zero-inflation ``f0``) on its bound is
+  judged there (#579).** A Weibull with ``lfp=True`` on monthly
+  interval-censored return counts ran ``p`` to 1, where its search
+  coordinate no longer moves the likelihood, and reported a verified
+  maximum 3.8 below the one at ``p = 0.059`` (wrong in 19 of 20 simulated
+  warranty data sets, by 0.13-5.8). Such a parameter is now held out of the
+  gradient and Hessian test and counts as a maximum only if the likelihood
+  does not rise off the bound; where it does, the fit restarts from
+  mid-range and keeps the better answer. Interval-censored data also get
+  the failures-alone LFP start. A genuine maximum at ``p = 1`` is reported
+  as verified (it sometimes warned "unverified").
 - **Process-model lives start where the units start (#574).** Breaking:
   ``GammaProcess`` and ``WienerProcess`` fitted the increments only but
   measured the life from degradation 0, so readings that start at a
