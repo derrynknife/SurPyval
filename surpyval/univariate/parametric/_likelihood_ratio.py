@@ -1446,7 +1446,7 @@ class LikelihoodRatioMixin:
         method: str
         params: npt.NDArray
         gamma: float
-        p: float
+        lfp_p: float
         f0: float
         offset: bool
         lfp: bool

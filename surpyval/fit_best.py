@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Iterable
+from functools import partial
 from typing import Any, Callable
 
 import numpy as np
@@ -105,6 +106,12 @@ def _split_include(
 def _mixture_label(model: MixtureModel) -> str:
     """How a mixture candidate is named in ``fit_best``'s warnings."""
     return f"MixtureModel({model.dist.name}, {model.m})"
+
+
+def _fit_mixture(model: MixtureModel, data: dict[str, Any]) -> MixtureModel:
+    """A fresh mixture of ``model``'s components fitted to ``data``; the
+    model given stays as it was."""
+    return MixtureModel(dist=model.dist, m=model.m).fit(**data)
 
 
 def _candidate_names(names: Iterable[Any] | None, argument: str) -> set[str]:
@@ -337,22 +344,13 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     errors: list[Exception] = []
     outside: list[str] = []
     # Each candidate as (name, fit, whether its likelihood is regular).
+    data: dict[str, Any] = dict(x=x, c=c, n=n, t=t, tl=tl, tr=tr, xl=xl, xr=xr)
     fits: list[tuple[str, Callable[[], Any], bool]] = [
-        (
-            dist.name,
-            lambda d=dist: d.fit(x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr),
-            not _non_regular(dist),
-        )
+        (dist.name, partial(dist.fit, **data), not _non_regular(dist))
         for dist in candidates
     ]
     fits += [
-        (
-            _mixture_label(mix),
-            lambda mix=mix: MixtureModel(dist=mix.dist, m=mix.m).fit(
-                x, c, n, t, tl=tl, tr=tr, xl=xl, xr=xr
-            ),
-            True,
-        )
+        (_mixture_label(mix), partial(_fit_mixture, mix, data), True)
         for mix in mixtures
     ]
     labels: dict[int, str] = {}
