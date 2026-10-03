@@ -11,7 +11,10 @@ from autograd.numpy.numpy_boxes import ArrayBox
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
 from surpyval.utils.surpyval_data import SurpyvalData
-from surpyval.utils.validation import _check_x_not_empty
+from surpyval.utils.validation import (
+    _check_x_not_empty,
+    warn_outside_unit_interval,
+)
 
 # The estimation machinery lives in ``optimised_fit`` and ``_fit_inputs``;
 # its public names are importable from here as they always were.
@@ -212,8 +215,15 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
     formulas there, where the incomplete gamma and beta functions and
     ``q ** inf`` gave NaN: a Poisson's ``sf(inf)`` was NaN, not 0 (#561).
     The hazard's limit there is the family's own, and is computed.
+
+    A probability outside [0, 1] given to ``qf`` gives NaN there with one
+    warning, as the fitted models' ``qf`` do (#611): the formulas gave
+    whatever they gave -- an Exponential's ``qf(-0.5)`` a negative time,
+    a Uniform's ``qf(1.5)`` a point past its end, a Weibull's NaN with a
+    raw numpy warning.
     """
     at_infinity = _AT_INFINITY.get(fn.__name__)
+    is_qf = fn.__name__ == "qf"
 
     @functools.wraps(fn)
     def wrapped(self: "ParametricFitter", x: Any, *params: Any) -> Any:
@@ -227,6 +237,8 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
             return fn(self, x, *params)
         x_arr = np.asarray(x, dtype=float)
         missing = np.isnan(x_arr)
+        if is_qf:
+            missing = missing | warn_outside_unit_interval(x_arr)
         top = None
         replaced = missing
         if (
@@ -243,7 +255,7 @@ def _array_inputs(fn: Callable[..., Any]) -> Callable[..., Any]:
         known = x_arr[~replaced]
         if known.size:
             fill = float(known[0])
-        elif fn.__name__ == "qf":
+        elif is_qf:
             fill = 0.5
         else:
             lo, hi = self._support_edges(*params)

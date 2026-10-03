@@ -78,6 +78,10 @@ PROPERTIES: dict[str, str] = {
     "counts": "count weights n == the same rows repeated",
     "bounds": "probabilities in [0, 1] and monotone in time",
     "missing_query": "a NaN time or probability gives NaN there only (#375)",
+    "qf_outside": (
+        "a probability outside [0, 1] gives NaN there only, with one "
+        "warning, from every qf: the model's and its distribution's (#611)"
+    ),
     "missing_covariate": "a NaN covariate gives NaN for its row only",
     "missing_fit": "a missing time raises; a missing covariate is dropped",
     "seed_global": "np.random.seed reproduces a draw",

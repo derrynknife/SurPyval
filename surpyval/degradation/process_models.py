@@ -63,7 +63,11 @@ from surpyval.utils.no_maximum import (
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import alpha_ci_error, check_option
+from surpyval.utils.validation import (
+    alpha_ci_error,
+    check_option,
+    warn_outside_unit_interval,
+)
 
 from ._clock import StressClock, covariates_by_name, stress_row
 from ._maximum import verified_search
@@ -863,10 +867,13 @@ class FirstPassageProcessModel(SerialisableMixin):
         self, p: npt.ArrayLike, Z: Any = None, *, y0: "float | None" = None
     ) -> npt.NDArray:
         """Quantile (inverse CDF) of the first-passage time (``nan`` for a
-        missing probability or stress)."""
+        missing probability or stress, and ``nan`` with a warning for a
+        probability outside [0, 1], as every model's ``qf`` gives; #611)."""
         clock = self._clock(Z)
         distance = self._distance(y0)
         p = np.asarray(p, dtype=float)
+        # It was 0 below 0 and inf above 1, in silence.
+        p = np.where(warn_outside_unit_interval(p), np.nan, p)
         out = self._quantiles(p, distance)
         if clock is not None:
             out = clock.inverse(out)
