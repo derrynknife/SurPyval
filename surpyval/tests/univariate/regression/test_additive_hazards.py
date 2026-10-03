@@ -75,7 +75,9 @@ def test_recovers_known_beta():
     x, c, Z = _simulate(20000, 1)
     model = AdditiveHazards.fit(x, Z, c=c)
     assert np.allclose(model.beta, [0.30, -0.15], atol=0.02)
-    assert np.all(np.abs(model.beta - [0.30, -0.15]) < 3 * model.se)
+    assert np.all(
+        np.abs(model.beta - [0.30, -0.15]) < 3 * model.standard_errors()
+    )
 
 
 def test_sandwich_se_matches_empirical_spread():
@@ -86,7 +88,7 @@ def test_sandwich_se_matches_empirical_spread():
         x, c, Z = _simulate(1500, 100 + s)
         model = AdditiveHazards.fit(x, Z, c=c)
         ests.append(model.beta)
-        ses.append(model.se)
+        ses.append(model.standard_errors())
     empirical_sd = np.std(ests, axis=0)
     mean_se = np.mean(ses, axis=0)
     assert np.allclose(empirical_sd, mean_se, rtol=0.2)

@@ -137,7 +137,7 @@ def test_additive_hazards_round_trip():
     assert np.allclose(model.beta, restored.beta)
     # covariance / standard errors survive
     assert np.allclose(model.covariance(), restored.covariance())
-    assert np.allclose(model.se, restored.se)
+    assert np.allclose(model.standard_errors(), restored.standard_errors())
 
 
 def test_additive_hazards_json_file_round_trip(tmp_path):

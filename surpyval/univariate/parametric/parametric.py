@@ -26,6 +26,7 @@ from surpyval.utils.linalg import (
     cb_link,
     param_name,
     sf_link_bound,
+    standard_errors_of,
     wald_undefined,
     warn_wald_undefined,
 )
@@ -767,6 +768,25 @@ class Parametric(
         if self._covariance is None:
             raise no_covariance_error(_NO_COVARIANCE_WHY)
         return self._covariance
+
+    def standard_errors(self) -> npt.NDArray:
+        """
+        The standard errors of the fitted parameters, the square roots of
+        the diagonal of :meth:`covariance`, in its order (the
+        distribution's parameters, then ``p`` and ``f0`` where the model
+        has them); ``nan`` where a variance is not positive. Raises the
+        ``ValueError`` of :meth:`covariance` where the model has none.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(100, 10, 3))
+        >>> model.standard_errors().round(4)
+        array([0.3589, 0.2286])
+        """
+        return standard_errors_of(self.covariance())
 
     def param_cb(
         self,

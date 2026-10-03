@@ -191,7 +191,7 @@ def test_fine_gray_and_competing_risks():
     model, messages, _ = _fit(lambda: FineGray.fit(x, Z3, e, event="a"))
     assert len(messages) == 1 and messages[0].startswith(_aliased(2))
     np.testing.assert_allclose(model.beta[:2], ref.beta, rtol=1e-6)
-    assert np.isnan(model.beta[2]) and np.isnan(model.se[2])
+    assert np.isnan(model.beta[2]) and np.isnan(model.standard_errors()[2])
     np.testing.assert_allclose(
         model.cif([0.5, 1.0], Z3[:2]), ref.cif([0.5, 1.0], Z[:2]), rtol=1e-6
     )
@@ -351,8 +351,12 @@ def test_lin_ying_and_buckley_james(fitter, kind):
             rtol=1e-10,
         )
     if fitter == "AdditiveHazards":
-        np.testing.assert_allclose(model.se[:3], ref.se, rtol=1e-10)
-        assert np.isnan(model.se[3]) and np.isnan(model.p_values[3])
+        np.testing.assert_allclose(
+            model.standard_errors()[:3], ref.standard_errors(), rtol=1e-10
+        )
+        assert np.isnan(model.standard_errors()[3]) and np.isnan(
+            model.p_values[3]
+        )
     else:
         ci = model.bootstrap_ci(n_boot=10, random_state=0)
         ref_ci = ref.bootstrap_ci(n_boot=10, random_state=0)
