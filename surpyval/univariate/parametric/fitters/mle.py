@@ -108,7 +108,8 @@ def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
 def _kept_hessian(
     hess: Callable[..., Any],
 ) -> tuple[Callable[..., Any], dict]:
-    """``hess`` that keeps its last value, and the dict it keeps it in.
+    """``hess`` (or any derivative) that keeps its last value, and the
+    dict it keeps it in.
 
     The Hessian at the verified answer (see ``is_local_minimum``) is the
     one the covariance needs too, where no parameter is held: kept, not
@@ -318,9 +319,11 @@ class _Judge(NamedTuple):
         a maximum."""
         fun, args = self.fun, self.args
         keep = self.keep(x)
+        # The gradient the verification takes, kept for the check
+        jac_kept, _ = _kept_hessian(self.jac)
         if is_local_minimum(
             fun,
-            self.jac,
+            jac_kept,
             self.hess_kept,
             x,
             args,
@@ -329,7 +332,7 @@ class _Judge(NamedTuple):
         ):
             with np.errstate(all="ignore"):
                 H = np.asarray(self.hess_kept(x, *args), dtype=float)
-                g = np.asarray(self.jac(x, *args), dtype=float)
+                g = np.asarray(jac_kept(x, *args), dtype=float)
             runaway = _runaway(
                 fun, args, x, self.init, (H, g), self.floor, keep
             )
