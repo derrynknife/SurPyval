@@ -2139,9 +2139,11 @@ likelihood-ratio band usually the better calibrated:
     plt.ylabel('R(t)')
 
 The likelihood-ratio band is computed pointwise, so it is slower than the Wald
-band, needs the original data (a model restored from ``from_dict`` raises), and
-is not yet available for offset / limited-failure-population / zero-inflated
-models.
+band (the likelihood region is found once per confidence level and shared by
+every band, quantile and mean bound at that level, and each time's search
+starts from where the neighbouring time's bound was found), needs the original
+data (a model restored from ``from_dict`` raises), and is not yet available for
+offset / limited-failure-population / zero-inflated models.
 
 Bounds on the *parameters* themselves come from ``param_cb``. By default it
 returns a Wald interval built from the parameter's standard error. For small or

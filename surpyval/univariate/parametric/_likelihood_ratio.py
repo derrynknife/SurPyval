@@ -7,7 +7,7 @@ inherits it: the profile likelihood and the parameters' intervals
 functions (``cb``, ``quantile_cb`` and ``mean_cb`` with ``method="lr"``).
 The searches move each parameter in an unbounded coordinate
 (``_LRCoord``), continue along the solved points (``_LRPath``) and walk
-out to the critical value (``_lr_walk``); see #421, #519 and #535.
+out to the critical value (``_lr_walk``); see #421, #519, #535 and #587.
 """
 
 from __future__ import annotations
@@ -383,7 +383,8 @@ class _PsiBoundSearch:
     in turn, cheapest first, until an answer checks out:
 
     1. ``from_trace``: from the traced point of a two-parameter region
-       where psi is most extreme (``_lr_trace``);
+       where psi is most extreme (``_lr_trace``), or from where the
+       neighbouring time's bound was found (``hints``);
     2. ``ladder`` then ``direct`` from the estimate and the walks' tips:
        the extreme sought directly (SLSQP), checked against every point
        of the region known;

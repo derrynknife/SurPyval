@@ -156,3 +156,129 @@ def test_a_bound_is_the_extreme_on_the_region_boundary():
         log_hf, bracket=(angles[k - 1], angles[k], angles[k + 1]), tol=1e-12
     )
     assert lower == pytest.approx(np.exp(best.fun), rel=1e-9, abs=0)
+
+
+# ---------------------------------------------------------------------------
+# #587: a band's times share what each search learns
+# ---------------------------------------------------------------------------
+ISSUE_587_X = [[1, 2], [2, 3], [3, 5], 4, [4, 6], [5, 8]]
+
+
+def _evaluations(model, call, monkeypatch):
+    """The likelihoods ``call(model)`` evaluates."""
+    seen = []
+    lean = likelihood_ratio._lean_neg_ll
+
+    def counted(dist, data, theta):
+        seen.append(1)
+        return lean(dist, data, theta)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(likelihood_ratio, "_lean_neg_ll", counted)
+        call(model)
+    return len(seen)
+
+
+def _small_weibull():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sp.Weibull.fit(ISSUE_587_X)
+
+
+def test_587_a_band_time_takes_a_quarter_of_the_evaluations(monkeypatch):
+    # A probability plot's band (the Weibull on six interval-censored
+    # units of #477): each time's two sides took 854 likelihood
+    # evaluations beyond those of the region, most of them in the check
+    # beyond each answer, which SLSQP started at the answer and crawled
+    # from to the target. It now starts beside the answer, the searches
+    # run in the coordinates scaled by the Wald standard errors, and a
+    # time starts from its neighbour's answer: 222.
+    times = np.linspace(1.0, 12.0, 41)
+    one = _evaluations(
+        _small_weibull(), lambda m: m.cb(times[:1], method="lr"), monkeypatch
+    )
+    band = _evaluations(
+        _small_weibull(), lambda m: m.cb(times, method="lr"), monkeypatch
+    )
+    per_time = (band - one) / (len(times) - 1)
+    assert per_time < 400
+
+
+def test_587_the_region_is_found_once_per_level(monkeypatch):
+    # Every band, quantile and mean bound at a level searches the same
+    # likelihood region; it was traced again for each call.
+    model = _fitted("Weibull")
+    traced = []
+    trace = parametric_module.Parametric._lr_trace
+
+    def counted(self, *args):
+        traced.append(1)
+        return trace(self, *args)
+
+    monkeypatch.setattr(parametric_module.Parametric, "_lr_trace", counted)
+    model.cb(np.array([4.0, 8.0]), method="lr")
+    model.cb(np.array([13.0]), on="hf", method="lr")
+    model.quantile_cb([0.1, 0.5], method="lr")
+    model.mean_cb(method="lr")
+    assert len(traced) == 1
+    # Another level is another region
+    model.cb(np.array([4.0]), method="lr", alpha_ci=0.1)
+    assert len(traced) == 2
+
+
+def test_587_a_band_is_each_time_alone_to_the_search_tolerance():
+    # Each time's search starts from its neighbour's answer, so a band is
+    # searched in time order whatever the order asked for, and each
+    # bound is the one the time gives alone to the search's tolerance.
+    times = np.array([9.0, 2.0, 5.5])
+    band = _small_weibull().cb(times, on="ff", method="lr")
+    order = np.argsort(times)
+    reordered = _small_weibull().cb(times[order], on="ff", method="lr")
+    np.testing.assert_array_equal(band[order], reordered)
+    for i, t in enumerate(times):
+        alone = _small_weibull().cb(np.array([t]), on="ff", method="lr")
+        np.testing.assert_allclose(band[i], alone[0], rtol=1e-9, atol=0)
+
+
+def test_587_a_band_bound_is_the_extreme_on_the_region_boundary():
+    # The scaled search from the trace, on the small sample whose region
+    # is far from an ellipse: each bound is the extreme of F over the
+    # region's boundary, found here along rays in the Wald metric.
+    model = _small_weibull()
+    times = np.array([4.5, 6.25])
+    band = model.cb(times, on="ff", method="lr")
+    model._ensure_surv_data()
+    theta_hat = np.asarray(model.params, dtype=float)
+    nll_hat = neg_ll_at(model, theta_hat)
+    log_hat = np.log(theta_hat)
+    cov = np.asarray(model.hess_inv) / np.outer(theta_hat, theta_hat)
+    L = np.linalg.cholesky(cov)
+
+    def boundary(angle):
+        d = L @ np.array([np.cos(angle), np.sin(angle)])
+
+        def excess(r):
+            nll = neg_ll_at(model, np.exp(log_hat + r * d))
+            return 2.0 * (nll - nll_hat) - CRIT_95
+
+        hi = 2.0
+        while excess(hi) < 0:
+            hi *= 2.0
+        r = brentq(excess, 0.0, hi, xtol=1e-15, rtol=1e-15)
+        return np.exp(log_hat + r * d)
+
+    angles = np.linspace(0.0, 2.0 * np.pi, 181)
+    for t, (lower, upper) in zip(times, band):
+
+        def ff(angle, t=t):
+            return float(model.dist.ff(np.array([t]), *boundary(angle))[0])
+
+        for sign, bound in ((1.0, lower), (-1.0, upper)):
+            values = [sign * ff(a) for a in angles]
+            k = int(np.argmin(values))
+            best = minimize_scalar(
+                lambda a: sign * ff(a),
+                bracket=(angles[k - 1], angles[k], angles[k + 1]),
+                tol=1e-12,
+            )
+            assert bound == pytest.approx(sign * best.fun, rel=1e-9, abs=0)
