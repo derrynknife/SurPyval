@@ -17,6 +17,7 @@ import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad
 from scipy.optimize import (
@@ -135,6 +136,13 @@ class _LRCoord:
         return float(theta)
 
     def from_u(self, u: float) -> float:
+        # Plain numpy where the exponential cannot overflow: the searches
+        # map every point they evaluate, and autograd's wrapper and the
+        # error state took longer than the exponential (#519).
+        if self.kind == "log" and u < _LN_MAX:
+            return float(self.lo + onp.exp(u))
+        if self.kind == "neglog" and -u < _LN_MAX:
+            return float(self.hi - onp.exp(-u))
         with np.errstate(all="ignore"):
             if self.kind == "log":
                 return float(self.lo + np.exp(u))
@@ -520,7 +528,7 @@ class _PsiBoundSearch:
         return nll if np.isfinite(nll) else np.inf
 
     def psi_u(self, u: npt.NDArray) -> float:
-        if not np.all(np.isfinite(u)):
+        if not onp.isfinite(u).all():
             return np.nan
         # Kept by the point's bytes, as the likelihood is: SLSQP asks
         # for the constraint again where it has just evaluated it.
@@ -529,9 +537,10 @@ class _PsiBoundSearch:
             # Held to the ends of its scale where the function reaches
             # the edge of its range (a density that underflows to 0), so
             # that a search can still step there.
-            self.psi_kept[key] = float(
-                np.clip(self.psi_of(self.theta_of(u)), *self.ends)
-            )
+            # (``min`` and ``max``, as ``np.clip``, keep a nan)
+            low, high = self.ends
+            psi = float(self.psi_of(self.theta_of(u)))
+            self.psi_kept[key] = min(max(psi, low), high)
         return self.psi_kept[key]
 
     def dev_u(self, u: npt.NDArray) -> float:
@@ -1454,7 +1463,7 @@ class LikelihoodRatioMixin:
         1e-14 gave an ExpoWeibull a deviance of -1e21 before #472 made it
         accurate.
         """
-        if not np.all(np.isfinite(theta)):
+        if not onp.isfinite(theta).all():
             return np.nan
         nll = self._lr_raw_neg_ll(theta)
         params = np.asarray(self.params, dtype=float)
@@ -1541,7 +1550,7 @@ class LikelihoodRatioMixin:
 
         def f(x: npt.NDArray, *theta: Any) -> Any:
             # (False for a missing x, which takes the full path.)
-            if np.all(x >= lo) and np.all(x <= hi):
+            if (x >= lo).all() and (x <= hi).all():
                 return raw(dist, x, *theta)
             return full(x, *theta)
 
