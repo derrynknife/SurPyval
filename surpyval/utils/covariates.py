@@ -192,7 +192,8 @@ def coefficient_floor(
 
     >>> import numpy as np
     >>> from surpyval.utils.covariates import coefficient_floor
-    >>> Z = np.column_stack([[0, 1, 1], 1 / np.array([358.15, 378.15, 398.15])])
+    >>> kelvin = np.array([358.15, 378.15, 398.15])
+    >>> Z = np.column_stack([[0, 1, 1], 1 / kelvin])
     >>> coefficient_floor(4, [(2, 0), (3, 1)], Z).round(1).tolist()
     [1.0, 1.0, 1.0, 3564.9]
     """

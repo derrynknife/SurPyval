@@ -1199,9 +1199,10 @@ def finish_search(
 ) -> SearchVerdict:
     """:func:`judge_search`, then its one warning (:func:`say_verdict`),
     for a fit whose model does not depend on the polish (or is built after
-    it), with ``floor`` as there. Returns the verdict: its ``res``, its ``maximum`` for the model,
-    and the Hessian and gradient of ``fun`` at ``res.x`` (``None`` where
-    autograd cannot take them), for :func:`keep_information`."""
+    it), with ``floor`` as there. Returns the verdict: its ``res``, its
+    ``maximum`` for the model, and the Hessian and gradient of ``fun`` at
+    ``res.x`` (``None`` where autograd cannot take them), for
+    :func:`keep_information`."""
     verdict = judge_search(
         fun, res, coefs, start, n_obs, verified, held, floor
     )
