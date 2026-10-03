@@ -237,6 +237,44 @@ def test_577_a_small_scale_covariate_tvc_fit_says_what_it_reached(case):
     _check(case, model, said, data)
 
 
+#: The factor the covariates are multiplied by in the large-scale fit.
+LARGE_SCALE = 1e4
+
+
+def _neg_ll(model):
+    """The maximised negative log-likelihood the fit reports, or ``None``
+    where it reports none (a Fine-Gray competing-risks model: the sum of
+    its causes' then)."""
+    try:
+        return float(model.neg_ll())
+    except (AttributeError, ValueError):
+        fg = getattr(model, "_fg_models", None)
+        return None if fg is None else sum(m.neg_ll() for m in fg.values())
+
+
+# A covariate in units of 1e4 (a date in days, an income): exp(beta'Z)
+# overflowed at the first step of the Fine-Gray search, and the fit failed
+# with "SVD did not converge" (#606). A covariate's units must not change
+# the maximised likelihood (principle 6): a fit that reaches a verified
+# maximum reaches the fit's in the covariates' own units; one that does
+# not says so.
+@pytest.mark.parametrize(
+    "case",
+    _params("maximum[large-scale]", lambda c: c.covariates is not None),
+)
+def test_606_a_large_scale_covariate_fit_says_what_it_reached(case):
+    data = case.data()
+    Z = np.asarray(data[case.covariates], dtype=float)
+    scaled = {**data, case.covariates: Z * LARGE_SCALE}
+    model, said = _said(lambda: case.fit(scaled))
+    _check(case, model, said, scaled)
+    if model.maximum != "verified":
+        return
+    reference, _ = _said(lambda: case.fit(data))
+    if reference.maximum == "verified" and _neg_ll(model) is not None:
+        assert _neg_ll(model) == pytest.approx(_neg_ll(reference), rel=1e-8)
+
+
 # ---------------------------------------------------------------------------
 # The independent check: each family's negative log-likelihood, in the
 # space its fitter searches, at the reported parameters

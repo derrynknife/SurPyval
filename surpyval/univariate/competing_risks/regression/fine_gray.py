@@ -46,6 +46,7 @@ import numpy as np
 import numpy.typing as npt
 from autograd import hessian
 from autograd import numpy as anp
+from autograd.tracer import getval
 from scipy.optimize import OptimizeResult, minimize
 from scipy.stats import norm
 
@@ -55,12 +56,12 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
@@ -71,6 +72,9 @@ from surpyval.univariate.regression._fit_skeleton import (
     LOG_MAX,
     baseline_at_origin_error,
     judge_search,
+)
+from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
+    newton_raphson,
 )
 from surpyval.univariate.regression.proportional_hazards.cox_ph import (
     warn_monotone,
@@ -100,6 +104,10 @@ from surpyval.utils.validation import (
     missing_cause_error,
     unknown_cause_error,
 )
+
+#: Newton-Raphson's convergence tolerance, in standard errors of the step
+#: (``newton_raphson``), CoxPH's default.
+_NEWTON_TOL = 1e-10
 
 
 def _fit_cause(
@@ -166,37 +174,69 @@ def _fit_cause(
 
     def partial_neg_ll(Zk: npt.NDArray, nZk_event: npt.NDArray) -> tuple:
         """The objective, differentiable by autograd (the no-maximum check
-        and the information take its derivatives), and the objective with
+        and the information take its derivatives); the objective with
         its gradient for BFGS, ``-(nZ_event - sum_j d_j S1_j / S0_j)``
         (``S1`` the risk-set sums of ``w Z``), by hand: a fit of 1e5 rows
-        took 1.2 s with autograd's gradient, 0.7 s with this."""
+        took 1.2 s with autograd's gradient, 0.7 s with this; and the
+        gradient with the information, by hand, for Newton-Raphson.
+
+        Each shifts the linear predictor by its largest value inside the
+        risk-set sums and adds the shift back outside the logarithm, as
+        ``CoxPH`` does, so ``exp(beta'Z)`` cannot overflow at any
+        coefficients: on covariates of order 1e4 it did at the search's
+        first step, and the fit failed ("SVD did not converge", #606)."""
 
         def neg_ll(beta: Any) -> Any:
-            weighted_exp = n_sorted * anp.exp(anp.dot(Zk, beta))
+            eta = anp.dot(Zk, beta)
+            shift = float(np.max(getval(eta))) if eta.size else 0.0
+            weighted_exp = n_sorted * anp.exp(eta - shift)
             denom = _risk_set_sums(weighted_exp, sets)
             ll = anp.dot(nZk_event, beta) - anp.sum(
-                sets.d * anp.log(denom / denom0)
+                sets.d * (anp.log(denom / denom0) + shift)
             )
             return -ll
 
+        def shifted(beta: npt.NDArray) -> tuple:
+            # The weights e^(eta - shift), their risk-set sums and the shift
+            eta = Zk @ beta
+            shift = float(eta.max()) if eta.size else 0.0
+            weighted_exp = n_sorted * np.exp(eta - shift)
+            return weighted_exp, _risk_set_sums(weighted_exp, sets), shift
+
         def value_and_gradient(beta: npt.NDArray) -> tuple:
-            weighted_exp = n_sorted * np.exp(Zk @ beta)
-            denom = _risk_set_sums(weighted_exp, sets)
+            weighted_exp, denom, shift = shifted(beta)
             value = -(
-                nZk_event @ beta - np.sum(sets.d * np.log(denom / denom0))
+                nZk_event @ beta
+                - np.sum(sets.d * (np.log(denom / denom0) + shift))
             )
             # sum_j d_j S1_j / S0_j = sum_i w_i Z_i sum_j W_ji d_j / S0_j
             weights = _risk_set_weights(sets.d / denom, sets)
             gradient = -(nZk_event - Zk.T @ (weighted_exp * weights))
             return value, gradient
 
-        return neg_ll, value_and_gradient
+        def gradient_and_information(beta: npt.NDArray) -> tuple:
+            # The information sum_j d_j (S2_j / S0_j - M_j M_j'), M_j =
+            # S1_j / S0_j, in O(N p^2) as at beta = 0
+            # (_information_at_zero); the shift cancels in every ratio.
+            weighted_exp, denom, _ = shifted(beta)
+            a = weighted_exp * _risk_set_weights(sets.d / denom, sets)
+            M = _risk_set_sums((weighted_exp[:, None] * Zk).T, sets).T
+            M = M / denom[:, None]
+            gradient = -(nZk_event - Zk.T @ a)
+            information = Zk.T @ (a[:, None] * Zk) - M.T @ (
+                sets.d[:, None] * M
+            )
+            return gradient, information
+
+        return neg_ll, value_and_gradient, gradient_and_information
 
     # Coefficients the weighted partial likelihood does not depend on are
     # aliased, as CoxPH's are (#476): fitted on the other columns, and
     # reported as nan.
     p = Z.shape[1]
-    neg_ll, value_and_gradient = partial_neg_ll(Z_sorted, nZ_event)
+    neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
+        Z_sorted, nZ_event
+    )
     aliased = aliased_columns(
         _information_at_zero(Z_sorted, n_sorted, sets),
         Z.shape[0],
@@ -211,13 +251,30 @@ def _fit_cause(
             "column, or a linear combination of the others within the "
             "risk sets, as the columns of every level of a factor are)",
         )
-        neg_ll, value_and_gradient = partial_neg_ll(
+        neg_ll, value_and_gradient, newton_derivatives = partial_neg_ll(
             Z_sorted[:, kept], nZ_event[kept]
         )
 
     beta0 = np.zeros(kept.size)
     if kept.size:
-        res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
+        # Newton-Raphson with step-halving, as cmprsk::crr and CoxPH: its
+        # steps are those of the covariates' own units, whatever they are,
+        # where BFGS's first step is 1 in each coefficient, which on a
+        # covariate of order 1e4 moved the linear predictor by 1e4 (#606).
+        # It gives up where the likelihood has no finite maximum, and BFGS
+        # takes over, as before.
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            score0, information0 = newton_derivatives(beta0)
+            res = newton_raphson(
+                lambda b: value_and_gradient(b)[0],
+                newton_derivatives,
+                beta0,
+                _NEWTON_TOL,
+                score0,
+                information0,
+            )
+        if res is None:
+            res = minimize(value_and_gradient, beta0, jac=True, method="BFGS")
         # A covariate that separates the events of interest from the rest
         # (a level with none of them) drives its coefficient to infinity;
         # BFGS stops where the rise is below its tolerance and reports

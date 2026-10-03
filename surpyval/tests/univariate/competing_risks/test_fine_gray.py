@@ -242,3 +242,25 @@ def test_604_fine_gray_competing_risks_model_has_no_likelihood():
     for name in ("neg_ll", "aic", "aic_c", "bic"):
         with pytest.raises(ValueError, match="FineGray model"):
             getattr(model, name)()
+
+
+@pytest.mark.parametrize("scale", [1e4, 1e6])
+def test_606_large_scale_covariates_reach_the_same_maximum(scale):
+    # exp(beta'Z) overflowed at the first BFGS step on covariates of order
+    # 1e4, and the fit raised "SVD did not converge" in safe_inv. In the
+    # covariates' units the fit is the same model: coefficients divided by
+    # the scale, the same likelihood and incidence.
+    x, Z, e = competing_risks_regression_data()
+    model = FineGray.fit(x, Z, e, event=1)
+    big = FineGray.fit(x, Z * scale, e, event=1)
+    assert big.maximum == "verified"
+    np.testing.assert_allclose(big.beta * scale, model.beta, rtol=1e-8)
+    np.testing.assert_allclose(big.se * scale, model.se, rtol=1e-6)
+    assert big.neg_ll() == pytest.approx(model.neg_ll(), rel=1e-12)
+    np.testing.assert_allclose(
+        big.cif([1.0, 5.0], Z[0] * scale), model.cif([1.0, 5.0], Z[0])
+    )
+    both = CompetingRisksProportionalHazards.fit(
+        x, Z * scale, e, model="Fine-Gray"
+    )
+    np.testing.assert_allclose(both.betas[0] * scale, model.beta, rtol=1e-8)

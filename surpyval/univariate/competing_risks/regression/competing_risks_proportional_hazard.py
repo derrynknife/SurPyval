@@ -20,14 +20,14 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.information_criteria import (
-    InformationCriteriaMixin,
-    ic_sample_size,
-)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
     ordered_labels,
+)
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
 )
 from surpyval.univariate.regression import CoxPH
 from surpyval.univariate.regression._aliasing import (
