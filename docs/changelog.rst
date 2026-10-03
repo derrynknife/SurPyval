@@ -4,6 +4,28 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **A univariate fit whose likelihood has no finite maximum stops and says
+  so (#584).** A search running off used to run every rung of the
+  optimiser ladder and end "unverified": 23 s for an ExpoWeibull on 60
+  interval-censored rows, returning ``mu = 153`` at a log-likelihood of
+  -74.38 though BFGS had reached -73.45. Maximum likelihood now applies the
+  regression fits' Newton test (shared, in ``fitters.runaway``) after the
+  first rung that stops short, during long BFGS searches, and on verified
+  answers; where a parameter's profile is flat and heading for an infinite
+  end of its range, the search stops, warns "No finite maximum" naming the
+  parameter, and sets ``maximum = "no finite maximum"``. ExpoWeibull names
+  its limits (Fréchet as ``mu`` grows; a power law ending at the largest
+  observation as ``beta`` grows). That fit takes 5.8 s; an ExpoWeibull on
+  50 Weibull draws 0.53 s instead of 3.65 s. **Behaviour change:** fits
+  that ended "unverified" on such data now report "no finite maximum", and
+  ``fit_best`` sets them aside with that reason. Ordinary fits are
+  unchanged.
+- **Truncated and interval windows in the far lower tail keep their digits
+  (#594).** A window probability below the smallest normal float (about
+  2e-308) is taken in log space, as #412 did for the upper tail: a Normal
+  far above its truncation windows had a log-likelihood of -9.67 that was
+  rounding (the supremum is -10.03), or a ``nan`` truncation term. With
+  #584, Normal fits on such data take 0.4 s instead of 11-12 s.
 - **Faster accelerated-degradation sampling (#585).**
   ``DegradationModel.qf`` and ``random`` on an accelerated model searched
   for each probability on its own, calling the regression model's ``sf``
