@@ -533,6 +533,11 @@ class Binomial_(DiscreteParametricFitter):
         array([0.0073, 0.0669])
         """
         x_arr = np.atleast_1d(np.asarray(x))
+        if x_arr.shape[0] == 0:
+            # As every fit says it (it gave p = nan with numpy's warning)
+            raise ValueError(
+                "'x' is empty: at least one observation is needed"
+            )
 
         if not np.equal(np.mod(x_arr, 1), 0).all():
             raise ValueError("'x' must contain only integer counts")

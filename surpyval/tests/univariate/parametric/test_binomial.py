@@ -438,6 +438,13 @@ def test_608_per_row_trials_are_checked(n_trials):
         Binomial.fit(LOTS_X, n_trials=n_trials)
 
 
+def test_608_empty_data_is_refused_as_every_fit_refuses_it():
+    # It gave p = nan with numpy's warning; with a trial count per row it
+    # would have failed inside a reduction.
+    with pytest.raises(ValueError, match="'x' is empty"):
+        Binomial.fit([], n_trials=5)
+
+
 def test_608_a_row_with_more_events_than_trials_is_refused():
     with pytest.raises(ValueError, match="between 0 and 'n_trials'"):
         Binomial.fit([1, 0, 30], n_trials=[20, 50, 20])

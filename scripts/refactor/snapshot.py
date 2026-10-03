@@ -279,7 +279,9 @@ def _parameter_names(model: Any) -> list:
         return list(model.parameter_names)
     names = list(model.dist.parameter_names)
     if model.lfp:
-        names.append("lfp_p" if "p" in names else "p")
+        # The proportion's name since #608 (``p`` before, where the
+        # distribution had no ``p``; it still works, with a warning).
+        names.append("lfp_p")
     if model.zi:
         names.append("f0")
     return names
