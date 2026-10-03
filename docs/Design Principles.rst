@@ -44,9 +44,11 @@ Inputs
 3. **Missing values.** ``nan`` in, ``nan`` out at prediction. At fit, a row
    with a missing value is dropped with one warning where rows are
    independent, and refused where a row is part of one unit (a recurrent
-   item, a degradation path).
+   item, a degradation path). A probability outside [0, 1] given to any
+   ``qf`` gives ``nan`` there, with one warning.
 
-   *Checked* by ``conformance/test_missing.py``.
+   *Checked* by ``conformance/test_missing.py`` (``qf_outside`` for
+   ``qf``, #611).
 
 4. **Order doesn't matter.** The order of the data rows never changes a fit,
    and permuting a query permutes the result.
@@ -70,7 +72,7 @@ Inputs
 
    *Checked* by ``conformance/test_metamorphic.py``
    (``test_covariate_origin*`` for covariates) and ``test_maximum.py``'s
-   small-scale fits (#577). One family is excepted:
+   small- and large-scale (x1e4) fits (#577, #612). One family is excepted:
    the Beta4's likelihood is unbounded, so its maximum-likelihood fit can
    depend on the units, and warns when it does; its MPS fit does not
    (#385).
@@ -261,7 +263,11 @@ Behaviour and API
     ``Z``, ``random_state``, ``n_boot``, ``tie_method``, ``event``, and
     ``x`` for the times and ``p`` for a quantile's probability), and so
     does the same attribute: every model's fitted values are ``params``,
-    named entry by entry by the attribute ``parameter_names``. Every
+    named entry by entry by the attribute ``parameter_names``, and every
+    model with ``covariance()`` has ``standard_errors()``, the square roots
+    of its diagonal; a regression coefficient is named by its covariate's
+    column, else ``coef_j``, and the limited-failure proportion is
+    ``lfp_p``. Every
     DataFrame entry point (``fit_from_df``, ``fit_tvc_from_df``,
     ``fit_tvc_timeline_from_df``) names a column argument after the ``fit``
     argument it fills with a ``_col`` suffix, ``_cols`` for a list of
@@ -271,7 +277,9 @@ Behaviour and API
     ``DeprecationWarning`` naming the new one.
 
     *Checked* by ``conformance/test_options.py``,
-    ``conformance/test_params.py`` and, for the column names,
+    ``conformance/test_params.py``, ``conformance/test_comparison.py``
+    (standard errors, #613), ``conformance/test_repr.py`` (every fitter
+    prints what it is, #614) and, for the column names,
     ``conformance/test_fit_paths.py``.
 
 22. **Warnings and errors.** One warning per problem, with counts, saying
