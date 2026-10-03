@@ -334,8 +334,8 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
             if data.mask_i.any():
-                window = dist.ff(data.x_ir, *params) - dist.ff(
-                    data.x_il, *params
+                window = dist.ff(data.x_ir, *params) - self._ff_lower(
+                    params
                 )
                 positive = window > 0
                 pieces.append(
@@ -348,6 +348,29 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             out = np.concatenate(pieces)[self._row_order()]
             out = np.where(np.isnan(out), LOG_FLOOR, out)
         return np.maximum(out, LOG_FLOOR)
+
+    def _ff_lower(self, params: Any) -> Any:
+        """One component's CDF at the interval rows' lower ends, exactly 0
+        at or below the support's lower edge without evaluating it there.
+
+        The value is the same, but the derivative is not: a Weibull's
+        ``(0 / alpha) ** beta`` has a NaN gradient in ``alpha`` for
+        ``beta < 1`` (``inf * 0``), so with one ``[0, 1]`` interval row the
+        M-step fell back to finite differences and the polish stopped
+        after one evaluation, unable to verify (or reach) the maximum
+        (#582). Those rows are evaluated at their upper end instead (a
+        point inside the support, whose value is discarded), as
+        ``ParametricFitter.ll_interval_or_truncated`` does.
+        """
+        data = self.data
+        lower = float(self.dist.support[0])
+        if np.isnan(lower):
+            return self.dist.ff(data.x_il, *params)
+        inside = data.x_il > lower
+        if inside.all():
+            return self.dist.ff(data.x_il, *params)
+        safe = np.where(inside, data.x_il, data.x_ir)
+        return np.where(inside, self.dist.ff(safe, *params), 0.0)
 
     def _row_order(self) -> npt.NDArray:
         """The index that puts the rows grouped by kind (exact, right,
@@ -511,9 +534,15 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         ``max_iter``, polished again. Returns ``None`` for a verified
         maximum, else why it is not (for ``warn_unverified``, which
         :meth:`fit` gives unless the likelihood has no finite maximum).
+
+        A mixture's likelihood has more than one maximum, so this short
+        run is made from two starts where they differ (#582): the current
+        weights and parameters (:meth:`initialise_params`), and the split
+        of :meth:`_failure_split_start`. The better is kept
+        (:meth:`_better_start`) and, only if it is not verified, run on.
         """
-        converged = self._em_steps(tol, budget)
-        if self._polish():
+        verified, converged = self._em_from_starts(tol, budget)
+        if verified:
             return None
         if not converged:
             converged = self._em_steps(tol, max_iter - budget)
@@ -522,6 +551,92 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         if not converged:
             return "EM reached its iteration limit"
         return "EM converged where the likelihood is not a verified maximum"
+
+    def _em_from_starts(self, tol: float, budget: int) -> tuple[bool, bool]:
+        """Up to ``budget`` EM iterations then the polish, from each start
+        in turn, leaving the model at the better end point (see
+        :meth:`_em`); whether that is a verified maximum, and whether its
+        EM run converged."""
+        starts = [(self.w, self.params)]
+        other = self._failure_split_start()
+        if other is not None and not np.allclose(other[1], self.params):
+            starts.append(other)
+        best: tuple | None = None
+        for w, params in starts:
+            self.w, self.params = w, params
+            converged = self._em_steps(tol, budget)
+            verified = self._polish()
+            end = (verified, float(self.loglike), converged)
+            if best is None or self._better_start(end, best[0]):
+                best = (end, self.w, self.params, self.p)
+        assert best is not None
+        (verified, loglike, converged), self.w, self.params, self.p = best
+        self.loglike = loglike
+        return verified, converged
+
+    def _better_start(self, end: tuple, best: tuple) -> bool:
+        """Whether the end point ``end`` of a start, ``(verified,
+        negative log-likelihood, converged)``, beats ``best``: a verified
+        maximum beats one that is not (a likelihood that grows without
+        bound as a component collapses onto a point mass is higher, and
+        no answer), and otherwise the higher likelihood wins, by more than
+        1e-6 per observation where both are verified -- so that two
+        polishes of the same maximum, which agree to about that, keep the
+        first start's (the fit as it was before #582)."""
+        if end[0] != best[0]:
+            return bool(end[0])
+        margin = 1e-6 * float(np.sum(self.data.n)) if end[0] else 0.0
+        return end[1] < best[1] - margin
+
+    def _failure_split_start(self) -> "tuple[npt.NDArray, Any] | None":
+        """A second EM start (#582): the failures, by count, cut into
+        ``m`` consecutive blocks, each component fitted to one block, and
+        every survivor (right-censored row) given to the last.
+
+        :meth:`initialise_params` cuts the *rows* into blocks, survivors
+        and all. On field data -- a few early failures, a long tail of
+        survivors, counts per row -- that mixes the early failures with
+        survivors, and the fit went to a different maximum: a 3%
+        defective sub-population plus wear-out fitted as 26% with a
+        1,000-year life. Here the first component starts on the earliest
+        failures, with their share of the units as its weight, and the
+        last component holds the survivors, which is the usual reliability
+        shape (infant mortality plus wear-out). ``None`` where a block
+        cannot be fitted (fewer than ``k + 1`` distinct failure rows for
+        it).
+        """
+        data, m, k = self.data, self.m, self.dist.k
+        failed = np.flatnonzero(data.c != 1)
+        if len(failed) < m * (k + 1):
+            return None
+        cum = np.cumsum(data.n[failed])
+        blocks = []
+        start = 0
+        for i in range(1, m):
+            end = int(np.searchsorted(cum, cum[-1] * i / m)) + 1
+            end = max(end, start + k + 1)
+            blocks.append(failed[start:end])
+            start = end
+        if len(failed) - start < k + 1:
+            return None
+        survivors = np.flatnonzero(data.c == 1)
+        blocks.append(np.concatenate([failed[start:], survivors]))
+        params = np.zeros((m, k))
+        w = np.zeros(m)
+        try:
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                for i, rows in enumerate(blocks):
+                    rows = np.sort(rows)
+                    params[i] = self.dist.fit(
+                        x=data.x[rows], c=data.c[rows], n=data.n[rows]
+                    ).params
+                    w[i] = data.n[rows].sum()
+        except (ValueError, ArithmeticError, np.linalg.LinAlgError):
+            return None
+        if not np.all(np.isfinite(params)):
+            return None
+        return w / w.sum(), params
 
     def _em_steps(self, tol: float, max_iter: int) -> bool:
         """Up to ``max_iter`` EM iterations; whether two in a row came

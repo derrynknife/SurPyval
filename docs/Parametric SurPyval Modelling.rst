@@ -1455,7 +1455,7 @@ The mixture's AIC is lower by about 42, decisive evidence for two populations, a
     assert np.allclose(np.sort(wmm.w), [0.4, 0.6], atol=0.02), wmm.w
     assert np.allclose(restored.sf([5, 10]), wmm.sf([5, 10]))
 
-This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts by sorting the data, cutting its distinct values into :math:`m` consecutive blocks and fitting one component to each, with equal weights; with poorly separated components, check that the answer makes sense.
+This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts twice and keeps the better answer (a verified maximum before one that is not). The first start sorts the data, cuts its distinct values into :math:`m` consecutive blocks and fits one component to each, with equal weights. The second cuts only the failures, by count, into :math:`m` blocks, gives every survivor to the last component and weights each component by its share of the units: the usual reliability shape of a few early (infant-mortality) failures plus wear-out, which on field data with many survivors the first start can miss. With poorly separated components, still check that the answer makes sense.
 
 
 Limited Failure Population
