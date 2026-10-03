@@ -8,13 +8,14 @@ import autograd.numpy as np
 import numpy.typing as npt
 from autograd import hessian, jacobian
 from autograd.numpy.linalg import inv
-from numdifftools import Hessian  # type: ignore
-from scipy.optimize import OptimizeResult, minimize
+from scipy.optimize import OptimizeResult
 
 from surpyval.univariate.parametric.fitters import (
     OPTIMUM_GTOL,
+    Gradient,
     _usable,
     is_local_minimum,
+    minimize_with_gradient,
     preconditioned_bfgs,
     search_floor,
 )
@@ -173,14 +174,8 @@ def _run_rung(
             obj_scale=obj_scale,
             callback=callback,
         )
-    return minimize(
-        fun,
-        x0,
-        args=args,
-        method=method,
-        jac=jac_i,
-        hess=hess_i,
-        options=opts,
+    return minimize_with_gradient(
+        fun, x0, args, jac_i, method=method, hess=hess_i, options=opts
     )
 
 
@@ -389,6 +384,9 @@ class _Judge(NamedTuple):
         parameters as they are."""
         natural, bounds, free, _ = self.space
         offset, lfp, zi = self.args[:3]
+        if not any(None not in bounds[i] for i in free):
+            # No parameter has a range bounded at both ends
+            return _OnBounds()
 
         def at(values: npt.NDArray) -> float:
             # The likelihood of the natural parameters
@@ -750,6 +748,8 @@ def _covariance(
     misleading. ``extras`` is ``(gamma, f0, p)`` and ``flags`` is
     ``(offset, zi, lfp)``.
     """
+    from numdifftools import Hessian  # type: ignore
+
     gamma, f0, p = extras
     offset, zi, lfp = flags
     inv_trans = model.fitting_info["inv_trans"]
@@ -845,7 +845,8 @@ def mle(model: "Parametric") -> Any:
     results = {}
 
     fun = _negative_log_likelihood(model)
-    jac = jacobian(fun)
+    # The value and the gradient from one pass (#593)
+    jac = Gradient(fun)
     hess = hessian(fun)
     hess_kept, hess_at = _kept_hessian(hess)
     args = (offset, lfp, zi, True)

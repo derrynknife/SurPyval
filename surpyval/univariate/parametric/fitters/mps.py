@@ -6,9 +6,9 @@ if TYPE_CHECKING:
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import hessian, jacobian
+from autograd import hessian
 
-from . import fallback_minimize, search_floor
+from . import Gradient, fallback_minimize, search_floor
 
 
 def mps_fun(
@@ -86,7 +86,7 @@ def mps(model: "Parametric") -> Any:
     tl = model.tl
     tr = model.tr
 
-    jac = jacobian(mps_fun)
+    jac = Gradient(mps_fun)
     hess = hessian(mps_fun)
 
     args = (dist, x, inv_trans, const, c, n, tl, tr, offset)

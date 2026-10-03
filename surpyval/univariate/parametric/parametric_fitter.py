@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Callable
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.numpy.numpy_boxes import ArrayBox
-from scipy.integrate import quad
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
@@ -857,6 +856,8 @@ class ParametricFitter(UnivariateDataFrameMixin):
         slower and, on some machines, tripped ``quad``'s roundoff warning
         (and with it the warnings-as-errors documentation build).
         """
+        from scipy.integrate import quad
+
         if offset:
             gamma = params[0]
             params = params[1::]

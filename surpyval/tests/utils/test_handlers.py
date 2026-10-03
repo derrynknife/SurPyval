@@ -424,3 +424,25 @@ class TestDataHandling:
         a = d.to_xrd(estimator="Nelson-Aalen")
         b = d.to_xrd(estimator="Kaplan-Meier")
         assert a is not b
+
+
+def test_552_numeric_counts_are_checked_as_numbers(monkeypatch):
+    # A numeric count array used to be copied to objects and checked one
+    # value at a time for a missing value: a third of a Weibull fit to a
+    # million rows. It is checked as numbers, with the same verdicts.
+    from surpyval.utils import data_formats
+
+    kinds = []
+    original = data_formats._has_missing
+
+    def recorded(values):
+        kinds.append(np.asarray(values).dtype.kind)
+        return original(values)
+
+    monkeypatch.setattr(data_formats, "_has_missing", recorded)
+    xcnt_handler([1.0, 2.0, 3.0], n=np.array([1.0, 2.0, 1.0]))
+    assert "O" not in kinds
+    with pytest.raises(ValueError, match="'n' cannot contain NaN"):
+        xcnt_handler([1.0, 2.0], n=np.array([1.0, np.nan]))
+    with pytest.raises(ValueError, match="'n' cannot contain NaN"):
+        xcnt_handler([1.0, 2.0], n=[1, None])

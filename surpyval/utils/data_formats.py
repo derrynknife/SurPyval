@@ -943,13 +943,13 @@ def _xcnt_x(
 
 def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
     """The flags of a two-column ``x``: 2 exactly on the interval rows."""
-    if any(c[x[:, 0] == x[:, 1]] == 2):
+    if np.any(c[x[:, 0] == x[:, 1]] == 2):
         raise ValueError(
             "Censor flag indicates interval censored but only has one"
             + " failure time"
         )
 
-    if any(c[x[:, 0] != x[:, 1]] != 2):
+    if np.any(c[x[:, 0] != x[:, 1]] != 2):
         mask1 = x[:, 0] != x[:, 1]
         mask2 = c != 2
         m = mask1 & mask2
@@ -961,13 +961,13 @@ def _check_interval_flags(c: npt.NDArray, x: npt.NDArray) -> None:
             + f"{c[m]}"
         )
 
-    if any((c == 2) & (x[:, 0] == x[:, 1])):
+    if np.any((c == 2) & (x[:, 0] == x[:, 1])):
         raise ValueError(
             "Censor flag provided, but case where interval flagged as"
             + " non interval censoring"
         )
 
-    if any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
+    if np.any((c != 0) & (c != 1) & (c != -1) & (c != 2)):
         raise ValueError("Censoring value must only be one of -1, 0, 1, or 2")
 
 
@@ -1016,7 +1016,7 @@ def _xcnt_censoring(c: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
 
     if x.ndim == 2:
         _check_interval_flags(c_arr, x)
-    elif any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
+    elif np.any((c_arr != 0) & (c_arr != 1) & (c_arr != -1)):
         raise ValueError(
             "Censoring value must only be one of -1, 0, 1 for single"
             + " dimension input"
@@ -1029,7 +1029,10 @@ def _xcnt_counts(n: "npt.ArrayLike | None", x: npt.NDArray) -> npt.NDArray:
     if n is None:
         # Do check here for groupby and binning
         return np.ones(x.shape[0])
-    if _has_missing(np.array(n, dtype=object)):
+    # A numeric array is checked as it is: as objects, one by one, the
+    # check took a third of a Weibull fit to a million rows (#552).
+    as_given = n if isinstance(n, np.ndarray) else np.array(n, dtype=object)
+    if _has_missing(as_given):
         # As for ``x`` and ``c``; it read "must contain integer values"
         raise ValueError("Variable 'n' cannot contain NaN values")
     try:

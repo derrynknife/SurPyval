@@ -8,7 +8,6 @@ import numpy.typing as npt
 from autograd.extend import defvjp_argnums, primitive
 from autograd.numpy.numpy_vjps import unbroadcast_f
 from autograd.tracer import isbox
-from scipy import integrate
 
 from surpyval.univariate import parametric as para
 from surpyval.univariate.parametric._fit_inputs import _offset_start
@@ -919,6 +918,8 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         mass is always near 1; the split there keeps the (integrable)
         singularity at 0 for :math:`\mu < 1` apart from the tail.
         """
+        from scipy import integrate
+
         mu_f = float(mu)
         log_mu = np.log(mu_f)
 

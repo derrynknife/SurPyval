@@ -4,7 +4,6 @@ import warnings
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import chi2
 
 from surpyval.univariate.nonparametric.kaplan_meier import kaplan_meier
 from surpyval.utils import xcnt_handler
@@ -349,6 +348,8 @@ def logrank(
     Klein, J. P. and Moeschberger, M. L. (2003), "Survival Analysis:
     Techniques for Censored and Truncated Data", 2nd ed., Chapter 7.
     """
+    from scipy.stats import chi2
+
     weightings = ["log-rank", "gehan", "tarone-ware", "fleming-harrington"]
     if weighting not in weightings:
         raise ValueError("'weighting' must be in {}".format(weightings))

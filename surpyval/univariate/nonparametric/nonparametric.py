@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import numpy.typing as npt
-from scipy.stats import norm
 
 from surpyval.distribution import NonParametricDistribution
 from surpyval.serialisation import SerialisableMixin, stamp_schema
@@ -841,6 +840,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         dist: str,
     ) -> npt.NDArray:
         # ``R_cb`` without the bounds (see ``set_support``).
+        from scipy.stats import norm
+
         check_option("bound_type", bound_type, ("exp", "normal"))
         _check_bound(bound)
         check_option(
@@ -1326,6 +1327,8 @@ class NonParametric(BandsMixin, SerialisableMixin, NonParametricDistribution):
         --------
         surpyval.rmst_diff : compare the RMST of two groups.
         """
+        from scipy.stats import norm
+
         if tau is None:
             tau = float(np.max(self.x))
         mu = self.mean(tau=tau)
@@ -1932,6 +1935,8 @@ def rmst_diff(
     >>> print(round(res["p_value"], 4))
     0.1067
     """
+    from scipy.stats import norm
+
     if tau is None:
         tau = float(min(np.max(model_a.x), np.max(model_b.x)))
 

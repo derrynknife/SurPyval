@@ -22,8 +22,10 @@ from autograd.differential_operators import make_vjp
 from scipy.optimize import minimize
 
 from surpyval.univariate.parametric.fitters import (
+    Gradient,
     bounds_convert,
     is_local_minimum,
+    minimize_with_gradient,
     preconditioned_bfgs,
 )
 from surpyval.univariate.parametric.fitters.runaway import (  # noqa: F401
@@ -961,7 +963,8 @@ def optimise_ph(
     warns through :func:`finish_search`). ``floor`` is BFGS's least unit
     per component (:func:`coefficient_floor`).
     """
-    jac = jacobian(fun)
+    # The value and the gradient from one pass (#593)
+    jac = Gradient(fun)
 
     best = None
     for method in ("BFGS", "TNC", "Nelder-Mead"):
@@ -971,8 +974,8 @@ def optimise_ph(
                 fun, x0, jac=jac, options={"maxiter": 1000}, floor=floor
             )
         elif method == "TNC":
-            res = minimize(
-                fun, x0, method="TNC", jac=jac, options={"maxfun": 1000}
+            res = minimize_with_gradient(
+                fun, x0, (), jac, method="TNC", options={"maxfun": 1000}
             )
         else:
             res = minimize(
@@ -1170,7 +1173,7 @@ def _polish(
         warnings.filterwarnings("ignore", "Output seems independent")
         try:
             polish = preconditioned_bfgs(
-                fun, res.x, (), jacobian(fun), floor=floor, obj_scale=n_obs
+                fun, res.x, (), Gradient(fun), floor=floor, obj_scale=n_obs
             )
         except (TypeError, ValueError, ArithmeticError):
             polish = None

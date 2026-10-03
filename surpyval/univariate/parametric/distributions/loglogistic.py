@@ -5,7 +5,6 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import expit
-from scipy.stats import fisk
 
 from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -407,6 +406,8 @@ class LogLogistic_(OptimisedFitMixin, ParametricFitter):
         >>> LogLogistic.moment(2, 10, 3)
         np.float64(241.83991523122904)
         """
+        from scipy.stats import fisk
+
         return fisk.moment(m, beta, scale=alpha)
 
     def entropy(self, alpha: Boxable, beta: Boxable) -> Boxable:

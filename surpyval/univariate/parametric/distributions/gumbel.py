@@ -3,7 +3,6 @@ from __future__ import annotations
 import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
-from scipy.stats import gumbel_l
 
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
@@ -341,6 +340,8 @@ class Gumbel_(OptimisedFitMixin, ParametricFitter):
         >>> Gumbel.moment(2, 5, 2)
         np.float64(21.368134664593125)
         """
+        from scipy.stats import gumbel_l
+
         return gumbel_l.moment(m, loc=mu, scale=sigma)
 
     def entropy(self, mu: Boxable, sigma: Boxable) -> Boxable:

@@ -42,6 +42,8 @@ class GeneralLogLinear_(LifeModel):
     array([58.897, -0.589,  0.357])
     """
 
+    phi_takes_rows = True
+
     def __init__(self, n_stresses: "int | None" = None) -> None:
         # ``None``: not yet resolved to a number of columns, so the
         # parameters are only the constant factor until the fit sees Z.

@@ -250,12 +250,13 @@ def test_586_moments_match_high_precision_at_small_mu(m, beta, mu, want):
 
 
 def test_586_moments_are_vectorised_without_quad(monkeypatch):
-    from surpyval.univariate.parametric.distributions import expo_weibull
+    # (The module imports scipy.integrate where it uses it, #470)
+    import scipy.integrate
 
     def no_quad(*args, **kwargs):
         raise AssertionError("moment called quad")
 
-    monkeypatch.setattr(expo_weibull.integrate, "quad", no_quad)
+    monkeypatch.setattr(scipy.integrate, "quad", no_quad)
     alpha = np.array([[0.5], [2.0]])
     beta = np.array([0.3, 1.0, 4.0])
     mu = np.array([0.05, 1.0, 20.0])

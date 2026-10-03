@@ -6,8 +6,6 @@ from typing import Any
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gammaln
-from scipy.stats import beta as beta_rv
-from scipy.stats import geom
 
 from surpyval.univariate.parametric.discrete_fitter import (
     DiscreteParametricFitter,
@@ -333,6 +331,9 @@ class BetaGeometric_(OptimisedFitMixin, DiscreteParametricFitter):
         """Draw ``size`` cycle counts: a per-unit probability from the
         Beta(``a``, ``b``) mixing law, then a Geometric count with it;
         ``random_state`` is as for :meth:`ParametricFitter.random`."""
+        from scipy.stats import beta as beta_rv
+        from scipy.stats import geom
+
         # Draw each unit's failure probability from the Beta mixing law, then
         # a Geometric cycle count with that probability.
         state = draw_state(random_state)

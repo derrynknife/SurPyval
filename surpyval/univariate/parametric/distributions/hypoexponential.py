@@ -37,7 +37,6 @@ from typing import Any
 
 import autograd.numpy as np
 import numpy.typing as npt
-from scipy import integrate
 from scipy.special import factorial, gammaln, xlogy
 
 from surpyval.univariate.parametric.parametric import draw_state
@@ -734,6 +733,8 @@ class Hypoexponential_(ParametricFitter):
         >>> Hypoexponential.entropy(0.5, 1.5, 3.0)
         1.9455443600389024
         """
+        from scipy import integrate
+
         r = _validate_rates(rates)
 
         def func(x: float) -> float:

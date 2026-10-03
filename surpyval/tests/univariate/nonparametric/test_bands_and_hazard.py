@@ -440,7 +440,8 @@ def test_590_band_search_evaluates_each_value_once(monkeypatch, standardized):
     # The root search started from the two ends of the bracket, both
     # already evaluated by the climb to it: each cost a full pass over the
     # time grid again.
-    from surpyval.univariate.nonparametric import _bands
+    # (The band imports scipy.stats where it uses it, #470)
+    import scipy.stats
 
     calls = []
 
@@ -452,7 +453,7 @@ def test_590_band_search_evaluates_each_value_once(monkeypatch, standardized):
             calls.append((float(np.ravel(x)[-1]), float(scale)))
             return norm.pdf(x, scale=scale)
 
-    monkeypatch.setattr(_bands, "norm", CountedNorm())
+    monkeypatch.setattr(scipy.stats, "norm", CountedNorm())
     # A range no other test asks for, so nothing is cached yet
     crit = NonParametric._band_critical_value(
         0.1234, 0.8765, 0.05, standardized

@@ -36,6 +36,7 @@ class PowerExponential_(LifeModel):
 
     n_stresses = 2
     positive_stress_columns = (1,)
+    phi_takes_rows = True
 
     def __init__(self) -> None:
         super().__init__(

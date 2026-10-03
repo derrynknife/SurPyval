@@ -323,13 +323,14 @@ def test_finite_start_raises_when_no_finite_start():
 def test_optimise_ph_warns_instead_of_returning_a_failed_start(monkeypatch):
     from scipy.optimize import OptimizeResult
 
-    def stuck(fun, x0, **kwargs):
+    def stuck(fun, x0, *args, **kwargs):
         return OptimizeResult(
             x=np.asarray(x0), fun=fun(x0), success=False, message="forced"
         )
 
     monkeypatch.setattr(_fit_skeleton, "preconditioned_bfgs", stuck)
     monkeypatch.setattr(_fit_skeleton, "minimize", stuck)
+    monkeypatch.setattr(_fit_skeleton, "minimize_with_gradient", stuck)
 
     def fun(p):
         return ((p - 3.0) ** 2).sum()
