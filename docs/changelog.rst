@@ -52,6 +52,16 @@ v0.23 (unreleased)
   counts with one gradient pass per block (a custom distribution keeps the
   gradient a point at a time). Bounds are unchanged: BetaGeometric
   ``quantile_cb`` about 6x faster.
+- **Likelihood-ratio bands reuse what each time's search learns (#587).**
+  A band's times are searched in order, each starting from where its
+  neighbour's bound was found; the likelihood region is found once per
+  level and shared by every band, quantile and mean bound at that level;
+  the searches run in coordinates scaled by the Wald standard errors; and
+  the check that an answer is the extreme starts beside it rather than
+  crawling to it. A two-parameter band takes 135-222 likelihood
+  evaluations per time instead of 283-854: the probability plot's LR band
+  19.1 s → 7.7 s, a Weibull band at 50 times on 1,000 units 2.8 s → 1.7 s.
+  Bounds agree with the previous ones to 1e-11 on the registry.
 - **Faster accelerated-degradation sampling (#585).**
   ``DegradationModel.qf`` and ``random`` on an accelerated model searched
   for each probability on its own, calling the regression model's ``sf``

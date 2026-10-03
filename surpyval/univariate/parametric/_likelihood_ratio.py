@@ -7,7 +7,7 @@ inherits it: the profile likelihood and the parameters' intervals
 functions (``cb``, ``quantile_cb`` and ``mean_cb`` with ``method="lr"``).
 The searches move each parameter in an unbounded coordinate
 (``_LRCoord``), continue along the solved points (``_LRPath``) and walk
-out to the critical value (``_lr_walk``); see #421, #519 and #535.
+out to the critical value (``_lr_walk``); see #421, #519, #535 and #587.
 """
 
 from __future__ import annotations
@@ -40,6 +40,10 @@ _FLOAT_MAX = float(np.finfo(float).max)
 # The profile deviance is solved to about 1e-8 (the searches' tolerances);
 # this is the slack the likelihood-ratio walk allows it (``_lr_walk``).
 _LR_NOISE = 1e-6
+# The scale of the deviance constraint in the scaled search for a
+# function's extreme (``_PsiBoundSearch.extreme``): SLSQP holds it to its
+# ftol of 1e-10, which is 1e-8 of deviance.
+_LR_DEV_SCALE = 1e-2
 # A deviance that is not finite, or no search reaching the target at all,
 # is a failure; a target beyond a data-derived edge (the Uniform's) is not
 # reachable, and reads as this deviance, above any critical value.
@@ -291,6 +295,47 @@ def _central_gradient(f: Callable[..., Any], u: npt.NDArray) -> npt.NDArray:
     return grad
 
 
+def _wald_sd(model: Any, coords: list[_LRCoord], free: list[int]) -> Any:
+    """The Wald standard errors of the core parameters ``free`` in their
+    search coordinates, or ``None`` without a usable covariance.
+
+    The searches run in the coordinates divided by these: SLSQP and
+    L-BFGS-B start from the identity as the likelihood's curvature, which
+    is near its curvature there, where in the raw coordinates it can be
+    out by the sample size (a Weibull's ``log alpha`` on 1000 units: 4,000
+    against 1). A constrained search that took 40 to 90 evaluations from
+    a point beside its answer takes 5.
+    """
+    hess_inv = getattr(model, "hess_inv", None)
+    if hess_inv is None or np.ndim(hess_inv) != 2:
+        return None
+    theta = np.asarray(model.params, dtype=float)
+    slopes = np.array([coords[j].slope(theta[j]) for j in free], dtype=float)
+    with np.errstate(all="ignore"):
+        sd = np.sqrt(np.diag(np.asarray(hess_inv, dtype=float))[free])
+        sd = sd / np.abs(slopes)
+    if not (np.all(np.isfinite(sd)) and np.all(sd > 0)):
+        return None
+    return sd
+
+
+def _scaled_bounds(
+    bounds: list[tuple[Any, Any]] | None,
+    origin: npt.NDArray,
+    scale: npt.NDArray,
+) -> list[tuple[Any, Any]] | None:
+    """``bounds`` on ``u`` as bounds on ``z``, ``u = origin + scale z``."""
+    if bounds is None:
+        return None
+    return [
+        (
+            None if lo is None else (lo - origin[k]) / scale[k],
+            None if hi is None else (hi - origin[k]) / scale[k],
+        )
+        for k, (lo, hi) in enumerate(bounds)
+    ]
+
+
 def _unguarded(dist: Any, name: str) -> Callable[..., Any]:
     """The distribution's function ``name`` without the wrappers of
     ``parametric_fitter`` (``_array_inputs`` and ``_support_guarded``),
@@ -338,7 +383,8 @@ class _PsiBoundSearch:
     in turn, cheapest first, until an answer checks out:
 
     1. ``from_trace``: from the traced point of a two-parameter region
-       where psi is most extreme (``_lr_trace``);
+       where psi is most extreme (``_lr_trace``), or from where the
+       neighbouring time's bound was found (``hints``);
     2. ``ladder`` then ``direct`` from the estimate and the walks' tips:
        the extreme sought directly (SLSQP), checked against every point
        of the region known;
@@ -387,6 +433,15 @@ class _PsiBoundSearch:
         self.traced: list[tuple[float, npt.NDArray]] | None = None
         # The points the level ladders found (``ladder``).
         self.ladder_ids: set[int] = set()
+        # psi at each point asked for (``psi_u``).
+        self.psi_kept: dict[bytes, float] = {}
+        # The searches' scale (``_wald_sd``): ``solve`` and the search
+        # from the trace run in z, u = u_hat + scale z.
+        self.scale = _wald_sd(model, self.coords, free)
+        # Where each side's bound was found at the neighbouring time of a
+        # band (``from_trace``), and where it is found here.
+        self.hints: dict[float, npt.NDArray] = {}
+        self.answers: dict[float, npt.NDArray] = {}
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -401,10 +456,17 @@ class _PsiBoundSearch:
     def psi_u(self, u: npt.NDArray) -> float:
         if not np.all(np.isfinite(u)):
             return np.nan
-        # Held to the ends of its scale where the function reaches the
-        # edge of its range (a density that underflows to 0), so that
-        # a search can still step there.
-        return float(np.clip(self.psi_of(self.theta_of(u)), *self.ends))
+        # Kept by the point's bytes, as the likelihood is: SLSQP asks
+        # for the constraint again where it has just evaluated it.
+        key = np.asarray(u, dtype=float).tobytes()
+        if key not in self.psi_kept:
+            # Held to the ends of its scale where the function reaches
+            # the edge of its range (a density that underflows to 0), so
+            # that a search can still step there.
+            self.psi_kept[key] = float(
+                np.clip(self.psi_of(self.theta_of(u)), *self.ends)
+            )
+        return self.psi_kept[key]
 
     def dev_u(self, u: npt.NDArray) -> float:
         return 2.0 * (self.nll_of(u) - self.nll_hat)
@@ -488,21 +550,37 @@ class _PsiBoundSearch:
     def solve(
         self, target: float, starts: list[npt.NDArray]
     ) -> tuple[float, npt.NDArray | None]:
-        """The least negative log-likelihood with psi at ``target``."""
+        """The least negative log-likelihood with psi at ``target``.
+
+        Searched in the coordinates scaled by the Wald standard errors
+        (``_wald_sd``), where SLSQP's first guess at the curvature is
+        near right, and in the search coordinates without a covariance.
+        """
         best, best_u = np.inf, None
+        if self.scale is None:
+            origin, scale = np.zeros(len(self.u_hat)), np.ones(len(self.u_hat))
+        else:
+            origin, scale = self.u_hat, self.scale
+
+        def psi_z(z: npt.NDArray) -> float:
+            return self.psi_u(origin + scale * z)
+
+        def nll_z(z: npt.NDArray) -> float:
+            return self.nll_of(origin + scale * z)
+
         constraint = {
             "type": "eq",
-            "fun": lambda u: self.psi_u(u) - target,
-            "jac": lambda u: _central_gradient(self.psi_u, u),
+            "fun": lambda z: psi_z(z) - target,
+            "jac": lambda z: _central_gradient(psi_z, z),
         }
         for x0 in starts:
             try:
                 res = minimize(
-                    self.nll_of,
-                    self.model._lr_start(x0, self.box),
+                    nll_z,
+                    (self.model._lr_start(x0, self.box) - origin) / scale,
                     method="SLSQP",
-                    jac=lambda u: _central_gradient(self.nll_of, u),
-                    bounds=self.bounds,
+                    jac=lambda z: _central_gradient(nll_z, z),
+                    bounds=_scaled_bounds(self.bounds, origin, scale),
                     constraints=[constraint],
                     options={"ftol": 1e-10, "maxiter": 60},
                 )
@@ -510,10 +588,11 @@ class _PsiBoundSearch:
                 continue
             if not np.all(np.isfinite(res.x)):
                 continue
-            gap = abs(self.psi_u(res.x) - target)
-            nll = self.nll_of(res.x)
+            u = origin + scale * np.asarray(res.x)
+            gap = abs(self.psi_u(u) - target)
+            nll = self.nll_of(u)
             if gap <= 1e-7 * max(1.0, abs(target)) and nll < best:
-                best, best_u = nll, np.asarray(res.x)
+                best, best_u = nll, u
         return best, best_u
 
     def extreme(
@@ -522,12 +601,15 @@ class _PsiBoundSearch:
         start: npt.NDArray,
         level: float,
         whiten: bool = False,
+        scaled: bool = False,
     ) -> npt.NDArray | None:
         """Where SLSQP stops in its search for the extreme of psi over
         the region {deviance <= level}; ``None`` where it fails.
 
         ``whiten``: searched in z, u = u_hat + chol z (held in the box),
-        where the region is near a ball about the estimate.
+        where the region is near a ball about the estimate. ``scaled``:
+        searched in z, u = u_hat + scale z (``_wald_sd``), where the
+        box is a box.
         """
         u_hat, box = self.u_hat, self.box
         if whiten:
@@ -540,6 +622,14 @@ class _PsiBoundSearch:
 
             z0 = np.linalg.solve(L, np.asarray(start) - u_hat)
             z_bounds = None
+        elif scaled and self.scale is not None:
+            scale = self.scale
+
+            def to_u(z: npt.NDArray) -> npt.NDArray:
+                return u_hat + scale * z
+
+            z0 = (np.asarray(start) - u_hat) / scale
+            z_bounds = _scaled_bounds(self.bounds, u_hat, scale)
         else:
 
             def to_u(z: npt.NDArray) -> npt.NDArray:
@@ -553,6 +643,14 @@ class _PsiBoundSearch:
         def g(z: npt.NDArray) -> float:
             return self.dev_u(to_u(z))
 
+        # SLSQP holds a constraint to its ftol. Held so to the deviance's
+        # last digits, the scaled search cycled up to 90 times at a point
+        # outside the region by 5e-10, trading that against psi (a
+        # Weibull band on 1000 units); scaled, the deviance is held to
+        # 1e-8, as the walks solve it, and ``from_trace`` takes a point
+        # outside back onto the boundary.
+        c = _LR_DEV_SCALE if scaled else 1.0
+
         try:
             res = minimize(
                 lambda z: -direction * f(z),
@@ -563,8 +661,8 @@ class _PsiBoundSearch:
                 constraints=[
                     {
                         "type": "ineq",
-                        "fun": lambda z: level - g(z),
-                        "jac": lambda z: -_central_gradient(g, z),
+                        "fun": lambda z: c * (level - g(z)),
+                        "jac": lambda z: -c * _central_gradient(g, z),
                     }
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
@@ -575,17 +673,25 @@ class _PsiBoundSearch:
             return None
         return to_u(np.asarray(res.x))
 
-    def direct(self, direction: float, start: npt.NDArray) -> float | None:
-        """The extreme of psi over the region, sought directly (SLSQP),
-        when it checks out; otherwise ``None``.
+    def direct(
+        self, direction: float, start: npt.NDArray, scaled: bool = False
+    ) -> float | None:
+        """The extreme of psi over the region, sought directly (SLSQP;
+        ``scaled`` as ``extreme``), when it checks out; otherwise
+        ``None``.
 
         It checks out when its deviance is at crit or below, and none
         with psi a hair further out (1e-6 of it) is at crit or below.
         That is where the profile of psi crosses crit, which the walk
-        would find at many times the cost.
+        would find at many times the cost. The check searches from the
+        estimate, and from beside the answer: the answer moved along the
+        gradient of psi to the target, where the least likelihood with
+        psi there is a step away. (From the answer itself SLSQP spent 40
+        to 90 evaluations crawling to the target, its line search
+        trading the gap against the likelihood.)
         """
         crit, psi_hat = self.crit, self.psi_hat
-        x = self.extreme(direction, start, crit)
+        x = self.extreme(direction, start, crit, scaled=scaled)
         if x is None:
             return None
         psi_star = self.psi_u(x)
@@ -599,20 +705,45 @@ class _PsiBoundSearch:
             return None
         self.known.append((psi_star, x))
         beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-        nll, u = self.solve(beyond, [x, self.u_hat])
+        nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
         if u is not None and 2.0 * (nll - self.nll_hat) < crit:
             return None
         return psi_star
 
+    def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
+        """``x`` moved along the gradient of psi to where its linear
+        approximation is ``target``; ``x`` where that cannot be found."""
+        grad = _central_gradient(self.psi_u, x)
+        size = float(grad @ grad)
+        if not (np.isfinite(size) and size > 0):
+            return x
+        moved = x + (target - self.psi_u(x)) * grad / size
+        return moved if np.all(np.isfinite(moved)) else x
+
     def from_trace(self, direction: float) -> float | None:
         """The search from the traced point of the region where psi is
         most extreme, taken when it is at least as far out as every
-        traced point and every point known (see ``_lr_trace``)."""
+        traced point and every point known (see ``_lr_trace``).
+
+        In a band, it starts instead from where the bound was found at
+        the neighbouring time (``hints``) when psi is at least as far out
+        there: the extreme moves little from one time to the next, and
+        the search from it takes fewer steps. The answer is the same
+        extreme, and is taken on the same terms.
+        """
         if self.traced is None:
             return None
         u_hat, crit = self.u_hat, self.crit
         top_psi, top_u = max(self.traced, key=lambda k: direction * k[0])
-        quick = self.direct(direction, self.model._lr_start(top_u, self.box))
+        start = top_u
+        hint = self.hints.get(direction)
+        if hint is not None:
+            psi_hint = self.psi_u(hint)
+            if np.isfinite(psi_hint) and direction * (psi_hint - top_psi) >= 0:
+                start = hint
+        quick = self.direct(
+            direction, self.model._lr_start(start, self.box), scaled=True
+        )
         if quick is None:
             return None
         # SLSQP may stop outside the region by its tolerance (a
@@ -636,6 +767,7 @@ class _PsiBoundSearch:
         far = max(direction * k[0] for k in self.known)
         slack = 1e-9 * max(1.0, abs(top_psi))
         if direction * quick >= max(far, direction * top_psi - slack):
+            self.answers[direction] = self.known[-1][1]
             return quick
         return None
 
@@ -1102,19 +1234,29 @@ class LikelihoodRatioMixin:
         w = coords[idx].to_u(value)
         starts = [] if path is None else path.starts(w)
         best, best_u, zero = np.inf, None, False
+        # Searched in the coordinates divided by the Wald standard errors
+        # (``_wald_sd``), where L-BFGS-B's first steps are to scale.
+        scale = _wald_sd(self, coords, free)
+        if scale is None:
+            scale = np.ones(len(free))
+        z_bounds = _scaled_bounds(bounds, np.zeros(len(free)), scale)
+
+        def obj_z(z: npt.NDArray) -> float:
+            return obj(scale * z)
+
         with np.errstate(all="ignore"):
             for x0 in starts + [u_hat]:
                 res = minimize(
-                    obj,
-                    self._lr_start(x0, start_box),
+                    obj_z,
+                    self._lr_start(x0, start_box) / scale,
                     method="L-BFGS-B",
                     jac="3-point",
-                    bounds=bounds,
+                    bounds=z_bounds,
                     options={"ftol": 1e-13, "gtol": 1e-9, "maxiter": 1000},
                 )
                 zero = zero or res.fun == np.inf
                 if np.isfinite(res.fun) and res.fun < best:
-                    best, best_u = float(res.fun), np.asarray(res.x)
+                    best, best_u = float(res.fun), scale * res.x
             if best_u is None:
                 # Every gradient search failed: derivative free from the
                 # fit, as a last resort.
@@ -1470,7 +1612,15 @@ class LikelihoodRatioMixin:
         extreme traced point alone, taken when the answer is at least as
         far out as every traced point (and moved onto the boundary where
         SLSQP stopped just outside it), which makes a Weibull band at 20
-        times on 1000 units 2.4 s rather than 9.4 s (#519).
+        times on 1000 units 2.4 s rather than 9.4 s (#519). The region is
+        found once per level, for every band and summary bound at that
+        level; a band's times are searched in order, each side's search
+        starting from where the neighbouring time's bound was found when
+        that is as far out as the trace; and the searches run in the
+        coordinates scaled by the Wald standard errors (``_wald_sd``),
+        the check beyond each answer starting beside it. That takes a
+        two-parameter band from about 250 likelihood evaluations a time
+        to about 100 (#587).
 
         A search for the extreme from a warm start alone would stop
         wherever it first meets the region's boundary: ExpoWeibull and
@@ -1561,19 +1711,19 @@ class LikelihoodRatioMixin:
         # bound at alpha is an end of the two-sided one at 2 alpha.
         kind = "survival" if survival else on
         cache = self.__dict__.setdefault("_lr_bands", {})
-        region: list = []
         lower = np.full(t.shape, np.nan)
         upper = np.full(t.shape, np.nan)
         failed: list[float] = []
+        hints: dict[float, npt.NDArray] = {}
         with np.errstate(all="ignore"):
-            for i, time in enumerate(t):
+            for i in np.argsort(t, kind="stable"):
+                time = t[i]
                 key_lo = (kind, float(time), *self._lr_key(-1, crit, -1))
                 key_hi = (kind, float(time), *self._lr_key(-1, crit, 1))
                 need_lo = want_lower and key_lo not in cache
                 need_hi = want_upper and key_hi not in cache
                 if need_lo or need_hi:
-                    if not region:
-                        region.extend(self._lr_region(free, crit))
+                    box, seeds, trace = self._lr_region(free, crit)
                     lo, hi = self._cb_lr_psi_bounds(
                         lambda theta: psi_of(time, theta),
                         free,
@@ -1581,7 +1731,10 @@ class LikelihoodRatioMixin:
                         need_lo,
                         need_hi,
                         ends,
-                        *region,
+                        box,
+                        seeds,
+                        trace,
+                        hints=hints,
                     )
                     if need_lo:
                         cache[key_lo] = lo
@@ -1636,7 +1789,22 @@ class LikelihoodRatioMixin:
         (an ExpoWeibull ``beta`` running off to infinity with ``alpha`` at
         the largest observation), which a search from the estimate does
         not find.
+
+        The region is found once per level and kept: every band, quantile
+        and mean bound at that level searches the same one.
         """
+        key = (tuple(free), *self._lr_key(-1, crit, 0))
+        cache = self.__dict__.setdefault("_lr_regions", {})
+        if key not in cache:
+            cache[key] = self._lr_find_region(free, crit)
+        return cache[key]
+
+    def _lr_find_region(self, free: list[int], crit: float) -> tuple[
+        list[tuple[Any, Any]],
+        list[list[npt.NDArray]],
+        list[npt.NDArray] | None,
+    ]:
+        """The region of ``_lr_region``, found."""
         coords, limits = self._lr_coords()
         free_coords = [coords[j] for j in free]
         box = self._lr_box(free_coords, [limits[j] for j in free])
@@ -1789,6 +1957,7 @@ class LikelihoodRatioMixin:
         box: list[tuple[Any, Any]],
         seeds: list[list[npt.NDArray]],
         trace: list[npt.NDArray] | None = None,
+        hints: dict[float, npt.NDArray] | None = None,
     ) -> tuple[float, float]:
         """The likelihood-ratio bounds on a function ``psi_of(theta)`` of
         the free core parameters, searched in ``box``: ``(lower,
@@ -1796,7 +1965,12 @@ class LikelihoodRatioMixin:
         / ``inf`` for one at the edge of the scale. See ``_cb_lr``, and
         ``_PsiBoundSearch`` for the search."""
         search = _PsiBoundSearch(self, psi_of, free, crit, ends, box)
-        return search.run(want_lower, want_upper, seeds, trace)
+        if hints is not None:
+            search.hints = dict(hints)
+        out = search.run(want_lower, want_upper, seeds, trace)
+        if hints is not None:
+            hints.update(search.answers)
+        return out
 
     def _cb_lr_one_param(
         self, t: Any, g: Any, j: int, alpha_ci: float, bound: str
