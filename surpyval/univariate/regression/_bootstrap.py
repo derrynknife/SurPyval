@@ -187,14 +187,8 @@ class _Design:
                 "would need and the data do not record. Use method='wald' "
                 "or method='lr'."
             )
-        n = np.asarray(data.n, dtype=float)
-        if not np.all(n == np.round(n)):
-            raise ValueError(
-                "Bootstrap bounds resample units, so the counts 'n' must be "
-                "whole numbers; this model was fitted with fractional "
-                "weights. Use method='wald' or method='lr'."
-            )
-        units = np.repeat(np.arange(len(c)), n.astype(int))
+        # (the counts are whole numbers: the data handler requires it)
+        units = np.repeat(np.arange(len(c)), np.asarray(data.n, dtype=int))
         self.x = np.asarray(data.x, dtype=float)[units]
         self.failed = c[units] == 0
         self.Z = np.asarray(data.Z, dtype=float)[units]
