@@ -380,6 +380,7 @@ for _fn in (
     "xrd_to_xcnt",
     "handle_xicn",
     "fit_best",
+    "forecast",
     "from_dict",
     "from_json",
     "logrank",
