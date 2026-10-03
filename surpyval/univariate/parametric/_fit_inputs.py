@@ -867,15 +867,22 @@ class FitInputsMixin:
         """
         A limited-failure-population starting point from the failures
         alone: the distribution's own initialiser on the observed failures
-        (treated as a complete sample of the susceptible units), and ``p``
-        at the observed failure fraction. ``None`` when there are too few
-        distinct failures to seed from.
+        (treated as a complete sample of the susceptible units; an
+        interval-censored one at its midpoint), and ``p`` at the observed
+        failure fraction. ``None`` when there are too few distinct failures
+        to seed from.
         """
         x = np.asarray(surv_data.x, dtype=float)
         c = np.asarray(surv_data.c)
         n = np.asarray(surv_data.n, dtype=float)
         if x.ndim != 1:
-            return None
+            # An interval-censored failure is a failure at its midpoint,
+            # as the default start reads it (``_initial_guess``). Interval
+            # data had no start of this kind: a Weibull with ``lfp=True``
+            # on monthly return counts had only the default, which ran
+            # ``p`` to 1 (#579).
+            x = x.mean(axis=1)
+            c = np.where(c == 2, 0, c)
         observed = c == 0
         if n[observed].sum() < 2 or np.unique(x[observed]).size < 2:
             return None
