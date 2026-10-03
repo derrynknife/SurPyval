@@ -17,6 +17,7 @@ infers exactly as the original did.
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Callable
 
 
@@ -71,6 +72,12 @@ class Rebuilt:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         return self._function()(*args, **kwargs)
+
+    @property
+    def __signature__(self) -> inspect.Signature:
+        # The callable's own, so ``inspect.signature`` reads it as the
+        # closure it stands for (Cox's ``neg_ll(beta)``).
+        return inspect.signature(self._function())
 
     def __reduce__(self) -> tuple:
         return (type(self), (self.build, self.args, self.item))

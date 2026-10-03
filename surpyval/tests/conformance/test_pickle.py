@@ -17,6 +17,7 @@ property does the same for the model of every alternate fit path.
 """
 
 import json
+import multiprocessing
 import pickle
 import warnings
 from concurrent.futures import ProcessPoolExecutor
@@ -146,7 +147,11 @@ def test_573_fitted_models_work_in_a_process_pool():
     models = [fitted(case) for case in cases]
     x = np.array([1.0, 2.0, 5.0])
     crow = sp.CrowAMSAA.fit(np.array([1.0, 3, 4, 8]))
-    with ProcessPoolExecutor(max_workers=2) as pool:
+    # Spawned, not forked: each worker imports surpyval afresh, as on
+    # macOS and Windows, so the models reach it only through pickle (and
+    # forking a multi-threaded process is deprecated).
+    context = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(max_workers=2, mp_context=context) as pool:
         parametric = [pool.submit(_sf_in_worker, m, x) for m in models[:2]]
         cox = pool.submit(models[2].sf, cases[2].x, cases[2].Z)
         recurrent = pool.submit(_cif_in_worker, crow, x)
