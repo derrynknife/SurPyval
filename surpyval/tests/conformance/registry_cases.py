@@ -57,6 +57,7 @@ from surpyval.tests.conformance.registry_fixtures import (
     cr_data,
     destructive_data,
     exact_event_data,
+    lfp_count_data,
     lfp_data,
     mixture_data,
     offset_data,
@@ -209,6 +210,23 @@ def _univariate():
             rows=("x", "c", "n", "tl"),
             times=("x", "tl"),
             paths={},
+        )
+    )
+    # A limited failure population in interval-censored counts, whose
+    # default start ran p to its bound of 1 (#579)
+    out.append(
+        continuous(
+            "Weibull",
+            case_name="Weibull[lfp-counts]",
+            fitters=(),
+            data=lfp_count_data,
+            fixed={"lfp": True},
+            rows=("x", "c", "n"),
+            times=("x",),
+            paths={},
+            slow=REFIT_PROPERTIES,
+            draw=lambda m, s: m.random_data(15, random_state=s),
+            explicit_seed=True,
         )
     )
     out.append(
@@ -997,6 +1015,7 @@ def _df_paths():
     }
     paths["Turnbull"] = _uni_df(sp.Turnbull)
     paths["Weibull[xcnt]"] = _uni_df(sp.Weibull)
+    paths["Weibull[lfp-counts]"] = _uni_df(sp.Weibull, lfp=True)
     paths["RoystonParmar"] = _uni_df(sp.RoystonParmar)
     paths["MixtureModel"] = _uni_df(sp.MixtureModel, dist=sp.Weibull, m=2)
     paths["Binomial"] = _uni_df(sp.Binomial, n_trials=5)

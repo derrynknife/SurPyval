@@ -803,7 +803,8 @@ worth knowing what they are, because they explain the warnings you may see.
    one maximum, and the default start can lie nearer the worse one. For a
    limited failure population without zero inflation (where :math:`p` and the failure distribution
    trade off, see below) SurPyval also starts from the failures alone, fitted
-   as a complete sample, with :math:`p` at the observed failure fraction; for a
+   as a complete sample (an interval-censored failure at its interval's
+   midpoint), with :math:`p` at the observed failure fraction; for a
    ``CustomDistribution`` it also tries the plain default of each parameter (1
    above a lower bound, the middle of a finite interval, 0 if unbounded). Each
    start is optimised and the fit with the best likelihood is kept. These
@@ -882,6 +883,22 @@ worth knowing what they are, because they explain the warnings you may see.
    parameter running onto a finite bound of its range (an Exponential's
    offset onto the first failure) is a maximum on the edge of the space,
    not a runaway.
+
+   A parameter bounded at both ends -- a limited-failure :math:`p`, a
+   zero-inflation :math:`f_{0}` -- reaches its bound in floating point long
+   before its :math:`u` reaches infinity: :math:`p` is exactly 1 once
+   :math:`u` passes about 190. There the likelihood no longer depends on
+   :math:`u`, its gradient and curvature in it are zero or rounding, and the
+   test of the gradient and Hessian says nothing about it. Such a parameter
+   is judged on its bound instead: it is a maximum there when the likelihood
+   (the other parameters as fitted) does not rise as it moves off the bound
+   by more than the same tolerance, per observation, and the other
+   parameters must pass the test without it. Where the likelihood rises off
+   the bound at all, the fit is also started with that parameter at the
+   middle of its range, and the better answer kept. Without this, a Weibull
+   with ``lfp=True`` fitted to monthly return counts of a 3% defective
+   sub-population ran :math:`p` to 1 and reported a verified maximum 3.8
+   below the one at :math:`p = 0.059` (#579).
 
    Before BFGS runs, the search is
    rescaled coordinate by coordinate, each :math:`u` divided by the magnitude

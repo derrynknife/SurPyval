@@ -180,6 +180,7 @@ def verify_or_polish(
     n_obs: float,
     objective: "Callable[[npt.NDArray], Any] | None" = None,
     numerical: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[Any, bool]:
     """``res``, a minimum of ``fun`` found some other way, and whether it
     is verifiably a minimum of ``objective`` (``fun`` by default; see
@@ -196,41 +197,58 @@ def verify_or_polish(
 
     ``numerical=True`` is for an objective autograd cannot differentiate
     (one written in plain numpy): its derivatives are then central
-    differences (:func:`numerical_derivatives`).
+    differences (:func:`numerical_derivatives`). ``floor`` is each
+    component's least unit for the check and the polish, as in
+    ``is_local_minimum`` (a regression coefficient's is its covariate's,
+    ``coefficient_floor`` in ``univariate/regression/_fit_skeleton.py``).
     """
     objective = fun if objective is None else objective
     x0 = np.asarray(res.x, dtype=float)
     if numerical:
-        jac, hess = numerical_derivatives(objective, x0)
-        polish_jac = numerical_derivatives(fun, x0)[0]
+        jac, hess = numerical_derivatives(objective, x0, floor)
+        polish_jac = numerical_derivatives(fun, x0, floor)[0]
     else:
         jac, hess = jacobian(objective), hessian(objective)
         polish_jac = jacobian(fun)
-    if is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs):
+    if is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    ):
         return res, True
     with np.errstate(all="ignore"), warnings.catch_warnings():
         # A penalised objective is constant where the model is invalid,
         # and autograd says so for every gradient taken there
         warnings.filterwarnings("ignore", "Output seems independent")
         polish = preconditioned_bfgs(
-            fun, res.x, (), polish_jac, obj_scale=n_obs
+            fun, res.x, (), polish_jac, floor=floor, obj_scale=n_obs
         )
     if _usable(polish) and polish.fun <= res.fun:
         res = polish
-    return res, is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs)
+    return res, is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    )
 
 
 def numerical_derivatives(
-    fun: Callable[[npt.NDArray], Any], x: npt.ArrayLike
+    fun: Callable[[npt.NDArray], Any],
+    x: npt.ArrayLike,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[Callable[..., Any], Callable[..., Any]]:
     """``(jac, hess)`` of ``fun`` by central differences, for an objective
     autograd cannot differentiate: steps of ``1e-5`` of each component of
-    ``x`` (at least ``1e-5``) for the Hessian, a hundredth of that for the
-    gradient, fixed from ``x`` so that both are the same function wherever
-    they are evaluated."""
+    ``x`` (at least ``1e-5`` of its ``floor``, as in ``is_local_minimum``)
+    for the Hessian, a hundredth of that for the gradient, fixed from ``x``
+    so that both are the same function wherever they are evaluated.
+
+    A step from a floor of 1 is too small for a component whose unit is
+    large: a proportional-intensity coefficient of a covariate in
+    millionths, polished from 0 to -2.3e5, had its gradient differenced in
+    steps of 1e-7, where the likelihood changed below its rounding, and a
+    point 1.7% short of the maximum passed as verified (#577)."""
     from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 
-    steps = 1e-5 * np.maximum(np.abs(np.asarray(x, dtype=float)), 1.0)
+    steps = 1e-5 * np.maximum(
+        np.abs(np.asarray(x, dtype=float)), np.asarray(floor, dtype=float)
+    )
 
     def jac(v: npt.NDArray, *args: Any) -> npt.NDArray:
         return numerical_gradient(lambda u: float(fun(u)), v, 1e-2 * steps)

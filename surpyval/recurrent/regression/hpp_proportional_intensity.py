@@ -4,14 +4,14 @@ from typing import Any, Callable
 
 import autograd.numpy as np
 import numpy as onp
-from autograd import hessian, jacobian
 from numpy.typing import ArrayLike
 from scipy.optimize import minimize
 from scipy.special import gammaln
 
 from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
-from surpyval.univariate.parametric.fitters import is_local_minimum
+from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
@@ -366,17 +366,30 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         if user_init:
             res = better_result(res, search(self._default_start(data)))
         # The answer is kept only as a verified maximum (zero gradient,
-        # negative-definite Hessian of the log-likelihood). BFGS's own
-        # verdict is no test: it reports a "precision loss" at the
-        # maximum of the Rossi fit, and success where it never moved.
+        # negative-definite Hessian of the log-likelihood), polished where
+        # it is not one, each coefficient in its own covariate's units
+        # (#577). BFGS's own verdict is no test: it reports a "precision
+        # loss" at the maximum of the Rossi fit, and success where it
+        # never moved; and its absolute tolerance stopped a covariate in
+        # millionths 0.06 short of the maximum.
         n_obs = bic_sample_size(data)
-        verified = res.fun < 1e300 and is_local_minimum(
-            neg_ll_free,
-            jacobian(neg_ll_free),
-            hessian(neg_ll_free),
-            res.x,
-            obj_scale=max(float(n_obs), 1.0),
+        floor = coefficient_floor(
+            int(free.sum()),
+            [
+                (int(free[:j].sum()), j - 1)
+                for j in range(1, 1 + num_covariates)
+                if free[j]
+            ],
+            data.Z,
         )
+        verified = False
+        if res.fun < 1e300:
+            res, verified = verify_or_polish(
+                neg_ll_free,
+                res,
+                max(float(n_obs), 1.0),
+                floor=floor,
+            )
         out.maximum = "verified" if verified else "unverified"
         if not verified:
             warn_unverified("The proportional intensity fit")

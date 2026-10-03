@@ -59,6 +59,9 @@ class _Search(NamedTuple):
     #: the likelihood has no finite maximum (see ``_runaway``); empty
     #: where none was found.
     runaway: tuple[int, ...] = ()
+    #: A start off the bound of a parameter whose likelihood rises off it
+    #: (``_OnBounds.off``), for the caller to search from (#579).
+    off_bound: "npt.NDArray | None" = None
 
 
 def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
@@ -216,6 +219,25 @@ def _runaway(
         )
 
 
+class _OnBounds(NamedTuple):
+    """The parameters of a search's point that are on a bound of their
+    space (``_Judge.on_bounds``)."""
+
+    #: Their positions in the search vector.
+    held: tuple[int, ...] = ()
+    #: The steepest rise of the likelihood off its bound among them, per
+    #: observation and per unit of the parameter (0 where it falls off
+    #: every bound).
+    rise: float = 0.0
+    #: The natural parameters with each one the likelihood rises off moved
+    #: off its bound to the middle of its range, where its searched value
+    #: moves it most (a start just inside the bound, ``p = 0.99``, is where
+    #: the search's tolerance is met at once, the likelihood so flat in
+    #: it): a start for another search (``optimised_fit``); ``None`` where
+    #: it rises off none.
+    off: "npt.NDArray | None" = None
+
+
 class _Judge(NamedTuple):
     """How ``_search`` judges a rung's best point.
 
@@ -308,6 +330,84 @@ class _Judge(NamedTuple):
 
         return keep
 
+    def on_bounds(self, x: npt.NDArray) -> _OnBounds:
+        """The parameters at ``x`` on a bound of a range bounded at both
+        ends (a limited-failure ``p`` of 1, a zero-inflation ``f0`` of 0),
+        and whether the likelihood rises off it.
+
+        Such a parameter is searched as a scaled arctanh, whose bounds are
+        at infinity: on its way to a bound the parameter reaches it in
+        floating point, the likelihood stops depending on its searched
+        value, and its gradient and curvature there are zero or rounding.
+        So a zero gradient says nothing about it, and the Hessian's
+        positive rounding passed the verification: a Weibull with
+        ``lfp=True`` on monthly return counts ran ``p`` to 1, where the
+        likelihood rises as ``p`` moves off it, and reported a verified
+        maximum 3.8 below the one at ``p = 0.059`` (#579). A parameter is
+        on its bound where the likelihood is the same, to rounding, a
+        millionth of the way closer to it (as ``verified_maximum`` tests
+        it), and the likelihood rises off the bound where it is higher
+        (beyond rounding) a millionth of the range into it, the other
+        parameters as they are."""
+        natural, bounds, free, _ = self.space
+        offset, lfp, zi = self.args[:3]
+
+        def at(values: npt.NDArray) -> float:
+            # The likelihood of the natural parameters
+            return float(self.fun(values, offset, lfp, zi, False))
+
+        with np.errstate(all="ignore"):
+            values = natural(x)
+            f = at(values)
+        if not np.isfinite(f):
+            return _OnBounds()
+        level = 1e-12 * max(abs(f), 1.0)
+        held, rise, off = [], 0.0, None
+        for k, i in enumerate(free):
+            low, high = bounds[i]
+            if low is None or high is None:
+                continue
+            width = float(high) - float(low)
+            for bound, inward in ((low, 1.0), (high, -1.0)):
+                toward, away = values.copy(), values.copy()
+                toward[i] = bound + (values[i] - bound) * 1e-6
+                away[i] = bound + inward * 1e-6 * width
+                with np.errstate(all="ignore"):
+                    f_toward, f_away = at(toward), at(away)
+                if not abs(f_toward - f) <= level:
+                    continue
+                held.append(k)
+                if f_away < f - level:
+                    slope = (f - f_away) / (1e-6 * width) / self.obj_scale
+                    rise = max(rise, slope)
+                    off = np.array(values if off is None else off)
+                    off[i] = bound + inward * 0.5 * width
+                break
+        return _OnBounds(tuple(held), rise, off)
+
+    def _verified_without(self, x: npt.NDArray, held: tuple) -> bool:
+        """Whether ``x`` is a verified maximum in its components other
+        than ``held`` (``is_local_minimum`` on them)."""
+        keep = [k for k in range(len(x)) if k not in held]
+        if not keep:
+            return True
+        with np.errstate(all="ignore"):
+            g = np.asarray(self.jac(x, *self.args), dtype=float)[keep]
+            H = np.atleast_2d(
+                np.asarray(self.hess_kept(x, *self.args), dtype=float)
+            )[np.ix_(keep, keep)]
+        floor = np.broadcast_to(
+            np.asarray(self.floor, dtype=float), np.shape(x)
+        )
+        return is_local_minimum(
+            lambda _: 0.0,  # (only the derivatives are read)
+            lambda _: g,
+            lambda _: H,
+            np.asarray(x, dtype=float)[keep],
+            floor=floor[keep],
+            obj_scale=self.obj_scale,
+        )
+
     def verdict(self, x: npt.NDArray, check: bool) -> tuple[bool, tuple]:
         """``(verified, runaway)`` at ``x``, a rung's best point: whether
         it is a verified maximum (``is_local_minimum``) and, if not and
@@ -318,12 +418,23 @@ class _Judge(NamedTuple):
         step against the parameters' sizes): a likelihood that flattens
         towards a supremum can pass the verification far out on the way
         to it (a Normal at mu = -2.9e8, #594). Then it is a runaway, not
-        a maximum."""
+        a maximum.
+
+        A parameter on a bound of its space (``on_bounds``) is held out
+        of the test, and it is a maximum there where the likelihood does
+        not rise off the bound by more than the verification's tolerance
+        (``OPTIMUM_GTOL`` per observation, as ``at_boundary_maximum``).
+        Where it rises at all, the fit also searches from off the bound
+        (``optimised_fit``) and keeps the better answer."""
         fun, args = self.fun, self.args
         keep = self.keep(x)
         # The gradient the verification takes, kept for the check
         jac_kept, _ = _kept_hessian(self.jac)
-        if is_local_minimum(
+        on = self.on_bounds(x)
+        if on.held:
+            if on.rise < OPTIMUM_GTOL and self._verified_without(x, on.held):
+                return True, ()
+        elif is_local_minimum(
             fun,
             jac_kept,
             self.hess_kept,
@@ -473,16 +584,20 @@ def _search(
 
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
+    off_bound = None
     if best_result is not None:
         res = best_result
         # A verified answer stands whatever its rung reported: BFGS
         # often stops with "precision loss" at the maximum.
         res.success = res.success or verified
+        if not runaway:
+            off_bound = judge.on_bounds(res.x).off
     return _Search(
         res,
         best_method if best_method is not None else method,
         verified,
         runaway,
+        off_bound,
     )
 
 
@@ -695,6 +810,7 @@ def mle(model: "Parametric") -> Any:
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
         results["_runaway"] = _runaway_names(model, search.runaway)
+        results["_off_bound"] = search.off_bound
         results["optimizer"] = search.optimizer
 
     return results

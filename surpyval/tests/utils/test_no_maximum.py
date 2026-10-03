@@ -77,7 +77,7 @@ def _starve_ah(monkeypatch):
     monkeypatch.setattr(
         additive_hazards_fitter.AdditiveHazardsFitter,
         "_gradient_first",
-        lambda self, fun, true_neg_ll, init, n_obs: (None, False),
+        lambda self, fun, true_neg_ll, init, n_obs, **kw: (None, False),
     )
     monkeypatch.setattr(
         additive_hazards_fitter, "verify_or_polish", unverified

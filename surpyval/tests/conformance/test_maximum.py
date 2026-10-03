@@ -29,11 +29,18 @@ covariate fit where its fitter has one, the property checks that
   a coefficient as it is. A parameter on a boundary of its space where
   that is the maximum -- a frailty variance of 0, where the model is the
   one without frailty -- is held out of the check, and the likelihood
-  must not rise as it moves off the boundary instead.
+  must not rise as it moves off the boundary instead. A covariate
+  coefficient is measured in its own covariate's units
+  (``coefficient_floor``): its least unit is ``1 / range(Z_j)``, so that
+  the check means the same whatever units a covariate is recorded in.
 
 The fixture's fit is checked, and so is the starved fit of the
 convergence property (``Case.starve``), which reaches the other states:
-it must say what it reached in the same way. Cases whose estimate is
+it must say what it reached in the same way. So is the fit with every
+covariate in millionths of its units (#577), where a coefficient's
+gradient is a millionth of what it was at its start of 0: below an
+absolute tolerance, which a search and a check in fixed units met at
+once. Cases whose estimate is
 not a likelihood maximisation are excluded with the reason
 (``registry_families.NOT_A_LIKELIHOOD_FIT`` and the case's
 ``exclude``).
@@ -56,6 +63,7 @@ from surpyval.univariate.parametric.fitters import (
     is_local_minimum,
     search_floor,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import MAXIMUM_STATES
 
 UNVERIFIED = "did not reach a verified maximum"
@@ -192,6 +200,43 @@ def test_a_tvc_fit_says_what_it_reached(case):
     _check(case, model, said, data)
 
 
+#: The factor the covariates are multiplied by in the small-scale fit.
+SMALL_SCALE = 1e-6
+
+
+def _small_scale(case):
+    data = case.data()
+    Z = np.asarray(data[case.covariates], dtype=float)
+    return {**data, case.covariates: Z * SMALL_SCALE}
+
+
+# A covariate in millionths of its units: an Arrhenius 1/T in kelvin spans
+# 3e-4, and a WeibullPH fit to it stopped at its start and reported a
+# verified maximum (#577). The time-varying fit takes the same search.
+@pytest.mark.parametrize(
+    "case",
+    _params("maximum[small-scale]", lambda c: c.covariates is not None),
+)
+def test_577_a_small_scale_covariate_fit_says_what_it_reached(case):
+    data = _small_scale(case)
+    model, said = _said(lambda: case.fit(data))
+    _check(case, model, said, data)
+
+
+@pytest.mark.parametrize(
+    "case",
+    _params(
+        "maximum[small-scale tvc]",
+        lambda c: c.covariates is not None and _tvc(c) is not None,
+        slow=True,
+    ),
+)
+def test_577_a_small_scale_covariate_tvc_fit_says_what_it_reached(case):
+    data = _small_scale(case)
+    model, said = _said(lambda: _tvc(case)(data))
+    _check(case, model, said, data)
+
+
 # ---------------------------------------------------------------------------
 # The independent check: each family's negative log-likelihood, in the
 # space its fitter searches, at the reported parameters
@@ -212,6 +257,16 @@ class Search(NamedTuple):
     jac: "Callable | None" = None
     hess: "Callable | None" = None
     name: str = ""
+
+    def in_covariate_units(self, coefs, Z):
+        """This search with each coefficient's least unit its covariate's
+        (``coefficient_floor``; ``coefs`` its ``(position, column)``
+        pairs), as the fits search and judge it (#577)."""
+        floor = np.broadcast_to(
+            np.asarray(self.floor, dtype=float), np.shape(self.x)
+        )
+        units = coefficient_floor(np.size(self.x), coefs, Z)
+        return self._replace(floor=np.maximum(floor, units))
 
     def _parts(self):
         x = np.asarray(self.x, dtype=float)
@@ -364,12 +419,25 @@ def _search_parametric(model, data, name=""):
             params, gamma, f0, p = split(inv(const(u)))
             return dist._neg_ll_func(surv_data, *params, gamma, f0, p)
 
+        def natural(values):
+            params, gamma, f0, p = split(values)
+            return dist._neg_ll_func(surv_data, *params, gamma, f0, p)
+
+        n_obs = float(np.sum(surv_data.n))
+        free = [i for i in range(len(reported)) if i not in info["fixed_idx"]]
+        held = _on_range_ends(
+            natural, np.array(reported, float), model.bounds, free, n_obs
+        )
+        if held and not info["fixed_idx"]:
+            # (a fit with fixed parameters is refitted only with them)
+            _no_higher_off_the_ends(model, surv_data, reported, held, free)
         return [
             Search(
                 fun,
                 x,
-                float(np.sum(surv_data.n)),
+                n_obs,
                 search_floor(model),
+                held=tuple(held),
                 name=name,
             )
         ]
@@ -382,6 +450,74 @@ def _search_parametric(model, data, name=""):
         return dist._neg_ll_func(surv_data, *v, 0.0, 0.0, 1.0)
 
     return [_canonical(neg_ll, params, bounds, float(np.sum(surv_data.n)))]
+
+
+def _on_range_ends(neg_ll, values, bounds, free, n_obs):
+    """The positions in the search vector (``free``: the natural parameter
+    of each) of the parameters on an end of a range bounded at both (a
+    limited-failure ``p`` of 1, a zero-inflation ``f0`` of 0), where the
+    likelihood (``neg_ll`` of the natural ``values``) stops depending on
+    them: the same, to rounding, a millionth of the way closer. Each must
+    be a maximum there, the likelihood not rising off the end by more
+    than the verification's tolerance (``OPTIMUM_GTOL`` per observation)
+    a millionth of the range into it. Searched as a scaled arctanh, such
+    a parameter reaches its end in floating point, where its gradient and
+    curvature are zero or rounding, so the search vector's check cannot
+    judge it (#579)."""
+    f = float(neg_ll(values))
+    level = 1e-12 * max(abs(f), 1.0)
+    held = []
+    for k, i in enumerate(free):
+        lo, hi = bounds[i]
+        if lo is None or hi is None:
+            continue
+        width = float(hi) - float(lo)
+        for bound, inward in ((lo, 1.0), (hi, -1.0)):
+            toward, away = values.copy(), values.copy()
+            toward[i] = bound + (values[i] - bound) * 1e-6
+            away[i] = bound + inward * 1e-6 * width
+            with np.errstate(all="ignore"):
+                if not abs(float(neg_ll(toward)) - f) <= level:
+                    continue
+                rise = (f - float(neg_ll(away))) / (1e-6 * width) / n_obs
+            assert rise < OPTIMUM_GTOL, (
+                f"parameter {i} is on the end {bound} of its range, but the "
+                f"likelihood rises off it ({rise:.3g} per observation)"
+            )
+            held.append(k)
+            break
+    return held
+
+
+def _no_higher_off_the_ends(model, surv_data, reported, held, free):
+    """A fit with a parameter on an end of its range (``held``, see
+    :func:`_on_range_ends`) is refitted from the reported parameters with
+    each such parameter a tenth of its range into it: the likelihood the
+    refit reaches must not be higher. The default start of a Weibull with
+    ``lfp=True`` on interval-censored counts ran ``p`` to 1, a point the
+    likelihood rises off, though by less than the tolerance there: a
+    search off the end found a maximum 0.84 higher (#579)."""
+    start = np.array(reported, dtype=float)
+    for k in held:
+        i = free[k]
+        lo, hi = model.bounds[i]
+        near_hi = abs(start[i] - hi) < abs(start[i] - lo)
+        start[i] = hi - 0.1 * (hi - lo) if near_hi else lo + 0.1 * (hi - lo)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        refit = model.dist.fit_from_surpyval_data(
+            surv_data,
+            offset=model.offset,
+            lfp=model.lfp,
+            zi=model.zi,
+            init=start,
+        )
+    gap = model.neg_ll() - refit.neg_ll()
+    assert gap <= 1e-6 * max(1.0, abs(model.neg_ll())), (
+        f"maximum='verified' with parameter(s) {[free[k] for k in held]} on "
+        f"an end of their range, but a fit started off it reaches a "
+        f"log-likelihood {gap:.4g} higher"
+    )
 
 
 def _search_mixture(model, data):
@@ -427,7 +563,20 @@ def _search_regression(model, data):
         n_obs = float(np.sum(tvc["weight"]))
     else:
         n_obs = float(np.sum(fitted.n))
-    return [Search(fun, to_search(p_hat[free]), n_obs)]
+    search = Search(fun, to_search(p_hat[free]), n_obs)
+    coefs = _coefficients(names, free)
+    return [search.in_covariate_units(coefs, model.data.Z)]
+
+
+def _coefficients(names, free):
+    """``(position, column)`` of each coefficient ``beta_<column>`` among
+    the parameters ``names`` at the positions ``free``."""
+    out = []
+    for k, i in enumerate(free):
+        head, _, column = names[i].rpartition("_")
+        if head == "beta" and column.isdigit():
+            out.append((k, int(column)))
+    return out
 
 
 def _search_frailty(model, data):
@@ -455,7 +604,9 @@ def _search_frailty(model, data):
             anp.array(v), x, c, w, Z, inv, n_beta, _AUTOGRAD
         )
 
-    search = _canonical(neg_ll, nat, bounds, n_obs)
+    search = _canonical(neg_ll, nat, bounds, n_obs).in_covariate_units(
+        [(model.dist_params.size + j, j) for j in range(n_beta)], Z
+    )
     f = search.fun(search.x)
     toward = search.x.copy()
     toward[-1] -= 10.0
@@ -489,15 +640,23 @@ def _search_cox(model, data):
         full[kept] = b
         return np.atleast_2d(model.jac(full)[1])[np.ix_(kept, kept)]
 
-    return [
-        Search(
-            lambda b: 0.0,
-            beta[kept],
-            n_events,
-            jac=jac,
-            hess=hess,
-        )
-    ]
+    search = Search(
+        lambda b: 0.0,
+        beta[kept],
+        n_events,
+        jac=jac,
+        hess=hess,
+    )
+    if data is None or data.get("Z") is None:
+        return [search]  # (a starved fit: its data only the starve knows)
+    Z = np.asarray(data["Z"], dtype=float).reshape(len(data["x"]), -1)
+    return [search.in_covariate_units(_columns(kept), Z[:, kept])]
+
+
+def _columns(kept):
+    """``(position, column)`` of coefficients that are all searched, in
+    the order of ``kept``'s columns (of a ``Z`` restricted to them)."""
+    return [(k, k) for k in range(np.size(kept))]
 
 
 def _cox_events(model, data):
@@ -567,7 +726,8 @@ def _search_proportional_odds(model, data):
 
     gamma = -np.asarray(model.beta, dtype=float)
     n_events = float(n[c == 0].sum())
-    return [_numerical(fun, gamma, n_events)]
+    search = _numerical(fun, gamma, n_events)
+    return [search.in_covariate_units(_columns(gamma), Z)]
 
 
 def _numerical(fun, x, n_obs):
@@ -599,7 +759,9 @@ def _search_fine_gray(model, data, name=""):
     n = np.asarray(data.get("n", np.ones(e.size)), dtype=float)
     is_cause = np.array([v == model.cause for v in e])
     events = max(float(n[(c == 0) & is_cause].sum()), 1.0)
-    return [Search(neg_ll, beta, events, name=name)]
+    Z = np.asarray(data["Z"], dtype=float).reshape(e.size, -1)[:, kept]
+    search = Search(neg_ll, beta, events, name=name)
+    return [search.in_covariate_units(_columns(beta), Z)]
 
 
 def _search_crph(model, data):
@@ -700,15 +862,19 @@ def _search_recurrence(model, data, name=""):
             full[i] = v[k]
         return model._neg_ll(anp.array(full))
 
-    return [
-        _canonical(
-            neg_ll,
-            mle[free],
-            [bounds[i] for i in free],
-            float(model._n_obs),
-            name=name,
-        )
-    ]
+    search = _canonical(
+        neg_ll,
+        mle[free],
+        [bounds[i] for i in free],
+        float(model._n_obs),
+        name=name,
+    )
+    n_base = len(model._parameter_bounds())
+    Z = getattr(getattr(model, "data", None), "Z", None)
+    if Z is None or not np.size(Z):
+        return [search]
+    coefs = [(k, i - n_base) for k, i in enumerate(free) if i >= n_base]
+    return [search.in_covariate_units(coefs, Z)]
 
 
 def _search_cause_specific_nhpp(model, data):

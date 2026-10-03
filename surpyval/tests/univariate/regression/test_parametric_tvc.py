@@ -438,3 +438,50 @@ def test_tvc_aic_c_is_invariant_to_episode_splitting(fitter):
     )
     assert split.aic_c() == pytest.approx(whole.aic_c(), rel=1e-6)
     assert split.n_subjects == n
+
+
+def _step_stress_capacitors():
+    """#577: 60 capacitors at 85, then 105, then 125 degrees C for 1000 h
+    each, failing by Nelson's cumulative exposure under an Arrhenius
+    Weibull life; the covariate is 1/T in kelvin, spanning 2.8e-4."""
+    rng = np.random.default_rng(3)
+    kelvin = 273.15
+
+    def eta(T):
+        return 150_000 * np.exp(8123 * (1 / T - 1 / (45 + kelvin)))
+
+    steps = [
+        (0.0, 1000.0, 85 + kelvin),
+        (1000.0, 2000.0, 105 + kelvin),
+        (2000.0, 3000.0, 125 + kelvin),
+    ]
+    u = rng.weibull(2.2, 60)
+    rows = []
+    for k in range(60):
+        used = 0.0
+        for start, stop, T in steps:
+            if u[k] - used <= (stop - start) / eta(T):
+                rows.append((k, start, start + (u[k] - used) * eta(T), 0, T))
+                break
+            rows.append((k, start, stop, 1, T))
+            used += (stop - start) / eta(T)
+    i, xl, xr, c, T = map(np.array, zip(*rows))
+    return i, xl, xr, c, 1.0 / T
+
+
+@pytest.mark.parametrize("fitter", [WeibullPH, WeibullPO, AFT(Weibull)])
+def test_577_a_small_scale_covariate_is_searched_in_its_own_units(fitter):
+    # With 1/T in kelvin the coefficient's gradient at its start of 0 was
+    # below the optimiser's tolerance and the verification's: WeibullPH
+    # stopped there, after no iterations, and reported a verified maximum
+    # 0.41 below the maximum it reached with 1000/T (426.953 vs 426.544).
+    # A covariate's unit is a reparameterisation: the likelihood reached
+    # cannot depend on it.
+    i, xl, xr, c, inv_T = _step_stress_capacitors()
+    kelvin = fitter.fit_tvc(i, xl, xr, c, inv_T)
+    milli = fitter.fit_tvc(i, xl, xr, c, 1000 * inv_T)
+    assert kelvin.maximum == milli.maximum == "verified"
+    assert kelvin.neg_ll() == pytest.approx(milli.neg_ll(), abs=1e-6)
+    np.testing.assert_allclose(
+        kelvin.params, milli.params * np.r_[1.0, 1.0, 1000.0], rtol=1e-4
+    )

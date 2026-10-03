@@ -210,9 +210,9 @@ def _capture_objective(fitter, module):
     captured = []
     real = _fit_skeleton.optimise_nm_tnc
 
-    def spy(fun, init_t, quiet=False):
+    def spy(fun, init_t, quiet=False, **kwargs):
         captured.append((fun, np.array(init_t, dtype=float)))
-        return real(fun, init_t, quiet=quiet)
+        return real(fun, init_t, quiet=quiet, **kwargs)
 
     with mock.patch.object(module, "optimise_nm_tnc", spy):
         fitter.fit(*_data())

@@ -207,6 +207,7 @@ from surpyval.tests.conformance.registry_fixtures import (  # noqa: F401
     discrete_data,
     exact_event_data,
     grouped_reg_data,
+    lfp_count_data,
     lfp_data,
     mixture_data,
     offset_data,

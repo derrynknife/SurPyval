@@ -47,6 +47,7 @@ from autograd.extend import defvjp, primitive
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._kinds import ACCELERATED_FAILURE_TIME
@@ -441,6 +442,9 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
             grp["exit"], bounds, fixed, param_map
         )
         init = transform(init)[not_fixed]
+        coefs = free_coefficients(like, fixed, phi_param_map)
+        # Each coefficient in its own covariate's units (#577)
+        floor = coefficient_floor(len(init), coefs, Z)
 
         with np.errstate(all="ignore"):
 
@@ -449,16 +453,17 @@ class AFTTVCFitMixin(MirroredDistributionAttrs):
 
             # The same search as the ordinary AFT fit (the gradient ladder,
             # then Nelder-Mead and TNC), which says what it found below.
-            res = optimise_nm_tnc(fun, init, quiet=True)
+            res = optimise_nm_tnc(fun, init, quiet=True, floor=floor)
             # What it reached, polished where it was not a verified
             # maximum; said once the model is built. The likelihood is one
             # term per subject.
             verdict = judge_search(
                 fun,
                 res,
-                free_coefficients(like, fixed, phi_param_map),
+                coefs,
                 init,
                 float(np.sum(grp["weight"])),
+                floor=floor,
             )
             res = verdict.res
 
