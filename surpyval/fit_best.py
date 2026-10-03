@@ -167,6 +167,11 @@ Parametric`): ``"no finite maximum"`` (a Beta4 whose shape falls below
     warning its own fit would give that it is not a verified maximum is
     held back, replaced by that one.
 
+    ``fit_best`` compares single families. Whether the data are one
+    population or two is a separate question: fit a ``MixtureModel`` and
+    compare its ``aic()`` with the chosen model's, as the criteria are
+    spelt alike on every model (#572).
+
     Parameters
     ----------
     x : array_like, optional

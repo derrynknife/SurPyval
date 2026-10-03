@@ -66,6 +66,7 @@ from surpyval.utils.validation import (
     check_option,
     no_covariance_error,
     option_error,
+    warn_outside_unit_interval,
 )
 
 _SCALES = ("hazard", "odds", "normal")
@@ -267,8 +268,12 @@ class RoystonParmarModel(SerialisableMixin):
     def qf(self, p: Any) -> np.ndarray:
         """Quantile function: the time at which ``ff(x) = p``."""
         out = np.empty_like(p)
+        # As for the other parametric models: NaN, with a warning, where
+        # p is outside [0, 1]; the root finder raised a bare scipy error
+        # (#576).
+        outside = warn_outside_unit_interval(p)
         for i, pi in enumerate(p):
-            if np.isnan(pi):
+            if np.isnan(pi) or outside[i]:
                 # A missing probability has a missing quantile; the root
                 # finder raised on it (#382).
                 out[i] = np.nan

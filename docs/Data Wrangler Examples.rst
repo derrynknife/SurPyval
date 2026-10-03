@@ -240,6 +240,23 @@ A common mistake is to count the preventive replacement of unit E as a failure. 
 
 If units only came under observation some time after they were installed (for example, records only start at the date a database was set up), each unit's age on that date is its left truncation value, ``tl``.
 
+Inspection data needs one more step. A failure found at the first inspection after the records begin is interval censored from the unit's last good inspection, ``xl``, which came *before* the records begin. Its age when the records begin is then not its ``tl``: the unit is in the data because its failure was detected after that date, and all that is known is that it was working at its last good inspection, so that inspection is its left truncation time (``tl = xl``). Given the age at the start of the records instead, the fit refuses the row (an interval cannot start below its own left truncation time) and the message says this. Do not repair it by moving ``xl`` up to ``tl``: that claims the unit was seen working when it was not, and biases the fit.
+
+.. jupyter-execute::
+
+    inspections = pd.DataFrame({
+        "last_ok":   [80.0, 150.0, 210.0, 260.0],   # age at the last good inspection
+        "found":     [120.0, 190.0, 250.0, 300.0],  # age when found failed
+        "age_at_start": [100.0, 100.0, 100.0, 100.0],
+    })
+    # Found failed at the first inspection after the records began
+    straddles = inspections["last_ok"] < inspections["age_at_start"]
+    inspections["tl"] = np.where(straddles, inspections["last_ok"],
+                                 inspections["age_at_start"])
+    print(inspections)
+    surv.Weibull.fit_from_df(inspections, xl_col="last_ok", xr_col="found",
+                             tl_col="tl").params
+
 Counts found at inspections
 ---------------------------
 

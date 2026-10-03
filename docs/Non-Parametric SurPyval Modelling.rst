@@ -1198,6 +1198,33 @@ scale), which is exactly the alternative the plain log-rank is built for, so it 
           for w in ['gehan', 'tarone-ware']] + [early.p_value, late.p_value]
     assert result.p_value < min(_p), (result.p_value, _p)
 
+With **delayed entry** -- units that came under observation part-way through their lives, such as
+equipment whose records start when a database was set up -- pass each unit's entry time as ``tl``.
+A unit is then at risk only from its entry, at the event times ``t`` with ``tl < t <= x``, as in
+``KaplanMeier`` and ``CoxPH`` with ``tl``. Without it, a unit would be counted at risk before it was
+seen, at failures it could not have been part of. R's ``survdiff`` takes right censored data only;
+with entry times the test is the score test of the Cox model of the group (``coxph`` with
+``ties = "exact"`` in R), which it matches. Here the units of group 1 entered at age 3:
+
+.. jupyter-execute::
+
+    np.random.seed(5)
+    x_late = np.concatenate([3 + np.random.weibull(2, 40) * 10, np.random.weibull(2, 40) * 7])
+    group_late = np.repeat([1, 2], 40)
+    entry = np.where(group_late == 1, 3.0, 0.0)
+    print('ignoring entry: p = %.3g' % logrank(x_late, group_late).p_value)
+    print('with tl       : p = %.3g' % logrank(x_late, group_late, tl=entry).p_value)
+
+Ignoring the entry time puts the group 1 units at risk at every early failure of group 2, before
+they were seen, which inflates the difference between the groups.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (logrank(x_late, group_late, tl=entry).statistic
+            < logrank(x_late, group_late).statistic)
+
 Stratified log-rank
 ^^^^^^^^^^^^^^^^^^^
 
