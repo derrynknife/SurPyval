@@ -775,6 +775,11 @@ class Copula:
             self, theta, margin_models, data=data, how=how, k=k
         )
         model.maximum = maximum
+        # The margins this fit estimated (#540): under IFM a margin passed
+        # already fitted is known, with no variance.
+        model._margins_estimated = tuple(
+            how == "MLE" or hasattr(given, "fit") for given in margins
+        )
         return model
 
     def _warn_if_no_maximum(
