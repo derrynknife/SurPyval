@@ -47,6 +47,7 @@ from autograd.extend import defvjp, primitive
 
 from surpyval.univariate.information_criteria import ic_sample_size
 from surpyval.univariate.parametric.fitters import bounds_convert
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.surpyval_data import SurpyvalData
 
 from .._kinds import ACCELERATED_FAILURE_TIME
@@ -200,7 +201,6 @@ from .._fit_skeleton import (  # noqa: E402
     alias_coefficients,
     assemble_regression_model,
     check_fixed_and_init,
-    coefficient_floor,
     free_coefficients,
     judge_search,
     keep_information,

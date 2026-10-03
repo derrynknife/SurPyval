@@ -78,6 +78,7 @@ from surpyval.univariate.regression.regression_data import (
     LinearPredictorMixin,
 )
 from surpyval.utils import validate_fine_gray_inputs
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import (
     call_fit,
     cause_column,
@@ -222,13 +223,19 @@ def _fit_cause(
         # success (-12.9 on such data). Newton's method cannot converge
         # from there, which is what the check finds (#392). Otherwise the
         # answer must be a verified maximum, polished if it is not (BFGS's
-        # absolute tolerance on the gradient is not scale free).
+        # absolute tolerance on the gradient is not scale free), each
+        # coefficient in its own covariate's units (#577).
         verdict = judge_search(
             neg_ll,
             res,
             [(k, int(kept[k])) for k in range(kept.size)],
             beta0,
             float(n_event.sum()),
+            floor=coefficient_floor(
+                kept.size,
+                [(k, k) for k in range(kept.size)],
+                Z_sorted[:, kept],
+            ),
         )
         res, derivatives = verdict.res, verdict.derivatives
         runaway, maximum = verdict.runaway, verdict.maximum

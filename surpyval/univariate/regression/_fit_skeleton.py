@@ -36,6 +36,7 @@ from surpyval.utils import (
     check_covariate_rows,
     finite_covariate_mask,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.deprecation import RenamedAttribute
 from surpyval.utils.no_maximum import warn_no_maximum, warn_unverified
 from surpyval.utils.rng import as_generator
@@ -1045,43 +1046,6 @@ class SearchVerdict(NamedTuple):
         return self.maximum == "no finite maximum"
 
 
-def coefficient_floor(
-    n_search: int, coefs: "list[tuple[int, int]]", Z: npt.ArrayLike
-) -> npt.NDArray:
-    """Per-component ``floor`` of a regression search vector of
-    ``n_search`` components, for ``preconditioned_bfgs`` and
-    ``is_local_minimum``: each covariate coefficient's natural unit, the
-    change that moves the linear predictor by 1 across its covariate's
-    observed range, ``1 / range(Z_j)``, and at least 1 (``coefs`` as
-    :func:`free_coefficients` gives them, numbered as the columns of
-    ``Z``); 1 for every other component.
-
-    Both the search and the verification measure a component in units of
-    ``max(|x|, floor)``. A coefficient starts at 0, where the floor alone
-    sets its unit, and with a floor of 1 the unit depended on the
-    covariate's: the gradient in a coefficient is proportional to its
-    covariate's spread, so for a covariate spanning 3e-4 (an Arrhenius
-    ``1/T`` in kelvin) it was below both BFGS's tolerance and the
-    verification's at the start. A WeibullPH fit stopped there after no
-    iterations, its coefficient exactly 0, and reported a verified
-    maximum 0.41 below the maximum it reached with ``1000/T`` (#577). In
-    the coefficient's natural unit the gradient is the same whatever the
-    covariate's units. The floor stays 1 for a covariate whose range is 1
-    or more, so that nothing changes for a binary covariate or one of
-    order 1 and up, as ``search_floor`` keeps the univariate fits' floor
-    of 1 for data of order 1 and up."""
-    floor = np.ones(n_search)
-    Z_arr = np.asarray(Z, dtype=float)
-    if Z_arr.size == 0:
-        return floor
-    Z_arr = Z_arr.reshape(Z_arr.shape[0], -1)
-    spread = np.max(Z_arr, axis=0) - np.min(Z_arr, axis=0)
-    for pos, j in coefs:
-        if j < spread.size and 0.0 < spread[j] < 1.0:
-            floor[pos] = 1.0 / spread[j]
-    return floor
-
-
 def is_verified(
     x: npt.ArrayLike,
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None",
@@ -1191,8 +1155,10 @@ def _polish(
     ):
         res = polish
         derivatives = search_derivatives(fun, res.x)
-    return res, derivatives, is_verified(
-        res.x, derivatives, n_obs, held, floor
+    return (
+        res,
+        derivatives,
+        is_verified(res.x, derivatives, n_obs, held, floor),
     )
 
 

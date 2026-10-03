@@ -48,6 +48,7 @@ from surpyval.utils import (
     finite_covariate_mask,
     xcnt_handler,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.linalg import numerical_hessian
 
 from .._aliasing import covariate_columns, expand
@@ -559,6 +560,11 @@ class FrailtyFitter:
             )
 
         u0 = to_unc(init_nat, n_beta)
+        # Each coefficient searched and judged in its own covariate's
+        # units (#577)
+        floor = coefficient_floor(
+            u0.size, [(self.k_dist + i, i) for i in range(n_beta)], Zc
+        )
         res = None
         with np.errstate(all="ignore"):
             # The gradient ladder first, on the likelihood's exact gradient,
@@ -568,7 +574,7 @@ class FrailtyFitter:
             # when it is a verified optimum; otherwise the derivative-free
             # search below runs as before.
             if _gradient(obj_traced, u0) is not None:
-                fast = optimise_ph(obj_traced, u0, quiet=True)
+                fast = optimise_ph(obj_traced, u0, quiet=True, floor=floor)
                 if np.isfinite(fast.fun) and not getattr(
                     fast, "stopped_short", False
                 ):
@@ -612,6 +618,7 @@ class FrailtyFitter:
             u0,
             n_weighted,
             held=held,
+            floor=floor,
         )
         res = verdict.res
         no_maximum, derivatives = verdict.no_maximum, verdict.derivatives

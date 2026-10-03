@@ -180,6 +180,7 @@ def verify_or_polish(
     n_obs: float,
     objective: "Callable[[npt.NDArray], Any] | None" = None,
     numerical: bool = False,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[Any, bool]:
     """``res``, a minimum of ``fun`` found some other way, and whether it
     is verifiably a minimum of ``objective`` (``fun`` by default; see
@@ -196,7 +197,10 @@ def verify_or_polish(
 
     ``numerical=True`` is for an objective autograd cannot differentiate
     (one written in plain numpy): its derivatives are then central
-    differences (:func:`numerical_derivatives`).
+    differences (:func:`numerical_derivatives`). ``floor`` is each
+    component's least unit for the check and the polish, as in
+    ``is_local_minimum`` (a regression coefficient's is its covariate's,
+    ``coefficient_floor`` in ``univariate/regression/_fit_skeleton.py``).
     """
     objective = fun if objective is None else objective
     x0 = np.asarray(res.x, dtype=float)
@@ -206,18 +210,22 @@ def verify_or_polish(
     else:
         jac, hess = jacobian(objective), hessian(objective)
         polish_jac = jacobian(fun)
-    if is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs):
+    if is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    ):
         return res, True
     with np.errstate(all="ignore"), warnings.catch_warnings():
         # A penalised objective is constant where the model is invalid,
         # and autograd says so for every gradient taken there
         warnings.filterwarnings("ignore", "Output seems independent")
         polish = preconditioned_bfgs(
-            fun, res.x, (), polish_jac, obj_scale=n_obs
+            fun, res.x, (), polish_jac, floor=floor, obj_scale=n_obs
         )
     if _usable(polish) and polish.fun <= res.fun:
         res = polish
-    return res, is_local_minimum(objective, jac, hess, res.x, obj_scale=n_obs)
+    return res, is_local_minimum(
+        objective, jac, hess, res.x, floor=floor, obj_scale=n_obs
+    )
 
 
 def numerical_derivatives(

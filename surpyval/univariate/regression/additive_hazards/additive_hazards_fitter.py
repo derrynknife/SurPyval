@@ -56,6 +56,7 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
 )
+from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
@@ -340,7 +341,11 @@ class AdditiveHazardsFitter(
 
     @staticmethod
     def _gradient_first(
-        fun: Any, true_neg_ll: Any, init: npt.ArrayLike, n_obs: float
+        fun: Any,
+        true_neg_ll: Any,
+        init: npt.ArrayLike,
+        n_obs: float,
+        floor: "float | npt.ArrayLike" = 1.0,
     ) -> tuple[Any, bool]:
         """A search on the likelihood's exact gradient first, as the AFT
         and PO fits do (#499), and whether its answer is a verified
@@ -367,6 +372,9 @@ class AdditiveHazardsFitter(
         the line searches chase the runaway coefficient with thousands
         (3500 on 70 rows, ten times the whole old fit), and the answer
         could never be verified anyway.
+
+        ``floor`` is each component's least unit for the search and the
+        check (``coefficient_floor``, #577).
         """
         start: npt.NDArray = np.asarray(init, dtype=float)
         if (
@@ -393,6 +401,7 @@ class AdditiveHazardsFitter(
                     start,
                     jac=budgeted,
                     options={"maxiter": 1000},
+                    floor=floor,
                     obj_scale=n_obs,
                 )
             except _OverBudget:
@@ -404,6 +413,7 @@ class AdditiveHazardsFitter(
                 jacobian(true_neg_ll),
                 hessian(true_neg_ll),
                 res.x,
+                floor=floor,
                 obj_scale=n_obs,
             )
         return (res, True) if verified else (None, False)
@@ -531,8 +541,12 @@ class AdditiveHazardsFitter(
                 return val if np.isfinite(val) else 1e15
 
             n_obs = float(np.sum(data.n))
+            coefs = free_coefficients(self, fixed, pmap)
+            # Each coefficient searched and judged in its own covariate's
+            # units (#577)
+            floor = coefficient_floor(len(init), coefs, data.Z)
             res, converged = self._gradient_first(
-                fun, true_neg_ll, init, n_obs
+                fun, true_neg_ll, init, n_obs, floor=floor
             )
             if not converged:
                 res = minimize(fun, init, method="Nelder-Mead")
@@ -540,7 +554,9 @@ class AdditiveHazardsFitter(
                 # TNC's result was never checked: a Gamma baseline stopped
                 # at alpha ~ 1e-282 on a "linear search failed", silently
                 # (#427).
-                res, converged = verify_or_polish(fun, res, n_obs, true_neg_ll)
+                res, converged = verify_or_polish(
+                    fun, res, n_obs, true_neg_ll, floor=floor
+                )
 
             params = inv_trans(const(res.x))
 
@@ -563,7 +579,6 @@ class AdditiveHazardsFitter(
         # boundary or unverified. Otherwise a fit held at the positivity
         # boundary is no stationary point, and its warning says why; any
         # other that is not a maximum says so.
-        coefs = free_coefficients(self, fixed, pmap)
         verdict = judge_search(
             true_neg_ll, res, coefs, init, n_obs, verified=converged
         )
