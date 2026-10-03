@@ -17,9 +17,17 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.deprecation import (
+    REMOVED_IN_NEXT,
+    CallableFloat,
+    renamed_arguments,
+)
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -43,7 +51,7 @@ if TYPE_CHECKING:
 # The log-likelihood floor of one observation under one component: far
 # below any log-likelihood an observation the component can explain has,
 # and finite, so the EM objective stays finite (see
-# ``MixtureModel.log_likelihood``).
+# ``MixtureModel._component_log_likelihood``).
 LOG_FLOOR = -1e4
 
 
@@ -125,7 +133,12 @@ class _FitMethod:
         return fit
 
 
-class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
+class MixtureModel(
+    InformationCriteriaMixin,
+    UnivariateDataFrameMixin,
+    SerialisableMixin,
+    Distribution,
+):
     """
     A class for creating a Mixture Model fitter.
 
@@ -190,9 +203,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         self.params: Any = None
         self.w: Any = None
         self.p: Any = None
-        #: The observed-data *negative* log-likelihood at the current
-        #: parameters (despite the name), which the EM iteration tracks.
-        self.loglike: Any = None
+        # The observed-data negative log-likelihood at the current
+        # parameters, which the EM iteration tracks: the fitted one after
+        # a fit (``neg_ll()``, ``log_likelihood``).
+        self._neg_ll: Any = None
         #: What the fit reached, one of ``MAXIMUM_STATES``
         #: (``surpyval.utils.no_maximum``), as its warnings say:
         #: ``"verified"`` (a zero gradient and a positive-definite Hessian),
@@ -200,6 +214,61 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         #: onto a point mass); ``"unknown"`` before a fit, or for a model
         #: restored from a dict saved without it.
         self.maximum: str = "unknown"
+
+    # -- model comparison (#572) --------------------------------------------
+
+    def _ic_k(self) -> int:
+        """The number of free parameters: ``k`` per component and the
+        ``m - 1`` free weights (they sum to one)."""
+        return int(self.m * self.dist.k + self.m - 1)
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self.data is None:
+            raise ValueError("Must have been fit with data")
+        return ic_sample_size(self.data.c, self.data.n)
+
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised log-likelihood of the fit, ``-neg_ll()``, as on
+        a parametric model.
+
+        .. versionchanged:: 0.23
+           It was a method, ``log_likelihood(params)``, giving one
+           component's log-likelihood of each observation; that call
+           still works until v0.24, with a ``DeprecationWarning``.
+
+        Examples
+        --------
+        >>> import surpyval as surv
+        >>> x = [1, 2, 3, 4, 5, 6, 6, 7, 8, 10, 13, 15, 16, 17, 17, 18, 19]
+        >>> wmm = surv.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+        >>> round(wmm.log_likelihood, 4)
+        -48.7105
+        >>> round(wmm.aic(), 4), wmm.aic() == 2 * 5 - 2 * wmm.log_likelihood
+        (107.4211, True)
+        """
+        return CallableFloat(
+            -self.neg_ll(),
+            "MixtureModel.log_likelihood",
+            old=self._component_log_likelihood,
+            note=" (the fitted log-likelihood; 'log_likelihood(params)' was "
+            "one component's log-likelihood of each observation)",
+        )
+
+    @property
+    def loglike(self) -> float:
+        """Deprecated: the fitted *negative* log-likelihood, despite its
+        name. Use :meth:`neg_ll` for it, or ``log_likelihood`` for the
+        log-likelihood; it will be removed in v0.24."""
+        warnings.warn(
+            "MixtureModel.loglike is the negative log-likelihood, despite "
+            "its name, and is deprecated; it will be removed in "
+            f"v{REMOVED_IN_NEXT}. Use 'neg_ll()' for it, or "
+            "'log_likelihood' for the log-likelihood.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._neg_ll
 
     # -- serialisation -----------------------------------------------------
 
@@ -210,7 +279,11 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         Stores the base distribution's name, the number of components ``m``,
         the per-component parameters and the mixing weights, so the reloaded
         model reproduces ``sf``/``ff``/``df``/``mean``/``random`` exactly. The
-        fitted data and EM responsibilities are not stored.
+        fitted data and EM responsibilities are not stored; the fitted
+        negative log-likelihood and the sample size of the information
+        criteria are, so the restored model's :meth:`neg_ll`,
+        ``log_likelihood``, :meth:`aic`, :meth:`aic_c` and :meth:`bic` are
+        the fitted model's.
         """
         from .parametric import is_custom_distribution
 
@@ -222,6 +295,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             "w": np.asarray(self.w, dtype=float).tolist(),
             **maximum_entry(self.maximum),
         }
+        # What the information criteria need, as ``Parametric`` stores it
+        if self._neg_ll is not None:
+            out["_neg_ll"] = float(self._neg_ll)
+        ic_n = self._ic_sample_size_or_none()
+        if ic_n is not None:
+            out["ic_n"] = ic_n
         if is_custom_distribution(self.dist):
             # Resolved through the CustomDistribution registry on reading
             out["custom"] = True
@@ -247,6 +326,9 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         out.params = np.array(model_dict["params"], dtype=float)
         out.w = np.array(model_dict["w"], dtype=float)
         out.maximum = restored_maximum(model_dict)
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        out._ic_n = cls._restored_ic_n(model_dict)
         return out
 
     def __repr__(self) -> str:
@@ -318,7 +400,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         like[data.mask_i] = like_i
         return like
 
-    def log_likelihood(self, params: Any) -> Any:
+    def _component_log_likelihood(self, params: Any) -> Any:
         """Per-observation log-likelihood of one component, floored at
         ``LOG_FLOOR``.
 
@@ -331,7 +413,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         floor keeps an observation a component cannot explain at a finite,
         heavily penalised value instead.
         """
-        self._require_fit_data("log_likelihood()")
+        self._require_fit_data("_component_log_likelihood()")
         data = self.data
         dist = self.dist
         # Each kind of row in one piece, put back in the rows' order by
@@ -350,9 +432,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             if data.mask_l.any():
                 pieces.append(dist.log_ff(data.x_l, *params))
             if data.mask_i.any():
-                window = dist.ff(data.x_ir, *params) - self._ff_lower(
-                    params
-                )
+                window = dist.ff(data.x_ir, *params) - self._ff_lower(params)
                 positive = window > 0
                 pieces.append(
                     np.where(
@@ -390,7 +470,8 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
 
     def _row_order(self) -> npt.NDArray:
         """The index that puts the rows grouped by kind (exact, right,
-        left, interval, as :meth:`log_likelihood` builds them) back in
+        left, interval, as :meth:`_component_log_likelihood` builds
+        them) back in
         the data's order."""
         data = self.data
         masks = (data.mask_o, data.mask_r, data.mask_l, data.mask_i)
@@ -403,7 +484,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         with np.errstate(divide="ignore"):
             log_w = np.log(w)
         return np.array(
-            [log_w[i] + self.log_likelihood(params[i]) for i in range(self.m)]
+            [
+                log_w[i] + self._component_log_likelihood(params[i])
+                for i in range(self.m)
+            ]
         )
 
     def _window_prob(self, params_i: npt.NDArray) -> Any:
@@ -454,9 +538,9 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         params = params.reshape(self.m, self.dist.k)
         total = 0.0
         for i in range(self.m):
-            # Finite by construction (see log_likelihood), so a zero
-            # responsibility contributes exactly 0 and none gives inf.
-            loglike = self.log_likelihood(params[i])
+            # Finite by construction (see _component_log_likelihood), so a
+            # zero responsibility contributes exactly 0 and none inf.
+            loglike = self._component_log_likelihood(params[i])
             total -= np.sum(self.data.n * self.p[i] * loglike)
         return total
 
@@ -577,7 +661,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
 
     def EM(self) -> Any:
         """One EM iteration (:meth:`expectation` then
-        :meth:`maximisation`), after which ``loglike`` holds the observed
+        :meth:`maximisation`), after which ``_neg_ll`` holds the observed
         negative log-likelihood."""
         self.expectation()
         self.maximisation()
@@ -585,7 +669,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         # M-step objective. Its log-responsibilities are the next E-step's.
         log_r = self._log_resp(self.w, self.params)
         self._log_resp_cache = (self.w, self.params, log_r)
-        self.loglike = self._neg_ll_from(log_r, self.w, self.params)
+        self._neg_ll = self._neg_ll_from(log_r, self.w, self.params)
 
     def _em(
         self, tol: float = 1e-10, max_iter: int = 1000, budget: int = 20
@@ -641,12 +725,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             self.w, self.params = w, params
             converged = self._em_steps(tol, budget)
             verified = self._polish()
-            end = (verified, float(self.loglike), converged)
+            end = (verified, float(self._neg_ll), converged)
             if best is None or self._better_start(end, best[0]):
                 best = (end, self.w, self.params, self.p)
         assert best is not None
         (verified, loglike, converged), self.w, self.params, self.p = best
-        self.loglike = loglike
+        self._neg_ll = loglike
         return verified, converged
 
     def _better_start(self, end: tuple, best: tuple) -> bool:
@@ -728,10 +812,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
             finally:
                 self._exact_m_step = False
         self.EM()
-        f0 = self.loglike
+        f0 = self._neg_ll
         for _ in range(max_iter - 1):
             self.EM()
-            f1 = self.loglike
+            f1 = self._neg_ll
             if np.abs(f0 - f1) <= tol:
                 return True
             f0 = f1
@@ -765,12 +849,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         while used < max_iter:
             theta0 = self._pack(self.w, self.params)
             self.EM()
-            f1, used = self.loglike, used + 1
+            f1, used = self._neg_ll, used + 1
             if used >= max_iter:
                 return False
             theta1 = self._pack(self.w, self.params)
             self.EM()
-            f2, used = self.loglike, used + 1
+            f2, used = self._neg_ll, used + 1
             if np.abs(f1 - f2) <= tol:
                 return True
             if used >= max_iter:
@@ -792,12 +876,12 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                         for z in self._unpack(theta0 - 2 * a * r + a**2 * v)
                     )
                     self.EM()
-                ok = bool(np.isfinite(self.loglike) and self.loglike <= f2)
+                ok = bool(np.isfinite(self._neg_ll) and self._neg_ll <= f2)
             except (ValueError, ArithmeticError, np.linalg.LinAlgError):
                 ok = False
             used += 1
             if not ok:
-                self.w, self.params, self.loglike = state2
+                self.w, self.params, self._neg_ll = state2
                 self.__dict__.pop("_log_resp_cache", None)
         return False
 
@@ -880,7 +964,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
                 self.w, self.params = self._unpack(x)
                 self.w = np.asarray(self.w, dtype=float)
                 self.params = np.asarray(self.params, dtype=float)
-                self.loglike = float(res.fun)
+                self._neg_ll = float(res.fun)
             try:
                 return is_local_minimum(fun, jac, hess, x, obj_scale=n_obs)
             except Exception:
@@ -1030,6 +1114,10 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
 
         self.data = data
         self._em_method = em
+        # A refit in place: the criteria are recomputed from the new fit
+        self._ic_n = None
+        for name in ("_aic", "_aic_c", "_bic"):
+            self.__dict__.pop(name, None)
         self._truncated = bool(np.isfinite(data.t).any())
         self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
@@ -1153,7 +1241,7 @@ class MixtureModel(UnivariateDataFrameMixin, SerialisableMixin, Distribution):
         with np.errstate(all="ignore"):
             res = minimize(obj, x0, bounds=bounds)
         self.w, self.params = unpack(res.x)
-        self.loglike = float(res.fun)
+        self._neg_ll = float(res.fun)
 
     def mean(self, *args: Any, **kwargs: Any) -> Any:
         r"""

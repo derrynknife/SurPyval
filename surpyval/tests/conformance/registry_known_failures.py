@@ -99,6 +99,24 @@ for _name, _reason in _MAXIMUM_FAILURES.items():
     }
 
 
+# -- comparison (test_comparison.py) ----------------------------------------
+# Models whose model-comparison values are not spelt as everywhere else.
+_COMPARISON_FAILURES: dict[str, str] = {
+    name: (
+        "#572: a Cox model's ``neg_ll`` is the negative partial "
+        "log-likelihood as a function of the coefficients (the fit's "
+        "closure, ``neg_ll(beta)``), not the fitted value; it has no aic "
+        "or bic"
+    )
+    for name in ("CoxPH", "CoxPH[strata]")
+}
+for _name, _reason in _COMPARISON_FAILURES.items():
+    KNOWN_FAILURES[_name] = {
+        **KNOWN_FAILURES.get(_name, {}),
+        "comparison": _reason,
+    }
+
+
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say

@@ -231,8 +231,8 @@ constant rate:
 
 .. jupyter-execute::
 
-    print("PI-HPP  AIC:", round(fleet_hpp.aic, 2))
-    print("PI-NHPP AIC:", round(fleet.aic, 2))
+    print("PI-HPP  AIC:", round(fleet_hpp.aic(), 2))
+    print("PI-NHPP AIC:", round(fleet.aic(), 2))
     print("rate ratios:", np.exp(fleet.coeffs).round(2))
 
 The Crow-AMSAA baseline recovers the wear-out shape (about 1.5) and scale
@@ -243,7 +243,7 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
     :hide-code:
     :hide-output:
 
-    assert fleet.aic < fleet_hpp.aic
+    assert fleet.aic() < fleet_hpp.aic()
     _alpha, _beta = fleet.params          # Crow-AMSAA scale and shape
     assert round(_beta, 1) == 1.5 and round(_alpha) == 23, fleet.params
     assert np.exp(fleet.coeffs).round(1).tolist() == [1.9, 2.3]
@@ -262,14 +262,14 @@ within the precision that thirty motors allow of the true 2.0 and 2.7.
 
     duane = ProportionalIntensityNHPP.fit(x, Z, i=i, c=c)
 
-    print("Duane      AIC:", round(duane.aic, 2))
-    print("Crow-AMSAA AIC:", round(fleet.aic, 2))
+    print("Duane      AIC:", round(duane.aic(), 2))
+    print("Crow-AMSAA AIC:", round(fleet.aic(), 2))
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    assert np.isclose(duane.aic, fleet.aic, atol=0.01)
+    assert np.isclose(duane.aic(), fleet.aic(), atol=0.01)
 
 Prediction and simulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -265,7 +265,7 @@ def test_recurrent_counts_interval_and_exact_events():
     x = [[0, 10], [10, 20], 25.0, 30.0, 40.0]
     model = HPP.fit(x, i=[1, 1, 1, 1, 1], c=[2, 2, 0, 0, 1], n=[2, 3, 1, 1, 1])
     assert model._n_obs == 7
-    assert model.bic == pytest.approx(np.log(7) - 2 * model.log_likelihood)
+    assert model.bic() == pytest.approx(np.log(7) - 2 * model.log_likelihood)
 
 
 def test_recurrent_hpp_matches_univariate_exponential():

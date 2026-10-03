@@ -8,7 +8,7 @@ import numpy as np
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
 from surpyval.univariate.information_criteria import ic_sample_size
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.deprecation import MethodFloat, RenamedAttribute
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -147,18 +147,33 @@ class LikelihoodInferenceMixin:
         self._check_fitted()
         return -float(self._neg_ll(self._mle_values()))
 
+    def neg_ll(self) -> float:
+        """
+        The negative of the maximised log-likelihood, ``-log_likelihood``,
+        as on every other fitted model (#572).
+        """
+        return -self.log_likelihood
+
     @property
-    def aic(self) -> float:
+    def aic(self) -> MethodFloat:
         """
         Akaike's information criterion, :math:`2k - 2\\ln L`, with ``k`` the
-        number of fitted parameters. Lower is better.
+        number of fitted parameters. Lower is better. Call it,
+        ``model.aic()``, as on every other fitted model.
+
+        .. versionchanged:: 0.23
+           ``aic`` is a method, as on every other model (#572); the
+           property's spelling, ``model.aic`` without the call, still
+           gives the number until v0.24, with a ``DeprecationWarning``.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return 2.0 * k - 2.0 * self.log_likelihood
+        return MethodFloat(
+            2.0 * k - 2.0 * self.log_likelihood, type(self).__name__ + ".aic"
+        )
 
     @property
-    def bic(self) -> float:
+    def bic(self) -> MethodFloat:
         """
         The Bayesian information criterion, :math:`k \\ln n - 2\\ln L`,
         with ``n`` the number of observed events the model was fitted to:
@@ -166,11 +181,20 @@ class LikelihoodInferenceMixin:
         number of events they hold. End-of-observation rows do not add to
         it, and with no observed event it is the number of rows -- the
         rule of BIC everywhere in SurPyval (see :func:`bic_sample_size`).
-        Lower is better.
+        Lower is better. Call it, ``model.bic()``, as on every other
+        fitted model.
+
+        .. versionchanged:: 0.23
+           ``bic`` is a method, as on every other model (#572); the
+           property's spelling still gives the number until v0.24, with a
+           ``DeprecationWarning``.
         """
         self._check_fitted()
         k = int(self._estimated().sum())
-        return k * np.log(self._n_obs) - 2.0 * self.log_likelihood
+        return MethodFloat(
+            k * np.log(self._n_obs) - 2.0 * self.log_likelihood,
+            type(self).__name__ + ".bic",
+        )
 
     def covariance(self) -> np.ndarray:
         """

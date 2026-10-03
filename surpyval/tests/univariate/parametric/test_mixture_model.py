@@ -212,7 +212,7 @@ def test_mixture_em_on_interval_data_reaches_the_optimum():
     no_warnings(mm.fit, xl=np.floor(x), xr=np.floor(x) + 1)
     truth = mm.neg_ll_of(np.array([0.5, 0.5]), np.array([[5, 3], [30, 4.0]]))
     # It stalled 114 units above the truth's negative log-likelihood
-    assert mm.loglike <= truth + 1e-6
+    assert mm.neg_ll() <= truth + 1e-6
 
 
 def test_geometric_mixture_fits_without_warnings():
@@ -282,7 +282,7 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
         )
         # each row's log-likelihood is its likelihood's log
         np.testing.assert_allclose(
-            coded.log_likelihood(params[1]),
+            coded._component_log_likelihood(params[1]),
             np.log(coded.likelihood(params[1])),
             rtol=1e-12,
         )
@@ -293,7 +293,7 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
     # tolerance of the truncated path's optimiser (L-BFGS-B), as the
     # maximum is flat: the two fits' log-likelihoods differ by 3e-8 (of
     # 243) where their parameters differ by 2e-5
-    assert coded.loglike == pytest.approx(explicit.loglike, rel=1e-8)
+    assert coded.neg_ll() == pytest.approx(explicit.neg_ll(), rel=1e-8)
     np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-4)
     np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-4)
 
@@ -345,3 +345,56 @@ def test_a_point_mass_component_warns_once():
     assert len(messages) == 1, messages
     assert messages[0].startswith("No finite maximum"), messages
     assert model.maximum == "no finite maximum"
+
+
+def test_572_log_likelihood_is_the_fitted_value_with_the_criteria():
+    # The issue's example: ``loglike`` was +219.73, the *negative*
+    # log-likelihood, and there was no aic/bic to compare with a Weibull
+    x = 100 * np.random.default_rng(0).weibull(1.5, 40)
+    mm = no_warnings(lambda: surv.MixtureModel.fit(x, dist=surv.Weibull, m=2))
+    density = sum(w * surv.Weibull.df(x, *p) for w, p in zip(mm.w, mm.params))
+    ll = np.log(density).sum()
+    assert mm.log_likelihood == pytest.approx(ll, rel=1e-12)
+    assert mm.log_likelihood < 0
+    assert mm.neg_ll() == pytest.approx(-ll, rel=1e-12)
+    # As Parametric defines them: k = 2 * 2 + 1 free parameters, and the
+    # sample size of every SurPyval BIC (40 failures)
+    k, d = 5, 40
+    assert mm.aic() == pytest.approx(2 * k - 2 * ll, rel=1e-12)
+    assert mm.bic() == pytest.approx(k * np.log(d) - 2 * ll, rel=1e-12)
+    assert mm.aic_c() == pytest.approx(
+        mm.aic() + (2 * k**2 + 2 * k) / (d - k - 1), rel=1e-12
+    )
+    # ... so the comparison with one Weibull is the right way round
+    weibull = surv.Weibull.fit(x)
+    assert mm.aic() > weibull.aic()
+
+
+def test_572_old_spellings_warn_and_keep_their_meaning():
+    mm = _fitted_model()
+    with pytest.warns(DeprecationWarning, match="negative log-likelihood"):
+        old = mm.loglike
+    assert old == mm.neg_ll()
+    with pytest.warns(DeprecationWarning, match="log_likelihood"):
+        per_row = mm.log_likelihood(mm.params[0])
+    np.testing.assert_array_equal(
+        per_row, mm._component_log_likelihood(mm.params[0])
+    )
+
+
+def test_572_criteria_survive_a_round_trip_and_a_refit():
+    mm = _fitted_model()
+    restored = surv.from_dict(mm.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(mm, name)()
+    assert restored.log_likelihood == mm.log_likelihood
+    # A refit in place recomputes them
+    aic = mm.aic()
+    np.random.seed(1)
+    mm.fit(
+        x=np.concatenate(
+            [sp.Weibull.random(50, 10, 3), sp.Weibull.random(50, 50, 4)]
+        )
+    )
+    assert mm.aic() != aic
+    assert mm.aic() == pytest.approx(2 * 5 + 2 * mm.neg_ll(), rel=1e-12)

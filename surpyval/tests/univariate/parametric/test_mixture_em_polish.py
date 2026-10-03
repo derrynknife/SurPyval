@@ -196,9 +196,9 @@ def test_582_warranty_counts_reach_the_maximum(seed, neg_ll):
     assert model.maximum == "verified"
     # The maximum found by Nelder-Mead on the written-out likelihood from
     # the truth (the issue's check), to its precision
-    assert model.loglike == pytest.approx(neg_ll, abs=1e-3)
+    assert model.neg_ll() == pytest.approx(neg_ll, abs=1e-3)
     assert _direct_neg_ll(x, c, n, model.w, model.params) == pytest.approx(
-        model.loglike, rel=1e-12
+        model.neg_ll(), rel=1e-12
     )
     defective = int(np.argmin(model.w))
     assert model.w[defective] == pytest.approx(0.03, abs=0.005)
@@ -251,11 +251,9 @@ def test_589_squarem_runs_on_to_the_maximum_in_few_iterations(monkeypatch):
     steps = _count_em(monkeypatch)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        model = sp.MixtureModel.fit(
-            x, c=c, dist=sp.Weibull, m=2, em="squarem"
-        )
+        model = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2, em="squarem")
     assert len(steps) < 200
-    assert model.loglike == pytest.approx(738.046941, abs=2e-6)
+    assert model.neg_ll() == pytest.approx(738.046941, abs=2e-6)
 
 
 def test_589_squarem_changes_nothing_where_the_short_run_verifies():
