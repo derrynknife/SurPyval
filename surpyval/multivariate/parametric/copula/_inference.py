@@ -308,9 +308,7 @@ def _inverse_hessian(
     return _scaled_inverse(H, step[free])
 
 
-def _scaled_inverse(
-    H: npt.NDArray, step: npt.NDArray
-) -> "npt.NDArray | None":
+def _scaled_inverse(H: npt.NDArray, step: npt.NDArray) -> "npt.NDArray | None":
     """``H^-1``, inverted in step-scaled coordinates (a parameter orders of
     magnitude from another leaves ``H`` too ill-conditioned to invert
     directly), or ``None``."""

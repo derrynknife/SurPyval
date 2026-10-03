@@ -426,7 +426,9 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
         """
         cov = self._joint_covariance()
         # (A parameter on a bound has no variance by design.)
-        if onp.isnan(onp.diag(cov)[~self._parameter_layout().on_bound()]).any():
+        if onp.isnan(
+            onp.diag(cov)[~self._parameter_layout().on_bound()]
+        ).any():
             warn_no_covariance()
         n_cop = len(self.parameter_names)
         return onp.array(cov if margins else cov[:n_cop, :n_cop])
@@ -634,6 +636,7 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
             )
         with onp.errstate(invalid="ignore"):
             se = onp.sqrt(onp.where(var >= 0, var, onp.nan))
+        assert complement is not None  # (asked for)
         if joint == "sf":
             return sf_link_bound(
                 p_hat, se, alpha_ci, bound, "logit", complement, on="sf"

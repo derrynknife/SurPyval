@@ -620,12 +620,62 @@ the cheaper IFM fit is fine; if they differ, look for truncation or
 censoring of one series that is driven by the other. The how-to page shows
 both failures of IFM and their MLE correction.
 
+Standard errors
+~~~~~~~~~~~~~~~
+
+Write :math:`\eta_1, \eta_2` for the margins' parameters and
+:math:`\theta` for the copula's. The joint MLE is an ordinary maximum
+likelihood estimate of :math:`(\theta, \eta_1, \eta_2)`, so its covariance
+is the inverse of the observed information, the Hessian of the joint
+negative log-likelihood at the estimate.
+
+The IFM estimate is not: it solves the margins' own score equations
+:math:`\sum_i n_i \psi_{j,i}(\eta_j) = 0`, then the copula stage's
+:math:`\sum_i n_i \psi_{c,i}(\theta; \eta_1, \eta_2) = 0` with the margins
+held. Stacking the three gives one set of estimating equations
+:math:`\sum_i n_i \psi_i = 0`, whose estimate has the Godambe (sandwich)
+covariance [Joe2005mv]_
+
+.. math::
+
+    V = H^{-1} J H^{-T}, \qquad
+    H = -\sum_i n_i \frac{\partial \psi_i}{\partial (\theta, \eta)}, \qquad
+    J = \sum_i n_i \psi_i \psi_i^T .
+
+:math:`H` is block triangular: a margin's score depends on its own
+parameters only, while the copula's depends on all of them, and its blocks
+:math:`-\partial \psi_c / \partial \eta_j` are what carry the margins'
+estimation error into :math:`\theta`. Holding the margins as known
+instead, :math:`H_{cc}^{-1}`, understates the copula parameter's
+variance: for a Clayton copula of Kendall's :math:`\tau = 0.5` with Weibull
+margins, 300 rows, its standard error is 0.173 where the Godambe one is
+0.223 (the joint MLE's is 0.222, and a bootstrap of the IFM fit, of 150
+rows, agrees with its Godambe value to the bootstrap's own 5%).
+
+The copula likelihood is evaluated by row type (see above), not written for
+automatic differentiation, so the Hessians and the rows' scores are
+central finite differences. A margin's offset, a parameter fixed at fit
+time and a margin passed to an IFM fit already fitted are known (zero
+variance), as in the univariate models; a parameter on a bound of its
+space has no Wald variance. ``param_cb`` forms the interval on the scale on
+which the parameter's space is the whole line, as the univariate models
+do: :math:`\log(\theta - a)` for a parameter bounded below by :math:`a`, and
+:math:`\log((\theta - a) / (b - \theta))` for one in :math:`(a, b)`, which for
+a correlation on :math:`(-1, 1)` is :math:`2 \operatorname{artanh} \rho`,
+Fisher's :math:`z`. ``cb`` applies the delta method to the joint survival
+:math:`S(x_1, x_2)` or CDF :math:`H(x_1, x_2)` with the covariance of every
+parameter, on the logit of the probability, so the margins' uncertainty is
+in the bound with the copula's.
+
 Some further points worth knowing:
 
 - The copula parameter is estimated on the scale :math:`u_j = F_j(x_j)`, so a
   poorly chosen margin distorts it. Check the margins with the univariate
   tools first (see :doc:`Parametric SurPyval Modelling`).
-- The fitted model reports the point estimates, without standard errors. Its
+- The fitted model reports its estimates with their uncertainty
+  (``standard_errors``, ``covariance``, ``param_cb`` on the copula's
+  parameters and ``cb`` on the joint ``sf`` and CDF): see `Standard errors`_
+  below. Its
   ``log_likelihood`` (``neg_ll()``) is the full joint log-likelihood above at
   those estimates, and ``aic()``/``bic()`` count as parameters the copula's and
   those of every margin the fit estimated (a margin passed already fitted is
@@ -675,6 +725,10 @@ simulating correlated lifetimes and defining a new copula family — see the
 .. [JoeXu1996mv] Joe, H., & Xu, J. J. (1996). The estimation method of
    inference functions for margins for multivariate models. Technical Report
    166, Department of Statistics, University of British Columbia.
+
+.. [Joe2005mv] Joe, H. (2005). Asymptotic efficiency of the two-stage
+   estimation method for copula-based models. *Journal of Multivariate
+   Analysis*, 94(2), 401-419.
 
 .. [Nelsen2006mv] Nelsen, R. B. (2006). *An Introduction to Copulas*
    (2nd ed.). Springer. The standard reference for the families, dependence

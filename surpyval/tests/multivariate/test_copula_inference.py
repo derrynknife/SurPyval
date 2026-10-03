@@ -13,7 +13,7 @@ import json
 import pickle
 import warnings
 
-import numdifftools as nd
+import numdifftools as nd  # type: ignore
 import numpy as np
 import pytest
 from scipy.special import expit, logit
@@ -72,7 +72,9 @@ def _joint_neg_ll(copula, data):
 
 
 def _vector(model):
-    return np.r_[model.params, model.margins[0].params, model.margins[1].params]
+    return np.r_[
+        model.params, model.margins[0].params, model.margins[1].params
+    ]
 
 
 # -- the joint MLE ----------------------------------------------------------
@@ -152,9 +154,7 @@ def _copula_stage_variance(model):
 
 
 def test_540_ifm_godambe_matches_the_bootstrap():
-    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(
-        150, random_state=7
-    )
+    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(150, random_state=7)
     model = Clayton.fit(X, margins=[Weibull, Weibull])
     godambe = model.standard_errors()[0]
     naive = np.sqrt(_copula_stage_variance(model)[0, 0])
@@ -269,9 +269,7 @@ def test_540_bounds_do_not_depend_on_the_time_unit(sample):
     np.testing.assert_allclose(
         minutes.param_cb("theta"), hours.param_cb("theta"), rtol=1e-3
     )
-    np.testing.assert_allclose(
-        minutes.cb(60 * PTS), hours.cb(PTS), rtol=1e-3
-    )
+    np.testing.assert_allclose(minutes.cb(60 * PTS), hours.cb(PTS), rtol=1e-3)
 
 
 @pytest.mark.parametrize("how", ["IFM", "MLE"])
@@ -329,9 +327,7 @@ def test_540_independence_bounds_the_margins_only(sample):
 def test_540_a_parameter_on_its_bound_has_no_wald_bound():
     # Kendall's tau of 0.5, past the AMH's 1/3: its estimate is on its
     # bound, theta = 1, where the likelihood is not regular.
-    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(
-        200, random_state=4
-    )
+    X = Clayton.from_params([2.0], WEIBULL_MARGINS).random(200, random_state=4)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         model = AMH.fit(X, margins=[Weibull, Weibull])
