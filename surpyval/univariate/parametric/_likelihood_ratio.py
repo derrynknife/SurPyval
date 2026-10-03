@@ -1103,7 +1103,7 @@ class _PsiBoundSearch:
         the points known: the bound must reach at least as far, and
         where it is further out than the answer the other searches
         give, the search goes on from it (``_retry_beyond``)."""
-        x = self.extreme(direction, start, self.crit)
+        x = self.extreme_far(direction, start, self.crit)
         if x is not None:
             self.keep(start, x)
 
@@ -1201,38 +1201,47 @@ class _PsiBoundSearch:
         return out
 
     def probe_edges(self, direction: float) -> float | None:
-        """The region down the valleys to the edges of the parameters'
-        spaces: the points the bound must reach at least as far as, added
-        to the points known, and the extreme over a face of the box that
-        checks out (or ``None``).
+        """The extreme of psi down the valleys to the edges of the
+        parameters' spaces: the most extreme that checks out, or
+        ``None``; the points found on the way are added to the points
+        known, which the bound must reach.
 
         Where a parameter's interval reaches the edge of its space, its
-        profile has been solved further out (``_lr_walk_on``). A search
-        from the deepest point found (``reach``) finds an extreme far
+        profile has been solved further out (``_lr_walk_on``), to where
+        it levels off or to the end of its coordinate. The extreme is
+        sought over the slice of the region through each of the two
+        deepest of those points, the parameter held there (``extreme``
+        over a ``face``): a search over the whole region from them runs
+        out of the valley, where the function takes values far outside
+        the region (an ExpoWeibull quantile of 0 as ``mu -> 0``), and
+        back to a nearer extreme. From the slice's extreme the check
+        (``checks_out``) looks further out over the whole region, and the
+        search goes on from what it finds. The extremes so found lie far
         down the valley, which the searches from the estimate and the
-        walks' tips miss: the ExpoWeibull's 95% ``qf(0.2)`` band was
-        [2.72, 7.63] for [2.22, 7.94], found as ``beta -> inf`` (#601).
-        Where the profile is still changing at the end of the
-        coordinate, the extreme can be there, on the face of the box,
-        approached only (its 99% ``qf(0.95)`` upper bound, 87.02 at
-        ``alpha`` = 2.2e-308): it is sought over that face, from the
-        walk's point on it.
+        walks' tips missed: the ExpoWeibull's 95% ``qf(0.2)`` band was
+        [2.72, 7.63] for [2.22, 7.94], found as ``beta -> inf``, and
+        where the profile is still changing at the end of the coordinate,
+        on the face of the box there (its 99% ``qf(0.95)`` upper bound,
+        87.02 at ``alpha`` = 2.2e-308; #601).
         """
         best = None
         for k, end in self.faces():
             side = int(end == self.free_coords[k].ends[1])
             walk = self.seeds[2 * k + side] if self.seeds else []
-            if not (walk and self.dev_u(walk[-1]) <= self.crit):
-                continue
-            self.reach(direction, walk[-1])
-            if walk[-1][k] != end:
-                continue
-            x = self.extreme_far(direction, walk[-1], self.crit, face=(k, end))
-            quick = None if x is None else self.checks_out(direction, x)
-            if quick is not None and (
-                best is None or direction * quick > direction * best
-            ):
-                best = quick
+            for point in walk[-2:]:
+                if not self.dev_u(point) <= self.crit:
+                    continue
+                face = (k, float(point[k]))
+                x = self.extreme_far(direction, point, self.crit, face=face)
+                if x is None:
+                    continue
+                quick = self.checks_out(direction, x)
+                if quick is None and self.beyond is not None:
+                    quick = self.direct(direction, self.beyond)
+                if quick is not None and (
+                    best is None or direction * quick > direction * best
+                ):
+                    best = quick
         return best
 
     # -- one side -----------------------------------------------------------
@@ -2289,7 +2298,7 @@ class LikelihoodRatioMixin:
         its likelihood-ratio interval ends: the profile solved further
         out than its walk went, in steps doubling to the end of the
         coordinate (continued from the points before), for as long as it
-        is inside the region and still changing (by 1e-9 of deviance).
+        is inside the region and still changing (by more than ``_LR_NOISE``).
 
         The walk stops once the profile levels off below the critical
         value (``_lr_walk``), and a band's extreme can lie far beyond
@@ -2329,7 +2338,7 @@ class LikelihoodRatioMixin:
             u = np.empty(len(free))
             u[k], u[others] = w_next, path.u[-1]
             out.append(u)
-            if abs(dev_next - dev) < 1e-9:
+            if abs(dev_next - dev) < _LR_NOISE:
                 break
             w, dev = w_next, dev_next
         return out
