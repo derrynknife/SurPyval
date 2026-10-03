@@ -531,8 +531,17 @@ class ParameterSubstitutionFitter(
                         ).params
                         params_at_Z.append(params_at_s)
                     except Exception:
+                        # The mean time at the level is a life: its life
+                        # parameter is that life on the parameter's scale
+                        # (a LogNormal's mu its log, a Gamma's beta its
+                        # reciprocal). Taken as the parameter itself, a
+                        # LogNormal on a continuous stress, with one row a
+                        # level, had lives of exp(time) and a log-likelihood
+                        # not finite at the start (#621).
                         params_at_s = np.copy(base_line_dist_init)
-                        params_at_s[life_parameter_idx] = x_arr[mask].mean()
+                        params_at_s[life_parameter_idx] = self.param_transform(
+                            x_arr[mask].mean()
+                        )
                         params_at_Z.append(params_at_s)
                     finally:
                         stress_data.append(s)
