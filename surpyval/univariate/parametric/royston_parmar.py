@@ -40,7 +40,7 @@ each observation's contribution by ``S(t_l) - S(t_r)``.
 from typing import Any
 
 import numpy as np
-from scipy.optimize import brentq, minimize
+from scipy.optimize import minimize
 from scipy.special import ndtri as _ndtri
 from scipy.stats import norm
 
@@ -63,6 +63,7 @@ from surpyval.utils.no_maximum import (
     restored_maximum,
     warn_unverified,
 )
+from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import (
@@ -138,6 +139,17 @@ def _sf_from_eta(eta: np.ndarray, scale: str) -> np.ndarray:
     if scale == "odds":
         return 1.0 / (1.0 + np.exp(eta))
     return norm.sf(eta)
+
+
+def _eta_of_probability(p: npt.NDArray, scale: str) -> npt.NDArray:
+    """The linear predictor at which ``ff = p`` (``sf = 1 - p``), the
+    inverse of ``_sf_from_eta``: ``-inf`` at ``p = 0``, ``inf`` at
+    ``p = 1``."""
+    if scale == "hazard":
+        return np.log(-np.log1p(-p))
+    if scale == "odds":
+        return np.log(p) - np.log1p(-p)
+    return _ndtri(p)
 
 
 def _sf_at(
@@ -270,28 +282,63 @@ class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
 
     @keeps_query_shape
     def qf(self, p: Any) -> np.ndarray:
-        """Quantile function: the time at which ``ff(x) = p``."""
-        out = np.empty_like(p)
+        """Quantile function: the time at which ``ff(x) = p``; 0 at
+        ``p = 0`` and ``inf`` at ``p = 1``.
+
+        Solved for every probability at once on the link scale, where
+        the spline is: the linear predictor that gives ``ff = p`` is
+        found in log time, in closed form beyond the boundary knots
+        (where the spline is a straight line) and between them by
+        ``solve_bracketed``, to a relative precision of about ``1e-15``
+        in time. A ``brentq`` per probability on ``sf`` took 1-3 s for
+        2000 draws (#595), and lost precision for a ``p`` near 0, where
+        ``sf`` rounds to 1."""
+        p = np.asarray(p, dtype=float)
+        out = np.full(p.shape, np.nan)
         # As for the other parametric models: NaN, with a warning, where
         # p is outside [0, 1]; the root finder raised a bare scipy error
-        # (#576).
+        # (#576). A missing probability has a missing quantile; the root
+        # finder raised on it (#382).
         outside = warn_outside_unit_interval(p)
-        for i, pi in enumerate(p):
-            if np.isnan(pi) or outside[i]:
-                # A missing probability has a missing quantile; the root
-                # finder raised on it (#382).
-                out[i] = np.nan
-                continue
-            target = 1.0 - pi  # sf(x) = 1 - p
-            lo = self.knots[0] - 20.0
-            hi = self.knots[-1] + 20.0
-            out[i] = np.exp(
-                brentq(
-                    lambda lx: float(np.ravel(self.sf(np.exp(lx)))[0])
-                    - target,
-                    lo,
-                    hi,
-                )
+        valid = ~np.isnan(p) & ~outside
+        with np.errstate(divide="ignore"):
+            target = _eta_of_probability(p[valid], self.scale)
+        out[valid] = np.exp(self._log_time_of_eta(target))
+        return out
+
+    def _log_time_of_eta(self, target: npt.NDArray) -> npt.NDArray:
+        """The log times at which the linear predictor reaches each
+        ``target``. Beyond the boundary knots the spline is linear in log
+        time with the slope it has at the knot, so those are closed form
+        (a slope that is not positive never reaches them: NaN); between
+        the knots they are solved together, by ``solve_bracketed``."""
+        k_lo, k_hi = self.knots[0], self.knots[-1]
+        ends = np.array([k_lo, k_hi])
+        e_lo, e_hi = _rcs_basis(ends, self.knots) @ self.params
+        s_lo, s_hi = _rcs_deriv(ends, self.knots) @ self.params
+        out = np.full(target.shape, np.nan)
+        below = target <= e_lo
+        above = ~below & (target >= e_hi)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            if s_lo > 0:
+                out[below] = k_lo + (target[below] - e_lo) / s_lo
+            if s_hi > 0:
+                out[above] = k_hi + (target[above] - e_hi) / s_hi
+        inside = np.flatnonzero(~below & ~above)
+        if inside.size:
+
+            def gap(lx: npt.NDArray, sel: npt.NDArray) -> npt.NDArray:
+                eta = _rcs_basis(lx, self.knots) @ self.params
+                return eta - target[inside[sel]]
+
+            # Absolute in log time: relative in time.
+            out[inside] = solve_bracketed(
+                gap,
+                np.full(inside.size, k_lo),
+                np.full(inside.size, k_hi),
+                e_lo - target[inside],
+                e_hi - target[inside],
+                xtol=4 * np.finfo(float).eps,
             )
         return out
 
