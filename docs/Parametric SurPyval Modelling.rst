@@ -2262,6 +2262,71 @@ reading the band from ``cb(t, on='ff')`` across: a pointwise band on
     assert _m[0] < model.mean() < _m[1]
 
 
+Forecasting failures in service
+-------------------------------
+
+A fitted model describes a unit from new; the units in service have already
+survived to their ages. A unit at age :math:`a` fails within the next :math:`h`
+with probability :math:`(F(a + h) - F(a)) / (1 - F(a))`, one minus the
+conditional survival ``cs(h, a)``, and :func:`surpyval.forecast` sums that over
+a fleet or a set of cohorts, with a prediction interval for the count from its
+exact (Poisson-binomial) distribution. It takes the units' ``age``, the
+``horizon`` (one time ahead, or the end of each period), the number of units at
+each age ``n``, and optionally a ``limit``: an age past which failures are not
+counted, such as the end of a warranty.
+
+Here 24 monthly shipments of 1,000 units are under a 24-month warranty. A
+Weibull is fitted to the returns so far (each unit returned at its failure age,
+or still in service at its cohort's age), and the next six months' returns are
+forecast for the survivors of each cohort:
+
+.. jupyter-execute::
+
+    import surpyval as surv
+
+    rng = np.random.default_rng(11)
+    cohort_age = np.arange(1, 25)                 # months since shipment
+    T = 200 * rng.weibull(1.4, (24, 1000))         # true failure ages
+    failed = T <= cohort_age[:, None]
+    x_w = np.where(failed, T, cohort_age[:, None]).ravel()
+    warranty = surv.Weibull.fit(x_w, c=(~failed).ravel().astype(int))
+    print('fitted alpha, beta :', warranty.params.round(3))
+
+    returns = surv.forecast(
+        warranty, age=cohort_age, n=1000 - failed.sum(axis=1),
+        horizon=[1, 2, 3, 4, 5, 6], limit=24,
+    )
+    print(returns)
+
+The rows give, for each month ahead, the expected returns by then with a 95%
+prediction interval, and the returns in that month alone. The oldest cohort
+is at the end of its warranty and adds nothing; the next leaves it after one
+month, so it adds to the first month only.
+``returns.probability`` holds each cohort's chance of a return and
+``returns.unit_expected`` its expected count.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    _a = cohort_age.astype(float)
+    _n = 1000 - failed.sum(axis=1)
+    _end = np.minimum(_a + 6, 24.0)
+    _p = (warranty.ff(_end) - warranty.ff(_a)) / warranty.sf(_a)
+    assert np.isclose(returns.expected[-1], np.sum(_n * _p), rtol=1e-10)
+    assert np.all(returns.probability[-1] == 0)
+    assert np.all(returns.probability[-2] == returns.probability[-2, 0])
+    assert returns.probability[-2, 0] > 0
+    assert returns.lower[-1] < returns.expected[-1] < returns.upper[-1]
+
+The interval is that of the count with the model taken as known; it does not
+include the uncertainty of the fit. In-warranty counts often barely separate
+candidate models (a Weibull, a mixture, a limited-failure population) while
+their extrapolations differ, so forecast from each plausible model and compare.
+The same function forecasts from a regression model, with each unit's
+covariates (see :doc:`Regression Modelling with SurPyval`).
+
+
 Creating a custom Distribution
 ------------------------------
 
