@@ -18,8 +18,10 @@ two collinear columns that is aliased, as in R.
 
 import contextlib
 import contextvars
+import functools
+import inspect
 import warnings
-from typing import Any, Iterator
+from typing import Any, Callable, Iterator, TypeVar
 
 import numpy as np
 import numpy.typing as npt
@@ -42,6 +44,8 @@ _COLLECT: contextvars.ContextVar = contextvars.ContextVar(
 )
 
 _EPS = float(np.finfo(float).eps)
+
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 @contextlib.contextmanager
@@ -88,6 +92,58 @@ def covariate_columns(
         yield
     finally:
         _COLUMNS.reset(token)
+
+
+def fit_columns() -> "list[str] | None":
+    """The names of the columns of ``Z`` for the fit in progress (set by
+    :func:`covariate_columns`: ``fit_from_df``, a formula, or a DataFrame
+    ``Z``, :func:`dataframe_covariates`), or ``None``; they name the
+    coefficients (#614)."""
+    names, _ = _COLUMNS.get()
+    return None if names is None else [str(name) for name in names]
+
+
+def dataframe_covariates(fit: F) -> F:
+    """Decorate a regression ``fit`` so that a :class:`pandas.DataFrame`
+    ``Z`` is fitted as ``fit_from_df`` fits its columns (#614): as its
+    values, with its column names naming the coefficients
+    (:func:`fit_columns`) and an aliasing warning's columns, and kept as
+    the model's ``feature_names``, by which it then reads a DataFrame of
+    new covariates. Any other ``Z`` is passed as it is."""
+    signature = inspect.signature(fit)
+
+    @functools.wraps(fit)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        try:
+            bound = signature.bind_partial(*args, **kwargs)
+        except TypeError:
+            # The fit's own refusal of a wrong argument
+            return fit(*args, **kwargs)
+        Z = bound.arguments.get("Z")
+        if Z is None or type(Z).__name__ != "DataFrame":
+            return fit(*args, **kwargs)
+        from surpyval.utils.covariates import numeric_columns
+
+        names = [str(column) for column in Z.columns]
+        try:
+            # C order, as an array Z is: the fit is then the array's,
+            # to the last digit
+            values = np.ascontiguousarray(Z.to_numpy(dtype=float))
+        except (ValueError, TypeError):
+            # Names the columns that are not numeric
+            numeric_columns(Z, list(dict.fromkeys(Z.columns)))
+            raise
+        bound.arguments["Z"] = values
+        with covariate_columns(names):
+            model = fit(*bound.args, **bound.kwargs)
+        if getattr(model, "feature_names", None) is None:
+            try:
+                model.feature_names = names
+            except AttributeError:
+                pass
+        return model
+
+    return wrapper  # type: ignore[return-value]
 
 
 def constant_columns(

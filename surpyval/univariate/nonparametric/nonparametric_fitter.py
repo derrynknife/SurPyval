@@ -11,10 +11,13 @@ from surpyval.univariate.nonparametric.nonparametric import NonParametric
 from surpyval.utils import xcnt_handler, xrd_handler
 from surpyval.utils.data_formats import _handled_xcnt_to_xrd
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.fitter_repr import FitterRepr
 
 
-class NonParametricFitter(UnivariateDataFrameMixin):
+class NonParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     how: str
+    #: The ``repr``: ``KaplanMeier: non-parametric fitter`` (#614).
+    fitter_kind = "non-parametric fitter"
     # Provided by the Turnbull estimator subclass; only called on the
     # ``how == "Turnbull"`` path.
     _fit: Callable[..., dict[str, Any]]

@@ -66,6 +66,8 @@ from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.univariate.regression._aliasing import (
     aliased_columns,
     constant_columns,
+    covariate_columns,
+    dataframe_covariates,
     expand,
     warn_aliased,
 )
@@ -74,6 +76,7 @@ from surpyval.univariate.regression._fit_skeleton import (
     baseline_at_origin_error,
     judge_search,
 )
+from surpyval.univariate.regression._summary import coefficient_names
 from surpyval.univariate.regression.proportional_hazards.cox_likelihood import (  # noqa: E501
     newton_raphson,
 )
@@ -93,6 +96,7 @@ from surpyval.utils.dataframe import (
     require_frame,
 )
 from surpyval.utils.deprecation import RenamedToMethod
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.ipcw import censoring_survival, step_at, step_left_limit
 from surpyval.utils.linalg import safe_inv
 from surpyval.utils.no_maximum import (
@@ -642,6 +646,10 @@ class FineGrayModel(
     #: the coefficients it did not alias, on the centred covariates (less
     #: its value at 0); ``None`` on a restored model (not saved).
     _objective: "Callable | None"
+    #: The covariates' column names (a DataFrame ``Z`` or
+    #: ``fit_from_df``), which name the coefficients (#614); ``None``
+    #: for an array ``Z``, whose coefficients are ``coef_0``, ...
+    feature_names: "list[str] | None" = None
 
     def __init__(self, fit: dict) -> None:
         self.cause = fit["cause"]
@@ -725,6 +733,8 @@ class FineGrayModel(
             out["ic_n"] = float(self._ic_n)
         if np.any(self.center):
             out["center"] = np.asarray(self.center, dtype=float).tolist()
+        if self.feature_names is not None:
+            out["feature_names"] = list(self.feature_names)
         return stamp_schema(out)
 
     @classmethod
@@ -742,7 +752,7 @@ class FineGrayModel(
                 "The model dict's 'center' has {} value(s) for {} "
                 "coefficient(s).".format(center.size, beta.size)
             )
-        return cls(
+        out = cls(
             {
                 "cause": label_from_native(model_dict["cause"]),
                 "beta": beta,
@@ -769,6 +779,9 @@ class FineGrayModel(
                 "maximum": restored_maximum(model_dict),
             }
         )
+        names = model_dict.get("feature_names")
+        out.feature_names = None if names is None else list(names)
+        return out
 
     def phi(self, Z: npt.ArrayLike) -> npt.NDArray:
         """The subdistribution hazard multiplier
@@ -819,12 +832,13 @@ class FineGrayModel(
             f"Cause of interest   : {self.cause}",
             "Coefficients (beta'Z acts on the subdistribution hazard):",
         ]
-        for i, (b, s, p) in enumerate(zip(self.beta, self.se, self.p_values)):
-            lines.append(f"   beta_{i}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
+        names = coefficient_names(self, np.size(self.beta))
+        for nm, b, s, p in zip(names, self.beta, self.se, self.p_values):
+            lines.append(f"   {nm}  :  {b: .6f}  (se {s:.6f}, p {p:.4f})")
         return "\n".join(lines)
 
 
-class FineGray_:
+class FineGray_(FitterRepr):
     """
     The Fine-Gray subdistribution-hazards regression for one cause of a
     competing-risks problem: the covariates act proportionally on the
@@ -846,6 +860,9 @@ class FineGray_:
     class; its ``fit`` returns a
     :class:`~surpyval.univariate.competing_risks.regression.fine_gray.FineGrayModel`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "semi-parametric subdistribution hazards fitter"
 
     def fit_from_df(
         self,
@@ -922,8 +939,14 @@ class FineGray_:
             arrays["n"] = frame_column(df, n_col, "n_col")
         names = {"x": "x_col", "Z": "Z_cols", "e": "e_col"}
         names |= {"c": "c_col", "n": "n_col"}
-        return call_fit(self, arrays, names, fit_options)
+        # The columns name the coefficients (#614)
+        columns = [Z_cols] if isinstance(Z_cols, str) else list(Z_cols)
+        with covariate_columns(columns):
+            model = call_fit(self, arrays, names, fit_options)
+        model.feature_names = [str(column) for column in columns]
+        return model
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,

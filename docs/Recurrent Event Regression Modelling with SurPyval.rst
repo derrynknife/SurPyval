@@ -167,7 +167,7 @@ ratio and its confidence interval:
     print("parameters :", fleet_hpp.parameter_names)
     print("std errors :", fleet_hpp.standard_errors().round(3))
     for k, name in enumerate(["humid", "duty"]):
-        lower, upper = np.exp(fleet_hpp.param_cb(f"beta_{k}"))
+        lower, upper = np.exp(fleet_hpp.param_cb(f"coef_{k}"))
         print(f"{name:6s} rate ratio {np.exp(fleet_hpp.coeffs[k]):.2f}"
               f"  (95% CI {lower:.2f} to {upper:.2f})")
 
@@ -180,7 +180,7 @@ but, as the next section shows, the HPP is the wrong model for these motors.
     :hide-output:
 
     for _k, _true in enumerate([np.exp(0.7), np.exp(1.0)]):
-        _lo, _hi = np.exp(fleet_hpp.param_cb(f"beta_{_k}"))
+        _lo, _hi = np.exp(fleet_hpp.param_cb(f"coef_{_k}"))
         assert _lo < _true < _hi, (_k, _lo, _hi)
 
 Proportional-Intensity NHPP

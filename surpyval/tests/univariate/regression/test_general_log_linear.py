@@ -63,7 +63,7 @@ def test_resolved_for_the_columns():
     model = GLL.fit(x, Z, c=c)
     lm = model.reg_model
     assert lm.n_stresses == 2
-    assert lm.phi_param_map == {"c": 0, "beta_0": 1, "beta_1": 2}
+    assert lm.phi_param_map == {"c": 0, "coef_0": 1, "coef_1": 2}
     assert lm.phi_bounds == ((0, None), (None, None), (None, None))
     assert sp.life_models.GeneralLogLinear.n_stresses is None
     assert sp.life_models.GeneralLogLinear.resolve(3).n_stresses == 3

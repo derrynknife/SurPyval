@@ -12,9 +12,14 @@ from scipy.special import gammaln
 from surpyval.recurrent._convergence import better_result
 from surpyval.recurrent.inference import bic_sample_size
 from surpyval.univariate.parametric.fitters import verify_or_polish
+from surpyval.univariate.regression._aliasing import (
+    dataframe_covariates,
+    fit_columns,
+)
 from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.no_maximum import warn_unverified
 from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
@@ -32,7 +37,7 @@ def _in_rate_space(neg_ll: Callable, p: np.ndarray) -> Any:
 
 
 @singleton_fitter
-class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
+class ProportionalIntensityHPP(FitterRepr, RecurrentRegressionDataFrameMixin):
     """
     Proportional-intensity regression on a homogeneous Poisson process:
     each item's events occur at the constant rate
@@ -75,17 +80,26 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         lambda  :  0.017410386679243283
     <BLANKLINE>
     Covariate Coefficients:
-       beta_0  :  -0.36626406174463233
-       beta_1  :  -0.05559822615498945
-       beta_2  :  0.30493957739153305
-       beta_3  :  -0.14674549077957214
-       beta_4  :  -0.4269861228181052
-       beta_5  :  -0.08264790408652863
-       beta_6  :  0.08565920858626697
+       coef_0  :  -0.36626406174463233
+       coef_1  :  -0.05559822615498945
+       coef_2  :  0.30493957739153305
+       coef_3  :  -0.14674549077957214
+       coef_4  :  -0.4269861228181052
+       coef_5  :  -0.08264790408652863
+       coef_6  :  0.08565920858626697
     <BLANKLINE>
     >>> model.cif(52, Z[:1])
     np.float64(0.32584697690680187)
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "proportional intensity fitter"
+
+    def _repr_name(self) -> str:
+        return "ProportionalIntensityHPP"
+
+    def _repr_details(self) -> "list[str]":
+        return ["HPP baseline"]
 
     # Display name of the (constant) baseline hazard rate model, used by
     # ``ProportionalIntensityModel``'s repr via ``dist.name``.
@@ -212,6 +226,7 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
 
         return negll_func
 
+    @dataframe_covariates
     def fit(
         self,
         x: ArrayLike,
@@ -307,6 +322,8 @@ class ProportionalIntensityHPP(RecurrentRegressionDataFrameMixin):
         """
         out = ProportionalIntensityModel()
         out.data = data
+        # The covariates' columns name the coefficients (#614)
+        out.feature_names = fit_columns()
 
         out._rate_names = ["lambda"]
         out.bounds = ((0, None),)

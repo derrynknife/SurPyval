@@ -10,6 +10,7 @@ from autograd.numpy.numpy_boxes import ArrayBox
 
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.surpyval_data import SurpyvalData
 from surpyval.utils.validation import _check_x_not_empty
 
@@ -299,7 +300,7 @@ DEFAULT_Y_TICKS = [
 ]
 
 
-class ParametricFitter(UnivariateDataFrameMixin):
+class ParametricFitter(FitterRepr, UnivariateDataFrameMixin):
     """
     Base class for all parametric distributions.
 
@@ -353,6 +354,9 @@ class ParametricFitter(UnivariateDataFrameMixin):
     # continuum. ``DiscreteParametricFitter`` overrides this; fit-method
     # validation and callers branch on the trait.
     discrete = False
+
+    #: The ``repr``: ``Weibull: parametric fitter`` (#614).
+    fitter_kind = "parametric fitter"
 
     # ``param_names``, the pre-0.22 name of ``parameter_names``, still
     # reads (and sets) it for one release, with a DeprecationWarning.

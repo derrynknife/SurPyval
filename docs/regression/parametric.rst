@@ -184,7 +184,8 @@ parameter names as the fitted model reports them:
    * - ``GeneralLogLinear``
      - :math:`c\, e^{\beta_0 Z_0 + \beta_1 Z_1 + \cdots}`, any number of
        columns
-     - ``c`` (> 0), ``beta_0``, ``beta_1``, ...
+     - ``c`` (> 0), then one coefficient per column (named by the
+       column, or ``coef_0``, ``coef_1``, ...)
 
 Custom life models can be created by subclassing ``LifeModel``::
 

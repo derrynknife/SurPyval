@@ -43,6 +43,10 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import is_missing_event
+from surpyval.utils.covariates import (
+    loaded_coefficient_names,
+    renamed_coefficient,
+)
 from surpyval.utils.deprecation import ArrayMethod, RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
@@ -298,6 +302,17 @@ class _SharedFrailty(
         ``beta`` is ``nan`` (R's ``NA``), and predictions take it as 0."""
         return np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
 
+    def _current_name(self, name: Any) -> Any:
+        """``name``, or a coefficient's name before v0.23 (``beta_j``) as
+        it is named now, with a ``DeprecationWarning`` (#614)."""
+        k, n = self.k_dist, int(np.size(self.beta))
+        return renamed_coefficient(
+            name,
+            self.parameter_names[k : k + n],
+            "param_cb",
+            self.parameter_names,
+        )
+
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
         se = _standard_error(np.diag(self.covariance()))
@@ -316,6 +331,7 @@ class _SharedFrailty(
         unbounded coefficients) so the interval stays valid.
         """
         cov = self.covariance()
+        name = self._current_name(name)
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -408,11 +424,11 @@ class _SharedFrailty(
         >>> model = WeibullFrailty.fit(x=x, Z=z[:, None], groups=g)
         >>> list(model.summary().index)  # doctest: +NORMALIZE_WHITESPACE
         [('baseline', 'alpha'), ('baseline', 'beta'),
-         ('coefficients', 'beta_0'), ('frailty', 'theta')]
+         ('coefficients', 'coef_0'), ('frailty', 'theta')]
         """
         import pandas as pd
 
-        from .._summary import coefficient_names, coefficient_table
+        from .._summary import coefficient_table
 
         params = self._param_vector()
         k = self.k_dist
@@ -457,7 +473,7 @@ class _SharedFrailty(
                 )
             return pd.DataFrame(rows, columns=columns)
 
-        names = coefficient_names(self, n_beta)
+        names = list(self.parameter_names[k : k + n_beta])
         coef = slice(k, k + n_beta)
         coefs = coefficient_table(names, params[coef], se[coef], alpha_ci)
         parts = [coefs.reset_index(drop=True), others([k + n_beta])]
@@ -517,7 +533,8 @@ class FrailtyModel(_SharedFrailty):
 
     ``params`` is every estimated parameter in one vector, in the order of
     ``parameter_names``: the baseline distribution's parameters, then the
-    covariate coefficients ``beta_0``, ``beta_1``, ..., then the frailty
+    covariate coefficients (each named by its covariate's column, else
+    ``coef_0``, ``coef_1``, ...; #614), then the frailty
     variance ``theta`` -- the order of :meth:`standard_errors` and of the
     stored ``covariance``. ``dist_params``, ``beta`` and ``theta`` hold the
     same values by part.
@@ -538,7 +555,7 @@ class FrailtyModel(_SharedFrailty):
     >>> round(model.theta, 3)
     0.432
     >>> model.parameter_names
-    ['alpha', 'beta', 'beta_0', 'theta']
+    ['alpha', 'beta', 'coef_0', 'theta']
     >>> model.params.round(3)
     array([10.442,  1.962,  0.399,  0.432])
 
@@ -638,6 +655,7 @@ class FrailtyModel(_SharedFrailty):
         from .._likelihood_ratio import profile_interval
 
         check_option("bound", bound, BOUNDS)
+        name = self._current_name(name)
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -802,7 +820,14 @@ class FrailtyModel(_SharedFrailty):
         out.beta = np.array(model_dict["beta"], dtype=float)
         out.theta = float(model_dict["theta"])
         out.k_dist = int(model_dict["k_dist"])
-        out.parameter_names = list(model_dict["param_names"])
+        # A dict saved before v0.23 named the coefficients beta_j: they
+        # load with the names the model has now (#614).
+        out.parameter_names = loaded_coefficient_names(
+            model_dict["param_names"],
+            out.k_dist,
+            out.beta.size,
+            model_dict.get("feature_names"),
+        )
         out.k = len(out.parameter_names)
         out.group_labels = list(model_dict.get("group_labels", []))
         out.frailties = {

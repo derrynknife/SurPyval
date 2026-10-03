@@ -301,5 +301,5 @@ def test_truncated_fit_inference_and_lognormal_path_are_quiet():
         warnings.simplefilter("error")
         model.standard_errors()
         model.cb([3.0], [0.0])
-        model.param_cb("beta_0")
+        model.param_cb("coef_0")
         lognormal.sf_tvc([1.0, 3.0], [[0.0], [1.0]], xl=[0.0, 2.0])

@@ -18,11 +18,22 @@ from surpyval.univariate.parametric.parametric_fitter import (
     Numeric,
     OptimisedFitMixin,
 )
+from surpyval.univariate.regression._aliasing import dataframe_covariates
 from surpyval.utils import _caller_stacklevel
+from surpyval.utils.covariates import (
+    coefficient_floor,
+    coefficient_names,
+    renamed_coefficient_keys,
+)
 from surpyval.utils.rng import as_generator
 from surpyval.utils.surpyval_data import SurpyvalData
 
-from .._aliasing import aliased_columns, constant_columns, warn_aliased
+from .._aliasing import (
+    aliased_columns,
+    constant_columns,
+    fit_columns,
+    warn_aliased,
+)
 from .._fit_skeleton import (
     FixedWithAliased,
     HazardIdentitiesMixin,
@@ -48,14 +59,40 @@ from .lifemodel import LifeModel
 
 
 def _search(
-    fun: Callable[[npt.NDArray], Any], x0: npt.NDArray, n_obs: float
+    fun: Callable[[npt.NDArray], Any],
+    x0: npt.NDArray,
+    n_obs: float,
+    floor: "float | npt.ArrayLike" = 1.0,
 ) -> tuple[OptimizeResult, bool]:
     """Minimise ``fun`` from ``x0`` with Nelder-Mead then TNC, as the fit
     always searched, and whether the answer is verifiably a minimum (see
-    ``verify_or_polish``, which polishes one that is not)."""
+    ``verify_or_polish``, which polishes one that is not, each component
+    in units of at least ``floor``)."""
     res1 = minimize(fun, x0, method="Nelder-Mead", options={"maxiter": 1000})
     res2 = minimize(fun, res1.x, method="TNC")
-    return verify_or_polish(fun, res2 if res2.success else res1, n_obs)
+    return verify_or_polish(
+        fun, res2 if res2.success else res1, n_obs, floor=floor
+    )
+
+
+def _coefficient_units(
+    fitter: Any,
+    fixed: dict,
+    phi_param_map: dict,
+    Z: "npt.ArrayLike | None",
+) -> npt.NDArray:
+    """The search's ``floor``: each free life-model parameter that is a
+    column's coefficient (``LifeModel.coefficient_columns``) in its
+    covariate's units, as the other regressions search theirs (#577,
+    #612); 1 for every other component."""
+    columns = fitter.life_model.coefficient_columns()
+    names = [
+        *fitter.param_map,
+        *sorted(phi_param_map, key=phi_param_map.__getitem__),
+    ]
+    free = [name for name in names if name not in fixed]
+    coefs = [(k, columns[nm]) for k, nm in enumerate(free) if nm in columns]
+    return coefficient_floor(len(free), coefs, Z)
 
 
 class ParameterSubstitutionFitter(
@@ -74,6 +111,13 @@ class ParameterSubstitutionFitter(
     and Gamma (``beta``). Create one with
     ``AcceleratedLife(distribution, life_model)`` rather than directly.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "accelerated life fitter"
+    name_suffix = "AL"
+
+    def _repr_details(self) -> "list[str]":
+        return [*super()._repr_details(), self.life_model.name + " life model"]
 
     def __init__(
         self,
@@ -409,6 +453,7 @@ class ParameterSubstitutionFitter(
             "`init` (the distribution's parameters, then the life model's)."
         )
 
+    @dataframe_covariates
     def fit(
         self,
         x: npt.ArrayLike,
@@ -494,6 +539,17 @@ class ParameterSubstitutionFitter(
             # (GeneralLogLinear) is fitted, and carried by the model, in
             # its form for Z's columns.
             life_model = self.life_model.resolve(Z_arr.shape[1])
+            # Its column coefficients named by the columns, or coef_j
+            # (#614), unique among the other parameters' names
+            columns = life_model.coefficient_columns()
+            if columns:
+                others = [
+                    *self.param_map,
+                    *(k for k in life_model.phi_param_map if k not in columns),
+                ]
+                life_model = life_model.named(
+                    coefficient_names(len(columns), fit_columns(), others)
+                )
             if life_model is not self.life_model:
                 return self._with_life_model(life_model).fit(
                     x, Z_arr, c=c, n=n, t=t, init=init, fixed=fixed
@@ -510,6 +566,13 @@ class ParameterSubstitutionFitter(
         life_parameter_idx = self.param_map[self.life_parameter]
         if fixed is None:
             fixed = {}
+        # A column coefficient's name before v0.23, ``beta_j``, until v0.24
+        fixed = renamed_coefficient_keys(
+            fixed,
+            list(self.life_model.coefficient_columns()),
+            "{}.fit(fixed=...)".format(self._repr_name()),
+            [*self.param_map, *self.life_model.phi_param_map],
+        )
 
         def default_init() -> npt.NDArray:
             # The distribution fitted at each distinct stress, with the life
@@ -632,7 +695,8 @@ class ParameterSubstitutionFitter(
             )
 
             n_obs = float(np.sum(data.n))
-            res, verified = _search(fun, init, n_obs)
+            floor = _coefficient_units(self, fixed, phi_param_map, data.Z)
+            res, verified = _search(fun, init, n_obs, floor)
             start = init
             # From a start far from the maximum the search can stop short
             # of it, silently: InversePower started with its first
@@ -647,7 +711,7 @@ class ParameterSubstitutionFitter(
                     # No default start (a single stress level, say)
                     default = None
                 if default is not None:
-                    alt, alt_verified = _search(fun, default, n_obs)
+                    alt, alt_verified = _search(fun, default, n_obs, floor)
                     if alt.fun < res.fun or not np.isfinite(res.fun):
                         res, verified = alt, alt_verified
                         start = default
@@ -707,6 +771,7 @@ class ParameterSubstitutionFitter(
                 n_obs,
                 verified=verified,
                 what="The accelerated life fit",
+                floor=floor,
             )
             model.maximum = verdict.maximum
             # The exact observed information for the covariance, which

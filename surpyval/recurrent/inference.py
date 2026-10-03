@@ -11,6 +11,7 @@ from surpyval.univariate.information_criteria import (
     corrected_aic,
     ic_sample_size,
 )
+from surpyval.utils.covariates import renamed_coefficient
 from surpyval.utils.deprecation import MethodFloat, RenamedAttribute
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
@@ -303,6 +304,10 @@ class LikelihoodInferenceMixin:
         """
         self._check_fitted()
         names = self.parameter_names
+        coefficients = getattr(self, "_coefficient_names", None)
+        if coefficients is not None:
+            # A coefficient's name before v0.23, ``beta_j``, until v0.24
+            name = renamed_coefficient(name, coefficients(), "param_cb", names)
         if name not in names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(

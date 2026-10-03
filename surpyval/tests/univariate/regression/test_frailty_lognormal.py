@@ -244,7 +244,7 @@ def test_recovers_frailty_variance_for_each_family():
         m = Frailty(Weibull, family=family).fit(x, Z=Z, c=c, groups=g)
         se = m.standard_errors()
         assert abs(m.theta - 0.5) < 2.5 * se["theta"], (family, m.theta)
-        assert abs(m.beta[0] - 0.7) < 2.5 * se["beta_0"], (family, m.beta)
+        assert abs(m.beta[0] - 0.7) < 2.5 * se["coef_0"], (family, m.beta)
 
 
 def test_aic_prefers_the_family_the_data_came_from():

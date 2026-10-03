@@ -147,7 +147,7 @@ def test_covariance_reads_no_numerical_hessian_and_is_kept(monkeypatch):
     model = _registry("WeibullPH")
     model.standard_errors()
     model.cb([5.0, 10.0], Z=[1.0, 0.0])
-    model.param_cb("beta_0")
+    model.param_cb("coef_0")
     assert calls == []
     # Without the exact Hessian it is differenced, once, and then kept.
     model._information = None
@@ -223,8 +223,8 @@ def test_aft_time_varying_fit_keeps_the_exact_information(monkeypatch):
         # Z = 0 (the jacobian carries the covariance over)
         ("WeibullPH", {"fixed": {"beta": 1.8}}, True),
         # a coefficient fixed: a zero row and column (mapped, and not)
-        ("WeibullAFT", {"fixed": {"beta_0": -0.5}}, True),
-        ("LogNormalPH", {"fixed": {"beta_1": -0.7}}, False),
+        ("WeibullAFT", {"fixed": {"coef_0": -0.5}}, True),
+        ("LogNormalPH", {"fixed": {"coef_1": -0.7}}, False),
         # a baseline parameter the map moves, fixed: not centred
         ("WeibullPH", {"fixed": {"alpha": 9.0}}, False),
         # the baseline kept at the covariate means

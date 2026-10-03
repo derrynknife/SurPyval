@@ -57,6 +57,7 @@ from surpyval.serialisation import (
 from surpyval.univariate.parametric import LogNormal
 from surpyval.univariate.parametric.parametric import resolve_distribution
 from surpyval.utils.dataframe import call_fit, frame_column, require_frame
+from surpyval.utils.fitter_repr import FitterRepr
 from surpyval.utils.linalg import percentile_bounds
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -479,11 +480,14 @@ class DestructiveDegradationModel(SerialisableMixin):
         )
 
 
-class DestructiveDegradation_:
+class DestructiveDegradation_(FitterRepr):
     """
     Fitter for destructive degradation data (one destructive measurement per
     unit). Use the module-level singleton :data:`DestructiveDegradation`.
     """
+
+    #: The ``repr`` (#614)
+    fitter_kind = "destructive degradation fitter"
 
     def _neg_ll(
         self,
