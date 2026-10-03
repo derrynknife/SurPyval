@@ -483,3 +483,12 @@ The univariate parametric and non-parametric models can carry their data with th
     print("with the data    :", with_data.data["x"])
 
 A few models cannot be saved, and say so when ``to_dict`` is called: a stratified Cox model, an accelerated-life model with a life model of your own, and a copula of a custom family. A regression fitted with a formula keeps its categorical levels and fitted transform statistics (``scale()``, ``poly()``, splines), so it is read back predicting exactly as before. A model of a distribution made with ``Discretize`` is read back like any other. A model of a ``CustomDistribution`` stores only the distribution's name, since its cumulative hazard is a Python function: it is read back in any session that has constructed the same ``CustomDistribution`` (same name) again, and otherwise ``from_dict`` raises an error that says so. Keep the data (for example with ``SurpyvalData.to_json``) whenever you may need to refit. The full API is in :doc:`surpyval.serialisation`.
+
+Every fitted model also pickles, the stratified Cox model included, so it can be sent to worker processes (``multiprocessing``, ``concurrent.futures``, ``joblib``, Dask, Ray) or cached with ``pickle`` or ``joblib.dump``. (A model built on a function of your own -- a custom ``phi``, life model or ``CustomDistribution`` -- pickles where pickle can save that function: one defined at the top level of a module, not a ``lambda``.) Unlike ``to_dict``, a pickle keeps everything, the data and the likelihood too, so the unpickled model predicts and gives bounds exactly as the original; but it is for passing a model between processes or caching it on one machine, not for keeping it: a pickle may not load in another version of SurPyval (or of Python, numpy or autograd), and unpickling runs code, so load only pickles you made. Use ``to_json`` to store a model. The recurrence fitters (``CrowAMSAA``, ``HPP`` and the others) unpickle as themselves, so ``model.dist is surv.CrowAMSAA`` still holds.
+
+.. jupyter-execute::
+
+    import pickle
+
+    copy = pickle.loads(pickle.dumps(weibull))
+    print(copy.params, copy.sf(6) == weibull.sf(6))

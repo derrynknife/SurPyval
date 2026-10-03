@@ -108,6 +108,8 @@ class ParameterSubstitutionFitter(
         self.life_relation = life_relation
         self.fixed = {life_parameter: 1.0}
 
+        self.param_transform: Callable[..., Any]
+        self.inverse_param_transform: Callable[..., Any]
         if param_transform is None:
             # (Module-level, not lambdas, so a fitted model pickles, #573)
             self.param_transform = identity

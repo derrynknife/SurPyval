@@ -86,6 +86,14 @@ PROPERTIES: dict[str, str] = {
         "leaves the global stream alone"
     ),
     "serialise": "strict-JSON to_dict / from_dict keeps every prediction",
+    "pickle": (
+        "a fitted model pickles, and the unpickled model predicts, bounds "
+        "and saves (to_dict) exactly as the original (#573)"
+    ),
+    "pickle_paths": (
+        "the model of every alternate fit path (fit_from_df, a formula, "
+        "fit_tvc, ...) pickles and predicts exactly as before (#573)"
+    ),
     "fit_paths": "the alternate fit paths give the same model",
     "warn_once": (
         "a fit or a prediction gives each of its deliberate warnings at "
@@ -282,6 +290,7 @@ REFIT_PROPERTIES = frozenset(
         "aliasing_constant",
         "attributes",
         "maximum",
+        "pickle_paths",
     }
 )
 
