@@ -369,3 +369,23 @@ def test_truncated_fit_with_a_non_concave_start_is_not_aliased():
         warnings.simplefilter("error")
         model = sp.ProportionalOdds.fit(x, Z, c=c, tl=tl)
     np.testing.assert_allclose(model.beta, [0.5132, -0.9434], atol=1e-4)
+
+
+def test_604_proportional_odds_model_comparison_values():
+    x, c, w, _, Z = _po_data()
+    model = sp.ProportionalOdds.fit(x, Z, c=c, n=w)
+    # The profile likelihood, penalised by the coefficients (the baseline
+    # is profiled out, as a Cox model's is); BIC's n the events (#604)
+    ll = model.log_likelihood
+    assert isinstance(ll, float) and model.neg_ll() == -ll
+    assert model.aic() == pytest.approx(2 * 2 - 2 * ll)
+    events = w[c == 0].sum()
+    assert model.bic() == pytest.approx(2 * np.log(events) - 2 * ll)
+    restored = sp.from_dict(model.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(model, name)()
+    # A dict written before v0.23 stored the log-likelihood itself
+    old = model.to_dict()
+    old["log_likelihood"] = -old.pop("_neg_ll")
+    del old["ic_n"]
+    assert sp.from_dict(old).bic() == pytest.approx(model.bic(), rel=1e-15)

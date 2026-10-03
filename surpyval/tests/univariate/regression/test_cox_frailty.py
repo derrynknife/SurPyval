@@ -57,7 +57,9 @@ def test_kidney_matches_r_coxph(kidney_fits, ties):
     # theta maximises a flat profile: R's optimize and ours agree to 1e-5
     assert m.theta == pytest.approx(ref["theta"], rel=2e-5)
     assert m.log_likelihood == pytest.approx(ref["loglik"], abs=1e-8)
-    assert m.log_likelihood_no_frailty == pytest.approx(ref["loglik_cox"], abs=1e-8)
+    assert m.log_likelihood_no_frailty == pytest.approx(
+        ref["loglik_cox"], abs=1e-8
+    )
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
     se = m.standard_errors()
     np.testing.assert_allclose(
@@ -273,3 +275,40 @@ def test_monotone_likelihood_warns_once():
     messages = [str(w.message) for w in caught]
     assert len(messages) == 1, messages
     assert "No finite maximum: the partial" in messages[0]
+
+
+def test_604_cox_frailty_model_comparison_values(kidney_fits):
+    m = kidney_fits["efron"]
+    # The integrated log-likelihood, penalised by the two coefficients and
+    # theta; BIC's n the events (#604)
+    assert isinstance(m.log_likelihood, float)
+    assert m.neg_ll() == -m.log_likelihood
+    assert m.aic() == pytest.approx(2 * 3 - 2 * m.log_likelihood)
+    events = float((load_kidney()["status"] == 1).sum())
+    assert m.bic() == pytest.approx(3 * np.log(events) + 2 * m.neg_ll())
+    restored = sp.from_dict(m.to_dict())
+    for name in ("neg_ll", "aic", "aic_c", "bic"):
+        assert getattr(restored, name)() == getattr(m, name)()
+    assert restored.log_likelihood_no_frailty == m.log_likelihood_no_frailty
+    # A theta given is not estimated
+    x, c, Z, g = _kidney()
+    fixed = CoxFrailty.fit(x, Z=Z, c=c, groups=g, theta=0.5)
+    assert fixed.aic() == pytest.approx(2 * 2 + 2 * fixed.neg_ll())
+
+
+def test_604_cox_frailty_old_likelihood_names_are_deprecated(kidney_fits):
+    m = kidney_fits["efron"]
+    with pytest.warns(DeprecationWarning, match="'log_likelihood'"):
+        assert m.loglik == m.log_likelihood
+    with pytest.warns(DeprecationWarning, match="log_likelihood_no_frailty"):
+        assert m.loglik_no_frailty == m.log_likelihood_no_frailty
+    # A dict written before v0.23
+    old = m.to_dict()
+    old["loglik"] = -old.pop("_neg_ll")
+    old["loglik_no_frailty"] = old.pop("log_likelihood_no_frailty")
+    for key in ("k", "n_events_weighted", "n_obs_weighted"):
+        del old[key]
+    legacy = sp.from_dict(old)
+    assert legacy.log_likelihood == m.log_likelihood
+    assert legacy.log_likelihood_no_frailty == m.log_likelihood_no_frailty
+    assert legacy.aic() == m.aic()

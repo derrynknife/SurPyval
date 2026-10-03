@@ -261,7 +261,7 @@ class CompetingRisksProportionalHazards(
                 "A Fine-Gray competing-risks model has no likelihood: each "
                 "cause's weighted partial likelihood is a separate "
                 "estimating function. Compare each cause's FineGray model "
-                "instead (FineGray.fit(..., cause=...).aic())."
+                "instead (FineGray.fit(..., event=...).aic())."
             )
         if getattr(self, "_neg_ll", None) is None:
             raise ValueError(
@@ -276,6 +276,7 @@ class CompetingRisksProportionalHazards(
         return int(np.isfinite(np.asarray(self.betas, dtype=float)).sum())
 
     def _ic_sample_size_from_data(self) -> float:
+        self.neg_ll()  # A Fine-Gray model says it has no likelihood
         raise ValueError(
             "This model was saved before v0.23 without the number of "
             "events, BIC's sample size; refit it."

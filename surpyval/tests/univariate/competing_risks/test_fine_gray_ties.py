@@ -189,9 +189,7 @@ def test_tied_fit_matches_crr_transcription(seed):
 
     model = FineGray.fit(x, Zm, e, event="a")
     crr = _crr_neg_ll(x, status, Zm)
-    assert model.neg_ll() == pytest.approx(
-        crr(model.beta), rel=1e-12
-    )
+    assert model.neg_ll() == pytest.approx(crr(model.beta), rel=1e-12)
     ref = minimize(crr, np.zeros(2), method="BFGS", options={"gtol": 1e-9})
     np.testing.assert_allclose(model.beta, ref.x, atol=1e-5)
 
@@ -227,9 +225,7 @@ def test_untied_fit_equals_right_continuous_weights():
         return -float(np.sum(Zm[ev] @ b - np.log(W @ np.exp(Zm @ b))))
 
     model = FineGray.fit(x, Zm, e, event="a")
-    assert model.neg_ll() == pytest.approx(
-        neg_ll(model.beta), rel=1e-12
-    )
+    assert model.neg_ll() == pytest.approx(neg_ll(model.beta), rel=1e-12)
 
 
 def test_tied_counts_equal_repeated_rows():
