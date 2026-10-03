@@ -364,8 +364,12 @@ def _warning_operator(name: str) -> Callable[..., Any]:
     base = getattr(float, name)
 
     def operator(self: MethodFloat, *args: Any) -> Any:
-        self._warn()
-        return base(self, *args)
+        out = base(self, *args)
+        # An operand that is not a number (``obj in (type, object)``, as
+        # ``inspect.signature`` asks) is not a use of the number.
+        if out is not NotImplemented:
+            self._warn()
+        return out
 
     operator.__name__ = name
     return operator
