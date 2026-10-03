@@ -147,11 +147,20 @@ crow = CrowAMSAA.fit(x=x, i=i, c=c)              # NHPP intensity / reliability 
 result = laplace(x, i, c=c)      # c by keyword; the 3rd positional is T
 result.p_value, result.direction, result.trend
 crow.trend_test()                # the same test on a fitted model
+
+# instantaneous MTBF (1 / iif) and its 80% lower bound (delta method);
+# method="crow" gives Crow's exact bound on the demonstrated MTBF
+crow.mtbf(40.0), crow.mtbf_cb(40.0, alpha_ci=0.2, bound="lower")
 ```
 
 A trend test's `trend` is the *conclusion* at `alpha_ci` (0.05): `"increasing"`
 or `"decreasing"` only when `p_value < alpha_ci`, otherwise `"none"`;
-`direction` is just the sign of the statistic.
+`direction` is just the sign of the statistic. Delayed entry is fine: the
+standalone tests take each system's start as `tl=`, and a fitted model's
+`trend_test()` uses the `tl` it was fitted with. `iif_cb` / `mtbf_cb` bound the
+intensity and the instantaneous MTBF (`mtbf_cb` flips the sides for you);
+`method="crow"` needs a time-terminated test (all systems watched from 0 to the
+same T) or one failure-terminated system, at x = T.
 
 Renewal / imperfect-repair models: `GeneralizedRenewal`,
 `GeneralizedOneRenewal` and `ARA` take a **lifetime distribution** as `dist`
@@ -214,7 +223,10 @@ silently wrong numbers, not errors.
   line (often after a log transform).
 - **Bernoulli / Binomial** — pass/fail and success-count data. **0.22:** every
   discrete `sf(x)` is `P(X > x)`, Bernoulli's included, so the probability of the
-  `1` outcome is `sf(0)` (or the fitted `p`), not `sf(1)`.
+  `1` outcome is `sf(0)` (or `params[0]`), not `sf(1)`. Do not read `model.p`
+  there: it is the limited-failure fraction (1). Bound the probability with
+  `model.param_cb("p")`: exact Clopper-Pearson by default (`method="wald"` or
+  `"lr"` as options), and it works with zero failures (the success-run bound).
 - Unsure → `fit_best(...)` picks by AIC, then confirm with the probability plot.
 - Add `offset=True` for a failure-free threshold (3-parameter / minimum-life),
   `lfp=True` for a cure fraction (a subpopulation that never fails), `zi=True` for

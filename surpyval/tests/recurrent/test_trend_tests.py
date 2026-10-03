@@ -328,3 +328,96 @@ def test_model_trend_test_passes_alpha_ci():
         assert res.trend == "none" and res.direction == "increasing"
         loose = model.trend_test(alpha_ci=0.3)
         assert loose.alpha_ci == 0.3 and loose.trend == "increasing"
+
+
+# ----------------------------------------------------------------------------
+# #575: per-system observation windows (s_q, T_q] (delayed entry)
+# ----------------------------------------------------------------------------
+
+_X1 = [10.0, 19.0, 27.0, 34.0, 40.0, 45.0, 49.0, 52.0, 54.0]
+_X2 = [35.0, 48.0, 60.0, 66.0, 71.0, 75.0, 78.0]
+_I = [1] * 9 + [2] * 7
+
+
+def test_575_laplace_delayed_entry_hand_computation():
+    # System 1 on (0, 60], system 2 on (30, 80]: each event's null mean is
+    # its window's centre and its variance the window length squared / 12.
+    res = laplace(_X1 + _X2, i=_I, T={1: 60, 2: 80}, tl={1: 0, 2: 30})
+    num = sum(_X1) - 9 * 30.0 + sum(_X2) - 7 * 55.0
+    hand = num / np.sqrt(9 * 60.0**2 / 12 + 7 * 50.0**2 / 12)
+    assert res.statistic == pytest.approx(hand, rel=1e-12)
+    assert res.statistic == pytest.approx(1.674804448250529, rel=1e-12)
+    assert res.p_value == pytest.approx(2 * norm.sf(hand), rel=1e-12)
+    assert res.n_events == 16 and res.n_systems == 2
+
+
+def test_575_mil_delayed_entry_hand_computation():
+    # Time is measured from each system's start: -log((t - s) / (T - s)) is
+    # Exp(1) under the HPP null, so the statistic is chi2 on 2N exactly.
+    res = mil_hdbk_189c(_X1 + _X2, i=_I, T={1: 60, 2: 80}, tl={1: 0, 2: 30})
+    hand = 2 * (
+        np.log(60 / np.array(_X1)).sum()
+        + np.log(50 / (np.array(_X2) - 30)).sum()
+    )
+    assert res.statistic == pytest.approx(hand, rel=1e-12)
+    assert res.dof == 32
+    assert res.p_value == pytest.approx(
+        2 * min(chi2.cdf(hand, 32), chi2.sf(hand, 32)), rel=1e-12
+    )
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+@pytest.mark.parametrize("T", [None, {1: 60.0, 2: 80.0}])
+def test_575_zero_start_is_the_plain_test(func, T):
+    # tl = 0 (scalar, per system or dict) gives the plain test bit for bit.
+    plain = func(_X1 + _X2, i=_I, T=T)
+    for tl in (0.0, [0.0, 0.0], {1: 0.0, 2: 0.0}):
+        res = func(_X1 + _X2, i=_I, T=T, tl=tl)
+        assert res.statistic == plain.statistic
+        assert res.p_value == plain.p_value
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_575_shifting_a_window_changes_nothing(func):
+    # Under the windowed statistics only the position of each event within
+    # its window matters: moving system 2 and its window by 1000 leaves the
+    # test unchanged (the plain test, from time 0, would change).
+    T = {1: 60.0, 2: 80.0}
+    res = func(_X1 + _X2, i=_I, T=T, tl={1: 0.0, 2: 30.0})
+    shifted = func(
+        _X1 + [t + 1000 for t in _X2],
+        i=_I,
+        T={1: 60.0, 2: 1080.0},
+        tl={1: 0.0, 2: 1030.0},
+    )
+    assert shifted.statistic == pytest.approx(res.statistic, rel=1e-9)
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_575_tl_in_the_fitters_form(func):
+    # With c, tl may be one value per row, as CrowAMSAA.fit takes it.
+    x = _X1 + [60.0] + _X2 + [80.0]
+    i = [1] * 10 + [2] * 8
+    c = [0] * 9 + [1] + [0] * 7 + [1]
+    tl = [0.0] * 10 + [30.0] * 8
+    direct = func(_X1 + _X2, i=_I, T={1: 60, 2: 80}, tl={1: 0, 2: 30})
+    res = func(x, i=i, c=c, tl=tl)
+    assert res.statistic == pytest.approx(direct.statistic, rel=1e-12)
+    assert func(x, i=i, c=c, tl={1: 0, 2: 30}).statistic == res.statistic
+
+
+@pytest.mark.parametrize("func", [laplace, mil_hdbk_189c])
+def test_575_tl_validation(func):
+    T = {1: 60.0, 2: 80.0}
+    with pytest.raises(ValueError, match="at or before its observation"):
+        func(_X1 + _X2, i=_I, T=T, tl={1: 0.0, 2: 35.0})
+    with pytest.raises(ValueError, match="one entry per system"):
+        func(_X1 + _X2, i=_I, T=T, tl=[0.0, 1.0, 2.0])
+    with pytest.raises(ValueError, match="must be finite"):
+        func(_X1 + _X2, i=_I, T=T, tl={1: 0.0, 2: np.nan})
+    x = _X1 + [60.0]
+    c = [0] * 9 + [1]
+    with pytest.raises(ValueError, match="same on every row"):
+        func(x, c=c, tl=[0.0] * 9 + [5.0])
+    with pytest.raises(ValueError, match="one entry per row"):
+        func(x, c=c, tl=[0.0, 0.0])

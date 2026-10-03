@@ -1133,6 +1133,14 @@ narrower ``fit``:
   time axis: :math:`\hat{p}` is the (count-weighted) proportion of ones.
 - **Binomial**, the number of events in a known number of trials :math:`m`:
   :math:`\hat{p} = \sum_{i} n_{i} x_{i} / (m \sum_{i} n_{i})`.
+
+  For these three the bounds on :math:`p` come from the :math:`k` events in
+  :math:`N` trials. By default they are exact (Clopper and Pearson): the
+  lower bound is the :math:`\alpha` quantile of
+  :math:`\mathrm{Beta}(k, N - k + 1)` (0 when :math:`k = 0`) and the upper
+  the :math:`1 - \alpha` quantile of :math:`\mathrm{Beta}(k + 1, N - k)`
+  (1 when :math:`k = N`). With :math:`k = 0` the upper bound is
+  :math:`1 - \alpha^{1/N}`, the success-run bound.
 - **ExactEventTime**, an event known to occur at a single time :math:`T`,
   estimated from right-censored ("not yet") and left-censored ("already")
   observations: every :math:`T` between the latest "not yet" and the earliest

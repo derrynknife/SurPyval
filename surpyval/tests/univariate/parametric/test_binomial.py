@@ -208,3 +208,143 @@ def test_bernoulli_fit_works_for_general_inputs():
 def test_binomial_hazard_beyond_n_is_quiet():
     hf = no_warnings(surv.Binomial.hf, np.array([3.0, 6, 7]), 5, 0.3)
     assert hf[1:].tolist() == [0.0, 0.0]
+
+
+# ----------------------------------------------------------------------------
+# #580: confidence bounds on p
+# ----------------------------------------------------------------------------
+
+
+def _three_in_1200():
+    # The issue's example: 3 failures (coded 1) in 1200 demands, as
+    # Bernoulli outcomes, a FixedEventProbability and a Binomial count.
+    return (
+        Bernoulli.fit([1, 0], n=[3, 1197]),
+        FixedEventProbability.fit([1, 0], n=[3, 1197]),
+        Binomial.fit([3], n_trials=1200),
+        Binomial.fit([1, 2, 0], n_trials=400),
+    )
+
+
+@pytest.mark.parametrize("alpha", [0.01, 0.1, 0.5])
+def test_580_exact_bounds_are_clopper_pearson(alpha):
+    # They raised "the Hessian was singular at the optimum" (Wald) or "need
+    # the original data" (lr). The default is now the exact interval, as
+    # scipy's binomtest gives it (by root finding, to about 1e-9).
+    from scipy.stats import binomtest
+
+    ci = binomtest(3, 1200).proportion_ci(1 - alpha, method="exact")
+    for model in _three_in_1200():
+        np.testing.assert_allclose(
+            model.param_cb("p", alpha_ci=alpha), [ci.low, ci.high], rtol=1e-8
+        )
+        np.testing.assert_allclose(
+            model.param_cb("p", alpha_ci=alpha, method="exact"),
+            [ci.low, ci.high],
+            rtol=1e-8,
+        )
+    # The issue's 90% interval.
+    np.testing.assert_allclose(
+        _three_in_1200()[0].param_cb("p", alpha_ci=0.1),
+        [0.00068, 0.00645],
+        atol=5e-6,
+    )
+
+
+def test_580_one_sided_is_the_matching_end():
+    model = Bernoulli.fit([1, 0], n=[3, 1197])
+    two = model.param_cb("p", alpha_ci=0.2)
+    np.testing.assert_allclose(
+        model.param_cb("p", alpha_ci=0.1, bound="lower"), two[:1]
+    )
+    np.testing.assert_allclose(
+        model.param_cb("p", alpha_ci=0.1, bound="upper"), two[1:]
+    )
+
+
+def test_580_zero_failures_give_the_success_run_bound():
+    # No failures in 1200: the upper bound is 1 - alpha ** (1 / n), the
+    # complement of success_run, and the lower bound 0.
+    model = Bernoulli.fit([0], n=[1200])
+    upper = model.param_cb("p", alpha_ci=0.1, bound="upper")
+    np.testing.assert_allclose(upper, [1 - 0.1 ** (1 / 1200)], rtol=1e-12)
+    np.testing.assert_allclose(
+        1 - upper, [surv.success_run(1200, alpha_ci=0.1)], rtol=1e-12
+    )
+    assert model.param_cb("p", alpha_ci=0.1)[0] == 0.0
+    # All failures: the upper bound is 1.
+    assert Binomial.fit([5, 5], n_trials=5).param_cb("p")[1] == 1.0
+
+
+def test_580_wald_is_the_logit_interval_and_undefined_at_zero():
+    model = Bernoulli.fit([1, 0], n=[3, 1197])
+    p, n = 3 / 1200, 1200
+    from scipy.stats import norm
+
+    half = norm.ppf(0.95) / np.sqrt(n * p * (1 - p))
+    u = np.log(p / (1 - p))
+    expected = 1 / (1 + np.exp(-(u + np.array([-half, half]))))
+    np.testing.assert_allclose(
+        model.param_cb("p", alpha_ci=0.1, method="wald"), expected
+    )
+    with pytest.warns(RuntimeWarning, match="Wald confidence bound") as w:
+        out = Bernoulli.fit([0], n=[1200]).param_cb("p", method="wald")
+    assert np.isnan(out).all() and len(w) == 1
+    assert w[0].filename == __file__
+
+
+def test_580_lr_bounds_sit_on_the_deviance_contour():
+    from scipy.stats import chi2
+
+    k, n = 3.0, 1200.0
+
+    def loglik(q):
+        return k * np.log(q) + (n - k) * np.log1p(-q)
+
+    model = Binomial.fit([3], n_trials=1200)
+    lo, hi = model.param_cb("p", alpha_ci=0.1, method="lr")
+    crit = chi2.ppf(0.9, 1)
+    for q in (lo, hi):
+        assert 2 * (loglik(k / n) - loglik(q)) == pytest.approx(crit, rel=1e-8)
+    # With no events the upper bound has a closed form, 1 - exp(-c / 2N).
+    zero = Bernoulli.fit([0], n=[1200])
+    np.testing.assert_allclose(
+        zero.param_cb("p", alpha_ci=0.1, method="lr"),
+        [0.0, 1 - np.exp(-crit / 2400)],
+        rtol=1e-8,
+    )
+
+
+def test_580_other_bounds_say_to_use_param_cb():
+    for model in _three_in_1200():
+        for call in (
+            lambda: model.cb([0, 1]),
+            lambda: model.quantile_cb(0.5),
+            lambda: model.mean_cb(),
+        ):
+            with pytest.raises(ValueError, match=r"param_cb\('p'\)"):
+                call()
+    with pytest.raises(ValueError, match="'method' must be one of"):
+        Bernoulli.fit([1, 0]).param_cb("p", method="profile-ish")
+    with pytest.raises(ValueError, match="Unknown parameter"):
+        Bernoulli.fit([1, 0]).param_cb("q")
+
+
+def test_580_binomial_n_is_known():
+    model = Binomial.fit([3], n_trials=1200)
+    np.testing.assert_array_equal(model.param_cb("n"), [1200.0, 1200.0])
+    np.testing.assert_array_equal(model.param_cb("n", bound="lower"), [1200.0])
+
+
+def test_580_bounds_survive_a_round_trip_and_need_counts():
+    for model in _three_in_1200():
+        restored = surv.from_dict(model.to_dict())
+        np.testing.assert_array_equal(
+            restored.param_cb("p"), model.param_cb("p")
+        )
+    with pytest.raises(ValueError, match="counts of events and trials"):
+        Bernoulli.from_params(0.01).param_cb("p")
+    old = Bernoulli.fit([1, 0]).to_dict()
+    del old["event_counts"]
+    with pytest.raises(ValueError, match="counts of events and trials"):
+        surv.from_dict(old).param_cb("p")

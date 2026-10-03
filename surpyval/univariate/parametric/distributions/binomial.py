@@ -19,6 +19,7 @@ from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
 
 from ..parametric import Parametric
 from ._discrete_tails import refine_quantile
+from ._single_probability import event_counts, probability_bounds
 
 
 class Binomial_(DiscreteParametricFitter):
@@ -438,6 +439,10 @@ class Binomial_(DiscreteParametricFitter):
 
         model : Parametric
             A parametric model with the fitted ``[n_trials, p]`` parameters.
+            Its ``param_cb("p")`` bounds ``p`` from the events in all the
+            trials, ``sum(x)`` in ``n_trials * len(x)``, exactly
+            (Clopper-Pearson) by default, as ``Bernoulli`` does;
+            ``param_cb("n")`` is the known ``n_trials``.
 
         Examples
         --------
@@ -445,6 +450,8 @@ class Binomial_(DiscreteParametricFitter):
         >>> model = Binomial.fit([2, 3, 1, 4], n_trials=5)
         >>> model.params
         array([5. , 0.5])
+        >>> model.param_cb("p").round(4)
+        array([0.272, 0.728])
         """
         x_arr = np.atleast_1d(np.asarray(x))
 
@@ -472,8 +479,40 @@ class Binomial_(DiscreteParametricFitter):
         model.maximum = "verified"
         p = (x_arr * n).sum() / (n_trials * n.sum())
         model.params = np.array([float(n_trials), p])
+        # The events in all the trials: the bounds on p come from these
+        # (#580).
+        model._event_counts = (
+            float((x_arr * n).sum()),
+            float(n_trials * n.sum()),
+        )
         self._set_support(model, False)
         return model
+
+    def _probability_cb(
+        self,
+        model: Parametric,
+        name: str,
+        alpha_ci: float,
+        bound: str,
+        method: str | None,
+    ) -> npt.NDArray:
+        """``model.param_cb`` (#580): bounds on ``p`` from the events in
+        all the trials (see ``Bernoulli.fit``); the number of trials ``n``
+        is known, so its interval is the degenerate one at its value."""
+        if name == "n":
+            from surpyval.utils.linalg import bound_signs
+
+            _, signs = bound_signs(alpha_ci, bound)
+            return np.full(signs.shape, float(model.params[0]))
+        if name != "p":
+            raise ValueError(
+                "Unknown parameter {!r}; expected one of ['n', 'p']".format(
+                    name
+                )
+            )
+        return probability_bounds(
+            *event_counts(model), alpha_ci, bound, method, name
+        )
 
     def _set_support(self, model: Any, offset: bool) -> None:
         """Exclusive bounds either side of the outcomes ``{0, ..., n}``
