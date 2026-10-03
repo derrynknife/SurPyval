@@ -99,6 +99,173 @@ for _name, _reason in _MAXIMUM_FAILURES.items():
     }
 
 
+# -- covariate scale (test_metamorphic.py) ----------------------------------
+# With every covariate multiplied by 1e-6 (coefficients of order 1e6) the
+# parametric regressions stop short of the maximum -- 0.6 to 10 log-
+# likelihood units below the fit in the original units -- and report a
+# verified maximum: the convergence test scales a coefficient's gradient
+# by max(|coefficient|, 1), which at a start of 0 does not grow with the
+# coefficient's natural scale, 1 / sd(Z). The same class as the
+# step-stress fit of #577, with Z = 1/T in kelvin. Keyed
+# "covariate_scale[1e-6]", and "covariate_scale[tvc 1e-6]" for fit_tvc.
+_SCALE_REASON = (
+    "#577: with the covariates multiplied by 1e-6 the {} fit stops "
+    "short of the maximum and reports it verified (the gradient test is "
+    "not scaled to the coefficient's natural size)"
+)
+_SCALE_FIT = (
+    [
+        b + k
+        for k in ("PH", "AFT", "PO")
+        for b in (
+            "Weibull",
+            "LogNormal",
+            "Exponential",
+            "Gamma",
+            "Normal",
+            "Gumbel",
+            "Logistic",
+        )
+    ]
+    + [b + "Frailty" for b in ("Weibull", "Exponential", "Gamma", "LogNormal")]
+    + [
+        "WeibullFrailty[lognormal]",
+        "FineGray",
+        "CompetingRisksProportionalHazards[Fine-Gray]",
+        "ProportionalIntensityHPP",
+    ]
+)
+_SCALE_TVC = [
+    b + k
+    for k in ("PH", "AFT", "PO")
+    for b in (
+        "Weibull",
+        "LogNormal",
+        "Exponential",
+        "Gamma",
+        "Normal",
+        "Gumbel",
+        "Logistic",
+    )
+]
+for _name in _SCALE_FIT:
+    KNOWN_FAILURES[_name] = {
+        **KNOWN_FAILURES.get(_name, {}),
+        "covariate_scale[1e-6]": _SCALE_REASON.format(_name),
+    }
+for _name in _SCALE_TVC:
+    KNOWN_FAILURES[_name] = {
+        **KNOWN_FAILURES.get(_name, {}),
+        "covariate_scale[tvc 1e-6]": _SCALE_REASON.format(_name + " fit_tvc"),
+    }
+
+
+# -- pickle (test_serialisation.py) -------------------------------------------
+# A fitted model that pickle cannot copy, by cause (#573). Process pools,
+# joblib, Dask and Ray all need it, as does RePyability's n_jobs.
+_PICKLE_CAUSES: dict[str, tuple[str, ...]] = {
+    "a closure of bounds_convert kept on the model": (
+        "Weibull",
+        "Gamma",
+        "LogNormal",
+        "LogLogistic",
+        "ExpoWeibull",
+        "Rayleigh",
+        "Normal",
+        "Gumbel",
+        "GumbelLEV",
+        "Logistic",
+        "Beta",
+        "Beta4",
+        "Weibull[offset]",
+        "Weibull[lfp]",
+        "Weibull[zi]",
+        "Exponential[offset]",
+        "Exponential[lfp]",
+        "Exponential[zi]",
+        "Gamma[offset]",
+        "Gamma[lfp]",
+        "Gamma[zi]",
+        "LogNormal[offset]",
+        "LogNormal[lfp]",
+        "LogNormal[zi]",
+        "Weibull[xcnt]",
+        "ConformanceGompertz",
+        "Poisson",
+        "Geometric",
+        "NegativeBinomial",
+        "DiscreteWeibull",
+        "BetaGeometric",
+        "Discretize(Weibull)",
+        "ParametricCompetingRisks",
+        "DegradationAnalysis[linear]",
+        "DegradationAnalysis[power]",
+        "IndependenceCopula",
+        "ClaytonCopula",
+        "GumbelCopula",
+        "FrankCopula",
+        "GaussianCopula",
+        "JoeCopula",
+        "AMHCopula",
+        "StudentTCopula",
+        "ClaytonCopula[rotation=180]",
+    ),
+    "a lambda of ParameterSubstitutionFitter.__init__ kept on the model": (
+        "WeibullAL[Power]",
+        "WeibullAL[InversePower]",
+        "WeibullAL[Eyring]",
+        "WeibullAL[InverseEyring]",
+        "WeibullAL[Linear]",
+        "WeibullAL[Exponential]",
+        "WeibullAL[InverseExponential]",
+        "WeibullAL[DualExponential]",
+        "WeibullAL[DualPower]",
+        "WeibullAL[PowerExponential]",
+        "WeibullAL[GeneralLogLinear]",
+    ),
+    "a lambda of create_general_log_linear_fitter kept on the model": (
+        "WeibullPH",
+        "LogNormalPH",
+        "ExponentialPH",
+        "GammaPH",
+        "NormalPH",
+        "GumbelPH",
+        "LogisticPH",
+    ),
+    "a local likelihood function kept on the model": (
+        "FineGray",
+        "CompetingRisksProportionalHazards[Fine-Gray]",
+        "CompetingRisksProportionalHazards[Cox]",
+        "RoystonParmar",
+        "CoxPH",
+        "CoxPH[strata]",
+        "ProportionalIntensityHPP",
+        "DestructiveDegradation",
+    ),
+    "the module rebinds the class's name to its singleton instance": (
+        "CrowAMSAA",
+        "ARI",
+        "CauseSpecificNHPP",
+        "Duane",
+        "ProportionalIntensityNHPP",
+        "NonParametricCounting",
+        "CauseSpecificMCF",
+        "GeneralizedRenewal",
+        "GeneralizedRenewal[kijima ii]",
+        "HPP",
+        "CoxLewis",
+        "GeneralizedOneRenewal",
+        "ARA",
+    ),
+}
+for _cause, _names in _PICKLE_CAUSES.items():
+    for _name in _names:
+        KNOWN_FAILURES[_name] = {
+            **KNOWN_FAILURES.get(_name, {}),
+            "pickle": f"#573: pickle fails on {_cause}",
+        }
+
+
 # Known failures whose outcome depends on the numpy / scipy / BLAS build,
 # so they are non-strict xfails: case name -> properties. The fits started
 # far from the maximum were (#427, #428, #429); they now reach it, or say

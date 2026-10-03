@@ -166,6 +166,17 @@ PROPERTIES: dict[str, str] = {
         "from_dict) gives it the same attributes, each declared on its "
         "class"
     ),
+    # test_metamorphic.py: a covariate's units are a reparameterisation.
+    "covariate_scale": (
+        "multiplying a covariate column (and the query rows) by a "
+        "constant rescales its coefficient and changes no prediction, by "
+        "fit and by fit_tvc"
+    ),
+    # test_serialisation.py: pickle, which process pools rely on.
+    "pickle": (
+        "a fitted model survives pickle.dumps / pickle.loads and predicts "
+        "exactly what it did"
+    ),
 }
 
 # The model classes that declare every attribute their builders set, which
@@ -273,6 +284,7 @@ REFIT_PROPERTIES = frozenset(
         "convergence",
         "aliasing",
         "aliasing_constant",
+        "covariate_scale",
         "attributes",
         "maximum",
     }
@@ -305,6 +317,7 @@ _APPLICABLE: dict[str, frozenset[str]] = {
     "outside_data": _EVERY - {BIVARIATE},
     "aliasing": frozenset(WITH_COVARIATES),
     "aliasing_constant": frozenset(WITH_COVARIATES),
+    "covariate_scale": frozenset(WITH_COVARIATES),
 }
 for _prop in PROPERTIES:
     _APPLICABLE.setdefault(_prop, _EVERY)
