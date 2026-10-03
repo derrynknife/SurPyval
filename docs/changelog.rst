@@ -4,6 +4,29 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Mixture EM reaches the maximum on staggered interval counts (#582).**
+  On Nevada-chart warranty counts the fit ended 101 log-likelihood units
+  short (26% defectives instead of 3%): a ``nan`` gradient at interval
+  rows starting at 0 (Weibull ``beta < 1``) stopped the polish after one
+  evaluation. That CDF is now exactly 0 there, and EM also runs from a
+  second start (the failures cut by count, the survivors to the last
+  component), keeping the better. The example verifies at the maximum in
+  1.2 s instead of 8.6 s; ordinary fits are unchanged.
+- **Faster mixture EM, and SQUAREM as an option (#589).** Each M-step takes
+  ``Q`` and its gradient from one pass (14% faster per iteration, identical
+  results). ``MixtureModel.fit(..., em="squarem")`` accelerates the
+  iterations after an unverified first polish: 81 iterations in 2.8 s
+  instead of 1,020 in 7.7 s, ending at the maximum rather than 1.3e-4
+  short.
+- **Changed (breaking): model-comparison values are spelt alike (#572).**
+  ``MixtureModel.log_likelihood`` is the fitted log-likelihood (calling it
+  with ``params`` works until v0.24 with a ``DeprecationWarning``); the
+  mixture gains ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()``, kept by
+  ``to_dict``; ``MixtureModel.loglike``, which was the *negative*
+  log-likelihood, is deprecated until v0.24. Recurrent models' ``aic`` and
+  ``bic`` are methods, as everywhere else, with ``neg_ll()`` added (the old
+  ``model.aic`` value works until v0.24 with a ``DeprecationWarning``). A
+  conformance property checks the spelling on every model (Cox is #604).
 - **A univariate fit whose likelihood has no finite maximum stops and says
   so (#584).** A search running off used to run every rung of the
   optimiser ladder and end "unverified": 23 s for an ExpoWeibull on 60

@@ -103,7 +103,7 @@ for _name, _reason in _MAXIMUM_FAILURES.items():
 # Models whose model-comparison values are not spelt as everywhere else.
 _COMPARISON_FAILURES: dict[str, str] = {
     name: (
-        "#572: a Cox model's ``neg_ll`` is the negative partial "
+        "#604: a Cox model's ``neg_ll`` is the negative partial "
         "log-likelihood as a function of the coefficients (the fit's "
         "closure, ``neg_ll(beta)``), not the fitted value; it has no aic "
         "or bic"
