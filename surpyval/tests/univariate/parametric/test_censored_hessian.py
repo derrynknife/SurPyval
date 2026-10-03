@@ -123,7 +123,9 @@ class TestTruncationAtTheSupportEdge:
         m1 = Weibull.fit(x=x, c=c, tl=np.where(tl == 0, -np.inf, tl))
         np.testing.assert_allclose(m0.params, m1.params, rtol=1e-12)
         np.testing.assert_allclose(m0.neg_ll(), m1.neg_ll(), rtol=1e-14)
-        np.testing.assert_allclose(m0.cov_matrix, m1.cov_matrix, rtol=1e-12)
+        np.testing.assert_allclose(
+            m0.covariance(), m1.covariance(), rtol=1e-12
+        )
 
     def test_the_hessian_is_analytic(self, monkeypatch):
         import surpyval.univariate.parametric.fitters.mle as mle

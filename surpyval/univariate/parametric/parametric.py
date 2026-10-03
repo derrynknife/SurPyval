@@ -22,7 +22,7 @@ from surpyval.univariate.information_criteria import (
 )
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
-from surpyval.utils.deprecation import renamed_arguments
+from surpyval.utils.deprecation import RenamedToMethod, renamed_arguments
 from surpyval.utils.linalg import (
     cb_link,
     param_name,
@@ -283,7 +283,8 @@ class Parametric(
     f0: float
     support: tuple[float, float]
     hess_inv: npt.NDArray
-    cov_matrix: npt.NDArray
+    #: The covariance of every estimated parameter, ``covariance()``.
+    _covariance: "npt.NDArray | None" = None
     surv_data: "SurpyvalData"
     fitting_info: dict[str, Any]
     optimizer: str
@@ -302,6 +303,9 @@ class Parametric(
     _bic: float
     _aic: float
     _aic_c: float
+
+    #: ``covariance()``'s name before v0.23 (#605), for one release.
+    cov_matrix = RenamedToMethod("covariance", "_covariance")
 
     def __init__(
         self,
@@ -441,8 +445,11 @@ class Parametric(
         if "hess_inv" in model_dict:
             out.hess_inv = np.array(model_dict["hess_inv"])
 
-        if "cov_matrix" in model_dict:
-            out.cov_matrix = np.array(model_dict["cov_matrix"])
+        # "cov_matrix" is the key of a dict written before v0.23.
+        for key in ("covariance", "cov_matrix"):
+            if key in model_dict:
+                out._covariance = np.array(model_dict[key])
+                break
 
         if "_neg_ll" in model_dict:
             out._neg_ll = model_dict["_neg_ll"]
@@ -559,8 +566,9 @@ class Parametric(
 
         if getattr(self, "hess_inv", None) is not None:
             out["hess_inv"] = self.hess_inv.tolist()
-        if getattr(self, "cov_matrix", None) is not None:
-            out["cov_matrix"] = self.cov_matrix.tolist()
+        if self._covariance is not None:
+            # The key every model's dict stores it under (#605).
+            out["covariance"] = np.asarray(self._covariance).tolist()
         if hasattr(self, "_neg_ll"):
             out["_neg_ll"] = to_native(self._neg_ll)
         # Informational: a reader that predates it ignores it and restores
@@ -731,6 +739,34 @@ class Parametric(
             data["c"], data.get("n"), t[:, 0], t[:, 1], lower, upper, x=x
         )
 
+    def covariance(self) -> npt.NDArray:
+        """
+        The covariance of the fitted parameters: the distribution's, in
+        the order of ``parameter_names``, then the limited-failure
+        proportion ``p`` and the zero-inflation fraction ``f0`` where the
+        model has them (a held parameter has a zero row and column). The
+        inverse of the observed information at the maximum, carried to
+        the parameters through their transforms; what Wald bounds use.
+        ``cov_matrix``, its name before v0.23, still gives it, with a
+        ``DeprecationWarning``, until v0.24.
+
+        Raises a ``ValueError`` where the model has none: one built with
+        ``from_params``, one whose information was singular, or a
+        closed-form fit with no Wald covariance (``Uniform``).
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull
+        >>> np.random.seed(1)
+        >>> model = Weibull.fit(Weibull.random(100, 10, 3))
+        >>> np.sqrt(np.diag(model.covariance())).round(4)
+        array([0.3589, 0.2286])
+        """
+        if self._covariance is None:
+            raise no_covariance_error(_NO_COVARIANCE_WHY)
+        return self._covariance
+
     def param_cb(
         self,
         name: str,
@@ -827,9 +863,7 @@ class Parametric(
 
         is_core, idx = self._resolve_param_name(name)
         if not is_core:
-            cov = getattr(self, "cov_matrix", None)
-            if cov is None:
-                raise no_covariance_error(_NO_COVARIANCE_WHY)
+            cov = self.covariance()
             p_hat = self.f0 if name == "f0" else self.p
             var = cov[idx, idx]
             param_bounds: tuple[float | None, float | None] = (0, 1)
@@ -880,7 +914,7 @@ class Parametric(
         Returns ``(True, i)`` for the distribution's own ``i``-th
         parameter and ``(False, j)`` for the limited-failure proportion or
         the zero-inflation fraction, ``j`` being its index in the extended
-        covariance ``cov_matrix`` (core parameters, then ``p``, then
+        covariance, ``covariance()`` (core parameters, then ``p``, then
         ``f0``). The distribution's parameters are looked up first, so a
         ``Geometric`` ``p`` is never mistaken for the LFP proportion (which
         is then ``lfp_p``, see ``__init__``). Anything else -- the offset,
@@ -2320,7 +2354,7 @@ class Parametric(
         ``(*params, p?, f0?)`` so that the uncertainty of the LFP and
         zero-inflation parameters widens the bounds. gamma is held fixed:
         the threshold parameter is non-regular, so it carries no Wald
-        variance. Models deserialized without a ``cov_matrix`` fall back to
+        variance. Models deserialized without a covariance fall back to
         treating p and f0 as fixed.
         """
         n_core = len(self.params)
@@ -2331,7 +2365,7 @@ class Parametric(
             phi_hat.append(self.f0)
         phi_hat = np.array(phi_hat)
 
-        cov = getattr(self, "cov_matrix", None)
+        cov = self._covariance
         if cov is None:
             hess_inv = getattr(self, "hess_inv", None)
             if hess_inv is None:

@@ -704,7 +704,7 @@ class FrailtyFitter:
         model.feature_names = feature_names
         model.group_labels = list(labels)
         model.frailties = {str(lab): float(u) for lab, u in zip(labels, post)}
-        model.covariance = covariance
+        model._covariance = covariance
         model.parameter_names = parameter_names
         model.k = len(parameter_names) - len(aliased)
         model.n_obs = n_obs

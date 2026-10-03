@@ -50,7 +50,7 @@ def test_fixed_all_params():
     assert np.allclose(model.params, [10.0, 2.0])
     # Nothing is estimated, so nothing carries variance
     assert np.all(model.hess_inv == 0)
-    assert np.all(model.cov_matrix == 0)
+    assert np.all(model.covariance() == 0)
 
 
 def test_fixed_with_free_only_init():

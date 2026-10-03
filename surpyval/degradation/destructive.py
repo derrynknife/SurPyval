@@ -394,7 +394,8 @@ class DestructiveDegradationModel(SerialisableMixin):
             "beta": self.beta.tolist(),
             "sigma": float(self.sigma),
             "threshold": float(self.threshold),
-            "neg_ll": float(self._neg_ll),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
             "transform_scores": (
                 None
                 if self.transform_scores is None
@@ -449,7 +450,8 @@ class DestructiveDegradationModel(SerialisableMixin):
                     "c": np.asarray(data["c"], dtype=int),
                 }
             ),
-            neg_ll=float(d.get("neg_ll", np.nan)),
+            # "neg_ll" is the key of a dict written before v0.23.
+            neg_ll=float(d.get("_neg_ll", d.get("neg_ll", np.nan))),
             transform_scores=d.get("transform_scores"),
         )
         model.maximum = restored_maximum(d)

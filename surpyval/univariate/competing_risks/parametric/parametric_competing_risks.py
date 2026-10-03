@@ -43,6 +43,7 @@ from surpyval.univariate.competing_risks.labels import (
     label_mask,
     ordered_labels,
 )
+from surpyval.univariate.information_criteria import corrected_aic
 from surpyval.univariate.parametric import Weibull
 from surpyval.univariate.parametric.parametric import Parametric
 from surpyval.utils import (
@@ -398,12 +399,32 @@ class ParametricCompetingRisks(SerialisableMixin):
         >>> round(float(2 * model.neg_ll() + 2 * np.log(8)), 4)
         61.5902
         """
+        k_total, n_total = self._ic_terms()
+        return float(2 * self.neg_ll() + k_total * np.log(n_total))
+
+    def aic_c(self) -> float:
+        """The small-sample corrected AIC of the joint model, ``aic() +
+        (2K^2 + 2K) / (n - K - 1)``, with the ``K`` and ``n`` of
+        :meth:`bic`; ``nan`` where ``n <= K + 1`` (``corrected_aic``), as
+        on every other model (#605)."""
+        k_total, n_total = self._ic_terms()
+        return corrected_aic(self.aic(), k_total, n_total)
+
+    @property
+    def log_likelihood(self) -> float:
+        """The maximised log-likelihood of the joint model, ``-neg_ll()``:
+        the sum of the causes' (#605)."""
+        return -self.neg_ll()
+
+    def _ic_terms(self) -> "tuple[int, float]":
+        # The parameters estimated over every cause, and the sample size of
+        # the whole data (see bic).
         k_total, n_total = 0, 0.0
         for k in self.causes:
             k_cause, n_cause = _ic_terms(self.models[k])
             k_total += k_cause
             n_total += n_cause
-        return float(2 * self.neg_ll() + k_total * np.log(n_total))
+        return k_total, n_total
 
     # -- helpers ----------------------------------------------------------
 

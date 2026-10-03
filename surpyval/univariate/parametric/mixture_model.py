@@ -26,6 +26,7 @@ from surpyval.utils.dataframe import UnivariateDataFrameMixin
 from surpyval.utils.deprecation import (
     REMOVED_IN_NEXT,
     CallableFloat,
+    MadePrivate,
     renamed_arguments,
 )
 from surpyval.utils.no_maximum import (
@@ -182,6 +183,15 @@ class MixtureModel(
     _em_method = "plain"
     _exact_m_step = False
 
+    # The EM iteration's steps, public before v0.23 (#605): internal to
+    # the fit, they still work with a DeprecationWarning until v0.24.
+    likelihood = MadePrivate("_likelihood")
+    Q = MadePrivate("_Q")
+    expectation = MadePrivate("_expectation")
+    maximisation = MadePrivate("_maximisation")
+    EM = MadePrivate("_em_iteration")
+    initialise_params = MadePrivate("_initialise_params")
+
     @property
     def parameter_names(self) -> list[str]:
         """The names of the columns of ``params``: the component
@@ -254,6 +264,12 @@ class MixtureModel(
             note=" (the fitted log-likelihood; 'log_likelihood(params)' was "
             "one component's log-likelihood of each observation)",
         )
+
+    @log_likelihood.setter
+    def log_likelihood(self, value: float) -> None:
+        # As every model's: it records the negative log-likelihood.
+        mixin: Any = InformationCriteriaMixin
+        mixin.log_likelihood.fset(self, value)
 
     @property
     def loglike(self) -> float:
@@ -377,12 +393,12 @@ class MixtureModel(
             data.c, data.n, data.tl, data.tr, lower, upper, x=data.x
         )
 
-    def likelihood(self, params: Any) -> Any:
+    def _likelihood(self, params: Any) -> Any:
         """Per-observation likelihood of one component (no count powers:
         counts ``n`` enter the log-likelihood as multipliers -- raising the
         per-component likelihood to ``n`` *before* mixing is wrong, since
         ``sum_i w_i f_i^n != (sum_i w_i f_i)^n`` (#254)."""
-        self._require_fit_data("likelihood()")
+        self._require_fit_data("_likelihood()")
         data = self.data
         like_o = self.dist.df(data.x_o, *params)
         like_r = self.dist.sf(data.x_r, *params)
@@ -405,7 +421,7 @@ class MixtureModel(
         ``LOG_FLOOR``.
 
         Formed from the distribution's log functions rather than as the
-        log of :meth:`likelihood`: a density or interval probability that
+        log of :meth:`_likelihood`: a density or interval probability that
         underflows to 0 made ``log`` return -inf, a responsibility times
         -inf made the M-step objective infinite, and the optimiser
         stopped after one step (a two-Weibull mixture on interval data
@@ -530,11 +546,11 @@ class MixtureModel(
                 ll = ll - np.sum(self.data.n * np.log(win))
         return -ll
 
-    def Q(self, params: Any) -> Any:
+    def _Q(self, params: Any) -> Any:
         """EM M-step objective: the (negative) expected complete-data
         log-likelihood over the component labels -- counts times
         responsibilities times each component's log-likelihood."""
-        self._require_fit_data("Q()")
+        self._require_fit_data("_Q()")
         params = params.reshape(self.m, self.dist.k)
         total = 0.0
         for i in range(self.m):
@@ -544,7 +560,7 @@ class MixtureModel(
             total -= np.sum(self.data.n * self.p[i] * loglike)
         return total
 
-    def expectation(self) -> Any:
+    def _expectation(self) -> Any:
         """EM E-step: set each observation's responsibilities ``p`` (the
         probability it belongs to each component, given the current fit)
         and the count-weighted mixing weights ``w``."""
@@ -567,9 +583,9 @@ class MixtureModel(
         # Mixing weights are count-weighted responsibility totals.
         self.w = (self.p * self.data.n).sum(axis=1) / self.data.n.sum()
 
-    def maximisation(self) -> Any:
+    def _maximisation(self) -> Any:
         """EM M-step: refit every component's parameters by minimising
-        :meth:`Q` with the current responsibilities held fixed, on its
+        :meth:`_Q` with the current responsibilities held fixed, on its
         exact (autograd) gradient (#506); finite differences of it were
         60% of a fit's time.
 
@@ -614,25 +630,25 @@ class MixtureModel(
                 # a point mass, whose shape runs off to 1e4 and beyond) or
                 # the step makes Q worse, finite differences as before.
                 if res is not None:
-                    q0 = at_x0[0] if at_x0 else self.Q(x0)
+                    q0 = at_x0[0] if at_x0 else self._Q(x0)
                     slack = 1e-8 * max(1.0, abs(q0))
                     if not (
                         np.all(np.isfinite(res.x)) and res.fun <= q0 + slack
                     ):
                         res = None
             if res is None:
-                res = minimize(self.Q, x0, bounds=bounds)
+                res = minimize(self._Q, x0, bounds=bounds)
         self.params = res.x.reshape(self.m, self.dist.k)
 
     def _Q_jac(self) -> "Callable[..., Any] | None":
-        """The gradient of :meth:`Q` by autograd, or ``None`` (finite
+        """The gradient of :meth:`_Q` by autograd, or ``None`` (finite
         differences) for a distribution autograd cannot differentiate."""
         # Kept for the fit in progress (``fit`` drops it: a closure would
         # stop the model being pickled); False where autograd fails.
         cached = self.__dict__.get("_Q_jac_cache")
         if cached is not None:
             return cached or None
-        jac = grad(self.Q)
+        jac = grad(self._Q)
         try:
             with np.errstate(all="ignore"), warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -651,20 +667,20 @@ class MixtureModel(
         return {}
 
     def _Q_value_and_grad(self) -> Callable[..., Any]:
-        """:meth:`Q` and its autograd gradient in one pass, kept for the
+        """:meth:`_Q` and its autograd gradient in one pass, kept for the
         fit in progress like :meth:`_Q_jac`."""
         cached = self.__dict__.get("_Q_value_and_grad_cache")
         if cached is None:
-            cached = value_and_grad(self.Q)
+            cached = value_and_grad(self._Q)
             self._Q_value_and_grad_cache = cached
         return cached
 
-    def EM(self) -> Any:
-        """One EM iteration (:meth:`expectation` then
-        :meth:`maximisation`), after which ``_neg_ll`` holds the observed
+    def _em_iteration(self) -> Any:
+        """One EM iteration (:meth:`_expectation` then
+        :meth:`_maximisation`), after which ``_neg_ll`` holds the observed
         negative log-likelihood."""
-        self.expectation()
-        self.maximisation()
+        self._expectation()
+        self._maximisation()
         # Convergence is tracked on the observed likelihood, not the
         # M-step objective. Its log-responsibilities are the next E-step's.
         log_r = self._log_resp(self.w, self.params)
@@ -691,7 +707,7 @@ class MixtureModel(
 
         A mixture's likelihood has more than one maximum, so this short
         run is made from two starts where they differ (#582): the current
-        weights and parameters (:meth:`initialise_params`), and the split
+        weights and parameters (:meth:`_initialise_params`), and the split
         of :meth:`_failure_split_start`. The better is kept
         (:meth:`_better_start`) and, only if it is not verified, run on:
         by SQUAREM where ``fit`` was given ``em="squarem"``
@@ -752,7 +768,7 @@ class MixtureModel(
         ``m`` consecutive blocks, each component fitted to one block, and
         every survivor (right-censored row) given to the last.
 
-        :meth:`initialise_params` cuts the *rows* into blocks, survivors
+        :meth:`_initialise_params` cuts the *rows* into blocks, survivors
         and all. On field data -- a few early failures, a long tail of
         survivors, counts per row -- that mixes the early failures with
         survivors, and the fit went to a different maximum: a 3%
@@ -811,10 +827,10 @@ class MixtureModel(
                 return self._squarem_steps(tol, max_iter)
             finally:
                 self._exact_m_step = False
-        self.EM()
+        self._em_iteration()
         f0 = self._neg_ll
         for _ in range(max_iter - 1):
-            self.EM()
+            self._em_iteration()
             f1 = self._neg_ll
             if np.abs(f0 - f1) <= tol:
                 return True
@@ -848,12 +864,12 @@ class MixtureModel(
         used = 0
         while used < max_iter:
             theta0 = self._pack(self.w, self.params)
-            self.EM()
+            self._em_iteration()
             f1, used = self._neg_ll, used + 1
             if used >= max_iter:
                 return False
             theta1 = self._pack(self.w, self.params)
-            self.EM()
+            self._em_iteration()
             f2, used = self._neg_ll, used + 1
             if np.abs(f1 - f2) <= tol:
                 return True
@@ -875,7 +891,7 @@ class MixtureModel(
                         np.asarray(z, dtype=float)
                         for z in self._unpack(theta0 - 2 * a * r + a**2 * v)
                     )
-                    self.EM()
+                    self._em_iteration()
                 ok = bool(np.isfinite(self._neg_ll) and self._neg_ll <= f2)
             except (ValueError, ArithmeticError, np.linalg.LinAlgError):
                 ok = False
@@ -970,7 +986,7 @@ class MixtureModel(
             except Exception:
                 return False
 
-    def initialise_params(self) -> Any:
+    def _initialise_params(self) -> Any:
         """The EM starting point: cut the (sorted) data into ``m``
         consecutive blocks, fit one component to each block, and weight
         the components equally."""
@@ -1121,7 +1137,7 @@ class MixtureModel(
         self._truncated = bool(np.isfinite(data.t).any())
         self.p = np.ones(shape=(self.m, len(self.data.x))) / self.m
 
-        self.initialise_params()
+        self._initialise_params()
 
         if self._truncated:
             # The truncation correction couples the components through the

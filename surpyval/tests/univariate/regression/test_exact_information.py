@@ -365,7 +365,7 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     monkeypatch.setattr(frailty, "natural_information", keeping)
     calls = _count_numerical(monkeypatch, frailty)
     model = _fit(lambda: fitter.fit(**_frailty_data()))
-    assert calls == [] and model.covariance is not None
+    assert calls == [] and model.covariance() is not None
     # (a Gamma baseline to the accuracy of its shape derivatives, as above)
     _assert_same_hessian(
         kept[-1],
@@ -376,8 +376,8 @@ def test_frailty_uses_the_exact_hessian(monkeypatch, name):
     numerical = _fit(lambda: fitter.fit(**_frailty_data()))
     assert len(calls) == 1
     np.testing.assert_allclose(
-        np.sqrt(np.diag(model.covariance)),
-        np.sqrt(np.diag(numerical.covariance)),
+        np.sqrt(np.diag(model.covariance())),
+        np.sqrt(np.diag(numerical.covariance())),
         rtol=1e-4,
     )
 
@@ -405,7 +405,7 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
     # bits of theta (the Weibull's at 2.8e-17 here; the Gamma's and the
     # Exponential's on some CPUs), so either covariance is accepted.
     assert model.theta < 1e-15 and len(calls) in (0, 1)
-    assert np.all(np.isfinite(model.covariance))
+    assert np.all(np.isfinite(model.covariance()))
 
 
 def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
@@ -431,4 +431,4 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     neg_ll, beta = seen[0]
     np.testing.assert_array_equal(beta, model.beta)
     direct = np.linalg.inv(original(neg_ll)(beta))
-    np.testing.assert_allclose(model.cov, direct, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(model.covariance(), direct, rtol=1e-10, atol=0)

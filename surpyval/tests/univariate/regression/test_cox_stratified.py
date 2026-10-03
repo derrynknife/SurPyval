@@ -78,8 +78,8 @@ def test_partial_likelihood_factorises_over_strata():
     for s in (0, 1):
         mask = strata == s
         sub = sp.CoxPH.fit(x=x[mask], Z=Z[mask], c=c[mask])
-        total += float(sub.neg_ll(m.beta))
-    assert float(m.neg_ll(m.beta)) == pytest.approx(total, abs=1e-6)
+        total += float(sub.neg_ll_of(m.beta))
+    assert float(m.neg_ll_of(m.beta)) == pytest.approx(total, abs=1e-6)
 
 
 def test_per_stratum_baselines_differ_and_predict():

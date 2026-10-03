@@ -7,7 +7,10 @@ import numpy as np
 # ``surpyval.utils.linalg`` -- shared with the parametric-regression
 # bounds machinery, which used to carry verbatim copies of them (the
 # drift-prone pattern that produced #288).
-from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.univariate.information_criteria import (
+    corrected_aic,
+    ic_sample_size,
+)
 from surpyval.utils.deprecation import MethodFloat, RenamedAttribute
 from surpyval.utils.linalg import numerical_hessian, wald_bound_on_support
 from surpyval.utils.warnings import warn_no_covariance
@@ -195,6 +198,17 @@ class LikelihoodInferenceMixin:
             k * np.log(self._n_obs) - 2.0 * self.log_likelihood,
             type(self).__name__ + ".bic",
         )
+
+    def aic_c(self) -> float:
+        """
+        The small-sample corrected AIC, ``aic() + (2k^2 + 2k) / (n - k -
+        1)``, with the ``k`` of :meth:`aic` and the ``n`` of :meth:`bic`;
+        ``nan`` where ``n <= k + 1`` (``corrected_aic``), as on every
+        other model (#605).
+        """
+        self._check_fitted()
+        k = int(self._estimated().sum())
+        return corrected_aic(self.aic(), k, self._n_obs)
 
     def covariance(self) -> np.ndarray:
         """

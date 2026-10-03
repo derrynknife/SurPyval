@@ -121,7 +121,7 @@ def closed_form_results(
         "p": 1.0,
         "_neg_ll": neg_ll,
         "log_likelihood": -neg_ll,
-        "cov_matrix": cov,
+        "_covariance": cov,
         "hess_inv": cov,
         "res": None,
         "optimizer": optimizer,

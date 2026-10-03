@@ -1037,7 +1037,7 @@ turnbull_estimator
                 results["p"] = rest.pop()
             results["_neg_ll"] = neg_ll
             results["log_likelihood"] = -neg_ll
-            results["cov_matrix"] = None
+            results["_covariance"] = None
             results["hess_inv"] = None
         if origin is None:
             return False

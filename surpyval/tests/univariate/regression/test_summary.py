@@ -236,7 +236,7 @@ def test_frailty_summary_is_a_table():
 
 def test_frailty_summary_without_covariance():
     model = _frailty()
-    model.covariance = None
+    model._covariance = None
     table = model.summary()
     assert table["se(coef)"].isna().all()
     assert np.isfinite(table["coef"]).all()

@@ -276,14 +276,14 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
     for params in (explicit.params, [[3.0, 2.0], [10.0, 1.0]]):
         params = np.asarray(params)
         np.testing.assert_allclose(
-            np.sort(coded.likelihood(params[0])),
-            np.sort(explicit.likelihood(params[0])),
+            np.sort(coded._likelihood(params[0])),
+            np.sort(explicit._likelihood(params[0])),
             rtol=1e-12,
         )
         # each row's log-likelihood is its likelihood's log
         np.testing.assert_allclose(
             coded._component_log_likelihood(params[1]),
-            np.log(coded.likelihood(params[1])),
+            np.log(coded._likelihood(params[1])),
             rtol=1e-12,
         )
         assert coded.neg_ll_of(explicit.w, params) == pytest.approx(
@@ -398,3 +398,14 @@ def test_572_criteria_survive_a_round_trip_and_a_refit():
     )
     assert mm.aic() != aic
     assert mm.aic() == pytest.approx(2 * 5 + 2 * mm.neg_ll(), rel=1e-12)
+
+
+@pytest.mark.parametrize(
+    "old", ["likelihood", "Q", "expectation", "maximisation", "EM"]
+)
+def test_605_em_steps_are_internal(old):
+    x = surv.Weibull.random(100, 10, 2, random_state=0)
+    model = sp.MixtureModel.fit(x, dist=surv.Weibull, m=2)
+    with pytest.warns(DeprecationWarning, match="internal to the fit"):
+        step = getattr(model, old)
+    assert callable(step)
