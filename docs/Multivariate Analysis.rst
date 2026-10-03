@@ -637,7 +637,9 @@ Some further points worth knowing:
   :math:`\pm 1` warns that the likelihood has no finite maximum.
 - The Student-t copula's CDF (needed for rows censored in both series and
   for truncation) is the integral of its closed-form h-function, taken by
-  tanh-sinh quadrature: within :math:`10^{-11}` of Genz's exact algorithm
+  tanh-sinh quadrature over the closed-form CDF of the t distribution
+  with 2 degrees of freedom (the Cauchy's for :math:`\nu < 2`), so with no
+  t quantile at each node: within :math:`10^{-11}` of Genz's exact algorithm
   (R's ``mvtnorm``, integer :math:`\nu`) and :math:`10^{-15}` of a
   30-digit integration at non-integer :math:`\nu`. scipy's
   ``multivariate_t.cdf`` is a randomised quasi-Monte Carlo integration

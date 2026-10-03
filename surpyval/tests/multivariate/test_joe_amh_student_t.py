@@ -208,6 +208,61 @@ def test_t_cdf_against_exact_values(nu, rho, u, v, expected):
     assert float(StudentT.cdf(v, u, rho, nu)) == pytest.approx(got, abs=1e-12)
 
 
+def test_550_t_cdf_takes_no_quantile_per_node(monkeypatch):
+    # The CDF integrates over the closed-form t_2 (Cauchy) scale: two t
+    # quantiles per point, where the integral over s took one at each of
+    # its 210 nodes (70% of a censored fit).
+    from surpyval.multivariate.parametric.copula import elliptical
+
+    counted = []
+    quantile = elliptical.StudentTCopula._quantile
+
+    def spy(nu, p, q):
+        counted.append(np.size(p))
+        return quantile(nu, p, q)
+
+    monkeypatch.setattr(
+        elliptical.StudentTCopula, "_quantile", staticmethod(spy)
+    )
+    u = np.linspace(0.01, 0.99, 50)
+    for nu in (1.3, 4.0):
+        counted.clear()
+        StudentT.cdf(u, u[::-1], 0.6, nu)
+        assert sum(counted) == 2 * u.size
+
+
+@pytest.mark.parametrize("nu", [1.0, 1.3, 2.0, 2.5, 4.0, 9.4, 50.0, 1e6])
+@pytest.mark.parametrize("rho", [-0.9, -0.3, 0.2, 0.72, 0.9])
+def test_550_t_cdf_matches_the_converged_integral(nu, rho, monkeypatch):
+    # Against the integral over s with a rule eight times as fine (the
+    # converged value), on [1e-4, 1 - 1e-4]
+    from surpyval.multivariate.parametric.copula import elliptical
+
+    grid = np.array([1e-4, 0.01, 0.2, 0.5, 0.7, 0.95, 1 - 1e-4])
+    u, v = (g.ravel() for g in np.meshgrid(grid, grid))
+    got = StudentT.cdf(u, v, rho, nu)
+    fine = elliptical._tanh_sinh(1 / 128, 4.5)
+    for name, value in zip(("_TS_Z", "_TS_ZC", "_TS_W"), fine):
+        monkeypatch.setattr(elliptical, name, value)
+    y = StudentT._quantile(nu, v, 1.0 - v)
+    upper = u > 0.5
+    reference = StudentT._integral_over_s(u, y, upper, rho, nu)
+    reference = np.where(upper, v - reference, reference)
+    tol = 1e-11 if nu >= 4 else 5e-8
+    assert np.all(np.abs(got - reference) <= tol * np.minimum(u, v))
+
+
+def test_550_t_cdf_is_finite_where_the_split_rounds_to_one():
+    # The split point rounded to 1 left a piece of zero width there whose
+    # nodes sat at s = 1, x = infinity: NaN, and with it the likelihood
+    # of any doubly right-censored row near such a point. The reference
+    # is scipy's quad of the h-function against the t density. (The
+    # integral over s, still used below nu = 1, is checked at such points
+    # by the test above.)
+    got = float(StudentT.cdf(0.857, 0.995, 0.2, 50.0))
+    assert got == pytest.approx(0.8536439313030837, rel=1e-13)
+
+
 @pytest.mark.parametrize("params", sorted(T_REF))
 def test_t_primitives_against_vinecopulib(params):
     for u, v, cdf, h1, pdf in T_REF[params]:
