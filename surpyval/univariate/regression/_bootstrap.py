@@ -11,9 +11,10 @@ JASA 82) of the refits' functions or parameters: the percentiles of the
 refits, moved by a bias correction (from the share of refits below the
 estimate) and an acceleration (the skewness of the score of the least
 favourable family, from each resample's score at the estimate, so no
-refits beyond the ``n_boot``). On #583's accelerated life test they
-covered 0.90 where the percentile interval, the Wald and the
-likelihood-ratio bounds all covered 0.86 to 0.87 (#617).
+refits beyond the ``n_boot``). On #583's accelerated life test (46
+failures) the 90% BCa bound covered 0.903, where the percentile
+interval, the Wald and the likelihood-ratio bounds covered 0.866 to
+0.880 (#617).
 
 The censoring is that of the data, by Davison & Hinkley's conditional
 bootstrap (*Bootstrap Methods and their Application*, 1997, Algorithm

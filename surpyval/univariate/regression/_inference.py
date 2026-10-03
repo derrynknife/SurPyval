@@ -468,6 +468,30 @@ class InferenceMixin:
         (likelihood ratio) with 46 failures on average (1000
         repetitions), and 0.877 and 0.866 with 11 (900).
 
+        ``method="bootstrap"`` gives a parametric bootstrap bound: the
+        model is refitted to ``n_boot`` data sets simulated from it, each
+        unit at its own covariates and within its own truncation window,
+        and censored as it was -- a censored unit at its censoring time,
+        a failed one at a time drawn from the censoring distribution past
+        its failure (Davison & Hinkley's conditional bootstrap), so a test
+        stopped at a common time censors every unit there. The bound is
+        the BCa interval of the refits' values (Efron 1987: their
+        percentiles, corrected for bias and for skewness, the
+        acceleration taken from each resample's score at the estimate);
+        ``sf``, ``ff`` and ``Hf`` are one interval. On the test above with
+        46 failures it covered 0.903, against 0.880 (Wald), 0.875
+        (likelihood ratio) and 0.866 for the plain percentile interval
+        (1000 repetitions of 1000 refits, #617). A refit that reaches no
+        verified maximum (a resample with no failures at some stresses can
+        leave an effect without one) is kept at the estimate it reached,
+        and one that raises is left out; both are counted, with one
+        warning when more than 2% of the refits are. It needs the data,
+        and is not available for left- or interval-censored data or a
+        time-varying-covariate fit. It costs ``n_boot`` refits: about 60
+        s for 1000 on that test with ``WeibullAFT``. With an integer
+        ``random_state`` the refits are kept, and shared by every bound
+        with the same ``n_boot`` and seed.
+
         Parameters
         ----------
         x : array like or scalar

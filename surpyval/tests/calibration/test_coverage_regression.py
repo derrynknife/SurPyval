@@ -225,11 +225,12 @@ def test_583_cb_coverage_at_an_extrapolated_use_condition():
 def test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition():
     # The parametric bootstrap (BCa) bound of the same quantity on the
     # same test (46 failures on average). A study of 1000 repetitions with
-    # 1000 refits each (#617) found 0.910 for it against 0.886 (Wald),
-    # 0.881 (likelihood ratio) and 0.871 (the percentile interval), the
-    # BCa interval's misses balanced (0.043 below, 0.047 above) where the
-    # percentile interval's were not (0.031 and 0.098). Each repetition
-    # here refits 200 resamples, so it is a smaller check of the same.
+    # 1000 refits each (#617) found 0.903 for it against 0.880 (Wald),
+    # 0.875 (likelihood ratio) and 0.866 (the percentile interval of the
+    # same refits), the BCa interval's misses balanced (0.048 below, 0.049
+    # above) where the percentile interval's were not (0.035 and 0.099).
+    # Each repetition here refits 200 resamples: a smaller check of the
+    # same, about an hour on one core.
     rng = np.random.default_rng(617)
     x_use, z_use = 5 * 8760.0, np.array([[318.15, 400.0]])
     life = _ALT_C * np.exp(_ALT_A / z_use[0, 0]) * z_use[0, 1] ** -3.0
