@@ -88,6 +88,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -537,7 +538,10 @@ class ProportionalOddsModel(
     beta: npt.NDArray
     params: npt.NDArray
     se: npt.NDArray
-    cov: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
     p_values: npt.NDArray
     x: npt.NDArray
     d: npt.NDArray
@@ -768,7 +772,7 @@ class ProportionalOddsModel(
         """The covariance of the coefficients: the inverse of the
         negative Hessian of the profile log-likelihood at the maximum
         (``nan`` rows and columns for an aliased coefficient)."""
-        return self.cov
+        return self._covariance
 
     def standard_errors(self) -> npt.NDArray:
         """The coefficients' standard errors, from :meth:`covariance`."""
@@ -814,7 +818,7 @@ class ProportionalOddsModel(
         lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
             float(self.params[idx]),
-            float(self.cov[idx, idx]),
+            float(self._covariance[idx, idx]),
             lower,
             upper,
             alpha_ci,
@@ -917,7 +921,8 @@ class ProportionalOddsModel(
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "params": np.asarray(self.params, dtype=float).tolist(),
             "se": np.asarray(self.se, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
             "x": np.asarray(self.x, dtype=float).tolist(),
             "d": np.asarray(self.d, dtype=float).tolist(),
@@ -957,7 +962,9 @@ class ProportionalOddsModel(
         for key in ("beta", "params", "se", "p_values", "x", "d", "g0"):
             setattr(out, key, np.array(model_dict[key], dtype=float))
         out.G0 = np.array(model_dict["G0"], dtype=float)
-        out.cov = np.array(model_dict["cov"], dtype=float).reshape(
+        # "cov" is the key of a dict written before v0.23.
+        cov = model_dict.get("covariance", model_dict.get("cov"))
+        out._covariance = np.array(cov, dtype=float).reshape(
             out.beta.size, out.beta.size
         )
         out.center = np.array(
@@ -1139,7 +1146,7 @@ class ProportionalOdds_:
         model.beta = beta
         model.params = copy(beta)
         model.se = expand(se_k, kept, p)
-        model.cov = cov
+        model._covariance = cov
         model.p_values = expand(p_k, kept, p)
         model.x = times
         model.d = d

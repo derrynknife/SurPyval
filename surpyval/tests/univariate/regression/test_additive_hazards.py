@@ -99,7 +99,7 @@ def test_p_values_shape_and_significance():
     # Both effects are real and the sample is large, so both are significant.
     assert np.all(model.p_values < 0.05)
     assert model.covariance().shape == (2, 2)
-    assert np.allclose(model.standard_errors(), np.sqrt(np.diag(model.cov)))
+    assert np.allclose(model.standard_errors(), np.sqrt(np.diag(model.covariance())))
 
 
 def test_counts_equivalent_to_repeated_rows():

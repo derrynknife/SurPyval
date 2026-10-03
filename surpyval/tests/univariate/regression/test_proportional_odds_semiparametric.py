@@ -322,7 +322,7 @@ def test_summary_param_cb_and_frame_entry_points_agree():
     assert "survival odds ratio" in repr(framed)
     restored = sp.ProportionalOddsModel.from_json(framed.to_json())
     np.testing.assert_array_equal(restored.sf(x, df), framed.sf(x, df))
-    np.testing.assert_array_equal(restored.cov, framed.cov)
+    np.testing.assert_array_equal(restored.covariance(), framed.covariance())
 
 
 def test_no_convergence_warning_on_ordinary_fits():

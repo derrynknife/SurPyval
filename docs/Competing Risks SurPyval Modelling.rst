@@ -786,7 +786,7 @@ of ``Z``; ``np.exp(model.beta)`` gives the sub-distribution hazard ratios:
     print("se       :", np.round(model.se, 3))
     print("p-values :", model.p_values)
     print("SHR      :", np.round(np.exp(model.beta), 3))
-    print("cov      :\n", np.round(model.cov, 4))
+    print("cov      :\n", np.round(model.covariance(), 4))
 
 The standard errors come from the inverse Hessian of the weighted partial
 likelihood (the robust variance of Fine and Gray is not implemented), so treat

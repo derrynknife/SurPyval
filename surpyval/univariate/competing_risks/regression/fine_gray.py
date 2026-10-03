@@ -84,6 +84,7 @@ from surpyval.univariate.regression.regression_data import (
 )
 from surpyval.utils import validate_fine_gray_inputs
 from surpyval.utils.covariates import coefficient_floor
+from surpyval.utils.deprecation import RenamedToMethod
 from surpyval.utils.dataframe import (
     call_fit,
     cause_column,
@@ -602,7 +603,10 @@ class FineGrayModel(
     coefficients: npt.NDArray
     se: npt.NDArray
     p_values: npt.NDArray
-    cov: npt.NDArray
+    #: The coefficients' covariance, ``covariance()`` (#605).
+    _covariance: npt.NDArray
+    #: ``covariance()``'s name before v0.23, for one release.
+    cov = RenamedToMethod("covariance", "_covariance")
     #: The baseline subdistribution cumulative hazard: its step times and
     #: values.
     _times: npt.NDArray
@@ -632,7 +636,7 @@ class FineGrayModel(
         )
         self.se = fit["se"]
         self.p_values = fit["p_values"]
-        self.cov = fit["cov"]
+        self._covariance = fit["cov"]
         self._times = fit["baseline_times"]
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
@@ -645,6 +649,18 @@ class FineGrayModel(
         "a constant column, which the baseline subdistribution hazard "
         "absorbs, or a linear combination of the others"
     )
+
+    def covariance(self) -> npt.NDArray:
+        """The coefficients' covariance: the inverse of the weighted
+        partial likelihood's information at the fit (a ``nan`` row and
+        column for an aliased coefficient). ``cov``, its name before
+        v0.23, still gives it, with a ``DeprecationWarning``, until
+        v0.24."""
+        return self._covariance
+
+    def standard_errors(self) -> npt.NDArray:
+        """The coefficients' standard errors, from :meth:`covariance`."""
+        return self.se
 
     def _ic_k(self) -> int:
         # The estimated coefficients (an aliased one, nan, is not).
@@ -678,7 +694,8 @@ class FineGrayModel(
             "beta": np.asarray(self.beta, dtype=float).tolist(),
             "se": np.asarray(self.se, dtype=float).tolist(),
             "p_values": np.asarray(self.p_values, dtype=float).tolist(),
-            "cov": np.asarray(self.cov, dtype=float).tolist(),
+            # The key every model's dict stores it under (#605).
+            "covariance": np.asarray(self._covariance, dtype=float).tolist(),
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
             # The key every model's dict stores it under (#605).
@@ -713,7 +730,11 @@ class FineGrayModel(
                 "center": center,
                 "se": np.array(model_dict["se"], dtype=float),
                 "p_values": np.array(model_dict["p_values"], dtype=float),
-                "cov": np.array(model_dict["cov"], dtype=float),
+                # "cov" is the key of a dict written before v0.23.
+                "cov": np.array(
+                    model_dict.get("covariance", model_dict.get("cov")),
+                    dtype=float,
+                ),
                 "baseline_times": np.array(
                     model_dict["baseline_times"], dtype=float
                 ),

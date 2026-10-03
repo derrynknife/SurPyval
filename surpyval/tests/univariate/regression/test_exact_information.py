@@ -431,4 +431,4 @@ def test_fine_gray_standard_errors_come_from_the_check(monkeypatch):
     neg_ll, beta = seen[0]
     np.testing.assert_array_equal(beta, model.beta)
     direct = np.linalg.inv(original(neg_ll)(beta))
-    np.testing.assert_allclose(model.cov, direct, rtol=1e-10, atol=0)
+    np.testing.assert_allclose(model.covariance(), direct, rtol=1e-10, atol=0)
