@@ -407,6 +407,99 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
             lower, upper = upper, lower
         return lower, upper, failed, unsettled
 
+    def quantiles(
+        self,
+        p: npt.NDArray,
+        rows: npt.NDArray,
+        t_hat: npt.NDArray,
+        crit: float,
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on the quantile ``qf(p[i])`` at
+        each covariate row ``rows[i]`` (centred as the searches' are),
+        ``t_hat`` the quantiles at the estimate: the extreme of the
+        quantile over the region, searched on its log above the start of
+        the support (the quantile itself for a baseline on the whole
+        line), as the univariate ``quantile_cb(method="lr")`` searches
+        it. Returned as ``band`` returns its bounds."""
+        model = self.fitted.model
+        lower_edge = float(self.dist.support[0])
+        logged = np.isfinite(lower_edge)
+        target = -np.log1p(-np.asarray(p, dtype=float))
+
+        def psi_of(i: int, theta: npt.NDArray) -> float:
+            t = _invert_H(
+                lambda t: model.Hf(t, rows[i : i + 1], *theta),
+                lambda t: model.hf(t, rows[i : i + 1], *theta),
+                float(target[i]),
+                float(t_hat[i]),
+                lower_edge,
+            )
+            if logged:
+                return float(np.log(t - lower_edge))
+            return t
+
+        if logged:
+            ends = (_LN_TINY, _LN_MAX)
+
+            def value(v: Any) -> Any:
+                return lower_edge + np.exp(v)
+
+        else:
+            ends = (-_FLOAT_MAX, _FLOAT_MAX)
+
+            def value(v: Any) -> Any:
+                return v
+
+        n = len(p)
+        free = self._free()
+        if not free:
+            at = np.array([value(psi_of(i, self.params)) for i in range(n)])
+            return at, at, [], []
+        return self._lr_band(
+            np.arange(n),
+            np.argsort(p, kind="stable"),
+            psi_of,
+            lambda i: (float(p[i]), rows[i].tobytes()),
+            "qf",
+            free,
+            crit,
+            ends,
+            value,
+            want,
+        )
+
+
+def _invert_H(
+    H: Callable[[npt.NDArray], Any],
+    h: Callable[[npt.NDArray], Any],
+    target: float,
+    start: float,
+    lower_edge: float,
+) -> float:
+    """The time at which the cumulative hazard ``H`` reaches ``target``:
+    Newton's steps on ``log H`` in ``log(t - lower_edge)`` (or in ``t``
+    for a support with no start) from ``start``, the quantile at the
+    estimate, near which the searches ask; ``nan`` where they do not
+    settle in 100 steps."""
+    logged = np.isfinite(lower_edge)
+    s = np.log(start - lower_edge) if logged else start
+    for _ in range(100):
+        t = lower_edge + np.exp(s) if logged else s
+        H_t = float(np.asarray(H(np.array([t])), dtype=float).reshape(-1)[0])
+        h_t = float(np.asarray(h(np.array([t])), dtype=float).reshape(-1)[0])
+        if not (np.isfinite(H_t) and H_t > 0 and np.isfinite(h_t) and h_t > 0):
+            return np.nan
+        # d log H / ds = h dt/ds / H
+        slope = h_t * (t - lower_edge if logged else 1.0) / H_t
+        step = (np.log(H_t) - np.log(target)) / slope
+        # (at most a factor of e a step, on the log scale)
+        step = float(np.clip(step, -1.0, 1.0)) if logged else step
+        s = s - step
+        if abs(step) <= 1e-13 * max(1.0, abs(s)):
+            return float(lower_edge + np.exp(s) if logged else s)
+    return np.nan
+
 
 def lr_search(model: Any, reported: bool) -> RegressionLikelihoodRatio:
     """The likelihood-ratio searches of ``model``: in the
