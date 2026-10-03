@@ -107,3 +107,66 @@ def test_a_lognormal_run_into_the_corner_warns():
         )
     assert flagged
     assert "density is zero at its origin" in str(rec[0].message)
+
+
+# #599: the conformance fixture shifted by 5, with an observation at -1
+# below the rest (9 to 22): a long left tail, which no offset LogNormal or
+# Gamma has.
+X_599 = np.array(
+    [-1.0, 8.84, 9.956, 10.953, 11.903, 12.846, 13.816, 14.85, 15.997]
+    + [17.347, 19.096, 21.954]
+)
+C_599 = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0])
+N_599 = np.array([1, 1, 2, 1, 1, 1, 1, 3, 1, 1, 1, 1])
+
+
+@pytest.mark.parametrize("dist", [sp.LogNormal, sp.Gamma])
+def test_599_an_offset_running_to_the_normal_limit_warns_once(
+    dist, monkeypatch
+):
+    # The offset runs down towards -inf, the shape making up for it, and
+    # the likelihood rises towards the Normal's (42.2653) only as
+    # 1 / |gamma|: it never looked flat to the verification, every rung
+    # of the ladder ran, and the fit ended "unverified" after 4-17 s.
+    # Now the first rung that stops short of a maximum (or BFGS's watch
+    # of its iterates) sees the Normal fit the data at least as well,
+    # and the fit ends there.
+    from surpyval.univariate.parametric.fitters import mle
+
+    rungs = []
+    run_rung = mle._run_rung
+
+    def counted(fun, method, *args, **kwargs):
+        rungs.append(method)
+        return run_rung(fun, method, *args, **kwargs)
+
+    monkeypatch.setattr(mle, "_run_rung", counted)
+    with warnings.catch_warnings(record=True) as rec:
+        warnings.simplefilter("always")
+        model = dist.fit(X_599, C_599, N_599, offset=True)
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    message = str(rec[0].message)
+    assert message.startswith("No finite maximum: the " + dist.name)
+    assert "approaches a Normal distribution" in message
+    assert "surpyval.Normal" in message
+    assert rec[0].filename == __file__
+    assert model.maximum == "no finite maximum"
+    assert set(rungs) == {"BFGS"}
+    # On the way to the limit: below where it started, and no better
+    # than the Normal
+    assert model.gamma < -10
+    normal = sp.Normal.fit(X_599, C_599, N_599)
+    assert model.neg_ll() >= normal.neg_ll()
+
+
+def test_599_the_profile_likelihood_falls_to_the_normal_limit():
+    # The LogNormal profile over the offset rises all the way to the
+    # Normal's likelihood as gamma -> -inf: no finite maximum.
+    profile = [
+        sp.LogNormal.fit(X_599 - g, C_599, N_599).neg_ll()
+        for g in (-1.5, -10, -100, -1e3, -1e4)
+    ]
+    assert np.all(np.diff(profile) < 0)
+    normal = sp.Normal.fit(X_599, C_599, N_599).neg_ll()
+    assert profile[-1] - normal == pytest.approx(0, abs=1e-2)
+    assert np.all(np.asarray(profile) > normal)

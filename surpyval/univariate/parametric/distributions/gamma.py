@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from autograd.scipy.special import gamma as agamma
@@ -62,6 +64,15 @@ class Gamma_(OptimisedFitMixin, ParametricFitter):
         # works, because it transforms with the *fitted* parameters, so
         # the axis is the right one by the time it is drawn.
         self.supports_mpp = False
+
+    def _offset_limit_family(self) -> Any:
+        """The ``Normal``: as the offset runs to -inf with the shape -> inf,
+        the shifted Gamma tends to a Normal distribution (the central
+        limit theorem) (#599; see
+        ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Normal
+
+        return Normal
 
     @staticmethod
     def _moment_estimate(x: npt.NDArray) -> tuple[float, float]:

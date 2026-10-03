@@ -265,6 +265,9 @@ class _Judge(NamedTuple):
     space: tuple
     #: The runaways found while watching a search, by the point's bytes.
     found: dict
+    #: The negative log-likelihood of the family's limit as an offset
+    #: runs to -inf, fitted to the data, or ``None`` (``_offset_limit``).
+    limit: Callable[[], "float | None"]
 
     def watch(self) -> Callable[[npt.NDArray], None]:
         """A BFGS callback that checks its iterates for a runaway
@@ -301,7 +304,11 @@ class _Judge(NamedTuple):
           the rise has become too small to follow; one that stopped
           anywhere else (its line search failed against a wall where the
           likelihood is not defined, its iterations ran out on a slope)
-          says nothing about where the likelihood goes.
+          says nothing about where the likelihood goes. Or, for an
+          offset running to -inf, the family's limit there fits the data
+          at least as well as the point reached (``_toward_limit``): the
+          rise then goes on to that limit, though it may never look flat
+          on the way (#599).
         - The likelihood rises towards an infinite end of the parameter's
           range. Towards a finite bound the rise ends at the bound, a
           maximum on the edge of the space (an Exponential's offset at
@@ -313,7 +320,8 @@ class _Judge(NamedTuple):
         size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
 
         def keep(j: int, slope: float) -> bool:
-            if not abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL:
+            flat = abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL
+            if not flat and not self._toward_limit(x):
                 return False
             ahead = np.array(x, dtype=float)
             # (each parameter's map is monotone and its own)
@@ -329,6 +337,36 @@ class _Judge(NamedTuple):
             return False
 
         return keep
+
+    def _toward_limit(self, x: npt.NDArray) -> bool:
+        """Whether ``x`` is on the way to the family's limit as its offset
+        runs to -inf (``_offset_limit``): the search has moved the offset
+        down from where it started, and the limit fits the data at least
+        as well as ``x`` does. ``keep`` checks that the parameter running
+        off rises towards an infinite end: the offset itself, or the
+        shape that makes up for it.
+
+        An offset LogNormal or Gamma fitted to data with a long left tail
+        (an observation at -1 below the rest at 9 to 22) runs its offset
+        down towards their limit, the Normal (the Gamma's shape up with
+        it, the LogNormal's sigma down to 0); but the likelihood
+        approaches the Normal's only as ``1 / |gamma|``, so a search
+        stopped at gamma = -2765 was still 7 times the verification's
+        tolerance from flat, every rung of the ladder ran, and the fits
+        ended "unverified" after 4-17 s (#599)."""
+        if not self.args[0]:
+            return False
+        natural = self.space[0]
+        with np.errstate(all="ignore"):
+            moved_down = float(natural(x)[0]) < float(natural(self.init)[0])
+        if not moved_down:
+            return False
+        limit = self.limit()
+        if limit is None:
+            return False
+        with np.errstate(all="ignore"):
+            here = float(self.fun(x, *self.args))
+        return bool(limit <= here)
 
     def on_bounds(self, x: npt.NDArray) -> _OnBounds:
         """The parameters at ``x`` on a bound of a range bounded at both
@@ -484,6 +522,38 @@ def _space(model: "Parametric") -> tuple:
     return natural, model.bounds, free, edge
 
 
+def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
+    """The negative log-likelihood, on the model's data, of the family its
+    distribution tends to as an offset runs to -inf
+    (``_offset_limit_family``: the Normal for a LogNormal or a Gamma),
+    fitted by maximum likelihood when first asked for; ``None`` for a fit
+    without an offset (or with a limited failure population or zero
+    inflation, which the limit has not), for a family with no such limit,
+    and where the limit's own fit is not a verified maximum."""
+    kept: list = []
+
+    def neg_ll() -> "float | None":
+        if not kept:
+            kept.append(None)
+            family = getattr(model.dist, "_offset_limit_family", None)
+            family = family() if family is not None else None
+            if not model.offset or model.lfp or model.zi or family is None:
+                return None
+            from surpyval.utils.no_maximum import quiet_maximum_warnings
+
+            with warnings.catch_warnings(), quiet_maximum_warnings():
+                warnings.simplefilter("ignore")
+                try:
+                    limit = family.fit_from_surpyval_data(model.surv_data)
+                except (ValueError, ArithmeticError):
+                    return None
+            if limit.maximum == "verified":
+                kept[0] = float(limit._neg_ll)
+        return kept[0]
+
+    return neg_ll
+
+
 def _search(
     model: "Parametric",
     fun: Callable[..., Any],
@@ -551,7 +621,16 @@ def _search(
     runaway: tuple[int, ...] = ()
     checked = False
     judge = _Judge(
-        fun, jac, hess_kept, args, init, floor, obj_scale, _space(model), {}
+        fun,
+        jac,
+        hess_kept,
+        args,
+        init,
+        floor,
+        obj_scale,
+        _space(model),
+        {},
+        _offset_limit(model),
     )
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]

@@ -874,7 +874,17 @@ worth knowing what they are, because they explain the warnings you may see.
    100, 200, 400, ... iterations -- for a parameter along whose profile (the
    likelihood maximised over the others) Newton's method cannot converge,
    where that profile is flat to the verification's tolerance and the
-   parameter is heading for an infinite end of its range. If one is
+   parameter is heading for an infinite end of its range. An offset fit
+   whose offset runs down towards :math:`-\infty` (its shape making up for
+   it) is heading for its family's limit there -- a Normal for the
+   LogNormal and the Gamma, the smallest extreme value distribution
+   (``Gumbel``) for the Weibull, the ``Logistic`` for the LogLogistic --
+   and the likelihood may approach the limit's only as
+   :math:`1 / |\gamma|`, never flat on the way; there the limit fitting the
+   data at least as well as the point reached takes the place of
+   flatness (an offset LogNormal and Gamma on data with a long left tail
+   ran every rung for 4-17 s, and now stop after the first in 0.3 s). If
+   one is
    running off, the search stops there, the fit warns "No finite maximum",
    naming it (and the limit, where the family knows it), and ``maximum`` is
    ``'no finite maximum'``; that ExpoWeibull now takes 6 s. A verified

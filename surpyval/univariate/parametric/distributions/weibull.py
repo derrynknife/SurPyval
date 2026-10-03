@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 import autograd.numpy as np
 import numpy.typing as npt
 from numpy import euler_gamma
@@ -38,6 +40,16 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
             param_map={"alpha": 0, "beta": 1},
             plot_x_scale="log",
         )
+
+    def _offset_limit_family(self) -> Any:
+        """The ``Gumbel``: as the offset runs to -inf with beta -> inf,
+        ``gamma + alpha W^(1/beta)`` tends to
+        ``gamma + alpha (1 + log(W) / beta)``, a smallest extreme value
+        distribution (#599; see
+        ``OptimisedFitMixin._offset_limit_family``)."""
+        from surpyval.univariate.parametric import Gumbel
+
+        return Gumbel
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False

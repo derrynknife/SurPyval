@@ -442,7 +442,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
             beta = 1.0
         return alpha, beta
 
-    def _runaway_advice(self, runaway: list[str], values: dict) -> str:
+    def _runaway_advice(
+        self, runaway: list[str], values: dict, offset: bool = False
+    ) -> str:
         """The ExpoWeibull's two limits (#584). As ``mu`` grows, ``F =
         g**mu`` is the largest of ``mu`` Weibull lifetimes, which tends to
         a largest-extreme-value law of ``x**beta``, and with ``beta``
@@ -468,7 +470,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
                 "bounded above, which no ExpoWeibull is; compare a family "
                 "with an upper limit"
             )
-        return super()._runaway_advice(runaway, values)
+        return super()._runaway_advice(runaway, values, offset)
 
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
