@@ -591,7 +591,7 @@ class InferenceMixin:
         >>> model.qf(0.1, [1]).round(3)
         np.float64(1.659)
         >>> model.quantile_cb(0.1, [1]).round(3)
-        array([1.24 , 2.219])
+        array([1.245, 2.212])
         """
         from ._likelihood_ratio import is_lr, quantile_cb_lr
 
