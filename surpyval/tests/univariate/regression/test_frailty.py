@@ -583,9 +583,7 @@ def test_617_frailty_param_cb_lr_options_and_the_edge_of_theta():
 
 def test_617_frailty_param_cb_lr_lognormal_and_aliased():
     x, c, Z, groups = _sim(seed=13, G=30, per=5)
-    m = Frailty(Weibull, family="lognormal").fit(
-        x=x, Z=Z, c=c, groups=groups
-    )
+    m = Frailty(Weibull, family="lognormal").fit(x=x, Z=Z, c=c, groups=groups)
     lo, hi = m.param_cb("theta", method="lr")
     assert lo < m.theta < hi
     # A constant column is aliased: no interval, as Wald gives none.
