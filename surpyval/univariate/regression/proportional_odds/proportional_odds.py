@@ -83,6 +83,10 @@ from surpyval.serialisation import (
     require_model_tag,
     stamp_schema,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import wald_bound_on_support
 from surpyval.utils.no_maximum import (
@@ -480,7 +484,10 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    InformationCriteriaMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted semi-parametric proportional odds model, returned by
@@ -539,9 +546,6 @@ class ProportionalOddsModel(
     #: The covariate values the baseline is at: zeros by default, the
     #: ``n``-weighted covariate means for a fit with ``center=True``.
     center: "npt.NDArray | None" = None
-    #: The log-likelihood at the maximum (Murphy et al.'s, with the jumps
-    #: of the baseline odds in place of its density).
-    log_likelihood: float = np.nan
     #: Newton iterations of the profile likelihood.
     n_iter: int = 0
     #: What the fit reached, one of ``MAXIMUM_STATES``
@@ -744,6 +748,20 @@ class ProportionalOddsModel(
                 - np.logaddexp(0.0, lGp + eta)
             )
 
+    # -- model comparison (#604) -------------------------------------------
+
+    def _ic_k(self) -> int:
+        # The estimated coefficients; the baseline is profiled out, as a
+        # Cox model's is (an aliased coefficient, nan, is not counted).
+        return int(np.isfinite(np.asarray(self.params, dtype=float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        if self._fit_data is not None:
+            return ic_sample_size(self._fit_data["c"], self._fit_data["n"])
+        # A model restored from a dict saved without "ic_n": the events,
+        # which the baseline counts at each time.
+        return float(np.sum(self.d))
+
     # -- inference -------------------------------------------------------
 
     def covariance(self) -> npt.NDArray:
@@ -905,7 +923,9 @@ class ProportionalOddsModel(
             "d": np.asarray(self.d, dtype=float).tolist(),
             "g0": np.asarray(self.g0, dtype=float).tolist(),
             "G0": np.asarray(self.G0, dtype=float).tolist(),
-            "log_likelihood": float(self.log_likelihood),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
+            "ic_n": float(self._ic_sample_size()),
             "n_iter": int(self.n_iter),
             **maximum_entry(self.maximum),
         }
@@ -943,7 +963,12 @@ class ProportionalOddsModel(
         out.center = np.array(
             model_dict.get("center", np.zeros(out.beta.size)), dtype=float
         )
-        out.log_likelihood = float(model_dict.get("log_likelihood", np.nan))
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        else:
+            # A dict written before v0.23 stored the log-likelihood.
+            out.log_likelihood = model_dict.get("log_likelihood", np.nan)
+        out._ic_n = cls._restored_ic_n(model_dict)
         out.n_iter = int(model_dict.get("n_iter", 0))
         out.maximum = restored_maximum(model_dict)
         out._data_summary = model_dict.get("data_summary")

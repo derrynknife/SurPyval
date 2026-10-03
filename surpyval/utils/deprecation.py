@@ -122,7 +122,8 @@ class RenamedAttribute:
     Declare it on the class under the old name,
     ``param_names = RenamedAttribute("parameter_names")``. It works on
     instances and on the class itself (``Weibull.param_names`` for a
-    singleton, ``PowerPath.param_names`` for a class attribute).
+    singleton, ``PowerPath.param_names`` for a class attribute). A name
+    deprecated in v0.23 passes ``removed_in=REMOVED_IN_NEXT``.
 
     Examples
     --------
@@ -140,9 +141,10 @@ class RenamedAttribute:
     use 'parameter_names'.
     """
 
-    def __init__(self, new: str) -> None:
+    def __init__(self, new: str, removed_in: str = REMOVED_IN) -> None:
         self.new = new
         self.old = ""
+        self.removed_in = removed_in
 
     def __set_name__(self, owner: type, name: str) -> None:
         self.old = name
@@ -150,7 +152,7 @@ class RenamedAttribute:
     def _warn(self, owner: type) -> None:
         warnings.warn(
             "{}.{} is deprecated and will be removed in v{}; use "
-            "'{}'.".format(owner.__name__, self.old, REMOVED_IN, self.new),
+            "'{}'.".format(owner.__name__, self.old, self.removed_in, self.new),
             DeprecationWarning,
             stacklevel=3,
         )

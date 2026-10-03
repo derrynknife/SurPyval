@@ -52,6 +52,7 @@ from surpyval.serialisation import (
 )
 from surpyval.utils import _caller_stacklevel
 from surpyval.utils.data_summary import data_summary
+from surpyval.utils.deprecation import REMOVED_IN_NEXT, RenamedAttribute
 from surpyval.utils.no_maximum import (
     maximum_entry,
     restored_maximum,
@@ -569,10 +570,15 @@ class CoxFrailtyFitter:
         covariance[p_all, p_all] = theta_var
         model.covariance = covariance
         model.parameter_names = names
-        model.loglik = float(loglik)
-        model.loglik_no_frailty = float(no_frailty)
+        model.log_likelihood = float(loglik)
+        model.log_likelihood_no_frailty = float(no_frailty)
+        # The estimated parameters, the k of the information criteria: the
+        # coefficients not aliased and theta, unless it was given.
+        model.k = int(kept.size) + (1 if theta is None else 0)
         model.n_obs = n_obs
         model.n_events = int((c == 0).sum())
+        model.n_events_weighted = float(w[c == 0].sum())
+        model.n_obs_weighted = float(w.sum())
         model.n_groups = n_groups
         model._data_summary = data_summary(c, w, x=x)
         model._fit_data = {"x": x, "c": c, "n": w, "Z": Zfull}
@@ -689,12 +695,24 @@ class CoxFrailtyModel(_SharedFrailty):
     information at the estimated ``theta``, with every frailty in it --
     ``coxph``'s ``sparse = FALSE``); ``theta``'s is from the curvature of
     its profile likelihood, and its interval (:meth:`param_cb`) is formed
-    on the log scale. ``loglik`` is the integrated log-likelihood (R's
-    "I-likelihood") and ``loglik_no_frailty`` the Cox partial likelihood,
-    its value at ``theta = 0``: twice their difference is the
-    likelihood-ratio statistic for a frailty, whose null distribution is
-    the 50:50 mixture of 0 and a chi-square on one degree of freedom
-    (``theta`` is on its boundary under the null).
+    on the log scale. ``log_likelihood`` is the integrated log-likelihood
+    (R's "I-likelihood") and ``log_likelihood_no_frailty`` the Cox
+    partial likelihood, its value at ``theta = 0``: twice their difference
+    is the likelihood-ratio statistic for a frailty, whose null
+    distribution is the 50:50 mixture of 0 and a chi-square on one degree
+    of freedom (``theta`` is on its boundary under the null). (Before
+    v0.23 they were ``loglik`` and ``loglik_no_frailty``, which still work
+    until v0.24, with a ``DeprecationWarning``.)
+
+    ``neg_ll()`` is the negative integrated log-likelihood, and
+    :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise it by the
+    estimated parameters ``k``: the coefficients and ``theta`` (unless it
+    was fixed), BIC's sample size being the events (#604). R's
+    ``AIC(coxph(... + frailty(id)))`` differs: it penalises the partial
+    likelihood at the penalised fit by the frailty term's effective
+    degrees of freedom. These compare Cox frailty models (with each other,
+    and with ``CoxPH``'s partial likelihood, the value at ``theta = 0``),
+    not with a parametric model.
 
     Examples
     --------
@@ -706,8 +724,10 @@ class CoxFrailtyModel(_SharedFrailty):
     >>> model = CoxFrailty.fit(
     ...     df["time"], Z=Z, c=1 - df["status"], groups=df["id"]
     ... )
-    >>> round(model.loglik, 4), round(model.loglik_no_frailty, 4)
-    (-181.6386, -184.3446)
+    >>> round(model.log_likelihood, 4)
+    -181.6386
+    >>> round(model.log_likelihood_no_frailty, 4)
+    -184.3446
 
     The marginal survival of a 45-year-old woman, and that of a new
     infection of patient 21, the most robust in the data:
@@ -718,6 +738,13 @@ class CoxFrailtyModel(_SharedFrailty):
     array([0.968, 0.936])
     """
 
+    # The pre-0.23 names of ``log_likelihood`` and
+    # ``log_likelihood_no_frailty`` (#605), for one release.
+    loglik = RenamedAttribute("log_likelihood", REMOVED_IN_NEXT)
+    loglik_no_frailty = RenamedAttribute(
+        "log_likelihood_no_frailty", REMOVED_IN_NEXT
+    )
+
     def __init__(self) -> None:
         super().__init__()
         self.kind = "CoxFrailty"
@@ -725,8 +752,8 @@ class CoxFrailtyModel(_SharedFrailty):
         self.x: np.ndarray = np.array([])
         self.h0: np.ndarray = np.array([])
         self.H0: np.ndarray = np.array([])
-        self.loglik: float = float("nan")
-        self.loglik_no_frailty: float = float("nan")
+        self.log_likelihood = float("nan")
+        self.log_likelihood_no_frailty: float = float("nan")
         self._data_summary: "str | None" = None
         self._fit_data: "dict | None" = None
 
@@ -808,7 +835,9 @@ class CoxFrailtyModel(_SharedFrailty):
         ) + format_table(rows, list(estimates.values()))
         out += (
             "\nI-likelihood        : {:.4f} (Cox partial likelihood "
-            "{:.4f})".format(self.loglik, self.loglik_no_frailty)
+            "{:.4f})".format(
+                self.log_likelihood, self.log_likelihood_no_frailty
+            )
         )
         return out
 
@@ -831,8 +860,14 @@ class CoxFrailtyModel(_SharedFrailty):
             "n_obs": int(self.n_obs),
             "n_events": int(self.n_events),
             "n_groups": int(self.n_groups),
-            "loglik": to_native(self.loglik),
-            "loglik_no_frailty": to_native(self.loglik_no_frailty),
+            # The keys every model's dict stores them under (#605).
+            "_neg_ll": to_native(self._neg_ll),
+            "log_likelihood_no_frailty": to_native(
+                self.log_likelihood_no_frailty
+            ),
+            "k": int(self.k),
+            "n_events_weighted": float(self.n_events_weighted),
+            "n_obs_weighted": float(self.n_obs_weighted),
             "data_summary": self._data_summary,
             **maximum_entry(self.maximum),
         }
@@ -861,10 +896,28 @@ class CoxFrailtyModel(_SharedFrailty):
         out.n_obs = int(model_dict.get("n_obs", 0))
         out.n_events = int(model_dict.get("n_events", 0))
         out.n_groups = int(model_dict.get("n_groups", 0))
-        out.loglik = float(model_dict.get("loglik", np.nan))
-        out.loglik_no_frailty = float(
-            model_dict.get("loglik_no_frailty", np.nan)
+        # "loglik" and "loglik_no_frailty" are the keys of a dict written
+        # before v0.23, which stored neither k nor the weighted counts.
+        if "_neg_ll" in model_dict:
+            out._neg_ll = float(model_dict["_neg_ll"])
+        else:
+            out.log_likelihood = float(model_dict.get("loglik", np.nan))
+        out.log_likelihood_no_frailty = float(
+            model_dict.get(
+                "log_likelihood_no_frailty",
+                model_dict.get("loglik_no_frailty", np.nan),
+            )
         )
+        out.k = int(
+            model_dict.get(
+                "k",
+                np.isfinite(out.beta).sum() + (1 if out.theta > 0 else 0),
+            )
+        )
+        out.n_events_weighted = float(
+            model_dict.get("n_events_weighted", out.n_events)
+        )
+        out.n_obs_weighted = float(model_dict.get("n_obs_weighted", out.n_obs))
         out._data_summary = model_dict.get("data_summary")
         if "covariance" in model_dict:
             out.covariance = np.array(model_dict["covariance"], dtype=float)

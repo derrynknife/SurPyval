@@ -20,6 +20,10 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -71,7 +75,7 @@ def _check_interp(interp: str) -> None:
 
 
 class CompetingRisksProportionalHazards(
-    LinearPredictorMixin, SerialisableMixin
+    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
 ):
     """
     Competing-risks proportional-hazards regression.
@@ -92,6 +96,16 @@ class CompetingRisksProportionalHazards(
     ``"step"``; another value raises a ``ValueError``. A fitted model can
     be saved with ``to_dict``/``to_json`` and restored with
     ``from_dict``/``from_json`` (or ``surpyval.from_dict``).
+
+    For ``model="Cox"``, ``log_likelihood`` is the sum of the causes'
+    maximised partial log-likelihoods, which is the partial likelihood of
+    the cause-specific hazards model (it factorises by cause), ``neg_ll()``
+    its negative, and :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise
+    it by the estimated coefficients of every cause, BIC's sample size
+    being the events of every cause (#604). The Fine-Gray causes' weighted
+    partial likelihoods are separate estimating functions, not the parts
+    of one likelihood, so for ``model="Fine-Gray"`` these raise a
+    ``ValueError``; each cause's ``FineGray`` model has its own.
     """
 
     # Populated by ``fit``; declared for the type checker. ``model`` is
@@ -172,6 +186,9 @@ class CompetingRisksProportionalHazards(
             "h0_e": np.asarray(self.h0_e, dtype=float).tolist(),
             **maximum_entry(self.maximum),
         }
+        if getattr(self, "_neg_ll", None) is not None:
+            out["_neg_ll"] = float(self._neg_ll)
+            out["ic_n"] = float(self._ic_sample_size())
         if np.any(self.center):
             # A baseline at the covariate means (center=True) is stored,
             # which makes the dict schema 2 (#459): a schema-1 reader would
@@ -227,8 +244,42 @@ class CompetingRisksProportionalHazards(
             ),
         )
         model.maximum = restored_maximum(model_dict)
+        if "_neg_ll" in model_dict:
+            model._neg_ll = float(model_dict["_neg_ll"])
+        model._ic_n = cls._restored_ic_n(model_dict)
         restore_covariate_meta(model, model_dict)
         return model
+
+    # -- model comparison (#604) ------------------------------------------
+
+    def neg_ll(self) -> float:
+        """The negative of the maximised partial log-likelihood, the sum
+        of the causes' (``model="Cox"``); see the class docstring. A
+        ``ValueError`` for ``model="Fine-Gray"``, which has none."""
+        if self.model == "Fine-Gray":
+            raise ValueError(
+                "A Fine-Gray competing-risks model has no likelihood: each "
+                "cause's weighted partial likelihood is a separate "
+                "estimating function. Compare each cause's FineGray model "
+                "instead (FineGray.fit(..., cause=...).aic())."
+            )
+        if getattr(self, "_neg_ll", None) is None:
+            raise ValueError(
+                "This model was saved before v0.23 without its partial "
+                "log-likelihood; refit it."
+            )
+        return float(self._neg_ll)
+
+    def _ic_k(self) -> int:
+        # Every cause's estimated coefficients (an aliased one, nan, is
+        # not).
+        return int(np.isfinite(np.asarray(self.betas, dtype=float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        raise ValueError(
+            "This model was saved before v0.23 without the number of "
+            "events, BIC's sample size; refit it."
+        )
 
     @property
     def aliased(self) -> npt.NDArray:
@@ -754,6 +805,7 @@ class CompetingRisksProportionalHazards(
         out.n_event_types = n_event_types
         out.event_idx_map = event_idx_map
         out.model = model
+        neg_ll = 0.0
 
         # One warning for the columns aliased in any cause's fit (#476).
         found: list = []
@@ -772,6 +824,7 @@ class CompetingRisksProportionalHazards(
 
                 results.append(cox_model.res)
                 states.append(cox_model.maximum)
+                neg_ll += cox_model.neg_ll()
                 # nan where aliased, as the Cox model reports it.
                 betas[i, :] = cox_model.beta
                 at = np.asarray(cox_model.center, dtype=float)
@@ -810,6 +863,11 @@ class CompetingRisksProportionalHazards(
             # One warning for every cause whose partial likelihood has no
             # finite maximum (#392).
             states = [_warn_if_monotone(fits)]
+        if model == "Cox":
+            # The cause-specific partial likelihoods factorise: their sum is
+            # the model's, over the events of every cause.
+            out._neg_ll = neg_ll
+            out._ic_n = ic_sample_size(c, n)
         warn_collected(found, "in the fit of each cause")
         out.maximum = combined_maximum(states)
 

@@ -55,6 +55,7 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
+from surpyval.univariate.information_criteria import InformationCriteriaMixin
 from surpyval.univariate.competing_risks.labels import (
     label_from_native,
     label_mask,
@@ -290,6 +291,9 @@ def _fit_cause(
         "baseline_times": uniq_t,
         "baseline_cumhaz": baseline_cumhaz,
         "neg_ll": float(res.fun),
+        # BIC's sample size: the events of interest, the terms of the
+        # partial likelihood (#604; Kuk and Varadhan's BIC_cr).
+        "ic_n": float(n_event.sum()),
         "res": res,
         "runaway": runaway,
         "maximum": maximum,
@@ -514,13 +518,24 @@ def paired_covariate_rows(Z: npt.ArrayLike, n_x: int, p: int) -> npt.NDArray:
     return np.broadcast_to(Z_arr, (n_x, p))
 
 
-class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
+class FineGrayModel(
+    InformationCriteriaMixin, LinearPredictorMixin, SerialisableMixin
+):
     """
     A fitted Fine-Gray subdistribution-hazard model for one cause of interest.
 
     The natural prediction is the cumulative incidence function :meth:`cif`;
     ``coefficients``/``se``/``p_values`` describe the (log) subdistribution
     hazard ratios.
+
+    ``log_likelihood`` is the maximised weighted partial log-likelihood
+    (``cmprsk::crr``'s ``loglik``), ``neg_ll()`` its negative, and
+    :meth:`aic`, :meth:`aic_c` and :meth:`bic` penalise it by the
+    estimated coefficients, BIC's sample size being the events of the
+    cause of interest (#604). They compare Fine-Gray models of the same
+    cause on the same data; the weighted partial likelihood is not the
+    likelihood of the data, so they do not compare it with another kind
+    of model.
     """
 
     #: The cause of interest the subdistribution hazard is of.
@@ -564,6 +579,7 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         self._times = fit["baseline_times"]
         self._cumhaz = fit["baseline_cumhaz"]
         self._neg_ll = fit["neg_ll"]
+        self._ic_n = fit.get("ic_n")
         self.res = fit["res"]
         self.maximum = fit.get("maximum", "unknown")
         self._objective = fit.get("objective")
@@ -572,6 +588,16 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
         "a constant column, which the baseline subdistribution hazard "
         "absorbs, or a linear combination of the others"
     )
+
+    def _ic_k(self) -> int:
+        # The estimated coefficients (an aliased one, nan, is not).
+        return int(np.isfinite(np.asarray(self.beta, dtype=float)).sum())
+
+    def _ic_sample_size_from_data(self) -> float:
+        raise ValueError(
+            "A Fine-Gray model saved before v0.23 does not store its number "
+            "of events of interest, BIC's sample size; refit it."
+        )
 
     # -- serialisation -----------------------------------------------------
 
@@ -598,9 +624,12 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
             "cov": np.asarray(self.cov, dtype=float).tolist(),
             "baseline_times": np.asarray(self._times, dtype=float).tolist(),
             "baseline_cumhaz": np.asarray(self._cumhaz, dtype=float).tolist(),
-            "neg_ll": float(self._neg_ll),
+            # The key every model's dict stores it under (#605).
+            "_neg_ll": float(self._neg_ll),
             **maximum_entry(self.maximum),
         }
+        if self._ic_n is not None:
+            out["ic_n"] = float(self._ic_n)
         if np.any(self.center):
             out["center"] = np.asarray(self.center, dtype=float).tolist()
         return stamp_schema(out)
@@ -634,7 +663,11 @@ class FineGrayModel(LinearPredictorMixin, SerialisableMixin):
                 "baseline_cumhaz": np.array(
                     model_dict["baseline_cumhaz"], dtype=float
                 ),
-                "neg_ll": model_dict["neg_ll"],
+                # "neg_ll" is the key of a dict written before v0.23.
+                "neg_ll": model_dict.get(
+                    "_neg_ll", model_dict.get("neg_ll", np.nan)
+                ),
+                "ic_n": cls._restored_ic_n(model_dict),
                 "res": None,
                 "maximum": restored_maximum(model_dict),
             }

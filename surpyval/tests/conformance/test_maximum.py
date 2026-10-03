@@ -678,7 +678,7 @@ def _search_cox_frailty(model, data):
             data["x"], data["Z"], data["c"], data["n"], tie_method=tie_method
         )
         off = sp.CoxFrailty.fit(**fit, theta=1e-6, tie_method=tie_method)
-        rise = (off.loglik - model.loglik) / 1e-6 / n_obs
+        rise = (off.log_likelihood - model.log_likelihood) / 1e-6 / n_obs
         assert rise < OPTIMUM_GTOL, (
             "theta is 0, but the profile likelihood rises as it moves off "
             f"it (by {rise:.3g} per observation per unit)"
@@ -689,7 +689,7 @@ def _search_cox_frailty(model, data):
         refit = sp.CoxFrailty.fit(
             **fit, theta=float(np.exp(log_theta)), tie_method=tie_method
         )
-        return -refit.loglik
+        return -refit.log_likelihood
 
     u = float(np.log(model.theta))
     h = 1e-3

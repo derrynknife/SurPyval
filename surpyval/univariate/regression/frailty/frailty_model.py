@@ -75,7 +75,9 @@ def _standard_error(variance: Any) -> np.ndarray:
     return np.sqrt(np.where(variance >= 0, variance, np.nan))
 
 
-class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
+class _SharedFrailty(
+    InformationCriteriaMixin, ConcordanceMixin, SerialisableMixin
+):
     """What the fitted shared-frailty models have in common: the frailty
     (its family, variance ``theta`` and each group's posterior), the
     coefficients, the marginal and conditional predictions, and the
@@ -113,6 +115,15 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
         # for a model restored from a dict saved without it.
         self.maximum: str = "unknown"
+
+    # -- information criteria (InformationCriteriaMixin) -------------------
+
+    def _ic_sample_size_from_data(self) -> float:
+        # The shared rule (ic_sample_size) on the fitted data, which the
+        # stored weighted counts summarise: a frailty fit takes only
+        # events (c=0) and right-censored rows (c=1).
+        n_censored = self.n_obs_weighted - self.n_events_weighted
+        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
 
     # -- covariate / frailty resolution ------------------------------------
 
@@ -482,7 +493,7 @@ class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
         raise NotImplementedError
 
 
-class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
+class FrailtyModel(_SharedFrailty):
     """A fitted shared-frailty proportional-hazards model.
 
     See :class:`FrailtyFitter` for how one is produced. Prediction methods
@@ -537,15 +548,6 @@ class FrailtyModel(InformationCriteriaMixin, _SharedFrailty):
     # ``param_names``, the pre-0.22 name of ``parameter_names``, reads (and
     # sets) it for one release, with a DeprecationWarning.
     param_names = RenamedAttribute("parameter_names")
-
-    # -- information criteria (InformationCriteriaMixin) -------------------
-
-    def _ic_sample_size_from_data(self) -> float:
-        # The shared rule (ic_sample_size) on the fitted data, which the
-        # stored weighted counts summarise: a frailty fit takes only
-        # events (c=0) and right-censored rows (c=1).
-        n_censored = self.n_obs_weighted - self.n_events_weighted
-        return ic_sample_size([0, 1], [self.n_events_weighted, n_censored])
 
     # -- the parametric baseline -----------------------------------------
 

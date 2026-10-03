@@ -56,8 +56,8 @@ def test_kidney_matches_r_coxph(kidney_fits, ties):
     m = kidney_fits[ties]
     # theta maximises a flat profile: R's optimize and ours agree to 1e-5
     assert m.theta == pytest.approx(ref["theta"], rel=2e-5)
-    assert m.loglik == pytest.approx(ref["loglik"], abs=1e-8)
-    assert m.loglik_no_frailty == pytest.approx(ref["loglik_cox"], abs=1e-8)
+    assert m.log_likelihood == pytest.approx(ref["loglik"], abs=1e-8)
+    assert m.log_likelihood_no_frailty == pytest.approx(ref["loglik_cox"], abs=1e-8)
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
     se = m.standard_errors()
     np.testing.assert_allclose(
@@ -88,7 +88,7 @@ def test_kidney_at_rs_theta_is_rs_fit(ties):
         rtol=0,
         atol=1e-7,
     )
-    assert m.loglik == pytest.approx(ref["loglik"], abs=1e-9)
+    assert m.log_likelihood == pytest.approx(ref["loglik"], abs=1e-9)
     assert np.isnan(m.standard_errors()["theta"])  # theta was given
 
 
@@ -102,7 +102,7 @@ def test_kidney_with_disease_has_no_frailty():
     assert m.theta == 0.0
     np.testing.assert_allclose(m.beta, cox.beta, rtol=1e-9)
     np.testing.assert_allclose(m.beta, ref["beta"], rtol=0, atol=2e-6)
-    assert m.loglik == pytest.approx(ref["loglik_cox"], abs=1e-8)
+    assert m.log_likelihood == pytest.approx(ref["loglik_cox"], abs=1e-8)
     assert set(m.frailties.values()) == {1.0}
     t = np.array([10.0, 100.0, 300.0])
     z = [50.0, 1.0, 0.0]
@@ -164,7 +164,7 @@ def test_breslow_i_likelihood_is_the_marginal_likelihood():
         loglik += np.log(quad(density, 0, np.inf, epsabs=0, epsrel=1e-12)[0])
     _, d = np.unique(x[event], return_counts=True)
     expected = loglik + event.sum() - np.sum(d * np.log(d))
-    assert m.loglik == pytest.approx(expected, abs=1e-8)
+    assert m.log_likelihood == pytest.approx(expected, abs=1e-8)
 
 
 def test_theta_zero_is_the_cox_model():

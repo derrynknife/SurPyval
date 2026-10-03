@@ -3171,7 +3171,7 @@ The model predicts as the parametric one does: the marginal curve by
 default, a patient's own with ``group=``. The baseline (``x``, ``h0``,
 ``H0``) is a step function, of a unit at ``Z = 0`` with frailty 1. Twice the
 gain of the I-likelihood over the Cox partial likelihood
-(``loglik_no_frailty``, its value at ``theta = 0``) tests for a frailty;
+(``log_likelihood_no_frailty``, its value at ``theta = 0``) tests for a frailty;
 ``theta`` is on its boundary under the null, so the p-value is half the
 chi-square one:
 
@@ -3179,7 +3179,7 @@ chi-square one:
 
     from scipy.stats import chi2
 
-    lr = 2 * (cox_frailty.loglik - cox_frailty.loglik_no_frailty)
+    lr = 2 * (cox_frailty.log_likelihood - cox_frailty.log_likelihood_no_frailty)
     print('LR statistic %.2f, p = %.3f' % (lr, chi2.sf(lr, 1) / 2))
     woman = pd.DataFrame({'age': [45.0], 'female': [1.0]})
     print(cox_frailty.sf([30, 100], woman).round(3),
