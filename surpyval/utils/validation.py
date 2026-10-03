@@ -218,11 +218,12 @@ def _check_x_not_empty(func: Callable) -> Callable:
 
 
 def check_no_censoring(c: npt.NDArray) -> bool:
-    return any(c != 0)
+    return bool(np.any(np.asarray(c) != 0))
 
 
 def no_left_or_int(c: npt.NDArray) -> bool:
-    return any((c == -1) | (c == 2))
+    c = np.asarray(c)
+    return bool(np.any((c == -1) | (c == 2)))
 
 
 def validate_1d(arr: npt.ArrayLike, name: str) -> npt.NDArray:
