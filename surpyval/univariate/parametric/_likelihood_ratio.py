@@ -1711,7 +1711,6 @@ class LikelihoodRatioMixin:
         # bound at alpha is an end of the two-sided one at 2 alpha.
         kind = "survival" if survival else on
         cache = self.__dict__.setdefault("_lr_bands", {})
-        region: list = []
         lower = np.full(t.shape, np.nan)
         upper = np.full(t.shape, np.nan)
         failed: list[float] = []
@@ -1724,8 +1723,7 @@ class LikelihoodRatioMixin:
                 need_lo = want_lower and key_lo not in cache
                 need_hi = want_upper and key_hi not in cache
                 if need_lo or need_hi:
-                    if not region:
-                        region.extend(self._lr_region(free, crit))
+                    box, seeds, trace = self._lr_region(free, crit)
                     lo, hi = self._cb_lr_psi_bounds(
                         lambda theta: psi_of(time, theta),
                         free,
@@ -1733,7 +1731,9 @@ class LikelihoodRatioMixin:
                         need_lo,
                         need_hi,
                         ends,
-                        *region,
+                        box,
+                        seeds,
+                        trace,
                         hints=hints,
                     )
                     if need_lo:
