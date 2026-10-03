@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import autograd.numpy as np
@@ -19,6 +20,47 @@ from surpyval.utils.autograd_gamma_compat import betainccln, betaincln
 from ..parametric import Parametric
 from ._discrete_tails import refine_quantile
 from ._single_probability import event_counts, probability_bounds
+
+_NO_SINGLE_N = (
+    "This Binomial model was fitted to rows with different numbers of "
+    "trials, so it has no single n (it is nan) and no distribution of the "
+    "count of events; model.with_params([n, p]) is the model of n trials "
+    "of your choice. Its p, param_cb('p') and to_dict() need no n."
+)
+
+
+def _needs_one_n(fn: Any, position: int) -> Any:
+    """Refuse, with :data:`_NO_SINGLE_N`, a call whose number of trials
+    ``n`` (the ``position``-th argument after ``self``) is ``nan``: a
+    model fitted to rows of different sizes (#608). The formulas gave
+    ``nan``, or a wrong number (the hazard 0), in silence."""
+
+    @functools.wraps(fn)
+    def wrapped(self: Any, *args: Any, **kwargs: Any) -> Any:
+        n = args[position] if len(args) > position else kwargs.get("n")
+        if n is not None and np.any(np.isnan(np.asarray(n, dtype=float))):
+            raise ValueError(_NO_SINGLE_N)
+        return fn(self, *args, **kwargs)
+
+    return wrapped
+
+
+def _trials_per_row(n_trials: Any, rows: int) -> npt.NDArray:
+    """The number of trials of each of ``rows`` rows: one number for every
+    row, or one per row (#608), each a positive whole number."""
+    trials = np.atleast_1d(np.asarray(n_trials, dtype=float))
+    if trials.ndim != 1 or trials.size not in (1, rows):
+        raise ValueError(
+            "'n_trials' must be one number of trials for every row, or one "
+            f"per row ({rows}); got {trials.size}"
+        )
+    if not (
+        np.all(np.isfinite(trials)) and np.all(trials == np.round(trials))
+    ):
+        raise ValueError("'n_trials' must be a positive integer")
+    if np.any(trials < 1):
+        raise ValueError("'n_trials' must be a positive integer")
+    return np.broadcast_to(trials, (rows,)).astype(int)
 
 
 class Binomial_(DiscreteParametricFitter):
@@ -424,7 +466,7 @@ class Binomial_(DiscreteParametricFitter):
     def fit(
         self,
         x: npt.ArrayLike,
-        n_trials: int,
+        n_trials: npt.ArrayLike,
         c: npt.NDArray | None = None,
         n: npt.NDArray | None = None,
     ) -> Parametric:
@@ -440,8 +482,9 @@ class Binomial_(DiscreteParametricFitter):
         x : array like
             The observed number of events for each experiment. Every value
             must be an integer in ``[0, n_trials]``.
-        n_trials : integer
-            The (known) number of trials in each experiment.
+        n_trials : integer or array like
+            The (known) number of trials in each experiment: one number for
+            every row, or one per row (batches of different sizes, #608).
         c : array like, optional
             Censoring flags. Censoring is not supported for the Binomial
             distribution and any non-zero flag raises a ``ValueError``.
@@ -453,11 +496,23 @@ class Binomial_(DiscreteParametricFitter):
         -------
 
         model : Parametric
-            A parametric model with the fitted ``[n_trials, p]`` parameters.
-            Its ``param_cb("p")`` bounds ``p`` from the events in all the
-            trials, ``sum(x)`` in ``n_trials * len(x)``, exactly
-            (Clopper-Pearson) by default, as ``Bernoulli`` does;
-            ``param_cb("n")`` is the known ``n_trials``.
+            A parametric model with the fitted ``[n, p]`` parameters. Its
+            ``param_cb("p")`` bounds ``p`` from the events in all the
+            trials, ``sum(x)`` in
+            ``sum(n_trials)``, exactly (Clopper-Pearson) by default, as
+            ``Bernoulli`` does: the events in all the trials are binomial
+            in their total whatever the rows' sizes, so the exact interval
+            holds for unequal trials too. ``param_cb("n")`` is the known
+            number of trials.
+
+        Notes
+        -----
+        With a different number of trials in different rows the model has
+        no single ``n``: ``params`` holds ``nan`` for it, and the functions
+        of the count of events (``sf``, ``df``, ``mean``, ``random``, ...)
+        raise a ``ValueError`` saying so; ``p``, its bounds and the
+        model's dictionary are as for equal trials. The distribution of
+        the events in ``m`` trials is ``model.with_params([m, p])``.
 
         Examples
         --------
@@ -467,17 +522,23 @@ class Binomial_(DiscreteParametricFitter):
         array([5. , 0.5])
         >>> model.param_cb("p").round(4)
         array([0.272, 0.728])
+
+        Batches of different sizes:
+
+        >>> lots = Binomial.fit([1, 0, 3], n_trials=[20, 50, 80])
+        >>> lots.params.round(4)
+        array([  nan, 0.0267])
+        >>> lots.param_cb("p").round(4)
+        array([0.0073, 0.0669])
         """
         x_arr = np.atleast_1d(np.asarray(x))
 
         if not np.equal(np.mod(x_arr, 1), 0).all():
             raise ValueError("'x' must contain only integer counts")
 
-        n_trials = int(n_trials)
-        if n_trials < 1:
-            raise ValueError("'n_trials' must be a positive integer")
+        trials = _trials_per_row(n_trials, x_arr.shape[0])
 
-        if ((x_arr < 0) | (x_arr > n_trials)).any():
+        if ((x_arr < 0) | (x_arr > trials)).any():
             raise ValueError("'x' must be between 0 and 'n_trials'")
 
         if c is not None and (np.atleast_1d(np.asarray(c)) != 0).any():
@@ -492,14 +553,20 @@ class Binomial_(DiscreteParametricFitter):
         model = Parametric(self, "MLE", None, False, False, False)
         # The proportion is the exact maximum
         model.maximum = "verified"
-        p = (x_arr * n).sum() / (n_trials * n.sum())
-        model.params = np.array([float(n_trials), p])
-        # The events in all the trials: the bounds on p come from these
-        # (#580).
-        model._event_counts = (
-            float((x_arr * n).sum()),
-            float(n_trials * n.sum()),
+        events = float((x_arr * n).sum())
+        total = float((trials * n).sum())
+        common = trials.min() == trials.max()
+        # One number of trials for every row is the model's n; rows of
+        # different sizes leave it none (see the Notes).
+        model.params = np.array(
+            [float(trials[0]) if common else np.nan, events / total]
         )
+        if not common:
+            # Saved with the model (to_dict), for its support.
+            model._n_trials = trials
+        # The events in all the trials: the bounds on p come from these
+        # (#580). Their total is binomial whatever the rows' sizes.
+        model._event_counts = (events, total)
         self._set_support(model, False)
         return model
 
@@ -534,8 +601,12 @@ class Binomial_(DiscreteParametricFitter):
         (see the note in ``__init__``), with ``n`` read from the model.
         ``from_dict`` restores the support through this, so a restored
         model keeps ``[-1, n + 1]``; the inherited version read the
-        declared ``[-1, inf]``."""
-        model.support = np.array([-1, float(model.params[0]) + 1])
+        declared ``[-1, inf]``. A model fitted to rows of different sizes
+        reaches the largest."""
+        n = float(model.params[0])
+        if np.isnan(n):
+            n = float(np.max(np.asarray(model._n_trials, dtype=float)))
+        model.support = np.array([-1, n + 1])
 
     # Narrower than ParametricFitter.from_params, which takes
     # (params, gamma, p, f0). Unlike `fit`, this one is not resolved
@@ -603,5 +674,19 @@ class Binomial_(DiscreteParametricFitter):
         self._set_support(model, False)
         return model
 
+
+# The functions of the count of events need one number of trials.
+for _name, _position in (
+    *((name, 1) for name in ("df", "ff", "sf", "hf", "Hf", "qf")),
+    *((name, 1) for name in ("log_sf", "log_ff", "log_df", "moment")),
+    ("mean", 0),
+    ("entropy", 0),
+    ("random", 1),
+):
+    setattr(
+        Binomial_,
+        _name,
+        _needs_one_n(getattr(Binomial_, _name), _position),
+    )
 
 Binomial = Binomial_("Binomial")

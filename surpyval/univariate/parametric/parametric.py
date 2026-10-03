@@ -298,6 +298,9 @@ class Parametric(
     # ``(events, trials)`` of a Bernoulli, FixedEventProbability or
     # Binomial fit: what its bounds on ``p`` are computed from (#580).
     _event_counts: "tuple[float, float] | None" = None
+    # The trials of each row of a Binomial fitted to rows of different
+    # sizes (#608), which leave it no single ``n``.
+    _n_trials: "npt.NDArray | None" = None
     tr: Any
     lfp_name: str
     _neg_ll: float
@@ -481,6 +484,8 @@ class Parametric(
         if model_dict.get("event_counts") is not None:
             events, trials = model_dict["event_counts"]
             out._event_counts = (float(events), float(trials))
+        if model_dict.get("n_trials") is not None:
+            out._n_trials = np.asarray(model_dict["n_trials"], dtype=int)
 
         # Restore the support interval, which fit-time construction sets via
         # the fitter (#261).
@@ -587,6 +592,9 @@ class Parametric(
         # FixedEventProbability or Binomial p come from (#580).
         if self._event_counts is not None:
             out["event_counts"] = [float(v) for v in self._event_counts]
+        # A Binomial's trials per row, where they differ (#608).
+        if self._n_trials is not None:
+            out["n_trials"] = [int(v) for v in self._n_trials]
 
         fixed_idx = sorted(self._user_fixed_idx())
         if fixed_idx:

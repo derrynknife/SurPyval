@@ -2079,7 +2079,11 @@ data it needs (no ``how``, ``offset``, ``lfp``, ``zi`` or ``fixed``):
   every ``x``.
 - ``Binomial``: the number of events in ``n`` independent trials; fitted for
   a known number of trials, ``n_trials``, which is reported back as the first
-  of its two parameters ``(n, p)``.
+  of its two parameters ``(n, p)``. ``n_trials`` may also be one number per
+  row, for batches of different sizes (lots of 20, 50 and 80 units): ``p`` is
+  then estimated from the events in all the trials, and the model has no
+  single ``n`` (it is ``nan``, and the functions of the count of events say
+  so; ``model.with_params([n, p])`` is the model of ``n`` trials).
 - ``ExactEventTime``: an event known to occur at one fixed time ``T``,
   estimated from "not yet" (right-censored) and "already" (left-censored)
   checks, as the midpoint between the latest "not yet" and the earliest
@@ -2126,7 +2130,9 @@ sample size, and with no failures it still gives the upper bound, which is
 then the whole answer. ``method="wald"`` (on the logit scale; undefined at
 :math:`\hat p = 0` or 1) and ``method="lr"`` (likelihood ratio) are options.
 These models have no other bounds: ``cb``, ``quantile_cb`` and ``mean_cb``
-raise, pointing to ``param_cb``.
+raise, pointing to ``param_cb``. A ``Binomial`` fitted to batches of different
+sizes is bounded from its total events in its total trials, which are
+binomial whatever the batches' sizes, so the exact interval holds there too.
 
 .. jupyter-execute::
 
@@ -2141,6 +2147,11 @@ raise, pointing to ``param_cb``.
     print("upper, none  :", clean.param_cb("p", alpha_ci=0.1,
                                            bound="upper").round(6))
 
+    # lot acceptance: 1, 0 and 3 defectives in lots of 20, 50 and 80
+    lots = surv.Binomial.fit([1, 0, 3], n_trials=[20, 50, 80])
+    print("lots p       :", lots.params[1].round(5),
+          lots.param_cb("p").round(5))
+
 .. jupyter-execute::
     :hide-code:
     :hide-output:
@@ -2149,6 +2160,9 @@ raise, pointing to ``param_cb``.
                        atol=5e-6)
     assert np.isclose(clean.param_cb("p", alpha_ci=0.1, bound="upper")[0],
                       1 - 0.1 ** (1 / 1200))
+    from scipy.stats import binomtest
+    _ci = binomtest(4, 150).proportion_ci()
+    assert np.allclose(lots.param_cb("p"), [_ci.low, _ci.high])
 
 See :doc:`univariate/bernoulli`, :doc:`univariate/fixed_event_probability`,
 :doc:`univariate/binomial`, :doc:`univariate/exact_event_time` and
