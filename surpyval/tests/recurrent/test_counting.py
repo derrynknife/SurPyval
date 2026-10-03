@@ -332,8 +332,8 @@ def test_renewal_information_criteria():
     n = model._n_obs
     ll = model.log_likelihood
     assert np.isclose(ll, -model.res.fun)
-    assert np.isclose(model.aic, 2 * k - 2 * ll)
-    assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
+    assert np.isclose(model.aic(), 2 * k - 2 * ll)
+    assert np.isclose(model.bic(), k * np.log(n) - 2 * ll)
 
 
 def test_renewal_standard_errors_interior_optimum():

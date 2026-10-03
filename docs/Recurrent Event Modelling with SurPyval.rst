@@ -532,20 +532,20 @@ Here four systems follow a Crow-AMSAA process with :math:`\alpha = 8` and
     x, i, c = data.x, data.i, data.c
     print("events per system:", [int((c[i == k] == 0).sum()) for k in (1, 2, 3, 4)])
 
-Now fit each model and compare the information criteria (``aic`` and ``bic``
-are attributes; lower is better):
+Now fit each model and compare the information criteria (``aic()`` and
+``bic()``, methods as on every fitted model; lower is better):
 
 .. jupyter-execute::
 
     fits = {m.name: m.fit(x, i, c) for m in (HPP, CrowAMSAA, Duane, CoxLewis)}
     for name, fit in fits.items():
-        print(f"{name:28s} AIC {fit.aic:7.2f}   params {fit.params.round(3)}")
+        print(f"{name:28s} AIC {fit.aic():7.2f}   params {fit.params.round(3)}")
 
 .. jupyter-execute::
     :hide-code:
     :hide-output:
 
-    _aic = {k: f.aic for k, f in fits.items()}
+    _aic = {k: f.aic() for k, f in fits.items()}
     assert max(_aic, key=_aic.get) == "Homogeneous Poisson Process"
     assert np.isclose(_aic["Crow-AMSAA"], _aic["Duane"])
     assert _aic["Crow-AMSAA"] < _aic["Cox-Lewis"] < _aic["Crow-AMSAA"] + 2
@@ -709,7 +709,7 @@ available for such a fit (the ``HPP`` is fitted by maximum likelihood only):
     print("MSE params:", mse.params.round(3))
     print("MLE params:", ca.params.round(3))
     try:
-        mse.aic
+        mse.aic()
     except ValueError as err:
         print(err)
 
@@ -811,15 +811,17 @@ Inference and model checking
 
 A fitted parametric recurrence model is more than a point estimate. Every
 model fit by maximum likelihood exposes the usual likelihood quantities for
-comparing models — the log-likelihood and the ``aic`` / ``bic`` information
-criteria (these are attributes, not methods). Let's go back to the Duane model
-of the single system from earlier:
+comparing models — the ``log_likelihood`` (a number) and the ``neg_ll()``,
+``aic()`` and ``bic()`` methods, spelt as on every other fitted model (before
+v0.23 ``aic`` and ``bic`` were attributes, which still work until v0.24 with a
+``DeprecationWarning``). Let's go back to the Duane model of the single system
+from earlier:
 
 .. jupyter-execute::
 
     model = Duane.fit([1, 5, 8, 10, 12, 13, 13, 14])
     print("log-likelihood:", round(model.log_likelihood, 3))
-    print("AIC:", model.aic, " BIC:", model.bic)
+    print("AIC:", model.aic(), " BIC:", model.bic())
 
 It also carries the uncertainty of the fitted parameters. ``standard_errors()``
 returns the standard error of each parameter (from the observed information),
@@ -1063,8 +1065,8 @@ the information criteria agree:
 
 .. jupyter-execute::
 
-    print("Kijima i  AIC:", round(model.aic, 2), " q =", round(model.q, 3))
-    print("Kijima ii AIC:", round(model_ii.aic, 2), " q =", round(model_ii.q, 3))
+    print("Kijima i  AIC:", round(model.aic(), 2), " q =", round(model.q, 3))
+    print("Kijima ii AIC:", round(model_ii.aic(), 2), " q =", round(model_ii.q, 3))
 
 The Kijima-II fit has pushed ``q`` to (essentially) zero — perfect repair, an
 ordinary Weibull renewal process — because Kijima-II's virtual age, which
@@ -1078,7 +1080,7 @@ given time.
     :hide-code:
     :hide-output:
 
-    assert model_ii.aic > model.aic and model_ii.q < 1e-3
+    assert model_ii.aic() > model.aic() and model_ii.q < 1e-3
 
 How well do the data determine q?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1310,8 +1312,8 @@ compares the two Kijima types:
     ara_aic = {}
     for m in (1, 2, np.inf):
         fit = ARA.fit(x, i, c, m=m)
-        ara_aic[m] = fit.aic
-        print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic:.2f}")
+        ara_aic[m] = fit.aic()
+        print(f"m = {m}:  rho = {fit.rho:.3f}   AIC = {fit.aic():.2f}")
 
 The true memory, ``m=2``, has the lowest AIC.
 

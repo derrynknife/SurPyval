@@ -1285,7 +1285,7 @@ every model in SurPyval that reports a BIC or an :math:`\mathrm{AIC_{c}}`:
     the number of observations (again weighted by ``n``) instead, so the
     criteria stay finite.
 
-    - *Univariate parametric, Royston-Parmar and regression models* (including
+    - *Univariate parametric, mixture, Royston-Parmar and regression models* (including
       frailty and time-varying-covariate fits) count units. A
       time-varying-covariate subject is one unit however many intervals its
       follow-up is split into, and it counts as a failure when its last
@@ -1315,6 +1315,10 @@ distribution's, plus ``gamma``, ``p`` and ``f0`` when they are fitted -- so a
 parameter held with ``fixed`` is not counted: a Weibull with its shape fixed is
 penalised as the one-parameter model it is, and scores exactly as the
 equivalent Rayleigh does.
+
+Every fitted model that reports these spells them the same way (#572):
+``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` are methods, and
+``log_likelihood``, where a model has it, is the number :math:`\ell(\hat{\theta})`.
 
 Two pitfalls. Compare only models fitted to the *same* data. And do not compare
 a discrete model with a continuous one this way: a probability mass and a

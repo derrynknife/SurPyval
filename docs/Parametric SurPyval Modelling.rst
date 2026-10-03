@@ -1360,7 +1360,7 @@ On occasion, it can appear as though there are one, or two different distributio
 
     F(x) = \sum_{j=1}^{m} w_{j} F_{j}(x), \qquad f(x) = \sum_{j=1}^{m} w_{j} f_{j}(x).
 
-SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one; the model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
+SurPyval uses the Expectation-Maximisation (EM) algorithm to fit a mixture. We do not know which component each unit came from, and EM alternates between two easy problems: given the current fit, compute each unit's probability of belonging to each component (the E step), then refit every component, and the weights, with the units weighted by those probabilities (the M step). Each round cannot decrease the likelihood, but near the maximum EM moves slowly, and on a censored mixture it can crawl along a flat direction of the likelihood for hundreds of rounds. So after a few rounds SurPyval finishes by maximising the likelihood directly (a gradient search on the weights, through a softmax, and the parameters together) and accepts the answer when it is a verified maximum: a zero gradient and the likelihood curving down in every direction. Only if it is not do the rounds go on, and the fit warns if they too end without one. Those further rounds, up to a thousand of them, can be accelerated with ``fit(..., em="squarem")`` (SQUAREM: it extrapolates along the path two rounds take, and keeps the result only where the likelihood is no lower than after those two rounds); a fit verified after the first few rounds is the same either way, so the default stays plain EM. The model records what it reached in ``maximum``, as a parametric model does (``'verified'``, ``'unverified'``, or ``'no finite maximum'`` where a component has collapsed onto a point mass). A mixture is fitted with ``MixtureModel.fit(x, dist=..., m=...)`` -- the distribution to use for every component, and the number of components -- which returns the fitted model like any other ``fit``. (You can also build the model first, ``MixtureModel(dist, m)``, and call its ``fit``, which fits it in place and returns it.)
 
 .. jupyter-execute::
 
@@ -1425,7 +1425,7 @@ The weights recover the 40/60/80 split of the simulated data (2/9, 3/9 and 4/9),
 
 Mixture models take counts, censoring flags and truncation as input (``x``, ``c``, ``n``, ``t``, ``tl``, ``tr``, ``xl``, ``xr``, as for any ``fit``). Truncation needs care: the truncation window is a property of the whole mixture, not of any one component, so a truncated mixture cannot be split up the way EM needs. For truncated data SurPyval instead maximises the truncation-corrected likelihood directly, starting from the same initial fit, and polishes and checks the answer as it does EM's.
 
-A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and ``loglike``, which despite its name is the *negative* log-likelihood of the fit. It has no ``hf``, ``qf``, confidence bounds or information criteria, but an AIC is easily formed by hand: a mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one). Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
+A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, ``ff``, ``df``, ``Hf``, ``cs``, ``mean``, ``random`` and ``plot``, the weights ``w`` and component parameters ``params`` (one row per component), and, for comparing fits, the same ``log_likelihood``, ``neg_ll()``, ``aic()``, ``aic_c()`` and ``bic()`` as a fitted distribution. A mixture of :math:`m` components with :math:`k` parameters each has :math:`mk + m - 1` free parameters (the weights sum to one), which is the :math:`k` of its criteria. (Before v0.23 a mixture had none of these, and its ``loglike`` was, despite its name, the *negative* log-likelihood; it still works until v0.24, with a ``DeprecationWarning``.) It has no ``hf``, ``qf`` or confidence bounds. Here a two-Weibull mixture is compared with a single Weibull on right-censored data, and then saved and restored with ``to_dict`` / ``surpyval.from_dict`` like any other model:
 
 .. jupyter-execute::
 
@@ -1437,9 +1437,8 @@ A fitted mixture is a smaller object than a fitted distribution. It has ``sf``, 
     wmm = surv.MixtureModel.fit(x, c=c, dist=surv.Weibull, m=2)
     print("weights:", wmm.w.round(3))
 
-    k_mix = wmm.m * wmm.dist.k + wmm.m - 1
     print("AIC single Weibull :", surv.Weibull.fit(x, c).aic())
-    print("AIC 2-Weibull mix  :", 2 * k_mix + 2 * wmm.loglike)
+    print("AIC 2-Weibull mix  :", wmm.aic())
 
     restored = surv.from_dict(wmm.to_dict())
     print(restored.sf([5, 10]), wmm.sf([5, 10]))
@@ -1450,12 +1449,13 @@ The mixture's AIC is lower by about 42, decisive evidence for two populations, a
     :hide-code:
     :hide-output:
 
-    _gap = surv.Weibull.fit(x, c).aic() - (2 * k_mix + 2 * wmm.loglike)
+    _gap = surv.Weibull.fit(x, c).aic() - wmm.aic()
+    assert wmm.aic() == 2 * (2 * 2 + 1) - 2 * wmm.log_likelihood
     assert round(_gap) == 42, _gap
     assert np.allclose(np.sort(wmm.w), [0.4, 0.6], atol=0.02), wmm.w
     assert np.allclose(restored.sf([5, 10]), wmm.sf([5, 10]))
 
-This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts by sorting the data, cutting its distinct values into :math:`m` consecutive blocks and fitting one component to each, with equal weights; with poorly separated components, check that the answer makes sense.
+This makes SurPyval a truly powerful package for your survival analysis. Two cautions. A mixture has many parameters, so it needs a good amount of data: SurPyval refuses a fit with fewer than :math:`m(k + 1)` units. And the EM finds *a* maximum, which depends on where it starts. SurPyval starts twice and keeps the better answer (a verified maximum before one that is not). The first start sorts the data, cuts its distinct values into :math:`m` consecutive blocks and fits one component to each, with equal weights. The second cuts only the failures, by count, into :math:`m` blocks, gives every survivor to the last component and weights each component by its share of the units: the usual reliability shape of a few early (infant-mortality) failures plus wear-out, which on field data with many survivors the first start can miss. With poorly separated components, still check that the answer makes sense.
 
 
 Limited Failure Population

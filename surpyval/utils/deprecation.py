@@ -10,7 +10,13 @@ such a rename takes:
 - :func:`renamed_arguments`, an argument of a function or method;
 - :class:`RenamedAttribute`, an attribute or property of a class;
 - :class:`CallableList`, a method that became a property returning a list
-  (``model.parameter_names()`` -> ``model.parameter_names``).
+  (``model.parameter_names()`` -> ``model.parameter_names``);
+- :class:`CallableFloat`, the same for a property returning a number
+  (``MixtureModel.log_likelihood``);
+- :class:`MethodFloat`, a property returning a number that became a
+  method (``CrowAMSAA.aic`` -> ``CrowAMSAA.aic()``).
+
+A name deprecated in v0.23 is accepted until :data:`REMOVED_IN_NEXT`.
 """
 
 import functools
@@ -21,7 +27,10 @@ from typing import Any, Callable, TypeVar
 
 __all__ = [
     "REMOVED_IN",
+    "REMOVED_IN_NEXT",
+    "CallableFloat",
     "CallableList",
+    "MethodFloat",
     "RenamedAttribute",
     "renamed_arguments",
     "renamed_class_attribute",
@@ -29,6 +38,9 @@ __all__ = [
 
 #: The release in which the old names stop being accepted.
 REMOVED_IN = "0.23"
+
+#: The release in which the names deprecated in v0.23 stop being accepted.
+REMOVED_IN_NEXT = "0.24"
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -229,3 +241,176 @@ class CallableList(list):
             stacklevel=2,
         )
         return self
+
+
+class CallableFloat(float):
+    """
+    A number that can still be called, for a method that became a
+    property.
+
+    ``MixtureModel.log_likelihood(params)`` was one component's
+    log-likelihood at ``params``, and ``log_likelihood`` is now the fitted
+    log-likelihood, a property as on every other model. It returns one of
+    these, which is a plain ``float`` in every other respect, and whose
+    call, the old spelling, warns and calls ``old`` (or, with no ``old``
+    or no arguments, returns the number).
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import CallableFloat
+    >>> ll = CallableFloat(-12.5, "Model.log_likelihood")
+    >>> ll + 1
+    -11.5
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     ll()
+    -12.5
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.log_likelihood is now a property: 'log_likelihood()' is
+    deprecated and will be removed in v0.24; use 'log_likelihood'.
+    """
+
+    _where: str
+    _old: "Callable[..., Any] | None"
+    _note: str
+
+    def __new__(
+        cls,
+        value: float,
+        where: str = "",
+        old: "Callable[..., Any] | None" = None,
+        note: str = "",
+    ) -> "CallableFloat":
+        out = super().__new__(cls, value)
+        out._where, out._old, out._note = where, old, note
+        return out
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        attr = self._where.rpartition(".")[2]
+        warnings.warn(
+            "{} is now a property{}: '{}()' is deprecated and will be "
+            "removed in v{}; use '{}'.".format(
+                self._where, self._note, attr, REMOVED_IN_NEXT, attr
+            ),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        if self._old is not None and (args or kwargs):
+            return self._old(*args, **kwargs)
+        return float(self)
+
+    def __reduce__(self) -> Any:
+        # Pickled (and copied) as the plain number it is
+        return (float, (float(self),))
+
+
+class MethodFloat(float):
+    """
+    The number of a property that became a method, for the property's
+    spelling.
+
+    ``CrowAMSAA.aic`` was a property, and ``aic()`` is now a method, as on
+    every other model. The property returns one of these: calling it, the
+    new spelling, returns the plain ``float``; using it as a number
+    without the call -- arithmetic, comparison, ``round``, ``float``,
+    formatting or printing -- gives that number with a
+    ``DeprecationWarning`` pointing at the caller's line. (What numpy
+    reads directly, without calling any of these, is the number as it
+    is, with no warning.)
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import MethodFloat
+    >>> aic = MethodFloat(10.25, "Model.aic")
+    >>> aic()
+    10.25
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     aic + 1
+    11.25
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.aic is now a method: 'aic' without the call is deprecated and
+    will be removed in v0.24; use 'aic()'.
+    """
+
+    _where: str
+
+    def __new__(cls, value: float, where: str = "") -> "MethodFloat":
+        out = super().__new__(cls, value)
+        out._where = where
+        return out
+
+    def __call__(self) -> float:
+        return float.__float__(self)
+
+    def _warn(self) -> None:
+        attr = self._where.rpartition(".")[2]
+        warnings.warn(
+            "{} is now a method: '{}' without the call is deprecated and "
+            "will be removed in v{}; use '{}()'.".format(
+                self._where, attr, REMOVED_IN_NEXT, attr
+            ),
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    def __reduce__(self) -> Any:
+        return (float, (float.__float__(self),))
+
+
+def _warning_operator(name: str) -> Callable[..., Any]:
+    base = getattr(float, name)
+
+    def operator(self: MethodFloat, *args: Any) -> Any:
+        out = base(self, *args)
+        # An operand that is not a number (``obj in (type, object)``, as
+        # ``inspect.signature`` asks) is not a use of the number.
+        if out is not NotImplemented:
+            self._warn()
+        return out
+
+    operator.__name__ = name
+    return operator
+
+
+# Every use of the number as a number (``__hash__`` is kept, unwarned, as
+# ``__eq__`` is replaced).
+for _name in (
+    "__abs__",
+    "__add__",
+    "__bool__",
+    "__divmod__",
+    "__eq__",
+    "__float__",
+    "__floordiv__",
+    "__format__",
+    "__ge__",
+    "__gt__",
+    "__int__",
+    "__le__",
+    "__lt__",
+    "__mod__",
+    "__mul__",
+    "__ne__",
+    "__neg__",
+    "__pos__",
+    "__pow__",
+    "__radd__",
+    "__rdivmod__",
+    "__repr__",
+    "__rfloordiv__",
+    "__rmod__",
+    "__rmul__",
+    "__round__",
+    "__rpow__",
+    "__rsub__",
+    "__rtruediv__",
+    "__str__",
+    "__sub__",
+    "__truediv__",
+    "__trunc__",
+):
+    setattr(MethodFloat, _name, _warning_operator(_name))
+MethodFloat.__hash__ = float.__hash__  # type: ignore[method-assign]

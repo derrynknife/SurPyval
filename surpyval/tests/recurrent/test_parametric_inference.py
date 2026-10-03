@@ -36,8 +36,8 @@ def _assert_information_criteria(model, dist):
     n = model._n_obs
     ll = model.log_likelihood
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
-    assert np.isclose(model.aic, 2 * k - 2 * ll)
-    assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
+    assert np.isclose(model.aic(), 2 * k - 2 * ll)
+    assert np.isclose(model.bic(), k * np.log(n) - 2 * ll)
     assert model.parameter_names == list(dist.parameter_names)
 
 
@@ -87,7 +87,7 @@ def test_from_params_has_no_likelihood():
     # A model built directly from parameters carries no data/likelihood.
     model = CrowAMSAA.from_params([1000.0, 1.2])
     with pytest.raises(ValueError, match="fitted from data"):
-        model.aic
+        model.aic()
 
 
 def _regression_data():
@@ -105,8 +105,8 @@ def test_nhpp_regression_information_criteria():
     n = model._n_obs
     ll = model.log_likelihood
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
-    assert np.isclose(model.aic, 2 * k - 2 * ll)
-    assert np.isclose(model.bic, k * np.log(n) - 2 * ll)
+    assert np.isclose(model.aic(), 2 * k - 2 * ll)
+    assert np.isclose(model.bic(), k * np.log(n) - 2 * ll)
     # Base-rate parameters first, then one coefficient per covariate column.
     assert model.parameter_names == ["alpha", "beta", "beta_0"]
     assert np.all(np.isfinite(model.standard_errors()))
@@ -119,7 +119,7 @@ def test_hpp_regression_information_criteria():
     # ``_mle`` is in natural (rate) space; ``_neg_ll`` must agree there.
     assert np.isclose(ll, -float(model._neg_ll(model._mle)))
     assert model.parameter_names == ["lambda", "beta_0"]
-    assert np.isfinite(model.aic) and np.isfinite(model.bic)
+    assert np.isfinite(model.aic()) and np.isfinite(model.bic())
     assert np.all(np.isfinite(model.standard_errors()))
 
 
@@ -303,7 +303,7 @@ def test_bic_counts_observed_events_only():
     for model in models:
         k = model._mle.size
         expected = k * np.log(n_events) - 2 * model.log_likelihood
-        assert model.bic == pytest.approx(expected)
+        assert model.bic() == pytest.approx(expected)
 
 
 def test_bic_counts_interval_events():
@@ -311,5 +311,22 @@ def test_bic_counts_interval_events():
     # so BIC's sample size is 5 (it used to count exact events only, and
     # was NaN here rather than log(0) = -inf).
     model = HPP.fit([[0, 10], [10, 20]], c=[2, 2], n=[2, 3])
-    assert model.bic == pytest.approx(np.log(5) - 2 * model.log_likelihood)
-    assert np.isfinite(model.aic)
+    assert model.bic() == pytest.approx(np.log(5) - 2 * model.log_likelihood)
+    assert np.isfinite(model.aic())
+
+
+def test_572_aic_and_bic_are_methods_and_the_old_spelling_warns():
+    # They were properties here and methods everywhere else
+    import warnings
+
+    x = np.cumsum(np.random.default_rng(0).exponential(10, 20))
+    model = CrowAMSAA.fit(x)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        aic, bic = model.aic(), model.bic()
+        assert type(aic) is float and type(bic) is float
+        assert model.neg_ll() == -model.log_likelihood
+    with pytest.warns(DeprecationWarning, match=r"use 'aic\(\)'"):
+        assert round(model.aic, 6) == round(aic, 6)
+    with pytest.warns(DeprecationWarning, match=r"use 'bic\(\)'"):
+        assert model.bic < bic + 1

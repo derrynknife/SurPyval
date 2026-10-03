@@ -161,6 +161,12 @@ PROPERTIES: dict[str, str] = {
         "exactly when that is not a verified maximum, and a verified "
         "maximum has a zero gradient and a positive-definite Hessian"
     ),
+    # test_comparison.py, for every case.
+    "comparison": (
+        "neg_ll(), aic(), aic_c() and bic() are methods and log_likelihood "
+        "a number, -neg_ll(), wherever a model has them; aic() is "
+        "2 k + 2 neg_ll() for a whole k (#572)"
+    ),
     # test_attributes.py, for the model classes in DECLARED_ATTRIBUTES.
     "attributes": (
         "every way of building the model (fit, each alternate fit path, "
