@@ -7,9 +7,12 @@ The regression fits apply it to their covariate coefficients
 (``judge_search`` in ``univariate/regression/_fit_skeleton.py``), and the
 univariate maximum-likelihood fit to every free parameter of a search
 that stopped short of a verified maximum (``fitters/mle.py``, #584). The
-reasoning below is written for a coefficient; it holds for any
-parameter, whose part in the predictor exp keeps finite in the same way
-(a scale's log, a shape's).
+reasoning below is written for a coefficient. Newton's test itself holds
+for any parameter; the gate (``_cleared``) leans on ``exp`` keeping a
+linear predictor finite, which another parameter need not obey (an
+ExpoWeibull's ``mu``, searched linearly, ran to 8e19), and there it can
+only let a runaway pass unseen, never call a maximum a runaway. The
+univariate fit adds its own conditions (``_Judge.keep`` in ``mle.py``).
 """
 
 import warnings
@@ -156,6 +159,7 @@ def runaway_coefficients(
         axis[j] = 1.0
         lines = [(at, axis)]
         runaway = None
+        slope = 0.0  # along the line judged on
         with np.errstate(all="ignore"):
             # The profile's trial points can sit where the hazard is 0
             # (log 0): a non-finite value ends its polish, quietly.
@@ -165,11 +169,12 @@ def runaway_coefficients(
                 d = _line_derivatives(neg_ll, point, v)
                 if d is None:
                     continue
+                slope = d[0]
                 if d[0] != 0.0:
                     runaway = _no_convergence(neg_ll, point, v, d, j, H)
                 if runaway is not None or d[0] == 0.0:
                     break
-        if runaway and keep is not None and not keep(j, d[0]):
+        if runaway and keep is not None and not keep(j, slope):
             continue
         if runaway:
             if start is None:
