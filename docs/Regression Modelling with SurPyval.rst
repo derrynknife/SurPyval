@@ -2788,17 +2788,19 @@ Bounds, mean life and accelerated life along a path
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``cb_tvc(x, Z, xl=None, given=None, on='sf', alpha_ci=0.05,
-bound='two-sided')`` puts confidence bounds on ``sf``, ``ff`` or ``Hf``
-along a step schedule or a ``CovariatePath``. They are the bounds of ``cb``
-carried along the path: a Wald bound on the baseline family's
-probability-plot scale (as for ``cb``), with its standard error propagated
-from the fitted covariance by the delta method, so a constant path gives
-``cb``. Along a
+bound='two-sided', method='wald')`` puts confidence bounds on ``sf``,
+``ff`` or ``Hf`` along a step schedule or a ``CovariatePath``. They are the
+bounds of ``cb`` carried along the path: by default a Wald bound on the
+baseline family's probability-plot scale (as for ``cb``), with its standard
+error propagated from the fitted covariance by the delta method, so a
+constant path gives ``cb``. Along a
 ``CovariatePath`` the quadrature mesh is adapted once, at the fitted
 parameters, and then held fixed while the parameters are perturbed. The
 function the delta method differentiates is then smooth in the parameters,
 and the cost is :math:`2k + 1` passes along the path for :math:`k`
-parameters.
+parameters. ``method='lr'`` gives the likelihood-ratio bound of ``cb``
+instead (see `Confidence Bounds`_): the extreme of the function along the
+path over the likelihood region of the parameters, about a second a time.
 
 .. jupyter-execute::
 
@@ -2806,6 +2808,8 @@ parameters.
     print('S(t) along the ramp:', ph.sf_tvc(t2, ramp).round(4))
     print('95% bounds:')
     print(ph.cb_tvc(t2, ramp).round(4))
+    print('likelihood ratio:')
+    print(ph.cb_tvc(t2, ramp, method='lr').round(4))
     print('given the ramp survived:', ph.cb_tvc([2.0], ramp, given=1.0).round(4))
 
 .. jupyter-execute::
@@ -2816,6 +2820,8 @@ parameters.
     assert np.all((_b[:, 0] < _s) & (_s < _b[:, 1]))
     assert np.allclose(ph.cb_tvc(t2, CovariatePath.from_points([0], [0.5])),
                        ph.cb(t2, [0.5]), rtol=1e-8)
+    _lr = ph.cb_tvc(t2, ramp, method='lr')
+    assert np.all((_lr[:, 0] < _s) & (_s < _lr[:, 1]))
 
 In a simulation of 1,000 fits each of a ``WeibullPH`` and a ``WeibullAFT``
 model (100 units, censored at a fixed time), the 95% bounds covered the true

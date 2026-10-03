@@ -71,24 +71,24 @@ def critical_value(alpha_ci: float, bound: str) -> float:
     return float(z(1.0 - tail) ** 2)
 
 
-class RegressionLikelihoodRatio(LikelihoodRatioMixin):
-    """The likelihood-ratio searches of a fitted
-    :class:`ParametricRegressionModel`, at the parameters ``params`` with
-    the baseline at the covariates ``center``.
+class LikelihoodRegion(LikelihoodRatioMixin):
+    """The likelihood-ratio searches over the free parameters of a fitted
+    model's likelihood: ``neg_ll(theta)``, the negative log-likelihood at
+    the full parameter vector ``theta`` (in the order of ``names``),
+    whose maximum is at ``params``.
 
     The searches are the univariate models' (``LikelihoodRatioMixin``):
     the parameters' profiles walked out to the critical value, and a
     function's extreme over the region they bound found by
-    ``_PsiBoundSearch``. This class gives them the regression model's
-    likelihood (``model.neg_ll`` on the data, centred at ``center``), its
-    parameters' declared bounds (the distribution's, then the life
-    model's, or none for a coefficient), the parameters it held fixed or
-    could not determine, and its covariance ``cov`` as the Wald scale the
-    searches start from. A ``cb`` searches in the parameterisation of the
-    centred fit behind a model that reports its baseline at ``Z = 0``
-    (#463), where the coefficients and the baseline are not nearly
-    collinear: the likelihood, and so the region and its bounds, are the
-    same in both.
+    ``_PsiBoundSearch``. This class gives them the likelihood, the
+    parameters' declared bounds ``bounds`` (``(lower, upper)``, ``None``
+    for no bound), the parameters ``held`` (by position: held fixed in
+    the fit, or not determined by the data), and the covariance ``cov``
+    as the Wald scale the searches start from (none where it is not
+    finite over the free parameters: they go on without it).
+    ``RegressionLikelihoodRatio`` is that of a parametric regression
+    model; the shared-frailty and semi-parametric proportional odds
+    models' ``param_cb(method="lr")`` search theirs (#617).
     """
 
     method = "MLE"
@@ -98,28 +98,24 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
 
     def __init__(
         self,
-        model: "ParametricRegressionModel",
-        params: npt.NDArray,
-        center: "npt.NDArray | None",
+        neg_ll: Callable[[npt.NDArray], float],
+        params: npt.ArrayLike,
+        names: list[str],
+        bounds: list[tuple[Any, Any]],
+        held: "set[int]",
         cov: "npt.NDArray | None",
-        point: tuple,
+        point: Any = None,
     ) -> None:
-        from ._fit_skeleton import centred_copy
-
-        self.fitted = model
+        self.neg_ll = neg_ll
+        self.names = list(names)
         self.point = point
         self.params = np.array(params, dtype=float)
-        self.center = center
-        data = model.data
-        if center is not None and np.any(center):
-            data = centred_copy(data, center)
-        self.surv_data = data
-        self.dist = model.distribution
-        names = model.parameter_names
-        held = model._held()
-        self._held_idx = {i for i, nm in enumerate(names) if nm in held}
-        self._bounds = list(model._parameter_bounds())
-        free = [i for i in range(len(names)) if i not in self._held_idx]
+        # What the searches' kept likelihoods are of (``_lr_raw_neg_ll``
+        # keys its memo by this object)
+        self.surv_data = object()
+        self._held_idx = set(held)
+        self._bounds = list(bounds)
+        free = self._free()
         if cov is not None:
             cov = np.asarray(cov, dtype=float)
             if not np.all(np.isfinite(cov[np.ix_(free, free)])):
@@ -134,7 +130,7 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         return None
 
     def _lr_full_neg_ll(self, theta: npt.NDArray) -> float:
-        return float(self.fitted.model.neg_ll(self.surv_data, *theta))
+        return float(self.neg_ll(theta))
 
     def _lr_declared_bounds(self) -> list[tuple[Any, Any]]:
         return self._bounds
@@ -311,8 +307,59 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         for w, key in zip(want, keys):
             out.append(cache[key] if w else (np.nan, False))
         if any(unsure for _, unsure in out):
-            warn_unsettled("on '{}'".format(self.fitted.parameter_names[idx]))
+            warn_unsettled("on '{}'".format(self.names[idx]))
         return out[0][0], out[1][0]
+
+
+class RegressionLikelihoodRatio(LikelihoodRegion):
+    """The likelihood-ratio searches of a fitted
+    :class:`ParametricRegressionModel`, at the parameters ``params`` with
+    the baseline at the covariates ``center``.
+
+    ``LikelihoodRegion`` with the regression model's likelihood
+    (``model.neg_ll`` on the data, centred at ``center``), its
+    parameters' declared bounds (the distribution's, then the life
+    model's, or none for a coefficient), the parameters it held fixed or
+    could not determine, and its covariance ``cov``. A ``cb`` searches in
+    the parameterisation of the centred fit behind a model that reports
+    its baseline at ``Z = 0`` (#463), where the coefficients and the
+    baseline are not nearly collinear: the likelihood, and so the region
+    and its bounds, are the same in both.
+    """
+
+    def __init__(
+        self,
+        model: "ParametricRegressionModel",
+        params: npt.NDArray,
+        center: "npt.NDArray | None",
+        cov: "npt.NDArray | None",
+        point: tuple,
+    ) -> None:
+        from ._fit_skeleton import centred_copy
+
+        names = list(model.parameter_names)
+        held = model._held()
+        super().__init__(
+            self._regression_neg_ll,
+            params,
+            names,
+            list(model._parameter_bounds()),
+            {i for i, nm in enumerate(names) if nm in held},
+            cov,
+            point,
+        )
+        self.fitted = model
+        self.center = center
+        data = model.data
+        if center is not None and np.any(center):
+            data = centred_copy(data, center)
+        self.surv_data = data
+        self.dist = model.distribution
+        # The calls of ``path_band`` so far (each keeps its bounds apart)
+        self._path_calls = 0
+
+    def _regression_neg_ll(self, theta: npt.NDArray) -> float:
+        return float(self.fitted.model.neg_ll(self.surv_data, *theta))
 
     def band(
         self,
@@ -342,34 +389,14 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         model = self.fitted.model
         additive = self.fitted._is_additive()
         survival = on in ("sf", "ff", "Hf")
-        free = self._free()
         value: Callable[[Any], Any]
         if survival:
+            to_psi, ends, value = _survival_scale(on, additive)
 
             def psi_of(i: int, theta: npt.NDArray) -> float:
                 H = model.Hf(x[i : i + 1], rows[i : i + 1], *theta)
-                H = float(np.asarray(H, dtype=float).reshape(-1)[0])
-                if additive:
-                    return -H
-                # The logit of sf, exp(-H) / (1 - exp(-H)), from H
-                return float(-H - np.log(-np.expm1(-H)))
+                return to_psi(float(np.asarray(H, dtype=float).reshape(-1)[0]))
 
-            ends = (_LN_TINY, -_LN_TINY)
-            if additive:
-                # The region can hold parameters with a negative H here
-                # (sf above 1, the additive model's own): a bound on a
-                # probability ends at 1, as the Wald bound keeps inside it.
-                value = {
-                    "sf": lambda v: np.exp(min(v, 0.0)),
-                    "ff": lambda v: -np.expm1(min(v, 0.0)),
-                    "Hf": lambda v: -min(v, 0.0),
-                }[on]
-            else:
-                value = {
-                    "sf": expit,
-                    "ff": lambda v: expit(-v),
-                    "Hf": lambda v: np.logaddexp(0.0, -v),
-                }[on]
         else:
             fn = model.hf if on == "hf" else model.df
 
@@ -382,12 +409,82 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
                 ends, value = (-_FLOAT_MAX, _FLOAT_MAX), lambda v: v
             else:
                 ends, value = (_LN_TINY, _LN_MAX), np.exp
-        # ff and Hf fall as sf rises: their lower bound is sf's upper.
-        falling = on in ("ff", "Hf")
+        return self._side_by_side(
+            psi_of,
+            x,
+            lambda i: (float(x[i]), rows[i].tobytes()),
+            "survival" if survival else on,
+            crit,
+            ends,
+            value,
+            want,
+            falling=on in ("ff", "Hf"),
+        )
+
+    def path_band(
+        self,
+        H_of: Callable[[npt.NDArray], npt.NDArray],
+        x: npt.NDArray,
+        on: str,
+        crit: float,
+        want: tuple[bool, bool],
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The likelihood-ratio bounds on ``on`` (``sf``, ``ff`` or
+        ``Hf``) at each time ``x[i]`` along a covariate path:
+        ``H_of(theta)`` is the cumulative hazard at every ``x`` along the
+        path at the parameters ``theta`` (``cb_tvc``'s). Searched, and
+        returned, as ``band`` searches the bounds at a covariate row; the
+        bounds of one call are not kept for the next (a path has no key
+        to keep them by), but the region they search is."""
+        additive = self.fitted._is_additive()
+        to_psi, ends, value = _survival_scale(on, additive)
+
+        def psi_of(i: int, theta: npt.NDArray) -> float:
+            H = np.asarray(H_of(theta), dtype=float).reshape(-1)
+            return to_psi(float(H[i]))
+
+        self._path_calls += 1
+        kind = "path-{}".format(self._path_calls)
+        try:
+            return self._side_by_side(
+                psi_of,
+                x,
+                lambda i: (int(i),),
+                kind,
+                crit,
+                ends,
+                value,
+                want,
+                falling=on in ("ff", "Hf"),
+            )
+        finally:
+            # This call's bounds, which no later call can ask for again
+            bands = self.__dict__.get("_lr_bands", {})
+            unsure = self.__dict__.get("_lr_unsettled", set())
+            for key in [k for k in bands if k[0] == kind]:
+                del bands[key]
+                unsure.discard(key)
+
+    def _side_by_side(
+        self,
+        psi_of: Callable[[int, npt.NDArray], float],
+        x: npt.NDArray,
+        key_of: Callable[[int], tuple],
+        kind: str,
+        crit: float,
+        ends: tuple[float, float],
+        value: Callable[[Any], Any],
+        want: tuple[bool, bool],
+        falling: bool,
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """``_lr_band`` over the times ``x`` (searched in their order),
+        with ``(lower, upper)`` on a ``falling`` function (``ff``, ``Hf``:
+        their lower bound is sf's upper) swapped, and the estimate where
+        every parameter was held."""
         if falling:
             want = (want[1], want[0])
         n = len(x)
-        if not free:
+        if not self._free():
             # Every parameter was held: the region is the estimate.
             at = np.array([value(psi_of(i, self.params)) for i in range(n)])
             return at, at, [], []
@@ -395,9 +492,9 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
             np.arange(n),
             np.argsort(x, kind="stable"),
             psi_of,
-            lambda i: (float(x[i]), rows[i].tobytes()),
-            "survival" if survival else on,
-            free,
+            key_of,
+            kind,
+            self._free(),
             crit,
             ends,
             value,
@@ -468,6 +565,42 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
             value,
             want,
         )
+
+
+def _survival_scale(
+    on: str, additive: bool
+) -> tuple[Callable[[float], float], tuple[float, float], Callable]:
+    """``(to_psi, ends, value)``: the scale the bounds on ``on`` (``sf``,
+    ``ff`` or ``Hf``) are searched on, from the cumulative hazard ``H``
+    (``to_psi(H)``), the ends of that scale, and the map from it to
+    ``on``. The logit of ``sf``; ``-H`` for an additive hazards model,
+    whose ``H`` can be negative (documented): there a bound on ``sf``,
+    ``ff`` or ``Hf`` that reaches past the range of a probability
+    (parameters in the region with a negative ``H``) ends at it, as the
+    Wald bound keeps inside it."""
+    value: Callable[[Any], Any]
+    if additive:
+
+        def to_psi(H: float) -> float:
+            return -H
+
+        value = {
+            "sf": lambda v: np.exp(min(v, 0.0)),
+            "ff": lambda v: -np.expm1(min(v, 0.0)),
+            "Hf": lambda v: -min(v, 0.0),
+        }[on]
+    else:
+
+        def to_psi(H: float) -> float:
+            # The logit of sf, exp(-H) / (1 - exp(-H)), from H
+            return float(-H - np.log(-np.expm1(-H)))
+
+        value = {
+            "sf": expit,
+            "ff": lambda v: expit(-v),
+            "Hf": lambda v: np.logaddexp(0.0, -v),
+        }[on]
+    return to_psi, (_LN_TINY, -_LN_TINY), value
 
 
 def _invert_H(
@@ -549,19 +682,33 @@ def param_cb_lr(
     """``param_cb(method="lr")``: the profile-likelihood interval on the
     parameter ``name`` of ``model`` (already checked to be one it
     estimated or held), as the univariate ``param_cb(method="lr")``
-    defines it: the values whose profile deviance, the other parameters
-    re-fitted, stays below the critical value (``RegressionLikelihoodRatio
-    .param_sides``); the edge of the parameter's space where it stays
-    below it to there."""
+    defines it (``profile_interval``)."""
     check_option("bound", bound, BOUNDS)
-    names = model.parameter_names
-    idx = names.index(name)
     search = lr_search(model, reported=True)
+    return profile_interval(search, name, alpha_ci, bound, model.fixed)
+
+
+def profile_interval(
+    search: LikelihoodRegion,
+    name: str,
+    alpha_ci: float,
+    bound: str,
+    fixed: Any = (),
+) -> npt.NDArray:
+    """The profile-likelihood (likelihood-ratio) interval on the parameter
+    ``name`` of ``search``'s likelihood, at ``alpha_ci`` and ``bound``
+    (checked), as the univariate ``param_cb(method="lr")`` defines it: the
+    values whose profile deviance, the other parameters re-fitted, stays
+    below the critical value (``LikelihoodRegion.param_sides``); the edge
+    of the parameter's space where it stays below it to there, and
+    ``nan``, with a warning, for a side that cannot be found. A parameter
+    the searches hold has the degenerate interval at its value where it
+    was held fixed (named in ``fixed``), else ``nan`` (one the data do not
+    determine), as the Wald bound has."""
+    idx = search.names.index(name)
     if idx in search._held_idx:
-        # Held fixed in the fit, or not determined by the data: the
-        # degenerate interval at its value, or nan, as the Wald bound.
         value = float(search.params[idx])
-        if names[idx] not in model.fixed:
+        if name not in fixed:
             value = np.nan
         return np.array([value, value] if bound == "two-sided" else [value])
     want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
@@ -625,6 +772,16 @@ def cb_lr(
         at = 1.0 if on == "sf" else 0.0
         lower[below] = at if want[0] else np.nan
         upper[below] = at if want[1] else np.nan
+    _warn_band(failed, unsettled)
+    if bound == "two-sided":
+        return np.column_stack([lower, upper])
+    return lower if bound == "lower" else upper
+
+
+def _warn_band(failed: list[float], unsettled: list[float]) -> None:
+    """The warnings of a band (``cb``, ``cb_tvc``): the times at which a
+    bound's search did not converge, and those at which a bound was not
+    found."""
     if unsettled:
         warn_unsettled(f"at x = {sorted(set(unsettled))}")
     if failed:
@@ -636,9 +793,61 @@ def cb_lr(
             RuntimeWarning,
             stacklevel=caller_stacklevel(),
         )
+
+
+def cb_tvc_lr(
+    search: RegressionLikelihoodRatio,
+    x: npt.NDArray,
+    H_of: Callable[[npt.NDArray], npt.NDArray],
+    H_hat: npt.NDArray,
+    on: str,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
+    """``cb_tvc(method="lr")``: at each time ``x`` along a covariate path,
+    the extreme of ``on`` (``sf``, ``ff`` or ``Hf``) over the likelihood
+    region of all the model's free parameters, as ``cb(method="lr")``
+    finds it at a covariate row (``RegressionLikelihoodRatio
+    .path_band``). ``H_of(theta)`` is the cumulative hazard along the
+    path at every ``x`` (``cb_tvc``'s, in the parameterisation of
+    ``search``), ``H_hat`` its value at the estimate. Where nothing can
+    have happened yet (``H_hat`` is 0: at or before ``given``, or the
+    start of the support), and where ``sf`` is 0 at the estimate, the
+    bound is the estimate, as the Wald bound's; a missing time is
+    ``nan``."""
+    on = {"R": "sf", "F": "ff"}.get(on, on)
+    want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
+    crit = critical_value(alpha_ci, bound)
+    t = np.asarray(x, dtype=float).reshape(-1)
+    H_hat = np.asarray(H_hat, dtype=float).reshape(-1)
+    lower = np.full(t.size, np.nan)
+    upper = np.full(t.size, np.nan)
+    settled = (H_hat == 0) | np.isinf(H_hat)
+    inside = np.flatnonzero(np.isfinite(t) & np.isfinite(H_hat) & ~settled)
+    failed: list[float] = []
+    unsettled: list[float] = []
+    if inside.size:
+
+        def H_inside(theta: npt.NDArray) -> npt.NDArray:
+            return np.asarray(H_of(theta), dtype=float).reshape(-1)[inside]
+
+        lo, hi, bad, unsure = search.path_band(
+            H_inside, t[inside], on, crit, want
+        )
+        lower[inside], upper[inside] = lo, hi
+        failed = [float(t[inside][i]) for i in bad]
+        unsettled = [float(t[inside][i]) for i in unsure]
+    if settled.any():
+        with np.errstate(over="ignore"):
+            H = H_hat[settled]
+            at = {"sf": np.exp(-H), "ff": -np.expm1(-H), "Hf": H}[on]
+        lower[settled] = at if want[0] else np.nan
+        upper[settled] = at if want[1] else np.nan
+    _warn_band(failed, unsettled)
+    shape = np.shape(x)
     if bound == "two-sided":
-        return np.column_stack([lower, upper])
-    return lower if bound == "lower" else upper
+        return np.column_stack([lower, upper]).reshape(shape + (2,))
+    return (lower if bound == "lower" else upper).reshape(shape)
 
 
 def quantile_cb_lr(

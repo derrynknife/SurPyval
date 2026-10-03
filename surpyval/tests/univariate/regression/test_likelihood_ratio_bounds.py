@@ -325,3 +325,89 @@ def test_583_a_model_with_searches_kept_pickles(alt):
         restored.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr"),
         alt.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr"),
     )
+
+
+# -- cb_tvc (#617) -----------------------------------------------------------
+@pytest.fixture(scope="module")
+def ph():
+    rng = np.random.default_rng(0)
+    Z = rng.uniform(0, 1, (200, 1))
+    x = 100 * rng.weibull(2, 200) * np.exp(-0.5 * Z[:, 0])
+    return WeibullPH.fit(x, Z)
+
+
+def _schedule_profile_deviance(model, t, s):
+    """The profile deviance of the survival ``s`` at ``t`` along the step
+    schedule Z = 0 on [0, 30), 1 after, for a Weibull PH model: its
+    cumulative hazard there is ``alpha^-beta [30^beta + e^b0 (t^beta -
+    30^beta)]``, so ``alpha`` is the value that gives ``-log s`` for each
+    ``(beta, b0)``, over which the likelihood is maximised."""
+    w = -np.log(s)
+
+    def nll(v):
+        beta, b0 = np.exp(v[0]), v[1]
+        total = 30.0**beta + np.exp(b0) * (t**beta - 30.0**beta)
+        alpha = (total / w) ** (1.0 / beta)
+        return float(model.model.neg_ll(model.data, alpha, beta, b0))
+
+    p = np.asarray(model.params, dtype=float)
+    v = np.array([np.log(p[1]), p[2]])
+    best = np.inf
+    for _ in range(5):
+        res = minimize(nll, v, method="Nelder-Mead", options=_NM)
+        if not res.fun < best - 1e-10:
+            break
+        best, v = res.fun, res.x
+    return 2.0 * (best - model._neg_ll)
+
+
+def test_617_cb_tvc_lr_bound_is_where_the_profile_deviance_is_chi2(ph):
+    schedule = np.array([[0.0], [1.0]])
+    lo, hi = ph.cb_tvc(60.0, schedule, xl=[0.0, 30.0], method="lr")
+    crit = chi2.ppf(0.95, 1)
+    assert lo < ph.sf_tvc(60.0, schedule, xl=[0.0, 30.0]) < hi
+    for bound in (lo, hi):
+        dev = _schedule_profile_deviance(ph, 60.0, bound)
+        assert dev == pytest.approx(crit, abs=2e-4)
+
+
+def test_617_cb_tvc_lr_along_a_constant_path_is_cb_lr(ph):
+    flat = sp.CovariatePath.from_points([0], [0.5])
+    t = np.array([40.0, 80.0])
+    np.testing.assert_allclose(
+        ph.cb_tvc(t, flat, method="lr"),
+        ph.cb(t, [0.5], method="lr"),
+        rtol=1e-10,
+    )
+    np.testing.assert_allclose(
+        ph.cb_tvc(t, flat, on="Hf", bound="upper", method="lr"),
+        ph.cb(t, [0.5], on="Hf", bound="upper", method="lr"),
+        rtol=1e-10,
+    )
+
+
+def test_617_cb_tvc_lr_is_an_option_with_the_shapes_of_wald(ph):
+    ramp = sp.CovariatePath.from_points([0, 50], [0.0, 1.0])
+    t = np.array([0.0, 40.0, 80.0])
+    wald = ph.cb_tvc(t, ramp)
+    assert np.array_equal(wald, ph.cb_tvc(t, ramp, method="wald"))
+    lr = ph.cb_tvc(t, ramp, method="likelihood")
+    assert lr.shape == wald.shape == (3, 2)
+    # Nothing has happened at 0: the bound is the estimate, as Wald's.
+    assert np.array_equal(lr[0], [1.0, 1.0])
+    est = ph.sf_tvc(t[1:], ramp)
+    assert np.all((lr[1:, 0] < est) & (est < lr[1:, 1]))
+    # Close to Wald's on this well-determined fit, and not the same.
+    np.testing.assert_allclose(lr, wald, rtol=0.02)
+    assert not np.allclose(lr, wald, rtol=1e-6)
+    # The sf, ff and Hf bounds are one bound.
+    ff = ph.cb_tvc(t[1:], ramp, on="ff", method="lr")
+    np.testing.assert_allclose(ff, 1.0 - lr[1:, ::-1], rtol=1e-12)
+    # Conditional on survival to 30: certain to there.
+    given = ph.cb_tvc([20.0, 60.0], ramp, given=30.0, method="lr")
+    assert np.array_equal(given[0], [1.0, 1.0])
+    est = ph.sf_tvc(60.0, ramp, given=30.0)
+    assert given[1, 0] < est < given[1, 1]
+    assert ph.cb_tvc(80.0, ramp, bound="lower", method="lr").shape == ()
+    with pytest.raises(ValueError, match="method"):
+        ph.cb_tvc(t, ramp, method="bootstrap")

@@ -1065,25 +1065,32 @@ class TVCEvaluationMixin:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         r"""
         Confidence bounds on the survival, failure probability or
         cumulative hazard along a covariate path ``Z(t)``: a step schedule
         or a continuously varying path, as for :meth:`sf_tvc`.
 
-        The bounds are those of :meth:`cb`, carried along the path: a Wald
-        bound on the baseline family's probability-plot scale, formed from
-        the cumulative hazard of :meth:`Hf_tvc`, its standard error
-        propagated from the fitted parameter covariance by the delta method.
-        ``ff`` and ``Hf`` follow from the same bound, so the three agree with
-        each other, and a constant path gives :meth:`cb`.
+        The bounds are those of :meth:`cb`, carried along the path. With
+        ``method="wald"`` (the default), a Wald bound on the baseline
+        family's probability-plot scale, formed from the cumulative hazard
+        of :meth:`Hf_tvc`, its standard error propagated from the fitted
+        parameter covariance by the delta method. With ``method="lr"``,
+        the likelihood-ratio bound of :meth:`cb`: at each ``x`` the extreme
+        of the function along the path over the likelihood region of all
+        the parameters (#617), about a second a time where the Wald bound
+        takes milliseconds; it needs the data the model was fitted to.
+        Either way ``ff`` and ``Hf`` follow from the same bound, so the
+        three agree with each other, and a constant path gives :meth:`cb`
+        with the same ``method``.
 
         Along a
         :class:`~surpyval.univariate.regression.tvc_path.CovariatePath`
         the integral is taken on a quadrature mesh adapted at the fitted
-        parameters and then held fixed, so the function differentiated is
-        smooth in the parameters. The cost is ``2k + 1`` evaluations along
-        the path for ``k`` parameters.
+        parameters and then held fixed, so the function differentiated (or
+        searched) is smooth in the parameters. The Wald bound's cost is
+        ``2k + 1`` evaluations along the path for ``k`` parameters.
 
         With ``given`` the bounds are on the conditional survival
         :math:`S(x \mid \text{survived to } g)` of :meth:`sf_tvc`: 1, with
@@ -1108,6 +1115,10 @@ class TVCEvaluationMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr'}, optional
+            ``'wald'`` (the default) or ``'lr'``, as above and as for
+            :meth:`cb` (``'lr'`` also as ``'likelihood'``,
+            ``'likelihood-ratio'`` or ``'profile'``).
 
         Returns
         -------
@@ -1141,8 +1152,10 @@ class TVCEvaluationMixin:
         ...                  model.cb(np.array([40, 80]), [0.5])))
         True
         """
+        from ._likelihood_ratio import cb_tvc_lr, is_lr, lr_search
         from .tvc_path import CovariatePath
 
+        lr = is_lr(method)
         self._check_inference()
         check_option(
             "on",
@@ -1163,7 +1176,11 @@ class TVCEvaluationMixin:
         on_path = isinstance(Z, CovariatePath)
         # In the parameterisation of the centred fit when there is one, as
         # for cb (#463).
-        params, center, cov = self._inference_state()
+        if lr:
+            search = lr_search(self, reported=False)
+            params, center = search.params, search.center
+        else:
+            params, center, cov = self._inference_state()
         # The path's mesh, adapted at the fitted parameters and then held.
         frozen: dict = {}
 
@@ -1187,6 +1204,10 @@ class TVCEvaluationMixin:
             xq, Z, xl, g if on_path else None, (params, center), frozen
         )
         self._warn_tvc(H, falls, accuracy, stacklevel=5)
+        if lr:
+            return cb_tvc_lr(
+                search, xq, H_of, H_of(params), on, alpha_ci, bound
+            )
         return self._sf_bounds(
             H_of,
             lambda p: np.exp(-H_of(p)),
