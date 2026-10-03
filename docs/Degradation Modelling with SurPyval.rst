@@ -1549,7 +1549,11 @@ interval reflects the randomness of the process, not uncertainty in the fitted
 ``mu`` and ``sigma`` (the process models do not report parameter
 uncertainty). The fitted parameters are ``model.mu`` and ``model.sigma``
 (together, ``model.params``), and ``hf``, ``Hf``, ``df`` and
-``random(size, random_state=...)`` complete the set of life methods.
+``random(size, random_state=...)`` complete the set of life methods. As for
+every maximum-likelihood fit, ``model.maximum`` says what the fit reached:
+``"verified"`` here (the closed form), ``"unverified"`` (with a warning) for a
+search that stopped short of a verified maximum, and ``"no finite maximum"``
+for noise-free readings fitted by the Gamma process or the destructive model.
 
 **A baseline.** Suppose the same signal had been read from a healthy level of
 ``2``, with failure at ``12``. The drift and diffusion are unchanged (they come

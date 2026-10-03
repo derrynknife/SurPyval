@@ -479,3 +479,81 @@ def test_574_gauge_fit_starts_where_the_readings_start():
     y_gauge = np.round((y + 2.0) / 0.5) * 0.5
     model = GammaProcess.fit(x, y_gauge, i, threshold=10.0, gauge=0.5)
     assert model.y0 == pytest.approx(2.0)
+
+
+# --- #564: the fits say what they reached ----------------------------------
+
+
+def _stressed_gamma(seed=3):
+    rng = np.random.default_rng(seed)
+    xs, ys, ids, Zs = [], [], [], []
+    for u, z in enumerate(np.repeat([0.0, 1.0], 8)):
+        t = np.arange(0, 21.0)
+        dy = rng.gamma(2.0 * np.exp(0.7 * z), 1 / 4.0, 20)
+        xs.append(t)
+        ys.append(np.r_[0, np.cumsum(dy)])
+        ids.append(np.full(21, u))
+        Zs.append(np.full(21, z))
+    return tuple(np.concatenate(v) for v in (xs, ys, ids, Zs))
+
+
+def test_564_every_process_fit_records_a_verified_maximum():
+    x, y, i, Z = _stressed_gamma()
+    y_gauge = np.round(y / 0.5) * 0.5
+    fits = {
+        "wiener": lambda: WienerProcess.fit(x, y, i, 10.0),
+        "wiener Z": lambda: WienerProcess.fit(x, y, i, 10.0, Z=Z),
+        "gamma": lambda: GammaProcess.fit(x, y, i, 10.0),
+        "gamma zeros": lambda: GammaProcess.fit(x, np.round(y, 1), i, 10.0),
+        "gamma Z": lambda: GammaProcess.fit(x, y, i, 10.0, Z=Z),
+        "gamma Z zeros": lambda: GammaProcess.fit(
+            x, np.round(y, 1), i, 10.0, Z=Z
+        ),
+        "gamma gauge": lambda: GammaProcess.fit(
+            x, y_gauge, i, 10.0, gauge=0.5
+        ),
+        "gamma gauge Z": lambda: GammaProcess.fit(
+            x, y_gauge, i, 10.0, gauge=0.5, Z=Z
+        ),
+    }
+    for name, fit in fits.items():
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            model = fit()
+        assert model.maximum == "verified", name
+        restored = type(model).from_dict(model.to_dict())
+        assert restored.maximum == "verified", name
+    built = GammaProcessModel(2.0, 4.0, 10.0)
+    assert built.maximum == "not applicable"
+    assert GammaProcessModel.from_dict(built.to_dict()).maximum == (
+        "not applicable"
+    )
+    old = built.to_dict()
+    del old["maximum"]
+    assert GammaProcessModel.from_dict(old).maximum == "unknown"
+
+
+def test_564_noise_free_gamma_has_no_finite_maximum():
+    x = np.tile(np.arange(0, 11.0), 3)
+    i = np.repeat(np.arange(3), 11)
+    with pytest.warns(UserWarning, match="No finite maximum") as caught:
+        model = GammaProcess.fit(x, 0.5 * x, i, threshold=10.0)
+    assert model.maximum == "no finite maximum" and len(caught) == 1
+    Z = np.where(i == 0, 0.0, 1.0)
+    with pytest.warns(UserWarning, match="No finite maximum") as caught:
+        stressed = GammaProcess.fit(x, 0.5 * x, i, threshold=10.0, Z=Z)
+    assert stressed.maximum == "no finite maximum" and len(caught) == 1
+
+
+@pytest.mark.parametrize("fitter", [WienerProcess, GammaProcess])
+def test_564_an_unverified_process_fit_says_so(fitter, monkeypatch):
+    import surpyval.degradation._maximum as maximum_module
+
+    x, y, i, Z = _stressed_gamma()
+    monkeypatch.setattr(
+        maximum_module, "verify_or_polish", lambda f, r, n, **k: (r, False)
+    )
+    with pytest.warns(UserWarning, match="did not reach a verified") as w:
+        model = fitter.fit(x, y, i, 10.0, Z=Z)
+    assert model.maximum == "unverified" and len(w) == 1
+    assert w[0].filename == __file__

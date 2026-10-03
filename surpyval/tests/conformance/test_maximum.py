@@ -3,7 +3,8 @@
 
 A fit that maximises a likelihood -- a parametric distribution, a
 mixture, a parametric or semi-parametric regression, a frailty model, a
-competing-risks model, a recurrence process, a copula -- records what it
+competing-risks model, a recurrence process, a copula, a degradation
+process or destructive degradation model -- records what it
 reached as its model's ``maximum``, one of
 ``surpyval.utils.no_maximum.MAXIMUM_STATES``. For every registered case
 whose fit is a likelihood maximisation, and for its time-varying
@@ -773,6 +774,86 @@ def _search_royston_parmar(model, data):
     return [_numerical(model._objective, model.params, float(model.n))]
 
 
+def _increments(data):
+    """The pooled increments ``(dt, dy)`` of degradation readings, each
+    unit's in time order."""
+    x, y, i = (np.asarray(data[k]) for k in ("x", "y", "i"))
+    dts, dys = [], []
+    for unit in np.unique(i):
+        order = np.argsort(x[i == unit])
+        dts.append(np.diff(x[i == unit][order]))
+        dys.append(np.diff(y[i == unit][order]))
+    return np.concatenate(dts), np.concatenate(dys)
+
+
+def _search_wiener(model, data):
+    """The Gaussian likelihood of the increments, ``N(mu dt, sigma^2
+    dt)``, in ``(mu, log sigma)``."""
+    if data is None or model.is_accelerated:
+        return None
+    dt, dy = _increments(data)
+
+    def neg_ll(p):
+        mu, sigma = p
+        var = sigma**2 * dt
+        return anp.sum(
+            0.5 * anp.log(2 * np.pi * var) + (dy - mu * dt) ** 2 / (2 * var)
+        )
+
+    bounds = [(None, None), (0.0, None)]
+    return [_canonical(neg_ll, model.params, bounds, float(dt.size))]
+
+
+def _search_gamma_process(model, data):
+    """The likelihood of the increments, ``Gamma(alpha dt, beta)``
+    densities (a zero increment censored at the smallest positive one, the
+    fit's default resolution), in ``(log alpha, log beta)``."""
+    from scipy.special import gammainc, gammaln
+
+    if data is None or model.is_accelerated:
+        return None
+    dt, dy = _increments(data)
+    pos = dy > 0
+    resolution = dy[pos].min()
+
+    def neg_ll(p):
+        alpha, beta = (float(v) for v in p)
+        k = alpha * dt
+        ll = np.sum(
+            k[pos] * np.log(beta)
+            + (k[pos] - 1) * np.log(dy[pos])
+            - beta * dy[pos]
+            - gammaln(k[pos])
+        )
+        ll += np.sum(np.log(gammainc(k[~pos], beta * resolution)))
+        return -ll
+
+    bounds = [(0.0, None), (0.0, None)]
+    return [_canonical(neg_ll, model.params, bounds, float(dt.size))]
+
+
+def _search_destructive(model, data):
+    """The likelihood of the measurements the model kept, ``dist(beta0 +
+    beta1 phi(x), sigma)`` (censored ones by their survival or CDF), in
+    ``(beta0, beta1, log sigma)``."""
+    x, y, c = (model.data[k] for k in ("x", "y", "c"))
+    phi, dist = model._phi(x), model.distribution
+
+    def neg_ll(p):
+        b0, b1, sigma = (float(v) for v in p)
+        loc = b0 + b1 * phi
+        parts = [
+            dist.log_df(y[c == 0], loc[c == 0], sigma),
+            dist.log_sf(y[c == 1], loc[c == 1], sigma),
+            dist.log_ff(y[c == -1], loc[c == -1], sigma),
+        ]
+        return -sum(float(np.sum(part)) for part in parts)
+
+    params = [*model.beta, model.sigma]
+    bounds = [(None, None), (None, None), (0.0, None)]
+    return [_canonical(neg_ll, params, bounds, float(x.size))]
+
+
 SEARCHES: dict[str, Callable] = {
     "Parametric": _search_parametric,
     "MixtureModel": _search_mixture,
@@ -790,6 +871,9 @@ SEARCHES: dict[str, Callable] = {
     "RenewalModel": _search_recurrence,
     "CauseSpecificNHPP": _search_cause_specific_nhpp,
     "CopulaModel": _search_copula,
+    "WienerProcessModel": _search_wiener,
+    "GammaProcessModel": _search_gamma_process,
+    "DestructiveDegradationModel": _search_destructive,
 }
 
 

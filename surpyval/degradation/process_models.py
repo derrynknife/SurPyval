@@ -45,7 +45,7 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 from scipy.integrate import quad
-from scipy.optimize import minimize, minimize_scalar
+from scipy.optimize import OptimizeResult, minimize, minimize_scalar
 from scipy.special import gammainc, gammaincc, gammaln, log_ndtr
 from scipy.stats import norm
 
@@ -55,13 +55,18 @@ from surpyval.serialisation import (
     stamp_schema,
 )
 from surpyval.utils.deprecation import RenamedAttribute, renamed_arguments
-from surpyval.utils.no_maximum import warn_no_maximum
+from surpyval.utils.no_maximum import (
+    maximum_entry,
+    restored_maximum,
+    warn_no_maximum,
+)
 from surpyval.utils.numeric import solve_bracketed
 from surpyval.utils.rng import as_generator
 from surpyval.utils.shapes import keeps_query_shape
 from surpyval.utils.validation import alpha_ci_error, check_option
 
 from ._clock import StressClock, covariates_by_name, stress_row
+from ._maximum import verified_search
 from ._measurements import validate_xy
 
 __all__ = [
@@ -256,8 +261,9 @@ def _fit_from_df(
 
 def _minimise(
     fun: Callable, x0: npt.NDArray, jac: "str | None" = None
-) -> npt.NDArray:
-    """BFGS, falling back to (and polishing with) Nelder-Mead.
+) -> OptimizeResult:
+    """BFGS, falling back to (and polishing with) Nelder-Mead; the result
+    (its ``x`` and ``fun``) for :func:`verified_search` to check.
 
     ``jac="3-point"`` takes central-difference gradients, for an objective
     whose round-off noise swamps forward differences (BFGS then stops on
@@ -278,7 +284,7 @@ def _minimise(
         raise ValueError(
             "the process fit did not converge to a finite likelihood"
         )
-    return np.asarray(best.x, dtype=float)
+    return best
 
 
 def _unit_steps(i: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
@@ -519,6 +525,11 @@ class FirstPassageProcessModel(SerialisableMixin):
     #: which a DataFrame ``Z`` is read; ``None`` for a model fitted from
     #: arrays.
     Z_cols: "list[str] | None" = None
+    #: What the maximum-likelihood fit reached, one of ``MAXIMUM_STATES``
+    #: (``surpyval.utils.no_maximum``), as its warnings say: set by the
+    #: fit; "not applicable" for a model built from its parameters,
+    #: "unknown" for one restored from a dict saved without it (#564).
+    maximum: str = "not applicable"
 
     def __init__(
         self,
@@ -725,6 +736,7 @@ class FirstPassageProcessModel(SerialisableMixin):
             out["stress_ref"] = self.stress_ref.tolist()
         if self.Z_cols is not None:
             out["Z_cols"] = list(self.Z_cols)
+        out.update(maximum_entry(self.maximum))
         return stamp_schema(out)
 
     @classmethod
@@ -744,6 +756,7 @@ class FirstPassageProcessModel(SerialisableMixin):
             y0=model_dict.get("y0", 0.0),
         )
         model.Z_cols = model_dict.get("Z_cols")
+        model.maximum = restored_maximum(model_dict)
         return model
 
     # -- the failure-time distribution --------------------------------------
@@ -1322,7 +1335,16 @@ class WienerProcess:
         WienerProcessModel
             The fitted model, whose life-distribution methods (``sf``,
             ``ff``, ``mean``, ...) give the first-passage time from ``y0``
-            to ``threshold``.
+            to ``threshold``. Its ``maximum`` says what the fit reached:
+            ``"verified"`` for the closed form, and with ``Z`` whether the
+            search for the stress coefficients ended at a verified maximum.
+
+        Warns
+        -----
+        UserWarning
+            With ``Z``, when the search did not reach a verified maximum (a
+            zero gradient and a positive-definite Hessian of the profile
+            likelihood); ``maximum`` is then ``"unverified"``.
 
         Examples
         --------
@@ -1367,9 +1389,12 @@ class WienerProcess:
             sigma = np.sqrt(sigma2)
             cls._check_drift(mu)
             cls._check_noise(sigma2, dy, dt)
-            return WienerProcessModel(
+            model = WienerProcessModel(
                 mu, sigma, threshold, y0=_fitted_y0(y0, x, y, i, mu)
             )
+            # the closed form is the maximum
+            model.maximum = "verified"
+            return model
 
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
         assert z_int is not None
@@ -1384,11 +1409,20 @@ class WienerProcess:
             neg = 0.5 * (np.sum(np.log(dtau)) + len(dy) * np.log(sigma2))
             return float(neg), float(mu), float(sigma2)
 
-        g = _minimise(lambda v: profile(v)[0], np.zeros(z_int.shape[1]))
-        _, mu, sigma2 = profile(g)
+        def neg_profile(g: npt.NDArray) -> float:
+            return profile(g)[0]
+
+        res = _minimise(neg_profile, np.zeros(z_int.shape[1]))
+        _, mu, sigma2 = profile(res.x)
         cls._check_drift(mu)
-        cls._check_noise(sigma2, dy, dt * np.exp(s @ g))
-        return WienerProcessModel(
+        cls._check_noise(sigma2, dy, dt * np.exp(s @ res.x))
+        # The profile likelihood of the stress coefficients (mu and sigma
+        # at their closed forms) is maximised where the full one is.
+        g, maximum = verified_search(
+            neg_profile, res, len(dy), "The Wiener process fit"
+        )
+        _, mu, sigma2 = profile(g)
+        model = WienerProcessModel(
             mu,
             np.sqrt(sigma2),
             threshold,
@@ -1396,6 +1430,8 @@ class WienerProcess:
             stress_ref=z_ref,
             y0=_fitted_y0(y0, x, y, i, mu, g / scale, z_ref, Z),
         )
+        model.maximum = maximum
+        return model
 
     @classmethod
     @renamed_arguments(x="x_col", y="y_col", i="i_col")
@@ -1768,7 +1804,13 @@ class GammaProcess:
             "No finite maximum" when every increment is proportional to its
             time step (noise-free readings), so the likelihood keeps
             increasing with ``alpha``: the returned ``alpha`` and ``beta``
-            are meaningless. (``WienerProcess`` refuses such data.)
+            are meaningless (``WienerProcess`` refuses such data), and the
+            model's ``maximum`` is ``"no finite maximum"``. Otherwise the
+            answer is checked as a maximum (a zero gradient and a
+            positive-definite Hessian of the likelihood in the space the
+            fit searched); one that is not warns that the fit "did not
+            reach a verified maximum", and ``maximum`` is ``"unverified"``
+            (``"verified"`` when it is).
 
         Examples
         --------
@@ -1842,21 +1884,40 @@ class GammaProcess:
             cls._check_monotone(dy)
             zero, delta = cls._zero_increments(dy, resolution)
             if zero.any():
-                alpha, beta, _ = cls._censored_fit(dt, dy, zero, delta, None)
+                alpha, beta, _, maximum = cls._censored_fit(
+                    dt, dy, zero, delta, None
+                )
             else:
                 alpha, beta = cls._profile_fit(dt, dy)
-                cls._warn_if_noise_free(dt, dy, alpha, beta)
-            return cls._model(alpha, beta, threshold, y0, data)
+                if cls._warn_if_noise_free(dt, dy, alpha, beta):
+                    maximum = "no finite maximum"
+                else:
+                    alpha, beta, maximum = cls._verified_profile(dt, dy, alpha)
+            return cls._model(alpha, beta, threshold, y0, data, maximum)
+        return cls._stress_fit(data, threshold, stress_ref, resolution, y0)
 
+    @classmethod
+    def _stress_fit(
+        cls,
+        data: tuple,
+        threshold: float,
+        stress_ref: Any,
+        resolution: "float | None",
+        y0: "float | None",
+    ) -> "GammaProcessModel":
+        """:meth:`fit` with a stress ``Z`` (and no gauge): ``alpha`` and
+        the stress coefficients by maximum likelihood, ``beta`` profiled
+        out, or all three jointly when zero increments are censored."""
+        x, y, i, Z = data
         dt, dy, z_int = _increments_and_stress(x, y, i, Z)
         assert z_int is not None
         cls._check_monotone(dy)
         zero, delta = cls._zero_increments(dy, resolution)
         s, z_ref, scale = _stress_design(z_int, stress_ref)
         if zero.any():
-            alpha, beta, g = cls._censored_fit(dt, dy, zero, delta, s)
+            alpha, beta, g, maximum = cls._censored_fit(dt, dy, zero, delta, s)
             return cls._model(
-                alpha, beta, threshold, y0, data, g / scale, z_ref
+                alpha, beta, threshold, y0, data, maximum, g / scale, z_ref
             )
         sum_dy = dy.sum()
         log_dy = np.log(dy)
@@ -1875,12 +1936,24 @@ class GammaProcess:
         # the stress-free fit is the starting point (g = 0)
         alpha0, _ = cls._profile_fit(dt, dy)
         v0 = np.concatenate([[np.log(alpha0)], np.zeros(z_int.shape[1])])
-        v = _minimise(neg_ll, v0)
+        res = _minimise(neg_ll, v0)
+        v = np.asarray(res.x, dtype=float)
+        dtau = dt * np.exp(s @ v[1:])
         alpha = float(np.exp(v[0]))
-        g = v[1:]
-        beta = alpha * float((dt * np.exp(s @ g)).sum()) / sum_dy
-        cls._warn_if_noise_free(dt * np.exp(s @ g), dy, alpha, beta, True)
-        return cls._model(alpha, beta, threshold, y0, data, g / scale, z_ref)
+        beta = alpha * float(dtau.sum()) / sum_dy
+        if cls._warn_if_noise_free(dtau, dy, alpha, beta, True):
+            maximum = "no finite maximum"
+        else:
+            v, maximum = verified_search(neg_ll, res, len(dt), cls._WHAT)
+            alpha = float(np.exp(v[0]))
+            beta = alpha * float((dt * np.exp(s @ v[1:])).sum()) / sum_dy
+        return cls._model(
+            alpha, beta, threshold, y0, data, maximum, v[1:] / scale, z_ref
+        )
+
+    #: The subject of the warning that a fit did not reach a verified
+    #: maximum.
+    _WHAT = "The gamma process fit"
 
     @staticmethod
     def _model(
@@ -1889,16 +1962,20 @@ class GammaProcess:
         threshold: float,
         y0: "float | None",
         data: tuple,
+        maximum: str,
         gamma: "npt.NDArray | None" = None,
         z_ref: "npt.NDArray | None" = None,
     ) -> "GammaProcessModel":
         """The fitted model, its ``y0`` as given or estimated from the
-        ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``."""
+        ``data`` ``(x, y, i, Z)`` at the mean rate ``alpha / beta``, and
+        the ``maximum`` the fit reached."""
         x, y, i, Z = data
         start = _fitted_y0(y0, x, y, i, alpha / beta, gamma, z_ref, Z)
-        return GammaProcessModel(
+        model = GammaProcessModel(
             alpha, beta, threshold, gamma=gamma, stress_ref=z_ref, y0=start
         )
+        model.maximum = maximum
+        return model
 
     @classmethod
     @renamed_arguments(x="x_col", y="y_col", i="i_col")
@@ -1970,7 +2047,8 @@ class GammaProcess:
         zero: npt.NDArray,
         resolution: float,
         s: "npt.NDArray | None",
-    ) -> tuple[float, float, npt.NDArray]:
+        verify: bool = True,
+    ) -> tuple[float, float, npt.NDArray, str]:
         """
         Maximum likelihood with the zero increments censored at the
         resolution: each contributes ``P(increment <= resolution)``, the
@@ -1979,8 +2057,11 @@ class GammaProcess:
         An exact zero has no gamma density (its log is ``-inf``); nudging
         it to a tiny positive value, as this fit used to, lets the arbitrary
         nudge drive the estimates (a data set rounded to its resolution had
-        its shape cut twenty-fold). Returns ``(alpha, beta, g)`` with ``g``
-        the scaled stress coefficients (empty without stress).
+        its shape cut twenty-fold). Returns ``(alpha, beta, g, maximum)``
+        with ``g`` the scaled stress coefficients (empty without stress)
+        and ``maximum`` what the search reached (:func:`verified_search`;
+        ``"unverified"``, unchecked and without a warning, for the starting
+        point of the quantised fit, ``verify=False``).
         """
         pos = ~zero
         dy_pos = dy[pos]
@@ -2006,8 +2087,29 @@ class GammaProcess:
         # start from the fit to the positive increments alone
         alpha0, beta0 = cls._profile_fit(dt[pos], dy_pos)
         v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], np.zeros(q)])
-        v = _minimise(neg_ll, v0)
-        return float(np.exp(v[0])), float(np.exp(v[1])), v[2:]
+        res = _minimise(neg_ll, v0)
+        v, maximum = np.asarray(res.x, dtype=float), "unverified"
+        if verify:
+            v, maximum = verified_search(neg_ll, res, len(dt), cls._WHAT)
+        return float(np.exp(v[0])), float(np.exp(v[1])), v[2:], maximum
+
+    @classmethod
+    def _verified_profile(
+        cls, dt: npt.NDArray, dy: npt.NDArray, alpha: float
+    ) -> tuple[float, float, str]:
+        """The stationary fit's ``(alpha, beta)`` checked as a maximum of
+        the profile likelihood of ``log alpha`` (``beta`` at its closed
+        form), and the ``maximum`` reached (:func:`verified_search`)."""
+        neg_ll = cls._profile_neg_ll(dt, dy)
+
+        def fun(v: npt.NDArray) -> float:
+            return float(neg_ll(np.exp(v[0])))
+
+        x = np.array([np.log(alpha)])
+        res = OptimizeResult(x=x, fun=fun(x))
+        v, maximum = verified_search(fun, res, len(dt), cls._WHAT)
+        alpha = float(np.exp(v[0]))
+        return alpha, alpha * float(dt.sum()) / float(dy.sum()), maximum
 
     #: Cells each gauge bin is split into by the exact quantised
     #: likelihood. The discretisation error falls as the square of the cell
@@ -2110,7 +2212,9 @@ class GammaProcess:
 
         # the censored fit (zeros censored at the gauge step, every other
         # increment exact) is the starting point
-        alpha0, beta0, g0 = cls._censored_fit(dt, delta, zero, gauge, s)
+        alpha0, beta0, g0, _ = cls._censored_fit(
+            dt, delta, zero, gauge, s, verify=False
+        )
         v0 = np.concatenate([[np.log(alpha0), np.log(beta0)], g0])
         # The recursion sums many second differences, so the log-likelihood
         # carries round-off noise (around 1e-13 for a few hundred
@@ -2119,13 +2223,15 @@ class GammaProcess:
         # gradient tolerance on a large data set, leaving the slow
         # Nelder-Mead fallback to finish. Central differences on the
         # per-increment log-likelihood avoid both.
-        v = _minimise(neg_ll, v0, jac="3-point")
+        res = _minimise(neg_ll, v0, jac="3-point")
+        # (the objective is already per increment)
+        v, maximum = verified_search(neg_ll, res, 1.0, cls._WHAT)
         alpha, beta = float(np.exp(v[0])), float(np.exp(v[1]))
         data = (x, y, i, Z)
         if s is None:
-            return cls._model(alpha, beta, threshold, y0, data)
+            return cls._model(alpha, beta, threshold, y0, data, maximum)
         return cls._model(
-            alpha, beta, threshold, y0, data, v[2:] / scale, z_ref
+            alpha, beta, threshold, y0, data, maximum, v[2:] / scale, z_ref
         )
 
     @staticmethod
@@ -2183,8 +2289,9 @@ class GammaProcess:
         alpha: float,
         beta: float,
         stress: bool = False,
-    ) -> None:
-        """Warn when the likelihood keeps increasing with ``alpha`` (#392).
+    ) -> bool:
+        """Warn when the likelihood keeps increasing with ``alpha`` (#392),
+        and say whether it did.
 
         Increments exactly proportional to their time steps (on the fitted
         stress clock ``dtau``, with stress) are a deterministic path: a
@@ -2215,7 +2322,7 @@ class GammaProcess:
                 or at_top <= here + 1e-8 * max(1.0, abs(here))
             )
         if not rising:
-            return
+            return False
         clock = " on the fitted stress clock" if stress else ""
         warn_no_maximum(
             f"every increment is proportional to its time step{clock} "
@@ -2229,3 +2336,4 @@ class GammaProcess:
             "threshold at a fixed time; model it as such rather than as a "
             "gamma process",
         )
+        return True
