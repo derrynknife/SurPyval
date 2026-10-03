@@ -639,3 +639,40 @@ def cb_lr(
     if bound == "two-sided":
         return np.column_stack([lower, upper])
     return lower if bound == "lower" else upper
+
+
+def quantile_cb_lr(
+    model: Any,
+    p: npt.NDArray,
+    rows: npt.NDArray,
+    t_hat: npt.NDArray,
+    alpha_ci: float,
+    bound: str,
+) -> npt.NDArray:
+    """``quantile_cb(method="lr")``: at each probability ``p[i]`` and
+    covariate row ``rows[i]`` (as given), the extreme of the quantile
+    over the likelihood region (``RegressionLikelihoodRatio.quantiles``),
+    ``t_hat`` the quantiles at the estimate."""
+    search = lr_search(model, reported=False)
+    rows_c = np.asarray(model._centred(rows, search.center), dtype=float)
+    rows_c = np.ascontiguousarray(rows_c)
+    want = (bound in ("two-sided", "lower"), bound in ("two-sided", "upper"))
+    crit = critical_value(alpha_ci, bound)
+    lower, upper, failed, unsettled = search.quantiles(
+        p, rows_c, t_hat, crit, want
+    )
+    if unsettled:
+        at = sorted({float(p[i]) for i in unsettled})
+        warn_unsettled(f"on qf at p = {at}")
+    if failed:
+        at = sorted({float(p[i]) for i in failed})
+        warnings.warn(
+            f"The likelihood-ratio bound on qf could not be found at p = {at} "
+            "(the constrained optimiser failed from every start); nan is "
+            "returned there. method='wald' gives a bound in its place.",
+            RuntimeWarning,
+            stacklevel=caller_stacklevel(),
+        )
+    if bound == "two-sided":
+        return np.column_stack([lower, upper])
+    return lower if bound == "lower" else upper

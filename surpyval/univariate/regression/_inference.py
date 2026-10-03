@@ -14,8 +14,10 @@ from typing import TYPE_CHECKING, Any
 
 import autograd.numpy as np
 import numpy.typing as npt
+from scipy.special import ndtri
 
 from surpyval.utils.linalg import (
+    bound_signs,
     cb_link,
     delta_method_se,
     link_band,
@@ -24,7 +26,11 @@ from surpyval.utils.linalg import (
     sf_link_from_H,
     wald_bound_on_support,
 )
-from surpyval.utils.shapes import check_paired_rows, keeps_query_shape
+from surpyval.utils.shapes import (
+    check_paired_rows,
+    covariate_rows,
+    keeps_query_shape,
+)
 from surpyval.utils.validation import BOUNDS, CB_ON, check_option
 from surpyval.utils.warnings import warn_no_covariance
 
@@ -81,6 +87,15 @@ class InferenceMixin:
         def life_parameter(self) -> "str | None": ...
         def _eval_params(self) -> npt.NDArray: ...
         def _held(self) -> set: ...
+        def _n_covariates(self) -> int: ...
+
+        def qf(
+            self,
+            p: npt.ArrayLike,
+            Z: "npt.ArrayLike | pd.DataFrame",
+            *,
+            grid: bool = False,
+        ) -> npt.NDArray: ...
         def _is_accelerated_life(self) -> bool: ...
         def _is_additive(self) -> bool: ...
         def _life_relation(self) -> str: ...
@@ -522,6 +537,97 @@ class InferenceMixin:
             alpha_ci,
             bound,
         )
+
+    @keeps_query_shape
+    def quantile_cb(
+        self,
+        p: npt.ArrayLike,
+        Z: "npt.ArrayLike | pd.DataFrame",
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> npt.NDArray:
+        r"""
+        Confidence bounds on the quantile ``qf(p, Z)``: the B-life at
+        ``p`` of a unit with covariates ``Z`` (the B10 life is ``p =
+        0.1``), the time by which a fraction ``p`` of such units have
+        failed; the univariate models' ``quantile_cb`` with the
+        covariates of :meth:`qf`.
+
+        Parameters
+        ----------
+        p : array like or scalar
+            The probabilities, in (0, 1), whose quantiles are bounded.
+        Z : array like or DataFrame
+            The covariates, paired with ``p`` as :meth:`qf` pairs them: one
+            row per probability, a single row for every probability, or a
+            single probability for every row.
+        alpha_ci : float, optional
+            Total tail probability of the bound(s). Default 0.05.
+        bound : {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr'}, optional
+            ``'wald'`` (the default) is the delta method on the log of the
+            quantile above the support's start (the quantile itself for a
+            baseline on the whole line), from its gradient in the
+            parameters, :math:`\partial t_p / \partial\theta =
+            -(\partial H / \partial\theta) / h` at :math:`t_p`, as for the
+            univariate models. ``'lr'`` is the likelihood-ratio bound: the
+            extreme of ``qf(p, Z)`` over the parameters' likelihood region,
+            as :meth:`cb` with ``method='lr'`` is for a function of time
+            (aliases as there); it is slower, and needs the data.
+
+        Returns
+        -------
+        numpy array
+            The bound(s) on the quantile at each ``p``.
+
+        Examples
+        --------
+        >>> import numpy as np
+        >>> from surpyval import Weibull, WeibullPH
+        >>> np.random.seed(1)
+        >>> Z = np.random.binomial(1, 0.5, 100).reshape(-1, 1)
+        >>> x = Weibull.random(100, 10, 2) * np.exp(-0.5 * Z[:, 0])
+        >>> model = WeibullPH.fit(x, Z)
+        >>> model.qf(0.1, [1]).round(3)
+        np.float64(1.659)
+        >>> model.quantile_cb(0.1, [1]).round(3)
+        array([1.24 , 2.219])
+        """
+        from ._likelihood_ratio import is_lr, quantile_cb_lr
+
+        lr = is_lr(method)
+        self._check_inference()
+        check_option("bound", bound, BOUNDS)
+        probs = np.atleast_1d(np.asarray(p, dtype=float)).reshape(-1)
+        if not np.all((probs > 0) & (probs < 1)):
+            raise ValueError(f"'p' must be in (0, 1); got {probs.tolist()}")
+        rows = covariate_rows(self._prepare_Z(Z), self._n_covariates())
+        check_paired_rows(probs.size, rows.shape[0], grid=False)
+        n = max(probs.size, rows.shape[0])
+        probs = np.broadcast_to(probs, (n,)).copy()
+        rows = np.ascontiguousarray(np.broadcast_to(rows, (n, rows.shape[1])))
+        t_hat = np.asarray(self.qf(probs, rows), dtype=float).reshape(-1)
+        if lr:
+            return quantile_cb_lr(self, probs, rows, t_hat, alpha_ci, bound)
+
+        params, center, cov = self._inference_state()
+        Zc = self._centred(rows, center)
+        with np.errstate(all="ignore"):
+            se_H = delta_method_se(
+                lambda q: self.model.Hf(t_hat, Zc, *q), params, cov
+            )
+            h = np.asarray(self.model.hf(t_hat, Zc, *params), dtype=float)
+            se_t = se_H / h
+        lower = float(self.distribution.support[0])
+        if np.isfinite(lower):
+            return lower + log_transformed_cb(
+                t_hat - lower, se_t, alpha_ci, bound
+            )
+        alpha, signs = bound_signs(alpha_ci, bound)
+        out = t_hat[..., None] + signs * ndtri(1.0 - alpha) * se_t[..., None]
+        return out if bound == "two-sided" else out[..., 0]
 
     @property
     def _cb_link(self) -> str:

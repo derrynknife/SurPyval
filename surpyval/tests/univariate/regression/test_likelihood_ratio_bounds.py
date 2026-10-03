@@ -246,3 +246,82 @@ def test_583_a_bound_on_the_additive_hazards_model():
     band = model.cb([2.0, 8.0], [0.5], method="lr")
     est = model.sf([2.0, 8.0], [0.5])
     assert np.all((band[:, 0] < est) & (est < band[:, 1]))
+
+
+# -- quantile_cb -------------------------------------------------------------
+def test_583_quantile_cb_wald_is_the_delta_method_on_the_log_quantile(alt):
+    # log t_p = log c + a / T + n log V + log(-log(1 - p)) / beta
+    T, V = USE[0]
+
+    def log_tp(theta):
+        beta, c, a, n = theta[1], theta[2], theta[3], theta[4]
+        life = np.log(c) + a / T + n * np.log(V)
+        return life + np.log(-np.log(0.9)) / beta
+
+    theta = np.asarray(alt.params, dtype=float)
+    cov = alt.covariance()
+    grad = np.empty(len(theta))
+    for j in range(len(theta)):
+        h = 1e-6 * max(1.0, abs(theta[j]))
+        up, down = theta.copy(), theta.copy()
+        up[j] += h
+        down[j] -= h
+        grad[j] = (log_tp(up) - log_tp(down)) / (2 * h)
+    se = np.sqrt(grad @ cov @ grad)
+    z = 1.6448536269514722
+    expected = np.exp(log_tp(theta) + np.array([-z, z]) * se)
+    got = alt.quantile_cb(0.1, USE, alpha_ci=0.1)
+    np.testing.assert_allclose(got, expected, rtol=1e-5)
+    assert got[0] < alt.qf(0.1, USE) < got[1]
+
+
+def test_583_quantile_cb_lr_is_the_sf_band_inverted(alt):
+    # t_p <= T exactly when F(T) >= p: the likelihood-ratio bounds on the
+    # B10 life are the times at which the likelihood-ratio band on sf is
+    # 0.9, and they come from the same region.
+    lo, hi = alt.quantile_cb(0.1, USE, alpha_ci=0.1, method="lr")
+    assert lo < alt.qf(0.1, USE) < hi
+    assert alt.cb(lo, USE, alpha_ci=0.1, method="lr")[0] == pytest.approx(
+        0.9, abs=1e-6
+    )
+    assert alt.cb(hi, USE, alpha_ci=0.1, method="lr")[1] == pytest.approx(
+        0.9, abs=1e-6
+    )
+
+
+def test_583_quantile_cb_shapes_options_and_sides(alt):
+    rows = np.array([[358.15, 450.0], USE[0]])
+    assert alt.quantile_cb([0.1, 0.5], rows).shape == (2, 2)
+    assert alt.quantile_cb([0.1, 0.5], USE, bound="lower").shape == (2,)
+    assert np.ndim(alt.quantile_cb(0.1, USE, bound="upper")) == 0
+    two = alt.quantile_cb(0.5, USE, alpha_ci=0.2, method="lr")
+    upper = alt.quantile_cb(0.5, USE, alpha_ci=0.1, bound="upper", method="lr")
+    assert upper == two[1]
+    with pytest.raises(ValueError, match="'p' must be in"):
+        alt.quantile_cb(1.0, USE)
+    with pytest.raises(ValueError, match="method"):
+        alt.quantile_cb(0.1, USE, method="bootstrap")
+
+
+@pytest.mark.parametrize("fitter", [WeibullPH, sp.LogNormalAFT])
+def test_583_quantile_cb_of_a_centred_fit(fitter):
+    rng = np.random.default_rng(1)
+    Z = rng.uniform(5.0, 7.0, size=(60, 1))
+    x = 10.0 * np.exp(-0.5 * (Z[:, 0] - 6.0)) * rng.weibull(1.5, 60)
+    model = fitter.fit(x, Z=Z)
+    q = model.qf([0.1, 0.5], [[6.0], [9.0]])
+    for method in ("wald", "lr"):
+        b = model.quantile_cb([0.1, 0.5], [[6.0], [9.0]], method=method)
+        assert np.all((b[:, 0] < q) & (q < b[:, 1]))
+
+
+def test_583_a_model_with_searches_kept_pickles(alt):
+    # The searches are kept on the model (#573: fitted models pickle).
+    import pickle
+
+    alt.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr")
+    restored = pickle.loads(pickle.dumps(alt))
+    np.testing.assert_array_equal(
+        restored.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr"),
+        alt.cb(FIVE_YEARS, USE, alpha_ci=0.1, method="lr"),
+    )
