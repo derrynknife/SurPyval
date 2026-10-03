@@ -43,7 +43,7 @@ from surpyval.univariate.information_criteria import (
     ic_sample_size,
 )
 from surpyval.utils import is_missing_event
-from surpyval.utils.deprecation import RenamedAttribute
+from surpyval.utils.deprecation import ArrayMethod, RenamedAttribute
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.validation import (
     BOUNDS,
@@ -97,7 +97,7 @@ class _SharedFrailty(
         self._model_spec: Any = None
         self.group_labels: list = []
         self.frailties: dict = {}
-        self.covariance: "np.ndarray | None" = None
+        self._covariance: "np.ndarray | None" = None
         self.parameter_names: "list[str]" = []
         self.n_obs: int = 0
         self.n_events: int = 0
@@ -115,6 +115,11 @@ class _SharedFrailty(
         # (``surpyval.utils.no_maximum``), as its warnings say; "unknown"
         # for a model restored from a dict saved without it.
         self.maximum: str = "unknown"
+
+    #: The parameters' covariance, ``covariance()``, in the order of
+    #: ``parameter_names`` (#605): an attribute before v0.23, which still
+    #: reads it, with a DeprecationWarning.
+    covariance = ArrayMethod("_covariance", no_covariance_error)
 
     # -- information criteria (InformationCriteriaMixin) -------------------
 
@@ -291,9 +296,7 @@ class _SharedFrailty(
 
     def standard_errors(self) -> "dict[str, float]":
         """Wald standard errors for each parameter, keyed by name."""
-        if self.covariance is None:
-            raise no_covariance_error()
-        se = _standard_error(np.diag(self.covariance))
+        se = _standard_error(np.diag(self.covariance()))
         return {name: float(s) for name, s in zip(self.parameter_names, se)}
 
     def param_cb(
@@ -308,8 +311,7 @@ class _SharedFrailty(
         for the positive baseline parameters and ``theta``, natural for the
         unbounded coefficients) so the interval stays valid.
         """
-        if self.covariance is None:
-            raise no_covariance_error()
+        cov = self.covariance()
         if name not in self.parameter_names:
             raise ValueError(
                 "Unknown parameter {!r}; expected one of {}".format(
@@ -318,7 +320,7 @@ class _SharedFrailty(
             )
         idx = self.parameter_names.index(name)
         est = self._param_vector()[idx]
-        se = float(_standard_error(self.covariance[idx, idx]))
+        se = float(_standard_error(cov[idx, idx]))
         positive = name == "theta" or (
             idx < self.k_dist and self.dist.bounds[idx][0] == 0
         )
@@ -412,10 +414,10 @@ class _SharedFrailty(
         k = self.k_dist
         n_beta = self.beta.size
         se = np.full(params.shape, np.nan)
-        if self.covariance is not None:
+        if self._covariance is not None:
             with np.errstate(all="ignore"):
                 se = np.asarray(
-                    _standard_error(np.diag(self.covariance)), dtype=float
+                    _standard_error(np.diag(self._covariance)), dtype=float
                 )
         level = "{:g}%".format(100 * (1 - alpha_ci))
         columns = list(coefficient_table([], [], [], alpha_ci).columns)
@@ -622,8 +624,8 @@ class FrailtyModel(_SharedFrailty):
             "_neg_ll": to_native(self._neg_ll),
             **maximum_entry(self.maximum),
         }
-        if self.covariance is not None:
-            out["covariance"] = np.asarray(self.covariance, float).tolist()
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(self._covariance, float).tolist()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -667,6 +669,6 @@ class FrailtyModel(_SharedFrailty):
         out._neg_ll = float(model_dict.get("_neg_ll", 0.0))
         out.maximum = restored_maximum(model_dict)
         if "covariance" in model_dict:
-            out.covariance = np.array(model_dict["covariance"], dtype=float)
+            out._covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)
         return out

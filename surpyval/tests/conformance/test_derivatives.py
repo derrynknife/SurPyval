@@ -349,7 +349,7 @@ def test_likelihood_derivatives_agree_with_finite_differences(case):
 def _has_covariance(case):
     if case.model_class != "surpyval.Parametric":
         return False
-    return getattr(fitted(case), "cov_matrix", None) is not None
+    return getattr(fitted(case), "_covariance", None) is not None
 
 
 @pytest.mark.parametrize(

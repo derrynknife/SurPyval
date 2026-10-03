@@ -568,7 +568,7 @@ class CoxFrailtyFitter:
             covariance[np.ix_(kept, [p_all])] = 0.0
             covariance[np.ix_([p_all], kept)] = 0.0
         covariance[p_all, p_all] = theta_var
-        model.covariance = covariance
+        model._covariance = covariance
         model.parameter_names = names
         model.log_likelihood = float(loglik)
         model.log_likelihood_no_frailty = float(no_frailty)
@@ -690,7 +690,7 @@ class CoxFrailtyModel(_SharedFrailty):
     is 1 before the first time and holds its last value after the last.
 
     ``params`` is ``beta`` then ``theta``, in the order of
-    ``parameter_names`` and of ``covariance``. The coefficients' standard
+    ``parameter_names`` and of ``covariance()``. The coefficients' standard
     errors are R's (the inverse of the penalised partial likelihood's
     information at the estimated ``theta``, with every frailty in it --
     ``coxph``'s ``sparse = FALSE``); ``theta``'s is from the curvature of
@@ -871,8 +871,8 @@ class CoxFrailtyModel(_SharedFrailty):
             "data_summary": self._data_summary,
             **maximum_entry(self.maximum),
         }
-        if self.covariance is not None:
-            out["covariance"] = np.asarray(self.covariance, float).tolist()
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(self._covariance, float).tolist()
         serialise_covariate_meta(self, out)
         return stamp_schema(out)
 
@@ -920,7 +920,7 @@ class CoxFrailtyModel(_SharedFrailty):
         out.n_obs_weighted = float(model_dict.get("n_obs_weighted", out.n_obs))
         out._data_summary = model_dict.get("data_summary")
         if "covariance" in model_dict:
-            out.covariance = np.array(model_dict["covariance"], dtype=float)
+            out._covariance = np.array(model_dict["covariance"], dtype=float)
         restore_covariate_meta(out, model_dict)
         out.maximum = restored_maximum(model_dict)
         return out

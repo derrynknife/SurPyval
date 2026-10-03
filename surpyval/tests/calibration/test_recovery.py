@@ -130,7 +130,7 @@ def test_univariate_mle_recovery(name):
         cov = np.diag(model.hess_inv)
         if options.get("lfp"):
             params.append(model.p)
-            cov = np.diag(model.cov_matrix)
+            cov = np.diag(model.covariance())
         est[r] = params
         se[r] = np.sqrt(cov)
     check_bias(est, truth, name, standard_errors=se)

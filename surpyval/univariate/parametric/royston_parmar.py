@@ -50,9 +50,13 @@ from surpyval.serialisation import (
     stamp_schema,
     to_native,
 )
-from surpyval.univariate.information_criteria import ic_sample_size
+from surpyval.univariate.information_criteria import (
+    InformationCriteriaMixin,
+    ic_sample_size,
+)
 from surpyval.univariate.parametric.fitters import is_local_minimum
 from surpyval.utils.dataframe import UnivariateDataFrameMixin
+from surpyval.utils.deprecation import ArrayMethod
 from surpyval.utils.linalg import numerical_gradient, numerical_hessian
 from surpyval.utils.no_maximum import (
     maximum_entry,
@@ -153,7 +157,7 @@ def _sf_at(
     return out
 
 
-class RoystonParmarModel(SerialisableMixin):
+class RoystonParmarModel(InformationCriteriaMixin, SerialisableMixin):
     """A fitted Royston-Parmar flexible parametric model.
 
     Carries the spline ``knots``, the coefficients ``params`` (``gamma``), the
@@ -186,7 +190,7 @@ class RoystonParmarModel(SerialisableMixin):
         self.scale = "hazard"
         self.knots = np.array([])
         self.params = np.array([])
-        self.covariance: "np.ndarray | None" = None
+        self._covariance: "np.ndarray | None" = None
         self.support = (0.0, np.inf)
         self.n = 0
         self.n_events = 0
@@ -339,8 +343,7 @@ class RoystonParmarModel(SerialisableMixin):
             one-sided bound at ``alpha_ci`` is the matching end of the
             two-sided bound at ``2 * alpha_ci``.
         """
-        if self.covariance is None:
-            raise no_covariance_error()
+        cov = self.covariance()
         check_option("on", on, ("sf", "R", "ff", "F", "Hf"))
         # An unknown bound (say 'both') used to be taken as 'upper' (#415).
         check_option("bound", bound, BOUNDS)
@@ -352,7 +355,7 @@ class RoystonParmarModel(SerialisableMixin):
         x = np.atleast_1d(np.asarray(x, dtype=float))
         B = _rcs_basis(np.log(x), self.knots)
         eta = B @ self.params
-        var = np.einsum("ij,jk,ik->i", B, self.covariance, B)
+        var = np.einsum("ij,jk,ik->i", B, cov, B)
         se = np.sqrt(np.maximum(var, 0.0))
 
         if bound == "two-sided":
@@ -373,30 +376,18 @@ class RoystonParmarModel(SerialisableMixin):
             return 1.0 - (band[:, ::-1] if band.ndim == 2 else band)
         return -np.log(band[:, ::-1] if band.ndim == 2 else band)
 
-    # -- information criteria ---------------------------------------------
+    # -- information criteria (InformationCriteriaMixin) -------------------
+    # neg_ll(), log_likelihood, aic(), aic_c() and bic(), the last two with
+    # the sample size every SurPyval BIC uses (``_ic_n``, from the data at
+    # fit time; see ic_sample_size).
 
-    @property
+    @property  # type: ignore[override]
     def k(self) -> int:
         return len(self.params)
 
-    def neg_ll(self) -> float:
-        """The negative log-likelihood at the fitted coefficients."""
-        return self._neg_ll
-
-    def aic(self) -> float:
-        """Akaike's information criterion, ``2k + 2 neg_ll``."""
-        return 2 * self.k + 2 * self._neg_ll
-
-    def bic(self) -> float:
-        """The Bayesian information criterion, ``k log(d) + 2 neg_ll``.
-
-        ``d`` is the number of observed failures -- exact, left- and
-        interval-censored observations, weighted by their counts -- or the
-        number of observations when there is none: the sample size every
-        SurPyval BIC uses (it was the number of observations here, so a
-        spline fit's BIC was not comparable with the parametric fits').
-        """
-        return self.k * np.log(self._ic_n) + 2 * self._neg_ll
+    #: The coefficients' covariance, ``covariance()`` (#605): an attribute
+    #: before v0.23, which still reads it, with a DeprecationWarning.
+    covariance = ArrayMethod("_covariance", no_covariance_error)
 
     def summary(self) -> str:
         """A text summary of the fit: link scale, knots, likelihood and
@@ -435,8 +426,8 @@ class RoystonParmarModel(SerialisableMixin):
             **maximum_entry(self.maximum),
             "ic_n": float(self._ic_n),
         }
-        if self.covariance is not None:
-            out["covariance"] = np.asarray(self.covariance, float).tolist()
+        if self._covariance is not None:
+            out["covariance"] = np.asarray(self._covariance, float).tolist()
         return stamp_schema(out)
 
     @classmethod
@@ -460,7 +451,7 @@ class RoystonParmarModel(SerialisableMixin):
             # are the only failures the dict records.
             out._ic_n = ic_sample_size([0], [out.n_events], n_rows=out.n)
         if "covariance" in model_dict:
-            out.covariance = np.array(model_dict["covariance"], dtype=float)
+            out._covariance = np.array(model_dict["covariance"], dtype=float)
         return out
 
 
@@ -684,7 +675,7 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         model.scale = scale
         model.knots = knots
         model.params = gamma
-        model.covariance = covariance
+        model._covariance = covariance
         model.n = int(
             round(float(n_o.sum() + n_r.sum() + n_l.sum() + n_i.sum()))
         )
