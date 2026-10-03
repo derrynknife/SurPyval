@@ -29,6 +29,8 @@ class Linear_(LifeModel):
     array([80., 60.])
     """
 
+    phi_takes_rows = True
+
     def __init__(self) -> None:
         super().__init__(
             "Linear",

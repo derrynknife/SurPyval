@@ -158,17 +158,68 @@ class ParameterSubstitutionFitter(
         return Z_arr
 
     def Hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
+        return self._at_rows(self.Hf_dist, x, Z, params)
+
+    def _at_rows(
+        self, f: Callable[..., Boxable], x: Numeric, Z: Numeric, params: tuple
+    ) -> Boxable:
+        """The distribution's function ``f`` at ``x``, with the life
+        parameter of each row of ``Z`` (``_dist_params_by_row``).
+
+        Evaluated once over every row. It used to be evaluated over every
+        row once per distinct stress and the rows at that stress kept, so
+        a fit to a continuous stress cost the square of the rows: a
+        ``GeneralLogLinear`` fit to 120 rows of distinct stresses made 157
+        substitutions per likelihood evaluation and took 9 s (#592)."""
         x = np.array(x)
         Z_arr = self._stress_matrix(Z)
+        if Z_arr.shape[0] == 0:
+            return np.zeros_like(x)
+        values = f(x, *self._dist_params_by_row(Z_arr, params))
+        return self._nan_at_unknown_stress(values, Z_arr)
 
-        Hf = np.zeros_like(x)
-        stresses = np.unique(Z_arr, axis=0)
-        for stress in stresses:
-            dist_params_i = self._dist_params_at(stress, params)
-            mask = (Z_arr == stress).all(axis=1)
-            Hf = np.where(mask, self.Hf_dist(x, *dist_params_i), Hf)
+    def _dist_params_by_row(
+        self, Z_arr: npt.NDArray, params: tuple
+    ) -> list[Boxable]:
+        """The distribution's parameters at every row of ``Z_arr`` at
+        once: those in ``params``, with the life parameter's slot holding
+        the (transformed) life at each row, an array that broadcasts
+        against ``x`` row for row (a scalar for a single row, as
+        ``_dist_params_at`` gives it).
 
-        return self._nan_at_unknown_stress(Hf, Z_arr)
+        A life model whose ``phi`` takes the rows of a stress matrix
+        (``LifeModel.phi_takes_rows``, the built-in ones) gives every
+        row's life in one call. Another one -- a custom life model written
+        for a single stress row -- is called once per distinct row, as it
+        always was, and the lives taken to the rows. A row with a missing
+        stress is given another row's, and ``_nan_at_unknown_stress`` makes
+        its value nan: a nan life would poison the gradient of every
+        parameter through the sum over rows.
+
+        A list, not ``np.where`` over the slots (see ``_dist_params_at``,
+        #555)."""
+        known = np.isfinite(Z_arr).all(axis=1)
+        if not known.all():
+            stand_in = (
+                Z_arr[known][0] if known.any() else np.ones(Z_arr.shape[1])
+            )
+            Z_arr = np.where(known[:, None], Z_arr, stand_in)
+        phi_params = params[self.k_dist :]
+        if getattr(self.life_model, "phi_takes_rows", False):
+            life = np.reshape(self.phi(Z_arr, *phi_params), (-1,))
+        else:
+            stresses, inverse = np.unique(Z_arr, axis=0, return_inverse=True)
+            lives = np.array(
+                [np.reshape(self.phi(s, *phi_params), ()) for s in stresses]
+            )
+            life = lives[np.reshape(inverse, (-1,))]
+        life = self.param_transform(life)
+        if Z_arr.shape[0] == 1:
+            life = np.reshape(life, ())
+        life_idx = self.param_map[self.life_parameter]
+        return [
+            life if k == life_idx else params[k] for k in range(self.k_dist)
+        ]
 
     def _dist_params_at(
         self, stress: npt.NDArray, params: tuple
@@ -200,16 +251,7 @@ class ParameterSubstitutionFitter(
         return np.where(known, values, np.nan)
 
     def hf(self, x: Numeric, Z: Numeric, *params: Boxable) -> Boxable:
-        x = np.array(x)
-        Z_arr = self._stress_matrix(Z)
-
-        hf = np.zeros_like(x)
-        for stress in np.unique(Z_arr, axis=0):
-            dist_params_i = self._dist_params_at(stress, params)
-            mask = (Z_arr == stress).all(axis=1)
-            hf = np.where(mask, self.hf_dist(x, *dist_params_i), hf)
-
-        return self._nan_at_unknown_stress(hf, Z_arr)
+        return self._at_rows(self.hf_dist, x, Z, params)
 
     # sf/ff/df and the log identities come from HazardIdentitiesMixin;
     # Hf and hf above already do the scalar/1-D stress coercion (#261),

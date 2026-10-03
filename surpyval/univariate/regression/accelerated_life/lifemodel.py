@@ -46,6 +46,11 @@ class LifeModel(ABC):
     #: a power or logarithm of them (``Z**n``, ``log Z``), or reads them as
     #: an absolute temperature.
     positive_stress_columns: "tuple[int, ...]" = ()
+    #: Whether :meth:`phi` takes a 2-D array of stress rows and gives one
+    #: life per row, as the built-in models do; the fit then finds every
+    #: row's life in one call. ``False`` (the default, for a custom model
+    #: written for a single stress) calls it once per distinct stress.
+    phi_takes_rows: bool = False
 
     def __init__(
         self,

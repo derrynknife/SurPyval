@@ -210,6 +210,13 @@ Custom life models can be created by subclassing ``LifeModel``::
 
     model = AcceleratedLife(Weibull, MyStressModel()).fit(x, Z=stress, c=c)
 
+The fit calls a custom model's ``phi`` once for each distinct stress row.
+If ``phi`` also takes a 2-D array of stress rows and gives one life per
+row, as the built-in models do (``MyStressModel`` does: it is elementwise
+in ``Z``), set the class attribute ``phi_takes_rows = True``. The fit then
+finds every row's life in one call, which matters when the stress is
+continuous and every row has its own.
+
 .. autoclass:: surpyval.univariate.regression.accelerated_life.parameter_substitution.ParameterSubstitutionFitter
     :members: fit, fit_from_df, sf, ff, df
 

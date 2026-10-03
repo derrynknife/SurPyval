@@ -408,3 +408,95 @@ def test_555_the_covariance_is_the_exact_information(dist, life_model):
     np.testing.assert_allclose(
         cov / np.outer(se, se), ref / np.outer(se, se), rtol=0, atol=2e-6
     )
+
+
+def _continuous_stress_data():
+    rng = np.random.default_rng(3)
+    stress = rng.uniform(20.0, 40.0, 120)
+    x = Weibull.random(120, 10.0, 3.0, random_state=4) * (100.0 / stress)
+    c = (rng.uniform(size=120) < 0.2).astype(int)
+    return x, stress, c
+
+
+def test_592_life_found_once_per_evaluation(monkeypatch):
+    # Every row's life is found in one call of the life model, however
+    # many distinct stresses there are: the distribution used to be
+    # evaluated over every row once per distinct stress (120 here), and
+    # the life model called as often.
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    x, stress, c = _continuous_stress_data()
+    fitter = AcceleratedLife(Weibull, Power)
+    data = SurpyvalData(x=x, c=c, group_and_sort=False)
+    data.add_covariates(stress.reshape(-1, 1))
+    calls = []
+    original = fitter.phi
+
+    def counted(Z, *params):
+        calls.append(np.shape(Z))
+        return original(Z, *params)
+
+    monkeypatch.setattr(fitter, "phi", counted)
+    value = fitter.neg_ll(data, 1.0, 3.0, 1000.0, -1.0)
+    assert np.isfinite(value)
+    # (log_df takes hf and Hf at the failures, log_sf Hf at the survivors)
+    assert len(calls) <= 3
+
+
+class _RowWiseLife(surpyval.life_models.LifeModel):
+    """``Power`` written for a single stress row, as a custom life model
+    may be: it reads the row's one stress as ``Z[0]``."""
+
+    def __init__(self):
+        super().__init__(
+            "RowWise", {"a": 0, "n": 1}, ((0, None), (None, None))
+        )
+
+    def phi(self, Z, *params):
+        return params[0] * Z[0] ** params[1]
+
+    def phi_init(self, life, Z):
+        return Power.phi_init(life, Z)
+
+
+def test_592_a_custom_life_model_is_called_per_stress_row():
+    # A custom life model is not given a matrix of rows (``phi_takes_rows``
+    # is False): it gives the same likelihood, gradient and fit as the
+    # built-in one.
+    from autograd import jacobian
+
+    from surpyval.utils.surpyval_data import SurpyvalData
+
+    x, stress, c = _continuous_stress_data()
+    built_in = AcceleratedLife(Weibull, Power)
+    custom = AcceleratedLife(Weibull, _RowWiseLife())
+    assert Power.phi_takes_rows and not _RowWiseLife().phi_takes_rows
+    data = SurpyvalData(x=x, c=c, group_and_sort=False)
+    data.add_covariates(stress.reshape(-1, 1))
+    p = np.array([1.0, 3.0, 1000.0, -1.0])
+    np.testing.assert_allclose(
+        custom.neg_ll(data, *p), built_in.neg_ll(data, *p), rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        jacobian(lambda v: custom.neg_ll(data, *v))(p),
+        jacobian(lambda v: built_in.neg_ll(data, *v))(p),
+        rtol=1e-10,
+    )
+    a = built_in.fit(x, stress, c=c)
+    b = custom.fit(x, stress, c=c)
+    np.testing.assert_allclose(b.params, a.params, rtol=1e-6)
+
+
+def test_592_a_missing_stress_is_nan_and_leaves_the_others():
+    # A row with a missing stress is nan; the other rows, and the bounds
+    # whose gradients pass through every row's life, are as without it.
+    x, stress, c = _continuous_stress_data()
+    model = AcceleratedLife(Weibull, Power).fit(x, stress, c=c)
+    Z = np.array([25.0, np.nan, 35.0])
+    q = np.array([2.0, 2.0, 3.0])
+    sf = model.sf(q, Z)
+    assert np.isnan(sf[1])
+    np.testing.assert_array_equal(sf[[0, 2]], model.sf(q[[0, 2]], Z[[0, 2]]))
+    cb = model.cb(q, Z)
+    assert np.all(np.isnan(cb[1]))
+    np.testing.assert_array_equal(cb[[0, 2]], model.cb(q[[0, 2]], Z[[0, 2]]))
