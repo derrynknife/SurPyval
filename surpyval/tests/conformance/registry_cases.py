@@ -1122,6 +1122,17 @@ _LR_X = {
     "ExpoWeibull": np.array([13.0]),
 }
 _LR_NIGHTLY = {"NegativeBinomial", "ExpoWeibull"}
+# The regression models' likelihood-ratio bounds (#583), swept on one
+# case of each kind of covariate link, at two times (with the case's
+# first two covariate rows): a multiplier on the hazard, on the time, on
+# the odds, an additive hazard, and the accelerated life model of #583.
+_REGRESSION_LR_X = {
+    "WeibullPH": (2.0, 8.0),
+    "LogNormalAFT": (2.0, 8.0),
+    "WeibullPO": (2.0, 8.0),
+    "WeibullAH": (2.0, 8.0),
+    "WeibullAL[PowerExponential]": (3.0, 10.0),
+}
 
 
 # Fits with no parameter covariance by design, so no Wald bounds: the
@@ -1343,7 +1354,24 @@ def _bounds(case):
     if cls == "RoystonParmarModel":
         return (Bound("cb", on=_ON_SURVIVAL),)
     if cls == "ParametricRegressionModel":
-        return (Bound("cb", on=_ON_ALL), _PARAM_CB)
+        if case.name not in _REGRESSION_LR_X:
+            return (Bound("cb", on=_ON_ALL), _PARAM_CB)
+        lr = dict(kwargs={"method": "lr"}, wald=False, nan_ok=True, rtol=1e-3)
+        return (
+            Bound("cb", on=_ON_ALL),
+            _PARAM_CB,
+            Bound(
+                "cb",
+                on=_ON_ALL,
+                query=_REGRESSION_LR_X[case.name],
+                label="cb[lr]",
+                slow=True,
+                **lr,
+            ),
+            Bound(
+                "param_cb", kind="param", label="param_cb[lr]", slow=True, **lr
+            ),
+        )
     if cls in ("FrailtyModel", "ProportionalOddsModel", "CoxFrailtyModel"):
         return (_PARAM_CB,)
     if cls == "BuckleyJamesModel":

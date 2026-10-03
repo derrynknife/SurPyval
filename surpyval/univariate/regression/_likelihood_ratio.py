@@ -150,7 +150,7 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
     def _free(self) -> list[int]:
         return [j for j in range(len(self.params)) if j not in self._held_idx]
 
-    # -- the region ------------------------------------------------------------
+    # -- the region --------------------------------------------------------
     def _lr_find_region(self, free: list[int], crit: float) -> tuple[
         list[tuple[Any, Any]],
         list[list[npt.NDArray]],
@@ -166,7 +166,7 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         the region's valleys. A regression model has more parameters, and
         a likelihood many times slower (an accelerated life model's, about
         1 ms on 72 units): the walks of the four parameters of #583's
-        model took 110 s of a 130 s bound. Its region is near an
+        model were 85% of an 85 s bound. Its region is near an
         ellipsoid in the search coordinates (its log-life is linear in
         them), and each bound is found from the traced point where the
         function is most extreme, which includes the boundary along the
@@ -269,7 +269,7 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
                     out.append(u_hat + r * ray)
         return out
 
-    # -- the bounds ------------------------------------------------------------
+    # -- the bounds --------------------------------------------------------
     def param_sides(
         self, idx: int, crit: float, want: tuple[bool, bool]
     ) -> tuple[float, float]:
@@ -332,7 +332,10 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
         (from which the ``sf``, ``ff`` and ``Hf`` bounds all come), the
         log of ``hf`` or ``df``. An additive hazards model's hazard and
         cumulative hazard can be negative (documented), so its bounds are
-        searched on ``-Hf`` and on ``hf`` or ``df`` themselves. The bounds
+        searched on ``-Hf`` and on ``hf`` or ``df`` themselves, and a
+        bound on ``sf``, ``ff`` or ``Hf`` that reaches past the range of
+        a probability (parameters in the region with a negative ``Hf``
+        there) ends at it, as the Wald bound stays inside it. The bounds
         are those of the region whatever the scale: it moves only where
         the searches step.
         """
@@ -353,10 +356,13 @@ class RegressionLikelihoodRatio(LikelihoodRatioMixin):
 
             ends = (_LN_TINY, -_LN_TINY)
             if additive:
+                # The region can hold parameters with a negative H here
+                # (sf above 1, the additive model's own): a bound on a
+                # probability ends at 1, as the Wald bound keeps inside it.
                 value = {
-                    "sf": np.exp,
-                    "ff": lambda v: -np.expm1(v),
-                    "Hf": lambda v: -v,
+                    "sf": lambda v: np.exp(min(v, 0.0)),
+                    "ff": lambda v: -np.expm1(min(v, 0.0)),
+                    "Hf": lambda v: -min(v, 0.0),
                 }[on]
             else:
                 value = {
