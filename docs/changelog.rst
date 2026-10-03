@@ -4,6 +4,40 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Fitted models pickle (#573).** Every fitted model -- univariate,
+  PH, Cox (stratified too), competing-risks and every recurrence model --
+  pickles, so models can go to ``multiprocessing``, ``joblib``,
+  ``concurrent.futures``, Dask or Ray, or be cached with ``pickle`` /
+  ``joblib.dump``; 92 of the 137 registry models failed with "Can't pickle
+  local object". The recurrence fitters unpickle as themselves. New
+  conformance properties ``pickle`` and ``pickle_paths``. A model built on
+  a user's own lambda (a ``phi``, life model or ``CustomDistribution``)
+  pickles only if that function does.
+- **``CompetingRisksProportionalHazards.phi`` and ``phi_e`` are methods
+  (#573);** they were lambda attributes, and calls are unchanged.
+- **``fit_best`` raises input errors and takes ``tl``, ``tr``, ``xl``,
+  ``xr`` (#570).** Malformed data raise ``fit``'s ``ValueError`` (it
+  returned ``None`` with a warning quoting the data once per candidate); a
+  skipped candidate is named with a one-line reason. Breaking: an error
+  every candidate gives alike, or data outside every candidate's support,
+  raises rather than returning ``None``.
+- **Parametric regressions refuse a censored time outside the baseline's
+  support (#565).** Breaking: a Weibull, Gamma, Exponential or LogNormal
+  AFT/PH/PO/AH, accelerated-life or frailty fit given a time censored at
+  -1 was fitted, with nan derivatives; it now raises the univariate fit's
+  support error, from every entry point. A unit censored at 0 is still
+  accepted, as in R ``survreg`` and lifelines.
+- **``logrank(..., tl=)`` (#576):** delayed entry, each unit at risk from
+  its entry; it matches R's Cox score test (3.365711 on AML with entries).
+- **``qf`` warns of a probability outside [0, 1] (#576),** such as
+  ``qf(10)`` meant as the B10 life, and still returns ``NaN``;
+  Royston-Parmar's ``qf`` returns ``NaN`` with the warning rather than a
+  scipy error.
+- **Missing censoring flags and counts are named (#576):** ``NaN``,
+  ``None`` or pandas ``NA`` in ``c`` or ``n`` give "Variable 'c' cannot
+  contain NaN values", not "Censoring value must only be one of ...".
+- **The straddling-interval truncation error explains inspection data
+  (#576):** ``tl`` is the last good inspection, so ``tl <= xl``.
 - **ExpoWeibull likelihood-ratio bounds reach the region's extreme,
   whatever the CPU (#601).** On long, flat valleys of the likelihood region
   (beta -> inf with alpha at the largest observation; alpha -> 0) the
