@@ -88,7 +88,8 @@ def test_qf_inverts_ff():
     assert Hypoexponential.qf(1.0, *RATES) == np.inf
     scalar = Hypoexponential.qf(0.5, *RATES)
     assert np.ndim(scalar) == 0
-    assert np.isnan(Hypoexponential.qf(1.5, *RATES))
+    with pytest.warns(UserWarning, match=r"outside \[0, 1\]"):
+        assert np.isnan(Hypoexponential.qf(1.5, *RATES))
 
 
 def test_single_rate_is_exponential():

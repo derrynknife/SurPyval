@@ -1109,7 +1109,9 @@ the partial likelihood — a useful sanity check that the fit has converged.
 Cluster-robust standard errors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The model-based standard errors assume every observation is independent. When
+The model-based standard errors -- ``standard_errors()``, the square roots of
+the diagonal of ``covariance()``, the inverse of the observed information, as
+on every model -- assume every observation is independent. When
 the data are *clustered* — several failures from the same machine, repeated
 events on the same subject, items drawn in grouped batches — that assumption is
 wrong and the naive errors are too small. The **Lin-Wei sandwich** (or

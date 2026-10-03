@@ -199,7 +199,7 @@ def test_611_mixture_and_dataframe_fits_refuse_it_too():
     [
         (lambda: W.from_params([10, 2], lfp_p=1.5), "must be in"),
         (lambda: W.from_params([10, 2], f0=-0.1), "must be in"),
-        (lambda: W.from_params([10, 2], lfp_p=0.3, f0=0.4), "less than p"),
+        (lambda: W.from_params([10, 2], lfp_p=0.3, f0=0.4), "less than lfp_p"),
         (lambda: surv.Normal.from_params([1, 2], f0=0.1), "starting at 0"),
         (lambda: surv.Beta4.from_params([2, 3, 5, 1]), "a < b"),
         (lambda: surv.Uniform.from_params([4, 1]), "a < b"),

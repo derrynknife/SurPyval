@@ -317,8 +317,8 @@ class OptimisedFitMixin(FitInputsMixin):
 
         lfp : boolean, optional
             If :code:`True` fits a limited-failure-population model: an
-            extra parameter ``p``, the proportion of the population that
-            will ever fail (``1 - p`` never fails). MLE only. Defaults to
+            extra parameter ``lfp_p``, the proportion of the population that
+            will ever fail (``1 - lfp_p`` never fails). MLE only. Defaults to
             :code:`False`.
 
         tl : array like or scalar, optional

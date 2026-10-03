@@ -763,7 +763,7 @@ class Parametric(
         :attr:`extras`); only the distribution's own parameters change. Use
         it to perturb or redraw a fitted model's parameters (sensitivity
         or uncertainty analyses): ``from_params(model.params)`` alone
-        silently drops the offset, ``p`` and ``f0``.
+        silently drops the offset, ``lfp_p`` and ``f0``.
 
         Parameters
         ----------
@@ -845,8 +845,8 @@ class Parametric(
         """
         The covariance of the fitted parameters: the distribution's, in
         the order of ``parameter_names``, then the limited-failure
-        proportion ``p`` and the zero-inflation fraction ``f0`` where the
-        model has them (a held parameter has a zero row and column). The
+        proportion ``lfp_p`` and the zero-inflation fraction ``f0`` where
+        the model has them (a held parameter has a zero row and column). The
         inverse of the observed information at the maximum, carried to
         the parameters through their transforms; what Wald bounds use.
         ``cov_matrix``, its name before v0.23, still gives it, with a
@@ -873,8 +873,8 @@ class Parametric(
         """
         The standard errors of the fitted parameters, the square roots of
         the diagonal of :meth:`covariance`, in its order (the
-        distribution's parameters, then ``p`` and ``f0`` where the model
-        has them); ``nan`` where a variance is not positive. Raises the
+        distribution's parameters, then ``lfp_p`` and ``f0`` where the
+        model has them); ``nan`` where a variance is not positive. Raises the
         ``ValueError`` of :meth:`covariance` where the model has none.
 
         Examples
@@ -1428,9 +1428,10 @@ class Parametric(
         Notes
         -----
         For a model with a limited-failure (cure) fraction the failure
-        function only reaches ``p`` in the limit, so any quantile at or above
-        ``p`` is infinite (that proportion of the population never fails). For
-        a zero-inflated model the mass ``f0`` sits at 0 (not at the offset),
+        function only reaches ``lfp_p`` in the limit, so any quantile at or
+        above ``lfp_p`` is infinite (that proportion of the population never
+        fails). For a zero-inflated model the mass ``f0`` sits at 0 (not at
+        the offset),
         so quantiles at or below ``f0`` return 0. A probability outside
         [0, 1] gives NaN, as scipy's ``ppf`` does, with a warning (it is
         most often a percentage given for a probability: ``qf(10)`` for
@@ -1513,8 +1514,8 @@ class Parametric(
         Notes
         -----
         The ratio is taken of the model's own :meth:`sf`, so a
-        limited-failure proportion ``p``, a zero-inflation fraction ``f0``
-        and an offset ``gamma`` all enter it: the never-failing units
+        limited-failure proportion ``lfp_p``, a zero-inflation fraction
+        ``f0`` and an offset ``gamma`` all enter it: the never-failing units
         still count among the survivors at ``given``, and survival to an
         ``given`` before the offset is certain. Where :math:`R(given) = 0` the
         conditional survival is undefined and ``nan`` is returned.
@@ -1602,7 +1603,7 @@ class Parametric(
         >>> model.random(10)
         array([10.84103403,  0.48542084,  7.11387062,  5.41420125, 4.59286657,
                 5.90703589,  7.5124326 ,  7.96575225,  9.18134126, 8.16000438])
-        >>> lfp = Weibull.from_params([10, 3], p=0.8, f0=0.1)
+        >>> lfp = Weibull.from_params([10, 3], lfp_p=0.8, f0=0.1)
         >>> np.random.seed(6)
         >>> lfp.random(5)
         array([       inf, 7.38380246,        inf, 0.        , 2.22387058])
@@ -1699,7 +1700,7 @@ class Parametric(
         Examples
         --------
         >>> from surpyval import Weibull
-        >>> model = Weibull.from_params([10, 3], p=0.5)
+        >>> model = Weibull.from_params([10, 3], lfp_p=0.5)
         >>> np.random.seed(3)
         >>> x, c, n, t = model.random_data(8)
         >>> x
@@ -1756,7 +1757,7 @@ class Parametric(
         >>> model = Weibull.from_params([10, 3])
         >>> model.mean()
         np.float64(8.929795115692489)
-        >>> lfp = Weibull.from_params([100, 2], p=0.9)
+        >>> lfp = Weibull.from_params([100, 2], lfp_p=0.9)
         >>> lfp.mean(), lfp.mean(defective=True)
         (inf, np.float64(79.76042329074821))
 
