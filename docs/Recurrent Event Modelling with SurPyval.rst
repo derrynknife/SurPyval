@@ -893,6 +893,11 @@ every interval in SurPyval, they take the total tail probability ``alpha_ci``
 
     model.cif_cb([5, 10, 14])
 
+``iif_cb`` bounds the intensity in the same way, and ``mtbf_cb`` the
+instantaneous mean time between failures, ``mtbf(x) = 1 / iif(x)``; a lower
+bound on the MTBF is the reciprocal of an upper bound on the intensity, and
+``mtbf_cb`` does that flip for you.
+
 Having a model is not the same as having a *good* model. SurPyval provides three
 complementary checks. First, a **trend test** on the fitted data — the same
 Laplace / Military-Handbook tests used to decide whether a time-varying
@@ -1006,6 +1011,56 @@ most a final right-censored row. They all return a
 :doc:`RenewalModel <counting/renewal_model>`, which has no closed-form
 cumulative intensity: its ``mcf`` and ``plot`` work by simulating many items
 from the fitted model.
+
+Reliability growth: the demonstrated MTBF
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In a test-fix-test growth programme the question at the end of the test is
+whether the *demonstrated* MTBF -- the instantaneous MTBF at the end of the
+test, :math:`T` -- has reached the requirement, at some confidence. For a
+Crow-AMSAA fit, ``mtbf_cb(T, method="crow")`` gives Crow's (1982) exact
+bounds, the ones MIL-HDBK-189C tabulates: the estimate times coefficients
+that depend only on the number of failures. They apply to a time-terminated
+test (every system observed from 0 to the same :math:`T`) or a
+failure-terminated test of one system, at the end of the test only; other
+data raise, and the default ``method="wald"`` (the delta method) applies at
+any time. Here three prototypes are each tested to 2000 hours:
+
+.. jupyter-execute::
+
+    rng = np.random.default_rng(578)
+    T = 2000.0
+    x, i, c = [], [], []
+    for unit in (1, 2, 3):
+        k = rng.poisson(17)
+        times = np.ceil(10 * T * rng.uniform(size=k) ** (1 / 0.55)) / 10
+        x += [*np.sort(times), T]
+        i += [unit] * (k + 1)
+        c += [0] * k + [1]
+
+    growth = CrowAMSAA.fit(x, i, c=c)
+    print("beta              :", growth.params[1].round(3))
+    print("demonstrated MTBF :", growth.mtbf(T).round(1))
+    print("80% lower (Crow)  :", growth.mtbf_cb(T, alpha_ci=0.2, bound="lower",
+                                              method="crow").round(1))
+    print("80% lower (Wald)  :", growth.mtbf_cb(T, alpha_ci=0.2,
+                                              bound="lower").round(1))
+
+With 46 failures the two lower bounds are close (about 257 and 260 hours
+against an estimate of 309). With few failures they part: Crow's bound is
+exact for a failure-terminated test and errs on the safe side (covers at least
+its level) for a time-terminated one, while the Wald bound is only
+approximate. The MTBF is that of one prototype.
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert (np.asarray(c) == 0).sum() == 46
+    assert round(float(growth.mtbf(T))) == 309
+    _crow = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower", method="crow")
+    _wald = growth.mtbf_cb(T, alpha_ci=0.2, bound="lower")
+    assert round(float(_crow)) == 257 and round(float(_wald)) == 260
 
 Generalised Renewal Process with SurPyval
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1323,8 +1323,19 @@ def _bounds(case):
                 wald=False,
             ),
         )
-    if cls in ("ParametricRecurrenceModel", "ProportionalIntensityModel"):
-        return (Bound("cif_cb", point="cif"), _PARAM_CB)
+    if cls == "ParametricRecurrenceModel":
+        return (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            Bound("mtbf_cb", point="mtbf"),
+            _PARAM_CB,
+        )
+    if cls == "ProportionalIntensityModel":
+        return (
+            Bound("cif_cb", point="cif"),
+            Bound("iif_cb", point="iif"),
+            _PARAM_CB,
+        )
     if cls == "RenewalModel":
         return (_PARAM_CB,)
     if cls == "NonParametricCounting":

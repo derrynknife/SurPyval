@@ -86,6 +86,16 @@ def _per_item_windows(data: Any) -> list:
     return items
 
 
+def item_windows(data: Any) -> list:
+    """
+    Each item's observation window, as :func:`_per_item_windows` gives it:
+    ``(item, events, entry, close, explicit_close)`` per item. Exact event
+    times only (interval- and left-censored rows are refused).
+    """
+    _validate_diagnostic_data(data, "This method")
+    return _per_item_windows(data)
+
+
 def _as_item_cif(cif: Any) -> Callable:
     """
     Normalise the ``cif`` argument of the diagnostics into a factory that

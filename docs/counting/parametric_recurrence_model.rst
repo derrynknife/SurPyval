@@ -5,8 +5,10 @@ The fitted model returned by the Poisson-process fitters (``HPP``,
 ``CrowAMSAA``, ``Duane``, ``CoxLewis``) and by their ``from_params``.
 It evaluates the fitted process -- the cumulative intensity ``cif``
 (which for a Poisson process is also the mean cumulative function,
-``mcf``), the intensity ``iif`` and its inverse ``inv_cif`` -- with
-confidence bounds (``cif_cb``, ``param_cb``), likelihood inference
+``mcf``), the intensity ``iif``, the instantaneous MTBF ``mtbf`` and the
+inverse ``inv_cif`` -- with
+confidence bounds (``cif_cb``, ``iif_cb``, ``mtbf_cb``, with Crow's exact
+bounds on the demonstrated MTBF, and ``param_cb``), likelihood inference
 (``log_likelihood``, ``aic``, ``bic``, ``covariance``,
 ``standard_errors``), goodness-of-fit diagnostics (``residuals``,
 ``trend_test``, ``cramer_von_mises``), simulation of new histories and

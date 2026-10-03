@@ -15,7 +15,15 @@ from surpyval.serialisation import (
 from surpyval.utils.linalg import delta_method_se, log_transformed_cb
 from surpyval.utils.no_maximum import maximum_entry, restored_maximum
 from surpyval.utils.shapes import keeps_query_shape
-from surpyval.utils.validation import option_error
+from surpyval.utils.validation import (
+    BOUNDS,
+    alpha_ci_error,
+    check_option,
+    option_error,
+)
+
+# The bound on 1 / f that a bound on f gives.
+_OPPOSITE = {"two-sided": "two-sided", "lower": "upper", "upper": "lower"}
 
 # How the model was obtained, as the repr reports it.
 _FITTED_BY = {
@@ -407,6 +415,282 @@ class ParametricRecurrenceModel(
             self.covariance(),
         )
         return log_transformed_cb(self.cif(x), se, alpha_ci, bound)
+
+    @keeps_query_shape
+    def mtbf(self, x: ArrayLike) -> np.ndarray:
+        """
+        The instantaneous mean time between failures at ``x``,
+        ``1 / iif(x)``: the MTBF the process would show from ``x`` on if
+        it stopped changing there. At the end of a reliability growth test
+        this is the *demonstrated* MTBF. With several items it is the MTBF
+        of one item.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the MTBF.
+
+        Returns
+        -------
+
+        array_like
+            The instantaneous MTBF.
+
+        Examples
+        --------
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [40, 110, 210, 340, 500, 690, 920, 1180, 1480, 1800, 2000]
+        >>> c = [0] * 10 + [1]
+        >>> model = CrowAMSAA.fit(x, c=c)
+        >>> round(float(model.mtbf(2000.0)), 1)
+        300.0
+        """
+        x = np.array(x)
+        with np.errstate(divide="ignore"):
+            return 1.0 / self.dist.iif(x, *self.params)
+
+    @keeps_query_shape
+    def iif_cb(
+        self,
+        x: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> np.ndarray:
+        """
+        Confidence bounds on the fitted intensity (``iif``) at ``x``.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the confidence bounds.
+        alpha_ci: float, optional
+            The total tail probability of the bound(s). Default is 0.05.
+        bound: {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as an ``(len(x), 2)`` array with
+            columns ``[lower, upper]``; one-sided bounds have the shape of
+            ``x``.
+        method: {'wald', 'crow'}, optional
+            ``"wald"`` (default): the delta method on the log of the
+            intensity, from the parameter covariance (the inverse observed
+            information), as :meth:`cif_cb`; it cannot go negative.
+            ``"crow"``: Crow's (1982) exact bounds, for a ``CrowAMSAA``
+            model at the end of its test only; the reciprocals of the
+            :meth:`mtbf_cb` bounds (see there).
+
+        Returns
+        -------
+
+        numpy array
+            The confidence bounds on the intensity.
+
+        Examples
+        --------
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [40, 110, 210, 340, 500, 690, 920, 1180, 1480, 1800, 2000]
+        >>> c = [0] * 10 + [1]
+        >>> model = CrowAMSAA.fit(x, c=c)
+        >>> model.iif_cb(2000.0, alpha_ci=0.2).round(5)
+        array([0.00188, 0.00591])
+        """
+        check_option("method", method, ("wald", "crow"))
+        check_option("bound", bound, BOUNDS)
+        if method == "crow":
+            return self._reciprocal_cb(
+                self._crow_mtbf_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+            )
+        self._check_fitted()
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        se = delta_method_se(
+            lambda params: self.dist.iif(x, *params),
+            self._mle,
+            self.covariance(),
+        )
+        return log_transformed_cb(self.iif(x), se, alpha_ci, bound)
+
+    @keeps_query_shape
+    def mtbf_cb(
+        self,
+        x: ArrayLike,
+        alpha_ci: float = 0.05,
+        bound: str = "two-sided",
+        method: str = "wald",
+    ) -> np.ndarray:
+        """
+        Confidence bounds on the instantaneous MTBF (:meth:`mtbf`) at
+        ``x``. A lower bound on the MTBF is the reciprocal of an upper
+        bound on the intensity, and the other way round; this method does
+        the flipping, so ``bound="lower"`` is a lower bound on the MTBF.
+
+        The deliverable of a reliability growth test is usually the lower
+        bound on the *demonstrated* MTBF, ``mtbf_cb(T, bound="lower",
+        method="crow")`` at the end of the test ``T``, compared with the
+        requirement.
+
+        Parameters
+        ----------
+
+        x: array_like
+            Values at which to compute the confidence bounds. With
+            ``method="crow"`` every value must be the end of the test.
+        alpha_ci: float, optional
+            The total tail probability of the bound(s). Default is 0.05.
+        bound: {'two-sided', 'lower', 'upper'}, optional
+            Two-sided bounds are returned as an ``(len(x), 2)`` array with
+            columns ``[lower, upper]``; one-sided bounds have the shape of
+            ``x``.
+        method: {'wald', 'crow'}, optional
+            ``"wald"`` (default): the reciprocals of the delta-method
+            bounds of :meth:`iif_cb`, for any model and any ``x``.
+
+            ``"crow"``: the exact bounds of Crow (1982), which
+            MIL-HDBK-189C tabulates, for a ``CrowAMSAA`` model fitted by
+            maximum likelihood, at the end of the test only: ``M_hat * L``
+            and ``M_hat * U``, with coefficients that depend only on the
+            number of failures ``N`` and the level. Two designs have them:
+
+            - *time terminated*: every item observed from 0 to the same
+              time ``T`` (each ends in a ``c = 1`` row at ``T``, or the
+              data are truncated at ``T``), with ``N >= 1`` failures in
+              all. The bounds invert the test of the MTBF conditional on
+              the sufficient statistic of the shape, so they are exact in
+              the sense of a discrete test: they hold at least their
+              level (with few failures, a lower bound at 90% covers about
+              92% to 97% of the time). With ``N = 1`` the upper bound is
+              infinite.
+            - *failure terminated*: one item, observed to its ``N``-th
+              failure (``N >= 2``) with no ``c = 1`` row. Then
+              ``M_hat / M`` is a pivot (the product of independent
+              Gamma(N) and Gamma(N - 1) variables over ``N^2``) and the
+              bounds hold their level exactly.
+
+            Other data (delayed entry, different end times, interval or
+            left censoring, several failure-terminated items) have no
+            exact bound, and ``"crow"`` raises; use ``"wald"``.
+
+        Returns
+        -------
+
+        numpy array
+            The confidence bounds on the instantaneous MTBF.
+
+        References
+        ----------
+
+        Crow, L. H. (1982), "Confidence interval procedures for the Weibull
+        process with applications to reliability growth", Technometrics
+        24(1), 67-72.
+
+        MIL-HDBK-189C (2011), "Reliability Growth Management", Section 5.
+
+        Examples
+        --------
+
+        A growth test of one prototype, stopped at 2000 hours. The 80%
+        lower bound on the demonstrated MTBF, against a requirement of
+        150 hours:
+
+        >>> from surpyval.recurrent import CrowAMSAA
+        >>> x = [40, 110, 210, 340, 500, 690, 920, 1180, 1480, 1800, 2000]
+        >>> c = [0] * 10 + [1]
+        >>> model = CrowAMSAA.fit(x, c=c)
+        >>> lower = model.mtbf_cb(2000.0, alpha_ci=0.2, bound="lower",
+        ...                       method="crow")
+        >>> round(float(lower), 1)
+        196.9
+        >>> round(float(model.mtbf_cb(2000.0, alpha_ci=0.2, bound="lower")), 1)
+        205.9
+        """
+        check_option("method", method, ("wald", "crow"))
+        check_option("bound", bound, BOUNDS)
+        if method == "crow":
+            return self._crow_mtbf_cb(x, alpha_ci, bound)
+        return self._reciprocal_cb(
+            self.iif_cb(x, alpha_ci, _OPPOSITE[bound]), bound
+        )
+
+    @staticmethod
+    def _reciprocal_cb(cb: np.ndarray, bound: str) -> np.ndarray:
+        """The bounds on ``1 / f`` from bounds on a positive ``f``
+        (``cb`` computed with the opposite ``bound``): the reciprocals,
+        with a two-sided pair's columns swapped."""
+        with np.errstate(divide="ignore"):
+            out = 1.0 / np.asarray(cb, dtype=float)
+        return out[..., ::-1] if bound == "two-sided" else out
+
+    def _crow_mtbf_cb(
+        self, x: ArrayLike, alpha_ci: float, bound: str
+    ) -> np.ndarray:
+        """Crow's (1982) exact bounds on the demonstrated MTBF; see
+        :meth:`mtbf_cb`."""
+        from surpyval.utils.linalg import bound_signs
+
+        from .crow_amsaa import (
+            crow_failure_terminated_coefficients,
+            crow_time_terminated_coefficients,
+        )
+
+        alpha, signs = bound_signs(alpha_ci, bound)
+        if not 0.0 < alpha_ci < 1.0:
+            raise alpha_ci_error(alpha_ci)
+        if self.dist.name != "Crow-AMSAA":
+            raise ValueError(
+                "method='crow' gives Crow's exact bounds for a CrowAMSAA "
+                "model; this is a {} model. Use method='wald'.".format(
+                    self.dist.name
+                )
+            )
+        self._check_has_data("method='crow'")
+        self._check_fitted()
+        T, n_events, terminated = self._crow_design()
+        x = np.atleast_1d(np.asarray(x, dtype=float))
+        if not np.all(x == T):
+            raise ValueError(
+                "method='crow' bounds the demonstrated MTBF at the end of the "
+                "test, x = {:g}; for other times use method='wald'.".format(T)
+            )
+        if terminated == "time":
+            L, U = crow_time_terminated_coefficients(n_events, alpha)
+        else:
+            L, U = crow_failure_terminated_coefficients(n_events, alpha)
+        coefficients = np.where(signs < 0, L, U)
+        cb = self.mtbf(x)[..., None] * coefficients
+        return cb if bound == "two-sided" else cb[..., 0]
+
+    def _crow_design(self) -> tuple:
+        """``(T, N, "time" | "failure")`` for data with an exact Crow
+        bound, else a ValueError saying why there is none."""
+        windows = diagnostics.item_windows(self.data)
+        entries = {entry for _, _, entry, _, _ in windows}
+        closes = {close for _, _, _, close, _ in windows}
+        explicit = {flag for _, _, _, _, flag in windows}
+        n_events = int(sum(events.size for _, events, _, _, _ in windows))
+        reason = None
+        if entries != {0.0}:
+            reason = "some items enter after time 0 (delayed entry)"
+        elif explicit == {True} and len(closes) == 1:
+            if n_events >= 1:
+                return closes.pop(), n_events, "time"
+            reason = "there are no failures"
+        elif explicit == {False} and len(windows) == 1:
+            if n_events >= 2:
+                return closes.pop(), n_events, "failure"
+            reason = "a failure-terminated test needs at least 2 failures"
+        elif explicit == {False}:
+            reason = "several items are failure terminated"
+        else:
+            reason = "the items' observation does not end at one time"
+        raise ValueError(
+            "Crow's exact bounds (method='crow') need a time-terminated test "
+            "(every item observed from 0 to the same time) or a failure-"
+            "terminated test of one item; here {}. Use method='wald'.".format(
+                reason
+            )
+        )
 
     # Narrows the mixin plot (bounds options) -- same known divergence.
     def plot(  # type: ignore[override]
