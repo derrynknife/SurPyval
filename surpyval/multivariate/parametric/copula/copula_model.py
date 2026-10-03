@@ -121,9 +121,13 @@ class CopulaModel(SerialisableMixin, MultivariateDistribution):
 
     @keeps_query_shape(point_ndim=1)
     def sf(self, x: npt.ArrayLike) -> npt.NDArray:
-        """Joint survival ``P(X_1 > x_1, X_2 > x_2)``."""
+        """Joint survival ``P(X_1 > x_1, X_2 > x_2)``: the copula's upper
+        quadrant, evaluated directly rather than as ``1 - u - v + C(u, v)``,
+        which lost every digit where it is small (#619)."""
         _, u, v = self._uv(x)
-        return 1.0 - u - v + self._copula_cdf(u, v)
+        if u.size == 0:
+            return onp.empty(0)
+        return onp.asarray(self.copula._survival(u, v, *self.params))
 
     @keeps_query_shape(point_ndim=1)
     def pdf(self, x: npt.ArrayLike) -> npt.NDArray:

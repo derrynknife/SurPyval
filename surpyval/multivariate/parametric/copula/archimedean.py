@@ -62,6 +62,17 @@ class IndependenceCopula(Copula):
     def pdf(self, u: Any, v: Any, *params: Any) -> Any:
         return np.ones_like(np.asarray(u) * np.asarray(v))
 
+    exchangeable = True
+
+    def _survival(self, u: Any, v: Any, *params: Any) -> Any:
+        return (1.0 - u) * (1.0 - v)
+
+    def _below_above(self, u: Any, v: Any, *params: Any) -> Any:
+        return u * (1.0 - v)
+
+    def _du_upper(self, u: Any, v: Any, *params: Any) -> Any:
+        return (1.0 - onp.asarray(v)) * onp.ones_like(onp.asarray(u))
+
     def kendall_tau(self, *params: float) -> float:
         return 0.0
 
@@ -165,6 +176,54 @@ class ClaytonCopula(Copula):
     def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
+    # The quadrants (#619). With w = u^theta (v^-theta - 1), C(u, v) =
+    # u (1 + w)^(-1/theta) and dC/du = (1 + w)^(-1 - 1/theta), so P(U <=
+    # u, V > v) = -u expm1(-log1p(w) / theta) and P(V > v | U = u) =
+    # -expm1(-(1 + 1/theta) log1p(w)), with log w formed in logs: exact
+    # however small they are (the 90- and 270-degree rotations' upper
+    # quadrant and h-function complement). The upper quadrant is the sum
+    # of two such non-negative terms (see ``_survival``).
+    exchangeable = True
+
+    @staticmethod
+    def _log1p_w(u: Any, v: Any, theta: Any) -> Any:
+        u, v, theta = _frank_args(u, v, theta)
+        # (a missing u or v gives NaN, without numpy's warning about it)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            log_w = theta * onp.log(u) + _logexpm1(-theta * onp.log(v))
+            return onp.logaddexp(0.0, log_w), u, theta
+
+    def _below_above(self, u: Any, v: Any, theta: Any) -> Any:
+        log1p_w, u, theta = self._log1p_w(u, v, theta)
+        return -u * onp.expm1(-log1p_w / theta)
+
+    def _du_upper(self, u: Any, v: Any, theta: Any) -> Any:
+        log1p_w, _, theta = self._log1p_w(u, v, theta)
+        return -onp.expm1(-(1.0 + 1.0 / theta) * log1p_w)
+
+    def _survival(self, u: Any, v: Any, theta: Any) -> Any:
+        """:math:`P(U > u, V > v) = v ((1 - m_u m_v)^{-1/\\theta} - 1) +
+        (1 - u) P(V > v \\mid U \\le u)`, with :math:`m_u = 1 -
+        u^\\theta`: two non-negative terms, each exact (``1 - m_u m_v =
+        u^theta + v^theta m_u`` in logs where it is small). The Clayton
+        copula has no upper tail dependence, so near (1, 1) the upper
+        quadrant is about :math:`(1 + \\theta)(1 - u)(1 - v)`, where ``1 -
+        u - v + C`` cancelled to nothing."""
+        log1p_w, u, theta = self._log1p_w(u, v, theta)
+        v = onp.broadcast_to(onp.asarray(v, dtype=float), u.shape)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            log_u, log_v = onp.log(u), onp.log(v)
+            m_u = -onp.expm1(theta * log_u)
+            mm = m_u * -onp.expm1(theta * log_v)
+            log_1m_mm = onp.where(
+                mm < 0.5,
+                onp.log1p(-onp.minimum(mm, 0.5)),
+                onp.logaddexp(theta * log_u, theta * log_v + onp.log(m_u)),
+            )
+        return v * onp.expm1(-log_1m_mm / theta) - (1.0 - u) * onp.expm1(
+            -log1p_w / theta
+        )
+
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         return np.exp(
             np.log1p(theta)
@@ -224,6 +283,38 @@ class GumbelCopula(Copula):
 
     def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
+
+    # The quadrants (#619). With L = log(A / x) = log1p((y / x)^theta) /
+    # theta, A - x = x expm1(L), so P(U <= u, V > v) = u (1 - e^-(A - x))
+    # and P(V > v | U = u) = 1 - e^(-(A - x) + (1 - theta) L), and
+    # P(U > u, V > v) = v expm1(x + y - A) + (1 - u)(1 - e^-(A - x)), a
+    # sum of two non-negative terms, with x + y - A from
+    # ``_minkowski_gap``: each exact however small it is.
+    exchangeable = True
+
+    def _excess(self, u: Any, v: Any, theta: Any) -> tuple:
+        """``(A - x, L, u, theta)``, as above."""
+        u, v, theta = _frank_args(u, v, theta)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            log_x, log_y, _ = self._logs(u, v, theta)
+            L = onp.logaddexp(0.0, theta * (log_y - log_x)) / theta
+            return -onp.log(u) * onp.expm1(L), L, u, theta
+
+    def _below_above(self, u: Any, v: Any, theta: Any) -> Any:
+        excess, _, u, _ = self._excess(u, v, theta)
+        return -u * onp.expm1(-excess)
+
+    def _du_upper(self, u: Any, v: Any, theta: Any) -> Any:
+        excess, L, _, theta = self._excess(u, v, theta)
+        return -onp.expm1(-excess + (1.0 - theta) * L)
+
+    def _survival(self, u: Any, v: Any, theta: Any) -> Any:
+        excess, _, u, theta = self._excess(u, v, theta)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            x, y = -onp.log(u), -onp.log(v)
+            hi, lo = onp.maximum(x, y), onp.minimum(x, y)
+            gap = hi * _minkowski_gap(lo / hi, theta)
+        return v * onp.expm1(gap) - (1.0 - u) * onp.expm1(-excess)
 
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = C (x y)^(theta - 1) A^(1 - 2 theta) (A + theta - 1) / (u v)
@@ -309,6 +400,21 @@ class FrankCopula(Copula):
 
     def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
+
+    # The quadrants and h-function complements (#619), exact: the copula
+    # is radially symmetric, so the upper quadrant at (u, v) is C(1 - u,
+    # 1 - v), and its 90-degree rotation is the copula with -theta, so
+    # P(U <= u, V > v) = C_{-theta}(u, 1 - v).
+    exchangeable = True
+
+    def _survival(self, u: Any, v: Any, theta: Any) -> Any:
+        return self.cdf(1.0 - u, 1.0 - v, theta)
+
+    def _below_above(self, u: Any, v: Any, theta: Any) -> Any:
+        return self.cdf(u, 1.0 - v, -_frank_theta(theta))
+
+    def _du_upper(self, u: Any, v: Any, theta: Any) -> Any:
+        return self.du(1.0 - u, 1.0 - v, theta)
 
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         u, v, theta = _frank_args(u, v, theta)
@@ -477,6 +583,50 @@ class JoeCopula(Copula):
     def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
+    # The quadrants (#619). With A = ubar^theta e^L, L = log1p(a (vbar /
+    # ubar)^theta), a = 1 - ubar^theta: P(U <= u, V > v) = ubar expm1(L /
+    # theta) and dC/du = b e^((1/theta - 1) L), so P(V > v | U = u) =
+    # -expm1(log b + (1/theta - 1) L): sums of terms of one sign, exact
+    # however small they are.
+    exchangeable = True
+
+    @staticmethod
+    def _excess(u: Any, v: Any, theta: Any) -> tuple:
+        """``(L, log ubar, log vbar, theta)``, as above."""
+        u, v, theta = _frank_args(u, v, theta)
+        log_ubar, log_vbar = onp.log1p(-u), onp.log1p(-v)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            log_a = onp.log(-onp.expm1(theta * log_ubar))
+            L = onp.logaddexp(0.0, log_a + theta * (log_vbar - log_ubar))
+        return L, log_ubar, log_vbar, theta
+
+    def _below_above(self, u: Any, v: Any, theta: Any) -> Any:
+        L, log_ubar, _, theta = self._excess(u, v, theta)
+        return onp.exp(log_ubar) * onp.expm1(L / theta)
+
+    def _du_upper(self, u: Any, v: Any, theta: Any) -> Any:
+        L, _, log_vbar, theta = self._excess(u, v, theta)
+        log_b = _log_one_minus_exp(theta * log_vbar)
+        return -onp.expm1(log_b + (1.0 / theta - 1.0) * L)
+
+    def _survival(self, u: Any, v: Any, theta: Any) -> Any:
+        """With ``h`` the larger of ``1 - u`` and ``1 - v``, ``l`` the
+        smaller and ``t = l / h``: ``P(U > u, V > v) = h (G + (1 + t^theta
+        a)^(1/theta) expm1(log1p(l^theta / (1 + t^theta a)) / theta))``,
+        ``a = 1 - h^theta`` and ``G`` the :func:`_minkowski_gap` of ``t``:
+        two non-negative terms, exact near (1, 1) at any ``theta``."""
+        u, v, theta = _frank_args(u, v, theta)
+        ubar, vbar = 1.0 - u, 1.0 - v
+        hi, lo = onp.maximum(ubar, vbar), onp.minimum(ubar, vbar)
+        with onp.errstate(divide="ignore", invalid="ignore"):
+            t = lo / hi
+            ta = onp.exp(theta * onp.log(t)) * -onp.expm1(theta * onp.log(hi))
+            log_lo = theta * onp.log(lo)
+            rest = onp.exp(onp.log1p(ta) / theta) * onp.expm1(
+                onp.log1p(onp.exp(log_lo) / (1.0 + ta)) / theta
+            )
+            return hi * (_minkowski_gap(t, theta) + rest)
+
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = (ubar vbar)^(theta - 1) A^(1/theta - 2) (theta - 1 + A)
         u, v, theta = _frank_args(u, v, theta)
@@ -571,6 +721,45 @@ class AMHCopula(Copula):
     def dv(self, u: Any, v: Any, theta: Any) -> Any:
         return self.du(v, u, theta)
 
+    # The quadrants and h-function complement in closed form (#619), with
+    # ubar = 1 - u, vbar = 1 - v and D = 1 - theta ubar vbar:
+    # P(U > u, V > v) = ubar vbar (1 + theta - theta (ubar + vbar)) / D,
+    # P(U <= u, V > v) = u vbar (1 - theta ubar) / D and P(V > v | U = u)
+    # = vbar (1 + theta - theta (vbar + 2 ubar) + theta^2 ubar^2 vbar) /
+    # D^2, each a product of terms that keep their relative accuracy.
+    exchangeable = True
+
+    def _survival(self, u: Any, v: Any, theta: Any) -> Any:
+        u, v, theta = _frank_args(u, v, theta)
+        ubar, vbar = 1.0 - u, 1.0 - v
+        return (
+            ubar
+            * vbar
+            * ((1.0 + theta) - theta * (ubar + vbar))
+            / self._d(u, v, theta)
+        )
+
+    def _below_above(self, u: Any, v: Any, theta: Any) -> Any:
+        u, v, theta = _frank_args(u, v, theta)
+        return u * (1.0 - v) * (1.0 - theta * (1.0 - u)) / self._d(u, v, theta)
+
+    def _du_upper(self, u: Any, v: Any, theta: Any) -> Any:
+        u, v, theta = _frank_args(u, v, theta)
+        ubar, vbar = 1.0 - u, 1.0 - v
+        if theta < 0:
+            # every term non-negative
+            num = (
+                (1.0 + theta)
+                - theta * (vbar + 2.0 * ubar)
+                + theta**2 * ubar**2 * vbar
+            )
+        else:
+            # the same, as (1 - theta ubar)^2 + theta v (1 - theta ubar^2)
+            num = ((1.0 - theta) + theta * u) ** 2 + theta * v * (
+                (1.0 - theta) + theta * u * (1.0 + ubar)
+            )
+        return vbar * num / self._d(u, v, theta) ** 2
+
     def pdf(self, u: Any, v: Any, theta: Any) -> Any:
         # c = (1 + theta((1 + u)(1 + v) - 3) + theta^2 (1 - u)(1 - v)) / D^3,
         # its numerator regrouped as (1 - theta)(1 - theta + theta s) +
@@ -664,6 +853,30 @@ def _invert_tau(
         return default
 
 
+def _minkowski_gap(t: Any, theta: float) -> Any:
+    """:math:`G = 1 + t - (1 + t^\\theta)^{1/\\theta}` for ``0 <= t <= 1``
+    and ``theta >= 1``, with its relative accuracy however small it is
+    (it is 0 at ``theta = 1``): :math:`G = -(1 + t)\\,\\mathrm{expm1}(D)`
+    with
+
+    .. math::
+        D = \\frac{1}{\\theta}\\left(\\log\\left(1 + \\frac{t\\,
+        \\mathrm{expm1}((\\theta - 1)\\log t)}{1 + t}\\right) - (\\theta -
+        1) \\log(1 + t)\\right) \\le 0,
+
+    a sum of two non-positive terms. The Gumbel and Joe copulas' upper
+    quadrants are built on it (#619).
+    """
+    t = onp.asarray(t, dtype=float)
+    with onp.errstate(divide="ignore", invalid="ignore"):
+        log_t = onp.log(t)
+        shrink = t * onp.expm1((theta - 1.0) * log_t) / (1.0 + t)
+        D = (onp.log1p(shrink) - (theta - 1.0) * onp.log1p(t)) / theta
+        gap = -(1.0 + t) * onp.expm1(D)
+    # t = 0: no gap (and 0 * log 0 above)
+    return onp.where(t > 0, gap, 0.0)
+
+
 def _frank_theta(theta: Any) -> float:
     """The Frank parameter as a float (one value, like every family's)."""
     arr = onp.asarray(theta, dtype=float)
@@ -683,6 +896,19 @@ def _frank_args(u: Any, v: Any, theta: Any) -> tuple:
 def _log1mexp(x: Any) -> Any:
     """``log(1 - exp(-x))`` for ``x > 0``, accurate for small and large x."""
     return onp.log(-onp.expm1(-x))
+
+
+def _log_one_minus_exp(x: Any) -> Any:
+    """``log(1 - exp(x))`` for ``x <= 0``, with its relative accuracy
+    where it is tiny too (Maechler 2012): :func:`_log1mexp`'s ``log(-
+    expm1(x))`` rounds to 0 once ``exp(x)`` is below rounding."""
+    x = onp.asarray(x, dtype=float)
+    with onp.errstate(divide="ignore"):
+        return onp.where(
+            x > -onp.log(2.0),
+            onp.log(-onp.expm1(onp.minimum(x, 0.0))),
+            onp.log1p(-onp.exp(onp.minimum(x, 0.0))),
+        )
 
 
 def _logexpm1(x: Any) -> Any:

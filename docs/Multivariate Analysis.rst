@@ -101,6 +101,18 @@ quantity used in survival analysis follows from :math:`C` and the margins:
 
      P(X_2 \leq x_2 \mid X_1 = x_1) = \frac{\partial C(u_1, u_2)}{\partial u_1}.
 
+Where they are small these formulas subtract numbers close to 1: under
+strong negative dependence the joint survival beyond both margins' upper
+tails can be far below :math:`10^{-16}`, which :math:`1 - u_1 - u_2 + C(u_1,
+u_2)` cannot represent (it gave noise, or 0). SurPyval
+evaluates each such probability -- the joint survival, :math:`P(X_1 \leq x_1,
+X_2 > x_2)` and :math:`P(X_2 > x_2 \mid X_1 = x_1)` -- directly, keeping its
+relative accuracy: for the radially symmetric families (Gaussian, Student-t,
+Frank) the joint survival is :math:`C(1 - u_1, 1 - u_2)`, and the other
+families and their rotations use closed forms written without the
+cancellation (#619). The likelihood of a censored row (below) is built from
+them.
+
 The h-function is also the key to simulation: draw :math:`u_1` uniform, draw
 a second uniform :math:`w`, and solve :math:`\partial C/\partial u_1(u_1,
 u_2) = w` for :math:`u_2`; then map back through the margins' quantile
