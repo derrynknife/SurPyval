@@ -18,7 +18,9 @@ such a rename takes:
 - :class:`ArrayMethod` (with :class:`MethodArray`), the same for an array
   attribute (``FrailtyModel.covariance`` -> ``FrailtyModel.covariance()``);
 - :class:`RenamedToMethod`, an attribute whose value a method of another
-  name now gives (``Parametric.cov_matrix`` -> ``covariance()``).
+  name now gives (``Parametric.cov_matrix`` -> ``covariance()``);
+- :class:`MadePrivate`, the public name of an internal method or attribute
+  (``MixtureModel.EM`` -> ``MixtureModel._em_iteration``).
 
 A name deprecated in v0.23 is accepted until :data:`REMOVED_IN_NEXT`.
 """
@@ -38,6 +40,7 @@ __all__ = [
     "CallableFloat",
     "CallableList",
     "MethodArray",
+    "MadePrivate",
     "MethodFloat",
     "RenamedAttribute",
     "RenamedToMethod",
@@ -638,3 +641,43 @@ class RenamedToMethod:
     def __set__(self, obj: Any, value: Any) -> None:
         self._warn(type(obj))
         setattr(obj, self.stored, value)
+
+
+class MadePrivate(RenamedAttribute):
+    """
+    The public name of an internal method or attribute, now private.
+
+    Declare it on the class under the public name, ``EM =
+    MadePrivate("_em_iteration")``: reading it warns that it is internal
+    and will be removed in :data:`REMOVED_IN_NEXT`, and gives the private
+    one. There is no public replacement to name.
+
+    Examples
+    --------
+    >>> import warnings
+    >>> from surpyval.utils.deprecation import MadePrivate
+    >>> class Model:
+    ...     def _step(self):
+    ...         return 1
+    ...     step = MadePrivate("_step")
+    >>> with warnings.catch_warnings(record=True) as caught:
+    ...     warnings.simplefilter("always")
+    ...     Model().step()
+    1
+    >>> print(caught[0].message)  # doctest: +NORMALIZE_WHITESPACE
+    Model.step is internal to the fit; its public name is deprecated and
+    will be removed in v0.24.
+    """
+
+    def __init__(self, private: str) -> None:
+        super().__init__(private, REMOVED_IN_NEXT)
+
+    def _warn(self, owner: type) -> None:
+        warnings.warn(
+            "{}.{} is internal to the fit; its public name is deprecated "
+            "and will be removed in v{}.".format(
+                owner.__name__, self.old, self.removed_in
+            ),
+            DeprecationWarning,
+            stacklevel=3,
+        )

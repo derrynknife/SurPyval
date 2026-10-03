@@ -276,14 +276,14 @@ def test_544_censored_row_with_truncation_is_its_interval(kind):
     for params in (explicit.params, [[3.0, 2.0], [10.0, 1.0]]):
         params = np.asarray(params)
         np.testing.assert_allclose(
-            np.sort(coded.likelihood(params[0])),
-            np.sort(explicit.likelihood(params[0])),
+            np.sort(coded._likelihood(params[0])),
+            np.sort(explicit._likelihood(params[0])),
             rtol=1e-12,
         )
         # each row's log-likelihood is its likelihood's log
         np.testing.assert_allclose(
             coded._component_log_likelihood(params[1]),
-            np.log(coded.likelihood(params[1])),
+            np.log(coded._likelihood(params[1])),
             rtol=1e-12,
         )
         assert coded.neg_ll_of(explicit.w, params) == pytest.approx(

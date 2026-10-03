@@ -87,15 +87,15 @@ def test_the_answer_is_a_verified_maximum(seed):
 def test_m_step_gradient_is_the_exact_one():
     x, c = _censored_mixture()
     model = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
-    model.expectation()
+    model._expectation()
     p = model.params.ravel() * np.array([1.1, 0.9, 1.05, 0.95])
     jac = model._Q_jac()
     assert jac is not None
     step = 1e-6 * np.abs(p)
     fd = [
         (
-            model.Q(p + np.eye(4)[j] * step[j])
-            - model.Q(p - np.eye(4)[j] * step[j])
+            model._Q(p + np.eye(4)[j] * step[j])
+            - model._Q(p - np.eye(4)[j] * step[j])
         )
         / (2 * step[j])
         for j in range(4)
@@ -122,7 +122,7 @@ def test_warns_only_when_neither_em_nor_the_polish_reaches_a_maximum(
         model.data = sp.utils.surpyval_data.SurpyvalData(x=x, c=c)
         model._truncated = False
         model.p = np.ones((2, len(x))) / 2
-        model.initialise_params()
+        model._initialise_params()
         reason = model._em(max_iter=4, budget=2)
     # ``_em`` says why; the fit gives the one warning (unless the
     # likelihood has no finite maximum, which says so instead)
@@ -276,7 +276,7 @@ def test_589_m_step_evaluates_q_only_with_its_gradient(monkeypatch):
     x, c = _censored_mixture()
     model = sp.MixtureModel.fit(x, c=c, dist=sp.Weibull, m=2)
     plain_calls = []
-    q = sp.MixtureModel.Q
+    q = sp.MixtureModel._Q
 
     def recorded(self, params):
         if not isinstance(params, Box):
@@ -284,10 +284,10 @@ def test_589_m_step_evaluates_q_only_with_its_gradient(monkeypatch):
         return q(self, params)
 
     monkeypatch.setattr(sp.MixtureModel, "Q", recorded)
-    model.expectation()
+    model._expectation()
     model._Q_jac()  # the one-off check that autograd can differentiate it
     plain_calls.clear()
-    model.maximisation()
+    model._maximisation()
     assert plain_calls == []
 
 
