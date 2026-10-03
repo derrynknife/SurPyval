@@ -10,7 +10,6 @@ from autograd.numpy.numpy_vjps import unbroadcast_f
 from autograd.tracer import isbox
 
 from surpyval.univariate import parametric as para
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.parametric_fitter import (
     Boxable,
     Numeric,
@@ -474,26 +473,25 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        x, c, n = data.x, data.c, data.n
         if offset:
             # Estimate the offset first and seed alpha and beta from the
-            # shifted data. Taking logs before removing the shift reads
-            # log(x) instead of log(x - gamma), and a large shift
-            # compresses those logs into a narrow band: at gamma = 100
-            # with a true beta of 2 the seed came back at beta = 23 and
-            # the MLE then failed outright, falling back to MPP.
-            #
-            # ``_offset_start`` because the fitter overwrites the returned
-            # offset with exactly that (see ``_initial_guess``); seeding
-            # alpha and beta against a different shift than the one
-            # actually installed defeats the point of shifting at all.
-            gamma = _offset_start(x)
-            alpha, beta = self._gumbel_seed(x - gamma, c, n, refine=True)
-            return np.array([gamma, alpha, beta, 1.0], dtype=float)
+            # shifted data (``_offset_seed``). Taking logs before removing
+            # the shift reads log(x) instead of log(x - gamma), and a large
+            # shift compresses those logs into a narrow band: at
+            # gamma = 100 with a true beta of 2 the seed came back at
+            # beta = 23 and the MLE then failed outright.
+            return self._offset_seed(data)
+        x, c, n = data.x, data.c, data.n
         return np.array(
             [*self._gumbel_seed(x, c, n, refine=False), 1.0],
             dtype=float,
         )
+
+    def _shifted_initialiser(self, data: SurpyvalData) -> npt.NDArray:
+        """The seeds for data shifted by an offset, refined (see
+        ``_gumbel_seed``)."""
+        alpha, beta = self._gumbel_seed(data.x, data.c, data.n, refine=True)
+        return np.array([alpha, beta, 1.0], dtype=float)
 
     _log_forms = staticmethod(_log_forms)
     _support = staticmethod(_support)

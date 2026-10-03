@@ -7,7 +7,6 @@ import numpy.typing as npt
 from scipy.optimize import brentq
 
 from surpyval.univariate import parametric as para
-from surpyval.univariate.parametric._fit_inputs import _offset_start
 from surpyval.univariate.parametric.fitters.closed_form import (
     is_uncensored_and_untruncated,
     weighted_mean_and_std,
@@ -75,20 +74,11 @@ class LogNormal_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        x, c, n = data.x, data.c, data.n
         if offset:
-            # Shift the data so the log transform is defined, then
-            # initialise mu and sigma from the shifted data. The shift is
-            # the fitter's starting offset (see ``_offset_start``); it was
-            # ``min(x) - 1``, which for data in thousandths shifted by a
-            # thousand spreads, leaving a sigma so small that MPS and MSE
-            # sat at the start and never moved.
-            gamma_init = _offset_start(x)
-            norm_mod = para.Normal.fit(
-                np.log(x - gamma_init), c=c, n=n, how="MLE"
-            )
-            mu, sigma = norm_mod.params
-            return np.array([gamma_init, mu, sigma], dtype=float)
+            # mu and sigma from the data shifted by the starting offset
+            # (``_offset_seed``), where the log transform is defined
+            return self._offset_seed(data)
+        x, c, n = data.x, data.c, data.n
         norm_mod = para.Normal.fit(np.log(x), c=c, n=n, how="MLE")
         mu, sigma = norm_mod.params
         return np.array([mu, sigma], dtype=float)

@@ -54,13 +54,15 @@ class Weibull_(OptimisedFitMixin, ParametricFitter):
     def _parameter_initialiser(
         self, data: SurpyvalData, offset: bool = False
     ) -> npt.NDArray:
-        mpp_model = self.fit_from_surpyval_data(
-            data, offset=offset, how="MPP", heuristic="Nelson-Aalen"
-        )
         if offset:
-            return np.array([mpp_model.gamma, *mpp_model.params], dtype=float)
-        else:
-            return np.asarray(mpp_model.params, dtype=float)
+            # The probability plot of the data shifted by the starting
+            # offset (``_offset_seed``). The plot's own offset fit, whose
+            # offset was then replaced, was not one distribution (#622).
+            return self._offset_seed(data)
+        mpp_model = self.fit_from_surpyval_data(
+            data, how="MPP", heuristic="Nelson-Aalen"
+        )
+        return np.asarray(mpp_model.params, dtype=float)
 
     def sf(self, x: Numeric, alpha: Boxable, beta: Boxable) -> Boxable:
         r"""
