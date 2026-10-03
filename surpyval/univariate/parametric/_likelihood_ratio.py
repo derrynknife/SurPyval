@@ -387,6 +387,8 @@ class _PsiBoundSearch:
         self.traced: list[tuple[float, npt.NDArray]] | None = None
         # The points the level ladders found (``ladder``).
         self.ladder_ids: set[int] = set()
+        # psi at each point asked for (``psi_u``).
+        self.psi_kept: dict[bytes, float] = {}
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -401,10 +403,17 @@ class _PsiBoundSearch:
     def psi_u(self, u: npt.NDArray) -> float:
         if not np.all(np.isfinite(u)):
             return np.nan
-        # Held to the ends of its scale where the function reaches the
-        # edge of its range (a density that underflows to 0), so that
-        # a search can still step there.
-        return float(np.clip(self.psi_of(self.theta_of(u)), *self.ends))
+        # Kept by the point's bytes, as the likelihood is: SLSQP asks
+        # for the constraint again where it has just evaluated it.
+        key = np.asarray(u, dtype=float).tobytes()
+        if key not in self.psi_kept:
+            # Held to the ends of its scale where the function reaches
+            # the edge of its range (a density that underflows to 0), so
+            # that a search can still step there.
+            self.psi_kept[key] = float(
+                np.clip(self.psi_of(self.theta_of(u)), *self.ends)
+            )
+        return self.psi_kept[key]
 
     def dev_u(self, u: npt.NDArray) -> float:
         return 2.0 * (self.nll_of(u) - self.nll_hat)
@@ -1636,7 +1645,22 @@ class LikelihoodRatioMixin:
         (an ExpoWeibull ``beta`` running off to infinity with ``alpha`` at
         the largest observation), which a search from the estimate does
         not find.
+
+        The region is found once per level and kept: every band, quantile
+        and mean bound at that level searches the same one.
         """
+        key = (tuple(free), *self._lr_key(-1, crit, 0))
+        cache = self.__dict__.setdefault("_lr_regions", {})
+        if key not in cache:
+            cache[key] = self._lr_find_region(free, crit)
+        return cache[key]
+
+    def _lr_find_region(self, free: list[int], crit: float) -> tuple[
+        list[tuple[Any, Any]],
+        list[list[npt.NDArray]],
+        list[npt.NDArray] | None,
+    ]:
+        """The region of ``_lr_region``, found."""
         coords, limits = self._lr_coords()
         free_coords = [coords[j] for j in free]
         box = self._lr_box(free_coords, [limits[j] for j in free])
