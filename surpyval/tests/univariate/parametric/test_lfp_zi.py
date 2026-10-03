@@ -427,3 +427,57 @@ def test_548_window_counts_the_mass_from_zero():
         assert np.exp(log_window) == pytest.approx(expected, rel=1e-12)
     assert model.ff(-1.0) == 0.0
     assert model.ff(0.0) == pytest.approx(0.2)
+
+
+def _monthly_counts(months, counts, running, end=24.0):
+    """Returns counted by month in service (interval-censored), and the
+    units still running at ``end``."""
+    months = np.asarray(months, dtype=float)
+    return {
+        "x": np.r_[np.column_stack([months - 1, months]), [[end, end]]],
+        "c": np.r_[np.full(months.size, 2), 1],
+        "n": np.r_[counts, running],
+    }
+
+
+def test_579_lfp_on_interval_counts_moves_p_off_its_bound():
+    # #579: 20 000 units, 3% defective (Weibull 2 months, shape 0.7), the
+    # rest wearing out (120 months, shape 3), returns counted by month for
+    # 24 months. The default start ran p to 1, where p's searched value
+    # no longer moves the likelihood (its gradient and curvature are
+    # zero or rounding), and the fit reported a verified maximum at
+    # neg_ll 5005.974; from a start near the answer the maximum is at
+    # p = 0.059, neg_ll 5002.210.
+    rng = np.random.default_rng(0)
+    n_units = 20_000
+    defective = rng.random(n_units) < 0.03
+    t = np.where(
+        defective,
+        2 * rng.weibull(0.7, n_units),
+        120 * rng.weibull(3, n_units),
+    )
+    month = np.ceil(t)
+    returned = month <= 24
+    months, counts = np.unique(month[returned], return_counts=True)
+    data = _monthly_counts(months, counts, (~returned).sum())
+    model = no_warnings(Weibull.fit, **data, lfp=True)
+    near = Weibull.fit(**data, lfp=True, init=[2.0, 0.7, 0.05])
+    assert model.maximum == "verified"
+    assert model.neg_ll() <= near.neg_ll() + 1e-6
+    assert model.neg_ll() == pytest.approx(5002.2097, abs=1e-3)
+    assert model.p == pytest.approx(0.0592, abs=1e-3)
+
+
+def test_579_p_on_its_bound_is_a_maximum_there():
+    # 500 units counted by month, 11 returns: the likelihood is highest
+    # at p = 1, falling as p moves off it. p's search ends where it is 1
+    # in floating point, with a zero gradient and curvature, which the
+    # check of the gradient and Hessian cannot pass: the fit warned that
+    # it was not a verified maximum. p is now judged on its bound.
+    data = _monthly_counts([1, 3, 8, 16, 23, 24], [5, 2, 1, 1, 1, 1], 489)
+    model = no_warnings(Weibull.fit, **data, lfp=True)
+    assert model.p == 1.0
+    assert model.maximum == "verified"
+    for p in (0.999, 0.9, 0.5):
+        profile = Weibull.fit(**data, lfp=True, fixed={"p": p})
+        assert profile.neg_ll() > model.neg_ll()

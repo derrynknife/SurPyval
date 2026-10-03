@@ -59,6 +59,9 @@ class _Search(NamedTuple):
     #: the likelihood has no finite maximum (see ``_runaway``); empty
     #: where none was found.
     runaway: tuple[int, ...] = ()
+    #: A start off the bound of a parameter whose likelihood rises off it
+    #: (``_OnBounds.off``), for the caller to search from (#579).
+    off_bound: "npt.NDArray | None" = None
 
 
 def _negative_log_likelihood(model: "Parametric") -> Callable[..., Any]:
@@ -226,9 +229,12 @@ class _OnBounds(NamedTuple):
     #: observation and per unit of the parameter (0 where it falls off
     #: every bound).
     rise: float = 0.0
-    #: The point with each parameter the likelihood rises off moved off
-    #: its bound, a hundredth of the way into its range; ``None`` where
-    #: the likelihood rises off none.
+    #: The natural parameters with each one the likelihood rises off moved
+    #: off its bound to the middle of its range, where its searched value
+    #: moves it most (a start just inside the bound, ``p = 0.99``, is where
+    #: the search's tolerance is met at once, the likelihood so flat in
+    #: it): a start for another search (``optimised_fit``); ``None`` where
+    #: it rises off none.
     off: "npt.NDArray | None" = None
 
 
@@ -374,38 +380,10 @@ class _Judge(NamedTuple):
                 if f_away < f - level:
                     slope = (f - f_away) / (1e-6 * width) / self.obj_scale
                     rise = max(rise, slope)
-                    off = np.array(x if off is None else off, dtype=float)
-                    off[k] = self._searched(
-                        x, k, bound + inward * 1e-2 * width
-                    )
+                    off = np.array(values if off is None else off)
+                    off[i] = bound + inward * 0.5 * width
                 break
         return _OnBounds(tuple(held), rise, off)
-
-    def _searched(self, x: npt.NDArray, k: int, target: float) -> float:
-        """The searched value of the parameter at position ``k`` at which
-        its natural value is ``target``, the others as at ``x``, by
-        bisection between ``x[k]`` and 0 (the middle of a range bounded at
-        both ends): each parameter's map is monotone and its own."""
-        natural, _, free, _ = self.space
-        point = np.array(x, dtype=float)
-
-        def value(u: float) -> float:
-            point[k] = u
-            with np.errstate(all="ignore"):
-                return float(natural(point)[free[k]]) - target
-
-        a, b = 0.0, float(x[k])
-        f_a = value(a)
-        for _ in range(100):
-            mid = 0.5 * (a + b)
-            f_mid = value(mid)
-            if f_mid == 0 or mid in (a, b):
-                break
-            if (f_mid > 0) == (f_a > 0):
-                a, f_a = mid, f_mid
-            else:
-                b = mid
-        return 0.5 * (a + b)
 
     def _verified_without(self, x: npt.NDArray, held: tuple) -> bool:
         """Whether ``x`` is a verified maximum in its components other
@@ -430,9 +408,7 @@ class _Judge(NamedTuple):
             obj_scale=self.obj_scale,
         )
 
-    def verdict(
-        self, x: npt.NDArray, check: bool, strict: bool = True
-    ) -> tuple[bool, tuple]:
+    def verdict(self, x: npt.NDArray, check: bool) -> tuple[bool, tuple]:
         """``(verified, runaway)`` at ``x``, a rung's best point: whether
         it is a verified maximum (``is_local_minimum``) and, if not and
         ``check``, the parameters running off there (``_runaway``).
@@ -446,20 +422,17 @@ class _Judge(NamedTuple):
 
         A parameter on a bound of its space (``on_bounds``) is held out
         of the test, and it is a maximum there where the likelihood does
-        not rise off the bound; with ``strict=False``, once a search
-        started off the bound has found nothing higher (``_search``),
-        where it rises by less than the verification's tolerance
-        (``OPTIMUM_GTOL`` per observation, as ``at_boundary_maximum``)."""
+        not rise off the bound by more than the verification's tolerance
+        (``OPTIMUM_GTOL`` per observation, as ``at_boundary_maximum``).
+        Where it rises at all, the fit also searches from off the bound
+        (``optimised_fit``) and keeps the better answer."""
         fun, args = self.fun, self.args
         keep = self.keep(x)
         # The gradient the verification takes, kept for the check
         jac_kept, _ = _kept_hessian(self.jac)
         on = self.on_bounds(x)
         if on.held:
-            tolerated = on.off is None or (
-                not strict and on.rise < OPTIMUM_GTOL
-            )
-            if tolerated and self._verified_without(x, on.held):
+            if on.rise < OPTIMUM_GTOL and self._verified_without(x, on.held):
                 return True, ()
         elif is_local_minimum(
             fun,
@@ -577,7 +550,6 @@ def _search(
     first_success = None
     runaway: tuple[int, ...] = ()
     checked = False
-    moved_off = False
     judge = _Judge(
         fun, jac, hess_kept, args, init, floor, obj_scale, _space(model), {}
     )
@@ -607,38 +579,25 @@ def _search(
         # the likelihood running off? Then no rung can verify it.
         verified, runaway = judge.verdict(best_result.x, not checked)
         checked = True
-        if not (verified or runaway or moved_off):
-            moved_off = True
-            off = judge.on_bounds(best_result.x).off
-            if off is not None:
-                # The likelihood rises off a bound the parameter is on:
-                # search from just inside it (#579), and judge the better
-                # point found.
-                res = _run_rung(
-                    fun, "BFGS", off, args, jac, None, floor, obj_scale
-                )
-                if _usable(res) and res.fun < best:
-                    best_result, best_method, best = res, "BFGS", res.fun
-                    if res.success:
-                        first_success = (res, "BFGS")
-                verified, runaway = judge.verdict(
-                    best_result.x, False, strict=False
-                )
         if verified or runaway:
             break
 
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
+    off_bound = None
     if best_result is not None:
         res = best_result
         # A verified answer stands whatever its rung reported: BFGS
         # often stops with "precision loss" at the maximum.
         res.success = res.success or verified
+        if not runaway:
+            off_bound = judge.on_bounds(res.x).off
     return _Search(
         res,
         best_method if best_method is not None else method,
         verified,
         runaway,
+        off_bound,
     )
 
 
@@ -851,6 +810,7 @@ def mle(model: "Parametric") -> Any:
         results["_warning"] = warning
         results["_unverified_reason"] = unverified_reason
         results["_runaway"] = _runaway_names(model, search.runaway)
+        results["_off_bound"] = search.off_bound
         results["optimizer"] = search.optimizer
 
     return results

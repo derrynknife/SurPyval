@@ -697,35 +697,42 @@ turnbull_estimator
                     starts += self._alternative_starts(
                         surv_data, offset, zi, lfp, heuristic
                     )
-            if starts:
-                for start in starts:
-                    alt_model = Parametric(self, how, data, offset, lfp, zi)
-                    alt_model.surv_data = surv_data
-                    alt_info: dict = {}
-                    alt = self._fit_numerically(
-                        alt_model,
-                        alt_info,
-                        surv_data,
-                        tl,
-                        tr,
-                        how,
-                        offset,
-                        zi,
-                        lfp,
-                        fixed,
-                        heuristic,
-                        start,
-                        rr,
-                        on_d_is_0,
-                        turnbull_estimator,
-                    )
-                    best = results.get("_neg_ll", np.inf)
-                    value = alt.get("_neg_ll", np.inf)
-                    if np.isfinite(value) and value < best - 1e-9 * max(
-                        1.0, abs(value)
-                    ):
-                        results = alt
-                        model.fitting_info = alt_info
+
+            def from_start(start: Any) -> tuple[dict, dict]:
+                alt_model = Parametric(self, how, data, offset, lfp, zi)
+                alt_model.surv_data = surv_data
+                alt_info: dict = {}
+                alt = self._fit_numerically(
+                    alt_model,
+                    alt_info,
+                    surv_data,
+                    tl,
+                    tr,
+                    how,
+                    offset,
+                    zi,
+                    lfp,
+                    fixed,
+                    heuristic,
+                    start,
+                    rr,
+                    on_d_is_0,
+                    turnbull_estimator,
+                )
+                return alt, alt_info
+
+            for start in starts:
+                results = self._better_fit(model, results, *from_start(start))
+            # A parameter left on a bound of its range (a ``p`` of 1) where
+            # the likelihood rises off it is searched once more, from the
+            # middle of its range (``_OnBounds.off``): in its own units the
+            # search cannot leave the bound, where the parameter no longer
+            # moves the likelihood (#579).
+            off_bound = results.get("_off_bound")
+            if how == "MLE" and not fixed and off_bound is not None:
+                results = self._better_fit(
+                    model, results, *from_start(off_bound)
+                )
         else:
             model.fitting_info = fitting_info
 
@@ -752,6 +759,7 @@ turnbull_estimator
             and not edges_only
         )
         results.pop("_verified", None)
+        results.pop("_off_bound", None)
         # What the fit reached, recorded as ``model.maximum`` so that a
         # caller (``fit_best``) need not read it from the warnings; it
         # follows them exactly. An answer with nothing to verify (a closed
@@ -864,6 +872,21 @@ turnbull_estimator
         self._set_support(model, offset)
 
         return model
+
+    @staticmethod
+    def _better_fit(
+        model: Parametric, results: dict, alt: dict, alt_info: dict
+    ) -> dict:
+        """``alt``, the results of a fit from another start (with its
+        ``fitting_info``, ``alt_info``), where its likelihood is higher
+        than that of ``results`` beyond rounding; else ``results``. The
+        model takes the ``fitting_info`` of the results kept."""
+        best = results.get("_neg_ll", np.inf)
+        value = alt.get("_neg_ll", np.inf)
+        if np.isfinite(value) and value < best - 1e-9 * max(1.0, abs(value)):
+            model.fitting_info = alt_info
+            return alt
+        return results
 
     def _warn_if_at_limit(
         self,

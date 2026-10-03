@@ -80,6 +80,21 @@ def lfp_data():
     }
 
 
+def lfp_count_data():
+    """Monthly return counts of 1000 units, 3% of them defective (Weibull
+    scale 2 months, shape 0.7) and the rest wearing out (scale 120 months,
+    shape 3), observed for 24 months: interval-censored counts, as
+    warranty data come. The default start of a Weibull with ``lfp=True``
+    ran ``p`` to 1 and reported a verified maximum 0.84 below the one at
+    ``p = 0.032`` (#579)."""
+    months = np.array([1, 2, 3, 4, 5, 6, 8, 18, 20, 22, 24.0])
+    return {
+        "x": np.r_[np.column_stack([months - 1, months]), [[24.0, 24.0]]],
+        "c": np.r_[np.full(months.size, 2), 1],
+        "n": np.array([7, 5, 4, 2, 1, 2, 1, 1, 2, 1, 1, 973]),
+    }
+
+
 def zi_data():
     """Two dead-on-arrival zeros in front of the usual sample."""
     d = uni_data()

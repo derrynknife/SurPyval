@@ -418,12 +418,25 @@ def _search_parametric(model, data, name=""):
             params, gamma, f0, p = split(inv(const(u)))
             return dist._neg_ll_func(surv_data, *params, gamma, f0, p)
 
+        def natural(values):
+            params, gamma, f0, p = split(values)
+            return dist._neg_ll_func(surv_data, *params, gamma, f0, p)
+
+        n_obs = float(np.sum(surv_data.n))
+        free = [i for i in range(len(reported)) if i not in info["fixed_idx"]]
+        held = _on_range_ends(
+            natural, np.array(reported, float), model.bounds, free, n_obs
+        )
+        if held and not info["fixed_idx"]:
+            # (a fit with fixed parameters is refitted only with them)
+            _no_higher_off_the_ends(model, surv_data, reported, held, free)
         return [
             Search(
                 fun,
                 x,
-                float(np.sum(surv_data.n)),
+                n_obs,
                 search_floor(model),
+                held=tuple(held),
                 name=name,
             )
         ]
@@ -436,6 +449,74 @@ def _search_parametric(model, data, name=""):
         return dist._neg_ll_func(surv_data, *v, 0.0, 0.0, 1.0)
 
     return [_canonical(neg_ll, params, bounds, float(np.sum(surv_data.n)))]
+
+
+def _on_range_ends(neg_ll, values, bounds, free, n_obs):
+    """The positions in the search vector (``free``: the natural parameter
+    of each) of the parameters on an end of a range bounded at both (a
+    limited-failure ``p`` of 1, a zero-inflation ``f0`` of 0), where the
+    likelihood (``neg_ll`` of the natural ``values``) stops depending on
+    them: the same, to rounding, a millionth of the way closer. Each must
+    be a maximum there, the likelihood not rising off the end by more
+    than the verification's tolerance (``OPTIMUM_GTOL`` per observation)
+    a millionth of the range into it. Searched as a scaled arctanh, such
+    a parameter reaches its end in floating point, where its gradient and
+    curvature are zero or rounding, so the search vector's check cannot
+    judge it (#579)."""
+    f = float(neg_ll(values))
+    level = 1e-12 * max(abs(f), 1.0)
+    held = []
+    for k, i in enumerate(free):
+        lo, hi = bounds[i]
+        if lo is None or hi is None:
+            continue
+        width = float(hi) - float(lo)
+        for bound, inward in ((lo, 1.0), (hi, -1.0)):
+            toward, away = values.copy(), values.copy()
+            toward[i] = bound + (values[i] - bound) * 1e-6
+            away[i] = bound + inward * 1e-6 * width
+            with np.errstate(all="ignore"):
+                if not abs(float(neg_ll(toward)) - f) <= level:
+                    continue
+                rise = (f - float(neg_ll(away))) / (1e-6 * width) / n_obs
+            assert rise < OPTIMUM_GTOL, (
+                f"parameter {i} is on the end {bound} of its range, but the "
+                f"likelihood rises off it ({rise:.3g} per observation)"
+            )
+            held.append(k)
+            break
+    return held
+
+
+def _no_higher_off_the_ends(model, surv_data, reported, held, free):
+    """A fit with a parameter on an end of its range (``held``, see
+    :func:`_on_range_ends`) is refitted from the reported parameters with
+    each such parameter a tenth of its range into it: the likelihood the
+    refit reaches must not be higher. The default start of a Weibull with
+    ``lfp=True`` on interval-censored counts ran ``p`` to 1, a point the
+    likelihood rises off, though by less than the tolerance there: a
+    search off the end found a maximum 0.84 higher (#579)."""
+    start = np.array(reported, dtype=float)
+    for k in held:
+        i = free[k]
+        lo, hi = model.bounds[i]
+        near_hi = abs(start[i] - hi) < abs(start[i] - lo)
+        start[i] = hi - 0.1 * (hi - lo) if near_hi else lo + 0.1 * (hi - lo)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        refit = model.dist.fit_from_surpyval_data(
+            surv_data,
+            offset=model.offset,
+            lfp=model.lfp,
+            zi=model.zi,
+            init=start,
+        )
+    gap = model.neg_ll() - refit.neg_ll()
+    assert gap <= 1e-6 * max(1.0, abs(model.neg_ll())), (
+        f"maximum='verified' with parameter(s) {[free[k] for k in held]} on "
+        f"an end of their range, but a fit started off it reaches a "
+        f"log-likelihood {gap:.4g} higher"
+    )
 
 
 def _search_mixture(model, data):
