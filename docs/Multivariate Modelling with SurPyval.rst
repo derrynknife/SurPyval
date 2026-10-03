@@ -884,7 +884,8 @@ The bounds on ``sf`` and ``ff`` are delta-method bounds on the logit of the
 probability with the covariance of every parameter, the margins' included.
 Over 200 simulated samples of 200 rows from each family, with either fit,
 these 95% intervals covered the true parameter and the true joint survival
-between 92% and 98% of the time (``calibration/test_coverage_copula.py``).
+between 91.5% and 99% of the time, each within the Monte Carlo error of
+95% (``calibration/test_coverage_copula.py``).
 A model built with ``from_params`` has no covariance (its methods raise a
 ``ValueError``), and neither has a fit with a non-parametric margin, whose
 semi-parametric estimate needs a rank-based variance SurPyval does not
