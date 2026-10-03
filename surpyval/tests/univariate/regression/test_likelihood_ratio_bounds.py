@@ -411,3 +411,99 @@ def test_617_cb_tvc_lr_is_an_option_with_the_shapes_of_wald(ph):
     assert ph.cb_tvc(80.0, ramp, bound="lower", method="lr").shape == ()
     with pytest.raises(ValueError, match="method"):
         ph.cb_tvc(t, ramp, method="bootstrap")
+
+
+# -- ray tracing on a curved region (#617) -----------------------------------
+def _one_failure_reference_group(seed=2):
+    """A Weibull PH fit with a binary covariate whose reference group (25
+    units) has a single failure, and the other (15 units) several: the
+    coefficient rests on one failure, and its likelihood region is far
+    from an ellipsoid."""
+    rng = np.random.default_rng(seed)
+    Z = np.r_[np.zeros(25), np.ones(15)][:, None]
+    while True:
+        t = 10 * rng.weibull(1.5, 40) * np.exp(-Z[:, 0])
+        c = (t > 4.0).astype(int)
+        events = c == 0
+        if events[:25].sum() == 1 and events[25:].sum() >= 4:
+            break
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return WeibullPH.fit(np.minimum(t, 4.0), Z=Z, c=c)
+
+
+def _ph_profile_deviance(model, x, z, s, starts):
+    """The profile deviance of ``sf(x, z) = s`` of a Weibull PH model:
+    ``alpha`` solved from ``(x / alpha)^beta e^(b z) = -log s``, the
+    likelihood maximised over ``(log beta, b)`` by Nelder-Mead from each
+    of ``starts``."""
+    w = -np.log(s)
+
+    def nll(v):
+        beta, b = np.exp(v[0]), v[1]
+        alpha = x * (np.exp(b * z) / w) ** (1.0 / beta)
+        value = float(model.model.neg_ll(model.data, alpha, beta, b))
+        return value if np.isfinite(value) else 1e300
+
+    best = np.inf
+    with np.errstate(all="ignore"):
+        for v in starts:
+            for _ in range(2):
+                v = minimize(nll, v, method="Nelder-Mead", options=_NM).x
+            best = min(best, nll(v))
+    return 2.0 * (best - model._neg_ll)
+
+
+def test_617_ray_traced_bounds_on_a_curved_region_are_its_extremes():
+    # The issue's open question: the regression bounds are found from the
+    # region traced along rays in the Wald metric, checked as the
+    # univariate searches' are. On a region far from an ellipsoid (the
+    # Wald band [4.8e-5, 0.938] against [1.3e-4, 0.966] here) each bound
+    # is where the profile deviance, found here independently from a
+    # spread of starts, reaches the critical value, and no value further
+    # out is in the region. (A sweep of such fits, and of #583's design
+    # with 6 to 22 failures, found none beyond, to 1e-10.)
+    model = _one_failure_reference_group()
+    crit = chi2.ppf(0.95, 1)
+    x, z = 8.0, 0.0
+    lo, hi = model.cb(x, [z], method="lr")
+    wald = model.cb(x, [z])
+    assert lo > 2 * wald[0] and hi - wald[1] > 0.02
+    p = np.asarray(model.params, dtype=float)
+    rng = np.random.default_rng(0)
+    base = np.array([np.log(p[1]), p[2]])
+    starts = [base] + [base + rng.normal(0, [0.4, 2.0]) for _ in range(4)]
+    for bound, side in ((lo, -1.0), (hi, 1.0)):
+        logit = np.log(bound / (1.0 - bound))
+        assert _ph_profile_deviance(
+            model, x, z, bound, starts
+        ) == pytest.approx(crit, abs=1e-6)
+        for beyond in (1e-3, 0.1, 1.0, 5.0):
+            s = 1.0 / (1.0 + np.exp(-(logit + side * beyond)))
+            assert _ph_profile_deviance(model, x, z, s, starts) > crit
+
+
+def test_617_wald_bound_of_a_constant_smaller_than_the_difference_step():
+    # #583's design with the test stopped at 1000 h (22 failures): the
+    # life model's constant c is 6.3e-9, below the delta method's
+    # difference step of 6e-8, which stepped it negative and gave a
+    # silent [nan, nan] Wald bound.
+    rng = np.random.default_rng(1)
+    T, V = np.meshgrid(
+        np.array([85.0, 105.0, 125.0]) + 273.15, [450.0, 500.0], indexing="ij"
+    )
+    Z = np.repeat(np.column_stack([T.ravel(), V.ravel()]), 12, axis=0)
+    life = 118.0 * np.exp(A_TRUE / Z[:, 0]) * Z[:, 1] ** -3.0
+    t = life * rng.weibull(2.2, len(Z))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model = AcceleratedLife(Weibull, life_models.PowerExponential).fit(
+            np.minimum(t, 1000.0), Z=Z, c=(t > 1000.0).astype(int)
+        )
+    assert model.params[2] < 1e-8
+    est = model.sf(FIVE_YEARS, USE)
+    for on, value in (("sf", est), ("Hf", -np.log(est))):
+        lo, hi = model.cb(FIVE_YEARS, USE, alpha_ci=0.1, on=on)
+        assert lo < value < hi
+    lo, hi = model.quantile_cb(0.1, USE, alpha_ci=0.1)
+    assert lo < model.qf(0.1, USE) < hi

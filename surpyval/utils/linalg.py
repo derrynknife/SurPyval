@@ -139,20 +139,35 @@ def delta_method_se(
     Standard errors of the (possibly vector-valued) function ``func`` of
     the parameters, evaluated at the MLE, via the delta method with a
     central-difference Jacobian: ``se_i = sqrt(J_i' cov J_i)``.
+
+    The step is ``eps**(1/3) * max(|p|, 1e-2)``. Where that step leaves
+    the function's domain (a positive parameter smaller than the step:
+    an accelerated life model's constant ``c`` of 6e-9 against a step of
+    6e-8 gave a ``nan`` bound, #617) the difference is taken again in a
+    step relative to the parameter alone.
     """
+    h = np.finfo(float).eps ** (1.0 / 3.0)
     mle = np.asarray(mle, dtype=float)
-    step = (np.finfo(float).eps ** (1.0 / 3.0)) * np.maximum(np.abs(mle), 1e-2)
+    step = h * np.maximum(np.abs(mle), 1e-2)
+    at = None
     cols = []
     for i in range(mle.size):
-        ei = np.zeros(mle.size)
-        ei[i] = step[i]
-        cols.append(
-            (
+
+        def column(size: float) -> npt.NDArray:
+            ei = np.zeros(mle.size)
+            ei[i] = size
+            return (
                 np.asarray(func(mle + ei), dtype=float)
                 - np.asarray(func(mle - ei), dtype=float)
-            )
-            / (2.0 * step[i])
-        )
+            ) / (2.0 * size)
+
+        col = column(step[i])
+        small = h * abs(mle[i])
+        if 0 < small < step[i] and not np.all(np.isfinite(col)):
+            if at is None:
+                at = np.asarray(func(mle), dtype=float)
+            col = np.where(np.isfinite(at), column(small), col)
+        cols.append(col)
     J = np.stack(cols, axis=-1)
     var = np.einsum("...i,ij,...j->...", J, cov, J)
     with np.errstate(invalid="ignore"):
