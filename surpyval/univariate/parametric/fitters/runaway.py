@@ -105,6 +105,8 @@ def runaway_coefficients(
     coefs: "list[int]",
     start: "npt.ArrayLike | None" = None,
     derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
+    floor: "float | npt.ArrayLike" = 0.0,
+    keep: "Callable[[int, float], bool] | None" = None,
 ) -> "list[int]":
     """The positions in ``coefs`` of the parameters along which the
     likelihood has no finite maximum near ``x``.
@@ -131,7 +133,12 @@ def runaway_coefficients(
     :func:`_flat_at_start`), as it does not along a combination of
     collinear covariates, whose coefficients are not identified rather than
     infinite. ``derivatives`` are those of :func:`search_derivatives` at
-    ``x``, if the caller has them.
+    ``x``, if the caller has them, and ``floor`` the least size of each
+    parameter for :func:`_cleared` (none by default). ``keep(j, slope)``,
+    where given, must also hold of a parameter ``j`` that runs away, with
+    ``slope`` the derivative of ``neg_ll`` along the line it was judged
+    on: a caller whose answers are not all where an optimiser stopped on a
+    flat rise says so there (``fitters.mle``).
     """
     at = np.asarray(x, dtype=float)
     if derivatives is None:
@@ -139,7 +146,7 @@ def runaway_coefficients(
     if derivatives is None:
         return []
     H, g = derivatives
-    cleared = _cleared(at, H, g)
+    cleared = _cleared(at, H, g, floor)
     out = []
     at_start: "tuple[Any] | None" = None  # derivatives at start, if needed
     for k, j in enumerate(coefs):
@@ -162,6 +169,8 @@ def runaway_coefficients(
                     runaway = _no_convergence(neg_ll, point, v, d, j, H)
                 if runaway is not None or d[0] == 0.0:
                     break
+        if runaway and keep is not None and not keep(j, d[0]):
+            continue
         if runaway:
             if start is None:
                 out.append(k)
@@ -173,7 +182,12 @@ def runaway_coefficients(
     return out
 
 
-def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
+def _cleared(
+    x: npt.NDArray,
+    H: npt.NDArray,
+    g: npt.NDArray,
+    floor: "float | npt.ArrayLike" = 0.0,
+) -> npt.NDArray:
     """Which parameters Newton's method shows to be at a maximum at ``x``,
     ``H`` and ``g`` the Hessian and gradient there: those whose part of the
     Newton step ``-H^{-1} g`` is no more than ``1 / log(largest float)`` of
@@ -184,7 +198,14 @@ def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     (a zero gradient and Hessian row, as a frailty variance held at its
     limit of 0 has) are left out of the step. None is cleared where the
     Hessian of the others is not finite and positive definite: a maximum
-    has one, and a runaway's may not (a linear rise has no curvature)."""
+    has one, and a runaway's may not (a linear rise has no curvature).
+
+    A parameter's size is taken as at least ``floor`` (per parameter, or
+    one for all), the unit the search measures it in: a caller that judges
+    every answer, most of them maxima with parameters near 0 in their
+    search units, then reads the profiles of no more of them than the
+    curvature calls for. It can only clear more: a runaway that has not
+    gone that far is not caught."""
     cleared = np.zeros(x.size, dtype=bool)
     if not (np.all(np.isfinite(H)) and np.all(np.isfinite(g))):
         return cleared
@@ -198,7 +219,8 @@ def _cleared(x: npt.NDArray, H: npt.NDArray, g: npt.NDArray) -> npt.NDArray:
     with np.errstate(all="ignore"):
         # A runaway's Newton step is at least 1 / LOG_MAX of its
         # coefficient's size (see above).
-        cleared[used] = np.abs(step) * LOG_MAX <= np.abs(x[used])
+        size = np.maximum(np.abs(x), np.asarray(floor, dtype=float))
+        cleared[used] = np.abs(step) * LOG_MAX <= size[used]
     return cleared
 
 

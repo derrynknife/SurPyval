@@ -12,6 +12,7 @@ from numdifftools import Hessian  # type: ignore
 from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
+    OPTIMUM_GTOL,
     _usable,
     is_local_minimum,
     preconditioned_bfgs,
@@ -177,28 +178,145 @@ def _run_rung(
 
 
 def _runaway(
-    fun: Callable[..., Any], args: tuple, x: npt.NDArray, init: npt.NDArray
+    fun: Callable[..., Any],
+    args: tuple,
+    x: npt.NDArray,
+    init: npt.NDArray,
+    derivatives: "tuple[npt.NDArray, npt.NDArray] | None" = None,
+    floor: "float | npt.ArrayLike" = 0.0,
+    keep: "Callable[[int, float], bool] | None" = None,
 ) -> tuple[int, ...]:
     """The positions of the parameters along which the likelihood has no
-    finite maximum near ``x``, a point a rung stopped at without verifying
-    it, searched from ``init``: Newton's method cannot converge along their
-    profiles (``runaway_coefficients``, the regression fits' check, #392).
-
-    A likelihood with no finite maximum keeps rising towards a supremum
-    as a parameter runs off to infinity, or to an edge where the
-    likelihood is infinite, and no rung can verify a point on the way:
-    each runs until its own limit, and the ladder ran them all (an
-    ExpoWeibull whose ``mu`` ran off took 23 s, every rung; #584). At a
-    point short of a finite maximum Newton's method converges, and the
-    ladder goes on as before.
-    """
+    finite maximum near ``x``, a point a rung stopped at, searched from
+    ``init``: Newton's method cannot converge along their profiles
+    (``runaway_coefficients``, the regression fits' check, #392), and
+    ``keep`` holds (see ``_Judge.keep``). ``derivatives`` are the Hessian
+    and gradient at ``x``, where the caller has them, and ``floor`` the
+    parameters' least sizes for its gate (see ``_cleared``)."""
     with np.errstate(all="ignore"), warnings.catch_warnings():
         warnings.filterwarnings("ignore", "Output seems independent")
         return tuple(
             runaway_coefficients(
-                lambda u: fun(u, *args), x, list(range(len(x))), init
+                lambda u: fun(u, *args),
+                x,
+                list(range(len(x))),
+                init,
+                derivatives,
+                floor,
+                keep,
             )
         )
+
+
+class _Judge(NamedTuple):
+    """How ``_search`` judges a rung's best point.
+
+    A likelihood with no finite maximum keeps rising towards a supremum as
+    a parameter runs off, and no rung can verify a point on the way: each
+    runs until its own limit, and the ladder ran them all (an ExpoWeibull
+    whose ``mu`` ran off took 23 s, every rung; #584). So after the first
+    rung that stops short of a verified maximum, the point it reached is
+    checked as the regression fits check theirs (``_runaway``), and a
+    runaway ends the search. Otherwise the ladder goes on as before.
+    """
+
+    fun: Callable[..., Any]
+    jac: Callable[..., Any]
+    hess_kept: Callable[..., Any]
+    args: tuple
+    init: npt.NDArray
+    floor: Any
+    obj_scale: float
+    #: ``(natural, bounds, free)``: the map from the search vector to
+    #: the full vector of natural parameters, their bounds, and the
+    #: position in it of each searched (free) parameter.
+    space: tuple
+
+    def keep(self, x: npt.NDArray) -> Callable[[int, float], bool]:
+        """What else a parameter ``j`` that Newton's method cannot
+        converge along at ``x`` must show to be running off there, with
+        ``slope`` the derivative along its profile:
+
+        - The profile is flat, to the verification's own tolerance
+          (``is_local_minimum``: per observation, in the parameter's
+          search unit). A search on its way to a supremum stops only where
+          the rise has become too small to follow; one that stopped
+          anywhere else (its line search failed against a wall where the
+          likelihood is not defined, its iterations ran out on a slope)
+          says nothing about where the likelihood goes.
+        - The likelihood rises towards an infinite end of the parameter's
+          range. Towards a finite bound the rise ends at the bound, a
+          maximum on the edge of the space (an Exponential's offset at
+          the first failure), not a runaway; the families that can have
+          no maximum there check it themselves (``_warn_if_at_limit``,
+          ``_warn_if_offset_at_limit``).
+        """
+        natural, bounds, free = self.space
+        size = np.maximum(np.abs(x), np.asarray(self.floor, dtype=float))
+
+        def keep(j: int, slope: float) -> bool:
+            if not abs(slope) * size[j] / self.obj_scale < OPTIMUM_GTOL:
+                return False
+            ahead = np.array(x, dtype=float)
+            # (each parameter's map is monotone and its own)
+            ahead[j] -= np.sign(slope) * size[j]
+            with np.errstate(all="ignore"):
+                now = float(natural(x)[free[j]])
+                then = float(natural(ahead)[free[j]])
+            low, high = bounds[free[j]]
+            if then > now:
+                return high is None or not np.isfinite(high)
+            if then < now:
+                return low is None or not np.isfinite(low)
+            return False
+
+        return keep
+
+    def verdict(self, x: npt.NDArray, check: bool) -> tuple[bool, tuple]:
+        """``(verified, runaway)`` at ``x``, a rung's best point: whether
+        it is a verified maximum (``is_local_minimum``) and, if not and
+        ``check``, the parameters running off there (``_runaway``).
+
+        A verified point is checked too, through the gate alone where it
+        is a maximum (the Hessian it was verified with, and its Newton
+        step against the parameters' sizes): a likelihood that flattens
+        towards a supremum can pass the verification far out on the way
+        to it (a Normal at mu = -2.9e8, #594). Then it is a runaway, not
+        a maximum."""
+        fun, args = self.fun, self.args
+        keep = self.keep(x)
+        if is_local_minimum(
+            fun,
+            self.jac,
+            self.hess_kept,
+            x,
+            args,
+            floor=self.floor,
+            obj_scale=self.obj_scale,
+        ):
+            with np.errstate(all="ignore"):
+                H = np.asarray(self.hess_kept(x, *args), dtype=float)
+                g = np.asarray(self.jac(x, *args), dtype=float)
+            runaway = _runaway(
+                fun, args, x, self.init, (H, g), self.floor, keep
+            )
+            return not runaway, runaway
+        if not check:
+            return False, ()
+        return False, _runaway(fun, args, x, self.init, keep=keep)
+
+
+def _space(model: "Parametric") -> tuple:
+    """``_Judge.space`` for ``model``'s fit."""
+    const = model.fitting_info["const"]
+    inv_trans = model.fitting_info["inv_trans"]
+    fixed_idx = model.fitting_info["fixed_idx"]
+
+    def natural(u: npt.NDArray) -> npt.NDArray:
+        return np.asarray(inv_trans(const(u)), dtype=float)
+
+    free = [i for i in range(len(model.bounds)) if i not in fixed_idx]
+    return natural, model.bounds, free
 
 
 def _search(
@@ -261,6 +379,9 @@ def _search(
     first_success = None
     runaway: tuple[int, ...] = ()
     checked = False
+    judge = _Judge(
+        fun, jac, hess_kept, args, init, floor, obj_scale, _space(model)
+    )
     for method, jac_name, hess_name in _LADDER:
         jac_i, hess_i = by_name[jac_name], by_name[hess_name]
         for x0 in _rung_starts(method, init, first_success):
@@ -273,24 +394,14 @@ def _search(
                 first_success = (res, method)
             if res.fun < best:
                 best_result, best_method, best = res, method, res.fun
-        if best_result is not None and is_local_minimum(
-            fun,
-            jac,
-            hess_kept,
-            best_result.x,
-            args,
-            floor=floor,
-            obj_scale=obj_scale,
-        ):
-            verified = True
+        if best_result is None:
+            continue
+        # After the first rung that stops short of a verified maximum: is
+        # the likelihood running off? Then no rung can verify it.
+        verified, runaway = judge.verdict(best_result.x, not checked)
+        checked = True
+        if verified or runaway:
             break
-        if best_result is not None and not checked:
-            # The first rung that stops short of a verified maximum: is
-            # the likelihood running off? Then no rung can verify it.
-            checked = True
-            runaway = _runaway(fun, args, best_result.x, init)
-            if runaway:
-                break
 
     if not (verified or runaway) and first_success is not None:
         best_result, best_method = first_success
