@@ -31,9 +31,14 @@ from surpyval.tests.conformance.registry import (
     cases_for,
     fitted,
     predictions,
+    refit,
     tvc_path,
 )
-from surpyval.tests.conformance.test_options import _functions, _raw
+from surpyval.tests.conformance.test_options import (
+    _functions,
+    _parameters,
+    _raw,
+)
 
 COMPARISON = ("neg_ll", "aic", "aic_c", "bic")
 
@@ -104,6 +109,55 @@ def test_fitted_model_round_trips_through_pickle(case):
             assert new[key] == ref[key], key
         else:
             np.testing.assert_array_equal(new[key], ref[key], err_msg=key)
+
+
+def _lr_spec(case):
+    """The case's first likelihood-ratio bound (not a nightly sweep's),
+    or ``None``."""
+    for spec in case.bounds:
+        if spec.kwargs.get("method") == "lr" and not spec.nightly:
+            return spec
+    return None
+
+
+def _one_lr_bound(case, spec, model):
+    """One two-sided 95% likelihood-ratio bound: on the first parameter,
+    or at the first time of the sweep."""
+    if spec.kind == "param":
+        name = _parameters(model)[0][0]
+        return np.asarray(model.param_cb(name, **spec.kwargs), float)
+    fname, event = _functions(case, spec)[0]
+    return _raw(case, spec, model, "two-sided", 0.05, fname, event, k=0)
+
+
+def _lr_cases():
+    out = []
+    for param in cases_for("pickle", where=lambda c: bool(_lr_spec(c))):
+        case = param.values[0]
+        marks = list(param.marks)
+        if _lr_spec(case).slow:
+            marks.append(pytest.mark.slow)
+        out.append(pytest.param(case, id=case.name, marks=marks))
+    return out
+
+
+@pytest.mark.parametrize("case", _lr_cases())
+def test_617_a_model_after_a_likelihood_ratio_bound(case):
+    """A model that has computed a likelihood-ratio bound pickles without
+    its searches' caches (the likelihoods, walks, regions and bounds they
+    found: 290 kB on a Weibull's 50-time band, #617), and the unpickled
+    model rebuilds them to the same bound."""
+    model = refit(case, case.data())
+    spec = _lr_spec(case)
+    with warnings.catch_warnings(), np.errstate(all="ignore"):
+        warnings.simplefilter("ignore")
+        bound = _one_lr_bound(case, spec, model)
+        restored = _round_trip(model)
+        kept = sorted(k for k in vars(restored) if k.startswith("_lr_"))
+        assert not kept, kept
+        np.testing.assert_array_equal(
+            _one_lr_bound(case, spec, restored), bound
+        )
 
 
 def _paths(case):

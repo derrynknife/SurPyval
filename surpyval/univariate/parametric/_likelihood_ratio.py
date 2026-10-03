@@ -1446,6 +1446,16 @@ class LikelihoodRatioMixin:
         def _user_fixed_idx(self) -> set: ...
         def _summary_scale(self, zero_floor: bool = False) -> tuple: ...
 
+    def __getstate__(self) -> dict:
+        """What pickles: everything but the likelihood-ratio searches'
+        caches (the ``_lr_`` attributes: the likelihoods, walks, regions
+        and bounds they have found), which are rebuilt where a bound is
+        asked for again (#617). A Weibull's band at 50 times kept 16,000
+        likelihoods."""
+        return {
+            k: v for k, v in self.__dict__.items() if not k.startswith("_lr_")
+        }
+
     def _lr_neg_ll(self, theta: npt.NDArray) -> float:
         """The negative log-likelihood at core parameters ``theta``, as
         the likelihood-ratio searches see it.
