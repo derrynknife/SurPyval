@@ -12,10 +12,12 @@ out to the critical value (``_lr_walk``); see #421, #519, #535 and #587.
 
 from __future__ import annotations
 
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
+import numpy as onp
 import numpy.typing as npt
 from autograd import grad
 from scipy.optimize import (
@@ -62,6 +64,12 @@ _LR_FD_FINE = 1e-8
 # A continued search that moves psi out by less than this (relative to
 # psi beyond 1) has stalled: a tenth of the hair ``checks_out`` tests.
 _LR_GAIN = 1e-7
+
+
+def _lr_hair(psi: float) -> float:
+    """How far beyond an answer ``psi`` the extremality check looks
+    (``_PsiBoundSearch.checks_out``): 1e-6 of it, beyond 1."""
+    return 1e-6 * max(1.0, abs(psi))
 
 
 def warn_unsettled(where: str) -> None:
@@ -128,6 +136,13 @@ class _LRCoord:
         return float(theta)
 
     def from_u(self, u: float) -> float:
+        # Plain numpy where the exponential cannot overflow: the searches
+        # map every point they evaluate, and autograd's wrapper and the
+        # error state took longer than the exponential (#519).
+        if self.kind == "log" and u < _LN_MAX:
+            return float(self.lo + onp.exp(u))
+        if self.kind == "neglog" and -u < _LN_MAX:
+            return float(self.hi - onp.exp(-u))
         with np.errstate(all="ignore"):
             if self.kind == "log":
                 return float(self.lo + np.exp(u))
@@ -399,10 +414,17 @@ def _lean_log_likelihood(dist: Any, lean: tuple, theta: Any) -> Any:
     if left is not None:
         x, n = left
         ll = ll + np.sum(n * _unguarded(dist, "log_ff")(dist, x, *params))
+    if interval is not None or truncated is not None:
+        fns = tuple(
+            functools.partial(_unguarded(dist, name), dist)
+            for name in ("ff", "log_sf", "log_ff")
+        )
     if interval is not None:
-        ll = ll + dist.ll_interval_or_truncated(*interval, *params, *extra)
+        windows, n = interval
+        ll = ll + dist._window_log_likelihood(windows, n, params, extra, fns)
     if truncated is not None:
-        ll = ll - dist.ll_interval_or_truncated(*truncated, *params, *extra)
+        windows, n = truncated
+        ll = ll - dist._window_log_likelihood(windows, n, params, extra, fns)
     return ll
 
 
@@ -491,6 +513,9 @@ class _PsiBoundSearch:
         self.fd_step = _LR_FD_STEP
         self.unsettled: set[float] = set()
         self.unsettled_sides: set[float] = set()
+        # The most extreme answer that has checked out on each side
+        # (``checks_out``)
+        self.checked: dict[float, float] = {}
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -503,7 +528,7 @@ class _PsiBoundSearch:
         return nll if np.isfinite(nll) else np.inf
 
     def psi_u(self, u: npt.NDArray) -> float:
-        if not np.all(np.isfinite(u)):
+        if not onp.isfinite(u).all():
             return np.nan
         # Kept by the point's bytes, as the likelihood is: SLSQP asks
         # for the constraint again where it has just evaluated it.
@@ -512,9 +537,10 @@ class _PsiBoundSearch:
             # Held to the ends of its scale where the function reaches
             # the edge of its range (a density that underflows to 0), so
             # that a search can still step there.
-            self.psi_kept[key] = float(
-                np.clip(self.psi_of(self.theta_of(u)), *self.ends)
-            )
+            # (``min`` and ``max``, as ``np.clip``, keep a nan)
+            low, high = self.ends
+            psi = float(self.psi_of(self.theta_of(u)))
+            self.psi_kept[key] = min(max(psi, low), high)
         return self.psi_kept[key]
 
     def dev_u(self, u: npt.NDArray) -> float:
@@ -938,6 +964,14 @@ class _PsiBoundSearch:
         psi there is a step away. (From the answer itself SLSQP spent 40
         to 90 evaluations crawling to the target, its line search
         trading the gap against the likelihood.)
+
+        An answer within that hair of one already checked out on the same
+        side (``checked``) is the same extreme, found again from another
+        start: it is taken without a check, as the more extreme of the
+        two. Each side's searches from the estimate, the walks' tips and
+        the edge valleys mostly end on one extreme, and the checks were
+        two thirds of a NegativeBinomial band's likelihood evaluations
+        (#609).
         """
         crit, psi_hat = self.crit, self.psi_hat
         self.beyond = None
@@ -951,15 +985,22 @@ class _PsiBoundSearch:
         ):
             return None
         self.known.append((psi_star, x))
-        beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-        nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
-        if u is not None and 2.0 * (nll - self.nll_hat) < crit:
-            # (kept, for the search to go on from: ``direct``)
-            self.beyond = u
-            self.known.append((self.psi_u(u), u))
-            return None
+        done = self.checked.get(direction)
+        if done is not None and abs(psi_star - done) <= _lr_hair(done):
+            if direction * (psi_star - done) <= 0:
+                return done
+        else:
+            beyond = psi_star + direction * _lr_hair(psi_star)
+            nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
+            if u is not None and 2.0 * (nll - self.nll_hat) < crit:
+                # (kept, for the search to go on from: ``direct``)
+                self.beyond = u
+                self.known.append((self.psi_u(u), u))
+                return None
         if not self.converged:
             self.unsettled.add(psi_star)
+        if done is None or direction * (psi_star - done) > 0:
+            self.checked[direction] = psi_star
         return psi_star
 
     def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
@@ -1422,7 +1463,7 @@ class LikelihoodRatioMixin:
         1e-14 gave an ExpoWeibull a deviance of -1e21 before #472 made it
         accurate.
         """
-        if not np.all(np.isfinite(theta)):
+        if not onp.isfinite(theta).all():
             return np.nan
         nll = self._lr_raw_neg_ll(theta)
         params = np.asarray(self.params, dtype=float)
@@ -1509,7 +1550,7 @@ class LikelihoodRatioMixin:
 
         def f(x: npt.NDArray, *theta: Any) -> Any:
             # (False for a missing x, which takes the full path.)
-            if np.all(x >= lo) and np.all(x <= hi):
+            if (x >= lo).all() and (x <= hi).all():
                 return raw(dist, x, *theta)
             return full(x, *theta)
 
@@ -1528,10 +1569,14 @@ class LikelihoodRatioMixin:
         exactly 0). The lean likelihood calls the distribution's own
         formulas without them, on the same arrays, in the same order, so
         its value is the same to the last bit, about 2.5 times as fast
-        (#519). Interval-censored and truncated terms are the
-        distribution's own. A discrete distribution, a support that
-        depends on the parameters (the Uniform's), or data outside the
-        support or missing take the full path.
+        (#519). Interval-censored and truncated windows are evaluated as
+        ``ll_interval_or_truncated`` evaluates them, with its tail forms
+        (``_window_log_likelihood``), from the data's part of it kept once
+        (``_window_inputs``) and with the functions unwrapped: a Weibull's
+        likelihood on six interval-censored units took 243 us, against 43
+        us on 1000 exact ones (#602). A discrete distribution, a support
+        that depends on the parameters (the Uniform's), or data outside
+        the support or missing take the full path.
         """
         data = self.surv_data
         kept = self.__dict__.get("_lr_lean")
@@ -1555,16 +1600,29 @@ class LikelihoodRatioMixin:
                 terms.append(
                     None if x.size == 0 else (x - self.gamma, np.asarray(n))
                 )
-            others = [
+            windows: list[tuple | None] = []
+            for xl, xr, n in (
                 (data.x_il, data.x_ir, data.n_i),
                 (data.tl_unique, data.tr_unique, data.n_t_unique),
-            ]
-            if plain:
-                lean = (
-                    *terms,
-                    *(None if np.size(t[0]) == 0 else t for t in others),
-                    (self.gamma, self.f0, self.p),
+            ):
+                if np.size(xl) == 0:
+                    windows.append(None)
+                    continue
+                # As ``ll_interval_or_truncated`` takes them (its
+                # ``_check_x_not_empty``), and its data part kept
+                xl = np.atleast_1d(np.array(xl))
+                inputs = self.dist._window_inputs(
+                    xl, xr, self.gamma, self.params
                 )
+                safe = np.concatenate(inputs[-2:])
+                plain = plain and not (
+                    np.any(np.isnan(safe))
+                    or np.any(safe < lo)
+                    or np.any(safe > hi)
+                )
+                windows.append((inputs, n))
+            if plain:
+                lean = (*terms, *windows, (self.gamma, self.f0, self.p))
         self.__dict__["_lr_lean"] = (data, lean)
         return lean
 
