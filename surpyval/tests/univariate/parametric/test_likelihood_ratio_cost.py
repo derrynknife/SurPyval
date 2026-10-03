@@ -338,3 +338,40 @@ def test_587_a_band_bound_is_the_extreme_on_the_region_boundary():
                 tol=1e-12,
             )
             assert bound == pytest.approx(sign * best.fun, rel=1e-9, abs=0)
+
+
+# ---------------------------------------------------------------------------
+# #609: an extreme found again is not checked again
+# ---------------------------------------------------------------------------
+def test_609_an_answer_found_again_is_not_checked_again(monkeypatch):
+    # Each side's searches from the estimate, the walks' tips and the
+    # edge valleys mostly end on one extreme, and each answer was checked
+    # (a constrained search a hair beyond it, from two starts): two thirds
+    # of a NegativeBinomial band's likelihood evaluations. An answer
+    # within that hair of one that has checked out is the same extreme.
+    model = _fitted("Weibull")
+    free = [0, 1]
+    region = model._lr_region(free, CRIT_95)
+
+    def psi(theta):
+        return float(np.log(model.dist.sf(np.array([8.0]), *theta)[0]))
+
+    search = likelihood_ratio._PsiBoundSearch(
+        model, psi, free, CRIT_95, (-700.0, 700.0), region[0]
+    )
+    lower, _ = search.run(True, False, region[1], region[2])
+    assert search.checked[-1.0] == lower
+    at = next(u for p, u in search.known if p == lower)
+    solves = []
+    solve = likelihood_ratio._PsiBoundSearch.solve
+
+    def counted(self, *args):
+        solves.append(1)
+        return solve(self, *args)
+
+    monkeypatch.setattr(likelihood_ratio._PsiBoundSearch, "solve", counted)
+    assert search.checks_out(-1.0, at) == lower
+    assert solves == []
+    # One further from it than the hair (the estimate) is checked
+    assert search.checks_out(-1.0, search.u_hat) is None
+    assert solves == [1]

@@ -65,6 +65,12 @@ _LR_FD_FINE = 1e-8
 _LR_GAIN = 1e-7
 
 
+def _lr_hair(psi: float) -> float:
+    """How far beyond an answer ``psi`` the extremality check looks
+    (``_PsiBoundSearch.checks_out``): 1e-6 of it, beyond 1."""
+    return 1e-6 * max(1.0, abs(psi))
+
+
 def warn_unsettled(where: str) -> None:
     """Warn, once at the caller, that a likelihood-ratio bound is the
     most extreme point of the likelihood region its search found, but
@@ -499,6 +505,9 @@ class _PsiBoundSearch:
         self.fd_step = _LR_FD_STEP
         self.unsettled: set[float] = set()
         self.unsettled_sides: set[float] = set()
+        # The most extreme answer that has checked out on each side
+        # (``checks_out``)
+        self.checked: dict[float, float] = {}
 
     # -- the functions of the search coordinates --------------------------
     def theta_of(self, u: npt.NDArray) -> npt.NDArray:
@@ -946,6 +955,14 @@ class _PsiBoundSearch:
         psi there is a step away. (From the answer itself SLSQP spent 40
         to 90 evaluations crawling to the target, its line search
         trading the gap against the likelihood.)
+
+        An answer within that hair of one already checked out on the same
+        side (``checked``) is the same extreme, found again from another
+        start: it is taken without a check, as the more extreme of the
+        two. Each side's searches from the estimate, the walks' tips and
+        the edge valleys mostly end on one extreme, and the checks were
+        two thirds of a NegativeBinomial band's likelihood evaluations
+        (#609).
         """
         crit, psi_hat = self.crit, self.psi_hat
         self.beyond = None
@@ -959,15 +976,22 @@ class _PsiBoundSearch:
         ):
             return None
         self.known.append((psi_star, x))
-        beyond = psi_star + direction * 1e-6 * max(1.0, abs(psi_star))
-        nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
-        if u is not None and 2.0 * (nll - self.nll_hat) < crit:
-            # (kept, for the search to go on from: ``direct``)
-            self.beyond = u
-            self.known.append((self.psi_u(u), u))
-            return None
+        done = self.checked.get(direction)
+        if done is not None and abs(psi_star - done) <= _lr_hair(done):
+            if direction * (psi_star - done) <= 0:
+                return done
+        else:
+            beyond = psi_star + direction * _lr_hair(psi_star)
+            nll, u = self.solve(beyond, [self._towards(x, beyond), self.u_hat])
+            if u is not None and 2.0 * (nll - self.nll_hat) < crit:
+                # (kept, for the search to go on from: ``direct``)
+                self.beyond = u
+                self.known.append((self.psi_u(u), u))
+                return None
         if not self.converged:
             self.unsettled.add(psi_star)
+        if done is None or direction * (psi_star - done) > 0:
+            self.checked[direction] = psi_star
         return psi_star
 
     def _towards(self, x: npt.NDArray, target: float) -> npt.NDArray:
