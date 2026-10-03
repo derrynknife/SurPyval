@@ -1246,11 +1246,12 @@ class _PsiBoundSearch:
         profile has been solved further out (``_lr_walk_on``), to where
         it levels off or to the end of its coordinate. The extreme is
         sought over the slice of the region through each of the two
-        deepest of those points, the parameter held there (``extreme``
-        over a ``face``): a search over the whole region from them runs
-        out of the valley, where the function takes values far outside
-        the region (an ExpoWeibull quantile of 0 as ``mu -> 0``), and
-        back to a nearer extreme. From the slice's extreme the check
+        deepest of those points (the deepest only where the profile has
+        levelled off between them), the parameter held there
+        (``extreme`` over a ``face``): a search over the whole region from
+        them runs out of the valley, where the function takes values far
+        outside the region (an ExpoWeibull quantile of 0 as ``mu -> 0``),
+        and back to a nearer extreme. From the slice's extreme the check
         (``checks_out``) looks further out over the whole region, and the
         search goes on from what it finds. The extremes so found lie far
         down the valley, which the searches from the estimate and the
@@ -1264,7 +1265,20 @@ class _PsiBoundSearch:
         for k, end in self.faces():
             side = int(end == self.free_coords[k].ends[1])
             walk = self.seeds[2 * k + side] if self.seeds else []
-            for point in walk[-2:]:
+            deepest = walk[-2:]
+            if (
+                len(deepest) == 2
+                and abs(self.dev_u(deepest[1]) - self.dev_u(deepest[0]))
+                < _LR_NOISE
+            ):
+                # The valley's profile has reached its limit (to the
+                # walk's noise) by the deepest point, a NegativeBinomial's
+                # Poisson as r -> inf: the slice through the point before
+                # it found the same extreme, to 1e-14, and was a fifth of
+                # the registry's bounds' time (#609). An ExpoWeibull's,
+                # still changing there, are both searched.
+                deepest = deepest[1:]
+            for point in deepest:
                 if not self.dev_u(point) <= self.crit:
                     continue
                 face = (k, float(point[k]))
