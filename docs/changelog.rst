@@ -4,6 +4,40 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Regression ``fit_from_df`` reads interval columns (#571).** The
+  parametric regression families' ``fit_from_df`` takes ``xl_col`` /
+  ``xr_col`` in place of ``x_col`` (``fit`` already took interval data as
+  a two-column ``x``) and gives the same model as ``fit`` (to 1e-10). Its
+  columns are read as every other ``fit_from_df`` reads them: a missing
+  column is a ``ValueError`` naming the columns there are (it was a
+  ``KeyError``), and a duration or date column is refused. A new
+  conformance check makes every DataFrame entry point fill each data
+  argument of its ``fit``; 28 fitters failed it.
+- **``ParametricCompetingRisks`` takes left truncation (#571).**
+  ``fit(..., tl=)`` and ``fit_from_df(..., tl_col=)`` fit delayed-entry
+  data exactly (the truncated likelihood factorises by cause). On data seen
+  only from a records start date, ignoring entry gave shapes 2.59 and 1.56
+  against true 2.5 and 1.3; with ``tl``, 2.45 and 1.32. Right truncation
+  and interval censoring do not factorise and are still not taken.
+- **Regression models have ``qf`` (#571).** ``model.qf(p, Z, grid=False)``
+  is the time by which a proportion ``p`` of units with covariates ``Z``
+  have failed (the B10 life is ``qf(0.1, Z)``), inverted from each family's
+  own cumulative hazard to a relative 1e-12, with NaN and a warning outside
+  [0, 1].
+- **Regression models have ``cs`` (#581).** ``cs(x, given, Z)``, the
+  conditional survival of a unit with covariates ``Z`` that has survived
+  to ``given``, on the parametric, Cox, proportional-odds, additive-hazards,
+  Buckley-James and frailty models (with each one's ``grid``, ``stratum``
+  or ``group``), computed from the cumulative hazard, so it stays exact
+  where ``sf(given)`` underflows.
+- **New: ``surpyval.forecast`` (#581).** The expected failures of units in
+  service at their current ages over one or more horizons, from any
+  univariate or regression model (``Z`` per unit), with cohort counts
+  ``n`` and a warranty ``limit``: expected counts and variance, exact
+  Poisson-binomial prediction intervals (a refined normal approximation
+  for very large fleets), per-period counts, and each unit's probability
+  of failing (``Forecast.probability``, ``unit_expected``). The intervals
+  treat the model as known.
 - **Cox models report their maximised partial likelihood (#604).** A Cox
   model's ``neg_ll`` was the fit's function of the coefficients, and it had
   no AIC or BIC. ``neg_ll()`` is now the fitted value and
