@@ -625,12 +625,14 @@ def _offset_limit(model: "Parametric") -> Callable[[], "float | None"]:
     return neg_ll
 
 
-def _infinite_at_edge(res: Any, judge: _Judge) -> bool:
-    """Whether a search's result with an infinite likelihood (a negative
-    log-likelihood of ``-inf``) stopped with its offset run onto the first
-    failure (``_offset_corner``), where a density infinite at its origin
-    is evaluated."""
-    if not (np.all(np.isfinite(res.x)) and np.isneginf(res.fun)):
+def _at_corner(res: Any, judge: _Judge) -> bool:
+    """Whether a rung's result stopped with its offset run onto the first
+    failure (``_offset_corner``), its likelihood finite or, where a density
+    infinite at its origin is evaluated there, infinite (a negative
+    log-likelihood of ``-inf``)."""
+    if not np.all(np.isfinite(res.x)):
+        return False
+    if not (np.isfinite(res.fun) or np.isneginf(res.fun)):
         return False
     return bool(judge.space[4](res.x))
 
@@ -681,7 +683,10 @@ def _search(
     checked, and ``runaway`` names the parameters running off. An offset
     fit whose ladder ends unverified at a best point no better than the
     family's limit (``_Judge.toward_limit``) has its offset running off
-    too (``by_limit``, #616).
+    too (``by_limit``, #616). And a rung that runs the offset onto the
+    first failure, where the likelihood is unbounded, ends the search
+    there, as does the first rung stopping on its way there
+    (``_Judge.corner``, #622); the offset is then the parameter named.
     """
     if len(init) == 0:
         # Every parameter is fixed; there is nothing to optimise, and
@@ -732,14 +737,16 @@ def _search(
                 obj_scale,
                 judge.watch() if not checked else None,
             )
+            # A search that ran onto the first failure with the offset,
+            # where the likelihood is unbounded (#622; see
+            # ``_Judge.corner``), ends the ladder: no rung can verify a
+            # maximum there, and the rest followed it into the corner in
+            # thousands of evaluations
+            if _at_corner(res, judge):
+                best_result, best_method = res, method
+                runaway = (0,)
+                break
             if not _usable(res):
-                if not checked and _infinite_at_edge(res, judge):
-                    # The first search ran onto the first failure, where
-                    # the likelihood is infinite (#622; see
-                    # ``_Judge.corner``)
-                    best_result, best_method, best = res, method, -np.inf
-                    runaway = (0,)
-                    break
                 continue
             if res.success and first_success is None:
                 first_success = (res, method)

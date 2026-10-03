@@ -302,3 +302,30 @@ def test_622_a_run_into_the_first_failure_ends_quickly(dist, x, monkeypatch):
     assert rec[0].filename == __file__
     assert model.maximum == "no finite maximum"
     assert model.gamma == pytest.approx(np.min(x), abs=1e-6)
+
+
+def _lead_sample(seed):
+    rng = np.random.default_rng(seed)
+    n = int(rng.choice([15, 30, 100]))
+    gamma = float(rng.uniform(0, 50))
+    beta = float(rng.uniform(0.8, 4))
+    return gamma + sp.Weibull.random(n, 10, beta, random_state=rng)
+
+
+@pytest.mark.parametrize("seed", [21, 27])
+def test_622_a_later_rung_run_into_the_first_failure_ends_there(
+    seed, monkeypatch
+):
+    # Fifteen points from a Weibull of shape 1.2 (3.1) offset by 15.7
+    # (30.3): the first rung stops near the first failure with a shape
+    # just above 1, and a later one runs onto it. The ladder went on to
+    # Nelder-Mead and Powell (5,400 and 15,500 evaluations) and ended
+    # "unverified", or "MLE Failed" returning its start.
+    x = _lead_sample(seed)
+    calls = _count_evaluations(monkeypatch)
+    model, rec = _fit(sp.Weibull, x=x)
+    assert len(calls) < 1500
+    assert len(rec) == 1, [str(w.message)[:60] for w in rec]
+    assert str(rec[0].message).startswith(NO_MAXIMUM)
+    assert model.maximum == "no finite maximum"
+    assert model.gamma == pytest.approx(np.min(x), abs=1e-6)

@@ -882,7 +882,19 @@ turnbull_estimator
         """``alt``, the results of a fit from another start (with its
         ``fitting_info``, ``alt_info``), where its likelihood is higher
         than that of ``results`` beyond rounding; else ``results``. The
-        model takes the ``fitting_info`` of the results kept."""
+        model takes the ``fitting_info`` of the results kept.
+
+        A verified maximum is kept over a search that found a parameter
+        running off (``_runaway``), whatever their likelihoods: a runaway's
+        likelihood is a value on the way to a supremum, which can be
+        infinite (an offset run onto the first failure, #622), and the
+        maximum-likelihood estimate is the maximum where there is one."""
+        if bool(results.get("_runaway")) != bool(alt.get("_runaway")):
+            verified = results if not results.get("_runaway") else alt
+            if verified.get("_verified", False):
+                if verified is alt:
+                    model.fitting_info = alt_info
+                return verified
         best = results.get("_neg_ll", np.inf)
         value = alt.get("_neg_ll", np.inf)
         if np.isfinite(value) and value < best - 1e-9 * max(1.0, abs(value)):

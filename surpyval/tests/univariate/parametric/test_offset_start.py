@@ -122,3 +122,19 @@ def test_622_an_offset_fit_refuses_a_failure_at_infinity(dist):
     x = [1.0, 2.0, 3.0, np.inf, 5.0]
     with pytest.raises(OutsideSupportError, match=f"offset {dist.name} "):
         dist.fit(x, offset=True)
+
+
+def test_622_a_verified_maximum_is_kept_over_a_runaway_from_another_start():
+    # A search from a start the user gave can run the offset onto the
+    # first failure, where the likelihood is unbounded: its likelihood is
+    # higher than at any maximum, and it replaced a verified maximum the
+    # default start found.
+    fitter: object = sp.Weibull
+    model = sp.Weibull.fit(np.array([1.0, 2.0, 3.0, 5.0, 8.0]))
+    verified = {"_neg_ll": 10.0, "_verified": True, "_runaway": []}
+    runaway = {"_neg_ll": 5.0, "_verified": False, "_runaway": ["gamma"]}
+    assert fitter._better_fit(model, verified, runaway, {}) is verified
+    assert fitter._better_fit(model, runaway, verified, {}) is verified
+    # otherwise the higher likelihood, as before
+    better = {"_neg_ll": 9.0, "_verified": True, "_runaway": []}
+    assert fitter._better_fit(model, verified, better, {}) is better
