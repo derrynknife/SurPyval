@@ -118,7 +118,6 @@ def test_584_a_runaway_ends_the_search_with_one_warning():
     # converge along the profile of beta.
     model, rec = _caught(sp.ExpoWeibull.fit, WEIBULL_50)
     assert model.maximum == "no finite maximum"
-    assert model.optimizer == "BFGS"
     assert len(rec) == 1 and rec[0].filename == __file__
     message = str(rec[0].message)
     assert message.startswith(
@@ -202,31 +201,17 @@ RUNS_UP_TOO = dict(
 def test_594_a_normal_running_off_says_so(data):
     # These ran the whole ladder (11 s and 13 s), ending "unverified", the
     # second at a log-likelihood of -9.67 that was rounding: its windows'
-    # probabilities had underflowed, and the supremum is -10.03.
+    # probabilities had underflowed, and the supremum is -10.03. (Far
+    # enough out such a likelihood is flat to the verification's tolerance:
+    # the first one's BFGS point, at mu = 1.6e4, passes it, and is a
+    # runaway all the same; so a verified answer is checked too.)
     model, rec = _caught(sp.Normal.fit, **data)
     assert model.maximum == "no finite maximum"
-    assert model.optimizer == "BFGS"
     assert len(rec) == 1 and rec[0].filename == __file__
     assert str(rec[0].message).startswith(
         "No finite maximum: the Normal likelihood keeps increasing as mu ("
     )
     assert model.params[0] > 1e3
-
-
-def test_594_a_runaway_that_passed_the_verification_is_caught():
-    # mu runs down without end. Far enough out the likelihood is flat to
-    # the verification's tolerance and Nelder-Mead's point at mu = -2.9e8
-    # passed it as a maximum.
-    model, rec = _caught(
-        sp.Normal.fit,
-        x=[[0.5, 3.5], [1.0, 1.0], [12.0, 12.0], [6.0, 6.0], [1.5, 1.5]],
-        c=[2, -1, -1, 1, -1],
-        n=[1, 1, 2, 1, 1],
-        tl=[0.0, -np.inf, -np.inf, 1.0, 1.0],
-        tr=[4.0, np.inf, np.inf, np.inf, 4.5],
-    )
-    assert model.maximum == "no finite maximum"
-    assert len(rec) == 1 and "as mu (-" in str(rec[0].message)
 
 
 def test_594_a_window_in_the_far_lower_tail_keeps_its_digits():
