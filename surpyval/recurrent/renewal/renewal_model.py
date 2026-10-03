@@ -1574,8 +1574,14 @@ class RenewalModel(
             )
         ll_restricted = -float(fun)
         # The restricted model is nested: its maximum cannot exceed the
-        # full one's except by the optimisers' tolerance.
-        stat = max(2.0 * (ll_full - ll_restricted), 0.0)
+        # full one's except by the optimisers' tolerance, and a difference
+        # within that tolerance either way is 0 (the restricted fit is the
+        # full one). It matters at a boundary, where the p-value jumps from
+        # 1 at a statistic of 0 to 0.5 just above it: a perfect-repair fit
+        # (rho = 1 estimated) gave 1.1e-13 on some CPUs, so p = 0.5.
+        stat = 2.0 * (ll_full - ll_restricted)
+        if stat <= 1e-9 * max(1.0, abs(ll_full)):
+            stat = 0.0
         p = float(chi2.sf(stat, 1))
         if boundary:
             # Self and Liang (1987): a 50:50 mixture of chi2(0) and chi2(1).

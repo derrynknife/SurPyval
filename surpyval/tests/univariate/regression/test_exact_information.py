@@ -400,11 +400,11 @@ def test_frailty_variance_at_its_limit_falls_back(monkeypatch, name):
     # 1e-23.)
     calls = _count_numerical(monkeypatch, frailty)
     model = _registry(name)
-    # The Weibull's search now stops at theta = 2.8e-17 (#366 moved its
-    # seed in the last digits), where the exact Hessian is still, just,
-    # positive definite and is used.
-    expected = (0, 1) if name == "WeibullFrailty" else (1,)
-    assert model.theta < 1e-15 and len(calls) in expected
+    # Where the search stops, the exact Hessian can still, just, be
+    # positive definite and then is used: whether it is depends on the last
+    # bits of theta (the Weibull's at 2.8e-17 here; the Gamma's and the
+    # Exponential's on some CPUs), so either covariance is accepted.
+    assert model.theta < 1e-15 and len(calls) in (0, 1)
     assert np.all(np.isfinite(model.covariance))
 
 

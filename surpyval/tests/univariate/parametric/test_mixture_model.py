@@ -324,8 +324,10 @@ def test_560_truncated_fit_is_a_verified_maximum(kind):
             xl=xl, xr=xr, c=ci, t=t, dist=sp.Weibull
         )
     assert coded.maximum == explicit.maximum == "verified"
-    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-6)
-    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-6)
+    # Both are verified maxima of a flat likelihood: they agree to 5e-7
+    # here and 1.1e-6 on other CPUs (they differed by 1.8e-5 before #560).
+    np.testing.assert_allclose(coded.params, explicit.params, rtol=1e-5)
+    np.testing.assert_allclose(coded.w, explicit.w, rtol=1e-5)
 
 
 def test_a_point_mass_component_warns_once():

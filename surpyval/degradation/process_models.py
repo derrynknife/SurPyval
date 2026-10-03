@@ -1919,8 +1919,17 @@ class GammaProcess:
         neg_ll = cls._profile_neg_ll(dtau, dy)
         at, _ = cls._profile_fit(dtau, dy)
         top = cls._ALPHA_RANGE[1]
+        # The profile maximum is at the end of the range when the search
+        # stopped there, or when the end is as likely as where it stopped
+        # to rounding. A fitted stress clock is exact only to about 1e-8,
+        # so on noise-free readings the two agree to 9 digits and which is
+        # higher depends on the CPU's rounding.
         with np.errstate(all="ignore"):
-            rising = bool(neg_ll(top) <= neg_ll(at))
+            at_top, here = neg_ll(top), neg_ll(at)
+            rising = bool(
+                at >= top * (1 - 1e-6)
+                or at_top <= here + 1e-8 * max(1.0, abs(here))
+            )
         if not rising:
             return
         clock = " on the fitted stress clock" if stress else ""
