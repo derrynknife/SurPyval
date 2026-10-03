@@ -4,7 +4,7 @@ The first half of this file makes the ``--doctest-modules`` run compare
 the numbers in an example's output as numbers rather than as text; see
 the comment above ``RTOL``. The rest is the opt-in gating below.
 
-Three groups are skipped unless asked for, because all are expensive and
+Four groups are skipped unless asked for, because all are expensive and
 none guards a regression that the default run would miss quickly:
 
 ``ml``
@@ -26,6 +26,16 @@ none guards a regression that the default run would miss quickly:
     elsewhere joins them by carrying the ``calibration`` mark: the
     likelihood-ratio option sweeps of the slow families
     (conformance/registry.py, ``Bound.nightly``).
+
+``scenarios``
+    The practitioner scenario cards under ``surpyval/tests/scenarios``:
+    end-to-end studies a reliability engineer would run (field data from
+    a maintenance system, an accelerated life test, a warranty forecast,
+    a growth test ...), each with data simulated from a known truth. A
+    card checks that the package recovers the truth and answers the
+    study's questions; what it cannot yet answer is a strict xfail led
+    by its issue. Seconds in all, but end to end rather than unit by
+    unit; they run in the nightly workflow.
 
 Continuous integration passes ``--run-ml`` only, so its coverage is
 unchanged. The invariant sweep is deliberately *not* run there: it is a

@@ -15,7 +15,10 @@ answer, refits, and compares every function of the two models:
   (the baseline at Z = 0) for the Cox and Fine-Gray partial likelihoods,
   which see only differences within a risk set, and the log-linear
   parametric families whose baseline maps exactly between the two
-  (#459, #463).
+  (#459, #463);
+- **covariate scale**: a covariate column multiplied by a constant (and
+  the query rows with it) divides its coefficient by the constant and
+  changes no prediction, by ``fit`` and by ``fit_tvc`` (#577).
 """
 
 import numpy as np
@@ -27,6 +30,7 @@ from surpyval.tests.conformance.checks import (
     permuted,
     rescaled,
 )
+from surpyval.tests.conformance.leaks import quiet
 from surpyval.tests.conformance.registry import (
     BASELINES,
     CASES,
@@ -34,6 +38,7 @@ from surpyval.tests.conformance.registry import (
     fitted,
     predictions,
     refit,
+    tvc_path,
 )
 from surpyval.univariate.regression._fit_skeleton import ORIGIN_MAPS
 
@@ -138,3 +143,99 @@ def test_covariate_origin_by_default(case):
     ref = predictions(case, fitted(case))
     got = predictions(case, refit(case, moved), Z=Z)
     compare(case, got, ref)
+
+
+# ---------------------------------------------------------------------------
+# Covariate scale (#577)
+# ---------------------------------------------------------------------------
+# A covariate's unit is a reparameterisation: multiplying a column by a
+# constant divides its coefficient by it, and the maximum of the
+# likelihood is the same number. Field and test data carry covariates in
+# their engineering units -- 1/T in kelvin (about 3e-3), a load in
+# newtons, a pressure in pascals -- and a search or a convergence test in
+# absolute terms meets a coefficient's gradient long before the optimum:
+# #577 is a step-stress fit with Z = 1/T that stopped at its start,
+# coefficient 0, and reported a verified maximum.
+#
+# The oracle is the likelihood reached: it cannot depend on the units.
+# Models whose fit reports no ``neg_ll`` are compared on their
+# predictions instead. A failure is keyed ``covariate_scale[<label>]``,
+# or ``covariate_scale[tvc <label>]`` for the fit_tvc path, in
+# KNOWN_FAILURES.
+SCALES = {
+    "1-731": 1 / 731.0,  # an awkward unit change, below the data's scale
+    "731": 731.0,  # and above it
+    "1e-6": 1e-6,  # coefficients of order 1e6
+}
+# The maximised log-likelihood may differ by the optimiser's tolerance
+# between the two parameterisations, and no more.
+NEG_LL_ATOL = 1e-5
+
+
+def _shrunk(case, data, k):
+    key = case.covariates
+    return dict(data, **{key: np.asarray(data[key], dtype=float) * k})
+
+
+def _neg_ll(model):
+    value = getattr(model, "neg_ll", None)
+    try:
+        value = value() if callable(value) else value
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return value if np.isfinite(value) else None
+
+
+def _scale_params(tvc):
+    params = []
+    for case in CASES:
+        if not case.applies("covariate_scale") or case.covariates is None:
+            continue
+        if tvc and tvc_path(case) is None:
+            continue
+        for label, k in SCALES.items():
+            # The fit_tvc path is a second refit of every case: left to
+            # the full run, as are the slow cases' refits.
+            slow = tvc or case.is_slow("units")
+            marks = [pytest.mark.slow] if slow else []
+            key = f"tvc {label}" if tvc else label
+            reason = case.xfail.get(f"covariate_scale[{key}]")
+            if reason:
+                marks.append(pytest.mark.xfail(strict=True, reason=reason))
+            params.append(
+                pytest.param(case, k, id=f"{case.name}-{label}", marks=marks)
+            )
+    return params
+
+
+def _same_model(case, ref_model, model, k):
+    a, b = _neg_ll(ref_model), _neg_ll(model)
+    if a is not None and b is not None:
+        assert abs(a - b) <= NEG_LL_ATOL, (
+            f"neg_ll {a:.8f} in the covariate's units, {b:.8f} with it "
+            f"multiplied by {k:g} (the fit says {model.maximum!r})"
+        )
+        rtol = max(case.rtol, 1e-2)  # the optimum's flat directions
+    else:
+        # Without a likelihood to compare, the predictions carry the
+        # optimiser's tolerance in either parameterisation.
+        rtol = max(case.rtol, 1e-4)
+    ref = predictions(case, ref_model)
+    got = predictions(case, model, Z=np.asarray(case.Z, dtype=float) * k)
+    compare(case, got, ref, rtol=rtol)
+
+
+@pytest.mark.parametrize("case, k", _scale_params(tvc=False))
+def test_covariate_scale(case, k):
+    model = refit(case, _shrunk(case, case.data(), k))
+    _same_model(case, fitted(case), model, k)
+
+
+@pytest.mark.parametrize("case, k", _scale_params(tvc=True))
+def test_covariate_scale_tvc(case, k):
+    fit_tvc = tvc_path(case)
+    with quiet():
+        ref = fit_tvc(case.data())
+        model = fit_tvc(_shrunk(case, case.data(), k))
+    _same_model(case, ref, model, k)
