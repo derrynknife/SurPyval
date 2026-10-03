@@ -489,3 +489,43 @@ def test_parametric_fit_dist_dict_must_cover_every_cause():
         ParametricCompetingRisks.fit(
             [1, 2, 3, 4], ["a", "b", "a", "b"], dist={"a": Weibull}
         )
+
+
+def test_571_left_truncation_recovers_the_causes():
+    # Units seen only from the start of the records (delayed entry):
+    # ParametricCompetingRisks.fit took no ``tl`` (#571). Left truncation
+    # factorises across causes, so each cause is the univariate fit with
+    # the same entry times, and the truncation removes the bias of
+    # ignoring it (bearing shape 2.59 and gear 1.56 against 2.5 and 1.3).
+    rng = np.random.default_rng(1)
+    N = 4000
+    t1 = 20 * rng.weibull(2.5, N)
+    t2 = 30 * rng.weibull(1.3, N)
+    x = np.minimum(t1, t2)
+    e = np.where(t1 < t2, "bearing", "gear").astype(object)
+    entry = rng.uniform(0, 8, N) * (rng.uniform(size=N) < 0.6)
+    keep = x > entry
+    x, e, entry = x[keep], e[keep], entry[keep]
+    c = (x > 25.0).astype(int)
+    x = np.minimum(x, 25.0)
+    e[c == 1] = None
+
+    model = ParametricCompetingRisks.fit(x, e, c=c, tl=entry)
+    for cause, truth in (("bearing", [20, 2.5]), ("gear", [30, 1.3])):
+        alone = Weibull.fit(x, c=np.where(e == cause, 0, 1), tl=entry)
+        np.testing.assert_allclose(
+            model.models[cause].params, alone.params, rtol=1e-10
+        )
+        np.testing.assert_allclose(
+            model.models[cause].params, truth, rtol=0.06
+        )
+    df = pd.DataFrame({"x": x, "e": e, "c": c, "entry": entry})
+    from_df = ParametricCompetingRisks.fit_from_df(
+        df, x_col="x", e_col="e", c_col="c", tl_col="entry"
+    )
+    np.testing.assert_allclose(
+        from_df.models["gear"].params, model.models["gear"].params
+    )
+    # A unit cannot fail before it is seen.
+    with pytest.raises(ValueError):
+        ParametricCompetingRisks.fit(x, e, c=c, tl=x + 1)

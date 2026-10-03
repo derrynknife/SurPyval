@@ -32,6 +32,8 @@ from surpyval.utils import (
     xcnt_handler,
 )
 
+from surpyval.utils.dataframe import frame_column
+
 from ._aliasing import covariate_columns
 
 if TYPE_CHECKING:
@@ -867,6 +869,33 @@ def _materialise_spec(
     return model_matrix.model_spec
 
 
+def _regression_times(
+    df: pd.DataFrame,
+    x_col: str | None,
+    xl_col: str | None,
+    xr_col: str | None,
+) -> npt.NDArray:
+    """The ``x`` of a regression fit from the columns of ``df``: the times
+    ``x_col``, or the interval ends ``xl_col`` and ``xr_col`` as the two
+    columns of an ``(N, 2)`` ``x`` (#571)."""
+    intervals = xl_col is not None or xr_col is not None
+    if (x_col is not None) == intervals or (
+        intervals and (xl_col is None or xr_col is None)
+    ):
+        raise ValueError(
+            "Give the times exactly once: as `x_col`, or as the interval "
+            "ends `xl_col` and `xr_col` together"
+        )
+    if x_col is not None:
+        return frame_column(df, x_col, "x_col", time=True)
+    return np.column_stack(
+        [
+            frame_column(df, xl_col, "xl_col", time=True),
+            frame_column(df, xr_col, "xr_col", time=True),
+        ]
+    ).astype(float)
+
+
 class DataFrameRegressionMixin:
     """
     Mixin adding a ``fit_from_df`` method to a parametric regression fitter.
@@ -881,12 +910,14 @@ class DataFrameRegressionMixin:
     def fit_from_df(
         self,
         df: pd.DataFrame,
-        x_col: str,
+        x_col: str | None = None,
         Z_cols: str | list[str] | None = None,
         c_col: str | None = None,
         n_col: str | None = None,
         tl_col: str | None = None,
         tr_col: str | None = None,
+        xl_col: str | None = None,
+        xr_col: str | None = None,
         formula: str | None = None,
         init: npt.ArrayLike | None = None,
         fixed: dict[str, float] | None = None,
@@ -904,8 +935,9 @@ class DataFrameRegressionMixin:
         ----------
         df : pandas.DataFrame
             The dataframe containing the data.
-        x_col : str
-            The column name of the observed times.
+        x_col : str, optional
+            The column name of the observed times. Required unless
+            ``xl_col`` and ``xr_col`` are given.
         Z_cols : str or list of str, optional
             The column name(s) of the covariates. Mutually exclusive with
             ``formula``.
@@ -917,6 +949,12 @@ class DataFrameRegressionMixin:
             The column name of the left truncation values.
         tr_col : str, optional
             The column name of the right truncation values.
+        xl_col, xr_col : str, optional
+            The column names of the left and right ends of each
+            observation's interval, in place of ``x_col``: the two columns
+            of the ``(N, 2)`` ``x`` that :meth:`fit` takes for interval
+            censored data, with ``c_col`` giving the censoring of each row
+            as for :meth:`fit` (#571).
         formula : str, optional
             A ``formulaic`` formula describing the covariates, e.g.
             ``"age + sex"``. Mutually exclusive with ``Z_cols``.
@@ -957,11 +995,10 @@ class DataFrameRegressionMixin:
         >>> model.sf([10, 20], df[["age", "weight"]].head(2)).round(4)
         array([0.4757, 0.0024])
         """
+        x = _regression_times(df, x_col, xl_col, xr_col)
         Z, feature_names, model_spec = design_matrix_from_df(
             df, Z_cols, formula
         )
-
-        x = df[x_col].values
 
         c = None if c_col is None else df[c_col].values
         n = None if n_col is None else df[n_col].values

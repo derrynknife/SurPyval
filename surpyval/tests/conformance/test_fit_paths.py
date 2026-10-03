@@ -108,6 +108,41 @@ def test_data_frame_columns_are_named_with_col(fitter, method):
     assert not bad, f"{method} names columns without _col: {bad}"
 
 
+def _columns_for(arg, fit_args):
+    """The DataFrame arguments, any one of which fills ``fit``'s data
+    argument ``arg`` (a tuple names arguments needed together)."""
+    if arg == "Z":
+        return ["Z_cols", "formula"]
+    if arg == "t":
+        return [("tl_col", "tr_col"), ("tl_cols", "tr_cols")]
+    if arg == "x" and "t" in fit_args and "i" not in fit_args:
+        # A fit that takes the xcnt data model (``x``, ``c``, ``n`` and a
+        # truncation ``t``; not an event log) takes intervals as a
+        # two-column ``x``, which a DataFrame holds as two columns.
+        return [("x_col", "xl_col", "xr_col"), ("x_cols", "xl_cols", "xr_cols")]
+    return [f"{arg}_col", f"{arg}_cols"]
+
+
+@pytest.mark.parametrize("fitter, method", _from_df_methods())
+def test_data_frame_reads_every_data_argument(fitter, method):
+    # Principle 14 (#571): a DataFrame entry point expresses all the data
+    # its fit does. Each data argument of ``fit`` has a column argument;
+    # a fit that reads intervals in a two-column ``x`` has ``xl_col`` and
+    # ``xr_col`` as well (WeibullAFT.fit_from_df had neither).
+    fit = getattr(fitter, method.removesuffix("_from_df"))
+    fit_args = [p for p in inspect.signature(fit).parameters if p in _DATA_NAMES]
+    columns = set(inspect.signature(getattr(fitter, method)).parameters)
+    missing = [
+        arg
+        for arg in fit_args
+        if not any(
+            set((need,) if isinstance(need, str) else need) <= columns
+            for need in _columns_for(arg, fit_args)
+        )
+    ]
+    assert not missing, f"{method} cannot fill fit's {missing} from columns"
+
+
 @pytest.mark.parametrize("case", CASES, ids=[c.name for c in CASES])
 def test_every_case_has_a_data_frame_path(case):
     # ... and test_fit_paths_agree compares it with fit, for every model
