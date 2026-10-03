@@ -81,8 +81,8 @@ def test_578_crow_demonstrated_mtbf_bounds(design):
     # 90% lower and upper bounds on the demonstrated MTBF at the end of
     # the test. Failure terminated (one system to its 6th failure) the
     # pivot is exact, so each side covers 90%; time terminated (3 systems
-    # to T = 50, about 9 failures in all) the bounds invert a discrete
-    # conditional test and cover at least 90% (about 93% here).
+    # to T = 50, about 21 failures in all) the bounds invert a discrete
+    # conditional test and cover at least 90% (92% here).
     rng = np.random.default_rng(578 if design == "time" else 579)
     beta, scale = 0.6, 2.0
     model_true = CrowAMSAA.from_params([scale, beta])
@@ -90,7 +90,7 @@ def test_578_crow_demonstrated_mtbf_bounds(design):
     low_hits = up_hits = 0
     for _ in range(reps):
         if design == "time":
-            counts = rng.poisson((T_END / scale) ** beta / 1.0, 3)
+            counts = rng.poisson((T_END / scale) ** beta, 3)
             x, i, c = [], [], []
             for unit, k in enumerate(counts):
                 u = np.sort(rng.uniform(size=k))
