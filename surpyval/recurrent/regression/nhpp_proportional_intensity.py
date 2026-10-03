@@ -17,6 +17,7 @@ from surpyval.utils.covariates import coefficient_floor
 from surpyval.utils.dataframe import RecurrentRegressionDataFrameMixin
 from surpyval.utils.fitter import singleton_fitter
 from surpyval.utils.no_maximum import warn_unverified
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import handle_xicn, validate_nhpp_data
 
 from .proportional_intensity import (
@@ -304,7 +305,10 @@ class ProportionalIntensityNHPP(RecurrentRegressionDataFrameMixin):
         # The likelihood is in natural parameter space, so the full fitted
         # vector ``[*dist_params, *coeffs]`` is the MLE the shared inference
         # machinery needs for AIC/BIC/standard errors.
-        out._neg_ll = neg_ll
+        # Kept as what it is built from, so the model pickles (#573)
+        out._neg_ll = Rebuilt(
+            self.create_negll_func, (data, dist), built=neg_ll
+        )
         out._mle = fitted
         out._n_obs = bic_sample_size(data)
 

@@ -36,6 +36,12 @@ from ..tvc_fit import TVCFitMixin
 Phi = CovariateLink
 
 
+def _zero_init(Z: npt.NDArray) -> npt.NDArray:
+    """The log-linear fitters' start: every coefficient 0 (a module-level
+    function rather than a lambda, so a fitted model pickles, #573)."""
+    return np.zeros(Z.shape[1])
+
+
 class ProportionalHazardsFitter(
     MirroredDistributionAttrs,
     HazardIdentitiesMixin,
@@ -317,7 +323,7 @@ class ProportionalHazardsFitter(
             LogLinearPhi.NAME_E,
             LogLinearPhi.phi_bounds,
             phi_param_map=LogLinearPhi.make_param_map,
-            phi_init=lambda Z: np.zeros(Z.shape[1]),
+            phi_init=_zero_init,
         )
 
     def fit(

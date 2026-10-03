@@ -762,6 +762,17 @@ def _combine_generators(gens: list) -> tuple[Callable, Callable]:
     return neg_ll, jac_hess
 
 
+def combined_generators(
+    func_generator: Callable, strata_args: list
+) -> tuple[Callable, Callable]:
+    """The stratified likelihood and its derivatives: ``func_generator``
+    (a tie method's generator) on each stratum's ``(x, Z, c, n, tl)``,
+    summed (``_combine_generators``). A stratified fit's model keeps its
+    likelihood as this function and its arguments, so it pickles
+    (#573)."""
+    return _combine_generators([func_generator(*a) for a in strata_args])
+
+
 _TINY = float(np.finfo(float).tiny)
 
 

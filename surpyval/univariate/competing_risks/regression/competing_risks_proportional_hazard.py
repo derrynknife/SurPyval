@@ -113,8 +113,6 @@ class CompetingRisksProportionalHazards(
     #: fit with ``center=True`` (#459, #463). The per-cause fits centre on
     #: the means either way.
     center: "npt.NDArray"
-    phi: Any
-    phi_e: Any
     _fg_models: dict
     #: What the fit reached, one of ``MAXIMUM_STATES``
     #: (``surpyval.utils.no_maximum``): the worst of the causes' fits, as
@@ -253,13 +251,22 @@ class CompetingRisksProportionalHazards(
         self.betas = betas
         self.beta = betas.sum(axis=0)
         self.center = center
-        # An aliased coefficient (nan, #476) is predicted with as 0.
-        coef = np.where(np.isnan(self.beta), 0.0, self.beta)
-        # Relative to the centre, where the baselines are (#459).
-        self.phi_e = lambda Z, e_i: np.exp(self._log_phi_e(Z, e_i))
-        self.phi = lambda Z: np.exp(self._prepare_Z(Z) @ coef)
         self.h0_e = baselines
         self.H0_e = baselines.cumsum(axis=1)
+
+    # ``phi_e`` and ``phi`` are methods, not lambdas set by ``_finish``,
+    # so the model pickles (#573).
+    def phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
+        """Cause ``e_i``'s hazard multiplier at ``Z``, relative to a unit
+        at ``center`` (where the baselines are, #459)."""
+        return np.exp(self._log_phi_e(Z, e_i))
+
+    def phi(self, Z: Any) -> npt.NDArray:
+        """The multiplier of the summed coefficients ``beta`` at ``Z``
+        (kept for backward compatibility; no prediction uses it)."""
+        # An aliased coefficient (nan, #476) is predicted with as 0.
+        coef = np.where(np.isnan(self.beta), 0.0, self.beta)
+        return np.exp(self._prepare_Z(Z) @ coef)
 
     def _log_phi_e(self, Z: Any, e_i: int) -> npt.NDArray:
         """The log of cause ``e_i``'s hazard multiplier ``phi_e``."""

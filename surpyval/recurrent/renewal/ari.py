@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from surpyval.recurrent.renewal.fit_mixin import RenewalFitMixin
 from surpyval.utils.deprecation import renamed_arguments
 from surpyval.utils.fitter import singleton_fitter
+from surpyval.utils.pickling import Rebuilt
 from surpyval.utils.recurrent_utils import (
     handle_xicn,
     reject_gapped_observation,
@@ -370,6 +371,11 @@ class ARI(RenewalFitMixin):
         )
         rho, *baseline_params = params
         out = self._make_model(baseline, baseline_params, rho, m)
+        # The likelihood kept as what it is built from, so the model
+        # pickles (#573).
+        neg_ll = Rebuilt(
+            self.create_negll_func, (data, baseline, m), built=neg_ll
+        )
         self._attach_inference(out, neg_ll, [rho, *baseline_params], res, data)
         return out
 

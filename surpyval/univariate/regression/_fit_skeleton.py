@@ -11,6 +11,7 @@ separate: its life-model parameter juggling does not fit this shape.
 """
 
 import copy
+import functools
 import warnings
 from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
@@ -108,12 +109,23 @@ def make_objective(
     """The optimiser objective every regression fitter used to build
     inline: the fitter's negative log-likelihood evaluated in the
     transformed (unconstrained, fixed-parameters-removed) search space.
+
+    A ``functools.partial`` of a module-level function rather than a
+    closure, so the accelerated life model, which keeps it as ``fun``,
+    pickles (#573).
     """
+    return functools.partial(_objective, fitter, data, inv_trans, const)
 
-    def fun(params: npt.NDArray) -> Boxable:
-        return fitter.neg_ll(data, *inv_trans(const(params)))
 
-    return fun
+def _objective(
+    fitter: Any,
+    data: SurpyvalData,
+    inv_trans: Callable,
+    const: Callable,
+    params: npt.NDArray,
+) -> Boxable:
+    """``make_objective``'s objective at ``params``."""
+    return fitter.neg_ll(data, *inv_trans(const(params)))
 
 
 class MirroredDistributionAttrs:

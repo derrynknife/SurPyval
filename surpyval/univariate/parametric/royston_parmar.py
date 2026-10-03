@@ -464,6 +464,62 @@ class RoystonParmarModel(SerialisableMixin):
         return out
 
 
+class _SplineNegLL:
+    """The negative log-likelihood of the spline coefficients ``g``.
+
+    An object rather than a closure over the fit's basis matrices, so the
+    fitted model, which keeps it as ``_objective``, pickles (#573). Each
+    group of arrays is a kind of row (its basis matrices are ``None``
+    when the data have none of that kind)."""
+
+    def __init__(
+        self,
+        scale: str,
+        knots: npt.NDArray,
+        observed: tuple,
+        right: tuple,
+        left: tuple,
+        interval: tuple,
+        truncated: tuple,
+    ) -> None:
+        self.scale = scale
+        self.knots = knots
+        self.observed = observed
+        self.right = right
+        self.left = left
+        self.interval = interval
+        self.truncated = truncated
+
+    def __call__(self, g: npt.NDArray) -> Any:
+        scale, knots = self.scale, self.knots
+        B_o, Bd_o, n_o, lx_o = self.observed
+        B_r, n_r = self.right
+        B_l, n_l = self.left
+        B_il, B_ir, n_i = self.interval
+        x_tl, x_tr, n_t = self.truncated
+        ll = 0.0
+        if B_o is not None:  # events: log f = log(-dS) + log s' - log t
+            eta = B_o @ g
+            sp = Bd_o @ g
+            _, log_negdS = _scale_terms(eta, scale)
+            ll += np.sum(n_o * (log_negdS + np.log(sp) - lx_o))
+        if B_r is not None:  # right-censored: log S
+            log_S_r, _ = _scale_terms(B_r @ g, scale)
+            ll += np.sum(n_r * log_S_r)
+        if B_l is not None:  # left-censored: log F = log(1 - S)
+            log_S_l, _ = _scale_terms(B_l @ g, scale)
+            ll += np.sum(n_l * np.log1p(-np.exp(log_S_l)))
+        if B_il is not None:  # interval-censored: log(S(l) - S(r))
+            S_il = _sf_from_eta(B_il @ g, scale)
+            S_ir = _sf_from_eta(B_ir @ g, scale)
+            ll += np.sum(n_i * np.log(S_il - S_ir))
+        if x_tl.size:  # truncation: divide by P(entry <= T <= exit)
+            S_tl = _sf_at(x_tl, knots, g, scale)
+            S_tr = _sf_at(x_tr, knots, g, scale)
+            ll -= np.sum(n_t * np.log(S_tl - S_tr))
+        return -ll
+
+
 class RoystonParmar_(UnivariateDataFrameMixin):
     """Fitter for :class:`RoystonParmarModel`. Use the singleton
     :data:`RoystonParmar`.
@@ -609,28 +665,15 @@ class RoystonParmar_(UnivariateDataFrameMixin):
         B_il = _rcs_basis(np.log(x_il), knots) if x_il.size else None
         B_ir = _rcs_basis(np.log(x_ir), knots) if x_ir.size else None
 
-        def neg_ll(g: npt.NDArray) -> Any:
-            ll = 0.0
-            if B_o is not None:  # events: log f = log(-dS) + log s' - log t
-                eta = B_o @ g
-                sp = Bd_o @ g
-                _, log_negdS = _scale_terms(eta, scale)
-                ll += np.sum(n_o * (log_negdS + np.log(sp) - lx_o))
-            if B_r is not None:  # right-censored: log S
-                log_S_r, _ = _scale_terms(B_r @ g, scale)
-                ll += np.sum(n_r * log_S_r)
-            if B_l is not None:  # left-censored: log F = log(1 - S)
-                log_S_l, _ = _scale_terms(B_l @ g, scale)
-                ll += np.sum(n_l * np.log1p(-np.exp(log_S_l)))
-            if B_il is not None:  # interval-censored: log(S(l) - S(r))
-                S_il = _sf_from_eta(B_il @ g, scale)
-                S_ir = _sf_from_eta(B_ir @ g, scale)
-                ll += np.sum(n_i * np.log(S_il - S_ir))
-            if x_tl.size:  # truncation: divide by P(entry <= T <= exit)
-                S_tl = _sf_at(x_tl, knots, g, scale)
-                S_tr = _sf_at(x_tr, knots, g, scale)
-                ll -= np.sum(n_t * np.log(S_tl - S_tr))
-            return -ll
+        neg_ll = _SplineNegLL(
+            scale,
+            knots,
+            (B_o, Bd_o, n_o, lx_o),
+            (B_r, n_r),
+            (B_l, n_l),
+            (B_il, B_ir, n_i),
+            (x_tl, x_tr, n_t),
+        )
 
         # Initialise from the Weibull/log-normal that the no-knot model is.
         init = np.zeros(n_params)

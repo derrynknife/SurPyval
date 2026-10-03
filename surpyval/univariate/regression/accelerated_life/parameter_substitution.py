@@ -10,6 +10,7 @@ from scipy.optimize import OptimizeResult, minimize
 
 from surpyval.univariate.parametric.fitters import (
     bounds_convert,
+    identity,
     verify_or_polish,
 )
 from surpyval.univariate.parametric.parametric_fitter import (
@@ -108,8 +109,9 @@ class ParameterSubstitutionFitter(
         self.fixed = {life_parameter: 1.0}
 
         if param_transform is None:
-            self.param_transform = lambda x: x
-            self.inverse_param_transform = lambda x: x
+            # (Module-level, not lambdas, so a fitted model pickles, #573)
+            self.param_transform = identity
+            self.inverse_param_transform = identity
         else:
             # Supplied as a pair -- accelerated_life.py passes both or
             # neither -- so the inverse is not None here.
