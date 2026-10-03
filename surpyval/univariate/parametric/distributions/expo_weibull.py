@@ -64,6 +64,79 @@ def _log_neg_log1mexp(t: Boxable, log_g: Boxable) -> Boxable:
     return np.where(large, -t_large, np.log(neg_log_g))
 
 
+def _tanh_sinh_nodes(
+    h: float, z_max: float
+) -> tuple[npt.NDArray, npt.NDArray]:
+    r"""
+    The tanh-sinh rule for :math:`\int_0^1 f(p)\, dp`: with
+    :math:`y = \pi \sinh z` and :math:`p = 1 / (1 + e^{-y})`, the
+    trapezoidal rule of step ``h`` in ``z`` over :math:`[-z_{max},
+    z_{max}]`. Returns the log of each node's weight,
+    :math:`\ln(h\, dp/dz) = \ln(h \pi \cosh z\, p (1 - p))`, and
+    :math:`\ln(-\ln p)`, both from ``y`` so that neither rounds where
+    :math:`p` or :math:`1 - p` does: :math:`1 - p` is :math:`10^{-454}`
+    at the last node.
+    """
+    z = h * np.arange(-round(z_max / h), round(z_max / h) + 1)
+    y = np.pi * np.sinh(z)
+    # ln p = -ln(1 + e^-y) and ln(1 - p) = -ln(1 + e^y)
+    neg_log_p = np.logaddexp(0.0, -y)
+    log_weight = (
+        np.log(h * np.pi * np.cosh(z)) - neg_log_p - np.logaddexp(0.0, y)
+    )
+    # ln(-ln p) is -y to double precision once e^-y underflows
+    far = y > 700.0
+    log_neg_log_p = np.where(far, -y, np.log(np.where(far, 1.0, neg_log_p)))
+    return log_weight, log_neg_log_p
+
+
+# The tanh-sinh rule of ``_t_power_expectation``. Against 25-digit
+# references (mpmath) over beta from 0.05 to 1e8, mu from 1e-3 to 1e6 and
+# moments 1 to 4, a step of 1/16 is within 1.2e-11 and 1/24 within 2e-14
+# (rounding); 1/32 keeps that margin. 6.5 reaches 1 - p = 1e-454, past
+# where the rule's terms underflow for any moment that is finite.
+_TS_LOG_WEIGHT, _TS_LOG_NEG_LOG_P = _tanh_sinh_nodes(1.0 / 32.0, 6.5)
+
+
+def _t_power_expectation(s: npt.ArrayLike, mu: npt.ArrayLike) -> npt.NDArray:
+    r"""
+    :math:`E[T^{s}]` for :math:`T = (X/\alpha)^{\beta}`, whose density
+    :math:`\mu (1 - e^{-t})^{\mu - 1} e^{-t}` is free of :math:`\alpha`
+    and :math:`\beta`, elementwise over ``s`` and ``mu``.
+
+    It is :math:`\int_0^1 Q(p)^{s}\, dp` with
+    :math:`Q(p) = -\ln(1 - p^{1/\mu})` the quantile of :math:`T`: over
+    the probability the mass is spread evenly whatever :math:`\mu` and
+    :math:`s`, and what is left at the ends is a power of :math:`p` at 0
+    and of :math:`-\ln(1 - p)` at 1, which a tanh-sinh rule integrates to
+    double precision with a few hundred fixed nodes (``_TS_LOG_WEIGHT``),
+    for every parameter set at once. ``quad`` over ``t`` took 9 million
+    calls of a Python integrand in one method-of-moments fit (#586), was
+    off by up to 1.4e-9 at :math:`\mu = 0.01` and overflowed a Python
+    float for :math:`s` near 80 (:math:`\beta = 0.05`).
+
+    The terms are taken on the log scale, :math:`\ln Q` from
+    :math:`r = -\ln p / \mu` as ``_log_forms`` takes the survival
+    function's: :math:`p^{1/\mu}` underflows long before
+    :math:`Q(p)^{s}` does (:math:`\mu = 10^{-3}`), and in the right tail
+    :math:`Q` is carried by :math:`\ln(-\ln p)` after :math:`1 - p`
+    rounds to 0.
+    """
+    # the nodes along a last axis
+    s_n = np.asarray(s, dtype=float)[..., None]
+    mu_n = np.asarray(mu, dtype=float)[..., None]
+    with np.errstate(all="ignore"):
+        log_r = _TS_LOG_NEG_LOG_P - np.log(mu_n)
+        r = np.exp(log_r)
+        # ln(1 - p^(1/mu)) = ln(1 - e^-r), then ln Q = ln(-that)
+        log_q = _log_neg_log1mexp(r, _log1mexp(r, log_r)[0])
+        terms = s_n * log_q + _TS_LOG_WEIGHT
+        top = np.max(terms, axis=-1, keepdims=True)
+        top = np.where(np.isfinite(top), top, 0.0)
+        total = np.exp(top[..., 0]) * np.sum(np.exp(terms - top), axis=-1)
+    return total
+
+
 class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
     def __init__(self, name: str) -> None:
         super().__init__(
@@ -619,16 +692,19 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         it only terminates when :math:`\mu` is a positive integer, and
         for other :math:`\mu` it is alternating and slow to converge,
         losing significance to cancellation as :math:`\mu` grows. So the
-        integral is taken by quadrature, as ``entropy`` does for the same
-        reason, on the distribution's own scale: with
-        :math:`t = (x/\alpha)^{\beta}`,
+        integral is taken by quadrature on the distribution's own scale:
+        with :math:`t = (x/\alpha)^{\beta}`,
 
         .. math::
             E[X^{m}] = \alpha^{m} \int_{0}^{\infty} t^{m/\beta}\,
-            \mu (1 - e^{-t})^{\mu - 1} e^{-t}\, dt ,
+            \mu (1 - e^{-t})^{\mu - 1} e^{-t}\, dt
+            = \alpha^{m} \int_{0}^{1} Q(p)^{m/\beta}\, dp ,
 
         whose integrand does not depend on :math:`\alpha`, so the result
-        is equally accurate at any scale.
+        is equally accurate at any scale. The second form, over the
+        probability :math:`p` with :math:`Q(p) = -\ln(1 - p^{1/\mu})` the
+        quantile of :math:`t`, is taken by a fixed tanh-sinh rule, all
+        parameter sets at once (see ``_t_power_expectation``).
 
         Parameters
         ----------
@@ -652,18 +728,13 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         --------
         >>> from surpyval import ExpoWeibull
         >>> ExpoWeibull.moment(2, 3, 4, 1.2)
-        8.598425613605164
+        8.59842561360511
         """
 
         a, b, u = np.broadcast_arrays(
             *(np.asarray(v, dtype=float) for v in (alpha, beta, mu))
         )
-        out = np.empty(a.shape)
-        for i in np.ndindex(*a.shape):
-            m_b = float(m) / b[i]
-            out[i] = a[i] ** m * self._t_expectation(
-                lambda t: t**m_b, b[i], u[i]
-            )
+        out = a**m * _t_power_expectation(float(m) / b, u)
         return float(out) if out.ndim == 0 else out
 
     @staticmethod
@@ -673,7 +744,9 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         r"""
         :math:`E[g(T)]` for :math:`T = (X/\alpha)^{\beta}`, whose density
         :math:`\mu (1 - e^{-t})^{\mu - 1} e^{-t}` is free of
-        :math:`\alpha` (and of :math:`\beta`).
+        :math:`\alpha` (and of :math:`\beta`), by ``quad``, for
+        ``entropy``; the moments, :math:`g(t) = t^{s}`, have the fixed
+        rule of ``_t_power_expectation`` (#586).
 
         Integrating over ``x`` directly, the old way, put the mass wherever
         :math:`\alpha` put it, and ``quad`` over :math:`[0, \infty)`
@@ -706,7 +779,7 @@ class ExpoWeibull_(OptimisedFitMixin, ParametricFitter):
         --------
         >>> from surpyval import ExpoWeibull
         >>> ExpoWeibull.mean(3, 4, 1.2)
-        2.8422622081888997
+        2.8422622081888917
         """
         return self.moment(1, alpha, beta, mu)
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import autograd.numpy as np
 import numpy.typing as npt
-from autograd import jacobian
+from autograd import grad, jacobian
 from scipy.special import expit
 from scipy.special import ndtri as z
 from scipy.stats import uniform
@@ -145,6 +145,66 @@ def resolve_distribution(name: str, custom: bool = False) -> Any:
     if dist is not None:
         return dist
     raise ValueError(f"Unknown distribution '{name}'")
+
+
+# The most counts the discrete ``quantile_cb`` asks of a vectorised band at
+# once: the bisection's next 10 levels (see ``_first_reaching``).
+_QUANTILE_BLOCK = 2**10 - 1
+
+
+def _first_reaching(
+    values: Callable[[npt.NDArray], npt.NDArray],
+    start: float,
+    level: float,
+    block: int,
+) -> float:
+    """The count found by doubling from ``start`` (``start``, then
+    ``start + 2**j``, ``j <= 40``) until ``values`` reaches ``level``, and
+    then by bisection over the integers: ``inf`` if it never does.
+
+    ``values`` maps counts to the band's end there, at most ``block`` of
+    them per call. The doubling's counts are asked for that many at a
+    time, and each round of the bisection asks for every midpoint of its
+    next ``log2(block + 1)`` levels, so the counts compared, and the count
+    returned, are the bisection's own whatever ``block`` is; ``block = 1``
+    asks for one count at a time, in the bisection's order.
+    """
+    doubling = np.r_[start, start + 2.0 ** np.arange(41)]
+    for i in range(0, doubling.size, block):
+        hit = np.flatnonzero(values(doubling[i : i + block]) >= level)
+        if hit.size:
+            j = i + int(hit[0])
+            break
+    else:
+        return np.inf
+    if j == 0:
+        return start
+    lo, hi = doubling[j - 1], doubling[j]
+    depth = max(int(np.log2(block + 1)), 1)
+    while hi - lo > 1:
+        # The midpoints the next ``depth`` levels can reach, whichever way
+        # each goes
+        mids = []
+        spans = [(lo, hi)]
+        for _ in range(depth):
+            wider = [(a, b) for a, b in spans if b - a > 1]
+            middle = [np.floor((a + b) / 2) for a, b in wider]
+            mids += middle
+            spans = [
+                half
+                for (a, b), m in zip(wider, middle)
+                for half in ((a, m), (m, b))
+            ]
+        reached = dict(zip(mids, values(np.array(mids)) >= level))
+        for _ in range(depth):
+            if hi - lo <= 1:
+                break
+            mid = np.floor((lo + hi) / 2)
+            if reached[mid]:
+                hi = mid
+            else:
+                lo = mid
+    return float(hi)
 
 
 class Parametric(
@@ -2098,42 +2158,46 @@ class Parametric(
         method. Each ``k`` is found by doubling and then bisection, so a
         heavy tail costs a few dozen evaluations of the band, not one per
         count; ``inf`` where the band does not reach ``p`` by ``2**40``.
+
+        The Wald band is evaluated at blocks of counts, each in one
+        vectorised call (see ``_first_reaching``): the doubling's counts
+        all at once, then the bisection's next ten levels at a time. Its
+        cost was the delta method's gradient, one reverse pass of
+        autograd per count, 491 of them in one conformance test; a block's
+        gradients take one pass (#591). The likelihood-ratio band is a
+        search at each count, so it is still asked for one at a time.
         """
         start = float(getattr(self.dist, "support", (0, np.inf))[0])
         start = 0.0 if not np.isfinite(start) else start
+        lr = self._is_lr(method)
+        ctx = None if lr else self._cb_context()
 
-        def band_end(k: float, end: str) -> float:
-            # "upper" or "lower" end of the band on F at k: the one-sided
-            # bound at alpha_ci for a one-sided bound on the quantile, the
-            # end of the two-sided band otherwise
-            if bound == "two-sided":
-                b = self.cb(k, on="ff", alpha_ci=alpha_ci, method=method)
-                value = b[1] if end == "upper" else b[0]
-            else:
-                value = self.cb(
-                    k, on="ff", alpha_ci=alpha_ci, bound=end, method=method
+        def band_ends(ks: npt.NDArray, end: str) -> npt.NDArray:
+            # "upper" or "lower" end of the band on F at the counts ks: the
+            # one-sided bound at alpha_ci for a one-sided bound on the
+            # quantile, the end of the two-sided band otherwise
+            if lr:
+                values = np.array(
+                    [
+                        self._ff_band_end(k, end, alpha_ci, bound, method)
+                        for k in ks
+                    ]
                 )
-            value = float(value)
-            return value if np.isfinite(value) else 0.0
+            else:
+                values = self._ff_band_ends_wald(ks, end, alpha_ci, bound, ctx)
+            return np.where(np.isfinite(values), values, 0.0)
 
-        def first(level: float, end: str) -> float:
-            # The smallest count at which the band's end reaches level
-            if band_end(start, end) >= level:
-                return start
-            lo, step = start, 1.0
-            while band_end(start + step, end) < level:
-                lo = start + step
-                step *= 2
-                if step > 2.0**40:
-                    return np.inf
-            hi = start + step
-            while hi - lo > 1:
-                mid = np.floor((lo + hi) / 2)
-                if band_end(mid, end) >= level:
-                    hi = mid
-                else:
-                    lo = mid
-            return hi
+        block = 1 if lr else _QUANTILE_BLOCK
+
+        def search(end: str) -> npt.NDArray:
+            return np.array(
+                [
+                    _first_reaching(
+                        lambda ks: band_ends(ks, end), start, p_i, block
+                    )
+                    for p_i in p
+                ]
+            )
 
         with warnings.catch_warnings():
             # a warning of the band's is given once, not once per count
@@ -2141,12 +2205,48 @@ class Parametric(
             lower = np.full(len(p), np.nan)
             upper = np.full(len(p), np.nan)
             if bound in ("two-sided", "lower"):
-                lower = np.array([first(p_i, "upper") for p_i in p])
+                lower = search("upper")
             if bound in ("two-sided", "upper"):
-                upper = np.array([first(p_i, "lower") for p_i in p])
+                upper = search("lower")
         if bound == "two-sided":
             return np.column_stack([lower, upper])
         return lower if bound == "lower" else upper
+
+    def _ff_band_end(
+        self, k: float, end: str, alpha_ci: float, bound: str, method: str
+    ) -> float:
+        """The ``end`` of the band on ``F`` at one count ``k``, from
+        ``cb``."""
+        if bound == "two-sided":
+            b = self.cb(k, on="ff", alpha_ci=alpha_ci, method=method)
+            return float(b[1] if end == "upper" else b[0])
+        return float(
+            self.cb(k, on="ff", alpha_ci=alpha_ci, bound=end, method=method)
+        )
+
+    def _ff_band_ends_wald(
+        self,
+        ks: npt.NDArray,
+        end: str,
+        alpha_ci: float,
+        bound: str,
+        ctx: Any,
+    ) -> npt.NDArray:
+        """``_ff_band_end`` of the Wald band at all the counts ``ks`` in
+        one call: ``cb(ks, on="ff")``, step for step, with the delta
+        method's gradients in one reverse pass."""
+        with np.errstate(all="ignore"):
+            if bound == "two-sided":
+                # 1 - [upper, lower] on R is [lower, upper] on F
+                band = 1.0 - self._cb_sf_bound(
+                    ks, ctx, alpha_ci, bound, elementwise=True
+                )
+                return band[:, 1] if end == "upper" else band[:, 0]
+            # The upper end of F is the lower end of R, and vice versa
+            side = "lower" if end == "upper" else "upper"
+            return 1.0 - self._cb_sf_bound(
+                ks, ctx, alpha_ci, side, elementwise=True
+            )
 
     def _cb_context(self) -> Any:
         """Assemble the parameter vector and covariance used by ``cb``.
@@ -2227,9 +2327,26 @@ class Parametric(
             out = np.where(x < 0, 0.0, out)
         return out
 
-    def _cb_delta_var(self, func: Callable[..., Any], ctx: Any) -> Any:
-        """First-order delta-method variance: ``Var(g) = J Sigma J^T``."""
-        jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
+    def _cb_delta_var(
+        self,
+        func: Callable[..., Any],
+        ctx: Any,
+        n_points: int | None = None,
+    ) -> Any:
+        """First-order delta-method variance: ``Var(g) = J Sigma J^T``.
+
+        ``jacobian`` takes one reverse pass per value of ``func``. Given
+        ``n_points``, ``func`` is elementwise over that many points --
+        the value at each depends on the parameters only through the
+        parameters at that point -- and is passed the parameter vector
+        repeated along a last axis, one copy per point: one reverse pass
+        of the sum then gives every row at once, each the gradient of its
+        own point (#591)."""
+        if n_points is None:
+            jac = np.atleast_2d(jacobian(func)(ctx.phi_hat))
+        else:
+            copies = np.repeat(ctx.phi_hat[:, None], n_points, axis=1)
+            jac = grad(lambda phi: np.sum(func(phi)))(copies).T
         var = np.einsum("ij,jk,ik->i", jac, ctx.cov, jac)
         # Rounding can leave a zero variance (a flat direction, or a point
         # outside the support) a hair below zero; only a variance
@@ -2258,7 +2375,12 @@ class Parametric(
         return np.sqrt(np.where(bad, np.nan, var))
 
     def _cb_sf_bound(
-        self, x: npt.ArrayLike, ctx: Any, alpha_ci: float, bound: str
+        self,
+        x: npt.ArrayLike,
+        ctx: Any,
+        alpha_ci: float,
+        bound: str,
+        elementwise: bool = False,
     ) -> Any:
         """Confidence bound on the survival function: a Wald bound on the
         scale on which the family is a straight line in (log) time -- its
@@ -2281,6 +2403,12 @@ class Parametric(
         first order, so large-sample bounds are essentially unchanged. A
         two-sided bound is ``[upper, lower]`` on ``R`` on the last axis,
         the layout the public ``cb`` method expects.
+
+        ``elementwise`` takes the delta method's gradients at all of the
+        points ``x`` (a 1-d array) in one reverse pass (see
+        ``_cb_delta_var``), for a distribution whose functions take
+        parameters of the shape of ``x``: the discrete ``quantile_cb``
+        evaluates the band at blocks of counts.
         """
 
         R_hat = self._cb_full_sf(x, ctx.phi_hat, ctx)
@@ -2299,7 +2427,9 @@ class Parametric(
             F = self._cb_full_ff(x, phi, ctx)
             return np.where(left, -F, R) / unit
 
-        sd_R = unit * self._cb_sd(self._cb_delta_var(sf_func, ctx), x, "sf")
+        n_points = np.size(x) if elementwise else None
+        var = self._cb_delta_var(sf_func, ctx, n_points)
+        sd_R = unit * self._cb_sd(var, x, "sf")
         # On the family's scale (surpyval.utils.linalg.sf_link_bound, which
         # the degradation and regression bands share). At the boundary (R =
         # 0 or 1, e.g. t <= gamma) the transform degenerates to 0/0; the
