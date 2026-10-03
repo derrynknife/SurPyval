@@ -4,6 +4,42 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Cox models report their maximised partial likelihood (#604).** A Cox
+  model's ``neg_ll`` was the fit's function of the coefficients, and it had
+  no AIC or BIC. ``neg_ll()`` is now the fitted value and
+  ``log_likelihood`` its negative; ``aic()``, ``aic_c()`` and ``bic()``
+  follow R's ``logLik.coxph`` (k the non-aliased coefficients, BIC's n the
+  events): on Rossi, AIC 1327.714 and BIC 1335.923, as R. The function is
+  ``neg_ll_of(beta)``; ``neg_ll(beta)`` is deprecated until v0.24. The same
+  values are on FineGray (the weighted partial likelihood, ``crr``'s
+  ``loglik``, n the events of the cause), CompetingRisksProportionalHazards
+  with ``model="Cox"`` (summed over causes, as R's multi-state ``coxph``),
+  ProportionalOdds (the profile likelihood) and CoxFrailty (the integrated
+  likelihood, k including theta); a Fine-Gray
+  CompetingRisksProportionalHazards raises for them. CoxFrailty's
+  ``loglik`` and ``loglik_no_frailty`` are ``log_likelihood`` and
+  ``log_likelihood_no_frailty`` (the old names deprecated until v0.24).
+  These criteria compare models of one kind on the same data, not a Cox
+  model with a parametric one.
+- **Fine-Gray with large-scale covariates (#606).** Covariates of order 1e4
+  raised "SVD did not converge": ``exp(beta'Z)`` overflowed at BFGS's
+  first step. The fit is Newton-Raphson with step-halving, as
+  ``cmprsk::crr`` and CoxPH (BFGS where Newton gives up), with the linear
+  predictor shifted inside the risk-set sums. Ordinary fits move by up to
+  1e-6 standard errors, the distance BFGS stopped short of the maximum, and
+  now match ``crr``'s coefficients to 1e-8 rather than 2.5e-7.
+- **One spelling for model comparison (#605).** Every model's covariance
+  is ``covariance()``: ``Parametric.cov_matrix``, the ``covariance``
+  attribute of Royston-Parmar and the frailty models, and ``cov`` on
+  Fine-Gray, proportional odds and additive hazards work with a
+  DeprecationWarning until v0.24. ``aic_c()`` is added on the recurrent,
+  copula, competing-risks and Royston-Parmar models, and
+  ``log_likelihood`` wherever there is an AIC. The mixture's EM steps
+  (``EM``, ``Q``, ``expectation``, ``maximisation``, ``likelihood``,
+  ``initialise_params``) are internal; their public names warn until
+  v0.24. Breaking: model dicts store ``"_neg_ll"`` and ``"covariance"``;
+  old keys still load, but a 0.23 dict loses its likelihood or covariance
+  in an older SurPyval, which cannot read a 0.23 FineGray dict.
 - **Fitted models pickle (#573).** Every fitted model -- univariate,
   PH, Cox (stratified too), competing-risks and every recurrence model --
   pickles, so models can go to ``multiprocessing``, ``joblib``,
