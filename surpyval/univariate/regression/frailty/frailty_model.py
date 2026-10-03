@@ -52,6 +52,7 @@ from surpyval.utils.validation import (
 )
 
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
 from ..regression_data import (
     prepare_Z,
     restore_covariate_meta,
@@ -75,7 +76,9 @@ def _standard_error(variance: Any) -> np.ndarray:
     return np.sqrt(np.where(variance >= 0, variance, np.nan))
 
 
-class _SharedFrailty(ConcordanceMixin, SerialisableMixin):
+class _SharedFrailty(
+    ConditionalSurvivalMixin, ConcordanceMixin, SerialisableMixin
+):
     """What the fitted shared-frailty models have in common: the frailty
     (its family, variance ``theta`` and each group's posterior), the
     coefficients, the marginal and conditional predictions, and the

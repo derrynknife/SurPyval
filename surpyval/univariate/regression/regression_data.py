@@ -31,7 +31,6 @@ from surpyval.utils import (
     refuse_time_values,
     xcnt_handler,
 )
-
 from surpyval.utils.dataframe import frame_column
 
 from ._aliasing import covariate_columns

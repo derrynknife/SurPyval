@@ -22,6 +22,7 @@ from surpyval.utils.shapes import (
 )
 
 from ._concordance import ConcordanceMixin
+from ._prediction import ConditionalSurvivalMixin
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -38,7 +39,10 @@ if TYPE_CHECKING:
 
 
 class SemiParametricRegressionModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     The fitted Cox proportional hazards model returned by ``CoxPH.fit``,

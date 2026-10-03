@@ -65,6 +65,7 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -135,7 +136,10 @@ def _aliased(
 
 
 class AdditiveHazardsModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Lin & Ying additive hazards model, returned by

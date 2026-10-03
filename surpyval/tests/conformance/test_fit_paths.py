@@ -119,7 +119,10 @@ def _columns_for(arg, fit_args):
         # A fit that takes the xcnt data model (``x``, ``c``, ``n`` and a
         # truncation ``t``; not an event log) takes intervals as a
         # two-column ``x``, which a DataFrame holds as two columns.
-        return [("x_col", "xl_col", "xr_col"), ("x_cols", "xl_cols", "xr_cols")]
+        return [
+            ("x_col", "xl_col", "xr_col"),
+            ("x_cols", "xl_cols", "xr_cols"),
+        ]
     return [f"{arg}_col", f"{arg}_cols"]
 
 
@@ -130,7 +133,9 @@ def test_data_frame_reads_every_data_argument(fitter, method):
     # a fit that reads intervals in a two-column ``x`` has ``xl_col`` and
     # ``xr_col`` as well (WeibullAFT.fit_from_df had neither).
     fit = getattr(fitter, method.removesuffix("_from_df"))
-    fit_args = [p for p in inspect.signature(fit).parameters if p in _DATA_NAMES]
+    fit_args = [
+        p for p in inspect.signature(fit).parameters if p in _DATA_NAMES
+    ]
     columns = set(inspect.signature(getattr(fitter, method)).parameters)
     missing = [
         arg

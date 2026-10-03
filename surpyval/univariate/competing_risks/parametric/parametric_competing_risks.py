@@ -536,11 +536,11 @@ class ParametricCompetingRisks(SerialisableMixin):
         -----
         Left truncation keeps the likelihood factorising across causes:
         a unit entering at :math:`t_l` contributes
-        :math:`\prod_k h_k(x)^{\delta_k} S_k(x) / S_k(t_l)`, so each cause's
+        :math:`\\prod_k h_k(x)^{\\delta_k} S_k(x) / S_k(t_l)`, so each cause's
         distribution is fitted with the same ``tl``. Right truncation and
         interval censoring do not factorise (their terms are integrals of
-        the all-cause survival, :math:`\mathrm{CIF}_k(x_r) -
-        \mathrm{CIF}_k(x_l)` for an interval), so this fit takes neither;
+        the all-cause survival, :math:`\\mathrm{CIF}_k(x_r) -
+        \\mathrm{CIF}_k(x_l)` for an interval), so this fit takes neither;
         fitting each cause as a univariate model with the other causes'
         events right censored is then an approximation, not this model's
         likelihood.
