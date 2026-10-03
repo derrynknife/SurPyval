@@ -4,6 +4,27 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **ExpoWeibull likelihood-ratio bounds reach the region's extreme,
+  whatever the CPU (#601).** On long, flat valleys of the likelihood region
+  (beta -> inf with alpha at the largest observation; alpha -> 0) the
+  searches ran out of iterations and returned points inside the region:
+  the 95% ``cb(8)`` upper bound was 0.7758 with multi-threaded BLAS (true
+  0.79698), the 99% ``qf(0.95)`` upper bound ranged over 80.6-86.2 with the
+  thread count and CPU (true 87.022), and some quantile bounds were too
+  narrow everywhere (the 95% ``qf(0.2)`` band was [2.72, 7.63], true
+  [2.2208, 7.9437]; the one-sided ``qf(0.05)`` lower bound 0.849, true
+  0.5517). Searches that stop short are continued, with exact deviance
+  gradients where they stall; each parameter's profile is followed down
+  valleys to the edge of its space and the extreme sought over slices
+  there. Bounds agree with brute-force extremes to 1e-6 on one or more
+  threads and without AVX-512. A bound whose search is still moving out
+  when it stops is returned with a warning, as is the fallback when the
+  last-resort search fails (it returned nan). ExpoWeibull and
+  NegativeBinomial likelihood-ratio bounds take 2.4x and 2.8x as long
+  (#609).
+- **``ExpoWeibull.qf`` at extreme parameters (#601):**
+  ``qf(0.95, 2.2e-308, 0.0076, 3e95)`` was ``inf``; it is 19.4, computed in
+  logs where ``alpha * exp(log t / beta)`` overflows or underflows.
 - **Recurrent trend tests take delayed entry (#575).** ``trend_test()``
   refused any data with ``tl`` ("trend tests assume observation from time
   0"). ``laplace`` and ``mil_hdbk_189c`` take each system's start as
