@@ -389,3 +389,65 @@ def test_604_proportional_odds_model_comparison_values():
     old["log_likelihood"] = -old.pop("_neg_ll")
     del old["ic_n"]
     assert sp.from_dict(old).bic() == pytest.approx(model.bic(), rel=1e-15)
+
+
+# -- param_cb(method="lr") (#617) -------------------------------------------
+def test_617_param_cb_lr_is_where_the_profile_deviance_is_chi2():
+    # The profile likelihood of beta_0 found here by a general-purpose
+    # optimiser over all the jumps and the other coefficient.
+    from scipy.stats import chi2
+
+    x, c, w, tl, Z = _po_data(n=80, seed=7, truncate=True)
+    model = sp.ProportionalOdds.fit(x, Z, c=c, n=w, tl=tl)
+    lik = _POLikelihood(x, c, w, tl, Z - np.average(Z, axis=0, weights=w))
+    m = lik.m
+    ll_hat = model.log_likelihood
+    crit = chi2.ppf(0.95, 1)
+    lo, hi = model.param_cb("beta_0", method="lr")
+    assert lo < model.beta[0] < hi
+    u0 = lik.start(x, w, tl)
+    for b in (lo, hi):
+
+        def neg(v, b=b):
+            gamma = np.array([-b, v[m]])
+            d = lik.derivatives(v[:m], gamma)
+            return -d["value"], -np.r_[d["grad_u"], d["grad_gamma"][1]]
+
+        res = minimize(
+            neg,
+            np.r_[u0, -model.beta[1]],
+            jac=True,
+            method="L-BFGS-B",
+            options={"ftol": 1e-15, "gtol": 1e-10, "maxiter": 10000},
+        )
+        dev = 2.0 * (ll_hat - (-res.fun))
+        assert dev == pytest.approx(crit, abs=1e-4)
+
+
+def test_617_param_cb_lr_options_restored_and_aliased():
+    x, c, w, tl, Z = _po_data(n=80, seed=8)
+    model = sp.ProportionalOdds.fit(x, Z, c=c)
+    wald = model.param_cb("beta_1")
+    assert np.array_equal(wald, model.param_cb("beta_1", method="wald"))
+    lr = model.param_cb("beta_1", method="likelihood")
+    # Close to Wald's on a regular fit, and not the same.
+    np.testing.assert_allclose(lr, wald, atol=0.25 * np.diff(wald)[0])
+    assert not np.allclose(lr, wald, rtol=1e-6)
+    two = model.param_cb("beta_1", alpha_ci=0.2, method="lr")
+    lower = model.param_cb("beta_1", alpha_ci=0.1, bound="lower", method="lr")
+    assert lower.shape == (1,) and lower[0] == two[0]
+    with pytest.raises(ValueError, match="method"):
+        model.param_cb("beta_1", method="bootstrap")
+    restored = sp.ProportionalOddsModel.from_dict(model.to_dict())
+    with pytest.raises(ValueError, match="data"):
+        restored.param_cb("beta_1", method="lr")
+    # A constant column is aliased: no interval, as Wald gives none.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        aliased = sp.ProportionalOdds.fit(
+            x, np.column_stack([Z, np.ones(len(x))]), c=c
+        )
+    assert np.all(np.isnan(aliased.param_cb("beta_2", method="lr")))
+    np.testing.assert_allclose(
+        aliased.param_cb("beta_1", method="lr"), lr, rtol=1e-6
+    )

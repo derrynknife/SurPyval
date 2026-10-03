@@ -101,6 +101,7 @@ from surpyval.utils.shapes import (
     covariate_rows,
     keeps_query_shape,
 )
+from surpyval.utils.validation import BOUNDS, check_option
 
 from .._aliasing import (
     aliased_columns,
@@ -563,6 +564,10 @@ class ProportionalOddsModel(
     _fit_data: "dict | None" = None
     #: The printout's data line of a restored model.
     _data_summary: "str | None" = None
+    #: The likelihood-ratio searches of ``param_cb(method="lr")`` over the
+    #: profile likelihood, with what they have found, while the
+    #: coefficients stay as they are; not pickled (``__getstate__``).
+    _lr_search: Any = None
     #: The family (``"Proportional Odds"``) and ``"Semi-Parametric"``,
     #: which the printout shows and ``to_dict`` stores.
     kind: str
@@ -785,10 +790,27 @@ class ProportionalOddsModel(
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
-        Wald confidence bound(s) on a coefficient, from the profile
-        likelihood's information (see :meth:`covariance`).
+        Confidence bound(s) on a coefficient.
+
+        Two methods, as for the parametric regression models; ``"wald"``
+        is the default:
+
+        - ``"wald"`` -- from the profile likelihood's information (see
+          :meth:`covariance`).
+        - ``"lr"`` -- the profile-likelihood interval (#617): the values
+          of the coefficient whose deviance of the profile likelihood
+          :math:`p\\ell(\\beta) = \\max_g \\ell(\\beta, g)`, the other
+          coefficients re-fitted, stays below the :math:`\\chi^2_1`
+          critical value (aliases ``"likelihood"``,
+          ``"likelihood-ratio"``, ``"profile"``). The profile likelihood
+          ratio is asymptotically :math:`\\chi^2` in this model, the
+          baseline being profiled out (Murphy and van der Vaart 2000). A
+          side that cannot be found is ``nan``, with a warning. It needs
+          the data the model was fitted to, which a model restored from a
+          dict does not keep.
 
         Parameters
         ----------
@@ -798,6 +820,8 @@ class ProportionalOddsModel(
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            As above. Default ``'wald'``.
 
         Examples
         --------
@@ -808,7 +832,14 @@ class ProportionalOddsModel(
         >>> model = ProportionalOdds.fit(x, df[["fin", "prio"]].values, c=c)
         >>> model.param_cb("beta_0").round(4)
         array([-0.0017,  0.8567])
+        >>> model.param_cb("beta_1").round(4)
+        array([-0.1853, -0.0559])
+        >>> model.param_cb("beta_1", method="lr").round(4)
+        array([-0.1849, -0.0548])
         """
+        from .._likelihood_ratio import is_lr, profile_interval
+
+        lr = is_lr(method)
         names = self.parameter_names
         if name not in names:
             raise ValueError(
@@ -816,6 +847,9 @@ class ProportionalOddsModel(
                     name, names
                 )
             )
+        if lr:
+            check_option("bound", bound, BOUNDS)
+            return profile_interval(self._lr_region(), name, alpha_ci, bound)
         idx = names.index(name)
         lower, upper = self._parameter_bounds()[idx]
         return wald_bound_on_support(
@@ -827,6 +861,61 @@ class ProportionalOddsModel(
             bound,
             name=name,
         )
+
+    def _lr_region(self) -> Any:
+        """The likelihood-ratio searches over the profile likelihood of
+        the coefficients (``LikelihoodRegion``), kept while they are as
+        they are: each value is the likelihood maximised over the
+        baseline (:func:`_inner`, from the baseline at the estimate). An
+        aliased coefficient is held (its bound is ``nan``)."""
+        from .._likelihood_ratio import LikelihoodRegion
+
+        data = self._fit_data
+        if data is None:
+            raise ValueError(
+                "Likelihood-ratio bounds need the data the model was fitted "
+                "to, which a model restored from a dict does not keep; use "
+                "method='wald'."
+            )
+        # (an aliased coefficient, nan, is held at 0)
+        params = np.nan_to_num(np.asarray(self.params, dtype=float), nan=0.0)
+        point = params.tobytes()
+        search = self._lr_search
+        if search is not None and search.point == point:
+            return search
+        x, c, n, tl, Z = (data[k] for k in ("x", "c", "n", "tl", "Z"))
+        aliased = np.flatnonzero(np.isnan(np.asarray(self.beta, dtype=float)))
+        kept = np.setdiff1d(np.arange(params.size), aliased)
+        # As the fit: on the covariates centred at their means, which the
+        # baseline absorbs (the profile likelihood is the same).
+        Zc = (Z - covariate_center(Z, n))[:, kept]
+        lik = _POLikelihood(x, c, n, tl, Zc)
+        tol = 1e-12
+        with np.errstate(all="ignore"):
+            u_hat, _ = _inner(lik, -params[kept], lik.start(x, n, tl), tol)
+
+        def neg_ll(beta: npt.NDArray) -> float:
+            with np.errstate(all="ignore"):
+                _, der = _inner(lik, -beta[kept], u_hat, tol)
+            return -float(der["value"])
+
+        search = LikelihoodRegion(
+            neg_ll,
+            params,
+            self.parameter_names,
+            self._parameter_bounds(),
+            set(aliased.tolist()),
+            self._covariance,
+            point,
+        )
+        self._lr_search = search
+        return search
+
+    def __getstate__(self) -> dict:
+        # The searches' caches are rebuilt where they are needed (#617).
+        state = dict(self.__dict__)
+        state.pop("_lr_search", None)
+        return state
 
     def _parameter_bounds(self) -> "list[tuple[None, None]]":
         """The support of each parameter: the coefficients are

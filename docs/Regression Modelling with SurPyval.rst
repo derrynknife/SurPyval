@@ -1900,8 +1900,9 @@ use when the shape of the baseline is what you cannot commit to.
 
 The fitted model has the Cox model's interface: ``sf``, ``ff`` and ``Hf`` at
 covariate rows (``grid=True`` for a curve per row), ``hf`` and ``df`` as the
-jumps at the event times, ``summary()``, ``param_cb``, ``concordance`` and
-``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
+jumps at the event times, ``summary()``, ``param_cb`` (Wald, or with
+``method='lr'`` the profile-likelihood interval of the coefficient, the
+baseline profiled out), ``concordance`` and ``to_dict`` / ``from_dict``; ``fit_from_df`` takes ``Z_cols`` or a
 ``formula``. Before the first event time the survival is 1, and after the
 last observed time it holds its last value. A covariate that separates the
 events from the survivors (a level with no events) leaves the likelihood
@@ -1999,7 +2000,8 @@ The other families quantify uncertainty their own way: Cox through the
 information matrix (``p_values``, and ``jac`` as shown earlier) and the robust
 sandwich; Lin-Ying through its sandwich ``standard_errors()``; Buckley-James by
 ``bootstrap_ci``; and the frailty model (below) through ``standard_errors()``
-and ``param_cb``.
+and ``param_cb`` (Wald, or the profile-likelihood interval with
+``method='lr'``).
 
 
 .. _accelerated-life:
@@ -3304,7 +3306,14 @@ here on grouped data with no frailty at all:
 The likelihoods agree and the frailty model pays 2 AIC units for its unused
 ``theta``: report the proportional-hazards model, since a variance on its
 boundary has no meaningful Wald interval (``param_cb('theta')`` is then
-``[0, inf]``).
+``[0, inf]``). The profile-likelihood interval, ``param_cb('theta',
+method='lr')``, does have a finite upper end: the largest frailty variance
+the data do not rule out.
+
+.. jupyter-execute::
+
+    print('theta, profile-likelihood 95% interval:',
+          no_frailty.param_cb('theta', method='lr').round(3))
 
 .. jupyter-execute::
     :hide-code:
@@ -3314,6 +3323,8 @@ boundary has no meaningful Wald interval (``param_cb('theta')`` is then
     assert np.isclose(no_frailty.neg_ll(), ph_ff.neg_ll())
     assert np.isclose(no_frailty.aic() - ph_ff.aic(), 2)
     assert np.array_equal(no_frailty.param_cb('theta'), [0, np.inf])
+    _lo, _hi = no_frailty.param_cb('theta', method='lr')
+    assert _lo == 0 and 0 < _hi < np.inf
 
 **A Cox baseline.** ``CoxFrailty`` is the same shared gamma frailty with the
 baseline hazard left unspecified, as in ``CoxPH`` -- the semi-parametric

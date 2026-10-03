@@ -714,6 +714,8 @@ class FrailtyFitter:
         model.n_groups = n_groups
         model._neg_ll = float(res.fun)
         model.maximum = verdict.maximum
+        # (the columns of Z whose coefficients were estimated)
+        model._fit_data = {"x": x, "c": c, "w": w, "Z": Zc, "inv": inv}
         return model
 
     def fit_from_df(

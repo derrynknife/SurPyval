@@ -302,7 +302,15 @@ class LikelihoodRegion(LikelihoodRatioMixin):
                 )
             for key, n_, v in zip(keys, need, found):
                 if n_:
-                    cache[key] = (coord.from_u(v), key[2] in sides)
+                    # At the end of the coordinate the bound is the edge
+                    # of the space itself (a frailty variance of 0, not
+                    # 2.2e-308), as the univariate walk gives it.
+                    side = key[2]
+                    end = coord.ends[1] if side > 0 else coord.ends[0]
+                    value = coord.from_u(v)
+                    if side * (v - end) >= 0:
+                        value = float(coord.edge(side))
+                    cache[key] = (value, side in sides)
         out = []
         for w, key in zip(want, keys):
             out.append(cache[key] if w else (np.nan, False))
