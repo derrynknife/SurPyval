@@ -116,6 +116,7 @@ from .._fit_skeleton import (
     covariate_center,
 )
 from .._kinds import PROPORTIONAL_ODDS
+from .._prediction import ConditionalSurvivalMixin
 from .._summary import coefficient_names, coefficient_repr, coefficient_table
 from ..regression_data import (
     LinearPredictorMixin,
@@ -485,6 +486,7 @@ def _baseline_at_origin(
 
 
 class ProportionalOddsModel(
+    ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,

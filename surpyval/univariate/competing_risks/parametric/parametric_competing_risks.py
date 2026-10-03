@@ -51,6 +51,7 @@ from surpyval.utils import (
     resolve_cr_censoring,
     xcnt_handler,
 )
+from surpyval.utils.dataframe import frame_column
 from surpyval.utils.no_maximum import combined_maximum
 from surpyval.utils.rng import as_generator
 from surpyval.utils.validation import unknown_cause_error
@@ -61,13 +62,16 @@ def _validate(
     c: "npt.ArrayLike | None",
     n: "npt.ArrayLike | None",
     e: npt.ArrayLike,
-) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
-    """Wrangle ``x``/``c``/``n`` and check the event labels: ``e`` is the
-    per-observation cause. A missing event (``None`` / ``NaN``) marks a
-    censored observation; if ``c`` is not given it is derived from the events.
+    tl: "npt.ArrayLike | float | None" = None,
+) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray, npt.NDArray]:
+    """Wrangle ``x``/``c``/``n``/``tl`` and check the event labels: ``e``
+    is the per-observation cause. A missing event (``None`` / ``NaN``)
+    marks a censored observation; if ``c`` is not given it is derived from
+    the events. The truncation is checked as every fitter checks it (each
+    row's time above its ``tl``) and returned as the ``(N, 2)`` ``t``.
     """
     e, c = resolve_cr_censoring(e, c)
-    x, c, n, _ = xcnt_handler(x, c, n, group_and_sort=False)
+    x, c, n, t = xcnt_handler(x, c, n, tl=tl, group_and_sort=False)
     x, c, n = (np.asarray(a, dtype=float) for a in (x, c, n))
     e = np.asarray(e, dtype=object)
     check_e_and_x(e, x)
@@ -83,7 +87,7 @@ def _validate(
             "censored observation (c = 1), and every censored observation "
             "must have one."
         )
-    return x, c, n, e
+    return x, c, n, e, t
 
 
 class ParametricCompetingRisks(SerialisableMixin):
@@ -510,6 +514,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         n: "npt.ArrayLike | None" = None,
         dist: Any = Weibull,
         how: str = "MLE",
+        tl: "npt.ArrayLike | float | None" = None,
     ) -> "ParametricCompetingRisks":
         """
         Fit a parametric distribution to each cause's cause-specific hazard.
@@ -537,11 +542,29 @@ class ParametricCompetingRisks(SerialisableMixin):
         how : str, optional
             Estimation method passed to each distribution's ``fit`` (default
             ``"MLE"``).
+        tl : array_like or scalar, optional
+            Left truncation (delayed entry): the time each unit came under
+            observation, a scalar for every unit, as the univariate
+            ``fit`` takes it. A unit seen only from ``tl`` (say, when the
+            maintenance records start) counts as at risk only after it.
 
         Returns
         -------
         ParametricCompetingRisks
             The fitted model.
+
+        Notes
+        -----
+        Left truncation keeps the likelihood factorising across causes:
+        a unit entering at :math:`t_l` contributes
+        :math:`\\prod_k h_k(x)^{\\delta_k} S_k(x) / S_k(t_l)`, so each cause's
+        distribution is fitted with the same ``tl``. Right truncation and
+        interval censoring do not factorise (their terms are integrals of
+        the all-cause survival, :math:`\\mathrm{CIF}_k(x_r) -
+        \\mathrm{CIF}_k(x_l)` for an interval), so this fit takes neither;
+        fitting each cause as a univariate model with the other causes'
+        events right censored is then an approximation, not this model's
+        likelihood.
 
         Examples
         --------
@@ -557,7 +580,8 @@ class ParametricCompetingRisks(SerialisableMixin):
         >>> round(model.probability_of_cause('a'), 4)
         0.625
         """
-        x, c, n, e = _validate(x, c, n, e)
+        x, c, n, e, t = _validate(x, c, n, e, tl)
+        truncated = tl is not None
 
         causes = ordered_labels(e[c == 0])
         if not causes:
@@ -576,7 +600,10 @@ class ParametricCompetingRisks(SerialisableMixin):
             # every censored row is right-censored for cause k.
             c_k = np.where(label_mask(e, k) & (c == 0), 0, 1).astype(int)
             distribution = dist[k] if isinstance(dist, dict) else dist
-            models[k] = distribution.fit(x=x, c=c_k, n=n, how=how)
+            # The same entry time for every cause (left truncation
+            # factorises; see Notes).
+            extra = {"t": t} if truncated else {}
+            models[k] = distribution.fit(x=x, c=c_k, n=n, how=how, **extra)
 
         model = cls()
         model.causes = causes
@@ -593,6 +620,7 @@ class ParametricCompetingRisks(SerialisableMixin):
         n_col: "str | None" = None,
         dist: Any = Weibull,
         how: str = "MLE",
+        tl_col: "str | float | None" = None,
     ) -> "ParametricCompetingRisks":
         """
         Fit from the columns of a :class:`pandas.DataFrame`; see :meth:`fit`.
@@ -607,6 +635,9 @@ class ParametricCompetingRisks(SerialisableMixin):
             The censoring-flag and count columns.
         dist, how : optional
             As for :meth:`fit`.
+        tl_col : str or scalar, optional
+            The column of each unit's left truncation (entry) time, or a
+            number for every unit; the ``tl`` of :meth:`fit` (#571).
 
         Returns
         -------
@@ -617,7 +648,12 @@ class ParametricCompetingRisks(SerialisableMixin):
         e = df[e_col].to_numpy(dtype=object)
         c = None if c_col is None else df[c_col].to_numpy()
         n = None if n_col is None else df[n_col].to_numpy()
-        model = cls.fit(x, e, c=c, n=n, dist=dist, how=how)
+        tl = (
+            frame_column(df, tl_col, "tl_col", time=True)
+            if isinstance(tl_col, str)
+            else tl_col
+        )
+        model = cls.fit(x, e, c=c, n=n, dist=dist, how=how, tl=tl)
         return model
 
 

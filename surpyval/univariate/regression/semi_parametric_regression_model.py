@@ -25,6 +25,7 @@ from surpyval.utils.shapes import (
 )
 
 from ._concordance import ConcordanceMixin
+from ._prediction import ConditionalSurvivalMixin
 from ._summary import (
     coefficient_names,
     coefficient_repr,
@@ -41,6 +42,7 @@ if TYPE_CHECKING:
 
 
 class SemiParametricRegressionModel(
+    ConditionalSurvivalMixin,
     InformationCriteriaMixin,
     LinearPredictorMixin,
     ConcordanceMixin,

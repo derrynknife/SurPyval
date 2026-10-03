@@ -76,6 +76,7 @@ from surpyval.utils import (
 )
 
 from .fit_best import fit_best
+from .forecasting import forecast
 
 from surpyval.utils.recurrent_event_data import (  # isort: skip
     RecurrentEventData,

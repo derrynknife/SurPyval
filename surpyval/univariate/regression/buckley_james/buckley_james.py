@@ -60,6 +60,7 @@ from .._aliasing import (
     warn_aliased,
 )
 from .._concordance import ConcordanceMixin
+from .._prediction import ConditionalSurvivalMixin
 from ..regression_data import (
     LinearPredictorMixin,
     design_matrix_from_df,
@@ -198,7 +199,10 @@ def _fit_beta(
 
 
 class BuckleyJamesModel(
-    LinearPredictorMixin, ConcordanceMixin, SerialisableMixin
+    ConditionalSurvivalMixin,
+    LinearPredictorMixin,
+    ConcordanceMixin,
+    SerialisableMixin,
 ):
     """
     A fitted Buckley-James accelerated-failure-time model.
