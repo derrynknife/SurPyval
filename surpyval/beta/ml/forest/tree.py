@@ -1,3 +1,4 @@
+from copy import deepcopy
 from math import log2, sqrt
 from typing import Any
 
@@ -179,6 +180,10 @@ class SurvivalTree(RegressionDataFrameMixin, SerialisableMixin):
         self.formula: str | None = None
         self._model_spec: Any = None
         self.data, self.Z = drop_missing_covariate_rows(data, Z_in)
+        if self.data is data:
+            # The leaves keep the rows they are given without copying
+            # them, so the tree holds its own copy of the caller's data.
+            self.data = deepcopy(data)
 
         n_features: int = parse_n_features_split(
             n_features_split, self.Z.shape[1]

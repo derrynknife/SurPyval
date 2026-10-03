@@ -203,8 +203,13 @@ class TerminalNode(Node):
     child's, built from its parameters (so it has no ``cb()`` of its own).
     """
 
-    def __init__(self, data: SurpyvalData, kind: str = "weibull") -> None:
-        self.data = deepcopy(data)
+    def __init__(
+        self, data: SurpyvalData, kind: str = "weibull", copy: bool = True
+    ) -> None:
+        # A tree's leaves are given rows the tree has already copied
+        # (``copy=False``): a deep copy per leaf was an eighth of growing
+        # a non-parametric forest (#549).
+        self.data = deepcopy(data) if copy else data
         self.kind = kind
 
     def _nonparametric_model(self) -> Any:
@@ -482,7 +487,7 @@ def build_tree(
 
     # If max_depth has been reached, return a TerminalNode
     if curr_depth == max_depth:
-        return TerminalNode(data, kind)
+        return TerminalNode(data, kind, copy=False)
 
     # Choose the random n_features_split subset of features, without
     # replacement
@@ -499,7 +504,7 @@ def build_tree(
             data, Z, kind, min_leaf_samples, min_leaf_failures, candidates
         )
         if chosen == -1 or not p_value < alpha_split:
-            return TerminalNode(data, kind)
+            return TerminalNode(data, kind, copy=False)
         candidates = np.array([chosen])
 
     # Figure out best feature-value split
@@ -528,7 +533,7 @@ def build_tree(
     # If the split rule can't suggest a feature-value split, return a
     # TerminalNode
     if split_feature_index == -1 and split_feature_value == float("-Inf"):
-        return TerminalNode(data, kind)
+        return TerminalNode(data, kind, copy=False)
 
     # Else, return an IntermediateNode, with the best feature-value split
     return IntermediateNode(
