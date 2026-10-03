@@ -4,6 +4,39 @@ Changelog
 v0.23 (unreleased)
 ------------------
 
+- **Recurrent trend tests take delayed entry (#575).** ``trend_test()``
+  refused any data with ``tl`` ("trend tests assume observation from time
+  0"). ``laplace`` and ``mil_hdbk_189c`` take each system's start as
+  ``tl`` and test each system on its own window: Laplace in the pooled
+  form (Ascher and Feingold; Kvaloy and Lindqvist), MIL-HDBK-189C with time
+  measured from each start, still exactly chi-squared on 2N degrees of
+  freedom. A fitted model's ``trend_test()`` uses the ``tl`` it was fitted
+  with, and gapped data is tested window by window. Data observed from 0
+  gives the same results to the bit. Size with delayed entry (30,000
+  replicates): Laplace 0.0496, MIL-HDBK 0.0480.
+- **Bounds on the intensity and the demonstrated MTBF (#578).** New
+  ``iif_cb`` on the parametric and proportional-intensity recurrence models
+  (the delta method on the log intensity, as ``cif_cb``), and ``mtbf(x)``
+  (= 1/iif) with ``mtbf_cb`` on the parametric ones (``bound="lower"`` is a
+  lower bound on the MTBF). ``method="crow"`` gives Crow's (1982) exact
+  bounds on the demonstrated MTBF at the end of a time-terminated test, or
+  of a failure-terminated test of one system, as MIL-HDBK-189C tabulates
+  them; the failure-terminated bounds hold their level exactly, the
+  time-terminated ones at least their level.
+- **Bernoulli, FixedEventProbability and Binomial: bounds on p (#580).**
+  ``param_cb('p')`` raised a misleading "Hessian was singular" or "need the
+  original data" error, even with zero failures. It now bounds p from the
+  counts of events and trials: exact Clopper-Pearson by default (3 in 1200
+  gives a 90% interval of 0.00068-0.00645), ``method="wald"`` (logit) and
+  ``"lr"`` as options; with no failures the upper bound is
+  1 - alpha^(1/n). Binomial ``param_cb('n')`` is the known ``n_trials``;
+  ``cb``, ``quantile_cb`` and ``mean_cb`` on these models raise one message
+  pointing to ``param_cb``. Breaking: ``Parametric.param_cb``'s ``method``
+  default is ``None`` ("wald" everywhere else, "exact" for these three).
+  Models saved before 0.23 have no counts and must be refitted for these
+  bounds.
+- **``success_run`` takes ``alpha_ci`` (#580),** the one bound without it;
+  ``confidence=`` and ``alpha=`` are deprecated until v0.24.
 - **A covariate's units no longer change a regression fit (#577).** Each
   coefficient is searched and verified in its covariate's units
   (``1/range(Z_j)``, at least 1). Before, a coefficient's gradient at its
