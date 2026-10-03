@@ -1317,6 +1317,30 @@ model. Information criteria choose the most economical adequate model, not the
     _gap = surv.Weibull.fit(x).aic() - surv.Rayleigh.fit(x).aic()
     assert 0 < _gap < 2, _gap         # as good a fit, one parameter fewer
 
+Whether the data are one population or two is decided the same way: a mixture
+is a candidate when named in ``include`` as a model of its components,
+``MixtureModel(Weibull, 2)``. It is fitted to the same data (the model given
+is left as it was) and ranked on the same criterion, its parameters counting
+each component's and the free weights. The default candidates stay single
+families.
+
+.. jupyter-execute::
+
+    np.random.seed(2)
+    x = np.concatenate([surv.Weibull.random(60, 5, 6), surv.Weibull.random(60, 30, 6)])
+    best = surv.fit_best(
+        x, metric="bic", include=["Weibull", surv.MixtureModel(surv.Weibull, 2)]
+    )
+    print(type(best).__name__, best.m, "components; BIC", round(best.bic(), 1),
+          "against", round(surv.Weibull.fit(x).bic(), 1), "for one Weibull")
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert isinstance(best, surv.MixtureModel)
+    assert best.bic() < surv.Weibull.fit(x).bic() - 10
+
 A warning about truncated data and probability plotting
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
