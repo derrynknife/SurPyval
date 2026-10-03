@@ -367,3 +367,115 @@ def test_gamma_zero_increments_with_stress() -> None:
     model = GammaProcess.fit(x, y, i, threshold=10.0, Z=Z, stress_ref=[0.0])
     assert model.gamma is not None
     assert model.gamma[0] == pytest.approx(0.7, abs=0.2)
+
+
+# --- #574: the life is the first passage from the starting level ----------
+
+
+def _vibration(seed=574, units=20):
+    """The issue's wind-farm example: bearing vibration read monthly for
+    1-3 years from a healthy 1.0 mm/s, gamma increments of mean 2.0 mm/s
+    per year (alpha 4, beta 2), an alarm (failure) at 7.0 mm/s."""
+    rng = np.random.default_rng(seed)
+    xs, ys, ids = [], [], []
+    for u in range(units):
+        t = np.arange(0, 12 * rng.integers(1, 4) + 1) / 12.0
+        y = 1.0 + np.r_[0.0, np.cumsum(rng.gamma(4.0 * np.diff(t), 0.5))]
+        xs.append(t)
+        ys.append(y)
+        ids.append(np.full(t.size, u))
+    return tuple(np.concatenate(v) for v in (xs, ys, ids))
+
+
+@pytest.mark.parametrize("fitter", [GammaProcess, WienerProcess])
+def test_574_life_is_measured_from_the_starting_level(fitter):
+    x, y, i = _vibration()
+    raw = fitter.fit(x, y, i, threshold=7.0)
+    # the baseline removed by hand: the same distance to go
+    removed = fitter.fit(x, y - 1.0, i, threshold=6.0)
+    np.testing.assert_allclose(raw.params, removed.params, rtol=1e-12)
+    assert raw.y0 == pytest.approx(1.0, abs=1e-12)
+    assert removed.y0 == pytest.approx(0.0, abs=1e-12)
+    # it was 16% (gamma) and 17% (Wiener) longer, measured from 0
+    assert raw.mean() == pytest.approx(removed.mean(), rel=1e-9)
+    t = np.array([0.5, 1.5, 2.5, 4.0])
+    for name in ("sf", "ff", "df", "hf", "Hf"):
+        np.testing.assert_allclose(
+            getattr(raw, name)(t), getattr(removed, name)(t), rtol=1e-9
+        )
+    p = np.array([0.1, 0.5, 0.9])
+    np.testing.assert_allclose(raw.qf(p), removed.qf(p), rtol=1e-9)
+    np.testing.assert_array_equal(
+        raw.random(50, random_state=1), removed.random(50, random_state=1)
+    )
+    # the pre-0.23 life, from 0, is still there on request
+    assert raw.mean(y0=0.0) > 1.15 * raw.mean()
+    assert fitter.fit(x, y, i, threshold=7.0, y0=0.0).mean() == pytest.approx(
+        raw.mean(y0=0.0), rel=1e-12
+    )
+
+
+@pytest.mark.parametrize("fitter", [GammaProcess, WienerProcess])
+def test_574_a_unit_starting_elsewhere_and_its_remaining_life(fitter):
+    x, y, i = _vibration()
+    model = fitter.fit(x, y, i, threshold=7.0)
+    level = 3.0
+    other = type(model)(*model.params, 7.0, y0=level)
+    t = np.array([0.5, 1.5, 2.5])
+    np.testing.assert_allclose(model.sf(t, y0=level), other.sf(t))
+    assert model.mean(y0=level) == pytest.approx(other.mean())
+    # predict_rul from a level is the life of a unit starting there
+    rul = model.predict_rul(level, alpha_ci=0.1)
+    np.testing.assert_allclose(
+        [rul.rul, *rul.rul_interval],
+        model.qf([0.5, 0.05, 0.95], y0=level),
+        rtol=1e-12,
+    )
+    draws = model.random(4000, random_state=2, y0=level)
+    assert np.median(draws) == pytest.approx(rul.rul, rel=0.05)
+    # a level at or past the threshold has no life to describe
+    with pytest.raises(ValueError, match="y0 = 7.*past the threshold"):
+        model.sf(t, y0=7.0)
+    with pytest.raises(ValueError, match="y0 must be finite"):
+        model.qf(0.5, y0=np.nan)
+    with pytest.raises(ValueError, match="past the threshold"):
+        fitter.fit(x, y + 10.0, i, threshold=7.0)
+
+
+def test_574_units_first_read_after_time_zero():
+    # Each unit's level at time zero is its first reading less what the
+    # fitted rate accrues before it, averaged over the units.
+    x, y, i = _simulate_gamma(2.0, 4.0, units=6, npts=12, dt=1.0, seed=5)
+    late = x >= 2.0
+    x, y, i = x[late], y[late] + 3.0, i[late]
+    model = GammaProcess.fit(x, y, i, threshold=20.0)
+    first = np.array([y[i == u][0] for u in range(6)])
+    rate = model.alpha / model.beta
+    assert model.y0 == pytest.approx(np.mean(first - 2.0 * rate), rel=1e-12)
+    assert model.y0 == pytest.approx(3.0, abs=0.5)
+    # on the stress clock, at the stress of the first reading
+    Z = np.where(i % 2 == 0, 0.0, 1.0)
+    stressed = WienerProcess.fit(x, y, i, threshold=20.0, Z=Z, stress_ref=[0])
+    af = np.exp(stressed.gamma[0] * np.where(np.arange(6) % 2 == 0, 0, 1))
+    expected = np.mean(first - stressed.mu * af * 2.0)
+    assert stressed.y0 == pytest.approx(expected, rel=1e-12)
+
+
+def test_574_y0_is_saved_and_old_dictionaries_start_at_zero():
+    model = GammaProcessModel(2.0, 4.0, 10.0, y0=1.5)
+    restored = GammaProcessModel.from_dict(model.to_dict())
+    assert restored.y0 == 1.5
+    assert restored.mean() == pytest.approx(model.mean(), rel=1e-12)
+    old = model.to_dict()
+    del old["y0"]
+    assert GammaProcessModel.from_dict(old).y0 == 0.0
+    assert "Start level (y0)    : 1.5" in repr(model)
+    with pytest.raises(ValueError, match="past the threshold"):
+        WienerProcessModel(0.5, 1.0, 10.0, y0=12.0)
+
+
+def test_574_gauge_fit_starts_where_the_readings_start():
+    x, y, i = _simulate_gamma(2.0, 4.0, units=6, npts=12, dt=1.0, seed=6)
+    y_gauge = np.round((y + 2.0) / 0.5) * 0.5
+    model = GammaProcess.fit(x, y_gauge, i, threshold=10.0, gauge=0.5)
+    assert model.y0 == pytest.approx(2.0)

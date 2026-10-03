@@ -138,7 +138,8 @@ def test_gauge_removes_rounding_bias_of_the_report_example() -> None:
 def test_gauge_is_unbiased_over_replicates() -> None:
     # Over replicate data sets with a gauge twice the mean increment, the
     # censored fit is an order of magnitude off; the quantised fits
-    # average near the truth (alpha 2, beta 4, mean life 20.25).
+    # average near the truth (alpha 2, beta 4, mean life 20.25 from 0;
+    # the units start at random levels, so the life from 0 is compared).
     fits: dict[str, list[tuple[float, float]]] = {
         "censored": [],
         "exact": [],
@@ -147,10 +148,10 @@ def test_gauge_is_unbiased_over_replicates() -> None:
     for seed in range(6):
         x, y, i = _gauge_data(1.0, seed=100 + seed)
         m = GammaProcess.fit(x, y, i, 10.0)
-        fits["censored"].append((m.alpha, float(m.mean())))
+        fits["censored"].append((m.alpha, float(m.mean(y0=0.0))))
         for method in ("exact", "independent"):
             m = GammaProcess.fit(x, y, i, 10.0, gauge=1.0, gauge_method=method)
-            fits[method].append((m.alpha, float(m.mean())))
+            fits[method].append((m.alpha, float(m.mean(y0=0.0))))
     censored = np.mean(fits["censored"], axis=0)
     assert censored[0] > 8.0 and censored[1] < 15.0
     for method in ("exact", "independent"):

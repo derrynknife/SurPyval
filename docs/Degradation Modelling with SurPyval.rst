@@ -1386,12 +1386,20 @@ section: ``x`` (measurement times), ``y`` (degradation measurements) and ``i``
 measured at different, irregular times without any special handling — a two-week
 gap simply contributes a larger ``dt``.
 
-One consequence to keep in mind: the fit never sees a unit's starting level,
-but the life distribution assumes every unit starts from degradation ``0`` at
-time ``0``, so ``threshold`` is the *distance* a new unit travels to failure.
-If your measurements start from a baseline (a resistance of 100 Ω that fails at
-110 Ω), subtract it, or pass the distance (``threshold=10``). The examples
-below all start at zero.
+**Where a unit starts.** The fitted parameters never depend on a unit's
+starting level — the increments do not see it — but its life does: a unit
+fails when it has climbed from where it started to ``threshold``, the first
+passage over the distance ``threshold - y0``. Real signals rarely start at zero
+(a vibration level starts at the machine's healthy value, a wear gauge at the
+as-built dimension, a resistance at its nominal 100 Ω), so ``threshold`` is the
+failure *level* on the scale of your readings, and the fit estimates the
+starting level ``y0`` from them: each unit's first reading, less the
+degradation the fitted process accrues on average before it (nothing for a
+reading at time zero), averaged over the units. Pass ``y0=`` to the fit when
+the starting level is known (a nominal baseline, or ``0.0`` to measure the life
+from zero, as SurPyval did before v0.23), and ``y0=`` to ``sf``, ``qf``,
+``mean`` and the other life methods for a unit that starts somewhere else. The
+examples below start at zero; the end of the Wiener section shows a baseline.
 
 The Wiener process
 ------------------
@@ -1542,6 +1550,34 @@ interval reflects the randomness of the process, not uncertainty in the fitted
 uncertainty). The fitted parameters are ``model.mu`` and ``model.sigma``
 (together, ``model.params``), and ``hf``, ``Hf``, ``df`` and
 ``random(size, random_state=...)`` complete the set of life methods.
+
+**A baseline.** Suppose the same signal had been read from a healthy level of
+``2``, with failure at ``12``. The drift and diffusion are unchanged (they come
+from the increments), the fit reads the starting level off the readings at time
+zero, and the life is the same as before — ``10`` to go at the same speed. A
+unit known to start higher, at ``4``, has less to go:
+
+.. jupyter-execute::
+
+    baseline = WienerProcess.fit(x, y + 2.0, i, threshold=12.0)
+    print("start level y0      :", round(baseline.y0, 2))
+    print("mean life           :", round(baseline.mean(), 2))
+    print("mean life from y = 4:", round(baseline.mean(y0=4.0), 2))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.isclose(baseline.y0, 2.0)
+    assert np.isclose(baseline.mean(), model.mean())
+    assert np.isclose(baseline.mean(y0=4.0), 8.0 / model.mu)
+    # the remaining life of a unit at 4 is the life of one starting there
+    assert np.isclose(baseline.predict_rul(4.0).rul, baseline.qf(0.5, y0=4.0))
+    assert np.isclose(baseline.mean(y0=0.0) / baseline.mean(), 1.2)
+
+Before v0.23 the life was measured from ``0``, so the same call quoted a mean
+life of ``12 / mu``, 20 % too long (that is ``baseline.mean(y0=0.0)``).
+``predict_rul`` was always right, since it starts from the level you give it.
 
 The Gamma process
 -----------------
