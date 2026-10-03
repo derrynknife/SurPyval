@@ -360,8 +360,10 @@ def test_609_an_answer_found_again_is_not_checked_again(monkeypatch):
         model, psi, free, CRIT_95, (-700.0, 700.0), region[0]
     )
     lower, _ = search.run(True, False, region[1], region[2])
-    assert search.checked[-1.0] == lower
-    at = next(u for p, u in search.known if p == lower)
+    # (the answer, before it is taken onto the boundary along a ray)
+    done = search.checked[-1.0]
+    assert done == pytest.approx(lower, rel=1e-9, abs=0)
+    at = next(u for p, u in search.reached if p == done)
     solves = []
     solve = likelihood_ratio._PsiBoundSearch.solve
 
@@ -370,7 +372,7 @@ def test_609_an_answer_found_again_is_not_checked_again(monkeypatch):
         return solve(self, *args)
 
     monkeypatch.setattr(likelihood_ratio._PsiBoundSearch, "solve", counted)
-    assert search.checks_out(-1.0, at) == lower
+    assert search.checks_out(-1.0, at) == done
     assert solves == []
     # One further from it than the hair (the estimate) is checked
     assert search.checks_out(-1.0, search.u_hat) is None

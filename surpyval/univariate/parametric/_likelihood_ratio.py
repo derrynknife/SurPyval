@@ -1600,7 +1600,7 @@ class LikelihoodRatioMixin:
                 terms.append(
                     None if x.size == 0 else (x - self.gamma, np.asarray(n))
                 )
-            windows = []
+            windows: list[tuple | None] = []
             for xl, xr, n in (
                 (data.x_il, data.x_ir, data.n_i),
                 (data.tl_unique, data.tr_unique, data.n_t_unique),
