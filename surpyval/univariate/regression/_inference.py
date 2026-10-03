@@ -71,6 +71,7 @@ class InferenceMixin:
         _covariance_cache: "tuple | None"
         _restored_covariance: "npt.NDArray | None"
         _restored: bool
+        _lr_searches: "list | None"
 
         @property
         def parameter_names(self) -> CallableList: ...
@@ -313,14 +314,29 @@ class InferenceMixin:
         name: str,
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         """
         Confidence bound(s) on a single fitted parameter.
 
-        Wald bounds from the observed information, computed on a scale chosen
-        from the parameter's support so the result stays inside it: log for a
-        one-sided-bounded distribution parameter (e.g. a positive scale), the
-        natural scale for the unbounded covariate coefficients.
+        Two methods, as for the univariate models; ``"wald"`` is the
+        default:
+
+        - ``"wald"`` -- bounds from the observed information, computed on
+          a scale chosen from the parameter's support so the result stays
+          inside it: log for a one-sided-bounded distribution parameter
+          (e.g. a positive scale), the natural scale for the unbounded
+          covariate coefficients.
+        - ``"lr"`` -- the profile-likelihood (likelihood-ratio) interval:
+          the values whose profile deviance, every other parameter
+          re-fitted, stays below the :math:`\\chi^2_1` critical value
+          (aliases ``"likelihood"``, ``"likelihood-ratio"``,
+          ``"profile"``). It respects the parameter's space (a life
+          model's positive constant stays positive) and need not be
+          symmetric about the estimate; where the deviance stays below
+          the critical value to the edge of the space, the bound is that
+          edge, and a side that cannot be found is ``nan``, with a
+          warning. It needs the data the model was fitted to.
 
         Parameters
         ----------
@@ -330,7 +346,12 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds are returned as ``[lower, upper]``.
+        method : {'wald', 'lr'}, optional
+            As above. Default ``'wald'``.
         """
+        from ._likelihood_ratio import is_lr, param_cb_lr
+
+        lr = is_lr(method)
         self._check_inference()
         names = self.parameter_names
         if name not in names:
@@ -349,6 +370,8 @@ class InferenceMixin:
                     ", ".join(names[self.k_dist :]),
                 )
             )
+        if lr:
+            return param_cb_lr(self, name, alpha_ci, bound)
         idx = names.index(name)
         p_hat = float(self.params[idx])
         var = float(self.covariance()[idx, idx])
@@ -371,20 +394,44 @@ class InferenceMixin:
         on: str = "sf",
         alpha_ci: float = 0.05,
         bound: str = "two-sided",
+        method: str = "wald",
     ) -> npt.NDArray:
         r"""
         Confidence bounds on a predicted function at covariate vector ``Z``.
 
-        The bounds propagate the fitted parameter covariance through the
-        requested function by the delta method. ``sf``/``ff``/``Hf`` are
-        derived from one bound on the baseline family's probability-plot
-        scale, as for the univariate models: ``log H`` for a Weibull,
-        Exponential, Rayleigh or Gumbel baseline, the normal quantile of
-        ``F`` for a Normal or LogNormal one, the logit of ``F`` for the rest
-        (#504; every band was on the logit before v0.22). Each keeps ``sf``
-        in ``(0, 1)``, and is formed from the cumulative hazard so the ``Hf``
-        bound has no ceiling where ``sf`` underflows. ``hf``/``df`` use a
-        log-scale bound (so they stay positive).
+        With ``method="wald"`` (the default) the bounds propagate the
+        fitted parameter covariance through the requested function by the
+        delta method. ``sf``/``ff``/``Hf`` are derived from one bound on
+        the baseline family's probability-plot scale, as for the
+        univariate models: ``log H`` for a Weibull, Exponential, Rayleigh
+        or Gumbel baseline, the normal quantile of ``F`` for a Normal or
+        LogNormal one, the logit of ``F`` for the rest (#504; every band
+        was on the logit before v0.22). Each keeps ``sf`` in ``(0, 1)``,
+        and is formed from the cumulative hazard so the ``Hf`` bound has
+        no ceiling where ``sf`` underflows. ``hf``/``df`` use a log-scale
+        bound (so they stay positive).
+
+        A Wald bound rests on the function being near linear in the
+        parameters over their uncertainty. Far outside the covariates of
+        the data -- an accelerated life test's use condition, well below
+        its lowest stress -- it is not, and the Wald bound is too narrow:
+        a 90% bound on the five-year reliability of an
+        ``AcceleratedLife(Weibull, PowerExponential)`` test, 40 °C below
+        its coolest cell, covered 0.86 to 0.88 (#583). The
+        likelihood-ratio bound, ``method="lr"``, is the one for such
+        extrapolation (Meeker and Escobar's, for accelerated tests): at
+        each ``x`` and row of ``Z`` the bound is the extreme of the
+        function over the likelihood region of all the parameters,
+        ``{theta : 2[nll(theta) - nll_hat] <= chi2_1}``, as for the
+        univariate models' ``cb(method="lr")``; the ``sf``, ``ff`` and
+        ``Hf`` bounds are one bound, so they agree exactly. It does not
+        rest on a quadratic approximation, and is transformation
+        invariant, but takes searches of the likelihood: seconds a bound
+        where the Wald bound takes milliseconds. The searches' first
+        steps (the parameters' own intervals) are kept, so later bounds
+        on the same model at the same level are faster. It needs the
+        data the model was fitted to; where a bound cannot be found it
+        is ``nan``, with a warning.
 
         Parameters
         ----------
@@ -399,12 +446,18 @@ class InferenceMixin:
             Total tail probability of the bound(s). Default 0.05.
         bound : {'two-sided', 'lower', 'upper'}, optional
             Two-sided bounds put ``[lower, upper]`` on the last axis.
+        method : {'wald', 'lr'}, optional
+            ``'wald'`` (the default) or ``'lr'``, as above (``'lr'`` also
+            as ``'likelihood'``, ``'likelihood-ratio'`` or ``'profile'``).
 
         Returns
         -------
         numpy array
             The confidence bound(s) on ``on`` at each ``x``.
         """
+        from ._likelihood_ratio import cb_lr, is_lr
+
+        lr = is_lr(method)
         self._check_inference()
         check_option("on", on, CB_ON)
         check_option("bound", bound, BOUNDS)
@@ -417,6 +470,15 @@ class InferenceMixin:
             check_paired_rows(
                 np.size(x), np.shape(self._prepare_Z(Z))[0], grid=False
             )
+        if lr:
+            if self._is_additive():
+                self._warn_if_hazard_negative(
+                    x,
+                    self._centred(self._prepare_Z(Z)),
+                    np.asarray(x) >= self.distribution.support[0],
+                    stacklevel=4,
+                )
+            return cb_lr(self, x, Z, on, alpha_ci, bound)
         params, center, cov = self._inference_state()
         Zp = self._centred(self._prepare_Z(Z), center)
         if self._is_additive():
