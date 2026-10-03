@@ -45,6 +45,7 @@ docstrings and checks their printed output, so a docstring example is a
 tested promise like any other. ``--run-invariants`` opts in to a slower
 combinatorial sweep of the parametric fitting paths, worth running after
 changing a likelihood, an initial guess or an optimiser.
+``--run-scenarios`` runs the practitioner scenario cards (see below).
 ``--run-calibration`` runs the statistical calibration studies (confidence
 interval coverage, test size and power, estimator bias; about 20 minutes on
 four cores), which also run nightly against ``develop`` from
@@ -94,7 +95,9 @@ through each property that applies to it:
 - vectorisation: a scalar, a 2-D and an empty query, a permuted query, and
   covariate rows evaluated together or one at a time;
 - invariances of the fit: a change of time unit, a permutation of the data
-  rows, and counts ``n`` against the same rows repeated;
+  rows, counts ``n`` against the same rows repeated, and a covariate
+  column multiplied by a constant (by ``fit`` and ``fit_tvc``, at scales
+  from 1e-6 to 731: the likelihood reached must not change);
 - valid values: probabilities in [0, 1] and monotone in time, no NaN at a
   valid time;
 - that the derivatives a fit or its inference takes -- the gradient and
@@ -104,8 +107,8 @@ through each property that applies to it:
   the model classes that differentiate are listed in ``DIFFERENTIATED``,
   and the cases of those that do not in ``NOT_DIFFERENTIATED``);
 - the missing-value rule (see :doc:`Conventions`), seed reproducibility of
-  the random draws, and a strict-JSON ``to_dict`` / ``from_dict`` round trip
-  that keeps every prediction;
+  the random draws, a strict-JSON ``to_dict`` / ``from_dict`` round trip
+  that keeps every prediction, and a ``pickle`` round trip;
 - that the alternate ways of fitting a model (``fit_from_df``, a formula,
   ``from_params``, ``fit_tvc`` ...) agree with ``fit``, and, for a model
   class that declares its attributes (``DECLARED_ATTRIBUTES``), that every
@@ -131,7 +134,11 @@ through each property that applies to it:
   property (a family's likelihood goes in ``SEARCHES`` there; a fit that
   is not a likelihood maximisation is excluded with the reason);
 - that no raw numpy, scipy or autograd warning escapes the package, and
-  each deliberate warning appears once (``test_warnings.py``).
+  each deliberate warning appears once (``test_warnings.py``);
+- that each quantity a model comparison reads (``aic``, ``bic``,
+  ``log_likelihood``, ``covariance`` ...) is the same kind -- a method or
+  a value -- on every model, and that every full-likelihood fit can be
+  ranked by ``aic`` and ``bic`` (``test_surface.py``).
 
 ``test_completeness.py`` walks the public namespaces and fails for any public
 class or fitter that is neither registered nor listed in ``OUT_OF_SCOPE``
@@ -169,6 +176,46 @@ The properties enforce the package's :doc:`Design Principles`: the rules every
 model keeps, each listed with the tests that check it. Review a change against
 that list, and when a bug breaks a principle its check missed, extend the
 check.
+
+Practitioner scenario cards
+---------------------------
+
+The conformance suite checks that each model keeps its contract; it does
+not check that the models add up to an answer. ``surpyval/tests/scenarios``
+does: each module is a *card*, an end-to-end study a reliability engineer
+runs, on data simulated from a known truth in the shape it arrives in the
+field -- a maintenance system's date table with inspections and a records
+start date, a Nevada chart of warranty returns, the readouts of an
+accelerated test, a growth test of several prototypes. A card names a
+persona and the questions the standard references ask of that kind of
+study (Meeker and Escobar, Nelson, Abernethy, MIL-HDBK-189C, IEC 61508),
+then answers them through the public API only.
+
+Each answer is checked against an *oracle*, never against the package
+itself:
+
+- the truth the data were simulated from, inside the fit's own
+  confidence interval (each card has a fixed seed, so this is
+  deterministic);
+- an independent likelihood written in the card with numpy and scipy
+  (``scenarios/_oracles.py``): the maximum the package reports must be the
+  maximum;
+- an equivalent parameterisation: the same model written two ways (an
+  accelerated life model and an AFT model on transformed stresses; a
+  covariate in two units) must reach the same likelihood.
+
+A question the package cannot yet answer without the analyst writing the
+method by hand -- a bound on the demonstrated MTBF of a growth test, a
+B10 by operating condition, a defective fraction from monthly counts --
+is a strict xfail whose reason is led by its issue. When the issue is
+fixed the test passes and the strict xfail turns the run red: update the
+card to the API the fix chose. A gap whose API cannot be guessed is
+written in the card's docstring with its issue instead.
+
+The cards run in a minute or two with ``--run-scenarios``, nightly. Add a
+card for a kind of study the package claims to support but no card
+covers; its first run is a practitioner review of that part of the
+package, and the issues it files become its xfails.
 
 Proving a refactor changed nothing
 ----------------------------------
