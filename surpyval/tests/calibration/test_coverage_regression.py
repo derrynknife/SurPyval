@@ -220,3 +220,35 @@ def test_583_cb_coverage_at_an_extrapolated_use_condition():
             lr[r] = model.cb(x_use, zq, alpha_ci=0.1, method="lr")
     check_coverage(wald[:, 0], wald[:, 1], truth, 0.90, "#583 use, Wald")
     check_coverage(lr[:, 0], lr[:, 1], truth, 0.90, "#583 use, LR")
+
+
+def test_617_cb_bootstrap_coverage_at_an_extrapolated_use_condition():
+    # The parametric bootstrap (BCa) bound of the same quantity on the
+    # same test (46 failures on average). A study of 1000 repetitions with
+    # 1000 refits each (#617) found 0.910 for it against 0.886 (Wald),
+    # 0.881 (likelihood ratio) and 0.871 (the percentile interval), the
+    # BCa interval's misses balanced (0.043 below, 0.047 above) where the
+    # percentile interval's were not (0.031 and 0.098). Each repetition
+    # here refits 200 resamples, so it is a smaller check of the same.
+    rng = np.random.default_rng(617)
+    x_use, z_use = 5 * 8760.0, np.array([[318.15, 400.0]])
+    life = _ALT_C * np.exp(_ALT_A / z_use[0, 0]) * z_use[0, 1] ** -3.0
+    truth = np.exp(-((x_use / life) ** 2.2))
+    reps = 200
+    boot = np.empty((reps, 2))
+    for r in range(reps):
+        x, c, Z = _alt_sample(rng)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            model = sp.WeibullAFT.fit(x, Z=_alt_terms(Z), c=c)
+            boot[r] = model.cb(
+                x_use,
+                _alt_terms(z_use),
+                alpha_ci=0.1,
+                method="bootstrap",
+                n_boot=200,
+                random_state=r,
+            )
+    check_coverage(
+        boot[:, 0], boot[:, 1], truth, 0.90, "#617 use, bootstrap (BCa)"
+    )

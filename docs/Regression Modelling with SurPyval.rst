@@ -2275,6 +2275,45 @@ covered 0.897 (Wald) and 0.893 (likelihood ratio) of 1,000 repetitions with
 46 failures on average, and 0.877 and 0.866 of 900 with 11; Wald stays the
 default.
 
+``method="bootstrap"`` gives a third bound, a parametric bootstrap: the model
+is refitted to ``n_boot`` data sets simulated from it, each unit at its own
+stress and censored as it was (here, every unit still running at 6,000 hours
+is censored there), and the bound is the BCa interval of the refits' values
+(Efron's bias-corrected and accelerated percentiles). It assumes neither
+that the reliability is near linear in the parameters nor that the
+likelihood ratio is near its large-sample distribution, and costs ``n_boot``
+refits, so ask for every time you need at once; the calls with the same
+``n_boot`` and an integer ``random_state`` share one set of refits:
+
+.. jupyter-execute::
+
+    boot = model_arr.cb(x_use, Z=Z_use, method='bootstrap', n_boot=100,
+                        random_state=1)
+    print('bootstrap:\n', boot.round(3))
+    print('95% CI on a, in eV:',
+          (model_arr.param_cb('a', method='bootstrap', n_boot=100,
+                              random_state=1) * k).round(3))
+
+.. jupyter-execute::
+    :hide-code:
+    :hide-output:
+
+    assert np.all((boot[:, 0] <= _est) & (_est <= boot[:, 1]))
+    assert model_arr._bootstrap_refits[(100, 1)].params.shape[0] == 100
+
+A hundred refits keep the example short; use a thousand or more for a bound
+you will act on. On the two-stress test above with 46 failures on average,
+the 90% bootstrap bound on the five-year reliability at use covered
+COVER_BCA_118 of 1,000 repetitions (1,000 refits each), against COVER_WALD_118
+(Wald), COVER_LR_118 (likelihood ratio) and COVER_PCT_118 for the plain
+percentile interval of the same refits, whose misses fell mostly on one
+side. With 11 failures on average no bound can be trusted: in
+SHARE_NOMLE_600 of the repetitions all the failures fell at stresses that
+leave the activation energy or the voltage exponent running off without
+limit, the fit warns that its likelihood has no finite maximum, and the
+bootstrap from such a fit is no better than the fit (see
+:doc:`the coverage study <changelog>` in the changelog for the numbers).
+
 Two stresses at once
 ~~~~~~~~~~~~~~~~~~~~
 
