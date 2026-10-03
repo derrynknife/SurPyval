@@ -205,9 +205,10 @@ def test_turnbull_estimator_options_on_fractional_ladder():
 
 
 def test_turnbull_docstring_example_unchanged():
-    # The rewrite must reproduce the long-standing example output.
+    # The rewrite must reproduce the long-standing example output (of
+    # the EM, the default until the EM-ICM became it for untruncated data)
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
-    model = surpyval.Turnbull.fit(x)
+    model = surpyval.Turnbull.fit(x, turnbull_algorithm="EM")
     expected = [
         1.0,
         1.0,
@@ -305,9 +306,10 @@ def test_turnbull_left_truncation_recovers_survival():
 
 def test_turnbull_untruncated_default_is_unchanged():
     # The #203 fix is scoped to truncated fits; the documented untruncated
-    # Fleming-Harrington example must be byte-for-byte unchanged.
+    # Fleming-Harrington example must be byte-for-byte unchanged (by the
+    # EM; the EM-ICM, now the default here, is checked in the #620 tests).
     x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
-    model = surpyval.Turnbull.fit(x)
+    model = surpyval.Turnbull.fit(x, turnbull_algorithm="EM")
     expected = [
         1.0,
         1.0,
@@ -865,7 +867,12 @@ def _kkt_gap(model, left, right):
 def test_620_emicm_converges_where_the_em_stalls():
     left, right = _random_intervals(1000)
     with pytest.warns(UserWarning, match="did not converge"):
-        em = Turnbull.fit(xl=left, xr=right, turnbull_estimator="Kaplan-Meier")
+        em = Turnbull.fit(
+            xl=left,
+            xr=right,
+            turnbull_estimator="Kaplan-Meier",
+            turnbull_algorithm="EM",
+        )
     emicm = no_warnings(
         Turnbull.fit,
         xl=left,
@@ -967,8 +974,11 @@ def test_620_emicm_is_kept_by_the_model():
     restored = sp.from_dict(saved)
     assert restored.data["algorithm"] == "EMICM"
     # the EM's dictionary is unchanged
-    em = quietly(Turnbull.fit, xl=left, xr=right)
+    em = quietly(Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EM")
     assert "algorithm" not in em.to_dict()
+    # the default runs, and keeps, the EM-ICM on untruncated data
+    default = quietly(Turnbull.fit, xl=left, xr=right)
+    assert default.to_dict()["algorithm"] == "EMICM"
     # bootstrap_cb refits each resample with the EM-ICM
     calls = []
     original = nonp.turnbull
@@ -982,3 +992,23 @@ def test_620_emicm_is_kept_by_the_model():
     with unittest.mock.patch.object(nonp, "turnbull", spy):
         restored.bootstrap_cb([5.0], n_boot=3, random_state=0)
     assert calls == ["EMICM"] * 3
+
+
+def test_620_the_default_is_the_emicm_without_truncation_and_the_em_with():
+    left, right = _random_intervals(60, 3)
+    default = quietly(Turnbull.fit, xl=left, xr=right)
+    emicm = quietly(
+        Turnbull.fit, xl=left, xr=right, turnbull_algorithm="EMICM"
+    )
+    assert default.turnbull_algorithm == "EMICM"
+    np.testing.assert_array_equal(default.R, emicm.R)
+    # with truncation the default is the EM (the EM-ICM does not fit it)
+    tl = np.minimum(left, 0.5)
+    truncated = quietly(Turnbull.fit, xl=left, xr=right, tl=tl)
+    em = quietly(
+        Turnbull.fit, xl=left, xr=right, tl=tl, turnbull_algorithm="EM"
+    )
+    assert truncated.turnbull_algorithm == "EM"
+    np.testing.assert_array_equal(truncated.R, em.R)
+    with pytest.raises(ValueError, match="untruncated data only"):
+        Turnbull.fit(xl=left, xr=right, tl=tl, turnbull_algorithm="EMICM")

@@ -29,7 +29,8 @@ method that takes data in the xcnt format described in :doc:`Types of Data`:
 
 There are five more, optional, arguments: ``set_lower_limit`` (see `Starting the curve at zero`_),
 and, for the ``Turnbull`` estimator only, ``turnbull_estimator``, ``tol``, ``max_iter`` and
-``turnbull_algorithm`` (see `Arbitrarily Truncated and Censored Data`_). The other estimators
+``turnbull_algorithm`` (the EM-ICM without truncation and the EM with it, by default; see
+`Arbitrarily Truncated and Censored Data`_). The other estimators
 ignore those four.
 
 ``fit()`` returns a :class:`~surpyval.univariate.nonparametric.nonparametric.NonParametric` model (see its API page for every method), and every model has the same
@@ -793,19 +794,18 @@ Each row of ``x`` is an interval ``[left, right]`` in which the item failed; an 
 censoring flags are worked out from the intervals, so ``c`` is not needed. (The same data can be
 given as ``TB.fit(xl=low, xr=upp)``.)
 
-``max_iter`` is raised from its default of 1000 here to leave headroom: with the default
-Fleming-Harrington option this data takes nearly 900 iterations. The EM
-stops when no piece's probability mass changes by more than ``tol`` (default ``1e-10``) in an
-iteration; loosening ``tol`` is the other way to stop sooner, at the cost of accuracy. The Turnbull EM converges slowly when many observations are
-right censored to infinity, as more than half of these are, and it warns
-rather than failing silently if it runs out of iterations before
-reaching ``tol``. If you see that warning, raising ``max_iter`` is
-usually the answer; if it persists, the data may not identify a unique
-estimate at all. For data without truncation, ``turnbull_algorithm='EMICM'``
-computes the same maximum (the non-parametric MLE) by the EM-ICM of R's
-``Icens`` and ``icenReg`` packages, which reaches it in tens of iterations
-where the EM can need tens of thousands, and stops when it is there (see
-:doc:`Non-Parametric Estimation`). The fitted model records what happened:
+These data are not truncated, so the fit uses the EM-ICM of R's ``Icens`` and ``icenReg``
+packages (``turnbull_algorithm='auto'``, the default): it reaches the non-parametric MLE in 17
+iterations and stops when it is there, when the Karush-Kuhn-Tucker conditions of the maximum hold
+to ``tol`` (default ``1e-10``; see :doc:`Non-Parametric Estimation`). With truncation the default
+is Turnbull's EM, which can be slow: it stops when no piece's probability mass changes by more
+than ``tol`` in an iteration, and converges slowly when many observations are right censored to
+infinity, as more than half of these are. Fitted with ``turnbull_algorithm='EM'`` these data take
+nearly 900 iterations (with the default Fleming-Harrington option), which is why ``max_iter`` is
+raised from its default of 1000 here to leave headroom. The EM warns rather than failing silently
+if it runs out of iterations before reaching ``tol``; if you see that warning, raising
+``max_iter`` is usually the answer, and if it persists, the data may not identify a unique
+estimate at all. The fitted model records what happened:
 
 .. jupyter-execute::
 
@@ -815,7 +815,10 @@ where the EM can need tens of thousands, and stops when it is there (see
     :hide-code:
     :hide-output:
 
-    assert model.converged and 800 < model.iters < 900, model.iters
+    assert model.converged and model.turnbull_algorithm == "EMICM"
+    assert model.iters < 50, model.iters
+    _em = TB.fit(x, max_iter=10_000, turnbull_algorithm="EM")
+    assert _em.converged and 800 < _em.iters < 900, _em.iters
     assert np.isinf(upp).mean() > 0.5
 
 And finally, an example with completely arbitrary censoring:
@@ -851,12 +854,12 @@ This is done even though we might not have a complete failure occur in an interv
 
 You can see that some values are 0 and that others are fractional: the EM has shared each
 censored item's failure out over the times it could have failed at, so ``d`` and ``r`` are
-*expected* counts. The risk set starts at all 17 items, but ``d`` adds up to about 16.95: with the
-default Fleming-Harrington option the curve never reaches zero, so a small share of the two right
-censored items' failures is placed beyond the last value (see the theory page). A few things to know when reading them:
+*expected* counts: those of the non-parametric MLE, to which the default Fleming-Harrington
+option is then applied (see the theory page). The risk set starts at all 17 items and ``d`` adds
+up to 17. A few things to know when reading them:
 
 - ``x`` holds the endpoints of the Turnbull pieces. Exactly observed times appear twice, because the failure mass at such a time sits in the zero-width piece between the two copies.
-- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.57 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
+- ``d[k]`` is the expected number of failures in the piece that *ends* at ``x[k]``, i.e. in :math:`(x_{k-1}, x_k]`, and ``r[k]`` is the expected number at risk just before that piece, so that ``R[k]`` is the estimator applied to ``r`` and ``d`` up to ``k``, as for the other estimators. So the 1.58 failures at ``x = 6`` are in (5, 6], and the curve drops there. (The first piece starts at ``model.bounds[0]``, here :math:`-\infty`.)
 - Where the estimate falls across a piece, the data do not say *where* in the piece: the drawn step (holding the value until the right end) is a convention. The full set of piece boundaries is ``model.bounds``, and ``model.R_upper`` and ``model.R_lower`` hold the survival at the start and end of each piece, which is the range any curve through that piece could take:
 
 .. jupyter-execute::
@@ -872,9 +875,9 @@ censored items' failures is placed beyond the last value (see the theory page). 
 
     # r[0] is a sum of the EM's fractional expected counts, so it is 17
     # only to rounding (the summation order depends on the CPU).
-    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 16.95
+    assert round(model.r[0], 9) == 17 and round(model.d.sum(), 2) == 17
     _k = np.flatnonzero(model.x == 6)[0]
-    assert round(model.d[_k], 2) == 1.57, model.d
+    assert round(model.d[_k], 2) == 1.58, model.d
     assert model.x[6] == model.x[7] == 7          # the (7, 7] piece
 
 The second piece, (7, 7], is the zero-width piece holding the failures observed at exactly 7. The
