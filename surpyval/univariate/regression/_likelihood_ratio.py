@@ -14,7 +14,7 @@ of a function evaluated at the covariates asked for (#583). ``cb_lr`` and
 from __future__ import annotations
 
 import warnings
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 import autograd.numpy as np
 import numpy.typing as npt
@@ -112,7 +112,7 @@ class LikelihoodRegion(LikelihoodRatioMixin):
         self.params = np.array(params, dtype=float)
         # What the searches' kept likelihoods are of (``_lr_raw_neg_ll``
         # keys its memo by this object)
-        self.surv_data = object()
+        self.surv_data = cast(Any, object())
         self._held_idx = set(held)
         self._bounds = list(bounds)
         free = self._free()
