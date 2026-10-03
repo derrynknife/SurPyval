@@ -40,13 +40,23 @@ def check_turnbull_estimator(estimator: str) -> None:
 
 # The algorithms that compute the estimate (#620): the self-consistency EM
 # (the default), and Wellner and Zhan's (1997) hybrid of it with the
-# iterative convex minorant, as R's ``Icens::EMICM`` and ``icenReg::ic_np``.
-TURNBULL_ALGORITHMS = ("EM", "EMICM")
+# iterative convex minorant, as R's ``Icens::EMICM`` and ``icenReg::ic_np``;
+# "auto", the default, is the EM-ICM for untruncated data and the EM with
+# truncation, which the EM-ICM does not fit.
+TURNBULL_ALGORITHMS = ("auto", "EM", "EMICM")
 
 
 def check_turnbull_algorithm(algorithm: str) -> None:
     """Raise a ``ValueError`` if ``algorithm`` is not a Turnbull option."""
     check_option("turnbull_algorithm", algorithm, TURNBULL_ALGORITHMS)
+
+
+def resolve_turnbull_algorithm(algorithm: str, t: npt.ArrayLike) -> str:
+    """The algorithm a Turnbull fit of data truncated by ``t`` runs:
+    ``"auto"`` is the EM-ICM without truncation and the EM with it."""
+    if algorithm != "auto":
+        return algorithm
+    return "EM" if np.isfinite(np.asarray(t)).any() else "EMICM"
 
 
 def _innermost(
@@ -881,12 +891,13 @@ def turnbull(
     estimator: str = "Fleming-Harrington",
     tol: float = 1e-10,
     max_iter: int = 1000,
-    algorithm: str = "EM",
+    algorithm: str = "auto",
 ) -> dict:
     """
-    Turnbull NPMLE via the EM (self-consistency) algorithm, or for
-    untruncated data optionally the EM-ICM (``algorithm="EMICM"``, #620;
-    see ``turnbull_algorithm`` in :meth:`Turnbull.fit
+    Turnbull NPMLE via the EM-ICM for untruncated data and the EM
+    (self-consistency) algorithm with truncation (``algorithm="auto"``,
+    the default; ``"EM"`` or ``"EMICM"`` to choose, #620; see
+    ``turnbull_algorithm`` in :meth:`Turnbull.fit
     <surpyval.univariate.nonparametric.nonparametric_fitter.NonParametricFitter.fit>`).
 
     Every observation's support -- the set of Turnbull interval endpoints
@@ -914,7 +925,7 @@ def turnbull(
     >>> out["x"]
     array([ 1.,  2.,  3.,  5.,  6.,  8.,  9., 10.])
     >>> out["R"].round(4)
-    array([1.    , 1.    , 0.6347, 0.2948, 0.2631, 0.2631, 0.2631, 0.0968])
+    array([1.    , 1.    , 0.6376, 0.2771, 0.2771, 0.2771, 0.2771, 0.1019])
     >>> out["converged"]
     True
     """
@@ -930,12 +941,13 @@ def turnbull(
     n = np.asarray(n)
     t = np.asarray(t)
     any_truncated = np.isfinite(t).any()
+    algorithm = resolve_turnbull_algorithm(algorithm, t)
     if algorithm == "EMICM" and any_truncated:
         # The ICM step needs a concave likelihood, which truncation's
         # denominators break.
         raise ValueError(
             "turnbull_algorithm='EMICM' fits untruncated data only; with "
-            "truncation (tl or tr) use the default, 'EM'."
+            "truncation (tl or tr) use 'EM' or the default, 'auto'."
         )
     bounds = _bounds(x, c, t)
     exact_times = np.unique(x[c == 0])
@@ -1161,8 +1173,8 @@ class Turnbull_(NonParametricFitter):
     >>> x = np.array([[1, 5], [2, 3], [3, 6], [1, 8], [9, 10]])
     >>> model = Turnbull.fit(x)
     >>> model.R
-    array([1.        , 1.        , 0.63472351, 0.29479882, 0.2631432 ,
-           0.2631432 , 0.2631432 , 0.09680497])
+    array([1.        , 1.        , 0.63762815, 0.27711205, 0.27711205,
+           0.27711205, 0.27711205, 0.10194383])
     """
 
     def __init__(self) -> None:
@@ -1177,7 +1189,7 @@ class Turnbull_(NonParametricFitter):
         turnbull_estimator: str,
         tol: float,
         max_iter: int,
-        turnbull_algorithm: str = "EM",
+        turnbull_algorithm: str = "auto",
     ) -> dict:
         return turnbull(
             x,

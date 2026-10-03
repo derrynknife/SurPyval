@@ -66,7 +66,7 @@ class NonParametricFitter(UnivariateDataFrameMixin):
         set_lower_limit: float | None = None,
         tol: float = 1e-10,
         max_iter: int = 1000,
-        turnbull_algorithm: str = "EM",
+        turnbull_algorithm: str = "auto",
     ) -> NonParametric:
         r"""
 
@@ -183,12 +183,14 @@ class NonParametricFitter(UnivariateDataFrameMixin):
             and ``bootstrap_cb`` refits every resample with them.
 
         turnbull_algorithm : str, optional
-            Turnbull only: ``'EM'`` (the default), the self-consistency EM
-            of Turnbull (1976), or ``'EMICM'``, the hybrid EM and iterative
-            convex minorant algorithm of Wellner and Zhan (1997), as R's
-            ``Icens::EMICM`` and ``icenReg::ic_np``, for data without
-            truncation (a ``ValueError`` otherwise). Ignored by the other
-            estimators.
+            Turnbull only: ``'auto'`` (the default), ``'EMICM'`` for data
+            without truncation and ``'EM'`` with it; ``'EM'``, the
+            self-consistency EM of Turnbull (1976); or ``'EMICM'``, the
+            hybrid EM and iterative convex minorant algorithm of Wellner
+            and Zhan (1997), as R's ``Icens::EMICM`` and
+            ``icenReg::ic_np``, for data without truncation (a
+            ``ValueError`` otherwise). Ignored by the other estimators.
+            The model keeps the algorithm the fit ran.
 
             On interval-censored data the EM can need tens of thousands
             of iterations, each moving the masses less than ``tol`` long
@@ -300,6 +302,15 @@ class NonParametricFitter(UnivariateDataFrameMixin):
             # resample with the settings this fit used, not the defaults.
             data["tol"] = tol
             data["max_iter"] = max_iter
+            # "auto" kept as the algorithm it chose, which a resample
+            # (with the same truncation) would choose too
+            from surpyval.univariate.nonparametric.turnbull import (
+                resolve_turnbull_algorithm,
+            )
+
+            turnbull_algorithm = resolve_turnbull_algorithm(
+                turnbull_algorithm, t
+            )
             data["algorithm"] = turnbull_algorithm
             out = NonParametric()
             t_obj = self._fit(

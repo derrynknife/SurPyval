@@ -49,13 +49,22 @@ v0.23 (unreleased)
   ``CopulaModel.sf``, matching mpmath to about 1e-13; the Gaussian
   copula's small CDF values are integrated rather than 0. Fits on ordinary
   data are unchanged.
-- **Turnbull ``turnbull_algorithm="EMICM"`` (#620).** Wellner and Zhan's
-  EM-ICM (as R's Icens and icenReg) for untruncated data, stopping on the
-  KKT conditions: on 1,000 random intervals it takes 45 iterations (9 ms)
-  where the EM stops at ``max_iter`` 7.5e-3 from the maximum with a warning
-  (it needs 54,000), and ``bootstrap_cb(n_boot=50)`` 0.5 s rather than
-  13.4 s. The default is unchanged; the EM's non-convergence warning
-  suggests the option.
+- **Turnbull fits untruncated data by the EM-ICM (#620).** Breaking:
+  ``turnbull_algorithm`` (new) defaults to ``"auto"``, Wellner and Zhan's
+  EM-ICM (as R's Icens and icenReg) for data without truncation and
+  Turnbull's EM with it; ``"EM"`` and ``"EMICM"`` choose. The EM-ICM stops
+  on the Karush-Kuhn-Tucker conditions of the maximum: on 1,000 random
+  intervals it takes 45 iterations (9 ms) where the EM stops at
+  ``max_iter`` 7.5e-3 from the maximum with a warning (it needs 54,000),
+  and ``bootstrap_cb(n_boot=50)`` 0.5 s rather than 13.4 s. With the
+  ``"Kaplan-Meier"`` estimator the answer is the EM's converged one. With
+  the Fleming-Harrington (the default) or Nelson-Aalen estimator, the
+  estimator is applied to the non-parametric MLE's expected counts, as it
+  already was under truncation, rather than iterated inside the EM, so
+  untruncated interval-censored curves move: on the docstring's five
+  intervals ``R`` at 5 is 0.277 rather than 0.295. ``turnbull_algorithm=
+  "EM"`` gives the old result. A model keeps the algorithm it ran, and
+  ``to_dict`` stores it when it is not the EM (schema 2).
 - **Analytic shape derivatives of the incomplete beta (#621).** The
   censored Beta fit at 3,000 rows takes 1.2 s rather than 2.5 s; the
   derivatives are accurate to about 1e-15 against mpmath, where the finite
