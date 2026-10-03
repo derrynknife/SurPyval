@@ -40,6 +40,10 @@ _FLOAT_MAX = float(np.finfo(float).max)
 # The profile deviance is solved to about 1e-8 (the searches' tolerances);
 # this is the slack the likelihood-ratio walk allows it (``_lr_walk``).
 _LR_NOISE = 1e-6
+# The scale of the deviance constraint in the scaled search for a
+# function's extreme (``_PsiBoundSearch.extreme``): SLSQP holds it to its
+# ftol of 1e-10, which is 1e-8 of deviance.
+_LR_DEV_SCALE = 1e-2
 # A deviance that is not finite, or no search reaching the target at all,
 # is a failure; a target beyond a data-derived edge (the Uniform's) is not
 # reachable, and reads as this deviance, above any critical value.
@@ -638,6 +642,14 @@ class _PsiBoundSearch:
         def g(z: npt.NDArray) -> float:
             return self.dev_u(to_u(z))
 
+        # SLSQP holds a constraint to its ftol. Held so to the deviance's
+        # last digits, the scaled search cycled up to 90 times at a point
+        # outside the region by 5e-10, trading that against psi (a
+        # Weibull band on 1000 units); scaled, the deviance is held to
+        # 1e-8, as the walks solve it, and ``from_trace`` takes a point
+        # outside back onto the boundary.
+        c = _LR_DEV_SCALE if scaled else 1.0
+
         try:
             res = minimize(
                 lambda z: -direction * f(z),
@@ -648,8 +660,8 @@ class _PsiBoundSearch:
                 constraints=[
                     {
                         "type": "ineq",
-                        "fun": lambda z: level - g(z),
-                        "jac": lambda z: -_central_gradient(g, z),
+                        "fun": lambda z: c * (level - g(z)),
+                        "jac": lambda z: -c * _central_gradient(g, z),
                     }
                 ],
                 options={"ftol": 1e-10, "maxiter": 100},
@@ -1599,7 +1611,15 @@ class LikelihoodRatioMixin:
         extreme traced point alone, taken when the answer is at least as
         far out as every traced point (and moved onto the boundary where
         SLSQP stopped just outside it), which makes a Weibull band at 20
-        times on 1000 units 2.4 s rather than 9.4 s (#519).
+        times on 1000 units 2.4 s rather than 9.4 s (#519). The region is
+        found once per level, for every band and summary bound at that
+        level; a band's times are searched in order, each side's search
+        starting from where the neighbouring time's bound was found when
+        that is as far out as the trace; and the searches run in the
+        coordinates scaled by the Wald standard errors (``_wald_sd``),
+        the check beyond each answer starting beside it. That takes a
+        two-parameter band from about 250 likelihood evaluations a time
+        to about 100 (#587).
 
         A search for the extreme from a warm start alone would stop
         wherever it first meets the region's boundary: ExpoWeibull and
