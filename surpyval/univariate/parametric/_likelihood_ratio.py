@@ -2237,6 +2237,10 @@ class LikelihoodRatioMixin:
             value,
             (want_lower, want_upper),
         )
+        if on == "Hf":
+            lower, upper, failed, unsettled_at = self._cb_lr_Hf_tail(
+                t, lower, upper, failed, unsettled_at, free, crit
+            )
         if unsettled_at:
             at = sorted({float(t[i]) for i in unsettled_at})
             warn_unsettled(f"at t = {at}")
@@ -2260,6 +2264,70 @@ class LikelihoodRatioMixin:
             return lower
         else:
             return upper
+
+    def _cb_lr_Hf_tail(
+        self,
+        t: npt.NDArray,
+        lower: npt.NDArray,
+        upper: npt.NDArray,
+        failed: list[int],
+        unsettled_at: list[int],
+        free: list[int],
+        crit: float,
+    ) -> tuple[npt.NDArray, npt.NDArray, list[int], list[int]]:
+        """The ``Hf`` band where the survival's scale has no room for it.
+
+        The ``sf``, ``ff`` and ``Hf`` bands are one band, on the logit of
+        ``sf`` (``lower`` and ``upper`` here are the survival band's ends
+        on the scale of ``Hf``, before the swap that makes them ``Hf``'s).
+        Far in the upper tail ``sf`` underflows, or the band reaches the
+        end of that scale (``sf`` = 1e-308, ``Hf`` = 708), and the ``Hf``
+        band was ``[inf, inf]`` around a finite estimate (#652). At those
+        times it is found on the scale of ``log Hf`` instead: the same
+        extreme over the same region (the band is invariant to the scale),
+        where it can be represented."""
+        H_hat = onp.asarray(
+            self.dist.Hf(t - self.gamma, *self.params), dtype=float
+        )
+        edge = -_LN_TINY * (1 - 1e-6)
+        reached = onp.zeros(t.shape, dtype=bool)
+        for end in (lower, upper):
+            asked = ~onp.isnan(end)
+            reached |= asked & ~(onp.abs(end) < edge)
+        redo = reached & onp.isfinite(H_hat) & (H_hat > 0)
+        if not redo.any():
+            return lower, upper, failed, unsettled_at
+        idx = onp.flatnonzero(redo)
+        # lower and upper are still the survival band's: their swap gives
+        # Hf's lower and upper ends.
+        want_hi = bool(onp.any(~onp.isnan(lower[idx])))
+        want_lo = bool(onp.any(~onp.isnan(upper[idx])))
+        Hf = self._lr_function("Hf")
+
+        def psi_of(time: Any, theta: npt.NDArray) -> float:
+            return float(
+                np.log(Hf(np.atleast_1d(time) - self.gamma, *theta)[0])
+            )
+
+        lo_H, hi_H, failed_H, unsettled_H = self._lr_band(
+            t[idx],
+            onp.argsort(t[idx], kind="stable"),
+            psi_of,
+            lambda time: (float(time),),
+            "Hf",
+            free,
+            crit,
+            (_LN_TINY, _LN_MAX),
+            np.exp,
+            (want_lo, want_hi),
+        )
+        lower, upper = onp.array(lower), onp.array(upper)
+        lower[idx], upper[idx] = hi_H, lo_H
+        failed = [i for i in failed if not redo[i]]
+        failed += [int(idx[j]) for j in failed_H]
+        unsettled_at = [i for i in unsettled_at if not redo[i]]
+        unsettled_at += [int(idx[j]) for j in unsettled_H]
+        return lower, upper, failed, unsettled_at
 
     def _lr_band(
         self,

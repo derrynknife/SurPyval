@@ -29,6 +29,7 @@ from surpyval.univariate.information_criteria import (
 from surpyval.utils import fsli_to_xcnt, refuse_time_values
 from surpyval.utils.data_summary import data_summary
 from surpyval.utils.linalg import (
+    bound_signs,
     cb_link,
     param_name,
     sf_link_bound,
@@ -2085,9 +2086,15 @@ class Parametric(
             "log-log" transform, on which a Weibull is a straight line in
             log time); those on ``hf`` and ``df`` are on the log scale (the
             logit scale for a discrete distribution, whose hazard and mass
-            are probabilities), and are 0 where the rate is 0. Where the
-            delta-method variance is negative (the covariance is not
-            positive definite) a Wald bound is ``nan``, with a warning.
+            are probabilities), and are 0 where the rate is 0. Each ``x``'s
+            Wald bound is computed on its own. Where the delta-method
+            variance is negative (the covariance is not positive definite)
+            a Wald bound is ``nan``, with a warning; where the function's
+            derivatives overflow at an ``x`` far in a tail, that ``x``'s
+            bound alone is ``nan``, with a warning naming it. The ``Hf``
+            bound is on ``log Hf`` wherever the survival has underflowed
+            (for the log-log families everywhere: it is the same bound), so
+            it stays finite and contains the estimate there.
             The Wald band on ``sf`` and ``ff`` rises (or falls) with ``x``
             as the function does whenever the shape's own Wald interval
             excludes 0; with fewer failures than that it can turn back in a
@@ -2112,7 +2119,10 @@ class Parametric(
             function's own profile deviance reaches ``chi2``; a band whose
             region reaches the edge of the function's range (0 or 1 for
             ``sf``) is that edge. The ``sf``, ``ff`` and ``Hf`` bands are
-            one band, so they agree exactly.
+            one band, so they agree exactly, except far in the upper tail,
+            where ``sf`` has no room left (below 1e-308) and the ``Hf``
+            band is found on the scale of ``log Hf`` (the same extreme of
+            the same region).
             The likelihood-ratio band is transformation-invariant and does not
             rely on a quadratic approximation, so it is usually better in small
             samples (Meeker and Escobar recommend it there), but it is computed
@@ -2185,6 +2195,7 @@ class Parametric(
         self._warn_offset_wald("cb")
 
         ctx = self._cb_context()
+        asked = bound
 
         # ff, F and Hf are decreasing transforms of R; flip one-sided bounds
         if on in ["ff", "F", "Hf"] and bound == "lower":
@@ -2201,7 +2212,7 @@ class Parametric(
                 if bound == "two-sided":
                     cb = np.fliplr(cb)
             elif on == "Hf":
-                cb = -np.log(self._cb_sf_bound(t, ctx, alpha_ci, bound))
+                cb = self._cb_Hf_bound(t, ctx, alpha_ci, asked)
             elif on in ["hf", "df"]:
                 cb = self._cb_rate_bound(t, ctx, alpha_ci, bound, on)
             else:
@@ -2770,24 +2781,58 @@ class Parametric(
         scale = np.einsum("ij,jk,ik->i", abs(jac), abs(ctx.cov), abs(jac))
         return np.where((var < 0) & (var >= -1e-10 * scale), 0.0, var)
 
-    def _cb_sd(self, var: Any, x: Any, on: str) -> Any:
-        """The delta-method standard error, ``sqrt(var)``, with one
-        warning where the variance is negative (#411): the covariance is
-        not positive definite, so no Wald bound exists there, and the
-        bound is nan. It used to be a silent nan."""
+    def _cb_delta_var_each(
+        self, func_at: Callable[[Any], Callable[..., Any]], ctx: Any, n: int
+    ) -> Any:
+        """``_cb_delta_var`` of a function of ``n`` points, each point's
+        variance its own: ``func_at(idx)`` is the function at the points
+        ``idx``. A gradient that is not finite at one point (its function
+        overflows far in a tail) is ``0 * nan`` in every other point's
+        reverse pass, so it made every variance ``nan`` (#652); those
+        points are differentiated again one at a time, and only the point
+        that overflows keeps its ``nan``."""
+        var = np.array(self._cb_delta_var(func_at(slice(None)), ctx))
+        bad = ~np.isfinite(var)
+        if n > 1 and bad.any():
+            for i in np.flatnonzero(bad):
+                var[i] = self._cb_delta_var(func_at(slice(i, i + 1)), ctx)[0]
+        return var
+
+    def _cb_sd(self, var: Any, x: Any, on: str, cov: Any = None) -> Any:
+        """The delta-method standard error, ``sqrt(var)``, ``nan`` with one
+        warning where there is none (#411; it used to be a silent nan):
+        where the variance is negative the covariance is not positive
+        definite; where it is not finite while the covariance ``cov`` is,
+        the function's gradient overflowed at that ``x`` (far in a tail),
+        and the message says so rather than blaming the covariance
+        (#652)."""
         bad = ~(var >= 0)
         if np.any(bad):
-            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))[bad]
-            warn_wald_undefined(
-                f"{on} at x = {where.tolist()}",
-                "its delta-method variance is negative or not finite, so "
-                "the parameter covariance is not positive definite (the "
-                "estimate is at or near a boundary of the parameter space, "
-                "or the likelihood is not regular there)",
-                # _cb_sd -> the bound helper -> cb -> the query-shape
-                # wrapper -> the caller
-                stacklevel=5,
-            )
+            where = np.broadcast_to(np.atleast_1d(x), np.shape(var))
+            overflow = bad & ~np.isfinite(var)
+            if cov is None or not np.all(np.isfinite(cov)):
+                overflow = np.zeros_like(bad)
+            singular = bad & ~overflow
+            if np.any(singular):
+                warn_wald_undefined(
+                    f"{on} at x = {where[singular].tolist()}",
+                    "its delta-method variance is negative or not finite, "
+                    "so the parameter covariance is not positive definite "
+                    "(the estimate is at or near a boundary of the "
+                    "parameter space, or the likelihood is not regular "
+                    "there)",
+                    stacklevel=caller_stacklevel(),
+                )
+            if np.any(overflow):
+                warn_wald_undefined(
+                    f"{on} at x = {where[overflow].tolist()}",
+                    f"the derivatives of {on} with respect to the "
+                    "parameters overflow there (that x is too far in the "
+                    "distribution's tail for double precision), so it has "
+                    "no delta-method variance; the bounds at the other x "
+                    "are computed on their own",
+                    stacklevel=caller_stacklevel(),
+                )
         return np.sqrt(np.where(bad, np.nan, var))
 
     def _cb_sf_bound(
@@ -2797,6 +2842,7 @@ class Parametric(
         alpha_ci: float,
         bound: str,
         elementwise: bool = False,
+        on: str = "sf",
     ) -> Any:
         """Confidence bound on the survival function: a Wald bound on the
         scale on which the family is a straight line in (log) time -- its
@@ -2838,14 +2884,27 @@ class Parametric(
         small = np.where(left, F_hat, R_hat)
         unit = np.where(small > 0, small, 1.0)
 
-        def sf_func(phi: npt.NDArray) -> Any:
-            R = self._cb_full_sf(x, phi, ctx)
-            F = self._cb_full_ff(x, phi, ctx)
-            return np.where(left, -F, R) / unit
+        def sf_at(idx: Any) -> Callable[..., Any]:
+            xi, left_i, unit_i = (
+                np.atleast_1d(a)[idx] for a in (x, left, unit)
+            )
 
-        n_points = np.size(x) if elementwise else None
-        var = self._cb_delta_var(sf_func, ctx, n_points)
-        sd_R = unit * self._cb_sd(var, x, "sf")
+            def sf_func(phi: npt.NDArray) -> Any:
+                R = self._cb_full_sf(xi, phi, ctx)
+                F = self._cb_full_ff(xi, phi, ctx)
+                return np.where(left_i, -F, R) / unit_i
+
+            return sf_func
+
+        if elementwise:
+            # Each point's gradient is its own parameters' already.
+            var = self._cb_delta_var(sf_at(slice(None)), ctx, np.size(x))
+        else:
+            var = self._cb_delta_var_each(sf_at, ctx, np.size(x))
+        # Where R or F is below the normal range the bound is the edge it
+        # is at (sf_link_bound), whatever its variance.
+        var = np.where(small < np.finfo(float).tiny, 0.0, var)
+        sd_R = unit * self._cb_sd(var, x, on, ctx.cov)
         # On the family's scale (surpyval.utils.linalg.sf_link_bound, which
         # the degradation and regression bands share). At the boundary (R =
         # 0 or 1, e.g. t <= gamma) the transform degenerates to 0/0; the
@@ -2856,6 +2915,81 @@ class Parametric(
         # [upper, lower] on R for a two-sided bound: the layout the public
         # cb method expects (it flips it for sf).
         return R_cb[..., ::-1] if bound == "two-sided" else R_cb
+
+    def _cb_full_Hf(self, x: Any, phi: npt.NDArray, ctx: Any) -> Any:
+        """The cumulative hazard, ``-log _cb_full_sf``: the distribution's
+        own ``Hf`` for a plain model (finite far past where its survival
+        underflows), else from the failure probability where it is below
+        1/2 and the survival elsewhere (which a limited failure population
+        keeps at least ``1 - p``)."""
+        if not (self.lfp or self.zi):
+            core = phi[: ctx.n_core]
+            s0 = getattr(self.dist, "support", (-np.inf, np.inf))[0]
+            xg = x - self.gamma
+            below = xg < s0
+            xg = np.where(below, s0 + 1e-10, xg)
+            return np.where(below, 0.0, self.dist.Hf(xg, *core))
+        F = self._cb_full_ff(x, phi, ctx)
+        R = self._cb_full_sf(x, phi, ctx)
+        return np.where(F < 0.5, -np.log1p(-F), -np.log(R))
+
+    def _cb_Hf_bound(
+        self, t: Any, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
+        """The Wald bound on the cumulative hazard, ``[lower, upper]`` for
+        a two-sided bound.
+
+        For a family whose band scale is ``log(-log R)`` (the Weibull,
+        Exponential, Rayleigh and Gumbel) the band is the bound on ``log
+        H`` itself, the same bound as the ``sf`` band's, computed from the
+        cumulative hazard so that it stays finite, and contains the
+        estimate, far past where the survival underflows (#652: it was
+        ``[inf, inf]`` at ``Hf = 85302``). For the other families it is
+        ``-log`` of the ``sf`` band, except where the survival has
+        underflowed to 0, or the band's end does: there, too, it is the
+        bound on ``log H``.
+        """
+        t = np.atleast_1d(t)
+        H_hat = np.asarray(self._cb_full_Hf(t, ctx.phi_hat, ctx), dtype=float)
+        R_hat = np.asarray(self._cb_full_sf(t, ctx.phi_hat, ctx), dtype=float)
+        finite = np.isfinite(H_hat) & (H_hat > 0)
+        if cb_link(self.dist) == "loglog":
+            on_log_H = finite
+        else:
+            on_log_H = finite & (R_hat == 0)
+        shape = t.shape + ((2,) if bound == "two-sided" else ())
+        cb = np.full(shape, np.nan)
+        rest = ~on_log_H
+        if rest.any():
+            flipped = {"lower": "upper", "upper": "lower"}.get(bound, bound)
+            cb[rest] = -np.log(
+                self._cb_sf_bound(t[rest], ctx, alpha_ci, flipped, on="Hf")
+            )
+            # The survival band's end underflowed: Hf's is inf there.
+            ends = np.reshape(cb, (len(t), -1))
+            on_log_H = on_log_H | (finite & np.any(ends == np.inf, axis=1))
+        if on_log_H.any():
+            cb[on_log_H] = self._cb_log_Hf_bound(
+                t[on_log_H], H_hat[on_log_H], ctx, alpha_ci, bound
+            )
+        return cb
+
+    def _cb_log_Hf_bound(
+        self, t: Any, H_hat: Any, ctx: Any, alpha_ci: float, bound: str
+    ) -> Any:
+        """The Wald bound on ``log H`` at the times ``t`` (where the
+        cumulative hazard ``H_hat`` is finite and positive), back on the
+        scale of ``H``."""
+
+        def func_at(idx: Any) -> Callable[..., Any]:
+            ti = t[idx]
+            return lambda phi: np.log(self._cb_full_Hf(ti, phi, ctx))
+
+        var = self._cb_delta_var_each(func_at, ctx, len(t))
+        sd = self._cb_sd(var, t, "Hf", ctx.cov)
+        alpha, signs = bound_signs(alpha_ci, bound)
+        out = H_hat[:, None] * np.exp(signs * z(1 - alpha) * sd[:, None])
+        return out if bound == "two-sided" else out[:, 0]
 
     def _cb_rate_bound(
         self, t: Any, ctx: Any, alpha_ci: float, bound: str, on: str
@@ -2876,25 +3010,43 @@ class Parametric(
         # Evaluated just inside the support there (and then replaced), so
         # a negative argument cannot put a nan in the Jacobian (#256).
         xg = np.where(below, s0 + 1e-10, xg)
+        # A continuous model's hazard is the distribution's own, accurate
+        # far in the tail, where df / sf is 0 / 0 (#652). Zero inflation
+        # cancels from it (from 0 on, as ``hf``); a limited failure
+        # population's survival stays above 1 - p.
+        own_hazard = not (self.dist.discrete or self.lfp)
 
-        def density(phi: npt.NDArray) -> Any:
-            core, p, f0 = self._cb_unpack(phi, ctx)
-            base = np.where(below, 0.0, self.dist.df(xg, *core))
-            return (p - f0) * base
+        def func_at(idx: Any) -> Callable[..., Any]:
+            ti, xgi, below_i = (np.atleast_1d(a)[idx] for a in (t, xg, below))
 
-        if on == "hf":
+            def density(phi: npt.NDArray) -> Any:
+                core, p, f0 = self._cb_unpack(phi, ctx)
+                base = np.where(below_i, 0.0, self.dist.df(xgi, *core))
+                return (p - f0) * base
+
+            if on == "df":
+                return density
+            if own_hazard:
+
+                def hazard(phi: npt.NDArray) -> Any:
+                    core = phi[: ctx.n_core]
+                    return np.where(below_i, 0.0, self.dist.hf(xgi, *core))
+
+                return hazard
             # The survival that conditions the hazard: to the step before
             # for a discrete distribution, as its hf is defined.
-            t_sf = t - 1.0 if self.dist.discrete else t
+            t_sf = ti - 1.0 if self.dist.discrete else ti
 
-            def func(phi: npt.NDArray) -> Any:
+            def ratio(phi: npt.NDArray) -> Any:
                 return density(phi) / self._cb_full_sf(t_sf, phi, ctx)
 
-        else:
-            func = density
+            return ratio
 
-        g_hat = func(ctx.phi_hat)
-        sd_g = self._cb_sd(self._cb_delta_var(func, ctx), t, on)
+        g_hat = func_at(slice(None))(ctx.phi_hat)
+        var = self._cb_delta_var_each(func_at, ctx, np.size(t))
+        # A rate of 0 is bounded by 0 (below), whatever its variance.
+        var = np.where(g_hat == 0.0, 0.0, var)
+        sd_g = self._cb_sd(var, t, on, ctx.cov)
 
         if bound == "two-sided":
             diff = z(alpha_ci / 2) * np.array([1.0, -1.0]).reshape(2, 1)
