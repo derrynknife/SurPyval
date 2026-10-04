@@ -311,7 +311,8 @@ def partial_profiles(
     singular to rounding there, so the profile formed from it is whatever
     the rounding makes it: the test along it fired or not with the units
     the check was made in. Holding the others, the likelihood along each
-    one is its own tail, ``C - A exp(-s t)``, and the test reads it. The
+    one is its own tail, ``C - A exp(-s t)``, and the test reads it, there
+    and again a Newton step on. The
     parameters held are those ``_cleared`` does not show to be at a
     maximum, and only where there are two or more of them (one alone is
     :func:`runaway_coefficients`'s)."""
@@ -337,15 +338,50 @@ def partial_profiles(
         sub = np.ix_(keep, keep)
         j = int(np.flatnonzero(keep == coefs[k])[0])
         with np.errstate(all="ignore"):
-            if runaway_coefficients(
+            if not runaway_coefficients(
                 holding,
                 at[keep],
                 [j],
                 None if start is None else np.asarray(start)[keep],
                 (H[sub], g[keep]),
             ):
+                continue
+            # And again one Newton step on along that line: a fit stopped
+            # short of a finite maximum a Newton step away can fail
+            # Kantorovich's test where it is (a WeibullPO whose scale was
+            # 14 times short of its maximum, 0.006 below it in
+            # log-likelihood), but not from the next point, where Newton's
+            # method has all but converged; a run-off fails it at every
+            # point of its tail. (A rise with no curvature, the additive
+            # hazards', has no Newton step, and needs none.)
+            ahead = _newton_point(holding, at[keep], j)
+            if ahead is True or (
+                ahead is not None and runaway_coefficients(holding, ahead, [j])
+            ):
                 out.append(k)
     return out
+
+
+def _newton_point(
+    neg_ll: Callable, x: npt.NDArray, j: int
+) -> "npt.NDArray | bool | None":
+    """The point one Newton step along parameter ``j``'s profile from
+    ``x`` (:func:`_profile`); ``True`` where the profile has no curvature
+    there (no step: a rise without bound), and ``None`` where the step
+    cannot be taken or does not lower ``neg_ll``."""
+    derivatives = search_derivatives(neg_ll, x)
+    if derivatives is None or not np.all(np.isfinite(derivatives[0])):
+        return None
+    point, v = _profile(neg_ll, x, derivatives[0], j)
+    d = _line_derivatives(neg_ll, point, v)
+    if d is None:
+        return None
+    if not d[1] > 0.0:
+        return True
+    ahead = point - (d[0] / d[1]) * v
+    if not float(neg_ll(ahead)) < float(neg_ll(point)):
+        return None
+    return ahead
 
 
 def flat_profiles(
